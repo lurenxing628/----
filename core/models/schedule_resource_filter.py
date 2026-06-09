@@ -6,6 +6,8 @@ from typing import Any, Callable, Optional, Tuple, Union
 from core.infrastructure.errors import ValidationError
 
 SUPPORTED_SCHEDULE_RESOURCE_TYPES = {"machine", "operator"}
+# 往本集合加第四类资源时必须同步扩 normalize_dispatch_resource_filter 的分支——
+# 末分支会把"白名单内但非 operator/team"的类型默认映射到 machine_id，新类型不扩分支即静默走错列。
 SUPPORTED_DISPATCH_RESOURCE_TYPES = {"machine", "operator", "team"}
 
 _Message = Optional[Union[str, Callable[[str], str]]]

@@ -4188,7 +4188,7 @@
   "id": "R05",
   "bucket": "B07",
   "home": "B07",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P5",
   "partition": "scheduler-dispatch",
@@ -4203,7 +4203,7 @@
    "resource_dispatch_service.py",
    "schedule_plan_query_repo.py"
   ],
-  "current_evidence_2026_06_05": "2026-06-10 核验: 步1/步2 已于 fae8829b(2026-06-08 ROOT safety guards)落地,旧『git diff b08162cd 为空』评估已过时——collar core/models/schedule_resource_filter.py 已扩 DispatchResourceFilter(:33,含 include_team_context 信号 :36)+normalize_dispatch_resource_filter 派工轨单独入口(:96,旧 collar :65-70 raise 未放宽,双轨隔离 O15)+team 双 join 谓词『((o.team_id = ?) OR (m.team_id = ?))』(:120-124)+空 id=全量(O16);步2 五条 parity 已落 tests/models_domain/test_schedule_resource_filter.py(team 谓词/operator-machine 空 id 全量/team 空全量/bad-raise/不放宽旧 collar 五钉,已注册 test_registry)。剩步3(G33,Batch-C):先迁 smoke/续命测试,再搬 repo list_dispatch_rows 内联 operator/machine 字面量+空 id 全量分支(:451-460 一带)与内联 team 双 join(:461-463 一带,按符号重 rg)进收口点,_normalize_scope_type(resource_dispatch_service.py:59-63)委托收口点→步3 完成后才翻 fixed。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(三步全收口): 步1/步2 已于 fae8829b(2026-06-08 ROOT safety guards)落地——collar core/models/schedule_resource_filter.py 已扩 DispatchResourceFilter(:33,含 include_team_context 信号 :36)+normalize_dispatch_resource_filter 派工轨单独入口(:96,旧 collar raise 未放宽,双轨隔离 O15)+team 双 join 谓词『((o.team_id = ?) OR (m.team_id = ?))』(:120-124)+空 id=全量(O16);步2 五条 parity 已落 tests/models_domain/test_schedule_resource_filter.py(team 谓词/operator-machine 空 id 全量/team 空全量/bad-raise/不放宽旧 collar 五钉,已注册)。步3 于 2026-06-10 收口: repo list_dispatch_rows 五个内联 where 分支(operator/machine 带 id 与空 id 全量+team 双 join)全部替换为 normalize_dispatch_resource_filter 委托,build_schedule_detail_sql 的 include_team_context 保持无条件 True 不随 filter 收窄(防 no such column: o.team_id,爆点 #19)并留注释;_normalize_scope_type(resource_dispatch_service.py)合法集收敛到 SUPPORTED_DISPATCH_RESOURCE_TYPES 常量,保留默认 operator+中文文案+field=scope_type(invalid_query_cleanup 直调续命测试零改动)。行为差异仅两类严格化(均由静默全量改为 collar loud ValidationError): ①非法 scope_type;②空/空白 scope_type+非空 scope_id(「不能只带资源编号」)。生产入口(dispatch_service:271/:355(本次 import+注释后现盘,旧 :269/:353)+execution_service:76)均先 _normalize_scope_type 归一(空默认 operator+白名单),第四调用点 task_card scope 双 None 走无过滤分支,两类路径生产均不可达。smoke team 活用例/续命/五 parity/resource_dispatch 整包 136 passed+fitness 21 passed。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -4256,7 +4256,7 @@
     "tests/schedule/service/test_schedule_service_facade_delegation.py:39 (兄弟 collar 方法 list_dispatch_rows_with_resource_context 的 facade 委派返回类型)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": "verdict=load_bearing:schedule_plan_query_repo team 双 join + 空 id 全量是 column_name 单列表达不了的承重第三轴;塌缩=班组静默失效/整页 500;必须先扩收口点再谈收敛"
  },
  "R67": {

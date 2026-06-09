@@ -734,15 +734,15 @@
  "R05": {
   "id": "R05",
   "bucket": "B07",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": false,
   "file": "resource_dispatch_service.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-8(B07 资源筛选 c",
-  "owner_pending": true,
+  "batch": "三步全收口:步1/2 fae8829b,步3 2026-06-10",
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "派工 scope_type 归一与 operator/machine→列映射绕开 ScheduleResourceFilter 收口点(双轨漂移)"

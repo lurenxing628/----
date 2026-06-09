@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
+from core.models.schedule_resource_filter import SUPPORTED_DISPATCH_RESOURCE_TYPES
 from core.services.equipment.machine_service import MachineService
 from core.services.personnel import ResourceTeamService
 from core.services.personnel.operator_service import OperatorService
@@ -57,8 +58,9 @@ class ResourceDispatchService:
         return text or None
 
     def _normalize_scope_type(self, value: Any) -> str:
+        # R05 步3：合法集收敛到派工资源筛选收口点常量；本地只保留默认 operator 与页面侧报错文案。
         scope_type = str(value or "operator").strip().lower() or "operator"
-        if scope_type not in {"operator", "machine", "team"}:
+        if scope_type not in SUPPORTED_DISPATCH_RESOURCE_TYPES:
             raise ValidationError("视角类型不正确，请选择：人员 / 设备 / 班组。", field="scope_type")
         return scope_type
 

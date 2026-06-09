@@ -91,7 +91,7 @@ Batch-B  依赖 ROOT 承重门 / 单门控前置
 Batch-C  身份族收敛 / 收口委托（依赖承重族 + parity）
   G04(R58→R54→R44)←LB03+R22parity；同批带走 E03→G01 ┃ G01(R42+R60)←G04
   G27(R22+R21)←LB03+G27p（2026-06-08 已 fixed） ┃ G09(R15/R19/R13 已 fixed) ┃ G10(R18/R19 repo私有版 已 fixed) ┃ G29(R72)⏸
-  G15(R47+R71)⏸←G15a🔒 ┃ G22(R08+R09)⏸ ┃ G33(R05步3)🔒⏸←G33a ┃ G34(R67)⏸
+  G15(R47+R71)⏸←G15a🟢 ┃ G22(R08+R09)⏸(前置已全绿) ┃ G33(R05步3)🟢 fixed(2026-06-10) ┃ G34(R67)⏸
   G17(R31)←E05/E06 同G23窗口 ┃ G23(R30+R33)←R33步1先
 
 Batch-D  facade 删除最晚 / 跨 owner-pending 收口
@@ -101,7 +101,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
   2026-06-10 补登：G26/G42 已于 2026-06-09 随 9c51f52b 落 KEEP 注释并在 registry 标 fixed——E07(G26/R29) 随之闭合；E09(G39/R52→G18) 早已随 O07 KEEP(2026-06-08) 闭合。G18 仅剩 E08(G23) 一个硬前置。
 ```
 
-**11 标红债批次落位一行速查**：R05→ROOT(G33a step1/2)🟢 fixed(fae8829b) + Batch-C(G33 step3)⏸；R22→ROOT(G27p parity) + Batch-C(G27)🟢 fixed；R54→ROOT(collar 扩产前置) + Batch-C(G04)🔴⏸；R42→Batch-C(G01，E03 rebase R54 后)🔴；R04→Batch-B(G19，依 GF1)🔴；R09→Batch-C(G22)🔴⏸；R15→Batch-C(G09 provider 链第一段，2026-06-09 fixed)；R19→Batch-C(G09 provider 收口 + G10 repo私有版注释/parity，2026-06-09 fixed)；R52→Batch-B(G39 KEEP注释，O07 已裁保留)🔴；R14→Batch-D(G41)🔴⏸；R69→Batch-D/LEAF 桶(owner 定 loud 方向后落)🔴⏸。
+**11 标红债批次落位一行速查**：R05→ROOT(G33a step1/2)🟢 fixed(fae8829b) + Batch-C(G33 step3)🟢 fixed(2026-06-10，三步全收口)；R22→ROOT(G27p parity) + Batch-C(G27)🟢 fixed；R54→ROOT(collar 扩产前置) + Batch-C(G04)🔴⏸；R42→Batch-C(G01，E03 rebase R54 后)🔴；R04→Batch-B(G19，依 GF1)🔴；R09→Batch-C(G22)🔴⏸；R15→Batch-C(G09 provider 链第一段，2026-06-09 fixed)；R19→Batch-C(G09 provider 收口 + G10 repo私有版注释/parity，2026-06-09 fixed)；R52→Batch-B(G39 KEEP注释，O07 已裁保留)🔴；R14→Batch-D(G41)🔴⏸；R69→Batch-D/LEAF 桶(owner 定 loud 方向后落)🔴⏸。
 
 **6 硬阻断新爆点闭合落位**：#1 collar 不产 3 键→ROOT 扩产前置 owner 闸门 F门(R54)；#7 R15 空值即 raise→Batch-B G08 前置安全网（分支级保 `if not text: return None`）+ Batch-C G09 owner 闸门；#19/#20 R05 双轨+builder 耦合→ROOT G33a step1 扩产前置（含 include_team_context 信号 + 派工轨单独入口）；#21 R42 :92 漏删→Batch-C G01 前置安全网（删点清单补 :92 同提交）；#22/#23 R22 双翻→2026-06-08 已由 G27 补齐「键集+取值 exact + bad-role raise」断言并按 O14 收口，状态 fixed。
 
@@ -258,7 +258,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ### 1.4 Batch-C — 身份族收敛 / 收口委托（依赖承重族 + parity）
 
-**成员（调度单元 + 债）**：G04(R58→R54→R44)←LB03+R22parity；G01(R42+R60)←G04(E03)；G27(R22+R21，2026-06-08 已 fixed)←LB03+G27p；G09(R15→R19→R13，三者已 fixed)；G10(R18+R19 repo私有版，二者已 fixed)；G29(R72)⏸；G15(R47+R71)⏸←G15a🔒；G22(R08+R09)⏸；G33(R05 步3)🔒⏸←G33a；G34(R67)⏸；G17(R31)；G23(R30+R33)。
+**成员（调度单元 + 债）**：G04(R58→R54→R44)←LB03+R22parity；G01(R42+R60)←G04(E03)；G27(R22+R21，2026-06-08 已 fixed)←LB03+G27p；G09(R15→R19→R13，三者已 fixed)；G10(R18+R19 repo私有版，二者已 fixed)；G29(R72)⏸；G15(R47+R71)⏸←G15a(已 fixed)；G22(R08+R09)⏸(前置已全绿)；G33(R05 步3)🟢 fixed(2026-06-10)；G34(R67)⏸；G17(R31)；G23(R30+R33)。
 
 > **2026-06-08 执行补登**：G04(R58/R54/R44) 与 G01(R42/R60) 已 fixed，并已在 `_registry.json`、`_registry_index.json` 与对应 dossier 登记。G04 终态：R58 只补承重说明，不做 Phase2 剔键；R54 把五个 guard 投影面收口到既有 `build_workbench_plan_context` / `plan_guard_fields_for_context`，保留各自键面形状与 L5 OR；R44 收口到 core 的 `selected_plan_role`，不碰 guard 闸门。G01 终态：`plan_id` 死面包屑整链下线，`version/plan_role/scenario_id/back_to` 等真上下文键保留。
 >
@@ -295,7 +295,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
   - 爆点 #13（V1⑤/O02 裁定）：`persistence_errors:13` 归 **R04 禁区**不归 R09 收编面（按 R09 收编它会违 R04 灵魂线在错误路径抛二次异常）；保持现状+注释。
   - **连带（V1）**：R09 收编串行链真正待收编 Optional 副本只剩 `resource_dispatch_execution_service.py:24` + `scheduler_resource_dispatch_execution.py viewmodel:33`。
   - E28：R09 收编**禁碰同文件 `:36-50` LB01 最终底**（删空行/调 import/移函数都漂 raise 锚点，按符号定位）；R08 候选 A 只删 `:25/:227-228/:367-368` 保 `feedback_write_enabled` 参数（`:234` 活消费，误删→「填写实际」按钮门禁塌缩静默放开误填）；R08→R09 串行。
-- **G33(R05 步3)🔴🔒⏸**（R05 标红 + 爆点 #19/#20，步1/2 已在 ROOT）：←G33a（collar 已扩 team 谓词 + 5 parity 绿）；步3 才搬 `repo:462-463/:455/:460` 进收口点；**不可换序**（步3 先收敛把派工读取收口到未扩 team 现状 collar→team 双 join 谓词凭空消失→班组视角静默返全量坏数据）；步3 前先迁 smoke:177-194 + 续命 :340。
+- **G33(R05 步3)🟢 fixed(2026-06-10)**（R05 标红 + 爆点 #19/#20，步1/2 已在 ROOT fae8829b）：已按硬序收口——repo `list_dispatch_rows` 五个内联 where 分支全部替换为 `normalize_dispatch_resource_filter` 委托（team 双 join/空 id 全量逐分支等价），`build_schedule_detail_sql` 的 `include_team_context` 保持无条件 True 不随 filter 收窄（防爆点 #19 no such column）并留注释；`_normalize_scope_type` 合法集收敛到 `SUPPORTED_DISPATCH_RESOURCE_TYPES`（保默认 operator+中文文案+field，续命直调测试零改动）。行为差异=两类严格化：非法 scope_type 与「空 type+非空 id」均由静默全量变 loud ValidationError（生产入口先归一/默认 operator，均不可达）。smoke team 活用例/五 parity/resource_dispatch 整包 136 passed。
 - **G15(R47+R71)🟡⏸**：←G15a🔒（LB07 注释+parity 绿）；R47+R71 同批（先删 R47 死参；R71 按 O17 仅 parity 守卫、不物理合并）；**R47 按调用函数名逐块手删**（只删 model:88/:159/:214+service:68/:158/:211 死点，爆点 #10：死参活参 `raw_value=raw_value` 全栈 8 处逐字相同，盲 grep/sed 必误删 `_record_invalid_choice_degradation` 活参 :116/:119→invalid 降级证据静默丢，blank parity 测试不覆盖 invalid 路）；删后跑 blank+invalid 两路 degradation 回归；R71 改 loud 另立债。
 - **G34(R67)🟡⏸**：①②纯 6 键必收（喂收口点零新增依赖）；O18 已裁第 4 处保现状，③④保持现状/仅注释；禁动收口点签名 `:119-127`。**R67↔R42 同文件串行（E17 拆两条件分支，红队第2轮 P-RT22-04 采纳）**：(a)「O18=保现状/仅注释 → R67↔R42 零冲突，无需串行」；(b)历史备选「若未来收编③④ → R67 对 `_REPORT_CONTEXT_FIELD_NAMES` 做元组拼接（`(...前缀键..., *REPORT_RESOURCE_FILTER_ARG_KEYS)`，R67.md:46/76），该元组**首键 `plan_id` 是 R42 地盘**——拼接 MUST 晚于 R42 删 collar 形参之后、**禁碰元组内 `plan_id` 成员**、且 **MUST 先过 `web.viewmodels → core.services.report` 分层门**」。本文件归「三批四单元串行编排块」（见 §1.0 ⚠单文件三批四单元串行块总纲），G34 进该文件前对元组/遍历点按符号重 rg。
 - **G29(R72)🟢⏸**：dedup 落 `web scheduler_utils.py`，**分层红线绝不下沉 core**（core→flask 越层）；必补 `from flask import request`（现仅 import g，latent NameError）；空串→None 语义原样保留禁加 ROLE_ADOPTED 兜底；按 O19 的公开名 + web/core 各落各点执行。
@@ -305,7 +305,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - operation_execution_scope.py：`:9` 收口家本体 + `:36-50` LB01 最终底（三 raise :44/:47/:50）全禁碰。
 - R54 禁区：links.py `:292-296` 判定方向 / `:149-161` gate / `:248` / `:469-473` / view_context fail-closed 默认；`_PUBLIC_FILTER_DROP_KEYS`（禁 delegate）。
 - R22/R21 禁区：view_context `:74`/`:65` + builder:158 + to_dict:46-71 + gantt_plan_query `:32-39 wrapper`/`:11-13 import`/`:50-156` 四 LIVE。
-- R09 STRICT-4 全程；R15 provider 空值短路 + R19 snapshot:42 sorted；R18 repo 六格 unscoped stub（2026-06-10 注释后现盘 :356/:358/:402-:408）；R13 provider raise 软禁区（2026-06-10 现盘 :93/:96，旧 :99/:102）；R05 collar :65-66 双轨 + `_normalize_team_axis:65` + repo team join :462-463；R47 invalid 4 活实参 model:173/:225+service:170/:222；LB07 coercion :470/loud raise 族/30 字段表；R31 :6/:7/:8 活常量；degradation:15。
+- R09 STRICT-4 全程；R15 provider 空值短路 + R19 snapshot:42 sorted；R18 repo 六格 unscoped stub（2026-06-10 注释后现盘 :356/:358/:402-:408）；R13 provider raise 软禁区（2026-06-10 现盘 :93/:96，旧 :99/:102）；R05 旧 collar raise 双轨 + `_normalize_team_axis`(展示轴) + team 双 join 谓词(2026-06-10 步3 后已收敛进 collar :120-124，repo 内联 :461-463 已退场)；R47 invalid 4 活实参 model:173/:225+service:170/:222；LB07 coercion :470/loud raise 族/30 字段表；R31 :6/:7/:8 活常量；degradation:15。
 - R42 禁区：link_query :117/119/120+:153/155 三真身份参、navigation_context:79/80（R56 adopted 强制 fail-CLOSED 方向硬门）、:7 TARGET_PAGE_PATHS、workbench_links.py:210 LIVE _context_summary、三张字段表非 plan_id 键、`_EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS:266`。
 
 **收口行为差异检查项（None vs raise 反例逐条）**：

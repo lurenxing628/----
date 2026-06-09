@@ -46,7 +46,7 @@
 | **G30** | RESOURCE-REPO | {R34, R35} AC-1 ✅ fixed | 同物理文件 schedule_repo.py 硬同批,R35:61-69 夹在 R34 删段:59↘:114 之间 | 2026-06-08 已按 O10 纯删闭合；旧四个死方法已删除，benchmark 已改指 `SchedulePlanQueryRepository.get_plan_time_span`，活近亲现为 schedule_repo.py:36/:79 |
 | **G31** | RESOURCE-REPO | {R38-part, R39} AC-2 | 同文件 part_repo.py 硬同批,删 R39:32 致 R38:71 上移 2 | 无功能先后同 commit 按符号名;分 hunk 则先 R39 再以新行号定位 R38 |
 | **G32** | RESOURCE-REPO | {R38 op_type:73/operator:85 份} AC-2′ | R38 三处 list_as_dicts 死簇,op_type/operator 两份无同文件兄弟,SQL 列集各异禁抽 helper | 可独立删,随 R38 同 PR 但物理隔离;记三笔独立删 |
-| **G33** | RESOURCE-REPO | {R05} AC-3 🔒⏸ | 🔒 收口点扩容三原子小步,步内不可换序;本簇唯一承重(verdict=LB) | O15/O16 已裁：强序 步1 扩 collar(含 include_team_context + 派工轨单独入口 + 空 id 全量)→步2 补 5 条 parity→步3 收敛 repo:461-463/:454-460+_normalize_scope_type |
+| **G33** | RESOURCE-REPO | {R05} AC-3 ✅ fixed | 🔒 收口点扩容三原子小步,步内不可换序;本簇唯一承重(verdict=LB) | 已按 O15/O16 强序收口：步1/步2 随 fae8829b(2026-06-08)，步3 于 2026-06-10 把 repo 五内联分支收敛进 normalize_dispatch_resource_filter、_normalize_scope_type 合法集收敛到 SUPPORTED_DISPATCH_RESOURCE_TYPES；include_team_context 保持无条件 True |
 | **G34** | RESOURCE-REPO | {R67} AC-4 ⏸ | 抽单一常量,4 处手抄须全收或①②必收③④酌情;半截去重比现状更危险 | O18 已裁：①②必收，第 4 处 superset 保现状（③④全收或全不收）；常量须 tuple 保序 |
 | **G35** | RESOURCE-REPO | {R36} | ISOLATED,直删 batch_operation_repo.py:25-35/50-61 两方法 | 单债从后往前删;本桶最早可落之一 |
 | **G36** | RESOURCE-REPO | {R37} ✅ fixed | **2026-06-08 已 fixed**。已直删 operator_machine_repo.py 旧 :82-90 的死方法;同文件零碰撞 | 活近亲 list_links_with_operator_info 保留并上移到 :82(误删会静默炸人机分组) |

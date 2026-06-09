@@ -38,7 +38,7 @@
 ### 子簇 AC-2′ = R38 的 op_type / operator 两份（可独立，仅随 R38 同 PR；2026-06-08 已落地）
 - op_type_repo.py 旧 :73-74、operator_repo.py 旧 :85-86 各自零引用零碰撞，已随 R38 一并删除，无同文件兄弟。与 part 份同属 R38 一笔账但物理隔离。
 
-### 子簇 AC-3 = {R05}（收口点扩容 + 三原子小步，自身不可拆但 owner_pending）
+### 子簇 AC-3 = {R05}（收口点扩容 + 三原子小步；✅ 2026-06-10 三步全收口 fixed——步1/2 随 fae8829b，步3 把 repo 五内联分支收敛进 normalize_dispatch_resource_filter、_normalize_scope_type 合法集收敛到 SUPPORTED_DISPATCH_RESOURCE_TYPES；O15/O16 已裁，owner_pending 已消）
 - **原子原因（收口前置·步内不可换序）**：步1 扩 collar team 双 join 表达力 + 放开“类型有/id 空=全量” → 步2 补负向回归（team-only / operator-空-全量 / machine-空-全量 / team-空-未定义裁断 / bad-raise 5 条 parity）→ 步3 才收敛 repo 字面量 + `_normalize_scope_type`。反序=班组谓词静默丢失 / 全量视图整页 500。
 - owner_pending=true：F-决策① collar 加 team 谓词的接口形态；F-决策② `(team,"")` 语义=全量 or loud raise。**暂不分批、不给终态**。
 - 毗邻勿伤：`_normalize_team_axis`(resource_dispatch_service.py:65-69，65870e47 新增第四套本地校验苗头) 管展示轴，**不在 R05 收口范围**。
@@ -110,4 +110,4 @@
 
 ## 返回摘要
 
-簇 C-RESOURCE-REPO | 原子子簇 4+2 独立：AC-1{R34,R35} schedule_repo.py 硬同批、AC-2{R38-part,R39} 已 fixed、AC-2′{R38 op_type/operator 份}已 fixed、AC-3{R05}收口三步、AC-4{R67}抽常量；独立单点 R36 已 fixed / R37 已 fixed | 关键内部顺序：AC-1 无功能先后但按符号名自下而上同 commit；R05 步1扩 collar→步2 parity→步3 收敛不可换；R67 全收或①②必收③④酌情忌半截 | 跨簇硬边 0：AC-2↔C02 已闭合，R67↔R42(C01)diff-hunk 串行软边（覆盖 reports_export_support.py+scheduler_navigation_links.py），R05→R34 软约束 | 边变化：删 R37↔R41 伪干扰、删/降权 R34↔gantt 簇内 7 弱边；新 R67↔R42 第二共享文件边；降 R05→R34 硬→软、R13↔R18 解耦 | 承重前置：仅 R05 verdict=LB，禁区 schedule_plan_query_repo.py:461-463 team 双 join + :454-460 空 id 全量，步1 扩 collar+步2 parity 先落才开步3 收敛；余皆纯删无承重禁区
+簇 C-RESOURCE-REPO | 原子子簇 4+2 独立：AC-1{R34,R35} schedule_repo.py 硬同批、AC-2{R38-part,R39} 已 fixed、AC-2′{R38 op_type/operator 份}已 fixed、AC-3{R05}收口三步、AC-4{R67}抽常量；独立单点 R36 已 fixed / R37 已 fixed | 关键内部顺序：AC-1 无功能先后但按符号名自下而上同 commit；R05 步1扩 collar→步2 parity→步3 收敛不可换；R67 全收或①②必收③④酌情忌半截 | 跨簇硬边 0：AC-2↔C02 已闭合，R67↔R42(C01)diff-hunk 串行软边（覆盖 reports_export_support.py+scheduler_navigation_links.py），R05→R34 软约束 | 边变化：删 R37↔R41 伪干扰、删/降权 R34↔gantt 簇内 7 弱边；新 R67↔R42 第二共享文件边；降 R05→R34 硬→软、R13↔R18 解耦 | 承重前置：仅 R05 verdict=LB——✅ 2026-06-10 已按硬序收口完毕，旧禁区 repo:461-463/:454-460 内联谓词已退场（收敛进 collar :116-124，team 双 join/空 id 全量语义逐分支等价），后续触碰按 collar 符号 rg；余皆纯删无承重禁区
