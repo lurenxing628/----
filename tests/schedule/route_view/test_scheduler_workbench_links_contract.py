@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import Tuple
 from urllib.parse import parse_qs, urlparse
 
+from core.models.schedule_plan_role import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
+from core.services.scheduler.schedule_result_view_context import plan_role_filter_fields
+from web.viewmodels.scheduler_workbench_link_query import plan_guard_fields_for_resolution
 from web.viewmodels.scheduler_workbench_links import (
     FULL_PLAN_GUARD_FIELDS,
     REPORT_PLAN_GUARD_FIELDS,
@@ -668,6 +671,84 @@ def test_plan_guard_fields_keep_each_surface_shape() -> None:
     assert "plan_role_status" not in resource_context
     assert full_context["plan_role_status"] == "resolved_adopted"
     assert full_context["plan_identity_blocking_scope"] == "workbench_continuation"
+
+
+def test_full_plan_guard_fields_match_core_plan_role_filter_fields_for_resolution_shapes() -> None:
+    base_identity = {
+        "user_label": "正式采用方案",
+        "can_dispatch": True,
+        "can_write_feedback": True,
+        "is_official": True,
+        "is_preview": False,
+        "is_current_executable_version": True,
+        "is_current_executable_official_version": True,
+        "is_superseded_by_newer_version": False,
+        "result_summary_parse_failed": False,
+        "result_summary_parse_reason": "",
+        "schedule_result_status": "success",
+    }
+    plan_resolutions = [
+        {
+            "requested_role": "adopted",
+            "selected_role": "adopted",
+            "status": "resolved_adopted",
+            "message": "",
+            "source_table": SOURCE_SCHEDULE,
+            "plan_identity": dict(base_identity),
+        },
+        {
+            "requested_role": "baseline_best",
+            "selected_role": "baseline_best",
+            "status": "resolved_comparison",
+            "message": "",
+            "source_table": SOURCE_CANDIDATE_ROWS,
+            "candidate_id": 101,
+            "candidate_key": "baseline_best",
+            "plan_identity": dict(base_identity, can_dispatch=False, can_write_feedback=False, is_official=False),
+        },
+        {
+            "requested_role": "adopted",
+            "selected_role": "adopted",
+            "status": "resolved_comparison",
+            "message": "正在预览模拟方案。",
+            "source_table": SOURCE_SCHEDULE,
+            "is_scenario_preview": True,
+            "scenario_id": "SCN-1",
+            "scenario_display_name": "模拟方案一",
+            "plan_identity": dict(base_identity, can_dispatch=False, can_write_feedback=False, is_preview=True),
+        },
+        {
+            "requested_plan_role": "baseline_best",
+            "effective_plan_role": "adopted",
+            "plan_role_status": "fallback_to_adopted",
+            "plan_role_message": "已回退正式采用方案。",
+            "source_table": SOURCE_SCHEDULE,
+            "is_official_plan": True,
+            "is_preview_plan": False,
+            "is_current_executable_official_version": False,
+            "can_dispatch": False,
+            "can_write_feedback": False,
+        },
+        {
+            "requested_role": "adopted",
+            "selected_role": "adopted",
+            "status": "resolved_adopted",
+            "source_table": SOURCE_SCHEDULE,
+            "can_dispatch": True,
+            "can_write_feedback": True,
+            "is_current_executable_official_version": True,
+            "plan_identity": dict(base_identity, can_dispatch=False, can_write_feedback=False),
+        },
+    ]
+
+    for plan_resolution in plan_resolutions:
+        core_fields = plan_role_filter_fields(plan_resolution)
+        expected = {
+            key: core_fields[key]
+            for key in FULL_PLAN_GUARD_FIELDS
+            if key in core_fields and core_fields[key] is not None
+        }
+        assert plan_guard_fields_for_resolution(plan_resolution, FULL_PLAN_GUARD_FIELDS) == expected
 
 
 def test_execution_review_requires_current_executable_identity_before_read_only_review() -> None:

@@ -493,6 +493,78 @@ def test_scheduler_navigation_publish_keeps_plan_guard_fields() -> None:
         assert {key: context[key] for key in expected_guard_fields} == expected_guard_fields
 
 
+def test_scheduler_navigation_publish_accepts_navigation_context_plan_role_shape() -> None:
+    app = _client().application
+    from web.navigation_context import (
+        build_report_navigation_links,
+        build_scheduler_navigation_links,
+        current_workbench_navigation_context,
+    )
+    from web.routes.domains.scheduler.scheduler_navigation_publish import (
+        publish_analysis_navigation_context,
+        publish_gantt_navigation_context,
+        publish_week_plan_navigation_context,
+    )
+    from web.routes.domains.scheduler.scheduler_week_plan_query import week_plan_export_url
+
+    navigation_shape_plan = dict(
+        requested_plan_role="baseline_best",
+        effective_plan_role="baseline_best",
+        plan_role_status="resolved_candidate",
+        can_dispatch=False,
+        can_write_feedback=False,
+    )
+
+    with app.test_request_context("/scheduler/analysis"):
+        publish_analysis_navigation_context(
+            version=12,
+            plan_resolution=dict(navigation_shape_plan),
+            date_from="2026-05-06",
+            date_to="2026-05-07",
+            resource_context={},
+        )
+        current_context = current_workbench_navigation_context()
+        report_links = {item["label"]: item for item in build_report_navigation_links()}
+
+        assert current_context["plan_role"] == "baseline_best"
+        assert current_context["requested_plan_role"] == "baseline_best"
+        assert _query(report_links["超期清单"]["url"])["plan_role"] == ["baseline_best"]
+
+    with app.test_request_context("/scheduler/gantt"):
+        publish_gantt_navigation_context(
+            version=12,
+            plan_resolution=dict(navigation_shape_plan),
+            date_from="2026-05-06",
+            date_to="2026-05-07",
+            view="machine",
+            gantt_resource="M-RPT",
+        )
+        current_context = current_workbench_navigation_context()
+        scheduler_links = {item["label"]: item for item in build_scheduler_navigation_links()}
+
+        assert current_context["plan_role"] == "baseline_best"
+        assert _query(scheduler_links["排产优化分析"]["url"])["plan_role"] == ["baseline_best"]
+
+    with app.test_request_context("/scheduler/week-plan"):
+        publish_week_plan_navigation_context(
+            version=12,
+            plan_resolution=dict(navigation_shape_plan),
+            fallback_scenario_id=None,
+            date_from="2026-05-06",
+            date_to="2026-05-07",
+        )
+        current_context = current_workbench_navigation_context()
+        export_url = week_plan_export_url(
+            version=12,
+            week_start="2026-05-06",
+            plan_resolution=dict(navigation_shape_plan),
+        )
+
+        assert current_context["plan_role"] == "baseline_best"
+        assert export_url is not None
+        assert _query(export_url)["plan_role"] == ["baseline_best"]
+
+
 def test_scheduler_navigation_selected_plan_role_uses_core_contract() -> None:
     from core.services.scheduler.schedule_result_view_context import selected_plan_role as core_selected_plan_role
     from web.routes.domains.scheduler.scheduler_navigation_publish import selected_plan_role

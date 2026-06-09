@@ -19,7 +19,7 @@ _GANTT_RESOURCE_VIEWS = {"machine", "operator"}
 
 
 def requested_plan_role(plan_resolution: Dict[str, Any]) -> str:
-    return str(plan_resolution.get("requested_role") or ROLE_ADOPTED)
+    return str(plan_resolution.get("requested_role") or plan_resolution.get("requested_plan_role") or ROLE_ADOPTED)
 
 
 def scenario_display_label(plan_resolution: Dict[str, Any]) -> str:

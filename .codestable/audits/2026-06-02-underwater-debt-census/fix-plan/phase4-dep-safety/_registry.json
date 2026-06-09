@@ -980,7 +980,7 @@
    "scheduler_workbench_links.py",
    "workbench_links.py"
   ],
-  "current_evidence_2026_06_05": "2026-06-08 B 执行终态: plan-guard 字段投影已收口到既有 build_workbench_plan_context + plan_guard_fields_for_context。报告、派工、dashboard、甘特详情、导航发布五个面改为通过收口点/共享 helper 取 guard 字段;保留 L1/L3/L4/L2/L5 各自基数差异和 L5 is_comparison_plan OR 兼容;_PUBLIC_FILTER_DROP_KEYS 脱敏同步面未 delegate;R58 的 context.update(guard_fields) 保留并补“我是故意的”注释。",
+  "current_evidence_2026_06_05": "2026-06-09 终态: plan-guard 字段投影唯一实现已下沉到 core/models/schedule_plan_role.py::project_plan_guard_fields。core/services/scheduler/schedule_result_view_context.py::plan_role_filter_fields 只负责把对象转 dict 后 delegate;web/viewmodels/scheduler_workbench_link_query.py::plan_guard_fields_for_resolution 只负责按 REPORT/RESOURCE/FULL 字段集过滤并 delegate。旧 viewmodel 私有 _plan_guard_fields/_identity_bool/_default_plan_role_status 已删除;requested_role 与 requested_plan_role 的 navigation-context 分叉由同一实现统一处理。parity 测试 tests/schedule/route_view/test_scheduler_workbench_links_contract.py::test_full_plan_guard_fields_match_core_plan_role_filter_fields_for_resolution_shapes 同时覆盖 canonical 形状、navigation-context 形状、scenario preview 与 plan_identity 优先级。",
   "cluster": "C01",
   "same_file_siblings": [
    "R44",
