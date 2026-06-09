@@ -154,10 +154,8 @@ def _build_real_app(tmp_path, monkeypatch, *, summary_obj, result_status: str = 
     test_db = tmp_path / "aps_test.db"
     test_logs = tmp_path / "logs"
     test_backups = tmp_path / "backups"
-    test_templates = tmp_path / "templates_excel"
     test_logs.mkdir(parents=True, exist_ok=True)
     test_backups.mkdir(parents=True, exist_ok=True)
-    test_templates.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setenv("APS_ENV", "development")
     monkeypatch.setenv("APS_DB_PATH", str(test_db))

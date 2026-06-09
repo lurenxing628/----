@@ -51,8 +51,6 @@ def _build_app(tmp_path, monkeypatch):
     point_env_at_shared(monkeypatch)
     (tmp_path / "logs").mkdir(parents=True, exist_ok=True)
     (tmp_path / "backups").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "templates_excel").mkdir(parents=True, exist_ok=True)
-
     from core.infrastructure.database import ensure_schema
 
     ensure_schema(

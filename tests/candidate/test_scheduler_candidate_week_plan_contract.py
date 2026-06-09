@@ -133,10 +133,8 @@ def _build_app(tmp_path, monkeypatch):
     db_path = tmp_path / "aps_test.db"
     log_dir = tmp_path / "logs"
     backup_dir = tmp_path / "backups"
-    template_dir = tmp_path / "templates_excel"
     log_dir.mkdir(parents=True, exist_ok=True)
     backup_dir.mkdir(parents=True, exist_ok=True)
-    template_dir.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setenv("APS_ENV", "development")
     monkeypatch.setenv("APS_DB_PATH", str(db_path))

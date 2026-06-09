@@ -351,7 +351,6 @@ def _build_app(tmp_path: Path, monkeypatch):
     point_env_at_shared(monkeypatch)
     (tmp_path / "logs").mkdir(exist_ok=True)
     (tmp_path / "backups").mkdir(exist_ok=True)
-    (tmp_path / "templates_excel").mkdir(exist_ok=True)
 
     for name in list(sys.modules):
         if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):

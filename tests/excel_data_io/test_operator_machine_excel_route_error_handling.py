@@ -48,10 +48,8 @@ def test_personnel_excel_preview_hides_internal_runtime_error(monkeypatch) -> No
         test_db = os.path.join(root, "aps_test.db")
         test_logs = os.path.join(root, "logs")
         test_backups = os.path.join(root, "backups")
-        test_templates = os.path.join(root, "templates_excel")
         os.makedirs(test_logs, exist_ok=True)
         os.makedirs(test_backups, exist_ok=True)
-        os.makedirs(test_templates, exist_ok=True)
 
         monkeypatch.setenv("APS_ENV", "development")
         monkeypatch.setenv("APS_DB_PATH", test_db)

@@ -360,7 +360,6 @@ def _build_app(tmp_path: Path, monkeypatch):
     point_env_at_shared(monkeypatch)
     (tmp_path / "logs").mkdir()
     (tmp_path / "backups").mkdir()
-    (tmp_path / "templates_excel").mkdir()
 
     ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=None)
     conn = get_connection(str(db_path))
