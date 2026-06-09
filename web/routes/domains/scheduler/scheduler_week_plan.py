@@ -43,7 +43,7 @@ from .scheduler_navigation_publish import (
     resolved_scenario_id,
 )
 from .scheduler_user_messages import scheduler_user_visible_app_error_message
-from .scheduler_utils import _current_scheduler_operator
+from .scheduler_utils import _current_scheduler_operator, get_plan_role_arg
 from .scheduler_week_plan_query import (
     request_week_plan_batch_id,
     request_week_plan_resource_context,
@@ -61,14 +61,6 @@ def _get_int_arg(name: str, default: int = 0) -> int:
         return int(str(raw).strip())
     except (TypeError, ValueError) as e:
         raise ValidationError(f"{name} 填写不对，请填写整数。", field=name) from e
-
-
-def _get_plan_role_arg() -> Optional[str]:
-    raw = request.args.get("plan_role")
-    if raw is None:
-        return None
-    text = str(raw).strip()
-    return text or None
 
 
 def _safe_redirect_plan_role(plan_role: Optional[str]) -> Optional[str]:
@@ -284,7 +276,7 @@ def _handle_week_plan_export_app_error(error: AppError, *, redirect_context: Dic
 @bp.get("/week-plan")
 def week_plan_page():
     week_start = (request.args.get("week_start") or "").strip() or None
-    plan_role = _get_plan_role_arg()
+    plan_role = get_plan_role_arg()
     scenario_id = _get_scenario_id_arg()
     services = g.services
     offset = _get_int_arg("offset", 0)
@@ -371,7 +363,7 @@ def week_plan_page():
 def week_plan_export():
     start = time.time()
     week_start = (request.args.get("week_start") or "").strip() or None
-    plan_role = _get_plan_role_arg()
+    plan_role = get_plan_role_arg()
     scenario_id = _get_scenario_id_arg()
     offset = _get_int_arg("offset", 0)
     resource_context = request_week_plan_resource_context()

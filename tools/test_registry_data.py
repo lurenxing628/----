@@ -66,6 +66,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/models_domain/test_strict_parse_blank_required.py",
     "tests/models_domain/test_schedule_resource_filter.py",
     "tests/models_domain/test_yesno_normalization_contract.py",
+    "tests/web_pages/test_scheduler_plan_role_arg_contract.py",
     "tests/gantt/test_gantt_page_version_default_latest.py",
     "tests/gantt/test_gantt_default_version_span.py",
     "tests/gantt/test_gantt_adapter_contract.py",

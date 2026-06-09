@@ -29,6 +29,7 @@ from .scheduler_navigation_publish import (
     resolve_navigation_plan_context,
     resolved_scenario_id,
 )
+from .scheduler_utils import get_plan_role_arg
 
 
 def _get_int_arg(name: str, default: int = 0) -> int:
@@ -133,14 +134,6 @@ def _get_effective_offset_for_display_range(*, start_date: Optional[str], end_da
         raise
 
 
-def _get_plan_role_arg() -> Optional[str]:
-    raw = request.args.get("plan_role")
-    if raw is None:
-        return None
-    text = str(raw).strip()
-    return text or None
-
-
 def _get_scenario_id_arg() -> Optional[str]:
     raw = request.args.get("scenario_id")
     if raw is None:
@@ -178,7 +171,7 @@ def gantt_page():
     week_start = _get_optional_arg("week_start")
     start_date = _get_optional_arg("start_date")
     end_date = _get_optional_arg("end_date")
-    plan_role = _get_plan_role_arg()
+    plan_role = get_plan_role_arg()
     scenario_id = _get_scenario_id_arg()
     gantt_zoom = _get_raw_arg("gantt_zoom", "day")
     services = g.services
@@ -322,7 +315,7 @@ def gantt_data():
     week_start = (request.args.get("week_start") or "").strip() or None
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
-    plan_role = _get_plan_role_arg()
+    plan_role = get_plan_role_arg()
     scenario_id = _get_scenario_id_arg()
     svc = g.services.gantt_service
     try:

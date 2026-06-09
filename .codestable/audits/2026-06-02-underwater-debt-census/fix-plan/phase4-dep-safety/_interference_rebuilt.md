@@ -42,12 +42,12 @@
 | **G26** | COMPAT-DISPATCH | {R29} A4 | O20 已裁 KEEP；授权 CSV ABSENT+全量 delegation-facade 半截在场 | 只补显性「有意保留」注释，不进任何薄壳化/删除批，不阻塞 G18 |
 | **G27** | PLAN-IDENTITY | {R22, R21} ① ⏸ | dpr_dict wrapper precondition 强耦合;R21 删 import 区位移 R22 wrapper 锚 | 硬序同窗口 R22 先(parity 24 键 exact Batch-1→收口委托 build_plan_identity/to_dict)→R21 后(删 3 死 shim+3 import,严守保留:32-39 wrapper) |
 | **G28** | PLAN-IDENTITY | {R23} ② | 独立先落(无前置债),收口 model _normalize_role | 单债;软序与同文件 R34 协调(R23 先落后 R34 按符号重 rg 定位);与 R22 无序约束 |
-| **G29** | PLAN-IDENTITY | {R72} ③ ⏸ | 独立叶子,收口落点 web scheduler_utils,与 R44 协调非排序 | O19 已裁：web/core 各落各点 + 补 request import；与 R21/R55/R44 同文件行号联动，谁后做谁重 rg |
+| **G29** | PLAN-IDENTITY | {R72} ③ ✅ fixed(2026-06-10) | 独立叶子,收口落点 web scheduler_utils,与 R44 协调非排序 | 已按 O19 执行：公开名 get_plan_role_arg 落 scheduler_utils(request import 已补),gantt/week_plan 删副本改共享,守卫测试双注册；后续触碰两路由按符号重 rg |
 | **G30** | RESOURCE-REPO | {R34, R35} AC-1 ✅ fixed | 同物理文件 schedule_repo.py 硬同批,R35:61-69 夹在 R34 删段:59↘:114 之间 | 2026-06-08 已按 O10 纯删闭合；旧四个死方法已删除，benchmark 已改指 `SchedulePlanQueryRepository.get_plan_time_span`，活近亲现为 schedule_repo.py:36/:79 |
 | **G31** | RESOURCE-REPO | {R38-part, R39} AC-2 | 同文件 part_repo.py 硬同批,删 R39:32 致 R38:71 上移 2 | 无功能先后同 commit 按符号名;分 hunk 则先 R39 再以新行号定位 R38 |
 | **G32** | RESOURCE-REPO | {R38 op_type:73/operator:85 份} AC-2′ | R38 三处 list_as_dicts 死簇,op_type/operator 两份无同文件兄弟,SQL 列集各异禁抽 helper | 可独立删,随 R38 同 PR 但物理隔离;记三笔独立删 |
 | **G33** | RESOURCE-REPO | {R05} AC-3 ✅ fixed | 🔒 收口点扩容三原子小步,步内不可换序;本簇唯一承重(verdict=LB) | 已按 O15/O16 强序收口：步1/步2 随 fae8829b(2026-06-08)，步3 于 2026-06-10 把 repo 五内联分支收敛进 normalize_dispatch_resource_filter、_normalize_scope_type 合法集收敛到 SUPPORTED_DISPATCH_RESOURCE_TYPES；include_team_context 保持无条件 True |
-| **G34** | RESOURCE-REPO | {R67} AC-4 ⏸ | 抽单一常量,4 处手抄须全收或①②必收③④酌情;半截去重比现状更危险 | O18 已裁：①②必收，第 4 处 superset 保现状（③④全收或全不收）；常量须 tuple 保序 |
+| **G34** | RESOURCE-REPO | {R67} AC-4 ✅ fixed(2026-06-10) | 抽单一常量,4 处手抄须全收或①②必收③④酌情;半截去重比现状更危险 | 已按 O18 执行：①②收编为 REPORT_RESOURCE_FILTER_ARG_KEYS(tuple 保序)+常量↔签名契约；③④保现状仅注释(不同形禁互抄) |
 | **G35** | RESOURCE-REPO | {R36} | ISOLATED,直删 batch_operation_repo.py:25-35/50-61 两方法 | 单债从后往前删;本桶最早可落之一 |
 | **G36** | RESOURCE-REPO | {R37} ✅ fixed | **2026-06-08 已 fixed**。已直删 operator_machine_repo.py 旧 :82-90 的死方法;同文件零碰撞 | 活近亲 list_links_with_operator_info 保留并上移到 :82(误删会静默炸人机分组) |
 | **G37** | GRAPH-ERR-DIAG | {R02} A1 | 独立单债,test-only re-export 壳,生产零消费 | 单债内两步不可颠倒:先拆测试 import(只 build_first_wave_ready_nodes 改指)→后删壳:461-475 |
@@ -148,11 +148,11 @@ Batch-C（身份族收敛 / 收口委托，依赖承重族 + parity）
   G27(R22+R21)     ← LB03 + G27p（E12）
   G09(R15/R19/R13 fixed) ← O03/O05/O06/O37 已裁并执行：R15→R19→R13 串行已收口
   G10(R18，R19 repo私有版 fixed) ← R18 已独立补 repo stub 护栏注释；R19 repo 私有版已保留并补顺序无关注释/parity；R13 不碰 repo
-  G29(R72)⏸        ← O19 已裁 web/core 各落各点 + 补 request import（E21 软自 G04）
+  G29(R72)✅ fixed(2026-06-10) ← 已按 O19:公开名落 scheduler_utils+request import 已补,两路由共享单源
   G15(R47+R71)✅ fixed(2026-06-10) ← G15a(fae8829b 已落)；R47 删死参/R71 仅 parity 结案
   G22(R08+R09)✅ fixed(2026-06-10) ← N1 注释(E26 已闭) + R07 前置(E25 已满足)；O01/O02 已按双路 parity 执行
   G33(R05 步3)✅ fixed(2026-06-10) ← G33a 步1/步2(fae8829b 已落)
-  G34(R67)⏸        ← 按 O18 裁定处理第 4 处 superset 收编
+  G34(R67)✅ fixed(2026-06-10) ← 已按 O18:①②收编进收口点常量,③④保现状仅注释
   G17(R31)         ← E05/E06 与 G23 同窗口
   G23(R30+R33)     ← R33 步1 先（簇内硬序）
 

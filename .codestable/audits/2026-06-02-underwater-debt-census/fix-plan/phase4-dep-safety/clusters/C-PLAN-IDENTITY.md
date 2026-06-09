@@ -11,7 +11,7 @@
 | R23 | `core/models/schedule_plan_role.py:21` `_normalize_role` + `core/services/scheduler/schedule_plan_query_service.py:17/:102` import/调用 | P5 dedup（已清理） | false | false | 收口 dedup 已落 | model `_normalize_role`（已存在）|
 | R22 | `core/services/scheduler/schedule_result_view_context.py:73` `default_plan_resolution_dict`（2026-06-08 已收口）| P5 收口 | false | false | fixed | 已调用 `build_plan_identity(...).to_dict()`；`normalize_plan_role` / builder / `PlanIdentity.to_dict` 均保留 |
 | R21 | `core/services/scheduler/gantt_plan_query.py` 三死 shim @42/46/59 + import @14-25（2026-06-08 已删） | P3 死 shim | false | false | fixed | 三死 shim 已删；**保留 dpr_dict wrapper @32-39** 与四个 LIVE range 函数 |
-| R72 | `web/routes/domains/scheduler/scheduler_gantt.py:136` + `scheduler_week_plan.py:67` `_get_plan_role_arg` 双份 | P5 dedup(N1家族) | false | **true** | 收口 dedup | web `scheduler_utils.py`（已存在，须补 `from flask import request`）|
+| R72 | `web/routes/domains/scheduler/scheduler_gantt.py:136` + `scheduler_week_plan.py:66` `_get_plan_role_arg` 双份（2026-06-10 已收口）| P5 dedup(N1家族) | false | false（O19 已裁）| fixed | 两副本已删，共享版落 `scheduler_utils.get_plan_role_arg`（公开名+from flask import request 已补），4 调用点全改，守卫契约 tests/web_pages/test_scheduler_plan_role_arg_contract.py |
 
 ---
 
@@ -113,9 +113,9 @@
 
 ## E. fixed 成员前置残留动作
 
-本簇当前 **R21/R22/R23 已 fixed**；R72 仍 planned（R72 owner_pending）。
+本簇当前 **R21/R22/R23/R72 全部已 fixed**（R72 于 2026-06-10 按 O19 收口：dedup 落 web 层 scheduler_utils.get_plan_role_arg 公开名，gantt/week_plan 两副本退场，守卫契约 tests/web_pages/test_scheduler_plan_role_arg_contract.py 含 is 单源断言+旧名 hasattr 反断言）。
 
 本簇收敛依赖的外簇承重前置已满足：
 - **LB03（B01）**：已 fixed，R22 收敛所需的承重认账注释 + guard 收口已落账。
 - 簇内**无 LB03/LB06/R56/R07/R16/R57 这类已 fixed 成员**作为前置，故无「认账注释残留动作」落在本簇。
-- **owner_pending 残留**：仅 R72 仍待 owner 裁断「收口名公开化 + 与 R44 web/core 落点共识」。R22 已按 O14 裁定 fixed，不再等待裁断。
+- **owner_pending 残留**：已清零。R72 已按 O19 裁定收口（收口名公开化=get_plan_role_arg 落 web/routes/domains/scheduler/scheduler_utils.py，request 取参留 web 层不下沉 core，与 R44 落点共识闭合）；R22 已按 O14 裁定 fixed。本簇不再有待裁断成员。

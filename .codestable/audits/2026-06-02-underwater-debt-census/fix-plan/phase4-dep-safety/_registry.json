@@ -2077,7 +2077,7 @@
   "id": "R72",
   "bucket": "B02",
   "home": "B02",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P5",
   "partition": "",
@@ -2092,7 +2092,7 @@
    "scheduler_gantt.py",
    "scheduler_week_plan.py"
   ],
-  "current_evidence_2026_06_05": "_get_plan_role_arg 仍在 scheduler_gantt.py:136 与 scheduler_week_plan.py:65 字节级各一份(raw=request.args.get('plan_role')...return text or None);scheduler_utils.py 既无 get_plan_role_arg 也只 import flask g(未 import request),两路由未 from .scheduler_utils import;tests/ 无 get_plan_role_arg 守卫。未提到 web 公共模块,未动手。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(G29/O19): 两份字节级相同的 _get_plan_role_arg(gantt :136/week_plan :66,2026-06-10 实盘)已收口为 web/routes/domains/scheduler/scheduler_utils.py 的公开 get_plan_role_arg(O19 公开名;scheduler_utils 已补 from flask import g, request,消除 latent NameError);gantt/week_plan 各删本地副本、改 import 共享,4 个调用点(gantt :181/:325+week_plan :287/:374 一带,按符号)行为零变化。空串/空白→None 语义原样保留、未加 ROLE_ADOPTED 兜底(注释钉死『绝不兜底成 ROLE_ADOPTED』);分层红线守住——getter 读 flask.request 留在 web 层,未下沉 core(与 R44 的 core 侧 selected_plan_role 各落各点)。守卫测试新建 tests/web_pages/test_scheduler_plan_role_arg_contract.py(缺参/空串/空白→None + strip 保值 + 非法值透传交下游 loud + 两路由共享单源断言,P7 合规含 docstring,双注册 test_registry_data+groups_scheduler,classify_nodeid=parallel)。全仓 rg _get_plan_role_arg 仅剩收口点说明注释。原始记录(收口前):_get_plan_role_arg 仍在 scheduler_gantt.py:136 与 scheduler_week_plan.py:65 字节级各一份(raw=request.args.get('plan_role')...return text or None);scheduler_uti…",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -2157,7 +2157,7 @@
    ],
    "test_consumers": []
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "N1": {
@@ -4263,7 +4263,7 @@
   "id": "R67",
   "bucket": "B07",
   "home": "B07",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P3",
   "partition": "delta-report-web",
@@ -4279,7 +4279,7 @@
    "reports_request_support.py",
    "request_resource_context.py"
   ],
-  "current_evidence_2026_06_05": "共享常量 REPORT_RESOURCE_FILTER_ARG_KEYS 全仓 grep 为空(不存在);4 处仍逐键手抄 6 个资源别名:web/request_resource_context.py:22-27、web/routes/reports_request_support.py:56-61、web/routes/reports_export_support.py:23-28(嵌 15 键 _EXPORT_CONTEXT_KEYS superset)、web/viewmodels/scheduler_navigation_links.py:22-27(嵌 16 键 _REPORT_CONTEXT_FIELD_NAMES superset);唯一有 diff 的 reports_request_support.py 改的是无关的 execution_review_plan_identity_error 守卫,request_resource_filter() 体(:54-62)未动。抽常量去重未开始。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(G34/O18): ①web/request_resource_context.py 的 _request_resource_values 6 键手写 dict 与 ②web/routes/reports_request_support.py 的 request_resource_filter 6 kwargs 已收编为遍历收口点新常量 REPORT_RESOURCE_FILTER_ARG_KEYS(core/services/report/report_context_filters.py,tuple 保序=签名参数序,在已存在模块加常量合规非新建模块);常量↔签名一致性契约 test_report_resource_filter_arg_keys_match_normalizer_signature 已落 tests/scheduler_analysis/test_report_context_filters_contract.py(inspect.signature 逐序比对,签名加参/改名忘改常量即红)。③reports_export_support._EXPORT_CONTEXT_KEYS(现盘 14 键缺 scenario_id;普查口径 15,R42 后已去 plan_id)④scheduler_navigation_links._REPORT_CONTEXT_FIELD_NAMES(现盘 15 键含 scenario_id;普查口径 16,R42 后已去 plan_id)按 O18 保持现状仅注释(两 superset 不同形禁互抄;④注释含未来收编的 R42 纪律与分层门提示)。收口点签名 normalize_report_resource_filter 未动;E17 走 (a) 零冲突分支(O18=保现状,与 R42 无串行);scheduler_analysis+web_pages 467 passed(含 G29 同期新增 3 测)+fitness 21 passed。原始记录(收编前):共享常量 REPORT_RESOURCE_FILTER_ARG_KEYS 全仓 grep 为空(不存在);4 处仍逐键手抄 6 个资源别名:web/request_resource_context.py:22-27、web/routes/reports_request_support.py:56-61、web/routes/reports_export_support.py:23-28(嵌 15 …",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -4322,7 +4322,7 @@
     "tests/scheduler_analysis/test_report_context_filters_contract.py:89-103 (收口点别名优先级契约:machine+operator_id、machine+machine_id 等)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R11": {

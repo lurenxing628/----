@@ -310,6 +310,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/schedule/route_view/test_scheduler_workbench_links_contract.py",
             "tests/resource_dispatch/test_resource_dispatch_result_status_label_contract.py",
             "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
+            "tests/web_pages/test_scheduler_plan_role_arg_contract.py",
             "tests/candidate/test_week_plan_filename_uses_normalized_version.py",
             "tests/gantt/test_gantt_degradation_surface.py",
             "tests/schedule/route_view/test_scheduler_result_navigation_contract.py",

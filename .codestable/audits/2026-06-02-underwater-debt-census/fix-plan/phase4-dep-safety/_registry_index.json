@@ -352,7 +352,7 @@
  "R72": {
   "id": "R72",
   "bucket": "B02",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
@@ -360,7 +360,7 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-4(B02 身份族);叶",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": null,
   "adv_refuted": false,
   "title": "_get_plan_role_arg 在 gantt 与 week_plan 路由各一份(N1 家族)"
@@ -750,7 +750,7 @@
  "R67": {
   "id": "R67",
   "bucket": "B07",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
@@ -758,7 +758,7 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-8(B07),桶内优先级",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
   "title": "资源筛选6个请求参数名清单在三处各抄一遍"
