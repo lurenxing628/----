@@ -67,10 +67,11 @@
 
 ```
 ROOT  承重注释 + 共享前置门（纯增量零结构，零入边，最先落）
-  GF1·reject_integer_float 默认 False+parity ┃ G15a·LB07 双栈注释+spec_sync parity🔒
-  G07a·LB01 两处注释🟢 fixed ┃ G05·LB02/LB05 注释+回归🔒 ┃ G40a·LB08 注释+绑契约🟢 fixed
-  G33a·R05 步1 扩collar+步2 五parity🔒⏸ ┃ LB03·B01 承重注释+guard 收口🔒 ┃ G27p·R22 24键 exact parity🟢 fixed
+  GF1·reject_integer_float 默认 False+parity🟢 fixed(fae8829b) ┃ G15a·LB07 双栈注释+spec_sync parity🟢 fixed(fae8829b)
+  G07a·LB01 两处注释🟢 fixed ┃ G05·LB02/LB05 注释+回归🟢 fixed(fae8829b) ┃ G40a·LB08 注释+绑契约🟢 fixed
+  G33a·R05 步1 扩collar+步2 五parity🟢 fixed(fae8829b) ┃ LB03·B01 承重注释+guard 收口🟢 fixed(fae8829b) ┃ G27p·R22 24键 exact parity🟢 fixed
   [+认账注释 R56禁区行/R07错误类/LB06双宿主/N1真闸/N2 sentinel，均按 OWNER-DECISIONS 裁后口径]
+  2026-06-10 ROOT 执行补登：fae8829b(2026-06-08 "add ROOT safety guards") 实际已落 GF1/G33a 步1+步2/LB04 注释+锁步矩阵/N1 真闸注释/N2 sentinel 注释+契约/G15a/G05/LB03/G27p 等 ROOT 安全网，但 LB04/N1/N2 当时漏翻 registry——2026-06-10 逐项核验后补翻 fixed（N1 另于当日补齐 service can_write_feedback≡feedback_write_enabled 同源守卫测试，E26 完整闭合）；R03-A 承重注释（ROOT 唯一真欠账）于 2026-06-10 按 dossier 草稿落地。含义：G22/G33/R41 的 ROOT 前置门均已开，Batch-C/D 对应 ⏸ 的「裁前 STOP」与「前置未落」拦截全部解除。
 
 Batch-A  独立死叶子 / 零前置 / owner=false（最早可落）
   G02(R64+R65)* G14(R10) G16(R45≡R48已fixed/no-op) G21(R28已fixed) G28(R23)
@@ -95,11 +96,12 @@ Batch-C  身份族收敛 / 收口委托（依赖承重族 + parity）
 
 Batch-D  facade 删除最晚 / 跨 owner-pending 收口
   G18(R26)←G26+G23+G39 三桶收敛(E07/E08/E09)+E10 软自 G15
-  G26(R29 KEEP注释)←O20 已裁保留 ┃ G41(R14)⏸←LB01让位(E13)+三步前置
-  G42(R24 KEEP注释+事实记录)←O23 已裁保留不删（‖G41 可并行）
+  G26(R29 KEEP注释)←O20 已裁保留🟢 fixed(9c51f52b，number_utils 头部 O20 KEEP 注释已落) ┃ G41(R14)⏸←LB01让位(E13)+三步前置
+  G42(R24 KEEP注释+事实记录)←O23 已裁保留不删🟢 fixed(9c51f52b，schedule_diagnostic_contract 头部 O23 KEEP 注释+compound 事实记录已落)（‖G41 可并行）
+  2026-06-10 补登：G26/G42 已于 2026-06-09 随 9c51f52b 落 KEEP 注释并在 registry 标 fixed——E07(G26/R29) 随之闭合；E09(G39/R52→G18) 早已随 O07 KEEP(2026-06-08) 闭合。G18 仅剩 E08(G23) 一个硬前置。
 ```
 
-**11 标红债批次落位一行速查**：R05→ROOT(G33a step1/2)🔒 + Batch-C(G33 step3)⏸；R22→ROOT(G27p parity) + Batch-C(G27)🟢 fixed；R54→ROOT(collar 扩产前置) + Batch-C(G04)🔴⏸；R42→Batch-C(G01，E03 rebase R54 后)🔴；R04→Batch-B(G19，依 GF1)🔴；R09→Batch-C(G22)🔴⏸；R15→Batch-C(G09 provider 链第一段，2026-06-09 fixed)；R19→Batch-C(G09 provider 收口 + G10 repo私有版注释/parity，2026-06-09 fixed)；R52→Batch-B(G39 KEEP注释，O07 已裁保留)🔴；R14→Batch-D(G41)🔴⏸；R69→Batch-D/LEAF 桶(owner 定 loud 方向后落)🔴⏸。
+**11 标红债批次落位一行速查**：R05→ROOT(G33a step1/2)🟢 fixed(fae8829b) + Batch-C(G33 step3)⏸；R22→ROOT(G27p parity) + Batch-C(G27)🟢 fixed；R54→ROOT(collar 扩产前置) + Batch-C(G04)🔴⏸；R42→Batch-C(G01，E03 rebase R54 后)🔴；R04→Batch-B(G19，依 GF1)🔴；R09→Batch-C(G22)🔴⏸；R15→Batch-C(G09 provider 链第一段，2026-06-09 fixed)；R19→Batch-C(G09 provider 收口 + G10 repo私有版注释/parity，2026-06-09 fixed)；R52→Batch-B(G39 KEEP注释，O07 已裁保留)🔴；R14→Batch-D(G41)🔴⏸；R69→Batch-D/LEAF 桶(owner 定 loud 方向后落)🔴⏸。
 
 **6 硬阻断新爆点闭合落位**：#1 collar 不产 3 键→ROOT 扩产前置 owner 闸门 F门(R54)；#7 R15 空值即 raise→Batch-B G08 前置安全网（分支级保 `if not text: return None`）+ Batch-C G09 owner 闸门；#19/#20 R05 双轨+builder 耦合→ROOT G33a step1 扩产前置（含 include_team_context 信号 + 派工轨单独入口）；#21 R42 :92 漏删→Batch-C G01 前置安全网（删点清单补 :92 同提交）；#22/#23 R22 双翻→2026-06-08 已由 G27 补齐「键集+取值 exact + bad-role raise」断言并按 O14 收口，状态 fixed。
 

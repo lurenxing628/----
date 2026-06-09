@@ -213,6 +213,9 @@ def _run_candidate_with_failure_capture(
             logger=logger,
             baseline_results=baseline_results,
         )
+    # 只捕获显式 CandidateTrialFailure(候选级失败);其余异常(ValidationError/RuntimeError/TypeError)必须继续上抛。
+    # 这是 b81f8b3f 收窄后的护栏:绝不能以"统一/简化"名义改回 except Exception,
+    # 否则复活被治理掉的"未知异常静默转 failed candidate"静默吞错(踩灵魂线)。
     except CandidateTrialFailure as exc:
         return _failed_plan(spec, exc, elapsed_seconds=now() - candidate_started)
     return replace(plan, elapsed_seconds=now() - candidate_started)

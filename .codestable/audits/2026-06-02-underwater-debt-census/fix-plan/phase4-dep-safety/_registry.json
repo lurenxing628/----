@@ -2164,7 +2164,7 @@
   "id": "N1",
   "bucket": "B02",
   "home": "B02",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P2",
   "partition": "scheduler-dispatch",
@@ -2179,7 +2179,7 @@
    "scheduler_resource_dispatch_execution_context.py",
    "operation_execution_feedback_service.py"
   ],
-  "current_evidence_2026_06_05": "2026-06-09 新债登记: _identity_allows_query_membership_check 以 bool(identity.get('can_write_feedback')) 判断查询成员资格，行为依赖远端 plan identity 已蕴含 adopted/schedule/no-scenario。真写闸门仍在 operation_execution_feedback_service.py 的 adopted-only/plan_identity.can_write_feedback 双重 raise，本字段当前只是查询优化短路；风险是后续维护者忘记 can_write_feedback 的来源链，把它当裸 UI 开关放宽。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed: ① fae8829b(2026-06-08) 已在 _identity_allows_query_membership_check 函数体首行(execution_context.py:130)钉注释『这里只是查询结果成员检查的短路;真正写闸在 OperationExecutionFeedbackService._load_current_official_schedule』(O33:钉真闸,未引幻觉锚点 :89/:70-84);② 2026-06-10 补 service 同源不变式守卫测试 test_execution_context_feedback_write_enabled_stays_lockstep_with_can_write_feedback(tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py):断言 get_execution_context 输出 can_write_feedback(resource_dispatch_execution_service.py:127)≡feedback_write_enabled(:130) 恒等且 adopted→True/baseline_best→False——该不变式是 R08 删 (T,F) 死分支的安全前提,E26 完整闭合,G22 放行。函数体未改、无新增兜底。原始风险记录(2026-06-09):后续维护者忘记 can_write_feedback 来源链,把它当裸 UI 开关放宽——已由注释+守卫双钉。",
   "cluster": "C01",
   "same_file_siblings": [
    "R09"
@@ -2204,7 +2204,7 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "新增登记，不在本轮执行；后续只允许补保护性注释 + 绑契约测试。",
+  "planned_batch_hint": "已按「只补保护性注释 + 绑契约测试」完成(注释 fae8829b 2026-06-08;契约/守卫 2026-06-10 核验或补齐),函数体零改动。",
   "planned_deps_hint": "动 R08/R09 或 can_write_feedback 收口前先重 rg 本符号；不得把 can_write_feedback 放宽成 OR/preview 旁路。",
   "planned_fix_hint": "承重修法仅限: 在 _identity_allows_query_membership_check 附近补“我是故意的”注释，钉 can_write_feedback 来自 plan identity adopted-only 来源链；补契约测试证明非 adopted/scenario/candidate 身份即便带裸字段也不能写/派工。不得改写函数体，不得新增兜底。",
   "phase1_blast": {
@@ -2235,7 +2235,7 @@
   "id": "N2",
   "bucket": "B02",
   "home": "B02",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P2",
   "partition": "operation-execution",
@@ -2249,7 +2249,7 @@
   "all_files": [
    "operation_execution_event.py"
   ],
-  "current_evidence_2026_06_05": "2026-06-09 新债登记: _event_id_for_revision 的末位 return 0 是 revision 链 previous_event_id 的哨兵；非末位缺 id 已 loud raise。风险是后续维护者为 DRY/统一把 0 哨兵删掉或把非末位 raise 改软，导致 revision 拼接语义漂移。",
+  "current_evidence_2026_06_05": "2026-06-10 核验 fixed: 注释与契约均已于 fae8829b(2026-06-08)落地,registry 此前漏翻。① operation_execution_event.py:157 已钉哨兵注释『只有序列最后一个新事件允许 id=0 哨兵;前面任何事件缺 id 都必须响亮失败』(O34);② 『非末位缺 id 必抛错』契约已落 test_operation_execution_event_sequence_allows_missing_id_only_on_last_event(tests/operation_execution/test_operation_execution_event_sequence_contract.py:119),已注册 test_registry_data.py。if index<total raise 未动;return 0 与 previous_event_id=0 同 sentinel(fae8829b 插注后现盘 :180/:206,旧 :179/:205)未顺手统一。原始风险记录(2026-06-09):维护者为 DRY 删 0 哨兵或把非末位 raise 改软——已由注释+契约双钉。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -2264,7 +2264,7 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "新增登记，不在本轮执行；后续只允许补保护性注释 + 绑契约测试。",
+  "planned_batch_hint": "已按「只补保护性注释 + 绑契约测试」完成(注释 fae8829b 2026-06-08;契约/守卫 2026-06-10 核验或补齐),函数体零改动。",
   "planned_deps_hint": "动 operation execution event/revision 拼接前先补契约；不得顺手统一其他 return 0 哨兵。",
   "planned_fix_hint": "承重修法仅限: 在 _event_id_for_revision 末位 return 0 附近补注释，说明末位无后继、其 id 不参与下游拼接故允许 0；补测试钉非末位缺 id 必须 raise。不得删除非末位 raise，不得把坏数据改成静默兜底。",
   "phase1_blast": {
@@ -2817,7 +2817,7 @@
   "id": "LB04",
   "bucket": "B04",
   "home": "B04",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P5",
   "partition": "core-infra-shared",
@@ -2834,7 +2834,7 @@
    "normalization_matrix.py",
    "schedule_config_runtime_coercion.py"
   ],
-  "current_evidence_2026_06_05": "core/shared/boolean_normalize.py:33 def normalize_yes_no_wide 仍是债原样:行32空行、def 上方零'我是故意的'/'勿单边修改'护栏注释;承重修法要求的 parity 契约测试 tests/regression_boolean_normalize_wide_parity_contract.py 不存在(grep tests/ 全仓零 normalize_yes_no_wide 引用);git diff vs b08162cd 为空。承重债=补注释+绑测试,二者均未落地→planned。",
+  "current_evidence_2026_06_05": "2026-06-10 核验 fixed: 注释与 parity 均已于 fae8829b(2026-06-08 ROOT safety guards)落地,registry 此前漏翻。① boolean_normalize.py normalize_yes_no_wide 函数体首行已钉防环红线注释『这是 core 低层宽口径;不要改指 services.common.normalization_matrix,反向导入会把 core/services 绕成环』——与 LB-B1 草稿核心语义等价(禁删 shared 改指 services/导入环),逐字稿未照搬、core.algorithms 前瞻论据未写入(盘上零消费,省略合理);② 全矩阵锁步 parity 已落 tests/models_domain/test_yesno_normalization_contract.py(2 default × 4 unknown_policy 参数化锁步 + 多套 yes/no 口径差异契约;旧拟名 regression_boolean_normalize_wide_parity_contract.py 全 git 历史从未存在——真相是 fae8829b 往既有 P6 迁来的 test_yesno_normalization_contract.py 新增锁步测试,见 ANCHOR-DRIFT §六.2),已注册 test_registry_data.py + test_registry_groups_scheduler.py。2026-06-10 补:注释第二/三句(『有意双实现勿单边改别名集——靠锁步契约绑定』)已补进函数注释,LB-B1 草稿三句语义全覆盖。唯一合法消重方向(上层 matrix 反向 delegate 下层)本轮未做,维持双套+契约绑定。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -4203,7 +4203,7 @@
    "resource_dispatch_service.py",
    "schedule_plan_query_repo.py"
   ],
-  "current_evidence_2026_06_05": "collar core/models/schedule_resource_filter.py 与 repo data/repositories/schedule_plan_query_repo.py 均 `git diff b08162cd` 为空(byte-identical 基线);collar 仍只有 column_name(:18-24) 无 team 双 join 谓词接口、normalize 仍对空 id 强制 raise(:65-70);repo list_dispatch_rows(:430-469) 仍是内联 operator/machine 字面量+空 id `<> ''` 全量分支(:451-460)与内联 team 双 join `((o.team_id = ?) OR (m.team_id = ?))`(:461-463),:461 上方无『故意保留…严禁删』承重注释;_normalize_scope_type(resource_dispatch_service.py:59-63)仍本地校验 {operator,machine,team} 未委托收口点。步1扩接口/步2负向回归/步3字面量收敛全未落地。",
+  "current_evidence_2026_06_05": "2026-06-10 核验: 步1/步2 已于 fae8829b(2026-06-08 ROOT safety guards)落地,旧『git diff b08162cd 为空』评估已过时——collar core/models/schedule_resource_filter.py 已扩 DispatchResourceFilter(:33,含 include_team_context 信号 :36)+normalize_dispatch_resource_filter 派工轨单独入口(:96,旧 collar :65-70 raise 未放宽,双轨隔离 O15)+team 双 join 谓词『((o.team_id = ?) OR (m.team_id = ?))』(:120-124)+空 id=全量(O16);步2 五条 parity 已落 tests/models_domain/test_schedule_resource_filter.py(team 谓词/operator-machine 空 id 全量/team 空全量/bad-raise/不放宽旧 collar 五钉,已注册 test_registry)。剩步3(G33,Batch-C):先迁 smoke/续命测试,再搬 repo list_dispatch_rows 内联 operator/machine 字面量+空 id 全量分支(:451-460 一带)与内联 team 双 join(:461-463 一带,按符号重 rg)进收口点,_normalize_scope_type(resource_dispatch_service.py:59-63)委托收口点→步3 完成后才翻 fixed。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -6613,7 +6613,7 @@
    "scheduler_analysis_candidate_helpers.py",
    "specs.py"
   ],
-  "current_evidence_2026_06_05": "schedule_candidate_runner.py:216 `except CandidateTrialFailure as exc:` 上方无任何护栏注释(本轮唯一 actionable 项=补'我是故意的/b81f8b3f 护栏'三行注释,未落);承重护栏逻辑零改动(对的)、4 条 propagation 契约测试为既存非本轮新增;下游 FAILED 脚手架按计划 defer 且仍原样(summary.py:135/140、viewmodel dashboard_workbench.py:156、scheduler_analysis_candidate_helpers.py:361/366 均无'生产不可达'注释)。计划要求的注释未补=planned。",
+  "current_evidence_2026_06_05": "2026-06-10 更新: (A) 段承重注释已落——schedule_candidate_runner.py 按 dossier 草稿逐字在 except CandidateTrialFailure(原 :216,插注后 :219) 上方插三行 b81f8b3f 护栏注释;:28 类定义、return _failed_plan(原 :217,现 :220) 未动;4 条 propagation 契约测试原样只读。(B) 段下游 FAILED 脚手架仍待 Batch-D 按 O25 落(missing 态 return True 生产可达保留——插注后现盘 :270,旧 :267;+failed 不可达可观测注释+None/missing/failed/completed 四态 parity;summary.py:135/140、dashboard_workbench.py:156、scheduler_analysis_candidate_helpers.py:360/:365 等 6 消费点绝不裸删)→ R03 整体保持 planned 直到 (B) 段收口。",
   "cluster": "ISOLATED",
   "same_file_siblings": [],
   "interference_edges": [],

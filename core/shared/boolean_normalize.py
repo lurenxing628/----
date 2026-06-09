@@ -39,6 +39,8 @@ def normalize_yes_no_wide(
     false_aliases: Optional[Sequence[str]] = None,
 ) -> str:
     # 这是 core 低层宽口径；不要改指 services.common.normalization_matrix，反向导入会把 core/services 绕成环。
+    # 与 normalization_matrix.normalize_yes_no_wide_value 是有意的双实现，勿单边修改别名集/枚举值——
+    # 两套靠锁步契约绑定（tests/models_domain/test_yesno_normalization_contract.py）。
     default_norm = _normalize_default_yes_no(default)
     if value is None:
         return default_norm

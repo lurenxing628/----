@@ -368,7 +368,7 @@
  "N1": {
   "id": "N1",
   "bucket": "B02",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P2",
   "lb": true,
@@ -380,7 +380,7 @@
    "R08",
    "R09"
   ],
-  "batch": "新增登记:后续只补注释+契约",
+  "batch": "已完成:注释 fae8829b+契约/守卫 2026-06-10",
   "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
@@ -389,7 +389,7 @@
  "N2": {
   "id": "N2",
   "bucket": "B02",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P2",
   "lb": true,
@@ -399,7 +399,7 @@
    "LB01",
    "R08"
   ],
-  "batch": "新增登记:后续只补注释+契约",
+  "batch": "已完成:注释 fae8829b+契约/守卫 2026-06-10",
   "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
@@ -502,7 +502,7 @@
  "LB04": {
   "id": "LB04",
   "bucket": "B04",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": true,
