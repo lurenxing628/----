@@ -1458,5 +1458,59 @@
   "needs_adv": false,
   "adv_refuted": false,
   "title": "_target_url死分支:9条spec第3字段全非空字面量plain_url恒真"
+ },
+ "N3": {
+  "id": "N3",
+  "bucket": "B01",
+  "status": "planned",
+  "sev": "low",
+  "path": "P5",
+  "lb": false,
+  "file": "scheduler_gantt_task_detail.py",
+  "cluster": "C01",
+  "siblings": [
+   "R54"
+  ],
+  "batch": "新增登记:G54收口后残留DRY(2026-06-09修复验收)",
+  "owner_pending": false,
+  "needs_adv": false,
+  "adv_refuted": false,
+  "title": "scheduler_gantt_task_detail _PLAN_GUARD_FIELD_ALIASES 16项别名表与FULL_PLAN_GUARD_FIELDS字段集重叠、各自手维(输入侧别名归一层,非克隆,可收敛字段名到单源)"
+ },
+ "N4": {
+  "id": "N4",
+  "bucket": "B01",
+  "status": "planned",
+  "sev": "low",
+  "path": "P4",
+  "lb": false,
+  "file": "resource_dispatch_execution_service.py",
+  "cluster": "C01",
+  "siblings": [
+   "R07"
+  ],
+  "batch": "新增登记:R07诚实债后续(O31收口)",
+  "owner_pending": false,
+  "needs_adv": false,
+  "adv_refuted": false,
+  "title": "R07 写后任务卡schedule行缺失仍用ValidationError(field=schedule_id)≠O31要求的AppError(ErrorCode.NOT_FOUND)+缺schedule=None→raise专项回归测试"
+ },
+ "N5": {
+  "id": "N5",
+  "bucket": "B01",
+  "status": "planned",
+  "sev": "low",
+  "path": "P6",
+  "lb": false,
+  "file": "test_scheduler_workbench_links_contract.py",
+  "cluster": "C01",
+  "siblings": [
+   "R54"
+  ],
+  "batch": "新增登记:G54 parity测试加固(2026-06-09修复验收)",
+  "owner_pending": false,
+  "needs_adv": false,
+  "adv_refuted": false,
+  "title": "护栏字段投影parity测试 test_full_plan_guard_fields_match...resolution_shapes 同源自反(两侧都委托唯一投影器、等式近恒真)抓不到行为回退,需补core旧单键口径基线对照"
  }
 }

@@ -134,3 +134,31 @@ def _event_id_for_revision(event: Any, *, index: int, total: int) -> int:
 
 ## owner_pending 汇总
 - N1、N2 均已收进 registry 唯一真相源，状态为 **planned / owner_pending=false**。本轮只做台账登记，不执行这两条后续债；未来只能按保护性注释 + 契约测试推进。
+
+---
+
+# 2026-06-09 修复对抗审核后登记的残留（N3 / N4 / N5）
+
+> 来源：B 阶段修复提交 `G54–G58`（`870ab892..9225e498`）经 9-agent 对抗审核（总裁定 **PASS**，工作流 `wf_bc8ca414-f92`）后，识别出 3 条**非阻塞尾巴**，owner 拍板登记为正式 backlog。三条均 `planned / owner_pending=false / 非本次缺口`，不影响本次 PASS。详见家目录 `b阶段对抗核查报告_2026-06-09.md` §9.3。
+
+## N3【可选 DRY·非克隆·非 R54 scope】gantt_task_detail 别名表与单源字段集重叠手维
+- **位置**：`web/viewmodels/scheduler_gantt_task_detail.py:8-25` `_PLAN_GUARD_FIELD_ALIASES`（16 项）+ `:73 _guard_source`
+- **定性**：输入侧**别名归一化适配器**——把 gantt 详情异形输入键（`requested_role→requested_plan_role`、`is_official→is_official_plan` 等）搬正，再 `plan_resolution=_guard_source(...)` + `plan_guard_fields=FULL_PLAN_GUARD_FIELDS` **下沉到唯一投影器** `core/models/schedule_plan_role.project_plan_guard_fields`。**零派生值计算**（无 `_identity_bool`/无三分支 status），**不是第二份投影实现/克隆**。
+- **为何登记**：其 16 项目标键与单源 `FULL_PLAN_GUARD_FIELDS` 字段集高度重叠、各自手维，构成两处需同步的字段清单孪生维护点（DRY 瑕疵）。
+- **关键澄清**：**不属 R54 点名的 4 套**（reports_workbench/nav_publish/resource_dispatch/dashboard，均已 PIN 零命中删净）；BASE `870ab892` 即存在、`G54-G58` 完全未触碰 → **非 G54 收口缺口、非新引入**。
+- **修法（零行为风险）**：让别名表目标键引用 `_PLAN_GUARD_COMMON_FIELDS/FULL_PLAN_GUARD_FIELDS` 单源字段名常量，而非独立手抄。清洁度优化、非安全必需。
+
+## N4【诚实债·已如实标注】R07 误差码未按 O31 收口 + 缺专项回归
+- **位置**：`core/services/scheduler/resource_dispatch_execution_service.py`（R07 同源，siblings=R07）
+- **定性**：R07 的 loud-raise 修复其实在 B 之前 `6759b0f9`（B 基线祖先）就落地、**非 B 战果**；现盘修法用 `ValidationError(field=schedule_id)`，与 **O31 要求的 `AppError(ErrorCode.NOT_FOUND)` 不符**；O31 要求的 `schedule=None→raise` 专项回归测试亦未补。
+- **状态**：dossier `R07.md` 已如实标注三处偏离，无掩盖。后续走 issue 链按 O31 收口误差码 + 补回归。
+- **禁区**：改误差码前确认下游 `except` 捕获面（`ValidationError` vs `AppError`）同步，别让原本被吞的改成外逃。
+
+## N5【测试质量·行为已有兜底】护栏字段投影 parity 测试同源自反
+- **位置**：`tests/schedule/route_view/test_scheduler_workbench_links_contract.py:676-746` `test_full_plan_guard_fields_match_core_plan_role_filter_fields_for_resolution_shapes`
+- **定性**：G54 收口后该 parity 测试比较的两侧（`plan_role_filter_fields` 与 `plan_guard_fields_for_resolution`）**都委托同一** `project_plan_guard_fields`，等式**近恒真**——对抗实测：把投影器 `requested_role` 改回单键、或破坏 `is_comparison`，此测试**仍绿**。它**只证收口、不证行为不变**。
+- **不是空缺**：行为不变当前由**同 commit 的其它真护栏测试兜底**——`test_reports_workbench_navigation_contract.py:530`（navigation 形状 plan_role 取值，改回单键即红）、`test_schedule_result_view_context.py:184/257`（is_comparison/status 写死期望，破坏即红）。
+- **修法（纯测试侧、非必需）**：给该 parity 测试加一条 **core 旧单键口径基线对照**（或对统一投影器注入回退实现），使其自身也能抓到行为回退，而非仅证两侧同源。
+
+## owner_pending 汇总（补登）
+- N3 / N4 / N5 均 **planned / owner_pending=false**，本轮只登记不执行；三条均经对抗审核确认为**非本次 PASS 缺口**。

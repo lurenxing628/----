@@ -7368,5 +7368,124 @@
   },
   "owner_pending": false,
   "lb_no_touch": null
+ },
+ "N3": {
+  "id": "N3",
+  "bucket": "B01",
+  "home": "B01",
+  "status_2026_06_05": "planned",
+  "severity": "low",
+  "pathology": "P5",
+  "partition": "scheduler-workbench",
+  "kind": "maintainability",
+  "load_bearing": false,
+  "needs_adversarial": false,
+  "adv_refuted": false,
+  "title": "scheduler_gantt_task_detail _PLAN_GUARD_FIELD_ALIASES 16项别名表与FULL_PLAN_GUARD_FIELDS字段集重叠手维",
+  "old_location_DONT_TRUST": "web/viewmodels/scheduler_gantt_task_detail.py:8-25,73",
+  "primary_file": "scheduler_gantt_task_detail.py",
+  "all_files": [
+   "scheduler_gantt_task_detail.py"
+  ],
+  "current_evidence_2026_06_05": "2026-06-09 修复验收(G54双真相源收口)后登记:R54收口把护栏字段投影统一到 core/models.project_plan_guard_fields,但 gantt_task_detail 的 _PLAN_GUARD_FIELD_ALIASES(16项,把 requested_role→requested_plan_role/is_official→is_official_plan 等异构key搬正)是输入侧别名归一适配器,字段集与 FULL_PLAN_GUARD_FIELDS 高度重叠、各自手维。非克隆(零派生值,_guard_source 只搬key,最终仍下沉唯一投影器)、非R54点名4套之一、BASE 870ab892 即存在、G54-G58 未触碰。属可选 DRY 收敛点,非收口缺口。",
+  "cluster": "C01",
+  "same_file_siblings": [],
+  "interference_edges": [
+   {
+    "other": "R54",
+    "why": [
+     "同属护栏字段投影/plan-guard字段族"
+    ],
+    "same_file": false,
+    "same_symbol": false
+   }
+  ],
+  "verdict": null,
+  "adv_precondition": null,
+  "planned_batch_hint": "新增登记,不在本轮执行;DRY清洁度优化,非安全必需。",
+  "planned_deps_hint": "收敛前确认别名表覆盖的异形输入键在统一字段名后仍正确归一;复用单源字段名常量。",
+  "planned_fix_hint": "让 _PLAN_GUARD_FIELD_ALIASES 目标键引用 _PLAN_GUARD_COMMON_FIELDS/FULL_PLAN_GUARD_FIELDS 单源字段名,而非独立手抄;零行为风险。",
+  "owner_pending": false,
+  "lb_no_touch": null
+ },
+ "N4": {
+  "id": "N4",
+  "bucket": "B01",
+  "home": "B01",
+  "status_2026_06_05": "planned",
+  "severity": "low",
+  "pathology": "P4",
+  "partition": "scheduler-dispatch",
+  "kind": "error_contract",
+  "load_bearing": false,
+  "needs_adversarial": false,
+  "adv_refuted": false,
+  "title": "R07 写后任务卡schedule行缺失仍用ValidationError(field=schedule_id)≠O31要求的AppError(ErrorCode.NOT_FOUND)+缺专项回归",
+  "old_location_DONT_TRUST": "core/services/scheduler/resource_dispatch_execution_service.py",
+  "primary_file": "resource_dispatch_execution_service.py",
+  "all_files": [
+   "resource_dispatch_execution_service.py"
+  ],
+  "current_evidence_2026_06_05": "2026-06-09 修复验收登记(R07诚实债后续):R07 的 loud-raise 修复其实在 B 之前 6759b0f9(B基线祖先)就落地、非B战果;且修法用 ValidationError(field=schedule_id),与 O31 要求的 AppError(ErrorCode.NOT_FOUND) 不符;O31 要求的 schedule=None→raise 专项回归测试亦未补。dossier R07.md 已如实标注三处偏离。",
+  "cluster": "C01",
+  "same_file_siblings": [
+   "R09"
+  ],
+  "interference_edges": [
+   {
+    "other": "R07",
+    "why": [
+     "同一债的误差码口径后续(O31收口)"
+    ],
+    "same_file": true,
+    "same_symbol": true
+   }
+  ],
+  "verdict": null,
+  "adv_precondition": null,
+  "planned_batch_hint": "新增登记,后续 issue 链处理;把 ValidationError 收口为 O31 的 AppError(NOT_FOUND)+补回归。",
+  "planned_deps_hint": "改误差码前确认下游 except 捕获面(ValidationError vs AppError)同步,别让原本被吞的改成外逃。",
+  "planned_fix_hint": "按 O31:schedule 行缺失 raise AppError(ErrorCode.NOT_FOUND) 而非 ValidationError(field=schedule_id);补 schedule=None→raise 专项回归。",
+  "owner_pending": false,
+  "lb_no_touch": null
+ },
+ "N5": {
+  "id": "N5",
+  "bucket": "B01",
+  "home": "B01",
+  "status_2026_06_05": "planned",
+  "severity": "low",
+  "pathology": "P6",
+  "partition": "scheduler-workbench",
+  "kind": "test_quality",
+  "load_bearing": false,
+  "needs_adversarial": false,
+  "adv_refuted": false,
+  "title": "护栏字段投影parity测试 test_full_plan_guard_fields_match...resolution_shapes 同源自反、抓不到行为回退",
+  "old_location_DONT_TRUST": "tests/schedule/route_view/test_scheduler_workbench_links_contract.py:676-746",
+  "primary_file": "test_scheduler_workbench_links_contract.py",
+  "all_files": [
+   "test_scheduler_workbench_links_contract.py"
+  ],
+  "current_evidence_2026_06_05": "2026-06-09 修复验收登记(G54 parity测试加固):G54收口后该 parity 测试比较的两侧(plan_role_filter_fields 与 plan_guard_fields_for_resolution)都委托同一 project_plan_guard_fields,等式近恒真——实测把投影器 requested_role 改回单键、或破坏 is_comparison,此测试仍绿。只证收口不证行为不变;行为不变当前由同commit其它真护栏测试兜底(navigation形状:530、summary:184/:257,改逻辑即变红),非空缺,但该 parity 测试自身需加固。",
+  "cluster": "C01",
+  "same_file_siblings": [],
+  "interference_edges": [
+   {
+    "other": "R54",
+    "why": [
+     "G54收口的parity守卫加固"
+    ],
+    "same_file": false,
+    "same_symbol": false
+   }
+  ],
+  "verdict": null,
+  "adv_precondition": null,
+  "planned_batch_hint": "新增登记,测试质量加固,非必需(行为已由其它测试兜底)。",
+  "planned_deps_hint": "无生产依赖;纯测试侧。",
+  "planned_fix_hint": "给该 parity 测试加一条 core 旧单键口径基线对照(或对统一投影器注入回退实现),使其自身能抓行为回退,而非仅证两侧同源。",
+  "owner_pending": false,
+  "lb_no_touch": null
  }
 }
