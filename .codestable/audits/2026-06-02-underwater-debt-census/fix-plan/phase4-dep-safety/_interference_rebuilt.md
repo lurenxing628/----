@@ -15,7 +15,7 @@
 |---|---|---|---|---|
 | **G01** | NAV-PLANID | {R42, R60} AS-1 | 同符号 build_workbench_plan_context co-change + 共享 emit 点 link_query:118/154（只删一次,归 R42）+ 半截即新 P3 残渣 | 无先后必合并单提交；emit:118/154 归 R42 删,R60 不动；先迁 contract 三断言(:109/122/126,留 back_to)→删生产→自证 |
 | **G02** | NAV-PLANID | {R64, R65} AS-2 | **2026-06-08 已 fixed**。历史原子原因是同文件 navigation_links.py 双删导致行号互漂；R64 `_has_navigation_date_range` 与 R65 `_target_url` 逻辑零耦合,同提交仅为防行号二次漂移。当前 `_has_navigation_date_range`/`_target_url`/旧 `plain_url or _target_url` 均零命中,`TARGET_PAGE_PATHS` 保留。 | 已按同一原子提交完成:R64 删死 helper;R65 三件套删 def+化简为 `plain_url`+删本文件 `urlencode`/`query_for_target` import;护栏 `test_all_nav_specs_have_nonempty_plain_url` 已落。后续 R42/R67 进本文件必须按符号重 rg 当前锚点,不得信 G02 删除前旧行号。 |
-| **G03** | NAV-PLANID | {R66} AS-3 | 孤立,删私有死副本 _context_summary(suffix 签名定位):150-163 | 单债;红线=不动 workbench_links:258 LIVE 同名异签 |
+| **G03** | NAV-PLANID | {R66} AS-3 ✅ fixed | 2026-06-09 已 fixed:按 suffix 签名重定位后删除 reports_workbench 私有死副本 _context_summary(删除前 :139-152) | 单债已闭合;红线=不动 workbench_links:210 LIVE 同名异签已守住 |
 | **G04** | NAV-GUARD | {R58, R54, R44} SEQ-NAV | 三债同物理文件 navigation_publish.py(M/MM 漂移态),任一先落即移彼此行号；**R54 跨 5 物理文件**(见内部顺序) | 硬序 R58(纯注释:91 上方)→R54(B01 guard 收口+parity)→R44(B02 收 selected_plan_role 到 core,动手前重 rg :6/:36-37)。〔红队第1轮修订 R2-P1〕**R54 五套手维面必须同窗口、按符号收口、收口后逐套重 rg 复核字段集一致**：L2 navigation_publish.py:12(16键 G04 物理含)、L4 dashboard_workbench_context.py:8(16键≡L2 逐字)、L3 resource_dispatch.py:64(15键缺 plan_role_status)、L1 reports_workbench.py:36(12键别名源键缺三阻断态)、L5 gantt_task_detail.py:8(别名元组)；**分三组基数各钉 parity 守卫，禁任意 surface 向 16 键看齐**(补 plan_role_status=统一改行为违 R54 承重红线) |
 | **G05** | EXEC-REVIEW | {LB02, LB05} A1 | 🔒 同一承重不对称两 finding,钉同段(签名:209+五硬钉:58/:180-181/:191-192/:221/:236),同一次注释+同一组回归 | 无先后一次落地;只增注释行不动 dict 键序 |
 | **G06** | EXEC-REVIEW | {R62} A2 ✅ fixed | 2026-06-08 已 fixed。历史原子原因是三档身份死分支(dict 三连键+模板 !=+xlsx or)三处消费方强原子,删一处不同步即半截残骸 | 已在 G05 前置满足后按符号名 _resource_pair_payload+!= 重 grep 执行；payload/dict/模板 title+死副行/xlsx 同一原子 diff 闭合，护栏区未动 |
@@ -79,7 +79,7 @@
 | E01 | GF1 → G19(R04) | 共享前置门 | **H** | reject_integer_float 默认 False 先绿,R04 才收口(否则现有 parse_required_int 调用方 3.0 由接受变 raise) |
 | E02 | GF1 → G20(R59) | 共享前置门 | **H** | 同上;R59 裸收口撞续命测试:247/:250 |
 | E03 | G04(R54) → G01(R42/R60) | 同符号 co-change build_workbench_plan_context | **H** | R54 guard 字段已落 workbench_links:206-207,R42 删 plan_id 形参:191 须 rebase 其后(签名互撞)。批次张力:R42 batch_hint=3 vs 须与 R54 batch=2 同批,owner 裁。〔红队第1轮修订 R2-P5〕**R42 删形参的安全性取决于 collar 全调用方**，实盘 6 个生产调用方：navigation_context:57/76、dashboard_workbench_context:119、resource_dispatch:95、gantt_task_detail:78、reports_workbench:77、navigation_links:40，**外加第 6 个未登记的 analysis_links.py:24**——已 rg 确认 analysis_links:24 调用**未传 plan_id**(kwargs 无)，故删形参对它安全；但它是 collar 签名只读确认点，删形参前须复核全 6 调用方无一传 plan_id= 防 TypeError(analysis_links 不抄 guard 字段=benign passthrough，非第 6 套手维面，不增 R54 计数) |
-| E04 | G04(R54) → G03(R66) | 同文件行号前置 | **S** | R54 改 reports_workbench:36 漂移 R66:150,R66 按 suffix 符号重定位 |
+| E04 | G04(R54) → G03(R66) | 同文件行号前置 | **S/P** | 已满足:R54 改 reports_workbench 上方区域后,R66 于 2026-06-09 按 suffix 符号重定位到删除前 :139-152 并纯删 |
 | E05 | G23(R33) → G17(R31) | facade 删序 | **H** | R33 删 value_policies 壳须不晚于 R31 删 shared 源:9,否则 facade:11 残 import loud ImportError |
 | E06 | G23(R33) → G17(R30,R31) | 三常量 re-export facade | **H** | 〔红队第1轮修订 R3-发现2〕实盘壳:6-8 `import (READ_FILTER_ONLY,VALUE_DATE,VALUE_DATETIME)`+:11 WRITE_INTERNAL_ONLY；R30(删 shared 三常量:12/16/17)与 R31(删 shared WRITE_INTERNAL_ONLY:9)同为 shared 侧删动作彼此无序，真硬约束源是壳 R33 先停 import。原标 `R30→R31` 在两个对等删动作间生造方向，已改 `R33→{R30,R31}`(R30/R31 同窗口同 diff，唯一硬前置 R33 步1) |
 | E07 | G26(R29) → G18(R26) | facade 删晚于收敛 | **H** | PHASE0§10.2;R26 顶层 shim 2 离线消费者经老路径,先删 shim 致其测试红；O20 KEEP 注释闭合后视为满足 |
@@ -126,7 +126,7 @@ Batch-A（独立死叶子 / 零前置 / owner=false，最早可落）
   G14(R10) G16(R45≡R48已fixed/no-op) G21(R28已fixed)
   G28(R23) G31(R38part+R39) G32(R38 op_type/operator) G35(R36) G37(R02)
   G11(R11≡R63已fixed) G38(R06+R27+gantt)
-  *G03 受 E04 软序 → 实际延后紧随 G04；G25 并回 G24，不在 Batch-A 单独落
+  *G03 受 E04 软序 → 已在 G04 后于 2026-06-09 fixed；G25 并回 G24，不在 Batch-A 单独落
 
 Batch-B（依赖 ROOT 承重门 / 单门控前置）
   G06(R62 fixed)   ← G05
@@ -193,7 +193,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 | 🔴 最危 | `core/services/scheduler/gantt_critical_chain_provider.py` | R12 + R55 + R13(EXEC-FACT 跨簇,实为 execution_fact_provider 不同文件);R11/R63 已 fixed | R11/R63 旧 _normalize staticmethod 已删;provider 现于 :157 调 `gantt_critical_chain.py:67-88` 单份 helper；R12 加 dropped_count;R55 加 scope；`_copy:108-114` 与 normalize helper 仍是两件事,**禁误删 _copy** | G11 统一单份 helper 前置已满足→G12/G13 加键穿三道白名单；A2/A3 仍需按当前行号重 rg |
 | 🟠 高 | `core/services/scheduler/gantt_service.py` | R10 + R55 + (R34/R21/R63/R11/R12 同文件弱) | R10 删死方法:60-62(禁误删活 resolve_version:64)；R55 filtered 病灶:344/:384/:385 None 回退；相距 280+ 行物理不重叠 | 同 PR 物理串行(PHASE0§3)；R10 任意序删后 grep:64；R34/R21 勿两 PR 并发改 |
 | 🟠 高 | `core/services/scheduler/scheduler_navigation_publish.py` | **R58**(承重邻) + R54 + R44 | R58 注释:91 上方；R54 _PLAN_GUARD_FIELD_NAMES:12/_plan_guard_fields:82；R44 删 selected_plan_role def:36-37+import:6-7；M/MM 漂移态任一先落即移彼此行号 | G04 硬序 R58(注释)→R54(guard 收口)→R44(删 def,重 rg :6/:36-37)；禁动:91 整行/禁剔键 |
-| 🟠 高 | `web/.../scheduler_workbench_links.py` | R42(NAV-PLANID) + R54(NAV-GUARD,跨簇) + R60 邻 | R54 加 guard 字段(签名:187/dict:229-258,已落:206-207)；R42 删 plan_id 形参:191/dict:233；**同符号 build_workbench_plan_context co-change MUST 同批** | E03 硬序 R54 先→R42 后 rebase 新签名；禁动 dict:229-258 guard 段/禁翻:292-304 fail-open;LIVE _context_summary:258 别误删(R66 跨文件红线) |
+| 🟠 高 | `web/.../scheduler_workbench_links.py` | R42(NAV-PLANID) + R54(NAV-GUARD,跨簇) + R60 邻 | R54 加 guard 字段(签名:187/dict:229-258,已落:206-207)；R42 删 plan_id 形参:191/dict:233；**同符号 build_workbench_plan_context co-change MUST 同批** | E03 硬序 R54 先→R42 后 rebase 新签名；禁动 dict:229-258 guard 段/禁翻:292-304 fail-open;LIVE _context_summary 当前在 :210、调用点 :399,别误删(R66 跨文件红线) |
 | 🟠 高 | `core/algorithms/dispatch_rules.py` | R49 + R50 + R51 ✅ fixed | 旧风险：R49 删:25；R51 删首函数:28-35；R50 删末函数:112-132+import statistics:4；删任一处位移其下,R51 删首函数上移 R49/R50 ~7-8 行 | G24 已闭合；现盘保留 `import math`、`DispatchInputs`、`build_dispatch_key`，禁再按旧行号重复删 |
 | 🟠 高 | `core/services/scheduler/run/schedule_payload_contract.py` | R01 + R04 ✅ fixed | 旧风险：R01 删 _iter/count/has/__all__ 与 R04 收口 `_strict_positive_int` 同文件互移行号，且 R04 旧 :72 落在 R01 删除体内 | G19 已闭合；后续禁按旧行号重复施工。现盘无 `_iter/count/has` 残留，`_strict_positive_int` 只剩 5 个调用点。 |
 | 🟠 高 | `data/repositories/schedule_repo.py` | R34 + R35 ✅ fixed | 旧删点 R34(:36-59/:114-126/:128-158)+R35(:61-69) 已删除 | G30 已闭合；后续只需保护活近亲 `list_version_rows_by_op_ids_start_range`:36 与 `list_by_version_with_details`:79 |
@@ -209,7 +209,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 | 🟢 低-中 | `core/services/scheduler/execution_snapshot.py` | R19 + R01 + R46(__all__ 伪串行登记) | R19 收口点 positive_op_ids:28-40+导出:118-123；`:40 return sorted` 事实承重(sha256 指纹)；R01/R46 的 `__all__` 不在本文件 | E16 已降登记备查；R19 强制保 sorted |
 | 🟢 低 | `web/.../reports_export_support.py` + `scheduler_navigation_links.py`(两元组) | R42 + R60 + R67 | R42/R60 删 plan_id:14/:11-12；R67 改资源键尾块元组；改不同键零语义冲突 | E17 diff-hunk 串行避互撞;G02/R65 已完成,后续只需确认 `TARGET_PAGE_PATHS` 仍保留并按符号重 rg 当前 navigation_links 锚点 |
 | 🔴 承重邻 | `core/models/operation_execution_scope.py` | **R09 收口家**(:9) + **LB01 配套最终底**(:36-50) | 〔红队第1轮修订 R1-P1〕收口点 `parse_positive_execution_int`:9(:11/:17/:20 raise) 与 LB01 最终底 `validate_current_official_execution_scope`:36(三 raise :44/:47/:50) 同住一个 3499B 小文件，:77-79 调用点夹两者 | E28 同文件承重毗邻；R09 收编**禁碰 :36-50**(按符号定位，删空行/调 import/移函数都漂 raise 锚点)；承重文件 +1=6 |
-| 🟡 中 | `web/viewmodels/scheduler_reports_workbench.py`(L1) | **R54·L1**(12 键别名源键) + R66(死副本) + R42/R60(邻) | 〔红队第1轮修订 R2-P1/P2/P4〕`_copy_plan_guard_fields`:36(12 键，**别名源键** data.get("requested_role")/("selected_role")/("is_official")/("is_preview")，缺 plan_role_status + 三阻断态)；调用点:98；R66 死副本 _context_summary:150 | R54 五套同窗口收口后逐套重 rg；**禁向 16 键看齐**(补 plan_role_status=统一改行为违承重红线) |
+| 🟡 中 | `web/viewmodels/scheduler_reports_workbench.py`(L1) | **R54·L1**(12 键别名源键) + R66 fixed + R42/R60(邻) | 〔红队第1轮修订 R2-P1/P2/P4〕`_copy_plan_guard_fields`:36(12 键，**别名源键** data.get("requested_role")/("selected_role")/("is_official")/("is_preview")，缺 plan_role_status + 三阻断态)；调用点:98；R66 死副本已于 2026-06-09 删除(删除前 :139-152,删后 reports_workbench 内零命中) | R54 五套同窗口收口已落；R66 已闭合；后续仍**禁向 16 键看齐**(补 plan_role_status=统一改行为违承重红线) |
 | 🟡 中 | `web/viewmodels/dashboard_workbench_context.py`(L4) | **R54·L4**(16 键，≡L2 逐字) | 〔红队第1轮修订 R2-P1/P4〕`_PLAN_GUARD_FIELD_NAMES`:8(16 键含 plan_role_status+三阻断态)；消费:130；collar 调用:119 | R54 五套同窗口；viewmodels 层(非 routes) |
 | 🟡 中 | `web/routes/domains/scheduler/scheduler_resource_dispatch.py`(L3) | **R54·L3**(15 键，缺 plan_role_status) | 〔红队第1轮修订 R2-P1/P2/P3〕`_copy_plan_guard_fields` def:64(15 键，**缺 plan_role_status**=第三种基数)，guard 调用唯一 :109(非 §0 旧标的 call×2 :95/:199；:95 是 collar 调用)；:267 的 plan_role_status 是无关 internal_filters 不在元组内 | R54 五套同窗口；**禁补 plan_role_status「补齐」16 键**(违承重红线)；注：R08/R09 在另一文件 scheduler_resource_dispatch_execution.py，不并 |
 | 🟡 中 | `web/viewmodels/scheduler_gantt_task_detail.py`(L5) | **R54·L5**(别名元组异机制) | 〔红队第1轮修订 R2-P1/P4〕`_PLAN_GUARD_FIELD_ALIASES`:8(别名元组，含 plan_role_status)；消费:94；collar 调用:78 | R54 五套同窗口；别名元组机制与同名键三套不同，禁混并 |
@@ -244,7 +244,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 | `web/navigation_context.py:79` (R56 退化禁区行) | **fail-CLOSED**：`plan_role=plan_role if plan_role in VALID_PLAN_ROLES else ROLE_ADOPTED`(非法 role→强制 adopted) | plan_role 非法→强制 ROLE_ADOPTED | 粘 §90 LB-B4 的 fail-OPEN 旧文案（写成「非法 role 放行/默认开放」） |
 | `web/.../reports_page_support.py`(LB06) | **fail-CLOSED**：execution-review 强制 adopted + scenario=None | execution-review→强制 adopted+scenario=None | 同上方向反转 |
 
-> 凡 R42/R66 认账注释动作触碰上述行，**先核现盘 fail-CLOSED 方向再下笔**，方向写反 = 承重击穿，按 P0 级处理。
+> 凡 R42 认账注释动作触碰上述行，**先核现盘 fail-CLOSED 方向再下笔**，方向写反 = 承重击穿，按 P0 级处理。R66/G03 已按 suffix 签名纯删 `_context_summary` 死函数，不属于 plan_id 删除或 R56/LB06 认账注释动作。
 
 ---
 
@@ -305,7 +305,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 | # | 新增/强化边 | 来源簇 | 类型 | 依据 |
 |---|---|---|---|---|
 | A01 | R54→R42（same_symbol co-change 强化） | NAV-PLANID/GUARD | H | workbench_links:206-207 guard 字段已落,R42 删形参须 rebase |
-| A02 | R54→R66（同文件行号前置） | NAV-PLANID | S | R54 改:36 漂移 R66:150 |
+| A02 | R54→R66（同文件行号前置） | NAV-PLANID | S/P | 已满足:R54 改上方区域后,R66 按 suffix 签名重定位到删除前 :139-152 并于 2026-06-09 fixed |
 | A03 | R54 第 5 套手维面 gantt_task_detail:9-15 | NAV-GUARD | — | corrections C 升 3/4→5 套,别名元组机制 |
 | A04 | R54/R58→N1（execution_context:129-130） | NAV-GUARD/PARSE | H(注释) | 执行重构新债,同护栏概念 Batch-2 同期 |
 | A05 | R54→reports 第二注入路径（双分叉） | NAV-GUARD | — | reports 缺三阻断态字段经 overrides 另一路 |
@@ -462,7 +462,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 
 原子簇 42 个（G01–G42）+1 共享前置门 GF1 = 43 调度单元（多债强原子 20 / 单债 22 / 承重门 5🔒；原待裁清单已裁后分流，R29/R52/R24 走 KEEP，R55 本轮暂停）。
 验环：**无环（DAG 成立，环成员=空）**——13 条 H 硬边全单向收敛，唯一双向标记的 E16/E24/E11 均为 S 软序可定向。
-批次草案（序）：ROOT（GF1 默认 False + LB01/LB02/LB05/LB07/LB08已fixed/LB03/R05-step1/R22-parity 承重注释+parity，纯增量零结构）→ Batch-A（零前置死叶子 G14/G16已fixed-no-op/G21已fixed/G28/G31/G32/G35/G37/G11已fixed/G38已fixed，G03 延后，G25 已并回 G24）→ Batch-B（单门控前置 G06/G07/G08/G12←G11前置已满足/G19/G20/G24含G25旁支已fixed/G40已fixed/G30/G36/G39 KEEP；G13/R55 本轮跳过且 G11 前置已满足）→ Batch-C（身份族收敛 G04→G01/G27/G09/G10/G29/G15/G22/G33/G34/G17/G23）→ Batch-D（facade 最晚 G18←三桶收敛 + G26 KEEP/G41/G42 KEEP）。
+批次草案（序）：ROOT（GF1 默认 False + LB01/LB02/LB05/LB07/LB08已fixed/LB03/R05-step1/R22-parity 承重注释+parity，纯增量零结构）→ Batch-A（零前置死叶子 G14/G16已fixed-no-op/G21已fixed/G28/G31/G32/G35/G37/G11已fixed/G38已fixed，G03已fixed，G25 已并回 G24）→ Batch-B（单门控前置 G06/G07/G08/G12←G11前置已满足/G19/G20/G24含G25旁支已fixed/G40已fixed/G30/G36/G39 KEEP；G13/R55 本轮跳过且 G11 前置已满足）→ Batch-C（身份族收敛 G04→G01/G27/G09/G10/G29/G15/G22/G33/G34/G17/G23）→ Batch-D（facade 最晚 G18←三桶收敛 + G26 KEEP/G41/G42 KEEP）。
 重灾区：**24 文件**（红队第1轮 +5：operation_execution_scope.py + R54 缺席四文件）≥2 债顺序敏感，最危 3 个=feedback_service.py(LB01↔R17 同 _build_event_payload)、execution_review.py(承重五钉↔R62)、gantt_critical_chain_provider.py(_copy↔_normalize 误删)；**6 承重文件**全标禁区（含 operation_execution_scope.py R09 收口家↔LB01 最终底同文件）。
 边总变化：旧 146 −删 27（假边 22+已修对消 5）+新 **19**（同符号 co-change/收口前置硬边/N1N2 邻接/facade 删序 +红队 E28/E29 同文件承重毗邻）~降 18（硬→软/解耦/方向反转）= 重建约 **138 边，跨簇有效约束边 29 条（H 13/S 14/P 2）**，真门控分层硬边仍 13 条。
 与旧 DAG 主要差异：R09 收口点已存在→作废建模块改双路 parity；R13 解耦 R18 各自独立，按 O06 先迁 3 测试后删、删前 owner 再确认；R34 纯删（repoint 目标存在）+R05→R34 降软；R54 升 5 套手维面（gantt_task_detail 别名元组+**三基数 16/15/12 禁统一键名**）；R56 入 fixed（偏离铁律 3 待认账）；新债 N1（can_write_feedback 失忆债门控 R08）/N2（return 0 sentinel）补注释+绑契约；R03 四态 parity（missing 态:267 生产可达，非全死分支）；R29 误标纠回 planned 后 O20 裁 KEEP，E07 改为 R29/G26 先闭合、R26/G18 后删 facade；批次由 16 收缩为 ROOT+4 大批，待裁项按裁后口径执行。

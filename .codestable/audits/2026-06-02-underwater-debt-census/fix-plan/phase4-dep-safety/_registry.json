@@ -1600,7 +1600,7 @@
   "id": "R66",
   "bucket": "B01",
   "home": "B01",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "delta-web-workbench",
@@ -1615,7 +1615,7 @@
    "scheduler_reports_workbench.py",
    "scheduler_workbench_links.py"
   ],
-  "current_evidence_2026_06_05": "scheduler_reports_workbench.py:150-162 死函数 _context_summary(context, suffix='')(suffix 形参为 reports_workbench 版独有特征)原样在,本文件零调用(仅 :150 定义)。计划纯删(Batch-3 最低险)未执行;真正生效的同名函数在 scheduler_workbench_links.py(签名不同)未受影响。",
+  "current_evidence_2026_06_05": "2026-06-09 B执行终态:R66/G03 已 fixed。web/viewmodels/scheduler_reports_workbench.py 中 suffix 版私有死函数 _context_summary 已删除; `rg _context_summary web/viewmodels/scheduler_reports_workbench.py` 零命中。生产/测试代码区 `_context_summary` 仅剩 web/viewmodels/scheduler_workbench_links.py 的 LIVE 异签函数 def:210 与 build_workbench_link 调用:399;未触碰 LIVE 函数。",
   "cluster": "C01",
   "same_file_siblings": [
    "R54"
@@ -1657,9 +1657,9 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-3 B01-structural。与同文件 R54(Batch-2)协调:R54 先落,R66 后删按符号定位。",
-  "planned_deps_hint": "PHASE0 §2 同文件:R54(B01,P5 收口,scheduler_reports_workbench.py)。R54 还同在 navigation_publish+resource_dispatch(3漂移文件)。删 R66 与 R54 收口在不同符号,但同文件须协调避免行号冲突。",
-  "planned_fix_hint": "纯删除(6条中风险最低,红线4:删前已确认零消费方)。删 scheduler_reports_workbench.py:144-157 整个死 _context_summary。【必须按 `def _context_summary(context: Dict[str, Any], suffix: str = '')` 完整签名定位,严禁照报告 :141-154 裸行号删(文件已漂)】。注意 suffix 形参是 reports_workbench 版独有特征,workbench_links 版形参是 target_page/view——以此区分,绝不误删 :254 那个 LIVE 同名函数。",
+  "planned_batch_hint": "Batch-A/G03 已于 2026-06-09 执行完成;本字段仅保留历史前置关系:R54 先 fixed,R66 后按 suffix 签名重定位纯删。",
+  "planned_deps_hint": "R54 同文件行号前置已满足。R66 已在 R54 之后按当前符号删除 reports_workbench 私有死函数;未触碰 scheduler_workbench_links.py 的 LIVE 同名函数。",
+  "planned_fix_hint": "2026-06-09 已执行完毕,勿重复操作。历史修法为纯删除 scheduler_reports_workbench.py 删除前 :139-152 的 `def _context_summary(context: Dict[str, Any], suffix: str = '')` 死函数。删除后 reports_workbench 内该符号零命中;workbench_links.py:210/:399 LIVE 同名函数/调用保留。",
   "phase1_blast": {
    "co_change_within_group": [
     "R54 (scheduler_reports_workbench.py 同文件, B01, P5收口) — PHASE0 §2;R54 还同在 navigation_publish + resource_dispatch(3 漂移文件)"
@@ -1668,12 +1668,12 @@
     "(无)"
    ],
    "downstream_effect": "纯死代码。删除无任何运行期/契约影响。",
-   "fix_invalidation_risk": "(1) 文件已漂(M),真实在 144-157 非报告的 141-154——须按 `def _context_summary` 符号定位,严禁裸行号删。(2) 同文件 R54 若先落会再移行号;R66/R54 须串行或同提交。(3) 删后注意不要误删 scheduler_workbench_links.py:254 那个真正生效的同名函数。",
+   "fix_invalidation_risk": "已闭合。历史风险是旧行号漂移与误删 workbench_links LIVE 同名函数;2026-06-09 已按 suffix 签名重定位并只删 reports_workbench 私有死函数。",
    "id": "R66",
    "lb_colocation_danger": "本文件无 LB。唯一同文件耦合=R54(P5 收口)。删 R66 死函数与 R54 收口在不同符号,但同文件须协调避免行号冲突。",
-   "location_status": "⚠️行号已变 — web/viewmodels/scheduler_reports_workbench.py 文件 git status=M(已漂)。报告引用 141-154;实盘 `def _context_summary(context, suffix='')` 在【第144行】,函数体 144-157。本文件零调用、非 __all__、私有。真正生效的同名函数是 scheduler_workbench_links.py:254(签名不同:(context, target_page, view)),在 :360 build_workbench_link 内被调。",
+   "location_status": "✅已清理 — web/viewmodels/scheduler_reports_workbench.py 内 suffix 版 _context_summary 当前零命中。删除前实盘 def 在 :139,函数体 :139-152。LIVE 同名异签函数仍在 scheduler_workbench_links.py:210,调用点 :399。",
    "pathology": "P6 (reports_workbench 私有副本死函数,从未接线)",
-   "planned_fix_class": "P6 纯删除(6 条中风险最低):删除 scheduler_reports_workbench.py:144-157 的死 _context_summary(prod+test 零引用已证)。与同文件 R54 协调提交顺序。",
+   "planned_fix_class": "已直删(2026-06-09;P6 纯叶子死函数)",
    "prod_consumers": [
     "(无)— git grep 证 _context_summary 在本文件零调用;reports_page_support.py:21 导入本模块但 import 块(21-34)不含 _context_summary(私有_前缀,0 引用确认)"
    ],

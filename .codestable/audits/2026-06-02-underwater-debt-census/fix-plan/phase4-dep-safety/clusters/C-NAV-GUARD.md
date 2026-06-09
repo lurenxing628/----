@@ -50,7 +50,7 @@
 | **R54 ↔ R42**（同 C01，但不同原子簇）| 同文件同改（收口签名）| 二者同改 build_workbench_plan_context 签名(187)+返回 dict(229-258)。R42 删 plan_id 形参(191)/dict 行(233)；R54 加 guard 字段行。**MUST 同批次**——planned_deps「R54→R42 必须同批次」。批次张力：batch_hint 把 R42 列 Batch-3，deps 要求与 R54(Batch-2)同批 → **owner 裁**（R42 提前 or R54 延后）。R42 入口实盘在 navigation_context.py:76-78(plan_id=)，回盘已确认。|
 | **R54 ↔ R60**（同 C01）| 同文件同改 | R60 删 plan_id 字段表(workbench_links.py)，与 guard 投影相邻。删 plan_id 表时禁动 dict:229-258 guard 段；同 R42 族,同批或明确隔离。|
 | **R54 ↔ R22**（同 C01）| 真相源先于收敛 | 若 R22 改 view_context plan_role_filter_fields(277-347) → 真相全集先稳定,R54 再 delegate。R22 须升 24 键 exact parity(corrections A)。|
-| **R54 ↔ R66**（同 C01）| 同文件待确认 | R66 共址 reports_workbench.py+workbench_links.py,需确认是否与 _copy_plan_guard_fields(36-54) 重叠面,待 R66 档案。|
+| **R54 ↔ R66**（同 C01）| 已满足的同文件行号前置 | R54 已先落;R66 已于 2026-06-09 按 suffix 签名重定位并删除 reports_workbench.py 私有死函数(删除前 :139-152)。两者不同符号不重叠;workbench_links.py LIVE `_context_summary` 仍在 :210/:399。|
 | **R44 ↔ R21**（同 C01）| 收口范式参照（软）| R44 照搬 gantt_plan_query.py:46-47 re-export 范式；R21 若先删该 shim,R44 降级为直接 re-export core,**非硬阻塞**。|
 | **R44 ↔ R72/R10**（同 C01）| 同概念别面（软）| effective_plan_role 内联实现(week_plan:232 / reports_plan_template_fields:81),明确**排除出 R44 收口范围**,owner 决定是否随 B02 一并收。|
 | **R58 ↔ LB02**（同 C01）| parity 先于收敛（承重邻接）| LB02 标 file:workbench_links.py 同文件干扰;只要不改 :149-161/:469 符号签名即弱耦合。|

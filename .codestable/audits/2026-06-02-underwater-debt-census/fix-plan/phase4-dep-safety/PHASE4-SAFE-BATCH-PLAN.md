@@ -80,7 +80,7 @@ Batch-A  独立死叶子 / 零前置 / owner=false（最早可落）
   *G02(R64/R65) 同文件 scheduler_navigation_links.py，改点不同不可同质化（见 §1.2）；与 R42(G01)/R67(G34) 同文件四单元串行块
 
 > **2026-06-09 ROOT 执行补登**：G07a/LB01 已 fixed。`core/services/scheduler/operation_execution_feedback_service.py` 只补两处承重注释：`_load_current_official_schedule` 上方钉写侧 fail-CLOSED 第一闸，`_build_event_payload` 写死 `SOURCE_SCHEDULE/ROLE_ADOPTED/None` 上方钉落库前消毒层；硬拒条件、`can_write_feedback` 第二硬门和三写死字段均未改。后续 R17/R20/R14 仍须按符号重 rg，严禁把这些注释解读成可透传 context。
-  *G03(R66) 受 E04 软序，实际延后到 G04(R54) 后按符号重定位；G25(R49旁支) 已并回 Batch-B 的 G24 一次原子执行，不在 Batch-A 单独落
+  *G03(R66) 受 E04 软序，已在 G04(R54) 后于 2026-06-09 按符号重定位并 fixed；G25(R49旁支) 已并回 Batch-B 的 G24 一次原子执行，不在 Batch-A 单独落
 
 Batch-B  依赖 ROOT 承重门 / 单门控前置
   G06(R62，2026-06-08 已fixed) ┃ G07(R17/R20)←G07a🔒 ┃ G08(R15/R17/R20)←与G07同原子
@@ -171,13 +171,13 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ### 1.2 Batch-A — 独立死叶子 / 零前置 / owner=false（最早可落）
 
-**成员（调度单元 + 债）**：G14(R10 死方法 `gantt_service:60-62`)、G16(R45≡R48 整文件删 `config_adapter.py`，2026-06-08 已 fixed)、G21(R28 收口 `parse_finite_float`，2026-06-08 已 fixed)、G28(R23 dedup `_normalize_role` 收口 model)、G31(R38 part 份 + R39 `list_unparsed`)、G32(R38 op_type:73/operator:85 两份)、G35(R36 两死方法)、G37(R02 test-only 壳)、G11(R11≡R63 去重 `_normalize` 收口 `gantt_critical_chain.py`，2026-06-08 已 fixed)、G38(R06+R27+gantt 四空包同提交，2026-06-08 已 fixed)。**G03(R66)** 仅登记归属，受 E04 软序实际延后到 G04(R54) 后执行；**G25(R49 旁支)** 已并回 Batch-B 的 G24 一次原子 fixed，不在 Batch-A 单独执行。**+ 纯删叶子**（原 LEAF-DUP-P4 桶，按 ⚠简化声明归入此批）：R53(`batch_order.py` 旧 :74 一行，2026-06-08 已 fixed)、R61(plan 死簇 `:160/164/172-187` + 重定向负向测试)、R70(`schedule_service.py` 旧 :46-50 死副本，2026-06-08 已 fixed)。**+ G02(R64+R65，2026-06-08 已 fixed)**：权威源 `_interference_rebuilt.md:17` 定义 G02={R64,R65} NAV-PLANID；历史动作是 R64 删除 `_has_navigation_date_range`、R65 完成 `_target_url` 死分支三件套并保留 `TARGET_PAGE_PATHS`。当前本段只保留批次归属和历史原因，不再表示 R64/R65 待删；后续 R42/R67 进入同文件时按符号重 rg。
+**成员（调度单元 + 债）**：G14(R10 死方法 `gantt_service:60-62`)、G16(R45≡R48 整文件删 `config_adapter.py`，2026-06-08 已 fixed)、G21(R28 收口 `parse_finite_float`，2026-06-08 已 fixed)、G28(R23 dedup `_normalize_role` 收口 model)、G31(R38 part 份 + R39 `list_unparsed`)、G32(R38 op_type:73/operator:85 两份)、G35(R36 两死方法)、G37(R02 test-only 壳)、G11(R11≡R63 去重 `_normalize` 收口 `gantt_critical_chain.py`，2026-06-08 已 fixed)、G38(R06+R27+gantt 四空包同提交，2026-06-08 已 fixed)。**G03(R66，2026-06-09 已 fixed)**：已在 G04(R54) 后按 suffix 签名重定位并删除 reports_workbench 私有死函数；**G25(R49 旁支)** 已并回 Batch-B 的 G24 一次原子 fixed，不在 Batch-A 单独执行。**+ 纯删叶子**（原 LEAF-DUP-P4 桶，按 ⚠简化声明归入此批）：R53(`batch_order.py` 旧 :74 一行，2026-06-08 已 fixed)、R61(plan 死簇 `:160/164/172-187` + 重定向负向测试)、R70(`schedule_service.py` 旧 :46-50 死副本，2026-06-08 已 fixed)。**+ G02(R64+R65，2026-06-08 已 fixed)**：权威源 `_interference_rebuilt.md:17` 定义 G02={R64,R65} NAV-PLANID；历史动作是 R64 删除 `_has_navigation_date_range`、R65 完成 `_target_url` 死分支三件套并保留 `TARGET_PAGE_PATHS`。当前本段只保留批次归属和历史原因，不再表示 R64/R65/R66 待删；后续 R42/R67 进入同文件时按符号重 rg。
 
 > **2026-06-08 执行补登**：G02/G11/G14/G16/G21/G28/G31/G32/G35/G37/G38/R53/R61/R70 已在 `_registry.json` 与对应 dossier 登记 fixed。上方成员段保留批次归属和执行纪律，不再表示这些单元仍待执行；后续不要重复处理 R64/R65/R11/R63/R10/R45/R48/R28/R23/R36/R38/R39/R02/R06/R27/gantt 空包/R53/R61/R70。G02 的旧 `scheduler_navigation_links.py` 裸行号已经随删除上移,后续 Batch-C 的 R42/R67 必须按符号重 rg；G11 已把单份 `_normalize_critical_chain_result` 收口到 `gantt_critical_chain.py:67-88`，后续 R12/R55 只能在该单份 helper 上继续改；G16 的旧 sp06 锚点已随 A P1.1 删除测试文件变为 no-op；G21 的 `_safe_float` 保名薄包装仍需保留 fitness 白名单；G38 已把 SP05 service 拓扑元组收回 `("config", "run", "summary")`，并删除四空包 no-import 循环；R53 已删旧 `batch_order.py:74` no-op，现盘 :39 形参/:58 真消费/:74 return 均保留；R61 已删 report_context_filters.py 旧计划行 Python 过滤死簇，当前 live `filter_downtime_rows_for_report_context` / `_row_text` / `normalize_report_resource_filter` 均保留；R70 已删旧 `schedule_service.py:46-50` 死副本，`ValidationError` import 与 run/input_collector live helper 均保留。
 
-**是否原子**：可执行成员**互相独立**（跨文件零碰撞），可各自单提交；簇内多债（G31 R38part+R39、G38 四空包）须各自原子同提交（见前置）。G03 是软序延后项，G25 是并回 G24 的同债旁支，不按 Batch-A 独立提交。整批 owner=false。
+**是否原子**：可执行成员**互相独立**（跨文件零碰撞），可各自单提交；簇内多债（G31 R38part+R39、G38 四空包）须各自原子同提交（见前置）。G03 曾是软序延后项，已于 2026-06-09 fixed；G25 是并回 G24 的同债旁支，不按 Batch-A 独立提交。整批 owner=false。
 
-**为何这批**：全是「零前置、零 owner 裁断、误删均 loud（ImportError/NameError/SyntaxError/测试红）非静默炸」的死叶子，最早可落腾出心智空间。**例外** G03 受 E04 软序（R54 改 reports_workbench:36 漂移 R66:150）→ 实际宜紧随 Batch-C 的 G04 按 suffix 符号重定位（此处只登记其归属，落地时延后）。
+**为何这批**：全是「零前置、零 owner 裁断、误删均 loud（ImportError/NameError/SyntaxError/测试红）非静默炸」的死叶子，最早可落腾出心智空间。**例外已闭合** G03 受 E04 软序（R54 改 reports_workbench 上方区域漂移 R66）→ 已紧随 G04 后于 2026-06-09 按 suffix 符号重定位并删除。
 
 > **⚠本批重 rg 纪律（C5 逐批落地）**：Batch-A 多为整段/整方法删，**删任一处即位移其下所有锚点**，故每删一处后立即 `rg` 复核活近亲在位（go-no-go 即此）。**本批高危锚点符号清单（执行前 rg 现场定位，弃裸行号）**：G02 `_has_navigation_date_range`/`_target_url`/`urlencode`/`query_for_target`（删后复核 `_has_navigation_context`/`TARGET_PAGE_PATHS`/`_REPORT_CONTEXT_FIELD_NAMES`/`preserved_report_context_fields` 在位）、G14 `resolve_version`、G25 `parse_dispatch_rule`（2026-06-08 已并回 G24 fixed）、G37 `report.py:180` 兄弟壳、G38 `_assert_init_has_no_imports`、G11 `_copy_critical_chain_result`/`_normalize`。G02 与 R42(G01)/R67(G34) same_file，删后其下锚点系统性上移，交接给 Batch-C（见 §1.0 三批四单元串行块）。
 
@@ -304,7 +304,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - R54 禁区：links.py `:292-296` 判定方向 / `:149-161` gate / `:248` / `:469-473` / view_context fail-closed 默认；`_PUBLIC_FILTER_DROP_KEYS`（禁 delegate）。
 - R22/R21 禁区：view_context `:74`/`:65` + builder:158 + to_dict:46-71 + gantt_plan_query `:32-39 wrapper`/`:11-13 import`/`:50-156` 四 LIVE。
 - R09 STRICT-4 全程；R15 provider 空值短路 + R19 snapshot:40 sorted；R18 repo:399-405 六格 stub；R13 provider:110/113 raise 软禁区；R05 collar :65-66 双轨 + `_normalize_team_axis:65` + repo team join :462-463；R47 invalid 4 活实参 model:173/:225+service:170/:222；LB07 coercion :470/loud raise 族/30 字段表；R31 :6/:7/:8 活常量；degradation:15。
-- R42 禁区：link_query :117/119/120+:153/155 三真身份参、navigation_context:79/80（R56 adopted 强制 fail-CLOSED 方向硬门）、:7 TARGET_PAGE_PATHS、workbench_links.py:258 LIVE _context_summary、三张字段表非 plan_id 键、`_EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS:266`。
+- R42 禁区：link_query :117/119/120+:153/155 三真身份参、navigation_context:79/80（R56 adopted 强制 fail-CLOSED 方向硬门）、:7 TARGET_PAGE_PATHS、workbench_links.py:210 LIVE _context_summary、三张字段表非 plan_id 键、`_EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS:266`。
 
 **收口行为差异检查项（None vs raise 反例逐条）**：
 - R54：5 套 delegate 前后逐键四态（缺失/None/False/True）拦放一致；L5 「is_comparison_plan=True 但函数重算=False」反例必拦（爆点 #3）；reports 第二注入路径丢 3 阻断态反例必拦。
@@ -527,7 +527,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ### 3.2 承重护栏方向硬门（认账注释专属·内联自包含）
 
-> 全文凡「见 §3.2 方向硬门」均指本表。R42/R66 删 plan_id 时若顺手补 R56/LB06 认账注释，极易粘错方向（fail-CLOSED→fail-OPEN）= 承重护栏反转，**比漏边更危险**。凡触碰下述行，**先核现盘 fail-CLOSED 方向再下笔，方向写反 = 承重击穿按 P0 处理**（实盘以 `_interference_rebuilt.md §3.2` 为准，执行时重 rg）。
+> 全文凡「见 §3.2 方向硬门」均指本表。R42 删 plan_id 时若顺手补 R56/LB06 认账注释，极易粘错方向（fail-CLOSED→fail-OPEN）= 承重护栏反转，**比漏边更危险**。凡触碰下述行，**先核现盘 fail-CLOSED 方向再下笔，方向写反 = 承重击穿按 P0 处理**（实盘以 `_interference_rebuilt.md §3.2` 为准，执行时重 rg）。R66/G03 已按 suffix 签名纯删 `_context_summary` 死函数，不属于 plan_id 删除或 R56/LB06 认账注释动作。
 
 | 禁区行 | 现盘方向（实盘 rg）| 认账注释必须写 | 严禁 |
 |---|---|---|---|
@@ -545,7 +545,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 | # | 风险 | 严重度 | 触发条件 | 缓解 | 监测信号 |
 |---|---|---|---|---|---|
 | RK01 | R54 collar 未扩产即 5 套 delegate | P0 | 跳过 ROOT collar 扩产前置直接 Batch-C delegate | ROOT collar 扩 3 键 fail-CLOSED 产出点 owner 审过为 G04 硬前置（爆点 #1） | `_is_current_official_identity:294` not None 旧版冒充现行；feedback write url 对历史版放行 |
-| RK02 | 认账注释方向写反（fail-CLOSED→fail-OPEN） | P0 | R42/R66 认账注释触碰 navigation_context:79 / LB06 双宿主时粘 §90 LB-B4 旧文案 | §3.2 方向硬门：下笔前核现盘 fail-CLOSED 方向 | 注释写「非法 role 放行/默认开放」即反转 |
+| RK02 | 认账注释方向写反（fail-CLOSED→fail-OPEN） | P0 | R42 认账注释触碰 navigation_context:79 / LB06 双宿主时粘 §90 LB-B4 旧文案 | §3.2 方向硬门：下笔前核现盘 fail-CLOSED 方向；R66/G03 不触碰该注释面 | 注释写「非法 role 放行/默认开放」即反转 |
 | RK03 | R09 误删 STRICT 当重复副本 | P0 | 全仓 grep `_positive_int` 撞 12 处同名异义，误删 scope:9/feedback_support:161 | §3.1 family 对照表（实盘 12 处：Optional×5/STRICT×4/异签×3），收编只动 Optional 的 A/B 两份，STRICT-4 一字不碰 | 坏值由 raise 变 None 静默；op_id 误命中相邻行 |
 | RK04 | R42 漏 dashboard_workbench_context.py:92 删点 | P0 | 照 dossier 删 :191 形参未补 :92 | 删点清单 MUST 含 :92 同提交（爆点 #21） | dashboard 值班台首页启动 TypeError 500 |
 | RK05 | R05 步3 先于步1（搬谓词谓词消失） | P0 | 不遵硬序，先收敛收口到未扩 collar | 硬序步1扩→步2 parity→步3 搬，不可换序 | 班组视角静默返全量坏数据 / 全量视图整页 500 |
@@ -715,7 +715,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 | edge-id | 源→汇 | 类型 | 约束含义（违序/不遵后果）|
 |---|---|---|---|
 | E03 | G04(R54)→G01(R42/R60) | **H** | 同符号 build_workbench_plan_context co-change，R42 删形参须 rebase R54 扩产后；MUST 同批 |
-| E04 | G04(R54)→G03(R66) | S | R54 改 reports_workbench:36 漂移 R66:150，R66 按 suffix 符号重定位 |
+| E04 | G04(R54)→G03(R66) | S/P | 已满足:R54 改 reports_workbench 上方区域后,R66 按 suffix 符号重定位到删除前 :139-152 并于 2026-06-09 fixed |
 | E05 | G23(R33)→G17(R31) | **H** | facade 删序：先删壳 import 再删 shared 源，否则 facade:11 残 import ImportError |
 | E06 | G23(R33)→G17(R30,R31) | **H** | 三常量 re-export，壳 R33 先停 import；R30/R31 同窗口同 diff |
 | E07 | G26(R29)→G18(R26) | **H** | facade 删晚于收敛（2 离线消费者）；O20 KEEP 时该前置以 KEEP 注释闭合 |
@@ -769,7 +769,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 | 🟢 低-中 | `execution_snapshot.py` | R19+R01+R46(__all__ 块)| E16 已降伪串行边；R19 强制保 `sorted:40`（sha256 指纹）|
 | 🟢 低 | `web/.../reports_export_support.py`+`scheduler_navigation_links.py`(两元组)| R42+R60+R67(+R64/R65 G02 已 fixed)| E17 diff-hunk 串行；G02 已完成,后续只复核 `TARGET_PAGE_PATHS` 仍保留并按符号重 rg 当前 navigation_links 锚点；**本文件即三批四单元串行块**（见 §1.0）|
 | 🔴 承重邻 | `models/operation_execution_scope.py` | R09 收口家(:9)+LB01 最终底(:36-50)| E28 同文件承重毗邻；R09 收编禁碰 :36-50；**承重文件 +1=6** |
-| 🟡 中 | `web/viewmodels/scheduler_reports_workbench.py`(L1)| R54·L1(12 键别名源键)+R66+R42/R60 邻 | R54 五套同窗口；禁向 16 键看齐 |
+| 🟡 中 | `web/viewmodels/scheduler_reports_workbench.py`(L1)| R54·L1(12 键别名源键)+R66 fixed+R42/R60 邻 | R54 五套同窗口已落；R66 已按 suffix 签名纯删；后续仍禁向 16 键看齐 |
 | 🟡 中 | `web/viewmodels/dashboard_workbench_context.py`(L4)| R54·L4(16 键≡L2)| R54 五套同窗口；删 :191 形参后 :92 dict 键 TypeError（爆点 #21）|
 | 🟡 中 | `web/routes/domains/scheduler/scheduler_resource_dispatch.py`(L3)| R54·L3(15 键缺 plan_role_status)| R54 五套同窗口；禁补 plan_role_status「补齐」16 键 |
 | 🟡 中 | `web/viewmodels/scheduler_gantt_task_detail.py`(L5)| R54·L5(别名元组异机制)| R54 五套同窗口；别名元组机制禁混并 |

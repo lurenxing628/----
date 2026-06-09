@@ -267,7 +267,7 @@
  "R66": {
   "id": "R66",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -276,7 +276,7 @@
   "siblings": [
    "R54"
   ],
-  "batch": "Batch-3 B01-struct",
+  "batch": "Batch-A/G03 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,

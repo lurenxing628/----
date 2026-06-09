@@ -136,22 +136,6 @@ def _execution_review_row_resource(row: Dict[str, Any]) -> Dict[str, str]:
     return {"resource_type": "", "resource_id": "", "resource_label": "", "view": "machine"}
 
 
-def _context_summary(context: Dict[str, Any], suffix: str = "") -> str:
-    parts = [
-        _text(context.get("version_label")),
-        _text(context.get("plan_role_label")),
-    ]
-    if context.get("date_from") and context.get("date_to"):
-        parts.append(f"{context['date_from']} ～ {context['date_to']}")
-    if context.get("resource_label"):
-        parts.append(_text(context.get("resource_label")))
-    if context.get("batch_id"):
-        parts.append(_text(context.get("batch_id")))
-    if suffix:
-        parts.append(suffix)
-    return "，".join(part for part in parts if part)
-
-
 def build_downtime_report_link(
     context: Dict[str, Any],
     *,
