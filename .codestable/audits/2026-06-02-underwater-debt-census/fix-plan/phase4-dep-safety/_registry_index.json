@@ -112,7 +112,7 @@
  "R08": {
   "id": "R08",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -122,7 +122,7 @@
    "R09"
   ],
   "batch": "Batch-3 B01-struct",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "feedback_write_enabled 休眠开关 + 生产不可达的'保护未开启'提示"
@@ -552,7 +552,7 @@
  "R09": {
   "id": "R09",
   "bucket": "B05",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
@@ -563,7 +563,7 @@
    "R08"
   ],
   "batch": "Batch-6(B05)，但 R09",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "_positive_int 可空正整数助手在执行车道三处逐字节复制"

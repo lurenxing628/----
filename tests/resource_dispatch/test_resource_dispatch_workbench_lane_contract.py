@@ -237,3 +237,88 @@ def test_nonformal_resource_dispatch_pages_do_not_emit_write_addresses(tmp_path,
         assert "/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual" not in body
         assert "/scheduler/resource-dispatch/execution/actual-template?" not in body
         assert "/scheduler/resource-dispatch/execution/import?" not in body
+
+
+def test_available_actions_reachable_write_gate_combos_stay_stable() -> None:
+    # R08 收口护栏:写闸可达组合 (can_write, feedback_write_enabled) = (T,T)/(F,T)/(F,F)
+    # 的动作清单与禁用文案必须零漂移;(T,F) 组合因 N1 同源不变式
+    # (get_execution_context 两键同源、task_card 路由侧硬传 (True,True)) 生产不可达,不锁。
+    from core.models.operation_execution_labels import (
+        EXECUTION_ACTION_FILL_ACTUAL,
+        EXECUTION_ACTION_VIEW_RECORDS,
+    )
+    from web.viewmodels.scheduler_resource_dispatch_execution import (
+        build_available_actions,
+        build_execution_payload,
+    )
+
+    tt = build_available_actions(
+        can_write=True, feedback_write_enabled=True, status="in_progress", status_label="进行中"
+    )
+    assert [a["action"] for a in tt] == [EXECUTION_ACTION_FILL_ACTUAL, EXECUTION_ACTION_VIEW_RECORDS]
+    assert tt[0]["enabled"] is True and tt[0]["disabled_reason"] == ""
+    assert tt[1]["enabled"] is True
+
+    tt_done = build_available_actions(
+        can_write=True, feedback_write_enabled=True, status="completed", status_label="已完成"
+    )
+    assert tt_done[0]["enabled"] is False
+    assert tt_done[0]["disabled_reason"] == "当前状态是已完成，不能填写实际情况。"
+
+    for write_enabled in (True, False):
+        readonly = build_available_actions(
+            can_write=False, feedback_write_enabled=write_enabled, status="in_progress", status_label="进行中"
+        )
+        assert [a["action"] for a in readonly] == [EXECUTION_ACTION_VIEW_RECORDS]
+        payload = build_execution_payload(
+            {
+                "plan_identity": {"label": "历史方案"},
+                "can_write_feedback": False,
+                "feedback_write_enabled": write_enabled,
+                "rows": [],
+                "states": {},
+            }
+        )
+        assert payload["disabled_reason"] == "当前不是最新正式采用方案，不能填写现场记录。"
+        assert payload["plan_identity"]["guardrail_text"] == "当前不是最新正式采用方案，不能填写现场记录。"
+
+    payload_tt = build_execution_payload(
+        {
+            "plan_identity": {"label": "正式采用方案"},
+            "can_write_feedback": True,
+            "feedback_write_enabled": True,
+            "rows": [],
+            "states": {},
+        }
+    )
+    assert payload_tt["disabled_reason"] == ""
+    assert payload_tt["plan_identity"]["guardrail_text"] == ""
+
+
+def test_positive_int_consolidated_to_execution_scope_strict_parser() -> None:
+    # R09 收编 parity:A(service)/B(viewmodel) 两份 _positive_int 已委托 scope.py 收口点
+    # parse_positive_execution_int。合法面与收编前零漂移;脏值面(5.9/3.0/True)按 O01 裁定
+    # 统一严格化为 None——旧宽松 int() 截断(5.9→5)正是"现场记录写到错工序"的入口。
+    from core.services.scheduler.resource_dispatch_execution_service import (
+        _positive_int as service_positive_int,
+    )
+    from web.viewmodels.scheduler_resource_dispatch_execution import (
+        _positive_int as viewmodel_positive_int,
+    )
+
+    for fn in (service_positive_int, viewmodel_positive_int):
+        # 合法面(收编前后零漂移)
+        assert fn(7) == 7
+        assert fn("7") == 7
+        assert fn(" 7 ") == 7
+        assert fn(None) is None
+        assert fn("") is None
+        assert fn("abc") is None
+        assert fn("5.9") is None
+        assert fn(0) is None
+        assert fn(-3) is None
+        assert fn(False) is None
+        # 严格面(O01 裁定的有意差异:旧宽松 int() 截断接受 5.9→5/True→1,现统一拒绝)
+        assert fn(5.9) is None
+        assert fn(3.0) is None
+        assert fn(True) is None

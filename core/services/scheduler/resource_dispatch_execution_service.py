@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from core.infrastructure.errors import ValidationError
+from core.models.operation_execution_scope import parse_positive_execution_int
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from data.repositories.schedule_repo import ScheduleRepository
@@ -22,11 +23,12 @@ def _text(value: Any) -> str:
 
 
 def _positive_int(value: Any) -> Optional[int]:
+    # R09 收编:委托唯一收口点 parse_positive_execution_int(严格:bool/小数/非正数均拒),
+    # 坏值返回 None 由调用方按"无效"处理——5.9 不再截断成 5 误命中相邻工序。
     try:
-        parsed = int(value)
-    except (TypeError, ValueError):
+        return parse_positive_execution_int(value, "resource_dispatch_execution")
+    except ValueError:
         return None
-    return parsed if parsed > 0 else None
 
 
 def _context_is_current_official(context: ExecutionFeedbackContext, latest_version: int) -> bool:

@@ -34,7 +34,7 @@
 | **G19** | PARSE-INT | {R01, R04} A1 ✅ fixed | **2026-06-08 已 fixed**。同文件 schedule_payload_contract.py 强行号互撞已按原子顺序闭合：R01 先删死链缩 R04 收口面，R04 后收口并同步异常面 | 已执行：删 `_iter/count/has` 死链、旧 re-export 和 SP05 续命断言；`_strict_positive_int` 委托 `parse_required_int(..., reject_integer_float=True)`；剩余 5 处调用点捕获 `ValidationError`；B/C 哨兵仅注释+parity |
 | **G20** | PARSE-INT | {R59} A2 ✅ fixed | **2026-06-08 已 fixed**。独立文件 report_number_parsing.py，已在 GF1 默认 False + strict 模式前置满足后收口 | 已删除私有正则 `_INT_TEXT_PATTERN` 与 `_parse_plain_report_int`；`parse_report_nonnegative_int` 保留 blank 短路并委派 `parse_required_int(..., min_value=0, reject_integer_float=True)`；未动 `parse_report_int` / `__all__` |
 | **G21** | PARSE-INT | {R28} A3 | **2026-06-08 已 fixed**。完全独立叶子,已保留 `_safe_float` 名并收口到已存在 parse_finite_float,不改 number_utils 任何行,不依赖 F1 | 已落地: `allow_none=True`;fitness 白名单:77 经 `-k test_no_new_local_parse_helpers` 实测保留 |
-| **G22** | PARSE-INT | {R08, R09} A4 ⏸ | 同文件 viewmodel 串行避免行号互撞;R09 跨子簇(B 副本归此,A 副本归 G19 邻域) | R08 先(B01)→R09 后(B05)串行;O01/O02 已裁：只收编 A/B 两 Optional 副本，C 严格保持不动，persistence_errors:13 归 R04 禁区+注释；R09 双路 parity(C 严格 5.9→None vs A/B 宽松 5.9→5) |
+| **G22** | PARSE-INT | {R08, R09} A4 ✅ fixed(2026-06-10) | 同文件 viewmodel 串行避免行号互撞;R09 跨子簇(B 副本归此,A 副本归 G19 邻域) | R08 先(B01)→R09 后(B05)串行;O01/O02 已裁：只收编 A/B 两 Optional 副本，C 严格保持不动，persistence_errors:13 归 R04 禁区+注释；R09 双路 parity(C 严格 5.9→None vs A/B 宽松 5.9→5) |
 | **GF1** | PARSE-INT | F1(reject_integer_float 非债) ✅ fixed | A1/A2 共享前置门已在 `strict_parse` 落地并经 `parse_required_int` 透传，**默认 False**(默认 True 会炸 sgs_graph 等 parse_required_int 调用方) | 2026-06-08 已由 G19 自证默认兼容与严格拒绝两路；G19/G20 均已消费该前置 |
 | **G23** | COMPAT-DISPATCH | {R33, R30} A1 | 同改 config_service_component_contract 测试+R30 删 shared 实现/R33 删壳 re-export,删序错即 ImportError | 硬序 R33 步1(迁两测试 import)→R30(删 shared 实现/三 FieldPolicy/三常量)→R33 步2/3(删壳+:411 断言) |
 | **G24** | COMPAT-DISPATCH | {R49, R50, R51} A2 | **2026-06-08 已 fixed**。同物理文件 dispatch_rules.py 三债行号互撞的风险已通过一次原子 diff 关闭 | 已按符号定位删除 R49 死别名、R51 两解析器、R50 `mean_positive` + `import statistics`，并连退两份续命测试；`import math` / `build_dispatch_key` / 活同名前缀函数保留 |
@@ -150,8 +150,8 @@ Batch-C（身份族收敛 / 收口委托，依赖承重族 + parity）
   G10(R18，R19 repo私有版 fixed) ← R18 已独立补 repo stub 护栏注释；R19 repo 私有版已保留并补顺序无关注释/parity；R13 不碰 repo
   G29(R72)⏸        ← O19 已裁 web/core 各落各点 + 补 request import（E21 软自 G04）
   G15(R47+R71)⏸    ← G15a 🔒（R71 已裁仅 parity，不物理合并）
-  G22(R08+R09)⏸    ← N1 注释(E26) + R07 前置(E25,已满足)；O01/O02 已裁双路 parity
-  G33(R05 步3)🔒⏸  ← G33a 步1/步2（按 owner 已裁 collar 形态）
+  G22(R08+R09)✅ fixed(2026-06-10) ← N1 注释(E26 已闭) + R07 前置(E25 已满足)；O01/O02 已按双路 parity 执行
+  G33(R05 步3)✅ fixed(2026-06-10) ← G33a 步1/步2(fae8829b 已落)
   G34(R67)⏸        ← 按 O18 裁定处理第 4 处 superset 收编
   G17(R31)         ← E05/E06 与 G23 同窗口
   G23(R30+R33)     ← R33 步1 先（簇内硬序）

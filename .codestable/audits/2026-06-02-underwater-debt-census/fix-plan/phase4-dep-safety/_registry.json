@@ -707,7 +707,7 @@
   "id": "R08",
   "bucket": "B01",
   "home": "B01",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "scheduler-dispatch",
@@ -722,7 +722,7 @@
    "regression_..._workbench_lane_contract.py",
    "scheduler_resource_dispatch_execution.py"
   ],
-  "current_evidence_2026_06_05": "scheduler_resource_dispatch_execution.py 原样未动:_FEEDBACK_DISABLED_REASON='现场记录保护还没开启…'仍在 :25;_fill_actual_disabled_reason :227-228 仍 `if not feedback_write_enabled: return _FEEDBACK_DISABLED_REASON`;build_execution_payload :367 仍 `elif not feedback_write_enabled`。休眠开关分支+生产不可达死文案未删(计划方案A 删分支+常量保参数,未执行)。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(G22 候选 A,计划正文执行口径): 已删 :25 死常量 _FEEDBACK_DISABLED_REASON('现场记录保护还没开启…')、_fill_actual_disabled_reason 的 `if not feedback_write_enabled: return …` 死分支、build_execution_payload 的 `elif not feedback_write_enabled` 死分支;feedback_write_enabled 形参全部保留(fill_enabled 合取项活消费,未来总开关语义不受影响——若 roadmap 启用总开关只需恢复分支,参数面零破坏)。删除安全前提=N1 同源守卫(get_execution_context 两键同源恒等测试)+task_card 路由侧硬传 (True,True),(can_write=True,write_enabled=False) 两条来源路径均不可达。删除前先落可达组合 parity test_available_actions_reachable_write_gate_combos_stay_stable((T,T)/(F,T)/(F,F) 文案与动作零漂移),删后仍绿;全仓 rg _FEEDBACK_DISABLED_REASON 零命中(仅收口说明注释引用旧文案)。",
   "cluster": "C01",
   "same_file_siblings": [
    "R09"
@@ -781,7 +781,7 @@
     "(无)— git grep 全仓 tests 零处断言 '现场记录保护'/FEEDBACK_DISABLED/_FEEDBACK_DISABLED_REASON 字符串"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R42": {
@@ -3137,7 +3137,7 @@
   "id": "R09",
   "bucket": "B05",
   "home": "B05",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P5",
   "partition": "scheduler-dispatch",
@@ -3156,7 +3156,7 @@
    "scheduler_resource_dispatch_execution.py",
    "scheduler_resource_dispatch_execution_routes.py"
   ],
-  "current_evidence_2026_06_05": "三份私有 _positive_int 字节拷贝仍在(resource_dispatch_execution_service.py:23、viewmodels/scheduler_resource_dispatch_execution.py:32、原 routes 副本已被 B01 重构搬到 scheduler_resource_dispatch_execution_context.py:27 但仍是同体私有拷贝未收口);批准新建 sink parse_optional_positive_int 全仓 grep=0(F3 未建),无任何 sink/护栏注释",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(O01/O02 已裁): A 副本(resource_dispatch_execution_service.py)与 B 副本(viewmodels/scheduler_resource_dispatch_execution.py)的 _positive_int 已收编为 scope.py:9 parse_positive_execution_int 的薄 wrap(catch ValueError→None,与 C 路 execution_context.py 同形态);调用点(service :182/:183 与 viewmodel :259/:260/:355 一带,按符号)零改动——另注:service `_op_ids`(:167-177,内含 :171 调用点)经盲审证实为全仓零调用死方法,非活喂入面,未单独登记债务留 owner 裁处。裁定外同向(fail-closed)顺带严格化:'+7'/下划线数字串/bytes/inf 由旧 int() 可解析变 None,其中 float('inf') 旧版裸抛 OverflowError(catch 面不含)现归 None 属顺带崩溃修复;Unicode 数字(全角'７'等)两版接受面一致零漂移。旧'新建 parse_optional_positive_int sink'方案已按 C1 作废——收口点已存在。两路 parity 已落 test_positive_int_consolidated_to_execution_scope_strict_parser:合法面(7/'7'/' 7 '/None/''/abc/'5.9'/0/-3/False)零漂移,严格面按 O01 统一(5.9/3.0/True→None,旧宽松截断 5.9→5 退场)。爆点 #12 audit:B 副本 `or 0` 兜底(现盘 :259/:260)下,脏 5.9 由旧'截断成 5 误命中相邻工序'变'None or 0=0 无效哨兵'——build_task_card :292 `if op_id > 0 and schedule_id > 0` 守卫直接跳过 task_key 生成(留空串,卡片不可写),较旧行为更安全;build_execution_payload 行级入口(op_id is None: continue)直接跳脏行。STRICT-4(scope:9/feedback_support/public_errors/auto_assign)与 scope.py:36-50 LB01 最终底一字未碰(git diff 实证);persistence_errors:13 按 O02 归 R04 禁区未卷入。",
   "cluster": "C01",
   "same_file_siblings": [
    "R07",
@@ -3268,7 +3268,7 @@
     "tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R28": {
