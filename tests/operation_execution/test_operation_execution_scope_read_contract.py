@@ -80,9 +80,6 @@ class _FakeExecutionFactRepo:
     def aggregate_states_by_scopes(self, scopes):
         return {scope: self._states_by_scope.get(scope) for scope in scopes}
 
-    def list_events_by_scopes(self, scopes):
-        return []
-
 
 def _scope(op_id: int = 10) -> OperationExecutionScope:
     return OperationExecutionScope.from_values(
@@ -234,6 +231,7 @@ def test_execution_fact_provider_keeps_blank_actual_times_optional(blank_value) 
         ("2026/05/01T08:10", datetime(2026, 5, 1, 8, 10)),
         ("2026-05-01", datetime(2026, 5, 1)),
         ("2026-05-01 08:10:30", datetime(2026, 5, 1, 8, 10, 30)),
+        ("2026-05-01 08：10", datetime(2026, 5, 1, 8, 10)),
         (datetime(2026, 5, 1, 8, 10, 30, 123456), datetime(2026, 5, 1, 8, 10, 30)),
     ],
 )
@@ -243,7 +241,7 @@ def test_execution_fact_provider_parses_valid_actual_times_like_operation_event_
     assert fact.actual_start_time == expected
 
 
-@pytest.mark.parametrize("bad_value", ["not-a-date", "2026-02-30 08:10:00", 0, False])
+@pytest.mark.parametrize("bad_value", ["not-a-date", "2026-02-30 08:10:00", "2026-05-01 08:10:00.123456", 0, False])
 def test_execution_fact_provider_rejects_bad_actual_time_loudly(bad_value) -> None:
     with pytest.raises(ValueError, match="event_time"):
         _fact_from_actual_times(bad_value)
