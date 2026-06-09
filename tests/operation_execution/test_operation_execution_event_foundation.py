@@ -89,6 +89,20 @@ def _seed_plan(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _seed_extra_batch_operations(conn: sqlite3.Connection) -> None:
+    conn.executemany(
+        """
+        INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
+        VALUES (?, ?, 'B1', ?, ?, ?, 'internal', 'scheduled')
+        """,
+        [
+            (20, "OP20", "piece-b", 20, "铣削"),
+            (30, "OP30", "piece-c", 30, "钻孔"),
+        ],
+    )
+    conn.commit()
+
+
 def _seed_second_schedule(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
@@ -373,6 +387,21 @@ def test_operation_execution_repository_rejects_unscoped_op_reads(tmp_path: Path
             repo.aggregate_states_by_op_ids([10])
         with pytest.raises(ValueError, match="完整计划身份"):
             repo.state_revision_for_op(10)
+    finally:
+        conn.close()
+
+
+def test_operation_execution_repository_batch_ids_by_op_ids_is_order_independent(tmp_path: Path) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        _seed_extra_batch_operations(conn)
+        repo = OperationExecutionEventRepo(conn)
+
+        expected = {10: "B1", 20: "B1", 30: "B1"}
+
+        assert repo._batch_ids_by_op_ids([30, 10, 20, 10, 0, -1, "x", None]) == expected
+        assert repo._batch_ids_by_op_ids([10, 20, 30]) == expected
     finally:
         conn.close()
 

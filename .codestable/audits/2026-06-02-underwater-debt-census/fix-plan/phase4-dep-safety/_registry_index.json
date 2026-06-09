@@ -1156,7 +1156,7 @@
  "R19": {
   "id": "R19",
   "bucket": "B13",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
@@ -1167,7 +1167,7 @@
    "R15",
    "R18"
   ],
-  "batch": "G09 next after R15",
+  "batch": "G09/G10 R19 fixed; next R13/R18",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,

@@ -13,7 +13,7 @@ from core.infrastructure.database import get_connection
 from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.operation_execution_state import OperationExecutionState
 from core.services.scheduler.execution_fact_provider import ExecutionFact, ExecutionFactProvider
-from core.services.scheduler.execution_snapshot import build_execution_snapshot
+from core.services.scheduler.execution_snapshot import build_execution_snapshot, positive_op_ids
 from core.services.scheduler.operation_execution_feedback_service import ExecutionFeedbackContext
 from core.services.scheduler.resource_dispatch_actual_records import TaskRef
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
@@ -209,11 +209,11 @@ def test_execution_fact_provider_rejects_include_op_id_without_scope(tmp_path, m
             start_time="2026-05-01 00:00:00",
             end_time="2026-05-02 00:00:00",
         )
-        with pytest.raises(ValueError, match="op_id=20"):
+        with pytest.raises(ValueError, match="现场执行事实缺少完整计划身份：op_id=20"):
             ExecutionFactProvider(conn).facts_by_op_id_for_plan_rows(
                 rows,
                 {"version": 2, "source_table": "schedule", "effective_plan_role": "adopted"},
-                include_op_ids=[10, 20],
+                include_op_ids=[30, 20, 10, 20, 0, -1, "x", None],
             )
     finally:
         conn.close()
@@ -276,6 +276,38 @@ def test_execution_snapshot_revision_includes_plan_identity() -> None:
     assert v1.revision != v2.revision
     assert "schedule=100" in v1.identity_revisions[10]
     assert "schedule=200" in v2.identity_revisions[10]
+
+
+def test_execution_snapshot_sorts_and_dedupes_op_ids_for_stable_revision() -> None:
+    def fact(op_id: int) -> ExecutionFact:
+        return ExecutionFact(
+            op_id=op_id,
+            batch_id=f"B{op_id}",
+            actual_status="not_started",
+            actual_start_time=None,
+            actual_end_time=None,
+            actual_machine_id=None,
+            actual_operator_id=None,
+            last_event_schedule_version=None,
+            last_event_schedule_id=None,
+            state_revision=f"{op_id}:0:0",
+            schedule_version=1,
+            schedule_id=100 + op_id,
+            source_table="schedule",
+            effective_plan_role="adopted",
+            scenario_id=None,
+        )
+
+    facts = {op_id: fact(op_id) for op_id in (1, 2, 3)}
+    messy_ids = [3, 1, 2, 1, 0, -1, "x", None]
+    ordered = build_execution_snapshot(facts, [1, 2, 3])
+    messy = build_execution_snapshot(facts, messy_ids)
+
+    assert positive_op_ids(messy_ids) == [1, 2, 3]
+    assert positive_op_ids([]) == []
+    assert positive_op_ids(None) == []
+    assert messy.op_ids == [1, 2, 3]
+    assert messy.revision == ordered.revision
 
 
 def test_execution_snapshot_rejects_fact_without_plan_identity() -> None:

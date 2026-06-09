@@ -65,6 +65,7 @@ def _columns_sql() -> str:
 
 
 def _positive_ids(values: Iterable[Any]) -> List[int]:
+    # _batch_ids_by_op_ids 只做 SQL IN 查询并落 dict，结果顺序无关；保留 repo 本地 helper，避免 data 层依赖 service。
     seen: Set[int] = set()
     out: List[int] = []
     for raw in values or []:

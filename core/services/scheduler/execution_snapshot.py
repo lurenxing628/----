@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Sequence
 
-from core.services.scheduler.execution_fact_provider import ExecutionFact, ExecutionFactProvider
+if TYPE_CHECKING:
+    from core.services.scheduler.execution_fact_provider import ExecutionFact
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ def positive_op_ids(values: Sequence[int]) -> List[int]:
             continue
         seen.add(op_id)
         out.append(op_id)
+    # 快照 revision 按 op_id 顺序拼 hash；这里故意排序，避免同组工序因输入顺序不同产生不同指纹。
     return sorted(out)
 
 
@@ -106,6 +108,8 @@ def collect_execution_snapshot_for_plan_rows(
     op_ids: Sequence[int],
     logger=None,
 ) -> ExecutionSnapshot:
+    from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
+
     ids = positive_op_ids(op_ids)
     facts = ExecutionFactProvider(conn, logger=logger).facts_by_op_id_for_plan_rows(
         rows,

@@ -12,6 +12,7 @@ from core.models.operation_execution_event import (
 from core.models.operation_execution_scope import OperationExecutionScope, operation_execution_scope_from_event
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
 
+from .execution_snapshot import positive_op_ids
 from .operation_execution_scope_read import scopes_by_op_id_for_plan_rows
 
 
@@ -72,18 +73,7 @@ def _fact_from_state(
 
 
 def _positive_op_ids(values: Sequence[int]) -> List[int]:
-    seen = set()
-    out: List[int] = []
-    for raw in values or []:
-        try:
-            op_id = int(raw)
-        except (TypeError, ValueError):
-            continue
-        if op_id <= 0 or op_id in seen:
-            continue
-        seen.add(op_id)
-        out.append(op_id)
-    return out
+    return positive_op_ids(values)
 
 
 def _parse_execution_time(value: Any) -> Optional[datetime]:
