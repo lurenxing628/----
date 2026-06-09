@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from io import BytesIO
 from urllib.parse import unquote
 
@@ -9,6 +10,7 @@ import openpyxl
 import pytest
 
 from core.infrastructure.database import get_connection
+from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.operation_execution_state import OperationExecutionState
 from core.services.scheduler.execution_fact_provider import ExecutionFact, ExecutionFactProvider
 from core.services.scheduler.execution_snapshot import build_execution_snapshot
@@ -69,6 +71,43 @@ def _summary_dict(wb) -> dict:
         if key:
             out[str(key)] = value
     return out
+
+
+class _FakeExecutionFactRepo:
+    def __init__(self, states_by_scope):
+        self._states_by_scope = states_by_scope
+
+    def aggregate_states_by_scopes(self, scopes):
+        return {scope: self._states_by_scope.get(scope) for scope in scopes}
+
+    def list_events_by_scopes(self, scopes):
+        return []
+
+
+def _scope(op_id: int = 10) -> OperationExecutionScope:
+    return OperationExecutionScope.from_values(
+        schedule_version=2,
+        schedule_id=100,
+        op_id=op_id,
+        batch_id="B1",
+        source_table="schedule",
+        effective_plan_role="adopted",
+    )
+
+
+def _fact_from_actual_times(actual_start_time, actual_end_time=None) -> ExecutionFact:
+    scope = _scope()
+    state = OperationExecutionState(
+        op_id=10,
+        batch_id="B1",
+        current_status="processing",
+        actual_start_time=actual_start_time,
+        actual_end_time=actual_end_time,
+        state_revision="10:1:1",
+    )
+    provider = ExecutionFactProvider(None)
+    provider.event_repo = _FakeExecutionFactRepo({scope: state})
+    return provider.facts_by_scope([scope])[scope]
 
 
 def test_current_task_card_ignores_superseded_same_op_feedback(tmp_path, monkeypatch) -> None:
@@ -178,6 +217,35 @@ def test_execution_fact_provider_rejects_include_op_id_without_scope(tmp_path, m
             )
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize("blank_value", [None, "", " "])
+def test_execution_fact_provider_keeps_blank_actual_times_optional(blank_value) -> None:
+    fact = _fact_from_actual_times(blank_value, blank_value)
+
+    assert fact.actual_start_time is None
+    assert fact.actual_end_time is None
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        ("2026/05/01T08:10", datetime(2026, 5, 1, 8, 10)),
+        ("2026-05-01", datetime(2026, 5, 1)),
+        ("2026-05-01 08:10:30", datetime(2026, 5, 1, 8, 10, 30)),
+        (datetime(2026, 5, 1, 8, 10, 30, 123456), datetime(2026, 5, 1, 8, 10, 30)),
+    ],
+)
+def test_execution_fact_provider_parses_valid_actual_times_like_operation_event_time(raw_value, expected) -> None:
+    fact = _fact_from_actual_times(raw_value)
+
+    assert fact.actual_start_time == expected
+
+
+@pytest.mark.parametrize("bad_value", ["not-a-date", "2026-02-30 08:10:00", 0, False])
+def test_execution_fact_provider_rejects_bad_actual_time_loudly(bad_value) -> None:
+    with pytest.raises(ValueError, match="event_time"):
+        _fact_from_actual_times(bad_value)
 
 
 def test_execution_snapshot_revision_includes_plan_identity() -> None:

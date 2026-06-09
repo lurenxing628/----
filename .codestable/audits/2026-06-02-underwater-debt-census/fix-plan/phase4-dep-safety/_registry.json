@@ -3614,7 +3614,7 @@
   "id": "R15",
   "bucket": "B06",
   "home": "B06",
-  "status_2026_06_05": "in_progress",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P5",
   "partition": "scheduler-exec-diag",
@@ -3630,7 +3630,7 @@
    "operation_execution_feedback_support.py",
    "operation_execution_state_builder.py"
   ],
-  "current_evidence_2026_06_05": "3 处收口部分落地且去向与计划不同(去 parse_operation_event_time 而非 strict_parse):feedback_support.py:227-231 _parse_feedback_datetime 已改为 try parse_operation_event_time/except ValueError raise『反馈时间格式不正确』(required+raise+保消息,符合);state_builder.py:37-41 _parse_time 已删 fromisoformat+strptime 改 delegate parse_operation_event_time(空→None保留、坏→raise,loud升级,fromisoformat 缺口靠删除化解);但 provider execution_fact_provider.py:85-95 _parse_execution_time 仍是基线原样(坏值 return None 静默,git diff 证函数体未改);且未新增钉死三处独立 required/optional 语义的 R15 回归测试(tests/ 无该测,仅 regression_resource_dispatch_actual_import.py:271 钉 feedback 消息)。provider 仍是债、收口点偏离计划、测试未绑→部分落地。",
+  "current_evidence_2026_06_05": "2026-06-09 R15 fixed: provider execution_fact_provider.py:_parse_execution_time 已按 O03 分支级收口,合法空时间 None/空串/纯空白仍本地返回 None,非空值委托 core.models.operation_execution_event.parse_operation_event_time,坏时间从静默 None 升级为 loud raise。support _parse_feedback_datetime 仍 required+raise 并保公开错误文案;state_builder _parse_time 仍空值 None、坏值 raise。已在 tests/operation_execution/test_operation_execution_scope_read_contract.py 补 provider parity,钉住空值 optional、合法值与真相源一致、坏值 raise。旧 strict_parse planned_fix_hint 被 O03/现盘既成事实覆盖,不再作为本轮执行方向。",
   "cluster": "C01",
   "same_file_siblings": [
    "R13",
@@ -3690,9 +3690,9 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-7(B06 datetime),在 Batch-1 安全网后。本桶内最后落且作为 SCC-EXEC-FACT 串行链的最前置(先于 Batch-12 B11、Batch-14 B13 动同 3 文件)。优先级:本桶第 4(独立性",
-  "planned_deps_hint": "【必须串行】跨 3 桶同文件 SCC-EXEC-FACT(PHASE0 §3):R15 须先于 B11(R13 删 provider 死字段/R17 删 feedback_support:11/64 死键/R16 删 state_builder:33-39 死表)与 B13(R19 改 provider:51)动这 3 文件,否则后改桶撞行号。R17 删死键时绝不碰 R15 的 raise 语义(灵魂线);R16 删死表时与 R15 改 _parse_time 须避让行号。R15 不与本桶 R30/R33/R49/R51 同文件(纯独立)。注:feedback_support.py 非 LB,",
-  "planned_fix_hint": "收口到 core/shared/strict_parse,逐处对齐 required/optional,严禁一刀切:(A)support:226 `_parse_feedback_datetime`(写校验链)→ 收口到 parse_required_datetime;空与坏都 raise(与现状一致,合灵魂线),但须保留对外公开消息契约——现状坏值抛 ValidationError 文案『反馈时间格式不正确,请检查后再提交』并带 field/field_label details,strict_parse 抛的是带 _DATETIME_FORMAT_HINT 的 ValidationError;若直接换会改变前端可见消息,故须用 try/except 包一层把 strict_parse 的 ValidationError 转回 _invalid_field_value(field, '反",
+  "planned_batch_hint": "已 fixed。G09 provider 链第一段已完成;后续同文件串行链继续 R19 -> R13,执行前必须按符号重 rg。",
+  "planned_deps_hint": "R15 已满足 SCC-EXEC-FACT 前置:先于 R19/R13 收口 provider 时间解析语义。后续 R19/R13 仍需按当前符号重 rg,不得用旧行号;R13 删前仍需 owner 再确认。",
+  "planned_fix_hint": "已按 O03 落地: provider 保合法空时间 None,非空委托 parse_operation_event_time,坏值 loud raise;support/state_builder 不动。旧 strict_parse 方案仅作历史计划口径,不再执行。",
   "phase1_blast": {
    "co_change_within_group": [
     "R30",
@@ -3702,13 +3702,13 @@
    "contract_topology_tests": [
     "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py(路径/文档质量门:state_builder 模块路径被钉)"
    ],
-   "downstream_effect": "现场时间字符串解析。收口点 core/shared/strict_parse.py:113 parse_required_datetime/:127 parse_optional_datetime 内部正是同套 strip/replace+循环 strptime。收口须逐处分清:provider/state_builder 靠 None 表达'无时间'(合法 optional),support 对坏时间 raise(写校验链,合灵魂线)——不能一刀切。",
-   "fix_invalidation_risk": "收口 support:226 的 raise 版必须保持 raise 语义(改 None=违灵魂线);收口 provider/state_builder 的 None 版若误判成 required+raise,会把'正常缺时间'变报错。与 B11/B13 在同三文件的删改须串行,否则后改者撞行号。",
+   "downstream_effect": "现场时间字符串解析。provider 合法空时间表达'无时间',仍为 None;坏值现在 loud raise,避免脏时间静默进入执行事实。",
+   "fix_invalidation_risk": "fixed 后仍要防回潮:禁整体 delegate 让空值 raise;禁 try/except 把坏值吞回 None;support 的 required+raise 与 state_builder 的 optional 空值语义不得被后续 R19/R13 误改。",
    "id": "R15",
    "lb_colocation_danger": "⚠️**跨桶同文件最密集区**:execution_fact_provider.py 跨3桶(R13@B11/R15@B06/R19@B13);operation_execution_feedback_support.py 跨桶(R15@B06/R17@B11,R17 删死键时不得碰本债);operation_execution_state_builder.py 跨桶(R15@B06/R16@B11)。这3文件是 B11/B13 战场,B06 动 datetime 必须与 B11/B13 进同批次或显式串行(PHASE0 §3)。注:feedback_support.py 不是 LB 文件,但其上游 feedback_service.py 才是 LB01 承重,本债不碰 service。",
-   "location_status": "✅准 三处:core/services/scheduler/execution_fact_provider.py:66 _parse_execution_time(失败→None)/ core/services/scheduler/operation_execution_feedback_support.py:226 _parse_feedback_datetime(失败 raise)/ data/repositories/operation_execution_state_builder.py:42 _parse_time(失败→None);三者均未 import strict_parse(grep 实测)",
+   "location_status": "2026-06-09 fixed 三处:provider _parse_execution_time 空值 None、坏值委托 parse_operation_event_time raise;support _parse_feedback_datetime required+raise;state_builder _parse_time 空值 None、坏值 raise。",
    "pathology": "P5(语义漂移:None vs raise)",
-   "planned_fix_class": "收口到 strict_parse(parse_required_datetime/parse_optional_datetime,逐处对齐 required/optional 错误语义;严禁把 None 版改 raise 或把 raise 版改 None)",
+   "planned_fix_class": "fixed: 分支级收口到既有 parse_operation_event_time,逐处保持 required/optional 差异;严禁把 None 版改 raise 或把 raise 版改 None。",
    "prod_consumers": [
     "core/services/scheduler/execution_fact_provider.py:38/39(_parse_execution_time)",
     "core/services/scheduler/operation_execution_feedback_support.py:380/383/396(_parse_feedback_datetime,经 operation_execution_feedback_service.py:41 import/:116 _validate_event_time_sequence 调用)",
@@ -3719,7 +3719,7 @@
     "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py:136(钉 data/repositories/operation_execution_state_builder.py 路径)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R30": {
@@ -5203,10 +5203,10 @@
    {
     "other": "R01",
     "why": [
-     "sym:__all__"
+     "edge:E16 __all__ pseudo-serial;registered only"
     ],
     "same_file": false,
-    "same_symbol": true
+    "same_symbol": false
    },
    {
     "other": "R09",
@@ -5219,10 +5219,10 @@
    {
     "other": "R19",
     "why": [
-     "sym:__all__"
+     "edge:E16 __all__ pseudo-serial;registered only"
     ],
     "same_file": false,
-    "same_symbol": true
+    "same_symbol": false
    }
   ],
   "verdict": null,
@@ -5296,30 +5296,28 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-12(B11诊断),桶内第 2 步,与 R18 同一原子提交;须与 B06 R15 / B13 R19 在 execution_fact_provider+event_repo 上协调同批或串行。",
-  "planned_deps_hint": "强同批 R18(同 operation_execution_event_repo.py 相邻方法 :254/:260,同 foundation 测试相邻断言 :172/:173,拆开会二次行号漂移)。跨桶同文件串行:execution_fact_provider.py 同居 R15(B06,datetime 收口 :66)与 R19(B13,_positive_op_ids :51);event_repo.py 同居 R19(B13,_positive_ids :63)。Phase3 须让 B11 与 B06/B13 进同批或显式串行,后改桶才不撞行号。",
-  "planned_fix_hint": "直删 + 退测试,且清理连带死链与孤儿:(1) 删字段定义 :20-21;(2) _fact_from_state 删 latest 形参(:32)+ 删 :42-43 两行赋值;(3) list_by_op_ids 删 :96 latest_events 查询、删 :100 latest 查找、:101 改为 _fact_from_state(int(op_id), state);(4) 连带:list_latest_events_by_op_ids 在 operation_execution_event_repo.py:254-258 删 R13 后生产零调用→成纯死码,与 R18 同批一并删(该方法删后 event_repo 内不再额外孤立导入,因 OperationExecutionEvent 仍重度使用)。execution_fact_provider 内 EXECUTION_S",
+  "planned_batch_hint": "G09 provider 链殿后。R15 已 fixed,R19 先做;R13 仍 planned,删前 owner 再确认。",
+  "planned_deps_hint": "O37 已裁串行序 R15->R19->R13。R13 已与 R18 解耦,不碰 operation_execution_event_repo.py 的 stub raise;执行范围只在 provider 字段/形参/调用实参/赋值/可能孤儿 _latest_events_by_scope。R13 执行前必须按符号重 rg R19 后现盘。",
+  "planned_fix_hint": "仅当 owner 删前再确认后执行:迁/退 scope_read_contract 与 reschedule 中读活 last_event_schedule_* 的测试,再删 ExecutionFact 两字段、_fact_from_state 的 latest 形参、last_event_* 赋值和调用点 latest_events.get(scope) 实参;评估并删除随之成孤儿的 _latest_events_by_scope 与调用。禁止碰 operation_execution_event_repo.py:399/401 stub raise,禁止退 foundation:172 旧误标。",
   "phase1_blast": {
-   "co_change_within_group": [
-    "R18"
-   ],
+   "co_change_within_group": [],
    "contract_topology_tests": [
     "无。SP05路径拓扑契约/facade delegation 均不枚举 ExecutionFact 字段或 execution_fact_provider(已grep test_sp05_path_topology_contract.py 0命中)"
    ],
-   "downstream_effect": "删两字段+删 latest 参数+停调 list_latest_events_by_op_ids:零生产消费方受影响(所有真实消费方 schedule_execution_guardrails/persistence_guard/gantt/dashboard/gantt_adjustment_publish 只读 actual_*/op_id/state_revision/latest_exception_*);正向收益=每次 list_by_op_ids 省一次全事件 DB 往返。无UI/导出分支变化。",
-   "fix_invalidation_risk": "none。但注意 execution_fact_provider.py 是跨桶同文件点:R15(B06,datetime收口在:66)+R19(B13,positive_op_ids在:51)同落此文件,Phase3 须与 B06/B13 串行或同批,否则后改桶撞行号。删 list_latest_events_by_op_ids 与 R18 删 list_latest_exception_events_by_op_ids(repo:260)为相邻方法,宜同批改 repo 文件。",
+   "downstream_effect": "生产消费者仍未读 last_event_schedule_*；测试已读活这些字段。若 owner 确认删除,收益是 provider 去掉 latest_events.get(scope) 实参和可能孤儿 _latest_events_by_scope/list_events_by_scopes 往返,不是旧 list_latest_events_by_op_ids。",
+   "fix_invalidation_risk": "R13 不碰 repo stub,避免破坏完整计划身份 loud raise。注意 execution_fact_provider.py 是跨桶同文件点:R15 已 fixed、R19 将先动;R13 殿后前必须重 rg,否则旧行号会误删。",
    "id": "R13",
    "lb_colocation_danger": "none(execution_fact_provider.py 非承重文件)",
    "location_status": "✅准。execution_fact_provider.py 死字段定义:20-21、赋值:42-43、list_latest_events_by_op_ids 调用:96 全部与盘上一致;该文件不在16文件漂移名单(git diff b08162cd 空)。",
    "pathology": "P6 死面包屑+被它吊住的无用DB往返",
-   "planned_fix_class": "删+退测试(删2字段+latest参数+:96调用+repo:254方法,退 foundation:172 断言)",
+   "planned_fix_class": "planned: 删前 owner 再确认;只删 provider 字段/形参/实参/赋值/可能孤儿 helper,同步迁测试;不碰 repo stub,不退 foundation:172 旧误标。",
    "prod_consumers": [
     "两死字段 last_event_schedule_version/last_event_schedule_id 生产零引用(已grep证实:全仓除:20-21定义/:42-43赋值外0命中)",
-    "其拖挂的 data/repositories/operation_execution_event_repo.py:254 list_latest_events_by_op_ids 唯一生产调用方=core/services/scheduler/execution_fact_provider.py:96(本债一并删,删后该repo方法也成纯死码)"
+    "旧 repo:254 口径作废;R13 不碰 operation_execution_event_repo.py:399/401 stub raise"
    ],
    "test_consumers": [
-    "tests/operation_execution/test_operation_execution_event_foundation.py:172 (断言 list_latest_events_by_op_ids([10])[10].id==finish.id;若连带删该repo方法须同退此行)",
-    "tests/operation_execution/test_scheduler_reschedule_execution_facts.py:183 (经 ExecutionFactProvider.facts_by_op_id 只读 latest_exception_impact_minutes/handling_status/suggest_reschedule,不读两死字段,删字段零影响)"
+    "tests/operation_execution/test_scheduler_reschedule_execution_facts.py:196 (直读 last_event_schedule_version)",
+    "tests/operation_execution/test_operation_execution_scope_read_contract.py:108/190-191/220-221 (直读、dict快照、构造kwarg)"
    ]
   },
   "owner_pending": false,
@@ -5570,14 +5568,14 @@
   "load_bearing": false,
   "needs_adversarial": false,
   "adv_refuted": false,
-  "title": "repo.list_latest_exception_events_by_op_ids 生产零调用,仅测试续命",
+  "title": "repo.list_latest_exception_events_by_op_ids 已转为拒绝非 scoped 读护栏",
   "old_location_DONT_TRUST": "data/repositories/operation_execution_event_repo.py:260-265",
   "primary_file": "operation_execution_event_repo.py",
   "all_files": [
    "operation_execution_event_repo.py",
    "regression_operation_execution_event_foundation.py"
   ],
-  "current_evidence_2026_06_05": "operation_execution_event_repo.py:365 list_latest_exception_events_by_op_ids 方法仍存在(scope 重构后已改为单行 stub: raise _unscoped_execution_read_error());全仓 web/core/data 除该定义外零调用(grep 证)。计划要求删方法+退 foundation 测试断言,均未做——foundation 测试 regression_operation_execution_event_foundation.py:554 反而新增 pytest.raises 包裹该 stub。方法未删,无'别动'护栏注释(load_bearing=false 本就不需要)",
+  "current_evidence_2026_06_05": "2026-06-09 交接补登:operation_execution_event_repo.py 的 list_latest_exception_events_by_op_ids 已是拒绝非 scoped 读的 stub raise,与 list_latest_events_by_op_ids 等六格护栏同组;foundation 测试断言 ValueError(完整计划身份),不是续命正向断言。旧直删+退测试+摘 EXECUTION_EVENT_EXCEPTION 前提已失效,后续只补护栏注释。R13 已解耦不碰 repo stub;R19 repo 私有版保留并补顺序无关注释/parity。",
   "cluster": "C01",
   "same_file_siblings": [
    "R19"
@@ -5594,28 +5592,26 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-12,桶内第 2 步,与 R13 同一原子提交;须与 B13 R19 在 event_repo 上串行。",
-  "planned_deps_hint": "强同批 R13(同 operation_execution_event_repo.py 相邻方法 :254/:260,同 foundation 测试相邻断言 :172/:173,同批避免二次行号漂移)。跨桶同文件串行:event_repo.py 同居 R19(B13,_positive_ids :63),Phase3 须与 B13 串行。",
-  "planned_fix_hint": "直删 + 退测试 + 清孤儿:(1) 删方法 :260-265;(2) 退 tests/operation_execution/test_operation_execution_event_foundation.py:173 一行断言(与 R13 退的 :172 相邻);(3) 从 operation_execution_event_repo.py 导入块摘掉随之孤立的 EXECUTION_EVENT_EXCEPTION(原 :7),保留 OperationExecutionEvent。无兜底、无行为改动。",
+  "planned_batch_hint": "G10 planned。R18 独立处置 repo stub 护栏;须与 B13 R19 在 event_repo.py 上串行。R13 已解耦,不碰 repo stub。",
+  "planned_deps_hint": "R13 已解耦:不删 repo:399/401,只在 provider 侧处理字段/形参/实参/可能孤儿 helper。跨桶同文件串行:event_repo.py 同居 R19(B13,_positive_ids),R19 repo 私有版保留并补顺序无关注释/parity。",
+  "planned_fix_hint": "补护栏注释,禁止直删/退测试/改静默:(1) 在 operation_execution_event_repo.py 的非 scoped 读 stub 组上方补中文注释,说明这是故意保留的 loud raise 契约;(2) 保留 tests/operation_execution/test_operation_execution_event_foundation.py 的 ValueError(完整计划身份)断言;(3) 不摘 OperationExecutionEvent 类型注解 import,不处理 EXECUTION_EVENT_EXCEPTION 旧死信息。",
   "phase1_blast": {
-   "co_change_within_group": [
-    "R13"
-   ],
+   "co_change_within_group": [],
    "contract_topology_tests": [
     "无(repo普通方法,非SP05/facade契约枚举对象)"
    ],
-   "downstream_effect": "删方法+退 foundation:173 一行断言:零生产影响。",
-   "fix_invalidation_risk": "none。与 R13 强同批:两者删 operation_execution_event_repo.py 相邻方法(:254 list_latest_events / :260 list_latest_exception_events)且退 foundation.py 相邻断言(:172/:173),同批改避免二次行号漂移。另 operation_execution_event_repo.py 与 R19(B13,_positive_ids:63)跨桶同文件,Phase3 须串行。",
+   "downstream_effect": "补护栏注释:零行为影响。继续保留受控 ValueError(完整计划身份),禁止退化为 AttributeError 或 return {} 静默。",
+   "fix_invalidation_risk": "旧风险已作废。R13 不碰 repo stub,不再与 R18 捆绑同一提交;R18 只补 :399-405 护栏注释。operation_execution_event_repo.py 与 R19(B13,_positive_ids)跨桶同文件,仍须串行避免同文件漂移。",
    "id": "R18",
    "lb_colocation_danger": "none(operation_execution_event_repo.py 非承重文件)",
-   "location_status": "✅准。operation_execution_event_repo.py:260-265 list_latest_exception_events_by_op_ids 与盘上一致(:260 def,:263 用 EXECUTION_EVENT_EXCEPTION 过滤)。文件不在漂移名单。",
-   "pathology": "P6 公开repo方法生产零调,仅基础回归续命",
-   "planned_fix_class": "删+退测试(删方法+退 foundation:173)",
+   "location_status": "旧锚失效。按符号重 rg: list_latest_exception_events_by_op_ids 现为 operation_execution_event_repo.py 的单行 raise stub,foundation 测试断言其抛 ValueError(完整计划身份)。",
+   "pathology": "P6 旧孤儿叙事已被 scope 重构推翻;当前是真正的非 scoped 读 loud-raise 护栏",
+   "planned_fix_class": "补注释+保契约测试",
    "prod_consumers": [
-    "生产零引用(已grep证实:全仓除:260定义外0生产命中)。最新异常态真实生产来源是 state_builder._latest_exception(:91)+OperationExecutionState.latest_exception_* 字段,不经此方法"
+    "生产零引用不等于可删;该公开方法当前用于保留旧 API 误用时的受控 ValueError 护栏。最新异常态真实生产来源仍不经此方法。"
    ],
    "test_consumers": [
-    "tests/operation_execution/test_operation_execution_event_foundation.py:173 (assert repo.list_latest_exception_events_by_op_ids([10])[10].id==exception.id;删方法须同退此行)"
+    "tests/operation_execution/test_operation_execution_event_foundation.py 断言 repo.list_latest_exception_events_by_op_ids([10]) 抛 ValueError(match='完整计划身份');这是契约护栏,不可退。"
    ]
   },
   "owner_pending": false,
@@ -6079,7 +6075,7 @@
    "execution_snapshot.py",
    "operation_execution_event_repo.py"
   ],
-  "current_evidence_2026_06_05": "三处漂移原样:execution_snapshot.py:28 positive_op_ids 仍 :40 return sorted(out)；execution_fact_provider.py:70 _positive_op_ids 仍 :82 return out(不排序)；operation_execution_event_repo.py:67 _positive_ids 仍 :79 return out(不排序)。execution_snapshot.py:7 仍 import provider(循环导入阻断在)；core/models/operation_execution_event.py 无 positive_op_ids 收口落点；tests/ 无 parity 契约。owner 收口落点未裁断。",
+  "current_evidence_2026_06_05": "三处漂移原样:execution_snapshot.py:28 positive_op_ids 仍 :40 return sorted(out)；execution_fact_provider.py:70 _positive_op_ids 仍 :82 return out(不排序)；operation_execution_event_repo.py:67 _positive_ids 仍 :79 return out(不排序)。execution_snapshot.py:7 仍 import provider(循环导入阻断在)；tests/ 无 parity 契约。2026-06-09 交接回写:O04/O05/O37 已裁,repo 私有版保留并补顺序无关注释/parity,provider 链顺序为 R15->R19->R13；R19 仍 planned 但 owner_pending=false。",
   "cluster": "C01",
   "same_file_siblings": [
    "R13",
@@ -6090,10 +6086,10 @@
    {
     "other": "R01",
     "why": [
-     "sym:__all__"
+     "edge:E16 __all__ pseudo-serial;registered only"
     ],
     "same_file": false,
-    "same_symbol": true
+    "same_symbol": false
    },
    {
     "other": "R13",
@@ -6122,27 +6118,27 @@
    {
     "other": "R46",
     "why": [
-     "sym:__all__"
+     "edge:E16 __all__ pseudo-serial;registered only"
     ],
     "same_file": false,
-    "same_symbol": true
+    "same_symbol": false
    }
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-14（全局最晚）。本桶内排第 5 位（前置最复杂：须 B06 R15 / B11 R13·R18 在两共享文件上先动或同批 + owner 裁断收口落点 + 循环导入/分层双重规避）。",
-  "planned_deps_hint": "两个共享文件跨桶串行（pack B13 edges + PHASE0 §2/§3）：execution_fact_provider.py 上 R19 ↔ R13(B11,:20-21/42-43/96) / R15(B06,:66)——Phase1 边 R15→R13『同文件同改』，R19 改 :51/:92 须与 B06/B11 进同批或串行避免撞行号；operation_execution_event_repo.py 上 R19 ↔ R18(B11,:260-265)——Phase1 边 R13→R18，R19 删 :63 _positive_ids 须与 B11 删/改相邻方法串行。即 ",
-  "planned_fix_hint": "收口到单一实现，但 naive『三处全收口到 execution_snapshot.positive_op_ids』被双重阻断，必须避开：阻断A=循环导入（snapshot.py:7 已 import provider，provider 再 import snapshot=环）；阻断B=分层红线（repo 在 data 层，snapshot 在 core/services 层，data→service 收口=越层违规，test_architecture_fitness viewmodel/repo 规则与 §4 分层红线）。red line #3 又禁止为已有概念新建第二模块（除 R09 唯一例外）。**推荐落点（需 owner 确认）**：把规范版 `positive_op_ids`（int 化+去重+sorted，签名取最宽 Iterable[Any]→List[int]）下沉到一个【",
+  "planned_batch_hint": "G09 provider 链下一步。R15 已 fixed；R19 仍 planned；R13 殿后且删前再确认。",
+  "planned_deps_hint": "O37 已裁串行序 R15->R19->R13。R19 执行前按符号重 rg execution_fact_provider.py 的 _positive_op_ids 和 operation_execution_event_repo.py 的 _positive_ids；不得信旧行号。R19 repo 处按 O04 保留私有版+顺序无关注释/parity,不下沉 service,不顺手删 R18 stub。",
+  "planned_fix_hint": "O04/O05/O37 已裁: snapshot positive_op_ids 的 sorted 是指纹事实承重,先补黄金 parity；provider 侧收口/对齐时保 loud 行为和 missing 文案取向；repo _positive_ids 因 data->service 越层禁止收 service,保留私有版并补“顺序无关”注释+集合等价 parity。禁止新建模块,禁止制造导入环。",
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [],
    "downstream_effect": "收口须保'排序'给snapshot(指纹稳定性依赖);provider不排序版只流入:105的dict(顺序无关);repo私有版供aggregate查询。强行统一为排序版若改facts返回序需确认无下游依赖原顺序。",
-   "fix_invalidation_risk": "分层红线阻断naive收口:repo在 data/repositories(data层),snapshot.positive_op_ids在 core/services(service层),repo当前只import core.models+.base_repo,data→service收口=越层违规(test_architecture_fitness)。所以只能 provider(service)→snapshot;repo必须另落 core.shared/core.models 层helper或保留自己版。'三处全收口到snapshot'计划在repo处失效",
+   "fix_invalidation_risk": "分层红线阻断naive收口:repo在 data/repositories(data层),snapshot.positive_op_ids在 core/services(service层),repo当前只import core.models+.base_repo,data→service收口=越层违规(test_architecture_fitness)。O04 已裁 repo 保私有版并补顺序无关注释/parity；provider 侧执行前重 rg,避免撞 R15/R13 行号。",
    "id": "R19",
    "lb_colocation_danger": "none(但execution_fact_provider.py跨桶:R13/B11在:20-21,42-43,96;R15/B06在:66。operation_execution_event_repo.py跨桶:R18/B11在:260-265。改这俩文件须与B11/B06串行)",
    "location_status": "✅准 — 三处实测:execution_snapshot.py:27 positive_op_ids(:39 return sorted,public进__all__:70);execution_fact_provider.py:51 _positive_op_ids(:63 return out 不排序);data/repositories/operation_execution_event_repo.py:63 _positive_ids(:75 return out 不排序)。语义漂移=是否排序确认。",
    "pathology": "P5 — 已有导出的公共 positive_op_ids 收口点,provider/repo 各私造一份且漂移(公开排序/私有不排序);同概念第2、3套私有实现。",
-   "planned_fix_class": "收口到X — provider._positive_op_ids 收口到 execution_snapshot.positive_op_ids(同service层OK);repo._positive_ids 因分层不能收service,须收到 data/model 层共享点或保留+补注释。务必保sorted给指纹",
+   "planned_fix_class": "planned: provider 侧对齐既有 positive_op_ids/sorted 契约；repo 私有版按 O04 保留+补顺序无关注释/parity。务必保 sorted 给指纹。",
    "prod_consumers": [
     "core/services/scheduler/execution_snapshot.py:43,61(public版,sha256指纹:51依赖排序)",
     "core/services/scheduler/execution_fact_provider.py:92(provider私有版,经:105 facts_by_op_id落字典)",
@@ -6152,7 +6148,7 @@
     "(无测试直接grep三个私有/公共fn名;经各自调用方间接覆盖)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R20": {
@@ -6534,10 +6530,10 @@
    {
     "other": "R19",
     "why": [
-     "sym:__all__"
+     "edge:E16 __all__ pseudo-serial;registered only"
     ],
     "same_file": false,
-    "same_symbol": true
+    "same_symbol": false
    },
    {
     "other": "R26",
@@ -6558,10 +6554,10 @@
    {
     "other": "R46",
     "why": [
-     "sym:__all__"
+     "edge:E16 __all__ pseudo-serial;registered only"
     ],
     "same_file": false,
-    "same_symbol": true
+    "same_symbol": false
    }
   ],
   "verdict": null,

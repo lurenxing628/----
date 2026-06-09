@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from core.models.operation_execution_event import EXECUTION_STATUS_NOT_STARTED, OperationExecutionEvent
+from core.models.operation_execution_event import (
+    EXECUTION_STATUS_NOT_STARTED,
+    OperationExecutionEvent,
+    parse_operation_event_time,
+)
 from core.models.operation_execution_scope import OperationExecutionScope, operation_execution_scope_from_event
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
 
@@ -82,17 +86,12 @@ def _positive_op_ids(values: Sequence[int]) -> List[int]:
     return out
 
 
-def _parse_execution_time(value: Optional[str]) -> Optional[datetime]:
-    text = str(value or "").strip()
-    if not text:
+def _parse_execution_time(value: Any) -> Optional[datetime]:
+    if value is None:
         return None
-    text = text.replace("/", "-").replace("T", " ").replace("：", ":")
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(text, fmt)
-        except ValueError:
-            continue
-    return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    return parse_operation_event_time(value)
 
 
 class ExecutionFactProvider:

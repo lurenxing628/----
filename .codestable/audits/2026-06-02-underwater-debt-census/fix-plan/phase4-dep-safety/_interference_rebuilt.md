@@ -22,7 +22,7 @@
 | **G07** | EXEC-FACT | {LB01, R17, R20} A1(service) ✅2026-06-08 fixed(R17/R20) | 🔒 LB01 承重门控同文件 service.py 删改;R17 删死 import/R20 改 labels import 同 import 块行号耦合;最危险边 LB01↔R17 同 _build_event_payload | 已按强序执行：LB01 注释在位→R17 删 service 死导入→R20 改 service import 直连 model；未触碰 _build_event_payload |
 | **G08** | EXEC-FACT | {R15, R17, R20} A2(support) ✅2026-06-08 fixed(R17/R20) | 同文件 support.py;R17 删推导式死项+孤立 import，R20 改 labels import；R15 support raise 只作禁区 | 已执行：守住 R15 support `_parse_feedback_datetime` raise→R17 删死项/import→R20 改 support import；R15 provider 残债仍留 G09 |
 | **G09** | EXEC-FACT | {R15, R19, R13} A3(provider) ⏸ | 同文件 provider.py 删改互移行号;先收口语义(R15/R19)后删死物(R13) | O03/O05/O06/O37 已裁：强序 R15 先(SCC 最前置,收口解析)→R19 改:70-82→R13 末(删字段)；R13 删前 owner 再确认 |
-| **G10** | EXEC-FACT | {R18, R19, R13关心:399} A4(repo) ⏸ | R18 改:401+R13 关心:399 同组 6 格 stub 共用一条护栏注释合批;R19:67 物理隔离仅文件级串行 | R18+R13(repo):399 共注释合批;R19 repo 处独立保守串行,无逻辑先后 |
+| **G10** | EXEC-FACT | {R18, R19 repo私有版} A4(repo) ⏸ | R18 独立处置 repo stub 护栏;R19 repo 私有版只补“顺序无关”注释/parity,二者仅同文件保守串行 | R18 独立补 :399-405 护栏注释;R19 repo 处保私有版并补 parity;R13 不碰 repo stub |
 | **G11** | GANTT | {R11≡R63} A1 ✅ fixed | **2026-06-08 已 fixed**。同一物理动作已完成:两份 _normalize 已收口到 `gantt_critical_chain.py:67-88` 单份 helper,新增 parity 11 边界 | 后续勿重复处理;R12/R55 前置已满足,只能在单份 helper 上继续改;禁误删 provider `_copy:108` |
 | **G12** | GANTT | {R12} A2 ✅ fixed | **2026-06-08 已 fixed**。已在 G11 统一后的单份 helper 加 `dropped_count` / `critical_chain_partial`，并穿 `_empty_result`、`_normalize`、contract unavailable 分支与 JS 状态归一 | G11 前置已满足；R55/G13 仍按 O09 跳过，后续不得复活双副本 |
 | **G13** | GANTT | {R55} A3 ⏸ | **O09 已裁本轮不做**；仅保留暂停占位，重启条件=怀疑者过三问 + R11/R63 单份化前置已满足 | 本轮不得随 G12 同改 _normalize；禁破坏 `:385 None 回退` + support:55-56 分流判据 |
@@ -147,7 +147,7 @@ Batch-C（身份族收敛 / 收口委托，依赖承重族 + parity）
   G01(R42+R60)     ← G04(E03 硬同批 同符号 rebase)
   G27(R22+R21)     ← LB03 + G27p（E12）
   G09(R15→R19→R13)⏸ ← O03/O05/O06/O37 已裁：R15→R19→R13 串行，R13 删前 owner 再确认
-  G10(R18+R19+R13)⏸ ← O06 已裁 R13 删前再确认；R18 stub 保契约护栏
+  G10(R18+R19 repo私有版)⏸ ← R18 独立处置 repo stub 护栏；R19 repo 私有版保留并补顺序无关注释/parity；R13 不碰 repo
   G29(R72)⏸        ← O19 已裁 web/core 各落各点 + 补 request import（E21 软自 G04）
   G15(R47+R71)⏸    ← G15a 🔒（R71 已裁仅 parity，不物理合并）
   G22(R08+R09)⏸    ← N1 注释(E26) + R07 前置(E25,已满足)；O01/O02 已裁双路 parity

@@ -638,7 +638,7 @@
  "R15": {
   "id": "R15",
   "bucket": "B06",
-  "status": "in_progress",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": false,
@@ -651,7 +651,7 @@
    "R19"
   ],
   "batch": "Batch-7(B06 dateti",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
   "title": "datetime 解析在分区内私造 3 份,绕过 core/shared/strict_parse 收口点且语义漂移(静默 None vs 抛错)"
@@ -956,7 +956,7 @@
    "R15",
    "R19"
   ],
-  "batch": "Batch-12(B11诊断),桶内",
+  "batch": "G09 after R19",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1027,11 +1027,11 @@
   "siblings": [
    "R19"
   ],
-  "batch": "Batch-12,桶内第 2 步,与",
+  "batch": "G10 planned;R18 independent",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
-  "title": "repo.list_latest_exception_events_by_op_ids 生产零调用,仅测试续命"
+  "title": "repo.list_latest_exception_events_by_op_ids 已转为拒绝非 scoped 读护栏"
  },
  "R24": {
   "id": "R24",
@@ -1167,8 +1167,8 @@
    "R15",
    "R18"
   ],
-  "batch": "Batch-14（全局最晚）。本桶内",
-  "owner_pending": true,
+  "batch": "G09 next after R15",
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
   "title": "positive-op-id 过滤:公开 snapshot.positive_op_ids 已是收口点,provider 与 repo 各私造一份且漂移(公开排序/私有不排序)"
