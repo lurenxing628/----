@@ -6,9 +6,11 @@
 
 > ✅ **2026-06-09 R15 执行补登**：G09 provider 链第一段 R15 已 fixed。`execution_fact_provider._parse_execution_time` 保留合法空时间 `None/""/" "` 本地返回 `None`，非空值委托既有真相源 `parse_operation_event_time`；坏时间从静默 `None` 升级为 loud raise。未改 support/state_builder 既有语义。R19/R13 已在后续补登中 fixed。
 
-> ✅ **2026-06-09 R19 执行补登**：G09/G10 中 R19 已 fixed。`execution_snapshot.positive_op_ids` 保 sorted 并补指纹排序承重注释；`execution_snapshot` 顶层 provider import 改为函数内局部 import，避免 provider 反向收口时形成运行时环；`execution_fact_provider._positive_op_ids` 委托既有 `positive_op_ids`；`operation_execution_event_repo._positive_ids` 按 O04 保留私有版并补顺序无关注释/parity，不下沉 service、不碰 R18 stub。G09 已在 R13 后收口，G10 仅剩 R18 stub 护栏。
+> ✅ **2026-06-09 R19 执行补登**：G09/G10 中 R19 已 fixed。`execution_snapshot.positive_op_ids` 保 sorted 并补指纹排序承重注释；`execution_snapshot` 顶层 provider import 改为函数内局部 import，避免 provider 反向收口时形成运行时环；`execution_fact_provider._positive_op_ids` 委托既有 `positive_op_ids`；`operation_execution_event_repo._positive_ids` 按 O04 保留私有版并补顺序无关注释/parity，不下沉 service、不碰 R18 stub。G09 已在 R13 后收口，G10 已在 R18 后收口。
 
-> ✅ **2026-06-10 R13 执行补登**：owner 已确认单机无仓库外读者，R13 按 O06 完成“先迁测试后删”。`ExecutionFact.last_event_schedule_*`、`_fact_from_state` 的 `latest` 形参/实参、旧字段赋值与孤儿 `_latest_events_by_scope` 已删除；相关测试已退旧字段断言。R13 未碰 repo stub，R18 仍 planned。
+> ✅ **2026-06-10 R13 执行补登**：owner 已确认单机无仓库外读者，R13 按 O06 完成“先迁测试后删”。`ExecutionFact.last_event_schedule_*`、`_fact_from_state` 的 `latest` 形参/实参、旧字段赋值与孤儿 `_latest_events_by_scope` 已删除；相关测试已退旧字段断言。R13 未碰 repo stub。
+
+> ✅ **2026-06-10 R18 执行补登**：已在 `operation_execution_event_repo.py` 的非 scoped / 只按 `op_id` 读取 stub 上方补中文护栏注释；六格 `raise _unscoped_execution_read_error()` 保留，foundation 测试继续断言 `ValueError("完整计划身份")`，不删方法、不退断言、不改静默空结果。G10 已 fixed。
 
 > 簇 id: C-EXEC-FACT | 成员债: LB01 R13 R15 R17 R18 R19 R20 | 簇内分区 scheduler-exec-diag
 > 回盘日 2026-06-05 / HEAD c2aa7501 / 全部行号经本轮 rg 复盘（不信旧值）
@@ -17,7 +19,7 @@
 > - `operation_execution_feedback_service.py`: LB01(承重宿主) + R17(死import:12) + R20(labels import:52)
 > - `operation_execution_feedback_support.py`: R17(死import:11/推导式项:81) + R15(`_parse_feedback_datetime`:225) + R20(labels import:24) + R09(他簇)
 > - `execution_fact_provider.py`: R13(死字段/形参/实参/孤儿 helper，fixed) + R15(`_parse_execution_time`, fixed) + R19(`_positive_op_ids`, fixed)
-> - `operation_execution_event_repo.py`: R18(stub:400-406) + R19(`_positive_ids`:67-80, fixed 保私有版); R13 已解耦,不碰 repo stub
+> - `operation_execution_event_repo.py`: R18(stub组, fixed 护栏注释; 注释落地后现盘 6 格 = :356/:358/:402/:404/:406/:408, 注释行 :355/:401) + R19(`_positive_ids`:67-80, fixed 保私有版); R13 已解耦,不碰 repo stub
 > - `execution_snapshot.py`: R19 收口点(`positive_op_ids`:29-42, fixed)
 
 ---
@@ -42,9 +44,9 @@
 **内部顺序（强制）**: **R15 先（已 fixed，SCC 最前置，先收口解析语义）→ R19（已 fixed，收口 `_positive_op_ids` 并补 sorted parity）→ R13 最后（已 fixed，删字段缩文件）**。注: R13 已经 owner 二次确认后执行，且没有只删字段两行，而是同步处理形参、实参、赋值和孤儿 helper。
 
 ### 子簇 A4 — repo 文件「R18 stub 护栏注释 + R19 repo 私有版」协调
-**成员**: R18（stub :402 补护栏注释）+ R19（2026-06-09 已 fixed，`_positive_ids`:67 按 O04 保留私有版并补顺序无关注释/parity）
-**原子原因**: R18 改 :402 一带的 stub 护栏；R19 的 :67 与 stub 组（:400-406）相距 330+ 行，物理不重叠，仅文件级保守串行。R13 已与 R18 解耦，R13 不碰 repo stub。
-**内部顺序**: R19 repo 处已保留私有版并补注释/parity；R18 独立处置 stub 护栏。两者仅需同文件保守串行，无逻辑先后。
+**成员**: R18（2026-06-10 已 fixed，stub 组上方补两条护栏注释，注释后现盘 :355/:401）+ R19（2026-06-09 已 fixed，`_positive_ids`:67 按 O04 保留私有版并补顺序无关注释/parity）
+**原子原因**: R18 改 stub 护栏组（注释前实盘 :400-406，注释落地后现盘 6 格 = :356/:358/:402/:404/:406/:408）；R19 的 :67 与 stub 组相距 270+ 行，物理不重叠，仅文件级保守串行。R13 已与 R18 解耦，R13 不碰 repo stub。
+**内部顺序**: R19 repo 处已保留私有版并补注释/parity；R18 已独立处置 stub 护栏。两者仅需同文件保守串行，无逻辑先后。
 
 ### 可独立（不强制同批）
 - R18 的注释动作与 A3 的 provider 链**无逻辑耦合**（仅文件级保守串行 R19）。
@@ -102,8 +104,8 @@
 
 ### 灵魂线软禁区（非 LB 但语义神圣，禁改静默/兜底）
 - `feedback_support.py:225` 起 `_parse_feedback_datetime` raise（R15 已落地，R17 删 :81/:11 时绝不碰）
-- `execution_fact_provider.py:79-84` 的空值短路 + `parse_operation_event_time` 委托（合法 optional，禁整体 delegate 导致空值 raise；坏值分支必须 loud，禁加更深 return None）
-- `repo:400/402/404/406` 等 stub `raise _unscoped_execution_read_error()`（R18/R13 禁改静默 return {}，删→退化 AttributeError 击穿契约）
+- `execution_fact_provider.py:73-78` 的空值短路 + `parse_operation_event_time` 委托（合法 optional，禁整体 delegate 导致空值 raise；坏值分支必须 loud，禁加更深 return None）
+- repo 六格 unscoped stub `raise _unscoped_execution_read_error()`（2026-06-10 注释后现盘 :356/:358/:402/:404/:406/:408；R18/R13 禁改静默 return {}，删→退化 AttributeError 击穿契约）
 - `execution_snapshot.py:42` `return sorted(out)`（事实承重: sha256 指纹稳定性依赖排序；R19 canonical 实现强制保 sorted）
 
 ### N1/N2/R03/R58: 本簇无（N1/N2 在 context.py/event.py 属他簇；R03/R58 不在本簇）
@@ -122,4 +124,4 @@
 
 ## 一句话定性
 
-C-EXEC-FACT = SCC 串行链，4 个原子子簇按物理文件切分。承重唯一点 LB01 门控 service 文件全部删改（注释先落 → R17 → R20）。最危险边 LB01↔R17 同 `_build_event_payload`。R13↔R18 强耦合已解除；R20↔R08/R09/R12、R15↔R32 经核为假边删除。R15、R19、R13 已 fixed，G09 provider 链收口；G10 只剩 R18 stub 护栏 planned。
+C-EXEC-FACT = SCC 串行链，4 个原子子簇按物理文件切分。承重唯一点 LB01 门控 service 文件全部删改（注释先落 → R17 → R20）。最危险边 LB01↔R17 同 `_build_event_payload`。R13↔R18 强耦合已解除；R20↔R08/R09/R12、R15↔R32 经核为假边删除。R15、R19、R13、R18 已 fixed，G09 provider 链与 G10 repo 护栏均已收口。

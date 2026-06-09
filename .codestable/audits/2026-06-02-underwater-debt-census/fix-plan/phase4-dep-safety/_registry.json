@@ -3690,8 +3690,8 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "已 fixed。G09 provider 链 R15/R19/R13 均已完成;后续只剩 G10 R18 repo stub 护栏。",
-  "planned_deps_hint": "R15 已满足 SCC-EXEC-FACT 前置:provider 时间解析语义已先于 R19/R13 完成;R19 与 R13 也已 fixed。后续只剩 R18 仍 planned。",
+  "planned_batch_hint": "已 fixed。G09 provider 链 R15/R19/R13 均已完成;G10 R18 repo stub 护栏也已 fixed。",
+  "planned_deps_hint": "R15 已满足 SCC-EXEC-FACT 前置:provider 时间解析语义已先于 R19/R13 完成;R19、R13 与 R18 也已 fixed。G09/G10 均已收口。",
   "planned_fix_hint": "已按 O03 落地: provider 保合法空时间 None,非空委托 parse_operation_event_time,坏值 loud raise;support/state_builder 不动。旧 strict_parse 方案仅作历史计划口径,不再执行。",
   "phase1_blast": {
    "co_change_within_group": [
@@ -3726,7 +3726,7 @@
   "id": "R30",
   "bucket": "B06",
   "home": "B06",
-  "status_2026_06_05": "fixed",
+  "status_2026_06_05": "planned",
   "severity": "low",
   "pathology": "P6",
   "partition": "core-infra-shared",
@@ -3745,7 +3745,7 @@
    "regression_value_policies_matrix_contract.py",
    "value_policies.py"
   ],
-  "current_evidence_2026_06_05": "原样未动:core/shared/compat_parse.py:198 parse_compat_date 与 :143 _date_fallback 仍在,:11/:14 parse_optional_date/parse_required_date import 仍在;core/shared/value_policies.py:180 due_date/:190 start_time/:200 end_time 三 FieldPolicy 及 VALUE_DATE:16/VALUE_DATETIME:17/READ_FILTER_ONLY:12 三常量全在;两文件 git status 空(未改)。",
+  "current_evidence_2026_06_05": "原样未动:core/shared/compat_parse.py:198 parse_compat_date 与 :143 _date_fallback 仍在,:11/:14 parse_optional_date/parse_required_date import 仍在;core/shared/value_policies.py:180 due_date/:190 start_time/:200 end_time 三 FieldPolicy 及 VALUE_DATE:16/VALUE_DATETIME:17/READ_FILTER_ONLY:12 三常量全在;两文件 git status 空(未改)。【纠错记录 2026-06-10】本条 status 曾被 R13 收口提交(1d72d7fe)批量替换错位误翻为 fixed(代码实际未动),已纠回 planned;该提交同时在 _registry_index.json 把 R08 误翻 fixed(已另行纠回),两错恰好抵消使总数对账失效——后续状态核查必须逐 ID 对账,勿只比总数。",
   "cluster": "C01",
   "same_file_siblings": [
    "R33"
@@ -5270,7 +5270,7 @@
   "all_files": [
    "execution_fact_provider.py"
   ],
-  "current_evidence_2026_06_05": "2026-06-10 fixed: owner 已确认单机无仓库外读者;execution_fact_provider.py 已删除 ExecutionFact.last_event_schedule_version/last_event_schedule_id、_fact_from_state 的 latest 形参、两处 last_event_schedule_* 赋值、facts_by_scope 的 latest_events 查询与 latest_events.get(scope) 实参,并删除孤儿 _latest_events_by_scope helper。rg 'last_event_schedule' core web data tests 0命中。scope_read_contract 与 reschedule 测试已退旧字段断言;R13 未碰 operation_execution_event_repo.py 的 stub raise,R18 仍 planned。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed: owner 已确认单机无仓库外读者;execution_fact_provider.py 已删除 ExecutionFact.last_event_schedule_version/last_event_schedule_id、_fact_from_state 的 latest 形参、两处 last_event_schedule_* 赋值、facts_by_scope 的 latest_events 查询与 latest_events.get(scope) 实参,并删除孤儿 _latest_events_by_scope helper。rg 'last_event_schedule' core web data tests 0命中。scope_read_contract 与 reschedule 测试已退旧字段断言;R13 未碰 operation_execution_event_repo.py 的 stub raise,R18 已随后补 repo 护栏注释 fixed。",
   "cluster": "C01",
   "same_file_siblings": [
    "R15",
@@ -5296,8 +5296,8 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "G09 provider 链已 fixed。R15、R19、R13 均已完成;后续只剩 G10 R18 repo stub 护栏。",
-  "planned_deps_hint": "O37 已裁串行序 R15->R19->R13，且三者均已 fixed。R13 已与 R18 解耦，未碰 operation_execution_event_repo.py 的 stub raise；R18 仍 planned。",
+  "planned_batch_hint": "G09 provider 链已 fixed。R15、R19、R13 均已完成;G10 R18 repo stub 护栏也已 fixed。",
+  "planned_deps_hint": "O37 已裁串行序 R15->R19->R13，且三者均已 fixed。R13 已与 R18 解耦，未碰 operation_execution_event_repo.py 的 stub raise；R18 已随后补 repo 护栏注释 fixed。",
   "planned_fix_hint": "已按 O06 执行:先退 scope_read_contract 与 reschedule 中读活 last_event_schedule_* 的测试,再删 ExecutionFact 两字段、_fact_from_state 的 latest 形参、last_event_* 赋值、调用点 latest_events.get(scope) 实参和孤儿 _latest_events_by_scope。未碰 operation_execution_event_repo.py:400/402 stub raise,未退 foundation:383 R18 护栏测试。",
   "phase1_blast": {
    "co_change_within_group": [],
@@ -5560,7 +5560,7 @@
   "id": "R18",
   "bucket": "B11",
   "home": "B11",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "scheduler-exec-diag",
@@ -5575,7 +5575,7 @@
    "operation_execution_event_repo.py",
    "tests/operation_execution/test_operation_execution_event_foundation.py"
   ],
-  "current_evidence_2026_06_05": "2026-06-09 R19 后现盘: operation_execution_event_repo.py:402 的 list_latest_exception_events_by_op_ids 已是拒绝非 scoped 读的 stub raise,与 list_latest_events_by_op_ids(:400)、aggregate_states_by_op_ids(:404)、state_revision_for_op(:406) 等护栏同组;foundation 测试 test_operation_execution_event_foundation.py:385 断言 ValueError(完整计划身份),不是续命正向断言。旧直删+退测试+摘 EXECUTION_EVENT_EXCEPTION 前提已失效,后续只补 :400-406 护栏注释。R13 已解耦不碰 repo stub;R19 repo 私有版已保留并补顺序无关注释/parity。",
+  "current_evidence_2026_06_05": "2026-06-09 R19 后现盘: operation_execution_event_repo.py:402 的 list_latest_exception_events_by_op_ids 已是拒绝非 scoped 读的 stub raise,与 list_latest_events_by_op_ids(:400)、aggregate_states_by_op_ids(:404)、state_revision_for_op(:406) 等护栏同组;foundation 测试 test_operation_execution_event_foundation.py:385 断言 ValueError(完整计划身份),不是续命正向断言。旧直删+退测试+摘 EXECUTION_EVENT_EXCEPTION 前提已失效。2026-06-10 已在非 scoped 读 stub 组上方补中文护栏注释,保留 ValueError(完整计划身份) 契约测试,不删方法、不退断言、不改静默。R13 已解耦不碰 repo stub;R19 repo 私有版已保留并补顺序无关注释/parity。",
   "cluster": "C01",
   "same_file_siblings": [
    "R19"
@@ -5592,21 +5592,21 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "G10 planned。R18 独立处置 repo stub 护栏;须与 B13 R19 在 event_repo.py 上串行。R13 已解耦,不碰 repo stub。",
+  "planned_batch_hint": "G10 fixed。R18 已独立补 repo stub 护栏注释;已与 B13 R19 在 event_repo.py 上串行完成。R13 已解耦,不碰 repo stub。",
   "planned_deps_hint": "R13 已解耦:不删 repo:400/402,只在 provider 侧处理字段/形参/实参/可能孤儿 helper。跨桶同文件串行:event_repo.py 同居 R19(B13,_positive_ids),R19 repo 私有版已保留并补顺序无关注释/parity。",
-  "planned_fix_hint": "补护栏注释,禁止直删/退测试/改静默:(1) 在 operation_execution_event_repo.py 的非 scoped 读 stub 组上方补中文注释,说明这是故意保留的 loud raise 契约;(2) 保留 tests/operation_execution/test_operation_execution_event_foundation.py 的 ValueError(完整计划身份)断言;(3) 不摘 OperationExecutionEvent 类型注解 import,不处理 EXECUTION_EVENT_EXCEPTION 旧死信息。",
+  "planned_fix_hint": "已执行补护栏注释,禁止直删/退测试/改静默:(1) 已在 operation_execution_event_repo.py 的非 scoped 读 stub 组上方补中文注释,说明这是故意保留的 loud raise 契约;(2) 保留 tests/operation_execution/test_operation_execution_event_foundation.py 的 ValueError(完整计划身份)断言;(3) 不摘 OperationExecutionEvent 类型注解 import,不处理 EXECUTION_EVENT_EXCEPTION 旧死信息。",
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
     "无(repo普通方法,非SP05/facade契约枚举对象)"
    ],
-   "downstream_effect": "补护栏注释:零行为影响。继续保留受控 ValueError(完整计划身份),禁止退化为 AttributeError 或 return {} 静默。",
-   "fix_invalidation_risk": "旧风险已作废。R13 不碰 repo stub,不再与 R18 捆绑同一提交;R18 只补 :400-406 护栏注释。operation_execution_event_repo.py 与 R19(B13,_positive_ids)跨桶同文件,仍须串行避免同文件漂移。",
+   "downstream_effect": "已补护栏注释:零行为影响。继续保留受控 ValueError(完整计划身份),禁止退化为 AttributeError 或 return {} 静默。",
+   "fix_invalidation_risk": "旧风险已作废。R13 不碰 repo stub,不再与 R18 捆绑同一提交;R18 已补 :400-406 护栏注释。operation_execution_event_repo.py 与 R19(B13,_positive_ids)跨桶同文件,已按串行完成避免同文件漂移。",
    "id": "R18",
    "lb_colocation_danger": "none(operation_execution_event_repo.py 非承重文件)",
-   "location_status": "R19 后现盘。按符号重 rg: list_latest_exception_events_by_op_ids 为 operation_execution_event_repo.py:402 的单行 raise stub;同组非 scoped 读护栏为 :355/:357/:400/:402/:404/:406;foundation 测试 :385 断言其抛 ValueError(完整计划身份)。",
+   "location_status": "2026-06-10 护栏注释落地后现盘。按符号重 rg: 两条护栏注释在 :355/:401,6 格 stub = :356/:358/:402/:404/:406/:408,list_latest_exception_events_by_op_ids 现为 operation_execution_event_repo.py:404 的单行 raise stub;foundation 测试 :385 断言其抛 ValueError(完整计划身份)。",
    "pathology": "P6 旧孤儿叙事已被 scope 重构推翻;当前是真正的非 scoped 读 loud-raise 护栏",
-   "planned_fix_class": "补注释+保契约测试",
+   "planned_fix_class": "已补注释+保契约测试",
    "prod_consumers": [
     "生产零引用不等于可删;该公开方法当前用于保留旧 API 误用时的受控 ValueError 护栏。最新异常态真实生产来源仍不经此方法。"
    ],
@@ -6075,7 +6075,7 @@
    "execution_snapshot.py",
    "operation_execution_event_repo.py"
   ],
-  "current_evidence_2026_06_05": "2026-06-09 fixed: execution_snapshot.py:29 positive_op_ids 保 sorted，:41 补指纹排序承重注释，:111 将 ExecutionFactProvider 改为局部 import 以避免 provider 反向收口形成运行时环；execution_fact_provider.py:75 _positive_op_ids 已委托 positive_op_ids，:134-136 missing 文案按排序后首个缺失正 op_id loud raise；operation_execution_event_repo.py:67 _positive_ids 按 O04 保留私有版，:68 补顺序无关注释，:408 _batch_ids_by_op_ids 仍仅用于 SQL IN + dict。tests 已补 positive_op_ids 黄金用例、provider missing 文案 parity、repo 顺序无关 parity。",
+  "current_evidence_2026_06_05": "2026-06-09 fixed: execution_snapshot.py:29 positive_op_ids 保 sorted，:41 补指纹排序承重注释，:112 将 ExecutionFactProvider 改为局部 import 以避免 provider 反向收口形成运行时环(:111 已补『勿上提』防环承重注释,2026-06-10)；execution_fact_provider.py:69 _positive_op_ids 已委托 positive_op_ids，:126-128 missing 文案按排序后首个缺失正 op_id loud raise(行号经 2026-06-10 R13 收口后现盘重测)；operation_execution_event_repo.py:67 _positive_ids 按 O04 保留私有版，:68 补顺序无关注释，:410 _batch_ids_by_op_ids(R18 注释后现盘,旧 :408) 仍仅用于 SQL IN + dict。tests 已补 positive_op_ids 黄金用例、provider missing 文案 parity、repo 顺序无关 parity。",
   "cluster": "C01",
   "same_file_siblings": [
    "R13",
@@ -6126,7 +6126,7 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "R19 已 fixed。G09 provider 链 R15/R19/R13 均已 fixed；G10 repo 链剩 R18 stub 护栏。",
+  "planned_batch_hint": "R19 已 fixed。G09 provider 链 R15/R19/R13 均已 fixed；G10 repo 链 R18 stub 护栏也已 fixed。",
   "planned_deps_hint": "O37 串行序 R15->R19->R13 已完成。R13 已按符号重 rg 后 fixed；R18 独立处理 repo stub 护栏，R19/R13 均未碰 stub。",
   "planned_fix_hint": "fixed: snapshot positive_op_ids 的 sorted 作为指纹事实承重点保留并加注释；provider _positive_op_ids 收口到既有 positive_op_ids，且通过 snapshot 局部 import 消除运行时环；repo _positive_ids 因 data->service 越层禁止收 service，保留私有版并补“顺序无关”注释+效果 parity。",
   "phase1_blast": {
@@ -6136,13 +6136,13 @@
    "fix_invalidation_risk": "已避免 naive 越层/环：snapshot 去掉顶层 provider import 改局部 import，provider 才能安全 import positive_op_ids；repo 未 import service，仍只依赖 core.models+.base_repo+aggregation mixin。",
    "id": "R19",
    "lb_colocation_danger": "none(但execution_fact_provider.py跨桶:R13/B11在:20-21,42-43,96;R15/B06在:66。operation_execution_event_repo.py跨桶:R18/B11在:260-265。改这俩文件须与B11/B06串行)",
-   "location_status": "✅fixed — execution_snapshot.py:29 positive_op_ids/:42 return sorted，:41 指纹排序注释，:122-127 __all__ 仍导出；execution_fact_provider.py:75 _positive_op_ids/:76 return positive_op_ids(values)，:134 missing 使用排序后 ids；data/repositories/operation_execution_event_repo.py:67 _positive_ids/:80 return out 保私有版，:68 顺序无关注释。",
+   "location_status": "✅fixed — execution_snapshot.py:29 positive_op_ids/:42 return sorted，:41 指纹排序注释，:123-128 __all__ 仍导出；execution_fact_provider.py:69 _positive_op_ids/:70 return positive_op_ids(values)，:126 missing 使用排序后 ids；data/repositories/operation_execution_event_repo.py:67 _positive_ids/:80 return out 保私有版，:68 顺序无关注释。",
    "pathology": "P5 — 已有导出的公共 positive_op_ids 收口点,provider/repo 各私造一份且漂移(公开排序/私有不排序);同概念第2、3套私有实现。",
    "planned_fix_class": "fixed: provider 对齐既有 positive_op_ids/sorted 契约；repo 私有版按 O04 保留+补顺序无关注释/parity。",
    "prod_consumers": [
-    "core/services/scheduler/execution_snapshot.py:80,113(public版,sha256指纹:89-93 依赖排序)",
-    "core/services/scheduler/execution_fact_provider.py:134(provider wrapper 经 positive_op_ids 排序后检查 include_op_ids missing)",
-    "data/repositories/operation_execution_event_repo.py:408(repo私有版 _positive_ids 供 _batch_ids_by_op_ids SQL IN 查询)"
+    "core/services/scheduler/execution_snapshot.py:80,114(public版,sha256指纹:89-93 依赖排序;:114 经 2026-06-10 :111 防环注释后现盘,旧 :113)",
+    "core/services/scheduler/execution_fact_provider.py:126(provider wrapper 经 positive_op_ids 排序后检查 include_op_ids missing;R13 收口后现盘,旧 :134)",
+    "data/repositories/operation_execution_event_repo.py:410(repo私有版 _positive_ids 供 _batch_ids_by_op_ids SQL IN 查询;R18 注释后现盘,旧 :408)"
    ],
    "test_consumers": [
     "tests/operation_execution/test_operation_execution_scope_read_contract.py::test_execution_snapshot_sorts_and_dedupes_op_ids_for_stable_revision",

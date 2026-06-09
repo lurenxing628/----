@@ -108,6 +108,7 @@ def collect_execution_snapshot_for_plan_rows(
     op_ids: Sequence[int],
     logger=None,
 ) -> ExecutionSnapshot:
+    # 勿上提到模块顶层：provider 顶层 import 本模块的 positive_op_ids，两边互为环，上提即 ImportError。
     from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
 
     ids = positive_op_ids(op_ids)

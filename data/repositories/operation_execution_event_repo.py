@@ -352,6 +352,7 @@ class OperationExecutionEventRepo(OperationExecutionStateAggregationMixin, BaseR
     def _validate_event_sequence_for_insert(self, scope: OperationExecutionScope, event: OperationExecutionEvent) -> None:
         validate_operation_execution_event_sequence([*self.list_events_by_scope(scope), event])
 
+    # 故意保留：旧的只按 op_id 读取必须报完整计划身份错误，不能删成 AttributeError 或改成空结果。
     def list_events_by_op_id(self, op_id: int) -> List[OperationExecutionEvent]: raise _unscoped_execution_read_error()
 
     def list_events_by_op_ids(self, op_ids: Sequence[int]) -> List[OperationExecutionEvent]: raise _unscoped_execution_read_error()
@@ -397,6 +398,7 @@ class OperationExecutionEventRepo(OperationExecutionStateAggregationMixin, BaseR
         _validate_events_by_scope(out)
         return out
 
+    # 同一护栏：这些聚合入口必须 loud raise，强制调用方改走完整计划身份读取。
     def list_latest_events_by_op_ids(self, op_ids: Sequence[int]) -> Dict[int, OperationExecutionEvent]: raise _unscoped_execution_read_error()
 
     def list_latest_exception_events_by_op_ids(self, op_ids: Sequence[int]) -> Dict[int, OperationExecutionEvent]: raise _unscoped_execution_read_error()
