@@ -27,7 +27,7 @@
 | **G12** | GANTT | {R12} A2 ✅ fixed | **2026-06-08 已 fixed**。已在 G11 统一后的单份 helper 加 `dropped_count` / `critical_chain_partial`，并穿 `_empty_result`、`_normalize`、contract unavailable 分支与 JS 状态归一 | G11 前置已满足；R55/G13 仍按 O09 跳过，后续不得复活双副本 |
 | **G13** | GANTT | {R55} A3 ⏸ | **O09 已裁本轮不做**；仅保留暂停占位，重启条件=怀疑者过三问 + R11/R63 单份化前置已满足 | 本轮不得随 G12 同改 _normalize；禁破坏 `:385 None 回退` + support:55-56 分流判据 |
 | **G14** | GANTT | {R10} | 删死方法 gantt_service.py:60-62+stub:59-60,逻辑零重叠,纯物理同 PR | 与 G11/12/13 同 PR(PHASE0§3 同文件勿并发改),任意序;删后 grep 复核 resolve_version:64 在 |
-| **G15** | CONFIG-DUAL | {LB07, R71, R47} ASC-1 ⏸ | 🔒 config 双栈 helper 锁步收敛;LB07 承重安全网前置 R71/R47;R71 owner 已裁仅 parity 守卫、不物理合并 | 硬序 LB07 先(注释+扩 parity,Batch-1 ROOT)→R47 对称删动作；R71 只落 parity 守卫，物理收敛本轮不做 |
+| **G15** | CONFIG-DUAL | {LB07, R71, R47} ASC-1 ✅ fixed(2026-06-10) | 🔒 config 双栈 helper 锁步收敛;LB07 承重安全网前置 R71/R47;R71 owner 已裁仅 parity 守卫、不物理合并 | 已按硬序收口:LB07 注释+三 helper parity 随 fae8829b(2026-06-08)→R47 六死点逐块手删(2026-06-10,invalid 活参/collector.add 全保)→R71 以既有 spec_sync parity 对账锁结案,双栈保留 |
 | **G16** | CONFIG-DUAL | {R45 ≡ R48} ASC-2 ✅ fixed | 同一物理文件 config_adapter.py 整文件删已完成；两叙述视角=一次删除 | 2026-06-08 补登 fixed：旧 sp06 文件已由 A P1.1 删除，清单同步步骤为 no-op；后续只做残留 rg，不碰 schedule_params.py |
 | **G17** | CONFIG-DUAL | {R31} ASC-3 | 删 shared 源 value_policies.py:9 死常量,跨簇绑 R33 删序 | 单债;R33 不晚于 R31(否则 facade:11 残 import loud ImportError) |
 | **G18** | CONFIG-DUAL | {R26} ASC-4 ⏸ | 5 顶层 shim 删,三步迁移须同窗口,但与本簇余成员无原子绑定,Batch-14 全局最晚 | 晚于 R29/R33/R52 三桶收敛(facade 删晚于收敛硬约束) |
@@ -149,7 +149,7 @@ Batch-C（身份族收敛 / 收口委托，依赖承重族 + parity）
   G09(R15/R19/R13 fixed) ← O03/O05/O06/O37 已裁并执行：R15→R19→R13 串行已收口
   G10(R18，R19 repo私有版 fixed) ← R18 已独立补 repo stub 护栏注释；R19 repo 私有版已保留并补顺序无关注释/parity；R13 不碰 repo
   G29(R72)⏸        ← O19 已裁 web/core 各落各点 + 补 request import（E21 软自 G04）
-  G15(R47+R71)⏸    ← G15a 🔒（R71 已裁仅 parity，不物理合并）
+  G15(R47+R71)✅ fixed(2026-06-10) ← G15a(fae8829b 已落)；R47 删死参/R71 仅 parity 结案
   G22(R08+R09)✅ fixed(2026-06-10) ← N1 注释(E26 已闭) + R07 前置(E25 已满足)；O01/O02 已按双路 parity 执行
   G33(R05 步3)✅ fixed(2026-06-10) ← G33a 步1/步2(fae8829b 已落)
   G34(R67)⏸        ← 按 O18 裁定处理第 4 处 superset 收编

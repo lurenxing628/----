@@ -17,7 +17,7 @@
   1. **LB07 先**: 两栈 @dataclass 上方补「我是故意的/分层被迫双栈/加字段须两栈同改」中文注释(落点 model snapshot.py:7 / service config_snapshot.py:24) + 扩 `regression_scheduler_config_spec_sync_contract.py` 覆盖三 helper 逐分支 parity(真值表见 LB07 字段7 / R71 §7)。**纯增量零结构**，Batch-1 全局 ROOT。
   2. **R47 + R71 同批(parity 绿之后)**: 批内**先删两栈死参(R47)** → 签名更接近后**再收敛双栈(R71)**，parity 比对更干净。
   - ⚠️ 行号方向回盘(纠 R71 §5 笔误，已被 R71 对抗核验确认): R47 的 `_record_blank_choice_degradation` 在两栈中均**位于三 helper 之下**(model :83 vs helper :31/:49; service :63 vs helper :29/:45)。删 R47 死参只推移其**下方**符号，**不动三 helper 定义行**。但仍须同批统一回盘(R47 实参 :159/:214 与 helper 调用点混居函数体)。
-- **owner 裁断门(阻塞终态非阻塞分析)**: LB07/R71 owner_pending=true，owner 须先裁「永久双栈仅 parity 锁步」vs「R71 物理收敛到 model」。**LB07 注释+扩 parity + R47 直删终态修法在任一裁断下都成立可先行**; R71 物理收敛动作待裁。
+- **owner 裁断门**: ✅ 已裁已执行——O17 裁「仅 parity 守卫、不物理合并」;LB07 注释+三 helper parity 随 fae8829b(2026-06-08) 落地,R47 六死点 2026-06-10 删除,R71 同日以 parity 对账锁结案,双栈保留。G15 fixed。
 
 ### 原子子簇 ASC-2 — config_adapter 整文件删 【R45 ≡ R48 已 fixed】
 - **成员**: R45(死壳视角), R48(整模块迁移残渣视角) — 同一物理文件 `core/algorithms/greedy/config_adapter.py`(历史回盘 27 行) 的**两个叙述视角，同 same_symbol=read_critical_schedule_config**。
@@ -92,8 +92,8 @@
 ## E. fixed 成员残留动作
 
 **本簇 7 成员中 R45/R48 已 fixed，其余成员仍按原计划处理。** corrections E 节旧 fixed 名单(LB03/LB06/R07/R16/R56/R57)均在本簇之外；2026-06-08 另补登 G16/ASC-2:
-- LB07/R71: 承重注释+helper parity 两件计划工作均未落, 6 处 def 仍逐字双栈, parity 守卫缺口实证在场。
-- R47: 两栈对称死参未删、4 调用点未改。
+- LB07/R71: ✅ 2026-06-10 补登——承重注释+三 helper parity 已随 fae8829b 落地(spec_sync_contract +200 行,含 INHERIT_LEGACY 不对称 pin 与 blank 路两栈等价样本);R71 按 O17 以 parity 对账锁结案,三 helper 保持双栈。
+- R47: ✅ 2026-06-10 fixed——两栈死参 raw_value 六点已删(2 形参+4 死实参),invalid 路 4 活实参与 collector.add 降级记录全保。
 - R45/R48: **已 fixed**。`core/algorithms/greedy/config_adapter.py` 已删除；旧 `tests/regression_sp06_no_duplicate_defs.py` 已由 A P1.1 删除，旧清单同步 no-op；生产/测试/工具当前零引用。
 - R26: 5 shim 全在纯转出、2 离线消费者仍老路径、SP05 仍冻结。
 - R31: 三处 :9/:11/:29 原样。

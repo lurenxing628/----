@@ -445,7 +445,7 @@
  "R47": {
   "id": "R47",
   "bucket": "B03",
-  "status": "planned",
+  "status": "fixed",
   "sev": "trivial",
   "path": "P6",
   "lb": false,
@@ -482,7 +482,7 @@
  "R71": {
   "id": "R71",
   "bucket": "B03",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
@@ -494,7 +494,7 @@
    "R47"
   ],
   "batch": "Batch-5(B03 config",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": null,
   "adv_refuted": false,
   "title": "config 双栈(model↔service)逐字复制函数群=LB-B2 配料表"

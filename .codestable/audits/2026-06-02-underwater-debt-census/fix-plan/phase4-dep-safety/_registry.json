@@ -2535,7 +2535,7 @@
   "id": "R47",
   "bucket": "B03",
   "home": "B03",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "trivial",
   "pathology": "P6",
   "partition": "core-models",
@@ -2549,7 +2549,7 @@
   "all_files": [
    "schedule_config_runtime_coercion.py"
   ],
-  "current_evidence_2026_06_05": "model coercion.py:83 _record_blank_choice_degradation 仍带死参 raw_value(:88),函数体 :91-98 只用 field_name/fallback 调 collector.add(code=blank_required),从不读 raw_value;service 孪生 config_field_coercion.py:63 同样在 :68 声明死参 raw_value 并由 :158/:207 调用点传入。两栈对称死参数均未删,4 调用点未改。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(G15): 双栈死参 raw_value 六点已按调用函数名逐块手删——model coercion.py def(:88 形参)+调用①②(:159/:214 死实参)、service config_field_coercion.py def(:68 形参)+调用③(单行内联 :158)④(:211 死实参),全部按符号定位逐块编辑、未用全局替换(防爆点 #10)。invalid 路 4 处活实参(_record_invalid_choice_degradation 的 raw_value=raw_value,删后现盘 model :171/:222+service :169/:220)一字未碰;blank 路 collector.add(code='blank_required') 可观测降级整条保留(铁律 4)。删后 rg raw_value=raw_value 双栈恰余 4 处全为 invalid 活参;blank+invalid 两路 degradation 回归:service 栈由 tests/config/ 整包(186 passed)覆盖,model 栈 blank 路由 spec_sync 新增 blank 两栈等价样本(graph_analysis_mode='' → blank_required 事件逐字段相等)直接钉住+盲审双栈活体探针实证逐字等价,spec_sync 直接 pytest 14 passed(该文件已入 required+impact 双门禁组——test_registry_data.py REQUIRED_TESTS + scheduler_config impact 组,改 config 文件 daily 门禁自动选中)。",
   "cluster": "C01",
   "same_file_siblings": [
    "LB07",
@@ -2715,7 +2715,7 @@
   "id": "R71",
   "bucket": "B03",
   "home": "B03",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P3",
   "partition": "",
@@ -2732,7 +2732,7 @@
    "schedule_config_runtime_coercion.py",
    "schedule_config_runtime_read.py"
   ],
-  "current_evidence_2026_06_05": "三 helper 仍逐字双栈未收敛:_float_matches_choice model coercion.py:31 ↔ service config_field_coercion.py:45;_normalize_valid_texts model coercion.py:49 ↔ service config_field_coercion.py:29;_coerce_degradation_event model read.py:68 ↔ service config/config_snapshot.py:153。前置 parity 守卫(扩 spec_sync_contract.py 锁三 helper 行为等价)对 baseline 零 diff、无测试按名引用三 helper,守卫缺口仍在,物理收敛与 parity 均未动。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(O17 仅 parity 守卫、不物理合并): 三对双栈 helper(_float_matches_choice model:31↔service:45、_normalize_valid_texts model:49↔service:29、_coerce_degradation_event runtime_read↔service_snapshot)保持双份不合并;对账锁 = tests/config/test_scheduler_config_spec_sync_contract.py 的三个等价真值表测试(随 fae8829b +200 行落地):float_choice(容差夹逼样本 1e-10 界内/2e-9 界外——精确 1e-9 边界因浮点表示误差不可精确构造,夹逼为合理工程口径;'abc' 非数字串走 except continue 静默跳过逐字保真)、valid_texts(空/去重/strip/首现序 pin,一侧改 sorted(set) 即红)、degradation_event(count='x'→1/-5→max(1,·)=1/非 dict/None/空字段全分支)。三 helper 既有 except 吞错行为逐字保真未顺手改 loud(改 loud 须另立债)。LB07 禁区(coercion 置零/loud raise 族/30 字段锁步表/INHERIT_LEGACY 两栈不对称)全程未碰。dossier 引用的悬空锚点 regression_scheduler_candidate_py38_contract.py 确认已废:py38 兼容守卫现由 tests/gate_meta/test_scan_py38plus_syntax.py(7 passed)承担。",
   "cluster": "C01",
   "same_file_siblings": [
    "LB07",
@@ -2810,7 +2810,7 @@
     "tests/regression_scheduler_candidate_py38_contract.py:16,18（把两栈文件纳py38 AST门禁，但不校验helper等价）"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "LB04": {

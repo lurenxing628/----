@@ -122,6 +122,17 @@ def test_scheduler_config_snapshot_helpers_stay_in_sync_for_good_and_degraded_va
     assert any(event.get("field") == "graph_analysis_mode" for event in service_degraded.degradation_events)
     assert any(event.get("field") == "graph_analysis_mode" for event in runtime_degraded.degradation_events)
 
+    # blank 路两栈事件逐字段等价——R47 删死参 raw_value 后,blank_required 消息/回退值的单边漂移由此钉住。
+    blank = _config_payload(graph_analysis_mode="")
+    service_blank = ensure_service_schedule_config_snapshot(blank, strict_mode=False)
+    runtime_blank = ensure_runtime_schedule_config_snapshot(blank, strict_mode=False)
+
+    assert service_blank.graph_analysis_mode == runtime_blank.graph_analysis_mode
+    service_blank_events = [e for e in service_blank.degradation_events if e.get("field") == "graph_analysis_mode"]
+    runtime_blank_events = [e for e in runtime_blank.degradation_events if e.get("field") == "graph_analysis_mode"]
+    assert service_blank_events and service_blank_events == runtime_blank_events
+    assert service_blank_events[0].get("code") == "blank_required"
+
 
 def test_scheduler_config_snapshot_strict_missing_field_matches_between_stacks() -> None:
     with pytest.raises(ValidationError) as service_exc:

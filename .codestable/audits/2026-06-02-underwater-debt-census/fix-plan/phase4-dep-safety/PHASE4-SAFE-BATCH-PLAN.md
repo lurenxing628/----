@@ -91,7 +91,7 @@ Batch-B  依赖 ROOT 承重门 / 单门控前置
 Batch-C  身份族收敛 / 收口委托（依赖承重族 + parity）
   G04(R58→R54→R44)←LB03+R22parity；同批带走 E03→G01 ┃ G01(R42+R60)←G04
   G27(R22+R21)←LB03+G27p（2026-06-08 已 fixed） ┃ G09(R15/R19/R13 已 fixed) ┃ G10(R18/R19 repo私有版 已 fixed) ┃ G29(R72)⏸
-  G15(R47+R71)⏸←G15a🟢 ┃ G22(R08+R09)🟢 fixed(2026-06-10) ┃ G33(R05步3)🟢 fixed(2026-06-10) ┃ G34(R67)⏸
+  G15(R47+R71)🟢 fixed(2026-06-10) ┃ G22(R08+R09)🟢 fixed(2026-06-10) ┃ G33(R05步3)🟢 fixed(2026-06-10) ┃ G34(R67)⏸
   G17(R31)←E05/E06 同G23窗口 ┃ G23(R30+R33)←R33步1先
 
 Batch-D  facade 删除最晚 / 跨 owner-pending 收口
@@ -258,7 +258,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ### 1.4 Batch-C — 身份族收敛 / 收口委托（依赖承重族 + parity）
 
-**成员（调度单元 + 债）**：G04(R58→R54→R44)←LB03+R22parity；G01(R42+R60)←G04(E03)；G27(R22+R21，2026-06-08 已 fixed)←LB03+G27p；G09(R15→R19→R13，三者已 fixed)；G10(R18+R19 repo私有版，二者已 fixed)；G29(R72)⏸；G15(R47+R71)⏸←G15a(已 fixed)；G22(R08+R09)🟢 fixed(2026-06-10)；G33(R05 步3)🟢 fixed(2026-06-10)；G34(R67)⏸；G17(R31)；G23(R30+R33)。
+**成员（调度单元 + 债）**：G04(R58→R54→R44)←LB03+R22parity；G01(R42+R60)←G04(E03)；G27(R22+R21，2026-06-08 已 fixed)←LB03+G27p；G09(R15→R19→R13，三者已 fixed)；G10(R18+R19 repo私有版，二者已 fixed)；G29(R72)⏸；G15(R47+R71)🟢 fixed(2026-06-10)；G22(R08+R09)🟢 fixed(2026-06-10)；G33(R05 步3)🟢 fixed(2026-06-10)；G34(R67)⏸；G17(R31)；G23(R30+R33)。
 
 > **2026-06-08 执行补登**：G04(R58/R54/R44) 与 G01(R42/R60) 已 fixed，并已在 `_registry.json`、`_registry_index.json` 与对应 dossier 登记。G04 终态：R58 只补承重说明，不做 Phase2 剔键；R54 把五个 guard 投影面收口到既有 `build_workbench_plan_context` / `plan_guard_fields_for_context`，保留各自键面形状与 L5 OR；R44 收口到 core 的 `selected_plan_role`，不碰 guard 闸门。G01 终态：`plan_id` 死面包屑整链下线，`version/plan_role/scenario_id/back_to` 等真上下文键保留。
 >
@@ -296,7 +296,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
   - **连带（V1）**：R09 收编串行链真正待收编 Optional 副本只剩 `resource_dispatch_execution_service.py:24` + `scheduler_resource_dispatch_execution.py viewmodel:33`。
   - E28：R09 收编**禁碰同文件 `:36-50` LB01 最终底**（删空行/调 import/移函数都漂 raise 锚点，按符号定位）；R08 候选 A 只删 `:25/:227-228/:367-368` 保 `feedback_write_enabled` 参数（`:234` 活消费，误删→「填写实际」按钮门禁塌缩静默放开误填）；R08→R09 串行。
 - **G33(R05 步3)🟢 fixed(2026-06-10)**（R05 标红 + 爆点 #19/#20，步1/2 已在 ROOT fae8829b）：已按硬序收口——repo `list_dispatch_rows` 五个内联 where 分支全部替换为 `normalize_dispatch_resource_filter` 委托（team 双 join/空 id 全量逐分支等价），`build_schedule_detail_sql` 的 `include_team_context` 保持无条件 True 不随 filter 收窄（防爆点 #19 no such column）并留注释；`_normalize_scope_type` 合法集收敛到 `SUPPORTED_DISPATCH_RESOURCE_TYPES`（保默认 operator+中文文案+field，续命直调测试零改动）。行为差异=两类严格化：非法 scope_type 与「空 type+非空 id」均由静默全量变 loud ValidationError（生产入口先归一/默认 operator，均不可达）。smoke team 活用例/五 parity/resource_dispatch 整包 136 passed。
-- **G15(R47+R71)🟡⏸**：←G15a🔒（LB07 注释+parity 绿）；R47+R71 同批（先删 R47 死参；R71 按 O17 仅 parity 守卫、不物理合并）；**R47 按调用函数名逐块手删**（只删 model:88/:159/:214+service:68/:158/:211 死点，爆点 #10：死参活参 `raw_value=raw_value` 全栈 8 处逐字相同，盲 grep/sed 必误删 `_record_invalid_choice_degradation` 活参 :116/:119→invalid 降级证据静默丢，blank parity 测试不覆盖 invalid 路）；删后跑 blank+invalid 两路 degradation 回归；R71 改 loud 另立债。
+- **G15(R47+R71)🟢 fixed(2026-06-10)**：G15a/LB07 注释+三 helper 等价 parity 已随 fae8829b 落地(O17 前置满足)；R47 已按调用函数名逐块手删六死点(2 形参+4 死实参,invalid 路 4 活实参与 collector.add 降级记录全保)；R71 按 O17 仅 parity 守卫结案、双栈不物理合并。原执行纪律归档：**R47 按调用函数名逐块手删**（只删 model:88/:159/:214+service:68/:158/:211 死点，爆点 #10：死参活参 `raw_value=raw_value` 全栈 8 处逐字相同，盲 grep/sed 必误删 `_record_invalid_choice_degradation` 活参 :116/:119→invalid 降级证据静默丢，blank parity 测试不覆盖 invalid 路）；删后跑 blank+invalid 两路 degradation 回归；R71 改 loud 另立债。
 - **G34(R67)🟡⏸**：①②纯 6 键必收（喂收口点零新增依赖）；O18 已裁第 4 处保现状，③④保持现状/仅注释；禁动收口点签名 `:119-127`。**R67↔R42 同文件串行（E17 拆两条件分支，红队第2轮 P-RT22-04 采纳）**：(a)「O18=保现状/仅注释 → R67↔R42 零冲突，无需串行」；(b)历史备选「若未来收编③④ → R67 对 `_REPORT_CONTEXT_FIELD_NAMES` 做元组拼接（`(...前缀键..., *REPORT_RESOURCE_FILTER_ARG_KEYS)`，R67.md:46/76），该元组**首键 `plan_id` 是 R42 地盘**——拼接 MUST 晚于 R42 删 collar 形参之后、**禁碰元组内 `plan_id` 成员**、且 **MUST 先过 `web.viewmodels → core.services.report` 分层门**」。本文件归「三批四单元串行编排块」（见 §1.0 ⚠单文件三批四单元串行块总纲），G34 进该文件前对元组/遍历点按符号重 rg。
 - **G29(R72)🟢⏸**：dedup 落 `web scheduler_utils.py`，**分层红线绝不下沉 core**（core→flask 越层）；必补 `from flask import request`（现仅 import g，latent NameError）；空串→None 语义原样保留禁加 ROLE_ADOPTED 兜底；按 O19 的公开名 + web/core 各落各点执行。
 - **G17(R31)+G23(R30+R33)**：E05/E06 硬序 **R33 步1（迁两测试 import）→R30（删 shared 实现 + 三 FieldPolicy + 三常量）→R33 步2/3（删壳 + `:411` 断言）**；R31 不晚于 R33（A14 方向修正：壳 import 源，先删壳 R33 再删源 R31，否则 facade:11 残 import loud ImportError）；**死保 degradation:15**（V4②裁定：无论叫壳叫实现都死保，config_contract:15 不动，删元组只动 `:14/:16/:19`）；绝不碰 core.shared 三模块全文。
