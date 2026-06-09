@@ -6,7 +6,6 @@ from core.infrastructure.errors import ValidationError
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED
 from core.services.scheduler.schedule_result_view_context import (
     default_plan_resolution_dict,
-    selected_plan_role,
 )
 from web.navigation_context import publish_workbench_navigation_context, set_current_workbench_navigation_context
 from web.request_resource_context import request_report_resource_context

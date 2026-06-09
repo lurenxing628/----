@@ -565,9 +565,10 @@ def test_scheduler_navigation_publish_accepts_navigation_context_plan_role_shape
         assert _query(export_url)["plan_role"] == ["baseline_best"]
 
 
-def test_scheduler_navigation_selected_plan_role_uses_core_contract() -> None:
+def test_scheduler_pages_selected_plan_role_use_core_contract() -> None:
     from core.services.scheduler.schedule_result_view_context import selected_plan_role as core_selected_plan_role
-    from web.routes.domains.scheduler.scheduler_navigation_publish import selected_plan_role
+    from web.routes.domains.scheduler.scheduler_gantt import selected_plan_role as gantt_selected_plan_role
+    from web.routes.domains.scheduler.scheduler_week_plan import selected_plan_role as week_selected_plan_role
 
     for plan_resolution in (
         {"selected_role": "baseline_best"},
@@ -576,7 +577,8 @@ def test_scheduler_navigation_selected_plan_role_uses_core_contract() -> None:
         {},
         None,
     ):
-        assert selected_plan_role(plan_resolution) == core_selected_plan_role(plan_resolution)
+        assert gantt_selected_plan_role(plan_resolution) == core_selected_plan_role(plan_resolution)
+        assert week_selected_plan_role(plan_resolution) == core_selected_plan_role(plan_resolution)
 
 
 def test_scheduler_navigation_rejects_conflicting_resource_aliases() -> None:

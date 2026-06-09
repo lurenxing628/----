@@ -10,7 +10,7 @@ from core.models.schedule_plan_role import VALID_PLAN_ROLES
 from core.services.common.excel_audit import log_excel_export
 from core.services.scheduler.schedule_plan_option_display import public_plan_role_options
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED
-from core.services.scheduler.schedule_result_view_context import default_plan_resolution_dict
+from core.services.scheduler.schedule_result_view_context import default_plan_resolution_dict, selected_plan_role
 from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
 from core.services.scheduler.week_plan_excel import build_week_plan_export_workbook
 from core.shared.strict_parse import parse_required_int
@@ -41,7 +41,6 @@ from .scheduler_navigation_publish import (
     publish_week_plan_navigation_context,
     requested_plan_role,
     resolved_scenario_id,
-    selected_plan_role,
 )
 from .scheduler_user_messages import scheduler_user_visible_app_error_message
 from .scheduler_utils import _current_scheduler_operator
