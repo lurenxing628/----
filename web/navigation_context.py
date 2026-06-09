@@ -75,6 +75,8 @@ def current_workbench_navigation_context() -> Dict[str, Any]:
     resource = _request_resource()
     return build_workbench_plan_context(
         version=_request_arg("version"),
+        # 故意: fallback 只接受已登记的公开 role,非法 role 回 adopted 是 fail-closed 展示兜底。
+        # 复盘页的正式身份护栏在 reports_page_support 页级 blocked 里执行,这里不信裸 role 放写入口。
         plan_role=plan_role if plan_role in VALID_PLAN_ROLES else ROLE_ADOPTED,
         scenario_id=scenario_id,
         date_from=_request_arg("start_date") or _request_arg("date_from"),

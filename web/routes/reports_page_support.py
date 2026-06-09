@@ -393,8 +393,12 @@ def execution_review_page_context(engine: ReportEngine, services) -> Dict[str, A
     raw_plan_role = request_plan_role()
     scenario_id = request_scenario_id()
     identity_error = execution_review_plan_identity_error(raw_plan_role, scenario_id)
+    # 故意忽略 request 的 plan_role/scenario_id:计划和现场实际只复盘正式采用方案。
+    # raw 身份只用于上面的可见 blocked 提示;core 行数据必须硬钉 adopted/None,
+    # 禁改成透传 request,也不要给 core execution_review 增加 plan_role/scenario_id 形参。
     plan_resolution = page_plan_resolution(services.schedule_plan_query_service, version, "adopted", None)
     raw_date_from, raw_date_to = _paired_execution_dates()
+    # 同一护栏也适用于默认日期窗:窗口按正式方案计算,避免模拟预览身份冒充正式复盘。
     date_from, date_to, _date_source, _span = page_date_range_or_version_span(engine, int(version or 0), "adopted", None, raw_date_from, raw_date_to)
     batch_id = _request_text("batch_id")
     resource_type, resource_id = request_resource_filter()
