@@ -22,6 +22,7 @@ from tests.gate_meta.long_gate_cache_helpers import (
     _reuse_decision_for,
     _run_gate_with_fake_commands,
     _seed_required_or_startup_success_cache,
+    _stub_runtime_probes,
     _success_log_path_for_entry,
     _success_path,
     _summary_entry,
@@ -37,6 +38,17 @@ from tools.long_gate_manifest import (
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
 )
 from tools.test_registry import iter_required_tests
+
+
+@pytest.fixture(autouse=True)
+def _stub_runtime_probes_for_file(monkeypatch):
+    """本文件级 autouse：常量化 git/node 探针，免去 66/15 参用例对真子进程的重复探测。
+
+    仅作用于本文件——绝不下沉 conftest/全局，以免破坏 test_long_gate_cache.py 里
+    断言 overlay PATH 真跑探针的守卫。本文件无任何用例断言探针真值（仅断指纹对
+    scope/env 变化有反应），故常量化对断言透明。
+    """
+    _stub_runtime_probes(monkeypatch)
 
 
 def _call_displays(calls: Sequence[Dict[str, object]]) -> List[str]:

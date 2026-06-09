@@ -119,6 +119,15 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
     monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
     monkeypatch.setattr(module, "_assert_pyright_tools_config_matches_tool_paths", lambda: None)
     monkeypatch.setattr(module, "pytest_distribution_version", lambda strict=False: "pytest 8.3.5")
+    _stub_runtime_probes(monkeypatch)
+
+
+def _stub_runtime_probes(monkeypatch) -> None:
+    """把 git/node 运行时探针替换为常量，免去真子进程。
+
+    探针值（--version / browser capability）对宿主机恒定，自测只断言指纹对 scope/env
+    变化有反应、从不断言探针值，故常量化对断言透明，且摘掉真 git/node 依赖。
+    """
     monkeypatch.setattr(fingerprint_mod, "_git_executable_realpath", lambda environment=None: "/stable/git")
     monkeypatch.setattr(fingerprint_mod, "_git_version", lambda strict=False, environment=None: "git version 2.50.0")
     monkeypatch.setattr(fingerprint_mod, "_node_executable_realpath", lambda environment=None: "/stable/node")

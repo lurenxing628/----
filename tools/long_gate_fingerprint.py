@@ -312,6 +312,16 @@ def _effective_environment(environment: Optional[Mapping[str, str]] = None) -> M
     return environment if environment is not None else os.environ
 
 
+def _runtime_probe_cache_key(probe: str, exe_realpath: str, environment: Mapping[str, str]) -> str:
+    """探针成功值的去重键：(探针名, 解析出的可执行 realpath, 完整 env 签名)。
+
+    同机同进程内同一 realpath + 同一 env 必产出逐位一致的 --version/capability，
+    故缓存命中对指纹 proof 透明；env 任何差异（如 PATH overlay）即换键真跑，
+    覆盖不弱。仅缓存成功值，strict/失败路径不入缓存（见各探针）。
+    """
+    return stable_json_hash({"probe": probe, "exe": exe_realpath, "env": dict(environment)})
+
+
 def _git_executable_realpath(environment: Optional[Mapping[str, str]] = None) -> str:
     env = _effective_environment(environment)
     git = shutil.which("git", path=env.get("PATH"))
@@ -325,6 +335,10 @@ def _git_version(*, strict: bool = False, environment: Optional[Mapping[str, str
     git = shutil.which("git", path=env.get("PATH"))
     if not git:
         return "__missing_git__"
+    cache_key = _runtime_probe_cache_key("git_version", os.path.realpath(git), env)
+    cached = _RUNTIME_FINGERPRINT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     try:
         completed = subprocess.run(
             [git, "--version"],
@@ -344,7 +358,9 @@ def _git_version(*, strict: bool = False, environment: Optional[Mapping[str, str
             detail = str(completed.stderr or completed.stdout or "").strip() or f"returncode={completed.returncode}"
             raise LongGateFingerprintError(f"git version is required for long gate fingerprint: {detail}")
         return "__git_version_unavailable__"
-    return str(completed.stdout or "").strip()
+    value = str(completed.stdout or "").strip()
+    _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
+    return value
 
 
 def _node_executable_realpath(environment: Optional[Mapping[str, str]] = None) -> str:
@@ -360,6 +376,10 @@ def _node_version(*, strict: bool = False, environment: Optional[Mapping[str, st
     node = shutil.which("node", path=env.get("PATH"))
     if not node:
         return "__missing_node__"
+    cache_key = _runtime_probe_cache_key("node_version", os.path.realpath(node), env)
+    cached = _RUNTIME_FINGERPRINT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     try:
         completed = subprocess.run(
             [node, "--version"],
@@ -379,7 +399,9 @@ def _node_version(*, strict: bool = False, environment: Optional[Mapping[str, st
             detail = str(completed.stderr or completed.stdout or "").strip() or f"returncode={completed.returncode}"
             raise LongGateFingerprintError(f"node version is required for long gate fingerprint: {detail}")
         return "__node_version_unavailable__"
-    return str(completed.stdout or "").strip()
+    value = str(completed.stdout or "").strip()
+    _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
+    return value
 
 
 def _node_browser_runtime_capability(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
@@ -387,6 +409,10 @@ def _node_browser_runtime_capability(*, strict: bool = False, environment: Optio
     node = shutil.which("node", path=env.get("PATH"))
     if not node:
         return "__missing_node__"
+    cache_key = _runtime_probe_cache_key("node_browser_runtime_capability", os.path.realpath(node), env)
+    cached = _RUNTIME_FINGERPRINT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     capability_script = (
         "const missing = [];"
         "if (typeof fetch !== 'function') missing.push('fetch');"
@@ -422,7 +448,9 @@ def _node_browser_runtime_capability(*, strict: bool = False, environment: Optio
                 + json.dumps(payload, ensure_ascii=False, sort_keys=True)
             )
         return "__node_browser_runtime_capability_failed__:" + stable_json_hash(payload)
-    return "passed:" + stable_json_hash(payload)
+    value = "passed:" + stable_json_hash(payload)
+    _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
+    return value
 
 
 def _pytest_plugin_distribution_versions(*, strict: bool = False) -> str:
