@@ -146,7 +146,8 @@ def test_execution_fact_provider_scopes_dashboard_rows_by_plan_identity(tmp_path
         )[10]
 
         assert scoped_fact.actual_status == "not_started"
-        assert scoped_fact.last_event_schedule_version is None
+        assert scoped_fact.actual_start_time is None
+        assert scoped_fact.state_revision == "10:0:0"
         assert scoped_fact.schedule_version == 2
         assert scoped_fact.schedule_id == 100
     finally:
@@ -257,8 +258,6 @@ def test_execution_snapshot_revision_includes_plan_identity() -> None:
         "actual_end_time": None,
         "actual_machine_id": None,
         "actual_operator_id": None,
-        "last_event_schedule_version": None,
-        "last_event_schedule_id": None,
         "state_revision": "10:0:0",
         "source_table": "schedule",
         "effective_plan_role": "adopted",
@@ -288,8 +287,6 @@ def test_execution_snapshot_sorts_and_dedupes_op_ids_for_stable_revision() -> No
             actual_end_time=None,
             actual_machine_id=None,
             actual_operator_id=None,
-            last_event_schedule_version=None,
-            last_event_schedule_id=None,
             state_revision=f"{op_id}:0:0",
             schedule_version=1,
             schedule_id=100 + op_id,
@@ -319,8 +316,6 @@ def test_execution_snapshot_rejects_fact_without_plan_identity() -> None:
         actual_end_time=None,
         actual_machine_id=None,
         actual_operator_id=None,
-        last_event_schedule_version=None,
-        last_event_schedule_id=None,
         state_revision="10:0:0",
     )
 

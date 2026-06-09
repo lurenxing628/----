@@ -4,9 +4,11 @@
 
 > ✅ **2026-06-09 ROOT 执行补登**：G07a/LB01 已 fixed。`_load_current_official_schedule` 上方已补写侧 fail-CLOSED 第一闸注释，`_build_event_payload` 写死 `SOURCE_SCHEDULE/ROLE_ADOPTED/None` 上方已补落库前消毒注释；硬拒条件、`can_write_feedback` 第二硬门和三写死字段均未改。后续同文件动作仍须按符号重 rg，禁把 LB01 注释解读成可透传 context。
 
-> ✅ **2026-06-09 R15 执行补登**：G09 provider 链第一段 R15 已 fixed。`execution_fact_provider._parse_execution_time` 保留合法空时间 `None/""/" "` 本地返回 `None`，非空值委托既有真相源 `parse_operation_event_time`；坏时间从静默 `None` 升级为 loud raise。未改 support/state_builder 既有语义。R19 已在后续补登中 fixed；下一步 G09 仅剩 R13 殿后且删前需再确认。
+> ✅ **2026-06-09 R15 执行补登**：G09 provider 链第一段 R15 已 fixed。`execution_fact_provider._parse_execution_time` 保留合法空时间 `None/""/" "` 本地返回 `None`，非空值委托既有真相源 `parse_operation_event_time`；坏时间从静默 `None` 升级为 loud raise。未改 support/state_builder 既有语义。R19/R13 已在后续补登中 fixed。
 
-> ✅ **2026-06-09 R19 执行补登**：G09/G10 中 R19 已 fixed。`execution_snapshot.positive_op_ids` 保 sorted 并补指纹排序承重注释；`execution_snapshot` 顶层 provider import 改为函数内局部 import，避免 provider 反向收口时形成运行时环；`execution_fact_provider._positive_op_ids` 委托既有 `positive_op_ids`；`operation_execution_event_repo._positive_ids` 按 O04 保留私有版并补顺序无关注释/parity，不下沉 service、不碰 R18 stub。下一步 G09 仅剩 R13 殿后，G10 仅剩 R18 stub 护栏。
+> ✅ **2026-06-09 R19 执行补登**：G09/G10 中 R19 已 fixed。`execution_snapshot.positive_op_ids` 保 sorted 并补指纹排序承重注释；`execution_snapshot` 顶层 provider import 改为函数内局部 import，避免 provider 反向收口时形成运行时环；`execution_fact_provider._positive_op_ids` 委托既有 `positive_op_ids`；`operation_execution_event_repo._positive_ids` 按 O04 保留私有版并补顺序无关注释/parity，不下沉 service、不碰 R18 stub。G09 已在 R13 后收口，G10 仅剩 R18 stub 护栏。
+
+> ✅ **2026-06-10 R13 执行补登**：owner 已确认单机无仓库外读者，R13 按 O06 完成“先迁测试后删”。`ExecutionFact.last_event_schedule_*`、`_fact_from_state` 的 `latest` 形参/实参、旧字段赋值与孤儿 `_latest_events_by_scope` 已删除；相关测试已退旧字段断言。R13 未碰 repo stub，R18 仍 planned。
 
 > 簇 id: C-EXEC-FACT | 成员债: LB01 R13 R15 R17 R18 R19 R20 | 簇内分区 scheduler-exec-diag
 > 回盘日 2026-06-05 / HEAD c2aa7501 / 全部行号经本轮 rg 复盘（不信旧值）
@@ -14,7 +16,7 @@
 > 物理文件分布:
 > - `operation_execution_feedback_service.py`: LB01(承重宿主) + R17(死import:12) + R20(labels import:52)
 > - `operation_execution_feedback_support.py`: R17(死import:11/推导式项:81) + R15(`_parse_feedback_datetime`:225) + R20(labels import:24) + R09(他簇)
-> - `execution_fact_provider.py`: R13(死字段/形参/实参/孤儿 helper，后续重 rg) + R15(`_parse_execution_time`:79-84, fixed) + R19(`_positive_op_ids`:75-76, fixed)
+> - `execution_fact_provider.py`: R13(死字段/形参/实参/孤儿 helper，fixed) + R15(`_parse_execution_time`, fixed) + R19(`_positive_op_ids`, fixed)
 > - `operation_execution_event_repo.py`: R18(stub:400-406) + R19(`_positive_ids`:67-80, fixed 保私有版); R13 已解耦,不碰 repo stub
 > - `execution_snapshot.py`: R19 收口点(`positive_op_ids`:29-42, fixed)
 
@@ -35,9 +37,9 @@
 **内部顺序**: **R15 先（support 处其实已落地，仅需守住 :225 raise）→ R17 删 :81/:11 → R20 改 :24**。R17/R20 在 support 文件的删改宜与 A1 的 service 删改**同一原子提交**（R17 跨 service:12 + support:11/81 三处，R20 跨 service:52 + support:24 + context:11 多处）。
 
 ### 子簇 A3 — provider 文件「R15 已收口 → R19 改 → R13 删字段」串行链
-**成员**: R15（2026-06-09 已 fixed，provider `_parse_execution_time`:79-84，空值保 None、坏值 loud raise）→ R19（2026-06-09 已 fixed，`_positive_op_ids`:75-76 委托 `positive_op_ids`）→ R13（死字段/赋值/形参/实参/可能孤儿 `_latest_events_by_scope`，后续按符号重 rg）
+**成员**: R15（2026-06-09 已 fixed，provider `_parse_execution_time` 空值保 None、坏值 loud raise）→ R19（2026-06-09 已 fixed，`_positive_op_ids` 委托 `positive_op_ids`）→ R13（2026-06-10 已 fixed，删除死字段/赋值/形参/实参/孤儿 `_latest_events_by_scope`）
 **原子原因**: 三者同居 `execution_fact_provider.py`，删改互相移动行号。R13 删字段(-2)+赋值(-2)+可能删 `_latest_events_by_scope`(-8) → 下方 R19(:70)、R15(:85) 集体上移最多 ~13 行。R19 改 :70-82 → 影响 R13 :118 调用点附近。**先改语义（R15 收口、R19 收口）后删死物（R13 删字段）**，避免后改桶撞行号 + 防删物时误伤 raise 语义。
-**内部顺序（强制）**: **R15 先（已 fixed，SCC 最前置，先收口解析语义）→ R19（已 fixed，收口 `_positive_op_ids` 并补 sorted parity）→ R13 最后（删字段缩文件）**。注: R15/R19 owner 裁定均已落地；R13 升级 owner 二次确认删/留，且退场不得只删字段两行。
+**内部顺序（强制）**: **R15 先（已 fixed，SCC 最前置，先收口解析语义）→ R19（已 fixed，收口 `_positive_op_ids` 并补 sorted parity）→ R13 最后（已 fixed，删字段缩文件）**。注: R13 已经 owner 二次确认后执行，且没有只删字段两行，而是同步处理形参、实参、赋值和孤儿 helper。
 
 ### 子簇 A4 — repo 文件「R18 stub 护栏注释 + R19 repo 私有版」协调
 **成员**: R18（stub :402 补护栏注释）+ R19（2026-06-09 已 fixed，`_positive_ids`:67 按 O04 保留私有版并补顺序无关注释/parity）
@@ -74,7 +76,7 @@
 
 ### 降级
 6. **R13↔R18 强耦合 → 解除（降为零耦合/各自独立）**: corrections B「解耦」+ R13/R18 dossier。registry 旧设「R13 连带删 repo:254 方法、与 R18 同原子提交」基于「repo 方法是死码」旧假设；现 repo:400/402 已是 stub raise（契约护栏），R13 **不碰 repo**，R18 独立补注释。R13↔R18 从「强同批原子」降为「R13 不入 repo、R18 自处置」。
-7. **R13 自身性质降级**: 死字段被测试读活（R19 后现盘：reschedule:200、scope_read_contract:149/260-261/291-292/322-323），planned_fix 步 3/4 作废，升 owner 二次确认（不再是无脑直删）。
+7. **R13 自身性质降级后已执行**: 死字段曾被测试读活；2026-06-10 owner 确认单机无仓库外读者后，已先迁测试再删 provider 字段和 latest 尾巴。
 
 ### 新增/强化
 8. **新强化 LB01↔R17（最危险的边）**: 同属 `_build_event_payload`（:455-494）函数体——R17 触及 reported_status :475 与 LB01 写死 :471-473 同函数体。承重门控边强化为「LB01 注释先落 R17 才能动」。
@@ -120,4 +122,4 @@
 
 ## 一句话定性
 
-C-EXEC-FACT = SCC 串行链，4 个原子子簇按物理文件切分。承重唯一点 LB01 门控 service 文件全部删改（注释先落 → R17 → R20）。最危险边 LB01↔R17 同 `_build_event_payload`。R13↔R18 强耦合已解除；R20↔R08/R09/R12、R15↔R32 经核为假边删除。R15 与 R19 已 fixed；后续 G09 只剩 R13 planned 且删前 owner 再确认，G10 只剩 R18 stub 护栏 planned。
+C-EXEC-FACT = SCC 串行链，4 个原子子簇按物理文件切分。承重唯一点 LB01 门控 service 文件全部删改（注释先落 → R17 → R20）。最危险边 LB01↔R17 同 `_build_event_payload`。R13↔R18 强耦合已解除；R20↔R08/R09/R12、R15↔R32 经核为假边删除。R15、R19、R13 已 fixed，G09 provider 链收口；G10 只剩 R18 stub 护栏 planned。

@@ -112,7 +112,7 @@
  "R08": {
   "id": "R08",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -946,7 +946,7 @@
  "R13": {
   "id": "R13",
   "bucket": "B11",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P6",
   "lb": false,
@@ -956,7 +956,7 @@
    "R15",
    "R19"
   ],
-  "batch": "G09 after R19",
+  "batch": "G09 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1167,7 +1167,7 @@
    "R15",
    "R18"
   ],
-  "batch": "G09/G10 R19 fixed; next R13/R18",
+  "batch": "G09 fixed;G10 next R18",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,

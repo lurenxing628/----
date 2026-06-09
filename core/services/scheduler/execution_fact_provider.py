@@ -6,10 +6,9 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from core.models.operation_execution_event import (
     EXECUTION_STATUS_NOT_STARTED,
-    OperationExecutionEvent,
     parse_operation_event_time,
 )
-from core.models.operation_execution_scope import OperationExecutionScope, operation_execution_scope_from_event
+from core.models.operation_execution_scope import OperationExecutionScope
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
 
 from .execution_snapshot import positive_op_ids
@@ -25,8 +24,6 @@ class ExecutionFact:
     actual_end_time: Optional[datetime]
     actual_machine_id: Optional[str]
     actual_operator_id: Optional[str]
-    last_event_schedule_version: Optional[int]
-    last_event_schedule_id: Optional[int]
     state_revision: str
     latest_exception_impact_minutes: Optional[int] = None
     latest_exception_handling_status: Optional[str] = None
@@ -45,7 +42,6 @@ def _state_value(state, attr: str):
 def _fact_from_state(
     op_id: int,
     state,
-    latest,
     *,
     scope: Optional[OperationExecutionScope] = None,
 ) -> ExecutionFact:
@@ -58,8 +54,6 @@ def _fact_from_state(
         actual_end_time=_parse_execution_time(_state_value(state, "actual_end_time")),
         actual_machine_id=_state_value(state, "actual_machine_id"),
         actual_operator_id=_state_value(state, "actual_operator_id"),
-        last_event_schedule_version=None if latest is None else int(latest.schedule_version),
-        last_event_schedule_id=None if latest is None else int(latest.schedule_id),
         state_revision=f"{int(op_id)}:0:0" if state is None else state.state_revision,
         latest_exception_impact_minutes=_state_value(state, "latest_exception_impact_minutes"),
         latest_exception_handling_status=_state_value(state, "latest_exception_handling_status"),
@@ -104,12 +98,10 @@ class ExecutionFactProvider:
     def facts_by_scope(self, scopes: Sequence[OperationExecutionScope]) -> Dict[OperationExecutionScope, ExecutionFact]:
         normalized = list(dict.fromkeys(scopes or ()))
         states = self.event_repo.aggregate_states_by_scopes(normalized)
-        latest_events = self._latest_events_by_scope(normalized)
         return {
             scope: _fact_from_state(
                 int(scope.op_id),
                 states.get(scope),
-                latest_events.get(scope),
                 scope=scope,
             )
             for scope in normalized
@@ -148,15 +140,6 @@ class ExecutionFactProvider:
             list(scopes_by_op_id.values()),
             include_op_ids=include_op_ids,
         )
-
-    def _latest_events_by_scope(
-        self,
-        scopes: Sequence[OperationExecutionScope],
-    ) -> Dict[OperationExecutionScope, OperationExecutionEvent]:
-        latest: Dict[OperationExecutionScope, OperationExecutionEvent] = {}
-        for event in self.event_repo.list_events_by_scopes(scopes):
-            latest[operation_execution_scope_from_event(event)] = event
-        return latest
 
 
 __all__ = ["ExecutionFact", "ExecutionFactProvider"]

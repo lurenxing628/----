@@ -21,7 +21,7 @@
 | **G06** | EXEC-REVIEW | {R62} A2 ✅ fixed | 2026-06-08 已 fixed。历史原子原因是三档身份死分支(dict 三连键+模板 !=+xlsx or)三处消费方强原子,删一处不同步即半截残骸 | 已在 G05 前置满足后按符号名 _resource_pair_payload+!= 重 grep 执行；payload/dict/模板 title+死副行/xlsx 同一原子 diff 闭合，护栏区未动 |
 | **G07** | EXEC-FACT | {LB01, R17, R20} A1(service) ✅2026-06-08 fixed(R17/R20) | 🔒 LB01 承重门控同文件 service.py 删改;R17 删死 import/R20 改 labels import 同 import 块行号耦合;最危险边 LB01↔R17 同 _build_event_payload | 已按强序执行：LB01 注释在位→R17 删 service 死导入→R20 改 service import 直连 model；未触碰 _build_event_payload |
 | **G08** | EXEC-FACT | {R15, R17, R20} A2(support) ✅2026-06-08 fixed(R17/R20) | 同文件 support.py;R17 删推导式死项+孤立 import，R20 改 labels import；R15 support raise 只作禁区 | 已执行：守住 R15 support `_parse_feedback_datetime` raise→R17 删死项/import→R20 改 support import；R15 provider 残债已在 G09 fixed |
-| **G09** | EXEC-FACT | {R15, R19, R13} A3(provider) ⏸ | 同文件 provider.py 删改互移行号;先收口语义(R15/R19)后删死物(R13) | R15/R19 已 fixed：R19 通过 snapshot 局部 import 防环，provider `_positive_op_ids` 委托 `positive_op_ids`；剩 R13 末(删字段)，R13 删前 owner 再确认 |
+| **G09** | EXEC-FACT | {R15, R19, R13} A3(provider) ✅ fixed | 同文件 provider.py 删改互移行号;先收口语义(R15/R19)后删死物(R13) | R15/R19/R13 已 fixed：R19 通过 snapshot 局部 import 防环，provider `_positive_op_ids` 委托 `positive_op_ids`；R13 已 owner 确认后先迁测试再删旧字段/latest 尾巴 |
 | **G10** | EXEC-FACT | {R18, R19 repo私有版} A4(repo) ⏸ | R18 独立处置 repo stub 护栏;R19 repo 私有版只补“顺序无关”注释/parity,二者仅同文件保守串行 | R19 repo 处已保私有版并补 parity；R18 剩余独立补 :400-406 护栏注释；R13 不碰 repo stub |
 | **G11** | GANTT | {R11≡R63} A1 ✅ fixed | **2026-06-08 已 fixed**。同一物理动作已完成:两份 _normalize 已收口到 `gantt_critical_chain.py:67-88` 单份 helper,新增 parity 11 边界 | 后续勿重复处理;R12/R55 前置已满足,只能在单份 helper 上继续改;禁误删 provider `_copy:108` |
 | **G12** | GANTT | {R12} A2 ✅ fixed | **2026-06-08 已 fixed**。已在 G11 统一后的单份 helper 加 `dropped_count` / `critical_chain_partial`，并穿 `_empty_result`、`_normalize`、contract unavailable 分支与 JS 状态归一 | G11 前置已满足；R55/G13 仍按 O09 跳过，后续不得复活双副本 |
@@ -61,7 +61,7 @@
 - 多债强原子（≥2 债同提交/同 diff）：G01,G02,G04,G07,G08,G09,G10,G11,G15,G16,G19,G22,G23,G24,G27,G30,G31,G38,G39,G40 = 20 个
 - 单债原子单元：G03,G05*,G06,G12,G13,G14,G17,G18,G20,G21,G25,G26,G28,G29,G32,G33,G34,G35,G36,G37,G41,G42 = 22 个（G05 名义两债 LB02/LB05 但实为同一承重不对称的一次注释，归并计）
 - 承重门 🔒：G05,G07,G15,G33,G40（含 GF1 准承重默认值门）
-- 原 owner_pending ⏸ 裁后分流：G09/G10/G22/G27/G29/G33/G34/G40/G41 按 OWNER-DECISIONS 执行；G13/R55 本轮暂停，G15/R71 仅 parity，G26/R29、G30/R34、G39/R52、G42/R24 已裁后去挂起。
+- 原 owner_pending ⏸ 裁后分流：G09 已 fixed；G10/G22/G27/G29/G33/G34/G40/G41 按 OWNER-DECISIONS 执行；G13/R55 本轮暂停，G15/R71 仅 parity，G26/R29、G30/R34、G39/R52、G42/R24 已裁后去挂起。
 
 > 注：73 条债（80 原始 − 已 fixed/误标净化）全部归入上述单元。已 fixed 6 债（LB03/LB06/R07/R16/R56/R57，corrections E）不占调度单元，仅作前置已完成态 + 认账残留（见 §5）。新债 N1/N2（corrections C）不单独成原子单元，挂在毗邻单元同期处置（N1↔G04/G22、N2↔G04/G22 邻接，补注释+绑契约）。
 
@@ -146,7 +146,7 @@ Batch-C（身份族收敛 / 收口委托，依赖承重族 + parity）
   G04(R58→R54→R44) ← LB03(B01) + R22 parity；同批带走 E03→G01
   G01(R42+R60)     ← G04(E03 硬同批 同符号 rebase)
   G27(R22+R21)     ← LB03 + G27p（E12）
-  G09(R15/R19 fixed→R13)⏸ ← O03/O05/O06/O37 已裁：R15→R19→R13 串行，R13 删前 owner 再确认
+  G09(R15/R19/R13 fixed) ← O03/O05/O06/O37 已裁并执行：R15→R19→R13 串行已收口
   G10(R18，R19 repo私有版 fixed)⏸ ← R18 独立处置 repo stub 护栏；R19 repo 私有版已保留并补顺序无关注释/parity；R13 不碰 repo
   G29(R72)⏸        ← O19 已裁 web/core 各落各点 + 补 request import（E21 软自 G04）
   G15(R47+R71)⏸    ← G15a 🔒（R71 已裁仅 parity，不物理合并）
@@ -375,7 +375,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 | 校正 | 旧 MASTER-PLAN 假设 | 校正后 | 对 DAG 的影响 |
 |---|---|---|---|
 | **R09 收口点已存在** | 「唯一批准新建 parse_optional_positive_int」 | 收口点 `operation_execution_scope.py:9 parse_positive_execution_int` **已存在**（执行重构新建,bool/非数字/<=0 loud raise）；3 新文件已正确收口 | **作废「新建模块」批次步骤**。〔红队第1轮修订 R1-P2 + O01/O02 裁定〕R09 只收编 2 个旧内联 Optional 副本（viewmodel:33 B副本 + service:24 A副本，A 副本含调用点 :169/:180/:181，放宽点在 :180-181 比较）；schedule_persistence_errors.py:13 归 R04 禁区+注释，不进 R09 收编面。须**分两路 parity**（C 路严格 5.9→None，实证锚点 context.py:28-30 见 E29 vs A/B 宽松 5.9→5）。收口点同住一文件的 LB01 最终底:36-50 禁碰（E28）。同名异义 family 对照见 §3.1（STRICT 4 处禁删 vs Optional 5 处）。G22 不再含「建模块」步，改「收编+分路 parity」。R46→R09 由「同文件硬边」降软位移（E15） |
-| **R13 解耦 R18** | R13 连带删 repo:254 方法,与 R18 同原子提交 | 死字段被测试读活（R19 后现盘：reschedule:200、scope_read_contract:149/260-261/291-292/322-323）；repo:400/402 已 stub raise（契约护栏）,R13 **不碰 repo**,R18 独立补注释 | **拆分原 R13+R18 同原子批**。R13(G09 provider 链) 与 R18(G10 repo 链) 解耦各自独立；planned_fix 步 3/4 作废；O06 已裁先迁 3 测试后删，删前 owner 再确认一次 |
+| **R13 解耦 R18** | R13 连带删 repo:254 方法,与 R18 同原子提交 | 死字段曾被测试读活；repo:400/402 已 stub raise（契约护栏）,R13 **不碰 repo**,R18 独立补注释 | **拆分原 R13+R18 同原子批**。R13(G09 provider 链) 与 R18(G10 repo 链) 解耦各自独立；O06 已裁先迁测试后删，2026-06-10 owner 已确认并完成 R13；R18 仍 planned |
 | **R34 纯删** | 「收敛到 column_name」 | 纯删死方法；repoint 目标 `get_plan_time_span_for_resolution` **存在**（旧锚 schedule_plan_query_service.py:210，R23 后现盘 :206，dossier 误判,verify 已纠） | R34(G30) 由「收敛重构」降「纯删」；**R05→R34 硬依赖降软约束**（E18,仅 detail_queries 选迁活孪生才回升硬） |
 | **R54 五套** | 报告 3 套 / registry 4 套手维列表 | **5 套**（dashboard:8 / nav:12 / resource_dispatch:64 / reports:36 / gantt_task_detail:8 别名元组异机制）；〔红队第1轮修订 R2-P2〕原述「双分叉（源键分叉+字段集分叉）」**低估**——实盘是 **3 种字段基数 + L1 别名源键分叉**：L2 nav_publish=16 键、L4 dashboard=16 键(≡L2 逐字)、**L3 resource_dispatch=15 键(缺 plan_role_status，第三基数)**、**L1 reports=12 键(缺 plan_role_status+三阻断态 plan_identity_error/blocking_error/blocking_scope，且用别名源键 data.get("requested_role")/("selected_role")/("is_official")/("is_preview"))**、L5 gantt=别名元组(含 plan_role_status)。归属订正：用别名源键的是 **L1 reports**(非泛指)，L3 resource_dispatch 是**同名键但缺 plan_role_status** | R54(G04) delegate 面 +1（gantt_task_detail 别名元组）；**禁统一键名 / 禁并 reports 两注入路径**（丢阻断态）；**「禁统一键名」承重红线须建在三基数图上：分三组(16/15/12)各钉 parity，严禁把 L3 的 15 键当 16 键「补齐」plan_role_status=统一改行为违 R54 承重红线**；新增 A03/A05 边，详见 §3 + §3.1 |
 | **R56 偏离已修** | 承重只补注释 | 走高风险结构路线删 `_is_execution_review_request` 本体（违铁律 3）,护栏重定位页级 identity_error+blocked,未 fail-open,契约钉死 | R56 **入 fixed**（DAG 起点已完成）；残留=owner 认账偏离 + 确认 navigation_context/reports_page_support/reports_execution_review_context/契约测试同提交入账。退化为 R42 删 plan_id 的**禁区行**（:79 plan_role 强制语义）非协调边 |
@@ -465,6 +465,6 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 批次草案（序）：ROOT（GF1 默认 False + LB01/LB02/LB05/LB07/LB08已fixed/LB03/R05-step1/R22-parity 承重注释+parity，纯增量零结构）→ Batch-A（零前置死叶子 G14/G16已fixed-no-op/G21已fixed/G28/G31/G32/G35/G37/G11已fixed/G38已fixed，G03已fixed，G25 已并回 G24）→ Batch-B（单门控前置 G06/G07/G08/G12←G11前置已满足/G19/G20/G24含G25旁支已fixed/G40已fixed/G30/G36/G39 KEEP；G13/R55 本轮跳过且 G11 前置已满足）→ Batch-C（身份族收敛 G04→G01/G27/G09/G10/G29/G15/G22/G33/G34/G17/G23）→ Batch-D（facade 最晚 G18←三桶收敛 + G26 KEEP/G41/G42 KEEP）。
 重灾区：**24 文件**（红队第1轮 +5：operation_execution_scope.py + R54 缺席四文件）≥2 债顺序敏感，最危 3 个=feedback_service.py(LB01↔R17 同 _build_event_payload)、execution_review.py(承重五钉↔R62)、gantt_critical_chain_provider.py(_copy↔_normalize 误删)；**6 承重文件**全标禁区（含 operation_execution_scope.py R09 收口家↔LB01 最终底同文件）。
 边总变化：旧 146 −删 27（假边 22+已修对消 5）+新 **19**（同符号 co-change/收口前置硬边/N1N2 邻接/facade 删序 +红队 E28/E29 同文件承重毗邻）~降 18（硬→软/解耦/方向反转）= 重建约 **138 边，跨簇有效约束边 29 条（H 13/S 14/P 2）**，真门控分层硬边仍 13 条。
-与旧 DAG 主要差异：R09 收口点已存在→作废建模块改双路 parity；R13 解耦 R18 各自独立，按 O06 先迁 3 测试后删、删前 owner 再确认；R34 纯删（repoint 目标存在）+R05→R34 降软；R54 升 5 套手维面（gantt_task_detail 别名元组+**三基数 16/15/12 禁统一键名**）；R56 入 fixed（偏离铁律 3 待认账）；新债 N1（can_write_feedback 失忆债门控 R08）/N2（return 0 sentinel）补注释+绑契约；R03 四态 parity（missing 态:267 生产可达，非全死分支）；R29 误标纠回 planned 后 O20 裁 KEEP，E07 改为 R29/G26 先闭合、R26/G18 后删 facade；批次由 16 收缩为 ROOT+4 大批，待裁项按裁后口径执行。
+与旧 DAG 主要差异：R09 收口点已存在→作废建模块改双路 parity；R13 解耦 R18 各自独立，且 R13 已按 O06 在 owner 确认后先迁测试再删，R18 仍 planned；R34 纯删（repoint 目标存在）+R05→R34 降软；R54 升 5 套手维面（gantt_task_detail 别名元组+**三基数 16/15/12 禁统一键名**）；R56 入 fixed（偏离铁律 3 待认账）；新债 N1（can_write_feedback 失忆债门控 R08）/N2（return 0 sentinel）补注释+绑契约；R03 四态 parity（missing 态:267 生产可达，非全死分支）；R29 误标纠回 planned 后 O20 裁 KEEP，E07 改为 R29/G26 先闭合、R26/G18 后删 facade；批次由 16 收缩为 ROOT+4 大批，待裁项按裁后口径执行。
 红队第1轮：**采纳 11 / 驳回 0 / 降级保留 3（按提示采纳精度）**。关键修订=补 E28(R09 收口家↔LB01 最终底同文件)/E29(N1↔R09 C 路同文件)两 S 边；§3 补登 5 文件(承重 5→6、重灾区 19→24)；新增 §3.1 `_positive_int` family 对照表(STRICT 4 禁删 vs Optional 5 收候选，O02 后定 schedule_persistence_errors:13 归 R04 禁区+注释)+§3.2 fail-CLOSED 方向硬门(防认账注释粘反向 fail-OPEN)；R54 三基数(16/15/12)分组 parity 禁向 16 键看齐；facade 删序方向修正 A14→R33→R31、E06/A15→R33→{R30,R31}；E03 补 collar 第 6 调用方 analysis_links:24(未传 plan_id 安全)。全图仍无环。
 产物权威副本：/Users/lurenxing/Documents/GitHub/----/.codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/_interference_rebuilt.md（docs/_panorama_data 仅旧镜像/缓存，不作为本轮落点）
