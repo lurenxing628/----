@@ -50,10 +50,7 @@ def _duration_by_nodeid(payload: Dict[str, Any]) -> Dict[str, float]:
         nodeid = str(report.get("nodeid") or "")
         if not nodeid:
             continue
-        try:
-            durations[nodeid] = float(report.get("duration") or 0.0)
-        except (TypeError, ValueError):
-            durations[nodeid] = 0.0
+        durations[nodeid] = durations.get(nodeid, 0.0) + float(report["duration"])
     return durations
 
 
