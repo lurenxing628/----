@@ -518,7 +518,7 @@
  "R41": {
   "id": "R41",
   "bucket": "B04",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": false,
@@ -1262,7 +1262,7 @@
  "R03": {
   "id": "R03",
   "bucket": "B14",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1314,7 +1314,7 @@
  "R68": {
   "id": "R68",
   "bucket": "B15",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": false,

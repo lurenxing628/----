@@ -2922,7 +2922,7 @@
   "id": "R41",
   "bucket": "B04",
   "home": "B04",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P5",
   "partition": "web-all",
@@ -2947,7 +2947,7 @@
    "scheduler_bp.py",
    "test_enum_display_consistency.py"
   ],
-  "current_evidence_2026_06_05": "web/routes/enum_display.py 与 process_bp.py git diff vs b08162cd 均为空、未 import enum_normalizers/任何canonical *_label;ready_zh:79 仍 return '未齐套'(未知/None 静默贴确定态灵魂线未治)、_source_zh process_bp.py:22-25 仍 else'自制'(外协别名误判未治)、operator_status_zh:29 仍'停用/休假'未收口;test_enum_display_consistency.py:59-61 仍钉死 ready_zh('weird'/''/None)=='未齐套'(计划要求改 loud 暴露,未改)。收口到 enum_normalizers 一步未做→planned。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(O26 选项 C 全收口): enum_display.py 5 族收口为 enum_normalizers 标准标签薄包装——machine_status_zh→machine_status_label、day_type_zh→calendar_day_type_label、priority_zh→batch_priority_label(weird 由「未知」改 loud 透传)、ready_zh→ready_status_label+O26/RK20 包装层补丁(空值/None 钉「未齐套」,绝不让标准版默认「齐套」放行;weird 透传 loud)、operator_status_zh→operator_status_label+O26 补丁(normalize 后 inactive 含中文别名「休假」保留「停用/休假」双标签);batch_status_zh 无 canonical 收口点按裁定保留私有+注释(禁建 batch_status_label=新 P5);process_bp._source_zh 收口 source_type_label 顺手修「外协/外 误判自制」bug(+_merge_mode_zh 无收口点保留私有+注释)。补丁全部打在 web 包装层,enum_normalizers(LB04 承重毗邻区 :30-89/:135-165/:209-237)只调用零修改。钉死测试 test_enum_display_consistency.py 改 loud 暴露口径(weird 透传、空串变 label 默认值、ready 空值反转专项断言禁贴回)+新增 _source_zh 别名修复测试。盲审补登的连带行为变化(标准版 normalize 先行的自然结果,方向更正确): 各族中文别名/大小写输入由透传或「未知」改为正确归一贴标签;ready 族 yes-no 风格脏值(y/n/1/0/true/false,不在 ready 别名表)由静默「未齐套」改 loud 透传英文原值——历史脏数据会显形,正是 RK20 设计意图。验证: web_pages 342 passed、excel_data_io 185 passed、ready 三态路由测试绿、fitness 21 passed、ruff 过。 原始记录(收口前): web/routes/enum_display.py 与 process_bp.py git diff vs b08162cd 均为空、未 import enum_normalizers/任何canonical *_label;ready_zh:79 仍 return '未齐套'(未知/None 静默贴确定态灵魂线未治)、_source_zh process_bp.py:22-25 仍 else'自制'(外协别名误判未治)、operator_status_zh:29 仍'停用/休假'未收口;test_enum_display_consistency.py:59-61 仍钉死 ready_zh('weird'/''/None)=='未齐套'(计划要求改 loud 暴露,未改)。收口到 enum_normalizers 一步未做→planned。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -6593,7 +6593,7 @@
   "id": "R03",
   "bucket": "B14",
   "home": "B14",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "scheduler-run",
@@ -6613,7 +6613,7 @@
    "scheduler_analysis_candidate_helpers.py",
    "specs.py"
   ],
-  "current_evidence_2026_06_05": "2026-06-10 更新: (A) 段承重注释已落——schedule_candidate_runner.py 按 dossier 草稿逐字在 except CandidateTrialFailure(原 :216,插注后 :219) 上方插三行 b81f8b3f 护栏注释;:28 类定义、return _failed_plan(原 :217,现 :220) 未动;4 条 propagation 契约测试原样只读。(B) 段下游 FAILED 脚手架仍待 Batch-D 按 O25 落(missing 态 return True 生产可达保留——插注后现盘 :270,旧 :267;+failed 不可达可观测注释+None/missing/failed/completed 四态 parity;summary.py:135/140、dashboard_workbench.py:156、scheduler_analysis_candidate_helpers.py:360/:365 等 6 消费点绝不裸删)→ R03 整体保持 planned 直到 (B) 段收口。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(O25 保留+注释+四态 parity,B 段收口;A 段承重三行注释已先随 bf24e224): 全部管道与 6 消费点零删除——CANDIDATE_STATUS_FAILED(:24 上方)补「生产不可达但属已落库枚举契约禁裸删」注释;_baseline_missing_or_failed 补 O25 四态语义注释(missing 半边生产可达=真实告警源,failed 半边不可达随枚举保留);dashboard_workbench 与 scheduler_analysis_candidate_helpers 两消费分支各补「经 missing 路径生产可达非死分支禁裸删」注释。新增 tests/candidate/test_baseline_missing_or_failed_four_state_parity.py 四态逐分支钉死:None(空候选列表)→True、missing(无 baseline kind)→True、failed→True、completed→False。承重禁区 :28 class/:219 except/:220 return(现盘,旧 :216/:217)零触碰;注释为守 500 行红线压缩排版(fitness 21 绿,文件恰 500 行)。验证: candidate 包+workbench 契约 169 passed、四态 parity 4 passed、fitness 21 passed、ruff 过。 原始记录(收口前): 2026-06-10 更新: (A) 段承重注释已落——schedule_candidate_runner.py 按 dossier 草稿逐字在 except CandidateTrialFailure(原 :216,插注后 :219) 上方插三行 b81f8b3f 护栏注释;:28 类定义、return _failed_plan(原 :217,现 :220) 未动;4 条 propagation 契约测试原样只读。(B) 段下游 FAILED 脚手架仍待 Batch-D 按 O25 落(missing 态 return True 生产可达保留——插注后现盘 :270,旧 :267;+failed 不可达可观测注释+None/missing/failed/completed 四态 parity;summary.py:135/140、dashboard_workbench.py:156、scheduler_analysis_candidate_helpers.py:360/:365 等 6 消费点绝不裸删)→ R03 整体保持 planned 直到 (B) 段收口。",
   "cluster": "ISOLATED",
   "same_file_siblings": [],
   "interference_edges": [],
@@ -6818,7 +6818,7 @@
   "id": "R68",
   "bucket": "B15",
   "home": "B15",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P5",
   "partition": "",
@@ -6833,7 +6833,7 @@
    "schedule_summary_degradation.py",
    "schedule_summary_downtime_degradation.py"
   ],
-  "current_evidence_2026_06_05": "schedule_summary_degradation.py:123-140 与 schedule_summary_downtime_degradation.py:30-47 两份 _meta_bool_state 仍逐字节相同且均在(含 (bool,parse_failed) 二元组灵魂线);收口家 summary_count_parse.py 只有 parse_summary_count,未迁入 _meta_bool_state;tests/ 无引用 _meta_bool_state 的 parity 契约测试。git diff vs b08162cd 两文件零改动。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(parity 先建后收敛): 步1 先建 tests/schedule/summary/test_meta_bool_state_parity_contract.py 全矩阵 16 格×两路径参数化(收敛前实跑 32 绿证两份逐字等价,is 断言当时如预期红);步2 单份 _meta_bool_state 提升到既有收口家 summary_count_parse.py(非新建模块,该文件已被 summary_visible_degradation/schedule_summary_contract 消费),函数体逐字搬迁零行为变化,附「(bool,parse_failed) 二元组绝不许压扁」注释;步3 schedule_summary_degradation.py(旧 def :123-140)与 schedule_summary_downtime_degradation.py(旧 def :30-47)删本地副本改 from .summary_count_parse import _meta_bool_state。禁碰区全守: _meta_int_state(downtime 独有)未动、parse_summary_count 签名未动、两路 default 差异保留在调用点。is 单源断言+矩阵在收敛后 33 全绿(防回潮分叉)。验证: schedule summary+service 242 passed、全仓 rg def _meta_bool_state 仅剩收口家一处、ruff 过。 原始记录(收口前): schedule_summary_degradation.py:123-140 与 schedule_summary_downtime_degradation.py:30-47 两份 _meta_bool_state 仍逐字节相同且均在(含 (bool,parse_failed) 二元组灵魂线);收口家 summary_count_parse.py 只有 parse_summary_count,未迁入 _meta_bool_state;tests/ 无引用 _meta_bool_state 的 parity 契约测试。git diff vs b08162cd 两文件零改动。",
   "cluster": "ISOLATED",
   "same_file_siblings": [],
   "interference_edges": [],
