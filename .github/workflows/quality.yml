@@ -78,6 +78,27 @@ jobs:
       - name: 执行统一质量门禁
         run: python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
 
+      - name: 诊断 candidate traceback (临时)
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          p = pathlib.Path("evidence/QualityGate/current_full_test_debt.json")
+          if not p.exists():
+              print("DIAG: NO current_full_test_debt.json on disk")
+              raise SystemExit(0)
+          d = json.loads(p.read_text(encoding="utf-8"))
+          cands = set(d.get("classifications", {}).get("candidate_test_debt", []))
+          print(f"DIAG: candidate_test_debt = {sorted(cands)}")
+          for r in d.get("reports", []):
+              if r.get("nodeid") in cands and r.get("outcome") == "failed":
+                  print("=" * 80)
+                  print("DIAG nodeid:", r.get("nodeid"))
+                  print(r.get("longrepr", "<no longrepr>"))
+          PY
+
       - name: 保存 long gate cache
         if: ${{ success() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
