@@ -748,14 +748,71 @@ def test_full_plan_guard_fields_match_core_plan_role_filter_fields_for_resolutio
         },
     ]
 
-    for plan_resolution in plan_resolutions:
+    # N5：除"两投影实现互相一致"（下方 expected，从 core 侧派生）外，再钉一条独立 golden 基线——
+    # 冻结当前正确的 guard 字段投影真值。原断言只证 plan_guard_fields_for_resolution 与
+    # plan_role_filter_fields 同口径，若两者一起漂移（同源自反抓不到），本基线仍能抓行为回退。
+    # 基线随 plan_resolutions 顺序一一对应；新增 shape 须同步补一条基线。
+    expected_baseline = [
+        {
+            "requested_plan_role": "adopted", "effective_plan_role": "adopted",
+            "plan_role_status": "resolved_adopted", "is_scenario_preview": False,
+            "is_comparison": False, "is_superseded_by_newer_version": False,
+            "is_official_plan": True, "is_preview_plan": False,
+            "is_current_executable_official_version": True, "can_dispatch": True,
+            "can_write_feedback": True, "result_summary_parse_failed": False,
+            "result_summary_parse_reason": "",
+        },
+        {
+            "requested_plan_role": "baseline_best", "effective_plan_role": "baseline_best",
+            "plan_role_status": "resolved_comparison", "is_scenario_preview": False,
+            "is_comparison": True, "is_superseded_by_newer_version": False,
+            "is_official_plan": False, "is_preview_plan": False,
+            "is_current_executable_official_version": True, "can_dispatch": False,
+            "can_write_feedback": False, "result_summary_parse_failed": False,
+            "result_summary_parse_reason": "",
+        },
+        {
+            "requested_plan_role": "adopted", "effective_plan_role": "adopted",
+            "plan_role_status": "resolved_comparison", "is_scenario_preview": True,
+            "is_comparison": True, "is_superseded_by_newer_version": False,
+            "is_official_plan": True, "is_preview_plan": True,
+            "is_current_executable_official_version": True, "can_dispatch": False,
+            "can_write_feedback": False, "result_summary_parse_failed": False,
+            "result_summary_parse_reason": "",
+        },
+        {
+            "requested_plan_role": "baseline_best", "effective_plan_role": "adopted",
+            "plan_role_status": "fallback_to_adopted", "is_scenario_preview": False,
+            "is_comparison": True, "is_superseded_by_newer_version": False,
+            "is_official_plan": True, "is_preview_plan": False,
+            "is_current_executable_official_version": False, "can_dispatch": False,
+            "can_write_feedback": False, "result_summary_parse_failed": False,
+            "result_summary_parse_reason": "",
+        },
+        {
+            "requested_plan_role": "adopted", "effective_plan_role": "adopted",
+            "plan_role_status": "resolved_adopted", "is_scenario_preview": False,
+            "is_comparison": False, "is_superseded_by_newer_version": False,
+            "is_official_plan": True, "is_preview_plan": False,
+            "is_current_executable_official_version": True, "can_dispatch": False,
+            "can_write_feedback": False, "result_summary_parse_failed": False,
+            "result_summary_parse_reason": "",
+        },
+    ]
+    assert len(expected_baseline) == len(plan_resolutions), "基线条数须与 plan_resolutions 一一对应"
+
+    for index, plan_resolution in enumerate(plan_resolutions):
         core_fields = plan_role_filter_fields(plan_resolution)
         expected = {
             key: core_fields[key]
             for key in FULL_PLAN_GUARD_FIELDS
             if key in core_fields and core_fields[key] is not None
         }
-        assert plan_guard_fields_for_resolution(plan_resolution, FULL_PLAN_GUARD_FIELDS) == expected
+        projected = plan_guard_fields_for_resolution(plan_resolution, FULL_PLAN_GUARD_FIELDS)
+        assert projected == expected, f"shape[{index}]：guard 投影与 core 同口径 parity 失败"
+        assert projected == expected_baseline[index], (
+            f"shape[{index}]：guard 投影偏离冻结 golden 基线（行为回退，非仅同源不一致）"
+        )
 
 
 def test_execution_review_requires_current_executable_identity_before_read_only_review() -> None:

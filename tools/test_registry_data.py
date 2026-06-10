@@ -243,6 +243,12 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/schedule/service/test_op_seq_loud_contract.py",
     "tests/schedule/summary/test_meta_bool_state_parity_contract.py",
     "tests/candidate/test_baseline_missing_or_failed_four_state_parity.py",
+    # N4（2026-06-10）：R07 排程行缺失 NOT_FOUND 错误契约旁证（归 scheduler_run_core 组，
+    # scope core/services/scheduler/** 覆盖 resource_dispatch_execution_service.py）。
+    "tests/resource_dispatch/test_resource_dispatch_task_card_schedule_missing_contract.py",
+    # R55（2026-06-10）：关键链 scope 标记契约（归 scheduler_analysis_gantt_reports_week_plan 组，
+    # scope 覆盖 gantt_service_support.py / gantt_contract.py）。
+    "tests/gantt/test_gantt_critical_chain_scope_contract.py",
 )
 
 QUALITY_GATE_REQUIRED_TESTS = (QUALITY_GATE_SELFTEST_PATH, *QUALITY_GATE_GUARD_TESTS)

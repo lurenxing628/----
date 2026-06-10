@@ -152,11 +152,14 @@ def main(monkeypatch) -> None:
         "available",
         "reason",
         "cache_hit",
+        "scope",
     ):
         if k not in cc:
             raise RuntimeError(f"critical_chain 缺少字段：{k}")
     if cc.get("available") is not True:
         raise RuntimeError(f"critical_chain.available 应为 true：{cc}")
+    if cc.get("scope") != "full":
+        raise RuntimeError(f"R55：默认未筛选路径 critical_chain.scope 应为 full：{cc}")
     if cc.get("reason") not in (None, ""):
         raise RuntimeError(f"critical_chain.reason 应为空成功语义：{cc}")
     edges = cc.get("edges") or []

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from core.infrastructure.errors import ValidationError
+from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.models.operation_execution_scope import parse_positive_execution_int
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
@@ -142,7 +142,13 @@ class ResourceDispatchExecutionService:
     ) -> Dict[str, Any]:
         schedule = self.schedule_repo.get(int(context.schedule_id))
         if schedule is None:
-            raise ValidationError("现场记录对应的排程行不存在，请刷新后重试。", field="schedule_id")
+            # N4/O31：排程行缺失是"资源不存在"语义，须 NOT_FOUND 而非字段校验错——与写门禁
+            # operation_execution_feedback_service.py 的 schedule 缺失分支同错误类（跨文件对称）。
+            raise AppError(
+                ErrorCode.NOT_FOUND,
+                "现场记录对应的排程行不存在，请刷新后重试。",
+                details={"reason": "not_found"},
+            )
         rows = self.plan_query_service.list_plan_dispatch_rows_for_resolution(
             version=int(context.schedule_version),
             source_table=_text(context.source_table),

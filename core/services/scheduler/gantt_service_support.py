@@ -33,7 +33,12 @@ def critical_chain_for_plan_detail_filter(rows: Any, filters: Dict[str, str]) ->
     if not filters:
         return None
     raw = compute_critical_chain_from_rows([dict(row) for row in list(rows or [])])
-    return _normalize_critical_chain_result(raw)
+    result = _normalize_critical_chain_result(raw)
+    # R55：本路径把周窗口+资源/批次子集喂给整版算法，makespan/关键链是"筛选口径"，须显式标 scope=filtered，
+    # 避免对外被当整版口径误读（呈现失真）。整版口径在 _public_critical_chain 缺省落 full。严禁裸删过滤。
+    if isinstance(result, dict):
+        result["scope"] = "filtered"
+    return result
 
 
 def collect_gantt_degradation_events(

@@ -213,6 +213,9 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/schedule/service/test_op_seq_loud_contract.py",
             "tests/schedule/summary/test_meta_bool_state_parity_contract.py",
             "tests/candidate/test_baseline_missing_or_failed_four_state_parity.py",
+            # N4：R07 排程行缺失须 AppError(NOT_FOUND) 而非字段校验错；本组 scope core/services/scheduler/**
+            # 覆盖 resource_dispatch_execution_service.py，改该错误分支即强制选中此契约。
+            "tests/resource_dispatch/test_resource_dispatch_task_card_schedule_missing_contract.py",
         ),
         "input_file_scopes": (
             "core/services/scheduler/**/*.py",
@@ -322,6 +325,8 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/gantt/test_gantt_contract_snapshot.py",
             "tests/gantt/test_gantt_critical_chain_unavailable.py",
             "tests/gantt/test_gantt_critical_chain_provider.py",
+            # R55：筛选口径 makespan 须标 scope=filtered、整版缺省 full，对外永远可辨。
+            "tests/gantt/test_gantt_critical_chain_scope_contract.py",
             "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py",
             "tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py",
             "tests/candidate/test_scheduler_candidate_analysis_contract.py",

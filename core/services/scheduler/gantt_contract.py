@@ -25,6 +25,9 @@ def _public_dropped_count(value: Any) -> int:
 
 def _public_critical_chain(chain: Dict[str, Any]) -> Dict[str, Any]:
     raw = dict(chain or {})
+    # R55：scope 标记对外永远在场——只有计划明细筛选路径（critical_chain_for_plan_detail_filter）
+    # 显式标 filtered，其余整版口径（provider/候选/空版本）缺省 full，供前端区分 makespan 是否筛选口径。
+    scope = "filtered" if str(raw.get("scope") or "").strip() == "filtered" else "full"
     reason = str(raw.get("reason") or "").strip()
     if bool(raw.get("available") is False):
         dropped_count = _public_dropped_count(raw.get("dropped_count"))
@@ -36,6 +39,7 @@ def _public_critical_chain(chain: Dict[str, Any]) -> Dict[str, Any]:
             "edge_type_stats": {},
             "dropped_count": dropped_count,
             "critical_chain_partial": bool(raw.get("critical_chain_partial")) or dropped_count > 0,
+            "scope": scope,
         }
         if "cache_hit" in raw:
             out["cache_hit"] = bool(raw.get("cache_hit"))
@@ -47,6 +51,7 @@ def _public_critical_chain(chain: Dict[str, Any]) -> Dict[str, Any]:
             "关键工序关系暂时看不了" if reason and reason.isascii() else reason
         )
         return out
+    raw["scope"] = scope
     return raw
 
 

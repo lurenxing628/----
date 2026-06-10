@@ -5,24 +5,6 @@ from typing import Any, Dict, List, Optional
 from .scheduler_workbench_links import FULL_PLAN_GUARD_FIELDS, build_workbench_link, build_workbench_plan_context
 
 _MISSING = object()
-_PLAN_GUARD_FIELD_ALIASES = (
-    ("requested_plan_role", ("requested_plan_role", "requested_role")),
-    ("effective_plan_role", ("effective_plan_role", "selected_role")),
-    ("plan_role_status", ("plan_role_status", "status")),
-    ("is_scenario_preview", ("is_scenario_preview",)),
-    ("is_comparison", ("is_comparison", "is_comparison_plan")),
-    ("is_superseded_by_newer_version", ("is_superseded_by_newer_version",)),
-    ("is_official_plan", ("is_official_plan", "is_official")),
-    ("is_preview_plan", ("is_preview_plan", "is_preview")),
-    ("is_current_executable_official_version", ("is_current_executable_official_version",)),
-    ("can_dispatch", ("can_dispatch",)),
-    ("can_write_feedback", ("can_write_feedback",)),
-    ("plan_identity_error", ("plan_identity_error",)),
-    ("plan_identity_blocking_error", ("plan_identity_blocking_error",)),
-    ("plan_identity_blocking_scope", ("plan_identity_blocking_scope",)),
-    ("result_summary_parse_failed", ("result_summary_parse_failed",)),
-    ("result_summary_parse_reason", ("result_summary_parse_reason",)),
-)
 
 
 def _text(value: Any) -> str:
@@ -84,7 +66,9 @@ def _guard_source(data: Dict[str, Any], resolution: Dict[str, Any]) -> Dict[str,
         value = _lookup_identity_field(data, resolution, names)
         if value is not _MISSING:
             source[target] = value
-    for key, _names in _PLAN_GUARD_FIELD_ALIASES:
+    # N3：护栏字段单源——直接遍历 FULL_PLAN_GUARD_FIELDS，不再手抄一份 16 项别名表。
+    # 旧 _PLAN_GUARD_FIELD_ALIASES 的 keys 与之字节级一致，其 names 列从未被本循环使用。
+    for key in FULL_PLAN_GUARD_FIELDS:
         value = _lookup_identity_field(data, resolution, (key,))
         if value is not _MISSING:
             source[key] = value
