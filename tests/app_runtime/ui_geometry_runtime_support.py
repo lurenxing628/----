@@ -203,7 +203,62 @@ def _run_probe_command(args: List[str], *, timeout: int = 10) -> subprocess.Comp
     )
 
 
+def _windows_exe_version(path: str) -> Optional[str]:
+    """Windows 上不启动进程、直接读 exe 的文件版本元数据。
+
+    `chrome.exe --version` 在 stdout 被管道捕获时会启动完整浏览器（触发 GCM 网络注册并卡死），
+    在 CI 上必然超过 10s 超时。读 PE 版本资源既不启动进程也不联网，是稳的版本来源。
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        version_dll = ctypes.WinDLL("version")
+        size = int(version_dll.GetFileVersionInfoSizeW(path, None) or 0)
+        if size <= 0:
+            return None
+        buffer = ctypes.create_string_buffer(size)
+        if not version_dll.GetFileVersionInfoW(path, 0, size, buffer):
+            return None
+        value_ptr = ctypes.c_void_p()
+        value_len = wintypes.UINT()
+        if not version_dll.VerQueryValueW(buffer, "\\", ctypes.byref(value_ptr), ctypes.byref(value_len)):
+            return None
+
+        class _VSFixedFileInfo(ctypes.Structure):
+            _fields_ = [
+                ("dwSignature", wintypes.DWORD),
+                ("dwStrucVersion", wintypes.DWORD),
+                ("dwFileVersionMS", wintypes.DWORD),
+                ("dwFileVersionLS", wintypes.DWORD),
+                ("dwProductVersionMS", wintypes.DWORD),
+                ("dwProductVersionLS", wintypes.DWORD),
+                ("dwFileFlagsMask", wintypes.DWORD),
+                ("dwFileFlags", wintypes.DWORD),
+                ("dwFileOS", wintypes.DWORD),
+                ("dwFileType", wintypes.DWORD),
+                ("dwFileSubtype", wintypes.DWORD),
+                ("dwFileDateMS", wintypes.DWORD),
+                ("dwFileDateLS", wintypes.DWORD),
+            ]
+
+        info = ctypes.cast(value_ptr, ctypes.POINTER(_VSFixedFileInfo)).contents
+        ms, ls = int(info.dwFileVersionMS), int(info.dwFileVersionLS)
+        return f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}.{ls & 0xFFFF}"
+    except Exception:
+        return None
+
+
 def _probe_chrome_version(chrome_path: str) -> subprocess.CompletedProcess:
+    # Windows 上优先读文件版本元数据，避开 `chrome --version` 捕获 stdout 时启动浏览器卡死的坑；
+    # 读不到再退回 --version（带超时兜底）。非 Windows 直接走 --version。
+    windows_version = _windows_exe_version(chrome_path)
+    if windows_version:
+        return subprocess.CompletedProcess(
+            [chrome_path, "--version"], 0, f"Google Chrome {windows_version}\n", ""
+        )
     return _run_probe_command([chrome_path, "--version"], timeout=10)
 
 

@@ -151,6 +151,17 @@ class RuntimeProbeState(str, Enum):
     UNKNOWN = "unknown"
 
 
+def _safe_relpath(path: str, start: str) -> str:
+    """以 posix 形态返回 path 相对 start 的路径；跨盘（Windows 上 path 与 start 不同盘符）
+    时 os.path.relpath 会抛 ValueError，此时回退为 path 自身的 posix 绝对形态。
+    生产环境 path/start 恒同盘，永走 relpath 分支；此兜底只为 Windows 上 tmp 与仓库异盘的
+    自测场景不再让门禁因算一个显示路径而崩。"""
+    try:
+        return os.path.relpath(path, start).replace(os.sep, "/")
+    except ValueError:
+        return os.path.abspath(path).replace(os.sep, "/")
+
+
 def _coerce_runtime_probe_state(value: Any) -> RuntimeProbeState:
     if isinstance(value, RuntimeProbeState):
         return value
@@ -463,7 +474,7 @@ def _dirty_worktree_fingerprint(status_lines: Sequence[str]) -> Dict[str, Any]:
                 filenames.sort()
                 for filename in filenames:
                     file_path = os.path.join(dirpath, filename)
-                    rel_file = os.path.relpath(file_path, REPO_ROOT).replace(os.sep, "/")
+                    rel_file = _safe_relpath(file_path, REPO_ROOT)
                     hasher.update(rel_file.encode("utf-8", errors="replace"))
                     hasher.update(b"\0")
                     hasher.update(_sha256_file(file_path).encode("ascii"))
@@ -754,8 +765,10 @@ def _write_command_receipt(command: Dict[str, Any], *, run_id: str, index: int, 
     }
 
 
-def _mark_command_timing(result: Dict[str, Any], *, started_at: str, start_monotonic: float) -> float:
-    duration_s = time.monotonic() - start_monotonic
+def _mark_command_timing(result: Dict[str, Any], *, started_at: str, start_perf: float) -> float:
+    # 用 perf_counter 而非 monotonic：Windows 上 monotonic 分辨率粗（~15ms），瞬时返回的
+    # 命令会量到 duration_s=0.0；perf_counter 为高分辨率计时，快操作也能得到正时长。
+    duration_s = time.perf_counter() - start_perf
     result["started_at"] = started_at
     result["ended_at"] = datetime.now().isoformat(timespec="seconds")
     result["duration_s"] = duration_s
@@ -1094,7 +1107,7 @@ def _run_quality_gate_command_plan(
             display = str(command["display"])
             print(f"==> 第 {index}/{total} 步：[resume-skip] {display}", flush=True)
             command_started_at = datetime.now().isoformat(timespec="seconds")
-            start_monotonic = time.monotonic()
+            start_perf = time.perf_counter()
             result = _result_from_receipt_logs(reusable_payloads[index - 1])
             result["execution_mode"] = "resumed_success_prefix"
             result["reused_from"] = {
@@ -1103,7 +1116,7 @@ def _run_quality_gate_command_plan(
                 "run_id": str(reusable_payloads[index - 1].get("run_id") or ""),
                 "completed_at": str(reusable_payloads[index - 1].get("ended_at") or ""),
             }
-            _mark_command_timing(result, started_at=command_started_at, start_monotonic=start_monotonic)
+            _mark_command_timing(result, started_at=command_started_at, start_perf=start_perf)
             result["duration_kind"] = "resume_overhead"
             result["original_duration_s"] = float(reusable_payloads[index - 1].get("duration_s") or 0.0)
             commands.append(command)
@@ -1126,7 +1139,7 @@ def _run_quality_gate_command_plan(
         display = str(command["display"])
         print(f"==> 第 {command_index}/{total} 步开始：{display}", flush=True)
         command_started_at = datetime.now().isoformat(timespec="seconds")
-        start_monotonic = time.monotonic()
+        start_perf = time.perf_counter()
         long_gate_runtime_entry = long_gate_entries.get(display)
         long_gate_entry = dict((long_gate_runtime_entry or {}).get("entry") or {})
         long_gate_fingerprint: Optional[Dict[str, Any]] = None
@@ -1154,7 +1167,7 @@ def _run_quality_gate_command_plan(
                 result = _coerce_command_result(cached_result)
                 result["execution_mode"] = "reused_success_cache"
                 result["reused_from"] = dict(cached_result.get("reused_from") or {})
-                elapsed = _mark_command_timing(result, started_at=command_started_at, start_monotonic=start_monotonic)
+                elapsed = _mark_command_timing(result, started_at=command_started_at, start_perf=start_perf)
                 result["duration_kind"] = "reuse_overhead"
                 if isinstance(result.get("reused_from"), dict):
                     result["original_duration_s"] = float(result["reused_from"].get("duration_s") or 0.0)
@@ -1215,7 +1228,7 @@ def _run_quality_gate_command_plan(
                 result = _coerce_command_result(cached_failure)
                 result["execution_mode"] = "cached_failure"
                 result["reused_from"] = dict(cached_failure.get("reused_from") or {})
-                elapsed = _mark_command_timing(result, started_at=command_started_at, start_monotonic=start_monotonic)
+                elapsed = _mark_command_timing(result, started_at=command_started_at, start_perf=start_perf)
                 result["duration_kind"] = "reuse_overhead"
                 if isinstance(result.get("reused_from"), dict):
                     result["original_duration_s"] = float(result["reused_from"].get("duration_s") or 0.0)
@@ -1270,7 +1283,7 @@ def _run_quality_gate_command_plan(
                 result["reused_from"] = dict(raw_result.get("reused_from") or {})
         else:
             result["execution_mode"] = "executed"
-        elapsed = _mark_command_timing(result, started_at=command_started_at, start_monotonic=start_monotonic)
+        elapsed = _mark_command_timing(result, started_at=command_started_at, start_perf=start_perf)
         commands.append(command)
         receipt_entry = _write_command_receipt(command, run_id=run_id, index=command_index, result=result)
         command_receipts.append(receipt_entry)
@@ -1866,7 +1879,7 @@ def _write_debt_ledger_sync_proof(
         "timed_out": bool(result.get("timed_out")),
         "interrupted": bool(result.get("interrupted")),
         "partial_write": bool(result.get("partial_write")),
-        "ledger_path": os.path.relpath(LEDGER_PATH, REPO_ROOT).replace("\\", "/"),
+        "ledger_path": _safe_relpath(LEDGER_PATH, REPO_ROOT),
         "ledger_schema_version": int(summary.get("schema_version") or 0),
         "ledger_checked_at": str(summary.get("checked_at") or ""),
         "ledger_counts": ledger_counts,
