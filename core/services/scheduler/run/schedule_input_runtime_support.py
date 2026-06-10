@@ -6,19 +6,12 @@ from typing import Any, Dict, List, Set, Tuple
 from core.infrastructure.errors import AppError, ErrorCode
 from core.models import BatchOperation
 
-from .schedule_input_contracts import _build_freeze_window_seed_with_meta
+from .schedule_input_contracts import _build_freeze_window_seed_with_meta, _op_seq
 
 
 def _algo_op_id(op: Any) -> int:
     try:
         return int(getattr(op, "id", 0) or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _op_seq(op: Any) -> int:
-    try:
-        return int(getattr(op, "seq", 0) or 0)
     except (TypeError, ValueError):
         return 0
 

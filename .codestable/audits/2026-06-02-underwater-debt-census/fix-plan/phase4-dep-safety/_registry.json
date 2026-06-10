@@ -6876,7 +6876,7 @@
   "id": "R69",
   "bucket": "B15",
   "home": "B15",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P4气味",
   "partition": "",
@@ -6891,7 +6891,7 @@
    "schedule_execution_persistence_guard.py",
    "schedule_input_runtime_support.py"
   ],
-  "current_evidence_2026_06_05": "persistence_guard.py:49-53 与 runtime_support.py:19-23 两份 _op_seq 仍逐字节相同,均保留 `except (TypeError, ValueError): return 0` 静默归0(未改 loud raise,违红线#1未动);未收口到 schedule_input_contracts.py(grep 该文件无 _op_seq);tests/ 无 _op_seq 护栏/坏seq raise 测试。persistence_guard.py 对基线有 diff 但属 resource-dispatch 工作,_op_seq 函数体在 diff 中仅作上下文,未被改动。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(O24 loud raise+收口): 两份逐字节相同的 _op_seq(persistence_guard 旧 def :49-53、runtime_support 旧 def :19-23)已原子同窗合一到既有收口家 core/services/scheduler/run/schedule_input_contracts.py(非新建模块,无环已核:contracts 无 guard/runtime 回指);两文件删本地副本改 from .schedule_input_contracts import _op_seq,三消费点(删副本后现盘 guard :200/:206、runtime :209,改前 :206/:212/:216)行为按 parity 钉死。loud 只动 except 域: `or 0` 兜的 None/0/空串合法短路原样保留(爆点 #15:completed_seq<=0 合法过滤,绝不卷入 raise),坏类型(seq=\"abc\")由 return 0 改 raise ValueError from exc 并附「我是故意的」注释;禁碰区 _seed_seq/_seed_op_id/runtime:261-262 零触碰(diff 验证)。新增 tests/schedule/service/test_op_seq_loud_contract.py 三用例: 合法 or-0 路径全形态不 raise、坏类型 loud raise、两模块 is 单源断言防副本回潮。验证: schedule+operation_execution 640 passed、新测试 3 passed(-n 2)、ruff 过、classify=parallel。 原始记录(收口前): persistence_guard.py:49-53 与 runtime_support.py:19-23 两份 _op_seq 仍逐字节相同,均保留 `except (TypeError, ValueError): return 0` 静默归0(未改 loud raise,违红线#1未动);未收口到 schedule_input_contracts.py(grep 该文件无 _op_seq);tests/ 无 _op_seq 护栏/坏seq raise 测试。persistence_guard.py 对基线有 diff 但属 resource-dispatch 工作,_op_seq 函数体在 diff 中仅作上下文,未被改动。",
   "cluster": "ISOLATED",
   "same_file_siblings": [],
   "interference_edges": [],
@@ -6989,7 +6989,7 @@
   "id": "R32",
   "bucket": "B16",
   "home": "B16",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P4",
   "partition": "core-infra-shared",
@@ -7003,7 +7003,7 @@
   "all_files": [
    "backup.py"
   ],
-  "current_evidence_2026_06_05": "core/infrastructure/backup.py:335-337 仍是 `except Exception as e: fallback_log(self.logger,\"warning\",\"...完整性检查执行失败（已忽略）...\")`,:343 仍无条件 os.replace 升正式备份;未改 loud raise、无'我是故意的'注释。git diff b08162cd 对该文件零差异(未动),tests/ 全仓 grep integrity_check 零命中=契约测试未补。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(O27 硬 raise): core/infrastructure/backup.py 的 integrity_check except 域(旧 :335-337)已由「warning 已忽略后照样 os.replace 升正式」改为 fallback_log error + raise RuntimeError from e(与 else 分支同语义),附「我是故意的(R32/O27)」注释钉死禁改回 warning 放行;else 分支(≠ok raise)/:343 os.replace/finally 清理一行未动(禁区全守)。新增 tests/migration_db/test_backup_integrity_check_contract.py 四用例: execute 抛错 raise、fetchall 抛错 raise、≠ok 既有 raise 回归(防 else 改弱)、happy path 照常生成(防误伤),且 raise 后断言备份目录零残留(.tmp 不残)。已知非阻塞 precondition 登记: system_backup.py backup_create 仅 catch MaintenanceWindowError,RuntimeError 会落裸 500,按 dossier §12 留作独立后补不随本窗扩面。验证: migration_db 77 passed(含新 4)、gate_meta 943 passed、ruff 过、classify=parallel 且 -n 2 实跑绿。 原始记录(收口前): core/infrastructure/backup.py:335-337 仍是 `except Exception as e: fallback_log(self.logger,\"warning\",\"...完整性检查执行失败（已忽略）...\")`,:343 仍无条件 os.replace 升正式备份;未改 loud raise、无'我是故意的'注释。git diff b08162cd 对该文件零差异(未动),tests/ 全仓 grep integrity_check 零命中=契约测试未补。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -7062,7 +7062,7 @@
   "id": "R40",
   "bucket": "B16",
   "home": "B16",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P4",
   "partition": "data-repos",
@@ -7076,7 +7076,7 @@
   "all_files": [
    "material_repo.py"
   ],
-  "current_evidence_2026_06_05": "data/repositories/material_repo.py:70-72 仍是 `except Exception: # 留给服务层校验；这里保持原值 / val = updates.get(\"stock_qty\")`(静默保留坏值),:81 仍把坏值写入 UPDATE Materials;未删 except 让 float() loud raise、无注释。git diff b08162cd 该文件零差异;两个含 stock_qty 的测试(regression_models_numeric_parse_hybrid_safe.py:168-175 钉 model 层 from_row、smoke_e2e:650 用合法值'0')均未改且是计划点名的相邻护栏,非本债新契约测试。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(O28 方向 A): data/repositories/material_repo.py 删 stock_qty 的 except 静默保留原值(旧 :70-72),保留 float() 让坏值自然抛 ValueError(loud),附「我是故意的(R40/O28)」注释(service 层 _norm_float 第一道强校验,本层绝不静默保留坏值;旁路直调 repo 时 loud 暴露而非把坏值写进 REAL 列);零新增 import(方向 B 的 data→core 耦合未引入)。新增 tests/material/test_material_repo_stock_qty_loud_contract.py 三用例: 坏值 raise 且库存原值不污染、空串/None 不改跳过语义回归、合法数字字符串照常落库。生产唯一调用方 material_service.update 上游已 _norm_float 强校验,改动对现行生产零行为影响(dossier+对抗核验已证)。验证: tests/material 3 passed(-n 2)、ruff 过、classify=parallel。 原始记录(收口前): data/repositories/material_repo.py:70-72 仍是 `except Exception: # 留给服务层校验；这里保持原值 / val = updates.get(\"stock_qty\")`(静默保留坏值),:81 仍把坏值写入 UPDATE Materials;未删 except 让 float() loud raise、无注释。git diff b08162cd 该文件零差异;两个含 stock_qty 的测试(regression_models_numeric_parse_hybrid_safe.py:168-175 钉 model 层 from_row、smoke_e2e:650 用合法值'0')均未改且是计划点名的相邻护栏,非本债新契约测试。",
   "cluster": "ISOLATED",
   "same_file_siblings": [],
   "interference_edges": [],

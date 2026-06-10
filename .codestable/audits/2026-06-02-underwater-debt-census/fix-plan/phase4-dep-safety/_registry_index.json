@@ -1330,7 +1330,7 @@
  "R69": {
   "id": "R69",
   "bucket": "B15",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P4气味",
   "lb": false,
@@ -1362,7 +1362,7 @@
  "R32": {
   "id": "R32",
   "bucket": "B16",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P4",
   "lb": false,
@@ -1378,7 +1378,7 @@
  "R40": {
   "id": "R40",
   "bucket": "B16",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P4",
   "lb": false,
