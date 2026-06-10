@@ -65,11 +65,11 @@ class MaterialRepository(BaseRepository):
                 # stock_qty 允许传空/None 表示“不改”
                 if val is None or (isinstance(val, str) and val.strip() == ""):
                     continue
-                try:
-                    val = float(val)
-                except Exception:
-                    # 留给服务层校验；这里保持原值
-                    val = updates.get("stock_qty")
+                # 我是故意的（R40/O28）：service 层 _norm_float（material_service.update 路径）是第一道
+                # 强校验（库存数量必须数字、>=0），本层绝不静默保留坏值；若未来有旁路绕过 service 直调
+                # repo，这里让 float() 自然抛 ValueError 即 loud 暴露，而不是把坏值悄悄写进
+                # Materials.stock_qty（REAL 列）——灵魂线，禁止改回 except 吞错保原值。
+                val = float(val)
 
             set_parts.append(f"{key} = ?")
             params.append(val)
