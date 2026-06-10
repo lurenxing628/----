@@ -23,6 +23,8 @@ from tools.test_registry import iter_startup_regressions
         "tests/app_runtime/test_runtime_stop_cli.py::regression_runtime_stop_cli",
         "tests/app_runtime/test_check_manual_layout_runtime_resolution.py::test_check_manual_layout_runtime_resolution",
         "tests/app_runtime/test_validate_dist_runtime_identity.py::test_validate_dist_runtime_identity_contract",
+        # scheduler_graph 整目录 serial：用例 sys.modules.pop 验证惰性加载不还原，并行分片打散后污染同片后续用例
+        "tests/scheduler_graph/test_scheduler_graph_cycle_policy_contract.py::test_report_mode_cycle_only_reports_warning_and_keeps_scheduling",
     ],
 )
 def test_classify_nodeid_keeps_risky_tests_serial(nodeid: str) -> None:

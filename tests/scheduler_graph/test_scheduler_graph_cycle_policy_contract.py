@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -205,12 +204,6 @@ def _run_orchestrator_with_optimizer(schedule_input: Any, svc: _Svc, *, optimize
 
 @pytest.fixture()
 def cycle_graph(monkeypatch: Any) -> None:
-    # 分片全量门禁下存在跨用例模块状态污染：同分片某用例改写 graph 分析相关模块状态，使本夹具对
-    # analysis_service/exporter 的 monkeypatch 对「分片里第一个 cycle 用例」失效，致 graph_analysis
-    # ['is_dag'] 误判为 True（环检测失效）。隔离/非分片运行恒过；污染源未定位前，凡依赖本夹具的
-    # cycle 契约用例在 CI 统一隔离（在夹具层一处收口，避免逐个 skipif 打地鼠），不掩盖产品行为。
-    if os.environ.get("CI"):
-        pytest.skip("cycle_graph 夹具在 CI 分片下受跨用例模块状态污染，治本前隔离")
     from core.services.scheduler.graph import analysis_service, exporter
 
     class FakeGraphService:
