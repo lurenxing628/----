@@ -6,7 +6,7 @@ from core.models import Schedule
 
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
-from .schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleSeedRow, ScheduleTimeSpanRow
+from .schedule_rows import ScheduleDetailRow, ScheduleSeedRow
 
 
 def _require_schedule_op_id(schedule: Schedule) -> int:
@@ -31,41 +31,6 @@ class ScheduleRepository(BaseRepository):
             "SELECT id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version, created_at FROM Schedule WHERE version = ? ORDER BY start_time, id",
             (int(version),),
         )
-        return [Schedule.from_row(r) for r in rows]
-
-    def get_version_time_span(self, version: int) -> Optional[ScheduleTimeSpanRow]:
-        """
-        查询指定版本的排程时间范围（最早开始 / 最晚结束）。
-        返回 None 表示该版本暂无有效排程记录。
-        """
-        row = self.fetchone(
-            """
-            SELECT
-                MIN(start_time) AS min_start_time,
-                MAX(end_time) AS max_end_time
-            FROM Schedule
-            WHERE version = ?
-              AND TRIM(CAST(start_time AS TEXT)) <> ''
-              AND TRIM(CAST(end_time AS TEXT)) <> ''
-            """,
-            (int(version),),
-        )
-        if not row:
-            return None
-        start_time = row.get("min_start_time")
-        end_time = row.get("max_end_time")
-        if not start_time or not end_time:
-            return None
-        return {"version": int(version), "start_time": str(start_time), "end_time": str(end_time)}
-
-    def list_between(self, start_time: str, end_time: str, version: Optional[int] = None) -> List[Schedule]:
-        sql = "SELECT id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version, created_at FROM Schedule WHERE start_time >= ? AND end_time <= ?"
-        params: List[Any] = [start_time, end_time]
-        if version is not None:
-            sql += " AND version = ?"
-            params.append(int(version))
-        sql += " ORDER BY start_time, id"
-        rows = self.fetchall(sql, tuple(params))
         return [Schedule.from_row(r) for r in rows]
 
     def list_version_rows_by_op_ids_start_range(
@@ -110,52 +75,6 @@ class ScheduleRepository(BaseRepository):
             params: List[Any] = [int(version)] + list(chunk) + [end_time, start_time]
             out.extend(cast(List[ScheduleSeedRow], self.fetchall(sql, tuple(params))))
         return out
-
-    def list_overlapping_with_details(self, start_time: str, end_time: str, version: int) -> List[ScheduleDetailRow]:
-        """
-        查询与给定时间区间“有重叠”的排程记录，并补齐甘特图/周计划所需的关联信息。
-
-        说明：
-        - 使用“区间重叠”条件，避免跨周任务被遗漏：
-          start_time < end AND end_time > start
-        - 返回 dict 行（带 join 字段），供服务层直接拼装输出。
-        """
-        sql = build_schedule_detail_sql(
-            where_clauses=("s.version = ?", "s.start_time < ?", "s.end_time > ?"),
-        )
-        return cast(List[ScheduleDetailRow], self.fetchall(sql, (int(version), end_time, start_time)))
-
-    def list_dispatch_rows_with_resource_context(
-        self,
-        *,
-        start_time: str,
-        end_time: str,
-        version: int,
-        scope_type: Optional[str] = None,
-        scope_id: Optional[str] = None,
-    ) -> List[ScheduleDispatchRow]:
-        scope_type_text = str(scope_type or "").strip().lower()
-        scope_id_text = str(scope_id or "").strip()
-        where_clauses = ["s.version = ?", "s.start_time < ?", "s.end_time > ?"]
-        params: List[Any] = [int(version), end_time, start_time]
-        if scope_type_text == "operator" and scope_id_text:
-            where_clauses.append("TRIM(COALESCE(s.operator_id, '')) = ?")
-            params.append(scope_id_text)
-        elif scope_type_text == "operator":
-            where_clauses.append("TRIM(COALESCE(s.operator_id, '')) <> ''")
-        elif scope_type_text == "machine" and scope_id_text:
-            where_clauses.append("TRIM(COALESCE(s.machine_id, '')) = ?")
-            params.append(scope_id_text)
-        elif scope_type_text == "machine":
-            where_clauses.append("TRIM(COALESCE(s.machine_id, '')) <> ''")
-        elif scope_type_text == "team" and scope_id_text:
-            where_clauses.append("((o.team_id = ?) OR (m.team_id = ?))")
-            params.extend([scope_id_text, scope_id_text])
-        sql = build_schedule_detail_sql(
-            where_clauses=tuple(where_clauses),
-            include_team_context=True,
-        )
-        return cast(List[ScheduleDispatchRow], self.fetchall(sql, tuple(params)))
 
     def list_by_version_with_details(self, version: int) -> List[ScheduleDetailRow]:
         """

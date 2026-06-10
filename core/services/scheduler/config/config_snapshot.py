@@ -21,6 +21,7 @@ from .config_field_spec import (
 from .config_weight_policy import normalize_weight_triplet
 
 
+# 与 core.models.schedule_config_runtime_snapshot.ScheduleConfigSnapshot 双栈锁步；字段增删必须同步。
 @dataclass
 class ScheduleConfigSnapshot:
     sort_strategy: str

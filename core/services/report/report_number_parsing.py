@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import re
 from typing import Any, Optional
 
 from core.infrastructure.errors import ValidationError
 from core.shared.strict_parse import is_blank_input, parse_required_float, parse_required_int
-
-_INT_TEXT_PATTERN = re.compile(r"^[+-]?\d+$")
 
 
 def parse_report_float(
@@ -51,25 +48,6 @@ def parse_report_int(
         raise ValidationError(f"{label}不是有效整数，请检查{source_label}。", field=field) from exc
 
 
-def _parse_plain_report_int(
-    value: Any,
-    *,
-    field: str,
-    label: str,
-    source_label: str,
-    blank_default: int,
-) -> int:
-    if is_blank_input(value):
-        return int(blank_default)
-    if isinstance(value, bool):
-        raise ValidationError(f"{label}不是有效整数，请检查{source_label}。", field=field)
-    if isinstance(value, int):
-        return int(value)
-    if isinstance(value, str) and _INT_TEXT_PATTERN.fullmatch(value.strip()):
-        return int(value.strip())
-    raise ValidationError(f"{label}不是有效整数，请检查{source_label}。", field=field)
-
-
 def parse_report_nonnegative_int(
     value: Any,
     *,
@@ -78,16 +56,12 @@ def parse_report_nonnegative_int(
     source_label: str,
     blank_default: int = 0,
 ) -> int:
-    number = _parse_plain_report_int(
-        value,
-        field=field,
-        label=label,
-        source_label=source_label,
-        blank_default=blank_default,
-    )
-    if number < 0:
-        raise ValidationError(f"{label}不是有效整数，请检查{source_label}。", field=field)
-    return number
+    if is_blank_input(value):
+        return int(blank_default)
+    try:
+        return int(parse_required_int(value, field=label, min_value=0, reject_integer_float=True))
+    except ValidationError as exc:
+        raise ValidationError(f"{label}不是有效整数，请检查{source_label}。", field=field) from exc
 
 
 __all__ = [

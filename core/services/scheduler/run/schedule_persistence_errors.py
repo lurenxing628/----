@@ -11,6 +11,7 @@ from core.services.scheduler.run.auto_assign_resource_errors import (
 
 
 def _positive_int(value: Any) -> Optional[int]:
+    # 持久化错误归一哨兵：坏 id 保持 None，避免盖掉原始 no_actionable 诊断。
     try:
         number = int(value or 0)
     except (TypeError, ValueError):

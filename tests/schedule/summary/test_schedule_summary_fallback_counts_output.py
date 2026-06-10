@@ -23,7 +23,7 @@ class _StubSvc:
 
 def test_schedule_summary_fallback_counts_output() -> None:
 
-    from core.services.scheduler.schedule_summary import build_result_summary
+    from core.services.scheduler.summary.schedule_summary import build_result_summary
 
     summary = SimpleNamespace(
         success=True,

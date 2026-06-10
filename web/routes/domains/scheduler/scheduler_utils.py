@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from flask import g
+from flask import g, request
 
 from core.services.common.excel_service import ImportMode
 
@@ -16,6 +16,16 @@ from ...normalizers import _normalize_yesno as _normalize_yesno_impl
 def _current_scheduler_operator() -> str:
     operator = str(getattr(g, "scheduler_operator", "") or "").strip()
     return operator or "web"
+
+
+def get_plan_role_arg() -> Optional[str]:
+    # R72 收口:gantt/week_plan 两份 _get_plan_role_arg 的唯一来源。
+    # 语义铁律:缺参/空串/空白一律 None(由下游 resolve 决定默认),这里绝不兜底成 ROLE_ADOPTED。
+    raw = request.args.get("plan_role")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
 
 
 def _parse_mode(value: str) -> ImportMode:

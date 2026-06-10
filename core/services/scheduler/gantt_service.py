@@ -57,10 +57,6 @@ class GanttService:
         self._plan_query_service = plan_query_service
         self._critical_chain_provider = None
 
-    def get_latest_version_or_1(self) -> int:
-        v = int(self.history_repo.get_latest_version() or 0)
-        return v if v > 0 else 0
-
     def resolve_version(self, value: Any) -> VersionResolution:
         latest = int(self.history_repo.get_latest_version() or 0)
         return resolve_version_or_latest(

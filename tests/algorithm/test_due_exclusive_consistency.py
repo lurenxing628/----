@@ -26,8 +26,8 @@ def test_due_exclusive_consistency() -> None:
     from core.algorithms.greedy.date_parsers import due_exclusive
     from core.algorithms.types import ScheduleResult
     from core.services.report.calculations import compute_overdue_buckets
-    from core.services.scheduler.schedule_summary import build_result_summary
-    from core.services.scheduler.schedule_summary_types import SummaryBuildContext
+    from core.services.scheduler.summary.schedule_summary import build_result_summary
+    from core.services.scheduler.summary.schedule_summary_types import SummaryBuildContext
 
     due_d = date(2026, 2, 1)
     finish_dt = datetime(2026, 2, 2, 0, 0, 0)

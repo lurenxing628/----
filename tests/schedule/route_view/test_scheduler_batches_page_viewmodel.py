@@ -14,7 +14,8 @@ from typing import Any, Optional, Tuple
 import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
-from core.services.scheduler.config_service import ConfigService
+from core.services.scheduler.config.config_service import ConfigService
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 from web.viewmodels.scheduler_batches_page import (
     ScheduleHistoryDisplayValueError,
@@ -60,16 +61,14 @@ def _build_app(tmp_path, monkeypatch):
     test_db = tmp_path / "aps_test.db"
     test_logs = tmp_path / "logs"
     test_backups = tmp_path / "backups"
-    test_templates = tmp_path / "templates_excel"
     test_logs.mkdir(exist_ok=True)
     test_backups.mkdir(exist_ok=True)
-    test_templates.mkdir(exist_ok=True)
 
     monkeypatch.setenv("APS_ENV", "development")
     monkeypatch.setenv("APS_DB_PATH", str(test_db))
     monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+    point_env_at_shared(monkeypatch)
 
     repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:

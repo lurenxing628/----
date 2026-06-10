@@ -85,7 +85,6 @@ def _record_blank_choice_degradation(
     *,
     scope: str,
     field_name: str,
-    raw_value: Any,
     fallback: str,
 ) -> None:
     label = display_field_label(field_name, fallback="配置项")
@@ -156,7 +155,6 @@ def _choice_with_degradation(
             collector,
             scope=scope,
             field_name=field_name,
-            raw_value=raw_value,
             fallback=fallback_text,
         )
         return fallback_text
@@ -211,7 +209,6 @@ def _yes_no_with_degradation(
             collector,
             scope=scope,
             field_name=field_name,
-            raw_value=raw_value,
             fallback=normalized_default,
         )
         return normalized_default

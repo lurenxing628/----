@@ -54,6 +54,21 @@ def _result(
     )
 
 
+def _result_with_raw_op_id(raw_op_id: Any) -> SimpleNamespace:
+    return SimpleNamespace(
+        op_id=raw_op_id,
+        op_code="B001_DIRTY",
+        batch_id="B001",
+        seq=2,
+        machine_id="MC_A",
+        operator_id="OP_A",
+        start_time=_make_dt(2),
+        end_time=_make_dt(3),
+        source="internal",
+        op_type_name="A",
+    )
+
+
 def _assert_validation_reason(results: List[Any], *, allowed_op_ids: Set[int], reason: str) -> Dict[str, Any]:
     with pytest.raises(ValidationError) as exc_info:
         build_validated_schedule_payload(results, allowed_op_ids=allowed_op_ids)
@@ -138,6 +153,19 @@ def test_schedule_payload_rejects_invalid_persist_rows_before_any_valid_save(inv
     )
 
     assert expected_text in "\n".join(details.get("validation_errors") or []), details
+
+
+@pytest.mark.parametrize("raw_op_id", [None, True, False, 1.0, "1.0", 0, "0", "abc"])
+def test_schedule_payload_rejects_dirty_result_op_id_without_escaping_validation_error(raw_op_id: Any) -> None:
+    valid = _result(1, machine_id="MC_A", operator_id="OP_A", start_offset=0, end_offset=1)
+
+    details = _assert_validation_reason(
+        [valid, _result_with_raw_op_id(raw_op_id)],
+        allowed_op_ids={1, 2},
+        reason="invalid_schedule_rows",
+    )
+
+    assert "工序编号不合法" in "\n".join(details.get("validation_errors") or []), details
 
 
 def test_schedule_payload_rejects_result_source_that_disagrees_with_operation_source() -> None:

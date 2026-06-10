@@ -1,4 +1,4 @@
-"""回归测试：ResourceDispatchService 按请求的 plan_role 读对应候选方案（baseline_best 读候选行、无此角色时回退 adopted 并标记 fallback_to_adopted），超期标记从候选行自身计算而不复用 adopted 历史，且页面/数据/导出接口在 URL 与日志中保留 plan_role、对外 JSON 不泄露 schedule_id/op_id/source_table 等内部键。"""
+"""回归测试：ResourceDispatchService 按请求的 plan_role 读对应候选方案（baseline_best 读候选行、无此角色时回退 adopted 并标记 fallback_to_adopted），超期标记从候选行自身计算而不复用 adopted 历史，页面/数据/导出接口在 URL 与日志中保留 plan_role、对外 JSON 不泄露 schedule_id/op_id/source_table 等内部键；并钉住执行上下文写闸查询侧 can_write_feedback 与 feedback_write_enabled 的同源锁步不变式（N1）。"""
 
 from __future__ import annotations
 
@@ -458,5 +458,32 @@ def test_resource_dispatch_page_data_and_export_keep_plan_role_in_urls_and_log(t
         assert logged_filters.get("effective_plan_role") == ROLE_BASELINE_BEST
         assert logged_filters.get("plan_role_status") == "resolved_comparison"
         assert logged_filters.get("candidate_key") == "baseline_best"
+    finally:
+        conn.close()
+
+
+def test_execution_context_feedback_write_enabled_stays_lockstep_with_can_write_feedback(tmp_path: Path) -> None:
+    # N1 同源守卫:get_execution_context 输出的 feedback_write_enabled 与 can_write_feedback
+    # 在 service 侧取自同一个 plan_role_fields["can_write_feedback"],必须永远同值。
+    # 该不变式是 R08 删除"can_write=True 而 write_enabled=False"死分支的安全前提;
+    # 真正写闸在 OperationExecutionFeedbackService._load_current_official_schedule 双 raise,
+    # 这两个键只是查询侧优化短路,谁单边改动谁就复活了已死的组合分支。
+    conn = _seed_db(tmp_path)
+    try:
+        from core.services.scheduler.resource_dispatch_execution_service import ResourceDispatchExecutionService
+
+        svc = ResourceDispatchExecutionService(conn, logger=None, op_logger=None)
+        for role, expected_writable in ((ROLE_ADOPTED, True), (ROLE_BASELINE_BEST, False)):
+            context = svc.get_execution_context(
+                scope_type="operator",
+                operator_id="O-ADOPTED",
+                period_preset="week",
+                query_date="2026-05-01",
+                version=VERSION,
+                plan_role=role,
+            )
+            assert "can_write_feedback" in context and "feedback_write_enabled" in context
+            assert context["can_write_feedback"] is expected_writable
+            assert context["feedback_write_enabled"] is context["can_write_feedback"]
     finally:
         conn.close()

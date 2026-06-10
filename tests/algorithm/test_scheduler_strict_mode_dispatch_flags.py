@@ -51,9 +51,9 @@ def _expect_validation(label, func, field):
 def test_scheduler_strict_mode_dispatch_flags(schema_conn) -> None:
 
     from core.algorithms.greedy.schedule_params import resolve_schedule_params
-    from core.services.scheduler.config_service import ConfigService
-    from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot, build_schedule_config_snapshot
-    from core.services.scheduler.config_validator import normalize_preset_snapshot
+    from core.services.scheduler.config.config_service import ConfigService
+    from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot, build_schedule_config_snapshot
+    from core.services.scheduler.config.config_validator import normalize_preset_snapshot
 
     defaults = _default_snapshot_kwargs()
 

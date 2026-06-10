@@ -2,6 +2,95 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from core.models.schedule_plan_role import project_plan_guard_fields
+
+TARGET_PAGE_PATHS = {
+    "dashboard": "/",
+    "analysis": "/scheduler/analysis",
+    "gantt": "/scheduler/gantt",
+    "week_plan": "/scheduler/week-plan",
+    "resource_dispatch": "/scheduler/resource-dispatch",
+    "overdue_report": "/reports/overdue",
+    "delay_diagnosis": "/reports/overdue",
+    "utilization_report": "/reports/utilization",
+    "execution_review": "/reports/execution-review",
+    "downtime_report": "/reports/downtime",
+    "reports_index": "/reports/",
+}
+
+TARGET_DEFAULT_LABELS = {
+    "dashboard": "回到计划工作台",
+    "analysis": "查看排产分析",
+    "gantt": "查看甘特图",
+    "week_plan": "查看周计划",
+    "resource_dispatch": "查看资源排班",
+    "overdue_report": "查看超期清单",
+    "delay_diagnosis": "查看延期说明",
+    "utilization_report": "查看资源负荷",
+    "execution_review": "查看计划和现场实际",
+    "downtime_report": "查看停机影响",
+    "reports_index": "查看报表中心",
+}
+
+VERSION_REQUIRED_TARGETS = {
+    "analysis",
+    "gantt",
+    "week_plan",
+    "resource_dispatch",
+    "overdue_report",
+    "delay_diagnosis",
+    "utilization_report",
+    "execution_review",
+    "downtime_report",
+    "reports_index",
+}
+
+WORKBENCH_CONTINUATION_TARGETS = VERSION_REQUIRED_TARGETS - {"analysis"}
+
+DATE_RANGE_REQUIRED_TARGETS = {
+    "gantt",
+    "week_plan",
+    "resource_dispatch",
+    "overdue_report",
+    "delay_diagnosis",
+    "utilization_report",
+    "execution_review",
+    "downtime_report",
+    "reports_index",
+}
+
+_PLAN_GUARD_COMMON_FIELDS = (
+    "requested_plan_role",
+    "effective_plan_role",
+    "is_scenario_preview",
+    "is_comparison",
+    "is_superseded_by_newer_version",
+    "is_official_plan",
+    "is_preview_plan",
+    "is_current_executable_official_version",
+    "can_dispatch",
+    "can_write_feedback",
+    "result_summary_parse_failed",
+    "result_summary_parse_reason",
+)
+
+_PLAN_IDENTITY_BLOCKING_FIELDS = (
+    "plan_identity_error",
+    "plan_identity_blocking_error",
+    "plan_identity_blocking_scope",
+)
+
+REPORT_PLAN_GUARD_FIELDS = _PLAN_GUARD_COMMON_FIELDS
+RESOURCE_PLAN_GUARD_FIELDS = (
+    _PLAN_GUARD_COMMON_FIELDS[:10] + _PLAN_IDENTITY_BLOCKING_FIELDS + _PLAN_GUARD_COMMON_FIELDS[10:]
+)
+FULL_PLAN_GUARD_FIELDS = (
+    _PLAN_GUARD_COMMON_FIELDS[:2]
+    + ("plan_role_status",)
+    + _PLAN_GUARD_COMMON_FIELDS[2:10]
+    + _PLAN_IDENTITY_BLOCKING_FIELDS
+    + _PLAN_GUARD_COMMON_FIELDS[10:]
+)
 _EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS = {
     "plan_role",
     "requested_plan_role",
@@ -98,6 +187,19 @@ def _has_value(value: Any) -> bool:
     return value is not None and _text(value) != ""
 
 
+def plan_guard_fields_for_resolution(plan_resolution: Any, field_names: Iterable[str]) -> Dict[str, Any]:
+    source = dict(plan_resolution) if isinstance(plan_resolution, dict) else {}
+    fields = project_plan_guard_fields(source)
+    out: Dict[str, Any] = {}
+    for key in field_names:
+        value = fields.get(key)
+        if value is None and key in source:
+            value = source.get(key)
+        if value is not None:
+            out[key] = value
+    return out
+
+
 def _append_param(query: List[Tuple[str, str]], key: str, value: Any) -> None:
     if _has_value(value):
         query.append((key, _text(value)))
@@ -115,7 +217,6 @@ def _append_date_range_as_date_from_to(query: List[Tuple[str, str]], context: Di
 
 def _append_plan_query(query: List[Tuple[str, str]], context: Dict[str, Any]) -> None:
     _append_param(query, "version", context.get("version"))
-    _append_param(query, "plan_id", context.get("plan_id"))
     _append_param(query, "plan_role", context.get("plan_role"))
     _append_param(query, "scenario_id", context.get("scenario_id"))
 
@@ -151,7 +252,6 @@ def target_uses_primary_resource_filter(target_page: str) -> bool:
 def _append_target_plan_query(query: List[Tuple[str, str]], context: Dict[str, Any], plan_style: str) -> None:
     if plan_style == "execution_review":
         _append_param(query, "version", context.get("version"))
-        _append_param(query, "plan_id", context.get("plan_id"))
         _append_param(query, "plan_role", context.get("plan_role"))
         return
     _append_plan_query(query, context)
@@ -299,4 +399,17 @@ def query_for_target(
     return query
 
 
-__all__ = ["ordered_required_params", "query_for_target", "target_uses_primary_resource_filter"]
+__all__ = [
+    "DATE_RANGE_REQUIRED_TARGETS",
+    "FULL_PLAN_GUARD_FIELDS",
+    "REPORT_PLAN_GUARD_FIELDS",
+    "RESOURCE_PLAN_GUARD_FIELDS",
+    "TARGET_DEFAULT_LABELS",
+    "TARGET_PAGE_PATHS",
+    "VERSION_REQUIRED_TARGETS",
+    "WORKBENCH_CONTINUATION_TARGETS",
+    "ordered_required_params",
+    "plan_guard_fields_for_resolution",
+    "query_for_target",
+    "target_uses_primary_resource_filter",
+]

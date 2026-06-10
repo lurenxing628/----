@@ -13,7 +13,7 @@ class _Model(SimpleNamespace):
 
 
 def _build_app(monkeypatch):
-    import web.routes.scheduler_batch_detail as route_mod
+    import web.routes.domains.scheduler.scheduler_batch_detail as route_mod
 
     monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
 

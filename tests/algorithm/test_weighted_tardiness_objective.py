@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
-from core.services.scheduler.config_service import ConfigService
+from core.services.scheduler.config.config_service import ConfigService
 from tests._support.paths import REPO_ROOT
 
 

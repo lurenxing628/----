@@ -7,6 +7,17 @@ from typing import Any, Dict, List, Optional, Set
 from core.services.common.build_outcome import BuildOutcome
 
 
+def _op_seq(op: Any) -> int:
+    # R69/O24 收口：persistence_guard 与 runtime_support 两份逐字节相同的副本合一到本契约文件。
+    # `or 0` 兜的是 None/0/空串等「无 seq」合法形态（下游靠 completed_seq<=0 短路过滤），绝不卷入报错；
+    # 只有坏类型（如 seq="abc"）才 loud raise——护栏链路里坏 seq 必须暴露，禁改回 except 静默归 0
+    # （静默归 0 会让 completed_seq<=0 短路放空过滤、漏判后继工序需重算，算法侧静默漏排）。
+    try:
+        return int(getattr(op, "seq", 0) or 0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"工序 seq 值无效（无法转为整数）：{getattr(op, 'seq', None)!r}") from exc
+
+
 def _signature_supports_keyword_arg(signature: inspect.Signature, arg_name: str) -> bool:
     for parameter in signature.parameters.values():
         if parameter.kind == inspect.Parameter.VAR_KEYWORD:

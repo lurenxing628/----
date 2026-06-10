@@ -7,7 +7,7 @@ def test_due_exclusive_guard_contract() -> None:
 
     from core.algorithms.greedy.date_parsers import due_exclusive
     from core.services.report.calculations import due_exclusive as calculations_due_exclusive
-    from core.services.scheduler.schedule_summary import due_exclusive as summary_due_exclusive
+    from core.services.scheduler.summary.schedule_summary import due_exclusive as summary_due_exclusive
 
     expected = datetime.max
     assert due_exclusive(None) == expected, "共享 due_exclusive(None) 应返回 datetime.max"

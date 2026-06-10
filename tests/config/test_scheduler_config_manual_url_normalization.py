@@ -6,7 +6,7 @@ import pytest
 from flask import Flask
 
 import web.manual_src_security as manual_src_security_mod
-import web.routes.scheduler_config as route_mod
+import web.routes.domains.scheduler.scheduler_config as route_mod
 import web.ui_mode as ui_mode_mod
 
 

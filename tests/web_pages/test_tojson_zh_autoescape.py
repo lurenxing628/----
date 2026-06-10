@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from tests._support.excel_templates import point_env_at_shared
+
 
 def test_tojson_zh_autoescape(tmp_path, monkeypatch) -> None:
     import importlib
@@ -16,7 +18,7 @@ def test_tojson_zh_autoescape(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("APS_DB_PATH", str(tmp_path / "aps.db"))
     monkeypatch.setenv("APS_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setenv("APS_BACKUP_DIR", str(tmp_path / "backups"))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(tmp_path / "templates_excel"))
+    point_env_at_shared(monkeypatch)
 
     # production(DEBUG=False)下 create_app 会 atexit.register(_run_exit_backup)；转同进程 pytest 后，
     # 该 atexit 会在分片 shard 进程退出、capture 已关闭时 logging 触发 "I/O operation on closed file"，

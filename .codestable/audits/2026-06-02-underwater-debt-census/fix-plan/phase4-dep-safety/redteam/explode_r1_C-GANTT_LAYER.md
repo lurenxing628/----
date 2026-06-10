@@ -2,6 +2,8 @@
 
 > skeptic r1，只读不改。默认怀疑：找不到爆点才算绿。
 > 成员债 R10 / R11 / R12 / R55 / R63。主文件 gantt_service.py / gantt_service_support.py / gantt_critical_chain.py / gantt_critical_chain_provider.py / gantt_contract.py。
+
+> **✅ 2026-06-08 B 执行补登**：A1 `{R11≡R63}` 已 fixed。单份 `_normalize_critical_chain_result` 已收口到 `gantt_critical_chain.py:67-88`；support/provider 旧副本已删，两路调用同一 helper，parity 11 边界已落。本红队文中 A1 的“黄/条件”判断现转为已满足；R12/R55 仍未执行。
 > 全部行号已 rg 当前工作区回盘（2026-06-05），不信旧值。
 
 ---

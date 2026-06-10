@@ -95,7 +95,7 @@ import importlib
 import json
 import sys
 
-importlib.import_module("web.routes.scheduler_run")
+importlib.import_module("web.routes.domains.scheduler.scheduler_run")
 print(json.dumps({
     "loaded_root": "web.routes.scheduler" in sys.modules,
     "loaded_registrar": "web.routes.domains.scheduler.scheduler_route_registrar" in sys.modules,

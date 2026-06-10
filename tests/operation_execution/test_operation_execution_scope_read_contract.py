@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from io import BytesIO
 from urllib.parse import unquote
 
@@ -9,9 +10,10 @@ import openpyxl
 import pytest
 
 from core.infrastructure.database import get_connection
+from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.operation_execution_state import OperationExecutionState
 from core.services.scheduler.execution_fact_provider import ExecutionFact, ExecutionFactProvider
-from core.services.scheduler.execution_snapshot import build_execution_snapshot
+from core.services.scheduler.execution_snapshot import build_execution_snapshot, positive_op_ids
 from core.services.scheduler.operation_execution_feedback_service import ExecutionFeedbackContext
 from core.services.scheduler.resource_dispatch_actual_records import TaskRef
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
@@ -71,6 +73,40 @@ def _summary_dict(wb) -> dict:
     return out
 
 
+class _FakeExecutionFactRepo:
+    def __init__(self, states_by_scope):
+        self._states_by_scope = states_by_scope
+
+    def aggregate_states_by_scopes(self, scopes):
+        return {scope: self._states_by_scope.get(scope) for scope in scopes}
+
+
+def _scope(op_id: int = 10) -> OperationExecutionScope:
+    return OperationExecutionScope.from_values(
+        schedule_version=2,
+        schedule_id=100,
+        op_id=op_id,
+        batch_id="B1",
+        source_table="schedule",
+        effective_plan_role="adopted",
+    )
+
+
+def _fact_from_actual_times(actual_start_time, actual_end_time=None) -> ExecutionFact:
+    scope = _scope()
+    state = OperationExecutionState(
+        op_id=10,
+        batch_id="B1",
+        current_status="processing",
+        actual_start_time=actual_start_time,
+        actual_end_time=actual_end_time,
+        state_revision="10:1:1",
+    )
+    provider = ExecutionFactProvider(None)
+    provider.event_repo = _FakeExecutionFactRepo({scope: state})
+    return provider.facts_by_scope([scope])[scope]
+
+
 def test_current_task_card_ignores_superseded_same_op_feedback(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_legacy_v1_start(db_path)
@@ -107,7 +143,8 @@ def test_execution_fact_provider_scopes_dashboard_rows_by_plan_identity(tmp_path
         )[10]
 
         assert scoped_fact.actual_status == "not_started"
-        assert scoped_fact.last_event_schedule_version is None
+        assert scoped_fact.actual_start_time is None
+        assert scoped_fact.state_revision == "10:0:0"
         assert scoped_fact.schedule_version == 2
         assert scoped_fact.schedule_id == 100
     finally:
@@ -170,14 +207,44 @@ def test_execution_fact_provider_rejects_include_op_id_without_scope(tmp_path, m
             start_time="2026-05-01 00:00:00",
             end_time="2026-05-02 00:00:00",
         )
-        with pytest.raises(ValueError, match="op_id=20"):
+        with pytest.raises(ValueError, match="现场执行事实缺少完整计划身份：op_id=20"):
             ExecutionFactProvider(conn).facts_by_op_id_for_plan_rows(
                 rows,
                 {"version": 2, "source_table": "schedule", "effective_plan_role": "adopted"},
-                include_op_ids=[10, 20],
+                include_op_ids=[30, 20, 10, 20, 0, -1, "x", None],
             )
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize("blank_value", [None, "", " "])
+def test_execution_fact_provider_keeps_blank_actual_times_optional(blank_value) -> None:
+    fact = _fact_from_actual_times(blank_value, blank_value)
+
+    assert fact.actual_start_time is None
+    assert fact.actual_end_time is None
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        ("2026/05/01T08:10", datetime(2026, 5, 1, 8, 10)),
+        ("2026-05-01", datetime(2026, 5, 1)),
+        ("2026-05-01 08:10:30", datetime(2026, 5, 1, 8, 10, 30)),
+        ("2026-05-01 08：10", datetime(2026, 5, 1, 8, 10)),
+        (datetime(2026, 5, 1, 8, 10, 30, 123456), datetime(2026, 5, 1, 8, 10, 30)),
+    ],
+)
+def test_execution_fact_provider_parses_valid_actual_times_like_operation_event_time(raw_value, expected) -> None:
+    fact = _fact_from_actual_times(raw_value)
+
+    assert fact.actual_start_time == expected
+
+
+@pytest.mark.parametrize("bad_value", ["not-a-date", "2026-02-30 08:10:00", "2026-05-01 08:10:00.123456", 0, False])
+def test_execution_fact_provider_rejects_bad_actual_time_loudly(bad_value) -> None:
+    with pytest.raises(ValueError, match="event_time"):
+        _fact_from_actual_times(bad_value)
 
 
 def test_execution_snapshot_revision_includes_plan_identity() -> None:
@@ -189,8 +256,6 @@ def test_execution_snapshot_revision_includes_plan_identity() -> None:
         "actual_end_time": None,
         "actual_machine_id": None,
         "actual_operator_id": None,
-        "last_event_schedule_version": None,
-        "last_event_schedule_id": None,
         "state_revision": "10:0:0",
         "source_table": "schedule",
         "effective_plan_role": "adopted",
@@ -210,6 +275,36 @@ def test_execution_snapshot_revision_includes_plan_identity() -> None:
     assert "schedule=200" in v2.identity_revisions[10]
 
 
+def test_execution_snapshot_sorts_and_dedupes_op_ids_for_stable_revision() -> None:
+    def fact(op_id: int) -> ExecutionFact:
+        return ExecutionFact(
+            op_id=op_id,
+            batch_id=f"B{op_id}",
+            actual_status="not_started",
+            actual_start_time=None,
+            actual_end_time=None,
+            actual_machine_id=None,
+            actual_operator_id=None,
+            state_revision=f"{op_id}:0:0",
+            schedule_version=1,
+            schedule_id=100 + op_id,
+            source_table="schedule",
+            effective_plan_role="adopted",
+            scenario_id=None,
+        )
+
+    facts = {op_id: fact(op_id) for op_id in (1, 2, 3)}
+    messy_ids = [3, 1, 2, 1, 0, -1, "x", None]
+    ordered = build_execution_snapshot(facts, [1, 2, 3])
+    messy = build_execution_snapshot(facts, messy_ids)
+
+    assert positive_op_ids(messy_ids) == [1, 2, 3]
+    assert positive_op_ids([]) == []
+    assert positive_op_ids(None) == []
+    assert messy.op_ids == [1, 2, 3]
+    assert messy.revision == ordered.revision
+
+
 def test_execution_snapshot_rejects_fact_without_plan_identity() -> None:
     fact = ExecutionFact(
         op_id=10,
@@ -219,8 +314,6 @@ def test_execution_snapshot_rejects_fact_without_plan_identity() -> None:
         actual_end_time=None,
         actual_machine_id=None,
         actual_operator_id=None,
-        last_event_schedule_version=None,
-        last_event_schedule_id=None,
         state_revision="10:0:0",
     )
 

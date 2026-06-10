@@ -59,6 +59,7 @@ _PATH_LIKE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# 这些正则是老中文错误串到公开错误码的反解桥；改 internal_operation/resource_validation 的中文模板时必须同步这里。
 LEGACY_PUBLIC_PATTERNS: Tuple[Pattern[str], ...] = (
     re.compile(rf"^自制工序未补全设备或人员，无法排产：工序 (?P<op>{_PUBLIC_ID_PATTERN})$"),
     re.compile(rf"^自制工序未补全设备或人员，而且系统自动分配失败：工序 (?P<op>{_PUBLIC_ID_PATTERN})$"),
@@ -91,6 +92,8 @@ _LEGACY_OPERATION_ERROR_PREFIXES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("工时不合法：工序 ", (" 工时字段不合法：", " 工时总量不合法：")),
     ("外协周期不合法：工序 ", (" ext_days=",)),
 )
+# 这些前缀表也是 legacy 中文错误串到公开错误码的反解桥;改中文模板时必须同步这里,
+# 否则 infer_legacy_public_code 会静默退回 scheduler_error,用户可见错误会丢失具体归类。
 _LEGACY_CODE_PREFIXES: Tuple[Tuple[str, str], ...] = (
     ("自制工序未补全设备或人员", "missing_internal_resource"),
     ("自制工序缺少自动派工所需工种信息", "auto_assign_inputs_missing"),
@@ -101,6 +104,8 @@ _LEGACY_CODE_PREFIXES: Tuple[Tuple[str, str], ...] = (
     ("外协周期不合法：工序 ", "invalid_external_days"),
     ("外部组合并周期未设置或不合法：", "invalid_external_group_days"),
 )
+# 这些后缀表专门反解 scheduler_generate_schedule 的资源校验中文尾巴;
+# 改 internal_operation/resource_validation 模板时不要只改产出方。
 _SGS_AUTO_ASSIGN_SUFFIX_CODES: Tuple[Tuple[str, str], ...] = (
     ("缺少自动派工所需工种信息，请补齐工种或固定设备后再排产。", "auto_assign_inputs_missing"),
     ("自动派工资料不完整，请检查设备工种和人员可操作设备后再排产。", "auto_assign_resource_pool_incomplete"),
@@ -110,6 +115,7 @@ _SGS_AUTO_ASSIGN_SUFFIX_CODES: Tuple[Tuple[str, str], ...] = (
         "auto_assign_no_resource_combination",
     ),
 )
+# 缺资源尾巴的两种顺序都要保留;这里不是重复文案,而是在承接历史中文串。
 _SGS_MISSING_RESOURCE_SUFFIX_CODES: Tuple[Tuple[str, str], ...] = (
     ("缺少设备，请到批次详情补齐后再排产。", "missing_internal_resource"),
     ("缺少人员，请到批次详情补齐后再排产。", "missing_internal_resource"),
@@ -157,11 +163,6 @@ def public_safe_label(value: Any, *, max_chars: int = 80) -> str:
         return ""
     text = full_text[:max_chars]
     return text[:max_chars]
-
-
-# Backward-compatible private alias for callers inside this module.
-def _safe_identifier(value: Any, *, max_chars: int = 80) -> str:
-    return public_safe_identifier(value, max_chars=max_chars)
 
 
 def _positive_int(value: Any) -> int:
@@ -282,6 +283,8 @@ def public_error_message_from_detail(raw: Any) -> str:
 
 
 def infer_legacy_public_code(message: Any) -> str:
+    # 故意用中文前缀/后缀反解旧错误码:旧链路没有结构化 code,只能从已渲染文案倒推。
+    # 模板和上面的三张反解表必须同生共死,否则会静默归类成 scheduler_error。
     text = str(message or "").strip()
     if text.startswith("批次 "):
         code = _code_from_suffixes(text, _SGS_RESOURCE_SUFFIX_CODES)

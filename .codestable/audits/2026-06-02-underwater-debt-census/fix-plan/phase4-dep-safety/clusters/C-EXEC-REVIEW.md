@@ -3,6 +3,7 @@
 > 只读不改 · 行号 2026-06-05 工作区 rg 回盘（文件 476 行，git=MM，相对 registry +68~+70）
 > 成员债 [LB02, LB05, R62] · 主文件 core/services/report/execution_review.py
 > 隶属逻辑大簇 C01（67 成员）；本文件是 C01 在 execution_review.py 上的物理原子簇
+> ✅ 2026-06-08 执行补登：A2/R62 已 fixed。三档假字段、模板 `text-meta` 死副行和 xlsx `*_export_label or *_label` 死回退已同一原子 diff 清理；LB02/LB05 adopted-only 护栏未动。以下旧行号保留为执行前风险说明，后续勿重复施工。
 
 ## A) 原子子簇（簇内拆 2 个，承重注释先于死分支清理）
 
@@ -11,11 +12,11 @@
 - **内部顺序**：**无先后，一次落地**。同插一段 `#` 注释（类顶 :136-139 附近 + 五处硬钉旁短注），只新增行、不动 dict 键序，不位移返回 dict（:225-238）键。
 - **行号回盘命中**（rg 实测，与档案 §1 一致）：签名 :209；硬钉 :58 / :180-181 / :191-192 / :221 / :236；`_resolve_plan` Protocol :121；`import ROLE_ADOPTED` :9。LB05 §1 列的第 7 处硬钉 :58 `effective_plan_role=ROLE_ADOPTED` 实测命中（registry 未列，工作区新增，方向与不变量一致非削弱）。
 
-### 子簇 A2 = {R62} —— 三档标签死分支清理（独立子簇，但被 A1 门控、后做）
+### 子簇 A2 = {R62} —— 三档标签死分支清理（✅ 2026-06-08 已 fixed）
 - **原子原因（R62 自身三处必须同 commit）**：三档身份（display/identity/export）被压扁成同值，死分支散在 ① execution_review.py 返回 dict 三连键（:358-359/:361-362/:374-375/:381-382）+ `_resource_pair_payload` :417 三键恒等 + `_actual_resource_identity` :431/早退块 :437-441 ② 模板 execution_review.html :138/139/142/143 `!=` 死副行 ③ xlsx.py :410/411/414/415 `or` 死回退。**三处消费方强原子耦合**：删 dict 键不同步删模板 title/xlsx or ＝ 留新半截残骸（KeyError/取 None）。
-- **内部顺序（相对 A1）**：**A1 注释先落（Batch-1），R62 后做（Batch-3）**。理由：(1) 承重神圣——护栏行先钉「我是故意的」注释，给 R62 一个「禁区已标注」参照；(2) registry planned_deps + R62.planned_batch 双向确认。
+- **内部顺序（相对 A1）**：已按 **A1 注释先落，R62 后做** 执行。理由：(1) 承重神圣——护栏行先钉「我是故意的」注释，给 R62 一个「禁区已标注」参照；(2) registry planned_deps + R62.planned_batch 双向确认。
 - **行号回盘门**：A1 注释插在 :136-236 区会把 R62 的 :358-441 整体下推，R62 删键又会回缩——**R62 动手前必须按符号名 `_resource_pair_payload` + `!=` 模式重新 grep，绝不照抄本档行号**。
-- **R62 三档键区与护栏区零重叠**（rg 实测）：护栏 :58-236 vs 死分支 :358-441，不同方法、不同行段。
+- **R62 三档键区与护栏区零重叠**（rg 实测）：护栏 :58-236 vs 死分支 :358-441，不同方法、不同行段。执行结果确认：R62 只动死分支区、模板和 xlsx，未动护栏区。
 
 ## B) 跨簇边（本簇成员 → C01 内其他物理原子簇的债）
 
@@ -59,13 +60,13 @@
   - **:221** `host._resolve_plan(v, ROLE_ADOPTED, None)`
   - **:236** 返回 dict `"plan_role": ROLE_ADOPTED`
 - **必须先落**：A1（LB02+LB05）的「我是故意的」§90 LB-A2 注释 + 绑既有契约 `tests/operation_execution/test_execution_review_identity_guard.py`（173 行，4+ 组反例已存在，**parity 盲区已闭合，无需新建测试**，仅回归）。
-- **门控的结构动作**：A2（R62）清死分支**绝不可碰**上述五处禁区行 + :209 签名，**绝不顺手「统一四张报表签名」加形参**（灾难链：加形参 → report_plan_helpers 透传 → resolve_plan_view scenario 非空切 `_resolve_scenario_plan` 换 source_table → 预览静默冒充正式复盘，违灵魂线）。R62 合法操作仅限 :358-441 死分支区 + 模板 + xlsx。
+- **门控的结构动作**：A2（R62）已清死分支且**未碰**上述五处禁区行 + :209 签名，**未顺手「统一四张报表签名」加形参**。历史灾难链仍保留为禁区说明：加形参 → report_plan_helpers 透传 → resolve_plan_view scenario 非空切 `_resolve_scenario_plan` 换 source_table → 预览静默冒充正式复盘，违灵魂线。R62 合法操作已限于 :358-441 死分支区 + 模板 + xlsx。
 - **owner_pending=false**（三成员均）：A1 可直接给终态注释修法（被铁律 3 锁死为仅注释+回归）；R62 给默认收敛终态（删 no-op，行为不变）。**owner_pending 不触发**——本簇无需 owner 裁断，但 R62 若 owner 要恢复真三档身份则反向（当前无规划文档，默认收敛）。
 - **灵魂线**：A1 注释不新增兜底/静默回退（既有测试已验页面 loud 拦截+导出链置空）；R62 删的 `or`/`!=` 是「展示降级」非「错误吞噬」，删除清 P3 残骸、不触灵魂线。
 
 ## E) fixed 成员残留动作（前置已完成，标认账）
 
-> 本簇成员 LB02/LB05/R62 **均非 fixed**（LB02/LB05=in_progress 注释欠补，R62=planned）。fixed 的是**跨簇协同债 LB06**：
+> 本簇成员当前状态：LB02/LB05 仍按承重注释债入账；R62 已 fixed（2026-06-08）。fixed 的跨簇协同债 LB06 仍按下述历史说明保留：
 
 - **LB06（fixed，校正 D/E）**：走结构路线（同 R56 类）将护栏重定位到页级 identity_error + blocked，**未 fail-open**，契约 `regression_execution_review_identity_guardrail` 钉死。残留动作 = **仅缺认账注释**（校正 D：LB03/LB06 仅缺认账；**勿粘 §90 LB-B4 反向文案**——LB-B4 描述治理前 fail-OPEN，现盘已 fail-CLOSED）。owner 须认账此偏离 + 确认 navigation_context/reports_page_support/reports_execution_review_context/契约测试同提交入账。
 - **协同含义**：因 LB06 已 fixed 且更硬，A1 注释中对 web 层 `require_execution_review_adopted_plan` 的交叉引用应描述「入口守卫已落（页级 identity_error+blocked），本服务层硬钉为数据层最后一道」——双向认账，非待办。

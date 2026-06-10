@@ -219,7 +219,7 @@ def test_impact_plan_runs_all_required_groups_for_common_scope(monkeypatch) -> N
             {
                 "group_id": "scheduler_config",
                 "target_paths": ["tests/config/test_scheduler_config_route_contract.py"],
-                "input_file_scopes": ["web/routes/scheduler_config.py"],
+                "input_file_scopes": ["web/routes/domains/scheduler/scheduler_config.py"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
                 "dependency_file_scopes": [],

@@ -13,7 +13,7 @@
 | LB07 | 🟢绿（仅注释+扩parity，owner_pending 不给终态） | 承重双栈，候选修法零结构，先落是 R71/R47 的安全网 |
 | R71 | 🟡黄（守卫缺口实证 + owner裁断门 + Q5反转风险） | 物理收敛前必须先扩三 helper parity，否则静默漂移无拦 |
 | R47 | 🔴红（双胞胎函数误删活参 → 静默吞 invalid_choice 上报） | 删 blank 死参时极易连坐删 invalid 活参，踩灵魂线 |
-| R45 | 🟢绿（直删死壳 + 同提交退 sp06:15） | 27行死壳零生产引用，漏退测试是 loud 红非静默 |
+| R45 | 🟢绿（2026-06-08 已 fixed，旧 sp06 清单 no-op） | 旧27行死壳零生产引用，历史漏清单是 loud 红非静默 |
 | R48 | 🟢绿（≡R45 单提交整删） | 同物理文件第二叙述，合并单删 |
 | R26 | 🟡黄（晚序 facade + 2 离线消费者 + 三桶前置 + 守卫不进 STRONG） | 必晚于 R29/R33/R52 收敛，先删则老路径测试红 |
 | R31 | 🟡黄（删序硬约束：R33 删 facade 须不晚于 R31 删源） | 反序 → facade :11 残留 import loud ImportError |
@@ -83,7 +83,7 @@ R47 dossier 字段1 列「删两栈 blank 死实参」——但**全文件 `raw_
 ## 🟢 绿（安全可做）
 
 - **LB07**：承重，候选修法仅「两栈 @dataclass 上方补『我是故意的』中文注释（model snapshot:7 / service config/config_snapshot:24）+ 扩三 helper parity」，零删除/统一/透传。禁区行实测保真：置零 coercion:470 + service helper `_graph_downstream_weight_for_visible_weights`、loud raise coercion:72/153/166/208/220/258/302、read 入口 read_runtime_cfg_raw_value:10。owner_pending 只标不给终态。Batch-1 全局 ROOT 先落，门控 R71/R47。**安全**。
-- **R45 / R48**：同一物理文件 `core/algorithms/greedy/config_adapter.py`(实测27行)两叙述，**合并单提交整删** + 同提交退 `tests/regression_sp06_no_duplicate_defs.py:15`(NO_CFG_GET_TARGETS)。生产零引用(rg 三符号仅自身命中)，替代路径 `schedule_params.py:59 _snapshot_attr` 已 loud-raise 就位。漏退 sp06:15 → FileNotFoundError 红(loud)。与双栈收敛正交、零 LB 耦合。**最早最低风险一刀，安全**。
+- **R45 / R48**：同一物理文件 `core/algorithms/greedy/config_adapter.py`(历史实测27行)两叙述，2026-06-08 已 fixed；旧 `tests/regression_sp06_no_duplicate_defs.py` 已由 A P1.1 删除，`NO_CFG_GET_TARGETS` 零命中，清单同步 no-op。生产零引用(rg 三符号仅自身命中)，替代路径 `schedule_params.py:59 _snapshot_attr` 已 loud-raise 就位。历史漏清单会 FileNotFoundError 红(loud)，当前已无可执行退行对象。与双栈收敛正交、零 LB 耦合。
 
 ---
 

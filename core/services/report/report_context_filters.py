@@ -12,6 +12,17 @@ from .calculation_helpers import overlap_seconds, parse_dt
 
 SUPPORTED_REPORT_RESOURCE_TYPES = SUPPORTED_SCHEDULE_RESOURCE_TYPES
 
+# normalize_report_resource_filter 的 6 个资源筛选实参名(顺序=签名参数序)。
+# web 侧从 request.args 抄这组键时一律遍历本常量,不要再手维第二份键名列表(R67 收口点)。
+REPORT_RESOURCE_FILTER_ARG_KEYS = (
+    "resource_type",
+    "resource_id",
+    "scope_type",
+    "scope_id",
+    "machine_id",
+    "operator_id",
+)
+
 
 def _report_resource_validation_messages() -> Dict[str, Any]:
     return {
@@ -155,36 +166,6 @@ def normalize_report_resource_filter(
 
 def _row_text(row: Dict[str, Any], key: str) -> str:
     return str((row or {}).get(key) or "").strip()
-
-
-def _plan_row_matches_batch(row: Dict[str, Any], batch_filter: str) -> bool:
-    return not batch_filter or _row_text(row, "batch_id") == batch_filter
-
-
-def _plan_row_matches_resource(row: Dict[str, Any], resource_type: str, resource_id: str) -> bool:
-    if not resource_type or not resource_id:
-        return True
-    key_by_type = {"machine": "machine_id", "operator": "operator_id"}
-    row_key = key_by_type.get(resource_type)
-    return bool(row_key) and _row_text(row, row_key) == resource_id
-
-
-def filter_plan_rows_for_report_context(
-    rows: Iterable[Dict[str, Any]],
-    *,
-    resource_type: Optional[str] = None,
-    resource_id: Optional[str] = None,
-    batch_id: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    batch_filter = str(batch_id or "").strip()
-    resource_type_text, resource_id_text = normalize_report_resource_filter(resource_type, resource_id)
-    out = []
-    for row in rows or []:
-        item = dict(row or {})
-        if _plan_row_matches_batch(item, batch_filter):
-            if _plan_row_matches_resource(item, resource_type_text, resource_id_text):
-                out.append(item)
-    return out
 
 
 def _schedule_machine_ids(schedule_rows: Iterable[Dict[str, Any]]) -> set:

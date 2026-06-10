@@ -7,7 +7,7 @@
 - 行号回盘: 全部按符号名 rg 当前工作区落地，已记漂移
 - 性质标注: 区分「真新债」「旧债搬家」「护栏升级(非债)」
 
-> 结论先行: **未发现新的静默兜底 / fail-open / except 吞错**。已知线索里担心的两点(membership-check 弱化、navigation_context R56/R57 重定位)经回盘**都不是 fail-open**——一个是合法收敛、一个是把"静默强制"升级成"显式 loud 阻断"。**真新债集中在 2 类承重不对称 + 缺『我是故意的』注释**：(N1) execution-scope 读路径 membership-check 收敛后丢了自文档；(N2) R54 plan-guard 手维列表从 3 套恶化到 5 套(不是 4)且两个 copier 源键分叉、字段集分叉。两条都 **owner_pending 倾向=需 owner 裁断收口点**，修法只能补注释 + 绑 parity 测试，**绝不能合并/统一/透传**(会踩承重)。
+> 结论先行: **未发现新的静默兜底 / fail-open / except 吞错**。已知线索里担心的两点(membership-check 弱化、navigation_context R56/R57 重定位)经回盘**都不是 fail-open**——一个是合法收敛、一个是把"静默强制"升级成"显式 loud 阻断"。2026-06-09 台账唯一真相源登记两条新债：(N1) execution-scope 读路径 membership-check 收敛后丢了自文档；(N2) `_event_id_for_revision` 末位 `return 0` 哨兵缺契约保护。两条均为 `planned / owner_pending=false`，本轮只登记，不执行修复；后续修法只能补保护性注释 + 绑契约测试，**绝不能合并/统一/透传**(会踩承重)。
 
 ---
 
@@ -55,35 +55,37 @@ return (
   ```
 - 绑契约测试: 断言「`can_write_feedback==True` 的 identity 必为 adopted+schedule+无 scenario」+「非 adopted/带 scenario 的 identity 不进 `_ensure_feedback_target_in_query`」。
 - **禁区行**: `_can_write_feedback:89-110`、`_is_official_plan:70-84`、`_identity_allows_query_membership_check:129-130` —— 禁删合取项、禁把本闸改成读 request 原始 plan_role、禁加任何 preview/scenario 旁路。
-- **owner_pending=true 倾向**: 「补注释 vs 还原显式四连合取」是风格裁断，待 owner 拍。依赖/爆炸半径已透。
+- **owner_pending=false**: N1 已按“仅补注释 + 绑契约测试”的方向收进 registry；不得还原/改写函数体，也不得把 `can_write_feedback` 放宽成 OR/preview 旁路。
 
 ---
 
-## N2【真新债·承重不对称·缺注释】R54 plan-guard 手维列表从 3 套恶化到 5 套，两 copier 源键 + 字段集双分叉
+## N2【真新债·承重不对称·缺契约】`_event_id_for_revision` 末位 `return 0` 哨兵缺保护
 
-**已知线索说"3→4 套"——实测是 5 套，且更糟：两个 copier 源键不一致、字段集不一致。**
+**位置(已回盘)**
+- `core/models/operation_execution_event.py:156-164` `_event_id_for_revision`
 
-**5 处手维 guard 字段面(全部回盘)**
-1. `web/viewmodels/dashboard_workbench_context.py:8` `_PLAN_GUARD_FIELD_NAMES`（常量元组，**本 refactor 新建文件**——这就是"多出来的第 4 套"的来源）
-2. `web/routes/domains/scheduler/scheduler_navigation_publish.py:12` `_PLAN_GUARD_FIELD_NAMES`（常量元组，同名不同体，pre-existing）
-3. `web/routes/domains/scheduler/scheduler_resource_dispatch.py:64` `_copy_plan_guard_fields`（inline 循环 copier，**同键直拷** `identity.get("requested_plan_role")`）
-4. `web/viewmodels/scheduler_reports_workbench.py:36` `_copy_plan_guard_fields`（inline mapping copier，**改键拷贝** `data.get("requested_role")→requested_plan_role`、`selected_role→effective_plan_role`、`is_official→is_official_plan`）
-5. `web/viewmodels/scheduler_gantt_task_detail.py:8` `_PLAN_GUARD_FIELD_ALIASES`（alias 元组，第 5 种形态，pre-existing）
+**当前代码片段**
+```python
+def _event_id_for_revision(event: Any, *, index: int, total: int) -> int:
+    raw = _event_field(event, "id")
+    value = parse_int(raw, default=None)
+    if value is not None and value > 0:
+        return value
+    if index < total:
+        raise ValueError(f"id is required before following event at {_event_identity(event)}")
+    return 0
+```
 
-**双分叉硬证据**
-- **源键分叉**: surface#3(resource_dispatch) 按**同名键**拷；surface#4(reports_workbench) 按**别名键**拷(`requested_role`/`selected_role`/`is_official`)。同一族 guard 字段，两个 copier 的输入契约不同 —— 增删字段必须分别记两套别名映射，极易漏。
-- **字段集分叉**: surface#4 的 mapping **缺** `plan_identity_error` / `plan_identity_blocking_error` / `plan_identity_blocking_scope` 三个**新引入的阻断态字段**(只有 12 项)；surface#1/#3/#5 都有这三项(15-16 项)。reports 页这三个阻断字段改走**另一条注入路径** `reports_execution_review_context.py:39 execution_review_context_overrides` + `reports_page_support.py:_publish_report_context` 的 `context.update(context_overrides)`。即**同一族 guard 字段在 reports 页被劈成两条注入路径**，无单一真相源。
+**定性: 末位 `return 0` 是 revision 链哨兵，不是任意默认值。**
+非末位事件缺 id 已 loud raise；只有最后一个新事件允许 id=0，因为它没有后继事件需要引用它作为 `previous_event_id`。风险是后续维护者为“统一所有 id 解析”删掉 0 哨兵，或把非末位 raise 改软，导致 revision 拼接语义漂移。
 
-**为何算债(承重不对称，无注释绑定)**
-这些字段是「方案身份护栏」整族(can_dispatch/can_write_feedback/is_preview_plan/plan_identity_blocking_*)。它们决定一个 preview/对比/历史方案能否写现场、能否派工、是否被阻断。5 套手维面 + 0 共享常量 + 0 「这几处必须同步」注释 = 典型失忆债：**新增一个 `can_X` 护栏字段，必须同时改 5 处(且记住 reports 那套要用别名 + 走 overrides 补阻断字段)，漏一处则某个入口的 preview 方案保留过时 guard 标志 → 护栏静默失效**。这正是 phase4 要钉的承重不对称。
+**承重等级**: load_bearing 倾向=true（现场执行事件 revision 链的 previous_event_id 语义）。
 
-**承重等级**: load_bearing 倾向=true（整族 guard 字段直接控制写现场/派工授权与阻断态展示）。
-
-**修法(承重神圣，禁直接合并成一个函数——那是改行为)**
-- **不可**直接把 5 套合并成单一 helper 一刀切：surface#4 的别名映射(`requested_role`/`selected_role`/`is_official`)是 plan_resolution dict 的**真实键名差异**，强行统一键名会改变 reports 页读到的字段，属行为变更，需另立债。
-- 安全做法(待 owner 裁断收口点)：(1) 抽一个**只读的字段名清单常量**(如 `PLAN_GUARD_FIELD_NAMES`)放在已存在的方案身份模块(`core/models/schedule_plan_identity.py` 是天然落点，`PlanIdentity.to_dict` 已是这族字段的真相源)，5 处都引用它做迭代/校验，**别名映射作为各 surface 局部配置保留**；(2) 在每处 copier 上方补注释指向该常量 + 列出"新增 guard 字段必须同步的 5 处清单"；(3) 补 parity 测试断言 5 个 surface 的字段集**互为超集/相等**(尤其堵 surface#4 漏 `plan_identity_blocking_*` 这类回归)。
-- **禁区行**: 5 处面的字段列表 / 两个 `_copy_plan_guard_fields` 体 / `reports_page_support.py` 的 `context.update(context_overrides)` —— 禁把别名映射"统一"成同名、禁删任一 surface 的阻断字段、禁把 reports 的两条注入路径"简化"成一条(会丢阻断态)。
-- **owner_pending=true**: 收口点(放 `schedule_plan_identity.py` 还是新建 `plan_guard_fields.py`)需 owner 裁断——按铁律#5「为已有概念新建第二模块=新 P5」，**倾向收到已存在的 `schedule_plan_identity.py`，不新建模块**。
+**修法(后续执行，不在本轮做)**
+- 在 `_event_id_for_revision` 的末位 `return 0` 附近补保护性注释，说明末位无后继、其 id 不参与下游拼接，故允许 0 哨兵。
+- 补契约测试：非末位缺 id 必须 raise；末位缺 id 允许返回 0。
+- **禁区行**: `if index < total: raise ...` 与末位 `return 0`。不得删除非末位 raise，不得把坏数据改成静默兜底，也不得顺手统一同文件其他 `return 0`。
+- **owner_pending=false**: 已登记清楚，后续仅按注释 + 契约测试执行，不需要再等裁断。
 
 ---
 
@@ -131,4 +133,39 @@ return (
 - 新文件 import 方向抽查：`operation_execution_scope_read.py`(core.services)→`core.models.operation_execution_scope` ✅下游；`scheduler_resource_dispatch_execution_context.py`(web)→core.models/core.services ✅；`reports_execution_review_context.py`(web)→`core.models.schedule_plan_role` ✅。未见 `core.algorithms→core.services` 或 `core.models→core.services` 反向 import。AST 违规=0（抽查范围内）。
 
 ## owner_pending 汇总
-- N1、N2 均标 **owner_pending=true**：终态修法(补注释措辞 / 收口点落哪个已存在模块 / 是否还原显式合取)需 owner 裁断；本档已把依赖链、爆炸半径、禁区行、parity 测试方向全部透出，暂不分配执行批次。
+- N1、N2 均已收进 registry 唯一真相源，状态为 **planned / owner_pending=false**。本轮只做台账登记，不执行这两条后续债；未来只能按保护性注释 + 契约测试推进。
+
+---
+
+# 2026-06-09 修复对抗审核后登记的残留（N3 / N4 / N5）
+
+> 来源：B 阶段修复提交 `G54–G58`（`870ab892..9225e498`）经 9-agent 对抗审核（总裁定 **PASS**，工作流 `wf_bc8ca414-f92`）后，识别出 3 条**非阻塞尾巴**，owner 拍板登记为正式 backlog。三条均 `planned / owner_pending=false / 非本次缺口`，不影响本次 PASS。详见家目录 `b阶段对抗核查报告_2026-06-09.md` §9.3。
+
+## N3【可选 DRY·非克隆·非 R54 scope】gantt_task_detail 别名表与单源字段集重叠手维
+- **位置**：`web/viewmodels/scheduler_gantt_task_detail.py:8-25` `_PLAN_GUARD_FIELD_ALIASES`（16 项）+ `:73 _guard_source`
+- **定性**：输入侧**别名归一化适配器**——把 gantt 详情异形输入键（`requested_role→requested_plan_role`、`is_official→is_official_plan` 等）搬正，再 `plan_resolution=_guard_source(...)` + `plan_guard_fields=FULL_PLAN_GUARD_FIELDS` **下沉到唯一投影器** `core/models/schedule_plan_role.project_plan_guard_fields`。**零派生值计算**（无 `_identity_bool`/无三分支 status），**不是第二份投影实现/克隆**。
+- **为何登记**：其 16 项目标键与单源 `FULL_PLAN_GUARD_FIELDS` 字段集高度重叠、各自手维，构成两处需同步的字段清单孪生维护点（DRY 瑕疵）。
+- **关键澄清**：**不属 R54 点名的 4 套**（reports_workbench/nav_publish/resource_dispatch/dashboard，均已 PIN 零命中删净）；BASE `870ab892` 即存在、`G54-G58` 完全未触碰 → **非 G54 收口缺口、非新引入**。
+- **修法（零行为风险）**：让别名表目标键引用 `_PLAN_GUARD_COMMON_FIELDS/FULL_PLAN_GUARD_FIELDS` 单源字段名常量，而非独立手抄。清洁度优化、非安全必需。
+
+## N4【诚实债·已如实标注】R07 误差码未按 O31 收口 + 缺专项回归
+- **位置**：`core/services/scheduler/resource_dispatch_execution_service.py`（R07 同源，siblings=R07）
+- **定性**：R07 的 loud-raise 修复其实在 B 之前 `6759b0f9`（B 基线祖先）就落地、**非 B 战果**；现盘修法用 `ValidationError(field=schedule_id)`，与 **O31 要求的 `AppError(ErrorCode.NOT_FOUND)` 不符**；O31 要求的 `schedule=None→raise` 专项回归测试亦未补。
+- **状态**：dossier `R07.md` 已如实标注三处偏离，无掩盖。后续走 issue 链按 O31 收口误差码 + 补回归。
+- **禁区**：改误差码前确认下游 `except` 捕获面（`ValidationError` vs `AppError`）同步，别让原本被吞的改成外逃。
+
+## N5【测试质量·行为已有兜底】护栏字段投影 parity 测试同源自反
+- **位置**：`tests/schedule/route_view/test_scheduler_workbench_links_contract.py:676-746` `test_full_plan_guard_fields_match_core_plan_role_filter_fields_for_resolution_shapes`
+- **定性**：G54 收口后该 parity 测试比较的两侧（`plan_role_filter_fields` 与 `plan_guard_fields_for_resolution`）**都委托同一** `project_plan_guard_fields`，等式**近恒真**——对抗实测：把投影器 `requested_role` 改回单键、或破坏 `is_comparison`，此测试**仍绿**。它**只证收口、不证行为不变**。
+- **不是空缺**：行为不变当前由**同 commit 的其它真护栏测试兜底**——`test_reports_workbench_navigation_contract.py:530`（navigation 形状 plan_role 取值，改回单键即红）、`test_schedule_result_view_context.py:184/257`（is_comparison/status 写死期望，破坏即红）。
+- **修法（纯测试侧、非必需）**：给该 parity 测试加一条 **core 旧单键口径基线对照**（或对统一投影器注入回退实现），使其自身也能抓到行为回退，而非仅证两侧同源。
+
+## owner_pending 汇总（补登）
+- N3 / N4 / N5 均 **planned / owner_pending=false**，本轮只登记不执行；三条均经对抗审核确认为**非本次 PASS 缺口**。
+
+## ✅ 2026-06-10 收口（N3 / N4 / N5 + R55 一并执行，registry 全部转 fixed）
+- **N3 fixed**：`scheduler_gantt_task_detail` 删 16 项手抄 `_PLAN_GUARD_FIELD_ALIASES`，循环改遍历单源 `FULL_PLAN_GUARD_FIELDS`；脚本证 keys 与之字节级一致、names 列从未被该循环使用——零行为风险。
+- **N4 fixed**：`resource_dispatch_execution_service.task_card_for_feedback_context` 排程行缺失改 `AppError(ErrorCode.NOT_FOUND)`（O31），与写门禁 `operation_execution_feedback_service` 同错误类；补 `schedule=None→NOT_FOUND` 专项回归并登记增量门禁。
+- **N5 fixed**：parity 测试按上文"修法"加 5 个 shape 的独立冻结 golden 基线；变异验证改任一真值即 FAILED（基线有牙）。
+- **R55 fixed**：`critical_chain_for_plan_detail_filter` 标 `scope=filtered`，`_public_critical_chain` 对外永远输出 scope、整版缺省 `full`；补 scope 契约测试并登记门禁。严禁裸删过滤。
+- 另：R41/R14/R26/R43/R03/R32/R40 七个"已修待认账"项，owner 经本轮决定并提 PR 认账，`owner_pending` 全部清零。至此 registry **85/85 fixed、0 owner_pending**。

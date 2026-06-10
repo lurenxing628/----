@@ -12,7 +12,7 @@
 - R71 三 helper def：`_float_matches_choice` model coercion:31 / service field_coercion:45；`_normalize_valid_texts` model:49 / service:29；`_coerce_degradation_event` model read:68 / service config_snapshot:153。**6 处零漂移**，且逐字节比对三对函数体**确为 byte-for-byte 相同**（已 sed dump 比对，证 dossier「byte 等价」成立）。
 - 承重 loud raise（model coercion）：`:72`(MISSING_POLICY_ERROR) `:153/:208`(strict 空值) `:165/:220/:258/:302`(填写不正确) `:385`(TypeError 类型)。置零 `:470`。read.py loud：`:10/:33` 入口 + `:22/:24/:49/:51/:63/:65` raise...from exc。**全部命中**。
 - R47 死参 `_record_blank_choice_degradation`：model def:83(形参:88) 调用:155(实参:159)/:210(实参:214)；service def:63(形参:68) 调用:158(内联)/:207(实参:211)。
-- R45/R48 `config_adapter.py`=**27 行**，全仓引用仅自身 + `sp06:15`(路径成员，非符号)。
+- R45/R48 旧 `config_adapter.py`=**27 行**，全仓引用仅自身 + 旧 sp06 路径成员（非符号）；2026-06-08 已 fixed。
 - R31 `WRITE_INTERNAL_ONLY`：源 `core/shared/value_policies.py:9`、facade import `common/value_policies.py:11`、__all__ `:29`。**3 行零漂移**。
 - R26 5 shim：`config_service/snapshot/validator.py` 各 5 行；在 SP05 `SERVICE_BEHAVIOR_COMPAT_SYMBOLS(:20-31)`+`PUBLIC_SYMBOLS(:33-82)`，**非 STRONG**（dossier 纠偏成立）。离线消费者 2 个复现（tools:17 / audit:87）。
 
@@ -33,7 +33,7 @@
 - 黄因：dossier「6 编辑点」框定 under-warn 了邻接陷阱——model :159 与 :173、:214 与 :225 仅隔约 14 行，**字面同为 `raw_value=raw_value,`**，:173/:225 属 LIVE 的 `_record_invalid_choice_degradation`（其 message 真用 raw_value）。任何按行/按字面 grep 删而不绑定外层函数名 → 误删 :173/:225 → invalid-choice 降级丢失被拒值、kwarg 仍被活函数接受 → **不 loud、静默降级质量回归**。须绑函数名删，不可按 `raw_value=raw_value` 字面删。
 
 ### R45 ≡ R48 — 🟢 绿（同文件整删合并单提交，最低风险一刀）
-- 27 行死壳，生产零引用、零动态 import；唯一约束=同提交退 `sp06:15` 路径，漏退则 `path.read_text` FileNotFoundError **loud 红**（非静默）。新路径 `schedule_params.py:59 _snapshot_attr` 已 loud-raise 形态。删壳不碰 `schedule_params.py`(LB07/R33/R51 居所)。正交于双栈收敛。**安全直删。**
+- 旧 27 行死壳，生产零引用、零动态 import；历史唯一约束=旧 sp06 清单若仍指向已删文件，则 `path.read_text` FileNotFoundError **loud 红**（非静默）。2026-06-08 终态已 fixed，旧 sp06 文件已由 A P1.1 删除，清单同步 no-op。新路径 `schedule_params.py:59 _snapshot_attr` 已 loud-raise 形态。删壳不碰 `schedule_params.py`(LB07/R33/R51 居所)。正交于双栈收敛。
 
 ### R31 — 🟢 绿（死常量直删，唯一陷阱=删序，且 loud 兜底）
 - `WRITE_INTERNAL_ONLY` 三处、零生产/零测试消费（16 FieldPolicy 无一赋、compat_parse 只比 WRITE_OPTIONAL）。唯一排序陷阱：R31 先删源 `:9` → facade `:11` 残留 import **loud ImportError**（CI 拦截，非静默）。R33 删 facade 不晚于 R31 删源即安全。禁区：不得顺手动 `:6/:7/:8`(活常量)。**安全，按序即可。**
@@ -79,4 +79,4 @@
 - Q3 迁移耦合：本簇与 v18/v19 DB CHECK / adopted-only 无耦合（config 双栈不碰 plan_role/source_table）。无启动探针炸点。
 - Q4 灵魂线热路径：本簇无 P4-raise 改造需求；非 strict 的 FALLBACK_WITH_DEGRADATION + DegradationCollector 是已设计可观测降级，禁当 bug 删。**但 §2-A 的 INHERIT_LEGACY 静默继承分支是真实可用性/口径放大点**，须 parity 钉死。
 - Q5 收口等价：R71 三 helper 逐分支等价成立；**`_handle_missing_value` 两栈不等价（§2-A），收口前必须逐分支补 parity**。R45/R48/R31/R26 非收口、无等价问题。
-- Q6 测试迁序：R45/R48 同提交退 sp06:15（漏退 loud 红）；R31 R33 删 facade 不晚于删源（反序 loud ImportError）；R26 SP05 契约最先改 + 53 文件/~93 import 重指 + 2 离线脚本先迁（基数用 93 非旧 71）。R47 删前取 `_emit_blank_required` 绿基线。**序错均 loud（红/ImportError），无复活兜底；唯 §2-B/§2-C 是静默误删/误解冻陷阱。**
+- Q6 测试迁序：R45/R48 已 fixed，旧 sp06 清单同步 no-op；R31 R33 删 facade 不晚于删源（反序 loud ImportError）；R26 SP05 契约最先改 + 53 文件/~93 import 重指 + 2 离线脚本先迁（基数用 93 非旧 71）。R47 删前取 `_emit_blank_required` 绿基线。**序错均 loud（红/ImportError），无复活兜底；唯 §2-B/§2-C 是静默误删/误解冻陷阱。**

@@ -16,6 +16,7 @@ from core.models.schedule_candidate import ScheduleCandidate, ScheduleCandidateR
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST
 from data.repositories.schedule_candidate_repo import ScheduleCandidateRepository
 from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 from web.routes.domains.scheduler.scheduler_week_plan import _plan_context_from_data
 
@@ -132,16 +133,14 @@ def _build_app(tmp_path, monkeypatch):
     db_path = tmp_path / "aps_test.db"
     log_dir = tmp_path / "logs"
     backup_dir = tmp_path / "backups"
-    template_dir = tmp_path / "templates_excel"
     log_dir.mkdir(parents=True, exist_ok=True)
     backup_dir.mkdir(parents=True, exist_ok=True)
-    template_dir.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setenv("APS_ENV", "development")
     monkeypatch.setenv("APS_DB_PATH", str(db_path))
     monkeypatch.setenv("APS_LOG_DIR", str(log_dir))
     monkeypatch.setenv("APS_BACKUP_DIR", str(backup_dir))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(template_dir))
+    point_env_at_shared(monkeypatch)
 
     ensure_schema(str(db_path), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
     conn = get_connection(str(db_path))

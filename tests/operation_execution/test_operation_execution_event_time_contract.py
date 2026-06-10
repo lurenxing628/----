@@ -63,9 +63,12 @@ def _insert_raw_event(conn: sqlite3.Connection, **overrides) -> None:
 def test_operation_execution_event_time_model_rejects_invalid_calendar_values() -> None:
     assert normalize_operation_event_time("2026/05/01T08:10") == "2026-05-01 08:10:00"
     assert normalize_operation_event_time("2026-05-01") == "2026-05-01 00:00:00"
+    assert normalize_operation_event_time("2026-05-01 08：10") == "2026-05-01 08:10:00"
 
     with pytest.raises(ValueError, match="event_time"):
         normalize_operation_event_time("2026-02-30 08:10:00")
+    with pytest.raises(ValueError, match="event_time"):
+        normalize_operation_event_time("2026-05-01 08:10:00.123456")
     with pytest.raises(ValueError, match="event_time"):
         OperationExecutionEvent.from_row(_event(event_time="not-a-date"))
 

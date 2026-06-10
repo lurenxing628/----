@@ -2,6 +2,8 @@
 
 > skeptic 第1轮，只读不改。默认怀疑。回盘日 2026-06-05，行号已 rg 复核当前工作区。
 > 成员：R10 / R11 / R12 / R55 / R63。主透镜 Q4(灵魂线热路径)/Q5(收口逐分支等价)/Q6(测试迁移序)。
+
+> **✅ 2026-06-08 B 执行补登**：A1 `{R11≡R63}` 已 fixed。单份 `_normalize_critical_chain_result` 已收口到 `gantt_critical_chain.py:67-88`；support/provider 旧副本已删，两路调用同一 helper，parity 11 边界已落。本红队文中 A1 的“黄/条件”判断现转为已满足；R12/R55 仍未执行。
 > 主文件：gantt_service.py / gantt_service_support.py / gantt_critical_chain.py / gantt_critical_chain_provider.py / gantt_contract.py
 
 ---

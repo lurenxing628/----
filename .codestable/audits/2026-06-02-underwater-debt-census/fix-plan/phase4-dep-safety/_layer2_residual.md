@@ -28,7 +28,7 @@
 
 - **D1**（中）：综合产物 §3 重灾区表 4 处路径前缀错（见上表）；nav_publish 一条与 R2-P4 layer 修订自相矛盾（prose 改了表行未同步）。
 - **D2**（低）：collar 真符号 `build_workbench_plan_context`（scheduler_workbench_links.py:187），多数调用方以**别名 `n` import**。**co-change grep 纪律：删 R42 形参须同查 `build_workbench_plan_context` 与 `n(` 两种调用形态**，否则漏改 dashboard/reports/gantt_task_detail/navigation_links 的别名调用点（这些都不传 plan_id，TypeError 风险低但须覆盖）。
-- **D3**（低）：R01 `__all__` 锚点 :414-415 实为 `core/services/scheduler/run/schedule_payload_contract.py:410-417` 块，按符号删即可。
+- **D3**（低）：R01 `__all__` 锚点 :414-415 已随 2026-06-08 G19 fixed 删除；后续禁按旧块重复施工。
 - **LB06 宿主**（低）：fail-CLOSED 强制 adopted+scenario=None 本体在 `reports_execution_review_context.py`（blocked_execution_review_plan_resolution）+ `reports_request_support.py`（require_execution_review_*），**认账注释须落这两者，非 reports_page_support.py**。
 
 ## R09 收编面权威口径（红队补强，最高危收口）

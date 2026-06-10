@@ -13,7 +13,7 @@ from tests._support.paths import REPO_ROOT
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from core.services.scheduler.schedule_summary import build_result_summary
+from core.services.scheduler.summary.schedule_summary import build_result_summary
 
 
 class _StubSvc:

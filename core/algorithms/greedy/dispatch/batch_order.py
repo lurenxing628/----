@@ -71,7 +71,6 @@ def dispatch_batch_order(
             resource_pool=resource_pool,
             strict_mode=bool(strict_mode),
         )
-    _ = scheduled_count
     return run_state.scheduled_count, run_state.failed_count
 
 

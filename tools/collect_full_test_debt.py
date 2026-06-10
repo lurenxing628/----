@@ -532,63 +532,6 @@ def _worker_nodeids_path(work_dir: Path, label: str) -> Path:
     return work_dir / f"{label}.nodeids"
 
 
-def _run_worker_subprocess(
-    *,
-    repo_root: Path,
-    work_dir: Path,
-    label: str,
-    nodeids: Sequence[str],
-    baseline_kind: str,
-) -> Dict[str, Any]:
-    payload_path = _worker_payload_path(work_dir, label)
-    nodeids_path = _worker_nodeids_path(work_dir, label)
-    _write_nodeids_file(nodeids_path, nodeids)
-    command = [
-        sys.executable,
-        str(Path(__file__).resolve()),
-        "--baseline-kind",
-        baseline_kind,
-        "--repo-root",
-        str(repo_root),
-        "--worker-payload",
-        str(payload_path),
-        "--worker-nodeids-file",
-        str(nodeids_path),
-        "--",
-        *FORMAL_FULL_TEST_PYTEST_ARGS,
-    ]
-    completed = subprocess.run(
-        command,
-        cwd=str(repo_root),
-        text=True,
-        capture_output=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    if not payload_path.exists():
-        return {
-            "schema_version": 1,
-            "exitstatus": int(completed.returncode),
-            "collected_nodeids": [],
-            "collection_errors": [
-                {
-                    "nodeid": label,
-                    "outcome": "failed",
-                    "longrepr": str(completed.stderr or completed.stdout or "worker did not write payload"),
-                }
-            ],
-            "reports": [],
-        }
-    with open(payload_path, encoding="utf-8") as handle:
-        payload = json.load(handle)
-    if not isinstance(payload, dict):
-        raise RuntimeError(f"worker payload must be an object: {payload_path}")
-    if int(completed.returncode) != int(payload.get("exitstatus") or 0):
-        payload["exitstatus"] = int(completed.returncode)
-    return payload
-
-
 def _merge_exitstatus(collect_exitstatus: int, worker_payloads: Sequence[Mapping[str, Any]]) -> int:
     if int(collect_exitstatus) != 0:
         return int(collect_exitstatus)
@@ -645,29 +588,21 @@ def _run_sharded_pytest(args: argparse.Namespace, *, cwd: Path) -> Tuple[FullTes
         return collector, int(collect_exitstatus)
 
     serial_nodeids, parallel_shards = split_nodeids(collector.collected_nodeids, int(args.shard_count))
+    worker_jobs: List[Tuple[str, Sequence[str]]] = []
+    if serial_nodeids:
+        worker_jobs.append(("serial", serial_nodeids))
+    for index, shard_nodeids in enumerate(parallel_shards, start=1):
+        if shard_nodeids:
+            worker_jobs.append((f"parallel-{index}", shard_nodeids))
     worker_payloads: List[Dict[str, Any]] = []
     worker_output_errors: List[Dict[str, Any]] = []
     with tempfile.TemporaryDirectory(prefix="aps_full_test_debt_shards_") as tmp_dir:
         work_dir = Path(tmp_dir)
-        if serial_nodeids:
-            _progress(f"sharded 模式：串行分片 {len(serial_nodeids)} 个 nodeid")
-            worker_payloads.append(
-                _run_worker_subprocess(
-                    repo_root=cwd,
-                    work_dir=work_dir,
-                    label="serial",
-                    nodeids=serial_nodeids,
-                    baseline_kind=str(args.baseline_kind),
-                )
-            )
         processes = []
-        for index, shard_nodeids in enumerate(parallel_shards, start=1):
-            if not shard_nodeids:
-                continue
-            label = f"parallel-{index}"
+        for label, job_nodeids in worker_jobs:
             payload_path = _worker_payload_path(work_dir, label)
             nodeids_path = _worker_nodeids_path(work_dir, label)
-            _write_nodeids_file(nodeids_path, shard_nodeids)
+            _write_nodeids_file(nodeids_path, job_nodeids)
             command = [
                 sys.executable,
                 str(Path(__file__).resolve()),
@@ -682,7 +617,7 @@ def _run_sharded_pytest(args: argparse.Namespace, *, cwd: Path) -> Tuple[FullTes
                 "--",
                 *FORMAL_FULL_TEST_PYTEST_ARGS,
             ]
-            _progress(f"sharded 模式：启动并行分片 {index}，{len(shard_nodeids)} 个 nodeid")
+            _progress(f"sharded 模式：启动分片 {label}，{len(job_nodeids)} 个 nodeid")
             processes.append(
                 (
                     label,

@@ -1,5 +1,5 @@
 schema_version: 1
-updated_at: "2026-06-02"
+updated_at: "2026-06-09"
 # 概念身份证中心 —— 关键概念的“规范定义 + 行为合同 + 真理之源 + 禁止含义”。
 # 用途：LLM/人改这些概念前先读这里；工具(drift/property/snapshot)以此为基线判漂移。
 # 注意：source_of_truth 全部经真代码核验(2026-06-02, python3.14 import 通过)。
@@ -17,7 +17,7 @@ concepts:
       baseline_best: { user_label: 原算法代表方案,        source_table: candidate_rows }
       critical_best: { user_label: 重点工序优先代表方案,  source_table: candidate_rows }
     failure_policy:
-      # 实测：模型层 plan_role_label() 对未知值返回原值(容忍，纯展示)；
+      # 实测：模型层 plan_role_label() 对未知值返回“未知方案身份”(容忍，纯展示)；
       # 缺失/空值经 _normalize_role 回落 adopted。
       # 严格校验发生在 schedule_plan_query_service.resolve_plan_view(ValueError→ValidationError)。
       missing_value: adopted_at_model_layer
@@ -36,6 +36,32 @@ concepts:
     forbidden_meanings:
       - "在 core/services/scheduler/ 下新建第二个 plan_role 标签模块(那是 P5 第N套私有实现)"
       - "把 adopted 之外的角色当成可写现场记录入口(ARCHITECTURE.md:67)"
+
+  - id: plan_guard_field_projection
+    canonical_name: 方案护栏字段投影器
+    status: current
+    owner_area: scheduler_result_view
+    definition: >
+      把排产方案解析结果投影成页面、导航、报表和派工入口共用的护栏字段。
+      它负责统一 requested_plan_role / effective_plan_role / plan_role_status /
+      can_dispatch / can_write_feedback / is_comparison / is_scenario_preview /
+      is_current_executable_official_version / is_superseded_by_newer_version 等字段的含义。
+    source_of_truth:
+      - core/models/schedule_plan_role.py::project_plan_guard_fields
+    public_call_surfaces:
+      - core/services/scheduler/schedule_result_view_context.py::plan_role_filter_fields
+      - web/viewmodels/scheduler_workbench_link_query.py::plan_guard_fields_for_resolution
+    required_contracts:
+      - tests/schedule/route_view/test_scheduler_workbench_links_contract.py::test_full_plan_guard_fields_match_core_plan_role_filter_fields_for_resolution_shapes
+    input_shape_rule: >
+      该投影器必须同时接受 canonical 形状(requested_role/selected_role/status/message)
+      和 navigation-context 形状(requested_plan_role/effective_plan_role/plan_role_status/plan_role_message)。
+      当 requested_role 存在时优先使用 requested_role；只有 navigation-context 形状没有 requested_role 时，
+      才从 requested_plan_role 回收同一个概念。
+    forbidden_meanings:
+      - "在 web/viewmodels 或 core/services 中重新手写 plan guard 字段本体"
+      - "只比较键集不比较取值 parity"
+      - "漏掉 is_comparison 或 is_superseded_by_newer_version 这类会影响复盘入口放行的闸门键"
 
   - id: graph_analysis_mode
     canonical_name: 工序图分析模式

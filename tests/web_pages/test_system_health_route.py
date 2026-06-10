@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._support.excel_templates import point_env_at_shared
+
 
 @pytest.fixture
 def prod_env(tmp_path, monkeypatch):
@@ -25,7 +27,7 @@ def prod_env(tmp_path, monkeypatch):
     monkeypatch.setenv("APS_DB_PATH", str(tmp_path / "aps.db"))
     monkeypatch.setenv("APS_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setenv("APS_BACKUP_DIR", str(tmp_path / "backups"))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(tmp_path / "templates_excel"))
+    point_env_at_shared(monkeypatch)
     monkeypatch.setenv("SECRET_KEY", "aps-health-contract-test-key")
 
 

@@ -10,7 +10,7 @@
 - **R18**：registry 全面失真（scope 重构推翻 P6「孤儿」叙事，planned_fix 第(2)(3)步无对象）。callgraph 零入边证生产零调=可删；stub 现 raise，foundation 测试在 :365 断言 raise（非 :172）。
 - **R17**：文件已重构，删除位点过时——改删 `:81` 推导式项（非旧 :64 死键两文件）。
 - **R03**：`_baseline_missing_or_failed(:267 return True)` 使 **missing 态生产可达**，只 failed 态不可达。**推翻「全死分支」**——须四态 parity；missing 态保留+补不可达注释 vs failed 态收敛，owner 裁。
-- **R34**：纯删死方法（非「收敛到 column_name」）。repoint 目标 `get_plan_time_span_for_resolution` **存在**（schedule_plan_query_service.py:210，:187 内部调它）——dossier 误判「不存在」，verify 已纠正。R05→R34 降为软约束（不同符号不同文件）。
+- **R34**：纯删死方法（非「收敛到 column_name」）。repoint 目标 `get_plan_time_span_for_resolution` **存在**（旧锚 schedule_plan_query_service.py:210；R23 落后现盘为 :206，执行按符号重 rg）——dossier 误判「不存在」，verify 已纠正。R05→R34 降为软约束（不同符号不同文件）。
 - **R15**：实际收口去 `parse_operation_event_time`（非 planned 钉的 strict_parse）；`execution_fact_provider.py:85-95` 仍基线未收口（坏值 return None 静默=真 P4 残留，收口须 loud/可观测；区分「空值→None」与「坏值→报错」）。
 - **R44**：import 来源实为 `schedule_plan_query_service`（非 view_context）；gantt_plan_query 在 core（非 web）；原报告「web 多兜底」方向反了（core 更防御 None）。
 - **R22**：evidence_contract 22 键 superset 抓不到 drift，须升 **24 键 exact** parity。

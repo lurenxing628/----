@@ -23,7 +23,7 @@ def test_schedule_summary_invalid_due_and_unscheduled_counts() -> None:
 
     from core.algorithms import ScheduleResult
     from core.algorithms.evaluation import compute_metrics
-    from core.services.scheduler.schedule_summary import build_result_summary
+    from core.services.scheduler.summary.schedule_summary import build_result_summary
 
     start_dt = datetime(2026, 4, 1, 8, 0, 0)
     result_end = datetime(2026, 4, 1, 12, 0, 0)

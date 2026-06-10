@@ -24,11 +24,11 @@
 - owner_pending=false，但收口家落点 + loud 方向是 owner 设计前置（registry hint），排 Batch-15 第三落（R70/R68 之后，非技术阻塞）。
 
 ### AS-3 · R70（死副本纯删）— 单成员独立
-- 成员: R70（**纯删 `schedule_service.py:46-50` 死副本**，rg 确认死副本在 :46）。
+- 成员: R70（**2026-06-08 已 fixed**；已纯删旧 `schedule_service.py:46-50` 死副本）。
 - 原子原因: 单文件单点纯删，零前置零收口。
 - 关键纠偏: twin 框架**不成立**——live 唯一在 `run/schedule_input_collector.py:79`（注意 `run/` 子目录，顶层同名壳无此符号），死副本零调用。**不动 live 一字**。
-- 禁区（删时严禁碰）: `schedule_service.py:7` 的 `ValidationError` import（`:217` 仍用，删则 NameError）。
-- Batch-15 本桶最先落（零前置零风险）。
+- 禁区（删时严禁碰）: `schedule_service.py` 的 `ValidationError` import（并发拒绝路径仍用，删则 NameError）。
+- Batch-15 本桶最先落（零前置零风险），已完成。
 
 ### AS-4 · R03（候选 FAILED 态承重护栏 + 下游脚手架）— 内部两段拆分
 - 成员: R03（独占 `run/schedule_candidate_runner.py`，B14 独占文件，ISOLATED）。owner_pending=true。
@@ -51,17 +51,17 @@
 - 禁区: **只删 :70-72，必保 :69 的 float 转换**（误连删则坏值仍落 REAL 列退化）。生产路径不可达（service 层 `_norm_float` 已拦），改 raise 零行为影响。
 
 ### AS-7 · R53（死空操作面包屑直删）— 单成员独立
-- 成员: R53（**纯删 `core/algorithms/greedy/dispatch/batch_order.py:74` 一行 `_ = scheduled_count`**，rg 确认）。owner_pending=false。
+- 成员: R53（**2026-06-08 已 fixed**；已纯删旧 `core/algorithms/greedy/dispatch/batch_order.py:74` 一行 `_ = scheduled_count`）。owner_pending=false。
 - 原子原因: 单行纯删，ISOLATED，无 unused-arg 复发（:58 仍真用 `scheduled_count`）。
-- 禁区（正确性，非承重）: :39 形参 / :58 真消费 / :75 return，误删均被契约测试 `test_greedy_refactor_contracts.py:250` 响亮拦截。
-- Batch-16 独立叶子，可与 R61 合并为「杂项叶子删除」小提交。
+- 禁区（正确性，非承重）: 现盘 :39 形参 / :58 真消费 / :74 return（旧 :75），误删均被契约测试 `test_greedy_refactor_contract.py` 响亮拦截。
+- 终态验证: `tests/algorithm/test_greedy_refactor_contract.py` + `tests/algorithm/test_greedy_scheduler_base_date.py` 共 28 passed；`sgs.py:127` 同形态行非本债未动。
 
-### AS-8 · R61（出生即死死簇直删 + 测试重定向）— 单成员独立（删函数+改测试同 PR 原子）
-- 成员: R61（独占 `core/services/report/report_context_filters.py`）。owner_pending=false。
+### AS-8 · R61（出生即死死簇直删 + 测试重定向）— 单成员独立（已 fixed）
+- 成员: R61（**2026-06-08 已 fixed**；已独占清理 `core/services/report/report_context_filters.py` 死簇）。owner_pending=false。
 - 原子原因: 删死簇 **必须**与改测试同一提交（否则中间态 CI 红）——这是「同 PR 原子」不是「前置债」。
-- 删除范围（rg 回盘）: `filter_plan_rows_for_report_context:172-187` + `_plan_row_matches_batch:160-161` + `_plan_row_matches_resource:164-169`。
-- 严格保留孪生/共享: **`filter_downtime_rows_for_report_context:274`（report_engine.py:406 live）、`_row_text:156`（downtime live :191/:221/:239/:253）、`normalize_report_resource_filter:119`（report_engine+web 多处 live）一个字节不动**。
-- 测试: import :8 删 plan 死函数；两条负向测试（:64-70/:73-84）**重定向**断言体到 `normalize_report_resource_filter`（零覆盖损失），保 downtime 四测/normalize 直测/request 层测。
+- 删除范围（rg 回盘）: 旧 `filter_plan_rows_for_report_context:172-187` + `_plan_row_matches_batch:160-161` + `_plan_row_matches_resource:164-169` 已删除。
+- 严格保留孪生/共享: **`filter_downtime_rows_for_report_context:244`（report_engine.py:406 live）、`_row_text:156`（downtime live :191/:209/:223）、`normalize_report_resource_filter:119`（本文件 :252 + report_engine/web 多处 live）一个字节不动**。
+- 测试: import 已删 plan 死函数；两条负向测试已**重定向**断言体到 `normalize_report_resource_filter`（零覆盖损失），downtime 四测/normalize 直测/request 层测保留。
 - 簇 C01 但 interference_edges（LB02/LB05/R14）均指向 `report_engine.py`（他文件），本删除不触 report_engine 一字，无跨债行号约束。
 
 ### AS-9 · LB04（`normalize_yes_no_wide` 双实现承重）— 单成员独立纯增量
@@ -102,7 +102,7 @@
 | E7 | **R03** → owner（ScheduleCandidate.status 枚举契约） | parity 先于收敛 | **LATE，跨债裁断** | (B) 段牵动已落库 status 枚举契约（completed/failed/skipped/not_run），是 owner 全局裁断点，非本簇内可解。 |
 | E8 | **R32** → R40（同桶 B16 P4 对） | co_change 同批，不同文件 | **可并行** | R32/R40 同为 P4 灵魂线对，但不同文件、互不影响，无技术先后。 |
 
-注: **R68/R70/R53/R61 对外零跨簇边**（各自 ISOLATED，物理独占文件，无他簇债共载体）。R32↔R15 的 registry same_symbol 边是**假边**（见 C 节，删除）。
+注: **R68/R70/R53/R61 对外零跨簇边**（各自 ISOLATED，物理独占文件，无他簇债共载体；其中 R53/R61/R70 已 fixed）。R32↔R15 的 registry same_symbol 边是**假边**（见 C 节，删除）。
 
 ## C) 相对旧 146 边的变化（删 / 新 / 降）
 
@@ -138,10 +138,10 @@
 - **missing 态四态 parity 门**: (B) 段任何清理前必须先有 None/missing/failed/completed 四态 parity（`_baseline_missing_or_failed:267 return True` 使 missing 可达），**禁裸删 `dashboard_workbench.py:156`**。
 
 ### 非承重但「正确性禁区」（不门控批次，删时勿碰）
-- R70: `schedule_service.py:7` import 行（:217 仍用）。
+- R70: 2026-06-08 已 fixed；仍保 `schedule_service.py` 的 `ValidationError` import（并发拒绝路径仍用）。
 - R40: `material_repo.py:69` float 转换（只删 :70-72）。
-- R53: `batch_order.py:39/:58/:75`（形参/真消费/return）。
-- R61: `_row_text:156` / `normalize_report_resource_filter:119` / `filter_downtime_*:274`（live 孪生/共享，禁删）。
+- R53: `batch_order.py:39/:58/:74`（形参/真消费/return；旧 return :75 已因删 no-op 上移）。
+- R61: 2026-06-08 已 fixed；当前仍禁删 `_row_text` / `normalize_report_resource_filter` / `filter_downtime_*`（live 孪生/共享，已在执行后复核保留）。
 - R69: 护栏文件 except 改 loud 属灵魂线（非承重禁区），可正常改 except→loud，不受「仅注释」限制。
 
 ### 灵魂线前置（P4 改 loud / 不留静默）
@@ -149,8 +149,8 @@ R69（坏 seq→loud）、R32（integrity except→raise）、R40（float except
 
 ## E) fixed 成员残留动作
 
-本簇成员**无一在 fixed 名单**（R68/R69/R70/R03/R32/R40/R53/R61/LB04/R41/R43 全为 planned）。fixed 项（LB06/R56/R57/R07/R16/LB03）作为 **DAG 前置已完成**，与本簇的交集仅为：
+本簇成员中 **R53、R61、R70 已在 2026-06-08 fixed**；R68/R69/R03/R32/R40/LB04/R41/R43 仍按各自状态推进。fixed 项（LB06/R56/R57/R07/R16/LB03）作为 **DAG 前置已完成**，与本簇的交集仅为：
 - **LB03/LB06** 与 LB04 同属 Batch-1 承重注释网，但改不同文件、不同行段，互不阻塞。残留动作（他簇）: LB03 缺认账注释（勿粘 §90 LB-B4 反向文案，现盘已 fail-CLOSED）、LB06 缺认账注释。**不在本簇 owner 范围**，仅记录为前置已完成。
 - **R56**（fixed，偏离铁律 3 走结构路线删字面量匹配）、**R07**（fixed，偏离错误类）需 owner 认账偏离——他簇残留，本簇无依赖。
 
-本簇内**无 fixed 成员需补认账注释**；所有承重认账注释（LB04 / R03-A）属本簇**未落的 planned 动作**，非 fixed 残留，已在 D 节列为 Batch-1 前置。
+本簇内 **R53/R70 fixed 只需保留终态登记，无承重认账注释**；承重认账注释（LB04 / R03-A）曾属本簇未落的 planned 动作——**2026-06-10 补登：均已落地**（LB04 注释+锁步矩阵随 fae8829b(2026-06-08) 落、第二/三句于 2026-06-10 补全并翻 fixed；R03-A 三行护栏注释 2026-06-10 按 dossier 草稿落地，R03 整体因 (B) 段留 planned）。

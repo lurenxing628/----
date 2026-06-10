@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
-from urllib.parse import urlencode
 
-from .scheduler_workbench_link_query import query_for_target
 from .scheduler_workbench_links import TARGET_PAGE_PATHS, build_workbench_link, build_workbench_plan_context
 
 ROLE_ADOPTED = "adopted"
 
+# O18(R67) 裁定保持现状:这是含资源 6 键的导航上下文 superset(15 键,含 scenario_id,
+# 与 reports_export_support 的 14 键 superset 不同形,禁互抄;普查时 16/15 键,R42 已删 plan_id),不收编进
+# REPORT_RESOURCE_FILTER_ARG_KEYS——若未来收编须晚于 R42 纪律并先过 web.viewmodels→core.services.report 分层门。
 _REPORT_CONTEXT_FIELD_NAMES = (
-    "plan_id",
     "back_to",
     "scenario_id",
     "date_from",
@@ -49,7 +49,6 @@ def _has_navigation_context(context: Dict[str, Any]) -> bool:
         _has_value(context.get(key))
         for key in (
             "version",
-            "plan_id",
             "date_from",
             "date_to",
             "query_date",
@@ -63,19 +62,8 @@ def _has_navigation_context(context: Dict[str, Any]) -> bool:
     ) or _text(context.get("plan_role")) != ROLE_ADOPTED
 
 
-def _has_navigation_date_range(context: Dict[str, Any]) -> bool:
-    return _has_value(context.get("date_from")) and _has_value(context.get("date_to"))
-
-
 def _use_plain_scheduler_chrome(context: Dict[str, Any], plain_scheduler_chrome: bool) -> bool:
     return bool(plain_scheduler_chrome) and not _has_navigation_context(context)
-
-
-def _target_url(context: Dict[str, Any], target_page: str, *, view: Optional[str] = None) -> str:
-    query = query_for_target(context, target_page, view=view)
-    encoded = urlencode(query)
-    path = TARGET_PAGE_PATHS[target_page]
-    return f"{path}?{encoded}" if encoded else path
 
 
 def _plain_link(label: str, url: str, desc: str = "", target_page: str = "") -> Dict[str, Any]:
@@ -157,7 +145,7 @@ def build_scheduler_navigation_links(
         if target_page and has_context:
             link = _navigation_link(context, target_page, label=label, view=view, active=active_key == key)
         else:
-            link = _plain_link(label, plain_url or _target_url(context, str(target_page), view=view), target_page=str(target_page or key))
+            link = _plain_link(label, plain_url, target_page=str(target_page or key))
             link["active"] = active_key == key
         links.append(link)
     return links

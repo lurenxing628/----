@@ -9,12 +9,20 @@ from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.operation_execution_event import (
     EXECUTION_ACTION_REPORT_EXCEPTION,
-    EXECUTION_EVENT_EXCEPTION,
     EXECUTION_EVENT_FINISH,
     EXECUTION_EVENT_PAUSE,
     EXECUTION_EVENT_START,
     OperationExecutionEvent,
     validate_operation_execution_event_transition,
+)
+from core.models.operation_execution_labels import (
+    HANDLING_STATUS_LABELS,
+    REASON_LABELS,
+    SEVERITY_LABELS,
+    action_to_event_type,
+    event_type_to_action,
+    execution_action_label,
+    public_execution_remark,
 )
 from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.operation_execution_state import OperationExecutionState
@@ -48,15 +56,6 @@ from .operation_execution_feedback_support import (
     _state_for_context,
     _text,
     _validate_known_value,
-)
-from .operation_execution_labels import (
-    HANDLING_STATUS_LABELS,
-    REASON_LABELS,
-    SEVERITY_LABELS,
-    action_to_event_type,
-    event_type_to_action,
-    execution_action_label,
-    public_execution_remark,
 )
 from .schedule_plan_query_service import SchedulePlanQueryService
 
@@ -364,6 +363,8 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         text = json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
+    # 写侧 fail-CLOSED 第一闸：现场事实只能写到当前正式 schedule/adopted、无 scenario 的方案上。
+    # 这里拒绝请求身份；_build_event_payload 再做落库身份消毒，两层纵深不可互相替代。
     def _load_current_official_schedule(self, context: ExecutionFeedbackContext):
         if (
             context.requested_plan_role != ROLE_ADOPTED
@@ -468,6 +469,8 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
             "schedule_id": context.schedule_id,
             "op_id": context.op_id,
             "batch_id": batch_id,
+            # 写入前最终消毒：故意不透传 context 中的同名身份字段。
+            # 即便上游校验被绕过，现场事件也只能落到正式 schedule/adopted/no-scenario 身份。
             "source_table": SOURCE_SCHEDULE,
             "effective_plan_role": ROLE_ADOPTED,
             "scenario_id": None,

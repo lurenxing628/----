@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, cast
 
 from core.infrastructure.database import ensure_schema, get_connection
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -19,16 +20,14 @@ def _build_app(tmp_path, monkeypatch):
     test_db = tmp_path / "aps_test.db"
     test_logs = tmp_path / "logs"
     test_backups = tmp_path / "backups"
-    test_templates = tmp_path / "templates_excel"
     test_logs.mkdir(exist_ok=True)
     test_backups.mkdir(exist_ok=True)
-    test_templates.mkdir(exist_ok=True)
 
     monkeypatch.setenv("APS_ENV", "development")
     monkeypatch.setenv("APS_DB_PATH", str(test_db))
     monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+    point_env_at_shared(monkeypatch)
 
     for name in list(sys.modules):
         if name == "app" or name.startswith("web.bootstrap.entrypoint") or name.startswith("web.bootstrap.factory"):
@@ -184,7 +183,7 @@ def test_scheduler_batches_accepts_preparsed_result_summary_dict(tmp_path, monke
     app, _db_path = _build_app(tmp_path, monkeypatch)
 
     import web.bootstrap.request_services as request_services_mod
-    import web.routes.scheduler_batches as route_mod
+    import web.routes.domains.scheduler.scheduler_batches as route_mod
 
     summary = {"warnings": ["告警一", "告警二", "告警一"]}
 
@@ -266,7 +265,7 @@ def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_m
     app, _db_path = _build_app(tmp_path, monkeypatch)
 
     import web.bootstrap.request_services as request_services_mod
-    import web.routes.scheduler_batches as route_mod
+    import web.routes.domains.scheduler.scheduler_batches as route_mod
 
     summary = {
         "warnings": ["告警一"],

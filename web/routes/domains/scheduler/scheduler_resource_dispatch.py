@@ -19,6 +19,7 @@ from web.viewmodels.scheduler_resource_dispatch import (
     decorate_resource_dispatch_payload,
 )
 from web.viewmodels.scheduler_workbench_links import (
+    RESOURCE_PLAN_GUARD_FIELDS,
     build_workbench_link,
     build_workbench_plan_context,
     can_emit_feedback_write_urls,
@@ -61,28 +62,6 @@ def _resource_id_from_filters(filters: Any) -> str:
     return _text(filters.get("operator_id"))
 
 
-def _copy_plan_guard_fields(context: dict, identity: dict) -> None:
-    for key in (
-        "requested_plan_role",
-        "effective_plan_role",
-        "is_scenario_preview",
-        "is_comparison",
-        "is_superseded_by_newer_version",
-        "is_official_plan",
-        "is_preview_plan",
-        "is_current_executable_official_version",
-        "can_dispatch",
-        "can_write_feedback",
-        "plan_identity_error",
-        "plan_identity_blocking_error",
-        "plan_identity_blocking_scope",
-        "result_summary_parse_failed",
-        "result_summary_parse_reason",
-    ):
-        if key in identity:
-            context[key] = identity.get(key)
-
-
 def _current_back_to() -> str:
     return _text(request.args.get("back_to"))
 
@@ -104,9 +83,10 @@ def _workbench_context(filters: Any, plan_identity: Any, *, back_to: Any = None)
         resource_type=resource_type,
         resource_id=resource_id,
         can_write_feedback=identity.get("can_write_feedback") if "can_write_feedback" in identity else None,
+        plan_resolution=identity,
+        plan_guard_fields=RESOURCE_PLAN_GUARD_FIELDS,
         back_to=back_to,
     )
-    _copy_plan_guard_fields(context, identity)
     return context
 
 

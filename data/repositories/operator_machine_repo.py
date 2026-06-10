@@ -79,16 +79,6 @@ class OperatorMachineRepository(BaseRepository):
             """
         )
 
-    def list_links_with_machine_names(self) -> List[Dict[str, Any]]:
-        return self.fetchall(
-            """
-            SELECT om.operator_id, om.machine_id, m.name AS machine_name
-            FROM OperatorMachine om
-            JOIN Machines m ON m.machine_id = om.machine_id
-            ORDER BY om.operator_id, om.machine_id
-            """
-        )
-
     def list_links_with_operator_info(self) -> List[Dict[str, Any]]:
         return self.fetchall(
             """
@@ -164,4 +154,3 @@ class OperatorMachineRepository(BaseRepository):
     def clear_primary_for_operator(self, operator_id: str) -> int:
         cur = self.execute("UPDATE OperatorMachine SET is_primary = 'no' WHERE operator_id = ?", (operator_id,))
         return int(getattr(cur, "rowcount", 0) or 0)
-

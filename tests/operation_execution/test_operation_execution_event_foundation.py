@@ -16,15 +16,17 @@ from core.models.operation_execution_event import (
     EXECUTION_EVENT_EXCEPTION,
     EXECUTION_EVENT_FINISH,
     EXECUTION_EVENT_START,
+    EXECUTION_STATUS_EXCEPTION,
     OperationExecutionEvent,
     validate_operation_execution_event_sequence,
 )
-from core.models.operation_execution_scope import OperationExecutionScope
-from core.services.scheduler.operation_execution_labels import (
+from core.models.operation_execution_labels import (
     event_type_to_action,
     execution_action_label,
     execution_status_label,
 )
+from core.models.operation_execution_scope import OperationExecutionScope
+from core.services.scheduler.operation_execution_feedback_support import _REPORTED_STATUS_BY_ACTION
 from data.repositories import OperationExecutionEventRepo, OperationExecutionEventRepository
 from tests._support.paths import REPO_ROOT
 
@@ -83,6 +85,20 @@ def _seed_plan(conn: sqlite3.Connection) -> None:
         INSERT INTO ScheduleHistory(version, strategy, batch_count, op_count, result_status, result_summary, created_by)
         VALUES (1, 'priority_first', 1, 1, 'success', '{}', 'pytest');
         """
+    )
+    conn.commit()
+
+
+def _seed_extra_batch_operations(conn: sqlite3.Connection) -> None:
+    conn.executemany(
+        """
+        INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
+        VALUES (?, ?, 'B1', ?, ?, ?, 'internal', 'scheduled')
+        """,
+        [
+            (20, "OP20", "piece-b", 20, "铣削"),
+            (30, "OP30", "piece-c", 30, "钻孔"),
+        ],
     )
     conn.commit()
 
@@ -375,6 +391,21 @@ def test_operation_execution_repository_rejects_unscoped_op_reads(tmp_path: Path
         conn.close()
 
 
+def test_operation_execution_repository_batch_ids_by_op_ids_is_order_independent(tmp_path: Path) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        _seed_extra_batch_operations(conn)
+        repo = OperationExecutionEventRepo(conn)
+
+        expected = {10: "B1", 20: "B1", 30: "B1"}
+
+        assert repo._batch_ids_by_op_ids([30, 10, 20, 10, 0, -1, "x", None]) == expected
+        assert repo._batch_ids_by_op_ids([10, 20, 30]) == expected
+    finally:
+        conn.close()
+
+
 def test_operation_execution_repository_alias_is_exported() -> None:
     assert OperationExecutionEventRepository is OperationExecutionEventRepo
 
@@ -384,6 +415,11 @@ def test_operation_execution_labels_keep_status_and_action_plain_chinese() -> No
     assert event_type_to_action("exception") == EXECUTION_ACTION_REPORT_EXCEPTION
     assert execution_action_label(EXECUTION_ACTION_REPORT_EXCEPTION) == "报异常"
     assert execution_action_label("exception") == "报异常"
+
+
+def test_report_exception_action_is_the_only_feedback_exception_status_key() -> None:
+    assert EXECUTION_EVENT_EXCEPTION not in _REPORTED_STATUS_BY_ACTION
+    assert _REPORTED_STATUS_BY_ACTION[EXECUTION_ACTION_REPORT_EXCEPTION] == EXECUTION_STATUS_EXCEPTION
 
 
 def test_operation_execution_database_rejects_bad_values_and_duplicates(tmp_path: Path) -> None:

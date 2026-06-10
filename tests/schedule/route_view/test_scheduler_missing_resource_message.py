@@ -223,8 +223,8 @@ def test_sgs_auto_assign_public_reason_names_match_public_error_codes(
 @pytest.mark.parametrize(
     ("module_name", "handler_name", "path"),
     [
-        ("web.routes.scheduler_run", "run_schedule", "/scheduler/run"),
-        ("web.routes.scheduler_week_plan", "simulate_schedule", "/scheduler/simulate"),
+        ("web.routes.domains.scheduler.scheduler_run", "run_schedule", "/scheduler/run"),
+        ("web.routes.domains.scheduler.scheduler_week_plan", "simulate_schedule", "/scheduler/simulate"),
     ],
 )
 def test_scheduler_pages_flash_sgs_missing_resource_user_message(
@@ -270,8 +270,8 @@ def test_scheduler_pages_flash_sgs_missing_resource_user_message(
 @pytest.mark.parametrize(
     ("module_name", "handler_name", "path"),
     [
-        ("web.routes.scheduler_run", "run_schedule", "/scheduler/run"),
-        ("web.routes.scheduler_week_plan", "simulate_schedule", "/scheduler/simulate"),
+        ("web.routes.domains.scheduler.scheduler_run", "run_schedule", "/scheduler/run"),
+        ("web.routes.domains.scheduler.scheduler_week_plan", "simulate_schedule", "/scheduler/simulate"),
     ],
 )
 def test_scheduler_pages_flash_sgs_missing_resource_sanitizes_dirty_context(

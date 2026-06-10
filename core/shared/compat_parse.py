@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from typing import Any, Optional
 
 from core.infrastructure.errors import ValidationError
@@ -8,16 +8,13 @@ from core.shared.degradation import DegradationCollector
 from core.shared.field_labels import display_field_label
 from core.shared.strict_parse import (
     is_blank_input,
-    parse_optional_date,
     parse_optional_float,
     parse_optional_int,
-    parse_required_date,
     parse_required_float,
     parse_required_int,
 )
 from core.shared.value_policies import (
     READ_COMPAT,
-    VALUE_DATE,
     VALUE_FLOAT,
     VALUE_INT,
     WRITE_OPTIONAL,
@@ -140,16 +137,6 @@ def _int_fallback(value: Any, *, field: str, min_value: Optional[int]) -> Option
     return int(parsed)
 
 
-def _date_fallback(value: Any, *, field: str) -> Optional[date]:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    return parse_required_date(value, field=field)
-
-
 def parse_compat_float(
     value: Any,
     *,
@@ -191,25 +178,5 @@ def parse_compat_int(
         return parser(value, field=label, min_value=min_value)
     except ValidationError:
         compat_value = _int_fallback(_resolve_fallback(policy, fallback), field=label, min_value=min_value)
-        _emit_event(collector, policy=policy, scope=scope, raw_value=value, fallback=compat_value, field_label=label)
-        return compat_value
-
-
-def parse_compat_date(
-    value: Any,
-    *,
-    field: str,
-    scope: str,
-    collector: DegradationCollector,
-    fallback: Any = _FALLBACK_UNSET,
-    field_label: Optional[str] = None,
-) -> Optional[date]:
-    policy = _resolve_compat_policy(field, expected_kind=VALUE_DATE)
-    parser = parse_optional_date if policy.write_mode == WRITE_OPTIONAL else parse_required_date
-    label = display_field_label(field, fallback="这项内容") if field_label is None else str(field_label or "这项内容")
-    try:
-        return parser(value, field=label)
-    except ValidationError:
-        compat_value = _date_fallback(_resolve_fallback(policy, fallback), field=label)
         _emit_event(collector, policy=policy, scope=scope, raw_value=value, fallback=compat_value, field_label=label)
         return compat_value

@@ -80,7 +80,7 @@ R41（O26）配套裁定：
 | O02 R09 第3副本(persistence_errors:13) | 不收编，归 R04 禁区 + 注释（收编会违 R04 灵魂线二次抛错） |
 | O04 R19 指纹排序 | 保留私有版 + "顺序无关"注释（避越层/环） |
 | O05 R15/R19/R13 | 同批改（串行序见 O37） |
-| O10 R34 | 纯删（repoint 目标 service:210 存在） |
+| O10 R34 | 纯删（repoint 目标旧锚 service:210 存在；R23 落后现盘为 service:206，执行按符号重 rg） |
 | O18 R67 | 前两处必收，第 4 处(superset)保现状（③④全收或全不收） |
 | O19 R72 | web/core 各落各点 + 补 request import |
 | O21 R14 | :328 钉 resolve_existing_plan 层、**禁平移**（防灵魂线被 fallback 吞，RK14） |

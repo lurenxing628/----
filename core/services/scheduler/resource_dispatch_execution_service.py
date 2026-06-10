@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from core.infrastructure.errors import ValidationError
+from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.models.operation_execution_scope import parse_positive_execution_int
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from data.repositories.schedule_repo import ScheduleRepository
@@ -22,11 +23,12 @@ def _text(value: Any) -> str:
 
 
 def _positive_int(value: Any) -> Optional[int]:
+    # R09 收编:委托唯一收口点 parse_positive_execution_int(严格:bool/小数/非正数均拒),
+    # 坏值返回 None 由调用方按"无效"处理——5.9 不再截断成 5 误命中相邻工序。
     try:
-        parsed = int(value)
-    except (TypeError, ValueError):
+        return parse_positive_execution_int(value, "resource_dispatch_execution")
+    except ValueError:
         return None
-    return parsed if parsed > 0 else None
 
 
 def _context_is_current_official(context: ExecutionFeedbackContext, latest_version: int) -> bool:
@@ -140,7 +142,13 @@ class ResourceDispatchExecutionService:
     ) -> Dict[str, Any]:
         schedule = self.schedule_repo.get(int(context.schedule_id))
         if schedule is None:
-            raise ValidationError("现场记录对应的排程行不存在，请刷新后重试。", field="schedule_id")
+            # N4/O31：排程行缺失是"资源不存在"语义，须 NOT_FOUND 而非字段校验错——与写门禁
+            # operation_execution_feedback_service.py 的 schedule 缺失分支同错误类（跨文件对称）。
+            raise AppError(
+                ErrorCode.NOT_FOUND,
+                "现场记录对应的排程行不存在，请刷新后重试。",
+                details={"reason": "not_found"},
+            )
         rows = self.plan_query_service.list_plan_dispatch_rows_for_resolution(
             version=int(context.schedule_version),
             source_table=_text(context.source_table),

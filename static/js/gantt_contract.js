@@ -12,6 +12,12 @@
     return str(value).trim();
   }
 
+  function nonNegativeInt(value) {
+    var num = Number(value || 0);
+    if (!isFinite(num) || num < 0) return 0;
+    return Math.floor(num);
+  }
+
   function escapeHtml(value) {
     var text = str(value);
     if (!text) return "";
@@ -96,6 +102,7 @@
 
     var available = src.available !== false;
     var reasonCode = norm(src.reason_code || src.reasonCode);
+    var droppedCount = nonNegativeInt(src.dropped_count || src.droppedCount);
     var publicIds = available ? ids : [];
     var publicEdges = available ? edges : [];
     var renderIdSet = available ? idSet : new Set();
@@ -111,6 +118,8 @@
       reason: norm(src.reason),
       reason_code: reasonCode,
       cache_hit: src.cache_hit === true,
+      dropped_count: droppedCount,
+      critical_chain_partial: src.critical_chain_partial === true || src.criticalChainPartial === true || droppedCount > 0,
       idSet: renderIdSet,
       prevByTo: renderPrevByTo,
       edgeMetaByTo: renderEdgeMetaByTo,
@@ -128,6 +137,8 @@
       reason: cc.reason,
       reason_code: cc.reason_code,
       cache_hit: cc.cache_hit,
+      dropped_count: cc.dropped_count,
+      critical_chain_partial: cc.critical_chain_partial,
     };
     state.ccIdSet = cc.idSet;
     state.ccPrevByTo = cc.prevByTo;

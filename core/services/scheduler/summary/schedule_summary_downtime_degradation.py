@@ -9,6 +9,8 @@ from core.services.scheduler.degradation_messages import (
     DOWNTIME_LOAD_FAILED_MESSAGE,
 )
 
+from .summary_count_parse import _meta_bool_state
+
 _DOWNTIME_META_KEYS = {
     "load_ok": "downtime_load_ok",
     "load_partial_count": "downtime_partial_fail_count",
@@ -25,26 +27,6 @@ def _meta_int_state(meta: Dict[str, Any], key: str) -> Tuple[int, bool]:
         return max(0, int(meta.get(key) or 0)), False
     except (TypeError, ValueError, OverflowError):
         return 0, True
-
-
-def _meta_bool_state(meta: Dict[str, Any], key: str, *, default: bool) -> Tuple[bool, bool]:
-    if key not in meta or meta.get(key) is None:
-        return bool(default), False
-    value = meta.get(key)
-    if isinstance(value, bool):
-        return value, False
-    if isinstance(value, int) and not isinstance(value, bool):
-        if value in (0, 1):
-            return bool(value), False
-        return bool(default), True
-    if isinstance(value, str):
-        text = value.strip().lower()
-        if text in {"true", "1", "yes", "y", "on"}:
-            return True, False
-        if text in {"false", "0", "no", "n", "off"}:
-            return False, False
-        return bool(default), True
-    return bool(default), True
 
 
 def _meta_sample(meta: Dict[str, Any], key: str, *, limit: int = 5) -> List[str]:

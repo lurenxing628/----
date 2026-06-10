@@ -21,6 +21,7 @@ if str(TESTS_DIR) not in sys.path:
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tests._support.excel_templates import point_env_at_shared
 from tests.excel_data_io.excel_preview_confirm_helpers import build_confirm_payload, extract_raw_rows_json
 
 _STALE_PREVIEW_MESSAGE = "导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。"
@@ -75,16 +76,14 @@ def _build_app(tmp_path, monkeypatch):
     test_db = tmp_path / "aps_test.db"
     test_logs = tmp_path / "logs"
     test_backups = tmp_path / "backups"
-    test_templates = tmp_path / "templates_excel"
     test_logs.mkdir(parents=True, exist_ok=True)
     test_backups.mkdir(parents=True, exist_ok=True)
-    test_templates.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setenv("APS_ENV", "development")
     monkeypatch.setenv("APS_DB_PATH", str(test_db))
     monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+    point_env_at_shared(monkeypatch)
 
     from core.infrastructure.database import ensure_schema
 

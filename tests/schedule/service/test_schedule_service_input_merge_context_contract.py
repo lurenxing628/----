@@ -88,7 +88,7 @@ def test_schedule_service_returns_merge_context_degraded_summary_without_input_f
     import core.services.scheduler.config.config_service as config_service_mod
     import core.services.scheduler.schedule_service as schedule_service_mod
     from core.services.scheduler.schedule_service import ScheduleService
-    from core.services.scheduler.schedule_summary import build_result_summary
+    from core.services.scheduler.summary.schedule_summary import build_result_summary
 
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row

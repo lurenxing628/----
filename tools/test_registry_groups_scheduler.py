@@ -99,6 +99,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/config/test_config_service_active_preset_custom_sync.py",
             "tests/config/test_config_snapshot_strict_numeric.py",
             "tests/config/test_config_snapshot_projection_sync.py",
+            "tests/config/test_scheduler_config_spec_sync_contract.py",
             "tests/config/test_config_service_component_contract.py",
             "tests/config/test_config_service_relaxed_missing_visible.py",
             "tests/config/test_apply_preset_adjusted_marks_custom.py",
@@ -148,7 +149,6 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
         "label": "Scheduler run core contracts",
         "target_paths": (
             "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
-            "tests/excel_data_io/test_scheduler_wrapper_import_order_contract.py",
             "tests/schedule/route_view/test_scheduler_route_registration_contract.py",
             "tests/web_pages/test_history_summary_parser.py",
             "tests/algorithm/test_due_exclusive_consistency.py",
@@ -162,6 +162,9 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
             "tests/schedule/route_view/test_scheduler_missing_resource_message.py",
             "tests/schedule/route_view/test_route_version_normalizers_contract.py",
+            "tests/models_domain/test_strict_parse_blank_required.py",
+            "tests/models_domain/test_schedule_resource_filter.py",
+            "tests/models_domain/test_yesno_normalization_contract.py",
             "tests/algorithm/test_optimizer_seed_results_contract.py",
             "tests/algorithm/test_optimizer_seed_boundary_contract.py",
             "tests/algorithm/test_optimizer_runtime_seam_contract.py",
@@ -192,6 +195,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py",
             "tests/schedule/route_view/test_scheduler_run_view_result_contract.py",
             "tests/schedule/service/test_schedule_template_lookup_contract.py",
+            "tests/resource_dispatch/test_scheduler_resource_dispatch_smoke.py",
             "tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py",
             "tests/schedule/route_view/test_scheduler_plan_identity_evidence_link_contract.py",
             "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
@@ -203,6 +207,15 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/operation_execution/test_operation_execution_state_flow.py",
             "tests/operation_execution/test_scheduler_reschedule_execution_facts.py",
             "tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py",
+            # F6（2026-06-10）：工序 seq 坏值硬抛（R69，run/schedule_input_contracts）、summary 元状态
+            # parity（R68，summary/**）、候选基线四态 parity（R03-B，run/schedule_candidate_runner）——
+            # 本组 scope core/services/scheduler/**/*.py 覆盖三者，改动这些源必须强制选中其 loud/契约断言。
+            "tests/schedule/service/test_op_seq_loud_contract.py",
+            "tests/schedule/summary/test_meta_bool_state_parity_contract.py",
+            "tests/candidate/test_baseline_missing_or_failed_four_state_parity.py",
+            # N4：R07 排程行缺失须 AppError(NOT_FOUND) 而非字段校验错；本组 scope core/services/scheduler/**
+            # 覆盖 resource_dispatch_execution_service.py，改该错误分支即强制选中此契约。
+            "tests/resource_dispatch/test_resource_dispatch_task_card_schedule_missing_contract.py",
         ),
         "input_file_scopes": (
             "core/services/scheduler/**/*.py",
@@ -305,12 +318,15 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/schedule/route_view/test_scheduler_workbench_links_contract.py",
             "tests/resource_dispatch/test_resource_dispatch_result_status_label_contract.py",
             "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
+            "tests/web_pages/test_scheduler_plan_role_arg_contract.py",
             "tests/candidate/test_week_plan_filename_uses_normalized_version.py",
             "tests/gantt/test_gantt_degradation_surface.py",
             "tests/schedule/route_view/test_scheduler_result_navigation_contract.py",
             "tests/gantt/test_gantt_contract_snapshot.py",
             "tests/gantt/test_gantt_critical_chain_unavailable.py",
             "tests/gantt/test_gantt_critical_chain_provider.py",
+            # R55：筛选口径 makespan 须标 scope=filtered、整版缺省 full，对外永远可辨。
+            "tests/gantt/test_gantt_critical_chain_scope_contract.py",
             "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py",
             "tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py",
             "tests/candidate/test_scheduler_candidate_analysis_contract.py",

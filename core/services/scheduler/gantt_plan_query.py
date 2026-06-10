@@ -11,17 +11,8 @@ from .schedule_result_view_context import (
 from .schedule_result_view_context import (
     default_plan_resolution_dict as _default_plan_resolution_dict,
 )
-from .schedule_result_view_context import (
-    resolve_plan as _resolve_plan,
-)
-from .schedule_result_view_context import (
-    selected_plan_role as _selected_plan_role,
-)
 from .schedule_result_view_range import (
     get_plan_time_span_dates as _get_plan_time_span_dates,
-)
-from .schedule_result_view_range import (
-    has_explicit_display_range as _has_explicit_display_range,
 )
 from .schedule_result_view_range import (
     resolve_schedule_result_week_range,
@@ -39,14 +30,6 @@ def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, A
         raise
 
 
-def resolve_plan(plan_query_service, version: int, plan_role: Optional[str], scenario_id: Optional[str] = None):
-    return _resolve_plan(plan_query_service, version, plan_role, scenario_id)
-
-
-def selected_plan_role(plan_resolution: Dict[str, Any]) -> str:
-    return _selected_plan_role(plan_resolution)
-
-
 def get_version_time_span_dates(
     plan_query_service,
     version: int,
@@ -54,21 +37,6 @@ def get_version_time_span_dates(
     scenario_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     return _get_plan_time_span_dates(plan_query_service, int(version), plan_role, scenario_id)
-
-
-def _has_explicit_gantt_range(
-    *,
-    week_start: Optional[str],
-    offset_weeks: int,
-    start_date: Optional[str],
-    end_date: Optional[str],
-) -> bool:
-    return _has_explicit_display_range(
-        week_start=week_start,
-        offset_weeks=offset_weeks,
-        start_date=start_date,
-        end_date=end_date,
-    )
 
 
 def resolve_gantt_range_for_version(

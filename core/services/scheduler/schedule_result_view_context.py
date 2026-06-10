@@ -8,11 +8,12 @@ from core.models.schedule_plan_role import (
     ROLE_ADOPTED,
     VALID_PLAN_ROLES,
     is_comparison_plan,
-    is_comparison_source,
     plan_role_label,
+    project_plan_guard_fields,
 )
 from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
 
+from .schedule_plan_identity_builder import build_plan_identity
 from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
 
 _PLAN_ROLE_COMPARE_HINT = "当前查看的是对比方案，只用来和正式采用方案比一比；现场执行仍以“正式采用方案”为准。"
@@ -74,30 +75,24 @@ def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, A
     requested_role = normalize_plan_role(plan_role)
     selected_label = plan_role_label(ROLE_ADOPTED)
     is_fallback = requested_role != ROLE_ADOPTED
-    plan_identity = {
-        "version": None,
-        "requested_plan_role": requested_role,
-        "effective_plan_role": ROLE_ADOPTED,
-        "plan_resolution_status": "fallback_to_adopted" if is_fallback else "resolved_adopted",
-        "source_table": SOURCE_SCHEDULE,
-        "source_row_id": None,
-        "candidate_id": None,
-        "candidate_key": None,
-        "scenario_id": None,
-        "schedule_result_status": None,
-        "is_simulation": False,
-        "label": selected_label,
-        "user_label": "对比参考方案" if is_fallback else selected_label,
-        "is_official": not is_fallback,
-        "is_preview": False,
-        "is_current_executable_version": False,
-        "is_current_executable_official_version": False,
-        "is_superseded_by_newer_version": False,
-        "schedule_lock_status": None,
-        "can_dispatch": False,
-        "can_write_feedback": False,
-        "detail_saved": True,
-    }
+    status = "fallback_to_adopted" if is_fallback else "resolved_adopted"
+    plan_identity = build_plan_identity(
+        version=None,
+        requested_role=requested_role,
+        effective_role=ROLE_ADOPTED,
+        status=status,
+        source_table=SOURCE_SCHEDULE,
+        source_row_id=None,
+        candidate_id=None,
+        candidate_key=None,
+        scenario_id=None,
+        scenario_display_name="",
+        schedule_result_status=None,
+        result_summary=None,
+        latest_official_version=None,
+        schedule_lock_status=None,
+        detail_saved=None,
+    ).to_dict()
     return {
         "version": None,
         "requested_role": requested_role,
@@ -107,7 +102,7 @@ def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, A
         "source_table": SOURCE_SCHEDULE,
         "candidate_id": None,
         "candidate_key": None,
-        "status": "fallback_to_adopted" if is_fallback else "resolved_adopted",
+        "status": status,
         "message": ""
         if not is_fallback
         else f"你原本选择的是“{plan_role_label(requested_role)}”，但当前版本没有保存这套方案明细，已显示正式采用方案。",
@@ -220,131 +215,9 @@ def attach_plan_metadata(data: Dict[str, Any], plan_resolution: Dict[str, Any]) 
     )
 
 
-def _truthy_override_or_data(
-    overrides: Dict[str, Any],
-    data: Dict[str, Any],
-    override_key: str,
-    data_keys: tuple,
-    default: Any,
-) -> Any:
-    override_value = overrides.get(override_key)
-    if override_value:
-        return override_value
-    for key in data_keys:
-        data_value = data.get(key)
-        if data_value:
-            return data_value
-    return default
-
-
-def _override_or_data(overrides: Dict[str, Any], data: Dict[str, Any], key: str) -> Any:
-    return overrides.get(key) if key in overrides else data.get(key)
-
-
-def _plan_role_message(overrides: Dict[str, Any], data: Dict[str, Any]) -> str:
-    override_value = overrides.get("message")
-    if override_value is not None:
-        return str(override_value)
-    return str(data.get("message") or "")
-
-
-def _plan_role_is_comparison(
-    overrides: Dict[str, Any],
-    data: Dict[str, Any],
-    source_table: Any,
-    requested_role: str,
-    effective_role: str,
-    is_scenario_preview: bool,
-) -> bool:
-    if is_comparison_plan(
-        requested_role=requested_role,
-        selected_role=effective_role,
-        source_table=source_table,
-        is_scenario_preview=is_scenario_preview,
-    ):
-        return True
-    if "is_comparison" in overrides:
-        return bool(overrides.get("is_comparison"))
-    return bool(data.get("is_comparison") or is_comparison_source(source_table))
-
-
-def _identity_bool(plan_identity: Dict[str, Any], data: Dict[str, Any], key: str) -> bool:
-    if key in plan_identity:
-        return bool(plan_identity.get(key))
-    return bool(data.get(key))
-
-
 def plan_role_filter_fields(plan_resolution_or_context: Any = None, **overrides: Any) -> Dict[str, Any]:
     data = {} if plan_resolution_or_context is None else _resolution_to_dict(plan_resolution_or_context)
-    raw_plan_identity = data.get("plan_identity")
-    plan_identity: Dict[str, Any] = dict(raw_plan_identity) if isinstance(raw_plan_identity, dict) else {}
-    requested_role = str(_truthy_override_or_data(overrides, data, "requested_role", ("requested_role",), ROLE_ADOPTED))
-    effective_role = str(
-        _truthy_override_or_data(overrides, data, "effective_role", ("selected_role", "effective_plan_role"), ROLE_ADOPTED)
-    )
-    message = _plan_role_message(overrides, data)
-    candidate_id = _override_or_data(overrides, data, "candidate_id")
-    candidate_key = _override_or_data(overrides, data, "candidate_key")
-    source_table = _override_or_data(overrides, data, "source_table")
-    if effective_role == ROLE_ADOPTED and requested_role != ROLE_ADOPTED:
-        default_status = "fallback_to_adopted"
-    elif effective_role != ROLE_ADOPTED or is_comparison_source(source_table):
-        default_status = "resolved_comparison"
-    else:
-        default_status = "resolved_adopted"
-    status = str(_truthy_override_or_data(overrides, data, "status", ("status", "plan_role_status"), default_status))
-    scenario_id = _override_or_data(overrides, data, "scenario_id")
-    scenario_name = _override_or_data(overrides, data, "scenario_name")
-    scenario_display_name = _override_or_data(overrides, data, "scenario_display_name")
-    is_scenario_preview = bool(_override_or_data(overrides, data, "is_scenario_preview"))
-    is_comparison = _plan_role_is_comparison(
-        overrides,
-        data,
-        source_table,
-        requested_role,
-        effective_role,
-        is_scenario_preview,
-    )
-
-    return {
-        "plan_role": requested_role,
-        "requested_plan_role": requested_role,
-        "effective_plan_role": effective_role,
-        "plan_role_status": status,
-        "plan_role_message": message,
-        "plan_role_label": plan_role_label(effective_role),
-        "requested_plan_role_label": plan_role_label(requested_role),
-        "effective_plan_role_label": plan_role_label(effective_role),
-        "candidate_id": candidate_id,
-        "candidate_key": candidate_key,
-        "source_table": source_table,
-        "is_comparison": bool(is_comparison),
-        "is_scenario_preview": is_scenario_preview,
-        "scenario_id": scenario_id,
-        "scenario_name": scenario_name,
-        "scenario_display_name": scenario_display_name,
-        "plan_identity_label": plan_identity.get("user_label") or data.get("user_label") or plan_role_label(effective_role),
-        "can_dispatch": _identity_bool(plan_identity, data, "can_dispatch"),
-        "can_write_feedback": _identity_bool(plan_identity, data, "can_write_feedback"),
-        "result_summary_parse_failed": bool(
-            plan_identity.get("result_summary_parse_failed") or data.get("result_summary_parse_failed")
-        ),
-        "result_summary_parse_reason": str(
-            plan_identity.get("result_summary_parse_reason") or data.get("result_summary_parse_reason") or ""
-        ).strip(),
-        "schedule_result_status": str(
-            plan_identity.get("schedule_result_status") or data.get("schedule_result_status") or ""
-        ).strip(),
-        "is_official_plan": _identity_bool(plan_identity, data, "is_official"),
-        "is_preview_plan": _identity_bool(plan_identity, data, "is_preview"),
-        "is_current_executable_version": _identity_bool(plan_identity, data, "is_current_executable_version"),
-        "is_current_executable_official_version": _identity_bool(
-            plan_identity,
-            data,
-            "is_current_executable_official_version",
-        ),
-        "is_superseded_by_newer_version": _identity_bool(plan_identity, data, "is_superseded_by_newer_version"),
-    }
+    return project_plan_guard_fields(data, overrides)
 
 
 def serialize_plan_role_options(options: Any) -> List[Dict[str, Any]]:

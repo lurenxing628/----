@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, MutableMapping
 from core.models.resource_dispatch_public_labels import lock_status_public_label, source_public_label
 from core.models.resource_identity import ResourceIdentity, build_resource_identity
 
-from .scheduler_plan_guardrail_messages import result_status_label, summary_parse_failure_message
+from .scheduler_plan_guardrail_messages import result_status_label, summary_unavailable_guardrail_text
 
 _PERIOD_PRESET_LABELS = {
     "week": "按周",
@@ -183,8 +183,7 @@ def _public_plan_guardrail_text(filters: Dict[str, Any], *, can_dispatch: bool, 
     if filters.get("plan_identity_blocking_error"):
         return _text(filters.get("plan_identity_error")) or "请求里的方案身份不可用，不能写现场记录。"
     if filters.get("result_summary_parse_failed"):
-        reason = summary_parse_failure_message(filters.get("result_summary_parse_reason"))
-        return f"当前排产摘要读取失败：{reason}。页面仅展示基础历史信息，不能写现场记录。"
+        return summary_unavailable_guardrail_text(filters.get("result_summary_parse_reason"), blocked_action="不能写现场记录")
     if can_dispatch and can_write_feedback:
         return "这套是当前可执行的正式采用方案，可以查看资源排班，并按规则填写现场实际。"
     if filters.get("is_comparison"):

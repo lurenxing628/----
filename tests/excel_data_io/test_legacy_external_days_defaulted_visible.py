@@ -35,7 +35,7 @@ def test_legacy_external_days_defaulted_visible() -> None:
 
     from core.algorithms.evaluation import compute_metrics
     from core.algorithms.greedy.external_groups import schedule_external
-    from core.services.scheduler.schedule_summary import build_result_summary
+    from core.services.scheduler.summary.schedule_summary import build_result_summary
 
     scheduler = _Scheduler()
     base_time = datetime(2026, 4, 2, 8, 0, 0)

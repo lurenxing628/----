@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT_STR
 
 
@@ -29,16 +30,14 @@ def main(monkeypatch) -> None:
     test_db = os.path.join(root, "aps_test.db")
     test_logs = os.path.join(root, "logs")
     test_backups = os.path.join(root, "backups")
-    test_templates = os.path.join(root, "templates_excel")
     os.makedirs(test_logs, exist_ok=True)
     os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
 
     monkeypatch.setenv("APS_ENV", "development")
     monkeypatch.setenv("APS_DB_PATH", test_db)
     monkeypatch.setenv("APS_LOG_DIR", test_logs)
     monkeypatch.setenv("APS_BACKUP_DIR", test_backups)
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", test_templates)
+    point_env_at_shared(monkeypatch)
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.logging import OperationLogger
@@ -142,11 +141,25 @@ def main(monkeypatch) -> None:
             raise RuntimeError(f"task.meta 缺少字段：{k}")
 
     cc = data.get("critical_chain") or {}
-    for k in ("ids", "edges", "makespan_end", "edge_type_stats", "edge_count", "available", "reason", "cache_hit"):
+    for k in (
+        "ids",
+        "edges",
+        "makespan_end",
+        "edge_type_stats",
+        "edge_count",
+        "dropped_count",
+        "critical_chain_partial",
+        "available",
+        "reason",
+        "cache_hit",
+        "scope",
+    ):
         if k not in cc:
             raise RuntimeError(f"critical_chain 缺少字段：{k}")
     if cc.get("available") is not True:
         raise RuntimeError(f"critical_chain.available 应为 true：{cc}")
+    if cc.get("scope") != "full":
+        raise RuntimeError(f"R55：默认未筛选路径 critical_chain.scope 应为 full：{cc}")
     if cc.get("reason") not in (None, ""):
         raise RuntimeError(f"critical_chain.reason 应为空成功语义：{cc}")
     edges = cc.get("edges") or []
@@ -176,7 +189,18 @@ def main(monkeypatch) -> None:
     if int(data_empty.get("task_count") or 0) != 0 or (data_empty.get("tasks") or []):
         raise RuntimeError(f"空数据版本 tasks 应为空：task_count={data_empty.get('task_count')} tasks={data_empty.get('tasks')}")
     cc_empty = data_empty.get("critical_chain") or {}
-    for k in ("ids", "edges", "makespan_end", "edge_type_stats", "edge_count", "available", "reason", "cache_hit"):
+    for k in (
+        "ids",
+        "edges",
+        "makespan_end",
+        "edge_type_stats",
+        "edge_count",
+        "dropped_count",
+        "critical_chain_partial",
+        "available",
+        "reason",
+        "cache_hit",
+    ):
         if k not in cc_empty:
             raise RuntimeError(f"空数据版本 critical_chain 缺少字段：{k}")
     if cc_empty.get("available") is not True:

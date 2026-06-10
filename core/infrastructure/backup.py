@@ -329,12 +329,15 @@ class BackupManager:
                     with closing(sqlite3.connect(tmp_path)) as dest:
                         source.backup(dest)
 
-                        # 备份后完整性校验（建议启用；失败则不生成最终备份文件）
+                        # 备份后完整性校验（失败则不生成最终备份文件）
                         try:
                             rows = dest.execute("PRAGMA integrity_check").fetchall() or []
                         except Exception as e:
-                            # 校验执行失败：不阻断备份，但记录 warning 便于排障
-                            fallback_log(self.logger, "warning", f"备份后的数据库完整性检查执行失败（已忽略）：{e}")
+                            # 我是故意的（R32/O27）：校验执行失败比「校验不通过」更严重——连完整性检查都
+                            # 跑不起来的库不算可信备份，绝不升正式。此处必须 loud raise 与 else 分支同语义，
+                            # 不得改回 warning 放行（那会让坏库升正式、再经恢复链盲拷放大损坏）。
+                            fallback_log(self.logger, "error", f"备份后的数据库完整性检查执行失败：{e}")
+                            raise RuntimeError(f"备份后的数据库完整性检查执行失败（视为不可信备份，不落地）：{e}") from e
                         else:
                             msg0 = str((rows[0][0] if rows else "") or "").strip().lower()
                             if msg0 != "ok":
@@ -411,8 +414,15 @@ class BackupManager:
         before_restore_path = None
         try:
             with maintenance_window(self.db_path, logger=self.logger, action="restore"):
-                # 恢复前自动备份
-                before_restore_path = self.backup(suffix="before_restore")
+                # 恢复前自动备份：此处尚未触碰原库。失败须与「恢复失败」区分——让用户知道是「恢复前保护快照
+                # 没通过」且原库安全；MaintenanceWindowError 须继续上抛走 busy/锁语义，不得误并入快照失败分支。
+                try:
+                    before_restore_path = self.backup(suffix="before_restore")
+                except MaintenanceWindowError:
+                    raise
+                except Exception:
+                    fallback_log(self.logger, "error", f"恢复前保护快照创建/校验失败，已中止恢复（原库未改动）\n{traceback.format_exc()}")
+                    return RestoreResult(ok=False, code="pre_restore_snapshot_failed", message="恢复前保护快照创建或完整性校验未通过，已中止恢复（原数据库未改动），请查看日志。", before_restore_path=None)
 
                 self._copy_db_file(backup_path, locked_warning_message="数据库被占用（可能有其它连接未释放），准备重试")
                 fallback_log(self.logger, "info", f"数据库文件复制完成，等待后续结构校验：{backup_path}")

@@ -282,78 +282,72 @@ async function waitForPageStable(client, url, viewport) {
   return evaluated.result ? evaluated.result.value : {};
 }
 
-async function inspectPage(port, url, expected, httpStatus) {
-  const page = await newPage(port);
-  const client = new CdpClient(page.webSocketDebuggerUrl);
-  try {
-    await client.open();
-    active.push(client);
-    await client.send("Page.enable");
-    await client.send("Runtime.enable");
-    const results = [];
-    let pageLoaded = false;
-    for (const width of [1024, 768]) {
-      await client.send("Emulation.setDeviceMetricsOverride", {
-        width,
-        height: 900,
-        deviceScaleFactor: 1,
-        mobile: false,
-      });
-      client.context = { url, viewport: { width, height: 900 } };
-      if (!pageLoaded) {
-        const loaded = client.waitEvent("Page.loadEventFired");
-        const navigateResult = await client.send("Page.navigate", { url });
-        if (navigateResult.errorText) {
-          fail("page_http_status_failed", {
-            stage: "Page.navigate",
-            url,
-            viewport: { width, height: 900 },
-            message: navigateResult.errorText,
-          });
-        }
-        await loaded;
-        pageLoaded = true;
+async function inspectPage(client, url, expected, httpStatus) {
+  const results = [];
+  let pageLoaded = false;
+  for (const width of [1024, 768]) {
+    await client.send("Emulation.setDeviceMetricsOverride", {
+      width,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    client.context = { url, viewport: { width, height: 900 } };
+    if (!pageLoaded) {
+      const loaded = client.waitEvent("Page.loadEventFired");
+      const navigateResult = await client.send("Page.navigate", { url });
+      if (navigateResult.errorText) {
+        fail("page_http_status_failed", {
+          stage: "Page.navigate",
+          url,
+          viewport: { width, height: 900 },
+          message: navigateResult.errorText,
+        });
       }
-      await waitForPageStable(client, url, { width, height: 900 });
-      const expression = buildPageInspectionExpression(httpStatus);
-      await client.send("Runtime.evaluate", {
-        expression: `window.__APS_EXPECTED_SIGNALS__ = ${JSON.stringify(expected || {})};`,
-        returnByValue: true,
-      });
-      await client.send("Runtime.evaluate", {
-        expression: `window.__APS_ERROR_PAGE_KEYWORDS__ = ${JSON.stringify(errorPageKeywords || [])};`,
-        returnByValue: true,
-      });
-      const evaluated = await client.send("Runtime.evaluate", {
-        expression,
-        returnByValue: true,
-        awaitPromise: true,
-      });
-      if (evaluated.exceptionDetails) {
-        throw new Error(`页面检查脚本执行失败：${JSON.stringify(evaluated.exceptionDetails)}`);
-      }
-      if (!evaluated.result || typeof evaluated.result.value !== "string") {
-        throw new Error(`页面检查脚本没有返回 JSON 字符串：${JSON.stringify(evaluated.result || {})}`);
-      }
-      results.push(JSON.parse(evaluated.result.value));
+      await loaded;
+      pageLoaded = true;
     }
-    return results;
-  } finally {
-    await client.close();
-    const index = active.indexOf(client);
-    if (index >= 0) active.splice(index, 1);
+    await waitForPageStable(client, url, { width, height: 900 });
+    const expression = buildPageInspectionExpression(httpStatus);
+    await client.send("Runtime.evaluate", {
+      expression: `window.__APS_EXPECTED_SIGNALS__ = ${JSON.stringify(expected || {})};`,
+      returnByValue: true,
+    });
+    await client.send("Runtime.evaluate", {
+      expression: `window.__APS_ERROR_PAGE_KEYWORDS__ = ${JSON.stringify(errorPageKeywords || [])};`,
+      returnByValue: true,
+    });
+    const evaluated = await client.send("Runtime.evaluate", {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    if (evaluated.exceptionDetails) {
+      throw new Error(`页面检查脚本执行失败：${JSON.stringify(evaluated.exceptionDetails)}`);
+    }
+    if (!evaluated.result || typeof evaluated.result.value !== "string") {
+      throw new Error(`页面检查脚本没有返回 JSON 字符串：${JSON.stringify(evaluated.result || {})}`);
+    }
+    results.push(JSON.parse(evaluated.result.value));
   }
+  return results;
 }
 
 try {
   const port = await readDebugPort();
   await preflightDevTools(port);
+  const page = await newPage(port);
+  const client = new CdpClient(page.webSocketDebuggerUrl);
+  await client.open();
+  active.push(client);
+  await client.send("Page.enable");
+  await client.send("Runtime.enable");
   const results = [];
   for (const pagePath of paths) {
     const url = `${baseUrl}${pagePath}`;
     const httpResponse = await fetchWithTimeout(url, { redirect: "manual" }, 5000);
     const httpStatus = httpResponse.status;
-    results.push(...await inspectPage(port, url, expectedByPath[pagePath] || {}, httpStatus));
+    results.push(...await inspectPage(client, url, expectedByPath[pagePath] || {}, httpStatus));
   }
   await writeLine(process.stdout, JSON.stringify(results));
 } catch (error) {

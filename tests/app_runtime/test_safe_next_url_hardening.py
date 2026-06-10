@@ -20,7 +20,7 @@ def test_safe_next_url_hardening(app_client) -> None:
 
     system_utils = importlib.import_module("web.routes.system_utils")
     ui_mode = importlib.import_module("web.ui_mode")
-    scheduler_config = importlib.import_module("web.routes.scheduler_config")
+    scheduler_config = importlib.import_module("web.routes.domains.scheduler.scheduler_config")
 
     with app.test_request_context("/scheduler/config"):
         valid_next_cases = [

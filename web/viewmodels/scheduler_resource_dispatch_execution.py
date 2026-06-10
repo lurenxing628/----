@@ -18,11 +18,11 @@ from core.models.operation_execution_labels import (
     severity_label,
     suggest_reschedule_label,
 )
+from core.models.operation_execution_scope import parse_positive_execution_int
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.resource_dispatch_execution_tokens import execution_state_key, execution_task_key
 from core.models.resource_identity import ResourceIdentity, build_resource_identity
 
-_FEEDBACK_DISABLED_REASON = "现场记录保护还没开启，暂不能填写现场记录。"
 _NOT_CURRENT_OFFICIAL_REASON = "当前不是最新正式采用方案，不能填写现场记录。"
 
 
@@ -31,11 +31,12 @@ def _text(value: Any) -> str:
 
 
 def _positive_int(value: Any) -> Optional[int]:
+    # R09 收编:委托唯一收口点 parse_positive_execution_int(严格:bool/小数/非正数均拒),
+    # 坏值返回 None 由调用方按"无效"处理——5.9 不再截断成 5 误命中相邻工序。
     try:
-        parsed = int(value)
-    except (TypeError, ValueError):
+        return parse_positive_execution_int(value, "resource_dispatch_execution")
+    except ValueError:
         return None
-    return parsed if parsed > 0 else None
 
 
 def _resource_identity(resource_id: Any = None, resource_name: Any = None) -> ResourceIdentity:
@@ -222,10 +223,11 @@ def _as_state(value: Any, op_id: int, batch_id: str) -> OperationExecutionState:
 
 
 def _fill_actual_disabled_reason(*, can_write: bool, feedback_write_enabled: bool, status_label: str) -> str:
+    # R08 收口:旧"现场记录保护还没开启"分支已删——feedback_write_enabled 与 can_write_feedback
+    # 同源(N1 守卫钉死)、task_card 路由侧硬传 True,(can_write=True, write_enabled=False) 生产不可达。
+    # feedback_write_enabled 形参保留:它仍是 build_available_actions 填写开关的活输入(fill_enabled 合取项)。
     if not can_write:
         return _NOT_CURRENT_OFFICIAL_REASON
-    if not feedback_write_enabled:
-        return _FEEDBACK_DISABLED_REASON
     return f"当前状态是{status_label}，不能填写实际情况。"
 
 
@@ -364,8 +366,6 @@ def build_execution_payload(context: Mapping[str, Any]) -> Dict[str, Any]:
     disabled_reason = ""
     if not can_write:
         disabled_reason = _NOT_CURRENT_OFFICIAL_REASON
-    elif not feedback_write_enabled:
-        disabled_reason = _FEEDBACK_DISABLED_REASON
     return {
         "plan_identity": {
             "label": plan_identity_label,

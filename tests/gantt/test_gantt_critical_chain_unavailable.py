@@ -57,7 +57,6 @@ def test_gantt_payload_surfaces_critical_chain_unavailable(monkeypatch) -> None:
         def _repo_raise(_version: int):
             raise RuntimeError("repo boom")
 
-        monkeypatch.setattr(svc.schedule_repo, "list_overlapping_with_details", lambda *_args, **_kwargs: [])
         monkeypatch.setattr(svc.schedule_repo, "list_by_version_with_details", _repo_raise)
         monkeypatch.setattr(
             svc,
@@ -102,6 +101,8 @@ def test_gantt_public_contract_preserves_rows_exception_reason_code() -> None:
             "debug_error": "sqlite SECRET",
             "raw_rows": [{"internal": "row"}],
             "traceback": "internal traceback",
+            "dropped_count": 3,
+            "critical_chain_partial": True,
         },
     )
     critical_chain = data["critical_chain"]
@@ -110,10 +111,88 @@ def test_gantt_public_contract_preserves_rows_exception_reason_code() -> None:
     assert critical_chain.get("reason") == "关键工序关系计算异常"
     assert critical_chain.get("ids") == []
     assert critical_chain.get("edges") == []
+    assert critical_chain.get("dropped_count") == 3
+    assert critical_chain.get("critical_chain_partial") is True
     assert "debug_error" not in critical_chain
     assert "raw_rows" not in critical_chain
     assert "traceback" not in critical_chain
     assert "sqlite SECRET" not in str(data)
+
+
+def test_critical_chain_bad_time_rows_are_counted_without_changing_valid_chain() -> None:
+    valid_rows = [
+        {
+            "op_id": 1,
+            "op_code": "OP-A",
+            "batch_id": "B1",
+            "piece_id": "P1",
+            "seq": 1,
+            "machine_id": "MC1",
+            "operator_id": "O1",
+            "start_time": "2026-01-01 08:00:00",
+            "end_time": "2026-01-01 09:00:00",
+        },
+        {
+            "op_id": 2,
+            "op_code": "OP-B",
+            "batch_id": "B1",
+            "piece_id": "P1",
+            "seq": 2,
+            "machine_id": "MC1",
+            "operator_id": "O1",
+            "start_time": "2026-01-01 09:00:00",
+            "end_time": "2026-01-01 10:00:00",
+        },
+    ]
+    bad_row = {
+        "op_id": 3,
+        "op_code": "OP-BAD",
+        "batch_id": "B1",
+        "piece_id": "P1",
+        "seq": 3,
+        "machine_id": "MC1",
+        "operator_id": "O1",
+        "start_time": "2026-01-01 99:00:00",
+        "end_time": "2026-01-01 11:00:00",
+    }
+
+    baseline = gantt_critical_chain.compute_critical_chain_from_rows(valid_rows)
+    with_bad_row = gantt_critical_chain.compute_critical_chain_from_rows(valid_rows + [bad_row])
+
+    assert with_bad_row.get("available", True) is True
+    assert with_bad_row["ids"] == baseline["ids"]
+    assert with_bad_row["edges"] == baseline["edges"]
+    assert with_bad_row["makespan_end"] == baseline["makespan_end"]
+    assert with_bad_row["dropped_count"] == 1
+    assert with_bad_row["critical_chain_partial"] is True
+    assert baseline["dropped_count"] == 0
+    assert baseline["critical_chain_partial"] is False
+
+
+def test_critical_chain_all_bad_time_rows_keep_empty_result_observable() -> None:
+    rows = [
+        {
+            "op_id": 1,
+            "op_code": "OP-BAD-A",
+            "start_time": "2026-01-01 99:00:00",
+            "end_time": "2026-01-01 10:00:00",
+        },
+        {
+            "op_id": 2,
+            "op_code": "OP-BAD-B",
+            "start_time": "2026-01-01 12:00:00",
+            "end_time": "2026-01-01 11:00:00",
+        },
+    ]
+
+    result = gantt_critical_chain.compute_critical_chain_from_rows(rows)
+
+    assert result.get("available", True) is True
+    assert result["ids"] == []
+    assert result["edges"] == []
+    assert result["edge_count"] == 0
+    assert result["dropped_count"] == 2
+    assert result["critical_chain_partial"] is True
 
 
 def test_critical_chain_labels_match_gantt_task_public_labels_for_piece_fallback() -> None:

@@ -9,7 +9,7 @@ import pytest
 
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
-from core.services.scheduler.config_service import ConfigService
+from core.services.scheduler.config.config_service import ConfigService
 from tests._support.paths import REPO_ROOT
 
 

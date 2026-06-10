@@ -197,7 +197,7 @@ def test_reschedule_ignores_superseded_same_op_execution_fact(tmp_path: Path, mo
         assert int(result["version"]) > 2
         assert captured_seed_op_ids
         assert all(10 not in seed_ids for seed_ids in captured_seed_op_ids)
-        assert ExecutionFactProvider(conn).facts_by_op_id_for_scopes([_execution_scope(10)])[10].last_event_schedule_version == 1
+        assert ExecutionFactProvider(conn).facts_by_op_id_for_scopes([_execution_scope(10)])[10].actual_status == "processing"
     finally:
         conn.close()
 

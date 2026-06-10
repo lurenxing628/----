@@ -14,7 +14,7 @@
 | R04 | 🔴 红 | F1 默认值 + 6 处 except 异常逃逸双重热路径：F1 默认 True 炸 sgs_graph 8 处 op.id 解析；ValidationError 非 ValueError 子类，漏改任一 except → 脏 op_id 由静默 skip 变整链 raise |
 | R59 | 🟡 黄 | 裸收口(F1 前)撞续命测试 :247/:250（CI 显性红，非静默）；F1 后收口须保 blank 短路 + 错误文案漂移（友好串→strict 串，match 仍过）须 owner 认账 |
 | R08 | 🟡 黄 | 死分支删除安全（(T,F) 三路不可达 + guardrail 双层短路），但 owner_pending 未裁「总开关预埋」+ 误删 feedback_write_enabled 参数 → :234 按钮门禁塌缩静默放开误填 |
-| R28 | 🟢 绿 | 静默吞错→loud raise 正方向；上游 batch_operation/part_operation:92/75 已 parse_optional_float 严校，except 分支不可达，allow_none=True 承接空值，零生产行为变化 |
+| R28 | 🟢 绿 | 2026-06-08 已 fixed；静默吞错→loud raise 正方向；上游 batch_operation/part_operation:92/75 已 parse_optional_float 严校，allow_none=True 承接空值，零生产行为变化 |
 | R01 | 🟢 绿 | 纯删死码，0 生产消费、闭合自环，误删只以 ImportError/SyntaxError/SP05 红响亮暴露，无静默业务损坏路径 |
 
 ---
@@ -46,7 +46,7 @@
 
 ## 🟢 R28 — 静默吞错收口（安全）
 
-batch_service.py:55-64 `_safe_float`：`try float(value) except Exception: return None` 静默吞。收口到已存在 parse_finite_float(垃圾/NaN/inf/bool→raise)=P4 正方向。上游 batch_operation.py:92 / part_operation.py:75 `ext_days=parse_optional_float(..., field="ext_days")` 已严校 → 流入 `_safe_float` 恒为 None 或合法 float，except 分支不可达=冗余防御，收口后生产零行为变化。allow_none=True 承接 Optional 空值（非兜底）。(纪律,非红) 必须 allow_none=True（用 False 炸所有 ext_days 空批次）；禁越界动消费点 `setup/unit_hours=float(...or 0.0)` 工时兜底；同步退/留 fitness 白名单 test_architecture_fitness.py:77（先跑 `pytest -k allowlist` 定夺）。完全独立叶子，不阻塞。
+2026-06-08 已 fixed：batch_service.py:55-57 `_safe_float` 保名薄包装到已存在 parse_finite_float(垃圾/NaN/inf/bool→raise)=P4 正方向。上游 batch_operation.py:92 / part_operation.py:75 `ext_days=parse_optional_float(..., field="ext_days")` 已严校 → 流入 `_safe_float` 恒为 None 或合法 float，收口后生产零行为变化。allow_none=True 承接 Optional 空值（非兜底）。(纪律,非红) 已使用 allow_none=True；未越界动消费点 `setup/unit_hours=float(...or 0.0)` 工时兜底；fitness 白名单 test_architecture_fitness.py:77 经 `pytest -k test_no_new_local_parse_helpers` 实测保留。完全独立叶子，已闭合。
 
 ## 🟢 R01 — 死码直删（安全）
 
@@ -58,4 +58,4 @@ schedule_payload_contract.py 死簇 :67-87(_iter)/:90-91(count)/:94-95(has) 闭�
 
 1. **【归类矛盾，需 owner 仲裁】Layer2 残留表 §R09 收编面把 `auto_assign_resource_errors.py:114 _positive_int` 列入「STRICT 4 处(`->int`,loud raise,一字不碰)」——实测错**。该函数真身 :115 `int(value or 0)` / :117 `except Exception: return 0` / :119 `>0 else 0`=**→0 宽松哨兵**，不 raise。它正是 R04 dossier 的「哨兵 B」。真正 STRICT raise 是 operation_execution_feedback_support.py:161(`(value,field)` + raise) 与 scheduler_public_errors.py:167。两份分析对同一符号给了矛盾依据（R04=宽松补注释 / R09 残留表=STRICT 禁碰），**最终纪律一致（都别动它的 raise/别误删）所以结论不炸，但归类依据打架**——执行者若信 R09 残留表会误以为 :114 是 loud raise 写入闸，影响 R04 对它的「→0 哨兵补注释」修法判断。建议回写残留表：STRICT 4 处应为 scope:9 / feedback_support:161 / scheduler_public_errors:167 / event_repo:100，剔除 auto_assign:114。
 2. **【R59 文案漂移未登记】** dossier 字段4 委派方案让 strict ValidationError 直透或外层 try/except 转友好串，二者面向用户文案不同（`"“导出行数”必须是整数"` vs `"导出行数不是有效整数，请检查报表导出数据。"`），match 子串虽过但属可观测行为变化，owner 须认账走哪条——计划只标了「续命测试绿」未标文案对账。
-3. **【R28 fitness 白名单去留未定】** 方案 b(保名薄壳)收口后 fitness 探测器按 name(:64 LOCAL_PARSE_HELPER_NAMES)还是按体判定决定 :77 白名单退/留，dossier 自陈待定——这是「测试绿但守卫语义」开放项，须动手前 `pytest -k allowlist` 实测，否则漏退/漏留任一向都 CI 红（loud，非静默，非阻塞但须前置）。
+3. **【R28 fitness 白名单去留已闭合】** 方案 b(保名薄壳)收口后 fitness 探测器按 name(:64 LOCAL_PARSE_HELPER_NAMES)命中；2026-06-08 已实测 `pytest -k test_no_new_local_parse_helpers` 通过，结论为 :77 白名单保留。

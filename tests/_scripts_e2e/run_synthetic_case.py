@@ -560,7 +560,7 @@ def _run_one(
     export_gantt_dir: Optional[str],
     gantt_days: int,
 ) -> Dict[str, Any]:
-    from core.services.scheduler.config_service import ConfigService
+    from core.services.scheduler.config.config_service import ConfigService
     from core.services.scheduler.schedule_service import ScheduleService
     from data.repositories import ScheduleHistoryRepository
 

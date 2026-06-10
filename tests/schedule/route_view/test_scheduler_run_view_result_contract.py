@@ -375,7 +375,7 @@ def test_scheduler_run_route_flashes_failed_result_and_overdue_sample_limit() ->
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -423,7 +423,7 @@ def test_scheduler_run_failed_route_surfaces_sanitized_errors_as_error_flash() -
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -473,7 +473,7 @@ def test_scheduler_run_route_counts_hidden_string_warning_without_leaking_raw_te
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -521,7 +521,7 @@ def test_scheduler_run_route_does_not_count_public_warning_alias_as_hidden() -> 
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     raw_message = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员（请查看日志）。"
     public_message = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
@@ -568,7 +568,7 @@ def test_scheduler_run_unknown_result_stays_on_batches_page_without_success_flas
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -608,7 +608,7 @@ def test_scheduler_run_route_flashes_app_error_user_message() -> None:
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -638,7 +638,7 @@ def test_scheduler_run_success_redirects_to_gantt_actual_span() -> None:
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -695,7 +695,7 @@ def test_scheduler_run_partial_redirects_to_gantt_with_requested_start_when_span
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -765,7 +765,7 @@ def test_scheduler_run_success_or_partial_requires_valid_version_before_success_
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -811,7 +811,7 @@ def test_scheduler_run_route_flashes_ready_error_without_generic_boundary() -> N
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -839,7 +839,7 @@ def test_scheduler_run_route_flashes_missing_resource_user_message() -> None:
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -876,7 +876,7 @@ def test_scheduler_run_route_lets_unexpected_error_reach_error_boundary() -> Non
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):

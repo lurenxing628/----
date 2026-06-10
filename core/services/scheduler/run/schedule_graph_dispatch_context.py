@@ -458,23 +458,6 @@ def build_graph_ready_context(
     return context
 
 
-def build_first_wave_ready_nodes(
-    schedule_input: ScheduleRunInput,
-    *,
-    nodes: List[Any],
-    edges: List[Any],
-    graph_ready_context: Optional[Dict[str, Any]] = None,
-) -> List[Any]:
-    from .schedule_graph_resource_matching_context import build_first_wave_ready_nodes as _impl
-
-    return _impl(
-        schedule_input=schedule_input,
-        nodes=nodes,
-        edges=edges,
-        graph_ready_context=graph_ready_context,
-    )
-
-
 def build_graph_resource_matching_projection(
     *,
     mode: str,

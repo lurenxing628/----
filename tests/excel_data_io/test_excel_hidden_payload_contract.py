@@ -13,6 +13,7 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from html import unescape as html_unescape
 from pathlib import Path
 
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 
 
@@ -21,7 +22,7 @@ def _prepare_env(tmpdir: Path, monkeypatch) -> None:
     monkeypatch.setenv("APS_DB_PATH", str(tmpdir / "aps_test.db"))
     monkeypatch.setenv("APS_LOG_DIR", str(tmpdir / "logs"))
     monkeypatch.setenv("APS_BACKUP_DIR", str(tmpdir / "backups"))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(tmpdir / "templates_excel"))
+    point_env_at_shared(monkeypatch)
     monkeypatch.setenv("SECRET_KEY", "aps-excel-hidden-payload-contract")
 
 

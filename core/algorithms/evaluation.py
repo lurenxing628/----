@@ -37,10 +37,6 @@ def _parse_due_date_state(value: Any) -> Tuple[Optional[date], bool]:
     return parsed, parsed is None
 
 
-_parse_due_date = parse_date
-_due_exclusive = due_exclusive
-
-
 @dataclass
 class ScheduleMetrics:
     overdue_count: int

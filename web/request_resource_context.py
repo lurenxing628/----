@@ -4,7 +4,10 @@ from typing import Dict
 
 from flask import has_request_context, request
 
-from core.services.report.report_context_filters import normalize_report_resource_filter
+from core.services.report.report_context_filters import (
+    REPORT_RESOURCE_FILTER_ARG_KEYS,
+    normalize_report_resource_filter,
+)
 
 
 def _text(value) -> str:
@@ -18,14 +21,8 @@ def _request_arg(name: str) -> str:
 
 
 def _request_resource_values() -> Dict[str, str]:
-    return {
-        "resource_type": _request_arg("resource_type"),
-        "resource_id": _request_arg("resource_id"),
-        "scope_type": _request_arg("scope_type"),
-        "scope_id": _request_arg("scope_id"),
-        "machine_id": _request_arg("machine_id"),
-        "operator_id": _request_arg("operator_id"),
-    }
+    # R67 收编:6 键名单一来源 = 收口点常量,勿在此手维第二份键名列表。
+    return {key: _request_arg(key) for key in REPORT_RESOURCE_FILTER_ARG_KEYS}
 
 
 def _has_request_resource_filter(values: Dict[str, str]) -> bool:

@@ -29,7 +29,6 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/gate_meta/test_no_residual_main_style_regression.py",
     "tests/gate_meta/test_sp05_path_topology_contract.py",
     "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
-    "tests/excel_data_io/test_scheduler_wrapper_import_order_contract.py",
     "tests/schedule/route_view/test_scheduler_route_registration_contract.py",
     "tests/web_pages/test_history_summary_parser.py",
     "tests/algorithm/test_due_exclusive_consistency.py",
@@ -44,6 +43,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/config/test_config_service_active_preset_custom_sync.py",
     "tests/config/test_config_snapshot_strict_numeric.py",
     "tests/config/test_config_snapshot_projection_sync.py",
+    "tests/config/test_scheduler_config_spec_sync_contract.py",
     "tests/config/test_config_service_component_contract.py",
     "tests/config/test_config_service_relaxed_missing_visible.py",
     "tests/config/test_apply_preset_adjusted_marks_custom.py",
@@ -62,6 +62,10 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
     "tests/schedule/route_view/test_scheduler_missing_resource_message.py",
     "tests/schedule/route_view/test_route_version_normalizers_contract.py",
+    "tests/models_domain/test_strict_parse_blank_required.py",
+    "tests/models_domain/test_schedule_resource_filter.py",
+    "tests/models_domain/test_yesno_normalization_contract.py",
+    "tests/web_pages/test_scheduler_plan_role_arg_contract.py",
     "tests/gantt/test_gantt_page_version_default_latest.py",
     "tests/gantt/test_gantt_default_version_span.py",
     "tests/gantt/test_gantt_adapter_contract.py",
@@ -166,6 +170,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/schedule/service/test_schedule_template_lookup_contract.py",
     "tests/gate_meta/test_scheduler_data_route_error_contract.py",
     "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
+    "tests/resource_dispatch/test_scheduler_resource_dispatch_smoke.py",
     "tests/resource_dispatch/test_resource_dispatch_bad_time_rows_surface_degraded.py",
     "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
     "tests/resource_dispatch/test_resource_dispatch_public_output_contract.py",
@@ -228,6 +233,22 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/gate_meta/test_architecture_fitness.py",
     "tests/algorithm/test_skill_rank_mapping.py",
     "tests/schedule/service/test_schedule_service_input_merge_context_contract.py",
+    # F6（2026-06-10）：loud/契约旁证补登增量门禁——坏数据不静默是灵魂线，这些断言必须随相关源改动被强制选中。
+    # 备份/恢复/物料 4 个走 misc 组 request_services_runtime_error_boundary（scope 覆盖 core/infrastructure、web/routes/system_backup.py、data/**）。
+    "tests/migration_db/test_backup_integrity_check_contract.py",
+    "tests/migration_db/test_restore_pre_snapshot_failure_contract.py",
+    "tests/app_runtime/test_backup_create_integrity_error_message.py",
+    "tests/material/test_material_repo_stock_qty_loud_contract.py",
+    # 工序 seq / summary 元状态 / 候选基线四态 3 个走 scheduler 组（scope core/services/scheduler/**）。
+    "tests/schedule/service/test_op_seq_loud_contract.py",
+    "tests/schedule/summary/test_meta_bool_state_parity_contract.py",
+    "tests/candidate/test_baseline_missing_or_failed_four_state_parity.py",
+    # N4（2026-06-10）：R07 排程行缺失 NOT_FOUND 错误契约旁证（归 scheduler_run_core 组，
+    # scope core/services/scheduler/** 覆盖 resource_dispatch_execution_service.py）。
+    "tests/resource_dispatch/test_resource_dispatch_task_card_schedule_missing_contract.py",
+    # R55（2026-06-10）：关键链 scope 标记契约（归 scheduler_analysis_gantt_reports_week_plan 组，
+    # scope 覆盖 gantt_service_support.py / gantt_contract.py）。
+    "tests/gantt/test_gantt_critical_chain_scope_contract.py",
 )
 
 QUALITY_GATE_REQUIRED_TESTS = (QUALITY_GATE_SELFTEST_PATH, *QUALITY_GATE_GUARD_TESTS)

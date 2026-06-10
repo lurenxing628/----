@@ -43,7 +43,16 @@ def _parse_finite_float(value: Any, *, field: str) -> float:
     return float(parsed)
 
 
-def _parse_finite_int(value: Any, *, field: str) -> int:
+def _looks_like_integer_float(value: Any) -> bool:
+    if isinstance(value, float):
+        return True
+    if isinstance(value, str):
+        text = value.strip()
+        return "." in text or "e" in text.lower()
+    return False
+
+
+def _parse_finite_int(value: Any, *, field: str, reject_integer_float: bool = False) -> int:
     if isinstance(value, bool):
         raise ValidationError(f"“{field}”必须是整数", field=field)
     try:
@@ -54,6 +63,8 @@ def _parse_finite_int(value: Any, *, field: str) -> int:
         raise ValidationError(f"“{field}”必须是有限整数", field=field)
     integer_value = int(parsed)
     if abs(parsed - float(integer_value)) > 1e-9:
+        raise ValidationError(f"“{field}”必须是整数", field=field)
+    if reject_integer_float and _looks_like_integer_float(value):
         raise ValidationError(f"“{field}”必须是整数", field=field)
     return int(integer_value)
 
@@ -78,10 +89,20 @@ def parse_optional_float(value: Any, *, field: str, min_value: Optional[float] =
     return parse_required_float(value, field=field, min_value=min_value, min_inclusive=min_inclusive)
 
 
-def parse_required_int(value: Any, *, field: str, min_value: Optional[int] = None) -> int:
+def parse_required_int(
+    value: Any,
+    *,
+    field: str,
+    min_value: Optional[int] = None,
+    reject_integer_float: bool = False,
+) -> int:
     if is_blank_input(value):
         _raise_blank_required(field)
-    return _ensure_min_int(_parse_finite_int(value, field=field), field=field, min_value=min_value)
+    return _ensure_min_int(
+        _parse_finite_int(value, field=field, reject_integer_float=bool(reject_integer_float)),
+        field=field,
+        min_value=min_value,
+    )
 
 
 def parse_optional_int(value: Any, *, field: str, min_value: Optional[int] = None) -> Optional[int]:

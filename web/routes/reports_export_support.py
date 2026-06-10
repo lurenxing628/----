@@ -10,8 +10,10 @@ from core.services.report import ReportEngine
 from core.services.report.report_number_parsing import parse_report_nonnegative_int
 from web.routes.report_plan_preview import report_export_filters
 
+# O18(R67) 裁定保持现状:这是含资源 6 键的导出上下文 superset(14 键,不含 scenario_id,
+# 与 scheduler_navigation_links 的 15 键 superset 不同形,禁互抄;普查时 15/16 键,R42 已删 plan_id),不收编进
+# REPORT_RESOURCE_FILTER_ARG_KEYS——资源 6 键只是它的子集,整组键面语义不同。
 _EXPORT_CONTEXT_KEYS = (
-    "plan_id",
     "back_to",
     "date_from",
     "date_to",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from web.routes.scheduler_batch_detail import _build_view_ops
+from web.routes.domains.scheduler.scheduler_batch_detail import _build_view_ops
 
 
 class _Model(SimpleNamespace):

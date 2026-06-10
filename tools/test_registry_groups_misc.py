@@ -72,6 +72,13 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/app_runtime/test_safe_next_url_hardening.py",
             "tests/app_runtime/test_safe_next_url_observability.py",
             "tests/web_pages/test_error_boundary_contract.py",
+            # F6（2026-06-10）：备份/恢复/物料 loud 契约旁证——本组 scope 覆盖 core/infrastructure、
+            # web/routes/system_backup.py、data/**，故 backup() 完整性硬抛、restore 前快照失败区分、
+            # 备份 web 入口中文化、物料 stock 坏值裸抛改动都会强制选中这些断言。
+            "tests/migration_db/test_backup_integrity_check_contract.py",
+            "tests/migration_db/test_restore_pre_snapshot_failure_contract.py",
+            "tests/app_runtime/test_backup_create_integrity_error_message.py",
+            "tests/material/test_material_repo_stock_qty_loud_contract.py",
         ),
         "input_file_scopes": (
             "web/bootstrap/**/*.py",

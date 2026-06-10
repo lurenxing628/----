@@ -9,6 +9,7 @@ MISSING_POLICY_ERROR = "error"
 MISSING_POLICY_FALLBACK_WITH_DEGRADATION = "fallback_with_degradation"
 
 
+# 与 services.scheduler.config.config_field_spec.ConfigFieldSpec 双栈锁步；新增/改字段必须同步 spec_sync 契约。
 @dataclass(frozen=True)
 class RuntimeConfigFieldSpec:
     key: str

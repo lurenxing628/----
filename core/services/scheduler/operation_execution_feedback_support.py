@@ -8,7 +8,6 @@ from typing import Any, Dict, Optional, Tuple
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.models.operation_execution_event import (
     EXECUTION_ACTION_REPORT_EXCEPTION,
-    EXECUTION_EVENT_EXCEPTION,
     EXECUTION_EVENT_FINISH,
     EXECUTION_EVENT_PAUSE,
     EXECUTION_EVENT_RESUME,
@@ -17,11 +16,7 @@ from core.models.operation_execution_event import (
     OperationExecutionEvent,
     parse_operation_event_time,
 )
-from core.models.operation_execution_scope import OperationExecutionScope
-from core.models.operation_execution_state import OperationExecutionState
-from core.shared.field_labels import display_field_label
-
-from .operation_execution_labels import (
+from core.models.operation_execution_labels import (
     HANDLING_STATUS_LABELS,
     REASON_LABELS,
     SEVERITY_LABELS,
@@ -29,6 +24,9 @@ from .operation_execution_labels import (
     event_type_to_action,
     execution_action_label,
 )
+from core.models.operation_execution_scope import OperationExecutionScope
+from core.models.operation_execution_state import OperationExecutionState
+from core.shared.field_labels import display_field_label
 
 
 @dataclass(frozen=True)
@@ -78,7 +76,6 @@ _REPORTED_STATUS_BY_ACTION = {
         EXECUTION_EVENT_RESUME,
         EXECUTION_EVENT_PAUSE,
         EXECUTION_ACTION_REPORT_EXCEPTION,
-        EXECUTION_EVENT_EXCEPTION,
         EXECUTION_EVENT_FINISH,
     )
 }

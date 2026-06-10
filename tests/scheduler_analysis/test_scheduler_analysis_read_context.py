@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 from core.infrastructure.database import ensure_schema, get_connection
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -79,16 +80,14 @@ def _build_app(tmp_path, monkeypatch):
     db_path = tmp_path / "aps_analysis_read.db"
     log_dir = tmp_path / "logs"
     backup_dir = tmp_path / "backups"
-    template_dir = tmp_path / "templates_excel"
     log_dir.mkdir(parents=True, exist_ok=True)
     backup_dir.mkdir(parents=True, exist_ok=True)
-    template_dir.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setenv("APS_ENV", "development")
     monkeypatch.setenv("APS_DB_PATH", str(db_path))
     monkeypatch.setenv("APS_LOG_DIR", str(log_dir))
     monkeypatch.setenv("APS_BACKUP_DIR", str(backup_dir))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(template_dir))
+    point_env_at_shared(monkeypatch)
 
     ensure_schema(str(db_path), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
     _reset_modules()

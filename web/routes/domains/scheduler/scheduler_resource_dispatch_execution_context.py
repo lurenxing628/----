@@ -6,10 +6,10 @@ from typing import Any, Dict, Mapping, Optional, cast
 from flask import g, request
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError, app_error_http_status, error_response
+from core.models.operation_execution_labels import execution_action_label
 from core.models.operation_execution_scope import parse_positive_execution_int
 from core.models.resource_dispatch_execution_tokens import execution_state_key, execution_task_key
 from core.services.scheduler.operation_execution_feedback_service import ExecutionFeedbackContext
-from core.services.scheduler.operation_execution_labels import execution_action_label
 from core.services.scheduler.operation_execution_scope_read import scope_from_plan_row
 from core.shared.field_labels import display_field_label
 from web.viewmodels.scheduler_resource_dispatch_execution import (
@@ -127,6 +127,7 @@ def _ensure_feedback_target_in_query(context: Mapping[str, Any], op_id: int, pay
 
 
 def _identity_allows_query_membership_check(identity: Mapping[str, Any]) -> bool:
+    # 这里只是查询结果成员检查的短路；真正写闸在 OperationExecutionFeedbackService._load_current_official_schedule。
     return bool(identity.get("can_write_feedback"))
 
 

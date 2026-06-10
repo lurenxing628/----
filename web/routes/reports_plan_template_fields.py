@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from core.services.scheduler.schedule_plan_option_display import public_plan_role_options
-from web.viewmodels.scheduler_plan_guardrail_messages import result_status_label, summary_parse_failure_message
+from web.viewmodels.scheduler_plan_guardrail_messages import result_status_label, summary_unavailable_guardrail_text
 
 ROLE_ADOPTED = "adopted"
 DEFAULT_PLAN_LABEL = "正式采用方案"
@@ -59,8 +59,10 @@ def report_plan_status(plan_resolution: Dict[str, Any]) -> Dict[str, Any]:
     if not_executable_text:
         source_text = not_executable_text
     if data.get("result_summary_parse_failed"):
-        reason = summary_parse_failure_message(data.get("result_summary_parse_reason"))
-        source_text = f"当前排产摘要读取失败：{reason}。当前方案：{label}。页面仅展示基础历史信息，不能写现场事实。"
+        source_text = (
+            f"{summary_unavailable_guardrail_text(data.get('result_summary_parse_reason'), blocked_action='不能写现场事实')}"
+            f"当前方案：{label}。"
+        )
     if data.get("is_superseded_by_newer_version"):
         source_text = f"{source_text} 这个历史版本已被更新的正式排产替代，只能查看，不能写现场事实。"
     if fallback_message:

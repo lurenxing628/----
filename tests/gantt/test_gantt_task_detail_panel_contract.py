@@ -275,5 +275,6 @@ def test_gantt_task_detail_links_explain_summary_parse_failure() -> None:
     assert links["查看资源排班"]["disabled"] is False
     assert links["查看计划和现场实际"]["disabled"] is True
     assert links["查看计划和现场实际"]["url"] == ""
-    assert "当前排产摘要读取失败" in links["查看计划和现场实际"]["disabled_reason"]
-    assert "排产摘要缺失" in links["查看计划和现场实际"]["disabled_reason"]
+    assert "本方案暂无排产摘要" in links["查看计划和现场实际"]["disabled_reason"]
+    assert "当前排产摘要读取失败" not in links["查看计划和现场实际"]["disabled_reason"]
+    assert "排产摘要缺失" not in links["查看计划和现场实际"]["disabled_reason"]

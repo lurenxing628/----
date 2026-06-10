@@ -56,7 +56,7 @@ dossier 字段1只列了正确的 4 个删除点(model:159/:214 + service:158/:2
 ### 🟢 R45 ≡ R48 — config_adapter 整文件删(load_bearing=false, owner_pending=false)
 **判定: 🟢绿(安全，C01 簇内最早最低风险一刀)。**
 
-**证据**: 文件 27 行；`rg config_adapter|read_critical_schedule_config|read_schedule_config_value|CriticalConfigReadResult core web data`(排除自身)→**生产零引用**；唯一外部引用 sp06:15 路径成员。R45/R48 = 同物理文件两叙述，**合并单提交整删**。唯一约束链: 同提交退 sp06:15(漏退→`path.read_text` FileNotFoundError→sp06 红，**响亮非静默**)。与双栈收敛正交(adapter 只 import FROM model，删它不动双栈本体)。删 algorithms→models 叶子边只减边，0 越层 0 环。
+**证据**: 历史文件 27 行；`rg config_adapter|read_critical_schedule_config|read_schedule_config_value|CriticalConfigReadResult core web data`(排除自身)→**生产零引用**；唯一外部引用曾是旧 sp06 路径成员。R45/R48 = 同物理文件两叙述，2026-06-08 已 fixed。历史唯一约束链: 旧 sp06 清单若仍指向已删文件 → `path.read_text` FileNotFoundError → sp06 红（**响亮非静默**）；当前旧 sp06 文件已由 A P1.1 删除，清单同步 no-op。与双栈收敛正交(adapter 只 import FROM model，删它不动双栈本体)。删 algorithms→models 叶子边只减边，0 越层 0 环。
 
 ### 🟢 R31 — WRITE_INTERNAL_ONLY 死常量源定义删(load_bearing=false)
 **判定: 🟢绿(安全)。约束: R33 删 facade 须不晚于 R31 删 shared 源。**

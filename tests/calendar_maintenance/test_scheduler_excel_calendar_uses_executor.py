@@ -53,7 +53,7 @@ def _assert_status(name: str, resp, expect_code: int = 200) -> None:
 
 def test_scheduler_excel_calendar_uses_executor(app_client, db_path) -> None:
     from core.infrastructure.database import get_connection
-    from core.services.scheduler.config_service import ConfigService
+    from core.services.scheduler.config.config_service import ConfigService
 
     client = app_client
 
@@ -94,7 +94,7 @@ def test_scheduler_excel_calendar_uses_executor(app_client, db_path) -> None:
     if not preview_baseline:
         raise RuntimeError("工作日历预览页缺少 preview_baseline")
 
-    route_mod = importlib.import_module("web.routes.scheduler_excel_calendar")
+    route_mod = importlib.import_module("web.routes.domains.scheduler.scheduler_excel_calendar")
     from core.services.common.excel_import_executor import ImportExecutionStats
 
     captured = {}

@@ -15,7 +15,8 @@ from werkzeug.datastructures import MultiDict
 
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler.config.config_field_spec import field_label_for
-from core.services.scheduler.config_service import ConfigService
+from core.services.scheduler.config.config_service import ConfigService
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 from web.routes.domains.scheduler.scheduler_config_display_state import build_auto_assign_persist_display_state
 
@@ -33,16 +34,14 @@ def _build_real_app(tmp_path, monkeypatch):
     test_db = tmp_path / "aps_test.db"
     test_logs = tmp_path / "logs"
     test_backups = tmp_path / "backups"
-    test_templates = tmp_path / "templates_excel"
     test_logs.mkdir(parents=True, exist_ok=True)
     test_backups.mkdir(parents=True, exist_ok=True)
-    test_templates.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setenv("APS_ENV", "development")
     monkeypatch.setenv("APS_DB_PATH", str(test_db))
     monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+    point_env_at_shared(monkeypatch)
 
     from core.infrastructure.database import ensure_schema
 
@@ -221,7 +220,7 @@ class _ConfigServiceStub:
 
 
 def _build_app(monkeypatch, config_service: _ConfigServiceStub) -> Flask:
-    import web.routes.scheduler_config as route_mod
+    import web.routes.domains.scheduler.scheduler_config as route_mod
 
     def _public_value(value):
         if isinstance(value, (str, int, float, bool)) or value is None:
@@ -743,7 +742,7 @@ import importlib
 import json
 import sys
 
-route_mod = importlib.import_module("web.routes.scheduler_config")
+route_mod = importlib.import_module("web.routes.domains.scheduler.scheduler_config")
 print(json.dumps({
     "module": route_mod.__name__,
     "loaded_pages": "web.routes.domains.scheduler.scheduler_pages" in sys.modules,
@@ -855,7 +854,7 @@ def test_scheduler_config_preset_apply_surfaces_rejected_validation_failure(monk
 
 
 def test_scheduler_config_multi_field_error_flash_keeps_full_message() -> None:
-    import web.routes.scheduler_config as route_mod
+    import web.routes.domains.scheduler.scheduler_config as route_mod
 
     text = route_mod._format_preset_error_flash(
         error_field="priority_weight",
@@ -1107,10 +1106,3 @@ def test_scheduler_config_page_renders_provenance_and_hidden_degraded_html(tmp_p
     assert "保存系统补齐的设备和人员" in body
     assert "auto_assign_persist" not in body
 
-
-def test_scheduler_config_legacy_wrapper_uses_domain_registrar_source_of_truth() -> None:
-    source = (REPO_ROOT / "web/routes/scheduler_config.py").read_text(encoding="utf-8")
-
-    assert "load_scheduler_route_module" in source
-    assert "scheduler" in source
-    assert ".domains.scheduler.scheduler_analysis" not in source

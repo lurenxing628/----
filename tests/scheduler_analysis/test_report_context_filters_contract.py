@@ -1,4 +1,4 @@
-"""回归测试：报表上下文资源筛选契约——filter_downtime/plan_rows_for_report_context 与 normalize_report_resource_filter 对设备/人员/班组维度的筛选、缺编号、别名冲突的接受与拒绝规则，并经 /reports/utilization(/export) 路由、SchedulePlanQueryService/Repository 三层一致校验（不支持的维度不下探到 repo，明细 SQL 把 batch_id 与资源筛选下推到底层并参数化）。"""
+"""回归测试：报表上下文资源筛选契约——filter_downtime_rows_for_report_context 与 normalize_report_resource_filter 对设备/人员/班组维度的筛选、缺编号、别名冲突的接受与拒绝规则，并经 /reports/utilization(/export) 路由、SchedulePlanQueryService/Repository 三层一致校验（不支持的维度不下探到 repo，明细 SQL 把 batch_id 与资源筛选下推到底层并参数化）。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import pytest
 from core.infrastructure.errors import ValidationError
 from core.services.report.report_context_filters import (
     filter_downtime_rows_for_report_context,
-    filter_plan_rows_for_report_context,
     normalize_report_resource_filter,
 )
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
@@ -65,25 +64,15 @@ def test_downtime_operator_filter_empty_schedule_scope_returns_empty_rows() -> N
 
 def test_report_core_filter_rejects_unsupported_resource_type() -> None:
     with pytest.raises(ValidationError, match="当前报表暂不支持班组维度筛选"):
-        filter_plan_rows_for_report_context(
-            [{"batch_id": "B-RPT", "machine_id": "M-RPT", "operator_id": "O-RPT"}],
-            resource_type="team",
-            resource_id="T-RPT",
-        )
+        normalize_report_resource_filter(resource_type="team", resource_id="T-RPT")
 
 
 def test_report_core_filter_rejects_resource_type_without_resource_id() -> None:
     with pytest.raises(ValidationError, match="缺少设备编号"):
-        filter_plan_rows_for_report_context(
-            [{"batch_id": "B-RPT", "machine_id": "M-RPT", "operator_id": "O-RPT"}],
-            resource_type="machine",
-        )
+        normalize_report_resource_filter(resource_type="machine")
 
     with pytest.raises(ValidationError, match="缺少人员编号"):
-        filter_plan_rows_for_report_context(
-            [{"batch_id": "B-RPT", "machine_id": "M-RPT", "operator_id": "O-RPT"}],
-            resource_type="operator",
-        )
+        normalize_report_resource_filter(resource_type="operator")
 
 
 def test_report_core_filter_rejects_conflicting_resource_aliases() -> None:
@@ -254,3 +243,25 @@ def test_plan_detail_repository_pushes_batch_and_resource_filters_to_bottom_sql(
     )
     assert "TRIM(COALESCE(s.operator_id, '')) = ?" in captured["sql"]
     assert captured["params"][-2:] == ("B-RPT", "O-RPT")
+
+
+def test_report_resource_filter_arg_keys_match_normalizer_signature() -> None:
+    # R67 收口契约:常量是 web 侧抄键的单一来源,必须与 normalize_report_resource_filter
+    # 的 6 个参数名按签名序逐一对应——签名加参/改名而忘改常量(或反之)在此红灯。
+    import inspect
+
+    from core.services.report.report_context_filters import (
+        REPORT_RESOURCE_FILTER_ARG_KEYS,
+        normalize_report_resource_filter,
+    )
+
+    assert REPORT_RESOURCE_FILTER_ARG_KEYS == (
+        "resource_type",
+        "resource_id",
+        "scope_type",
+        "scope_id",
+        "machine_id",
+        "operator_id",
+    )
+    signature_params = tuple(inspect.signature(normalize_report_resource_filter).parameters)
+    assert signature_params == REPORT_RESOURCE_FILTER_ARG_KEYS

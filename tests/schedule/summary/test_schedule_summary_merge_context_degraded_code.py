@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationEvent
-from core.services.scheduler.schedule_summary import build_result_summary
+from core.services.scheduler.summary.schedule_summary import build_result_summary
 
 
 class _SummaryStubSvc:

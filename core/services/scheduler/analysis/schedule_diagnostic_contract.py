@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
+# O23 KEEP: 本模块刻意保留为诊断合同事实记录/兼容面。
+# 活页面的非有限数字 loud-raise 护栏在 web.viewmodels.scheduler_analysis_diagnostic_helpers,
+# 不要反向删除 web 孪生，也不要把活路径裸改指这里。
+
 
 def _list_or_empty(value: Optional[Iterable[Any]]) -> List[Any]:
     if value is None:

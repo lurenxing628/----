@@ -25,7 +25,7 @@ def test_scheduler_run_surfaces_resource_pool_warning() -> None:
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -81,7 +81,7 @@ def test_scheduler_simulate_surfaces_schedule_warnings() -> None:
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_week_plan as route_mod
+    import web.routes.domains.scheduler.scheduler_week_plan as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -132,7 +132,7 @@ def test_scheduler_simulate_redirects_to_generated_schedule_start_range() -> Non
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_week_plan as route_mod
+    import web.routes.domains.scheduler.scheduler_week_plan as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -189,7 +189,7 @@ def test_scheduler_simulate_with_execution_facts_does_not_redirect_to_missing_ve
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_week_plan as route_mod
+    import web.routes.domains.scheduler.scheduler_week_plan as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -243,7 +243,7 @@ def test_scheduler_simulate_failed_result_stays_on_batches_page() -> None:
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_week_plan as route_mod
+    import web.routes.domains.scheduler.scheduler_week_plan as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -301,7 +301,7 @@ def test_scheduler_simulate_unknown_result_stays_on_batches_page() -> None:
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_week_plan as route_mod
+    import web.routes.domains.scheduler.scheduler_week_plan as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -356,7 +356,7 @@ def test_scheduler_simulate_non_dict_summary_does_not_crash_or_leak(raw_summary)
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_week_plan as route_mod
+    import web.routes.domains.scheduler.scheduler_week_plan as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -405,7 +405,7 @@ def test_scheduler_simulate_missing_completion_status_with_errors_stays_on_batch
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_week_plan as route_mod
+    import web.routes.domains.scheduler.scheduler_week_plan as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -461,7 +461,7 @@ def test_scheduler_simulate_explicit_unknown_with_success_counts_stays_on_batche
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_week_plan as route_mod
+    import web.routes.domains.scheduler.scheduler_week_plan as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -522,7 +522,7 @@ def test_scheduler_simulate_requires_valid_version_before_completion_flash(resul
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_week_plan as route_mod
+    import web.routes.domains.scheduler.scheduler_week_plan as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -563,7 +563,7 @@ def test_scheduler_run_partial_result_is_not_flashed_as_success() -> None:
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -608,7 +608,7 @@ def test_scheduler_run_partial_result_still_surfaces_primary_degradation() -> No
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -663,7 +663,7 @@ def test_scheduler_run_flashes_secondary_degradation_messages_without_warning_du
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     duplicate_message = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员（请查看日志）。"
     public_duplicate_message = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
@@ -718,7 +718,7 @@ def test_scheduler_run_dedupes_secondary_messages_already_summarized_by_primary(
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -766,7 +766,7 @@ def test_scheduler_simulate_surfaces_canonical_summary_errors() -> None:
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_week_plan as route_mod
+    import web.routes.domains.scheduler.scheduler_week_plan as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -826,7 +826,7 @@ def test_scheduler_run_surfaces_summary_display_errors_preview() -> None:
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):
@@ -887,7 +887,7 @@ def test_scheduler_simulate_uses_simulated_degradation_message_without_duplicate
         sys.path.insert(0, repo_root)
     _reset_scheduler_route_modules()
 
-    import web.routes.scheduler_week_plan as route_mod
+    import web.routes.domains.scheduler.scheduler_week_plan as route_mod
 
     class _StubScheduleService:
         def run_schedule(self, **_kwargs):

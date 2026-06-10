@@ -34,10 +34,10 @@
 → F1 前裸收口 = `'1.0'`/`1.0` 由 raise 变 1，直撞 :247/:250 = **CI 显性红（良性，会被拦）**。更危险：误删续命测试或漏传 reject_integer_float=True → 导出阈值静默接受 float 污染。
 **条件放行**：F1 落地+默认 False 后，收口委托 `reject_integer_float=True`；删 `_parse_plain_report_int`(:54-70)/`_INT_TEXT_PATTERN`(:9) 时**必保留 blank 短路**（现 :62-63 blank→blank_default(0)，strict_parse 对 blank raise，漏迁=空值导出由降级0变报错中断）。F1 前只能停「注释+parity」临时态。owner_pending=false 可给终态但执行须等 F1。
 
-### 🟡 R28（B05/P4）— fitness 白名单按「名」命中，方案 b 留名则白名单不能退（退=CI 红）
-**条件**：实证 `LOCAL_PARSE_HELPER_NAMES` 含字符串 `"_safe_float"`(:64)，白名单 `:77`=`batch_service.py:_safe_float`。若走推荐方案 b（保 `_safe_float` 名、体改 `return parse_finite_float(...)`），探测器按**名**命中则白名单条目须**保留**而非退；走方案 a（删函数）才退。盲目退条目 → `:254 stale_entries` 红。
-→ 其余安全：收口点 `parse_finite_float`(number_utils:14/23)已存在、scheduler 本地:6 已 re-export，**不改 number_utils 一行**；services→shared 下行合法 0 越层；上游 ext_days 已 `parse_optional_float` 严格校验（batch_operation:92/part_operation:75）故 except 分支近不可达、爆炸半径极小。
-**条件放行**：动手第一步先跑 `pytest -k allowlist` 定退/留；必 `allow_none=True`（否则空 ext_days 正常批次炸）；禁越界动消费点 `setup/unit_hours=float(...or 0.0)` 工时兜底。
+### 🟢 R28（B05/P4）— 2026-06-08 已 fixed；方案 b 保名所以 fitness 白名单保留
+**终态**：已走推荐方案 b（保 `_safe_float` 名，体改 `return parse_finite_float(value, field="ext_days", allow_none=True)`）。实证 `LOCAL_PARSE_HELPER_NAMES` 含字符串 `"_safe_float"`(:64)，白名单 `:77`=`batch_service.py:_safe_float`；探测器按**名**命中，所以白名单条目须**保留**而非退。`pytest -k test_no_new_local_parse_helpers` 已通过。
+→ 其余安全：收口点 `parse_finite_float`(number_utils:14/23)已存在、scheduler 本地:6 已 re-export，**未改 number_utils 一行**；services→shared 下行合法 0 越层；上游 ext_days 已 `parse_optional_float` 严格校验（batch_operation:92/part_operation:75）故爆炸半径极小。
+**执行结果**：已使用 `allow_none=True`，未越界动消费点 `setup/unit_hours=float(...or 0.0)` 工时兜底。
 
 ### 🟡 R08（B01/P6/owner_pending=true）— 删死分支须保 feedback_write_enabled 参数，误删参=填写按钮门禁塌缩静默放开误填
 **条件**：实证死分支①`:227-228`、死分支②`:367-368`、死常量`:25` 活体在；(T,F) 不可达依赖 service `:127≡:130`（同 key `can_write_feedback` 同 bool()，实证）。但参数被活路径 `:234 fill_enabled=bool(can_write and feedback_write_enabled and ...)` 真消费。

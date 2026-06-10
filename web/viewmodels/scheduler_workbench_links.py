@@ -3,51 +3,25 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlencode
 
+from core.models.schedule_plan_role import ROLE_ADOPTED
 from core.models.schedule_plan_role import plan_role_label as _core_plan_role_label
 from core.models.schedule_resource_filter import SUPPORTED_SCHEDULE_RESOURCE_TYPES
 
-from .scheduler_plan_guardrail_messages import summary_parse_failure_message
+from .scheduler_plan_guardrail_messages import summary_unavailable_guardrail_text
 from .scheduler_workbench_link_query import (
+    DATE_RANGE_REQUIRED_TARGETS,
+    FULL_PLAN_GUARD_FIELDS,
+    REPORT_PLAN_GUARD_FIELDS,
+    RESOURCE_PLAN_GUARD_FIELDS,
+    TARGET_DEFAULT_LABELS,
+    TARGET_PAGE_PATHS,
+    VERSION_REQUIRED_TARGETS,
+    WORKBENCH_CONTINUATION_TARGETS,
     ordered_required_params,
+    plan_guard_fields_for_resolution,
     query_for_target,
     target_uses_primary_resource_filter,
 )
-
-ROLE_ADOPTED = "adopted"
-
-TARGET_PAGE_PATHS = {
-    "dashboard": "/",
-    "analysis": "/scheduler/analysis",
-    "gantt": "/scheduler/gantt",
-    "week_plan": "/scheduler/week-plan",
-    "resource_dispatch": "/scheduler/resource-dispatch",
-    "overdue_report": "/reports/overdue",
-    "delay_diagnosis": "/reports/overdue",
-    "utilization_report": "/reports/utilization",
-    "execution_review": "/reports/execution-review",
-    "downtime_report": "/reports/downtime",
-    "reports_index": "/reports/",
-}
-
-_TARGET_DEFAULT_LABELS = {
-    "dashboard": "回到计划工作台",
-    "analysis": "查看排产分析",
-    "gantt": "查看甘特图",
-    "week_plan": "查看周计划",
-    "resource_dispatch": "查看资源排班",
-    "overdue_report": "查看超期清单",
-    "delay_diagnosis": "查看延期说明",
-    "utilization_report": "查看资源负荷",
-    "execution_review": "查看计划和现场实际",
-    "downtime_report": "查看停机影响",
-    "reports_index": "查看报表中心",
-}
-
-_PLAN_ROLE_LABELS = {
-    "adopted": "正式采用方案",
-    "baseline_best": "原算法代表方案",
-    "critical_best": "重点工序优先代表方案",
-}
 
 _GUARDRAIL_REASON_LABELS = {
     "plan_not_writable": "当前方案不可写",
@@ -73,33 +47,6 @@ _VIEW_LABELS = {
     "operator": "人员甘特",
 }
 
-_VERSION_REQUIRED_TARGETS = {
-    "analysis",
-    "gantt",
-    "week_plan",
-    "resource_dispatch",
-    "overdue_report",
-    "delay_diagnosis",
-    "utilization_report",
-    "execution_review",
-    "downtime_report",
-    "reports_index",
-}
-
-_WORKBENCH_CONTINUATION_TARGETS = _VERSION_REQUIRED_TARGETS - {"analysis"}
-
-_DATE_RANGE_REQUIRED_TARGETS = {
-    "gantt",
-    "week_plan",
-    "resource_dispatch",
-    "overdue_report",
-    "delay_diagnosis",
-    "utilization_report",
-    "execution_review",
-    "downtime_report",
-    "reports_index",
-}
-
 def _text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -108,11 +55,15 @@ def _has_value(value: Any) -> bool:
     return value is not None and _text(value) != ""
 
 
+def plan_guard_fields_for_context(plan_resolution: Any, field_names: Iterable[str]) -> Dict[str, Any]:
+    return plan_guard_fields_for_resolution(plan_resolution, field_names)
+
+
 def plan_role_label(value: Any, *, is_preview: bool = False, scenario_display_label: str = "") -> str:
     if is_preview:
         return _text(scenario_display_label) or "模拟预览（未命名）"
     text = _text(value) or ROLE_ADOPTED
-    return _PLAN_ROLE_LABELS.get(text) or _core_plan_role_label(text)
+    return _core_plan_role_label(text)
 
 
 def guardrail_reason_label(value: Any) -> str:
@@ -188,8 +139,9 @@ def build_workbench_plan_context(
     *,
     version: Any = None,
     version_label: str = "",
-    plan_id: Any = None,
     plan_role: Any = ROLE_ADOPTED,
+    plan_resolution: Optional[Dict[str, Any]] = None,
+    plan_guard_fields: Iterable[str] = (),
     plan_role_label_value: str = "",
     scenario_id: Any = None,
     scenario_display_label: str = "",
@@ -230,7 +182,6 @@ def build_workbench_plan_context(
     return {
         "version": version,
         "version_label": public_version_label,
-        "plan_id": _text(plan_id) or None,
         "plan_role": plan_role_text,
         "plan_role_label": public_plan_role_label,
         "scenario_id": scenario_text,
@@ -252,6 +203,7 @@ def build_workbench_plan_context(
         "capacity_source_label": _text(capacity_source_label),
         "capacity_gap_text": _text(capacity_gap_text),
         "back_to": _text(back_to) or None,
+        **plan_guard_fields_for_context(plan_resolution, plan_guard_fields),
     }
 
 
@@ -319,13 +271,13 @@ def _unsupported_primary_resource_reason(context: Dict[str, Any], target_page: s
 
 
 def _missing_version_reason(target_page: str, context: Dict[str, Any], *, allow_empty_plan_context: bool) -> str:
-    if target_page in _VERSION_REQUIRED_TARGETS and not _has_value(context.get("version")) and not allow_empty_plan_context:
+    if target_page in VERSION_REQUIRED_TARGETS and not _has_value(context.get("version")) and not allow_empty_plan_context:
         return "还没有排产版本，先执行一次排产后再查看。"
     return ""
 
 
 def _date_range_reason(context: Dict[str, Any], target_page: str, *, missing_version: bool) -> str:
-    if missing_version or target_page not in _DATE_RANGE_REQUIRED_TARGETS:
+    if missing_version or target_page not in DATE_RANGE_REQUIRED_TARGETS:
         return ""
     if _text(context.get("plan_time_span_load_error")):
         return _text(context.get("plan_time_span_load_error"))
@@ -335,7 +287,7 @@ def _date_range_reason(context: Dict[str, Any], target_page: str, *, missing_ver
 
 
 def _preview_without_public_identity_reason(context: Dict[str, Any], target_page: str) -> str:
-    if target_page not in _VERSION_REQUIRED_TARGETS:
+    if target_page not in VERSION_REQUIRED_TARGETS:
         return ""
     if not (context.get("is_preview") or context.get("is_scenario_preview")):
         return ""
@@ -345,11 +297,11 @@ def _preview_without_public_identity_reason(context: Dict[str, Any], target_page
 
 
 def _plan_identity_blocking_reason(context: Dict[str, Any], target_page: str) -> str:
-    if target_page not in _VERSION_REQUIRED_TARGETS or not context.get("plan_identity_blocking_error"):
+    if target_page not in VERSION_REQUIRED_TARGETS or not context.get("plan_identity_blocking_error"):
         return ""
     if (
         _text(context.get("plan_identity_blocking_scope")) == "workbench_continuation"
-        and target_page not in _WORKBENCH_CONTINUATION_TARGETS
+        and target_page not in WORKBENCH_CONTINUATION_TARGETS
     ):
         return ""
     return _text(context.get("plan_identity_error")) or "请求里的方案身份不可用，请回到排产分析重新选择方案。"
@@ -358,8 +310,7 @@ def _plan_identity_blocking_reason(context: Dict[str, Any], target_page: str) ->
 def _summary_parse_blocking_reason(context: Dict[str, Any]) -> str:
     if not context.get("result_summary_parse_failed"):
         return ""
-    reason = summary_parse_failure_message(context.get("result_summary_parse_reason"))
-    return f"当前排产摘要读取失败：{reason}。页面仅展示基础历史信息，不能写现场记录。"
+    return summary_unavailable_guardrail_text(context.get("result_summary_parse_reason"), blocked_action="不能写现场记录")
 
 
 def _execution_review_identity_reason(context: Dict[str, Any]) -> str:
@@ -378,7 +329,7 @@ def _disabled_reason_for_target(
     resource_type: Optional[str] = None,
     allow_empty_plan_context: bool = False,
 ) -> str:
-    missing_version = target_page in _VERSION_REQUIRED_TARGETS and not _has_value(context.get("version"))
+    missing_version = target_page in VERSION_REQUIRED_TARGETS and not _has_value(context.get("version"))
     version_reason = _missing_version_reason(target_page, context, allow_empty_plan_context=allow_empty_plan_context)
     if version_reason:
         return version_reason
@@ -397,7 +348,7 @@ def _disabled_reason_for_target(
 
 
 def _default_manual_disabled_reason(target_page: str) -> str:
-    label = _TARGET_DEFAULT_LABELS.get(target_page, "这个入口")
+    label = TARGET_DEFAULT_LABELS.get(target_page, "这个入口")
     return f"{label}暂时不可用，请先确认当前页面的版本、日期范围和业务对象。"
 
 
@@ -442,7 +393,7 @@ def build_workbench_link(
         path = TARGET_PAGE_PATHS[target_page]
         url = f"{path}?{encoded}" if encoded else path
     return {
-        "label": _text(label) or _TARGET_DEFAULT_LABELS[target_page],
+        "label": _text(label) or TARGET_DEFAULT_LABELS[target_page],
         "url": url,
         "target_page": target_page,
         "context_summary": _context_summary(context, target_page, view=view),
@@ -475,6 +426,9 @@ def can_emit_feedback_write_urls(plan_identity_or_context: Any) -> bool:
 
 __all__ = [
     "TARGET_PAGE_PATHS",
+    "FULL_PLAN_GUARD_FIELDS",
+    "REPORT_PLAN_GUARD_FIELDS",
+    "RESOURCE_PLAN_GUARD_FIELDS",
     "build_workbench_plan_context",
     "build_workbench_link",
     "build_workbench_links",
@@ -482,6 +436,7 @@ __all__ = [
     "gantt_view_label",
     "guardrail_reason_label",
     "period_preset_label",
+    "plan_guard_fields_for_context",
     "plan_role_label",
     "resource_type_label",
 ]

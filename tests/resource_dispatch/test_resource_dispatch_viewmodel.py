@@ -75,6 +75,27 @@ def test_resource_dispatch_context_decorates_filters_and_options_without_mutatio
     assert "label" not in context["operator_options"][0]
 
 
+def test_resource_dispatch_missing_summary_uses_neutral_guardrail_text() -> None:
+    context = decorate_resource_dispatch_context(
+        {
+            "filters": {
+                "plan_role": "adopted",
+                "is_official_plan": True,
+                "is_current_executable_official_version": True,
+                "can_dispatch": True,
+                "can_write_feedback": True,
+                "result_summary_parse_failed": True,
+                "result_summary_parse_reason": "排产摘要缺失",
+            }
+        }
+    )
+
+    guardrail_text = context["plan_identity"]["guardrail_text"]
+    assert "本方案暂无排产摘要" in guardrail_text
+    assert "当前排产摘要读取失败" not in guardrail_text
+    assert "排产摘要缺失" not in guardrail_text
+
+
 def test_resource_dispatch_plan_role_options_hide_internal_fields_from_public_json() -> None:
     payload = {
         "filters": {

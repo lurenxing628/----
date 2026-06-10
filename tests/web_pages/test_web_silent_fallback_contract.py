@@ -226,11 +226,34 @@ def test_report_numeric_helpers_keep_empty_values_but_reject_bad_service_numbers
     from core.services.report.execution_review import ExecutionReviewMixin
     from core.services.report.exporters import export_utilization_xlsx
     from core.services.report.report_engine import ReportEngine
+    from core.services.report.report_number_parsing import parse_report_int, parse_report_nonnegative_int
     from web.routes import reports_export_support
     from web.viewmodels import scheduler_reports_workbench as reports_vm
 
     assert reports_vm.decorate_utilization_rows([{"machine_id": "M1", "utilization": ""}], {}, resource_type="machine")[0]["utilization_percent"] is None
     assert reports_vm.decorate_utilization_rows([{"machine_id": "M1", "utilization": 0.125}], {}, resource_type="machine")[0]["utilization_percent"] == 12.5
+    assert reports_export_support.report_nonnegative_int("", field="导出行数") == 0
+    assert (
+        parse_report_nonnegative_int(
+            None,
+            field="导出行数",
+            label="导出行数",
+            source_label="报表导出数据",
+            blank_default=5,
+        )
+        == 5
+    )
+    assert (
+        parse_report_nonnegative_int(
+            "   ",
+            field="导出行数",
+            label="导出行数",
+            source_label="报表导出数据",
+            blank_default=5,
+        )
+        == 5
+    )
+    assert parse_report_int("2000.0", field="版本号", label="版本号", source_label="报表导出数据") == 2000
 
     with pytest.raises(reports_vm.ReportPresentationValueError, match="利用率"):
         reports_vm.decorate_utilization_rows([{"machine_id": "M1", "utilization": "坏数据"}], {}, resource_type="machine")
@@ -349,6 +372,41 @@ def test_report_context_parse_failure_blocks_row_feedback_links() -> None:
     assert "当前排产摘要读取失败" in link["disabled_reason"]
 
 
+def test_report_context_missing_summary_uses_neutral_guardrail_text() -> None:
+    from web.viewmodels.scheduler_reports_workbench import build_report_context, decorate_execution_review_rows
+
+    context = build_report_context(
+        version=12,
+        plan_resolution={
+            "requested_role": "adopted",
+            "selected_role": "adopted",
+            "selected_label": "正式采用方案",
+            "is_current_executable_official_version": True,
+            "can_dispatch": True,
+            "can_write_feedback": True,
+            "result_summary_parse_failed": True,
+            "result_summary_parse_reason": "排产摘要缺失",
+        },
+        date_from="2026-05-06",
+        date_to="2026-05-06",
+    )
+    rows = decorate_execution_review_rows(
+        [
+            {
+                "batch_id_label": "B-RPT",
+                "planned_machine_id": "M-RPT",
+                "planned_machine_name": "测试设备",
+            }
+        ],
+        context,
+    )
+
+    assert "本方案暂无排产摘要" in context["guardrail_text"]
+    assert "当前排产摘要读取失败" not in context["guardrail_text"]
+    assert "排产摘要缺失" not in context["guardrail_text"]
+    assert "本方案暂无排产摘要" in rows[0]["workbench_links"][2]["disabled_reason"]
+
+
 def test_report_plan_status_keeps_parse_failure_and_historical_reasons() -> None:
     from web.routes.reports_plan_template_fields import report_plan_status
 
@@ -375,6 +433,22 @@ def test_report_plan_status_keeps_parse_failure_and_historical_reasons() -> None
     )
     assert "当前排产摘要结构无法安全解析" in unknown["source_text"]
     assert "debug_stack_code" not in unknown["source_text"]
+
+
+def test_report_plan_status_uses_neutral_missing_summary_text() -> None:
+    from web.routes.reports_plan_template_fields import report_plan_status
+
+    status = report_plan_status(
+        {
+            "user_label": "正式采用方案",
+            "result_summary_parse_failed": True,
+            "result_summary_parse_reason": "排产摘要缺失",
+        }
+    )
+
+    assert "本方案暂无排产摘要" in status["source_text"]
+    assert "当前排产摘要读取失败" not in status["source_text"]
+    assert "排产摘要缺失" not in status["source_text"]
 
 
 def test_report_plan_status_exposes_non_executable_official_result() -> None:

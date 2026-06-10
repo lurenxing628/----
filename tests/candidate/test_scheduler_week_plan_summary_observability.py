@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 from flask import Flask, g
 
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -59,9 +60,6 @@ class _GanttServiceStub:
     def __init__(self, rows=None):
         self.rows = list(rows or [])
 
-    def get_latest_version_or_1(self):
-        return 3
-
     def resolve_week_range(self, **_kwargs):
         return _WeekRange()
 
@@ -103,7 +101,7 @@ def _build_app(monkeypatch, history_service: _HistoryServiceStub, *, gantt_servi
     for name in list(sys.modules):
         if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
             sys.modules.pop(name, None)
-    import web.routes.scheduler_week_plan as route_mod
+    import web.routes.domains.scheduler.scheduler_week_plan as route_mod
 
     monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
 
@@ -156,16 +154,14 @@ def _build_real_app(tmp_path, monkeypatch, *, summary_obj, result_status: str = 
     test_db = tmp_path / "aps_test.db"
     test_logs = tmp_path / "logs"
     test_backups = tmp_path / "backups"
-    test_templates = tmp_path / "templates_excel"
     test_logs.mkdir(parents=True, exist_ok=True)
     test_backups.mkdir(parents=True, exist_ok=True)
-    test_templates.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setenv("APS_ENV", "development")
     monkeypatch.setenv("APS_DB_PATH", str(test_db))
     monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+    point_env_at_shared(monkeypatch)
 
     from core.infrastructure.database import ensure_schema, get_connection
 

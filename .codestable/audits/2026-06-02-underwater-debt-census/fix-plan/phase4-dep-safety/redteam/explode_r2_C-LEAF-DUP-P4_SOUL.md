@@ -16,7 +16,7 @@
 | R43 | 🟡 | 删 wrapper 须同清 scheduler_config.py:95 软 fallback;roadmap 延期行 :522(非 521,dossier 4 处污染);迁 22 文件 |
 | R70 | 🟢 | 纯删 schedule_service.py:46-50 死副本,live 在 run/input_collector.py:79,保 :7 import |
 | R53 | 🟢 | 纯删 batch_order.py:74 `_ = scheduled_count`,:58 仍真用 |
-| R61 | 🟢 | 直删死簇:160/164/172-187 + 重定向负向测试,禁删 _row_text:156/normalize_report_resource_filter:119/filter_downtime_*:274 |
+| R61 | 🟢 | 2026-06-08 已 fixed；旧死簇:160/164/172-187 已删 + 负向测试已重定向,后续仍禁删 _row_text:156/normalize_report_resource_filter:119/filter_downtime_*:244 |
 | LB04 | 🟢 | 纯增量注释+parity;boolean_normalize.py 仅 import __future__+typing=真叶子,algorithms 零消费(rg ZERO);禁删 shared 改指 services |
 
 ---
@@ -64,7 +64,7 @@
 
 - **R70**:纯删 schedule_service.py:46-50 死副本,live 唯一 run/schedule_input_collector.py:79(顶层壳无此符号),保 `:7 ValidationError` import(`:217` 仍用)。零承重零收口。
 - **R53**:纯删 batch_order.py:74,`:58` 仍真用 scheduled_count 无 unused-arg 复发;禁区 :39/:58/:75。
-- **R61**:直删死簇 :160/:164/:172-187 + 重定向 :64-84 负向测试到 normalize_report_resource_filter(零覆盖损失);禁删 _row_text:156/normalize_report_resource_filter:119/filter_downtime_*:274 live。
+- **R61**:2026-06-08 已 fixed；旧死簇 :160/:164/:172-187 已删除, :64-84 负向测试已重定向到 normalize_report_resource_filter(零覆盖损失);后续仍禁删 _row_text:156/normalize_report_resource_filter:119/filter_downtime_*:244 live。
 - **LB04**:回盘坐实 boolean_normalize.py 仅 `from __future__`+`from typing`=真叶子;`enum_normalizers.py:21/172/173` 为 shim re-export;**algorithms 零消费(rg `core/algorithms/` ZERO)**。纯增量注释+parity。**禁删 shared 改指 services**(造 models↔services 环+越层);唯一合法消重=上层 matrix 反向 delegate 到 boolean_normalize(本批不执行)。
 
 ---

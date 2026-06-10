@@ -111,6 +111,13 @@ def backup_create():
             current_app.logger.error("手动备份触发维护锁异常：code=%s message=%s", e.code, e.message)
         flash(_user_maintenance_message(e), "warning" if e.code == "busy" else "error")
         return redirect(url_for("system.backup_page"))
+    except RuntimeError as e:
+        # 备份完整性校验执行失败/未通过会抛裸 RuntimeError（R32/O27：坏库绝不升正式、loud 不静默）。
+        # MaintenanceWindowError 是 RuntimeError 子类、已在上面拦截；此处兜的是完整性校验类失败——
+        # 必须转成具体中文，别让用户只看到 errorhandler(500) 的笼统「服务器内部错误，请查看日志」。
+        current_app.logger.error("手动备份失败（完整性校验或写入异常，已放弃本次备份以保护数据）：%s", e)
+        flash("备份完整性校验未通过，已放弃本次备份以保护数据，请查看日志。", "error")
+        return redirect(url_for("system.backup_page"))
     filename = os.path.basename(path)
     size_mb = None
     try:

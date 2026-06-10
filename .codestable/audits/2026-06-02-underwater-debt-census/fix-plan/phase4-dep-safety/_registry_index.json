@@ -2,7 +2,7 @@
  "LB01": {
   "id": "LB01",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "high",
   "path": "P2",
   "lb": true,
@@ -15,12 +15,12 @@
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
-  "title": "现场反馈写侧 adopted-only 护栏:硬拒 scenario/非正式方案 + 强制写死计划身份常量,但无注释保护"
+  "title": "原始债名:现场反馈写侧 adopted-only 护栏:硬拒 scenario/非正式方案 + 强制写死计划身份常量,但无注释保护"
  },
  "LB02": {
   "id": "LB02",
   "bucket": "B01",
-  "status": "in_progress",
+  "status": "fixed",
   "sev": "medium",
   "path": "P2",
   "lb": true,
@@ -47,7 +47,7 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-1(纯增量,Phase1",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": true,
   "title": "_bool_from_summary 静默吞掉损坏的 result_summary JSON,影响 is_official/可执行版本/可派工判定"
@@ -55,7 +55,7 @@
  "LB05": {
   "id": "LB05",
   "bucket": "B01",
-  "status": "in_progress",
+  "status": "fixed",
   "sev": "high",
   "path": "P2",
   "lb": true,
@@ -112,7 +112,7 @@
  "R08": {
   "id": "R08",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -122,7 +122,7 @@
    "R09"
   ],
   "batch": "Batch-3 B01-struct",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "feedback_write_enabled 休眠开关 + 生产不可达的'保护未开启'提示"
@@ -130,7 +130,7 @@
  "R42": {
   "id": "R42",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P6",
   "lb": false,
@@ -151,7 +151,7 @@
  "R54": {
   "id": "R54",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "high",
   "path": "P5",
   "lb": true,
@@ -163,7 +163,7 @@
    "R66"
   ],
   "batch": "Batch-2(B01 guard ",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
   "title": "execution_review放行护栏依赖的plan-guard字段投影切成3套手维key列表(本轮新增2份)"
@@ -211,7 +211,7 @@
  "R58": {
   "id": "R58",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P2",
   "lb": true,
@@ -230,7 +230,7 @@
  "R60": {
   "id": "R60",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -248,7 +248,7 @@
  "R62": {
   "id": "R62",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
@@ -258,7 +258,7 @@
    "LB02",
    "LB05"
   ],
-  "batch": "Batch-3 B01-struct",
+  "batch": "Batch-B/G06 fixed 2026-06-08",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -267,7 +267,7 @@
  "R66": {
   "id": "R66",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -276,7 +276,7 @@
   "siblings": [
    "R54"
   ],
-  "batch": "Batch-3 B01-struct",
+  "batch": "Batch-A/G03 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -285,14 +285,14 @@
  "R21": {
   "id": "R21",
   "bucket": "B02",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
   "file": "gantt_plan_query.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-4(B02 身份族);与",
+  "batch": "Batch-C/G27 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -301,15 +301,15 @@
  "R22": {
   "id": "R22",
   "bucket": "B02",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": false,
   "file": "schedule_result_view_context.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "parity 测试=Batch-1(",
-  "owner_pending": true,
+  "batch": "Batch-C/G27 已 fixed",
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "default_plan_resolution_dict 手搓 plan_identity(23键)+resolution(45键)双私有实现,绕过 build_plan_identity 与 SchedulePlanResolution.to_dict,且无 parity 测试"
@@ -317,14 +317,14 @@
  "R23": {
   "id": "R23",
   "bucket": "B02",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
   "file": "schedule_plan_role.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-4(B02 身份族)内最",
+  "batch": "Batch-A/G28 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -333,7 +333,7 @@
  "R44": {
   "id": "R44",
   "bucket": "B02",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
@@ -344,15 +344,15 @@
    "R58"
   ],
   "batch": "Batch-4(B02 身份族),且",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
-  "adv_refuted": false,
+  "adv_refuted": true,
   "title": "scheduler_navigation_publish.selected_plan_role 是 core schedule_result_view_context.selected_plan_role 的副本"
  },
  "R72": {
   "id": "R72",
   "bucket": "B02",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
@@ -360,15 +360,55 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-4(B02 身份族);叶",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": null,
   "adv_refuted": false,
   "title": "_get_plan_role_arg 在 gantt 与 week_plan 路由各一份(N1 家族)"
  },
+ "N1": {
+  "id": "N1",
+  "bucket": "B02",
+  "status": "fixed",
+  "sev": "medium",
+  "path": "P2",
+  "lb": true,
+  "file": "scheduler_resource_dispatch_execution_context.py",
+  "cluster": "C01",
+  "siblings": [
+   "R54",
+   "R58",
+   "R08",
+   "R09"
+  ],
+  "batch": "已完成:注释 fae8829b+契约/守卫 2026-06-10",
+  "owner_pending": false,
+  "needs_adv": true,
+  "adv_refuted": false,
+  "title": "can_write_feedback 查询成员资格闸门失忆债"
+ },
+ "N2": {
+  "id": "N2",
+  "bucket": "B02",
+  "status": "fixed",
+  "sev": "medium",
+  "path": "P2",
+  "lb": true,
+  "file": "operation_execution_event.py",
+  "cluster": "C01",
+  "siblings": [
+   "LB01",
+   "R08"
+  ],
+  "batch": "已完成:注释 fae8829b+契约/守卫 2026-06-10",
+  "owner_pending": false,
+  "needs_adv": true,
+  "adv_refuted": false,
+  "title": "_event_id_for_revision 末位 return 0 哨兵缺保护注释"
+ },
  "LB07": {
   "id": "LB07",
   "bucket": "B03",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": true,
@@ -379,7 +419,7 @@
    "R71"
   ],
   "batch": "Batch-1(全局 ROOT,纯增",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": null,
   "title": "ScheduleConfigSnapshot 配置快照/校正引擎整栈双实现,锁步手工同步"
@@ -387,7 +427,7 @@
  "R45": {
   "id": "R45",
   "bucket": "B03",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -396,7 +436,7 @@
   "siblings": [
    "R48"
   ],
-  "batch": "Batch-5(B03,与 R48 ",
+  "batch": "Batch-A/G16 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -405,7 +445,7 @@
  "R47": {
   "id": "R47",
   "bucket": "B03",
-  "status": "planned",
+  "status": "fixed",
   "sev": "trivial",
   "path": "P6",
   "lb": false,
@@ -424,7 +464,7 @@
  "R48": {
   "id": "R48",
   "bucket": "B03",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
@@ -433,7 +473,7 @@
   "siblings": [
    "R45"
   ],
-  "batch": "Batch-5(与 R45 合并为单",
+  "batch": "Batch-A/G16 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -442,7 +482,7 @@
  "R71": {
   "id": "R71",
   "bucket": "B03",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
@@ -454,7 +494,7 @@
    "R47"
   ],
   "batch": "Batch-5(B03 config",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": null,
   "adv_refuted": false,
   "title": "config 双栈(model↔service)逐字复制函数群=LB-B2 配料表"
@@ -462,7 +502,7 @@
  "LB04": {
   "id": "LB04",
   "bucket": "B04",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": true,
@@ -478,7 +518,7 @@
  "R41": {
   "id": "R41",
   "bucket": "B04",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": false,
@@ -486,7 +526,7 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-5（B03 config",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
   "title": "enum_display.py + process_bp 中文枚举标签是 enum_normalizers 收口点的第二套私有实现,且语义已漂移"
@@ -494,7 +534,7 @@
  "R04": {
   "id": "R04",
   "bucket": "B05",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
@@ -503,7 +543,7 @@
   "siblings": [
    "R01"
   ],
-  "batch": "Batch-6(B05 正整数/解析",
+  "batch": "Batch-B/G19 已 fixed",
   "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
@@ -512,7 +552,7 @@
  "R09": {
   "id": "R09",
   "bucket": "B05",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
@@ -523,7 +563,7 @@
    "R08"
   ],
   "batch": "Batch-6(B05)，但 R09",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "_positive_int 可空正整数助手在执行车道三处逐字节复制"
@@ -531,23 +571,23 @@
  "R28": {
   "id": "R28",
   "bucket": "B05",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P4",
   "lb": false,
   "file": "batch_service.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-6(B05)。完全独立叶",
+  "batch": "已在 Batch-A/G21 落地",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
-  "title": "batch_service._safe_float 重造浮点解析并静默吞错,绕过 parse_finite_float"
+  "title": "batch_service._safe_float 已收口到 parse_finite_float,保留 allowlist"
  },
  "R29": {
   "id": "R29",
   "bucket": "B05",
-  "status": "not_applicable",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
@@ -555,15 +595,15 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-6(B05)但**不写代",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
-  "title": "common/number_utils.py 是 core/shared/number_utils.py 的全量函数体拷贝, 而同目录 4 个兄弟模块都已是薄 re-export 壳(半截收口)"
+  "title": "common/number_utils.py 现盘已是 strict_parse 薄委托兼容门面(O20 KEEP)"
  },
  "R50": {
   "id": "R50",
   "bucket": "B05",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -573,7 +613,7 @@
    "R49",
    "R51"
   ],
-  "batch": "Batch-7(B06 dispat",
+  "batch": "Batch-B/G24 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -582,14 +622,14 @@
  "R59": {
   "id": "R59",
   "bucket": "B05",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
   "file": "report_number_parsing.py",
   "cluster": "ISOLATED",
   "siblings": [],
-  "batch": "Batch-6(B05)。桶内须排在",
+  "batch": "Batch-B/G20 已执行",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -598,7 +638,7 @@
  "R15": {
   "id": "R15",
   "bucket": "B06",
-  "status": "in_progress",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": false,
@@ -611,7 +651,7 @@
    "R19"
   ],
   "batch": "Batch-7(B06 dateti",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
   "title": "datetime 解析在分区内私造 3 份,绕过 core/shared/strict_parse 收口点且语义漂移(静默 None vs 抛错)"
@@ -619,7 +659,7 @@
  "R30": {
   "id": "R30",
   "bucket": "B06",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -637,7 +677,7 @@
  "R33": {
   "id": "R33",
   "bucket": "B06",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
@@ -656,7 +696,7 @@
  "R49": {
   "id": "R49",
   "bucket": "B06",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -666,7 +706,7 @@
    "R50",
    "R51"
   ],
-  "batch": "Batch-7(B06,dispat",
+  "batch": "Batch-B/G24 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -675,7 +715,7 @@
  "R51": {
   "id": "R51",
   "bucket": "B06",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
@@ -685,7 +725,7 @@
    "R49",
    "R50"
   ],
-  "batch": "Batch-7(B06,dispat",
+  "batch": "Batch-B/G24 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -694,15 +734,15 @@
  "R05": {
   "id": "R05",
   "bucket": "B07",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": false,
   "file": "resource_dispatch_service.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-8(B07 资源筛选 c",
-  "owner_pending": true,
+  "batch": "三步全收口:步1/2 fae8829b,步3 2026-06-10",
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "派工 scope_type 归一与 operator/machine→列映射绕开 ScheduleResourceFilter 收口点(双轨漂移)"
@@ -710,7 +750,7 @@
  "R67": {
   "id": "R67",
   "bucket": "B07",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
@@ -718,7 +758,7 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-8(B07),桶内优先级",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
   "title": "资源筛选6个请求参数名清单在三处各抄一遍"
@@ -726,7 +766,7 @@
  "R11": {
   "id": "R11",
   "bucket": "B08",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
@@ -736,8 +776,8 @@
    "R55",
    "R63"
   ],
-  "batch": "Batch-9,与 R63 同一 w",
-  "owner_pending": true,
+  "batch": "Batch-A/G11 已 fixed",
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "关键链结果归一函数 _normalize_critical_chain_result 被逐字复制成第二份私有实现"
@@ -745,14 +785,14 @@
  "R12": {
   "id": "R12",
   "bucket": "B08",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P4",
   "lb": false,
   "file": "gantt_critical_chain.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-9,内部次序在 R11/",
+  "batch": "Batch-B/G12 已 fixed",
   "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
@@ -761,7 +801,7 @@
  "R55": {
   "id": "R55",
   "bucket": "B08",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "呈现失真",
   "lb": false,
@@ -773,7 +813,7 @@
    "R63"
   ],
   "batch": "Batch-9,内部次序在 R11/",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "filtered关键链把周窗口+资源/批次子集喂进要求整版输入的算法,以整版makespan对外无scope标记"
@@ -781,7 +821,7 @@
  "R63": {
   "id": "R63",
   "bucket": "B08",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": false,
@@ -791,7 +831,7 @@
    "R11",
    "R55"
   ],
-  "batch": "Batch-9(B08 关键链甘特,",
+  "batch": "Batch-A/G11 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -800,14 +840,14 @@
  "R02": {
   "id": "R02",
   "bucket": "B09",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
   "file": "schedule_graph_dispatch_context.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-10（PHASE1 §4",
+  "batch": "Batch-A/G37 已 fixed",
   "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
@@ -816,7 +856,7 @@
  "R06": {
   "id": "R06",
   "bucket": "B09",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
@@ -834,7 +874,7 @@
  "R25": {
   "id": "R25",
   "bucket": "B09",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
@@ -843,7 +883,7 @@
   "siblings": [
    "R52"
   ],
-  "batch": "Batch-10（PHASE1 §4",
+  "batch": "Batch-B/G39 已 fixed",
   "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
@@ -852,7 +892,7 @@
  "R52": {
   "id": "R52",
   "bucket": "B09",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
@@ -861,8 +901,8 @@
   "siblings": [
    "R25"
   ],
-  "batch": "Batch-10（PHASE1 §4",
-  "owner_pending": true,
+  "batch": "Batch-B/G39 已 fixed",
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "ready_queue.get_ready_operation_ids 全量扫描版:生产已换增量前沿,经 service 再导出垫片仅供测试"
@@ -870,7 +910,7 @@
  "LB08": {
   "id": "LB08",
   "bucket": "B10",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": true,
@@ -879,16 +919,16 @@
   "siblings": [
    "R46"
   ],
-  "batch": "Batch-1(全局 ROOT · ",
-  "owner_pending": true,
+  "batch": "ROOT/G40a 已 fixed",
+  "owner_pending": false,
   "needs_adv": true,
-  "adv_refuted": null,
+  "adv_refuted": false,
   "title": "legacy 错误串正则重解析:把已渲染中文串反解回 code,两代错误体制并存"
  },
  "R46": {
   "id": "R46",
   "bucket": "B10",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -897,7 +937,7 @@
   "siblings": [
    "LB08"
   ],
-  "batch": "Batch-11(B10)· 纯叶子",
+  "batch": "Batch-B/G40 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -906,7 +946,7 @@
  "R13": {
   "id": "R13",
   "bucket": "B11",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P6",
   "lb": false,
@@ -916,7 +956,7 @@
    "R15",
    "R19"
   ],
-  "batch": "Batch-12(B11诊断),桶内",
+  "batch": "G09 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -925,7 +965,7 @@
  "R14": {
   "id": "R14",
   "bucket": "B11",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
@@ -933,7 +973,7 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-12,桶内最后批之一(前",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "延期诊断公开 API 三件套 prod-unwired:diagnose_plan_overdue/diagnose_batch/_resolve_strict_plan 仅契约测试+roadmap 续命"
@@ -959,7 +999,7 @@
  "R17": {
   "id": "R17",
   "bucket": "B11",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -969,7 +1009,7 @@
    "LB01",
    "R15"
   ],
-  "batch": "Batch-12,桶内第 1 步(最",
+  "batch": "Batch-B/G07+G08 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -978,7 +1018,7 @@
  "R18": {
   "id": "R18",
   "bucket": "B11",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -987,24 +1027,24 @@
   "siblings": [
    "R19"
   ],
-  "batch": "Batch-12,桶内第 2 步,与",
+  "batch": "G10 fixed;R18 independent fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
-  "title": "repo.list_latest_exception_events_by_op_ids 生产零调用,仅测试续命"
+  "title": "repo.list_latest_exception_events_by_op_ids 已转为拒绝非 scoped 读护栏"
  },
  "R24": {
   "id": "R24",
   "bucket": "B11",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
   "file": "schedule_diagnostic_contract.py",
   "cluster": "ISOLATED",
   "siblings": [],
-  "batch": "Batch-12,桶内最后批之一(前",
-  "owner_pending": true,
+  "batch": "O23 KEEP 已 fixed,不再排删 core 批次",
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "analysis/schedule_diagnostic_contract.py 是 web 侧 LIVE 诊断构造器的零生产消费孪生副本"
@@ -1012,7 +1052,7 @@
  "R34": {
   "id": "R34",
   "bucket": "B12",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
@@ -1021,16 +1061,16 @@
   "siblings": [
    "R35"
   ],
-  "batch": "Batch-13（B12 repo ",
-  "owner_pending": true,
+  "batch": "Batch-B/G30 已 fixed",
+  "owner_pending": false,
   "needs_adv": true,
-  "adv_refuted": false,
+  "adv_refuted": true,
   "title": "schedule_repo 版本-only 查询方法群:plan-role 迁移残渣,仅测试/类型契约续命"
  },
  "R35": {
   "id": "R35",
   "bucket": "B12",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1039,7 +1079,7 @@
   "siblings": [
    "R34"
   ],
-  "batch": "Batch-13，与 R34 同 s",
+  "batch": "Batch-B/G30 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1048,14 +1088,14 @@
  "R36": {
   "id": "R36",
   "bucket": "B12",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
   "file": "batch_operation_repo.py",
   "cluster": "ISOLATED",
   "siblings": [],
-  "batch": "Batch-13，纯死无跨边可任意排",
+  "batch": "Batch-A/G35 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1064,14 +1104,14 @@
  "R37": {
   "id": "R37",
   "bucket": "B12",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
   "file": "operator_machine_repo.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-13，纯死无跨边可任意排",
+  "batch": "Batch-B/G36 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1080,7 +1120,7 @@
  "R38": {
   "id": "R38",
   "bucket": "B12",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1089,7 +1129,7 @@
   "siblings": [
    "R39"
   ],
-  "batch": "Batch-13，与 R39 同 p",
+  "batch": "Batch-A/G31+G32 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1098,7 +1138,7 @@
  "R39": {
   "id": "R39",
   "bucket": "B12",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1107,7 +1147,7 @@
   "siblings": [
    "R38"
   ],
-  "batch": "Batch-13，与 R38 par",
+  "batch": "Batch-A/G31 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1116,7 +1156,7 @@
  "R19": {
   "id": "R19",
   "bucket": "B13",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
@@ -1127,8 +1167,8 @@
    "R15",
    "R18"
   ],
-  "batch": "Batch-14（全局最晚）。本桶内",
-  "owner_pending": true,
+  "batch": "G09/G10 fixed",
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
   "title": "positive-op-id 过滤:公开 snapshot.positive_op_ids 已是收口点,provider 与 repo 各私造一份且漂移(公开排序/私有不排序)"
@@ -1136,14 +1176,14 @@
  "R20": {
   "id": "R20",
   "bucket": "B13",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
   "file": "operation_execution_labels.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-14。本桶内排第 3 位",
+  "batch": "Batch-B/G07+G08 已 fixed",
   "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
@@ -1152,7 +1192,7 @@
  "R26": {
   "id": "R26",
   "bucket": "B13",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
@@ -1162,7 +1202,7 @@
    "R71"
   ],
   "batch": "Batch-14（全局最晚，§10.",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "顶层 5 个 config/summary shim:生产已迁走、仅 53 处测试经它进、被 SP05 钉死为冻结兼容面"
@@ -1170,7 +1210,7 @@
  "R31": {
   "id": "R31",
   "bucket": "B13",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1188,7 +1228,7 @@
  "R43": {
   "id": "R43",
   "bucket": "B13",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
@@ -1196,7 +1236,7 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-14（全局最晚，§10.",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "顶层 9 个 scheduler_*.py wrapper 是迁移到 domains/scheduler 后的别名残渣,仅测试续命,roadmap 有意延期清理"
@@ -1204,7 +1244,7 @@
  "R01": {
   "id": "R01",
   "bucket": "B14",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P6",
   "lb": false,
@@ -1213,7 +1253,7 @@
   "siblings": [
    "R04"
   ],
-  "batch": "Batch-6(B05 + R01 ",
+  "batch": "Batch-B/G19 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1222,7 +1262,7 @@
  "R03": {
   "id": "R03",
   "bucket": "B14",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1230,7 +1270,7 @@
   "cluster": "ISOLATED",
   "siblings": [],
   "batch": "承重注释→Batch-1(全局承重注",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "候选'失败'态全套机制(CANDIDATE_STATUS_FAILED/_failed_plan/failed_candidate_count/baseline_missing_or_failed)在生产中不可达,一路铺到死UI分支"
@@ -1238,7 +1278,7 @@
  "R10": {
   "id": "R10",
   "bucket": "B14",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1247,7 +1287,7 @@
   "siblings": [
    "R55"
   ],
-  "batch": "Batch-9(B08 SCC-GA",
+  "batch": "Batch-A/G14 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1256,7 +1296,7 @@
  "R27": {
   "id": "R27",
   "bucket": "B14",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
@@ -1274,7 +1314,7 @@
  "R68": {
   "id": "R68",
   "bucket": "B15",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": false,
@@ -1290,7 +1330,7 @@
  "R69": {
   "id": "R69",
   "bucket": "B15",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P4气味",
   "lb": false,
@@ -1306,14 +1346,14 @@
  "R70": {
   "id": "R70",
   "bucket": "B15",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
   "file": "schedule_service.py",
   "cluster": "ISOLATED",
   "siblings": [],
-  "batch": "Batch-15（独立并行，PHAS",
+  "batch": "Batch-A/R70 已 fixed",
   "owner_pending": false,
   "needs_adv": null,
   "adv_refuted": false,
@@ -1322,7 +1362,7 @@
  "R32": {
   "id": "R32",
   "bucket": "B16",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P4",
   "lb": false,
@@ -1330,7 +1370,7 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-16（Phase1 §4",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "备份完整性校验(PRAGMA integrity_check)执行本身失败时, 只 warning 不阻断, 仍把未通过校验的 .db 提升为正式备份"
@@ -1338,7 +1378,7 @@
  "R40": {
   "id": "R40",
   "bucket": "B16",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P4",
   "lb": false,
@@ -1346,7 +1386,7 @@
   "cluster": "ISOLATED",
   "siblings": [],
   "batch": "Batch-16（Phase1 §4",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
   "title": "material_repo.update 库存数量 except 静默保留原值(防御死角)"
@@ -1354,14 +1394,14 @@
  "R53": {
   "id": "R53",
   "bucket": "B17",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
   "file": "batch_order.py",
   "cluster": "ISOLATED",
   "siblings": [],
-  "batch": "Batch-16(独立叶子,Phas",
+  "batch": "Batch-A/R53 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1370,14 +1410,14 @@
  "R61": {
   "id": "R61",
   "bucket": "B17",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
   "file": "report_context_filters.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-16(独立叶子)。Pha",
+  "batch": "Batch-A/R61 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1386,7 +1426,7 @@
  "R64": {
   "id": "R64",
   "bucket": "B17",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1395,7 +1435,7 @@
   "siblings": [
    "R65"
   ],
-  "batch": "Batch-16(B16+B17 独",
+  "batch": "Batch-A/G02 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1404,7 +1444,7 @@
  "R65": {
   "id": "R65",
   "bucket": "B17",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1413,10 +1453,64 @@
   "siblings": [
    "R64"
   ],
-  "batch": "Batch-16(Phase1 §4",
+  "batch": "Batch-A/G02 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
   "title": "_target_url死分支:9条spec第3字段全非空字面量plain_url恒真"
+ },
+ "N3": {
+  "id": "N3",
+  "bucket": "B01",
+  "status": "fixed",
+  "sev": "low",
+  "path": "P5",
+  "lb": false,
+  "file": "scheduler_gantt_task_detail.py",
+  "cluster": "C01",
+  "siblings": [
+   "R54"
+  ],
+  "batch": "新增登记:G54收口后残留DRY(2026-06-09修复验收)",
+  "owner_pending": false,
+  "needs_adv": false,
+  "adv_refuted": false,
+  "title": "scheduler_gantt_task_detail _PLAN_GUARD_FIELD_ALIASES 16项别名表与FULL_PLAN_GUARD_FIELDS字段集重叠、各自手维(输入侧别名归一层,非克隆,可收敛字段名到单源)"
+ },
+ "N4": {
+  "id": "N4",
+  "bucket": "B01",
+  "status": "fixed",
+  "sev": "low",
+  "path": "P4",
+  "lb": false,
+  "file": "resource_dispatch_execution_service.py",
+  "cluster": "C01",
+  "siblings": [
+   "R07"
+  ],
+  "batch": "新增登记:R07诚实债后续(O31收口)",
+  "owner_pending": false,
+  "needs_adv": false,
+  "adv_refuted": false,
+  "title": "R07 写后任务卡schedule行缺失仍用ValidationError(field=schedule_id)≠O31要求的AppError(ErrorCode.NOT_FOUND)+缺schedule=None→raise专项回归测试"
+ },
+ "N5": {
+  "id": "N5",
+  "bucket": "B01",
+  "status": "fixed",
+  "sev": "low",
+  "path": "P6",
+  "lb": false,
+  "file": "test_scheduler_workbench_links_contract.py",
+  "cluster": "C01",
+  "siblings": [
+   "R54"
+  ],
+  "batch": "新增登记:G54 parity测试加固(2026-06-09修复验收)",
+  "owner_pending": false,
+  "needs_adv": false,
+  "adv_refuted": false,
+  "title": "护栏字段投影parity测试 test_full_plan_guard_fields_match...resolution_shapes 同源自反(两侧都委托唯一投影器、等式近恒真)抓不到行为回退,需补core旧单键口径基线对照"
  }
 }

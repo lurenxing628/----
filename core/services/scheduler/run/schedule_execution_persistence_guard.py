@@ -8,6 +8,7 @@ from core.models.operation_execution_scope import OperationExecutionScope
 from core.services.scheduler.execution_fact_provider import ExecutionFact, ExecutionFactProvider
 from core.services.scheduler.execution_snapshot import build_execution_snapshot
 
+from .schedule_input_contracts import _op_seq
 from .schedule_payload_contract import ValidatedSchedulePayload, ValidatedScheduleRow
 
 
@@ -44,13 +45,6 @@ def _ops_by_id(operations: Optional[List[Any]]) -> Dict[int, Any]:
 
 def _op_batch_id(op: Any) -> str:
     return str(getattr(op, "batch_id", "") or "").strip()
-
-
-def _op_seq(op: Any) -> int:
-    try:
-        return int(getattr(op, "seq", 0) or 0)
-    except (TypeError, ValueError):
-        return 0
 
 
 def _scope_from_fact(fact: ExecutionFact) -> Optional[OperationExecutionScope]:

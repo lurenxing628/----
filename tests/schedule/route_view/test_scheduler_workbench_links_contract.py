@@ -5,7 +5,13 @@ from __future__ import annotations
 from typing import Tuple
 from urllib.parse import parse_qs, urlparse
 
+from core.models.schedule_plan_role import PLAN_ROLE_LABELS, SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
+from core.services.scheduler.schedule_result_view_context import plan_role_filter_fields
+from web.viewmodels.scheduler_workbench_link_query import plan_guard_fields_for_resolution
 from web.viewmodels.scheduler_workbench_links import (
+    FULL_PLAN_GUARD_FIELDS,
+    REPORT_PLAN_GUARD_FIELDS,
+    RESOURCE_PLAN_GUARD_FIELDS,
     TARGET_PAGE_PATHS,
     build_workbench_link,
     build_workbench_links,
@@ -481,6 +487,13 @@ def test_target_pages_and_public_label_mappings_are_fixed() -> None:
     assert gantt_view_label("future_view") == "未知甘特视图"
 
 
+def test_workbench_plan_role_labels_delegate_to_core_labels() -> None:
+    for role, label in PLAN_ROLE_LABELS.items():
+        assert plan_role_label(role) == label
+    assert plan_role_label(None) == PLAN_ROLE_LABELS["adopted"]
+    assert plan_role_label("future_role") == "未知方案身份"
+
+
 # ===========================================================================
 # 护栏与坏值拦放区（原 regression_scheduler_workbench_link_guardrails.py，10 函数）
 # 🔴 B-2 红线：这是 R54「删手维 guard 面」依赖的逐键四态拦放 parity oracle。
@@ -620,6 +633,186 @@ def test_execution_review_guardrail_uses_full_plan_identity() -> None:
     assert historical["disabled"] is True
     assert historical["url"] == ""
     assert "历史正式方案" in historical["disabled_reason"]
+
+
+def test_plan_guard_fields_keep_each_surface_shape() -> None:
+    plan_resolution = {
+        "requested_role": "adopted",
+        "selected_role": "adopted",
+        "status": "resolved_adopted",
+        "is_scenario_preview": False,
+        "is_comparison": False,
+        "is_superseded_by_newer_version": True,
+        "is_official": True,
+        "is_preview": False,
+        "is_current_executable_official_version": False,
+        "can_dispatch": True,
+        "can_write_feedback": True,
+        "plan_identity_error": "identity-error",
+        "plan_identity_blocking_error": True,
+        "plan_identity_blocking_scope": "workbench_continuation",
+        "result_summary_parse_failed": False,
+        "result_summary_parse_reason": "",
+    }
+
+    report_context = build_workbench_plan_context(
+        plan_role="adopted",
+        plan_resolution=plan_resolution,
+        plan_guard_fields=REPORT_PLAN_GUARD_FIELDS,
+    )
+    resource_context = build_workbench_plan_context(
+        plan_role="adopted",
+        plan_resolution=plan_resolution,
+        plan_guard_fields=RESOURCE_PLAN_GUARD_FIELDS,
+    )
+    full_context = build_workbench_plan_context(
+        plan_role="adopted",
+        plan_resolution=plan_resolution,
+        plan_guard_fields=FULL_PLAN_GUARD_FIELDS,
+    )
+
+    assert report_context["is_superseded_by_newer_version"] is True
+    assert "plan_role_status" not in report_context
+    assert "plan_identity_error" not in report_context
+    assert resource_context["plan_identity_error"] == "identity-error"
+    assert "plan_role_status" not in resource_context
+    assert full_context["plan_role_status"] == "resolved_adopted"
+    assert full_context["plan_identity_blocking_scope"] == "workbench_continuation"
+
+
+def test_full_plan_guard_fields_match_core_plan_role_filter_fields_for_resolution_shapes() -> None:
+    base_identity = {
+        "user_label": "正式采用方案",
+        "can_dispatch": True,
+        "can_write_feedback": True,
+        "is_official": True,
+        "is_preview": False,
+        "is_current_executable_version": True,
+        "is_current_executable_official_version": True,
+        "is_superseded_by_newer_version": False,
+        "result_summary_parse_failed": False,
+        "result_summary_parse_reason": "",
+        "schedule_result_status": "success",
+    }
+    plan_resolutions = [
+        {
+            "requested_role": "adopted",
+            "selected_role": "adopted",
+            "status": "resolved_adopted",
+            "message": "",
+            "source_table": SOURCE_SCHEDULE,
+            "plan_identity": dict(base_identity),
+        },
+        {
+            "requested_role": "baseline_best",
+            "selected_role": "baseline_best",
+            "status": "resolved_comparison",
+            "message": "",
+            "source_table": SOURCE_CANDIDATE_ROWS,
+            "candidate_id": 101,
+            "candidate_key": "baseline_best",
+            "plan_identity": dict(base_identity, can_dispatch=False, can_write_feedback=False, is_official=False),
+        },
+        {
+            "requested_role": "adopted",
+            "selected_role": "adopted",
+            "status": "resolved_comparison",
+            "message": "正在预览模拟方案。",
+            "source_table": SOURCE_SCHEDULE,
+            "is_scenario_preview": True,
+            "scenario_id": "SCN-1",
+            "scenario_display_name": "模拟方案一",
+            "plan_identity": dict(base_identity, can_dispatch=False, can_write_feedback=False, is_preview=True),
+        },
+        {
+            "requested_plan_role": "baseline_best",
+            "effective_plan_role": "adopted",
+            "plan_role_status": "fallback_to_adopted",
+            "plan_role_message": "已回退正式采用方案。",
+            "source_table": SOURCE_SCHEDULE,
+            "is_official_plan": True,
+            "is_preview_plan": False,
+            "is_current_executable_official_version": False,
+            "can_dispatch": False,
+            "can_write_feedback": False,
+        },
+        {
+            "requested_role": "adopted",
+            "selected_role": "adopted",
+            "status": "resolved_adopted",
+            "source_table": SOURCE_SCHEDULE,
+            "can_dispatch": True,
+            "can_write_feedback": True,
+            "is_current_executable_official_version": True,
+            "plan_identity": dict(base_identity, can_dispatch=False, can_write_feedback=False),
+        },
+    ]
+
+    # N5：除"两投影实现互相一致"（下方 expected，从 core 侧派生）外，再钉一条独立 golden 基线——
+    # 冻结当前正确的 guard 字段投影真值。原断言只证 plan_guard_fields_for_resolution 与
+    # plan_role_filter_fields 同口径，若两者一起漂移（同源自反抓不到），本基线仍能抓行为回退。
+    # 基线随 plan_resolutions 顺序一一对应；新增 shape 须同步补一条基线。
+    expected_baseline = [
+        {
+            "requested_plan_role": "adopted", "effective_plan_role": "adopted",
+            "plan_role_status": "resolved_adopted", "is_scenario_preview": False,
+            "is_comparison": False, "is_superseded_by_newer_version": False,
+            "is_official_plan": True, "is_preview_plan": False,
+            "is_current_executable_official_version": True, "can_dispatch": True,
+            "can_write_feedback": True, "result_summary_parse_failed": False,
+            "result_summary_parse_reason": "",
+        },
+        {
+            "requested_plan_role": "baseline_best", "effective_plan_role": "baseline_best",
+            "plan_role_status": "resolved_comparison", "is_scenario_preview": False,
+            "is_comparison": True, "is_superseded_by_newer_version": False,
+            "is_official_plan": False, "is_preview_plan": False,
+            "is_current_executable_official_version": True, "can_dispatch": False,
+            "can_write_feedback": False, "result_summary_parse_failed": False,
+            "result_summary_parse_reason": "",
+        },
+        {
+            "requested_plan_role": "adopted", "effective_plan_role": "adopted",
+            "plan_role_status": "resolved_comparison", "is_scenario_preview": True,
+            "is_comparison": True, "is_superseded_by_newer_version": False,
+            "is_official_plan": True, "is_preview_plan": True,
+            "is_current_executable_official_version": True, "can_dispatch": False,
+            "can_write_feedback": False, "result_summary_parse_failed": False,
+            "result_summary_parse_reason": "",
+        },
+        {
+            "requested_plan_role": "baseline_best", "effective_plan_role": "adopted",
+            "plan_role_status": "fallback_to_adopted", "is_scenario_preview": False,
+            "is_comparison": True, "is_superseded_by_newer_version": False,
+            "is_official_plan": True, "is_preview_plan": False,
+            "is_current_executable_official_version": False, "can_dispatch": False,
+            "can_write_feedback": False, "result_summary_parse_failed": False,
+            "result_summary_parse_reason": "",
+        },
+        {
+            "requested_plan_role": "adopted", "effective_plan_role": "adopted",
+            "plan_role_status": "resolved_adopted", "is_scenario_preview": False,
+            "is_comparison": False, "is_superseded_by_newer_version": False,
+            "is_official_plan": True, "is_preview_plan": False,
+            "is_current_executable_official_version": True, "can_dispatch": False,
+            "can_write_feedback": False, "result_summary_parse_failed": False,
+            "result_summary_parse_reason": "",
+        },
+    ]
+    assert len(expected_baseline) == len(plan_resolutions), "基线条数须与 plan_resolutions 一一对应"
+
+    for index, plan_resolution in enumerate(plan_resolutions):
+        core_fields = plan_role_filter_fields(plan_resolution)
+        expected = {
+            key: core_fields[key]
+            for key in FULL_PLAN_GUARD_FIELDS
+            if key in core_fields and core_fields[key] is not None
+        }
+        projected = plan_guard_fields_for_resolution(plan_resolution, FULL_PLAN_GUARD_FIELDS)
+        assert projected == expected, f"shape[{index}]：guard 投影与 core 同口径 parity 失败"
+        assert projected == expected_baseline[index], (
+            f"shape[{index}]：guard 投影偏离冻结 golden 基线（行为回退，非仅同源不一致）"
+        )
 
 
 def test_execution_review_requires_current_executable_identity_before_read_only_review() -> None:

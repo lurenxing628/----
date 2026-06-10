@@ -2,9 +2,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
+from .scheduler_plan_guardrail_messages import summary_unavailable_guardrail_text
 from .scheduler_report_limitations import build_report_limitations
 from .scheduler_report_values import ReportPresentationValueError, _optional_number, _sum_number, downtime_summary
-from .scheduler_workbench_links import build_workbench_link, build_workbench_plan_context, can_emit_feedback_write_urls
+from .scheduler_workbench_links import (
+    REPORT_PLAN_GUARD_FIELDS,
+    build_workbench_link,
+    build_workbench_plan_context,
+    can_emit_feedback_write_urls,
+)
 
 ROLE_ADOPTED = "adopted"
 
@@ -33,31 +39,9 @@ def _public_plan_label(plan_resolution: Optional[Dict[str, Any]]) -> str:
     )
 
 
-def _copy_plan_guard_fields(context: Dict[str, Any], plan_resolution: Optional[Dict[str, Any]]) -> None:
-    data = plan_resolution or {}
-    mappings = {
-        "requested_plan_role": data.get("requested_role"),
-        "effective_plan_role": data.get("selected_role"),
-        "is_scenario_preview": data.get("is_scenario_preview"),
-        "is_comparison": data.get("is_comparison"),
-        "is_superseded_by_newer_version": data.get("is_superseded_by_newer_version"),
-        "is_official_plan": data.get("is_official"),
-        "is_preview_plan": data.get("is_preview"),
-        "is_current_executable_official_version": data.get("is_current_executable_official_version"),
-        "can_dispatch": data.get("can_dispatch"),
-        "can_write_feedback": data.get("can_write_feedback"),
-        "result_summary_parse_failed": data.get("result_summary_parse_failed"),
-        "result_summary_parse_reason": data.get("result_summary_parse_reason"),
-    }
-    for key, value in mappings.items():
-        if value is not None:
-            context[key] = value
-
-
 def build_report_context(
     *,
     version: Any = None,
-    plan_id: Any = None,
     plan_resolution: Optional[Dict[str, Any]] = None,
     date_from: Any = None,
     date_to: Any = None,
@@ -76,8 +60,9 @@ def build_report_context(
         can_write = False
     context = build_workbench_plan_context(
         version=version,
-        plan_id=plan_id,
         plan_role=_plan_role(data),
+        plan_resolution=data,
+        plan_guard_fields=REPORT_PLAN_GUARD_FIELDS,
         plan_role_label_value=_public_plan_label(data),
         scenario_id=data.get("scenario_id"),
         scenario_display_label=_text(data.get("scenario_display_name")) or _text(data.get("scenario_name")),
@@ -92,10 +77,14 @@ def build_report_context(
         back_to=back_to,
         is_preview=bool(data.get("is_scenario_preview") or data.get("is_preview")),
         can_write_feedback=can_write,
-        guardrail_text="当前排产摘要读取失败，页面仅展示基础历史信息，不能写现场事实。" if parse_failed else "",
+        guardrail_text=summary_unavailable_guardrail_text(
+            data.get("result_summary_parse_reason"),
+            blocked_action="不能写现场事实",
+        )
+        if parse_failed
+        else "",
         guardrail_reason_type="data_gap" if parse_failed else "",
     )
-    _copy_plan_guard_fields(context, data)
     if parse_failed:
         context["can_dispatch"] = False
         context["can_write_feedback"] = False
@@ -145,22 +134,6 @@ def _execution_review_row_resource(row: Dict[str, Any]) -> Dict[str, str]:
             "view": "operator",
         }
     return {"resource_type": "", "resource_id": "", "resource_label": "", "view": "machine"}
-
-
-def _context_summary(context: Dict[str, Any], suffix: str = "") -> str:
-    parts = [
-        _text(context.get("version_label")),
-        _text(context.get("plan_role_label")),
-    ]
-    if context.get("date_from") and context.get("date_to"):
-        parts.append(f"{context['date_from']} ～ {context['date_to']}")
-    if context.get("resource_label"):
-        parts.append(_text(context.get("resource_label")))
-    if context.get("batch_id"):
-        parts.append(_text(context.get("batch_id")))
-    if suffix:
-        parts.append(suffix)
-    return "，".join(part for part in parts if part)
 
 
 def build_downtime_report_link(

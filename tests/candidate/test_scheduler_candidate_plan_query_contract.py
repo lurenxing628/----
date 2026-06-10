@@ -1,4 +1,4 @@
-"""回归测试：SchedulePlanQueryService 按 plan_role 解析排程方案的契约——adopted 读 Schedule 表、baseline_best/critical_best 读候选明细行（ScheduleCandidateRows）且明细列形状与 adopted 一致；未知角色报错、缺选型/缺 adopted/明细未保存/候选未完成/指向不存在候选时 fail-closed 报 ValueError，缺整套候选选型时回退到 adopted；并守护时间跨度、派工范围、逾期基础行与 plan_candidate_label 防后缀重复。"""
+"""回归测试：SchedulePlanQueryService 按 plan_role 解析排程方案的契约——adopted 读 Schedule 表、baseline_best/critical_best 默认读候选明细行（ScheduleCandidateRows）且明细列形状与 adopted 一致；同源比较态可读取 Schedule 但只保留对比身份、不可写反馈/派工；未知角色报错、缺选型/缺 adopted/明细未保存/候选未完成/指向不存在候选时 fail-closed 报 ValueError，缺整套候选选型时回退到 adopted；并守护时间跨度、派工范围、逾期基础行与 plan_candidate_label 防后缀重复。"""
 
 from __future__ import annotations
 
@@ -64,6 +64,13 @@ def test_plan_candidate_label_does_not_duplicate_adopted_plan_suffix() -> None:
     assert plan_candidate_label("最终采用") == "正式采用方案"
     assert plan_candidate_label("最终采用方案") == "正式采用方案"
     assert "正式采用方案方案" not in plan_candidate_label("最终采用方案")
+
+
+def test_plan_query_role_normalizer_uses_model_source() -> None:
+    from core.models import schedule_plan_role
+    from core.services.scheduler import schedule_plan_query_service
+
+    assert schedule_plan_query_service._normalize_role is schedule_plan_role._normalize_role
 
 
 def _connect_fresh_schema(tmp_path: Path) -> sqlite3.Connection:

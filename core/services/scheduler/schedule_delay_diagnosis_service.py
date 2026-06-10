@@ -27,7 +27,7 @@ from .schedule_delay_diagnosis_utils import (
     text,
     top_clues,
 )
-from .schedule_plan_query_service import ROLE_ADOPTED, SchedulePlanQueryService
+from .schedule_plan_query_service import SchedulePlanQueryService
 
 
 class ScheduleDelayDiagnosisService:
@@ -38,20 +38,6 @@ class ScheduleDelayDiagnosisService:
         self.logger = logger
         self.plan_query = SchedulePlanQueryService(conn, logger=logger)
         self.clue_builder = ScheduleDelayDiagnosisClueBuilder(conn, logger=logger)
-
-    def diagnose_plan_overdue(
-        self,
-        version: int,
-        plan_role: Optional[str] = None,
-        scenario_id: Optional[str] = None,
-        as_of_time: Optional[Any] = None,
-    ) -> OverdueDiagnosisReport:
-        resolution = self._resolve_strict_plan(version, plan_role, scenario_id)
-        return self.diagnose_resolved_plan_overdue(
-            version=version,
-            resolution=resolution,
-            as_of_time=as_of_time,
-        )
 
     def diagnose_resolved_plan_overdue(
         self,
@@ -111,32 +97,6 @@ class ScheduleDelayDiagnosisService:
             trace_meta=report_trace,
         )
 
-    def diagnose_batch(
-        self,
-        version: int,
-        batch_id: str,
-        plan_role: Optional[str] = None,
-        scenario_id: Optional[str] = None,
-        as_of_time: Optional[Any] = None,
-    ) -> Optional[OverdueDiagnosisItem]:
-        report = self.diagnose_plan_overdue(
-            version=version,
-            plan_role=plan_role,
-            scenario_id=scenario_id,
-            as_of_time=as_of_time,
-        )
-        wanted = text(batch_id)
-        for item in report.items:
-            if item.batch_id == wanted:
-                return item
-        return None
-
-    def _resolve_strict_plan(self, version: int, plan_role: Optional[str], scenario_id: Optional[str]):
-        scenario_key = text(scenario_id)
-        role = text(plan_role) or ROLE_ADOPTED
-        if scenario_key:
-            return self.plan_query.resolve_plan_view(int(version), role, scenario_key)
-        return self.plan_query.resolve_existing_plan(int(version), role)
 
     @staticmethod
     def _as_of(value: Optional[Any]) -> datetime:

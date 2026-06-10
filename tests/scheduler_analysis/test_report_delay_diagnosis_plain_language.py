@@ -17,6 +17,7 @@ TESTS_ROOT = REPO_ROOT / "tests"
 if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
+from tests._support.excel_templates import point_env_at_shared  # noqa: E402
 from tests.scheduler_analysis.test_scheduler_delay_diagnosis_contract import (  # noqa: E402
     VERSION,
     _seed_base,
@@ -43,7 +44,7 @@ def _build_app(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("APS_DB_PATH", str(db_path))
     monkeypatch.setenv("APS_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setenv("APS_BACKUP_DIR", str(tmp_path / "backups"))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(tmp_path / "templates_excel"))
+    point_env_at_shared(monkeypatch)
     ensure_schema(str(db_path), logger=None, schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=None)
     conn = get_connection(str(db_path))
     try:

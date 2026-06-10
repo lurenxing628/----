@@ -1,4 +1,4 @@
-"""回归测试：ScheduleDelayDiagnosisService.diagnose_plan_overdue/diagnose_batch 只读地诊断超期（前后表快照不变），按 plan_role 从 Schedule/候选行/场景行三种来源各自取明细而不互相回退（缺明细时分别抛「所选方案没有可查看的明细」「模拟方案明细不存在」），并产出含物料未齐/停机影响/建议工序线索、证据 link 指向 /material/batches 与 /reports/downtime、trace_meta 指纹与未排程缺数据标记等结构化证据，不输出根因/critical_chain/primary_reason 等内部字段。"""
+"""回归测试：延期诊断活门 diagnose_resolved_plan_overdue（R14/G41 收口后唯一入口，resolution 经 plan_query 喂入）只读地诊断超期（前后表快照不变），按 plan_role 从 Schedule/候选行/场景行三种来源取明细并产出含物料未齐/停机影响/建议工序线索、证据 link、trace_meta 指纹等结构化证据，不输出根因/critical_chain/primary_reason 等内部字段。灵魂线钉层（O21/O22）：候选「无静默回退」断言钉在 resolve_existing_plan 层（缺明细抛「所选方案没有可查看的明细」，禁平移到活门 diagnose 入口——活门非 scenario 走 resolve_plan 会 fallback_to_adopted 静默吞掉 raise）；scenario 断言平移到 resolve_plan_view（缺明细抛「模拟方案明细不存在」，两门同源）；另显式钉死「活门非 scenario 缺角色→fallback_to_adopted 不 raise」的死/活差异，防后人误以为两路等价。旧死门三件套 diagnose_plan_overdue/diagnose_batch/_resolve_strict_plan 已删。"""
 
 from __future__ import annotations
 
@@ -257,15 +257,21 @@ def _clue_codes(item):
     return {clue.clue_code for clue in item.candidate_clues}
 
 
+def _diagnose_via_live_door(service: ScheduleDelayDiagnosisService, *, plan_role: str, scenario_id=None):
+    # 生产现行路径：report_engine → resolve_plan_view 喂 resolution → 活门 diagnose_resolved_plan_overdue。
+    resolution = service.plan_query.resolve_plan_view(VERSION, plan_role, scenario_id)
+    return service.diagnose_resolved_plan_overdue(
+        version=VERSION,
+        resolution=resolution,
+        as_of_time=AS_OF_TIME,
+    )
+
+
 def test_delay_diagnosis_reports_overdue_clues_and_stays_readonly(tmp_path) -> None:
     conn, _scenario_id = _seed_db(tmp_path)
     try:
         before = _snapshot(conn)
-        report = ScheduleDelayDiagnosisService(conn).diagnose_plan_overdue(
-            VERSION,
-            plan_role=ROLE_ADOPTED,
-            as_of_time=AS_OF_TIME,
-        )
+        report = _diagnose_via_live_door(ScheduleDelayDiagnosisService(conn), plan_role=ROLE_ADOPTED)
         after = _snapshot(conn)
 
         assert after == before
@@ -330,12 +336,9 @@ def test_delay_diagnosis_reports_overdue_clues_and_stays_readonly(tmp_path) -> N
 def test_delay_diagnosis_reads_candidate_rows_without_fallback(tmp_path) -> None:
     conn, _scenario_id = _seed_db(tmp_path)
     try:
+        service = ScheduleDelayDiagnosisService(conn)
         before = _snapshot(conn)
-        report = ScheduleDelayDiagnosisService(conn).diagnose_plan_overdue(
-            VERSION,
-            plan_role=ROLE_BASELINE_BEST,
-            as_of_time=AS_OF_TIME,
-        )
+        report = _diagnose_via_live_door(service, plan_role=ROLE_BASELINE_BEST)
         after = _snapshot(conn)
 
         assert after == before
@@ -347,12 +350,26 @@ def test_delay_diagnosis_reads_candidate_rows_without_fallback(tmp_path) -> None
 
         conn.execute("DELETE FROM ScheduleCandidateRows")
         conn.commit()
+        # O21 钉层（禁平移）：「候选缺明细必须 loud raise」的灵魂线钉在 resolve_existing_plan 层——
+        # 活门非 scenario 走 resolve_plan 会 fallback_to_adopted 静默回退，平移到活门 diagnose 入口
+        # 会让这条「无静默回退」覆盖被 fallback 吞掉（RK14）。
         with pytest.raises(ValueError, match="所选方案没有可查看的明细"):
-            ScheduleDelayDiagnosisService(conn).diagnose_plan_overdue(
-                VERSION,
-                plan_role=ROLE_BASELINE_BEST,
-                as_of_time=AS_OF_TIME,
-            )
+            service.plan_query.resolve_existing_plan(VERSION, ROLE_BASELINE_BEST)
+        # 「角色在册但明细被删」场景活门也 loud（_validate 文案「方案对比明细没有找到对应排程」），
+        # 不是 fallback——把这点也钉死，防误以为活门对一切坏态都静默。
+        with pytest.raises(ValueError, match="方案对比明细没有找到对应排程"):
+            service.plan_query.resolve_plan_view(VERSION, ROLE_BASELINE_BEST, None)
+        # 死/活差异显式钉死：「角色完全缺席」时活门非 scenario 路径静默回退 adopted 而非 raise
+        # （死门 resolve_existing_plan 对同场景 raise「所选方案不存在」）——这是 resolve_plan 既有
+        # 语义（独立隐患，另行裁决），本测试只把差异写明防误判两门等价。
+        conn.execute("DELETE FROM ScheduleCandidateSelection")
+        conn.execute("DELETE FROM ScheduleCandidate")
+        conn.commit()
+        fallback_resolution = service.plan_query.resolve_plan_view(VERSION, ROLE_BASELINE_BEST, None)
+        assert fallback_resolution.status == "fallback_to_adopted"
+        assert "已显示正式采用方案" in fallback_resolution.message
+        with pytest.raises(ValueError, match="所选方案不存在"):
+            service.plan_query.resolve_existing_plan(VERSION, ROLE_BASELINE_BEST)
     finally:
         conn.close()
 
@@ -360,13 +377,9 @@ def test_delay_diagnosis_reads_candidate_rows_without_fallback(tmp_path) -> None
 def test_delay_diagnosis_reads_scenario_rows_without_fallback(tmp_path) -> None:
     conn, scenario_id = _seed_db(tmp_path)
     try:
+        service = ScheduleDelayDiagnosisService(conn)
         before = _snapshot(conn)
-        report = ScheduleDelayDiagnosisService(conn).diagnose_plan_overdue(
-            VERSION,
-            plan_role=ROLE_ADOPTED,
-            scenario_id=scenario_id,
-            as_of_time=AS_OF_TIME,
-        )
+        report = _diagnose_via_live_door(service, plan_role=ROLE_ADOPTED, scenario_id=scenario_id)
         after = _snapshot(conn)
 
         assert after == before
@@ -380,37 +393,9 @@ def test_delay_diagnosis_reads_scenario_rows_without_fallback(tmp_path) -> None:
 
         conn.execute("DELETE FROM ScheduleAdjustmentScenarioRow WHERE scenario_id = ?", (scenario_id,))
         conn.commit()
+        # O22 平移：scenario 分支死/活两门同源（都经 resolve_plan_view→_resolve_scenario_plan），
+        # 缺明细 raise 发生在 resolve 阶段，平移后断言生产现行的 resolve_plan_view 即覆盖活门全链。
         with pytest.raises(ValueError, match="模拟方案明细不存在"):
-            ScheduleDelayDiagnosisService(conn).diagnose_plan_overdue(
-                VERSION,
-                plan_role=ROLE_ADOPTED,
-                scenario_id=scenario_id,
-                as_of_time=AS_OF_TIME,
-            )
-    finally:
-        conn.close()
-
-
-def test_delay_diagnosis_batch_lookup(tmp_path) -> None:
-    conn, _scenario_id = _seed_db(tmp_path)
-    try:
-        service = ScheduleDelayDiagnosisService(conn)
-        before = _snapshot(conn)
-        item = service.diagnose_batch(
-            VERSION,
-            "B_SCHEDULED",
-            plan_role=ROLE_ADOPTED,
-            as_of_time=AS_OF_TIME,
-        )
-        assert item is not None
-        assert item.batch_id == "B_SCHEDULED"
-        assert service.diagnose_batch(
-            VERSION,
-            "missing",
-            plan_role=ROLE_ADOPTED,
-            as_of_time=AS_OF_TIME,
-        ) is None
-        after = _snapshot(conn)
-        assert after == before
+            service.plan_query.resolve_plan_view(VERSION, ROLE_ADOPTED, scenario_id)
     finally:
         conn.close()

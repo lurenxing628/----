@@ -146,7 +146,6 @@
 - `core/services/scheduler/operation_execution_feedback_actions.py`
 - `core/services/scheduler/operation_execution_feedback_service.py`
 - `core/services/scheduler/operation_execution_feedback_support.py`
-- `core/services/scheduler/operation_execution_labels.py`
 - `core/services/scheduler/resource_dispatch_execution_enrichment.py`
 - `core/services/scheduler/resource_dispatch_execution_service.py`
 - `core/services/scheduler/resource_dispatch_service.py`

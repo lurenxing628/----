@@ -59,8 +59,8 @@ def _build_summary(
     failed_ops: Any = 0,
 ):
     from core.algorithms.evaluation import ScheduleMetrics
-    from core.services.scheduler.schedule_summary import build_result_summary
-    from core.services.scheduler.schedule_summary_types import SummaryBuildContext
+    from core.services.scheduler.summary.schedule_summary import build_result_summary
+    from core.services.scheduler.summary.schedule_summary_types import SummaryBuildContext
 
     cfg = SimpleNamespace(
         sort_strategy="priority_first",

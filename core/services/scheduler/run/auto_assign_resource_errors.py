@@ -112,6 +112,7 @@ def _auto_assign_error_op_id(message: Any, id_index: Dict[str, Dict[Any, List[in
 
 
 def _positive_int(value: Any) -> int:
+    # 错误消息解析哨兵：坏序号要回到 0，避免在诊断路径里二次抛错。
     try:
         number = int(value or 0)
     except Exception:

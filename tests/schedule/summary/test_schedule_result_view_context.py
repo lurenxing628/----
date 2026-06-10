@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 import pytest
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.models.schedule_plan_role import VALID_PLAN_ROLES
+from core.services.scheduler.schedule_plan_identity_builder import build_plan_identity
 from core.services.scheduler.schedule_plan_query_service import (
     ROLE_ADOPTED,
     ROLE_BASELINE_BEST,
@@ -188,6 +190,34 @@ def test_context_rejects_bad_plan_role_with_plan_role_field() -> None:
         _resolve("bad")
 
     assert exc_info.value.details.get("field") == "plan_role"
+
+
+@pytest.mark.parametrize("plan_role", VALID_PLAN_ROLES)
+def test_default_plan_resolution_identity_matches_canonical_no_history_identity(plan_role: str) -> None:
+    resolution = default_plan_resolution_dict(plan_role)
+    is_fallback = plan_role != ROLE_ADOPTED
+    expected_identity = build_plan_identity(
+        version=None,
+        requested_role=plan_role,
+        effective_role=ROLE_ADOPTED,
+        status="fallback_to_adopted" if is_fallback else "resolved_adopted",
+        source_table=SOURCE_SCHEDULE,
+        source_row_id=None,
+        candidate_id=None,
+        candidate_key=None,
+        scenario_id=None,
+        scenario_display_name="",
+        schedule_result_status=None,
+        result_summary=None,
+        latest_official_version=None,
+        schedule_lock_status=None,
+        detail_saved=None,
+    ).to_dict()
+
+    assert tuple(resolution["plan_identity"]) == tuple(expected_identity)
+    assert resolution["plan_identity"] == expected_identity
+    assert resolution["plan_identity"]["result_summary_parse_failed"] is True
+    assert resolution["plan_identity"]["result_summary_parse_reason"] == "排产摘要缺失"
 
 
 def test_context_no_history_uses_default_adopted_with_visible_fallback() -> None:

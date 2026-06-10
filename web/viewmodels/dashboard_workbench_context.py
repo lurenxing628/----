@@ -3,26 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, Iterable, Optional, Tuple
 
-from .scheduler_workbench_links import ROLE_ADOPTED, build_workbench_plan_context
-
-_PLAN_GUARD_FIELD_NAMES = (
-    "requested_plan_role",
-    "effective_plan_role",
-    "plan_role_status",
-    "is_scenario_preview",
-    "is_comparison",
-    "is_superseded_by_newer_version",
-    "is_official_plan",
-    "is_preview_plan",
-    "is_current_executable_official_version",
-    "can_dispatch",
-    "can_write_feedback",
-    "plan_identity_error",
-    "plan_identity_blocking_error",
-    "plan_identity_blocking_scope",
-    "result_summary_parse_failed",
-    "result_summary_parse_reason",
-)
+from .scheduler_workbench_links import FULL_PLAN_GUARD_FIELDS, ROLE_ADOPTED, build_workbench_plan_context
 
 
 def _text(value: Any) -> str:
@@ -89,7 +70,6 @@ def _context_kwargs(
     date_to_value = date_to if plan_time_span_load_error else _filter_or_none(filters, ("date_to",), date_to)
     return {
         "version": effective_version,
-        "plan_id": _filter_or_none(filters, ("plan_id",)),
         "plan_role": _filter_or_none(filters, ("requested_plan_role", "plan_role"), ROLE_ADOPTED),
         "plan_role_label_value": _filter_or_none(filters, ("plan_identity_label", "requested_plan_role_label"), ""),
         "scenario_id": _filter_or_none(filters, ("scenario_id",)),
@@ -104,6 +84,8 @@ def _context_kwargs(
         "resource_label": _filter_text(filters, "resource_label"),
         "back_to": _filter_or_none(filters, ("back_to",)),
         "can_write_feedback": filters.get("can_write_feedback") if "can_write_feedback" in filters else False,
+        "plan_resolution": filters,
+        "plan_guard_fields": FULL_PLAN_GUARD_FIELDS,
     }
 
 
@@ -127,9 +109,6 @@ def latest_plan_context(
     )
     if _text(plan_time_span_load_error):
         context["plan_time_span_load_error"] = _text(plan_time_span_load_error)
-    for key in _PLAN_GUARD_FIELD_NAMES:
-        if key in filters:
-            context[key] = filters[key]
     return context
 
 

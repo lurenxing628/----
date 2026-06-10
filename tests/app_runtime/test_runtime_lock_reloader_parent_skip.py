@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, cast
 import pytest
 from flask import Flask
 
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 
 
@@ -48,7 +49,7 @@ def _prepare_import_env(tmpdir: str, monkeypatch) -> Dict[str, str]:
     monkeypatch.setenv("APS_DB_PATH", db_path)
     monkeypatch.setenv("APS_LOG_DIR", log_dir)
     monkeypatch.setenv("APS_BACKUP_DIR", backup_dir)
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", template_dir)
+    point_env_at_shared(monkeypatch)
     monkeypatch.setenv("SECRET_KEY", "aps-runtime-lock-reloader-test-key")
     monkeypatch.delenv("WERKZEUG_RUN_MAIN", raising=False)
     # entrypoint.py:250-251 会把解析后的 host/port 反写真 os.environ（production 副作用）。

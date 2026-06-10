@@ -70,7 +70,7 @@
 **判定 🟢绿**（同一物理文件两视角，零 LB 耦合、生产零引用、owner_pending=false，本簇最早最低风险一刀）。
 
 **证据**：`config_adapter.py` 实测 27 行；`config_adapter` 全仓唯一外部引用 = `tests/regression_sp06_no_duplicate_defs.py:15`（NO_CFG_GET_TARGETS 路径成员，非符号 import）。删文件方向 `core.algorithms→core.models` 合法、只减边、零越层（Q2 绿）。`_snapshot_attr@greedy/schedule_params.py:59` 已是收敛后 loud-raise 形态，替代路径在场。
-**唯一约束（loud 非静默）**：整文件删 + **同提交**退 sp06:15，否则 `path.read_text` 抛 FileNotFoundError → sp06 红（CI 立即可见）。R45≡R48 合并单提交，不可拆。
+**唯一约束（历史 loud 非静默）**：旧 sp06 清单若仍指向已删文件，则 `path.read_text` 抛 FileNotFoundError → sp06 红（CI 立即可见）。2026-06-08 终态下 R45≡R48 已 fixed，旧 sp06 文件已由 A P1.1 删除，清单同步 no-op。
 **与双栈收敛正交**：adapter 只 import FROM model snapshot，删它不动 LB07 本体，无须等 ASC-1。
 
 ---

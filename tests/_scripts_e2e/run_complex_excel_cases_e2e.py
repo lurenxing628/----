@@ -844,7 +844,7 @@ def _gen_batches(
 
 
 def _set_config(conn, *, auto_assign: str, dispatch_mode: str, dispatch_rule: str, algo_mode: str, objective: str, time_budget: int) -> None:
-    from core.services.scheduler.config_service import ConfigService
+    from core.services.scheduler.config.config_service import ConfigService
 
     cfg = ConfigService(conn)
     cfg.ensure_defaults()
@@ -859,7 +859,7 @@ def _set_config(conn, *, auto_assign: str, dispatch_mode: str, dispatch_rule: st
 
 
 def _enable_freeze_window(conn, *, days: int) -> None:
-    from core.services.scheduler.config_service import ConfigService
+    from core.services.scheduler.config.config_service import ConfigService
 
     cfg = ConfigService(conn)
     cfg.ensure_defaults()
@@ -1642,7 +1642,7 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
             issues_all.extend([f"[v2] {x}" for x in issues_v2])
 
             # 冻结一致性：窗口内被冻结 op 的时间应与 v1 一致
-            from core.services.scheduler.config_service import ConfigService
+            from core.services.scheduler.config.config_service import ConfigService
             from core.services.scheduler.freeze_window import build_freeze_window_seed
             from core.services.scheduler.schedule_service import ScheduleService
 

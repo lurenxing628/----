@@ -3,23 +3,24 @@
 > 只读不改产物。成员债 R30 / R33 / R29 / R49 / R50 / R51。
 > 主文件 compat_parse.py · value_policies.py · number_utils.py · dispatch_rules.py · sort_strategies.py · field_parse.py
 > 回盘时间 2026-06-05。本文档做：A 原子子簇 / B 跨簇边 / C 边变化 / D 承重前置 / E fixed 残留。
+> ✅ 2026-06-08 B 执行补登：A2/A3 中 R49/R50/R51 已在 G24 同一原子 diff fixed。旧行号仅保留为执行前证据；现盘已删除 5 行死别名、`mean_positive`、`statistics` import、两处宽容解析器与两份续命测试，`import math` 与同名前缀活函数保持在位。
 
 ## 0) 成员速览（回盘锚点）
 
 | 债 | 桶 | 主文件 | 修法类 | lb | owner_pending | 当前锚点（rg 回盘） |
 |---|---|---|---|---|---|---|
-| R30 | B06 | compat_parse.py / value_policies.py | 直删 date 切片+退测试 | false | false | parse_compat_date@:198 / _date_fallback@:143 / 三策略@:179-208 / 常量:12/:16/:17 |
-| R33 | B06 | core/services/common/{compat_parse,field_parse,value_policies}.py | 删三壳+迁/退测试（三步） | false | false | 三壳 def=0；测试 emits_degradation:18 / matrix:18 / config_contract:14/16/19/355/393-411 |
-| R29 | B05 | core/services/common/number_utils.py | KEEP（owner-pending，授权 CSV 缺）/ 若薄壳化先重写 monkeypatch 为身份测试 | false | **true** | common/number_utils.py 全量 delegate→core.shared.strict_parse |
-| R49 | B06 | dispatch_rules.py / evaluation.py / ortools_bottleneck.py | 直删 5 行死别名（定点删） | false | false | dispatch_rules:25 / evaluation:40-41 / ortools:24-25 |
-| R50 | B05 | dispatch_rules.py | 直删 mean_positive+import statistics+外科退测试 | false | false | mean_positive@:112-132 / import statistics@:4 |
-| R51 | B06 | dispatch_rules.py / sort_strategies.py | 直删两宽容解析器+**连退**续命测试 | false | false | parse_dispatch_rule@:28-35 / parse_strategy@sort_strategies:161-173 |
+| R30 | B06 | compat_parse.py / value_policies.py | ✅ 2026-06-10 G23 已同 commit 直删 date 切片+退测试 | false | false | 执行前锚点 parse_compat_date@:198 / _date_fallback@:143 / 三策略@:179-208 / 常量:12/:16/:17 |
+| R33 | B06 | core/services/common/{compat_parse,field_parse,value_policies}.py | ✅ 2026-06-10 G23 已按硬序同 commit 删三壳+迁/退测试 | false | false | 执行前锚点 三壳 def=0；测试 emits_degradation:18 / matrix:18 / config_contract:14/16/19/355/393-411 |
+| R29 | B05 | core/services/common/number_utils.py | ✅ 终态校正：registry 现盘 `fixed`（number_utils 现盘已全量收口到 strict_parse，原 KEEP/owner-pending 已解除） | false | ~~true~~→false | common/number_utils.py 全量 delegate→core.shared.strict_parse |
+| R49 | B06 | dispatch_rules.py / evaluation.py / ortools_bottleneck.py | ✅ 2026-06-08 已定点删除 5 行死别名 | false | false | 执行前锚点 dispatch_rules:25 / evaluation:40-41 / ortools:24-25；现盘仅保留活近亲 `_parse_due_date_state` / `sgs_scoring._parse_due_date` |
+| R50 | B05 | dispatch_rules.py | ✅ 2026-06-08 已删除 `mean_positive` + `import statistics`，保留 `import math` | false | false | 执行前锚点 mean_positive@:112-132 / import statistics@:4；现盘 `build_dispatch_key` 非有限工时回退契约仍由测试覆盖 |
+| R51 | B06 | dispatch_rules.py / sort_strategies.py | ✅ 2026-06-08 已删除两宽容解析器并连退两份续命测试 | false | false | 执行前锚点 parse_dispatch_rule@:28-35 / parse_strategy@sort_strategies:161-173；未迁移 `unknown -> default` 静默兜底断言 |
 
 ## A) 原子子簇（必须同批/同提交 vs 可独立）
 
 本簇拆 **3 个原子子簇 + 1 个孤立 owner-pending 节点**。
 
-### A1 · compat-facade 收敛链 {R33, R30}（必须同提交 + 硬内部顺序）
+### A1 · compat-facade 收敛链 {R33, R30}（必须同提交 + 硬内部顺序；✅ 2026-06-10 G23 已按硬序同 commit 原子收口 fixed，R31 源侧由 G17 紧随 commit 收口）
 - **原子原因**：① 二者都改 `tests/config/test_config_service_component_contract.py`（R33 删 :14/:16/:19 元组条目 + :393-399/:402-411 身份断言；交界行 `:411 parse_compat_date is` 在 R30 删实现后必失效，由 R33 步骤2 删）；② R30 删 `core.shared` 的 `parse_compat_date`/三 FieldPolicy/三常量，R33 删 `core.services.common` 三壳——壳 re-export 这些符号，删序错即 ImportError 或测试红。
 - **内部顺序（硬，registry deps_hint + 两 dossier 双证）**：
   1. **R33 步骤1**（迁 `emits_degradation:18` + `matrix_contract:18` 两测试 import 从 `core.services.common.*` → `core.shared.*`）——为 R30 解锁，最先；
@@ -27,15 +28,19 @@
   3. **R33 步骤2/3**（删 config_contract 身份断言含 :411 + 退元组三条 + 删三 .py 壳）。
   - 违序后果：R30 先删而 R33 步骤1 未迁 → :18 ImportError、:411 AttributeError（响声债，非静默）。
 
-### A2 · dispatch_rules 三债同物理文件 {R49, R50, R51}（必须同一原子 diff，避免行号互撞）
-- **原子原因**：三者全改 `core/algorithms/dispatch_rules.py`：R49 删 :25（顶部）、R51 删 :28-35（首函数）、R50 删 :112-132（末函数）+ :4 `import statistics`。删任一处都使其下方行号位移；R51 删首函数会把 R49(:25 之下)/R50(:112) 整体上移 7~8 行。**须一次性按行号快照删或按符号名定位**，严禁跨批拿旧绝对行号盲删。
+### A2 · dispatch_rules 三债同物理文件 {R49, R50, R51}（2026-06-08 已 fixed，以下为历史原子性说明）
+- **执行结果**：G24 已按同一原子 diff 完成。`core/algorithms/dispatch_rules.py` 中 R49 死别名、R51 `parse_dispatch_rule`、R50 `mean_positive` 与 `import statistics` 已删除；`import math`、`DispatchInputs`、`build_dispatch_key`、非有限工时回退测试均保留。
+- **原子原因（执行前）**：三者全改 `core/algorithms/dispatch_rules.py`：R49 删 :25（顶部）、R51 删 :28-35（首函数）、R50 删 :112-132（末函数）+ :4 `import statistics`。删任一处都使其下方行号位移；R51 删首函数会把 R49(:25 之下)/R50(:112) 整体上移 7~8 行。**须一次性按行号快照删或按符号名定位**，严禁跨批拿旧绝对行号盲删。
 - **内部顺序（人工 review 心智序，非运行期依赖）**：R49（零风险纯死别名，先清场）→ R51（medium，删宽容解析器并**连退** case_insensitive 续命测试，灵魂线红线：测试 :25 兜底断言禁迁/禁保留）→ R50（删 mean_positive，删 import statistics 前须确认 `statistics` 全文件零残留——回盘仅 :4+:132，可删；`import math`@:3 **保留**，:78/:95 真用）。从大行号往小行号删则各步互不回踩。
-- **定点删红线**：R49 严禁按符号名全局删 `_parse_due_date`（`sgs_scoring.py:34` 同名活函数 + `evaluation.py:26 _parse_due_date_state` 重前缀，误删即 NameError 炸派工评分）。
+- **定点删红线**：R49 严禁按符号名全局删 `_parse_due_date`（`sgs_scoring.py:34` 同名活函数 + `evaluation.py:26 _parse_due_date_state` 重前缀，误删即 NameError 炸派工评分）。本次执行只删死别名，活近亲仍在。
 
-### A3 · evaluation/ortools 死别名 {R49 之 4 行}（可与 A2 解耦独立）
-- `evaluation.py:40-41` 与 `ortools_bottleneck.py:24-25` 两处 R49 死别名与 dispatch_rules.py **不同文件、互不影响**，可单独删，无行号互撞、无序约束（dossier 字段 12 明示）。即 R49 本体跨 3 文件，仅 dispatch_rules 那一行卷入 A2 原子，另 4 行可独立。
+### A3 · evaluation/ortools 死别名 {R49 之 4 行}（2026-06-08 已随 G24 fixed）
+- `evaluation.py:40-41` 与 `ortools_bottleneck.py:24-25` 两处 R49 死别名已随 G24 同原子删除；不同文件、互不影响这一判断仍作为历史安全依据保留。`evaluation._parse_due_date_state`、`evaluation.parse_date`、`ortools_bottleneck.parse_date` 等活符号未动。
 
 ### A4 · R29（孤立，owner-pending，**只标不给终态**）
+
+> **✅ 2026-06-10 终态校正（以 registry 为准）**：本节标题与下文「只标 owner-pending、不给终态」均为规划期态、**现已过期**。registry 现盘 R29 = `fixed`、`owner_pending=false`——owner 已裁并执行，`common/number_utils.py` 现盘即收口形态。下列两选一/前置硬约束保留作历史决策记录。
+
 - **不进任何原子删除批**。R29 误标 not_applicable → corrections E 节纠为 **planned(owner-pending)**：授权 CSV 整目录 ABSENT，`common/number_utils.py` 仍全量 delegation-facade 到 `core.shared.strict_parse`（回盘证实 :5 import + parse_finite_float/int 薄壳），半截迁移不对称客观在场。
 - **修法两选一交 owner**：(KEEP) 仅补显性「有意保留」注释，不写代码，不阻塞任何批次；(B 收敛/薄壳化) **前置硬约束**：须**先重写 monkeypatch 为身份测试**（`regression_config_service_component_contract.py` + `regression_ortools_warmstart_failure_contract.py:136` 经 monkeypatch 续命），否则老路径测试红。**本 Layer 只标 owner-pending，不给终态。**
 
@@ -83,9 +88,9 @@
 
 ## E) fixed 成员残留动作
 
-- 本簇 **6 债无一在 fixed 名单**（fixed = LB03/LB06/R07/R16/R56/R57，均不属本簇）。无「fixed 作为前置已完成、需补认账注释」的残留。
-- 唯一须认账的非标准态是 **R29**（corrections E 节：误标 not_applicable → planned/owner-pending）：残留动作 = owner 裁 KEEP vs 薄壳化；若 KEEP 则补「有意保留半截 facade」显性注释 + 上交 open_question，本 Layer 不给终态。
+- 本簇 R49/R50/R51 已在 2026-06-08 G24 fixed：三者的执行前删点均已清掉，续命测试已退场，当前只需后续批次 go-no-go 时用全局门禁核销台账。
+- 剩余须认账的非标准态是 **R29**（corrections E 节：误标 not_applicable → planned/owner-pending）：残留动作 = owner 裁 KEEP vs 薄壳化；若 KEEP 则补「有意保留半截 facade」显性注释 + 上交 open_question，本 Layer 不给终态。R30/R33 仍按 A1 facade 收敛链另行执行。
 
 ## 返回摘要
 
-簇 C-COMPAT-DISPATCH | 原子子簇:3+1孤立 — A1{R33,R30}同提交,A2{R49,R50,R51}同diff,A3{R49之evaluation/ortools 4行}可独立,A4 R29 owner-pending孤立只标 | 关键内部顺序:R33步1迁import→R30删shared实现→R33步2/3删壳+:411；A2按符号名/行号快照同diff删(R49清场→R51连退测试→R50删函数+import statistics) | 跨簇边:R30/R33→R31(facade收口前置/壳吞并),R33→R29(禁区死保degradation:15),R51→schedule_params/optimizer_config收口点(只读在位前置) | 边变化:删 R50↔R25(假sgs碰撞)/R45↔{R33,R51}(R45=config_adapter非schedule_params)/LB04↔R33；新 R30↔R31(B13 facade三常量re-export硬序)/R29↔{R04,R28}条件边；降 R50跨桶→同diff软编排、R51→R49运行期序→心智序 | 承重前置:无(6债全lb=false,LB04/LB07在不触碰文件,N1/N2/R03/R58不在簇内);禁区=core.shared三模块/degradation:15/import math:3/sgs_scoring:34同名活函数
+簇 C-COMPAT-DISPATCH | 原子子簇:3+1孤立 — A1{R33,R30}同提交仍待执行,A2{R49,R50,R51}已在 2026-06-08 G24 同 diff fixed,A3{R49之evaluation/ortools 4行}已随 G24 fixed,A4 R29 owner-pending孤立只标 | 关键内部顺序:R33步1迁import→R30删shared实现→R33步2/3删壳+:411；A2 历史执行口径为按符号名/行号快照同diff删(R49清场→R51连退测试→R50删函数+import statistics)，现盘禁再按旧锚点重复删除 | 跨簇边:R30/R33→R31(facade收口前置/壳吞并),R33→R29(禁区死保degradation:15),R51→schedule_params/optimizer_config收口点(只读在位前置且本次未动) | 边变化:删 R50↔R25(假sgs碰撞)/R45↔{R33,R51}(R45=config_adapter非schedule_params)/LB04↔R33；新 R30↔R31(B13 facade三常量re-export硬序)/R29↔{R04,R28}条件边；降 R50跨桶→同diff软编排、R51→R49运行期序→心智序 | 承重前置:无(6债全lb=false,LB04/LB07在不触碰文件,N1/N2/R03/R58不在簇内);禁区=core.shared三模块/degradation:15/import math:3/sgs_scoring:34同名活函数

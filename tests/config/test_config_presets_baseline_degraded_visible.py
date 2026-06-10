@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from core.services.scheduler.config import config_presets
-from core.services.scheduler.config_service import ConfigService
+from core.services.scheduler.config.config_service import ConfigService
 from tests._support.paths import REPO_ROOT
 
 

@@ -16,6 +16,7 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.services.scheduler.resource_dispatch_range import resolve_dispatch_range
 from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_CRITICAL_BEST
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 
 
@@ -37,16 +38,14 @@ def _build_client(tmp_path, monkeypatch):
     test_db = tmp_path / "aps_test.db"
     test_logs = tmp_path / "logs"
     test_backups = tmp_path / "backups"
-    test_templates = tmp_path / "templates_excel"
     test_logs.mkdir(parents=True, exist_ok=True)
     test_backups.mkdir(parents=True, exist_ok=True)
-    test_templates.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setenv("APS_ENV", "development")
     monkeypatch.setenv("APS_DB_PATH", str(test_db))
     monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+    point_env_at_shared(monkeypatch)
 
     from core.infrastructure.database import ensure_schema, get_connection
 

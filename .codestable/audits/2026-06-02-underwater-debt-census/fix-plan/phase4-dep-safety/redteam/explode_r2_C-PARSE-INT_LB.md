@@ -24,7 +24,7 @@
 | R08 同源不变式 | `service.py:127 ≡ :130`（同 key 同 bool）、:139 默认 True、:214 _empty(F,F) | (T,F) 不可达坐实 |
 | R08 死分支 | viewmodel `:25 常量`、`:227-228 死①`、`:367-368 死②`、`:234 活路径 can_write and feedback_write_enabled` | 准 |
 | R08 真消费点 | `..._context.py:229/:237/:246` 硬传 True；`..._routes.py` grep=**0** | registry 误标 routes 坐实 |
-| R28 静默吞错 | `batch_service.py:55-64` `except Exception: return None`（:63-64） | 准 |
+| R28 静默吞错 | 旧 `batch_service.py:55-64` `except Exception: return None` 已在 2026-06-08 删除；当前 :55-57 为 `parse_finite_float(..., allow_none=True)` 薄包装 | fixed |
 | R28 上游护栏 | `batch_operation.py:92` / `part_operation.py:75` `parse_optional_float(ext_days)` | 爆炸半径极小坐实 |
 | R28 fitness 守卫 | `test_architecture_fitness.py:64 NAMES`、`:77 ALLOWLIST`、`:254 stale_entries` 断言 | 准 |
 | R28 越界禁区 | `batch_template_ops.py:170-171` / `batch_copy.py:70-71` `float(... or 0.0)` 工时兜底 | 准 |
@@ -62,7 +62,7 @@
 
 ### 🟢 R28 — 绿（完全独立叶子，方向 P4 正向，爆炸半径极小）
 
-收口到已存在 `parse_finite_float`（scheduler/number_utils:6 已 re-export），**不改 number_utils 一行**。上游护栏 `batch_operation:92`/`part_operation:75` 已 `parse_optional_float`，`_safe_float` except 几乎不可达 = 冗余防御，收口后生产零变化。必守：`allow_none=True`（否则炸所有空 ext_days）、不越界动 `setup/unit_hours float(... or 0.0)`(:170-171/:70-71)、同步退/留 fitness 白名单 :77（先跑 `pytest -k allowlist` 据实定）。承重误删风险无。
+2026-06-08 已收口到已存在 `parse_finite_float`（scheduler/number_utils:6 已 re-export），**不改 number_utils 一行**。上游护栏 `batch_operation:92`/`part_operation:75` 已 `parse_optional_float`，收口后生产零变化。已守住：`allow_none=True`；未越界动 `setup/unit_hours float(... or 0.0)`(:170-171/:70-71)；fitness 白名单 :77 经 `pytest -k test_no_new_local_parse_helpers` 实测保留。承重误删风险无。
 
 ### 🟢 R01 — 绿（纯删死码，零外部消费双证，所有误删响亮暴露）
 
@@ -83,7 +83,7 @@ R04 A 收口走 loud raise（正向），但 6 处 except 漏改 = 热路径（�
 C 路严格 `5.9→None`/`True→None` vs A/B 宽松 `5.9→5`/`True→1`（独立复现坐实）。直接收口静默放宽/收紧，须先 parity 钉死 + owner 裁。R04 A 旧 ValueError vs 新 ValidationError"行为等价类型变"（须同改 except）。R59 `'1.0'` 旧 raise vs 裸收口接受 1（F1 兜）。R28 垃圾/NaN/inf/bool 旧静默 vs 新 raise = 有意方向变更（非回归）。
 
 ## Q6 测试迁移序：🟡 强序约束
-R04 先写 A/B/C parity → 改 except → 收口；R59 先 parity 钉 '1.0' raise + blank 短路 → F1 后收口；R08 先钉 :127≡:130 不变式守卫 → 删死分支；R01 删函数 + 删 SP05:54-55 断言**必须同提交**（中间提交必红）；R09 先两路 parity → R07/R08(B01) 后重 grep → 迁 A/B。R28 先跑 `-k allowlist` 定白名单退留。序错=测试红或复活兜底。
+R04 先写 A/B/C parity → 改 except → 收口；R59 先 parity 钉 '1.0' raise + blank 短路 → F1 后收口；R08 先钉 :127≡:130 不变式守卫 → 删死分支；R01 删函数 + 删 SP05:54-55 断言**必须同提交**（中间提交必红）；R09 先两路 parity → R07/R08(B01) 后重 grep → 迁 A/B。R28 已跑 `-k test_no_new_local_parse_helpers` 定白名单保留并完成收口。序错=测试红或复活兜底。
 
 ---
 

@@ -7,6 +7,7 @@ from core.models.schedule_plan_role import (
     SOURCE_CANDIDATE_ROWS,
     SOURCE_SCHEDULE,
 )
+from core.models.schedule_resource_filter import normalize_dispatch_resource_filter
 
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
@@ -444,25 +445,17 @@ class SchedulePlanQueryRepository(BaseRepository):
             candidate_id=candidate_id,
             scenario_id=scenario_id,
         )
-        scope_type_text = str(scope_type or "").strip().lower()
-        scope_id_text = str(scope_id or "").strip()
+        # R05 步3：派工谓词收敛到唯一收口点 normalize_dispatch_resource_filter（含空 id=全量、team 双 join）。
+        resource_filter = normalize_dispatch_resource_filter(scope_type, scope_id)
         where_clauses = ["s.start_time < ?", "s.end_time > ?"]
         params: List[Any] = [int(version)] + extra_params + [end_time, start_time]
-        if scope_type_text == "operator" and scope_id_text:
-            where_clauses.append("TRIM(COALESCE(s.operator_id, '')) = ?")
-            params.append(scope_id_text)
-        elif scope_type_text == "operator":
-            where_clauses.append("TRIM(COALESCE(s.operator_id, '')) <> ''")
-        elif scope_type_text == "machine" and scope_id_text:
-            where_clauses.append("TRIM(COALESCE(s.machine_id, '')) = ?")
-            params.append(scope_id_text)
-        elif scope_type_text == "machine":
-            where_clauses.append("TRIM(COALESCE(s.machine_id, '')) <> ''")
-        elif scope_type_text == "team" and scope_id_text:
-            where_clauses.append("((o.team_id = ?) OR (m.team_id = ?))")
-            params.extend([scope_id_text, scope_id_text])
+        if resource_filter.sql_fragment:
+            where_clauses.append(resource_filter.sql_fragment)
+            params.extend(resource_filter.params)
         sql = build_schedule_detail_sql(
             where_clauses=tuple(where_clauses),
+            # 此 detail SQL 的列面恒带 team 上下文，include_team_context 保持无条件 True，
+            # 不随 resource_filter.include_team_context 收窄（收窄会 no such column: o.team_id）。
             include_team_context=True,
             plan_rows_cte_sql=plan_sql,
         )

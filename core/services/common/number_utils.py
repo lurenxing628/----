@@ -9,6 +9,9 @@ from core.shared.strict_parse import (
     parse_required_int,
 )
 
+# O20 KEEP: 这里刻意保留 common 层兼容门面，运行时实现已薄委托到 core.shared.strict_parse。
+# 不要把它当旧全量副本删除；若要下线 facade，须先改完所有生产 import 和对应门面契约测试。
+
 
 @overload
 def parse_finite_float(value: Any, *, field: str, allow_none: Literal[False] = False) -> float:

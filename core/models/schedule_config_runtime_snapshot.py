@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Tuple
 
 
+# 与 services.scheduler.config.config_snapshot.ScheduleConfigSnapshot 双栈锁步；字段增删必须同步。
 @dataclass
 class ScheduleConfigSnapshot:
     sort_strategy: str

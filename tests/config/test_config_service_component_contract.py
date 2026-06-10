@@ -1,4 +1,4 @@
-"""守护 scheduler/config 拆分后的分层契约：config 包/门面延迟导入不连带加载 repositories 与 greedy、纯叶子模块不反向依赖 facade 或 repo/web/algorithms、algorithms 与 shared 层不越界 import services、web 只经 config 门面访问、且 common 对 shared 的 degradation/value_policies/parse 再导出保持同一身份；同时守护类型化状态契约——预设来源（provenance）与 CurrentConfigDisplayState 保持类型化对象及约定字段集（不退化为裸 dict），运行时配置投影与 service 字段契约一致。"""
+"""守护 scheduler/config 拆分后的分层契约：config 包/门面延迟导入不连带加载 repositories 与 greedy、纯叶子模块不反向依赖 facade 或 repo/web/algorithms、algorithms 与 shared 层不越界 import services、web 只经 config 门面访问、且 common 对 shared 的 degradation/strict_parse 再导出保持同一身份（compat_parse/field_parse/value_policies 三壳已随 R33 删除）；同时守护类型化状态契约——预设来源（provenance）与 CurrentConfigDisplayState 保持类型化对象及约定字段集（不退化为裸 dict），运行时配置投影与 service 字段契约一致。"""
 
 from __future__ import annotations
 
@@ -14,13 +14,12 @@ from typing import Dict, List, Optional, Set
 from tests._support.paths import REPO_ROOT
 
 CONFIG_ROOT = REPO_ROOT / "core/services/scheduler/config"
+# R33(G23) 已删 compat_parse/field_parse/value_policies 三个纯 re-export 壳，元组只剩仍在盘的
+# 中性 helper；degradation 是 V4② 死保的活桥接（真承重再导出，绝非可删壳），不许从这里移除。
 _SERVICE_COMMON_NEUTRAL_HELPERS = (
-    "core.services.common.compat_parse",
     "core.services.common.degradation",
-    "core.services.common.field_parse",
     "core.services.common.number_utils",
     "core.services.common.strict_parse",
-    "core.services.common.value_policies",
 )
 
 
@@ -394,25 +393,13 @@ def test_services_common_degradation_reexports_shared_identity() -> None:
     }
 
 
-def test_services_common_value_policies_reexports_shared_identity() -> None:
-    from core.services.common import value_policies as service_value_policies
-    from core.shared import value_policies as shared_value_policies
-
-    assert service_value_policies.FieldPolicy is shared_value_policies.FieldPolicy
-    assert service_value_policies.FIELD_POLICIES_BY_FIELD is shared_value_policies.FIELD_POLICIES_BY_FIELD
-    assert service_value_policies.get_field_policy("priority_weight") is shared_value_policies.get_field_policy("priority_weight")
-
-
 def test_services_common_parse_core_reexports_shared_identity() -> None:
-    from core.services.common import compat_parse as service_compat_parse
+    # R33(G23) 已删 compat_parse/value_policies 壳，身份断言只剩仍在盘的 strict_parse 活桥接。
     from core.services.common import strict_parse as service_strict_parse
-    from core.shared import compat_parse as shared_compat_parse
     from core.shared import strict_parse as shared_strict_parse
 
     assert service_strict_parse.parse_required_float is shared_strict_parse.parse_required_float
     assert service_strict_parse.parse_optional_datetime is shared_strict_parse.parse_optional_datetime
-    assert service_compat_parse.parse_compat_float is shared_compat_parse.parse_compat_float
-    assert service_compat_parse.parse_compat_date is shared_compat_parse.parse_compat_date
 
 
 def test_web_layer_uses_config_facade_instead_of_config_leaves() -> None:

@@ -65,7 +65,6 @@ def _record_blank_choice_degradation(
     *,
     scope: str,
     field: str,
-    raw_value: Any,
     fallback: str,
 ) -> None:
     label = display_field_label(field, fallback="配置项")
@@ -155,7 +154,7 @@ def _choice_with_degradation(
     if strict_mode and text == "":
         raise ValidationError(f"“{label}”不能为空", field=field)
     if text == "":
-        _record_blank_choice_degradation(collector, scope=scope, field=field, raw_value=raw_value, fallback=fallback_text)
+        _record_blank_choice_degradation(collector, scope=scope, field=field, fallback=fallback_text)
         return fallback_text
     if normalized_valid and text not in normalized_valid:
         if strict_mode:
@@ -208,7 +207,6 @@ def _yes_no_with_degradation(
             collector,
             scope=scope,
             field=field,
-            raw_value=raw_value,
             fallback=normalized_default,
         )
         return normalized_default

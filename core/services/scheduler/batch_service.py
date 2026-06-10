@@ -11,7 +11,7 @@ from core.services.common.normalize import normalize_text
 from data.repositories import BatchOperationRepository, BatchRepository, PartOperationRepository, PartRepository
 
 from . import batch_copy, batch_excel_import, batch_template_ops, batch_write_rules
-from .number_utils import parse_finite_int
+from .number_utils import parse_finite_float, parse_finite_int
 
 
 class BatchService:
@@ -54,14 +54,7 @@ class BatchService:
 
     @staticmethod
     def _safe_float(value: Any) -> Optional[float]:
-        if value is None:
-            return None
-        if isinstance(value, str) and value.strip() == "":
-            return None
-        try:
-            return float(value)
-        except Exception:
-            return None
+        return parse_finite_float(value, field="ext_days", allow_none=True)
 
     @staticmethod
     def _normalize_date(value: Any) -> Optional[str]:
