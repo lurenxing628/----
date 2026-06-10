@@ -76,8 +76,6 @@ jobs:
             quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles('requirements.txt', 'requirements-dev.txt', 'requirements-optimizer-lite-win7.txt') }}-tooling-${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', 'scripts/run_quality_gate.py', 'scripts/run_daily_quality_gate.py', 'tools/**/*.py', 'pyrightconfig.gate.json', 'pyrightconfig.tools.json') }}-
 
       - name: 执行统一质量门禁
-        env:
-          APS_DEBUG_CANDIDATE_TRACEBACK: "1"
         run: python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
 
       - name: 保存 long gate cache

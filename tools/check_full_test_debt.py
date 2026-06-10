@@ -532,19 +532,6 @@ def collect_current_payload(
     return payload
 
 
-def _dump_candidate_tracebacks(payload: Dict[str, Any]) -> None:
-    """临时诊断：把 candidate_test_debt 候选的 pytest longrepr 打到 stderr（进 full_test_debt.stderr.log
-    工件），用于定位仅在 Windows 分片下复现、本地隔离恒过的候选债真因。env 门控、定位后回退。"""
-    classifications = payload.get("classifications") or {}
-    cands = set(classifications.get("candidate_test_debt") or [])
-    print(f"[DEBUG-CAND] candidate_test_debt = {sorted(cands)}", file=sys.stderr, flush=True)
-    for report in payload.get("reports") or []:
-        if report.get("nodeid") in cands and report.get("outcome") == "failed":
-            print("=" * 80, file=sys.stderr, flush=True)
-            print(f"[DEBUG-CAND] {report.get('nodeid')}", file=sys.stderr, flush=True)
-            print(str(report.get("longrepr") or "<no longrepr>"), file=sys.stderr, flush=True)
-
-
 def run_check(
     *,
     require_clean_worktree_proof: bool = True,
@@ -555,8 +542,6 @@ def run_check(
     ledger = load_ledger(required=True)
     _progress("治理台账已加载")
     payload = collect_current_payload(sharded=sharded, shard_count=shard_count)
-    if os.environ.get("APS_DEBUG_CANDIDATE_TRACEBACK"):
-        _dump_candidate_tracebacks(payload)
     summary = build_full_test_debt_summary(
         payload,
         ledger=ledger,
