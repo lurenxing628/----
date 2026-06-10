@@ -768,7 +768,12 @@ def _write_command_receipt(command: Dict[str, Any], *, run_id: str, index: int, 
 def _mark_command_timing(result: Dict[str, Any], *, started_at: str, start_perf: float) -> float:
     # 用 perf_counter 而非 monotonic：Windows 上 monotonic 分辨率粗（~15ms），瞬时返回的
     # 命令会量到 duration_s=0.0；perf_counter 为高分辨率计时，快操作也能得到正时长。
-    duration_s = time.perf_counter() - start_perf
+    # 若 result 已自带 duration_s（生产 _run_command 从不预置，仅测试播种确定时长用）则尊重之，
+    # 让"慢条目排序"类自测可控、不被微秒级测量噪声左右。
+    if "duration_s" in result:
+        duration_s = float(result["duration_s"])
+    else:
+        duration_s = time.perf_counter() - start_perf
     result["started_at"] = started_at
     result["ended_at"] = datetime.now().isoformat(timespec="seconds")
     result["duration_s"] = duration_s

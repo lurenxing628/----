@@ -186,7 +186,15 @@ def test_successful_run_writes_json_md_counts_and_reasons(monkeypatch, tmp_path)
     repo_root.mkdir()
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_plan())
-    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False, env_overlay=None: _successful_result(display))
+
+    # 注入确定时长：让 collect 步最慢，使"慢条目 top_entries"排序断言可控、不被微秒级测量噪声
+    # 左右（否则 mock 命令瞬时返回，最慢者取决于 perf_counter 噪声，Windows 上会变成 ruff）。
+    def _timed_run_command(display, args, capture_output=False, env_overlay=None):
+        result = _successful_result(display)
+        result["duration_s"] = 9.0 if display == "python -m pytest --collect-only -q tests" else 1.0
+        return result
+
+    monkeypatch.setattr(module, "_run_command", _timed_run_command)
 
     assert module.main(["--long-gate-cache"]) == 0
 
