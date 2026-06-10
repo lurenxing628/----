@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 from core.algorithms.evaluation import ScheduleMetrics
 from core.services.scheduler.run.optimizer_search_state import compact_attempts
-from core.services.scheduler.schedule_summary import build_result_summary
-from core.services.scheduler.schedule_summary_types import SummaryBuildContext
 from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
+from core.services.scheduler.summary.schedule_summary import build_result_summary
+from core.services.scheduler.summary.schedule_summary_types import SummaryBuildContext
 
 
 class _SummarySvc:
@@ -315,7 +315,7 @@ def test_rejected_diagnostic_survives_summary_attempt_compaction() -> None:
 
 
 def test_large_optimizer_diagnostics_are_truncated_before_summary_json_persistence() -> None:
-    from core.services.scheduler.schedule_summary import SUMMARY_SIZE_LIMIT_BYTES
+    from core.services.scheduler.summary.schedule_summary import SUMMARY_SIZE_LIMIT_BYTES
 
     start = datetime(2026, 4, 1, 8, 0, 0)
     payload = "x" * 12000

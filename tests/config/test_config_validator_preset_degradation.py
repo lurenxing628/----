@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from core.infrastructure.errors import ValidationError
-from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot
-from core.services.scheduler.config_validator import normalize_preset_snapshot
+from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
+from core.services.scheduler.config.config_validator import normalize_preset_snapshot
 
 
 def _base_snapshot() -> ScheduleConfigSnapshot:

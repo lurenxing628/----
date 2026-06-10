@@ -9,8 +9,8 @@ from typing import Any, Dict, Optional
 
 from core.algorithms.evaluation import ScheduleMetrics
 from core.services.scheduler.run.schedule_graph_report import _project_graph_analysis_payload
-from core.services.scheduler.schedule_summary import build_result_summary
-from core.services.scheduler.schedule_summary_types import SummaryBuildContext
+from core.services.scheduler.summary.schedule_summary import build_result_summary
+from core.services.scheduler.summary.schedule_summary_types import SummaryBuildContext
 
 _PUBLIC_FORBIDDEN_KEYS = {
     "topological_order_sample",

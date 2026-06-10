@@ -22,7 +22,7 @@ if REPO_ROOT not in sys.path:
 
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.scheduler.degradation_messages import FREEZE_WINDOW_DEGRADED_MESSAGE
-from core.services.scheduler.schedule_summary import build_result_summary
+from core.services.scheduler.summary.schedule_summary import build_result_summary
 
 
 class _StubSvc:

@@ -464,7 +464,6 @@ def main(monkeypatch) -> None:
     _assert_contains(content_disposition, expected_filename, "说明书下载文件名未更新为“系统使用说明.md”")
 
     with ExitStack() as stack:
-        stack.enter_context(patch("web.routes.scheduler_config._resolve_scheduler_manual_md_path", return_value=(None, [])))
         stack.enter_context(
             patch("web.routes.domains.scheduler.scheduler_config._resolve_scheduler_manual_md_path", return_value=(None, []))
         )

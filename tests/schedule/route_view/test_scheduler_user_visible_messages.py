@@ -16,7 +16,7 @@ from flask import Flask
 from core.algorithms.greedy.schedule_params import resolve_schedule_params
 from core.algorithms.sort_strategies import SortStrategy
 from core.infrastructure.errors import ValidationError
-from core.services.scheduler.schedule_summary import build_result_summary
+from core.services.scheduler.summary.schedule_summary import build_result_summary
 from core.shared.field_labels import display_field_label
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT

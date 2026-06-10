@@ -326,7 +326,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     picked = _select_batches(conn, max_batches=int(args.max_batches), max_ops=int(args.max_ops))
     config_snapshot: Optional[Dict[str, Any]] = None
     try:
-        from core.services.scheduler.config_service import ConfigService
+        from core.services.scheduler.config.config_service import ConfigService
 
         config_snapshot = ConfigService(conn).get_snapshot().to_dict()
     except Exception:

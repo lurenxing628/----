@@ -519,7 +519,7 @@ class StopChromeResult:
 
 实现限制：
 
-- 先保留旧 wrapper，避免一次改动冲击启动链。
+- 先保留旧 wrapper，避免一次改动冲击启动链。〔2026-06-10 O29 已批准收口：9 个顶层 wrapper 与 _scheduler_compat.py 已删除，21 个测试文件已迁 domains 叶子路径（另 1 个守 wrapper 的契约文件整删），SP05 ROUTE 兼容三表已清空，本延期决定就此关闭。〕
 - 插件错误要继续脱敏展示，详细错误写日志或 degradation 事件。
 
 ## 子 feature 清单

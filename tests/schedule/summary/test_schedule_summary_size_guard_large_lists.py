@@ -213,7 +213,7 @@ def main() -> None:
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from core.services.scheduler.schedule_summary import SUMMARY_SIZE_LIMIT_BYTES, apply_summary_size_guard
+    from core.services.scheduler.summary.schedule_summary import SUMMARY_SIZE_LIMIT_BYTES, apply_summary_size_guard
 
     selected_obj = _selected_case(60000)
     selected_before = _size_bytes(selected_obj)

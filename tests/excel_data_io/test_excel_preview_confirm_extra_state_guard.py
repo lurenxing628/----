@@ -94,7 +94,7 @@ def test_excel_preview_confirm_extra_state_guard(app_client, db_path) -> None:
     from core.services.personnel.resource_team_service import ResourceTeamService
     from core.services.process.op_type_service import OpTypeService
     from core.services.process.part_service import PartService
-    from core.services.scheduler.config_service import ConfigService
+    from core.services.scheduler.config.config_service import ConfigService
 
     conn = get_connection(db_path)
     try:

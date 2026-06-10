@@ -9,7 +9,7 @@ def test_schedule_service_passes_algo_stats_to_summary(schema_conn) -> None:
 
     import core.services.scheduler.schedule_service as schedule_service_mod
     from core.services.common.build_outcome import BuildOutcome
-    from core.services.scheduler.config_service import ConfigService
+    from core.services.scheduler.config.config_service import ConfigService
     from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
     from core.services.scheduler.schedule_service import ScheduleService
 

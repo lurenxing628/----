@@ -21,7 +21,7 @@ class _StubSvc:
 
 def test_schedule_summary_overdue_warning_append_fallback() -> None:
 
-    from core.services.scheduler.schedule_summary import build_overdue_items
+    from core.services.scheduler.summary.schedule_summary import build_overdue_items
 
     summary = SimpleNamespace(warnings=("已有告警",))
     items, meta = build_overdue_items(

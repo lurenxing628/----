@@ -319,7 +319,7 @@ def _add_plan_target_routes(app: Flask) -> None:
 
 def _build_app(monkeypatch) -> Tuple[Flask, Any]:
     _reset_scheduler_modules()
-    import web.routes.scheduler_analysis as route_mod
+    import web.routes.domains.scheduler.scheduler_analysis as route_mod
 
     def _render_context(_tpl: str, **ctx: Any) -> Dict[str, Any]:
         return ctx

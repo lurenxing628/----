@@ -11,7 +11,7 @@ def _make_dt(hours: int) -> datetime:
 
 
 def _base_input() -> Any:
-    from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot
+    from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
 
     return SimpleNamespace(
         cfg=ScheduleConfigSnapshot(
@@ -75,7 +75,7 @@ def test_schedule_orchestrator_contract() -> None:
     from core.services.scheduler.run.schedule_orchestrator import _build_summary_contract
     from core.services.scheduler.schedule_orchestrator import orchestrate_schedule_run
     from core.services.scheduler.schedule_service import ScheduleService
-    from core.services.scheduler.schedule_summary_types import SummaryBuildContext
+    from core.services.scheduler.summary.schedule_summary_types import SummaryBuildContext
 
     def _optimizer_outcome(**kwargs):
         return OptimizationOutcome(

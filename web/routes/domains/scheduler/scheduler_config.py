@@ -92,10 +92,9 @@ def _resolve_scheduler_manual_md_path_for_download() -> Tuple[Optional[str], Lis
     resolver = getattr(module, "_resolve_scheduler_manual_md_path", None)
     if callable(resolver) and resolver is not _resolve_scheduler_manual_md_path:
         return cast(Tuple[Optional[str], List[str]], resolver())
-    compat_module = sys.modules.get("web.routes.scheduler_config")
-    compat_resolver = getattr(compat_module, "_resolve_scheduler_manual_md_path", None)
-    if callable(compat_resolver) and compat_resolver is not _resolve_scheduler_manual_md_path:
-        return cast(Tuple[Optional[str], List[str]], compat_resolver())
+    # R43(O29)：顶层 wrapper web.routes.scheduler_config 已删除，原 compat 软探测段
+    # （sys.modules.get 老路径取 resolver）随之退场——删后留它只会永远拿 None 走默认分支，
+    # 属静默退化死支；现单路 loud。
     return _resolve_scheduler_manual_md_path()
 
 

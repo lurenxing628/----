@@ -17,8 +17,8 @@ from core.algorithms.evaluation import ScheduleMetrics
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.transaction import TransactionManager
 from core.services.scheduler.run.schedule_persistence import build_validated_schedule_payload, persist_schedule
-from core.services.scheduler.schedule_summary import build_result_summary
-from core.services.scheduler.schedule_summary_types import SummaryBuildContext
+from core.services.scheduler.summary.schedule_summary import build_result_summary
+from core.services.scheduler.summary.schedule_summary_types import SummaryBuildContext
 from data.repositories.schedule_history_repo import ScheduleHistoryRepository
 from data.repositories.schedule_repo import ScheduleRepository
 from tests._support.excel_templates import point_env_at_shared

@@ -56,7 +56,7 @@ def _expect_validation(label, func, field, message_contains=None, forbidden_mess
 
 def test_config_snapshot_strict_numeric() -> None:
 
-    from core.services.scheduler.config_snapshot import build_schedule_config_snapshot
+    from core.services.scheduler.config.config_snapshot import build_schedule_config_snapshot
 
     defaults = _default_snapshot_kwargs()
 

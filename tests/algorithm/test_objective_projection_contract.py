@@ -8,7 +8,7 @@ import pytest
 
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
 from core.algorithms.objective_specs import metric_label_for, objective_choice_labels
-from core.services.scheduler.schedule_summary import best_score_schema, comparison_metric
+from core.services.scheduler.summary.schedule_summary import best_score_schema, comparison_metric
 from web.viewmodels.scheduler_analysis_vm import _comparison_metric_from_algo, objective_label_for
 
 

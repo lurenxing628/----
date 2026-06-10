@@ -12,7 +12,7 @@ import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.personnel.operator_service import OperatorService
-from core.services.scheduler.config_service import ConfigService
+from core.services.scheduler.config.config_service import ConfigService
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 from web.routes.excel_utils import encode_preview_rows_payload

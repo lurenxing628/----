@@ -17,7 +17,7 @@ def find_repo_root() -> str:
 
 
 def _invoke_scheduler_run(form_data: Any):
-    import web.routes.scheduler_run as route_mod
+    import web.routes.domains.scheduler.scheduler_run as route_mod
 
     captured: Dict[str, Any] = {}
 
@@ -51,7 +51,7 @@ def _invoke_scheduler_run(form_data: Any):
 
 
 def _invoke_scheduler_simulate(form_data: Any):
-    import web.routes.scheduler_week_plan as route_mod
+    import web.routes.domains.scheduler.scheduler_week_plan as route_mod
 
     captured: Dict[str, Any] = {}
 

@@ -84,7 +84,7 @@ def _serialize_results(results: List[Any]) -> List[Dict[str, Any]]:
 def probe_overdue_boundary() -> Dict[str, Any]:
     from core.algorithms.evaluation import compute_metrics
     from core.algorithms.types import ScheduleResult
-    from core.services.scheduler.schedule_summary import build_overdue_items
+    from core.services.scheduler.summary.schedule_summary import build_overdue_items
 
     batch = SimpleNamespace(batch_id="B001", priority="normal", due_date="2026-01-01")
     batches = {"B001": batch}

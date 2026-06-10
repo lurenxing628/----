@@ -23,9 +23,9 @@ class FakeRepo:
 
 def test_objective_case_normalization(schema_conn) -> None:
 
-    from core.services.scheduler.config_service import ConfigService
-    from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot, build_schedule_config_snapshot
-    from core.services.scheduler.config_validator import normalize_preset_snapshot
+    from core.services.scheduler.config.config_service import ConfigService
+    from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot, build_schedule_config_snapshot
+    from core.services.scheduler.config.config_validator import normalize_preset_snapshot
     from web.viewmodels.scheduler_analysis_vm import _comparison_metric_from_algo, _objective_key_from_algo_objective
 
     assert _objective_key_from_algo_objective("MIN_WEIGHTED_TARDINESS") == "weighted_tardiness_hours"

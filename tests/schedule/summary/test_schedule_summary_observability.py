@@ -183,7 +183,7 @@ def test_scheduler_batches_accepts_preparsed_result_summary_dict(tmp_path, monke
     app, _db_path = _build_app(tmp_path, monkeypatch)
 
     import web.bootstrap.request_services as request_services_mod
-    import web.routes.scheduler_batches as route_mod
+    import web.routes.domains.scheduler.scheduler_batches as route_mod
 
     summary = {"warnings": ["告警一", "告警二", "告警一"]}
 
@@ -265,7 +265,7 @@ def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_m
     app, _db_path = _build_app(tmp_path, monkeypatch)
 
     import web.bootstrap.request_services as request_services_mod
-    import web.routes.scheduler_batches as route_mod
+    import web.routes.domains.scheduler.scheduler_batches as route_mod
 
     summary = {
         "warnings": ["告警一"],

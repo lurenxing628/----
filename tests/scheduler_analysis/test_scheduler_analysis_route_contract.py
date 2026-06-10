@@ -58,8 +58,8 @@ def _build_app(monkeypatch, history_service: _HistoryServiceStub) -> Flask:
     for name in list(sys.modules):
         if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
             sys.modules.pop(name, None)
+    import web.routes.domains.scheduler.scheduler_analysis as route_mod
     import web.routes.scheduler as _scheduler_routes  # noqa: F401
-    import web.routes.scheduler_analysis as route_mod
 
     monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
 

@@ -10,12 +10,12 @@ from core.algorithms.objective_specs import objective_choice_labels
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler import ConfigService
-from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
-from core.services.scheduler.config_snapshot import (
+from core.services.scheduler.config.config_snapshot import (
     ScheduleConfigSnapshot,
     build_schedule_config_snapshot,
+    ensure_schedule_config_snapshot,
 )
-from core.services.scheduler.config_validator import normalize_preset_snapshot
+from core.services.scheduler.config.config_validator import normalize_preset_snapshot
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"

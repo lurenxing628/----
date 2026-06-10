@@ -6243,7 +6243,7 @@
   "id": "R26",
   "bucket": "B13",
   "home": "B13",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P3",
   "partition": "scheduler-config-summary-graph",
@@ -6261,7 +6261,7 @@
    "scheduler_config.py",
    "test_sp05_path_topology_contract.py"
   ],
-  "current_evidence_2026_06_05": "5个顶层shim(config_service.py:3/config_snapshot.py/config_validator.py/schedule_summary.py/schedule_summary_types.py)全仍纯 from .config.X/.summary.X 转出；2离线消费方仍在老路径(tools/capture_networkx_phase0_baseline.py:17、audit/2026-03/20260316_schedule_audit_probes.py:87)；三步迁移零落地，未晚于B05/B06/B09收敛。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(G18,三桶前置全闭合后落地): E07(R29 O20 KEEP)/E08(R33 今日 fixed)/E09(R52 O07 KEEP)+E10(G15 fixed)+R71 先行全部满足,go-no-go 放行。四步: ①迁 2 离线消费者(tools/capture_networkx_phase0_baseline.py:17、audit/2026-03/20260316_schedule_audit_probes.py:87)到深路径并手动验证(AST 解析+深路径 import 链实跑通,F 门完成,CI 不跑故留此记录);②重指 import——实测 54 文件(52 测试+2 离线,与 dossier 回盘口径 53+2 的差为后续收口合并所致)全部 core.services.scheduler.{config_service,config_snapshot,config_validator,schedule_summary,schedule_summary_types} 老路径改深路径(.config.*/.summary.*),schedule_summary_types 先于 schedule_summary 替换防前缀误伤,全仓残留零(rg 验证);③SP05 按 dossier 纠偏改 BEHAVIOR_* 两字典(SERVICE_BEHAVIOR_COMPAT_SYMBOLS+PUBLIC 各删 5 条,STRONG_* 与 :638 第二处零触碰)+migrated_root_names 删 config_service.py 项+扫描器自测探针料由已退场的 config_service 换 schedule_orchestrator(仍在 legacy 集);开发文档.md scheduler 树删 5 行薄门面(树尾 └── 修正)+系统速查表.md :745 同步;④git rm 5 个顶层 shim。验证: SP05 13 passed、gate_meta 943 passed、config+schedule+scheduler_graph+calendar_maintenance 1149 passed、web.bootstrap.factory 冷导入 ok、ruff 全过(I001 经 --fix)。 原始记录(收口前): 5个顶层shim(config_service.py:3/config_snapshot.py/config_validator.py/schedule_summary.py/schedule_summary_types.py)全仍纯 from .config.X/.summary.X 转出；2离线消费方仍在老路径(tools/capture_networkx_phase0_baseline.py:17、audit/2026-03/20260316_schedule_audit_probes.py:87)；三步迁移零落地，未晚于B05/B06/B09收敛。",
   "cluster": "C01",
   "same_file_siblings": [
    "R71"
@@ -6407,7 +6407,7 @@
   "id": "R43",
   "bucket": "B13",
   "home": "B13",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P3",
   "partition": "web-all",
@@ -6430,7 +6430,7 @@
    "scheduler_run.py",
    "test_sp05_path_topology_contract.py"
   ],
-  "current_evidence_2026_06_05": "web/routes/scheduler_run.py:5-8 仍是 _scheduler_compat.load_scheduler_route_module+sys.modules别名残渣；9个顶层wrapper+_scheduler_compat.py 全在(ls确认)，tests/excel_data_io/test_scheduler_wrapper_import_order_contract.py 整文件仍在；roadmap p1-scheduler-debt-cleanup-roadmap.md:522『先保留旧wrapper避免冲击启动链』延期决定未认账。三前置(roadmap认账/迁15测试/退契约)零落地。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(O29 认账提前删,与 R26 同窗同 commit 各改 SP05 各段避免两次行位移): ①roadmap p1-scheduler-debt-cleanup:522 延期决定已认账关闭(原句保留+追加 O29 收口注记);②21 个测试文件批量迁 domains 叶子路径(web.routes.scheduler_X→web.routes.domains.scheduler.scheduler_X,含 monkeypatch 字符串与文件路径形态,daily_quality_gate 样例数据同步),全仓残留零;③3 个契约处理: test_scheduler_wrapper_import_order_contract.py 整文件删除(其锚=wrapper 自身)并同步退 test_registry 双注册(P6 教训:LIVE 门禁源同步);test_scheduler_config_route_contract 的守 wrapper 经 compat 工厂函数测试整删(wrapper 没了无锚);SP05 ROUTE 三表清空保结构+守 wrapper passivity 测试删(domains 叶子 passivity 由独立测试继续守)+route 探针自测随 legacy 集退场删;④清 domains/scheduler_config.py 的 compat 软探测段(sys.modules.get 老路径,删 wrapper 后永 None 的静默退化死支)改单路 loud;⑤git rm 9 个顶层 wrapper+_scheduler_compat.py。生产零硬引用前提已重证(factory 只 import 根包,registrar 只 import domains 叶子)。验证: route_view+excel_data_io+web_pages+gate_meta 全包 1744 passed、SP05 13 passed、factory 冷导入 ok、ruff 全过。dossier 对抗核验指出的 roadmap 行号自错(521←正确值 522)已随本次收口在补登中更正。 原始记录(收口前): web/routes/scheduler_run.py:5-8 仍是 _scheduler_compat.load_scheduler_route_module+sys.modules别名残渣；9个顶层wrapper+_scheduler_compat.py 全在(ls确认)，tests/excel_data_io/test_scheduler_wrapper_import_order_contract.py 整文件仍在；roadmap p1-scheduler-debt-cleanup-roadmap.md:522『先保留旧wrapper避免冲击启动链』延期决定未认账。三前置(roadmap认账/迁15测试/退契约)零落地。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [

@@ -10,7 +10,7 @@ import pytest
 import core.services.scheduler.run.schedule_candidate_runner as runner
 from core.algorithms import ScheduleResult
 from core.infrastructure.errors import ValidationError
-from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot
+from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.run.schedule_candidate_health import HEALTH_BETTER, HEALTH_UNAVAILABLE
 from core.services.scheduler.run.schedule_candidate_runner import (
     CANDIDATE_STATUS_COMPLETED,

@@ -27,7 +27,7 @@ def _make_xlsx_bytes(headers, rows):
 
 def test_scheduler_excel_calendar_strict_numeric(app_client, db_path) -> None:
     from core.infrastructure.database import get_connection
-    from core.services.scheduler.config_service import ConfigService
+    from core.services.scheduler.config.config_service import ConfigService
 
     conn = get_connection(db_path)
     try:

@@ -21,7 +21,7 @@ class _StubSvc:
 
 
 def _build_summary_with_end_date(end_date_value):
-    from core.services.scheduler.schedule_summary import build_result_summary
+    from core.services.scheduler.summary.schedule_summary import build_result_summary
 
     svc = _StubSvc()
     cfg = SimpleNamespace(freeze_window_enabled="no", auto_assign_enabled="no", freeze_window_days=0)

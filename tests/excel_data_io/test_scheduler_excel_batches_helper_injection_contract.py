@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 from types import SimpleNamespace
 
-import web.routes.scheduler_excel_batches as route_mod
+import web.routes.domains.scheduler.scheduler_excel_batches as route_mod
 
 
 class _ListStub:

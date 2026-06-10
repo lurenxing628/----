@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 from flask import Flask, g
 
-from core.services.scheduler.config_service import ConfigService
+from core.services.scheduler.config.config_service import ConfigService
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
@@ -95,7 +95,7 @@ def _build_batches_app(monkeypatch, config_service: ConfigService) -> Flask:
     for name in list(sys.modules):
         if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
             sys.modules.pop(name, None)
-    import web.routes.scheduler_batches as route_mod
+    import web.routes.domains.scheduler.scheduler_batches as route_mod
 
     monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
 
@@ -120,7 +120,7 @@ def test_scheduler_batches_latest_history_query_failure_is_not_swallowed() -> No
     for name in list(sys.modules):
         if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
             sys.modules.pop(name, None)
-    import web.routes.scheduler_batches as route_mod
+    import web.routes.domains.scheduler.scheduler_batches as route_mod
 
     class _BrokenHistoryService:
         def list_recent(self, limit=1):

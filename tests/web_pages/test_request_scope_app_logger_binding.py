@@ -45,7 +45,7 @@ def test_request_scope_app_logger_binding(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
 
     import web.bootstrap.request_services as request_services_mod
-    import web.routes.scheduler_batches as route_mod
+    import web.routes.domains.scheduler.scheduler_batches as route_mod
 
     captured = {}
 

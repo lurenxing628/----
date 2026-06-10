@@ -14,7 +14,7 @@ from typing import Any, Optional, Tuple
 import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
-from core.services.scheduler.config_service import ConfigService
+from core.services.scheduler.config.config_service import ConfigService
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 from web.viewmodels.scheduler_batches_page import (

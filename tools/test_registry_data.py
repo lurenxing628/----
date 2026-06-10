@@ -29,7 +29,6 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/gate_meta/test_no_residual_main_style_regression.py",
     "tests/gate_meta/test_sp05_path_topology_contract.py",
     "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
-    "tests/excel_data_io/test_scheduler_wrapper_import_order_contract.py",
     "tests/schedule/route_view/test_scheduler_route_registration_contract.py",
     "tests/web_pages/test_history_summary_parser.py",
     "tests/algorithm/test_due_exclusive_consistency.py",

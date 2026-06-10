@@ -8,7 +8,7 @@ import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.errors import ValidationError
-from core.services.scheduler.config_service import ConfigService
+from core.services.scheduler.config.config_service import ConfigService
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"

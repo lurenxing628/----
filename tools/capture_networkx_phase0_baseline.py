@@ -14,7 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.infrastructure.database import get_connection
 from core.infrastructure.logging import OperationLogger
-from core.services.scheduler.config_service import ConfigService
+from core.services.scheduler.config.config_service import ConfigService
 from core.services.scheduler.schedule_service import ScheduleService
 
 

@@ -20,25 +20,14 @@ SERVICE_STRONG_COMPAT_MODULES = {
 }
 
 SERVICE_BEHAVIOR_COMPAT_SYMBOLS = {
-    "core.services.scheduler.config_service": "core.services.scheduler.config.config_service",
-    "core.services.scheduler.config_snapshot": "core.services.scheduler.config.config_snapshot",
-    "core.services.scheduler.config_validator": "core.services.scheduler.config.config_validator",
     "core.services.scheduler.freeze_window": "core.services.scheduler.run.freeze_window",
     "core.services.scheduler.schedule_input_builder": "core.services.scheduler.run.schedule_input_builder",
     "core.services.scheduler.schedule_input_collector": "core.services.scheduler.run.schedule_input_collector",
     "core.services.scheduler.schedule_orchestrator": "core.services.scheduler.run.schedule_orchestrator",
     "core.services.scheduler.schedule_persistence": "core.services.scheduler.run.schedule_persistence",
-    "core.services.scheduler.schedule_summary": "core.services.scheduler.summary.schedule_summary",
-    "core.services.scheduler.schedule_summary_types": "core.services.scheduler.summary.schedule_summary_types",
 }
 
 SERVICE_BEHAVIOR_COMPAT_PUBLIC_SYMBOLS = {
-    "core.services.scheduler.config_service": ("ConfigService",),
-    "core.services.scheduler.config_snapshot": (
-        "ScheduleConfigSnapshot",
-        "build_schedule_config_snapshot",
-    ),
-    "core.services.scheduler.config_validator": ("normalize_preset_snapshot",),
     "core.services.scheduler.freeze_window": ("build_freeze_window_seed",),
     "core.services.scheduler.schedule_input_builder": (
         "OpForScheduleAlgo",
@@ -55,30 +44,6 @@ SERVICE_BEHAVIOR_COMPAT_PUBLIC_SYMBOLS = {
     "core.services.scheduler.schedule_persistence": (
         "persist_schedule",
     ),
-    "core.services.scheduler.schedule_summary": (
-        "SUMMARY_SIZE_LIMIT_BYTES",
-        "apply_summary_size_guard",
-        "best_score_schema",
-        "build_overdue_items",
-        "cfg_value",
-        "comparison_metric",
-        "config_snapshot_dict",
-        "due_exclusive",
-        "finish_time_by_batch",
-        "serialize_end_date",
-        "build_result_summary",
-    ),
-    "core.services.scheduler.schedule_summary_types": (
-        "DEFAULT_TRUNCATION_TIERS",
-        "AlgorithmSummaryState",
-        "FallbackState",
-        "FreezeState",
-        "RuntimeState",
-        "ScheduleResultStatus",
-        "SummaryBuildContext",
-        "TruncationTier",
-        "WarningState",
-    ),
 }
 
 SERVICE_ROOTS_WITHOUT_COMPAT = (
@@ -91,34 +56,14 @@ SERVICE_ROOTS_WITHOUT_COMPAT = (
     "core/services/scheduler/schedule_summary_freeze.py",
 )
 
-ROUTE_COMPAT_MODULES = {
-    "web.routes.scheduler_analysis": "web.routes.domains.scheduler.scheduler_analysis",
-    "web.routes.scheduler_batch_detail": "web.routes.domains.scheduler.scheduler_batch_detail",
-    "web.routes.scheduler_batches": "web.routes.domains.scheduler.scheduler_batches",
-    "web.routes.scheduler_config": "web.routes.domains.scheduler.scheduler_config",
-    "web.routes.scheduler_excel_calendar": "web.routes.domains.scheduler.scheduler_excel_calendar",
-    "web.routes.scheduler_ops": "web.routes.domains.scheduler.scheduler_ops",
-    "web.routes.scheduler_run": "web.routes.domains.scheduler.scheduler_run",
-    "web.routes.scheduler_week_plan": "web.routes.domains.scheduler.scheduler_week_plan",
-}
+# R43(O29) 收口：9 个顶层 scheduler_*.py route wrapper 已删除（roadmap p1-scheduler-debt-cleanup
+# 已认账解冻），route 侧不再有任何 legacy 兼容面——三表清空但保留结构（扫描器按本集合工作，
+# 集合空即 route 无 legacy 检测对象；wrapper 文件已不存在，误 import 即 loud ModuleNotFoundError）。
+ROUTE_COMPAT_MODULES = {}
 
-ROUTE_BEHAVIOR_COMPAT_SYMBOLS = {
-    "web.routes.scheduler_excel_batches": "web.routes.domains.scheduler.scheduler_excel_batches",
-}
+ROUTE_BEHAVIOR_COMPAT_SYMBOLS = {}
 
-ROUTE_BEHAVIOR_COMPAT_PUBLIC_SYMBOLS = {
-    "web.routes.scheduler_excel_batches": (
-        "_batch_baseline_extra_state",
-        "_build_parts_cache",
-        "_build_template_ops_snapshot",
-        "bp",
-        "excel_batches_confirm",
-        "excel_batches_export",
-        "excel_batches_page",
-        "excel_batches_preview",
-        "excel_batches_template",
-    ),
-}
+ROUTE_BEHAVIOR_COMPAT_PUBLIC_SYMBOLS = {}
 
 LEGACY_COMPAT_MODULES = frozenset(
     set(SERVICE_STRONG_COMPAT_MODULES)
@@ -338,49 +283,29 @@ def test_sp05_service_topology_and_strong_compatibility() -> None:
 
 
 def test_sp05_legacy_import_scan_catches_package_init_relative_imports() -> None:
-    service_source = "from .config_service import ConfigService\n"
+    service_source = "from .schedule_orchestrator import orchestrate_schedule_run\n"
     service_violations = _legacy_import_violations_for_source(
         "core/services/scheduler/__init__.py",
         service_source,
     )
-    assert service_violations == ["core/services/scheduler/__init__.py:1:core.services.scheduler.config_service"]
+    assert service_violations == ["core/services/scheduler/__init__.py:1:core.services.scheduler.schedule_orchestrator"]
 
-    route_source = "from .scheduler_config import bp\n"
-    route_violations = _legacy_import_violations_for_source(
-        "web/routes/__init__.py",
-        route_source,
-    )
-    assert route_violations == ["web/routes/__init__.py:1:web.routes.scheduler_config"]
 
 
 def test_sp05_legacy_import_scan_catches_dynamic_import_strings() -> None:
-    source = 'import importlib\nimportlib.import_module("core.services.scheduler.config_service")\n'
+    source = 'import importlib\nimportlib.import_module("core.services.scheduler.schedule_orchestrator")\n'
     violations = _legacy_import_violations_for_source(
         "core/services/scheduler/dynamic_loader.py",
         source,
     )
-    assert violations == ["core/services/scheduler/dynamic_loader.py:2:core.services.scheduler.config_service"]
+    assert violations == ["core/services/scheduler/dynamic_loader.py:2:core.services.scheduler.schedule_orchestrator"]
 
-    source = '__import__("web.routes.scheduler_config")\n'
-    violations = _legacy_import_violations_for_source(
-        "web/routes/dynamic_loader.py",
-        source,
-    )
-    assert violations == ["web/routes/dynamic_loader.py:1:web.routes.scheduler_config"]
-
-    source = 'from importlib import import_module\nimport_module("core.services.scheduler.config_service")\n'
+    source = 'from importlib import import_module\nimport_module("core.services.scheduler.schedule_orchestrator")\n'
     violations = _legacy_import_violations_for_source(
         "core/services/scheduler/dynamic_loader.py",
         source,
     )
-    assert violations == ["core/services/scheduler/dynamic_loader.py:2:core.services.scheduler.config_service"]
-
-    source = 'from importlib import import_module as im\nim("web.routes.scheduler_config")\n'
-    violations = _legacy_import_violations_for_source(
-        "web/routes/dynamic_loader.py",
-        source,
-    )
-    assert violations == ["web/routes/dynamic_loader.py:2:web.routes.scheduler_config"]
+    assert violations == ["core/services/scheduler/dynamic_loader.py:2:core.services.scheduler.schedule_orchestrator"]
 
 
 def test_sp05_production_code_does_not_grow_legacy_wrapper_imports() -> None:
@@ -536,15 +461,6 @@ def test_sp05_route_wrapper_imports_only_requested_scheduler_leaf() -> None:
         assert payload["loaded_scheduler_registrar"] is False, old_name
 
 
-def test_sp05_behavior_compat_route_wrapper_imports_only_requested_scheduler_leaf() -> None:
-    _reset_scheduler_route_modules()
-    payload = _import_module_isolation_probe("web.routes.scheduler_excel_batches")
-    assert payload["resolved_name"] == "web.routes.scheduler_excel_batches"
-    assert payload["loaded_scheduler"] is False
-    assert payload["loaded_scheduler_pages"] is False
-    assert payload["loaded_scheduler_registrar"] is False
-
-
 def test_sp05_scheduler_domain_package_import_stays_passive() -> None:
     payload = _import_module_isolation_probe("web.routes.domains.scheduler")
     assert payload["resolved_name"] == "web.routes.domains.scheduler"
@@ -642,7 +558,6 @@ def test_sp05_documentation_uses_migrated_scheduler_paths() -> None:
         "schedule_optimizer.py",
         "schedule_orchestrator.py",
         "schedule_persistence.py",
-        "config_service.py",
     )
     stale_root_entries = [
         line

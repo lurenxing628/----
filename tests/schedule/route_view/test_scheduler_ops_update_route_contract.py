@@ -34,7 +34,7 @@ class _ScheduleServiceMismatch:
 
 
 def _build_app(monkeypatch, schedule_service) -> Flask:
-    import web.routes.scheduler_ops as route_mod
+    import web.routes.domains.scheduler.scheduler_ops as route_mod
 
     monkeypatch.setattr(route_mod, "url_for", lambda endpoint, **kwargs: f"/{endpoint}/{kwargs.get('batch_id', '')}")
 

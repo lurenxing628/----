@@ -206,8 +206,8 @@ def _run_ortools_warmstart_case(cfg: Any) -> Tuple[bool, bool, bool]:
 
 
 def _run_summary_case(cfg: Any) -> Dict[str, Any]:
-    from core.services.scheduler.schedule_summary import build_result_summary
-    from core.services.scheduler.schedule_summary_types import SummaryBuildContext
+    from core.services.scheduler.summary.schedule_summary import build_result_summary
+    from core.services.scheduler.summary.schedule_summary_types import SummaryBuildContext
 
     summary = SimpleNamespace(success=True, total_ops=0, scheduled_ops=0, failed_ops=0, warnings=[], errors=[])
     downtime_meta = {
