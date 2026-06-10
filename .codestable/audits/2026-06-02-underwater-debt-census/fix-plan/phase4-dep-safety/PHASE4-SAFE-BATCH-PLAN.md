@@ -92,13 +92,13 @@ Batch-C  身份族收敛 / 收口委托（依赖承重族 + parity）
   G04(R58→R54→R44)←LB03+R22parity；同批带走 E03→G01 ┃ G01(R42+R60)←G04
   G27(R22+R21)←LB03+G27p（2026-06-08 已 fixed） ┃ G09(R15/R19/R13 已 fixed) ┃ G10(R18/R19 repo私有版 已 fixed) ┃ G29(R72)🟢 fixed(2026-06-10)
   G15(R47+R71)🟢 fixed(2026-06-10) ┃ G22(R08+R09)🟢 fixed(2026-06-10) ┃ G33(R05步3)🟢 fixed(2026-06-10) ┃ G34(R67)🟢 fixed(2026-06-10)
-  G17(R31)←E05/E06 同G23窗口 ┃ G23(R30+R33)←R33步1先
+  G17(R31)🟢 fixed(2026-06-10) ┃ G23(R30+R33)🟢 fixed(2026-06-10)
 
 Batch-D  facade 删除最晚 / 跨 owner-pending 收口
-  G18(R26)←G26+G23+G39 三桶收敛(E07/E08/E09)+E10 软自 G15
-  G26(R29 KEEP注释)←O20 已裁保留🟢 fixed(9c51f52b，number_utils 头部 O20 KEEP 注释已落) ┃ G41(R14)⏸←LB01让位(E13)+三步前置
+  G18(R26)🟢 fixed(2026-06-10，与 R43 同窗) ┃ R43🟢 fixed(2026-06-10，O29)
+  G26(R29 KEEP注释)←O20 已裁保留🟢 fixed(9c51f52b，number_utils 头部 O20 KEEP 注释已落) ┃ G41(R14)🟢 fixed(2026-06-10)
   G42(R24 KEEP注释+事实记录)←O23 已裁保留不删🟢 fixed(9c51f52b，schedule_diagnostic_contract 头部 O23 KEEP 注释+compound 事实记录已落)（‖G41 可并行）
-  2026-06-10 补登：G26/G42 已于 2026-06-09 随 9c51f52b 落 KEEP 注释并在 registry 标 fixed——E07(G26/R29) 随之闭合；E09(G39/R52→G18) 早已随 O07 KEEP(2026-06-08) 闭合。G18 仅剩 E08(G23) 一个硬前置。
+  2026-06-10 补登：G26/G42 已于 2026-06-09 随 9c51f52b 落 KEEP 注释并在 registry 标 fixed——E07(G26/R29) 随之闭合；E09(G39/R52→G18) 早已随 O07 KEEP(2026-06-08) 闭合。G18 仅剩 E08(G23) 一个硬前置。〔2026-06-10 终态：E08 随 G23 收口闭合，G18/G41 与 LEAF 七债当日全部 fixed——本节其余执行前状态符为规划期存档，终态以 §1.4 成员行与 registry 双源为准。〕
 ```
 
 **11 标红债批次落位一行速查**：R05→ROOT(G33a step1/2)🟢 fixed(fae8829b) + Batch-C(G33 step3)🟢 fixed(2026-06-10，三步全收口)；R22→ROOT(G27p parity) + Batch-C(G27)🟢 fixed；R54→ROOT(collar 扩产前置) + Batch-C(G04)🔴⏸；R42→Batch-C(G01，E03 rebase R54 后)🔴；R04→Batch-B(G19，依 GF1)🔴；R09→Batch-C(G22)🟢 fixed(2026-06-10)；R15→Batch-C(G09 provider 链第一段，2026-06-09 fixed)；R19→Batch-C(G09 provider 收口 + G10 repo私有版注释/parity，2026-06-09 fixed)；R52→Batch-B(G39 KEEP注释，O07 已裁保留)🔴；R14→Batch-D(G41)🟢 fixed(2026-06-10)；R69→Batch-D/LEAF 桶🟢 fixed(2026-06-10，O24 loud raise+收口 schedule_input_contracts)。
@@ -337,7 +337,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 > **⚠本批重 rg 纪律（C5 逐批落地）**：Batch-D 在 ROOT/A/B/C 全部删改之后落地，**前面四批的位移已层层叠加**，本批所有裸行号（R69 两份 `_op_seq`、R26 ~93 处重指基数 / SP05 段、R14 `:328`/`:358`、R43 `:522`/22 文件迁移点）一律失真，执行前对每个锚点按符号重 rg。**本批高危锚点符号清单（执行前 rg 现场定位，弃裸行号）**：R69 `_op_seq`（guard/runtime 两份 def + 三消费，禁碰 `_seed_seq`/`_seed_op_id`）、R14 `_resolve_strict_plan`（撞 LB01）/`resolve_existing_plan`、R26 顶层 5 shim + SP05 `BEHAVIOR_*` 段、R29 `regression_number_utils_facade_delegates_strict_parse`、R41 全 6 枚举族 `*_source_zh`/`*_merge_mode_zh`、R24 `safe_int`/`safe_float`/`NonFiniteDiagnosticNumber`。
 
-**前置安全网（逐条点名，含标红债 R14/R69）**：
+**前置安全网（逐条点名，含标红债 R14/R69）**：〔2026-06-10 终态注记：本段为执行前纪律存档；G18/G41 与 LEAF 七债已全部按各自 owner 裁定收口 fixed，状态以 §1.4 成员行与 registry 双源为准。〕
 - **G18(R26)🟡**：晚于 R29(G26)/R33(G23)/R52(G39) 三桶收敛（E07/E08/E09）+ E10 软自 G15；迁 2 离线消费者（tools:17/audit:87 手动验证清单，CI 不跑=延迟暴露）；改 SP05 BEHAVIOR_* 两字典（:20-31/:33-82）非 STRONG_*，`:638` 第二处不碰；重指基数用 ~93 处/53 文件（非旧值 71）；R26↔R01/R43 SP05 同文件串行各改各段（E11）。
 - **G26(R29)🟡**：**O20 已裁 KEEP + 显性「有意保留」注释**，不阻塞 G18；不走薄壳化，不改 2 活消费者 `excel_validators:26`/`scheduler_excel_calendar_rows:8`。历史 B 薄壳化路线（重写 monkeypatch、改活消费者）本轮作废。
 - **G41(R14)🔴⏸**（R14 标红）：←LB01 承重裁断先行（E13，`:134-139` 让位，撞 LB01 同符号 `_resolve_strict_plan`）；三步前置（迁灵魂线测试 / 改 roadmap:485-498+items.yaml:83 / 确认无树外调用）；**owner 裁 `:328` 候选灵魂线改钉 resolve_existing_plan 层禁平移活门 diagnose**（活门走 resolve_plan fallback_to_adopted 静默不 raise→「非 scenario 缺角色应 raise」灵魂线被悄丢）；`:358 scenario` 灵魂线两门同源可平移；**删死门不得顺手修 resolve_plan 静默回退（铁律 4）**。
