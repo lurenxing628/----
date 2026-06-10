@@ -3005,7 +3005,7 @@
     "tests/web_pages/test_enum_display_consistency.py:4-61 钉死 machine_status_zh/operator_status_zh/ready_zh 输出(:18 'weird'→'weird';:23 inactive→'停用/休假';:59 ready_zh('weird')=='未齐套';:61 ready_zh(None)=='未齐套')"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R04": {
@@ -4679,7 +4679,7 @@
     "tests/gantt/test_gantt_critical_chain_provider.py (provider 路径,无 filter 对照)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R63": {
@@ -5411,7 +5411,7 @@
     "⚠️灵魂线:328 reads_candidate_rows_without_fallback(期望 ValueError 所选方案没有可查看的明细)+ :358 reads_scenario_rows_without_fallback(期望 模拟方案明细不存在)——V15:这两条'无静默回退'用例删前必须先迁到生产门(diagnose_resolved_plan_overdue 经 report_engine 喂入,或直接断言 resolve_existing_plan/resolve_plan_view),绝不能随死门一起删"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R16": {
@@ -6318,7 +6318,7 @@
     "tests/gate_meta/test_sp05_path_topology_contract.py:21-31,34-79(把5个列为strong/behavior-compat)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R31": {
@@ -6492,7 +6492,7 @@
     "tests/excel_data_io/test_scheduler_wrapper_import_order_contract.py:12-22(LEGACY_SCHEDULER_WRAPPERS 全9个,断言wrapper自身import旁路无副作用)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R01": {
@@ -6647,7 +6647,7 @@
     "tests/candidate/test_scheduler_candidate_display_contract.py:84,98 / _analysis_contract:218,221,388 / _analysis_links_contract:287,288,305,306,334 / _persistence_contract:183"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": "verdict-confirmed 承重:runner.py narrow-except CandidateTrialFailure 防 b81f8b3f 删掉的静默吞错复活;只补注释,禁改回 except Exception"
  },
  "R10": {
@@ -7055,7 +7055,7 @@
     "tests/app_runtime/test_restore_success_condition.py:109+ (全程 mock.patch BackupManager+ensure_schema,不触达 integrity 校验)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R40": {
@@ -7104,7 +7104,7 @@
     "tests/models_domain/test_models_numeric_parse_hybrid_safe.py:168-175 — pin 的是 MODEL 层 Material.from_row(NaN→raise,''→0.0),非 repo 的 except 吞咽;属相邻护栏不是本债续命"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R53": {

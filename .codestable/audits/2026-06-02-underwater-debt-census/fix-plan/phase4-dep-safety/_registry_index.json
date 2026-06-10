@@ -526,7 +526,7 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-5（B03 config",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
   "title": "enum_display.py + process_bp 中文枚举标签是 enum_normalizers 收口点的第二套私有实现,且语义已漂移"
@@ -801,7 +801,7 @@
  "R55": {
   "id": "R55",
   "bucket": "B08",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "呈现失真",
   "lb": false,
@@ -813,7 +813,7 @@
    "R63"
   ],
   "batch": "Batch-9,内部次序在 R11/",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "filtered关键链把周窗口+资源/批次子集喂进要求整版输入的算法,以整版makespan对外无scope标记"
@@ -973,7 +973,7 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-12,桶内最后批之一(前",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "延期诊断公开 API 三件套 prod-unwired:diagnose_plan_overdue/diagnose_batch/_resolve_strict_plan 仅契约测试+roadmap 续命"
@@ -1202,7 +1202,7 @@
    "R71"
   ],
   "batch": "Batch-14（全局最晚，§10.",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "顶层 5 个 config/summary shim:生产已迁走、仅 53 处测试经它进、被 SP05 钉死为冻结兼容面"
@@ -1236,7 +1236,7 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-14（全局最晚，§10.",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "顶层 9 个 scheduler_*.py wrapper 是迁移到 domains/scheduler 后的别名残渣,仅测试续命,roadmap 有意延期清理"
@@ -1270,7 +1270,7 @@
   "cluster": "ISOLATED",
   "siblings": [],
   "batch": "承重注释→Batch-1(全局承重注",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "候选'失败'态全套机制(CANDIDATE_STATUS_FAILED/_failed_plan/failed_candidate_count/baseline_missing_or_failed)在生产中不可达,一路铺到死UI分支"
@@ -1370,7 +1370,7 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-16（Phase1 §4",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "备份完整性校验(PRAGMA integrity_check)执行本身失败时, 只 warning 不阻断, 仍把未通过校验的 .db 提升为正式备份"
@@ -1386,7 +1386,7 @@
   "cluster": "ISOLATED",
   "siblings": [],
   "batch": "Batch-16（Phase1 §4",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
   "title": "material_repo.update 库存数量 except 静默保留原值(防御死角)"
@@ -1462,7 +1462,7 @@
  "N3": {
   "id": "N3",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
@@ -1480,7 +1480,7 @@
  "N4": {
   "id": "N4",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P4",
   "lb": false,
@@ -1498,7 +1498,7 @@
  "N5": {
   "id": "N5",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,

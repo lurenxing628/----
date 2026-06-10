@@ -162,3 +162,10 @@ def _event_id_for_revision(event: Any, *, index: int, total: int) -> int:
 
 ## owner_pending 汇总（补登）
 - N3 / N4 / N5 均 **planned / owner_pending=false**，本轮只登记不执行；三条均经对抗审核确认为**非本次 PASS 缺口**。
+
+## ✅ 2026-06-10 收口（N3 / N4 / N5 + R55 一并执行，registry 全部转 fixed）
+- **N3 fixed**：`scheduler_gantt_task_detail` 删 16 项手抄 `_PLAN_GUARD_FIELD_ALIASES`，循环改遍历单源 `FULL_PLAN_GUARD_FIELDS`；脚本证 keys 与之字节级一致、names 列从未被该循环使用——零行为风险。
+- **N4 fixed**：`resource_dispatch_execution_service.task_card_for_feedback_context` 排程行缺失改 `AppError(ErrorCode.NOT_FOUND)`（O31），与写门禁 `operation_execution_feedback_service` 同错误类；补 `schedule=None→NOT_FOUND` 专项回归并登记增量门禁。
+- **N5 fixed**：parity 测试按上文"修法"加 5 个 shape 的独立冻结 golden 基线；变异验证改任一真值即 FAILED（基线有牙）。
+- **R55 fixed**：`critical_chain_for_plan_detail_filter` 标 `scope=filtered`，`_public_critical_chain` 对外永远输出 scope、整版缺省 `full`；补 scope 契约测试并登记门禁。严禁裸删过滤。
+- 另：R41/R14/R26/R43/R03/R32/R40 七个"已修待认账"项，owner 经本轮决定并提 PR 认账，`owner_pending` 全部清零。至此 registry **85/85 fixed、0 owner_pending**。
