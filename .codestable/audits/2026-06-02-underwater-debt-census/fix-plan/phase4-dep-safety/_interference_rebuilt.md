@@ -30,7 +30,7 @@
 | **G15** | CONFIG-DUAL | {LB07, R71, R47} ASC-1 ✅ fixed(2026-06-10) | 🔒 config 双栈 helper 锁步收敛;LB07 承重安全网前置 R71/R47;R71 owner 已裁仅 parity 守卫、不物理合并 | 已按硬序收口:LB07 注释+三 helper parity 随 fae8829b(2026-06-08)→R47 六死点逐块手删(2026-06-10,invalid 活参/collector.add 全保)→R71 以既有 spec_sync parity 对账锁结案,双栈保留 |
 | **G16** | CONFIG-DUAL | {R45 ≡ R48} ASC-2 ✅ fixed | 同一物理文件 config_adapter.py 整文件删已完成；两叙述视角=一次删除 | 2026-06-08 补登 fixed：旧 sp06 文件已由 A P1.1 删除，清单同步步骤为 no-op；后续只做残留 rg，不碰 schedule_params.py |
 | **G17**🟢fixed(2026-06-10) | CONFIG-DUAL | {R31} ASC-3 | 删 shared 源 value_policies.py:9 死常量,跨簇绑 R33 删序 | 单债;R33 不晚于 R31(否则 facade:11 残 import loud ImportError) |
-| **G18** | CONFIG-DUAL | {R26} ASC-4 ⏸ | 5 顶层 shim 删,三步迁移须同窗口,但与本簇余成员无原子绑定,Batch-14 全局最晚 | 晚于 R29/R33/R52 三桶收敛(facade 删晚于收敛硬约束) |
+| **G18**🟢fixed(2026-06-10) | CONFIG-DUAL | {R26} ASC-4 | 5 顶层 shim 删,三步迁移须同窗口,但与本簇余成员无原子绑定,Batch-14 全局最晚 | 晚于 R29/R33/R52 三桶收敛(facade 删晚于收敛硬约束) |
 | **G19** | PARSE-INT | {R01, R04} A1 ✅ fixed | **2026-06-08 已 fixed**。同文件 schedule_payload_contract.py 强行号互撞已按原子顺序闭合：R01 先删死链缩 R04 收口面，R04 后收口并同步异常面 | 已执行：删 `_iter/count/has` 死链、旧 re-export 和 SP05 续命断言；`_strict_positive_int` 委托 `parse_required_int(..., reject_integer_float=True)`；剩余 5 处调用点捕获 `ValidationError`；B/C 哨兵仅注释+parity |
 | **G20** | PARSE-INT | {R59} A2 ✅ fixed | **2026-06-08 已 fixed**。独立文件 report_number_parsing.py，已在 GF1 默认 False + strict 模式前置满足后收口 | 已删除私有正则 `_INT_TEXT_PATTERN` 与 `_parse_plain_report_int`；`parse_report_nonnegative_int` 保留 blank 短路并委派 `parse_required_int(..., min_value=0, reject_integer_float=True)`；未动 `parse_report_int` / `__all__` |
 | **G21** | PARSE-INT | {R28} A3 | **2026-06-08 已 fixed**。完全独立叶子,已保留 `_safe_float` 名并收口到已存在 parse_finite_float,不改 number_utils 任何行,不依赖 F1 | 已落地: `allow_none=True`;fitness 白名单:77 经 `-k test_no_new_local_parse_helpers` 实测保留 |
@@ -54,7 +54,7 @@
 | **G38** | GRAPH-ERR-DIAG | {R06, R27, gantt 空包} A2 | **2026-06-08 已 fixed**；同收口点同两行风险已一次性关闭(SP05 现盘 :312 三元组,旧 delayed 循环已删) | 已按"四包同提交"执行:一次改 :312 成三元组+删旧 delayed 循环+删四个 tracked `__init__.py`;后续勿重复处理 |
 | **G39** | GRAPH-ERR-DIAG | {R52, R25} A3 ✅ fixed | O07 已裁 B 保留：impl 留作差分 oracle，R25 垫片保留 | 已补「我是故意的」注释；未删 impl、未删垫片、未新建 `test_sgs_graph_ready.py` |
 | **G40** | GRAPH-ERR-DIAG | {LB08, R46} A4 🟢 fixed | 同文件 scheduler_public_errors.py,LB08 注释已钉死承重边界后 R46 已删除私有死别名 | LB08 注释已先落且按 O35 指向 `internal_operation.py:119/148/150/152/154` / resource_validation；R46 已按符号 grep 删除 `_safe_identifier`，同名 `v4_sanitizers.py:37` 活函数与 legacy 正则桥未动 |
-| **G41** | GRAPH-ERR-DIAG | {R14} A5 ⏸ | 独立单债,delay 诊断死三件套;非裸删,删前三步前置+跨簇 LB01 同符号让位 | 前置三步(迁灵魂线测试/改 roadmap/确认无树外调用)后删:42-54+:114-139;删死门不得顺手修 resolve_plan 静默回退(铁律 4) |
+| **G41**🟢fixed(2026-06-10) | GRAPH-ERR-DIAG | {R14} A5 | 独立单债,delay 诊断死三件套;非裸删,删前三步前置+跨簇 LB01 同符号让位 | 前置三步(迁灵魂线测试/改 roadmap/确认无树外调用)后删:42-54+:114-139;删死门不得顺手修 resolve_plan 静默回退(铁律 4) |
 | **G42** | GRAPH-ERR-DIAG | {R24} A6 | O23 已改裁保留不删：core 预留件留作诊断回归 core 契约层未来地基 | 只补「故意保留」注释 + 事实记录；不删 core 文件、不剪测试、不调和 roadmap；路 B 改活 web 路径仍违铁律 5 |
 
 **计数：42 个原子单元（G01–G42）+ 1 个共享前置门 GF1（reject_integer_float，非债，是 R04/R59 共享的 strict_parse 改造）= 共 43 个调度单元。**

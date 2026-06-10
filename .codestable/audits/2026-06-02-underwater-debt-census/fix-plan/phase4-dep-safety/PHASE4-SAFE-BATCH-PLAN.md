@@ -101,7 +101,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
   2026-06-10 补登：G26/G42 已于 2026-06-09 随 9c51f52b 落 KEEP 注释并在 registry 标 fixed——E07(G26/R29) 随之闭合；E09(G39/R52→G18) 早已随 O07 KEEP(2026-06-08) 闭合。G18 仅剩 E08(G23) 一个硬前置。
 ```
 
-**11 标红债批次落位一行速查**：R05→ROOT(G33a step1/2)🟢 fixed(fae8829b) + Batch-C(G33 step3)🟢 fixed(2026-06-10，三步全收口)；R22→ROOT(G27p parity) + Batch-C(G27)🟢 fixed；R54→ROOT(collar 扩产前置) + Batch-C(G04)🔴⏸；R42→Batch-C(G01，E03 rebase R54 后)🔴；R04→Batch-B(G19，依 GF1)🔴；R09→Batch-C(G22)🟢 fixed(2026-06-10)；R15→Batch-C(G09 provider 链第一段，2026-06-09 fixed)；R19→Batch-C(G09 provider 收口 + G10 repo私有版注释/parity，2026-06-09 fixed)；R52→Batch-B(G39 KEEP注释，O07 已裁保留)🔴；R14→Batch-D(G41)🔴⏸；R69→Batch-D/LEAF 桶(owner 定 loud 方向后落)🔴⏸。
+**11 标红债批次落位一行速查**：R05→ROOT(G33a step1/2)🟢 fixed(fae8829b) + Batch-C(G33 step3)🟢 fixed(2026-06-10，三步全收口)；R22→ROOT(G27p parity) + Batch-C(G27)🟢 fixed；R54→ROOT(collar 扩产前置) + Batch-C(G04)🔴⏸；R42→Batch-C(G01，E03 rebase R54 后)🔴；R04→Batch-B(G19，依 GF1)🔴；R09→Batch-C(G22)🟢 fixed(2026-06-10)；R15→Batch-C(G09 provider 链第一段，2026-06-09 fixed)；R19→Batch-C(G09 provider 收口 + G10 repo私有版注释/parity，2026-06-09 fixed)；R52→Batch-B(G39 KEEP注释，O07 已裁保留)🔴；R14→Batch-D(G41)🟢 fixed(2026-06-10)；R69→Batch-D/LEAF 桶🟢 fixed(2026-06-10，O24 loud raise+收口 schedule_input_contracts)。
 
 **6 硬阻断新爆点闭合落位**：#1 collar 不产 3 键→ROOT 扩产前置 owner 闸门 F门(R54)；#7 R15 空值即 raise→Batch-B G08 前置安全网（分支级保 `if not text: return None`）+ Batch-C G09 owner 闸门；#19/#20 R05 双轨+builder 耦合→ROOT G33a step1 扩产前置（含 include_team_context 信号 + 派工轨单独入口）；#21 R42 :92 漏删→Batch-C G01 前置安全网（删点清单补 :92 同提交）；#22/#23 R22 双翻→2026-06-08 已由 G27 补齐「键集+取值 exact + bad-role raise」断言并按 O14 收口，状态 fixed。
 
@@ -329,7 +329,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ### 1.5 Batch-D — facade 删除最晚 / 跨 owner-pending 收口
 
-**成员（调度单元 + 债）**：G18(R26 顶层 5 shim 删)←三桶收敛；G26(R29 KEEP 注释，O20 已裁保留)；G41(R14 删死门 `_resolve_strict_plan`)🔴⏸；G42(R24 KEEP 注释 + 事实记录，O23 已裁保留不删)。**+ 需门控的 LEAF-DUP-P4 残余**（按 ⚠简化声明归入此批，随各自 owner 门落）：R69🔴⏸、R03⏸、R41⏸、R68⏸、R32⏸、R40⏸、R43⏸。
+**成员（调度单元 + 债）**：G18(R26 顶层 5 shim 删)🟢 fixed(2026-06-10，与 R43 同窗)；G26(R29 KEEP 注释，O20 已裁保留)；G41(R14 删死门)🟢 fixed(2026-06-10)；G42(R24 KEEP 注释 + 事实记录，O23 已裁保留不删)。**+ 需门控的 LEAF-DUP-P4 残余**（按 ⚠简化声明归入此批，随各自 owner 门落）：R69🟢、R03🟢、R41🟢、R68🟢、R32🟢、R40🟢、R43🟢——**七债已全部于 2026-06-10 按 O24-O29 裁定收口 fixed**。
 
 **是否原子**：G18 单文件三步迁移须同窗口；G41/G42 各自独立可并行；R69 两份 `_op_seq` 原子同改；R43↔R26 共碰 scheduler_config.py+SP05 串行。
 
