@@ -6325,7 +6325,7 @@
   "id": "R31",
   "bucket": "B13",
   "home": "B13",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "core-infra-shared",
@@ -6340,7 +6340,7 @@
    "compat_parse.py",
    "value_policies.py"
   ],
-  "current_evidence_2026_06_05": "core/shared/value_policies.py:9 仍 WRITE_INTERNAL_ONLY='write_internal_only' 死常量原样；全仓 grep 仍命中3处(源定义:9 + common侧 core/services/common/value_policies.py:11 import + :29 __all__)，R33(B06)未删common facade，源定义未删。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(G17,紧随 G23 commit 落地,壳先于源硬序满足): core/shared/value_policies.py 已删 WRITE_INTERNAL_ONLY='write_internal_only' 源定义(旧 :9);common facade 侧 :11 import/:29 __all__ 两处已先随 G23 的 R33 整文件删除被吞,无 facade 残 import 窗口。删后全仓 rg WRITE_INTERNAL_ONLY/write_internal_only 零命中;毗邻 :6/:7/:8 WRITE_REQUIRED/OPTIONAL/NOT_APPLICABLE 未动(NOT_APPLICABLE 零引用属 R30 收口已登记微债候选,非本债扩面)。验证: config+models_domain 259 passed、ruff 全过。 原始记录(收口前): core/shared/value_policies.py:9 仍 WRITE_INTERNAL_ONLY='write_internal_only' 死常量原样；全仓 grep 仍命中3处(源定义:9 + common侧 core/services/common/value_policies.py:11 import + :29 __all__)，R33(B06)未删common facade，源定义未删。",
   "cluster": "C01",
   "same_file_siblings": [
    "R33"

@@ -1210,7 +1210,7 @@
  "R31": {
   "id": "R31",
   "bucket": "B13",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,

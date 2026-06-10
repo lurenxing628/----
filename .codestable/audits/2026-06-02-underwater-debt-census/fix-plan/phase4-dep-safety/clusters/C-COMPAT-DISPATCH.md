@@ -20,7 +20,7 @@
 
 本簇拆 **3 个原子子簇 + 1 个孤立 owner-pending 节点**。
 
-### A1 · compat-facade 收敛链 {R33, R30}（必须同提交 + 硬内部顺序）
+### A1 · compat-facade 收敛链 {R33, R30}（必须同提交 + 硬内部顺序；✅ 2026-06-10 G23 已按硬序同 commit 原子收口 fixed，R31 源侧由 G17 紧随 commit 收口）
 - **原子原因**：① 二者都改 `tests/config/test_config_service_component_contract.py`（R33 删 :14/:16/:19 元组条目 + :393-399/:402-411 身份断言；交界行 `:411 parse_compat_date is` 在 R30 删实现后必失效，由 R33 步骤2 删）；② R30 删 `core.shared` 的 `parse_compat_date`/三 FieldPolicy/三常量，R33 删 `core.services.common` 三壳——壳 re-export 这些符号，删序错即 ImportError 或测试红。
 - **内部顺序（硬，registry deps_hint + 两 dossier 双证）**：
   1. **R33 步骤1**（迁 `emits_degradation:18` + `matrix_contract:18` 两测试 import 从 `core.services.common.*` → `core.shared.*`）——为 R30 解锁，最先；

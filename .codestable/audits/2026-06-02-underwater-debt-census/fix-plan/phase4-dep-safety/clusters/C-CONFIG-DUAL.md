@@ -26,7 +26,7 @@
 - **原子原因**: 非两次动作，是**一次整文件删除**。现在已完成，后续不再重复投工。
 - **独立性**: 零 LB 耦合、生产零引用、owner_pending=false；与 ASC-1 双栈收敛**正交**。`core/algorithms/greedy/schedule_params.py` 是活文件，仍禁碰。
 
-### 原子子簇 ASC-3 — WRITE_INTERNAL_ONLY 源定义删 【R31 独立，跨簇绑 R33】
+### 原子子簇 ASC-3 — WRITE_INTERNAL_ONLY 源定义删 【R31 独立，跨簇绑 R33；✅ 2026-06-10 G17 已收口 fixed——G23 先删壳（吸收 :11/:29），紧随 commit 删 shared 源 :9，全仓零残留】
 - **成员**: R31(死常量源定义 `core/shared/value_policies.py:9`) — 簇内**独立**，无本簇同文件兄弟(同文件兄弟 R33 在 C01 的 compat_parse.py 子簇，不在本簇)。
 - **原子原因/顺序**: 见跨簇边 §B(R31→R33 删序硬约束)。owner_pending=false，终态=直删 :9。
 

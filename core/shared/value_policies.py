@@ -6,7 +6,6 @@ from typing import Any, Dict, Optional, Tuple
 WRITE_REQUIRED = "write_required"
 WRITE_OPTIONAL = "write_optional"
 WRITE_NOT_APPLICABLE = "write_not_applicable"
-WRITE_INTERNAL_ONLY = "write_internal_only"
 
 READ_COMPAT = "read_compat"
 
