@@ -155,6 +155,30 @@ def test_verify_rejects_failed_required_report() -> None:
         verifier.verify_required_regressions_from_payload(payload, required_tests=["tests/test_required_a.py"])
 
 
+def test_verify_tolerates_allowlisted_skipped_required_report() -> None:
+    # 白名单内 nodeid 的 skipped（平台合法 skip，如含换行符文件名在 Windows 非法）不算非通过。
+    allowed_nodeid = verifier.quality_gate_shared.REQUIRED_REGRESSION_ALLOWED_SKIPPED_NODEIDS[0]
+    required_path = allowed_nodeid.split("::", 1)[0]
+    payload = _payload(
+        nodeids=[allowed_nodeid],
+        reports=[_report(allowed_nodeid, outcome="skipped", when="setup")],
+    )
+
+    verification = verifier.verify_required_regressions_from_payload(payload, required_tests=[required_path])
+    assert allowed_nodeid in verification["required_nodeids"]
+
+
+def test_verify_rejects_non_allowlisted_skipped_required_report() -> None:
+    # 未登记白名单的 required nodeid 一旦 skipped 仍判非通过，守卫不放水。
+    payload = _payload(
+        nodeids=["tests/test_required_a.py::test_a"],
+        reports=[_report("tests/test_required_a.py::test_a", outcome="skipped", when="setup")],
+    )
+
+    with pytest.raises(verifier.RequiredRegressionProofError, match="非通过 reports"):
+        verifier.verify_required_regressions_from_payload(payload, required_tests=["tests/test_required_a.py"])
+
+
 def test_verify_rejects_non_empty_blocking_classification() -> None:
     payload = _payload(
         nodeids=["tests/test_required_a.py::test_a"],

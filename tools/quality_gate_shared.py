@@ -270,6 +270,14 @@ FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS = (
     "tests/excel_data_io/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
     "tests/models_domain/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
 )
+# required 回归集里允许在特定平台合法 skip 的 nodeid（不视为非通过）。这些用例验证平台特有的
+# 文件系统语义——含换行符的文件名在 POSIX 合法、git 以八进制引号路径上报，本用例据此守护引号
+# 路径反引用 + 内容漂移指纹；该文件名在 Windows 非法（OSError 22），用例 skipif(os.name=="nt")。
+# 产品目标平台含 Windows，required 守卫须容忍其在 Windows 的平台 skip；但仅限本白名单逐条登记，
+# 其余 required 一律 must-pass，避免误吞真回归。POSIX 上这些用例照常运行、必须 passed（白名单休眠）。
+REQUIRED_REGRESSION_ALLOWED_SKIPPED_NODEIDS = (
+    "tests/gate_meta/test_run_quality_gate.py::test_dirty_fingerprint_detects_quoted_untracked_path_change",
+)
 UI_MODE_SCOPE_TAG_VALUES = {"startup_guard", "render_bridge"}
 
 ENTRY_MANUAL_FIELDS = ["status", "owner", "batch", "notes", "exit_condition"]
