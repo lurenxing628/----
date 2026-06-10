@@ -329,12 +329,15 @@ class BackupManager:
                     with closing(sqlite3.connect(tmp_path)) as dest:
                         source.backup(dest)
 
-                        # 备份后完整性校验（建议启用；失败则不生成最终备份文件）
+                        # 备份后完整性校验（失败则不生成最终备份文件）
                         try:
                             rows = dest.execute("PRAGMA integrity_check").fetchall() or []
                         except Exception as e:
-                            # 校验执行失败：不阻断备份，但记录 warning 便于排障
-                            fallback_log(self.logger, "warning", f"备份后的数据库完整性检查执行失败（已忽略）：{e}")
+                            # 我是故意的（R32/O27）：校验执行失败比「校验不通过」更严重——连完整性检查都
+                            # 跑不起来的库不算可信备份，绝不升正式。此处必须 loud raise 与 else 分支同语义，
+                            # 不得改回 warning 放行（那会让坏库升正式、再经恢复链盲拷放大损坏）。
+                            fallback_log(self.logger, "error", f"备份后的数据库完整性检查执行失败：{e}")
+                            raise RuntimeError(f"备份后的数据库完整性检查执行失败（视为不可信备份，不落地）：{e}") from e
                         else:
                             msg0 = str((rows[0][0] if rows else "") or "").strip().lower()
                             if msg0 != "ok":
