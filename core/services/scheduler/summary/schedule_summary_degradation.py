@@ -12,6 +12,7 @@ from core.services.scheduler.degradation_messages import (
 )
 
 from .schedule_summary_downtime_degradation import compute_downtime_degradation as _compute_downtime_degradation
+from .summary_count_parse import _meta_bool_state
 
 _LEGACY_MERGE_CONTEXT_CODES = {"template_missing", "external_group_missing"}
 
@@ -118,26 +119,6 @@ def _input_build_state(input_build_outcome: Optional[BuildOutcome[Any]]) -> Dict
         "merge_context_events": merge_context_events,
         "input_fallback": bool(input_fallback_events),
     }
-
-
-def _meta_bool_state(meta: Dict[str, Any], key: str, *, default: bool) -> Tuple[bool, bool]:
-    if key not in meta or meta.get(key) is None:
-        return bool(default), False
-    value = meta.get(key)
-    if isinstance(value, bool):
-        return value, False
-    if isinstance(value, int) and not isinstance(value, bool):
-        if value in (0, 1):
-            return bool(value), False
-        return bool(default), True
-    if isinstance(value, str):
-        text = value.strip().lower()
-        if text in {"true", "1", "yes", "y", "on"}:
-            return True, False
-        if text in {"false", "0", "no", "n", "off"}:
-            return False, False
-        return bool(default), True
-    return bool(default), True
 
 
 def _metric_int(metrics: Any, key: str) -> int:
