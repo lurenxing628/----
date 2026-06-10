@@ -3726,7 +3726,7 @@
   "id": "R30",
   "bucket": "B06",
   "home": "B06",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "core-infra-shared",
@@ -3745,7 +3745,7 @@
    "regression_value_policies_matrix_contract.py",
    "value_policies.py"
   ],
-  "current_evidence_2026_06_05": "原样未动:core/shared/compat_parse.py:198 parse_compat_date 与 :143 _date_fallback 仍在,:11/:14 parse_optional_date/parse_required_date import 仍在;core/shared/value_policies.py:180 due_date/:190 start_time/:200 end_time 三 FieldPolicy 及 VALUE_DATE:16/VALUE_DATETIME:17/READ_FILTER_ONLY:12 三常量全在;两文件 git status 空(未改)。【纠错记录 2026-06-10】本条 status 曾被 R13 收口提交(1d72d7fe)批量替换错位误翻为 fixed(代码实际未动),已纠回 planned;该提交同时在 _registry_index.json 把 R08 误翻 fixed(已另行纠回),两错恰好抵消使总数对账失效——后续状态核查必须逐 ID 对账,勿只比总数。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(G23,与 R33 同 commit 原子收口): core/shared/compat_parse.py 已删 parse_compat_date(旧 :198-215)+_date_fallback(旧 :143-150)+date 专用 import parse_optional_date/parse_required_date/VALUE_DATE;datetime 删后零引用,from datetime import 收为只剩 date(保现盘 :54 _format_fallback_value 的 isinstance(value,date));core/shared/value_policies.py 已删三常量 READ_FILTER_ONLY(旧 :12)/VALUE_DATE(旧 :16)/VALUE_DATETIME(旧 :17)+三 FieldPolicy due_date(旧 :179-188)/start_time(旧 :189-198)/end_time(旧 :199-208)。WRITE_NOT_APPLICABLE(:8) 删 start/end_time 后变零引用,按 R30/R31 dossier 字段9 禁区裁定保留不扩大(登记后续微债候选);WRITE_OPTIONAL 仍被 compat_parse write_mode==WRITE_OPTIONAL 双分支引用故保留(剩余 13 策略全 WRITE_REQUIRED,该分支当前永假,与 _compat_message 内 invalid_due_date/bad_time_row_skipped 两个不可达消息键一并记入后续微债候选)。退测试: emits_degradation 删 due_date 用例+invalid_due_date 期望(import 同步迁 core.shared,docstring 同步);matrix_contract 删三字段期望+断言+READ_FILTER_ONLY/WRITE_OPTIONAL import(迁 core.shared)。生产零消费 recon 重证: get_field_policy 以 due_date/start_time/end_time 为实参生产 0 命中,坏时间留痕走 _sched_display_utils.record_bad_time_row 硬编码 bad_time_row_skipped 绕开 value_policies。验证: config+models_domain 259 passed、excel field_parse 4 passed、fitness+resource_dispatch 137 passed、ruff 全过、py38 扫描改动文件零命中。 原始记录(收口前): 原样未动:core/shared/compat_parse.py:198 parse_compat_date 与 :143 _date_fallback 仍在,:11/:14 parse_optional_date/parse_required_date import 仍在;core/shared/value_policies.py:180 due_date/:190 start_time/:200 end_time 三 FieldPolicy 及 VALUE_DATE:16/VALUE_DATETIME:17/READ_FILTER_ONLY:12 三常量全在;两文件 git status 空(未改)。【纠错记录 2026-06-10】本条 status 曾被 R13 收口提交(1d72d7fe)批量替换错位误翻为 fixed(代码实际未动),已纠回 planned;该提交同时在 _registry_index.json 把 R08 误翻 fixed(已另行纠回),两错恰好抵消使总数对账失效——后续状态核查必须逐 ID 对账,勿只比总数。",
   "cluster": "C01",
   "same_file_siblings": [
    "R33"
@@ -3821,7 +3821,7 @@
   "id": "R33",
   "bucket": "B06",
   "home": "B06",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P3",
   "partition": "core-svc-domain",
@@ -3847,7 +3847,7 @@
    "strict_parse.py",
    "value_policies.py"
   ],
-  "current_evidence_2026_06_05": "三壳全在且仍纯 re-export:core/services/common/compat_parse.py:3-13 仍 from core.shared.compat_parse import + __all__,field_parse.py/value_policies.py 同;硬序前置 R33 步骤1 未做——tests/models_domain/test_compat_parse_emits_degradation.py:18 与 regression_value_policies_matrix_contract.py:18 仍 import core.services.common.*(未迁 core.shared);config_service_component_contract.py:14/:403/:411 的 parse_compat_date 身份断言与 _SERVICE_COMMON_NEUTRAL_HELPERS 条目仍在。",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(G23,三步硬序在同 commit 内按序应用): 步1 两行为测试 import 迁承重点——emits_degradation(现盘 :6,普查旧 :18) 改 from core.shared.compat_parse、matrix_contract(现盘 :6,普查旧 :18) 改 from core.shared.value_policies,断言逻辑不动;步2 config_service_component_contract 元组删三壳条目(现盘 :18/:20/:23,死保 degradation 条目=V4② 真承重活桥接+number_utils/strict_parse)、整删 test_services_common_value_policies_reexports_shared_identity(现盘 :397-403)、parse_core 身份测试删 compat_parse import+两断言只剩 strict_parse 半边(:411 旧锚=parse_compat_date is 断言已随 R30 同步退场),docstring 同步;步3 git rm 三壳 core/services/common/{compat_parse,field_parse,value_policies}.py(def=0 纯 re-export,生产零消费 recon 重证:tools/scripts/conftest/pyrightconfig/.github 对三壳路径零 pin,common/__init__.py 为空不引三壳)。R31 的壳侧 WRITE_INTERNAL_ONLY re-export(:11/:29) 随整文件删除被吞,R31 源侧 :9 由 G17 下一 commit 单独收口(满足壳先于源硬序)。验证: 三测试文件 22 passed、config+models_domain 259 passed、fitness+resource_dispatch 137 passed、ruff 全过、全仓 rg parse_compat_date/READ_FILTER_ONLY/VALUE_DATE/VALUE_DATETIME 仅剩两条 docstring 收口注记。 原始记录(收口前): 三壳全在且仍纯 re-export:core/services/common/compat_parse.py:3-13 仍 from core.shared.compat_parse import + __all__,field_parse.py/value_policies.py 同;硬序前置 R33 步骤1 未做——tests/models_domain/test_compat_parse_emits_degradation.py:18 与 regression_value_policies_matrix_contract.py:18 仍 import core.services.common.*(未迁 core.shared);config_service_component_contract.py:14/:403/:411 的 parse_compat_date 身份断言与 _SERVICE_COMMON_NEUTRAL_HELPERS 条目仍在。",
   "cluster": "C01",
   "same_file_siblings": [
    "R30",

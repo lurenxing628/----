@@ -1,12 +1,10 @@
-"""回归测试：core.services.common.value_policies 字段策略矩阵契约——覆盖 default_days/ext_days/各权重/freeze_window_days/graph_*/due_date/start_time/end_time 等字段无缺项无重复，并逐字段校验 write_mode(REQUIRED/OPTIONAL)、read_mode(COMPAT/FILTER_ONLY)、strict/compat/blank 原因码、has_compat_default 及兼容回退值（如 default_days/ext_days=1.0、freeze_window_days=0、due_date=None、priority_weight/graph 权重不写死运行时默认）。"""
+"""回归测试：core.shared.value_policies 字段策略矩阵契约——覆盖 default_days/ext_days/各权重/freeze_window_days/graph_* 等字段无缺项无重复，并逐字段校验 write_mode(REQUIRED)、read_mode(COMPAT)、strict/compat/blank 原因码、has_compat_default 及兼容回退值（如 default_days/ext_days=1.0、freeze_window_days=0、priority_weight/graph 权重不写死运行时默认）。import 直指承重点 core.shared（R33 已删 core.services.common.value_policies 壳；due_date/start_time/end_time 死切片随 R30 退场）。"""
 
 
 def test_value_policies_matrix_contract() -> None:
 
-    from core.services.common.value_policies import (
+    from core.shared.value_policies import (
         READ_COMPAT,
-        READ_FILTER_ONLY,
-        WRITE_OPTIONAL,
         WRITE_REQUIRED,
         get_field_policy,
         list_field_policies,
@@ -28,9 +26,6 @@ def test_value_policies_matrix_contract() -> None:
         "graph_critical_weight",
         "graph_impact_weight",
         "time_budget_seconds",
-        "due_date",
-        "start_time",
-        "end_time",
     }
 
     missing = expected_fields - fields
@@ -71,15 +66,5 @@ def test_value_policies_matrix_contract() -> None:
     )
     assert graph_critical_weight.has_compat_default is False, "graph_critical_weight 不应在矩阵中写死运行时默认值"
     assert graph_impact_weight.has_compat_default is False, "graph_impact_weight 不应在矩阵中写死运行时默认值"
-
-    due_date = get_field_policy("due_date")
-    assert due_date.write_mode == WRITE_OPTIONAL, f"due_date 写入语义异常：{due_date.write_mode!r}"
-    assert due_date.compat_reason_code == "invalid_due_date", f"due_date compat 原因码异常：{due_date.compat_reason_code!r}"
-    assert due_date.has_compat_default is True and due_date.compat_default is None, "due_date 兼容回退应明确为空值"
-
-    start_time = get_field_policy("start_time")
-    end_time = get_field_policy("end_time")
-    assert start_time.read_mode == READ_FILTER_ONLY, f"start_time 读取语义异常：{start_time.read_mode!r}"
-    assert end_time.read_mode == READ_FILTER_ONLY, f"end_time 读取语义异常：{end_time.read_mode!r}"
 
 

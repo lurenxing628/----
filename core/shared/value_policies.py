@@ -9,12 +9,9 @@ WRITE_NOT_APPLICABLE = "write_not_applicable"
 WRITE_INTERNAL_ONLY = "write_internal_only"
 
 READ_COMPAT = "read_compat"
-READ_FILTER_ONLY = "read_filter_only"
 
 VALUE_FLOAT = "float"
 VALUE_INT = "int"
-VALUE_DATE = "date"
-VALUE_DATETIME = "datetime"
 
 _COMPAT_DEFAULT_UNSET = object()
 
@@ -175,36 +172,6 @@ _FIELD_POLICIES = (
         compat_reason_code="invalid_number",
         blank_reason_code="blank_required",
         notes="排产计算时间预算：兼容读取必须由调用方显式传入运行时默认值。",
-    ),
-    FieldPolicy(
-        field="due_date",
-        write_mode=WRITE_OPTIONAL,
-        read_mode=READ_COMPAT,
-        value_kind=VALUE_DATE,
-        strict_reason_code="invalid_due_date",
-        compat_reason_code="invalid_due_date",
-        compat_default=None,
-        notes="批次交期：写入允许为空，但只要提供就必须是合法日期。",
-    ),
-    FieldPolicy(
-        field="start_time",
-        write_mode=WRITE_NOT_APPLICABLE,
-        read_mode=READ_FILTER_ONLY,
-        value_kind=VALUE_DATETIME,
-        strict_reason_code="bad_time_row_skipped",
-        compat_reason_code="bad_time_row_skipped",
-        compat_default=None,
-        notes="展示读侧时间字段：仅允许过滤并产出跳过事件，不参与写入。",
-    ),
-    FieldPolicy(
-        field="end_time",
-        write_mode=WRITE_NOT_APPLICABLE,
-        read_mode=READ_FILTER_ONLY,
-        value_kind=VALUE_DATETIME,
-        strict_reason_code="bad_time_row_skipped",
-        compat_reason_code="bad_time_row_skipped",
-        compat_default=None,
-        notes="展示读侧时间字段：仅允许过滤并产出跳过事件，不参与写入。",
     ),
 )
 
