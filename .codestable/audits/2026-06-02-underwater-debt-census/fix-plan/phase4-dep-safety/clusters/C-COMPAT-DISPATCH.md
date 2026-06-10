@@ -9,9 +9,9 @@
 
 | 债 | 桶 | 主文件 | 修法类 | lb | owner_pending | 当前锚点（rg 回盘） |
 |---|---|---|---|---|---|---|
-| R30 | B06 | compat_parse.py / value_policies.py | 直删 date 切片+退测试 | false | false | parse_compat_date@:198 / _date_fallback@:143 / 三策略@:179-208 / 常量:12/:16/:17 |
-| R33 | B06 | core/services/common/{compat_parse,field_parse,value_policies}.py | 删三壳+迁/退测试（三步） | false | false | 三壳 def=0；测试 emits_degradation:18 / matrix:18 / config_contract:14/16/19/355/393-411 |
-| R29 | B05 | core/services/common/number_utils.py | KEEP（owner-pending，授权 CSV 缺）/ 若薄壳化先重写 monkeypatch 为身份测试 | false | **true** | common/number_utils.py 全量 delegate→core.shared.strict_parse |
+| R30 | B06 | compat_parse.py / value_policies.py | ✅ 2026-06-10 G23 已同 commit 直删 date 切片+退测试 | false | false | 执行前锚点 parse_compat_date@:198 / _date_fallback@:143 / 三策略@:179-208 / 常量:12/:16/:17 |
+| R33 | B06 | core/services/common/{compat_parse,field_parse,value_policies}.py | ✅ 2026-06-10 G23 已按硬序同 commit 删三壳+迁/退测试 | false | false | 执行前锚点 三壳 def=0；测试 emits_degradation:18 / matrix:18 / config_contract:14/16/19/355/393-411 |
+| R29 | B05 | core/services/common/number_utils.py | ✅ 终态校正：registry 现盘 `fixed`（number_utils 现盘已全量收口到 strict_parse，原 KEEP/owner-pending 已解除） | false | ~~true~~→false | common/number_utils.py 全量 delegate→core.shared.strict_parse |
 | R49 | B06 | dispatch_rules.py / evaluation.py / ortools_bottleneck.py | ✅ 2026-06-08 已定点删除 5 行死别名 | false | false | 执行前锚点 dispatch_rules:25 / evaluation:40-41 / ortools:24-25；现盘仅保留活近亲 `_parse_due_date_state` / `sgs_scoring._parse_due_date` |
 | R50 | B05 | dispatch_rules.py | ✅ 2026-06-08 已删除 `mean_positive` + `import statistics`，保留 `import math` | false | false | 执行前锚点 mean_positive@:112-132 / import statistics@:4；现盘 `build_dispatch_key` 非有限工时回退契约仍由测试覆盖 |
 | R51 | B06 | dispatch_rules.py / sort_strategies.py | ✅ 2026-06-08 已删除两宽容解析器并连退两份续命测试 | false | false | 执行前锚点 parse_dispatch_rule@:28-35 / parse_strategy@sort_strategies:161-173；未迁移 `unknown -> default` 静默兜底断言 |
@@ -38,6 +38,9 @@
 - `evaluation.py:40-41` 与 `ortools_bottleneck.py:24-25` 两处 R49 死别名已随 G24 同原子删除；不同文件、互不影响这一判断仍作为历史安全依据保留。`evaluation._parse_due_date_state`、`evaluation.parse_date`、`ortools_bottleneck.parse_date` 等活符号未动。
 
 ### A4 · R29（孤立，owner-pending，**只标不给终态**）
+
+> **✅ 2026-06-10 终态校正（以 registry 为准）**：本节标题与下文「只标 owner-pending、不给终态」均为规划期态、**现已过期**。registry 现盘 R29 = `fixed`、`owner_pending=false`——owner 已裁并执行，`common/number_utils.py` 现盘即收口形态。下列两选一/前置硬约束保留作历史决策记录。
+
 - **不进任何原子删除批**。R29 误标 not_applicable → corrections E 节纠为 **planned(owner-pending)**：授权 CSV 整目录 ABSENT，`common/number_utils.py` 仍全量 delegation-facade 到 `core.shared.strict_parse`（回盘证实 :5 import + parse_finite_float/int 薄壳），半截迁移不对称客观在场。
 - **修法两选一交 owner**：(KEEP) 仅补显性「有意保留」注释，不写代码，不阻塞任何批次；(B 收敛/薄壳化) **前置硬约束**：须**先重写 monkeypatch 为身份测试**（`regression_config_service_component_contract.py` + `regression_ortools_warmstart_failure_contract.py:136` 经 monkeypatch 续命），否则老路径测试红。**本 Layer 只标 owner-pending，不给终态。**
 

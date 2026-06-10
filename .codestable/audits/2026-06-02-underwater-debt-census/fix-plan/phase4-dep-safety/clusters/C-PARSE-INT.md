@@ -116,7 +116,7 @@ R02↔R25、R45↔{LB07,R33,R51}、R32↔R15、LB04↔{LB07,R33}、config_snapsh
 
 ## E) fixed 成员作为前置已完成 — 残留动作（认账注释）
 
-本簇 6 成员里 **R28 已 fixed**（2026-06-08 Batch-A/G21），**R01/R04 已 fixed**（2026-06-08 Batch-B/G19），**R59 已 fixed**（2026-06-08 Batch-B/G20）；R09/R08 仍 planned+owner_pending。其他 fixed 态来自**毗邻前置**（corrections E：LB03/LB06/R07/R16/R56/R57 已结构性消除）：
+本簇 6 成员里 **R28 已 fixed**（2026-06-08 Batch-A/G21），**R01/R04 已 fixed**（2026-06-08 Batch-B/G19），**R59 已 fixed**（2026-06-08 Batch-B/G20）；**R09/R08 亦已 fixed**（✅ 2026-06-10 终态校正：原「仍 planned+owner_pending」已过期——registry 现盘 R08/R09 均 `fixed`，R09 逐字节复制助手收口到 `parse_positive_execution_int`、R08 休眠开关死分支生产不可达且全树零残留）。其他 fixed 态来自**毗邻前置**（corrections E：LB03/LB06/R07/R16/R56/R57 已结构性消除）：
 
 1. **R07（已 fixed，A4/A1 邻域前置）**：resource_dispatch_execution_service.py 改 raise 已完成，但**偏离**——用 `ValidationError(field=schedule_id)` 而非计划的 `AppError/ErrorCode.NOT_FOUND`，与写门禁 feedback_service.py:385 跨文件错误类不对称，且缺 schedule=None→raise 专项回归。
    - **残留动作**：owner 须**认账**此偏离 + 裁是否统一错误类（改则补 AppError/ErrorCode 导入）。
