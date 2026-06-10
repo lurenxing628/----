@@ -21,6 +21,7 @@ from .schedule_graph_report import prepare_schedule_graph_for_dispatch
 from .schedule_optimizer import optimize_schedule
 
 CANDIDATE_STATUS_COMPLETED = "completed"
+# O25 裁定保留：FAILED 态生产不可达（生产零 raise 点）但属已落库 status 枚举契约，裸删破坏持久化兼容。
 CANDIDATE_STATUS_FAILED = "failed"
 CANDIDATE_STATUS_SKIPPED = "skipped"
 
@@ -264,6 +265,8 @@ def _skipped_candidate_labels(candidates: List[CandidatePlan]) -> List[str]:
 
 
 def _baseline_missing_or_failed(candidates: List[CandidatePlan]) -> bool:
+    # O25 四态语义（勿当死分支清理）：missing 半边（空/无 baseline 候选→True）生产可达，是「没有基准
+    # 方案」真实告警源头；failed 半边不可达但随枚举契约保留。下游 workbench/helpers 消费分支禁裸删。
     for candidate in candidates:
         if candidate.kind == CANDIDATE_KIND_BASELINE:
             return candidate.status != CANDIDATE_STATUS_COMPLETED

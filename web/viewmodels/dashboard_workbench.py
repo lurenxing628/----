@@ -153,6 +153,8 @@ def _candidate_todo(context: Dict[str, Any], latest_summary: Optional[Dict[str, 
     evidence_parts = [f"排产摘要记录了{count_text}"]
     if completed > 0:
         evidence_parts.append(f"其中 {completed} 套已算完")
+    # O25：此分支经「baseline 缺失」路径生产可达（_baseline_missing_or_failed 无 baseline 候选
+    # 返回 True），不是死分支——失败半边虽生产不可达但随枚举契约保留，禁裸删本分支。
     if comparison.get("baseline_missing_or_failed"):
         evidence_parts.append("原算法代表方案没有完整结果")
     return _todo_item(

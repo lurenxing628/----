@@ -387,6 +387,7 @@ def _comparison_status_messages(comparison: Dict[str, Any]) -> List[Dict[str, st
     if failed_count > 0:
         suffix = f"：{'、'.join(failed_labels)}。" if failed_labels else "。"
         messages.append(_warning_message(f"这次有 {failed_count} 个试算方案没算成功{suffix}系统只在算成功的方案里选结果。"))
+    # O25：经「baseline 缺失」路径生产可达的活告警（非死分支），禁裸删；失败半边随枚举契约保留。
     if bool(comparison.get("baseline_missing_or_failed")):
         messages.append(_warning_message("原算法那套方案缺失或没算成功，请复核这次采用的结果。"))
     skipped_labels = [
