@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -141,4 +142,6 @@ def test_run_chrome_probe_spawn_error_reports_kind(tmp_path: Path) -> None:
     assert "runtime_context" in message
     assert "APS_CHROME_PATH" in message
     assert "Fake Chrome 120" in message
-    assert node.node_realpath in message
+    # message 内嵌 runtime_context 的 JSON，Windows 路径中的反斜杠会被 json 转义成 \\，
+    # 故同时接受原样与 JSON 转义后的形态（POSIX 路径无反斜杠，两种形态相同）。
+    assert node.node_realpath in message or json.dumps(node.node_realpath)[1:-1] in message

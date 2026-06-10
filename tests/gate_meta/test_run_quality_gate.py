@@ -2375,6 +2375,10 @@ def test_dirty_worktree_fingerprint_raises_when_git_diff_fails(monkeypatch, tmp_
         module._dirty_worktree_fingerprint([" M app.py"])
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="文件名含换行符 \\n 在 Windows 上非法（OSError [Errno 22]）；本用例验证 POSIX 下 git 引号路径指纹",
+)
 def test_dirty_fingerprint_detects_quoted_untracked_path_change(monkeypatch, tmp_path):
     module = _import_run_quality_gate()
     repo_root = tmp_path / "repo"
