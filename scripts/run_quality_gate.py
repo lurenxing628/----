@@ -274,6 +274,12 @@ def _coerce_command_result(result: Any) -> Dict[str, Any]:
         for field_name in ("timed_out", "interrupted", "partial_write"):
             if field_name in result:
                 coerced[field_name] = bool(result.get(field_name))
+        # 测试可播种确定时长（duration_s/original_duration_s）让"慢条目排序"自测跨平台可控；
+        # 生产 _run_command 从不预置这两键，故保留对生产是 no-op。不保留则 _mark_command_timing
+        # 拿不到种子、回退 perf_counter 微秒级噪声——Windows 上噪声会把 collect/ruff 排序翻转。
+        for field_name in ("duration_s", "original_duration_s"):
+            if field_name in result:
+                coerced[field_name] = float(result.get(field_name) or 0.0)
         return coerced
     return {
         "stdout": str(result or ""),
