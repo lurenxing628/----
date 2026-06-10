@@ -207,6 +207,12 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/operation_execution/test_operation_execution_state_flow.py",
             "tests/operation_execution/test_scheduler_reschedule_execution_facts.py",
             "tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py",
+            # F6（2026-06-10）：工序 seq 坏值硬抛（R69，run/schedule_input_contracts）、summary 元状态
+            # parity（R68，summary/**）、候选基线四态 parity（R03-B，run/schedule_candidate_runner）——
+            # 本组 scope core/services/scheduler/**/*.py 覆盖三者，改动这些源必须强制选中其 loud/契约断言。
+            "tests/schedule/service/test_op_seq_loud_contract.py",
+            "tests/schedule/summary/test_meta_bool_state_parity_contract.py",
+            "tests/candidate/test_baseline_missing_or_failed_four_state_parity.py",
         ),
         "input_file_scopes": (
             "core/services/scheduler/**/*.py",

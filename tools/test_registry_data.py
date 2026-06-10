@@ -233,6 +233,16 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/gate_meta/test_architecture_fitness.py",
     "tests/algorithm/test_skill_rank_mapping.py",
     "tests/schedule/service/test_schedule_service_input_merge_context_contract.py",
+    # F6（2026-06-10）：loud/契约旁证补登增量门禁——坏数据不静默是灵魂线，这些断言必须随相关源改动被强制选中。
+    # 备份/恢复/物料 4 个走 misc 组 request_services_runtime_error_boundary（scope 覆盖 core/infrastructure、web/routes/system_backup.py、data/**）。
+    "tests/migration_db/test_backup_integrity_check_contract.py",
+    "tests/migration_db/test_restore_pre_snapshot_failure_contract.py",
+    "tests/app_runtime/test_backup_create_integrity_error_message.py",
+    "tests/material/test_material_repo_stock_qty_loud_contract.py",
+    # 工序 seq / summary 元状态 / 候选基线四态 3 个走 scheduler 组（scope core/services/scheduler/**）。
+    "tests/schedule/service/test_op_seq_loud_contract.py",
+    "tests/schedule/summary/test_meta_bool_state_parity_contract.py",
+    "tests/candidate/test_baseline_missing_or_failed_four_state_parity.py",
 )
 
 QUALITY_GATE_REQUIRED_TESTS = (QUALITY_GATE_SELFTEST_PATH, *QUALITY_GATE_GUARD_TESTS)
