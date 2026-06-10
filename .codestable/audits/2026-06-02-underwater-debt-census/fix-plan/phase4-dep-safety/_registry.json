@@ -5327,7 +5327,7 @@
   "id": "R14",
   "bucket": "B11",
   "home": "B11",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P3",
   "partition": "scheduler-exec-diag",
@@ -5343,7 +5343,7 @@
    "report_engine.py",
    "schedule_delay_diagnosis_service.py"
   ],
-  "current_evidence_2026_06_05": "schedule_delay_diagnosis_service.py:42 diagnose_plan_overdue / :114 diagnose_batch / :134 _resolve_strict_plan 三件套结构原样保留,生产仍零调用;前置 roadmap 调和未做:aps-three-gap-directions-roadmap.md:485/:492 仍列两签名块、items.yaml:83 exit_check 仍写 diagnose_plan_overdue/diagnose_batch。计划三步(迁灵魂线测试/改 roadmap/删 :42-54+:114-139)无一落地",
+  "current_evidence_2026_06_05": "2026-06-10 fixed(G41,三步前置齐后删死门;LB01 已 fixed+O21/O22 已裁,go-no-go 放行): 步1 灵魂线迁移——scenario 断言按 O22 平移到 resolve_plan_view(两门同源,raise 发生在 resolve 阶段);候选断言按 O21 钉 resolve_existing_plan 层禁平移(活门非 scenario 走 resolve_plan 会 fallback_to_adopted 吞 raise,RK14);并显式钉死死/活差异三态: 角色在册但明细删→活门也 loud(「方案对比明细没有找到对应排程」)、角色完全缺席→活门静默 fallback_to_adopted(死门 raise「所选方案不存在」)——把 resolve_plan 既有静默回退写明为独立隐患不顺手修(铁律 4);普通用例迁 _diagnose_via_live_door 辅助(resolve_plan_view 喂 resolution 走生产现行链),diagnose_batch 便捷封装用例随死门退役。步2 roadmap:485-498 签名块改 diagnose_resolved_plan_overdue+R14 收口注记,items.yaml:83 exit_check 同步。步3 树外确认: 全仓(含 hidden,排 .git/.venv*/.limcode)死门符号命中仅历史审计冻结档/callgraph 再生产物/roadmap 本身,生产与模板零引用。删除: diagnose_plan_overdue(旧 :42-54)+diagnose_batch(旧 :114-133)+_resolve_strict_plan(旧 :134-139,全仓该符号仅诊断服务自身两处,query 服务侧本无同名符号,LB01 无涉)整体退场,ROLE_ADOPTED import 同步收窄(text 仍有他用保留);活门 diagnose_resolved_plan_overdue 与共用尾段零触碰。验证: scheduler_analysis 125 passed、web_pages+fitness 363 passed、ruff 过、全仓 py 残留仅测试 docstring 收口注记。 原始记录(收口前): schedule_delay_diagnosis_service.py:42 diagnose_plan_overdue / :114 diagnose_batch / :134 _resolve_strict_plan 三件套结构原样保留,生产仍零调用;前置 roadmap 调和未做:aps-three-gap-directions-roadmap.md:485/:492 仍列两签名块、items.yaml:83 exit_check 仍写 diagnose_plan_overdue/diagnose_batch。计划三步(迁灵魂线测试/改 roadmap/删 :42-54+:114-139)无一落地",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [

@@ -965,7 +965,7 @@
  "R14": {
   "id": "R14",
   "bucket": "B11",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,

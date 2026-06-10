@@ -80,7 +80,7 @@ items:
       - installer/
       - vendor/
     exit_checks:
-      - diagnose_plan_overdue 和 diagnose_batch 只读，不写 Schedule、ScheduleHistory、候选表或 scenario 表
+      - diagnose_resolved_plan_overdue 只读（resolution 经 plan_query 喂入；旧 diagnose_plan_overdue/diagnose_batch 已随 2026-06-10 R14 收口删除），不写 Schedule、ScheduleHistory、候选表或 scenario 表
       - 区分 scheduled_overdue 和 unscheduled_overdue
       - 每条诊断包含 confirmed_facts、candidate_clues、confidence、evidences、data_gaps、suggested_actions、trace_meta
       - confirmed_facts 不能只是字符串列表；每条已确认事实必须包含 text 和至少一条 EvidenceLink，没有证据只能放到 candidate_clues 或 data_gaps

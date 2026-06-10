@@ -482,20 +482,16 @@ core/services/scheduler/schedule_delay_diagnosis_service.py
 **函数签名**：
 
 ```text
-diagnose_plan_overdue(
+diagnose_resolved_plan_overdue(
+    *,
     version: Optional[int],
-    plan_role: Optional[str] = None,
-    scenario_id: Optional[str] = None,
+    resolution: SchedulePlanResolution,   # 经 plan_query.resolve_plan_view / report_engine 喂入
     as_of_time: Optional[datetime] = None,
 ) -> OverdueDiagnosisReport
 
-diagnose_batch(
-    version: Optional[int],
-    batch_id: str,
-    plan_role: Optional[str] = None,
-    scenario_id: Optional[str] = None,
-    as_of_time: Optional[datetime] = None,
-) -> OverdueDiagnosisItem
+# 2026-06-10 R14 收口注记：旧公开三件套 diagnose_plan_overdue / diagnose_batch / _resolve_strict_plan
+# 生产零引用（生产现行入口是上面的 resolved 活门，经 report_engine 喂 resolution），已删除；
+# 「候选缺明细必须 loud raise」灵魂线按 O21 钉在 resolve_existing_plan 层（禁平移活门）。
 ```
 
 **输出结构**：
