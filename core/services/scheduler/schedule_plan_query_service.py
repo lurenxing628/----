@@ -120,6 +120,12 @@ class SchedulePlanQueryService:
                 available_roles=available_roles,
             ))
 
+        # 【承重·勿改成 raise】宽松 view 门：请求的是合法对比角色但本版本没存这套明细 → 降级显示
+        # 采用方案，但带 message + status=fallback_to_adopted 显式披露（非静默吞错）。坏数据仍 loud：
+        # 下一行 _validate_resolution_option 对任何坏 adopted 照样 raise，只有 adopted 干净才回退。
+        # 严格门是 resolve_existing_plan（缺角色即 raise，供甘特调整草稿/校验等编辑路径）。死/活双轨
+        # 由 tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py（O21/O22）钉死，刻意
+        # 防"把两路改成等价"——此处若改 raise 会破坏合法 UX 且踩红该契约。
         adopted = roles_by_name.get(ROLE_ADOPTED) or _default_adopted_option()
         self._validate_resolution_option(int(version), adopted)
         return self._with_plan_identity(SchedulePlanResolution(
