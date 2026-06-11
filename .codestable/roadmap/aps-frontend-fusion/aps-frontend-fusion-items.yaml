@@ -269,7 +269,7 @@ items:
   - slug: fusion-runtime-log-viewer
     description: 运行日志页与诊断包导出——系统管理新增"运行日志"页（与操作日志页并列）：倒序展示 aps_error.log 条目（时间戳边界分组 traceback、块式倒读），可切 aps.log/launcher.log、级别/关键词筛选；一键导出诊断包（*.log 含轮转分卷+版本环境信息+最近操作日志打 zip）；报错出口接门（500 页/error_boundary"请查看日志"升级为发生时刻+打开运行日志链接）
     depends_on: []
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
     notes: 模块 N（契约 4.11 共同约束）；2026-06-11 用户提出（现场报错翻文件夹、计划员无法自助反馈）；安全硬约束——诊断包白名单制（*.log+分卷+显式列名 aps_launch_error.txt 例外，2026-06-11 拍板）严禁打入同目录 aps_secret_key.txt；只读不写、不提供删除/清空（证据不许销毁，较操作日志页刻意收窄）；建议排最早批次（与 1/26/3 同批），是后续条目现场排障的眼睛；接线点 error_handlers.py:100-110、error_boundary.py:316/344、core/infrastructure/logging.py 只读消费
