@@ -194,6 +194,9 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/gate_meta/test_scan_py38plus_syntax.py",
             "tests/gate_meta/test_architecture_fitness.py",
             "tests/web_pages/test_workbench_nav_entry_contract.py",
+            # 打印介质契约（fusion-anchor-baseline-prep）：本组是 static/** 的 owner，
+            # 改 print.css 必须触发 .sidebar 隐藏名单断言（防回潮）
+            "tests/web_pages/test_print_css_contract.py",
         ),
         "input_file_scopes": (
             "tests/app_runtime/ui_geometry_contract_data.py",

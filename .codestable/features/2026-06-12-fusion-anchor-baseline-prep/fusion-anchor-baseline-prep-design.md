@@ -88,7 +88,7 @@ flowchart LR
 2. 截图脚本：`tests/_scripts_e2e/capture_ui_baseline.py` + `tests/ui_baseline_capture.mjs` 新文件 — 手跑工具，不进 registry/gate（_scripts_e2e 同居先例）
 3. 打印修复：`static/css/print.css` 隐藏名单 — 修改（@media print 块内）
 4. 打印回归断言：`tests/web_pages/test_print_css_contract.py` 新文件——钉死 `.sidebar` 在 print 隐藏名单内 + @page A4 landscape 存在（轻量文件级断言，防回潮；不起浏览器）
-5. 守卫组归属：`tools/test_registry_groups_misc.py` ui_layout_presenters_system 组 target_paths 加 test_print_css_contract.py — 修改（该组是 static/** 的 owner——没有 group 归属则改 print.css 不会触发本测试，「防回潮」落空；不进 GUARD_TESTS：print 断言非安全红线，组级触发足够）
+5. 守卫组归属：`tools/test_registry_groups_misc.py` ui_layout_presenters_system 组 target_paths + `tools/test_registry_data.py` QUALITY_GATE_GUARD_TESTS **双登记** — 修改（实现期修订：原设计「只进组不进 GUARD_TESTS」被门禁契约否决——test_long_gate_manifest::test_required_groups_cover_required_registry 强制组 target 集合与 required registry 完全相等，组里出现非 required 测试即 unknown 报错；该组是 static/** 的 owner，改 print.css 强制触发）
 
 ### 2.4 推进策略
 
