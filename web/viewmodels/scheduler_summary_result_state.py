@@ -188,5 +188,7 @@ __all__ = [
     "build_result_state",
     "counts_from_summary",
     "derive_completion_status",
+    "resolve_result_status",
     "result_status_display_label",
+    "result_status_display_labels",
 ]

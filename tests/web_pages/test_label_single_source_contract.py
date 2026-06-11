@@ -24,7 +24,7 @@ RECLAIMED_TEMPLATES = (
 
 # 字面字典回潮形态：{% set status_zh = {...} %}（analysis.html 的
 # {% set status_zh = analysis_labels.get(...) %} 是后端注入，不命中本正则）
-_INLINE_DICT_RE = re.compile(r"\{%\s*set\s+(?:status_zh|strategy_zh)\s*=\s*\{")
+_INLINE_DICT_RE = re.compile(r"\{%-?\s*set\s+(?:status_zh|strategy_zh)\s*=\s*\{", re.S)
 
 
 def test_no_inline_label_dict_in_reclaimed_templates():
@@ -57,3 +57,11 @@ def test_python_label_dicts_derive_from_single_source():
         assert "result_status_display_labels" in text, f"{name} 应从真源派生 status 字典"
         # 禁手写 status 展示字典（"success": "成功" 字面对出现即回潮）
         assert not re.search(r'"success"\s*:\s*"成功"', text), f"{name} 回潮手写 status 字典"
+
+
+def test_unknown_status_user_visible_label_is_unified():
+    # 未来引入新状态值时，用户可见标签必须是统一的诚实降级文案
+    from web.viewmodels.scheduler_plan_guardrail_messages import result_status_label
+
+    assert result_status_label("future_status") == "有问题，需检查"
+    assert result_status_label("") == "未记录"
