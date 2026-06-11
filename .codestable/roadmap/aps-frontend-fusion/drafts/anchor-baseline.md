@@ -34,7 +34,7 @@
 
 ### ③ test_frontend_ui_language_polish.py 文案依赖面（820 行 255 断言 + 双料指纹源）
 
-- **锚在哪**：`tests/web_pages/test_frontend_ui_language_polish.py`——`_read()` 直读 28 个模板/静态文件做「期望整句 in + 禁词 not in」断言。依赖面：scheduler 5 页 + analysis 5 件套（:22-26）+ 8 个 excel_import 页 + gantt 6 个 JS（gantt_boot/render/decorations/popup/contract/help）+ system/logs.html + reports/utilization.html + scheduler_manual.md。
+- **锚在哪**：`tests/web_pages/test_frontend_ui_language_polish.py`——`_read()` 直读 28 个模板/静态文件做「期望整句 in + 禁词 not in」断言。依赖面：scheduler 5 页 + analysis 5 件套（:22-26）+ 8 个 excel_import 页 + gantt 6 个 JS（gantt_boot/render/decorations/popup/contract/help）+ system/logs.html + reports/utilization.html + scheduler_manual.md。**注意 28 只是模板/静态子集**：该测试还 `_read` 若干 Python 文案文件（scheduler_config_panel.py / config_page_outcome.py / active_preset_service.py 等）——改后端文案同样会撞。
 - **双料指纹源身份（这是它的特殊危险性）**：它在 `tools/quality_gate_shared.py` QUALITY_GATE_SOURCE_FILES 名单（改这个测试文件本身 → gate source proof sha256 变 → 长门禁缓存**全部作废**）+ py38 扫描 fail-on-hit 名单。
 - **改它要动什么**：改上述 28 文件中任何文案 → 必须同步改本测试 → 缓存全废。**所以文案变更攒批合入**（roadmap items notes 纪律），不要一句一提交。
 - **可重跑命令**：

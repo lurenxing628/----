@@ -25,7 +25,7 @@ sys.path.insert(0, str(REPO_ROOT / "tests" / "app_runtime"))
 import pytest  # noqa: E402  （MonkeyPatch.context 适配 _build_app 的 fixture 签名）
 from ui_geometry_browser_support import _build_app, _serve_app, _shutdown_served_app  # noqa: E402
 from ui_geometry_contract_data import FULL_UI_CONTRACT_PATHS  # noqa: E402
-from ui_geometry_runtime_support import _find_chrome  # noqa: E402
+from ui_geometry_runtime_support import _find_chrome, _resolve_node_with_browser_runtime  # noqa: E402
 
 from tests._support.excel_templates import publish_shared_dir, reset_shared_dir  # noqa: E402
 
@@ -34,6 +34,10 @@ def main() -> int:
     chrome = _find_chrome()
     if not chrome.exists:
         print(f"找不到 Chrome：{chrome.message}", file=sys.stderr)
+        return 2
+    node = _resolve_node_with_browser_runtime()
+    if node.failure_kind:
+        print(f"Node 运行时不可用：{node.message}", file=sys.stderr)
         return 2
 
     output_dir = REPO_ROOT / "output" / "ui_baseline" / datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -49,7 +53,9 @@ def main() -> int:
                 app = _build_app(tmp_path, monkeypatch)
                 served = _serve_app(app)
                 try:
-                    results = _run_capture(chrome.chrome_path, served.base_url, tmp_path, output_dir)
+                    results = _run_capture(
+                        node.node_path, chrome.chrome_path, served.base_url, tmp_path, output_dir
+                    )
                 finally:
                     _shutdown_served_app(served)
         finally:
@@ -67,10 +73,10 @@ def main() -> int:
     return 0
 
 
-def _run_capture(chrome_path, base_url, tmp_path, output_dir):
+def _run_capture(node_path, chrome_path, base_url, tmp_path, output_dir):
     proc = subprocess.run(
         [
-            "node",
+            node_path,
             str(REPO_ROOT / "tests" / "ui_baseline_capture.mjs"),
             chrome_path,
             base_url,
@@ -88,7 +94,10 @@ def _run_capture(chrome_path, base_url, tmp_path, output_dir):
         if line.startswith("{"):
             results.append(json.loads(line))
     if not results:
-        raise RuntimeError(f"capture mjs 零输出，stderr={proc.stderr[-2000:]}")
+        raise RuntimeError(f"capture mjs 零输出（rc={proc.returncode}），stderr={proc.stderr[-2000:]}")
+    # mjs 退出码非 0 而逐页 JSON 全 ok：进程级失败（profile 清理炸等）必须 fail loud，不静默
+    if proc.returncode != 0 and all(r.get("ok") for r in results):
+        raise RuntimeError(f"capture mjs 退出码 {proc.returncode} 但逐页全成功，stderr={proc.stderr[-2000:]}")
     return results
 
 

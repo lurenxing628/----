@@ -114,7 +114,7 @@ flowchart LR
 
 关键场景：
 1. anchor-baseline.md 三节齐全；第一节六类锚（含 CDP 探针 JS DOM 硬锚）每条含「锚在哪/改它要动什么/缓存税」+ 可重跑命令，命令逐条实跑通过（grep 有命中、pytest 可收集）；缓存税节含 quickref 指纹说明。
-2. `capture_ui_baseline.py` 实跑：FULL_UI_CONTRACT_PATHS 全 20 页 × 亮/暗 = 40 张 PNG 落 output/ui_baseline/时间戳/，index.md 对照表行数 40；抽查 dashboard 亮/暗两张目检主题确实不同（暗色背景深色）。
+2. `capture_ui_baseline.py` 实跑：FULL_UI_CONTRACT_PATHS 全 20 页 × 亮/暗 = 40 张 PNG 落 output/ui_baseline/时间戳/，index.md 对照表 20 行（每页一行，亮/暗两列）；抽查 dashboard 亮/暗两张目检主题确实不同（暗色背景深色）。
 3. 截图脚本单页失败注入（临时改坏一个 path）→ 其余页继续、退出码非 0、失败清单可见。
 4. 打印修复实证：Chrome headless --print-to-pdf 渲染 dashboard，修复前 PDF 含侧栏深色列、修复后无（两 PDF 落 /tmp 人工目检 + pdftotext 抽字验证侧栏菜单词不在正文流）。
 5. test_print_css_contract.py：断言 print.css @media print 块内 `.sidebar` 在 display:none 名单、@page 含 A4 landscape——文件级 grep 断言，毫秒级；已登记 ui_layout_presenters_system 组 target_paths（改 print.css 强制触发本测试，test_long_gate_manifest 自洽绿）。

@@ -71,15 +71,29 @@ function safeName(pagePath) {
 }
 
 async function captureOne(client, pagePath) {
-  const nav = await client.send("Page.navigate", { url: `${baseUrl}${pagePath}` });
+  const targetUrl = `${baseUrl}${pagePath}`;
+  // 照探针先例（probe.mjs:296-309）：先挂 loadEventFired 再 navigate 再等 load——
+  // 否则稳定等待表达式可能跑在旧 document 上，截到旧页/空白页还记成功
+  const loaded = client.waitEvent("Page.loadEventFired", 30000);
+  const nav = await client.send("Page.navigate", { url: targetUrl });
   if (nav && nav.errorText) {
     // 不检查 errorText 时，连不上服务会截到 Chrome 内部错误页且被记成功——基线静默掺假
     throw new Error(`navigate failed: ${nav.errorText}`);
   }
+  await loaded;
   await client.send("Runtime.evaluate", {
     expression: WAIT_FOR_PAGE_STABLE_EXPRESSION,
     awaitPromise: true,
   });
+  // 校验真的落在目标页（重定向到错误页/登录页要暴露，不进基线）
+  const href = await client.send("Runtime.evaluate", {
+    expression: "location.pathname + location.search",
+    returnByValue: true,
+  });
+  const actual = href && href.result ? String(href.result.value) : "";
+  if (actual !== pagePath) {
+    throw new Error(`landed on ${actual}, expected ${pagePath}`);
+  }
   const files = [];
   for (const theme of ["light", "dark"]) {
     if (theme === "dark") {
@@ -93,12 +107,24 @@ async function captureOne(client, pagePath) {
   return files;
 }
 
+function waitForChromeExit(timeoutMs) {
+  return new Promise((resolve) => {
+    if (chrome.exitCode !== null) return resolve(true);
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    chrome.once("exit", () => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+  });
+}
+
 let exitCode = 0;
+let client = null;
 try {
   const port = await readDebugPort();
   const resp = await fetch(`http://127.0.0.1:${port}/json/new`, { method: "PUT" });
   const page = JSON.parse(await resp.text());
-  const client = new CdpClient(page.webSocketDebuggerUrl);
+  client = new CdpClient(page.webSocketDebuggerUrl);
   await client.open();
   await client.send("Page.enable", {});
   await client.send("Runtime.enable", {});
@@ -113,6 +139,20 @@ try {
     }
   }
 } finally {
-  chrome.kill("SIGKILL");
+  // 清理照探针先例（probe.mjs:363-378）：关 client → SIGTERM → 等 3s → SIGKILL 兜底 → 删 profile。
+  // Windows 下 Chrome 未退出就删 profile 会撞文件锁，顺序不能省。
+  if (client) {
+    try { await client.close(); } catch {}
+  }
+  try { chrome.kill("SIGTERM"); } catch {}
+  if (!(await waitForChromeExit(3000))) {
+    try { chrome.kill("SIGKILL"); } catch {}
+    await waitForChromeExit(2000);
+  }
+  try {
+    await fs.rm(userDataDir, { recursive: true, force: true });
+  } catch (error) {
+    console.error(JSON.stringify({ warning: "profile_cleanup_failed", userDataDir, message: String(error && error.message || error) }));
+  }
 }
 process.exit(exitCode);
