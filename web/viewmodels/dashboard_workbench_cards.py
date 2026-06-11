@@ -1,11 +1,18 @@
+"""首页值班台风险卡与快捷入口装配。
+
+负荷阈值唯一真相源：LOAD_WARNING_RATIO / LOAD_DANGER_RATIO 在此公开定义
+（roadmap 4.4 契约——Python 单点、CSS 侧只消费 severity-* 类名；
+dashboard_workbench.py 与未来 fusion-gantt-load-strip 均 import 此处常量）。
+"""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
 from .scheduler_workbench_links import build_workbench_link
 
-_LOAD_WARNING_RATIO = 0.75
-_LOAD_DANGER_RATIO = 0.90
+LOAD_WARNING_RATIO = 0.75
+LOAD_DANGER_RATIO = 0.90
 
 
 def _link(context: Dict[str, Any], target_page: str, label: str, **kwargs: Any) -> Dict[str, Any]:
@@ -44,10 +51,10 @@ def _resource_load_card(context: Dict[str, Any], resource_load_ratio: Optional[f
         )
 
     percent = round(resource_load_ratio * 100, 1)
-    if resource_load_ratio >= _LOAD_DANGER_RATIO:
+    if resource_load_ratio >= LOAD_DANGER_RATIO:
         severity = "danger"
         helper = "设备平均利用率已经很高，建议先看资源排班。"
-    elif resource_load_ratio >= _LOAD_WARNING_RATIO:
+    elif resource_load_ratio >= LOAD_WARNING_RATIO:
         severity = "warning"
         helper = "设备平均利用率偏高，建议留意资源压力。"
     else:

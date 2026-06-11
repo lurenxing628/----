@@ -1,33 +1,4 @@
-:root {
-    --primary-color: #2563eb;
-    --primary-hover: #1d4ed8;
-    --secondary-color: #64748b;
-    --success-color: #10b981;
-    --warning-color: #f59e0b;
-    --danger-color: #ef4444;
-    --bg-color: #f1f5f9;
-    --card-bg: #ffffff;
-    --text-main: #0f172a;
-    --text-muted: #64748b;
-    --border-color: #e2e8f0;
-    --sidebar-width: 240px;
-    --header-height: 60px;
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    --radius-md: 0.375rem;
-    --sidebar-bg: #0f172a;
-    --sidebar-bg-soft: #111827;
-    --sidebar-border: rgba(148, 163, 184, 0.18);
-    --sidebar-text: #cbd5e1;
-    --sidebar-text-strong: #f8fafc;
-    --sidebar-muted: #94a3b8;
-    --sidebar-hover-bg: rgba(148, 163, 184, 0.10);
-    --sidebar-active-bg: #ffffff;
-    --sidebar-active-text: #0f172a;
-    --sidebar-active-accent: #60a5fa;
-    /* Win7/离线友好：优先 Segoe UI + 微软雅黑，兼容中英文混排 */
-    --font-family: "Segoe UI", "Microsoft YaHei", "Microsoft YaHei UI", system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Noto Sans SC", Arial, sans-serif;
-}
+/* 主题变量已迁 static/css/00-tokens.css（fusion-tokens-single-source 唯一真相源），本文件纯消费 */
 
 * {
     box-sizing: border-box;
@@ -705,15 +676,7 @@ pre {
    common_confirm/common_required 等 JS）在默认界面长期裸奔，此处按 base.css 原值收编救活。
    纪律：flash 系规则一律带 :not(.alert)，结构性绕开 V2 flash 循环消息的双挂元素
    （flash-card flash-* alert alert-*），既有 .alert-* 视觉零变化、与级联顺序无关。
-   变量为 base.css :root 原值的局部副本，待 fusion-tokens-single-source（00-tokens.css）收编后删除。 */
-:root {
-  --aps-success: #16a34a;
-  --aps-warning: #d97706;
-  --aps-danger: #dc2626;
-  --aps-text-muted: #64748b;
-  --aps-border: #e2e8f0;
-  --aps-radius: 6px;
-}
+   --aps-* 变量已于 2026-06-12 收编进 00-tokens.css（fusion-tokens-single-source），此处仅余规则消费。 */
 
 /* 页内/JS 注入警示框（单挂 flash-card flash-*，无 alert 类）。
    盒模型来自 base.css .flash-card 基类，不收编其 transition——

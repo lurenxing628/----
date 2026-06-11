@@ -228,6 +228,8 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/web_pages/test_diagnostic_package_security.py",
     # 打印介质契约：.sidebar 必须在 print 隐藏名单（fusion-anchor-baseline-prep）
     "tests/web_pages/test_print_css_contract.py",
+    # 设计令牌真相源：定版色/暗色红线/裸 hex 冻结白名单/阈值单点（fusion-tokens-single-source）
+    "tests/web_pages/test_css_token_source_contract.py",
     "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
     "tests/app_runtime/test_ui_browser_geometry_env.py",
     "tests/app_runtime/test_ui_geometry_html_contract.py",

@@ -5,14 +5,17 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.models.operation_execution_event import EXECUTION_STATUS_NOT_STARTED
 
-from .dashboard_workbench_cards import build_dashboard_quick_links, build_dashboard_risk_cards
+from .dashboard_workbench_cards import (
+    LOAD_DANGER_RATIO,
+    LOAD_WARNING_RATIO,
+    build_dashboard_quick_links,
+    build_dashboard_risk_cards,
+)
 from .dashboard_workbench_context import latest_plan_context
 from .dashboard_workbench_data_gap import dashboard_data_gap_reason
 from .scheduler_workbench_links import build_workbench_link
 
 _MAX_TODO_ITEMS = 6
-_LOAD_WARNING_RATIO = 0.75
-_LOAD_DANGER_RATIO = 0.90
 _SEVERITY_ORDER = {"danger": 0, "warning": 1, "notice": 2, "ok": 3}
 
 
@@ -263,10 +266,10 @@ def _recent_schedule_metrics(
 
 def _resource_load_todo(context: Dict[str, Any], latest_summary: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     ratio = _machine_util_ratio(latest_summary)
-    if ratio is None or ratio < _LOAD_WARNING_RATIO:
+    if ratio is None or ratio < LOAD_WARNING_RATIO:
         return None
     percent = round(ratio * 100, 1)
-    severity = "danger" if ratio >= _LOAD_DANGER_RATIO else "warning"
+    severity = "danger" if ratio >= LOAD_DANGER_RATIO else "warning"
     return _todo_item(
         kind="resource_overload",
         severity=severity,

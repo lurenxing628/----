@@ -60,6 +60,9 @@ def _render_ui_macro(source: str) -> str:
 
 
 def test_ui_contract_declares_semantic_tokens_and_components() -> None:
+    # token 定义已迁 00-tokens.css（fusion-tokens-single-source 唯一真相源）；
+    # 组件选择器仍在 ui_contract.css——两份分别断言
+    tokens_css = _read("static/css/00-tokens.css")
     css = _read("static/css/ui_contract.css")
 
     for token in (
@@ -75,7 +78,7 @@ def test_ui_contract_declares_semantic_tokens_and_components() -> None:
         "--ui-danger-bg",
         "--ui-table-head-bg",
     ):
-        assert token in css
+        assert token in tokens_css
 
     for selector in (
         ".aps-stack",

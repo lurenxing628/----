@@ -1,0 +1,223 @@
+/* ============================================================
+   00-tokens.css —— 设计令牌唯一真相源（fusion-tokens-single-source）
+   ============================================================
+   纪律（roadmap 4.4 契约）：
+   - 本文件是全仓唯一允许新增裸 hex 的 CSS 文件（test_css_token_source_contract.py
+     冻结白名单守卫：其余文件 per-file 计数只许降不许升）。
+   - 语义层正名为 --ui-*；旧名（--primary-color/--aps-* 等）见尾部迁移期别名块。
+   - 暗色块只做 token 重赋值，非 token 特例红线 ≤10 条（现 0 条）。
+   - 负荷阈值（warning>=0.75 / danger>=0.90）唯一真相源在 Python：
+     web/viewmodels/dashboard_workbench_cards.py 的 LOAD_WARNING_RATIO /
+     LOAD_DANGER_RATIO；CSS 侧只消费 severity-* 类名，不复制数值。
+   - 本文件必须在 base.html CSS 链首加载（其余文件按级联消费）。
+   ============================================================ */
+
+/* ① 语义层（--ui-*）
+   2026-06-12 语义色三值合一定版（roadmap 4.4）：
+   success #16a34a（弃 #10b981）/ warning #d97706（弃 #f59e0b）/
+   danger #dc2626（弃 #ef4444）/ primary #2563eb（无分叉沿用）。
+   bg/border/text/muted 四件套为族内深浅梯度，原值保留不动。 */
+:root {
+  --ui-primary: #2563eb;
+  --ui-primary-hover: #1d4ed8;
+  --ui-success: #16a34a;
+  --ui-danger: #dc2626;
+  --ui-warning: #d97706;
+
+  --ui-bg: #f1f5f9;
+  --ui-card-bg: #ffffff;
+  --ui-text: #0f172a;
+  --ui-muted: #64748b;
+  --ui-border: #e2e8f0;
+
+  --ui-radius: 6px;
+  --ui-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --ui-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+
+  --ui-surface: var(--ui-card-bg);
+  --ui-surface-muted: #f8fafc;
+  --ui-surface-soft: #f1f5f9;
+  --ui-surface-raised: #ffffff;
+
+  --ui-text-strong: var(--ui-text);
+  --ui-text-subtle: var(--ui-muted);
+  --ui-text-inverse: #ffffff;
+
+  --ui-focus-ring: 0 0 0 3px rgb(37 99 235 / 0.22);
+
+  /* 间距旧阶（rem 制，.aps-stack-* 等存量消费中）——原值保留，
+     消费方迁移到下方 --space-* 新阶归 debox/longtail 波次 */
+  --ui-space-1: 0.25rem;
+  --ui-space-2: 0.5rem;
+  --ui-space-3: 0.75rem;
+  --ui-space-4: 1rem;
+  --ui-space-5: 1.25rem;
+  --ui-space-6: 1.5rem;
+
+  --ui-radius-sm: 4px;
+  --ui-radius-md: var(--ui-radius);
+  --ui-radius-lg: 10px;
+  --ui-radius-pill: 999px;
+
+  --ui-neutral-bg: #f8fafc;
+  --ui-neutral-border: var(--ui-border);
+  --ui-neutral-text: var(--ui-text);
+  --ui-neutral-muted: var(--ui-muted);
+
+  --ui-info-bg: #eff6ff;
+  --ui-info-border: #bfdbfe;
+  --ui-info-text: #1d4ed8;
+  --ui-info-muted: #475569;
+
+  --ui-success-bg: #f0fdf4;
+  --ui-success-border: #bbf7d0;
+  --ui-success-text: #15803d;
+  --ui-success-muted: #166534;
+
+  --ui-warning-bg: #fffbeb;
+  --ui-warning-border: #fde68a;
+  --ui-warning-text: #b45309;
+  --ui-warning-muted: #92400e;
+
+  --ui-danger-bg: #fef2f2;
+  --ui-danger-border: #fecaca;
+  --ui-danger-text: #b91c1c;
+  --ui-danger-muted: #991b1b;
+
+  --ui-table-cell-py: 10px;
+  --ui-table-cell-px: 12px;
+  --ui-table-head-bg: #f8fafc;
+  --ui-table-row-hover-bg: #f1f5f9;
+  --ui-table-row-even-bg: #fcfcfc;
+
+  /* 字号阶（契约 4.4 五级 + KPI） */
+  --font-size-1: 12px;
+  --font-size-2: 13px;
+  --font-size-3: 14px;
+  --font-size-4: 17px;
+  --font-size-5: 22px;
+  --font-size-kpi: 28px;
+
+  /* 间距阶（契约 4.4 目标态新阶，px 制） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+
+  /* 圆角三档（契约 4.4） */
+  --radius-1: 4px;
+  --radius-2: 6px;
+  --radius-3: 8px;
+}
+
+/* ② 壳层与结构 token（原 style.css :root 原名搬移——重命名工程不归本条） */
+:root {
+  --bg-color: #f1f5f9;
+  --card-bg: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --sidebar-width: 240px;
+  --header-height: 60px;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --radius-md: 0.375rem;
+  --sidebar-bg: #0f172a;
+  --sidebar-bg-soft: #111827;
+  --sidebar-border: rgba(148, 163, 184, 0.18);
+  --sidebar-text: #cbd5e1;
+  --sidebar-text-strong: #f8fafc;
+  --sidebar-muted: #94a3b8;
+  --sidebar-hover-bg: rgba(148, 163, 184, 0.10);
+  --sidebar-active-bg: #ffffff;
+  --sidebar-active-text: #0f172a;
+  --sidebar-active-accent: #60a5fa;
+  /* Win7/离线友好：优先 Segoe UI + 微软雅黑，兼容中英文混排 */
+  --font-family: "Segoe UI", "Microsoft YaHei", "Microsoft YaHei UI", system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Noto Sans SC", Arial, sans-serif;
+}
+
+/* ③ 暗色：纯 token 重赋值（特例红线 ≤10，现 0 条）。
+   只重赋 --ui-* 与壳层名；别名旧名不写 dark 变体——var() 动态解析自动跟随。 */
+html[data-theme="dark"] {
+  --bg-color: #0f172a;
+  --card-bg: #1e293b;
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --border-color: #334155;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+
+  --ui-bg: #0f172a;
+  --ui-card-bg: #1e293b;
+  --ui-text: #f1f5f9;
+  --ui-muted: #94a3b8;
+  --ui-border: #334155;
+  --ui-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --ui-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --ui-primary: #3b82f6;
+  --ui-primary-hover: #60a5fa;
+
+  --ui-surface: #1e293b;
+  --ui-surface-muted: #162032;
+  --ui-surface-soft: #111827;
+  --ui-surface-raised: #1e293b;
+
+  --ui-text-strong: #f1f5f9;
+  --ui-text-subtle: #cbd5e1;
+  --ui-text-inverse: #ffffff;
+
+  --ui-focus-ring: 0 0 0 3px rgb(59 130 246 / 0.28);
+
+  --ui-neutral-bg: #162032;
+  --ui-neutral-border: #334155;
+  --ui-neutral-text: #f1f5f9;
+  --ui-neutral-muted: #cbd5e1;
+
+  --ui-info-bg: #13243a;
+  --ui-info-border: #2563eb;
+  --ui-info-text: #bfdbfe;
+  --ui-info-muted: #cbd5e1;
+
+  --ui-success-bg: #064e3b;
+  --ui-success-border: #047857;
+  --ui-success-text: #a7f3d0;
+  --ui-success-muted: #bbf7d0;
+
+  --ui-warning-bg: #2a2416;
+  --ui-warning-border: #92400e;
+  --ui-warning-text: #fde68a;
+  --ui-warning-muted: #fcd34d;
+
+  --ui-danger-bg: #450a0a;
+  --ui-danger-border: #b91c1c;
+  --ui-danger-text: #fecaca;
+  --ui-danger-muted: #fca5a5;
+
+  --ui-table-head-bg: #1e293b;
+  --ui-table-row-hover-bg: #1e293b;
+  --ui-table-row-even-bg: #162032;
+}
+
+/* ④ 迁移期别名块（hex-migration 全量迁移后评估删除）。
+   只收语义色旧名两组；壳层名在段②是正名无需映射。
+   var() 动态解析：dark 下自动跟随 --ui-* 重赋值，勿加 dark 变体死值副本。
+   白名单（不在此、不得收编）：--aps-bar-color（gantt_decorations.js setProperty
+   的 JS 接口）、--aps-stack-gap / --aps-tone-*（组件作用域变量）。 */
+:root {
+  --primary-color: var(--ui-primary);
+  --primary-hover: var(--ui-primary-hover);
+  --secondary-color: var(--ui-muted);
+  --success-color: var(--ui-success);
+  --warning-color: var(--ui-warning);
+  --danger-color: var(--ui-danger);
+
+  --aps-success: var(--ui-success);
+  --aps-warning: var(--ui-warning);
+  --aps-danger: var(--ui-danger);
+  --aps-text-muted: var(--ui-muted);
+  --aps-border: var(--ui-border);
+  --aps-radius: var(--ui-radius);
+}

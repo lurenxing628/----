@@ -4,77 +4,7 @@
    约束：Win7 + Chrome109，零外部依赖
    ============================================================ */
 
-:root {
-  --ui-primary: var(--primary-color, var(--aps-primary, #2563eb));
-  --ui-primary-hover: var(--primary-hover, var(--aps-primary-hover, #1d4ed8));
-  --ui-success: var(--success-color, var(--aps-success, #10b981));
-  --ui-danger: var(--danger-color, var(--aps-danger, #ef4444));
-  --ui-warning: var(--warning-color, var(--aps-warning, #f59e0b));
-
-  --ui-bg: var(--bg-color, var(--aps-bg, #f1f5f9));
-  --ui-card-bg: var(--card-bg, var(--aps-card-bg, #ffffff));
-  --ui-text: var(--text-main, var(--aps-text, #0f172a));
-  --ui-muted: var(--text-muted, var(--aps-text-muted, #64748b));
-  --ui-border: var(--border-color, var(--aps-border, #e2e8f0));
-
-  --ui-radius: var(--radius-md, var(--aps-radius, 6px));
-  --ui-shadow-sm: var(--shadow-sm, 0 1px 2px 0 rgb(0 0 0 / 0.05));
-  --ui-shadow-md: var(--shadow-md, 0 4px 6px -1px rgb(0 0 0 / 0.1));
-
-  --ui-surface: var(--ui-card-bg, #ffffff);
-  --ui-surface-muted: #f8fafc;
-  --ui-surface-soft: #f1f5f9;
-  --ui-surface-raised: #ffffff;
-
-  --ui-text-strong: var(--ui-text, #0f172a);
-  --ui-text-subtle: var(--ui-muted, #64748b);
-  --ui-text-inverse: #ffffff;
-
-  --ui-focus-ring: 0 0 0 3px rgb(37 99 235 / 0.22);
-
-  --ui-space-1: 0.25rem;
-  --ui-space-2: 0.5rem;
-  --ui-space-3: 0.75rem;
-  --ui-space-4: 1rem;
-  --ui-space-5: 1.25rem;
-  --ui-space-6: 1.5rem;
-
-  --ui-radius-sm: 4px;
-  --ui-radius-md: var(--ui-radius, 6px);
-  --ui-radius-lg: 10px;
-  --ui-radius-pill: 999px;
-
-  --ui-neutral-bg: #f8fafc;
-  --ui-neutral-border: var(--ui-border, #e2e8f0);
-  --ui-neutral-text: var(--ui-text, #0f172a);
-  --ui-neutral-muted: var(--ui-muted, #64748b);
-
-  --ui-info-bg: #eff6ff;
-  --ui-info-border: #bfdbfe;
-  --ui-info-text: #1d4ed8;
-  --ui-info-muted: #475569;
-
-  --ui-success-bg: #f0fdf4;
-  --ui-success-border: #bbf7d0;
-  --ui-success-text: #15803d;
-  --ui-success-muted: #166534;
-
-  --ui-warning-bg: #fffbeb;
-  --ui-warning-border: #fde68a;
-  --ui-warning-text: #b45309;
-  --ui-warning-muted: #92400e;
-
-  --ui-danger-bg: #fef2f2;
-  --ui-danger-border: #fecaca;
-  --ui-danger-text: #b91c1c;
-  --ui-danger-muted: #991b1b;
-
-  --ui-table-cell-py: 10px;
-  --ui-table-cell-px: 12px;
-  --ui-table-head-bg: #f8fafc;
-  --ui-table-row-hover-bg: #f1f5f9;
-  --ui-table-row-even-bg: #fcfcfc;
-}
+/* design tokens 已迁 static/css/00-tokens.css（fusion-tokens-single-source 唯一真相源），本文件纯消费 */
 
 body {
   color: var(--ui-text);
@@ -2871,76 +2801,7 @@ html[data-theme="dark"] .manual-popover .manual-popover__close:hover {
    Win7 单机 UI 改进补丁（暗色/表格/Toast/打印）
    ============================================================ */
 
-html[data-theme="dark"] {
-  /* ---- V2 design tokens ---- */
-  --primary-color: #3b82f6;
-  --primary-hover: #60a5fa;
-  --bg-color: #0f172a;
-  --card-bg: #1e293b;
-  --text-main: #f1f5f9;
-  --text-muted: #94a3b8;
-  --border-color: #334155;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
-
-  /* ---- Shared contract tokens ---- */
-  --ui-bg: #0f172a;
-  --ui-card-bg: #1e293b;
-  --ui-text: #f1f5f9;
-  --ui-muted: #94a3b8;
-  --ui-border: #334155;
-  --ui-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
-  --ui-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
-  --ui-primary: #3b82f6;
-  --ui-primary-hover: #60a5fa;
-
-  --ui-surface: #1e293b;
-  --ui-surface-muted: #162032;
-  --ui-surface-soft: #111827;
-  --ui-surface-raised: #1e293b;
-
-  --ui-text-strong: #f1f5f9;
-  --ui-text-subtle: #cbd5e1;
-  --ui-text-inverse: #ffffff;
-
-  --ui-focus-ring: 0 0 0 3px rgb(59 130 246 / 0.28);
-
-  --ui-neutral-bg: #162032;
-  --ui-neutral-border: #334155;
-  --ui-neutral-text: #f1f5f9;
-  --ui-neutral-muted: #cbd5e1;
-
-  --ui-info-bg: #13243a;
-  --ui-info-border: #2563eb;
-  --ui-info-text: #bfdbfe;
-  --ui-info-muted: #cbd5e1;
-
-  --ui-success-bg: #064e3b;
-  --ui-success-border: #047857;
-  --ui-success-text: #a7f3d0;
-  --ui-success-muted: #bbf7d0;
-
-  --ui-warning-bg: #2a2416;
-  --ui-warning-border: #92400e;
-  --ui-warning-text: #fde68a;
-  --ui-warning-muted: #fcd34d;
-
-  --ui-danger-bg: #450a0a;
-  --ui-danger-border: #b91c1c;
-  --ui-danger-text: #fecaca;
-  --ui-danger-muted: #fca5a5;
-
-  --ui-table-head-bg: #1e293b;
-  --ui-table-row-hover-bg: #1e293b;
-  --ui-table-row-even-bg: #162032;
-
-  /* ---- Legacy --aps-* tokens（暗色重定义；亮色定义在 style.css 收编区，待 00-tokens.css 单源化收编）---- */
-  --aps-bg: #0f172a;
-  --aps-card-bg: #1e293b;
-  --aps-text: #f1f5f9;
-  --aps-text-muted: #94a3b8;
-  --aps-border: #334155;
-}
+/* 暗色 token 重赋值已迁 00-tokens.css；下方保留组件级暗色散规则（收敛归 fusion-hex-migration） */
 
 html[data-theme="dark"] table:not(.table) th {
   background: #1e293b;
@@ -6274,4 +6135,14 @@ html[data-theme="dark"] .aps-risk-note {
   .aps-dashboard-risk-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ============================================================
+   全局焦点环（fusion-tokens-single-source，契约 4.4 上岗）
+   键盘可达性：所有可聚焦元素 Tab 导航时显示统一 focus ring；
+   compatibility.css 的 :not(:focus-visible) 反向抑制与此协同。
+   ============================================================ */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
 }

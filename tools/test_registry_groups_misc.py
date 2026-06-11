@@ -197,6 +197,8 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             # 打印介质契约（fusion-anchor-baseline-prep）：本组是 static/** 的 owner，
             # 改 print.css 必须触发 .sidebar 隐藏名单断言（防回潮）
             "tests/web_pages/test_print_css_contract.py",
+            # 设计令牌真相源契约（fusion-tokens-single-source）：改任何 CSS 触发裸 hex 冻结白名单
+            "tests/web_pages/test_css_token_source_contract.py",
         ),
         "input_file_scopes": (
             "tests/app_runtime/ui_geometry_contract_data.py",
