@@ -5,7 +5,7 @@ items:
   - slug: fusion-v2-quickwin-pack
     description: 默认界面急救包——V2 壳挂计划工作台入口并把门禁断言扩到 V2 base、base.css 孤儿 CSS 11 类并入 style.css、dashboard.html:137 raw 时间改 format_public_datetime
     depends_on: []
-    status: in-progress
+    status: done
     feature: 2026-06-11-fusion-v2-quickwin-pack
     minimal_loop: true
     notes: 全部是用户当天可感知修复；孤儿 CSS（flash-warning 等 19 模板）今天就在默认界面裸奔，属存量缺陷先行修复；镜像守卫已单拎为 fusion-mirror-sync-guard（2026-06-11 用户拍板拆分）；若第 2 条先行完成，挂载点改为转正后的 templates/base.html

@@ -21,67 +21,67 @@ steps:
 checks:
   - item: "format_public_datetime 输入输出契约：正常串→中文格式 / 脏值→时间记录异常 / 空→-"
     source: 名词契约
-    status: pending
+    status: passed
   - item: "收编变体与盒模型全部带 :not(.alert)，双挂元素零触碰"
     source: 流程级约束
-    status: pending
+    status: passed
   - item: "收编区 :root 含六个 --aps-* 定义（success/warning/danger/border/text-muted/radius），值取 base.css 原值"
     source: 名词契约
-    status: pending
+    status: passed
   - item: "V2 壳挂载点：web_new_test base.html top-header 内 nav 包裹的宏调用"
     source: 挂载点
-    status: pending
+    status: passed
   - item: "style.css 收编区规则块存在且可整块定位（挂载点可卸载性）"
     source: 挂载点
-    status: pending
+    status: passed
   - item: "双树 dashboard.html:137 消费 display 值（挂载点）"
     source: 挂载点
-    status: pending
+    status: passed
   - item: "门禁断言扩 V2（required 集内 test_workbench_nav_entry_contract.py）"
     source: 挂载点
-    status: pending
+    status: passed
   - item: "base.css 零 diff 且未删除"
     source: 范围守护
-    status: pending
+    status: passed
   - item: "render_bridge.py / ui_mode*.py / system_ui_mode.py 零 diff"
     source: 范围守护
-    status: pending
+    status: passed
   - item: "V2 base.html <title> 块与 sidebar nav-item 区零 diff"
     source: 范围守护
-    status: pending
+    status: passed
   - item: "style.css 既有 .alert-* 区(:522-536)与既有 .flash-card 基类(:537)零 diff"
     source: 范围守护
-    status: pending
+    status: passed
   - item: "factory.py 与 render_bridge 注入面零 diff（不新增 filter/global）"
     source: 范围守护
-    status: pending
+    status: passed
   - item: "tools/ 门禁源零 diff"
     source: 范围守护
-    status: pending
+    status: passed
   - item: "场景1：默认 GET / 含 aps-workbench-nav 与计划工作台"
     source: 验收场景
-    status: pending
+    status: passed
   - item: "场景2：V1 强制 GET / 旧断言过、V1 零暴露"
     source: 验收场景
-    status: pending
+    status: passed
   - item: "场景3：三高频页警示框配色+盒模型完整（双主题截图目检）"
     source: 验收场景
-    status: pending
+    status: passed
   - item: "场景4：双挂 flash 循环消息亮/暗计算样式零差异"
     source: 验收场景
-    status: pending
+    status: passed
   - item: "场景5：正常/脏值/None 三态时间展示正确且路由不抛错"
     source: 验收场景
-    status: pending
+    status: passed
   - item: "场景6：双树 cmp exit 0"
     source: 验收场景
-    status: pending
+    status: passed
   - item: "场景7：required 全量 0 失败 + V2 断言先红后绿"
     source: 验收场景
-    status: pending
+    status: passed
   - item: "场景8：aps-spin 成活（DevTools 加类转动 + style.css 文本断言）"
     source: 验收场景
-    status: pending
+    status: passed
   - item: "场景9：脏值播种显式给 schedule_time 列（红绿对照）"
     source: 验收场景
-    status: pending
+    status: passed
