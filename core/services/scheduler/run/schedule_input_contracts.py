@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.services.common.build_outcome import BuildOutcome
 
@@ -27,11 +27,11 @@ def _signature_supports_keyword_arg(signature: inspect.Signature, arg_name: str)
     return False
 
 
-def _unsupported_keyword_args(signature: inspect.Signature, arg_names: tuple[str, ...]) -> List[str]:
+def _unsupported_keyword_args(signature: inspect.Signature, arg_names: Tuple[str, ...]) -> List[str]:
     return [arg_name for arg_name in arg_names if not _signature_supports_keyword_arg(signature, arg_name)]
 
 
-def _raise_keyword_contract_error(callable_name: str, *, arg_names: tuple[str, ...]) -> None:
+def _raise_keyword_contract_error(callable_name: str, *, arg_names: Tuple[str, ...]) -> None:
     names = "、".join([str(arg_name).strip() for arg_name in arg_names if str(arg_name).strip()]) or "<empty>"
     raise TypeError(f"{callable_name} 必须支持关键字参数 {names}。")
 
@@ -40,7 +40,7 @@ def _ensure_callable_supports_keyword_args(
     callable_obj: Any,
     *,
     callable_name: str,
-    arg_names: tuple[str, ...],
+    arg_names: Tuple[str, ...],
 ) -> None:
     try:
         signature = inspect.signature(callable_obj)
@@ -117,7 +117,7 @@ def _build_freeze_window_seed_with_meta(
     operations: List[Any],
     reschedulable_operations: Optional[List[Any]],
     strict_mode: bool,
-) -> tuple[Set[int], List[Dict[str, Any]], List[str], Dict[str, Any]]:
+) -> Tuple[Set[int], List[Dict[str, Any]], List[str], Dict[str, Any]]:
     freeze_meta: Dict[str, Any] = {}
     required_arg_names = ("cfg", "prev_version", "start_dt", "operations", "reschedulable_operations", "strict_mode", "meta")
     _ensure_callable_supports_keyword_args(

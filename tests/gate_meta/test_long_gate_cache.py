@@ -594,7 +594,9 @@ def test_outside_repo_scope_is_not_reused(tmp_path):
 
     assert decision["decision"] == "run"
     assert decision["reason"] == "input fingerprint contains untrusted path"
-    assert decision["invalidated_by"] == [f"input path is outside repo: {outside}"]
+    # 源码 _normalize_scope_path 已把路径归一为 posix（正斜杠）；这里期望也须用 as_posix，
+    # 否则 Windows 上 str(Path) 是反斜杠，与源码输出不符（POSIX 上两者相同）。
+    assert decision["invalidated_by"] == [f"input path is outside repo: {outside.as_posix()}"]
 
 
 def test_fingerprint_files_marks_outside_repo_glob_without_reusing_cache(tmp_path):

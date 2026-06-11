@@ -19,6 +19,10 @@ jobs:
     steps:
       - name: 检出仓库
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # 防回潮门禁 test_live_repo_is_currently_clean 需 git diff 治理基线 d4589d77；
+          # 默认浅克隆 (depth=1) 取不到该老 commit 会 RuntimeError(bad revision)。
+          fetch-depth: 0
 
       - name: 安装 Python 3.8
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -35,6 +39,11 @@ jobs:
 
       - name: 安装开发依赖
         run: python -m pip install -r requirements-dev.txt
+
+      - name: 安装可选图分析依赖 (networkx)
+        # 工序图分析默认开启 (DEFAULT_GRAPH_ANALYSIS_MODE='on')，需 networkx==3.1。
+        # 镜像真实 Win7 装机要求：缺它则默认配置下调度器会抛“请先安装…”守卫，门禁随之转红。
+        run: python -m pip install -r requirements-optimizer-lite-win7.txt
 
       - name: 验证 Chrome 路径
         shell: pwsh
@@ -62,9 +71,9 @@ jobs:
             evidence/QualityGate/pyright_gate_full.json
             evidence/QualityGate/pyright_tools_full.json
             evidence/QualityGate/quickref_vs_routes.md
-          key: quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}-tooling-${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', 'scripts/run_quality_gate.py', 'scripts/run_daily_quality_gate.py', 'tools/**/*.py', 'pyrightconfig.gate.json', 'pyrightconfig.tools.json') }}-sha-${{ github.sha }}-run-${{ github.run_id }}-${{ github.run_attempt }}
+          key: quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles('requirements.txt', 'requirements-dev.txt', 'requirements-optimizer-lite-win7.txt') }}-tooling-${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', 'scripts/run_quality_gate.py', 'scripts/run_daily_quality_gate.py', 'tools/**/*.py', 'pyrightconfig.gate.json', 'pyrightconfig.tools.json') }}-sha-${{ github.sha }}-run-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}-tooling-${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', 'scripts/run_quality_gate.py', 'scripts/run_daily_quality_gate.py', 'tools/**/*.py', 'pyrightconfig.gate.json', 'pyrightconfig.tools.json') }}-
+            quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles('requirements.txt', 'requirements-dev.txt', 'requirements-optimizer-lite-win7.txt') }}-tooling-${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', 'scripts/run_quality_gate.py', 'scripts/run_daily_quality_gate.py', 'tools/**/*.py', 'pyrightconfig.gate.json', 'pyrightconfig.tools.json') }}-
 
       - name: 执行统一质量门禁
         run: python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
@@ -88,7 +97,7 @@ jobs:
             evidence/QualityGate/pyright_gate_full.json
             evidence/QualityGate/pyright_tools_full.json
             evidence/QualityGate/quickref_vs_routes.md
-          key: quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}-tooling-${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', 'scripts/run_quality_gate.py', 'scripts/run_daily_quality_gate.py', 'tools/**/*.py', 'pyrightconfig.gate.json', 'pyrightconfig.tools.json') }}-sha-${{ github.sha }}-run-${{ github.run_id }}-${{ github.run_attempt }}
+          key: quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles('requirements.txt', 'requirements-dev.txt', 'requirements-optimizer-lite-win7.txt') }}-tooling-${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', 'scripts/run_quality_gate.py', 'scripts/run_daily_quality_gate.py', 'tools/**/*.py', 'pyrightconfig.gate.json', 'pyrightconfig.tools.json') }}-sha-${{ github.sha }}-run-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: 上传 quality gate evidence
         if: always()

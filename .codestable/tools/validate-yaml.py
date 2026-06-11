@@ -225,7 +225,9 @@ def _validate_file(
     base_dir: Optional[Path],
     mode: str,  # "markdown" | "yaml"
 ) -> ValidationResult:
-    display_path = str(file_path.relative_to(base_dir)) if base_dir else str(file_path)
+    # 用 as_posix 让相对显示路径在 Windows 上也走正斜杠（与 _is_excluded_path 的 as_posix 口径一致），
+    # 否则 Windows 上反斜杠会破坏调用方对 "dir/file.md" 形态的匹配。
+    display_path = file_path.relative_to(base_dir).as_posix() if base_dir else str(file_path)
     result = ValidationResult(display_path)
 
     try:

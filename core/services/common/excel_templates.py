@@ -157,7 +157,10 @@ def _write_xlsx(
 
 def _read_xlsx_headers(path: str) -> List[str]:
     try:
-        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        # 不用 read_only：read_only 懒加载在 Windows 上即便 close() 也可能不立即释放底层归档句柄，
+        # 导致调用方临时目录清理报 PermissionError[WinError 32]。模板文件很小，普通模式一次性读入、
+        # close() 同步释放句柄；data_only 取缓存值即可读表头文本。
+        wb = openpyxl.load_workbook(path, data_only=True)
     except Exception as exc:
         raise ExcelTemplateError(f"读取 Excel 模板表头失败：{os.path.basename(path)}") from exc
     try:

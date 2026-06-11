@@ -23,6 +23,11 @@ SERIAL_FILE_PATTERNS: Tuple[str, ...] = (
     "tests/gate_meta/test_run_quality_gate.py",
     "tests/gate_meta/test_architecture_fitness.py",
     "tests/app_runtime/test_win7*.py",
+    # scheduler_graph 整目录判 serial：多个用例 sys.modules.pop(networkx / core.services.scheduler.graph.*)
+    # 验证惰性加载但不还原，并行分片把它们与他用例打散后，后续用例拿到陈旧/新建模块对象、monkeypatch
+    # 打空（is_dag 误判、networkx 不可用模拟失效等，只命中分片里第一个）。按收集顺序连续跑（本地
+    # `pytest tests/scheduler_graph/` 恒过）即无此问题，故整目录 serial。
+    "tests/scheduler_graph/test_*.py",
 )
 
 SERIAL_EXACT_PATHS = frozenset(iter_startup_regressions())

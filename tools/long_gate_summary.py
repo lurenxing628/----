@@ -32,6 +32,14 @@ def _rel_path(repo_root: str, path: str) -> str:
         return raw_path
 
 
+def _posix_output_file(item: Mapping[str, Any]) -> Dict[str, Any]:
+    """复制一条 output_file 记录并把其中的 path 归一为 posix（正斜杠）。"""
+    row = dict(item)
+    if "path" in row:
+        row["path"] = str(row.get("path") or "").replace("\\", "/")
+    return row
+
+
 def _command_text_from_display(display: str) -> str:
     return str(display or "").strip()
 
@@ -79,9 +87,9 @@ def extract_copyable_failure(
         "display": _command_text_from_display(display),
         "copyable_command": copyable_command,
         "copyable_nodeids": nodeids,
-        "receipt_path": str(receipt_path or ""),
-        "stdout_log_path": str(result.get("stdout_log_path") or ""),
-        "stderr_log_path": str(result.get("stderr_log_path") or ""),
+        "receipt_path": str(receipt_path or "").replace("\\", "/"),
+        "stdout_log_path": str(result.get("stdout_log_path") or "").replace("\\", "/"),
+        "stderr_log_path": str(result.get("stderr_log_path") or "").replace("\\", "/"),
         "stdout_tail": tail_text(stdout, max_lines=max_lines),
         "stderr_tail": tail_text(stderr, max_lines=max_lines),
     }
@@ -163,10 +171,12 @@ def build_summary_entry(
         "execution_mode": resolved_execution_mode,
         "returncode": returncode,
         "failed": failed_value,
-        "receipt_path": str(receipt_path or ""),
-        "stdout_log_path": str((result or {}).get("stdout_log_path") or ""),
-        "stderr_log_path": str((result or {}).get("stderr_log_path") or ""),
-        "output_files": [dict(item) for item in list(output_files or [])],
+        # 路径一律归一为 posix（正斜杠），与同结构的 cache_dir 口径一致：summary 是跨平台/跨机
+        # restore 的产物，Windows 反斜杠会破坏调用方对 "evidence/QualityGate/..." 形态的断言与比对。
+        "receipt_path": str(receipt_path or "").replace("\\", "/"),
+        "stdout_log_path": str((result or {}).get("stdout_log_path") or "").replace("\\", "/"),
+        "stderr_log_path": str((result or {}).get("stderr_log_path") or "").replace("\\", "/"),
+        "output_files": [_posix_output_file(item) for item in list(output_files or [])],
         "current_fingerprint_hash": str(decision.get("current_fingerprint_hash") or ""),
         "previous_result_path": str(decision.get("previous_result_path") or ""),
         "duration_s": _duration_value(result, "duration_s"),
