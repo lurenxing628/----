@@ -424,7 +424,6 @@ def test_request_service_target_files_cover_history_and_system_routes() -> None:
         "web/routes/system_backup.py",
         "web/routes/system_logs.py",
         "web/routes/system_plugins.py",
-        "web/routes/system_ui_mode.py",
         "web/routes/system_utils.py",
         "web/error_handlers.py",
         "web/error_boundary.py",
@@ -454,37 +453,37 @@ def test_request_service_scan_scope_covers_error_path_files() -> None:
 
 
 def test_startup_scope_patterns_cover_ui_mode_split_files() -> None:
+    # 双轨退役（2026-06）后启动链 UI 范围只剩 manual_src_security：
+    # ui_mode / ui_mode_request / ui_mode_store / render_bridge 四文件已删，不得回流。
     expected_patterns = {
         "web/bootstrap/**/*.py",
+        "web/manual_src_security.py",
+    }
+    retired_paths = {
         "web/ui_mode.py",
         "web/ui_mode_request.py",
         "web/ui_mode_store.py",
         "web/render_bridge.py",
-        "web/manual_src_security.py",
     }
 
     assert expected_patterns.issubset(set(shared_mod.STARTUP_SCOPE_PATTERNS))
-    assert all(shared_mod.is_startup_scope_path(path) for path in expected_patterns if not path.endswith("*.py"))
-    assert expected_patterns - {"web/bootstrap/**/*.py"} <= set(shared_mod.collect_startup_scope_files())
+    assert retired_paths.isdisjoint(set(shared_mod.STARTUP_SCOPE_PATTERNS))
+    assert shared_mod.is_startup_scope_path("web/manual_src_security.py")
+    assert "web/manual_src_security.py" in set(shared_mod.collect_startup_scope_files())
 
 
 def test_ui_mode_split_scope_tags_stay_separated() -> None:
-    assert scan_mod.ui_mode_scope_tag("_read_ui_mode_from_db", "web/ui_mode.py") == "startup_guard"
-    assert scan_mod.ui_mode_scope_tag("render_ui_template", "web/ui_mode.py") == "render_bridge"
-    assert scan_mod.ui_mode_scope_tag("read_ui_mode_request", "web/ui_mode_request.py") == "startup_guard"
-    assert scan_mod.ui_mode_scope_tag("read_ui_mode_store", "web/ui_mode_store.py") == "startup_guard"
-    assert scan_mod.ui_mode_scope_tag("render_ui_template", "web/render_bridge.py") == "render_bridge"
+    # 双轨退役（2026-06）后 startup_guard 标签退场：scope_tag 恒为 render_bridge，
+    # guard 路径/符号集为空；manual_src_security 的静默回退条目仍按 render_bridge 标记。
     assert scan_mod.ui_mode_scope_tag("normalize_manual_src", "web/manual_src_security.py") == "render_bridge"
+    assert shared_mod.UI_MODE_STARTUP_GUARD_PATHS == set()
+    assert shared_mod.UI_MODE_RENDER_BRIDGE_PATHS == {"web/manual_src_security.py"}
 
     entries = scan_mod.scan_silent_fallback_entries(shared_mod.collect_startup_scope_files())
     ui_entries = [entry for entry in entries if entry.get("path") in set(shared_mod.UI_MODE_STARTUP_SCOPE_PATHS)]
     assert ui_entries
     for entry in ui_entries:
-        path = str(entry.get("path"))
-        if path in shared_mod.UI_MODE_STARTUP_GUARD_PATHS:
-            assert entry.get("scope_tag") == "startup_guard"
-        if path in shared_mod.UI_MODE_RENDER_BRIDGE_PATHS:
-            assert entry.get("scope_tag") == "render_bridge"
+        assert entry.get("scope_tag") == "render_bridge"
 
 
 def test_silent_fallback_entries_include_stable_handler_context_hash() -> None:

@@ -7,7 +7,7 @@
 - 该类问题在“模板/前端先更新、后端/EXE 未同步更新”的场景里很常见。
 
 策略：
-- 扫描 templates/ 与 web_new_test/templates/ 内的 *.html
+- 扫描 templates/ 内的 *.html
 - 提取形如 url_for('blueprint.endpoint', ...) 的字面量 endpoint
 - 启动 create_app() 并读取 app.view_functions（即已注册 endpoint 集合）
 - 若发现 url_for 引用缺失的 endpoint：直接失败（raise SystemExit(1)）
@@ -26,7 +26,6 @@ from typing import DefaultDict, Dict, List, Tuple
 def iter_template_files(repo_root: str) -> List[str]:
     roots = [
         os.path.join(repo_root, "templates"),
-        os.path.join(repo_root, "web_new_test", "templates"),
     ]
     out: List[str] = []
     for r in roots:

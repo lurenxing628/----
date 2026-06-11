@@ -3,12 +3,21 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from flask import g, has_request_context, request, url_for
+from flask import current_app, g, has_request_context, request, url_for
 from werkzeug.routing.exceptions import BuildError
 
+from core.infrastructure.logging import safe_log
 from core.models.schedule_plan_role import VALID_PLAN_ROLES
-from web.ui_mode_request import _log_warning
 from web.viewmodels.page_manuals import build_manual_for_endpoint, resolve_manual_id
+
+
+def _log_warning(message: str, *args: Any) -> None:
+    # 原住 web/ui_mode_request.py，双轨退役随其删除而内化到本模块（唯一存量消费方）
+    try:
+        logger = current_app.logger
+    except RuntimeError:
+        logger = None
+    safe_log(logger, "warning", message, *args)
 
 
 def _resolve_manual_endpoint(endpoint: Any = None) -> str:

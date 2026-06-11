@@ -1,4 +1,4 @@
-"""回归测试：守护系统使用说明书（static/docs/scheduler_manual.md 及其 web_new_test v2 镜像）与 config_manual.js/模板的契约——主副本逐字一致、必备口径与边界说明在场（排产历史不承诺导出/恢复、资源排班现场记录当前直接导入、截止日期是严格限制等）、入口统一叫批量维护、内部锚点全部命中、JS 过滤危险协议并对数字前缀 hash 不崩，且 v1/v2 真实请求下整本/页面级双模式的 JSON 数据块与 noscript 回退正确。"""
+"""回归测试：守护系统使用说明书（static/docs/scheduler_manual.md）与 config_manual.js/模板的契约——必备口径与边界说明在场（排产历史不承诺导出/恢复、资源排班现场记录当前直接导入、截止日期是严格限制等）、入口统一叫批量维护、内部锚点全部命中、JS 过滤危险协议并对数字前缀 hash 不崩，且真实请求下整本/页面级两种说明书形态的 JSON 数据块与 noscript 回退正确。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 import os
 import re
 import subprocess
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, List, Set, Tuple
 
 from flask import url_for
 
@@ -345,10 +345,6 @@ process.stdout.write(JSON.stringify({
         raise RuntimeError(f"node 输出解析失败：{e} stdout={p.stdout[:500]!r}")
 
 
-def _mode_headers(ui_mode: str) -> Dict[str, str]:
-    return {"Cookie": f"aps_ui_mode={ui_mode}"}
-
-
 def _build_url(app, endpoint: str, **values: Any) -> str:
     with app.test_request_context():
         return url_for(endpoint, **values)
@@ -586,37 +582,32 @@ def test_config_manual_markdown_contract(app_client) -> None:
     repo_root = _find_repo_root()
     js_path = os.path.join(repo_root, "static", "js", "config_manual.js")
     tpl_path = os.path.join(repo_root, "templates", "scheduler", "config_manual.html")
-    tpl_v2_path = os.path.join(repo_root, "web_new_test", "templates", "scheduler", "config_manual.html")
     manual_path = os.path.join(repo_root, "static", "docs", "scheduler_manual.md")
-    manual_v2_path = os.path.join(repo_root, "web_new_test", "static", "docs", "scheduler_manual.md")
 
     js = _read(js_path)
     tpl = _read(tpl_path)
-    tpl_v2 = _read(tpl_v2_path)
     manual_text = _read(manual_path)
-    manual_v2_text = _read(manual_v2_path) if os.path.exists(manual_v2_path) else None
 
-    # 1) 模板-脚本契约（V1/V2 必须一致）
-    for template_src, label in ((tpl, "v1"), (tpl_v2, "v2")):
-        for needle in (
-            'id="aps-config-manual-data"',
-            'type="application/json"',
-            '"mode": manual_mode',
-            '"currentManual": current_manual',
-            '"relatedManuals": related_manuals',
-            "js/config_manual.js",
-            'id="tocToggleBtn"',
-            'id="toc-list"',
-            'id="content"',
-            "manual-main-column",
-            "manual-related-panel",
-            "manual_mode == 'page'",
-            "fallback_text if manual_mode == 'page' else manual_text",
-            "查看完整原文对应章节",
-            "返回刚才页面",
-        ):
-            assert needle in template_src, f"{label} 模板缺少契约片段: {needle}"
-    assert "相关模块说明" in tpl and "相关模块说明" in tpl_v2, "V1/V2 模板缺少相关模块区块"
+    # 1) 模板-脚本契约
+    for needle in (
+        'id="aps-config-manual-data"',
+        'type="application/json"',
+        '"mode": manual_mode',
+        '"currentManual": current_manual',
+        '"relatedManuals": related_manuals',
+        "js/config_manual.js",
+        'id="tocToggleBtn"',
+        'id="toc-list"',
+        'id="content"',
+        "manual-main-column",
+        "manual-related-panel",
+        "manual_mode == 'page'",
+        "fallback_text if manual_mode == 'page' else manual_text",
+        "查看完整原文对应章节",
+        "返回刚才页面",
+    ):
+        assert needle in tpl, f"模板缺少契约片段: {needle}"
+    assert "相关模块说明" in tpl, "模板缺少相关模块区块"
 
     # 3) 安全约束：危险协议应被过滤（允许注释提及 javascript:）
     assert 'if (!isSafeHref(href))' in js, "链接白名单过滤缺失"
@@ -643,12 +634,9 @@ def test_config_manual_markdown_contract(app_client) -> None:
     if not runtime_page.get("ok"):
         raise RuntimeError(f"页面模式 hash 运行时回归失败：{runtime_page}")
 
-    # 6) Markdown 一致性：事实源标题、镜像副本、内部锚点
+    # 6) Markdown 一致性：事实源标题、内部锚点
     assert manual_text.startswith("# 系统使用说明"), "主说明书标题未更新为“系统使用说明”"
-    assert manual_v2_text is not None, f"未找到 v2 说明书镜像副本：{manual_v2_path}"
-    assert manual_text == manual_v2_text, "主说明书与 v2 镜像副本必须完全同步"
     _assert_scheduler_manual_required_content(manual_text, "主说明书")
-    _assert_scheduler_manual_required_content(manual_v2_text, "v2 说明书镜像副本")
     _assert_manual_uses_batch_maintenance_entry_names(manual_text)
     heading_ids = _extract_heading_ids(manual_text)
     internal_hashes = _extract_internal_hashes(manual_text)
@@ -660,54 +648,53 @@ def test_config_manual_markdown_contract(app_client) -> None:
     client = app_client
     material_src = _build_url(app, "material.materials_page") + "?"
 
-    for ui_mode in ("v1", "v2"):
-        full_url = _build_url(app, "scheduler.config_manual_page", src=material_src)
-        full_resp = client.get(full_url, headers=_mode_headers(ui_mode))
-        if full_resp.status_code != 200:
-            raise RuntimeError(f"{ui_mode} 模式整本说明书请求失败：{full_resp.status_code}")
-        full_html = full_resp.get_data(as_text=True)
-        full_cfg = _extract_json_config(full_html)
-        assert full_cfg.get("mode") == "full", f"{ui_mode} 模式整本说明书 JSON mode 异常"
-        assert full_cfg.get("manualText") == manual_text, f"{ui_mode} 模式整本说明书 JSON 应保留完整 manualText"
-        assert full_cfg.get("currentManual") is None, f"{ui_mode} 模式整本说明书不应包含 currentManual"
-        assert full_cfg.get("relatedManuals") == [], f"{ui_mode} 模式整本说明书不应包含 relatedManuals"
-        assert "当前页面主题：" not in full_html, f"{ui_mode} 模式整本说明书不应出现页面级主题"
-        assert "manual-main-column" not in full_html, f"{ui_mode} 模式整本说明书不应渲染页面级右列容器"
-        assert "manual-related-panel" not in full_html, f"{ui_mode} 模式整本说明书不应渲染相关模块面板"
+    full_url = _build_url(app, "scheduler.config_manual_page", src=material_src)
+    full_resp = client.get(full_url)
+    if full_resp.status_code != 200:
+        raise RuntimeError(f"默认界面整本说明书请求失败：{full_resp.status_code}")
+    full_html = full_resp.get_data(as_text=True)
+    full_cfg = _extract_json_config(full_html)
+    assert full_cfg.get("mode") == "full", "默认界面整本说明书 JSON mode 异常"
+    assert full_cfg.get("manualText") == manual_text, "默认界面整本说明书 JSON 应保留完整 manualText"
+    assert full_cfg.get("currentManual") is None, "默认界面整本说明书不应包含 currentManual"
+    assert full_cfg.get("relatedManuals") == [], "默认界面整本说明书不应包含 relatedManuals"
+    assert "当前页面主题：" not in full_html, "默认界面整本说明书不应出现页面级主题"
+    assert "manual-main-column" not in full_html, "默认界面整本说明书不应渲染页面级右列容器"
+    assert "manual-related-panel" not in full_html, "默认界面整本说明书不应渲染相关模块面板"
 
-        page_url = _build_url(
-            app,
-            "scheduler.config_manual_page",
-            page="material.materials_page",
-            src=material_src,
-        )
-        page_resp = client.get(page_url, headers=_mode_headers(ui_mode))
-        if page_resp.status_code != 200:
-            raise RuntimeError(f"{ui_mode} 模式页面级说明书请求失败：{page_resp.status_code}")
-        page_html = page_resp.get_data(as_text=True)
-        page_cfg = _extract_json_config(page_html)
-        assert page_cfg.get("mode") == "page", f"{ui_mode} 模式页面级说明 JSON mode 异常"
-        assert page_cfg.get("manualText") == "", f"{ui_mode} 模式页面级说明 JSON 不应继续注入整本 manualText"
-        assert (page_cfg.get("currentManual") or {}).get("title") == "物料主数据", f"{ui_mode} 模式页面级说明主题异常"
-        related_manuals = list(page_cfg.get("relatedManuals") or [])
-        assert related_manuals, f"{ui_mode} 模式页面级说明缺少 relatedManuals"
-        assert any(item.get("preview_sections") for item in related_manuals), f"{ui_mode} 模式 relatedManuals 缺少 preview_sections"
-        assert all(len(item.get("preview_sections") or []) <= 2 for item in related_manuals), f"{ui_mode} 模式 preview_sections 超过 2 个"
-        assert '<div class="aps-summary-label">当前页面主题</div>' in page_html, f"{ui_mode} 模式页面级说明缺少当前页主题标签"
-        assert '<div class="aps-summary-value">物料主数据</div>' in page_html, f"{ui_mode} 模式页面级说明缺少当前页主题值"
-        assert '<div class="aps-summary-label">对应整本章节</div>' in page_html, f"{ui_mode} 模式页面级说明缺少整本章节标签"
-        assert "相关模块说明" in page_html, f"{ui_mode} 模式页面级说明缺少 related 区块"
-        assert "manual-main-column" in page_html, f"{ui_mode} 模式页面级说明缺少右列容器"
-        assert "manual-related-panel" in page_html, f"{ui_mode} 模式页面级说明缺少相关模块面板类"
-        assert page_html.count('id="content"') == 1, f"{ui_mode} 模式页面级说明应只保留一个 #content"
-        assert page_html.index("manual-main-column") < page_html.index('id="content"') < page_html.index("manual-related-panel"), (
-            f"{ui_mode} 模式页面级说明右列结构顺序异常"
-        )
-        assert 'data-manual-markdown="' in page_html, f"{ui_mode} 模式页面级说明缺少 related Markdown 渲染占位"
-        assert "## 物料主数据" in page_html, f"{ui_mode} 模式 noscript 缺少当前页 fallback 标题"
-        current_sections = list((page_cfg.get("currentManual") or {}).get("sections") or [])
-        assert current_sections, f"{ui_mode} 模式页面级说明缺少当前页章节"
-        first_section_title = str(current_sections[0].get("title") or "").strip()
-        assert first_section_title and f"### {first_section_title}" in page_html, f"{ui_mode} 模式 noscript 缺少当前页关键说明 fallback"
+    page_url = _build_url(
+        app,
+        "scheduler.config_manual_page",
+        page="material.materials_page",
+        src=material_src,
+    )
+    page_resp = client.get(page_url)
+    if page_resp.status_code != 200:
+        raise RuntimeError(f"默认界面页面级说明书请求失败：{page_resp.status_code}")
+    page_html = page_resp.get_data(as_text=True)
+    page_cfg = _extract_json_config(page_html)
+    assert page_cfg.get("mode") == "page", "默认界面页面级说明 JSON mode 异常"
+    assert page_cfg.get("manualText") == "", "默认界面页面级说明 JSON 不应继续注入整本 manualText"
+    assert (page_cfg.get("currentManual") or {}).get("title") == "物料主数据", "默认界面页面级说明主题异常"
+    related_manuals = list(page_cfg.get("relatedManuals") or [])
+    assert related_manuals, "默认界面页面级说明缺少 relatedManuals"
+    assert any(item.get("preview_sections") for item in related_manuals), "默认界面 relatedManuals 缺少 preview_sections"
+    assert all(len(item.get("preview_sections") or []) <= 2 for item in related_manuals), "默认界面 preview_sections 超过 2 个"
+    assert '<div class="aps-summary-label">当前页面主题</div>' in page_html, "默认界面页面级说明缺少当前页主题标签"
+    assert '<div class="aps-summary-value">物料主数据</div>' in page_html, "默认界面页面级说明缺少当前页主题值"
+    assert '<div class="aps-summary-label">对应整本章节</div>' in page_html, "默认界面页面级说明缺少整本章节标签"
+    assert "相关模块说明" in page_html, "默认界面页面级说明缺少 related 区块"
+    assert "manual-main-column" in page_html, "默认界面页面级说明缺少右列容器"
+    assert "manual-related-panel" in page_html, "默认界面页面级说明缺少相关模块面板类"
+    assert page_html.count('id="content"') == 1, "默认界面页面级说明应只保留一个 #content"
+    assert page_html.index("manual-main-column") < page_html.index('id="content"') < page_html.index("manual-related-panel"), (
+        "默认界面页面级说明右列结构顺序异常"
+    )
+    assert 'data-manual-markdown="' in page_html, "默认界面页面级说明缺少 related Markdown 渲染占位"
+    assert "## 物料主数据" in page_html, "默认界面 noscript 缺少当前页 fallback 标题"
+    current_sections = list((page_cfg.get("currentManual") or {}).get("sections") or [])
+    assert current_sections, "默认界面页面级说明缺少当前页章节"
+    first_section_title = str(current_sections[0].get("title") or "").strip()
+    assert first_section_title and f"### {first_section_title}" in page_html, "默认界面 noscript 缺少当前页关键说明 fallback"
 
     print("OK")

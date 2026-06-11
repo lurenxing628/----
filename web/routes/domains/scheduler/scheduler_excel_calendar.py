@@ -5,14 +5,13 @@ import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import current_app, flash, g, redirect, request, send_file, url_for
+from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.services.common.enum_normalizers import calendar_day_type_label, yes_no_label
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
-from web.ui_mode import render_ui_template as render_template
 
 from ...excel_utils import (
     build_error_rows_message,

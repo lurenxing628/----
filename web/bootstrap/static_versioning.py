@@ -19,7 +19,7 @@ def _normalize_filename(value: Any) -> str:
 
 
 def _parse_versioned_endpoints(app: Flask) -> Set[str]:
-    endpoints: Set[str] = {"static", "ui_v2_static.static"}
+    endpoints: Set[str] = {"static"}
     raw = app.config.get("STATIC_VERSIONED_ENDPOINTS")
     if isinstance(raw, (list, tuple, set)):
         for item in raw:

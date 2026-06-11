@@ -1,4 +1,4 @@
-"""回归测试：web.routes.system_* 路由统一从 g.services 取请求级服务而非裸 g.db——system_utils/system_logs/system_backup/system_plugins/system_ui_mode 等正常时用注入的 config/job_state/operation_log 服务渲染（含中文筛选标签回译成 raw code、jobstate 解析状态标注），缺 g.services 或缺某项服务时抛明确 RuntimeError 不吞错；批量删日志先校验非法/缺失 id、op_logger 失败不影响开关保存成功。"""
+"""回归测试：web.routes.system_* 路由统一从 g.services 取请求级服务而非裸 g.db——system_utils/system_logs/system_backup/system_plugins 等正常时用注入的 config/job_state/operation_log 服务渲染（含中文筛选标签回译成 raw code、jobstate 解析状态标注），缺 g.services 或缺某项服务时抛明确 RuntimeError 不吞错；批量删日志先校验非法/缺失 id、op_logger 失败不影响开关保存成功。"""
 
 from __future__ import annotations
 
@@ -7,8 +7,6 @@ from typing import Any, Dict, List, Optional, cast
 
 import pytest
 from flask import Flask, g, get_flashed_messages
-
-from web.ui_mode import UI_MODE_COOKIE_KEY
 
 
 class _Snapshot:
@@ -386,9 +384,8 @@ def test_system_backup_and_logs_settings_use_request_services_without_g_db(monke
     ]
 
 
-def test_system_ui_mode_and_plugin_toggle_use_request_services_without_g_db(monkeypatch) -> None:
+def test_system_plugin_toggle_uses_request_services_without_g_db(monkeypatch) -> None:
     import web.routes.system_plugins as plugins_mod
-    import web.routes.system_ui_mode as ui_mode_mod
 
     monkeypatch.setattr(plugins_mod, "url_for", lambda endpoint, **_kwargs: f"/{endpoint}")
 
@@ -405,26 +402,11 @@ def test_system_ui_mode_and_plugin_toggle_use_request_services_without_g_db(monk
         response = plugins_mod.plugin_toggle()
         assert response.status_code in (301, 302)
 
-    with app.test_request_context(
-        "/system/ui-mode",
-        method="POST",
-        data={"mode": "v2", "next": "/system/backup"},
-    ):
-        _bind_services(app, services)
-        response = ui_mode_mod.ui_mode_set()
-        assert response.status_code in (301, 302)
-        assert any(f"{UI_MODE_COOKIE_KEY}=v2" in item for item in response.headers.getlist("Set-Cookie"))
-
     assert config_svc.set_calls == [
         {
             "config_key": "plugin.demo_plugin.enabled",
             "value": "yes",
             "description": None,
-        },
-        {
-            "config_key": "ui_mode",
-            "value": "v2",
-            "description": "UI 模式：v1/v2（v2=新UI）",
         },
     ]
 
@@ -462,20 +444,3 @@ def test_plugin_toggle_keeps_success_when_operation_log_fails(monkeypatch) -> No
     ]
     assert messages[-1][0] == "success"
     assert "扩展功能开关已保存" in messages[-1][1]
-
-
-def test_system_ui_mode_route_does_not_swallow_missing_request_service() -> None:
-    import web.routes.system_ui_mode as ui_mode_mod
-
-    app = _build_app()
-
-    with app.test_request_context(
-        "/system/ui-mode",
-        method="POST",
-        data={"mode": "v2", "next": "/system/backup"},
-    ):
-        g.services = SimpleNamespace()
-        g.app_logger = app.logger
-        g.op_logger = None
-        with pytest.raises(RuntimeError, match=r"g\.services 缺少 system_config_service。"):
-            ui_mode_mod.ui_mode_set()

@@ -1,4 +1,4 @@
-"""回归测试：开放重定向防护——system_utils._safe_next_url 与 ui_mode.normalize_manual_src 只接受站内相对路径，拒绝绝对/协议相对/多斜杠/反斜杠/含换行/回车/空字节的 URL，且 scheduler_config._resolve_manual_back_url 仅消费已过滤的 safe_src、对被拒输入折叠为 None。"""
+"""回归测试：开放重定向防护——system_utils._safe_next_url 与 manual_src_security.normalize_manual_src 只接受站内相对路径，拒绝绝对/协议相对/多斜杠/反斜杠/含换行/回车/空字节的 URL，且 scheduler_config._resolve_manual_back_url 仅消费已过滤的 safe_src、对被拒输入折叠为 None。"""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def test_safe_next_url_hardening(app_client) -> None:
     app = app_client.application
 
     system_utils = importlib.import_module("web.routes.system_utils")
-    ui_mode = importlib.import_module("web.ui_mode")
+    manual_src_security = importlib.import_module("web.manual_src_security")
     scheduler_config = importlib.import_module("web.routes.domains.scheduler.scheduler_config")
 
     with app.test_request_context("/scheduler/config"):
@@ -56,7 +56,7 @@ def test_safe_next_url_hardening(app_client) -> None:
             ("/scheduler/config?page=2", "/scheduler/config?page=2", "keep manual src query string"),
         ]
         for raw, expected, message in valid_src_cases:
-            _assert_equal(ui_mode.normalize_manual_src(raw), expected, message)
+            _assert_equal(manual_src_security.normalize_manual_src(raw), expected, message)
 
         invalid_src_cases = [
             ("", "reject manual src empty string"),
@@ -73,16 +73,16 @@ def test_safe_next_url_hardening(app_client) -> None:
             ("/line\x00break", "reject manual src null byte"),
         ]
         for raw, message in invalid_src_cases:
-            _assert_is_none(ui_mode.normalize_manual_src(raw), message)
+            _assert_is_none(manual_src_security.normalize_manual_src(raw), message)
 
-        safe_src = ui_mode.normalize_manual_src("/scheduler/config?")
+        safe_src = manual_src_security.normalize_manual_src("/scheduler/config?")
         _assert_equal(
             scheduler_config._resolve_manual_back_url(safe_src),
             "/scheduler/config?",
             "manual back url should consume filtered safe_src only",
         )
         _assert_is_none(
-            scheduler_config._resolve_manual_back_url(ui_mode.normalize_manual_src("http://evil.example/x")),
+            scheduler_config._resolve_manual_back_url(manual_src_security.normalize_manual_src("http://evil.example/x")),
             "manual back url should stay None for rejected src",
         )
         _assert_is_none(

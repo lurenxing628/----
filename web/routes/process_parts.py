@@ -3,13 +3,12 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List, Tuple
 
-from flask import current_app, flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, render_template, request, url_for
 
 from core.infrastructure.errors import AppError
 from core.models.enums import MergeMode, PartOperationStatus, SourceType, YesNo
 from core.services.process import ExternalGroupService, PartService, SupplierService
 from web.routes.form_values import form_toggle_bool
-from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.excel_entry_cards import process_parts_excel_cards
 from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 

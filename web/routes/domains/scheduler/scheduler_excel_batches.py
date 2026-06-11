@@ -5,7 +5,7 @@ import os
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from flask import current_app, flash, g, redirect, request, send_file, url_for
+from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.services.common.enum_normalizers import batch_priority_label, ready_status_label
@@ -14,7 +14,6 @@ from core.services.common.excel_service import ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.excel_validators import get_batch_row_validate_and_normalize
 from web.routes.form_values import form_toggle_bool
-from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.ui_presenters import UiToggleRow, checked_attr
 
 from ...excel_utils import (

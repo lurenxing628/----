@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from flask import current_app, flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, render_template, request, url_for
 
 from core.infrastructure.errors import ValidationError
 from web.error_boundary import user_visible_app_error_message
-from web.ui_mode import render_ui_template as render_template
 
 from .scheduler_bp import _day_type_zh, bp
 from .scheduler_utils import _normalize_day_type, _normalize_yesno

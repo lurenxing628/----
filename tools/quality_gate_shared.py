@@ -187,33 +187,21 @@ CORE_DIRS = [
     "core/infrastructure",
     "web/viewmodels",
 ]
+# 双轨退役（2026-06）后启动链范围只剩 manual_src_security：ui_mode/render_bridge 四文件已删
 UI_MODE_STARTUP_SCOPE_PATHS = [
-    "web/ui_mode.py",
-    "web/ui_mode_request.py",
-    "web/ui_mode_store.py",
-    "web/render_bridge.py",
     "web/manual_src_security.py",
 ]
-UI_MODE_STARTUP_GUARD_PATHS = {
-    "web/ui_mode.py",
-    "web/ui_mode_request.py",
-    "web/ui_mode_store.py",
-}
+UI_MODE_STARTUP_GUARD_PATHS: set = set()
 UI_MODE_RENDER_BRIDGE_PATHS = {
-    "web/render_bridge.py",
     "web/manual_src_security.py",
 }
 STARTUP_SCOPE_PATTERNS = ["web/bootstrap/**/*.py", *UI_MODE_STARTUP_SCOPE_PATHS]
-UI_MODE_STARTUP_GUARD_SYMBOLS = {"init_ui_mode", "_read_ui_mode_from_db", "get_ui_mode"}
+UI_MODE_STARTUP_GUARD_SYMBOLS: set = set()
 
 REQUEST_SERVICE_SCAN_SCOPE_PATTERNS = [
     "web/routes/**/*.py",
     "web/error_handlers.py",
     "web/error_boundary.py",
-    "web/ui_mode.py",
-    "web/ui_mode_request.py",
-    "web/ui_mode_store.py",
-    "web/render_bridge.py",
     "web/manual_src_security.py",
     "tests/_scripts_e2e/run_real_db_replay_e2e.py",
     "tests/_scripts_e2e/run_complex_excel_cases_e2e.py",
@@ -238,14 +226,9 @@ REQUEST_SERVICE_TARGET_FILES = [
     "web/routes/system_history.py",
     "web/routes/system_logs.py",
     "web/routes/system_plugins.py",
-    "web/routes/system_ui_mode.py",
     "web/routes/system_utils.py",
     "web/error_handlers.py",
     "web/error_boundary.py",
-    "web/ui_mode.py",
-    "web/ui_mode_request.py",
-    "web/ui_mode_store.py",
-    "web/render_bridge.py",
     "web/manual_src_security.py",
 ]
 REQUEST_SERVICE_TARGET_SYMBOLS = {
@@ -278,7 +261,7 @@ FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS = (
 REQUIRED_REGRESSION_ALLOWED_SKIPPED_NODEIDS = (
     "tests/gate_meta/test_run_quality_gate.py::test_dirty_fingerprint_detects_quoted_untracked_path_change",
 )
-UI_MODE_SCOPE_TAG_VALUES = {"startup_guard", "render_bridge"}
+UI_MODE_SCOPE_TAG_VALUES = {"render_bridge"}
 
 ENTRY_MANUAL_FIELDS = ["status", "owner", "batch", "notes", "exit_condition"]
 ENTRY_COMMON_FIELDS = ["id", "path", "symbol", "status", "owner", "batch", "exit_condition", "last_verified_at"]
@@ -361,14 +344,6 @@ STARTUP_SAMPLE_EXPECTATIONS = [
         line_start=122,
         line_end=124,
         fallback_kind="observable_degrade",
-    ),
-    SilentFallbackSample(
-        path="web/ui_mode_store.py",
-        symbol="_read_ui_mode_from_db",
-        line_start=61,
-        line_end=63,
-        fallback_kind="observable_degrade",
-        scope_tag="startup_guard",
     ),
     SilentFallbackSample(
         path="web/manual_src_security.py",

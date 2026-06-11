@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from flask import g, request
+from flask import g, render_template, request
 
 from web.request_resource_context import request_report_resource_context
-from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_analysis_action_hub import build_analysis_action_hub
 from web.viewmodels.scheduler_analysis_vm import build_analysis_context, build_candidate_comparison_display
 from web.viewmodels.scheduler_summary_display import build_summary_display_state

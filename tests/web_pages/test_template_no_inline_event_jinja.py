@@ -6,7 +6,7 @@
   会在浏览器解析属性值时被解码回引号，从而打破 JS 字符串边界，引发 XSS / JS 注入。
 
 策略：
-- 扫描 templates/ 与 web_new_test/templates/ 内的 *.html
+- 扫描 templates/ 内的 *.html
 - 若发现 on*="...{{ ... }}" 或 on*='...{{ ... }}' 这种模式：直接失败
 
 注意：本测试只针对“inline 事件属性 + Jinja 插值”这一高风险组合；
@@ -26,7 +26,6 @@ from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 def iter_template_files(repo_root: str) -> List[str]:
     roots = [
         os.path.join(repo_root, "templates"),
-        os.path.join(repo_root, "web_new_test", "templates"),
     ]
     out: List[str] = []
     for r in roots:

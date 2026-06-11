@@ -52,12 +52,6 @@ def test_dashboard_overdue_count_tolerance(app_client, db_path) -> None:
     finally:
         conn.close()
 
-    # 固定 V1 模式，确保首页包含统计卡片结构
-    try:
-        app_client.set_cookie("aps_ui_mode", "v1", domain="localhost")
-    except TypeError:
-        app_client.set_cookie("localhost", "aps_ui_mode", "v1")
-
     resp = app_client.get("/")
     _assert_status(resp, "GET /")
 

@@ -5,7 +5,7 @@ import os
 import time
 from typing import Any, Dict, List, Optional
 
-from flask import current_app, flash, g, redirect, request, send_file, url_for
+from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import MACHINE_STATUS_VALUES
@@ -19,7 +19,6 @@ from core.services.equipment import MachineService
 from core.services.equipment.machine_excel_import_service import MachineExcelImportService
 from core.services.personnel import ResourceTeamService
 from core.services.process import OpTypeService
-from web.ui_mode import render_ui_template as render_template
 
 from .equipment_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 from .excel_utils import (

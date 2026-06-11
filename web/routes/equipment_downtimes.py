@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from flask import current_app, flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, render_template, request, url_for
 
 from core.infrastructure.errors import AppError
 from core.services.equipment import MachineDowntimeService, MachineService
-from web.ui_mode import render_ui_template as render_template
 
 from .equipment_bp import bp
 

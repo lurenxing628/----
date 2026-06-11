@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from flask import flash, redirect, request, url_for
+from flask import flash, redirect, render_template, request, url_for
 
 from core.infrastructure.errors import AppError
 from web.routes.form_values import form_yes_no_value
-from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.system_logs_vm import (
     build_operation_log_view_rows,
     build_system_logs_page_view_model,

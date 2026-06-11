@@ -157,7 +157,7 @@ def test_toggle_object_keeps_disabled_checked_hidden_value_safe() -> None:
 
 def test_business_templates_do_not_call_low_level_toggle_row_macro_directly() -> None:
     allowed = {REPO_ROOT / "templates/components/ui_macros.html"}
-    for template_root in (REPO_ROOT / "templates", REPO_ROOT / "web_new_test/templates"):
+    for template_root in (REPO_ROOT / "templates",):
         for path in template_root.rglob("*.html"):
             if path in allowed:
                 continue
@@ -184,7 +184,7 @@ def test_summary_grid_uses_presenter_items_without_legacy_fallback() -> None:
 
 
 def test_presenterized_pages_do_not_bypass_summary_item_values() -> None:
-    for rel_path in ("templates/scheduler/batches.html", "web_new_test/templates/scheduler/batches.html"):
+    for rel_path in ("templates/scheduler/batches.html",):
         source = _read(rel_path)
         assert "latest_head_items" in source
         assert "latest_meta_items" in source
@@ -195,7 +195,7 @@ def test_presenterized_pages_do_not_bypass_summary_item_values() -> None:
         assert "ui.summary_grid(current_config_display_items)" in source
         assert "ui.summary_item(item.label" not in source
 
-    for rel_path in ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"):
+    for rel_path in ("templates/scheduler/config.html",):
         source = _read(rel_path)
         assert "ui.summary_grid(current_config_display_items)" in source
         assert "current_config_summary_items" not in source

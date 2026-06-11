@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from flask import flash, g, redirect, request, url_for
+from flask import flash, g, redirect, render_template, request, url_for
 
 from core.models.enums import ResourceTeamStatus
 from core.services.personnel import ResourceTeamService
-from web.ui_mode import render_ui_template as render_template
 
 from .pagination import paginate_rows, parse_page_args
 from .personnel_bp import bp

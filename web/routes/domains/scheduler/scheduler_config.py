@@ -5,20 +5,17 @@ import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, cast
 
-from flask import current_app, flash, g, redirect, request, send_file, url_for
+from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
 
 from core.infrastructure.errors import AppError
 from core.services.scheduler import ConfigService
 from web.error_boundary import user_visible_app_error_message
-from web.routes.form_values import form_yes_no_value
-from web.ui_mode import (
+from web.manual_src_security import (
     get_full_manual_section_url,
     get_manual_url,
     normalize_manual_src_context,
 )
-from web.ui_mode import (
-    render_ui_template as render_template,
-)
+from web.routes.form_values import form_yes_no_value
 from web.viewmodels.page_manuals import (
     MANUAL_ENTRY_ENDPOINTS,
     build_page_fallback_text,

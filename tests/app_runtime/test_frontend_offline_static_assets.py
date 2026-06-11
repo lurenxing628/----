@@ -16,8 +16,6 @@ from tests._support.paths import REPO_ROOT
 FRONTEND_ROOTS = [
     REPO_ROOT / "templates",
     REPO_ROOT / "static",
-    REPO_ROOT / "web_new_test" / "templates",
-    REPO_ROOT / "web_new_test" / "static",
 ]
 
 FRONTEND_SUFFIXES = {".html", ".css", ".js", ".md"}
@@ -25,7 +23,6 @@ WORKBENCH_MOCKUP = REPO_ROOT / "docs" / "aps_frontend_workbench_mockup.html"
 USER_VISIBLE_DOC_ROOTS = [
     REPO_ROOT / "docs",
     REPO_ROOT / "static" / "docs",
-    REPO_ROOT / "web_new_test" / "static" / "docs",
 ]
 USER_VISIBLE_DOC_EXCLUDED_DIRS = {
     (REPO_ROOT / "docs" / "dev").resolve(),

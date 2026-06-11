@@ -6,7 +6,7 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import current_app, flash, g, redirect, request, send_file, url_for
+from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import SourceType
@@ -19,7 +19,6 @@ from core.services.common.normalize import to_str_or_blank
 from core.services.process.part_operation_hours_excel_import_service import PartOperationHoursExcelImportService
 from core.services.process.part_operation_query_service import PartOperationQueryService
 from core.services.scheduler.number_utils import parse_finite_float
-from web.ui_mode import render_ui_template as render_template
 
 from .excel_utils import (
     build_error_rows_message,

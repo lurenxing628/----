@@ -174,6 +174,7 @@ def _create_test_app(*, repo_root: Path, db_path: Path, log_dir: Path, backup_di
     from core.services.common.excel_backend_factory import get_excel_backend
     from core.services.common.excel_templates import ensure_excel_templates
     from web.bootstrap.request_services import RequestServices
+    from web.bootstrap.template_globals import install_template_globals
     from web.error_handlers import register_error_handlers
     from web.routes.dashboard import bp as dashboard_bp
     from web.routes.equipment import bp as equipment_bp
@@ -185,7 +186,6 @@ def _create_test_app(*, repo_root: Path, db_path: Path, log_dir: Path, backup_di
     from web.routes.scheduler import bp as scheduler_bp
     from web.routes.scheduler import register_scheduler_routes
     from web.routes.system import bp as system_bp
-    from web.ui_mode import init_ui_mode
 
     static_dir = repo_root / "static"
     templates_dir = repo_root / "templates"
@@ -215,7 +215,8 @@ def _create_test_app(*, repo_root: Path, db_path: Path, log_dir: Path, backup_di
     _ensure_dir(backup_dir)
     _ensure_dir(template_dir)
 
-    init_ui_mode(app, str(repo_root))
+    # 与正式工厂一致：启动期注入 8 个跨页模板全局（双轨退役后的唯一安装点）
+    install_template_globals(app)
     ensure_excel_templates(str(template_dir))
     ensure_schema(
         str(db_path),

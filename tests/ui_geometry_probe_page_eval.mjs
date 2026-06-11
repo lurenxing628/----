@@ -60,8 +60,7 @@ export function buildPageInspectionExpression(httpStatus) {
       const logsTable = document.querySelector('#systemLogsTable');
       const bodyText = document.body ? document.body.innerText || "" : "";
       const titleText = document.title || "";
-      const hasAppShell = Boolean(document.querySelector('meta[name="aps-ui-template-env"]'))
-        && Boolean(document.querySelector('header nav, header.top-header, nav.sidebar-nav'))
+      const hasAppShell = Boolean(document.querySelector('header nav, header.top-header, nav.sidebar-nav'))
         && Boolean(document.getElementById('apsThemeToggle'));
       function includesKeyword(value, keyword) {
         return String(value || "").toLowerCase().includes(String(keyword || "").toLowerCase());

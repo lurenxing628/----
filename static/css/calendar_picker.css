@@ -1,7 +1,7 @@
 /* Shared date picker styles for WorkCalendar & OperatorCalendar.
  *
  * Why exists:
- * - V2 UI loads `web_new_test/static/css/style.css` which contains legacy rule `button:not(.btn)`
+ * - The app shell loads `static/css/style.css` which contains legacy rule `button:not(.btn)`
  *   that adds large padding/display to plain buttons.
  * - Our calendar date picker uses plain <button> for day cells and nav buttons.
  * - When padded, CSS Grid columns (repeat(7, 1fr)) can be expanded by min-content width,

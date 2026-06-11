@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Optional
 
-from flask import current_app, flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, render_template, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.models.schedule_plan_role import VALID_PLAN_ROLES
@@ -20,7 +20,6 @@ from web.routes.history_summary_logging import (
     log_history_summary_parse_warning,
     log_history_version_option_parse_warnings,
 )
-from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_history_summary import (
     decorate_history_version_options,
     format_public_datetime,

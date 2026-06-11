@@ -1,4 +1,4 @@
-"""回归测试：不依赖真实浏览器，用 HTMLParser 解析各 UI 页面 HTML，断言其满足契约——含 aps-ui-template-env meta、apsThemeToggle id 与 nav/header 即视为正常 app shell（不误报错误页），缺 shell 或标题/正文命中错误关键词则判为错误页；并校验 SMOKE_PATHS 覆盖首版本工作台各页，每页 HTTP 200、含期望文本/id、不含禁止文本。"""
+"""回归测试：不依赖真实浏览器，用 HTMLParser 解析各 UI 页面 HTML，断言其满足契约——含 apsThemeToggle id 与 nav/header 即视为正常 app shell（不误报错误页），缺 shell 或标题/正文命中错误关键词则判为错误页；并校验 SMOKE_PATHS 覆盖首版本工作台各页，每页 HTTP 200、含期望文本/id、不含禁止文本。"""
 
 from __future__ import annotations
 
@@ -75,8 +75,7 @@ def _matched_error_keyword(html: str, parsed: _HtmlSignalParser, status_code: in
         if _contains_keyword(parsed.title, keyword):
             return keyword
     has_app_shell = (
-        "aps-ui-template-env" in parsed.meta_names
-        and "apsThemeToggle" in parsed.ids
+        "apsThemeToggle" in parsed.ids
         and ("nav" in parsed.tags or "header" in parsed.tags)
     )
     if has_app_shell:
@@ -93,7 +92,7 @@ def _matched_error_keyword(html: str, parsed: _HtmlSignalParser, status_code: in
 def test_error_keyword_detector_does_not_flag_normal_app_shell_log_text() -> None:
     html = """
     <html>
-      <head><title>系统管理 - 操作日志</title><meta name="aps-ui-template-env" content="v2"></head>
+      <head><title>系统管理 - 操作日志</title></head>
       <body><header><nav>系统</nav></header><button id="apsThemeToggle">主题</button><main>Traceback in old Werkzeug log row</main></body>
     </html>
     """
@@ -136,7 +135,6 @@ def test_ui_smoke_pages_render_expected_html_contract(tmp_path, monkeypatch) -> 
         expected = EXPECTED_PAGE_SIGNALS[page_path]
 
         assert response.status_code == 200, page_path
-        assert "aps-ui-template-env" in parsed.meta_names, page_path
         assert "apsThemeToggle" in parsed.ids, page_path
         assert "nav" in parsed.tags or "header" in parsed.tags, page_path
         matched_error = _matched_error_keyword(html, parsed, response.status_code)

@@ -1,12 +1,11 @@
-"""回归测试：_safe_next_url 对非法 next 跳转参数（绝对 URL、协议相对 URL）每请求只 warning 一次、对缺失/空白值不告警；scheduler config/batches、system ui-mode 路由在 next 非法时回退到本地 url_for 端点（ui-mode 优先同源 referrer 再 dashboard）；ui_mode_set 的 flash 等级随 SystemConfig 写库与 cookie 写入的成败组合给出 success/warning/error。"""
+"""回归测试：_safe_next_url 对非法 next 跳转参数（绝对 URL、协议相对 URL）每请求只 warning 一次、对缺失/空白值不告警；scheduler config/batches 路由在 next 非法时回退到本地 url_for 端点。（system ui-mode 路由已随 2026-06 双轨退役删除，其专属用例一并移除。）"""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import List
 
-import pytest
-from flask import Flask, g, get_flashed_messages
+from flask import Flask, g
 
 from core.infrastructure.errors import ValidationError
 
@@ -127,109 +126,3 @@ def test_scheduler_batches_invalid_next_uses_local_success_and_failure_fallbacks
     assert response.location.endswith("/scheduler/batches/B001")
 
 
-def test_system_ui_mode_invalid_next_prefers_same_origin_referrer_then_dashboard(monkeypatch) -> None:
-    import web.routes.system_ui_mode as system_ui_mode_mod
-
-    app = _build_app()
-    monkeypatch.setattr(system_ui_mode_mod, "url_for", _fake_url_for)
-    monkeypatch.setattr(
-        system_ui_mode_mod,
-        "_get_system_config_service",
-        lambda: SimpleNamespace(set_value=lambda *args, **kwargs: None),
-    )
-
-    with app.test_request_context(
-        "/system/ui-mode",
-        method="POST",
-        data={"mode": "v2", "next": "http://evil.example/x"},
-        environ_base={"HTTP_REFERER": "http://localhost/system/backup?tab=ops#frag"},
-    ):
-        response = system_ui_mode_mod.ui_mode_set()
-
-    assert response.location.endswith("/system/backup?tab=ops")
-
-    with app.test_request_context(
-        "/system/ui-mode",
-        method="POST",
-        data={"mode": "v2", "next": "http://evil.example/x"},
-        environ_base={"HTTP_REFERER": "https://evil.example/system/backup"},
-    ):
-        response = system_ui_mode_mod.ui_mode_set()
-
-    assert response.location.endswith("/")
-
-    with app.test_request_context(
-        "/system/ui-mode",
-        method="POST",
-        data={"mode": "v2", "next": "http://evil.example/x"},
-        environ_base={"HTTP_REFERER": "/system/backup"},
-    ):
-        response = system_ui_mode_mod.ui_mode_set()
-
-    assert response.location.endswith("/system/backup")
-
-
-@pytest.mark.parametrize(
-    ("db_fails", "cookie_fails", "expected_category"),
-    [
-        (False, False, "success"),
-        (True, False, "warning"),
-        (False, True, "warning"),
-        (True, True, "error"),
-    ],
-)
-def test_system_ui_mode_flash_level_matches_db_and_cookie_outcome(
-    monkeypatch, db_fails: bool, cookie_fails: bool, expected_category: str
-) -> None:
-    import web.routes.system_ui_mode as system_ui_mode_mod
-
-    app = _build_app()
-    warnings: List[str] = []
-
-    def _fake_warning(message, *args, **kwargs):
-        warnings.append(message % args if args else str(message))
-
-    monkeypatch.setattr(app.logger, "warning", _fake_warning)
-    monkeypatch.setattr(system_ui_mode_mod, "url_for", _fake_url_for)
-
-    if db_fails:
-        monkeypatch.setattr(
-            system_ui_mode_mod,
-            "_get_system_config_service",
-            lambda: SimpleNamespace(
-                set_value=lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("db exploded"))
-            ),
-        )
-    else:
-        monkeypatch.setattr(
-            system_ui_mode_mod,
-            "_get_system_config_service",
-            lambda: SimpleNamespace(set_value=lambda *args, **kwargs: None),
-        )
-
-    if cookie_fails:
-        monkeypatch.setattr(
-            app.response_class,
-            "set_cookie",
-            lambda self, *args, **kwargs: (_ for _ in ()).throw(RuntimeError("cookie exploded")),
-        )
-
-    with app.test_request_context(
-        "/system/ui-mode",
-        method="POST",
-        data={"mode": "v2", "next": "/system/backup"},
-    ):
-        response = system_ui_mode_mod.ui_mode_set()
-        flashes = get_flashed_messages(with_categories=True)
-
-    assert response.location.endswith("/system/backup")
-    assert [category for category, _message in flashes] == [expected_category]
-
-    if not cookie_fails:
-        assert any("aps_ui_mode=v2" in item for item in response.headers.getlist("Set-Cookie"))
-    if db_fails:
-        assert any("写入 UI 模式到 SystemConfig 失败" in msg for msg in warnings), warnings
-    if cookie_fails:
-        assert any("写入 UI 模式 cookie 失败" in msg for msg in warnings), warnings
-    else:
-        assert all("写入 UI 模式 cookie 失败" not in msg for msg in warnings), warnings

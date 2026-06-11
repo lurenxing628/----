@@ -4,14 +4,13 @@ import os
 import sqlite3
 from typing import Any, List, Optional
 
-from flask import current_app, flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, render_template, request, url_for
 
 from core.infrastructure.backup import MaintenanceWindowError
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.logging import OperationLogger
 from web.routes.form_values import form_yes_no_value
-from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.system_backup_page import build_system_backup_page_view_model
 
 from .system_backup_actions import run_backup_restore
@@ -112,11 +111,11 @@ def backup_create():
         flash(_user_maintenance_message(e), "warning" if e.code == "busy" else "error")
         return redirect(url_for("system.backup_page"))
     except RuntimeError as e:
-        # 备份完整性校验执行失败/未通过会抛裸 RuntimeError（R32/O27：坏库绝不升正式、loud 不静默）。
-        # MaintenanceWindowError 是 RuntimeError 子类、已在上面拦截；此处兜的是完整性校验类失败——
+        # 备份完整性检查执行失败/未通过会抛裸 RuntimeError（R32/O27：坏库绝不升正式、loud 不静默）。
+        # MaintenanceWindowError 是 RuntimeError 子类、已在上面拦截；此处兜的是完整性检查类失败——
         # 必须转成具体中文，别让用户只看到 errorhandler(500) 的笼统「服务器内部错误，请查看日志」。
-        current_app.logger.error("手动备份失败（完整性校验或写入异常，已放弃本次备份以保护数据）：%s", e)
-        flash("备份完整性校验未通过，已放弃本次备份以保护数据，请查看日志。", "error")
+        current_app.logger.error("手动备份失败（完整性检查或写入异常，已放弃本次备份以保护数据）：%s", e)
+        flash("备份完整性检查失败或备份写入异常，已放弃本次备份以保护数据，请查看日志。", "error")
         return redirect(url_for("system.backup_page"))
     filename = os.path.basename(path)
     size_mb = None

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import Blueprint, g
+from flask import Blueprint, g, render_template
 
 from core.services.report import ReportEngine
 from web.routes.reports_export_routes import register_report_export_routes
@@ -11,7 +11,6 @@ from web.routes.reports_page_support import (
     reports_index_context,
     utilization_page_context,
 )
-from web.ui_mode import render_ui_template as render_template
 
 bp = Blueprint("reports", __name__)
 register_report_export_routes(bp)

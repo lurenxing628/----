@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from flask import current_app, flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, render_template, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.models.enums import OperatorStatus, YesNo
@@ -10,7 +10,6 @@ from core.services.common.normalization_matrix import skill_level_options
 from core.services.equipment import MachineService
 from core.services.personnel import OperatorMachineService, OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
-from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.excel_entry_cards import personnel_excel_cards
 
 from .pagination import paginate_rows, parse_page_args

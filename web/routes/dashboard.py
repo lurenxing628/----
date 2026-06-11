@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple
 
-from flask import Blueprint, current_app, g, request
+from flask import Blueprint, current_app, g, render_template, request
 
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
@@ -11,7 +11,6 @@ from core.services.scheduler.schedule_result_view_context import plan_role_filte
 from web.navigation_context import set_current_workbench_navigation_context
 from web.request_resource_context import request_report_resource_context
 from web.routes.history_summary_logging import log_history_summary_parse_warning
-from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.dashboard_workbench import build_dashboard_workbench_summary
 from web.viewmodels.scheduler_history_summary import format_public_datetime, parse_history_summary_state
 

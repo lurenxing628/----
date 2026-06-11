@@ -2684,14 +2684,17 @@ def test_sort_ledger_does_not_fill_missing_test_debt_ratchet() -> None:
         support.sort_ledger(ledger)
 
 
+# 双轨退役（2026-06）后 UI 启动链 scope 只剩 web/manual_src_security.py，
+# 合法 scope_tag 只剩 render_bridge：旧 ui_mode_store/render_bridge 分裂漂移分支已死，
+# 活语义改为「manual_src_security 条目带非法/退役 scope_tag 必须被拒」。
 @pytest.mark.parametrize(
     ("path", "scope_tag", "expected_message"),
     [
-        ("web/ui_mode_store.py", "render_bridge", "startup_guard"),
-        ("web/render_bridge.py", "startup_guard", "render_bridge"),
+        ("web/manual_src_security.py", "startup_guard", "scope_tag"),
+        ("web/manual_src_security.py", None, "scope_tag"),
     ],
 )
-def test_validate_ledger_rejects_ui_mode_split_scope_drift(path: str, scope_tag: str, expected_message: str) -> None:
+def test_validate_ledger_rejects_ui_mode_split_scope_drift(path: str, scope_tag, expected_message: str) -> None:
     support = _import_quality_gate_support()
     ledger = _schema2_ledger_with_test_debt(max_registered_xfail=0)
     ledger["silent_fallback"]["entries"] = [

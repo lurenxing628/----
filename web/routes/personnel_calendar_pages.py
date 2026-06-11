@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from flask import current_app, flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, render_template, request, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.services.personnel import OperatorService
 from core.services.scheduler import CalendarService, ConfigService
 from web.error_boundary import user_visible_app_error_message
-from web.ui_mode import render_ui_template as render_template
 
 from .normalizers import _normalize_operator_calendar_day_type, _normalize_yesno
 from .personnel_bp import _day_type_zh, bp

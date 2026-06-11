@@ -46,21 +46,7 @@ SILENT_REFRESH_SYMBOL_ALIASES = {
     ("web/bootstrap/launcher_processes.py", "_posix_pid_state"): "_pid_state",
     ("web/bootstrap/launcher_processes.py", "_windows_pid_state"): "_pid_state",
 }
-SILENT_REFRESH_GROUP_ALIASES = {
-    ("web/ui_mode.py", "_describe_template_name"): ("web/render_bridge.py", "_describe_template_name"),
-    ("web/ui_mode.py", "_normalize_relative_manual_src"): ("web/manual_src_security.py", "_normalize_relative_manual_src"),
-    ("web/ui_mode.py", "_read_ui_mode_from_db"): ("web/ui_mode_store.py", "_read_ui_mode_from_db"),
-    ("web/ui_mode.py", "_resolve_manual_endpoint"): ("web/manual_src_security.py", "_resolve_manual_endpoint"),
-    ("web/ui_mode.py", "_resolve_manual_src"): ("web/manual_src_security.py", "_resolve_manual_src"),
-    ("web/ui_mode.py", "_resolve_template_source"): ("web/render_bridge.py", "_resolve_template_source"),
-    ("web/ui_mode.py", "_resolve_template_url_for"): ("web/render_bridge.py", "_resolve_template_url_for"),
-    ("web/ui_mode.py", "_same_origin_absolute_manual_src"): ("web/manual_src_security.py", "_same_origin_absolute_manual_src"),
-    ("web/ui_mode.py", "_warn_v2_render_fallback_once"): ("web/render_bridge.py", "_warn_v2_render_fallback_once"),
-    ("web/ui_mode.py", "get_ui_mode"): ("web/ui_mode_request.py", "get_ui_mode"),
-    ("web/ui_mode.py", "init_ui_mode"): ("web/render_bridge.py", "init_ui_mode"),
-    ("web/ui_mode.py", "render_ui_template"): ("web/render_bridge.py", "render_ui_template"),
-    ("web/ui_mode.py", "safe_url_for"): ("web/manual_src_security.py", "safe_url_for"),
-}
+SILENT_REFRESH_GROUP_ALIASES: dict = {}
 ALLOWED_SILENT_REALIGN_KIND_TRANSITIONS = {
     ("silent_swallow", "observable_degrade"),
     ("silent_default_fallback", "observable_degrade"),
@@ -194,11 +180,6 @@ def refresh_scan_startup_baseline(ledger: Optional[Dict[str, Any]] = None) -> Di
     for item in startup_silent_scan_entries:
         existing = find_existing_by_id(silent_existing, str(item.get("id")))
         entry = build_silent_entry(item, source="baseline_scan", existing=existing)
-        if entry.get("path") == "web/ui_mode.py" and entry.get("scope_tag") == "render_bridge":
-            entry["owner"] = existing.get("owner") if existing else "SP09"
-            entry["batch"] = existing.get("batch") if existing else "SP09"
-            if not existing:
-                entry["notes"] = build_default_note("baseline_scan", fallback_kind=str(item.get("fallback_kind")), scope_tag="render_bridge")
         startup_silent.append(entry)
 
     ledger["oversize_allowlist"] = remove_entries_by_predicate(oversize_existing, lambda entry: str(entry.get("path")) in startup_path_set) + startup_oversize

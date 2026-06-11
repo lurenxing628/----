@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from flask import flash, g, redirect, request, url_for
+from flask import flash, g, redirect, render_template, request, url_for
 
 from core.models.enums import SourceType
 from core.services.process import OpTypeService
-from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.excel_entry_cards import process_op_type_excel_cards
 
 from .pagination import paginate_rows, parse_page_args

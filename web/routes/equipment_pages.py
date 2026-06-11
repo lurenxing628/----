@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List
 
-from flask import current_app, flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, render_template, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.models.enums import MachineStatus, YesNo
@@ -13,7 +13,6 @@ from core.services.equipment.machine_downtime_query_service import MachineDownti
 from core.services.personnel import OperatorMachineService, OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 from core.services.process import OpTypeService
-from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.excel_entry_cards import equipment_excel_cards
 
 from .equipment_bp import _machine_status_zh, _operator_status_zh, bp

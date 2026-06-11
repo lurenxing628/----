@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from flask import Blueprint, current_app, flash, g, redirect, request, url_for
+from flask import Blueprint, current_app, flash, g, redirect, render_template, request, url_for
 
 from core.infrastructure.errors import AppError, ValidationError
 from core.models.enums import MaterialStatus
 from core.services.common.enum_normalizers import ready_status_label
-from web.ui_mode import render_ui_template as render_template
 
 from .pagination import paginate_rows, parse_page_args
 

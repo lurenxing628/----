@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import time
 
-from flask import g, send_file, url_for
+from flask import g, render_template, send_file, url_for
 
 from core.models.enums import MergeMode, SourceType
 from core.services.common.enum_normalizers import source_type_label
 from core.services.common.excel_audit import log_excel_export
 from core.services.common.excel_templates import build_xlsx_bytes
 from core.services.process.part_operation_query_service import PartOperationQueryService
-from web.ui_mode import render_ui_template as render_template
 
 from .process_bp import bp
 

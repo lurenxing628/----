@@ -285,10 +285,6 @@ def _client():
     _seed_reports_data(db_path)
     app = _load_app()
     client = app.test_client()
-    try:
-        client.set_cookie("aps_ui_mode", "v1", domain="localhost")
-    except TypeError:
-        client.set_cookie("localhost", "aps_ui_mode", "v1")
     return client
 
 

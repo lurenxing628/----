@@ -53,13 +53,13 @@ def _patch_test_app_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     import core.infrastructure.logging as logging_mod
     import core.services.common.excel_templates as template_mod
     import web.error_handlers as err_mod
-    import web.ui_mode as ui_mode_mod
 
     monkeypatch.setattr(db_mod, "ensure_schema", _noop)
     monkeypatch.setattr(logging_mod, "OperationLogger", _NoopOperationLogger)
     monkeypatch.setattr(template_mod, "ensure_excel_templates", _noop)
     monkeypatch.setattr(err_mod, "register_error_handlers", _noop)
-    monkeypatch.setattr(ui_mode_mod, "init_ui_mode", _noop)
+    # 双轨退役后模板全局由 install_template_globals 真实注入（纯 jinja env 操作，
+    # 无外部副作用），不再需要 mock 掉旧 init_ui_mode。
 
 
 def _build_replay_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Flask:

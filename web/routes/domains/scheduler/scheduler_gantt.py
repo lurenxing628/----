@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from flask import current_app, g, jsonify, request, url_for
+from flask import current_app, g, jsonify, render_template, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError, error_response
 from core.services.scheduler.schedule_plan_option_display import public_plan_role_options
@@ -13,7 +13,6 @@ from web.routes.history_summary_logging import (
     log_history_summary_parse_warning,
     log_history_version_option_parse_warnings,
 )
-from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_gantt_task_detail import decorate_gantt_task_detail_payload
 from web.viewmodels.scheduler_history_summary import (
     build_history_summary_display,

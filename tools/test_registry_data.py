@@ -27,7 +27,6 @@ QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
 
 QUALITY_GATE_GUARD_TESTS = (
     "tests/gate_meta/test_no_residual_main_style_regression.py",
-    "tests/gate_meta/test_v1_v2_mirror_sync_guard.py",
     "tests/gate_meta/test_sp05_path_topology_contract.py",
     "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
     "tests/schedule/route_view/test_scheduler_route_registration_contract.py",
@@ -214,7 +213,6 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/gate_meta/test_benchmark_full_test_debt_shards.py",
     "tests/gate_meta/test_long_gate_cli_controls.py",
     "tests/gate_meta/test_long_gate_quickref_cache.py",
-    "tests/web_pages/test_ui_mode.py",
     "tests/app_runtime/test_safe_next_url_hardening.py",
     "tests/app_runtime/test_safe_next_url_observability.py",
     "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py",

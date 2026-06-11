@@ -492,7 +492,6 @@ def test_sp05_safe_next_url_has_one_policy_module() -> None:
     consumers = (
         REPO_ROOT / "web/routes/domains/scheduler/scheduler_batches.py",
         REPO_ROOT / "web/routes/domains/scheduler/scheduler_config.py",
-        REPO_ROOT / "web/routes/system_ui_mode.py",
     )
     for path in consumers:
         source = path.read_text(encoding="utf-8")

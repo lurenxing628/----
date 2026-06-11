@@ -21,6 +21,7 @@ from core.infrastructure.migrations.common import fallback_log
 from core.models.enums import YesNo
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_templates import ExcelTemplateError, ensure_excel_templates
+from web.bootstrap.template_globals import install_template_globals
 from web.error_boundary import (
     render_error_template,
     render_minimal_error_page,
@@ -36,7 +37,6 @@ from web.routes.personnel import bp as personnel_bp
 from web.routes.process import bp as process_bp
 from web.routes.reports import bp as reports_bp
 from web.routes.system import bp as system_bp
-from web.ui_mode import init_ui_mode
 
 from .launcher import resolve_shared_data_root
 from .paths import runtime_base_dir
@@ -255,7 +255,7 @@ def create_app_core(
     if enable_session_cookie_hardening:
         apply_session_cookie_hardening(app)
 
-    init_ui_mode(app, base_dir)
+    install_template_globals(app)
 
     db_dir = os.path.dirname(app.config["DATABASE_PATH"])
     if db_dir:

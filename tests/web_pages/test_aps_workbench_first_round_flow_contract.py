@@ -153,10 +153,6 @@ def _collector_for_home(monkeypatch):
     version = _insert_first_round_data(db_path)
     app = _load_app(monkeypatch)
     client = app.test_client()
-    try:
-        client.set_cookie("aps_ui_mode", "v1", domain="localhost")
-    except TypeError:
-        client.set_cookie("localhost", "aps_ui_mode", "v1")
     resp = client.get("/")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)

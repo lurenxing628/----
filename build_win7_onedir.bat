@@ -41,7 +41,6 @@ if exist vendor (
   python -m PyInstaller --noconfirm --clean --onedir --windowed ^
     --add-data "templates;templates" ^
     --add-data "static;static" ^
-    --add-data "web_new_test;web_new_test" ^
     --add-data "templates_excel;templates_excel" ^
     --add-data "plugins;plugins" ^
     --add-data "vendor;vendor" ^
@@ -67,7 +66,6 @@ if exist vendor (
   python -m PyInstaller --noconfirm --clean --onedir --windowed ^
     --add-data "templates;templates" ^
     --add-data "static;static" ^
-    --add-data "web_new_test;web_new_test" ^
     --add-data "templates_excel;templates_excel" ^
     --add-data "plugins;plugins" ^
     --add-data "schema.sql;." ^

@@ -40,30 +40,24 @@ def test_scheduler_config_and_batch_hints_are_user_facing_chinese() -> None:
         "发现这些问题会停下，让你先修改。不勾选：为了兼容旧数据，系统会先按默认值继续排，例如空工时按 0 小时、外协周期缺失按 1 天、坏掉的高级设置按页面默认项，并在结果提醒里告诉你需要回去补哪项。"
     )
 
-    for rel_path in ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"):
-        source = _read(rel_path)
-        assert expected_holiday_hint in source
-        assert "假期安排生产但未单独设置效率时" not in source
-        assert "&gt;0" not in source
+    source = _read("templates/scheduler/config.html")
+    assert expected_holiday_hint in source
+    assert "假期安排生产但未单独设置效率时" not in source
+    assert "&gt;0" not in source
 
-    for rel_path in (
-        "templates/scheduler/batches_manage.html",
-        "web_new_test/templates/scheduler/batches_manage.html",
-    ):
-        source = _read(rel_path)
-        assert expected_batch_manage_hint in source
-        assert "解析器不支持 strict_mode" not in source
+    source = _read("templates/scheduler/batches_manage.html")
+    assert expected_batch_manage_hint in source
+    assert "解析器不支持 strict_mode" not in source
 
     run_panel = _read("templates/scheduler/_run_panel.html")
     assert expected_batch_schedule_hint in run_panel
     assert "配置不合法" not in run_panel
     assert "安全取值" not in run_panel
     assert "工时空着时可能按 0" not in run_panel
-    for rel_path in ("templates/scheduler/batches.html", "web_new_test/templates/scheduler/batches.html"):
-        source = _read(rel_path)
-        assert '{% include "scheduler/_run_panel.html" %}' in source
-        assert "dispatch_mode / dispatch_rule / auto_assign_enabled" not in source
-        assert "设了截止日期的话，排不完会提示失败。" not in source
+    source = _read("templates/scheduler/batches.html")
+    assert '{% include "scheduler/_run_panel.html" %}' in source
+    assert "dispatch_mode / dispatch_rule / auto_assign_enabled" not in source
+    assert "设了截止日期的话，排不完会提示失败。" not in source
 
 
 def test_scheduler_run_copy_avoids_vague_vocabulary_for_operators() -> None:
@@ -88,7 +82,6 @@ def test_scheduler_run_copy_avoids_vague_vocabulary_for_operators() -> None:
         "static/js/gantt_contract.js",
         "static/js/gantt_help.js",
         "static/docs/scheduler_manual.md",
-        "web_new_test/static/docs/scheduler_manual.md",
     )
 
     for rel_path in user_facing_sources:
@@ -98,11 +91,10 @@ def test_scheduler_run_copy_avoids_vague_vocabulary_for_operators() -> None:
 
 
 def test_scheduler_config_repair_notices_use_public_field_labels() -> None:
-    for rel_path in ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"):
-        source = _read(rel_path)
-        assert "current_config_notice_items" in source
-        assert "ui.details_notice(notice" in source
-        assert "notice.fields" not in source
+    source = _read("templates/scheduler/config.html")
+    assert "current_config_notice_items" in source
+    assert "ui.details_notice(notice" in source
+    assert "notice.fields" not in source
 
     panel_vm = _read("web/viewmodels/scheduler_config_panel.py")
     assert 'raw_notice.get("field_labels")' in panel_vm
@@ -129,10 +121,9 @@ def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> No
     assert "algo_config.get('algo_mode') or algo.mode" in analysis
     assert "mode_zh.get(algo.mode" not in analysis
 
-    for rel_path in ("templates/scheduler/gantt.html", "web_new_test/templates/scheduler/gantt.html"):
-        source = _read(rel_path)
-        assert "排程数据" in source
-        assert "Schedule 数据" not in source
+    source = _read("templates/scheduler/gantt.html")
+    assert "排程数据" in source
+    assert "Schedule 数据" not in source
 
     logs = _read("templates/system/logs.html")
     assert "按英文值筛选" not in logs
@@ -152,9 +143,7 @@ def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> No
 def test_debug_details_do_not_expose_flask_endpoint_names_to_users() -> None:
     rel_paths = (
         "templates/scheduler/config.html",
-        "web_new_test/templates/scheduler/config.html",
         "templates/scheduler/batches.html",
-        "web_new_test/templates/scheduler/batches.html",
         "templates/personnel/list.html",
         "templates/personnel/detail.html",
         "templates/personnel/calendar.html",
@@ -704,7 +693,6 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
     assert "透明点击区" not in gantt_help
 
     manual = _read("static/docs/scheduler_manual.md")
-    manual_mirror = _read("web_new_test/static/docs/scheduler_manual.md")
     manual_viewmodel = _read("web/viewmodels/page_manuals_scheduler_outputs.py")
     for phrase in (
         "甘特图当前是",
@@ -716,11 +704,8 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
         "灰色说明入口",
     ):
         assert phrase in manual
-        assert phrase in manual_mirror
     assert "后续页面入口接好并放行后再开放" not in manual
-    assert "后续页面入口接好并放行后再开放" not in manual_mirror
     assert "后续草稿和校验链路完成后再开放" not in manual
-    assert "后续草稿和校验链路完成后再开放" not in manual_mirror
     for phrase in (
         "查看模式",
         "时间粒度",
@@ -730,7 +715,6 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
     ):
         assert phrase in manual_viewmodel
     assert "不能放进下载文件名的符号" in manual
-    assert "不能放进下载文件名的符号" in manual_mirror
 
     resource_dispatch = read_resource_dispatch_script_bundle()
     assert "有一条排班提示没有完整说明" in resource_dispatch
@@ -791,13 +775,13 @@ def test_reports_and_v2_batch_templates_match_public_manual_contracts() -> None:
     assert '"利用率(%)"' in exporter
     assert "_utilization_percent" in exporter
 
-    for rel_path in ("web_new_test/templates/scheduler/batches.html", "web_new_test/templates/scheduler/batches_manage.html"):
+    for rel_path in ("templates/scheduler/batches.html", "templates/scheduler/batches_manage.html"):
         source = _read(rel_path)
         assert "scheduler.delete_batch" in source
         assert "确认删除该批次" in source
         assert 'name="next"' in source
 
-    gantt_v2 = _read("web_new_test/templates/scheduler/gantt.html")
+    gantt_v2 = _read("templates/scheduler/gantt.html")
     for line in gantt_v2.splitlines():
         if "上周" in line or "回到本周" in line or "下周" in line:
             assert "start_date=" not in line

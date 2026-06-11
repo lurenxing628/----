@@ -5,7 +5,7 @@ import os
 import time
 from typing import Any, Dict, List, Optional
 
-from flask import current_app, flash, g, redirect, request, send_file, url_for
+from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import SOURCE_TYPE_VALUES
@@ -17,7 +17,6 @@ from core.services.common.excel_templates import build_xlsx_bytes, get_template_
 from core.services.common.normalize import normalize_text
 from core.services.process import OpTypeService
 from core.services.process.op_type_excel_import_service import OpTypeExcelImportService
-from web.ui_mode import render_ui_template as render_template
 
 from .excel_utils import (
     build_error_rows_message,

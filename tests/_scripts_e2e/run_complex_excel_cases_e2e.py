@@ -232,7 +232,7 @@ def create_test_app(*, repo_root: str, db_path: str, log_dir: str, backup_dir: s
     - 不依赖 config.py 的 env 读取（避免多 case 同进程时无法切 DB）
     - 不模拟正式 create_app_core() 的维护窗口短路，仅对齐请求级 g.services 挂载与目标白名单行为
     - 不加载插件（与业务核心无关；避免污染全局状态）
-    - 保留：错误处理、UI overlay、蓝图路由、每请求 DB 连接、OperationLogs
+    - 保留：错误处理、模板全局（install_template_globals）、蓝图路由、每请求 DB 连接、OperationLogs
     """
     from flask import Flask, g, request
 
@@ -241,6 +241,7 @@ def create_test_app(*, repo_root: str, db_path: str, log_dir: str, backup_dir: s
     from core.services.common.excel_backend_factory import get_excel_backend
     from core.services.common.excel_templates import ensure_excel_templates
     from web.bootstrap.request_services import RequestServices
+    from web.bootstrap.template_globals import install_template_globals
     from web.error_handlers import register_error_handlers
     from web.routes.dashboard import bp as dashboard_bp
     from web.routes.equipment import bp as equipment_bp
@@ -252,7 +253,6 @@ def create_test_app(*, repo_root: str, db_path: str, log_dir: str, backup_dir: s
     from web.routes.scheduler import bp as scheduler_bp
     from web.routes.scheduler import register_scheduler_routes
     from web.routes.system import bp as system_bp
-    from web.ui_mode import init_ui_mode
 
     static_dir = os.path.join(repo_root, "static")
     templates_dir = os.path.join(repo_root, "templates")
@@ -280,8 +280,8 @@ def create_test_app(*, repo_root: str, db_path: str, log_dir: str, backup_dir: s
     _ensure_dir(backup_dir)
     _ensure_dir(template_dir)
 
-    # UI overlay（V1/V2）
-    init_ui_mode(app, repo_root)
+    # 与正式工厂一致：启动期注入 8 个跨页模板全局（双轨退役后的唯一安装点）
+    install_template_globals(app)
 
     # Excel 模板兜底（确保模板目录具备交付文件）
     ensure_excel_templates(template_dir)

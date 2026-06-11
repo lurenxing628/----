@@ -5,7 +5,7 @@ import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import current_app, flash, g, redirect, request, send_file, url_for
+from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.services.common.enum_normalizers import skill_level_label, yes_no_label
@@ -15,7 +15,6 @@ from core.services.common.excel_templates import build_xlsx_bytes, get_template_
 from core.services.equipment import MachineService
 from core.services.personnel import OperatorMachineService, OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
-from web.ui_mode import render_ui_template as render_template
 
 from .excel_utils import (
     build_error_rows_message,

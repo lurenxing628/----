@@ -5,7 +5,7 @@ import os
 import time
 from typing import Any, Dict, List, Optional
 
-from flask import current_app, flash, g, redirect, request, send_file, url_for
+from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import SupplierStatus
@@ -15,7 +15,6 @@ from core.services.common.excel_templates import build_xlsx_bytes, get_template_
 from core.services.common.normalize import is_blank_value
 from core.services.process import PartService
 from web.routes.form_values import form_toggle_bool
-from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.ui_presenters import UiToggleRow, checked_attr
 
 from .excel_utils import (

@@ -397,16 +397,9 @@ def _handler_context_hash(handler: ast.ExceptHandler) -> str:
     return "sha1:" + hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
-def ui_mode_scope_tag(symbol: str, path: str = "web/ui_mode.py") -> str:
-    rel_path = str(path).replace("\\", "/")
-    if rel_path in UI_MODE_RENDER_BRIDGE_PATHS:
-        return "render_bridge"
-    if rel_path in UI_MODE_STARTUP_GUARD_PATHS and rel_path != "web/ui_mode.py":
-        return "startup_guard"
-    if rel_path == "web/ui_mode.py":
-        return "startup_guard" if symbol in UI_MODE_STARTUP_GUARD_SYMBOLS else "render_bridge"
-    if symbol in UI_MODE_STARTUP_GUARD_SYMBOLS:
-        return "startup_guard"
+def ui_mode_scope_tag(symbol: str, path: str = "web/manual_src_security.py") -> str:
+    # 双轨退役（2026-06）后启动链 UI 范围只剩 manual_src_security，统一 render_bridge 标签
+    del symbol, path
     return "render_bridge"
 
 
@@ -534,7 +527,7 @@ def validate_startup_samples(entries: Optional[Sequence[Dict[str, Any]]] = None)
         errors.append("四类分类样本覆盖不完整：{}".format(", ".join(missing_kinds)))
     missing_scopes = sorted(UI_MODE_SCOPE_TAG_VALUES - matched_scopes)
     if missing_scopes:
-        errors.append("web/ui_mode.py scope 样本覆盖不完整：{}".format(", ".join(missing_scopes)))
+        errors.append("UI 启动链 scope 样本覆盖不完整：{}".format(", ".join(missing_scopes)))
     if errors:
         raise QualityGateError("启动链样本点校验失败：\n" + "\n".join(errors))
     return {

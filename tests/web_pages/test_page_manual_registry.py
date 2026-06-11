@@ -733,13 +733,8 @@ def _assert_page_manual_closeout_forbidden_phrases(page_manuals) -> None:
 
 
 def _assert_ready_check_visible_copy_contract(repo_root: str, page_manuals, manual_text: str) -> None:
-    mirror_manual_path = os.path.join(repo_root, "web_new_test", "static", "docs", "scheduler_manual.md")
-    mirror_manual_text = _read(mirror_manual_path)
-    assert mirror_manual_text == manual_text, "V1/V2 两份 scheduler_manual.md 必须完全一致"
-
     visible_sources = {
         "static/docs/scheduler_manual.md": manual_text,
-        "web_new_test/static/docs/scheduler_manual.md": mirror_manual_text,
         "web/viewmodels/scheduler_run_options.py": _read(
             os.path.join(repo_root, "web", "viewmodels", "scheduler_run_options.py")
         ),
@@ -764,7 +759,6 @@ def _assert_ready_check_visible_copy_contract(repo_root: str, page_manuals, manu
 
     for source_name in (
         "static/docs/scheduler_manual.md",
-        "web_new_test/static/docs/scheduler_manual.md",
         "web/viewmodels/scheduler_run_options.py",
         "core/services/scheduler/config/config_field_spec.py",
         "web/routes/domains/scheduler/scheduler_config_display_state.py",

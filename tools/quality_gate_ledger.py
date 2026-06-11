@@ -144,7 +144,7 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
 
         ## 当前静默回退门禁边界
 
-        - 启动链范围（`web/bootstrap/**/*.py`、`web/ui_mode.py`、`web/ui_mode_request.py`、`web/ui_mode_store.py`、`web/render_bridge.py`、`web/manual_src_security.py`）按四类分类全量冻结。
+        - 启动链范围（`web/bootstrap/**/*.py`、`web/manual_src_security.py`）按四类分类全量冻结（2026-06 双轨退役：ui_mode/render_bridge 四文件已删除）。
         - 非启动链范围当前只续管历史 `silent_swallow` 遗留项，不据此把 `silent_default_fallback` / `observable_degrade` 扩展为全仓新增门禁。
 
         ## 当前快照
@@ -158,12 +158,11 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
         ## SP04 人工补充记录
 
         - 已核实 `web/routes/domains/scheduler/scheduler_batches.py`、`web/routes/domains/scheduler/scheduler_analysis.py`、`web/routes/system_history.py` 当前已统一改为通过 `g.services` 取查询服务，不再保留 SP04 初期的直接装配形态。
-        - `web/ui_mode.py:_read_ui_mode_from_db()` 当前已收口到 `g.services.system_config_service.get_value_with_presence(...)` 单接口读取；请求上下文若出现 `g.db` 已挂但 `g.services` 缺失，会显式抛错，不再把容器损坏伪装成“配置缺失”。
         - `web/routes/domains/scheduler/scheduler_excel_batches.py` 中两处 `get_batch_row_validate_and_normalize(...)` 已完成去 `g.db` 首参改造；对应 helper 特批白名单已清空，不再作为阶段性残余保留。
         - `scheduler_batch_detail.py` 的 `OperatorMachineQueryService` 与 `scheduler_excel_batches.py` 的 `ExcelService` 在切容器后会从 `logger=None` 变为 `g.app_logger`；结合当前实现，这应仅增加可观测性，不得改变查询结果、分页、预览结果或导入结果。
         - `RequestServices` 已明确采用 `functools.cached_property` 做惰性构造与单请求缓存；构造成功才缓存，构造异常不写缓存属性，后续访问允许重试。
         - 每个目标文件内的所有路由函数必须在所属批次内一次切换完成，禁止同一文件同时存在容器取用与直接装配两套方式。
-        - `system_backup.py`、`system_ui_mode.py`、`system_plugins.py`、`system_logs.py`、`system_utils.py` 中 5 处 `SystemConfigService` 直接装配不在 SP04 两批目标内，但阶段 5 必须列账。
+        - `system_backup.py`、`system_plugins.py`、`system_logs.py`、`system_utils.py` 中的 `SystemConfigService` 直接装配不在 SP04 两批目标内，但阶段 5 必须列账（`system_ui_mode.py` 已随 2026-06 双轨退役删除）。
         - `tests/web_pages/test_request_services_contract.py`（原 `regression_request_services_lazy_construction.py` / `regression_request_services_failure_propagation.py` 已于 P5.1 合并入此契约文件）属于 SP04 本批新建回归，执行验证命令时需与已有守卫区分。
         - 本节是人工治理说明，不改变当前静默回退门禁分类口径。
 
@@ -353,16 +352,9 @@ def _validate_complexity_entries(complexity_entries: List[Any], all_main_ids: Se
 def _validate_ui_mode_scope(entry: Dict[str, Any]) -> None:
     path = str(entry.get("path"))
     scope_tag = entry.get("scope_tag")
-    if path == "web/ui_mode.py":
+    if path in set(UI_MODE_STARTUP_SCOPE_PATHS):
         if scope_tag not in UI_MODE_SCOPE_TAG_VALUES:
-            raise QualityGateError("UI mode 启动链条目必须带合法 scope_tag：{}".format(entry.get("id")))
-        if scope_tag == "render_bridge" and str(entry.get("batch")) == "SP03":
-            raise QualityGateError("render_bridge 条目不得归属 SP03：{}".format(entry.get("id")))
-    elif path in set(UI_MODE_STARTUP_SCOPE_PATHS):
-        if scope_tag not in UI_MODE_SCOPE_TAG_VALUES:
-            raise QualityGateError("UI mode 启动链条目必须带合法 scope_tag：{}".format(entry.get("id")))
-        if path in UI_MODE_STARTUP_GUARD_PATHS and scope_tag != "startup_guard":
-            raise QualityGateError("startup_guard 文件不得登记为其他 scope_tag：{}".format(entry.get("id")))
+            raise QualityGateError("UI 启动链条目必须带合法 scope_tag：{}".format(entry.get("id")))
         if path in UI_MODE_RENDER_BRIDGE_PATHS and scope_tag != "render_bridge":
             raise QualityGateError("render_bridge 文件不得登记为其他 scope_tag：{}".format(entry.get("id")))
     elif scope_tag is not None and not isinstance(scope_tag, str):

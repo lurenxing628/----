@@ -86,10 +86,6 @@ def _load_app(repo_root: str, monkeypatch):
     return app_mod.create_app()
 
 
-def _mode_headers(ui_mode: str) -> Dict[str, str]:
-    return {"Cookie": f"aps_ui_mode={ui_mode}"}
-
-
 def _encode_src(path: str) -> str:
     return path if "?" in path else f"{path}?"
 
@@ -135,11 +131,7 @@ def _assert_no_legacy_excel_entry_terms(content: str, label: str) -> None:
 
 def _assert_manual_markdown_scope(repo_root: str) -> str:
     manual_path = Path(repo_root) / "static" / "docs" / "scheduler_manual.md"
-    manual_v2_path = Path(repo_root) / "web_new_test" / "static" / "docs" / "scheduler_manual.md"
     manual_text = manual_path.read_text(encoding="utf-8")
-    manual_v2_text = manual_v2_path.read_text(encoding="utf-8")
-    if manual_text != manual_v2_text:
-        raise RuntimeError("系统使用说明主文件与现代界面镜像不一致")
     _assert_no_legacy_excel_entry_terms(manual_text, "系统使用说明")
     _assert_contains(manual_text, "批量维护", "系统使用说明主流程入口应使用“批量维护”叫法")
     return manual_text
@@ -216,237 +208,235 @@ def main(monkeypatch) -> None:
     scheduler_config_path = _build_url(app, "scheduler.config_page")
     scheduler_src = _encode_src(scheduler_config_path)
 
-    for ui_mode in ("v1", "v2"):
-        for endpoint in renderable_pages:
-            path = _build_url(app, endpoint)
-            resp = client.get(path, headers=_mode_headers(ui_mode))
-            if resp.status_code != 200:
-                raise RuntimeError(f"{ui_mode} 模式访问 {endpoint}({path}) 返回非 200：{resp.status_code}")
-            content = resp.get_data(as_text=True)
-            manual = page_manuals.build_manual_for_endpoint(endpoint, include_sections=False)
-            help_card = (manual or {}).get("help_card") or {}
-            help_items = list(help_card.get("items") or [])
-            help_snippet = str(help_card.get("title") or (help_items[0] if help_items else "")).strip()
-            expect_help_card = bool(help_snippet)
+    for endpoint in renderable_pages:
+        path = _build_url(app, endpoint)
+        resp = client.get(path)
+        if resp.status_code != 200:
+            raise RuntimeError(f"默认界面访问 {endpoint}({path}) 返回非 200：{resp.status_code}")
+        content = resp.get_data(as_text=True)
+        manual = page_manuals.build_manual_for_endpoint(endpoint, include_sections=False)
+        help_card = (manual or {}).get("help_card") or {}
+        help_items = list(help_card.get("items") or [])
+        help_snippet = str(help_card.get("title") or (help_items[0] if help_items else "")).strip()
+        expect_help_card = bool(help_snippet)
 
-            expected_href = _build_url(
-                app,
-                "scheduler.config_manual_page",
-                page=endpoint,
-                src=_encode_src(path),
-            )
-            expected_href_html = expected_href.replace("&", "&amp;")
-            expected_popover_id = f'manual-popover-{endpoint.replace(".", "-").replace("_", "-")}'
-            expected_title_id = f"{expected_popover_id}-title"
-            _assert_contains(content, "floating-manual-btn", f"{ui_mode} 模式下复杂页面未显示悬浮说明入口：{endpoint}")
-            _assert_contains(content, "本页说明", f"{ui_mode} 模式下说明入口文案未更新：{endpoint}")
-            _assert_contains(content, expected_href_html, f"{ui_mode} 模式下说明入口链接不正确：{endpoint}")
-            if ui_mode == "v2":
-                sidebar_idx = content.find('class="sidebar"')
-                manual_idx = content.find("floating-manual-wrapper")
-                if not (0 <= sidebar_idx < manual_idx):
-                    raise RuntimeError(f"v2 模式下说明入口应渲染在侧边栏内，避免覆盖主内容区：{endpoint}")
-                _assert_not_contains(content, "sidebar-footnote", f"{ui_mode} 模式下不应再显示侧边栏脚注：{endpoint}")
-                _assert_not_contains(content, "Win7 单机版", f"{ui_mode} 模式下不应再显示侧边栏版本脚注：{endpoint}")
-                _assert_not_contains(content, "离线运行", f"{ui_mode} 模式下不应再显示侧边栏离线脚注：{endpoint}")
-
-            if expect_help_card:
-                _assert_contains(content, 'data-manual-popover="1"', f"{ui_mode} 模式下缺少 popover 触发标记：{endpoint}")
-                _assert_contains(content, f'aria-controls="{expected_popover_id}"', f"{ui_mode} 模式下缺少 aria-controls：{endpoint}")
-                _assert_contains(content, f'id="{expected_popover_id}"', f"{ui_mode} 模式下缺少 popover 容器：{endpoint}")
-                _assert_contains(content, f'aria-labelledby="{expected_title_id}"', f"{ui_mode} 模式下缺少 aria-labelledby：{endpoint}")
-                _assert_contains(content, 'aria-expanded="false"', f"{ui_mode} 模式下 popover 初始状态不正确：{endpoint}")
-                _assert_contains(content, 'role="dialog"', f"{ui_mode} 模式下 popover 缺少 dialog 语义：{endpoint}")
-                _assert_contains(content, "manual-popover", f"{ui_mode} 模式下未渲染速览 popover：{endpoint}")
-                _assert_contains(content, help_snippet, f"{ui_mode} 模式下页面内关键提示缺失：{endpoint}")
-                _assert_contains(content, "查看本页详细说明", f"{ui_mode} 模式下帮助卡文案未更新：{endpoint}")
-
-        home_resp = client.get("/", headers=_mode_headers(ui_mode))
-        if home_resp.status_code != 200:
-            raise RuntimeError(f"{ui_mode} 模式访问首页返回非 200：{home_resp.status_code}")
-        home_html = home_resp.get_data(as_text=True)
-        home_manual_href = _build_url(
+        expected_href = _build_url(
             app,
             "scheduler.config_manual_page",
-            page="dashboard.index",
-            src=_encode_src("/"),
+            page=endpoint,
+            src=_encode_src(path),
         )
-        _assert_contains(home_html, "floating-manual-btn", f"{ui_mode} 模式下首页应显示第一次使用说明入口")
-        _assert_contains(home_html, "本页说明", f"{ui_mode} 模式下首页说明入口文案缺失")
-        _assert_contains(home_html, home_manual_href.replace("&", "&amp;"), f"{ui_mode} 模式下首页说明入口链接不正确")
-        _assert_contains(home_html, "第一次使用先按路线图走", f"{ui_mode} 模式下首页说明速览缺少新手路线图标题")
-        _assert_contains(home_html, "运行提醒只展示前 5 条", f"{ui_mode} 模式下首页说明速览缺少运行提醒前 5 条口径")
-        _assert_home_workspace_buttons(app, home_html, f"{ui_mode} 模式")
+        expected_href_html = expected_href.replace("&", "&amp;")
+        expected_popover_id = f'manual-popover-{endpoint.replace(".", "-").replace("_", "-")}'
+        expected_title_id = f"{expected_popover_id}-title"
+        _assert_contains(content, "floating-manual-btn", f"默认界面下复杂页面未显示悬浮说明入口：{endpoint}")
+        _assert_contains(content, "本页说明", f"默认界面下说明入口文案未更新：{endpoint}")
+        _assert_contains(content, expected_href_html, f"默认界面下说明入口链接不正确：{endpoint}")
+        sidebar_idx = content.find('class="sidebar"')
+        manual_idx = content.find("floating-manual-wrapper")
+        if not (0 <= sidebar_idx < manual_idx):
+            raise RuntimeError(f"说明入口应渲染在侧边栏内，避免覆盖主内容区：{endpoint}")
+        _assert_not_contains(content, "sidebar-footnote", f"默认界面下不应再显示侧边栏脚注：{endpoint}")
+        _assert_not_contains(content, "Win7 单机版", f"默认界面下不应再显示侧边栏版本脚注：{endpoint}")
+        _assert_not_contains(content, "离线运行", f"默认界面下不应再显示侧边栏离线脚注：{endpoint}")
 
-        full_material_url = _build_url(app, "scheduler.config_manual_page", src=material_src)
-        manual_resp = client.get(full_material_url, headers=_mode_headers(ui_mode))
-        if manual_resp.status_code != 200:
-            raise RuntimeError(f"{ui_mode} 模式访问整本说明书页返回非 200：{manual_resp.status_code}")
-        manual_html = manual_resp.get_data(as_text=True)
-        _assert_contains(manual_html, "系统使用说明", f"{ui_mode} 模式下整本说明书页标题缺失")
-        _assert_contains(manual_html, "返回刚才页面", f"{ui_mode} 模式下整本说明书页未保留来源页返回入口")
-        _assert_contains(manual_html, 'id="aps-config-manual-fallback"', f"{ui_mode} 模式下整本说明书页缺少服务端 fallback 模板")
-        full_fallback_text = _extract_template_content_by_id(manual_html, "aps-config-manual-fallback")
-        if not full_fallback_text or len(full_fallback_text) < 100:
-            raise RuntimeError(f"{ui_mode} 模式下整本说明书页 fallback 正文为空或过短")
-        if full_fallback_text != manual_text.strip():
-            raise RuntimeError(f"{ui_mode} 模式下整本说明书页 fallback 与说明书 Markdown 不一致")
-        _assert_no_legacy_excel_entry_terms(full_fallback_text, f"{ui_mode} 模式下整本说明书页 fallback")
-        _assert_contains(full_fallback_text, "批量维护", f"{ui_mode} 模式下整本说明书页 fallback 未使用“批量维护”叫法")
-        _assert_not_contains(manual_html, "floating-manual-btn", f"{ui_mode} 模式下说明书页不应显示悬浮入口")
-        _assert_not_contains(manual_html, "当前页面主题：", f"{ui_mode} 模式下整本说明书页不应出现页面模式标识")
-        _assert_not_contains(manual_html, "相关模块说明", f"{ui_mode} 模式下整本说明书页不应显示相关模块列表")
-        _assert_not_contains(manual_html, "manual-main-column", f"{ui_mode} 模式下整本说明书页不应渲染页面级右列容器")
-        _assert_not_contains(manual_html, "manual-related-panel", f"{ui_mode} 模式下整本说明书页不应渲染相关模块面板")
-        _assert_not_contains(manual_html, "scheduler-subnav-main", f"{ui_mode} 模式下来自非 scheduler 页面时应隐藏排产子导航")
+        if expect_help_card:
+            _assert_contains(content, 'data-manual-popover="1"', f"默认界面下缺少 popover 触发标记：{endpoint}")
+            _assert_contains(content, f'aria-controls="{expected_popover_id}"', f"默认界面下缺少 aria-controls：{endpoint}")
+            _assert_contains(content, f'id="{expected_popover_id}"', f"默认界面下缺少 popover 容器：{endpoint}")
+            _assert_contains(content, f'aria-labelledby="{expected_title_id}"', f"默认界面下缺少 aria-labelledby：{endpoint}")
+            _assert_contains(content, 'aria-expanded="false"', f"默认界面下 popover 初始状态不正确：{endpoint}")
+            _assert_contains(content, 'role="dialog"', f"默认界面下 popover 缺少 dialog 语义：{endpoint}")
+            _assert_contains(content, "manual-popover", f"默认界面下未渲染速览 popover：{endpoint}")
+            _assert_contains(content, help_snippet, f"默认界面下页面内关键提示缺失：{endpoint}")
+            _assert_contains(content, "查看本页详细说明", f"默认界面下帮助卡文案未更新：{endpoint}")
 
-        full_scheduler_url = _build_url(app, "scheduler.config_manual_page", src=scheduler_src)
-        manual_scheduler_resp = client.get(full_scheduler_url, headers=_mode_headers(ui_mode))
-        if manual_scheduler_resp.status_code != 200:
-            raise RuntimeError(f"{ui_mode} 模式访问 scheduler 来源整本说明书页返回非 200：{manual_scheduler_resp.status_code}")
-        manual_scheduler_html = manual_scheduler_resp.get_data(as_text=True)
-        _assert_contains(manual_scheduler_html, "scheduler-subnav-main", f"{ui_mode} 模式下整本说明书页应保留排产子导航")
+    home_resp = client.get("/")
+    if home_resp.status_code != 200:
+        raise RuntimeError(f"默认界面访问首页返回非 200：{home_resp.status_code}")
+    home_html = home_resp.get_data(as_text=True)
+    home_manual_href = _build_url(
+        app,
+        "scheduler.config_manual_page",
+        page="dashboard.index",
+        src=_encode_src("/"),
+    )
+    _assert_contains(home_html, "floating-manual-btn", "默认界面下首页应显示第一次使用说明入口")
+    _assert_contains(home_html, "本页说明", "默认界面下首页说明入口文案缺失")
+    _assert_contains(home_html, home_manual_href.replace("&", "&amp;"), "默认界面下首页说明入口链接不正确")
+    _assert_contains(home_html, "第一次使用先按路线图走", "默认界面下首页说明速览缺少新手路线图标题")
+    _assert_contains(home_html, "运行提醒只展示前 5 条", "默认界面下首页说明速览缺少运行提醒前 5 条口径")
+    _assert_home_workspace_buttons(app, home_html, "默认界面")
 
-        page_material_url = _build_url(
-            app,
-            "scheduler.config_manual_page",
-            page="material.materials_page",
-            src=material_src,
-        )
-        page_material_resp = client.get(page_material_url, headers=_mode_headers(ui_mode))
-        if page_material_resp.status_code != 200:
-            raise RuntimeError(f"{ui_mode} 模式访问页面级说明书返回非 200：{page_material_resp.status_code}")
-        page_material_html = page_material_resp.get_data(as_text=True)
-        _assert_contains(page_material_html, "本页说明 - 物料主数据", f"{ui_mode} 模式下页面级说明标题不正确")
-        _assert_contains(page_material_html, '<div class="aps-summary-label">当前页面主题</div>', f"{ui_mode} 模式下页面级说明缺少当前页主题标签")
-        _assert_contains(page_material_html, '<div class="aps-summary-value">物料主数据</div>', f"{ui_mode} 模式下页面级说明缺少当前页主题值")
-        _assert_contains(page_material_html, '<div class="aps-summary-label">对应整本章节</div>', f"{ui_mode} 模式下页面级说明缺少整本章节标签")
-        _assert_contains(page_material_html, "相关模块说明", f"{ui_mode} 模式下页面级说明缺少相关模块列表")
-        _assert_contains(page_material_html, "查看完整原文对应章节", f"{ui_mode} 模式下页面级说明缺少原文章节入口")
-        _assert_contains(page_material_html, "下载整本说明书", f"{ui_mode} 模式下页面级说明下载按钮文案不正确")
-        _assert_contains(page_material_html, '<div class="aps-summary-label">整本说明书更新时间</div>', f"{ui_mode} 模式下页面级说明更新时间文案不正确")
-        _assert_contains(page_material_html, material_first_section_title, f"{ui_mode} 模式下页面级说明未渲染当前事实源关键段落")
-        _assert_contains(page_material_html, 'id="aps-config-manual-fallback"', f"{ui_mode} 模式下页面级说明缺少服务端 fallback 模板")
-        material_fallback_text = _extract_template_content_by_id(page_material_html, "aps-config-manual-fallback")
-        if not material_fallback_text:
-            raise RuntimeError(f"{ui_mode} 模式下页面级说明 fallback 正文为空")
-        _assert_contains(material_fallback_text, "物料主数据", f"{ui_mode} 模式下页面级说明 fallback 未保留当前主题")
-        _assert_contains(material_fallback_text, "齐套", f"{ui_mode} 模式下页面级说明 fallback 未注入当前页正文")
-        _assert_contains(page_material_html, "manual-main-column", f"{ui_mode} 模式下页面级说明缺少右列容器")
-        _assert_contains(page_material_html, "manual-related-panel", f"{ui_mode} 模式下页面级说明缺少相关模块面板类")
-        if page_material_html.count('id="content"') != 1:
-            raise RuntimeError(f"{ui_mode} 模式下页面级说明应只保留一个 #content")
-        content_idx = page_material_html.index('id="content"')
-        main_col_idx = page_material_html.index("manual-main-column")
-        related_panel_idx = page_material_html.index("manual-related-panel")
-        if not (main_col_idx < content_idx < related_panel_idx):
-            raise RuntimeError(f"{ui_mode} 模式下页面级说明右列结构顺序异常")
-        _assert_not_contains(page_material_html, "scheduler-subnav-main", f"{ui_mode} 模式下页面级说明不应显示排产子导航")
-        _assert_not_contains(page_material_html, "floating-manual-btn", f"{ui_mode} 模式下页面级说明页不应显示悬浮入口")
+    full_material_url = _build_url(app, "scheduler.config_manual_page", src=material_src)
+    manual_resp = client.get(full_material_url)
+    if manual_resp.status_code != 200:
+        raise RuntimeError(f"默认界面访问整本说明书页返回非 200：{manual_resp.status_code}")
+    manual_html = manual_resp.get_data(as_text=True)
+    _assert_contains(manual_html, "系统使用说明", "默认界面下整本说明书页标题缺失")
+    _assert_contains(manual_html, "返回刚才页面", "默认界面下整本说明书页未保留来源页返回入口")
+    _assert_contains(manual_html, 'id="aps-config-manual-fallback"', "默认界面下整本说明书页缺少服务端 fallback 模板")
+    full_fallback_text = _extract_template_content_by_id(manual_html, "aps-config-manual-fallback")
+    if not full_fallback_text or len(full_fallback_text) < 100:
+        raise RuntimeError("默认界面下整本说明书页 fallback 正文为空或过短")
+    if full_fallback_text != manual_text.strip():
+        raise RuntimeError("默认界面下整本说明书页 fallback 与说明书 Markdown 不一致")
+    _assert_no_legacy_excel_entry_terms(full_fallback_text, "默认界面下整本说明书页 fallback")
+    _assert_contains(full_fallback_text, "批量维护", "默认界面下整本说明书页 fallback 未使用“批量维护”叫法")
+    _assert_not_contains(manual_html, "floating-manual-btn", "默认界面下说明书页不应显示悬浮入口")
+    _assert_not_contains(manual_html, "当前页面主题：", "默认界面下整本说明书页不应出现页面模式标识")
+    _assert_not_contains(manual_html, "相关模块说明", "默认界面下整本说明书页不应显示相关模块列表")
+    _assert_not_contains(manual_html, "manual-main-column", "默认界面下整本说明书页不应渲染页面级右列容器")
+    _assert_not_contains(manual_html, "manual-related-panel", "默认界面下整本说明书页不应渲染相关模块面板")
+    _assert_not_contains(manual_html, "scheduler-subnav-main", "默认界面下来自非 scheduler 页面时应隐藏排产子导航")
 
-        page_home_url = _build_url(
-            app,
-            "scheduler.config_manual_page",
-            page="dashboard.index",
-            src=_encode_src("/"),
-        )
-        page_home_resp = client.get(page_home_url, headers=_mode_headers(ui_mode))
-        if page_home_resp.status_code != 200:
-            raise RuntimeError(f"{ui_mode} 模式访问首页页面级说明返回非 200：{page_home_resp.status_code}")
-        page_home_html = page_home_resp.get_data(as_text=True)
-        _assert_contains(page_home_html, "本页说明 - 第一次使用路线图", f"{ui_mode} 模式下首页页面级说明标题不正确")
-        _assert_contains(page_home_html, "先准备资料", f"{ui_mode} 模式下首页页面级说明缺少资料准备步骤")
-        _assert_contains(page_home_html, "先模拟，再正式排产", f"{ui_mode} 模式下首页页面级说明缺少排产步骤")
-        _assert_contains(page_home_html, "排完去哪里看", f"{ui_mode} 模式下首页页面级说明缺少结果查看步骤")
-        _assert_contains(page_home_html, "不在这里导出或恢复版本", f"{ui_mode} 模式下首页页面级说明缺少排产历史边界")
-        _assert_contains(page_home_html, "当前页只展示前 5 条", f"{ui_mode} 模式下首页页面级说明缺少运行提醒前 5 条口径")
-        _assert_not_contains(page_home_html, "scheduler-subnav-main", f"{ui_mode} 模式下首页页面级说明不应显示排产子导航")
-        expected_download_href = _build_url(
-            app,
-            "scheduler.config_manual_download",
-            src=material_src,
-            page="material.materials_page",
-        )
-        expected_download_href_html = expected_download_href.replace("&", "&amp;")
-        _assert_contains(page_material_html, expected_download_href_html, f"{ui_mode} 模式下页面级说明下载链接未保留上下文")
+    full_scheduler_url = _build_url(app, "scheduler.config_manual_page", src=scheduler_src)
+    manual_scheduler_resp = client.get(full_scheduler_url)
+    if manual_scheduler_resp.status_code != 200:
+        raise RuntimeError(f"默认界面访问 scheduler 来源整本说明书页返回非 200：{manual_scheduler_resp.status_code}")
+    manual_scheduler_html = manual_scheduler_resp.get_data(as_text=True)
+    _assert_contains(manual_scheduler_html, "scheduler-subnav-main", "默认界面下整本说明书页应保留排产子导航")
 
-        page_material_external_url = _build_url(
-            app,
-            "scheduler.config_manual_page",
-            page="material.materials_page",
-            src="http://evil.example/x",
-        )
-        page_material_external_resp = client.get(page_material_external_url, headers=_mode_headers(ui_mode))
-        if page_material_external_resp.status_code != 200:
-            raise RuntimeError(f"{ui_mode} 模式访问外部来源页面级说明返回非 200：{page_material_external_resp.status_code}")
-        page_material_external_html = page_material_external_resp.get_data(as_text=True)
-        _assert_contains(page_material_external_html, "返回首页", f"{ui_mode} 模式下外部来源页面级说明缺少首页兜底返回入口")
-        external_download_href = _extract_link_href_by_text(page_material_external_html, "下载整本说明书")
-        if not external_download_href:
-            raise RuntimeError(f"{ui_mode} 模式下外部来源页面级说明缺少下载链接")
-        _assert_not_contains(external_download_href, "src=", f"{ui_mode} 模式下外部来源不应继续写入下载链接")
-        _assert_contains(external_download_href, "page=material.materials_page", f"{ui_mode} 模式下合法 page 应继续保留在下载链接")
-        external_full_href = _extract_link_href_by_text(page_material_external_html, "查看完整原文对应章节")
-        if not external_full_href:
-            raise RuntimeError(f"{ui_mode} 模式下外部来源页面级说明缺少完整原文跳转链接")
-        _assert_not_contains(external_full_href, "src=", f"{ui_mode} 模式下外部来源不应继续写入完整原文链接")
-        external_related_href = _extract_link_href_by_text(page_material_external_html, "查看该页说明")
-        if not external_related_href:
-            raise RuntimeError(f"{ui_mode} 模式下外部来源页面级说明缺少 related 说明链接")
-        _assert_not_contains(external_related_href, "src=", f"{ui_mode} 模式下外部来源不应继续写入 related 说明链接")
+    page_material_url = _build_url(
+        app,
+        "scheduler.config_manual_page",
+        page="material.materials_page",
+        src=material_src,
+    )
+    page_material_resp = client.get(page_material_url)
+    if page_material_resp.status_code != 200:
+        raise RuntimeError(f"默认界面访问页面级说明书返回非 200：{page_material_resp.status_code}")
+    page_material_html = page_material_resp.get_data(as_text=True)
+    _assert_contains(page_material_html, "本页说明 - 物料主数据", "默认界面下页面级说明标题不正确")
+    _assert_contains(page_material_html, '<div class="aps-summary-label">当前页面主题</div>', "默认界面下页面级说明缺少当前页主题标签")
+    _assert_contains(page_material_html, '<div class="aps-summary-value">物料主数据</div>', "默认界面下页面级说明缺少当前页主题值")
+    _assert_contains(page_material_html, '<div class="aps-summary-label">对应整本章节</div>', "默认界面下页面级说明缺少整本章节标签")
+    _assert_contains(page_material_html, "相关模块说明", "默认界面下页面级说明缺少相关模块列表")
+    _assert_contains(page_material_html, "查看完整原文对应章节", "默认界面下页面级说明缺少原文章节入口")
+    _assert_contains(page_material_html, "下载整本说明书", "默认界面下页面级说明下载按钮文案不正确")
+    _assert_contains(page_material_html, '<div class="aps-summary-label">整本说明书更新时间</div>', "默认界面下页面级说明更新时间文案不正确")
+    _assert_contains(page_material_html, material_first_section_title, "默认界面下页面级说明未渲染当前事实源关键段落")
+    _assert_contains(page_material_html, 'id="aps-config-manual-fallback"', "默认界面下页面级说明缺少服务端 fallback 模板")
+    material_fallback_text = _extract_template_content_by_id(page_material_html, "aps-config-manual-fallback")
+    if not material_fallback_text:
+        raise RuntimeError("默认界面下页面级说明 fallback 正文为空")
+    _assert_contains(material_fallback_text, "物料主数据", "默认界面下页面级说明 fallback 未保留当前主题")
+    _assert_contains(material_fallback_text, "齐套", "默认界面下页面级说明 fallback 未注入当前页正文")
+    _assert_contains(page_material_html, "manual-main-column", "默认界面下页面级说明缺少右列容器")
+    _assert_contains(page_material_html, "manual-related-panel", "默认界面下页面级说明缺少相关模块面板类")
+    if page_material_html.count('id="content"') != 1:
+        raise RuntimeError("默认界面下页面级说明应只保留一个 #content")
+    content_idx = page_material_html.index('id="content"')
+    main_col_idx = page_material_html.index("manual-main-column")
+    related_panel_idx = page_material_html.index("manual-related-panel")
+    if not (main_col_idx < content_idx < related_panel_idx):
+        raise RuntimeError("默认界面下页面级说明右列结构顺序异常")
+    _assert_not_contains(page_material_html, "scheduler-subnav-main", "默认界面下页面级说明不应显示排产子导航")
+    _assert_not_contains(page_material_html, "floating-manual-btn", "默认界面下页面级说明页不应显示悬浮入口")
 
-        page_material_protocol_url = _build_url(
-            app,
-            "scheduler.config_manual_page",
-            page="material.materials_page",
-            src="//evil.example/x",
-        )
-        page_material_protocol_resp = client.get(page_material_protocol_url, headers=_mode_headers(ui_mode))
-        if page_material_protocol_resp.status_code != 200:
-            raise RuntimeError(f"{ui_mode} 模式访问协议相对来源页面级说明返回非 200：{page_material_protocol_resp.status_code}")
-        page_material_protocol_html = page_material_protocol_resp.get_data(as_text=True)
-        protocol_download_href = _extract_link_href_by_text(page_material_protocol_html, "下载整本说明书")
-        if not protocol_download_href:
-            raise RuntimeError(f"{ui_mode} 模式下协议相对来源页面级说明缺少下载链接")
-        _assert_not_contains(protocol_download_href, "src=", f"{ui_mode} 模式下协议相对来源不应继续写入下载链接")
+    page_home_url = _build_url(
+        app,
+        "scheduler.config_manual_page",
+        page="dashboard.index",
+        src=_encode_src("/"),
+    )
+    page_home_resp = client.get(page_home_url)
+    if page_home_resp.status_code != 200:
+        raise RuntimeError(f"默认界面访问首页页面级说明返回非 200：{page_home_resp.status_code}")
+    page_home_html = page_home_resp.get_data(as_text=True)
+    _assert_contains(page_home_html, "本页说明 - 第一次使用路线图", "默认界面下首页页面级说明标题不正确")
+    _assert_contains(page_home_html, "先准备资料", "默认界面下首页页面级说明缺少资料准备步骤")
+    _assert_contains(page_home_html, "先模拟，再正式排产", "默认界面下首页页面级说明缺少排产步骤")
+    _assert_contains(page_home_html, "排完去哪里看", "默认界面下首页页面级说明缺少结果查看步骤")
+    _assert_contains(page_home_html, "不在这里导出或恢复版本", "默认界面下首页页面级说明缺少排产历史边界")
+    _assert_contains(page_home_html, "当前页只展示前 5 条", "默认界面下首页页面级说明缺少运行提醒前 5 条口径")
+    _assert_not_contains(page_home_html, "scheduler-subnav-main", "默认界面下首页页面级说明不应显示排产子导航")
+    expected_download_href = _build_url(
+        app,
+        "scheduler.config_manual_download",
+        src=material_src,
+        page="material.materials_page",
+    )
+    expected_download_href_html = expected_download_href.replace("&", "&amp;")
+    _assert_contains(page_material_html, expected_download_href_html, "默认界面下页面级说明下载链接未保留上下文")
 
-        page_scheduler_url = _build_url(
-            app,
-            "scheduler.config_manual_page",
-            page="scheduler.config_page",
-            src=scheduler_src,
-        )
-        page_scheduler_resp = client.get(page_scheduler_url, headers=_mode_headers(ui_mode))
-        if page_scheduler_resp.status_code != 200:
-            raise RuntimeError(f"{ui_mode} 模式访问 scheduler 来源页面级说明返回非 200：{page_scheduler_resp.status_code}")
-        page_scheduler_html = page_scheduler_resp.get_data(as_text=True)
-        _assert_not_contains(page_scheduler_html, "scheduler-subnav-main", f"{ui_mode} 模式下页面级说明应统一隐藏排产子导航")
+    page_material_external_url = _build_url(
+        app,
+        "scheduler.config_manual_page",
+        page="material.materials_page",
+        src="http://evil.example/x",
+    )
+    page_material_external_resp = client.get(page_material_external_url)
+    if page_material_external_resp.status_code != 200:
+        raise RuntimeError(f"默认界面访问外部来源页面级说明返回非 200：{page_material_external_resp.status_code}")
+    page_material_external_html = page_material_external_resp.get_data(as_text=True)
+    _assert_contains(page_material_external_html, "返回首页", "默认界面下外部来源页面级说明缺少首页兜底返回入口")
+    external_download_href = _extract_link_href_by_text(page_material_external_html, "下载整本说明书")
+    if not external_download_href:
+        raise RuntimeError("默认界面下外部来源页面级说明缺少下载链接")
+    _assert_not_contains(external_download_href, "src=", "默认界面下外部来源不应继续写入下载链接")
+    _assert_contains(external_download_href, "page=material.materials_page", "默认界面下合法 page 应继续保留在下载链接")
+    external_full_href = _extract_link_href_by_text(page_material_external_html, "查看完整原文对应章节")
+    if not external_full_href:
+        raise RuntimeError("默认界面下外部来源页面级说明缺少完整原文跳转链接")
+    _assert_not_contains(external_full_href, "src=", "默认界面下外部来源不应继续写入完整原文链接")
+    external_related_href = _extract_link_href_by_text(page_material_external_html, "查看该页说明")
+    if not external_related_href:
+        raise RuntimeError("默认界面下外部来源页面级说明缺少 related 说明链接")
+    _assert_not_contains(external_related_href, "src=", "默认界面下外部来源不应继续写入 related 说明链接")
 
-        page_material_no_src_url = _build_url(app, "scheduler.config_manual_page", page="material.materials_page")
-        page_material_no_src_resp = client.get(page_material_no_src_url, headers=_mode_headers(ui_mode))
-        if page_material_no_src_resp.status_code != 200:
-            raise RuntimeError(f"{ui_mode} 模式访问无来源页面级说明返回非 200：{page_material_no_src_resp.status_code}")
-        page_material_no_src_html = page_material_no_src_resp.get_data(as_text=True)
-        _assert_contains(page_material_no_src_html, "返回首页", f"{ui_mode} 模式下非 scheduler 页面说明缺少首页兜底返回入口")
+    page_material_protocol_url = _build_url(
+        app,
+        "scheduler.config_manual_page",
+        page="material.materials_page",
+        src="//evil.example/x",
+    )
+    page_material_protocol_resp = client.get(page_material_protocol_url)
+    if page_material_protocol_resp.status_code != 200:
+        raise RuntimeError(f"默认界面访问协议相对来源页面级说明返回非 200：{page_material_protocol_resp.status_code}")
+    page_material_protocol_html = page_material_protocol_resp.get_data(as_text=True)
+    protocol_download_href = _extract_link_href_by_text(page_material_protocol_html, "下载整本说明书")
+    if not protocol_download_href:
+        raise RuntimeError("默认界面下协议相对来源页面级说明缺少下载链接")
+    _assert_not_contains(protocol_download_href, "src=", "默认界面下协议相对来源不应继续写入下载链接")
 
-        page_scheduler_no_src_url = _build_url(app, "scheduler.config_manual_page", page="scheduler.config_page")
-        page_scheduler_no_src_resp = client.get(page_scheduler_no_src_url, headers=_mode_headers(ui_mode))
-        if page_scheduler_no_src_resp.status_code != 200:
-            raise RuntimeError(f"{ui_mode} 模式访问无来源 scheduler 页面级说明返回非 200：{page_scheduler_no_src_resp.status_code}")
-        page_scheduler_no_src_html = page_scheduler_no_src_resp.get_data(as_text=True)
-        _assert_contains(page_scheduler_no_src_html, "返回排产首页", f"{ui_mode} 模式下 scheduler 页面说明缺少排产首页兜底返回入口")
+    page_scheduler_url = _build_url(
+        app,
+        "scheduler.config_manual_page",
+        page="scheduler.config_page",
+        src=scheduler_src,
+    )
+    page_scheduler_resp = client.get(page_scheduler_url)
+    if page_scheduler_resp.status_code != 200:
+        raise RuntimeError(f"默认界面访问 scheduler 来源页面级说明返回非 200：{page_scheduler_resp.status_code}")
+    page_scheduler_html = page_scheduler_resp.get_data(as_text=True)
+    _assert_not_contains(page_scheduler_html, "scheduler-subnav-main", "默认界面下页面级说明应统一隐藏排产子导航")
 
-        invalid_page_url = _build_url(app, "scheduler.config_manual_page", page="unknown.endpoint", src=material_src)
-        invalid_page_resp = client.get(invalid_page_url, headers=_mode_headers(ui_mode))
-        if invalid_page_resp.status_code != 200:
-            raise RuntimeError(f"{ui_mode} 模式访问非法 page 参数返回非 200：{invalid_page_resp.status_code}")
-        invalid_page_html = invalid_page_resp.get_data(as_text=True)
-        _assert_contains(invalid_page_html, "系统使用说明", f"{ui_mode} 模式下非法 page 应回退到整本说明页")
-        _assert_not_contains(invalid_page_html, "当前页面主题：", f"{ui_mode} 模式下非法 page 不应保留页面模式主题")
-        invalid_download_href = _extract_link_href_by_text(invalid_page_html, "下载说明书原文")
-        if not invalid_download_href:
-            raise RuntimeError(f"{ui_mode} 模式下非法 page 整本说明书缺少下载链接")
-        _assert_not_contains(invalid_download_href, "page=unknown.endpoint", f"{ui_mode} 模式下非法 page 不应继续写入下载链接")
+    page_material_no_src_url = _build_url(app, "scheduler.config_manual_page", page="material.materials_page")
+    page_material_no_src_resp = client.get(page_material_no_src_url)
+    if page_material_no_src_resp.status_code != 200:
+        raise RuntimeError(f"默认界面访问无来源页面级说明返回非 200：{page_material_no_src_resp.status_code}")
+    page_material_no_src_html = page_material_no_src_resp.get_data(as_text=True)
+    _assert_contains(page_material_no_src_html, "返回首页", "默认界面下非 scheduler 页面说明缺少首页兜底返回入口")
+
+    page_scheduler_no_src_url = _build_url(app, "scheduler.config_manual_page", page="scheduler.config_page")
+    page_scheduler_no_src_resp = client.get(page_scheduler_no_src_url)
+    if page_scheduler_no_src_resp.status_code != 200:
+        raise RuntimeError(f"默认界面访问无来源 scheduler 页面级说明返回非 200：{page_scheduler_no_src_resp.status_code}")
+    page_scheduler_no_src_html = page_scheduler_no_src_resp.get_data(as_text=True)
+    _assert_contains(page_scheduler_no_src_html, "返回排产首页", "默认界面下 scheduler 页面说明缺少排产首页兜底返回入口")
+
+    invalid_page_url = _build_url(app, "scheduler.config_manual_page", page="unknown.endpoint", src=material_src)
+    invalid_page_resp = client.get(invalid_page_url)
+    if invalid_page_resp.status_code != 200:
+        raise RuntimeError(f"默认界面访问非法 page 参数返回非 200：{invalid_page_resp.status_code}")
+    invalid_page_html = invalid_page_resp.get_data(as_text=True)
+    _assert_contains(invalid_page_html, "系统使用说明", "默认界面下非法 page 应回退到整本说明页")
+    _assert_not_contains(invalid_page_html, "当前页面主题：", "默认界面下非法 page 不应保留页面模式主题")
+    invalid_download_href = _extract_link_href_by_text(invalid_page_html, "下载说明书原文")
+    if not invalid_download_href:
+        raise RuntimeError("默认界面下非法 page 整本说明书缺少下载链接")
+    _assert_not_contains(invalid_download_href, "page=unknown.endpoint", "默认界面下非法 page 不应继续写入下载链接")
 
     download_resp = client.get(
         _build_url(
@@ -455,7 +445,6 @@ def main(monkeypatch) -> None:
             page="material.materials_page",
             src=material_src,
         ),
-        headers=_mode_headers("v1"),
     )
     if download_resp.status_code != 200:
         raise RuntimeError(f"说明书下载接口返回非 200：{download_resp.status_code}")
@@ -474,7 +463,6 @@ def main(monkeypatch) -> None:
                 page="unknown.endpoint",
                 src="http://evil.example/x",
             ),
-            headers=_mode_headers("v1"),
             follow_redirects=False,
         )
     if dirty_download_resp.status_code not in (302, 303):
@@ -484,8 +472,8 @@ def main(monkeypatch) -> None:
     _assert_not_contains(redirect_location, "unknown.endpoint", "下载失败回跳不应回写非法 page")
 
     ui_contract_css = (Path(repo_root) / "static" / "css" / "ui_contract.css").read_text(encoding="utf-8")
-    v2_base_html = (Path(repo_root) / "web_new_test" / "templates" / "base.html").read_text(encoding="utf-8")
-    v2_style_css = (Path(repo_root) / "web_new_test" / "static" / "css" / "style.css").read_text(encoding="utf-8")
+    v2_base_html = (Path(repo_root) / "templates" / "base.html").read_text(encoding="utf-8")
+    v2_style_css = (Path(repo_root) / "static" / "css" / "style.css").read_text(encoding="utf-8")
     _assert_contains(
         ui_contract_css,
         ".sidebar .floating-manual-wrapper",

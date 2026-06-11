@@ -7,7 +7,6 @@ from flask import Flask
 
 import web.manual_src_security as manual_src_security_mod
 import web.routes.domains.scheduler.scheduler_config as route_mod
-import web.ui_mode as ui_mode_mod
 
 
 def test_get_full_manual_section_url_returns_empty_string_when_manual_missing(
@@ -15,7 +14,8 @@ def test_get_full_manual_section_url_returns_empty_string_when_manual_missing(
 ) -> None:
     monkeypatch.setattr(manual_src_security_mod, "build_manual_for_endpoint", lambda *_args, **_kwargs: None)
 
-    assert ui_mode_mod.get_full_manual_section_url(endpoint="scheduler.gantt_page", src="/scheduler/gantt") == ""
+    # 双轨退役（2026-06）后 get_full_manual_section_url 真身在 web.manual_src_security（原经 web.ui_mode 转出口）
+    assert manual_src_security_mod.get_full_manual_section_url(endpoint="scheduler.gantt_page", src="/scheduler/gantt") == ""
 
 
 def test_build_manual_page_view_state_normalizes_missing_full_manual_section_url(

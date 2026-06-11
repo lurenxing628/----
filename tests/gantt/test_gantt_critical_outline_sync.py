@@ -1628,7 +1628,7 @@ process.stdout.write(JSON.stringify({{
 
 def test_gantt_templates_use_contract_rendered_help_list() -> None:
     repo_root = REPO_ROOT
-    for rel_path in ("templates/scheduler/gantt.html", "web_new_test/templates/scheduler/gantt.html"):
+    for rel_path in ("templates/scheduler/gantt.html",):
         html = (repo_root / rel_path).read_text(encoding="utf-8")
         assert 'id="ganttHelpList"' in html
         assert "任务条会出现<strong>外框高亮</strong>" not in html

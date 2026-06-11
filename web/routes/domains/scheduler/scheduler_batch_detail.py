@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Protocol, Set, Tuple
 
-from flask import g, request
+from flask import g, render_template, request
 
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, SupplierStatus, YesNo
-from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 
 from .scheduler_bp import _batch_status_zh, _priority_zh, _ready_zh, bp
