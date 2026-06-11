@@ -47,7 +47,6 @@ def runtime_logs_page():
     log_path = os.path.join(current_app.config["LOG_DIR"], selected_file)
     read_error = None
     entries: List[Dict[str, str]] = []
-    file_exists = os.path.exists(log_path)
     try:
         entries = read_log_entries_tail(log_path)
     except OSError as e:
@@ -56,10 +55,7 @@ def runtime_logs_page():
         current_app.logger.error("运行日志读取失败 %s：%s", log_path, e)
 
     total_before_filter = len(entries)
-    if level:
-        entries = [e for e in entries if e["level"] == level]
-    if keyword:
-        entries = [e for e in entries if keyword in e["head"] or keyword in e["body"]]
+    entries = _apply_entry_filters(entries, level, keyword)
 
     return render_template(
         "system/runtime_logs.html",
@@ -67,12 +63,22 @@ def runtime_logs_page():
         entries=entries,
         selected_file=selected_file,
         file_choices=LOG_FILE_CHOICES,
-        file_exists=file_exists,
+        file_exists=os.path.exists(log_path),
         read_error=read_error,
         max_entries=MAX_ENTRIES,
         total_before_filter=total_before_filter,
         filters={"level": level, "q": keyword},
     )
+
+
+def _apply_entry_filters(
+    entries: List[Dict[str, str]], level: str, keyword: str
+) -> List[Dict[str, str]]:
+    if level:
+        entries = [e for e in entries if e["level"] == level]
+    if keyword:
+        entries = [e for e in entries if keyword in e["head"] or keyword in e["body"]]
+    return entries
 
 
 @bp.get("/runtime-logs/diagnostic-package")
