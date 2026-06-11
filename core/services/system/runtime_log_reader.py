@@ -194,7 +194,9 @@ def list_diagnostic_log_names(log_dir: str) -> List[str]:
     aps_secret_key.txt 结构性进不来（红线测试在 logs 目录播种假 secret 断言名单）。"""
     names = []
     for name in sorted(os.listdir(log_dir)):
-        if not os.path.isfile(os.path.join(log_dir, name)):
+        path = os.path.join(log_dir, name)
+        # 拒绝 symlink：白名单文件名挡路径注入，islink 挡"白名单名字指向任意文件"
+        if os.path.islink(path) or not os.path.isfile(path):
             continue
         if (
             fnmatch.fnmatch(name, "*.log")

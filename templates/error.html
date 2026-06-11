@@ -20,6 +20,14 @@
       {% endif %}
     {% endif %}
 
-    <p class="muted">如果问题反复出现，请联系维护人员查看运行日志。</p>
+    {% if occurred_at %}
+      <p class="muted"><strong>发生时刻：</strong>{{ occurred_at }}</p>
+    {% endif %}
+    {# 错误页渲染于各种降级场景（含未挂 system bp 的最小 app），必须零路由依赖：
+       用裸路径不用 url_for（/system 前缀在 factory 注册时钉死） #}
+    <p class="muted">
+      可<a href="/system/runtime-logs">打开运行日志</a>按发生时刻查找报错详情，
+      或在运行日志页导出诊断包发给维护人员；如果问题反复出现，请联系维护人员。
+    </p>
   </div>
 {% endblock %}

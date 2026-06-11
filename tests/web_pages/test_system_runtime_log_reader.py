@@ -101,6 +101,25 @@ def test_scan_continues_past_oversize_entry(tmp_path):
     assert entries[3]["head"].endswith("最早一条")
 
 
+def test_anchor_exactly_at_block_boundary_not_misjudged(tmp_path):
+    # 锚点恰落在块读切点（buffer 偏移 0）：必须等前一块拼入后才确认，
+    # 不能把"恰好以时间戳开头的块"误当条目起点（at_file_start 防护分支）。
+    # 构造：末条恰 TAIL_BLOCK_SIZE 字节 → 其锚点正好是 file_size - TAIL_BLOCK_SIZE。
+    base = _entry_bytes("2026-06-11 11:00:00", "INFO", "")
+    last = _entry_bytes(
+        "2026-06-11 11:00:00", "INFO", "b" * (TAIL_BLOCK_SIZE - len(base)) + "末条"
+    )[: TAIL_BLOCK_SIZE - 1] + b"\n"
+    assert len(last) == TAIL_BLOCK_SIZE
+    first = _entry_bytes("2026-06-11 10:00:00", "INFO", "第一条")
+    data = first + last
+    assert len(data) - TAIL_BLOCK_SIZE == len(first)  # 末条锚点正好卡块边界
+    entries = read_log_entries_tail(_write(tmp_path, data))
+    assert len(entries) == 2
+    assert entries[0]["level"] == "INFO"
+    assert entries[0]["head"].startswith("2026-06-11 11:00:00")
+    assert entries[1]["head"].endswith("第一条")
+
+
 def test_oversize_entry_hunt_budget_exhausted_falls_back_unanchored(tmp_path):
     # 锚点距文件尾超过巡锚 IO 预算：放弃头半，按无锚点兜底呈现尾半（不读完超大文件）
     from core.services.system.runtime_log_reader import ENTRY_HUNT_BUDGET_BYTES

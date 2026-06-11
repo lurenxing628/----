@@ -8,6 +8,7 @@
 - `system_plugins.py`：扩展功能开关
 - `system_logs.py`：操作日志查询/清理
 - `system_history.py`：排产历史查询
+- `system_runtime_logs.py`：运行日志（文件日志只读查看）与诊断包导出
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from . import system_health as _health  # noqa: F401
 from . import system_history as _history  # noqa: F401
 from . import system_logs as _logs  # noqa: F401
 from . import system_plugins as _plugins  # noqa: F401
+from . import system_runtime_logs as _runtime_logs  # noqa: F401
 from .system_bp import bp
 
 __all__ = ["bp"]

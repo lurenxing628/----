@@ -948,3 +948,53 @@ html[data-theme="dark"] .top-header .aps-workbench-nav[open] > .aps-workbench-na
         padding: 0.75rem;
     }
 }
+
+/* 运行日志页（fusion-runtime-log-viewer）：条目折叠列表 */
+.aps-runtime-log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.aps-runtime-log-entry {
+    border: 1px solid var(--aps-border);
+    border-radius: var(--aps-radius);
+    background: #fff;
+}
+
+.aps-runtime-log-entry > summary {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.aps-runtime-log-entry > summary::-webkit-details-marker {
+    display: none;
+}
+
+.aps-runtime-log-head {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 0.8125rem;
+    word-break: break-all;
+}
+
+.aps-runtime-log-body {
+    margin: 0;
+    padding: 0.625rem 0.75rem;
+    border-top: 1px solid var(--aps-border);
+    font-size: 0.78125rem;
+    max-height: 24rem;
+    overflow: auto;
+}
+
+html[data-theme="dark"] .aps-runtime-log-entry {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+html[data-theme="dark"] .aps-runtime-log-body {
+    border-top-color: #334155;
+}

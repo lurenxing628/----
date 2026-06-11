@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
+{% block content %}
+  <div class="card aps-page-hero">
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">系统管理 - 运行日志</h2></div>
+      <div class="page-actions page-actions-context">
+        {{ ui.link_button('导出诊断包', url_for('system.runtime_logs_diagnostic_package'), 'primary', 'sm') }}
+      </div>
+    </div>
+    <p class="aps-page-purpose">
+      <strong>本页用于：</strong>查看程序自动产生的运行日志（报错与告警），自助定位问题；「导出诊断包」可把日志打包发给维护人员。
+      与「操作日志」不同：运行日志是程序内部记录，这里只能查看、不能删除（报错证据由系统按大小自动轮转，不提供人工销毁）。
+    </p>
+    {{ ui.system_nav('runtime_logs') }}
+  </div>
+
+  <div class="card">
+    {{ ui.aps_card_header('选择日志文件与筛选', '报错日志只含 ERROR；全量日志含运行流水；启动日志记录启动器行为。') }}
+    <form method="get" action="{{ url_for('system.runtime_logs_page') }}" class="aps-filter-grid">
+      <div class="form-field aps-filter-field-medium">
+        <label for="runtimeLogFile">日志文件</label>
+        <select id="runtimeLogFile" name="file">
+          {% for choice in file_choices %}
+            <option value="{{ choice }}" {% if choice == selected_file %}selected{% endif %}>
+              {%- if choice == 'aps_error.log' %}报错日志（aps_error.log）
+              {%- elif choice == 'aps.log' %}全量日志（aps.log）
+              {%- else %}启动日志（launcher.log）
+              {%- endif -%}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-field aps-filter-field-small">
+        <label for="runtimeLogLevel">级别</label>
+        <select id="runtimeLogLevel" name="level">
+          <option value="" {% if not filters.level %}selected{% endif %}>全部</option>
+          <option value="ERROR" {% if filters.level == 'ERROR' %}selected{% endif %}>ERROR</option>
+          <option value="WARNING" {% if filters.level == 'WARNING' %}selected{% endif %}>WARNING</option>
+        </select>
+      </div>
+      <div class="form-field aps-filter-field-xwide">
+        <label for="runtimeLogKeyword">关键词</label>
+        <input id="runtimeLogKeyword" name="q" value="{{ filters.q }}" placeholder="如：备份、排产、文件名">
+      </div>
+      <div class="aps-filter-actions">
+        {{ ui.button('查询', 'primary', 'sm', type_attr='submit') }}
+        {{ ui.link_button('重置', url_for('system.runtime_logs_page'), 'secondary', 'sm') }}
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    {{ ui.aps_card_header('日志条目', '最新在最上；最多显示最近 ' ~ max_entries ~ ' 条。') }}
+
+    {% if read_error %}
+      {{ ui.notice('日志读取失败', '读取 ' ~ selected_file ~ ' 时发生错误：' ~ read_error ~ '。请联系维护人员检查日志目录。', tone='error') }}
+    {% elif not file_exists %}
+      {{ ui.notice('日志文件尚未产生', selected_file ~ ' 不存在，可能程序尚未产生这类日志。', tone='info') }}
+    {% elif not entries and not total_before_filter %}
+      {{ ui.notice('暂无报错记录', '该日志当前没有内容，系统运行正常。', tone='success') }}
+    {% elif not entries %}
+      {{ ui.notice('没有匹配的条目', '当前筛选条件下没有命中的日志条目，请放宽级别或关键词。', tone='info') }}
+    {% else %}
+      <p class="aps-filter-note">共显示 {{ entries|length }} 条{% if entries|length != total_before_filter %}（筛选自最近 {{ total_before_filter }} 条）{% endif %}。</p>
+      <div class="aps-runtime-log-list">
+        {% for entry in entries %}
+          <details class="aps-runtime-log-entry" {% if loop.index <= 3 and entry.level == 'ERROR' %}open{% endif %}>
+            <summary>
+              <span class="badge {{ 'badge-danger' if entry.level == 'ERROR' else 'badge-warning' if entry.level == 'WARNING' else 'badge-secondary' }}">{{ entry.level }}</span>
+              <span class="aps-runtime-log-head">{{ entry.head }}</span>
+            </summary>
+            {% if entry.body %}
+              <pre class="aps-runtime-log-body">{{ entry.body }}</pre>
+            {% else %}
+              <p class="muted">（该条目只有一行）</p>
+            {% endif %}
+          </details>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

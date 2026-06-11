@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import re
+from datetime import datetime
 from typing import Any, List, Optional
 
 from flask import current_app, jsonify, render_template, request
@@ -315,6 +316,8 @@ def render_minimal_error_page(
     title_text = html.escape(str(title or "发生错误"))
     message_text = html.escape(str(message or "发生未知错误，请查看日志。"))
     details_text = _details_text(details)
+    # 发生时刻与日志时间戳同格式，供用户去运行日志页按时间对位定位条目
+    occurred_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     extra_parts = []
     if field_label:
         extra_parts.append(f"<p><strong>相关字段：</strong>{html.escape(str(field_label))}</p>")
@@ -341,7 +344,10 @@ def render_minimal_error_page(
         f"<h1>{title_text}</h1>"
         f"<p class=\"message\"><strong>提示：</strong>{message_text}</p>"
         f"{extra_html}"
-        "<p class=\"hint\">如果问题反复出现，请联系管理员查看运行日志。</p>"
+        f"<p class=\"hint\"><strong>发生时刻：</strong>{occurred_at}</p>"
+        # 本页渲染于「模板系统已坏」的兜底场景，url_for 可能同样不可靠——只给裸路径文本
+        "<p class=\"hint\">可访问 /system/runtime-logs 打开「运行日志」页，按上面的发生时刻查找报错详情；"
+        "如果问题反复出现，请联系管理员。</p>"
         "</main>"
         "</body>"
         "</html>"
@@ -363,6 +369,8 @@ def render_error_template(
         "message": message,
         "details": details,
         "field_label": field_label,
+        # 与日志时间戳同格式，供用户带着时刻去运行日志页对位条目
+        "occurred_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     try:
         return render_template(template_name, **context)

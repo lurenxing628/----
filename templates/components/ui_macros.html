@@ -402,13 +402,14 @@
 
 {#
   系统导航
-  active: backup | logs | history
+  active: backup | logs | history | runtime_logs
 #}
 {% macro system_nav(active='', size='sm', class='') %}
 <div class="scheduler-subnav scheduler-subnav-main {{ class }}">
   {{ link_button('备份/恢复', url_for('system.backup_page'), 'primary' if active == 'backup' else 'secondary', size) }}
   {{ link_button('操作日志', url_for('system.logs_page'), 'primary' if active == 'logs' else 'secondary', size) }}
   {{ link_button('排产历史', url_for('system.history_page'), 'primary' if active == 'history' else 'secondary', size) }}
+  {{ link_button('运行日志', url_for('system.runtime_logs_page'), 'primary' if active == 'runtime_logs' else 'secondary', size) }}
 </div>
 {% endmacro %}
 

@@ -71,6 +71,9 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/app_runtime/test_safe_next_url_hardening.py",
             "tests/app_runtime/test_safe_next_url_observability.py",
             "tests/web_pages/test_error_boundary_contract.py",
+            # 诊断包安全红线守卫（fusion-runtime-log-viewer）：本组是 web/routes/**、
+            # core/services/system/**、templates/system/** 的 owner，恰为该 feature 全部落点
+            "tests/web_pages/test_diagnostic_package_security.py",
             # F6（2026-06-10）：备份/恢复/物料 loud 契约旁证——本组 scope 覆盖 core/infrastructure、
             # web/routes/system_backup.py、data/**，故 backup() 完整性硬抛、restore 前快照失败区分、
             # 备份 web 入口中文化、物料 stock 坏值裸抛改动都会强制选中这些断言。

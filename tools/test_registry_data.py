@@ -224,6 +224,8 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/excel_data_io/test_excel_renamed_column_conflicts.py",
     "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py",
     "tests/web_pages/test_error_boundary_contract.py",
+    # 诊断包安全红线：zip 名单永不含 aps_secret_key.txt（fusion-runtime-log-viewer）
+    "tests/web_pages/test_diagnostic_package_security.py",
     "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
     "tests/app_runtime/test_ui_browser_geometry_env.py",
     "tests/app_runtime/test_ui_geometry_html_contract.py",
