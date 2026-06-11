@@ -4,48 +4,48 @@ created: 2026-06-12
 steps:
   - action: "步1 00-tokens.css 五段建档（语义层坍缩定版/壳层原名搬移/dark 纯 token/别名块语义色两组/头注释）+ base.html 链首 + style.css 删两 :root + ui_contract.css 删 :7-79 与 :2874-2944"
     exit_signal: "required 快测绿；浏览器目检壳/色/字体无破相；旧 :root 零残留 grep 实证"
-    status: pending
+    status: done
   - action: "步2 阈值单点（cards.py 公开 LOAD_*_RATIO + workbench.py import）+ 守卫 test_css_token_source_contract.py（定版色/暗色红线/裸 hex 冻结白名单/阈值单点断言）+ GUARD_TESTS+ui_layout 双登记 + ui_contract_component_tokens 锚迁移"
     exit_signal: "守卫绿（先红后绿验证白名单拦截）；test_long_gate_manifest 自洽；dashboard 测试零回归"
-    status: pending
+    status: done
   - action: "步3 焦点环全局规则（ui_contract.css 末尾 :focus-visible）+ 截图基线 A/B（对照 20260612_032724，亮暗两套）"
     exit_signal: "Tab 导航 focus ring 可见；A/B 变化仅限语义色组件清单；版面零漂移"
-    status: pending
+    status: done
   - action: "步4 required 门禁全绿 + 验收场景逐条核对"
     exit_signal: "required 0 失败；10 场景全过"
-    status: pending
+    status: done
 
 checks:
   - item: "五段齐全；语义层回退链坍缩为直接定版值；JS 运行时写入仅 --aps-bar-color 白名单"
     source: 决策1
-    status: pending
+    status: passed
   - item: "只动主色三 token；四件套不动（--ui-success-text 仍 #15803d）；暗色同吃变化 A/B 亮暗都翻"
     source: 决策2
-    status: pending
+    status: passed
   - item: "别名块只收语义色旧名两组；壳层名原名搬移不进别名块；--aps-bar-color/--aps-stack-gap/--aps-tone-* 零 diff"
     source: 决策3
-    status: pending
+    status: passed
   - item: "--space-1..7 新阶建档；--ui-space-1..6 旧阶原值保留不改"
     source: 决策4
-    status: pending
+    status: passed
   - item: "LOAD_WARNING_RATIO/LOAD_DANGER_RATIO 公开单点；workbench import 同对象；CSS 零改动"
     source: 决策5
-    status: pending
+    status: passed
   - item: "裸 hex 冻结白名单：3/4/6/8 位正则+状态机剥块注释；per-file 只降不升；先红后绿验证"
     source: 决策6
-    status: pending
+    status: passed
   - item: "ui_contract_component_tokens 锚迁移（非 required 事实纠偏，手跑确认）"
     source: 决策7
-    status: pending
+    status: passed
   - item: "全局 :focus-visible 在 ui_contract.css 末尾；compatibility.css 反向抑制保留"
     source: 决策8
-    status: pending
+    status: passed
   - item: "00-tokens.css 链首；static_versioning mtime 零配置生效"
     source: 决策9
-    status: pending
+    status: passed
   - item: "反向核对：gantt/calendar/frappe/dispatch/print css 零 diff；templates(除 base.html)/JS 零 diff；EXPECTED_PAGE_SIGNALS/language_polish 零 diff"
     source: 反向核对
-    status: pending
+    status: passed
   - item: "壳层旧名 computed-style 与改前一致（--font-family/--sidebar-width/--bg-color）"
     source: 验收5
-    status: pending
+    status: passed

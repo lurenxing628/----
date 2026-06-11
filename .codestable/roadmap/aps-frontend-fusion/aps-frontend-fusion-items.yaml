@@ -37,7 +37,7 @@ items:
   - slug: fusion-tokens-single-source
     description: 00-tokens.css 唯一真相源——语义色三值合一定版（success/danger/warning）、旧名 --aps-*/--primary-color 降别名块、负荷阈值常量收编单点
     depends_on: [fusion-dual-track-retirement, fusion-anchor-baseline-prep]
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
     notes: 契约见 roadmap 4.4；色值沿 slate 族内推导，不混入 antd 原生暖调状态色

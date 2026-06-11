@@ -272,7 +272,7 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 4. **fusion-frontend-gates** — 前端门禁三件套：500 行扩面（FRONTEND_SIZE_DIRS 接 architecture_oversize_scan_map）、check_css_compat.py 黑名单、token 漂移守卫（00-tokens.css 外禁裸 hex）。依赖：5（token 文件先存在才有守卫对象）。
 
 **模块 T**
-5. **fusion-tokens-single-source** — 00-tokens.css 唯一真相源 + 语义色三值合一定版 + 旧名降别名 + 负荷阈值常量收编单点。依赖：2（单壳单 CSS 链）、3（基线先行）。
+5. **fusion-tokens-single-source** ✅ done（2026-06-12，feature 2026-06-12-fusion-tokens-single-source，Codex 设计两轮+实现两轮审核收口；语义色三值合一为有意视觉变化已 A/B 留痕）— 00-tokens.css 唯一真相源 + 语义色三值合一定版 + 旧名降别名 + 负荷阈值常量收编单点。依赖：2（单壳单 CSS 链）、3（基线先行）。
 6. **fusion-hex-migration** — 383 处裸 hex 机械替换（映射表逐处人工标注后进脚本，分批 + 逐批截图 A/B）+ 暗色 183 条覆盖收敛为 token 换肤 + JS 色源（gantt_color/gantt_legend）改 getComputedStyle 读 token。依赖：5。
 7. **fusion-css-layer-split** — @layer 分层拆库六层多文件各<500 行 + 页面私有样式迁 40-page-* + computed-style diff 验证。依赖：6（先收口 hex 再拆层，避免拆层引起的级联变化污染 383 处替换的 A/B 截图基线）。
 
