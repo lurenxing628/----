@@ -61,7 +61,7 @@ items:
   - slug: fusion-label-single-source
     description: 词表收编——11 处模板内联 strategy/status 中文字典收编到 viewmodel 层唯一字源，三套 status 口径拍板归一并清理 'ok2' 死键，cs-semantic-radar 立概念身份证
     depends_on: [fusion-dual-track-retirement]
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
     notes: 依赖双轨退役后镜像消失，收编点从 11 处减半；全量清单在 drafts 的 context-nav 域

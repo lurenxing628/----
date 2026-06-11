@@ -1,0 +1,45 @@
+feature: 2026-06-12-fusion-label-single-source
+created: 2026-06-12
+
+steps:
+  - action: "步1 真源修订：result_state 删 ok2+公开派生函数；analysis_overview/guardrail 改 import 派生；未知态文案统一"
+    exit_signal: "相关测试绿；派生字典 5 键无别名"
+    status: done
+  - action: "步2 行级收编：dashboard（to_dict）+reports index 两裸点补喂；9 模板删 12 set 块改 decorated 字段"
+    exit_signal: "真渲染五类页标签正常；别名归一实证；既有页面测试绿"
+    status: done
+  - action: "步3 守卫与身份证：回潮守卫先红后绿+双登记；registry 2 条+概念卡 2 md+check 对账段+快照 2 json"
+    exit_signal: "check_concept_registry ✅；.venv-semantic 15 passed；manifest 自洽"
+    status: done
+  - action: "步4 required 门禁全绿"
+    exit_signal: "daily gate passed；大面回归 1466 passed"
+    status: done
+
+checks:
+  - item: "真源口径 C：别名归一（ok/fail）不进展示字典；simulated 复合标签保留"
+    source: 决策1
+    status: passed
+  - item: "行级标签收编；不注入 Jinja 全局词表"
+    source: 决策2
+    status: passed
+  - item: "两裸点补喂：dashboard to_dict 后 decorate；reports index versions 过 decorate；time_display 路径不动"
+    source: 决策3
+    status: passed
+  - item: "ok2 全删：3 Python 定义点+9 模板+2 夹具；残值走 unknown 诚实降级"
+    source: 决策4
+    status: passed
+  - item: "两份手写字典改派生；未知态统一「有问题，需检查」空值「未记录」"
+    source: 决策5
+    status: passed
+  - item: "身份证两张：result_status 别名政策；strategy allowed/display_compat 两层"
+    source: 决策6
+    status: passed
+  - item: "回潮守卫 4 断言（含 {%- 形态与未知值直锁）双登记"
+    source: 决策7
+    status: passed
+  - item: "v2_strategy_zh docstring 更新"
+    source: 决策8
+    status: passed
+  - item: "反向核对：实体状态模板/config_field_spec/sort_strategies/mode 子表零 diff；词表中文值零变化"
+    source: 反向核对
+    status: passed

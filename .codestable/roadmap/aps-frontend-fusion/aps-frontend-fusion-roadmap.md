@@ -277,7 +277,7 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 7. **fusion-css-layer-split** — @layer 分层拆库六层多文件各<500 行 + 页面私有样式迁 40-page-* + computed-style diff 验证。依赖：6（先收口 hex 再拆层，避免拆层引起的级联变化污染 383 处替换的 A/B 截图基线）。
 
 **模块 C**
-8. **fusion-label-single-source** — 词表收编：11 处内联 strategy/status 字典收编唯一字源 + 三套 status 口径拍板 + 'ok2' 死键清理 + cs-semantic-radar 概念身份证。依赖：2（删镜像后只剩单树，工作量减半）。
+8. **fusion-label-single-source** ✅ done（2026-06-12，feature 2026-06-12-fusion-label-single-source，Codex 设计两轮+实现一轮审核收口；ok2 死键全删走 unknown 诚实降级）— 词表收编：11 处内联 strategy/status 字典收编唯一字源 + 三套 status 口径拍板 + 'ok2' 死键清理 + cs-semantic-radar 概念身份证。依赖：2（删镜像后只剩单树，工作量减半）。
 9. **fusion-plan-context-capsule** — 计划上下文胶囊：扩 build_workbench_plan_context 合同（4.2）+ 5 发布点喂参 + 胶囊宏挂壳层 header + 版本号全站单点化。依赖：8（词表先单源）。
 10. **fusion-nav-specs-unify** — 导航 specs 化：侧栏五段「做事路线」分组 + module_subnav 统一五个手写宏 + aria-current 全站 + 焦点环上岗。依赖：2、9（胶囊与侧栏同壳层，先胶囊后重排）。
 11. **fusion-handrolled-links-adoption** — 手拼链接收编：history.html 5 链接、analysis _version_picker 2 链接入 WorkbenchLink；TARGET_PAGE_PATHS 扩 history/batch_detail 两目标（动公共枚举，独立拍板）。依赖：无。
