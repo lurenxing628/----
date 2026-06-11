@@ -203,12 +203,12 @@ items:
     notes: 在真实改造落地后用真实数据集校准，避免凭空定阈值
 
   - slug: fusion-mirror-sync-guard
-    description: 镜像逐字节同步守卫测试——6 个镜像模板与 style.css/scheduler_manual.md 双份全等断言，挂 LIVE 门禁，双轨拆除前的临时保险
+    description: 镜像逐字节同步守卫测试——6 个镜像模板与 scheduler_manual.md 双份全等断言，挂 LIVE 门禁，双轨拆除前的临时保险
     depends_on: []
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: 2026-06-11 用户拍板从急救包单拎，使第 2 条只等守卫不被其余三件牵制；第 2 条完成后本守卫随镜像树一并退役
+    notes: 2026-06-11 用户拍板从急救包单拎，使第 2 条只等守卫不被其余三件牵制；第 2 条完成后本守卫随镜像树一并退役。已落地（快速通道无 feature 目录）：tests/gate_meta/test_v1_v2_mirror_sync_guard.py 7 对参数化全等断言，登记 QUALITY_GATE_GUARD_TESTS（required 实证在集）+ ui_layout_presenters_system 组；红绿反证过（人为破坏镜像转红）
 
   - slug: fusion-gantt-controls-rework
     description: 甘特控件重排（UX）——解码条取代折叠图例（色样 chips 点击即筛选）、控件三层化（上下文面包屑/zoom 步进/筛选收纳）、宽屏禁浮层弹窗单一点击反应

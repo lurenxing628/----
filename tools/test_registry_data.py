@@ -27,6 +27,7 @@ QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
 
 QUALITY_GATE_GUARD_TESTS = (
     "tests/gate_meta/test_no_residual_main_style_regression.py",
+    "tests/gate_meta/test_v1_v2_mirror_sync_guard.py",
     "tests/gate_meta/test_sp05_path_topology_contract.py",
     "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
     "tests/schedule/route_view/test_scheduler_route_registration_contract.py",

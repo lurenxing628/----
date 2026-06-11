@@ -199,6 +199,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/gate_meta/test_scan_py38plus_syntax.py",
             "tests/gate_meta/test_architecture_fitness.py",
             "tests/web_pages/test_workbench_nav_entry_contract.py",
+            "tests/gate_meta/test_v1_v2_mirror_sync_guard.py",
         ),
         "input_file_scopes": (
             "tests/app_runtime/ui_geometry_contract_data.py",

@@ -300,7 +300,7 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 25. **fusion-performance-budget** — 性能预算守卫：首页/甘特/报表 index 基线数据集首屏预算 + 计时探针 + 超预算显式说明；报表 KPI 的 1→4 次计划行扫描实测定去留。依赖：17、15、19（在真实改造后定预算）。
 
 **追加条目（2026-06-11 用户拍板拆分，编号顺延）**
-26. **fusion-mirror-sync-guard**（模块 S）— 镜像逐字节同步守卫测试：6 个镜像模板与 style.css/scheduler_manual.md 双份全等断言，挂 LIVE 门禁，双轨拆除前的临时保险（第 2 条完成后随镜像树一并退役）。依赖：无。
+26. **fusion-mirror-sync-guard**（模块 S）✅ done（2026-06-11，快速通道直落）— 镜像逐字节同步守卫测试：tests/gate_meta/test_v1_v2_mirror_sync_guard.py，6 个镜像模板 + scheduler_manual.md 双份共 7 对参数化全等断言（核证修正：style.css 只存在于 V2 树不是镜像对），登记 QUALITY_GATE_GUARD_TESTS 挂 required 门禁 + ui_layout_presenters_system impact 组；红绿反证自证有效。第 2 条完成后随镜像树一并退役。依赖：无。
 27. **fusion-gantt-controls-rework**（模块 W）— 甘特控件重排（UX，需截图基线评审验收）：解码条取代折叠图例（色样 chips 点击即筛选）+ 控件三层化（上下文面包屑/zoom 步进/筛选收纳）+ 宽屏禁浮层弹窗单一点击反应。依赖：12（软依赖：同区施工）。
 
 **追加条目（2026-06-11 视觉定稿后补充）**
