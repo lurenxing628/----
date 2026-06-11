@@ -128,9 +128,8 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 
 - `core/`：核心领域、算法、基础设施、服务与插件运行框架。
 - `data/`：数据访问层。
-- `web/`：Flask 启动、路由、页面装配、界面模式与 viewmodel。
-- `templates/`、`static/`：经典页面模板与本地静态资源。
-- `web_new_test/templates/`：现代界面模板覆盖层。
+- `web/`：Flask 启动、路由、页面装配与 viewmodel。
+- `templates/`、`static/`：页面模板与本地静态资源。
 - `templates_excel/`：交付 Excel 模板。
 - `plugins/`：自研插件目录，当前插件默认关闭。
 - `tests/`：自动化测试；新增 `main()` 风格专项回归优先落到 `tests/regression/`。

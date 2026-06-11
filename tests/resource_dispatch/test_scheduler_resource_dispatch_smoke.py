@@ -23,13 +23,6 @@ def _assert_status(resp, name: str, expect: int = 200) -> None:
         raise AssertionError(f"{name} 返回 {resp.status_code}，期望 {expect}，body={body[:800]}")
 
 
-def _set_ui_mode_cookie(client, mode: str) -> None:
-    try:
-        client.set_cookie("aps_ui_mode", mode, domain="localhost")
-    except TypeError:
-        client.set_cookie("localhost", "aps_ui_mode", mode)
-
-
 def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_path, monkeypatch) -> None:
     repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:
@@ -105,17 +98,10 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
     app = app_mod.create_app()
     client = app.test_client()
 
-    _set_ui_mode_cookie(client, "v1")
-    resp_dashboard_v1 = client.get("/")
-    _assert_status(resp_dashboard_v1, "GET / (v1)")
-    html_dashboard_v1 = resp_dashboard_v1.data.decode("utf-8")
-    assert "资源排班" in html_dashboard_v1
-
-    _set_ui_mode_cookie(client, "v2")
-    resp_dashboard_v2 = client.get("/")
-    _assert_status(resp_dashboard_v2, "GET / (v2)")
-    html_dashboard_v2 = resp_dashboard_v2.data.decode("utf-8")
-    assert "资源排班" in html_dashboard_v2
+    resp_dashboard = client.get("/")
+    _assert_status(resp_dashboard, "GET /")
+    html_dashboard = resp_dashboard.data.decode("utf-8")
+    assert "资源排班" in html_dashboard
 
     default_query = "period_preset=week&query_date=2026-03-02&version=1"
 

@@ -299,7 +299,7 @@ def test_scheduler_config_page_shows_summary_and_inline_warnings_for_multiple_de
     _set_schedule_config_raw(db_path, "objective", " BAD_OBJECTIVE ")
     _set_schedule_config_raw(db_path, "dispatch_mode", " BAD_MODE ")
 
-    resp = client.get("/scheduler/config", headers={"Cookie": "aps_ui_mode=v2"})
+    resp = client.get("/scheduler/config")
     body = resp.get_data(as_text=True)
 
     assert resp.status_code == 200
@@ -347,22 +347,16 @@ def test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config(
     assert missing_after == 0
 
 
-def test_scheduler_config_page_renders_auto_assign_persist_visibility_in_v1_and_v2(tmp_path, monkeypatch) -> None:
+def test_scheduler_config_page_renders_auto_assign_persist_visibility(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
     _set_schedule_config_raw(db_path, "auto_assign_persist", "no")
 
-    resp_v1 = client.get("/scheduler/config", headers={"Cookie": "aps_ui_mode=v1"})
-    body_v1 = resp_v1.get_data(as_text=True)
-    assert resp_v1.status_code == 200
-    assert "保存系统补齐的设备和人员" in body_v1
-    assert "已关闭" in body_v1
-
-    resp_v2 = client.get("/scheduler/config", headers={"Cookie": "aps_ui_mode=v2"})
-    body_v2 = resp_v2.get_data(as_text=True)
-    assert resp_v2.status_code == 200
-    assert "保存系统补齐的设备和人员" in body_v2
-    assert "已关闭" in body_v2
+    resp = client.get("/scheduler/config")
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert "保存系统补齐的设备和人员" in body
+    assert "已关闭" in body
 
 
 def test_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain(tmp_path, monkeypatch) -> None:
