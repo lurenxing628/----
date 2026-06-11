@@ -199,6 +199,8 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/web_pages/test_print_css_contract.py",
             # 设计令牌真相源契约（fusion-tokens-single-source）：改任何 CSS 触发裸 hex 冻结白名单
             "tests/web_pages/test_css_token_source_contract.py",
+            # 排产词表唯一字源契约（fusion-label-single-source）：本组 owner templates/**
+            "tests/web_pages/test_label_single_source_contract.py",
         ),
         "input_file_scopes": (
             "tests/app_runtime/ui_geometry_contract_data.py",

@@ -34,6 +34,18 @@ def test_plan_role_labels_snapshot():
     assert_json_snapshot(dict(pr.PLAN_ROLE_LABELS), str(_SNAP / "plan_role_labels.json"))
 
 
+def test_result_status_labels_snapshot():
+    from web.viewmodels.scheduler_summary_result_state import result_status_display_labels
+
+    assert_json_snapshot(result_status_display_labels(), str(_SNAP / "result_status_labels.json"))
+
+
+def test_strategy_labels_snapshot():
+    from web.viewmodels.scheduler_history_summary import _STRATEGY_LABELS
+
+    assert_json_snapshot(dict(_STRATEGY_LABELS), str(_SNAP / "strategy_labels.json"))
+
+
 def test_graph_config_defaults_snapshot():
     actual = {}
     for key in _GRAPH_KEYS:

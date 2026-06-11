@@ -2,7 +2,6 @@
 {% import "components/ui_macros.html" as ui with context %}
 {% import "components/reports_nav_macros.html" as reports_ui with context %}
 {% block content %}
-  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {{ ui.aps_page_hero(
     '报表 - 计划和现场实际',
     '把正式计划里的开始结束时间和现场反馈的实际结果放在一起，方便核对开工、完工、暂停和异常影响。',
@@ -19,7 +18,7 @@
           <select name="version">
             {% for it in versions %}
               <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
-                {{ ui.version_option_label(it, status_zh.get(it.result_status, '结果状态未知')) }}
+                {{ ui.version_option_label(it) }}
               </option>
             {% endfor %}
           </select>

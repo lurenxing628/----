@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
-  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {% set current_plan_label = plan_resolution.user_label if plan_resolution else '正式采用方案' %}
   {% if plan_resolution and plan_resolution.is_scenario_preview %}
     {% set current_plan_label = plan_resolution.scenario_display_name or plan_resolution.scenario_name or '模拟预览（未命名）' %}
@@ -50,7 +49,7 @@
           <select name="version" class="w-140" data-report-plan-version-select data-initial-version="{{ version or '' }}">
             {% for v in versions %}
               <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
-                {{ ui.version_option_label(v, v.result_status_label or status_zh.get(v.result_status, '结果状态未知')) }}
+                {{ ui.version_option_label(v) }}
               </option>
             {% endfor %}
           </select>
@@ -109,7 +108,7 @@
         {{ ui.summary_item('版本', 'v' ~ selected_history.version) }}
         {{ ui.summary_item('时间', selected_history.schedule_time_display or ('时间记录异常' if selected_history.schedule_time else '-')) }}
         {{ ui.summary_item('排产方式', selected_history.strategy_label or '历史记录异常') }}
-        {{ ui.summary_item('结果', selected_summary_display.result_status_label or status_zh.get(selected_history.result_status, '结果状态未知')) }}
+        {{ ui.summary_item('结果', selected_summary_display.result_status_label) }}
       </div>
       {% if selected_summary_display.summary_parse_state.parse_failed %}
         <div class="flash-card flash-warning mt-2">

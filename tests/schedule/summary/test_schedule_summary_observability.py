@@ -164,7 +164,10 @@ def test_dashboard_accepts_preparsed_result_summary_dict(tmp_path, monkeypatch) 
             self.op_logger = op_logger
 
         def list_recent(self, limit=1):
-            return [SimpleNamespace(version=9, result_summary=summary)]
+            # 桩贴真实契约：query service 返回 ScheduleHistory（dashboard 会 to_dict 后 decorate）
+            from core.models.schedule_history import ScheduleHistory
+
+            return [ScheduleHistory(id=9, version=9, result_summary=summary)]
 
     monkeypatch.setattr(request_services_mod, "BatchService", _StubBatchService)
     monkeypatch.setattr(request_services_mod, "ScheduleHistoryQueryService", _StubHistoryService)

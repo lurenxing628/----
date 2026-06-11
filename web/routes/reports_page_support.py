@@ -136,7 +136,7 @@ def _checked_report_value(factory: Any) -> Any:
 
 
 def reports_index_context(engine: ReportEngine, services) -> Dict[str, Any]:
-    versions = engine.list_versions(limit=1)
+    versions = decorate_history_version_options(engine.list_versions(limit=1))
     has_history = bool(versions)
     latest_version = versions[0] if has_history else None
     report_context = build_report_context(back_to=_request_text("back_to"))

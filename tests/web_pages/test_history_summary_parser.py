@@ -132,6 +132,8 @@ def test_history_time_display_uses_chinese_business_format() -> None:
 
 
 def test_decorate_history_version_options_keeps_legacy_status_aliases() -> None:
+    # ok/fail 是输入别名（老库兼容）；ok2 已删——死键（写入方零证据，
+    # fusion-label-single-source 拍板），走 unknown 诚实降级不再错标成功
     decorated = decorate_history_version_options(
         [
             {"version": 4, "strategy": "priority_first", "result_status": "ok", "result_summary": "{}"},
@@ -142,8 +144,8 @@ def test_decorate_history_version_options_keeps_legacy_status_aliases() -> None:
 
     assert decorated[0]["result_status_label"] == "成功"
     assert decorated[0]["version_option_label"] == "v4 · 成功"
-    assert decorated[1]["result_status_label"] == "成功"
-    assert decorated[1]["version_option_label"] == "v5 · 成功"
+    assert decorated[1]["result_status_label"] == "有问题，需检查"
+    assert decorated[1]["version_option_label"] == "v5 · 有问题，需检查"
     assert decorated[2]["result_status_label"] == "失败"
     assert decorated[2]["version_option_label"] == "v6 · 失败"
 

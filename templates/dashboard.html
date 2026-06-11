@@ -123,20 +123,10 @@
   <div class="card">
     <h3>当前查看排产</h3>
     {% if latest_history %}
-      {% set strategy_zh = {
-          'priority_first': '优先级优先',
-          'due_date_first': '交期优先',
-          'weighted': '综合优先级和交期',
-          'fifo': '先进先出',
-          'improve': '优化排产',
-          'greedy': '快速排产',
-          'manual': '手动排产'
-        } %}
-      {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
       <div class="aps-summary-grid">
         {{ ui.summary_item('时间', latest_history_time_display) }}
-        {{ ui.summary_item('方式', strategy_zh.get(latest_history.strategy, '未知排产方式')) }}
-        {{ ui.summary_item('结果', status_zh.get(latest_history.result_status, '结果状态未知')) }}
+        {{ ui.summary_item('方式', latest_history.strategy_label) }}
+        {{ ui.summary_item('结果', latest_history.result_status_label) }}
       </div>
       {% set recent_metrics = workbench_summary.recent_metrics %}
       {% if recent_metrics.status == 'ok' %}

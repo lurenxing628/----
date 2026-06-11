@@ -1,5 +1,5 @@
 schema_version: 1
-updated_at: "2026-06-09"
+updated_at: "2026-06-12"
 # 概念身份证中心 —— 关键概念的“规范定义 + 行为合同 + 真理之源 + 禁止含义”。
 # 用途：LLM/人改这些概念前先读这里；工具(drift/property/snapshot)以此为基线判漂移。
 # 注意：source_of_truth 全部经真代码核验(2026-06-02, python3.14 import 通过)。
@@ -103,3 +103,64 @@ concepts:
     source_of_truth:
       - 开发文档/技术债务治理台账.md
       - tools/quality_gate_scan.py
+
+  - id: schedule_result_status
+    canonical_name: 排产结果状态
+    status: current
+    owner_area: scheduler_result_view
+    definition: >
+      排产历史(ScheduleHistory.result_status)的结果状态。展示词表唯一字源在
+      scheduler_summary_result_state；模板一律消费 decorate 行级标签
+      (result_status_label)，禁止内联中文字典(fusion-label-single-source 2026-06-12 收编)。
+    allowed_values:
+      success:   { user_label: 成功 }
+      partial:   { user_label: 部分成功 }
+      failed:    { user_label: 失败 }
+      simulated: { user_label: 模拟排产 }
+    input_aliases:
+      # 历史库可能存在的旧值，读取归一(resolve_result_status)，不进展示字典
+      ok: success
+      fail: failed
+    failure_policy:
+      unknown_value: 展示「有问题，需检查」(unknown 标签)——诚实降级不静默错标成功
+      ok2_dead_key: 已删除(写入方零证据：git log -S 零命中 + 枚举仅 4 值)；旧库残值走 unknown
+    canonical_resolver:
+      labels: web/viewmodels/scheduler_summary_result_state.py::result_status_display_labels
+      resolve: web/viewmodels/scheduler_summary_result_state.py::resolve_result_status
+      display: web/viewmodels/scheduler_summary_display.py::build_summary_display_state
+    source_of_truth:
+      - web/viewmodels/scheduler_summary_result_state.py
+      - core/services/scheduler/summary/schedule_summary_types.py   # ScheduleResultStatus 枚举
+    forbidden_meanings:
+      - "在模板内联 status_zh 中文字典(回潮守卫 test_label_single_source_contract.py)"
+      - "ok2 不是合法值，重新引入即漂移"
+      - "把别名 ok/fail 当平行展示键写进任何字典"
+
+  - id: schedule_strategy
+    canonical_name: 排产策略
+    status: current
+    owner_area: scheduler_result_view
+    definition: >
+      排产历史(ScheduleHistory.strategy)的策略字段。配置合法值只有 4 个
+      sort_strategy；历史行另存在 manual(甘特发布写入)与 improve/greedy
+      (algo_mode 混入的历史遗留)三个展示兼容值。
+    allowed_values:
+      # 与 config_field_spec sort_strategy choices 对账相等
+      priority_first: { user_label: 优先级优先 }
+      due_date_first: { user_label: 交期优先 }
+      weighted:       { user_label: 综合优先级和交期 }
+      fifo:           { user_label: 先进先出 }
+    display_compat_values:
+      # 历史展示兼容：合法值 ∪ 兼容值 = _STRATEGY_LABELS 7 键
+      manual:  { user_label: 手动排产, note: 仅由甘特调整发布写入，非用户可选配置 }
+      improve: { user_label: 优化排产, note: algo_mode 值混入 strategy 的历史遗留 }
+      greedy:  { user_label: 快速排产, note: 同上；瘦身归 cs-refactor(需老库考古) }
+    canonical_resolver:
+      labels: web/viewmodels/scheduler_history_summary.py::_STRATEGY_LABELS
+      config_choices: core/services/scheduler/config/config_field_spec.py::sort_strategy spec
+    source_of_truth:
+      - web/viewmodels/scheduler_history_summary.py
+      - core/services/scheduler/config/config_field_spec.py
+    forbidden_meanings:
+      - "improve/greedy 是 algo_mode 不是 sort_strategy 合法配置值"
+      - "在模板内联 strategy_zh 中文字典(回潮守卫同上)"

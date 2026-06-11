@@ -2,7 +2,6 @@
 {% import "components/ui_macros.html" as ui with context %}
 {% import "components/reports_nav_macros.html" as reports_ui with context %}
 {% block content %}
-  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {{ ui.aps_page_hero(
     '报表中心',
     '根据排产历史版本查看超期、资源负荷、计划和现场实际、停机影响；没有排产结果时页面会显示为空，也不会导出空 Excel。',
@@ -18,7 +17,7 @@
       <div class="stat-card type-info">
         <div class="stat-card-label">最新排产版本</div>
         <div class="stat-card-value">v{{ latest_version.version }}</div>
-        <div class="text-xs text-meta mt-1">{{ status_zh.get(latest_version.result_status, '结果状态未知') }}</div>
+        <div class="text-xs text-meta mt-1">{{ latest_version.result_status_label }}</div>
       </div>
     </div>
   {% endif %}

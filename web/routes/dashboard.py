@@ -12,7 +12,11 @@ from web.navigation_context import set_current_workbench_navigation_context
 from web.request_resource_context import request_report_resource_context
 from web.routes.history_summary_logging import log_history_summary_parse_warning
 from web.viewmodels.dashboard_workbench import build_dashboard_workbench_summary
-from web.viewmodels.scheduler_history_summary import format_public_datetime, parse_history_summary_state
+from web.viewmodels.scheduler_history_summary import (
+    decorate_history_version_options,
+    format_public_datetime,
+    parse_history_summary_state,
+)
 
 bp = Blueprint("dashboard", __name__)
 
@@ -347,7 +351,13 @@ def index():
         pending_count=pending_count,
         scheduled_count=scheduled_count,
         overdue_count=overdue_count,
-        latest_history=workbench_history,
+        # ScheduleHistory dataclass 先 to_dict 再 decorate（decorate 只吃 mapping）——
+        # 模板直取 result_status_label/strategy_label 行级标签（fusion-label-single-source）
+        latest_history=(
+            decorate_history_version_options([workbench_history.to_dict()])[0]
+            if workbench_history is not None
+            else None
+        ),
         latest_history_time_display=_workbench_history_time_display(workbench_history),
         latest_summary=latest_summary,
         workbench_summary=workbench_summary,

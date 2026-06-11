@@ -8,16 +8,6 @@
 {% endblock %}
 
 {% block content %}
-  {% set strategy_zh = {
-      'priority_first': '优先级优先',
-      'due_date_first': '交期优先',
-      'weighted': '综合优先级和交期',
-      'fifo': '先进先出',
-      'improve': '优化排产',
-      'greedy': '快速排产',
-      'manual': '手动排产'
-    } %}
-  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   <div
     id="rdPage"
     data-filters='{{ (client_filters if client_filters is defined else filters) | tojson }}'
@@ -142,7 +132,7 @@
           <select name="version" class="w-140" data-report-plan-version-select data-initial-version="{{ filters.version or '' }}">
             {% for v in versions %}
               <option value="{{ v.version }}" {% if v.version == filters.version %}selected{% endif %}>
-                {{ ui.version_option_label(v, status_zh.get(v.result_status, '结果状态未知')) }}
+                {{ ui.version_option_label(v) }}
               </option>
             {% endfor %}
           </select>
@@ -177,8 +167,8 @@
       <div class="aps-summary-grid aps-version-summary">
         {{ ui.summary_item('版本', 'v' ~ selected_version_row.item.version) }}
         {{ ui.summary_item('时间', selected_version_row.item.schedule_time_display or selected_version_row.item.schedule_time) }}
-        {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label or strategy_zh.get(selected_version_row.item.strategy, '未知排产方式')) }}
-        {{ ui.summary_item('结果', selected_version_row.item.result_status_label or status_zh.get(selected_version_row.item.result_status, '结果状态未知')) }}
+        {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label) }}
+        {{ ui.summary_item('结果', selected_version_row.item.result_status_label) }}
         {{ ui.summary_item('查看方案', filters.plan_view_label or ((filters.scenario_display_name or filters.scenario_name or '模拟预览（未命名）') if filters.is_scenario_preview else (filters.effective_plan_role_label or filters.plan_role_label))) }}
       </div>
     {% endif %}

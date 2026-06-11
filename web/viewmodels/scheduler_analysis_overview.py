@@ -2,27 +2,16 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from .scheduler_history_summary import _STRATEGY_LABELS
+from .scheduler_summary_result_state import result_status_display_labels
+
 
 def build_analysis_labels() -> Dict[str, Dict[str, str]]:
     return {
-        "strategy": {
-            "priority_first": "优先级优先",
-            "due_date_first": "交期优先",
-            "weighted": "综合优先级和交期",
-            "fifo": "先进先出",
-            "improve": "优化排产",
-            "greedy": "快速排产",
-            "manual": "手动排产",
-        },
-        "status": {
-            "success": "成功",
-            "partial": "部分成功",
-            "failed": "失败",
-            "simulated": "模拟排产",
-            "ok": "成功",
-            "fail": "失败",
-            "ok2": "成功",
-        },
+        # strategy/status 从唯一字源派生（fusion-label-single-source）——
+        # 别名（ok/fail）由 result_state 的 resolve 归一，不再当平行展示键
+        "strategy": dict(_STRATEGY_LABELS),
+        "status": result_status_display_labels(),
         "mode": {
             "improve": "优化模式",
             "greedy": "快速模式",

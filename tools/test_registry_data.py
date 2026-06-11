@@ -230,6 +230,8 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/web_pages/test_print_css_contract.py",
     # 设计令牌真相源：定版色/暗色红线/裸 hex 冻结白名单/阈值单点（fusion-tokens-single-source）
     "tests/web_pages/test_css_token_source_contract.py",
+    # 排产词表唯一字源：模板禁回潮内联字典/ok2 死键零现身（fusion-label-single-source）
+    "tests/web_pages/test_label_single_source_contract.py",
     "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
     "tests/app_runtime/test_ui_browser_geometry_env.py",
     "tests/app_runtime/test_ui_geometry_html_contract.py",

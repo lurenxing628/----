@@ -13,12 +13,28 @@ _RESULT_STATUS_LABELS = {
     "unknown": "有问题，需检查",
 }
 _COMPLETION_STATUS_VALUES = {"success", "partial", "failed", "unknown"}
+# ok/fail 是历史库可能存在的输入别名（读取归一，不进展示字典）；
+# ok2 已删——写入方零证据（git log -S 零命中 + ScheduleResultStatus 枚举仅 4 值，
+# fusion-label-single-source 拍板）：旧库若真有 ok2 行走 unknown 诚实降级。
 _LEGACY_RESULT_STATUS_ALIASES = {
     "ok": "success",
-    "ok2": "success",
     "fail": "failed",
 }
 _SUMMARY_COUNT_PARSE_FAILED_CODE = "summary_count_parse_failed"
+
+
+def result_status_display_labels() -> Dict[str, str]:
+    """展示字典（4 合法值 + unknown）——排产 result_status 词表唯一字源。
+
+    analysis_overview / guardrail_messages 从此派生，不再各自手写；
+    输入别名（ok/fail）只进 resolve 归一，不进展示字典。
+    """
+    return dict(_RESULT_STATUS_LABELS)
+
+
+def resolve_result_status(value: Any) -> str:
+    """归一 result_status 输入：别名（ok/fail）映射为合法值，其余小写原样返回。"""
+    return _normalize_result_status_value(value)
 
 
 def _has_summary_count_parse_marker(summary: Dict[str, Any]) -> bool:

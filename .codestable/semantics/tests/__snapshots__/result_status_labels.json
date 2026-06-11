@@ -1,0 +1,7 @@
+{
+  "failed": "失败",
+  "partial": "部分成功",
+  "simulated": "模拟排产",
+  "success": "成功",
+  "unknown": "有问题，需检查"
+}
