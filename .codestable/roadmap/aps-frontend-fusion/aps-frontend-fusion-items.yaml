@@ -13,7 +13,7 @@ items:
   - slug: fusion-dual-track-retirement
     description: 双轨裁决 ADR + 六步落地——删 render_bridge/ui_mode 五文件、35 路由 import 切回 flask、V2 base 转正搬家并修 title 常量化、system_ui_mode 下线、打包与门禁源同步、测试面整删 3 文件改 31 文件、台账两段式刷新
     depends_on: [fusion-mirror-sync-guard]
-    status: in-progress
+    status: done
     feature: 2026-06-11-fusion-dual-track-retirement
     minimal_loop: false
     notes: 裁决走 cs-decide 落 ADR（2026-06-11 用户已拍板留侧栏壳）；工作包细目与逐文件证据见 drafts/capability-mining.md 的 v2-shell-inventory 域；建议排在第 1 条之后执行（挂载即被转正继承）

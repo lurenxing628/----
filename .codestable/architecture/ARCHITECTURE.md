@@ -25,8 +25,7 @@ implements: []
 ## 2. 核心概念 / 术语表
 
 - APS：围绕批次、工序、设备、人员、日历、齐套约束和排产策略组织的智能排产系统。
-- 经典界面：`templates/` 与 `static/` 下的原有页面体系。
-- 现代界面：`web_new_test/templates/` 下的覆盖模板体系，通过界面模式切换逐步接管页面。
+- 界面：`templates/` 与 `static/` 下的统一侧栏布局页面体系（2026-06 双轨退役后唯一界面；历史上的经典/现代双轨与 `web_new_test/` 覆盖层已删除，决策见 compound ADR v2-sidebar-shell-promotion）。
 - Win7 交付边界：目标机不要求安装 Python，页面和静态资源随应用本地交付，依赖升级必须考虑 Python 3.8 与 Win7。
 
 ## 3. 子系统 / 模块索引
@@ -34,8 +33,7 @@ implements: []
 - `core/`：核心领域、算法、基础设施、服务与插件运行框架。
 - `data/`：数据访问层。
 - `web/`：Flask 启动、路由、页面装配、界面模式与 viewmodel。
-- `templates/`、`static/`：经典页面模板与本地静态资源。
-- `web_new_test/templates/`：现代界面模板覆盖层。
+- `templates/`、`static/`：页面模板与本地静态资源。
 - `templates_excel/`：交付 Excel 模板。
 - `plugins/`：自研插件目录，当前插件默认关闭。
 - `tests/`：自动化测试。
@@ -46,8 +44,8 @@ implements: []
 - 资源派工现场记录：资源派工页用户入口叫“现场记录”，支持单条填写实际情况、下载填写模板、导入实际情况 Excel；普通页面是一键导入，后台先整批检查，有错不写库并返回错误明细，无错才事务写入；route 拆在 `scheduler_resource_dispatch_execution_routes.py`，业务编排拆在 `resource_dispatch_actual_*` service 文件。页面把计划员查看排班和计划员代录现场事实分成两个区域；执行区 JS 按 context、cards、actual、import 和 coordinator 拆分，任务卡公开图号/物料、计划/实际时间偏差，执行流水把 `created_at/source_table` 转成中文记录时间和来源。
 - 重排执行事实快照：普通重排和甘特模拟方案发布在写新正式计划前，都会按同一批工序复算现场状态，现场状态变化时拒绝写入。
 - APS 工作台上下文链接合同：`web/viewmodels/scheduler_workbench_links.py` 统一封装工作台计划上下文、跨页链接、中文标签映射和现场写入地址护栏；`web/viewmodels/scheduler_workbench_link_query.py` 集中维护各目标页要带的版本、方案、日期、批次和资源参数矩阵；`core/services/scheduler/resource_dispatch_page_context.py` 装配资源派工页面的版本、方案身份、筛选条件和可查询状态等只读查询上下文；`web/routes/domains/scheduler/scheduler_resource_dispatch.py` 接线资源派工只读复盘入口和写入入口状态。第 1 阶段已用于排产分析候选方案跳转、周计划入口、资源派工现场记录写入口控制和现场记录二级接口公开身份脱敏，避免这些页面各自拼 URL 时丢版本、方案、日期、批次或资源对象，也避免把内部计划身份交给前端当作写入凭证。
-- 顶层计划工作台入口：两套壳都挂载 `ui.workbench_nav_menu()`——经典界面 `templates/base.html` 顶层导航最左侧、默认现代界面 `web_new_test/templates/base.html` 的 top-header 内（包 `<nav class="top-header-workbench">`，因菜单链接样式选择器要求 nav 祖先）；宏定义在 `templates/components/ui_macros.html`，样式在 `static/css/ui_contract.css`，V2 浅色/暗色 header 适配在 `web_new_test/static/css/style.css` 的「V1 收编区」。它用原生 `<details>/<summary>` 展开“计划工作台”快捷菜单，提供首页值班台、报表中心、排产分析、设备甘特图、人员甘特图、资源派工、计划和现场实际 7 个只读页面入口；不新增独立工作台页面，不依赖外部 JS/CSS，不输出现场记录写入、Excel 导入、模板下载或表单写入地址。门禁 `tests/web_pages/test_workbench_nav_entry_contract.py` 同时断言两套壳的挂载结构与默认（V2）真渲染。
-- 首页计划员值班台：经典首页 `templates/dashboard.html` 和现代镜像 `web_new_test/templates/dashboard.html` 由 `web/routes/dashboard.py` 读取最新排产、正式采用方案范围、今日计划任务和现场事实，再交给 `web/viewmodels/dashboard_workbench.py` 与 `web/viewmodels/dashboard_workbench_cards.py` 生成风险卡、今日待处理和快捷入口。「当前查看排产」卡的时间由路由侧 `format_public_datetime` 单点格式化为公开口径（坏值显示“时间记录异常”、缺失显示“-”），模板只消费 `latest_history_time_display`，不裸渲染 DB 的 `schedule_time`。首页值班台只展示实时生成的待处理，不保存已处理状态，不直接写现场记录，不新增数据库表，不改排产算法；所有跨页动作继续使用 `WorkbenchLink`，页面只显示中文计划身份和中文业务文案，内部字段只留在 URL、隐藏参数或服务端日志里。现场事实读取失败时，首页显示“现场情况暂时读不到”这类数据缺口提醒，不把读取失败误判成“现场情况待确认”。
+- 顶层计划工作台入口：唯一壳 `templates/base.html`（2026-06 双轨退役后的侧栏壳）top-header 内挂载 `ui.workbench_nav_menu()`（包 `<nav class="top-header-workbench">`，因菜单链接样式选择器要求 nav 祖先）；宏定义在 `templates/components/ui_macros.html`，样式在 `static/css/ui_contract.css`，浅色/暗色 header 适配在 `static/css/style.css` 的「V1 收编区」。它用原生 `<details>/<summary>` 展开“计划工作台”快捷菜单，提供首页值班台、报表中心、排产分析、设备甘特图、人员甘特图、资源派工、计划和现场实际 7 个只读页面入口；不新增独立工作台页面，不依赖外部 JS/CSS，不输出现场记录写入、Excel 导入、模板下载或表单写入地址。门禁 `tests/web_pages/test_workbench_nav_entry_contract.py` 断言挂载结构与默认真渲染。
+- 首页计划员值班台：首页 `templates/dashboard.html` 由 `web/routes/dashboard.py` 读取最新排产、正式采用方案范围、今日计划任务和现场事实，再交给 `web/viewmodels/dashboard_workbench.py` 与 `web/viewmodels/dashboard_workbench_cards.py` 生成风险卡、今日待处理和快捷入口。「当前查看排产」卡的时间由路由侧 `format_public_datetime` 单点格式化为公开口径（坏值显示“时间记录异常”、缺失显示“-”），模板只消费 `latest_history_time_display`，不裸渲染 DB 的 `schedule_time`。首页值班台只展示实时生成的待处理，不保存已处理状态，不直接写现场记录，不新增数据库表，不改排产算法；所有跨页动作继续使用 `WorkbenchLink`，页面只显示中文计划身份和中文业务文案，内部字段只留在 URL、隐藏参数或服务端日志里。现场事实读取失败时，首页显示“现场情况暂时读不到”这类数据缺口提醒，不把读取失败误判成“现场情况待确认”。
 - 排产分析行动入口：`web/routes/domains/scheduler/scheduler_analysis.py` 在候选方案链接绑定后调用 `web/viewmodels/scheduler_analysis_action_hub.py`，把已有推荐结论、代表方案摘要、诊断摘要和下一步入口整理成首屏行动区；`templates/scheduler/analysis_parts/_action_hub.html` 展示该行动区，`templates/scheduler/analysis.html` 的选中版本顺序为版本身份、行动区、告警、详细方案对比、完整诊断、指标、优化过程。行动区只复用已有 `candidate_comparison_display`、`diagnostic_sections` 和 `WorkbenchLink`，不重算候选方案、不改算法、不新增数据库，也不把候选方案变成可写现场记录入口。
 - 甘特任务详情区：`/scheduler/gantt/data` 由 `GanttService` 读取排程明细，并通过 `ExecutionFactProvider` 按 `op_id` 聚合现场执行事实；`core/services/scheduler/gantt_tasks.py` 输出公开任务标题、计划时间、现场实际小结、超期提示和资源/工序/图号字段；`web/viewmodels/scheduler_gantt_task_detail.py` 追加资源派工、计划和现场实际、超期清单链接；`static/js/gantt_render.js` 点击任务后刷新 `#ganttTaskDetail`，`static/js/gantt_popup.js` 继续维护旧弹窗和新详情区。详情区和旧弹窗只展示公开字段，关键链 edge 保留内部 `from/to` 做连线，同时用 `from_label/to_label` 给用户看，避免缺 `op_code` 时把 `op_<数字>` 露出来。
 - 报表工作台回跳：`/reports/`、超期、资源负荷、计划和现场实际、停机影响由 `web/viewmodels/scheduler_reports_workbench.py` 统一装配入口卡、页面级链接、行级动作和保守空状态，并继续复用 `WorkbenchLink` 保留版本、方案、计划身份、返回地址、日期、批次和资源上下文；排产主导航、报表顶部导航、报表筛选隐藏字段和全局计划工作台导航由 `web/viewmodels/scheduler_navigation_links.py` 统一从当前请求生成，模板不再手拼 URL，带上下文进入“首页值班台”也不会丢 plan_id 或 back_to。`ReportEngine`、`execution_review`、`schedule_plan_query_service` 和 `schedule_plan_query_repo` 承接底层过滤，页面和 Excel 导出共用同一批 `batch_id`、`resource_type`、`resource_id` 条件，并把资源负荷、停机影响和计划实际复盘的批次/资源条件下推到计划明细 SQL，避免只把 URL 做好看而数据没过滤。当前 `resource_type/resource_id` 主资源筛选只支持设备和人员，班组上下文进入首页值班台、排产分析、周计划和报表类目标时会禁用链接，不生成会跳 400 的 URL；资源派工继续使用 `scope_type/scope_id/team_id` 保留班组上下文；甘特图不携带班组筛选。排产分析、甘特和周计划通过 `scheduler_navigation_publish.py` 发布导航上下文时，会复制服务端方案身份护栏字段，并把报表行跳转带来的批次和资源范围继续发布给顶部导航，避免旧正式版本、对比方案、模拟预览误启用计划和现场实际入口，也避免用户从具体批次/资源跳转后再导航回全量范围。资源派工现场实际写入地址由 `scheduler_resource_dispatch_query.py` 按服务端归一化 filters 生成，前端不再用裸路径叠加地址栏原始查询串来补 `query_date` 等关键上下文。报表展示、执行复盘、延期诊断遇到坏数字时抛 `ValidationError`，导出行数和阈值额外拒绝负数和小数，不静默按 0 处理；计划和现场实际仍只复盘正式采用方案；停机影响第一版只做设备级说明和设备级回跳，不做任务级明细；内部追踪字段只留在请求参数或服务端内部，不进入页面正文、普通 HTML 属性、导出表头或公开 payload。

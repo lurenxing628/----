@@ -265,7 +265,7 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 
 **模块 S**
 1. **fusion-v2-quickwin-pack** ✅ done（2026-06-11，feature 2026-06-11-fusion-v2-quickwin-pack，提交 cd0c2c3e）— 默认界面急救包：V2 壳挂 workbench_nav_menu + 门禁断言扩 V2；base.css 孤儿 CSS 11 类并入 style.css（flash-warning 等 19 模板今天裸奔）；dashboard.html:137 raw 时间改 format_public_datetime（双树）。依赖：无。**最小闭环**。（镜像守卫已按拍板单拎为第 26 条。）
-2. **fusion-dual-track-retirement** — 双轨裁决 ADR（cs-decide，2026-06-11 用户已拍板留侧栏壳）+ 六工作包落地：删 render_bridge 等 5 文件、34 路由 import 切回 flask、V2 base 转正搬家（顺手修 title 常量化缺陷）、system_ui_mode 下线、打包 bat 与 tools 门禁源同步、测试面整删 2 文件改 16 文件、quality_gate_ledger 台账同步。依赖：26（镜像守卫是双轨拆除的真前置）；建议排在 1 之后执行（挂载即被转正继承）。
+2. **fusion-dual-track-retirement** ✅ done（2026-06-11，feature 2026-06-11-fusion-dual-track-retirement，提交 dab79ed2..91eb10cc 共 10 个）— 双轨裁决 ADR（cs-decide，2026-06-11 用户已拍板留侧栏壳）+ 六工作包落地：删 render_bridge 等 5 文件、34 路由 import 切回 flask、V2 base 转正搬家（顺手修 title 常量化缺陷）、system_ui_mode 下线、打包 bat 与 tools 门禁源同步、测试面整删 2 文件改 16 文件、quality_gate_ledger 台账同步。依赖：26（镜像守卫是双轨拆除的真前置）；建议排在 1 之后执行（挂载即被转正继承）。
 
 **模块 G**
 3. **fusion-anchor-baseline-prep** — 改版基线三件套：LIVE 文案/结构锚点爆点清单落档；亮/暗双主题截图基线（复用既有截图管线）；打印介质回归清单。依赖：无。
@@ -300,7 +300,7 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 25. **fusion-performance-budget** — 性能预算守卫：首页/甘特/报表 index 基线数据集首屏预算 + 计时探针 + 超预算显式说明；报表 KPI 的 1→4 次计划行扫描实测定去留。依赖：17、15、19（在真实改造后定预算）。
 
 **追加条目（2026-06-11 用户拍板拆分，编号顺延）**
-26. **fusion-mirror-sync-guard**（模块 S）✅ done（2026-06-11，快速通道直落）— 镜像逐字节同步守卫测试：tests/gate_meta/test_v1_v2_mirror_sync_guard.py，6 个镜像模板 + scheduler_manual.md 双份共 7 对参数化全等断言（核证修正：style.css 只存在于 V2 树不是镜像对），登记 QUALITY_GATE_GUARD_TESTS 挂 required 门禁 + ui_layout_presenters_system impact 组；红绿反证自证有效。第 2 条完成后随镜像树一并退役。依赖：无。
+26. **fusion-mirror-sync-guard**（模块 S）✅ done（2026-06-11，快速通道直落；**已随第 2 条完成按计划退役删除**）— 镜像逐字节同步守卫测试：tests/gate_meta/test_v1_v2_mirror_sync_guard.py，6 个镜像模板 + scheduler_manual.md 双份共 7 对参数化全等断言（核证修正：style.css 只存在于 V2 树不是镜像对），登记 QUALITY_GATE_GUARD_TESTS 挂 required 门禁 + ui_layout_presenters_system impact 组；红绿反证自证有效。第 2 条完成后随镜像树一并退役。依赖：无。
 27. **fusion-gantt-controls-rework**（模块 W）— 甘特控件重排（UX，需截图基线评审验收）：解码条取代折叠图例（色样 chips 点击即筛选）+ 控件三层化（上下文面包屑/zoom 步进/筛选收纳）+ 宽屏禁浮层弹窗单一点击反应。依赖：12（软依赖：同区施工）。
 
 **追加条目（2026-06-11 视觉定稿后补充）**
