@@ -10,7 +10,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 from urllib.request import Request, urlopen
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -66,7 +66,7 @@ def _normalize_base_url(base_url: str) -> str:
     return normalized or _DEFAULT_BASE_URL
 
 
-def _resolve_base_url(explicit_base_url: Optional[str], runtime_dir: Path = REPO_ROOT) -> tuple[str, str]:
+def _resolve_base_url(explicit_base_url: Optional[str], runtime_dir: Path = REPO_ROOT) -> Tuple[str, str]:
     if explicit_base_url and str(explicit_base_url).strip():
         return _normalize_base_url(str(explicit_base_url)), "explicit"
     endpoint = resolve_healthy_endpoint(str(runtime_dir))
