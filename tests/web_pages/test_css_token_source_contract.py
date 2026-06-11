@@ -56,10 +56,16 @@ def _count_bare_hex(css_path: Path) -> int:
 
 def test_tokens_file_declares_definitive_colors():
     css = _strip_comments((CSS_DIR / "00-tokens.css").read_text(encoding="utf-8"))
-    for decl in DEFINITIVE_COLORS:
-        assert decl in css, f"00-tokens.css 缺定版声明 {decl}"
-    for decl in COLLAPSED_VALUE_ANCHORS:
-        assert decl in css, f"00-tokens.css 坍缩值漂移：{decl}"
+    # 亮色态文本 = 去掉暗色块后的部分（锚守卫只对 light root 生效）
+    light_css = re.sub(r'html\[data-theme="dark"\]\s*\{.*?\}', "", css, flags=re.S)
+    for decl in DEFINITIVE_COLORS | COLLAPSED_VALUE_ANCHORS:
+        name = decl.split(":")[0]
+        declared = re.findall(rf"{re.escape(name)}\s*:[^;]+;", light_css)
+        # 同名声明必须唯一且逐字等于锚——后写第二个同名错误值也会被抓
+        assert len(declared) == 1, f"{name} 在 light root 应唯一声明（现 {declared}）"
+        assert declared[0].rstrip(";").replace(" :", ":") == decl, (
+            f"00-tokens.css 值漂移：{declared[0]} != {decl};"
+        )
 
 
 def test_tokens_dark_block_is_pure_token_reassignment():
