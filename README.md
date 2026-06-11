@@ -36,9 +36,9 @@ py -3.8 -m venv .venv
 
 实际访问地址不要写死端口，以启动后生成的 `logs/aps_host.txt` 与 `logs/aps_port.txt` 为准。
 
-### 界面模式
+### 界面
 
-系统保留经典界面与现代界面。界面模式可在系统内切换，并通过 Cookie 与 `SystemConfig.ui_mode` 保存。未迁移的页面会继续复用经典模板，已迁移页面会优先使用 `web_new_test/templates/` 下的覆盖模板。
+系统使用统一的侧栏布局界面（2026-06 双轨退役后唯一界面），模板在 `templates/` 下。
 
 ### 正式交付与直拷交付
 

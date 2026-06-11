@@ -7,7 +7,7 @@
       <div class="page-actions page-actions-context"></div>
     </div>
     <p class="aps-page-purpose">
-      <strong>本页用于：</strong>手动备份、恢复数据、清理旧备份，并切换现代/经典界面。
+      <strong>本页用于：</strong>手动备份、恢复数据、清理旧备份。
     </p>
     {{ ui.system_nav('backup') }}
     <details class="muted">
@@ -26,35 +26,6 @@
         {% endfor %}
       </ul>
     {% endif %}
-  </div>
-
-  <div class="card">
-    <h3>界面设置</h3>
-    <p class="text-meta aps-copy-measure">
-      日常使用默认进入现代界面。经典界面只作为兼容入口保留，适合维护人员排查旧页面问题时临时切换。
-    </p>
-    <form action="{{ url_for('system.ui_mode_set') }}" method="POST" class="aps-system-mode-form">
-      <input type="hidden" name="next" value="{{ request.full_path }}">
-      <div class="aps-system-mode-status">
-        当前界面：<strong>{{ '经典' if ui_mode == 'v1' else '现代' }}</strong>
-      </div>
-      <div class="aps-form-actions mt-2" role="group" aria-label="界面模式">
-        <button
-          type="submit"
-          name="mode"
-          value="v2"
-          class="btn btn-primary btn-md"
-          aria-pressed="{% if ui_mode == 'v2' %}true{% else %}false{% endif %}"
-        >使用现代界面</button>
-        <button
-          type="submit"
-          name="mode"
-          value="v1"
-          class="btn btn-secondary btn-md"
-          aria-pressed="{% if ui_mode == 'v1' %}true{% else %}false{% endif %}"
-        >切到经典界面</button>
-      </div>
-    </form>
   </div>
 
   <div class="card">
