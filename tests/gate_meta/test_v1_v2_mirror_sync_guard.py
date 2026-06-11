@@ -1,4 +1,4 @@
-"""镜像逐字节同步守卫：V1/V2 双模板树的 6 个镜像模板与 scheduler_manual.md 双份必须字节级相同。
+"""镜像逐字节同步守卫：V1/V2 双树的 6 个镜像模板、scheduler_manual.md 与 style.css 双份必须字节级相同。
 
 背景：默认 UI 是 V2 overlay 壳（web_new_test/），其中 6 个页面模板与 V1 同名文件靠人肉双写
 维持一致——任何一边单改即漂移，用户在两种界面会看到不同页面。本守卫是双轨拆除
@@ -7,8 +7,9 @@
 改了其中一边怎么办：把同一改动应用到另一边（双写），或确认该文件已不再是镜像后
 从下方清单移除并在 roadmap aps-frontend-fusion 留痕。
 
-不在清单的两个同名文件（有意排除，勿补）：base.html 是两套壳本体、故意不同
-（V1 顶栏壳引 base.css，V2 侧栏壳引 style.css）；style.css 只存在于 V2 树，无镜像对。
+不在清单的同名文件（有意排除，勿补）：base.html——双轨退役步 2 起两边都是 V2 侧栏壳，
+但 V1 侧静态链端点是 'static'、V2 overlay 侧是 'ui_v2_static.static'，一行有意差异。
+style.css 自步 2 cp 进 static/css/ 后形成临时双份，已入清单（第 8 对），步 4 随守卫整体退役。
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ _MIRROR_PAIRS = (
     ("templates/scheduler/config_manual.html", "web_new_test/templates/scheduler/config_manual.html"),
     ("templates/scheduler/gantt.html", "web_new_test/templates/scheduler/gantt.html"),
     ("static/docs/scheduler_manual.md", "web_new_test/static/docs/scheduler_manual.md"),
+    ("static/css/style.css", "web_new_test/static/css/style.css"),
 )
 
 
