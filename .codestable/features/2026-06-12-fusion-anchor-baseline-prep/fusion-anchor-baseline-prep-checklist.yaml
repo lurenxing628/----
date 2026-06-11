@@ -1,0 +1,48 @@
+feature: 2026-06-12-fusion-anchor-baseline-prep
+created: 2026-06-12
+
+steps:
+  - action: "步1 爆点清单：盘点六类高危锚写 drafts/anchor-baseline.md 第一节（每条含锚在哪/改它要动什么/缓存税 + 可重跑命令）+ 缓存税节（含 quickref 指纹说明）"
+    exit_signal: "六类锚齐全；可重跑命令逐条实跑通过（grep 有命中、pytest 可收集）"
+    status: pending
+  - action: "步2 打印：print.css 隐藏名单加 .sidebar + 回归清单（第三节）+ test_print_css_contract.py + ui_layout_presenters_system 组 target_paths 登记"
+    exit_signal: "print-to-pdf 前后对照实证侧栏消失；契约测试绿；test_long_gate_manifest 自洽绿"
+    status: pending
+  - action: "步3 截图基线：tests/ui_baseline_capture.mjs（CDP captureScreenshot+双 rAF 暗色等待）+ tests/_scripts_e2e/capture_ui_baseline.py（TemporaryDirectory+MonkeyPatch.context 适配 _build_app）"
+    exit_signal: "实跑产出 20 页×亮暗=40 张 PNG + index.md；抽查 dashboard 亮暗两张目检主题不同"
+    status: pending
+  - action: "步4 收尾：anchor-baseline.md 第二节（截图使用说明）+ 失败注入验证（单页失败不中断/退出码非 0）+ required 门禁全绿"
+    exit_signal: "三节齐全；门禁绿；output/ui_baseline 不可入库实证"
+    status: pending
+
+checks:
+  - item: "六类锚：dashboard 正则/EXPECTED_PAGE_SIGNALS/language_polish 28 文件面/全模板扫描 3 测试/manual 系 2 脚本/CDP 探针 JS 硬锚"
+    source: 决策1
+    status: pending
+  - item: "不另立机器锚源——清单是 EXPECTED_PAGE_SIGNALS 的导览 md，零 yaml 副本"
+    source: 决策2
+    status: pending
+  - item: "落档 drafts/anchor-baseline.md；缓存税自觉两条（debt-ledger-sync + quickref 指纹）写明"
+    source: 决策3
+    status: pending
+  - item: "截图走 CDP captureScreenshot 独立 mjs；browser_support 零 diff；暗色截图前 await 两帧 rAF"
+    source: 决策4
+    status: pending
+  - item: "产物落 output/ui_baseline/{时间戳}/，不入 git（gitignore+hook 双重纪律实证）；无像素 diff 代码"
+    source: 决策5
+    status: pending
+  - item: "print.css @media print 块内加 .sidebar；屏幕介质零回归；print-to-pdf 前后实证"
+    source: 决策6
+    status: pending
+  - item: "打印回归清单并入 anchor-baseline.md 第三节（必查项五条）"
+    source: 决策7
+    status: pending
+  - item: "挂载点5：test_print_css_contract.py 登记 ui_layout_presenters_system target_paths（不进 GUARD_TESTS）"
+    source: 挂载点
+    status: pending
+  - item: "截图脚本失败语义：单页失败继续余页+退出码非 0+失败清单可见"
+    source: 流程级约束
+    status: pending
+  - item: "反向核对：EXPECTED_PAGE_SIGNALS/language_polish/probe.mjs/browser_support.py 零 diff；CORE_BROWSER_SMOKE_PATHS 仍零消费方"
+    source: 反向核对
+    status: pending
