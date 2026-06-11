@@ -34,7 +34,7 @@
 
 ## 4. 术语一致性
 
-- 「双轨/UI 模式/经典界面/现代界面」生产代码与 LIVE 文档零残留（README、系统速查表、手册、page_manuals 全部单界面口径）；docs/ 三份历史评审报告按 design 白名单保留。
+- 「双轨/UI 模式/经典界面/现代界面」生产代码与 LIVE 文档零残留（系统速查表、手册、page_manuals 全部单界面口径；README 复审补刀 :34 「现代界面程序入口」改为兼容启动入口口径）；docs/ 三份历史评审报告按 design 白名单保留。
 - aps_ui_mode cookie 活代码零残留（Codex 审核抓出最后两处测试已修）。
 
 ## 5. 架构归并
@@ -63,4 +63,4 @@ design frontmatter `requirement` 为空，本 feature 为架构退役（删除�
 - UI_MODE_STARTUP_SCOPE_PATHS 等旧常量名（内容已收窄到 manual_src_security）——Codex 建议改名，裁决暂不动：名字被台账 JSON scope 字段与 gate 测试消费，纯命名重构动受控台账收益小于风险，归后续 cs-refactor。
 - V2 sidebar 打印可见缺陷（print.css 不认 .sidebar div）——存量缺陷，归 fusion-anchor-baseline-prep 打印介质回归清单。
 - style.css「V1 收编区」六个 --aps-* 临时变量与 ui_contract.css 暗色重定义——归 fusion-tokens-single-source。
-- 并行会话的 backup/restore 改动集（6 文件）仍在工作区未提交，归该会话自行收口；本 feature 曾误捎带其中 1 文件已撤回修正（2396e0b9+378c69c3）。
+- 并行会话的 backup/restore 改动集（6 文件）仍在工作区未提交，归该会话自行收口；本 feature 曾误捎带其中 1 文件已撤回修正（2396e0b9+378c69c3；相对基线除 import 行外另存注释/logger 文案两行差异——为与 HEAD 态测试断言配对的有意保留，flash 用户可见文案与测试逐字配对已验证）。

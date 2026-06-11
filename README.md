@@ -30,8 +30,8 @@ py -3.8 -m venv .venv
 
 常用启动入口：
 
-- `.venv\Scripts\python app.py`：默认界面程序入口；只有已经激活 `.venv` 后，才可以简写成 `python app.py`。
-- `.venv\Scripts\python app_new_ui.py`：现代界面程序入口；只有已经激活 `.venv` 后，才可以简写成 `python app_new_ui.py`。
+- `.venv\Scripts\python app.py`：程序入口；只有已经激活 `.venv` 后，才可以简写成 `python app.py`。
+- `.venv\Scripts\python app_new_ui.py`：兼容启动入口（旧命名保留，行为与 app.py 相同的运行模式轴）；只有已经激活 `.venv` 后，才可以简写成 `python app_new_ui.py`。
 - `start.bat` / `start_new_ui.bat`：仅适合已经确认当前命令行的 `python` 指向项目 `.venv` 时使用；否则请用上面两条 `.venv\Scripts\python ...` 命令。
 
 实际访问地址不要写死端口，以启动后生成的 `logs/aps_host.txt` 与 `logs/aps_port.txt` 为准。
