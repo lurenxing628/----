@@ -1,0 +1,72 @@
+feature: 2026-06-11-fusion-runtime-log-viewer
+created: 2026-06-11
+
+steps:
+  - action: "步1 读取层：core/services/system/runtime_log_reader.py 纯函数（字节层尾读+锚点切分+UTF-8 边界规则+256KB 截断+UNKNOWN 兜底）+ 边界单测 tests/web_pages/test_system_runtime_log_reader.py"
+    exit_signal: "边界单测全绿（跨块多字节/超长截断/坏字节 replace/无锚点/level UNKNOWN）"
+    status: pending
+  - action: "步2 页面：web/routes/system_runtime_logs.py 页面路由 + templates/system/runtime_logs.html + ui_macros.html system_nav 第 4 入口 + system.py side-effect import + 页面契约测试"
+    exit_signal: "浏览器三文件切换/筛选/空态可见；非白名单 file 回默认；页面契约测试绿"
+    status: pending
+  - action: "步3 诊断包：build_diagnostic_zip（临时文件流式压缩+决策 4' 生命周期）+ 下载端点 + 安全断言测试（播种假 secret 先红后绿）+ QUALITY_GATE_GUARD_TESTS 与 groups_misc target_paths 双登记"
+    exit_signal: "下载解包内容齐（log+分卷+launch_error+info+操作日志）；secret 永不进包测试绿；两条路径无残留临时文件"
+    status: pending
+  - action: "步4 接门：templates/error.html 两处加「打开运行日志」链接+发生时刻 + error_boundary.py:344 兜底裸路径文案+时刻 + 系统速查表登记两路由"
+    exit_signal: "500 页可点入运行日志含同格式时刻；check_quickref_vs_routes OK"
+    status: pending
+  - action: "步5 全量验证：required 门禁 + 真实服务浏览器截图目检"
+    exit_signal: "required 全绿；目检通过"
+    status: pending
+
+checks:
+  - item: "LOG_FILE_CHOICES 三文件白名单严格相等匹配，非白名单值显示「未知的日志文件」回默认，无路径拼接"
+    source: 决策1
+    status: pending
+  - item: "字节层先拼接后解码；锚点匹配用 bytes 正则；decode(utf-8, errors=replace)"
+    source: 决策2
+    status: pending
+  - item: "256KB 硬上限：超长条目头尾各半+截断标记；截断切点回退合法 UTF-8 边界；无锚点兜底同受上限"
+    source: 决策2
+    status: pending
+  - item: "zip 白名单三类：fnmatch *.log + 正则 ^.+\\.log\\.[0-9]+$ + 显式 aps_launch_error.txt；播种假 secret 断言永不进包；x.log.bak 不进包"
+    source: 决策4
+    status: pending
+  - item: "临时 zip 生命周期：mkstemp 后立即 os.close(fd)；下载成功走 response.call_on_close 清理；构包失败当场 finally 删；清理失败只 warning"
+    source: 决策4'
+    status: pending
+  - item: "diagnostic_info.txt 拼现有事实（APP_NAME/CURRENT_SCHEMA_VERSION/contract_version/sys.version/platform），不新立版本号"
+    source: 决策5
+    status: pending
+  - item: "操作日志 200 条附包；读取失败放说明文件不中断导出"
+    source: 决策6
+    status: pending
+  - item: "error.html 用 url_for+发生时刻；error_boundary 兜底只用裸路径文本+时刻不引 url_for；JSON payload 不动"
+    source: 决策7
+    status: pending
+  - item: "只读不删：无 POST 路由、无删除/清空按钮（grep 反向断言）"
+    source: 决策8
+    status: pending
+  - item: "挂载点1：system.py side-effect import"
+    source: 挂载点
+    status: pending
+  - item: "挂载点2：ui_macros.html system_nav 第 4 入口"
+    source: 挂载点
+    status: pending
+  - item: "挂载点3：error.html 两处 + error_boundary.py 兜底文案"
+    source: 挂载点
+    status: pending
+  - item: "挂载点4：系统速查表登记两条新路由（LIVE 门禁）"
+    source: 挂载点
+    status: pending
+  - item: "挂载点5+6：QUALITY_GATE_GUARD_TESTS + groups_misc target_paths 双登记，不新建组"
+    source: 挂载点
+    status: pending
+  - item: "导出动作写操作日志；导出失败 logger.error"
+    source: 流程级约束
+    status: pending
+  - item: "call_on_close 测试显式 resp.close() 后断言无残留"
+    source: 流程级约束
+    status: pending
+  - item: "reader 无无参 read()/readlines()；模板无 setInterval/websocket；logging.py 与 system_logs.py 零 diff"
+    source: 反向核对
+    status: pending

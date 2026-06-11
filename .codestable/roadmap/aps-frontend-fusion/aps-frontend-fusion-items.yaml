@@ -272,4 +272,4 @@ items:
     status: planned
     feature: null
     minimal_loop: false
-    notes: 模块 N（契约 4.11 共同约束）；2026-06-11 用户提出（现场报错翻文件夹、计划员无法自助反馈）；安全硬约束——诊断包只收 *.log 通配严禁打入同目录 aps_secret_key.txt；只读不写、不提供删除/清空（证据不许销毁，较操作日志页刻意收窄）；建议排最早批次（与 1/26/3 同批），是后续条目现场排障的眼睛；接线点 error_handlers.py:100-110、error_boundary.py:316/344、core/infrastructure/logging.py 只读消费
+    notes: 模块 N（契约 4.11 共同约束）；2026-06-11 用户提出（现场报错翻文件夹、计划员无法自助反馈）；安全硬约束——诊断包白名单制（*.log+分卷+显式列名 aps_launch_error.txt 例外，2026-06-11 拍板）严禁打入同目录 aps_secret_key.txt；只读不写、不提供删除/清空（证据不许销毁，较操作日志页刻意收窄）；建议排最早批次（与 1/26/3 同批），是后续条目现场排障的眼睛；接线点 error_handlers.py:100-110、error_boundary.py:316/344、core/infrastructure/logging.py 只读消费
