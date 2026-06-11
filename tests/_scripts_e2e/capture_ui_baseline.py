@@ -25,13 +25,14 @@ sys.path.insert(0, str(REPO_ROOT / "tests" / "app_runtime"))
 import pytest  # noqa: E402  （MonkeyPatch.context 适配 _build_app 的 fixture 签名）
 from ui_geometry_browser_support import _build_app, _serve_app, _shutdown_served_app  # noqa: E402
 from ui_geometry_contract_data import FULL_UI_CONTRACT_PATHS  # noqa: E402
-from ui_geometry_runtime_support import _find_chrome, _resolve_node_with_browser_runtime  # noqa: E402
+from ui_geometry_runtime_support import _resolve_chrome, _resolve_node_with_browser_runtime  # noqa: E402
 
 from tests._support.excel_templates import publish_shared_dir, reset_shared_dir  # noqa: E402
 
 
 def main() -> int:
-    chrome = _find_chrome()
+    # 纯探测函数（_find_* 系是 pytest fail/skip 语义，手跑工具不适用）
+    chrome = _resolve_chrome()
     if not chrome.exists:
         print(f"找不到 Chrome：{chrome.message}", file=sys.stderr)
         return 2

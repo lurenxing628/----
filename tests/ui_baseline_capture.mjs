@@ -109,7 +109,8 @@ async function captureOne(client, pagePath) {
 
 function waitForChromeExit(timeoutMs) {
   return new Promise((resolve) => {
-    if (chrome.exitCode !== null) return resolve(true);
+    // signal 结束的进程 exitCode 为 null、signalCode 才有值——两个都要看
+    if (chrome.exitCode !== null || chrome.signalCode !== null) return resolve(true);
     const timer = setTimeout(() => resolve(false), timeoutMs);
     chrome.once("exit", () => {
       clearTimeout(timer);
