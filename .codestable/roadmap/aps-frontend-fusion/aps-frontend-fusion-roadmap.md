@@ -268,7 +268,7 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 2. **fusion-dual-track-retirement** ✅ done（2026-06-11，feature 2026-06-11-fusion-dual-track-retirement，提交 dab79ed2..91eb10cc 共 10 个）— 双轨裁决 ADR（cs-decide，2026-06-11 用户已拍板留侧栏壳）+ 六工作包落地：删 render_bridge 等 5 文件、35 路由 import 切回 flask、V2 base 转正搬家（顺手修 title 常量化缺陷）、system_ui_mode 下线、打包 bat 与 tools 门禁源同步、测试面整删 2 文件改 16 文件、quality_gate_ledger 台账同步。依赖：26（镜像守卫是双轨拆除的真前置）；建议排在 1 之后执行（挂载即被转正继承）。
 
 **模块 G**
-3. **fusion-anchor-baseline-prep** — 改版基线三件套：LIVE 文案/结构锚点爆点清单落档；亮/暗双主题截图基线（复用既有截图管线）；打印介质回归清单。依赖：无。
+3. **fusion-anchor-baseline-prep** ✅ done（2026-06-12，feature 2026-06-12-fusion-anchor-baseline-prep，Codex 设计两轮+实现两轮审核零阻塞收口）— 改版基线三件套：LIVE 文案/结构锚点爆点清单落档；亮/暗双主题截图基线（复用既有截图管线）；打印介质回归清单。依赖：无。
 4. **fusion-frontend-gates** — 前端门禁三件套：500 行扩面（FRONTEND_SIZE_DIRS 接 architecture_oversize_scan_map）、check_css_compat.py 黑名单、token 漂移守卫（00-tokens.css 外禁裸 hex）。依赖：5（token 文件先存在才有守卫对象）。
 
 **模块 T**

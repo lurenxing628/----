@@ -21,7 +21,7 @@ items:
   - slug: fusion-anchor-baseline-prep
     description: 改版基线三件套——LIVE 文案/结构锚点爆点清单落档、亮/暗双主题截图基线管线、打印介质回归清单
     depends_on: []
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
     notes: 所有动模板的 feature 开工前先查本产物；test_dashboard_overdue_count_tolerance.py:15 正则锚等爆点已在挖掘中点名；CORE_BROWSER_SMOKE_PATHS 现零消费方，接快速浏览器档需先建接线点；文案变更建议攒批合入（language_polish 测试是门禁长缓存指纹源）
