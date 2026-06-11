@@ -1,0 +1,81 @@
+feature: 2026-06-11-fusion-dual-track-retirement
+created: 2026-06-11
+
+steps:
+  - action: "步1 V2 title 修复：base.html:8 title 块改读 title 变量（独立 commit，现网可见变化）"
+    exit_signal: "V2 渲染 gantt 页 <title> 含「甘特图」非常量；required 绿"
+    status: pending
+  - action: "步2 壳转正：V2 base.html 改造版（静态链改 static、保留探针 meta 与 nav 挂载）覆盖 templates/base.html + style.css cp 进 static/css/ + 双份对入镜像守卫（docstring/8 对文案同步）"
+    exit_signal: "V1 强制模式渲染出侧栏壳；镜像守卫 8 对绿；全量 required 绿"
+    status: pending
+  - action: "步3 切换入口下线：backup.html 界面设置卡+文案、page_manuals_system 3 处、manual.md 双份双写、README:41——路由本体暂留"
+    exit_signal: "GET /system/backup 无界面设置卡；镜像守卫 8 对绿"
+    status: pending
+  - action: "步4 原子退役：删 5 文件+system.py:23 注册行+web_new_test 整树+探针 meta+镜像守卫退役；install_template_globals 8 全局接 factory；35 路由+9 项非路由消费安置；_log_warning 先搬 manual_src_security；static_versioning/bat/tools 门禁源/registry 同步；台账两段式刷新（删样本→留 scope 一刷→删常量→二刷→gate scan）；几何探针双入口改壳结构+主题按钮判定；README:133"
+    exit_signal: "import app 不炸；20 锚点页 200；8 全局真渲染可用；POST /system/ui-mode 404；full gate 全净；grep 白名单零越界"
+    status: pending
+  - action: "步5 收尾：删 base.css+ui_contract.css legacy 注释段、verify_manual_styles/check_manual_layout 单模式化、pyrightconfig 死 exclude、3 处 ui_mode='v1' 死 kwarg"
+    exit_signal: "base.css 零引用零存在；两脚本单模式跑通；gate 绿"
+    status: pending
+
+checks:
+  - item: "install_template_globals 含恰好 8 个全局（与 render_bridge.py:68-80 一一对应无增无减），安装失败让启动失败不吞错"
+    source: 名词契约
+    status: pending
+  - item: "_log_warning 搬进 manual_src_security 后 ui_mode_request 才删（先搬后删顺序）"
+    source: 流程级约束
+    status: pending
+  - item: "台账两段式顺序执行（一刷在删 scope 常量之前）"
+    source: 流程级约束
+    status: pending
+  - item: "步 1-3 期间镜像守卫 LIVE，双份文件全部双写"
+    source: 流程级约束
+    status: pending
+  - item: "挂载点1：templates/base.html 被 V2 改造版覆盖"
+    source: 挂载点
+    status: pending
+  - item: "挂载点2：template_globals.py 新文件 + factory 调用点"
+    source: 挂载点
+    status: pending
+  - item: "挂载点3：static_versioning.py:22 删 ui_v2_static.static"
+    source: 挂载点
+    status: pending
+  - item: "挂载点4：bat 两处 add-data 删除"
+    source: 挂载点
+    status: pending
+  - item: "挂载点5：tools 7 文件门禁源条目退场"
+    source: 挂载点
+    status: pending
+  - item: "挂载点6：界面设置卡+路由删除"
+    source: 挂载点
+    status: pending
+  - item: "print.css 零 diff；error_base.html 零 diff；sidebar 不加 icons"
+    source: 范围守护
+    status: pending
+  - item: "APP_UI_MODE 轴（launcher）测试零 diff"
+    source: 范围守护
+    status: pending
+  - item: "manual_src_security 安全函数签名零变化"
+    source: 范围守护
+    status: pending
+  - item: "场景1：步1 后 V2 gantt <title> 含页名"
+    source: 验收场景
+    status: pending
+  - item: "场景2：步2 后 v1 强制渲染侧栏壳+required 绿"
+    source: 验收场景
+    status: pending
+  - item: "场景3：步3 后 backup 页无界面设置+守卫 8 对绿"
+    source: 验收场景
+    status: pending
+  - item: "场景4：步4 后 grep 白名单零越界+20 锚点 200+8 全局可用+ui-mode 404+import app 不炸"
+    source: 验收场景
+    status: pending
+  - item: "场景5：步4 后 full gate 全净+打包面无 web_new_test 残留"
+    source: 验收场景
+    status: pending
+  - item: "场景6：步5 后 base.css 零引用+脚本单模式"
+    source: 验收场景
+    status: pending
+  - item: "场景7：全程 V2 用户视觉零变化（title 除外）双截图比对"
+    source: 验收场景
+    status: pending
