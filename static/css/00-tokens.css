@@ -32,7 +32,8 @@
 
   --ui-radius: 6px;
   --ui-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --ui-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  /* 坍缩取旧运行时实际值（style.css --shadow-md 两层叠），非 ui_contract 的一层 fallback */
+  --ui-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
 
   --ui-surface: var(--ui-card-bg);
   --ui-surface-muted: #f8fafc;

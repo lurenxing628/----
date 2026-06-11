@@ -37,6 +37,13 @@ DEFINITIVE_COLORS = {
     "--ui-primary: #2563eb",
 }
 
+# 非颜色 token 坍缩值锚：回退链坍缩必须取旧运行时实际值（链首 style.css 的定义），
+# 不是 ui_contract 的 fallback 一层值——实现审核曾抓到 shadow-md 坍缩错
+COLLAPSED_VALUE_ANCHORS = {
+    "--ui-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+    "--ui-radius: 6px",
+}
+
 
 def _strip_comments(css: str) -> str:
     # 状态机不必：CSS 注释无嵌套，非贪婪整文件正则即等价剥离（含多行块注释）
@@ -51,6 +58,8 @@ def test_tokens_file_declares_definitive_colors():
     css = _strip_comments((CSS_DIR / "00-tokens.css").read_text(encoding="utf-8"))
     for decl in DEFINITIVE_COLORS:
         assert decl in css, f"00-tokens.css 缺定版声明 {decl}"
+    for decl in COLLAPSED_VALUE_ANCHORS:
+        assert decl in css, f"00-tokens.css 坍缩值漂移：{decl}"
 
 
 def test_tokens_dark_block_is_pure_token_reassignment():
