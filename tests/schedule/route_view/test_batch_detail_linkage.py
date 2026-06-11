@@ -15,7 +15,6 @@ def test_batch_detail_linkage(app_client) -> None:
 
     ctx: Dict[str, Any] = dict(
         title="regression",
-        ui_mode="v1",
         batch={
             "batch_id": "B_TEST",
             "part_no": "P1",

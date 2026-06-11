@@ -29,7 +29,6 @@
     "tools",
     "check_manual_layout.py",
     "quick_ui_check.py",
-    "test_ui_mode_switch.py",
     "ui_v1_v2_check.py",
     "validate_dist_exe.py",
     "verify_manual_styles.py",

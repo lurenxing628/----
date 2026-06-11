@@ -133,51 +133,23 @@ def check_layout_via_browser(base_url: str):
 
     test_cases = [
         {
-            "name": "Full 模式 - 经典界面",
+            "name": "Full 模式",
             "url": f"{base_url_s}/scheduler/config/manual",
-            "theme": "v1",
             "mode": "full",
         },
         {
-            "name": "Full 模式 - 现代界面",
-            "url": f"{base_url_s}/scheduler/config/manual",
-            "theme": "v2",
-            "mode": "full",
-        },
-        {
-            "name": "Page 模式 (materials) - 经典界面",
+            "name": "Page 模式 (materials)",
             "url": f"{base_url_s}/scheduler/config/manual?page=material.materials_page",
-            "theme": "v1",
             "mode": "page",
         },
         {
-            "name": "Page 模式 (materials) - 现代界面",
-            "url": f"{base_url_s}/scheduler/config/manual?page=material.materials_page",
-            "theme": "v2",
-            "mode": "page",
-        },
-        {
-            "name": "Page 模式 (config) - 经典界面",
+            "name": "Page 模式 (config)",
             "url": f"{base_url_s}/scheduler/config/manual?page=scheduler.config_page",
-            "theme": "v1",
             "mode": "page",
         },
         {
-            "name": "Page 模式 (config) - 现代界面",
-            "url": f"{base_url_s}/scheduler/config/manual?page=scheduler.config_page",
-            "theme": "v2",
-            "mode": "page",
-        },
-        {
-            "name": "Page 模式 (reports) - 经典界面",
+            "name": "Page 模式 (reports)",
             "url": f"{base_url_s}/scheduler/config/manual?page=reports.index",
-            "theme": "v1",
-            "mode": "page",
-        },
-        {
-            "name": "Page 模式 (reports) - 现代界面",
-            "url": f"{base_url_s}/scheduler/config/manual?page=reports.index",
-            "theme": "v2",
             "mode": "page",
         },
     ]
@@ -202,10 +174,6 @@ def check_layout_via_browser(base_url: str):
             print(f"  URL: {case['url']}")
 
             driver.get(case["url"])
-            time.sleep(1)
-
-            driver.add_cookie({"name": "aps_ui_mode", "value": case["theme"]})
-            driver.refresh()
             time.sleep(1)
 
             try:

@@ -216,7 +216,6 @@ def render_analysis_html(app, render_template, *, version: int, selected: Dict[s
         return render_template(
             "scheduler/analysis.html",
             title="regression",
-            ui_mode="v1",
             versions=[
                 {
                     "version": int(version),

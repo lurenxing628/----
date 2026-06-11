@@ -381,7 +381,7 @@ body {
   justify-content: center;
   min-width: 52px;
   height: 26px;
-  min-height: 26px; /* override base.css button min-height (v1) and v2 legacy submit styling */
+  min-height: 26px; /* override legacy button min-height and legacy submit styling */
   padding: 0 0.75rem;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -2934,7 +2934,7 @@ html[data-theme="dark"] {
   --ui-table-row-hover-bg: #1e293b;
   --ui-table-row-even-bg: #162032;
 
-  /* ---- Legacy V1 tokens used by base.css ---- */
+  /* ---- Legacy --aps-* tokens（暗色重定义；亮色定义在 style.css 收编区，待 00-tokens.css 单源化收编）---- */
   --aps-bg: #0f172a;
   --aps-card-bg: #1e293b;
   --aps-text: #f1f5f9;

@@ -19,7 +19,6 @@ def test_lazy_select_orphan_option(app_client, repo_root) -> None:
     # - 懒加载模板 tplMachineOptions/tplOperatorOptions 不包含该回退项
     ctx = dict(
         title="regression",
-        ui_mode="v1",
         batch={
             "batch_id": "B_TEST",
             "part_no": "P1",

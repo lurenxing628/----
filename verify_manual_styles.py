@@ -33,8 +33,6 @@ def _load_app(repo_root: Path):
     return app_mod.create_app()
 
 
-def _mode_headers(ui_mode: str) -> dict:
-    return {"Cookie": f"aps_ui_mode={ui_mode}"}
 
 
 def _build_url(app, endpoint: str, **values: Any) -> str:
@@ -98,22 +96,21 @@ def main() -> None:
         ("material.materials_page", "物料页"),
         ("scheduler.config_page", "高级设置页"),
     ]
-    for ui_mode in ("v1", "v2"):
-        print(f"\n=== HTML 结构检查（{ui_mode}）===\n")
-        for endpoint, label in page_cases:
-            page_url = _build_url(app, "scheduler.config_manual_page", page=endpoint)
-            resp = client.get(page_url, headers=_mode_headers(ui_mode))
-            text = resp.get_data(as_text=True)
-            _check(resp.status_code == 200, f"{label} 说明书页可访问（{ui_mode}）", failures)
-            if resp.status_code != 200:
-                continue
+    print("\n=== HTML 结构检查 ===\n")
+    for endpoint, label in page_cases:
+        page_url = _build_url(app, "scheduler.config_manual_page", page=endpoint)
+        resp = client.get(page_url)
+        text = resp.get_data(as_text=True)
+        _check(resp.status_code == 200, f"{label} 说明书页可访问", failures)
+        if resp.status_code != 200:
+            continue
 
-            _check("manual-main-column" in text, f"{label} 存在 manual-main-column（{ui_mode}）", failures)
-            _check("manual-related-panel" in text, f"{label} 存在 manual-related-panel（{ui_mode}）", failures)
-            _check("manual-related-body" in text, f"{label} 存在 manual-related-body（{ui_mode}）", failures)
-            _check('data-manual-markdown="' in text, f"{label} 存在 data-manual-markdown 占位（{ui_mode}）", failures)
-            _check("js/config_manual.js" in text, f"{label} 加载 config_manual.js（{ui_mode}）", failures)
-            _check("aps-config-manual-data" in text, f"{label} 存在 JSON 配置块（{ui_mode}）", failures)
+        _check("manual-main-column" in text, f"{label} 存在 manual-main-column", failures)
+        _check("manual-related-panel" in text, f"{label} 存在 manual-related-panel", failures)
+        _check("manual-related-body" in text, f"{label} 存在 manual-related-body", failures)
+        _check('data-manual-markdown="' in text, f"{label} 存在 data-manual-markdown 占位", failures)
+        _check("js/config_manual.js" in text, f"{label} 加载 config_manual.js", failures)
+        _check("aps-config-manual-data" in text, f"{label} 存在 JSON 配置块", failures)
 
     if failures:
         print("\n=== Verification failed ===")
