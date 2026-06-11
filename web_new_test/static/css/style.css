@@ -700,6 +700,161 @@ pre {
     vertical-align: -5px;
 }
 
+/* V1 收编区（fusion-v2-quickwin-pack）
+   背景：V2 不加载 base.css，下列规则的消费方（19 个模板页内警示框、process/detail 行色、
+   common_confirm/common_required 等 JS）在默认界面长期裸奔，此处按 base.css 原值收编救活。
+   纪律：flash 系规则一律带 :not(.alert)，结构性绕开 V2 flash 循环消息的双挂元素
+   （flash-card flash-* alert alert-*），既有 .alert-* 视觉零变化、与级联顺序无关。
+   变量为 base.css :root 原值的局部副本，待 fusion-tokens-single-source（00-tokens.css）收编后删除。 */
+:root {
+  --aps-success: #16a34a;
+  --aps-warning: #d97706;
+  --aps-danger: #dc2626;
+  --aps-text-muted: #64748b;
+  --aps-border: #e2e8f0;
+  --aps-radius: 6px;
+}
+
+/* 页内/JS 注入警示框（单挂 flash-card flash-*，无 alert 类）。
+   盒模型来自 base.css .flash-card 基类，不收编其 transition——
+   style.css 既有基类的 0.2s 双属性过渡继续生效。 */
+.flash-card:not(.alert) {
+  position: relative;
+  padding: 12px 40px 12px 16px;
+  border-radius: var(--aps-radius);
+  margin-bottom: 12px;
+  font-size: 13px;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.05);
+}
+
+.flash-card.flash-success:not(.alert) {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-left: 4px solid var(--aps-success);
+  color: #15803d;
+}
+
+.flash-card.flash-error:not(.alert) {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-left: 4px solid var(--aps-danger);
+  color: #b91c1c;
+}
+
+.flash-card.flash-warning:not(.alert) {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-left: 4px solid var(--aps-warning);
+  color: #b45309;
+}
+
+html[data-theme="dark"] .flash-card.flash-success:not(.alert) {
+  background: #064e3b;
+  border-color: #065f46;
+  color: #a7f3d0;
+}
+
+html[data-theme="dark"] .flash-card.flash-error:not(.alert) {
+  background: #450a0a;
+  border-color: #7f1d1d;
+  color: #fecaca;
+}
+
+html[data-theme="dark"] .flash-card.flash-warning:not(.alert) {
+  background: #451a03;
+  border-color: #78350f;
+  color: #fde68a;
+}
+
+/* personnel/detail 及散页警示文本色 */
+.warning {
+  color: var(--aps-warning);
+}
+
+/* scheduler/analysis 指标卡增量行 */
+.stat-card-delta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--aps-text-muted);
+}
+
+/* process/detail 内/外协行色与分组虚线框 */
+.row-internal {
+  background: #f7fbff;
+}
+
+.row-external {
+  background: #fff7f0;
+}
+
+.group-box {
+  border: 1px dashed var(--aps-border);
+  padding: 12px;
+  border-radius: 8px;
+  margin: 10px 0;
+}
+
+html[data-theme="dark"] .row-internal {
+  background: #162032;
+}
+
+html[data-theme="dark"] .row-external {
+  background: #1c1410;
+}
+
+/* common_required.js 必填标记 */
+.required-label::after {
+  content: " *";
+  color: var(--aps-danger);
+}
+
+/* common_confirm.js 提交防抖加载圈（keyframes 全仓唯一定义原在 base.css，一并收编） */
+@keyframes aps-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn-loading::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgb(255 255 255 / 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  margin-right: 6px;
+  animation: aps-spin 0.6s linear infinite;
+}
+
+/* 计划工作台下拉在 V2 浅色 top-header 的适配：
+   ui_contract.css 的 .aps-workbench-nav 按 V1 深色导航条设计（--aps-nav-text 浅字 + #334155 深底 hover），
+   直接挂上浅色 header 字色继承凑合但 hover 突兀，此处 scoped 覆盖。色值待 00-tokens.css 收编。 */
+.top-header .aps-workbench-nav,
+.top-header .aps-workbench-nav-summary {
+  color: #334155;
+}
+
+.top-header .aps-workbench-nav-summary:hover,
+.top-header .aps-workbench-nav-summary:focus,
+.top-header .aps-workbench-nav[open] > .aps-workbench-nav-summary {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+/* 暗色 header 底变深，浅色适配的深字会隐形，翻回浅字深底 hover */
+html[data-theme="dark"] .top-header .aps-workbench-nav,
+html[data-theme="dark"] .top-header .aps-workbench-nav-summary {
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .top-header .aps-workbench-nav-summary:hover,
+html[data-theme="dark"] .top-header .aps-workbench-nav-summary:focus,
+html[data-theme="dark"] .top-header .aps-workbench-nav[open] > .aps-workbench-nav-summary {
+  background: #334155;
+  color: #ffffff;
+}
+
 @media (max-width: 760px) {
     .app-container {
         display: block;

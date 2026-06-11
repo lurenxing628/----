@@ -13,7 +13,7 @@ from web.request_resource_context import request_report_resource_context
 from web.routes.history_summary_logging import log_history_summary_parse_warning
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.dashboard_workbench import build_dashboard_workbench_summary
-from web.viewmodels.scheduler_history_summary import parse_history_summary_state
+from web.viewmodels.scheduler_history_summary import format_public_datetime, parse_history_summary_state
 
 bp = Blueprint("dashboard", __name__)
 
@@ -234,6 +234,11 @@ def _workbench_history_context(history_q: Any) -> Tuple[Any, Any, int, str]:
     return latest, workbench_history, workbench_version, requested_history_error
 
 
+def _workbench_history_time_display(workbench_history: Any) -> str:
+    """「当前查看排产」卡的时间公开口径：坏值显示「时间记录异常」，缺失显示「-」。"""
+    return format_public_datetime(getattr(workbench_history, "schedule_time", None))
+
+
 def _workbench_navigation_context_from_request(services: Any, version: int) -> Dict[str, Any]:
     resource = request_report_resource_context()
     context = {
@@ -344,6 +349,7 @@ def index():
         scheduled_count=scheduled_count,
         overdue_count=overdue_count,
         latest_history=workbench_history,
+        latest_history_time_display=_workbench_history_time_display(workbench_history),
         latest_summary=latest_summary,
         workbench_summary=workbench_summary,
     )

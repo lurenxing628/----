@@ -134,7 +134,7 @@
         } %}
       {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
       <div class="aps-summary-grid">
-        {{ ui.summary_item('时间', latest_history.schedule_time) }}
+        {{ ui.summary_item('时间', latest_history_time_display) }}
         {{ ui.summary_item('方式', strategy_zh.get(latest_history.strategy, '未知排产方式')) }}
         {{ ui.summary_item('结果', status_zh.get(latest_history.result_status, '结果状态未知')) }}
       </div>

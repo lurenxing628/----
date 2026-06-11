@@ -1,0 +1,275 @@
+roadmap: aps-frontend-fusion
+created: 2026-06-11
+
+items:
+  - slug: fusion-v2-quickwin-pack
+    description: 默认界面急救包——V2 壳挂计划工作台入口并把门禁断言扩到 V2 base、base.css 孤儿 CSS 11 类并入 style.css、dashboard.html:137 raw 时间改 format_public_datetime
+    depends_on: []
+    status: in-progress
+    feature: 2026-06-11-fusion-v2-quickwin-pack
+    minimal_loop: true
+    notes: 全部是用户当天可感知修复；孤儿 CSS（flash-warning 等 19 模板）今天就在默认界面裸奔，属存量缺陷先行修复；镜像守卫已单拎为 fusion-mirror-sync-guard（2026-06-11 用户拍板拆分）；若第 2 条先行完成，挂载点改为转正后的 templates/base.html
+
+  - slug: fusion-dual-track-retirement
+    description: 双轨裁决 ADR + 六工作包落地——删 render_bridge/ui_mode 五文件、34 路由 import 切回 flask、V2 base 转正搬家并修 title 常量化、system_ui_mode 下线、打包与门禁源同步、测试面整删 2 文件改 16 文件、quality_gate_ledger 台账同步
+    depends_on: [fusion-mirror-sync-guard]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 裁决走 cs-decide 落 ADR（2026-06-11 用户已拍板留侧栏壳）；工作包细目与逐文件证据见 drafts/capability-mining.md 的 v2-shell-inventory 域；建议排在第 1 条之后执行（挂载即被转正继承）
+
+  - slug: fusion-anchor-baseline-prep
+    description: 改版基线三件套——LIVE 文案/结构锚点爆点清单落档、亮/暗双主题截图基线管线、打印介质回归清单
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 所有动模板的 feature 开工前先查本产物；test_dashboard_overdue_count_tolerance.py:15 正则锚等爆点已在挖掘中点名；CORE_BROWSER_SMOKE_PATHS 现零消费方，接快速浏览器档需先建接线点；文案变更建议攒批合入（language_polish 测试是门禁长缓存指纹源）
+
+  - slug: fusion-frontend-gates
+    description: 前端门禁三件套——500 行门禁扩 templates/static（FRONTEND_SIZE_DIRS 接 architecture_oversize_scan_map，不动 CORE_DIRS）、tools/check_css_compat.py Chrome109 黑名单（带白名单豁免）、token 漂移守卫（00-tokens.css 外禁新增裸 hex）
+    depends_on: [fusion-tokens-single-source]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: CORE_DIRS 同清单喂 radon 会对 .html 爆炸，必须走 oversize_scan_map 接线（已核证）；黑名单正则需上下文限定防 &/popover= 误伤（见 roadmap 4.9）
+
+  - slug: fusion-tokens-single-source
+    description: 00-tokens.css 唯一真相源——语义色三值合一定版（success/danger/warning）、旧名 --aps-*/--primary-color 降别名块、负荷阈值常量收编单点
+    depends_on: [fusion-dual-track-retirement, fusion-anchor-baseline-prep]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 契约见 roadmap 4.4；色值沿 slate 族内推导，不混入 antd 原生暖调状态色
+
+  - slug: fusion-hex-migration
+    description: 383 处裸 hex 机械替换为语义 token（映射表逐处人工标注后进脚本、分批+逐批截图 A/B）、暗色 183 条覆盖收敛为 token 换肤、JS 色源改 getComputedStyle 读 token
+    depends_on: [fusion-tokens-single-source]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 同 hex 多语义（如 #f8fafc 35 处）按选择器域分流；预期暗色覆盖删约 2/3
+
+  - slug: fusion-css-layer-split
+    description: ui_contract.css 6277 行拆 @layer 六层多文件（各<500 行），页面私有样式迁 40-page-* 经 extra_head 挂载，computed-style diff 验证零回归
+    depends_on: [fusion-hex-migration]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 页面私有规则移到后加载文件会改变同特异性级联顺序——"只搬不改"不成立，必须 diff 验证
+
+  - slug: fusion-label-single-source
+    description: 词表收编——11 处模板内联 strategy/status 中文字典收编到 viewmodel 层唯一字源，三套 status 口径拍板归一并清理 'ok2' 死键，cs-semantic-radar 立概念身份证
+    depends_on: [fusion-dual-track-retirement]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 依赖双轨退役后镜像消失，收编点从 11 处减半；全量清单在 drafts 的 context-nav 域
+
+  - slug: fusion-plan-context-capsule
+    description: 计划上下文胶囊——扩 build_workbench_plan_context 合同新增 generated_at_label/strategy_label、5 个发布点喂参、胶囊宏挂壳层 header、版本号全站单点化
+    depends_on: [fusion-label-single-source]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 契约见 roadmap 4.2；坏时间显示"时间记录异常"，未知策略显示"未识别的策略"；dashboard 有 :275/:338 双发布点（后写覆盖），喂参须落在 dashboard_workbench_context 的构造调用处；builder 落 navigation_context.py 或新文件（scheduler_workbench_links.py 已 442/500 行）
+
+  - slug: fusion-nav-specs-unify
+    description: 导航 specs 数据驱动化——侧栏五段「做事路线」分组、module_subnav 宏统一五个手写子导航宏、aria-current 全站上岗、焦点环 :focus-visible 统一
+    depends_on: [fusion-dual-track-retirement, fusion-plan-context-capsule]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 契约见 roadmap 4.3；与 scheduler_navigation_links 既有 specs 同构扩展，不另起平行体系
+
+  - slug: fusion-handrolled-links-adoption
+    description: 手拼链接收编——history.html 五个版本跳转链接与 analysis 版本选择器两条甘特链入 WorkbenchLink 合同；TARGET_PAGE_PATHS 白名单扩 history/batch_detail 两目标
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 手拼链接丢身份上下文（模拟预览点过去掉回正式视角）是真实缺陷；扩公共枚举影响面大需在 design 拍板
+
+  - slug: fusion-gantt-execution-visuals
+    description: 甘特现场事实可视化——progress 完工置 100（gantt_tasks.py:245 现硬编码 0）、execution-<status> 条形着色、侧栏详情补优先级/加工方式/时长、popup 补现场摘要一行（meta 字段双向互缺）
+    depends_on: [fusion-dual-track-retirement]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 契约见 roadmap 4.10；progress 只允许 completed→100，禁止部分进度估算伪装精度
+
+  - slug: fusion-chain-walk-navigation
+    description: 沿链巡检——甘特详情面板上一道/下一道工序导航（前端 dependencies 反查建 Map 零后端改动）+ 关键链 ←/→ 巡检（normalizeCriticalChain ids 正序）
+    depends_on: [fusion-gantt-execution-visuals]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 把"逐条点查"升级成"沿链巡检"，正是关键链分析的真实用法
+
+  - slug: fusion-gantt-fix-pack
+    description: 甘特小修包（纯 bugfix/守卫）——select 精确匹配修过匹配（B1 带出 B12）、暗色主题关键工序外圈描边补丁、删"模拟调整"死按钮、ZOOM_SPECS 与 min.js 双份真相 boot 断言
+    depends_on: [fusion-gantt-execution-visuals]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 跑测试即可验收；2026-06-11 用户拍板从原七合一条目拆出（原 slug fusion-gantt-workbench-polish 作废）
+
+  - slug: fusion-gantt-load-strip
+    description: 甘特资源负荷热力条带——新建 core/services/scheduler/gantt_resource_load.py 按资源×日桶聚合，前端挂 decorateStaticAfterRender 与假期层同公式像素对齐，容量来源明示"按全局工作日历估算"，点击色带格弹出该资源当天任务清单与去派工/报表跳转（吸收老 item 11 验收点）
+    depends_on: [fusion-gantt-execution-visuals, fusion-tokens-single-source]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 容量口径按 roadmap 4.6 共享协议；gantt_service.py 已 495/500 行禁止加码；对齐不达标止损线=同列宽日历对齐；2026-06-11 用户已拍板 B 案——替代老 roadmap item 11 并吸收其验收点（Top-N 以色带排序承接、任务数与跳转入口经点击弹层承接），老 roadmap update 时将老 11 标 dropped 指向本条
+
+  - slug: fusion-week-plan-enrich
+    description: 周计划增强——现场状态列（_split_by_day 拆分前注入，逻辑全落 gantt_week_plan.py）+ Excel 导出同列 + 空周提示升级带"跳到该周" + 每日合计工时/容量行（容量分母按 roadmap 4.6 共享协议：同公式正午采样、禁直调 capacity_hours）
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 周计划是现场事实链路最大的未接页面；拆分后行丢 op_id，注入必须在拆分前（已核证）
+
+  - slug: fusion-reports-index-kpi
+    description: 报表中心答案卡——三张死文案入口卡注入最忙资源/停机小时/可复盘记录数（聚合函数现成），execution_review 卡 adopted-only 身份护栏，Win7 性能实测与懒加载降级预案
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 身份护栏与性能义务见 roadmap 4.7 共享护栏，KPI 取数接线细节见 drafts 的 page-fusion 域；"偏差 Top"无数值聚合，第一版用记录数顶替并文案明示
+
+  - slug: fusion-batch-detail-schedule-card
+    description: 批次详情排程去向卡——最新正式方案中的工序数/时间跨度摘要 +「在甘特中定位本批次」（gantt_batch 链路现成）+ 工序表现场实际列（先查 adopted 计划行拿全身份）
+    depends_on: [fusion-handrolled-links-adoption]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: list_plan_detail_rows_all 当前生产代码零调用，本条是它第一个生产消费方；op_id-only 读事实会被毒化口 raise，必须走完整身份
+
+  - slug: fusion-dashboard-cockpit
+    description: 首页驾驶舱（构图 2026-06-11 定稿）——单栏四段=胶囊/hero 指令卡（队列首条置顶、明细不重复）/6 格体检表（超期/待排/方案待确认/现场待确认/资源压力/基础数据，格即入口）/其余待处理清单；删 stat-grid（先迁正则锚）+ 删按钮墙 + 删"下一步"卡（侧栏承接）+ 失败排产 hero 顶格（result_status 已在手）+ severity 分级 + 死字段裁决（overdue_count/latest_summary）+ 超期 todo 直挂主导线索摘要 + 全健康绿色空态
+    depends_on: [fusion-dual-track-retirement, fusion-anchor-baseline-prep]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 样张 drafts/dashboard-restyle-proto.html；"待排数"承接被裁"最近一次排产"卡的唯一增量信息；摘要展开沿用 _should_expose_summary_parse_failure 口径仅 adopted 展开；线索摘要有整方案重算成本，设启用门槛
+
+  - slug: fusion-dispatch-import-two-phase
+    description: 现场实际 Excel 导入接通两段式——后端 preview/confirm 端点与 token 契约已建好零前端消费，前端约 30 行改造接通
+    depends_on: []
+    status: dropped
+    feature: null
+    minimal_loop: false
+    notes: 2026-06-11 用户拍板不做——导入失败本就有报错与错误明细渲染，预览/确认徒增操作步数让用户难受；前端维持一把梭直写，req shop-floor-execution-feedback 口径维持不变；后端两段式端点与契约测试保留不删（不算死代码，留作将来可选能力）
+
+  - slug: fusion-dispatch-split-pages
+    description: 资源派工拆两页——「资源排班（查看）」与「现场记录（代录）」分立，琥珀模式横幅明示"正在向正式采用方案 vN 写入现场事实"，#rdGantt 补只读保护，旧 URL 302 过渡一个版本周期
+    depends_on: [fusion-nav-specs-unify]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: resource_dispatch.html 已 456 行临界，拆页后双双回到安全区；导入维持一把梭现状（第 20 条已 dropped）
+
+  - slug: fusion-longtail-unify
+    description: 长尾页收敛——excel_import_page 宏收编 11 个导入页、17 处旧 page-subtitle 页头迁 aps_page_hero、「护眼模式」改名「深色模式」（4 文件零锚点+手册双写）
+    depends_on: [fusion-css-layer-split]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 排在新样式体系定稿后，避免长尾页刷两遍
+
+  - slug: fusion-todo-ack-state
+    description: 待办处理留痕——单计划员"已确认/今天不再提醒"本地留痕（SQLite 小表，无账号无指派无工作流），治值班台清单永远不变短
+    depends_on: [fusion-dashboard-cockpit]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 老 roadmap 第一版口径只要求"不保存时要声明"，并未关死后续；与 req scheduler-daily-workbench 边界（"不保存已处理/已忽略状态"）正面冲突——2026-06-11 用户已确认推翻该边界，验收时回写 req
+
+  - slug: fusion-quick-locate
+    description: 全局快速定位——壳层输入批次/设备/人员，带当前计划上下文跳甘特定位、资源排班或超期清单（复用 WorkbenchLink 与已有目标页高亮能力）
+    depends_on: [fusion-plan-context-capsule]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 治"电话来问 B 批次怎么样了"场景的多步寻路
+
+  - slug: fusion-performance-budget
+    description: 性能预算守卫——首页/甘特/报表 index 基线数据集首屏预算与计时探针，超预算显式说明不静默变慢；报表 KPI 1→4 次计划行扫描实测定去留
+    depends_on: [fusion-reports-index-kpi, fusion-gantt-load-strip, fusion-dashboard-cockpit]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 在真实改造落地后用真实数据集校准，避免凭空定阈值
+
+  - slug: fusion-mirror-sync-guard
+    description: 镜像逐字节同步守卫测试——6 个镜像模板与 style.css/scheduler_manual.md 双份全等断言，挂 LIVE 门禁，双轨拆除前的临时保险
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 2026-06-11 用户拍板从急救包单拎，使第 2 条只等守卫不被其余三件牵制；第 2 条完成后本守卫随镜像树一并退役
+
+  - slug: fusion-gantt-controls-rework
+    description: 甘特控件重排（UX）——解码条取代折叠图例（色样 chips 点击即筛选）、控件三层化（上下文面包屑/zoom 步进/筛选收纳）、宽屏禁浮层弹窗单一点击反应
+    depends_on: [fusion-gantt-execution-visuals]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 需截图基线评审验收（与 fusion-gantt-fix-pack 验收方式不同故拆开）；图表本体可提升约 400px 进首屏；默认哈希配色的唯一解码器（图例）不应折叠隐藏
+
+  - slug: fusion-analysis-action-refresh
+    description: 排产分析页收口——方案对比区按定稿设计语言重排（对比表去框化、行动按钮层级收口为一屏一个主按钮）、候选/正式身份徽标统一 4.8 词表、页头接 4.2 胶囊不再自拼版本文案、无候选空态明示下一步
+    depends_on: [fusion-plan-context-capsule, fusion-tokens-single-source]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 2026-06-11 视觉定稿后补充；需截图基线评审验收；analysis.html 无镜像但文案锚点多（language_polish），开工前先跑锚点测试集圈爆点
+
+  - slug: fusion-debox-table-wave
+    description: 全站去框化与表格现代化波次——嵌套灰盒清除（3px 左语义条+留白分层）、表格现代化（表头浅灰底/行 hover/数字列右对齐 tabular-nums/状态列徽标化）、severity 三通道一致性扫尾、图标库扩容 13→约 30 枚（16px/2px 描边）
+    depends_on: [fusion-longtail-unify]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 2026-06-11 视觉定稿后补充；需截图基线评审验收；依赖理由——长尾页结构先统一成宏再做视觉扫尾，避免对旧结构刷两遍；侧栏导航所需约 12 枚图标随 fusion-nav-specs-unify 先行、遵同一风格规范
+
+  - slug: fusion-due-soon-alert
+    description: 临期预警——"3 天内到期且未完工"新待办类别 + 体检表格位（7 格排布或与超期合格，feature-design 裁决）+ 临期窗口常量单点；数据=既有批次交期 vs 正式方案排程结束时间，与超期判定共用同一口径，零新数据链路
+    depends_on: [fusion-dashboard-cockpit]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 模块 N（契约 4.11 共同约束）；2026-06-11 用户拍板新增；依赖理由——驾驶舱构图先落定，待办类别与体检表格位才有挂点；遵 4.7 身份护栏
+
+  - slug: fusion-dispatch-print-sheet
+    description: 周派工单打印——按设备/按人员双视图（周计划 7 字段行重分组，设备/人员格现成，每行带另一维度做交接参照）+ 窗口周为主附单日切换 + 一资源一页 page-break 整叠打印（无任务资源不出纸）+ 人员视图"外协/未分配"兜底段 + 页眉印方案版本与生成时间 + 行尾空白备注列；入口挂周计划页
+    depends_on: [fusion-week-plan-enrich]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 模块 N（契约 4.11 共同约束）；2026-06-11 按现场实践重定（车间按周打印）+ 用户两项拍板（周+单日切换；只留备注列不设签字栏）；依赖理由——同文件 gantt_week_plan.py 施工且周选择器/空周提示先就位；资源排班页落地后补导航链接（非依赖）；第一版只含计划任务，要含现场事实必须走 4.10 唯一入口
+
+  - slug: fusion-backup-health-hint
+    description: 备份健康提示——读既有备份清单取最近备份时间，超 7 天首页顶部琥珀提示"已 N 天未备份"（阈值常量单点）+ 备份目录读取失败时明示不静默
+    depends_on: [fusion-dual-track-retirement]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 模块 N（契约 4.11 共同约束）；2026-06-11 用户拍板新增；半天级小件；依赖理由——单树后挂壳层一次到位，免付镜像双写税
+
+  - slug: fusion-plan-version-diff
+    description: 新旧方案差异清单——工序级 diff（按批次+工序身份配对，报告换设备/挪时间/新增/移除四类变化）落新文件 core/services/scheduler/plan_version_diff.py + 分析页方案对比区展示 + "无差异/无法对比"诚实文案
+    depends_on: [fusion-analysis-action-refresh]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 模块 N（契约 4.11 共同约束）；2026-06-11 用户拍板新增；依赖理由——分析页收口后同区施工，避免对旧结构施工两遍；新文件不碰 495/500 行的 gantt_service.py
+
+  - slug: fusion-runtime-log-viewer
+    description: 运行日志页与诊断包导出——系统管理新增"运行日志"页（与操作日志页并列）：倒序展示 aps_error.log 条目（时间戳边界分组 traceback、块式倒读），可切 aps.log/launcher.log、级别/关键词筛选；一键导出诊断包（*.log 含轮转分卷+版本环境信息+最近操作日志打 zip）；报错出口接门（500 页/error_boundary"请查看日志"升级为发生时刻+打开运行日志链接）
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 模块 N（契约 4.11 共同约束）；2026-06-11 用户提出（现场报错翻文件夹、计划员无法自助反馈）；安全硬约束——诊断包只收 *.log 通配严禁打入同目录 aps_secret_key.txt；只读不写、不提供删除/清空（证据不许销毁，较操作日志页刻意收窄）；建议排最早批次（与 1/26/3 同批），是后续条目现场排障的眼睛；接线点 error_handlers.py:100-110、error_boundary.py:316/344、core/infrastructure/logging.py 只读消费

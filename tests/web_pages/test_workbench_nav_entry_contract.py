@@ -100,6 +100,26 @@ def test_base_header_mounts_plan_workbench_menu() -> None:
     assert "计划工作台" not in base, "顶层菜单文案应由 UI 宏统一维护，base.html 只负责挂载"
 
 
+def test_v2_base_header_mounts_plan_workbench_menu() -> None:
+    base = _read("web_new_test/templates/base.html")
+
+    # 必须包在 <nav> 里：菜单链接样式选择器是 nav .aps-workbench-nav-link（ui_contract.css），
+    # 宏还在但 nav 包裹丢了 = 链接裸样式，这里钉死结构防回归
+    assert "<nav class=\"top-header-workbench\">{{ ui.workbench_nav_menu() }}</nav>" in base
+    assert "计划工作台" not in base, "顶层菜单文案应由 UI 宏统一维护，V2 base.html 只负责挂载"
+
+
+def test_default_ui_serves_plan_workbench_menu(app_client) -> None:
+    """默认（V2）界面渲染出计划工作台入口——不带任何 UI mode cookie/参数走真实渲染链。"""
+    resp = app_client.get("/")
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "static-v2" in body, "默认模式应走 V2 壳（前提自检，防止默认模式被改动后本测试静默测错壳）"
+    assert "aps-workbench-nav" in body
+    assert "计划工作台" in body
+
+
 def test_workbench_menu_renders_six_core_destinations(db_env) -> None:
     html = _render_workbench_menu()
     parser = _parse_workbench_menu(html)
