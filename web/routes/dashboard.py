@@ -11,6 +11,10 @@ from core.services.scheduler.schedule_result_view_context import plan_role_filte
 from web.navigation_context import set_current_workbench_navigation_context
 from web.request_resource_context import request_report_resource_context
 from web.routes.history_summary_logging import log_history_summary_parse_warning
+from web.viewmodels.dashboard_backup_health import (
+    build_backup_health_hint,
+    read_latest_backup_time,
+)
 from web.viewmodels.dashboard_workbench import build_dashboard_workbench_summary
 from web.viewmodels.scheduler_history_summary import (
     decorate_history_version_options,
@@ -345,6 +349,19 @@ def index():
     )
     set_current_workbench_navigation_context(workbench_summary["latest_plan"])
 
+    # try/except 只罩 IO 读取层；build_backup_health_hint 是纯决策不罩
+    # （编程错误不得伪装成 IO 失败）。失败明示不静默（契约 4.11）。
+    latest_backup_time = None
+    backup_read_error = None
+    try:
+        latest_backup_time = read_latest_backup_time(current_app.config["BACKUP_DIR"])
+    except OSError as exc:
+        backup_read_error = str(exc)
+        current_app.logger.error("首页读取备份目录失败：%s", exc)
+    backup_health_hint = build_backup_health_hint(
+        latest=latest_backup_time, read_error=backup_read_error, now=now
+    )
+
     return render_template(
         "dashboard.html",
         title="首页",
@@ -361,4 +378,5 @@ def index():
         latest_history_time_display=_workbench_history_time_display(workbench_history),
         latest_summary=latest_summary,
         workbench_summary=workbench_summary,
+        backup_health_hint=backup_health_hint,
     )

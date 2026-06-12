@@ -1,0 +1,36 @@
+feature: 2026-06-12-fusion-backup-health-hint
+steps:
+  - id: s1
+    desc: viewmodel dashboard_backup_health.py（常量+只读扫描+四态决策）+ 单测全态
+    status: done
+  - id: s2
+    desc: dashboard 路由接线 + dashboard.html 顶部 notice + 页面契约测试
+    status: done
+  - id: s3
+    desc: 浏览器目检超期/健康两态 + required 快测 + daily gate
+    status: done
+checks:
+  - id: c1
+    desc: 接口契约与 design 2.1 一致（read_latest_backup_time / build_backup_health_hint / BACKUP_STALE_DAYS）
+    status: passed
+  - id: c2
+    desc: 行为决策核对（异常分型 仅listdir FileNotFoundError 归空态；max(mtime)；.db 双过滤；>7 日历日差）
+    status: passed
+  - id: c3
+    desc: 验收场景 1-7 全过（含 2b max(mtime) 反例 + 目录不存在不创建目录 + PermissionError 穿透）
+    status: passed
+  - id: c4
+    desc: 术语一致性（从未备份/读取失败/健康 三态口径全文一致）
+    status: passed
+  - id: c5
+    desc: 架构归并（ARCHITECTURE.md 首页值班台条目）
+    status: passed
+  - id: c6
+    desc: requirement 回写结论
+    status: passed
+  - id: c7
+    desc: roadmap 回写（items.yaml + 主文档第 32 条 done）
+    status: passed
+  - id: c8
+    desc: staged diff 核对不含 backup.py/system_backup.py（并行 WIP 隔离）
+    status: passed

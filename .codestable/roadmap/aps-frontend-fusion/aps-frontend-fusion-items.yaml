@@ -253,8 +253,8 @@ items:
   - slug: fusion-backup-health-hint
     description: 备份健康提示——读既有备份清单取最近备份时间，超 7 天首页顶部琥珀提示"已 N 天未备份"（阈值常量单点）+ 备份目录读取失败时明示不静默
     depends_on: [fusion-dual-track-retirement]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-12-fusion-backup-health-hint
     minimal_loop: false
     notes: 模块 N（契约 4.11 共同约束）；2026-06-11 用户拍板新增；半天级小件；依赖理由——单树后挂壳层一次到位，免付镜像双写税
 

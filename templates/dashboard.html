@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
+  {% if backup_health_hint %}
+    {{ ui.notice(backup_health_hint.title, backup_health_hint.body, tone=backup_health_hint.tone, role='status') }}
+  {% endif %}
   {% if workbench_summary %}
     <section class="aps-dashboard-workbench" aria-labelledby="dashboard-workbench-title">
       <div class="aps-dashboard-workbench-header">
