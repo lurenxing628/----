@@ -52,6 +52,7 @@ def build_report_context(
     resource_id: Any = None,
     resource_label: str = "",
     back_to: Any = None,
+    **capsule_kwargs: Any,
 ) -> Dict[str, Any]:
     data = plan_resolution or {}
     parse_failed = bool(data.get("result_summary_parse_failed"))
@@ -77,6 +78,8 @@ def build_report_context(
         back_to=back_to,
         is_preview=bool(data.get("is_scenario_preview") or data.get("is_preview")),
         can_write_feedback=can_write,
+        # 胶囊喂参透传（generated_at/strategy）：不传保持合同 _UNSET 显示"-"
+        **capsule_kwargs,
         guardrail_text=summary_unavailable_guardrail_text(
             data.get("result_summary_parse_reason"),
             blocked_action="不能写现场事实",

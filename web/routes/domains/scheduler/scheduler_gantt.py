@@ -141,13 +141,17 @@ def _get_scenario_id_arg() -> Optional[str]:
     return text or None
 
 
-def _selected_version_result_status_label(services, version: Optional[int]) -> str:
+def _selected_version_summary_context(services, version: Optional[int]):
+    """selected 历史行单次查询两用：结果状态标签 + 胶囊喂参字段（不发第二次查询）。
+
+    返回 (result_status_label, capsule_fields)；查不到行时 ("", {})——
+    胶囊侧空 dict = 不喂参，合同显示「-」诚实降级。"""
     if version is None:
-        return ""
+        return "", {}
     item = services.schedule_history_query_service.get_by_version(int(version))
     selected = item.to_dict() if item and hasattr(item, "to_dict") else None
     if not selected:
-        return ""
+        return "", {}
     display = build_history_summary_display(
         raw_summary=selected.get("result_summary"),
         result_status=selected.get("result_status"),
@@ -158,7 +162,8 @@ def _selected_version_result_status_label(services, version: Optional[int]) -> s
         source="selected",
         log_label="甘特图页",
     )
-    return str(display.get("result_status_label") or "")
+    capsule_fields = {"generated_at": selected.get("schedule_time"), "strategy": selected.get("strategy")}
+    return str(display.get("result_status_label") or ""), capsule_fields
 
 
 @bp.get("/gantt")
@@ -203,7 +208,7 @@ def gantt_page():
 
     versions = decorate_history_version_options(services.schedule_history_query_service.list_versions(limit=30))
     log_history_version_option_parse_warnings(versions, log_label="甘特图页")
-    selected_result_status_label = _selected_version_result_status_label(services, ver)
+    selected_result_status_label, capsule_fields = _selected_version_summary_context(services, ver)
     gantt_resource = (request.args.get("gantt_resource") or "").strip()
     gantt_zoom_value = gantt_zoom or "day"
     publish_gantt_navigation_context(
@@ -215,6 +220,7 @@ def gantt_page():
         gantt_resource=gantt_resource,
         batch_id=_get_optional_arg("gantt_batch"),
         back_to=_get_optional_arg("back_to"),
+        capsule_fields=capsule_fields,
     )
     gantt_view_urls = {
         "machine": _gantt_page_url(

@@ -6,6 +6,7 @@ from flask import g, has_request_context, request
 
 from core.models.schedule_plan_role import VALID_PLAN_ROLES
 from web.request_resource_context import request_report_resource_context
+from web.viewmodels.plan_context_capsule import build_plan_context_capsule
 from web.viewmodels.scheduler_navigation_links import (
     build_report_navigation_links as build_report_navigation_links_for_context,
 )
@@ -120,6 +121,11 @@ def preserved_report_context_fields(exclude: Iterable[str] = ()) -> List[Dict[st
     return preserved_report_context_fields_for_values(exclude, values=_request_values())
 
 
+def workbench_plan_capsule() -> Optional[Dict[str, str]]:
+    """壳层胶囊模板全局：当前导航上下文 → 胶囊五字段；无 version 页面返回 None。"""
+    return build_plan_context_capsule(current_workbench_navigation_context())
+
+
 __all__ = [
     "build_report_navigation_links",
     "build_scheduler_navigation_links",
@@ -128,4 +134,5 @@ __all__ = [
     "preserved_report_context_fields",
     "publish_workbench_navigation_context",
     "set_current_workbench_navigation_context",
+    "workbench_plan_capsule",
 ]

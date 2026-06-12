@@ -98,15 +98,20 @@ def latest_plan_context(
 ) -> Dict[str, Any]:
     date_from, date_to = _plan_dates(plan_time_span)
     filters = dict(navigation_context or {})
-    context = build_workbench_plan_context(
-        **_context_kwargs(
-            filters,
-            version=_version_value(latest_history),
-            date_from=date_from,
-            date_to=date_to,
-            plan_time_span_load_error=_text(plan_time_span_load_error),
-        )
+    kwargs = _context_kwargs(
+        filters,
+        version=_version_value(latest_history),
+        date_from=date_from,
+        date_to=date_to,
+        plan_time_span_load_error=_text(plan_time_span_load_error),
     )
+    # 壳层胶囊喂参（4.2）：raw 值进合同，label 转换只在合同内一处。
+    # 本函数是 dashboard 第二次发布（后写覆盖第一次）的 context 构造处——
+    # 喂参必须落这里，否则首页胶囊被覆盖成"-"
+    if latest_history is not None:
+        kwargs["generated_at"] = getattr(latest_history, "schedule_time", None)
+        kwargs["strategy"] = getattr(latest_history, "strategy", None)
+    context = build_workbench_plan_context(**kwargs)
     if _text(plan_time_span_load_error):
         context["plan_time_span_load_error"] = _text(plan_time_span_load_error)
     return context

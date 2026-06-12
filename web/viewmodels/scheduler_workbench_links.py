@@ -7,6 +7,7 @@ from core.models.schedule_plan_role import ROLE_ADOPTED
 from core.models.schedule_plan_role import plan_role_label as _core_plan_role_label
 from core.models.schedule_resource_filter import SUPPORTED_SCHEDULE_RESOURCE_TYPES
 
+from .scheduler_history_summary import format_public_datetime, strategy_display_label
 from .scheduler_plan_guardrail_messages import summary_unavailable_guardrail_text
 from .scheduler_workbench_link_query import (
     DATE_RANGE_REQUIRED_TARGETS,
@@ -22,6 +23,11 @@ from .scheduler_workbench_link_query import (
     query_for_target,
     target_uses_primary_resource_filter,
 )
+
+# 「未喂参」与「喂了空值」的唯一区分（fusion-plan-context-capsule）：
+# None 不能身兼两态——历史行 schedule_time/strategy 本身可能是 None/空串。
+# 未喂参（URL fallback 等路径）显示"-"；喂了缺失值的旧历史行走词表缺失态。
+_UNSET = object()
 
 _GUARDRAIL_REASON_LABELS = {
     "plan_not_writable": "当前方案不可写",
@@ -160,6 +166,8 @@ def build_workbench_plan_context(
     capacity_source_label: str = "",
     capacity_gap_text: str = "",
     back_to: Any = None,
+    generated_at: Any = _UNSET,
+    strategy: Any = _UNSET,
 ) -> Dict[str, Any]:
     plan_role_text = _text(plan_role) or ROLE_ADOPTED
     scenario_text, preview, scenario_label = _preview_context(is_preview, scenario_id, scenario_display_label)
@@ -184,6 +192,10 @@ def build_workbench_plan_context(
         "version_label": public_version_label,
         "plan_role": plan_role_text,
         "plan_role_label": public_plan_role_label,
+        # 未喂参 → "-"（URL fallback 不查库补）；喂了 None/空串 → 词表缺失态
+        # （时间 "-"、策略 "旧历史未记录"）；label 转换只在此一处（单点纪律）
+        "generated_at_label": "-" if generated_at is _UNSET else format_public_datetime(generated_at),
+        "strategy_label": "-" if strategy is _UNSET else strategy_display_label(strategy),
         "scenario_id": scenario_text,
         "scenario_display_label": scenario_label,
         "date_from": _text(date_from) or None,

@@ -11,6 +11,7 @@ from core.services.scheduler.resource_dispatch_excel import build_resource_dispa
 from web.error_boundary import json_error_response, user_visible_app_error_message
 from web.navigation_context import set_current_workbench_navigation_context
 from web.routes.history_summary_logging import log_history_version_option_parse_warnings
+from web.viewmodels.plan_context_capsule import history_row_capsule_fields
 from web.viewmodels.scheduler_history_summary import decorate_history_version_options
 from web.viewmodels.scheduler_resource_dispatch import (
     build_resource_dispatch_filename,
@@ -65,12 +66,14 @@ def _current_back_to() -> str:
     return _text(request.args.get("back_to"))
 
 
-def _workbench_context(filters: Any, plan_identity: Any, *, back_to: Any = None) -> dict:
+def _workbench_context(filters: Any, plan_identity: Any, *, back_to: Any = None, capsule_rows: Any = None) -> dict:
     filters_dict = dict(filters or {})
     identity = plan_identity if isinstance(plan_identity, dict) else {}
     resource_id = _resource_id_from_filters(filters_dict)
     resource_type = filters_dict.get("scope_type") if resource_id else None
     context = build_workbench_plan_context(
+        # 胶囊喂参（4.2）：decorated versions 按 version 查（查不到→"-"诚实降级）
+        **history_row_capsule_fields(capsule_rows, filters_dict.get("version")),
         version=filters_dict.get("version"),
         plan_role=filters_dict.get("plan_role") or identity.get("plan_role") or "adopted",
         scenario_id=filters_dict.get("scenario_id") or identity.get("scenario_id"),
@@ -175,7 +178,9 @@ def resource_dispatch_page():
     context = _decorate_page_context(loaded_context)
     filters = context.get("filters") or {}
     back_to = _current_back_to()
-    set_current_workbench_navigation_context(_workbench_context(filters, filters, back_to=back_to))
+    set_current_workbench_navigation_context(
+        _workbench_context(filters, filters, back_to=back_to, capsule_rows=context.get("versions"))
+    )
     can_use_current_query = bool(context.get("has_history") and context.get("can_query"))
     can_use_execution_query = can_use_current_query and _execution_query_has_full_context()
     can_write_feedback = can_emit_feedback_write_urls(filters)

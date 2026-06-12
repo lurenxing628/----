@@ -42,12 +42,18 @@ def _request_candidate_link_context() -> dict:
     }
 
 
-def _publish_analysis_navigation_context(selected_version) -> None:
+def _publish_analysis_navigation_context(selected_version, selected_item=None) -> None:
     if selected_version is None:
         return
     plan_role = _request_arg_text("plan_role") or "adopted"
     scenario_id = _request_arg_text("scenario_id") or None
     plan_resolution = resolve_navigation_plan_context(g.services, selected_version, plan_role, scenario_id)
+    # 胶囊喂参：read_ctx.selected_item 现成历史行，None 时不喂（胶囊显示「-」）
+    capsule_fields = (
+        {"generated_at": selected_item.get("schedule_time"), "strategy": selected_item.get("strategy")}
+        if isinstance(selected_item, dict)
+        else {}
+    )
     publish_analysis_navigation_context(
         version=selected_version,
         plan_resolution=plan_resolution,
@@ -56,6 +62,7 @@ def _publish_analysis_navigation_context(selected_version) -> None:
         resource_context=_request_resource_context(),
         batch_id=_request_arg_text("batch_id") or None,
         back_to=_request_arg_text("back_to") or None,
+        capsule_fields=capsule_fields,
     )
 
 
@@ -100,7 +107,7 @@ def analysis_page():
             ctx.get("candidate_comparison_display"),
             ctx.get("diagnostic_sections"),
         )
-    _publish_analysis_navigation_context(read_ctx.selected_version)
+    _publish_analysis_navigation_context(read_ctx.selected_version, read_ctx.selected_item)
 
     # 版本选择器两条甘特链入 WorkbenchLink：带全量方案身份（scenario 预览
     # 不再掉回正式视角），与 publish 同参数同失败口径

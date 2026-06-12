@@ -22,6 +22,7 @@ from web.routes.reports_request_support import (
     request_resource_filter,
     request_scenario_id,
 )
+from web.viewmodels.plan_context_capsule import history_row_capsule_fields
 from web.viewmodels.scheduler_history_summary import decorate_history_version_options
 from web.viewmodels.scheduler_reports_workbench import (
     ReportPresentationValueError,
@@ -47,8 +48,8 @@ def _request_text(*names: str) -> str:
     return ""
 
 
-def _decorated_versions(engine: ReportEngine):
-    versions = decorate_history_version_options(engine.list_versions(limit=30))
+def _decorated_versions(engine: ReportEngine, limit: int = 30):
+    versions = decorate_history_version_options(engine.list_versions(limit=limit))
     log_history_version_option_parse_warnings(versions, log_label="报表页")
     return versions
 
@@ -97,6 +98,7 @@ def _publish_report_context(
     batch_id: Any = None,
     resource_type: Any = None,
     resource_id: Any = None,
+    capsule_rows: Any = None,
     context_overrides: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     context = build_report_context(
@@ -111,7 +113,8 @@ def _publish_report_context(
         resource_id=resource_id,
         resource_label=str(resource_id or "").strip(),
         back_to=_request_text("back_to"),
-    )
+        # 胶囊喂参：decorated 行按 version 查（查不到=空 dict→"-"诚实降级）
+        **history_row_capsule_fields(capsule_rows, version))
     if context_overrides:
         context.update(context_overrides)
     set_current_workbench_navigation_context(context)
@@ -136,17 +139,14 @@ def _checked_report_value(factory: Any) -> Any:
 
 
 def reports_index_context(engine: ReportEngine, services) -> Dict[str, Any]:
-    versions = decorate_history_version_options(engine.list_versions(limit=1))
+    versions = _decorated_versions(engine, limit=1)
     has_history = bool(versions)
     latest_version = versions[0] if has_history else None
     report_context = build_report_context(back_to=_request_text("back_to"))
     overdue_count = 0
     if has_history:
         request_ctx = _standard_request_context(
-            engine,
-            services,
-            start_arg=_request_text("start_date", "date_from"),
-            end_arg=_request_text("end_date", "date_to"),
+            engine, services, start_arg=_request_text("start_date", "date_from"), end_arg=_request_text("end_date", "date_to")
         )
         overdue = engine.overdue_batches(
             int(request_ctx["version"] or 0),
@@ -164,6 +164,7 @@ def reports_index_context(engine: ReportEngine, services) -> Dict[str, Any]:
             date_to=request_ctx["end_date"],
             resource_type=request_ctx["resource_type"],
             resource_id=request_ctx["resource_id"],
+            capsule_rows=versions,
         )
     return {
         "title": "报表中心",
@@ -191,10 +192,7 @@ def _overdue_report(engine: ReportEngine, request_ctx: Dict[str, Any]) -> Dict[s
 def overdue_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
     versions = _decorated_versions(engine)
     request_ctx = _standard_request_context(
-        engine,
-        services,
-        start_arg=_request_text("start_date", "date_from"),
-        end_arg=_request_text("end_date", "date_to"),
+        engine, services, start_arg=_request_text("start_date", "date_from"), end_arg=_request_text("end_date", "date_to")
     )
     rep = _overdue_report(engine, request_ctx)
     has_history = bool(versions)
@@ -206,6 +204,7 @@ def overdue_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
         date_to=request_ctx["end_date"],
         resource_type=request_ctx["resource_type"],
         resource_id=request_ctx["resource_id"],
+        capsule_rows=versions,
     )
     raw_delay = _raw_delay_diagnosis(engine, request_ctx, has_rows)
     return {
@@ -278,13 +277,10 @@ def utilization_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
         date_to=rep["end_date"],
         resource_type=request_ctx["resource_type"],
         resource_id=request_ctx["resource_id"],
+        capsule_rows=versions,
     )
-    machine_rows = _checked_report_value(
-        lambda: decorate_utilization_rows(rep["machines"], report_context, resource_type="machine")
-    )
-    operator_rows = _checked_report_value(
-        lambda: decorate_utilization_rows(rep["operators"], report_context, resource_type="operator")
-    )
+    machine_rows = _checked_report_value(lambda: decorate_utilization_rows(rep["machines"], report_context, resource_type="machine"))
+    operator_rows = _checked_report_value(lambda: decorate_utilization_rows(rep["operators"], report_context, resource_type="operator"))
     return {
         "title": "报表 - 资源负荷与利用率",
         "versions": versions,
@@ -420,6 +416,7 @@ def execution_review_page_context(engine: ReportEngine, services) -> Dict[str, A
         batch_id=rep.get("batch_id") or "",
         resource_type=resource_type,
         resource_id=resource_id,
+        capsule_rows=versions,
         context_overrides=execution_review_context_overrides(identity_error),
     )
     has_history = bool(versions)
@@ -469,6 +466,7 @@ def downtime_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
         date_to=rep["end_date"],
         resource_type=request_ctx["resource_type"],
         resource_id=request_ctx["resource_id"],
+        capsule_rows=versions,
     )
     decorated_rows = decorate_downtime_rows(downtime_rows, report_context)
     summary = _checked_report_value(lambda: downtime_summary(decorated_rows))

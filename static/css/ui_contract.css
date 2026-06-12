@@ -3377,6 +3377,34 @@ header.no-print > .header-info.aps-header-controls {
   justify-content: flex-end;
 }
 
+/* 壳层计划上下文胶囊（fusion-plan-context-capsule）：top-header 一行只读回显 */
+.aps-plan-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  min-width: 0;
+  font-size: var(--font-size-1);
+  color: var(--ui-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.aps-plan-capsule-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aps-plan-capsule-item + .aps-plan-capsule-item::before {
+  content: "·";
+  margin-right: var(--ui-space-2);
+  color: var(--ui-text-subtle);
+}
+
+.aps-plan-capsule-version {
+  font-weight: 600;
+  color: var(--ui-text-strong);
+}
+
 .aps-workbench-nav {
   position: relative;
   display: inline-flex;

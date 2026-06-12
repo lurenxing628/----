@@ -113,21 +113,25 @@ def install_template_globals(app) -> None
 ```
 # 扩展 web/viewmodels/scheduler_workbench_links.py
 def build_workbench_plan_context(*, version=None, ..., back_to=None,
-                                 generated_at=None, strategy=None) -> Dict[str, Any]
+                                 generated_at=_UNSET, strategy=_UNSET) -> Dict[str, Any]
+# _UNSET 是模块级私有 sentinel（2026-06-12 修订）：None 不能身兼「未喂参」「喂了空值」两态——
+# 未喂参（URL fallback 路径）显示"-"；喂了 None/空串的旧历史行走词表缺失态"旧历史未记录"
 # 输出新增字段：generated_at_label: str（走 format_public_datetime，坏值显示"时间记录异常"）
-#               strategy_label: str（走唯一词表字源，未知值显示"未识别的策略"）
-# 发布点同步喂参（注意 dashboard 有两次发布、后写覆盖前写）：
-#   web/routes/dashboard.py:275 与 :338——:338 的 latest_plan 产自 dashboard_workbench_context.py，
+#               strategy_label: str（走 #8 词表单源 strategy_display_label——未知值"历史记录异常"、
+#               缺失"旧历史未记录"；2026-06-12 修订：原文"未识别的策略"先于 #8 完成而写，不另造第三套文案）
+# 发布点同步喂参共 6 处（注意 dashboard 有两次发布、后写覆盖前写）：
+#   web/routes/dashboard.py 双发布——第二次的 latest_plan 产自 dashboard_workbench_context.py，
 #     喂参点必须落在其 build_workbench_plan_context 调用处，否则首页胶囊被二次发布覆盖成 "-"
 #   web/routes/domains/scheduler/scheduler_navigation_publish.py 的 publish_gantt/publish_analysis/publish_week_plan
 #   web/routes/reports_page_support.py:91 _publish_report_context
+#   web/routes/domains/scheduler/scheduler_resource_dispatch.py _workbench_context（2026-06-12 修订补列，原文漏）
 
 # 新建 templates/components/_plan_context_capsule.html
 {% macro plan_context_capsule(context) %}
 # 渲染：版本 · 方案身份 · 生成时间 · 策略 · 数据范围；无上下文页面渲染空串
 ```
 
-**约束**：胶囊上线后版本号在页面正文只允许出现在胶囊一处；胶囊只消费 `*_label` 公开字段；缺字段显示"-"，不显示 raw 值；不显示 plan_role/scenario_id 原值；scheduler_workbench_links.py 已 442/500 行，胶囊 builder 落 web/navigation_context.py（131 行）或新文件，禁止顺手加码。
+**约束**：版本号单点化分两阶段（2026-06-12 修订）——阶段一（第 9 条）：胶囊上线 + 壳层 chrome 单点（dashboard muted 行去重）；阶段二（第 28 条 analysis 概览卡接胶囊 / 第 19 条 dashboard 体检表）：页面正文版本号清理至胶囊一处，两条验收时执行正文唯一性断言；数据行（历史表每行 vN）与版本选择器选项永久豁免（数据不是 chrome）。胶囊只消费 `*_label` 公开字段；缺字段显示"-"，不显示 raw 值；不显示 plan_role/scenario_id 原值；scheduler_workbench_links.py 已 449/500 行，胶囊 builder 落新文件，禁止顺手加码。
 
 ### 4.3 导航 specs 契约（C → 壳层与各域子导航）
 
@@ -278,7 +282,7 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 
 **模块 C**
 8. **fusion-label-single-source** ✅ done（2026-06-12，feature 2026-06-12-fusion-label-single-source，Codex 设计两轮+实现一轮审核收口；ok2 死键全删走 unknown 诚实降级）— 词表收编：11 处内联 strategy/status 字典收编唯一字源 + 三套 status 口径拍板 + 'ok2' 死键清理 + cs-semantic-radar 概念身份证。依赖：2（删镜像后只剩单树，工作量减半）。
-9. **fusion-plan-context-capsule** — 计划上下文胶囊：扩 build_workbench_plan_context 合同（4.2）+ 5 发布点喂参 + 胶囊宏挂壳层 header + 版本号全站单点化。依赖：8（词表先单源）。
+9. **fusion-plan-context-capsule** ✅ done（2026-06-12，feature 2026-06-12-fusion-plan-context-capsule，Codex 设计三轮+实现两轮审核零阻塞收口；4.2 契约三处修订于设计期落账）— 计划上下文胶囊：扩 build_workbench_plan_context 合同（_UNSET sentinel 区分未喂参/喂了缺失值）+ 6 发布点喂参（含 resource_dispatch）+ 胶囊宏挂壳层 top-header（无 version 零渲染，URL 直入「-」不查库补）+ 版本号单点化阶段一（dashboard muted 行去重；正文清理归 #28/#19 阶段二）。依赖：8（词表先单源）。→ 解锁第 10/22/28 条。
 10. **fusion-nav-specs-unify** — 导航 specs 化：侧栏五段「做事路线」分组 + module_subnav 统一五个手写宏 + aria-current 全站 + 焦点环上岗。依赖：2、9（胶囊与侧栏同壳层，先胶囊后重排）。
 11. **fusion-handrolled-links-adoption** ✅ done（2026-06-12，feature 2026-06-12-fusion-handrolled-links-adoption，Codex 设计两轮+实现三轮审核零阻塞收口）— 手拼链接收编：history.html 5 链接、analysis _version_picker 2 链接入 WorkbenchLink（修「模拟预览点过去掉回正式视角」缺陷——选择器链带全量身份保留 scenario_id）；TARGET_PAGE_PATHS 扩 history/batch_detail 13 目标（batch_detail 是首个路径参数型目标：{batch_id} 占位 quote 替换、缺参 fail-loud 不随 disabled 摇摆；两新目标 query 合同由 extra_params 禁键集守护）。history 行级 span 先分页后装配、单行坏历史禁用明示。依赖：无。→ 解锁第 18 条。
 
@@ -350,5 +354,6 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 - 2026-06-11：视觉定稿落账（全面调整方案经三轮样张迭代后用户委托裁定）。① 侧栏定版浅色（用户拍板），写入 4.3 约束；② 12 列版面栅格 + 认知五原则写入 4.4，升为全站构图契约；③ 第 19 条按定稿构图改写——单栏四段（胶囊 / hero 置顶队列首条 / 6 格体检表 / 其余清单），裁掉"最近一次排产"卡（与胶囊重复，唯一增量"待排数"并入体检表）与"下一步"链接卡（与侧栏重复），治同屏三处信息重复；④ 新增第 28 条分析页收口（模块 W）、第 29 条全站去框化与表格现代化波次（模块 T），条目数 27→29；⑤ 样张存档 drafts/dashboard-restyle-proto.html。接口契约变化：4.3/4.4 增补构图级约束，对未启动 feature 即时生效；受影响的已启动 feature：无（全部 planned）。
 - 2026-06-11：新功能拍板落账（四件做 + 一件裁决不做）。新增**模块 N · 闭环补全**（与 W 分界：W 只消费已有字段，N 允许新增只读算法、禁止写排产数据）承载用户拍板四件：30 临期预警、31 今日派工单打印、32 备份健康提示、33 新旧方案差异清单，条目数 29→33；新增契约 4.11（N 模块共享约束：只读不写/常量单点/身份遵 4.7-4.10/空态失败态诚实）。"现场动态流"裁决不做——未接 MES 时现场数据全为计划员代录，动态流信息价值不成立，观察项已固化该裁决。提案前已逐项验证非重复（临期/派工单/备份提醒/工序级 diff 四概念全仓不存在，print.css 基建已有）。受影响的已启动 feature：无（全部 planned）。
 - 2026-06-11：第 31 条按现场实践重定（用户提供现场真相：车间按周打印计划，原"今日派工单"假设作废）。改为周派工单：周为主 + 单日切换补打（用户拍板）、按设备/按人员双视图（周计划行设备/人员格现成，零新数据链路）、一资源一页整叠打印、人员视图"外协/未分配"兜底、页眉印版本与生成时间防旧纸误用、行尾备注列不设签字栏（用户拍板）；挂载点从资源排班页改周计划页，依赖 21→16（同文件施工；副作用 = 交付大幅提前，16 无前置依赖链）。受影响的已启动 feature：无。
+- 2026-06-12：4.2 契约三处修订（fusion-plan-context-capsule design 审核两阻塞拍板）：① strategy_label 未知值文案从"未识别的策略"改遵 #8 词表单源（"历史记录异常"/"旧历史未记录"——原文先于 #8 完成而写，不造第三套文案）；② 发布点清单补 resource_dispatch（_workbench_context 直接 build+set_current 是真实发布点，原文漏列），5→6 处；③ "版本号在页面正文只允许出现在胶囊一处"改两阶段口径（阶段一第 9 条壳层 chrome 单点；阶段二第 28/19 条正文清理+正文唯一性断言；数据行与选择器选项永久豁免）。受影响的已启动 feature：无（第 9 条 design 即本修订发起方）。
 - 2026-06-11：第 34 条红线表述修订（design 审核发现"只收 *.log 通配"会把启动失败证据 aps_launch_error.txt 排除在外）：改白名单制，*.log+分卷+显式列名的 launch_error 例外，secret 排除红线不变。
 - 2026-06-11：新增第 34 条运行日志页与诊断包导出（模块 N，用户提出：现场报错要进文件夹翻 log、计划员无法自助反馈维护者）。落账前验证既有底子：logging.py 双文件轮转（aps.log/aps_error.log 带文件名:行号）+ errorhandler(500) 已记完整 traceback，但页面文案"请查看日志"没给入口；与既有"操作日志"页（业务审计存库）是两类日志，并列不合并。安全硬约束写入条目：诊断包只收 \*.log 通配（**该表述已被上一条 2026-06-11 修订取代：白名单制**），严禁打入同目录 aps_secret_key.txt；刻意不提供删除/清空（报错证据不许销毁）。排期进最早批次（无依赖，是后续条目现场排障的眼睛）。条目数 33→34。受影响的已启动 feature：无。

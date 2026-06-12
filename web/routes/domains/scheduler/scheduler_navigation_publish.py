@@ -78,6 +78,18 @@ def _publish_context(plan_resolution: Dict[str, Any], **kwargs: Any) -> Dict[str
     return context
 
 
+def _capsule_kwargs(capsule_fields: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """胶囊喂参透传：None/空 dict = 调用点拿不到历史行——不传 kwargs，
+    合同侧保持 _UNSET 显示「-」（不把「没数据」伪装成「喂了空值」）。"""
+    fields = capsule_fields or {}
+    out: Dict[str, Any] = {}
+    if "generated_at" in fields:
+        out["generated_at"] = fields.get("generated_at")
+    if "strategy" in fields:
+        out["strategy"] = fields.get("strategy")
+    return out
+
+
 def publish_gantt_navigation_context(
     *,
     version: Any,
@@ -88,6 +100,7 @@ def publish_gantt_navigation_context(
     gantt_resource: str,
     batch_id: Optional[str] = None,
     back_to: Optional[str] = None,
+    capsule_fields: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     validate_navigation_resource_aliases()
     resource_type = view if gantt_resource and view in _GANTT_RESOURCE_VIEWS else None
@@ -105,6 +118,7 @@ def publish_gantt_navigation_context(
         resource_label=gantt_resource,
         is_preview=is_plan_preview(plan_resolution),
         back_to=back_to,
+        **_capsule_kwargs(capsule_fields),
     )
 
 
@@ -117,6 +131,7 @@ def publish_analysis_navigation_context(
     resource_context: Dict[str, Any],
     batch_id: Optional[str] = None,
     back_to: Optional[str] = None,
+    capsule_fields: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     validate_navigation_resource_aliases()
     return _publish_context(
@@ -134,6 +149,7 @@ def publish_analysis_navigation_context(
         resource_id=resource_context.get("resource_id"),
         is_preview=is_plan_preview(plan_resolution),
         back_to=back_to,
+        **_capsule_kwargs(capsule_fields),
     )
 
 
@@ -147,6 +163,7 @@ def publish_week_plan_navigation_context(
     resource_context: Optional[Dict[str, Any]] = None,
     batch_id: Optional[str] = None,
     back_to: Optional[str] = None,
+    capsule_fields: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     validate_navigation_resource_aliases()
     resource = resource_context or {}
@@ -164,4 +181,5 @@ def publish_week_plan_navigation_context(
         resource_label=resource.get("resource_label"),
         is_preview=is_plan_preview(plan_resolution),
         back_to=back_to,
+        **_capsule_kwargs(capsule_fields),
     )

@@ -1,0 +1,15 @@
+{# 壳层计划上下文胶囊（fusion-plan-context-capsule，契约 4.2）：
+   版本 · 方案身份 · 生成时间 · 策略 · 数据范围——全站统一的一行只读回显。
+   只消费 *_label 公开字段；无 version 页面 capsule 为 None 零渲染；
+   纯展示不带跳转动作（动作归 workbench_nav_menu）。#}
+{% macro plan_context_capsule(capsule) %}
+  {% if capsule %}
+    <div class="aps-plan-capsule" aria-label="当前计划上下文">
+      <span class="aps-plan-capsule-item aps-plan-capsule-version">{{ capsule.version_label }}</span>
+      <span class="aps-plan-capsule-item">{{ capsule.plan_role_label }}</span>
+      <span class="aps-plan-capsule-item" title="排产生成时间">{{ capsule.generated_at_label }}</span>
+      <span class="aps-plan-capsule-item" title="排产方式">{{ capsule.strategy_label }}</span>
+      <span class="aps-plan-capsule-item" title="数据范围">{{ capsule.date_range_label }}</span>
+    </div>
+  {% endif %}
+{% endmacro %}

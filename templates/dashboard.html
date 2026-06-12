@@ -10,9 +10,10 @@
         <div>
           <div class="aps-section-eyebrow">计划员值班台</div>
           <h3 id="dashboard-workbench-title">今日待处理</h3>
-          <div class="muted">
-            {{ workbench_summary.generated_at_label }} · {{ workbench_summary.latest_plan.version_label }} · {{ workbench_summary.latest_plan.plan_role_label }}
-          </div>
+          {# version_label·plan_role_label 已归壳层胶囊单点（fusion-plan-context-capsule）；
+             保留的 generated_at_label 是「今日待处理生成时间」（current_now 实时戳），
+             与胶囊的排产生成时间语义不同，不合并 #}
+          <div class="muted">{{ workbench_summary.generated_at_label }}</div>
         </div>
         <div class="aps-dashboard-workbench-note">{{ workbench_summary.realtime_note }}</div>
       </div>

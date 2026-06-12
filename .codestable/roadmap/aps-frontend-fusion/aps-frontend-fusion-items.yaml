@@ -67,12 +67,12 @@ items:
     notes: 依赖双轨退役后镜像消失，收编点从 11 处减半；全量清单在 drafts 的 context-nav 域
 
   - slug: fusion-plan-context-capsule
-    description: 计划上下文胶囊——扩 build_workbench_plan_context 合同新增 generated_at_label/strategy_label、5 个发布点喂参、胶囊宏挂壳层 header、版本号全站单点化
+    description: 计划上下文胶囊——扩 build_workbench_plan_context 合同新增 generated_at_label/strategy_label、6 个发布点喂参（含 resource_dispatch）、胶囊宏挂壳层 header、版本号单点化阶段一（壳层 chrome 单点）
     depends_on: [fusion-label-single-source]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-12-fusion-plan-context-capsule
     minimal_loop: false
-    notes: 契约见 roadmap 4.2；坏时间显示"时间记录异常"，未知策略显示"未识别的策略"；dashboard 有 :275/:338 双发布点（后写覆盖），喂参须落在 dashboard_workbench_context 的构造调用处；builder 落 navigation_context.py 或新文件（scheduler_workbench_links.py 已 442/500 行）
+    notes: 契约见 roadmap 4.2（2026-06-12 三处修订：未知策略遵 #8 词表单源；发布点 6 处含 resource_dispatch；单点化两阶段）；坏时间显示"时间记录异常"；dashboard 双发布点（后写覆盖），喂参须落在 dashboard_workbench_context 的构造调用处；builder 落新文件（scheduler_workbench_links.py 已 449/500 行）
 
   - slug: fusion-nav-specs-unify
     description: 导航 specs 数据驱动化——侧栏五段「做事路线」分组、module_subnav 宏统一五个手写子导航宏、aria-current 全站上岗、焦点环 :focus-visible 统一

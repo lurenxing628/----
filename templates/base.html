@@ -110,6 +110,8 @@
         <div class="main-content">
             <header class="top-header">
                 <h2 style="font-size: 1.125rem; font-weight: 600;">{% block page_title %}{{ title or 'APS 系统' }}{% endblock %}</h2>
+                {% from "components/_plan_context_capsule.html" import plan_context_capsule %}
+                {{ plan_context_capsule(workbench_plan_capsule()) }}
                 <nav class="top-header-workbench">{{ ui.workbench_nav_menu() }}</nav>
                 <div class="user-info text-muted aps-header-controls">
                     <button

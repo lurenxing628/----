@@ -320,6 +320,12 @@ def week_plan_page():
         resource_context=resource_context,
         batch_id=batch_id,
         back_to=(request.args.get("back_to") or "").strip() or None,
+        # 胶囊喂参：selected_history 现成历史行（None 时不喂，胶囊显示「-」）
+        capsule_fields=(
+            {"generated_at": selected_history.get("schedule_time"), "strategy": selected_history.get("strategy")}
+            if isinstance(selected_history, dict)
+            else {}
+        ),
     )
 
     return render_template(
