@@ -21,10 +21,15 @@
       <div class="aps-query-form-actions">
         {{ ui.button('加载', 'primary', 'md', type_attr='submit') }}
       </div>
-      {% if selected %}
+      {% if selected and version_picker_gantt_links %}
         <div class="aps-version-link-actions">
-          {{ ui.link_button('查看设备甘特图', url_for('scheduler.gantt_page', view='machine', version=selected.version), 'secondary', 'md') }}
-          {{ ui.link_button('查看人员甘特图', url_for('scheduler.gantt_page', view='operator', version=selected.version), 'secondary', 'md') }}
+          {% for link in version_picker_gantt_links %}
+            {% if link.disabled or not link.url %}
+              <button type="button" class="btn btn-secondary btn-md" disabled title="{{ link.disabled_reason }}"><span>{{ link.label }}</span></button>
+            {% else %}
+              {{ ui.link_button(link.label, link.url, 'secondary', 'md') }}
+            {% endif %}
+          {% endfor %}
         </div>
       {% endif %}
     </form>

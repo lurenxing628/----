@@ -59,6 +59,13 @@ class _HistoryServiceSelectiveStub(_HistoryServiceStub):
         return _HistoryItem(int(version), self.summary)
 
 
+class _PlanQueryServiceStub:
+    """行级工作台链接装配需要的最小 span 合同（贴真实 get_plan_time_span 返回形态）。"""
+
+    def get_plan_time_span(self, version, role=None):
+        return {"start_time": "2026-06-01 08:00:00", "end_time": "2026-06-05 18:00:00"}
+
+
 def _build_app(monkeypatch, history_service: _HistoryServiceStub) -> Flask:
     import web.routes.system as _system_routes  # noqa: F401
     import web.routes.system_history as route_mod
@@ -72,7 +79,10 @@ def _build_app(monkeypatch, history_service: _HistoryServiceStub) -> Flask:
 
     @app.before_request
     def _inject_services() -> None:
-        g.services = SimpleNamespace(schedule_history_query_service=history_service)
+        g.services = SimpleNamespace(
+            schedule_history_query_service=history_service,
+            schedule_plan_query_service=_PlanQueryServiceStub(),
+        )
         g.app_logger = app.logger
         g.op_logger = None
 

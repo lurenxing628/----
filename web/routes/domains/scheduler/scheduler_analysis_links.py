@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from web.viewmodels.scheduler_workbench_links import build_workbench_link, build_workbench_plan_context
+from core.services.scheduler.schedule_result_view_range import get_plan_time_span_dates
+from web.viewmodels.scheduler_workbench_links import (
+    FULL_PLAN_GUARD_FIELDS,
+    build_workbench_link,
+    build_workbench_plan_context,
+)
 
 
 def _text(value: Any) -> str:
@@ -41,6 +46,53 @@ def _plan_role_links(
     ]
 
 
+def build_version_picker_gantt_links(
+    services: Any,
+    version: Optional[int],
+    *,
+    plan_role: str,
+    scenario_id: Optional[str],
+    back_to: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """版本选择器两条甘特链接（fusion-handrolled-links-adoption）。
+
+    用全量方案身份建 context：场景预览（带 scenario_id）跳甘特保留 scenario_id
+    不再掉回正式视角（roadmap 第 11 条点名的真实缺陷）；裸 preview 无 scenario_id
+    由合同禁用并明示。resolve 的 ValidationError 穿透——路由对相同参数的
+    publish 调用已是同样行为，不引入第二套容错口径。
+    """
+    if version is None:
+        return []
+    from .scheduler_navigation_publish import resolve_navigation_plan_context
+
+    plan_resolution = resolve_navigation_plan_context(services, int(version), plan_role, scenario_id)
+    effective_role = str(plan_resolution.get("selected_role") or plan_role or "")
+    effective_scenario = plan_resolution.get("scenario_id") or scenario_id
+    plan_query_service = getattr(services, "schedule_plan_query_service", None)
+    span = None
+    span_error = ""
+    try:
+        span = get_plan_time_span_dates(plan_query_service, int(version), effective_role, effective_scenario)
+    except Exception:
+        span_error = "这个版本的计划日期范围读取失败，暂时不能从这里跳转甘特图。"
+    context = build_workbench_plan_context(
+        version=int(version),
+        plan_role=effective_role,
+        plan_resolution=plan_resolution,
+        plan_guard_fields=FULL_PLAN_GUARD_FIELDS,
+        scenario_id=effective_scenario,
+        date_from=(span or {}).get("start_date"),
+        date_to=(span or {}).get("end_date"),
+        back_to=back_to,
+    )
+    if span_error:
+        context["plan_time_span_load_error"] = span_error
+    return [
+        build_workbench_link(context, "gantt", label="查看设备甘特图", view="machine"),
+        build_workbench_link(context, "gantt", label="查看人员甘特图", view="operator"),
+    ]
+
+
 def attach_candidate_plan_links(
     ctx: Dict[str, Any],
     selected_ver: Optional[int],
@@ -75,4 +127,4 @@ def attach_candidate_plan_links(
         )
 
 
-__all__ = ["attach_candidate_plan_links"]
+__all__ = ["attach_candidate_plan_links", "build_version_picker_gantt_links"]

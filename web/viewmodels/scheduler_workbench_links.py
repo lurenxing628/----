@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from core.models.schedule_plan_role import ROLE_ADOPTED
 from core.models.schedule_plan_role import plan_role_label as _core_plan_role_label
@@ -387,10 +387,17 @@ def build_workbench_link(
         batch_id=batch_id,
         extra_params=extra_params,
     )
+    path = TARGET_PAGE_PATHS[target_page]
+    # 路径参数型目标（batch_detail）：缺 batch_id 是调用方编程错误，
+    # 不随 disabled 摇摆，装配阶段即 fail-loud——不出半截 URL
+    if "{batch_id}" in path:
+        batch_text = _text(batch_id) or _text(context.get("batch_id"))
+        if not batch_text:
+            raise ValueError(f"目标页 {target_page} 的路径需要 batch_id，调用方未提供。")
+        path = path.replace("{batch_id}", quote(batch_text, safe=""))
     url = ""
     if not is_disabled:
         encoded = urlencode(query)
-        path = TARGET_PAGE_PATHS[target_page]
         url = f"{path}?{encoded}" if encoded else path
     return {
         "label": _text(label) or TARGET_DEFAULT_LABELS[target_page],

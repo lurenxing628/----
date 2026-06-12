@@ -16,6 +16,10 @@ TARGET_PAGE_PATHS = {
     "execution_review": "/reports/execution-review",
     "downtime_report": "/reports/downtime",
     "reports_index": "/reports/",
+    "history": "/system/history",
+    # 路径参数型目标：{batch_id} 占位在 build_workbench_link 拼 URL 时替换，
+    # 缺 batch_id 直接 raise（fail-loud，不出半截 URL）
+    "batch_detail": "/scheduler/batches/{batch_id}",
 }
 
 TARGET_DEFAULT_LABELS = {
@@ -30,6 +34,8 @@ TARGET_DEFAULT_LABELS = {
     "execution_review": "查看计划和现场实际",
     "downtime_report": "查看停机影响",
     "reports_index": "查看报表中心",
+    "history": "查看排产历史",
+    "batch_detail": "查看批次详情",
 }
 
 VERSION_REQUIRED_TARGETS = {
@@ -104,6 +110,32 @@ _EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS = {
     "can_write_feedback",
 }
 
+# history/batch_detail 的 query 合同（version 可选+back_to / 仅 back_to）不可被
+# extra_params 绕过——版本/批次/日期/period/资源/视图/方案身份维度键一律拒绝
+# （execution_review 先例同款；version/view/gantt_resource 同属工作台上下文维度）
+_CONTEXT_FREE_TARGET_FORBIDDEN_EXTRA_PARAMS = _EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS | {
+    "version",
+    "view",
+    "batch_id",
+    "gantt_batch",
+    "gantt_resource",
+    "query_date",
+    "period_preset",
+    "date_from",
+    "date_to",
+    "start_date",
+    "end_date",
+    "week_start",
+    "resource_type",
+    "resource_id",
+    "scope_type",
+    "scope_id",
+    "machine_id",
+    "operator_id",
+    "team_id",
+}
+_CONTEXT_FREE_TARGETS = {"history", "batch_detail"}
+
 _TARGET_QUERY_SPECS: Dict[str, Dict[str, Any]] = {
     "dashboard": {
         "plan_style": "standard",
@@ -175,6 +207,21 @@ _TARGET_QUERY_SPECS: Dict[str, Dict[str, Any]] = {
         "date_style": "date_from_to",
         "batch_position": "before_resource",
         "resource_style": "resource",
+    },
+    # 历史页：version 是可选筛选（无方案身份概念），不带日期/批次/资源/period
+    "history": {
+        "plan_style": "version_only",
+        "date_style": "none",
+        "batch_position": "none",
+        "resource_style": "none",
+    },
+    # 批次详情：batch_id 走路径占位（batch_in_path），query 只剩 back_to
+    "batch_detail": {
+        "plan_style": "none",
+        "date_style": "none",
+        "batch_position": "none",
+        "resource_style": "none",
+        "batch_in_path": True,
     },
 }
 
@@ -250,18 +297,31 @@ def target_uses_primary_resource_filter(target_page: str) -> bool:
 
 
 def _append_target_plan_query(query: List[Tuple[str, str]], context: Dict[str, Any], plan_style: str) -> None:
+    if plan_style == "none":
+        return
+    if plan_style == "version_only":
+        _append_param(query, "version", context.get("version"))
+        return
     if plan_style == "execution_review":
         _append_param(query, "version", context.get("version"))
         _append_param(query, "plan_role", context.get("plan_role"))
         return
-    _append_plan_query(query, context)
+    if plan_style == "standard":
+        _append_plan_query(query, context)
+        return
+    raise ValueError(f"未知方案参数格式：{plan_style}")
 
 
 def _append_target_date_query(query: List[Tuple[str, str]], context: Dict[str, Any], date_style: str) -> None:
+    if date_style == "none":
+        return
     if date_style == "start_end":
         _append_date_range_as_start_end(query, context)
         return
-    _append_date_range_as_date_from_to(query, context)
+    if date_style == "date_from_to":
+        _append_date_range_as_date_from_to(query, context)
+        return
+    raise ValueError(f"未知日期参数格式：{date_style}")
 
 
 def _resource_query_value(
@@ -297,6 +357,8 @@ def _append_resource_query(
     default_type: Optional[str] = None,
     view: Optional[str] = None,
 ) -> None:
+    if style == "none":
+        return
     effective_type = _text(resource_type or context.get("resource_type") or default_type)
     for key, value in _resource_query_value(context, resource_type, resource_id, default_type=default_type):
         if style == "resource":
@@ -348,12 +410,16 @@ def _append_query_from_spec(
     if spec.get("include_week_start"):
         _append_param(query, "week_start", context.get("date_from"))
     _append_target_date_query(query, context, str(spec["date_style"]))
-    _append_period_query(query, context, period_preset=spec.get("period_preset"))
+    if str(spec["date_style"]) != "none":
+        _append_period_query(query, context, period_preset=spec.get("period_preset"))
+    batch_position = str(spec["batch_position"])
+    if batch_position not in ("none", "before_resource", "after_resource"):
+        raise ValueError(f"未知批次参数位置：{batch_position}")
     batch_param = str(spec.get("batch_param") or "batch_id")
-    if spec["batch_position"] == "before_resource":
+    if batch_position == "before_resource":
         _append_batch_query(query, batch_value, key=batch_param)
     _append_target_resource_query(query, context, spec, resource_type, resource_id, view)
-    if spec["batch_position"] == "after_resource":
+    if batch_position == "after_resource":
         _append_batch_query(query, batch_value, key=batch_param)
 
 
@@ -365,6 +431,8 @@ def _append_extra_params(
     for key, value in (extra_params or {}).items():
         if target_page == "execution_review" and _text(key) in _EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS:
             raise ValueError("计划和现场实际入口不能通过 extra_params 追加方案身份或模拟预览参数。")
+        if target_page in _CONTEXT_FREE_TARGETS and _text(key) in _CONTEXT_FREE_TARGET_FORBIDDEN_EXTRA_PARAMS:
+            raise ValueError(f"{target_page} 入口不能通过 extra_params 追加工作台上下文参数 {_text(key)}。")
         _append_param(query, key, value)
 
 

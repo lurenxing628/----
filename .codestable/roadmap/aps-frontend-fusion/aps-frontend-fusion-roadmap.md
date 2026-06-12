@@ -280,7 +280,7 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 8. **fusion-label-single-source** ✅ done（2026-06-12，feature 2026-06-12-fusion-label-single-source，Codex 设计两轮+实现一轮审核收口；ok2 死键全删走 unknown 诚实降级）— 词表收编：11 处内联 strategy/status 字典收编唯一字源 + 三套 status 口径拍板 + 'ok2' 死键清理 + cs-semantic-radar 概念身份证。依赖：2（删镜像后只剩单树，工作量减半）。
 9. **fusion-plan-context-capsule** — 计划上下文胶囊：扩 build_workbench_plan_context 合同（4.2）+ 5 发布点喂参 + 胶囊宏挂壳层 header + 版本号全站单点化。依赖：8（词表先单源）。
 10. **fusion-nav-specs-unify** — 导航 specs 化：侧栏五段「做事路线」分组 + module_subnav 统一五个手写宏 + aria-current 全站 + 焦点环上岗。依赖：2、9（胶囊与侧栏同壳层，先胶囊后重排）。
-11. **fusion-handrolled-links-adoption** — 手拼链接收编：history.html 5 链接、analysis _version_picker 2 链接入 WorkbenchLink；TARGET_PAGE_PATHS 扩 history/batch_detail 两目标（动公共枚举，独立拍板）。依赖：无。
+11. **fusion-handrolled-links-adoption** ✅ done（2026-06-12，feature 2026-06-12-fusion-handrolled-links-adoption，Codex 设计两轮+实现三轮审核零阻塞收口）— 手拼链接收编：history.html 5 链接、analysis _version_picker 2 链接入 WorkbenchLink（修「模拟预览点过去掉回正式视角」缺陷——选择器链带全量身份保留 scenario_id）；TARGET_PAGE_PATHS 扩 history/batch_detail 13 目标（batch_detail 是首个路径参数型目标：{batch_id} 占位 quote 替换、缺参 fail-loud 不随 disabled 摇摆；两新目标 query 合同由 extra_params 禁键集守护）。history 行级 span 先分页后装配、单行坏历史禁用明示。依赖：无。→ 解锁第 18 条。
 
 **模块 W**
 12. **fusion-gantt-execution-visuals** — 甘特现场事实可视化：progress 完工置 100（gantt_tasks.py:245）+ execution-<status> 条形着色（css 列表 :220-223 追加）+ 侧栏详情补优先级/加工方式/时长、popup 补现场摘要一行（meta 字段双向互缺，gantt_popup.js:107-116/:162-176）。依赖：2（甘特模板双写税消除）。

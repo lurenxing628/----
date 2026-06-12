@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Tuple
 from urllib.parse import parse_qs, urlparse
 
+import pytest
+
 from core.models.schedule_plan_role import PLAN_ROLE_LABELS, SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 from core.services.scheduler.schedule_result_view_context import plan_role_filter_fields
 from web.viewmodels.scheduler_workbench_link_query import plan_guard_fields_for_resolution
@@ -474,6 +476,8 @@ def test_target_pages_and_public_label_mappings_are_fixed() -> None:
         "execution_review",
         "downtime_report",
         "reports_index",
+        "history",
+        "batch_detail",
     }
     assert plan_role_label("baseline_best") == "原算法代表方案"
     assert plan_role_label("future_role") == "未知方案身份"
@@ -485,6 +489,83 @@ def test_target_pages_and_public_label_mappings_are_fixed() -> None:
     assert period_preset_label("future_range") == "未知日期范围"
     assert gantt_view_label("operator") == "人员甘特"
     assert gantt_view_label("future_view") == "未知甘特视图"
+
+
+# --- 新目标契约（fusion-handrolled-links-adoption）：history / batch_detail ---
+
+
+def test_history_target_query_only_carries_optional_version_and_back_to() -> None:
+    context = build_workbench_plan_context(
+        version=12,
+        plan_role="adopted",
+        date_from="2026-05-25",
+        date_to="2026-05-31",
+        query_date="2026-05-28",
+        period_preset="week",
+        batch_id="B202605-001",
+        resource_type="machine",
+        resource_id="M1",
+        back_to="/scheduler/analysis",
+    )
+    link = build_workbench_link(context, "history")
+    assert link["label"] == "查看排产历史"
+    assert link["disabled"] is False
+    assert urlparse(link["url"]).path == "/system/history"
+    # version 可选筛选 + back_to；日期/批次/period/资源/方案身份一律不泄漏
+    assert _query_values(link["url"]) == {"version": "12", "back_to": "/scheduler/analysis"}
+
+    bare = build_workbench_link(build_workbench_plan_context(), "history")
+    assert bare["disabled"] is False  # 非 VERSION_REQUIRED：无版本也可进历史页
+    assert bare["url"] == "/system/history"
+
+
+def test_batch_detail_target_puts_batch_id_in_path_and_fails_loud_without_it() -> None:
+    context = build_workbench_plan_context(
+        version=12,
+        plan_role="adopted",
+        date_from="2026-05-25",
+        date_to="2026-05-31",
+        batch_id="B 1/2",
+        back_to="/system/history",
+    )
+    link = build_workbench_link(context, "batch_detail")
+    assert link["label"] == "查看批次详情"
+    # 路径占位 quote(safe="")：空格与斜杠都转义，不出歧义路径
+    assert urlparse(link["url"]).path == "/scheduler/batches/B%201%2F2"
+    assert _query_values(link["url"]) == {"back_to": "/system/history"}
+
+    explicit = build_workbench_link(context, "batch_detail", batch_id="B202605-002")
+    assert urlparse(explicit["url"]).path == "/scheduler/batches/B202605-002"
+
+    no_batch = build_workbench_plan_context(version=12, plan_role="adopted")
+    with pytest.raises(ValueError):
+        build_workbench_link(no_batch, "batch_detail")
+    # 缺 batch_id 是编程错误，不随 disabled 摇摆——禁用态同样 raise
+    with pytest.raises(ValueError):
+        build_workbench_link(no_batch, "batch_detail", disabled=True, disabled_reason="人为禁用")
+
+
+def test_context_free_targets_reject_extra_params_escape() -> None:
+    # history/batch_detail 的 query 合同不可被 extra_params 绕过（execution_review 先例同款）
+    context = build_workbench_plan_context(version=12, plan_role="adopted", batch_id="B1")
+    for target, params in (
+        ("history", {"batch_id": "B2"}),
+        ("history", {"query_date": "2026-05-28"}),
+        ("history", {"plan_role": "adopted"}),
+        ("history", {"version": "99"}),
+        ("history", {"view": "operator"}),
+        ("batch_detail", {"batch_id": "B2"}),
+        ("batch_detail", {"period_preset": "week"}),
+        ("batch_detail", {"date_from": "2026-05-25"}),
+        ("batch_detail", {"resource_id": "M1"}),
+        ("batch_detail", {"version": "99"}),
+        ("batch_detail", {"gantt_resource": "M1"}),
+    ):
+        with pytest.raises(ValueError):
+            build_workbench_link(context, target, extra_params=params)
+    # 非上下文键（如分页）不受限——只封工作台上下文维度；断完整 query 防合同变脏
+    link = build_workbench_link(context, "history", extra_params={"page": "2"})
+    assert _query_values(link["url"]) == {"version": "12", "page": "2"}
 
 
 def test_workbench_plan_role_labels_delegate_to_core_labels() -> None:

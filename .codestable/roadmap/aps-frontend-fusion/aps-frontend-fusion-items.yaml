@@ -85,8 +85,8 @@ items:
   - slug: fusion-handrolled-links-adoption
     description: 手拼链接收编——history.html 五个版本跳转链接与 analysis 版本选择器两条甘特链入 WorkbenchLink 合同；TARGET_PAGE_PATHS 白名单扩 history/batch_detail 两目标
     depends_on: []
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-12-fusion-handrolled-links-adoption
     minimal_loop: false
     notes: 手拼链接丢身份上下文（模拟预览点过去掉回正式视角）是真实缺陷；扩公共枚举影响面大需在 design 拍板
 

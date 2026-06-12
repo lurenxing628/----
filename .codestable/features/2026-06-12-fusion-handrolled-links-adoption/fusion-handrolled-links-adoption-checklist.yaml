@@ -1,0 +1,39 @@
+feature: 2026-06-12-fusion-handrolled-links-adoption
+steps:
+  - id: s1
+    desc: 枚举+spec+路径占位机制 + links contract 测试更新（含新目标契约）
+    status: done
+  - id: s2
+    desc: history viewmodel+路由+模板（删宏）+ 页面测试 + 浏览器目检
+    status: done
+  - id: s3
+    desc: analysis 选择器链（身份缺陷修复）+ 测试 + 浏览器目检
+    status: done
+  - id: s4
+    desc: 既有回归 + required 快测 + daily gate
+    status: done
+checks:
+  - id: c1
+    desc: 接口契约与 design 2.1 一致（13 键枚举/新 spec none 分支/路径占位/缺参 raise）
+    status: passed
+  - id: c2
+    desc: 行为决策核对（adopted 口径 span + 日期转换/per-row 宽 catch/scenario 保留/裸 preview 禁用）
+    status: passed
+  - id: c3
+    desc: 验收场景 1-8 全过（含 disabled 缺 batch_id 仍 raise + URL 形态钉死 + grep 零残留）
+    status: passed
+  - id: c4
+    desc: 术语一致性（手拼链接/路径参数型目标/轻量 context 全文同口径）
+    status: passed
+  - id: c5
+    desc: 架构归并（ARCHITECTURE.md 报表工作台回跳段）
+    status: passed
+  - id: c6
+    desc: requirement 回写结论
+    status: passed
+  - id: c7
+    desc: roadmap 回写（items.yaml + 主文档第 11 条 done，解锁 18）
+    status: passed
+  - id: c8
+    desc: staged diff 不含并行 WIP 文件
+    status: passed

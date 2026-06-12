@@ -7,7 +7,7 @@ from web.viewmodels.scheduler_analysis_action_hub import build_analysis_action_h
 from web.viewmodels.scheduler_analysis_vm import build_analysis_context, build_candidate_comparison_display
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
-from .scheduler_analysis_links import attach_candidate_plan_links
+from .scheduler_analysis_links import attach_candidate_plan_links, build_version_picker_gantt_links
 from .scheduler_analysis_read import build_analysis_read_context
 from .scheduler_bp import bp
 from .scheduler_navigation_publish import publish_analysis_navigation_context, resolve_navigation_plan_context
@@ -102,6 +102,16 @@ def analysis_page():
         )
     _publish_analysis_navigation_context(read_ctx.selected_version)
 
+    # 版本选择器两条甘特链入 WorkbenchLink：带全量方案身份（scenario 预览
+    # 不再掉回正式视角），与 publish 同参数同失败口径
+    version_picker_gantt_links = build_version_picker_gantt_links(
+        g.services,
+        read_ctx.selected_version,
+        plan_role=_request_arg_text("plan_role") or "adopted",
+        scenario_id=_request_arg_text("scenario_id") or None,
+        back_to=_request_arg_text("back_to") or None,
+    )
+
     return render_template(
         "scheduler/analysis.html",
         title="排产优化分析",
@@ -110,5 +120,6 @@ def analysis_page():
         selected_summary_display=selected_summary_display,
         trend_summary_state=read_ctx.trend_summary_state,
         version_resolution=read_ctx.version_resolution.to_dict(),
+        version_picker_gantt_links=version_picker_gantt_links,
         **ctx,
     )

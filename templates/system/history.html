@@ -1,12 +1,14 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
-{% macro history_version_links(version) -%}
+{% macro workbench_action_links(links) -%}
   <div class="table-actions">
-    <a href="{{ url_for('scheduler.gantt_page', view='machine', version=version) }}" class="table-action-link">设备甘特图</a>
-    <a href="{{ url_for('scheduler.gantt_page', view='operator', version=version) }}" class="table-action-link">人员甘特图</a>
-    <a href="{{ url_for('scheduler.week_plan_page', version=version) }}" class="table-action-link">周计划</a>
-    <a href="{{ url_for('scheduler.resource_dispatch_page', version=version) }}" class="table-action-link">资源排班</a>
-    <a href="{{ url_for('scheduler.analysis_page', version=version) }}" class="table-action-link">优化分析</a>
+    {% for link in links %}
+      {% if link.disabled or not link.url %}
+        <span class="table-action-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">{{ link.label }}</span>
+      {% else %}
+        <a href="{{ link.url }}" class="table-action-link">{{ link.label }}</a>
+      {% endif %}
+    {% endfor %}
   </div>
 {%- endmacro %}
 {% block content %}
@@ -62,7 +64,7 @@
         {{ ui.summary_item('工序', selected.op_count) }}
         {{ ui.summary_item('创建人', selected.created_by or '-') }}
       </div>
-      {{ history_version_links(selected.version) }}
+      {{ workbench_action_links(selected_workbench_links) }}
       {% if selected_summary_display.summary_parse_state.parse_failed %}
         <div class="flash-card flash-warning mt-2">
           {{ selected_summary_display.summary_parse_state.user_message }}
@@ -283,7 +285,7 @@
                   <span class="muted">-</span>
                 {% endif %}
               </td>
-              <td>{{ history_version_links(r.version) }}</td>
+              <td>{{ workbench_action_links(r.workbench_links) }}</td>
             </tr>
           {% endfor %}
         </tbody>
