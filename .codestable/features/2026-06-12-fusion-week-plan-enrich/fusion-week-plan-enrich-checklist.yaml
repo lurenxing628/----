@@ -1,0 +1,39 @@
+feature: 2026-06-12-fusion-week-plan-enrich
+steps:
+  - id: s1
+    desc: gantt_week_plan 扩展（现场状态+双返回旁路）+ daily_summary 新文件 + 单测
+    status: done
+  - id: s2
+    desc: gantt_service 接线（~4 行红线核对）+ Excel 列 + 路由空周升级 + 页面契约
+    status: done
+  - id: s3
+    desc: 浏览器目检（有数据周列+汇总条；空周升级文案+跳转）
+    status: done
+  - id: s4
+    desc: 既有 week_plan 回归 + daily gate
+    status: done
+checks:
+  - id: c1
+    desc: 接口契约与 design 2.1 一致（双返回签名/daily_summary 路由层归属/八中文键）
+    status: passed
+  - id: c2
+    desc: 行为决策核对（无 fact 待开工/None「-」/正午采样/禁 capacity_hours/导出无合计行）
+    status: passed
+  - id: c3
+    desc: 验收场景 1-8 全过（跨午夜夹具/休息日容量 0/空周三态/test_scheduler_result_navigation_contract 解包）
+    status: passed
+  - id: c4
+    desc: 术语一致性（现场状态列/每日合计行/空周升级全文同口径）
+    status: passed
+  - id: c5
+    desc: 架构归并（ARCHITECTURE.md 周计划条目，4.6 首落地实例）
+    status: passed
+  - id: c6
+    desc: requirement 回写结论
+    status: passed
+  - id: c7
+    desc: roadmap 回写（items.yaml + 主文档第 16 条 done，解锁 31）
+    status: passed
+  - id: c8
+    desc: staged diff 不含并行 WIP 文件
+    status: passed

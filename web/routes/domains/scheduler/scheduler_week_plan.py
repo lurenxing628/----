@@ -12,6 +12,7 @@ from core.services.scheduler.schedule_plan_option_display import public_plan_rol
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED
 from core.services.scheduler.schedule_result_view_context import default_plan_resolution_dict, selected_plan_role
 from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
+from core.services.scheduler.week_plan_daily_summary import build_week_plan_daily_summary
 from core.services.scheduler.week_plan_excel import build_week_plan_export_workbook
 from core.shared.strict_parse import parse_required_int
 from web.error_boundary import user_visible_app_error_message
@@ -43,6 +44,7 @@ from .scheduler_navigation_publish import (
 )
 from .scheduler_user_messages import scheduler_user_visible_app_error_message
 from .scheduler_utils import _current_scheduler_operator, get_plan_role_arg
+from .scheduler_week_plan_preview import build_week_plan_preview_state, week_plan_span_jump
 from .scheduler_week_plan_query import (
     request_week_plan_batch_id,
     request_week_plan_resource_context,
@@ -107,30 +109,6 @@ def _load_selected_week_plan_summary(services, version: int):
         parse_state=parse_state,
     )
     return selected_history, selected_summary, summary_display
-
-
-def _build_week_plan_preview_state(data):
-    rows = data.get("rows") or []
-    degradation_counters = data.get("degradation_counters") or {}
-    bad_time_skipped = int(degradation_counters.get("bad_time_row_skipped") or 0)
-    degradation_message = ""
-    if bad_time_skipped > 0:
-        degradation_message = f"已过滤 {bad_time_skipped} 条开始或结束时间写法不对的排程记录。"
-    empty_message = "暂无数据（该周/该版本没有排程记录）。"
-    if not rows and str(data.get("empty_reason") or "") == "all_rows_filtered_by_invalid_time":
-        if bad_time_skipped > 0:
-            empty_message = (
-                f"已过滤 {bad_time_skipped} 条开始或结束时间写法不对的排程记录。"
-                "当前区间没有可显示排程，请到系统管理里的排产历史查看这次排产的详细提醒。"
-            )
-        else:
-            empty_message = "当前区间的排程开始或结束时间写法不对，已全部过滤，请到系统管理里的排产历史查看这次排产的详细提醒。"
-    return {
-        "rows": rows,
-        "preview_rows": rows[:50],
-        "degradation_message": degradation_message,
-        "empty_message": empty_message,
-    }
 
 
 def _flash_summary_primary_degradation(summary_display):
@@ -310,7 +288,17 @@ def week_plan_page():
         selected_history=selected_history,
         missing_message=f"v{ver} 无对应排产历史，当前仅展示排程明细，历史摘要不可用。",
     )
-    preview_state = _build_week_plan_preview_state(data)
+    rows_for_state = data.get("rows") or []
+    preview_state = build_week_plan_preview_state(
+        data, span_jump=week_plan_span_jump(services, data) if not rows_for_state else None
+    )
+    # 每日合计：路由层装配（4.6——calendar 不进 gantt_service，新容量逻辑在新文件）
+    daily_summary = build_week_plan_daily_summary(
+        data.get("daily_planned_minutes") or {},
+        calendar=services.calendar_service,
+        week_start=wr.week_start_date,
+        week_end=wr.week_end_date,
+    )
     publish_week_plan_navigation_context(
         version=ver,
         plan_resolution=plan_resolution,
@@ -334,6 +322,8 @@ def week_plan_page():
         degraded=bool(data.get("degraded")),
         degradation_message=preview_state["degradation_message"],
         empty_message=preview_state["empty_message"],
+        empty_jump_link=preview_state["empty_jump_link"],
+        daily_summary=daily_summary,
         week_start=wr.week_start_date.isoformat(),
         week_end=wr.week_end_date.isoformat(),
         offset=offset,

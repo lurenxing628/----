@@ -437,7 +437,7 @@ class GanttService:
     ) -> Dict[str, Any]:
         """
         返回周计划行（用于页面预览与导出）。
-        字段：日期/批次号/图号/工序/设备/人员/时段
+        字段：日期/批次号/图号/工序/设备/人员/时段/现场状态。
         """
         plan_query = self._get_plan_query_service(plan_query_service)
         wr, _, _ = resolve_schedule_result_week_range(
@@ -474,8 +474,10 @@ class GanttService:
             end_time=wr.end_exclusive_str,
             **detail_filters,
         )
-        outcome = build_week_plan_rows(rows=rows, wr=wr)
-
+        execution_facts = self._execution_facts_by_op_id(rows, plan_resolution)
+        outcome, daily_planned_minutes = build_week_plan_rows(
+            rows=rows, wr=wr, execution_facts_by_op_id=execution_facts
+        )
         hist = self.history_repo.get_by_version(ver)
         data = {
             "version": ver,
@@ -485,6 +487,7 @@ class GanttService:
             "week_start": wr.week_start_date.isoformat(),
             "week_end": wr.week_end_date.isoformat(),
             "rows": outcome.value,
+            "daily_planned_minutes": daily_planned_minutes,
             "degraded": outcome.has_events,
             "degradation_events": degradation_events_to_dicts(outcome.events),
             "degradation_counters": outcome.counters,

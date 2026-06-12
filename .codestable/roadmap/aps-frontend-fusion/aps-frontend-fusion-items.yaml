@@ -125,8 +125,8 @@ items:
   - slug: fusion-week-plan-enrich
     description: 周计划增强——现场状态列（_split_by_day 拆分前注入，逻辑全落 gantt_week_plan.py）+ Excel 导出同列 + 空周提示升级带"跳到该周" + 每日合计工时/容量行（容量分母按 roadmap 4.6 共享协议：同公式正午采样、禁直调 capacity_hours）
     depends_on: []
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-12-fusion-week-plan-enrich
     minimal_loop: false
     notes: 周计划是现场事实链路最大的未接页面；拆分后行丢 op_id，注入必须在拆分前（已核证）
 

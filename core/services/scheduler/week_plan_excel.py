@@ -16,15 +16,15 @@ def build_week_plan_export_workbook(
     plan_resolution: Optional[Mapping[str, Any]] = None,
     export_context: Optional[Mapping[str, Any]] = None,
 ) -> BytesIO:
-    headers = ["日期", "批次号", "图号", "工序", "设备", "人员", "时段"]
+    headers = ["日期", "批次号", "图号", "工序", "设备", "人员", "时段", "现场状态"]
     output = build_xlsx_bytes(
         headers,
         [[r.get(h, "") for h in headers] for r in rows],
         format_spec={
             "date_cols": [0],
-            "text_cols": [1, 2, 4, 5, 6],
+            "text_cols": [1, 2, 4, 5, 6, 7],
             "int_cols": [3],
-            "column_widths": {0: 12, 1: 14, 2: 14, 3: 10, 4: 14, 5: 14, 6: 18},
+            "column_widths": {0: 12, 1: 14, 2: 14, 3: 10, 4: 14, 5: 14, 6: 18, 7: 12},
         },
         sheet_title="周计划",
         sanitize_formula=True,

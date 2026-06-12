@@ -241,6 +241,14 @@
     {% if degradation_message %}
       <div class="flash-card flash-warning mb-2">{{ degradation_message }}</div>
     {% endif %}
+    {% if daily_summary %}
+      <div class="aps-week-daily-summary muted text-xs mb-2">
+        {% for d in daily_summary %}
+          <span class="aps-week-daily-summary-item">{{ d.date }}：计划 {{ d.planned_hours_label }} / 容量 {{ d.capacity_hours_label }}（{{ d.load_label }}）</span>
+        {% endfor %}
+        <div class="mt-1">容量按全局工作日历估算，未按单台设备/单人细分。</div>
+      </div>
+    {% endif %}
     {% if preview_rows and preview_rows|length > 0 %}
       <div class="aps-table-scroll">
         <table id="weekPlanPreviewTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_weekPlanPreviewTable">
@@ -253,6 +261,7 @@
               <th class="w-220" data-col-key="machine" data-default-w="220" data-min-w="160">设备</th>
               <th class="w-220" data-col-key="operator" data-default-w="220" data-min-w="160">人员</th>
               <th class="w-160" data-col-key="slot" data-default-w="160" data-min-w="140">时段</th>
+              <th class="w-120" data-col-key="execution_status" data-default-w="120" data-min-w="100">现场状态</th>
             </tr>
           </thead>
           <tbody>
@@ -265,13 +274,20 @@
                 <td>{{ r['设备'] }}</td>
                 <td>{{ r['人员'] }}</td>
                 <td>{{ r['时段'] }}</td>
+                <td>{{ r['现场状态'] }}</td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     {% else %}
-      <div class="muted">{{ empty_message }}</div>
+      <div class="muted">{{ empty_message }}
+        {% if empty_jump_link %}
+          {% if not empty_jump_link.disabled and empty_jump_link.url %}
+            <a href="{{ empty_jump_link.url }}" class="table-action-link">{{ empty_jump_link.label }}</a>
+          {% endif %}
+        {% endif %}
+      </div>
     {% endif %}
   </div>
 {% endblock %}

@@ -19,7 +19,8 @@ from web.viewmodels.scheduler_resource_dispatch import decorate_resource_dispatc
 
 def test_week_plan_cross_day_segments_use_clear_day_labels() -> None:
     wr = resolve_week_range(start_date="2026-03-02", end_date="2026-03-05")
-    outcome = build_week_plan_rows(
+    # build_week_plan_rows 双返回（fusion-week-plan-enrich：minutes_by_date 旁路）
+    outcome, _minutes = build_week_plan_rows(
         rows=[
             {
                 "start_time": "2026-03-02 08:00:00",

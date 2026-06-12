@@ -114,6 +114,9 @@ def _build_app(monkeypatch, history_service: _HistoryServiceStub, *, gantt_servi
         g.services = SimpleNamespace(
             gantt_service=gantt_service or _GanttServiceStub(),
             schedule_history_query_service=history_service,
+            # 每日合计装配需要（fusion-week-plan-enrich）；桩 data 无
+            # daily_planned_minutes 时汇总为空列表，不触发 policy 查询
+            calendar_service=SimpleNamespace(policy_for_datetime=lambda dt: None),
         )
         g.app_logger = app.logger
         g.op_logger = None
