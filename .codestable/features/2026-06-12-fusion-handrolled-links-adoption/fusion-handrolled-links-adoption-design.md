@@ -54,7 +54,7 @@ tags: [frontend, navigation, workbench-link, module-c]
 **变化**：
 - 修改 `web/viewmodels/scheduler_workbench_link_query.py`：TARGET_PAGE_PATHS/TARGET_DEFAULT_LABELS 各 +2；_TARGET_QUERY_SPECS +2（none/version_only style 分支）。
 - 修改 `web/viewmodels/scheduler_workbench_links.py`：build_workbench_link 路径占位替换（~15 行）。
-- 新增 `web/viewmodels/system_history_links.py`：`build_history_version_links(plan_query_service, version) -> List[Dict]`。
+- 新增 `web/viewmodels/system_history_links.py`：`build_history_version_links(version, *, span, span_error) -> List[Dict]`（纯数据变换；span IO 在路由层 `_load_history_span_dates`）。
 - 修改 `web/routes/system_history.py`：paginate 后逐行装配 `workbench_links`（selected 同款）。
 - 修改 `templates/system/history.html`：删宏，行内消费链接字典（启用 `<a class="table-action-link">` / 禁用 `<span class="table-action-link is-disabled" title=原因>`，reports/index.html 同形态）。
 - 修改 `web/routes/domains/scheduler/scheduler_analysis_links.py` + `scheduler_analysis.py`：`build_version_picker_gantt_links(...)` 装配传模板。
@@ -64,10 +64,11 @@ tags: [frontend, navigation, workbench-link, module-c]
 接口示例：
 
 ```python
-# web/viewmodels/system_history_links.py
-def build_history_version_links(plan_query_service, version: int) -> List[Dict[str, Any]]:
+# web/viewmodels/system_history_links.py（纯数据变换——viewmodel 架构适应度门禁禁 IO，
+# span 读取归路由层 system_history._load_history_span_dates，dashboard 先例同款）
+def build_history_version_links(version, *, span, span_error="") -> List[Dict[str, Any]]:
     # 轻量 context：version + role=adopted + span 日期（先例 _plan_role_links）
-    # span 异常 → plan_time_span_load_error 进 context（该行链接禁用并明示原因）
+    # span_error 非空 → plan_time_span_load_error 进 context（该行链接禁用并明示原因）
     # 返回 5 链接：gantt(machine)/gantt(operator)/week_plan/resource_dispatch/analysis
 
 # scheduler_workbench_link_query.py 新 spec
