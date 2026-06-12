@@ -109,8 +109,8 @@ items:
   - slug: fusion-gantt-fix-pack
     description: 甘特小修包（纯 bugfix/守卫）——select 精确匹配修过匹配（B1 带出 B12）、暗色主题关键工序外圈描边补丁、删"模拟调整"死按钮、ZOOM_SPECS 与 min.js 双份真相 boot 断言
     depends_on: [fusion-gantt-execution-visuals]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-13-fusion-gantt-fix-pack
     minimal_loop: false
     notes: 跑测试即可验收；2026-06-11 用户拍板从原七合一条目拆出（原 slug fusion-gantt-workbench-polish 作废）
 

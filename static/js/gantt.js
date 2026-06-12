@@ -79,6 +79,15 @@
     return h.indexOf(n) >= 0;
   }
 
+  // 大小写不敏感全等：筛选用（select option 全是完整 id，substring 会让 B1 带出 B12）；
+  // 大小写不敏感是防御性宽容——后端 id 只 strip 未统一大小写规范
+  function equalsI(a, b) {
+    const x = norm(a).toLowerCase();
+    const y = norm(b).toLowerCase();
+    if (!y) return true;
+    return x === y;
+  }
+
   function hasSelectOption(el, value) {
     if (!el || !el.options) return false;
     const target = norm(value);
@@ -275,6 +284,7 @@
   ns.norm = norm;
   ns.parsePositiveInt = parsePositiveInt;
   ns.includesI = includesI;
+  ns.equalsI = equalsI;
   ns.hasSelectOption = hasSelectOption;
   ns.appendSelectOption = appendSelectOption;
   ns.setSelectValueWithFallback = setSelectValueWithFallback;

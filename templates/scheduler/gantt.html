@@ -4,7 +4,6 @@
 {% block extra_head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/frappe-gantt.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/aps_gantt.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/aps_gantt_simulation.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -157,20 +156,6 @@
       提示：默认按“批次”配色，可在下方切换为按优先级/来源/状态；红色边框表示该批次在该版本中被判定为“超期”。
       若看不到条形，请先在【排产调度】执行排产生成排程数据。
     </p>
-    <div id="ganttSimulationEntryShell" class="aps-gantt-mode-shell mt-3" data-simulation-state="disabled">
-      <div class="aps-gantt-mode-shell-copy">
-        <span class="aps-gantt-mode-badge">当前为查看模式</span>
-        <span>这里只显示排产结果。你可以点击任务条查看详情、筛选、切换配色和缩放时间粒度；拖动或拉伸任务条不会修改计划。</span>
-      </div>
-      <button
-        id="ganttSimulationEntry"
-        class="aps-gantt-simulation-entry"
-        type="button"
-        disabled
-        aria-disabled="true"
-        title="页面编辑流程完成后开放"
-      >模拟调整</button>
-    </div>
     <div id="ganttOverdueWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite"></div>
     <div id="ganttDegradationWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite"></div>
     <div id="ganttZoomWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite"></div>
@@ -203,7 +188,7 @@
         </div>
         <div class="aps-gantt-filter-item">
           <label for="ganttFilterBatch">批次筛选</label><br/>
-          <select id="ganttFilterBatch" aria-label="批次筛选，输入批次号关键词" class="w-180">
+          <select id="ganttFilterBatch" aria-label="批次筛选，选择批次号" class="w-180">
             <option value="">全部批次</option>
           </select>
         </div>

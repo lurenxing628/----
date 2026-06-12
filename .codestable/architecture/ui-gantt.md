@@ -18,7 +18,7 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 
 页面把 `data-gantt-mode="view"` 和 `data-zoom-level` 下发给前端。第一版只读甘特图不提供保存按钮，也不调用任何正式写库接口。
 
-页面顶部现在有 `ganttSimulationEntryShell`。它只显示灰色禁用按钮 `模拟调整（后续开放）`；当前点击不了，不会切换 `simulate`，不会发保存请求，也不会产生草稿、模拟方案或正式新版本。
+页面没有模拟调整入口（2026-06 甘特小修包删除了原 disabled 占位壳）。查看模式口径由 `gantt_help.js` 帮助面板与用户手册承载；当前页面不会切换 `simulate`，不会发保存请求，也不会产生草稿、模拟方案或正式新版本。
 
 ## 2. 前端职责拆分
 
@@ -33,7 +33,6 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 - `static/js/gantt_decorations.js`：管理条形圆角、外协虚线、超期红框、关键工序外框、聚焦高亮和装饰缓存。
 - `static/js/gantt_render.js`：过滤任务、做范围保护、通过适配层创建 Frappe Gantt，并串联弹窗、假期、图例和视觉装饰模块。
 - `static/js/frappe-gantt.min.js`：本地 vendor 文件，只保留必须落在 Frappe 内部的补丁。
-- `static/css/aps_gantt_simulation.css`：只放模拟调整入口壳样式，避免继续扩大主甘特图样式文件职责。
 
 脚本加载顺序必须保持为 `gantt.js`、`gantt_zoom.js`、`gantt_adapter.js`、`gantt_color.js`、`gantt_outline.js`、`gantt_contract.js`、`gantt_help.js`、`gantt_popup_fit.js`、`gantt_popup.js`、`gantt_legend.js`、`gantt_holidays.js`、`gantt_decorations.js`、`gantt_chain_walk.js`、`gantt_render.js`、`gantt_ui.js`、`gantt_boot.js`（chain_walk 必须在 decorations 之后、render 之前——它消费 decorations 的装饰导出，且 render 的 onClick 消费它；模块内依赖运行时读取）。`gantt_boot.js` 负责请求数据和阻塞式错误展示：HTTP 错误会优先显示后端 JSON 里的业务错误，成功响应必须满足 `success=true` 且 `data.tasks` 是数组；渲染前准备、渲染或适配层异常会显示到页面错误区，不再伪装成空数据，也不会把内部英文错误直接展示给用户。
 
@@ -80,7 +79,7 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 
 `simulate` 模式目前只在 `gantt_adapter.js` 中保留事件出口，不连接保存接口，不创建草稿，也不写正式排产数据。
 
-真实拖动调整入口尚未开放。当前页面上的 `ganttSimulationEntry` 按钮是 disabled 占位按钮。后端已经有保存模拟方案的接口，但模板仍不注入保存按钮，也不打开拖拽编辑；当前页面不能创建 Draft，也不能保存 Scenario。
+真实拖动调整入口尚未开放，页面不注入任何模拟调整按钮（原 disabled 占位壳已删除）。后端已经有保存模拟方案的接口，但模板仍不注入保存按钮，也不打开拖拽编辑；当前页面不能创建 Draft，也不能保存 Scenario。
 
 ## 5. Draft 草稿模型与校验试算
 
@@ -91,7 +90,7 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 - 不写 `ScheduleVersionSeq`。
 - 不改变甘特图、周计划、资源排班和报表默认读取的正式版本。
 
-`GanttAdjustmentDraftService` 创建草稿前会确认基准正式版本存在，要求调用方显式传入 `base_plan_role`，并用无回退的方案解析确认这个角色有真实排程明细。当前页面入口仍禁用；本阶段只是模型能力，不是用户可点击的模拟调整功能。
+`GanttAdjustmentDraftService` 创建草稿前会确认基准正式版本存在，要求调用方显式传入 `base_plan_role`，并用无回退的方案解析确认这个角色有真实排程明细。当前页面没有模拟调整入口；本阶段只是模型能力，不是用户可点击的模拟调整功能。
 
 后端现在已有 `GanttAdjustmentValidationService` 和 `POST /scheduler/gantt/adjustments/validate-simulate`。这条链路只读取 Draft 和基准排产，把调整项叠到内存里的临时排程上，然后返回 `valid` / `warning` / `blocked` 以及中文原因。它会检查设备重叠、人员重叠、前后工序倒挂、工作日历、停机、交期和物料齐套，但不会写 `Schedule`、`ScheduleHistory`、`ScheduleVersionSeq`、`ScheduleCandidate*`，也不会调用正式排产或发布流程。
 

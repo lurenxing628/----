@@ -24,7 +24,6 @@ HEX_FREEZE_ALLOWANCE = {
     "aps_gantt.css": 115,
     "calendar_picker.css": 33,
     "frappe-gantt.css": 25,
-    "aps_gantt_simulation.css": 16,
     "print.css": 5,
     "compatibility.css": 4,
     "resource_dispatch.css": 0,

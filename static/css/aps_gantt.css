@@ -758,6 +758,10 @@ html[data-theme="dark"] .gantt .bar-wrapper.overdue .bar {
   stroke: var(--ui-danger);
   stroke-width: 2.5;
 }
+/* 关键工序外圈：亮色 #334155 与暗色边框/卡片底同色隐形——dark 用 --ui-muted（#94a3b8）压回可见 */
+html[data-theme="dark"] .aps-cc-outline-outer {
+  stroke: var(--ui-muted);
+}
 html[data-theme="dark"] .gantt .bar-label.big {
   fill: var(--ui-text, #f1f5f9);
   stroke: rgba(15, 23, 42, 0.72);

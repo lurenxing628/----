@@ -11,6 +11,7 @@
   var escapeHtml = ns.escapeHtml;
   var norm = ns.norm;
   var includesI = ns.includesI;
+  var equalsI = ns.equalsI;
   var state = ns.state;
   var outlineApi = ns.outline;
   var contractApi = ns.contract;
@@ -25,6 +26,7 @@
   if (typeof escapeHtml !== "function") return;
   if (typeof norm !== "function") return;
   if (typeof includesI !== "function") return;
+  if (typeof equalsI !== "function") return;
   if (!outlineApi || !contractApi || !zoomApi || !adapterApi || !popupApi || !decorationApi || !state) return;
 
   var installCriticalOutlineSyncAdapter = outlineApi.installCriticalOutlineSyncAdapter;
@@ -82,12 +84,12 @@
 
       if (state.ui.onlyOverdue && meta.is_overdue !== true) continue;
       if (state.ui.onlyExternal && norm(meta.source) !== "external") continue;
-      if (state.ui.filterBatch && !includesI(meta.batch_id, state.ui.filterBatch)) continue;
+      if (state.ui.filterBatch && !equalsI(meta.batch_id, state.ui.filterBatch)) continue;
 
       if (state.ui.filterResource) {
         if (view === "machine") {
-          if (!includesI(meta.machine_id, state.ui.filterResource) && !includesI(meta.machine, state.ui.filterResource)) continue;
-        } else if (!includesI(meta.operator_id, state.ui.filterResource) && !includesI(meta.operator, state.ui.filterResource)) {
+          if (!equalsI(meta.machine_id, state.ui.filterResource) && !equalsI(meta.machine, state.ui.filterResource)) continue;
+        } else if (!equalsI(meta.operator_id, state.ui.filterResource) && !equalsI(meta.operator, state.ui.filterResource)) {
           continue;
         }
       }

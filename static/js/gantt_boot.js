@@ -98,6 +98,51 @@
     return;
   }
 
+  // ZOOM_SPECS（gantt_zoom.js）与 vendor update_view_scale 方法体内的硬编码表是
+  // 两份真相——装饰层几何读 vendor 写入值、范围守卫读 ZOOM_SPECS，单边改动即静默
+  // 漂移。纯函数：让 applyScale 在裸 options 对象上逐级执行 vendor 写值并比对。
+  function collectZoomSpecMismatches(applyScale) {
+    var zoomApi = ns.zoom;
+    var specs = zoomApi && zoomApi.ZOOM_SPECS ? zoomApi.ZOOM_SPECS : null;
+    if (!specs || typeof applyScale !== "function") {
+      return ["zoom.ZOOM_SPECS 或 applyScale 不可用，无法核对时间粒度配置"];
+    }
+    var mismatches = [];
+    var keys = Object.keys(specs);
+    for (var i = 0; i < keys.length; i++) {
+      var spec = specs[keys[i]];
+      var options = {};
+      applyScale(options, spec.frappeViewMode);
+      if (options.step_minutes !== spec.stepMinutes || options.column_width !== spec.columnWidthPx) {
+        mismatches.push(
+          keys[i] + "(" + spec.frappeViewMode + "): vendor "
+            + options.step_minutes + "/" + options.column_width
+            + " != spec " + spec.stepMinutes + "/" + spec.columnWidthPx
+        );
+      }
+    }
+    return mismatches;
+  }
+  ns.collectZoomSpecMismatches = collectZoomSpecMismatches;
+
+  function _zoomSpecsDriftDetected() {
+    var G = window.Gantt;
+    // vendor 缺失时不在此报错：adapter 的「甘特图显示组件没有加载完成」已是该
+    // 故障的显式通道，本断言只守「vendor 在但数值表漂移」这一种静默故障
+    if (!G || !G.prototype || typeof G.prototype.update_view_scale !== "function") return false;
+    var mismatches = collectZoomSpecMismatches(function (options, mode) {
+      // prototype.call 零实例化：new Gantt 会跑一次完整渲染，这里只要方法写值
+      G.prototype.update_view_scale.call({ options: options }, mode);
+    });
+    if (mismatches.length === 0) return false;
+    var msg = "甘特图时间粒度配置与渲染组件不一致，请联系维护人员处理。";
+    _showEarlyError(msg);
+    reportClientError(msg, new Error(mismatches.join("; ")));
+    return true;
+  }
+  // 与 missingDeps 同款 fail-loud：失配即停整个 boot，不带着错误几何跛行渲染
+  if (_zoomSpecsDriftDetected()) return;
+
   function initCriticalChain(critical) {
     contract.applyCriticalChainToState(state, critical);
     _perfState.ccVisibleCount = 0;

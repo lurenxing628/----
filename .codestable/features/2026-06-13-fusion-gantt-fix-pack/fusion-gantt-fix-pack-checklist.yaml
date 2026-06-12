@@ -1,0 +1,39 @@
+feature: 2026-06-13-fusion-gantt-fix-pack
+steps:
+  - id: s1
+    desc: ①筛选精确匹配——gantt.js 新增 equalsI、gantt_render.js applyFilters 四点改 equalsI、gantt.html aria-label 修正 + 单测（B1 不匹配 B12/大小写不敏感/machine+operator 同语义）
+    status: done
+  - id: s2
+    desc: ②cc-outline 暗色——aps_gantt.css dark 块补 .aps-cc-outline-outer stroke var(--ui-muted) + CSS 契约锁值断言 + 浏览器暗色目检
+    status: done
+  - id: s3
+    desc: ③删死按钮整壳——gantt.html:160-173 壳 + :7 link + aps_gantt_simulation.css 文件删除；三个文件九处文字连带（ui-gantt.md :21/:36/:83/:94、page_manuals :17/:175、scheduler_manual :1214/:1216/:1236）+ HEX_FREEZE_ALLOWANCE 删行 + 钉死范围 grep 零残留反向断言
+    status: done
+  - id: s4
+    desc: ④boot 断言——collectZoomSpecMismatches(applyScale) 纯函数挂 ns + boot 启动期 prototype.call 零实例化逐 9 级比对 + 失配走 _showEarlyError + 红绿自证测试
+    status: done
+  - id: s5
+    desc: 甘特全量回归 + 浏览器实测（筛选精确/暗色外圈/无死按钮/页面零报错） + daily gate（stash 隔离并行 WIP）
+    status: done
+checks:
+  - id: c1
+    desc: 筛选语义——B1 不带出 B12；大小写不敏感保留；URL 部分关键词收紧风险已在验收明示
+    status: passed
+  - id: c2
+    desc: dark 块 .aps-cc-outline-outer 选择器+token 锁值断言过；零新增裸 hex（HEX_FREEZE 不涨）
+    status: passed
+  - id: c3
+    desc: 钉死范围 grep 零 ganttSimulationEntry/aps_gantt_simulation 残留；九处文字逐项核查；查看模式说明保留
+    status: passed
+  - id: c4
+    desc: boot 断言 9 级全配静默过；红绿自证（桩 applyScale 全配空数组/篡改报失配）；真实页面加载零报错
+    status: passed
+  - id: c5
+    desc: 明确不做反向核对——includesI 定义零 diff；ZOOM_SPECS/min.js 数值零 diff；#12/#13 段零 diff；后端零 diff；并行 WIP 零接触
+    status: passed
+  - id: c6
+    desc: 架构归并（ui-gantt.md 四处口径更新即连带；ARCHITECTURE.md 无需新段）
+    status: passed
+  - id: c7
+    desc: roadmap 回写（items.yaml done + 主文档第 14 条）
+    status: passed

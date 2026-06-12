@@ -701,7 +701,7 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
         "1分钟",
         "范围太大",
         "保留方便点击的区域",
-        "灰色说明入口",
+        "拖拽调整功能尚未开放",
     ):
         assert phrase in manual
     assert "后续页面入口接好并放行后再开放" not in manual
