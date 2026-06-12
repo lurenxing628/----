@@ -515,6 +515,36 @@
   color: #b91c1c;
 }
 
+/* ---- chain walk row (fusion-chain-walk-navigation) ---- */
+.aps-gantt-task-walk {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-2, 8px);
+  margin: 6px 0;
+}
+.aps-gantt-task-walk button {
+  font-size: var(--font-size-1, 12px);
+  padding: 4px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  background: var(--ui-card-bg);
+  color: var(--ui-text);
+  cursor: pointer;
+}
+.aps-gantt-task-walk button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.aps-gantt-task-walk-cc {
+  font-size: var(--font-size-1, 12px);
+  color: var(--ui-muted);
+}
+.aps-gantt-task-walk-notice {
+  font-size: var(--font-size-1, 12px);
+  color: var(--ui-warning);
+  margin: 2px 0 6px;
+}
+
 .aps-gantt-task-detail-summary,
 .aps-gantt-task-detail-note {
   border-radius: 8px;

@@ -101,8 +101,8 @@ items:
   - slug: fusion-chain-walk-navigation
     description: 沿链巡检——甘特详情面板上一道/下一道工序导航（前端 dependencies 反查建 Map 零后端改动）+ 关键链 ←/→ 巡检（normalizeCriticalChain ids 正序）
     depends_on: [fusion-gantt-execution-visuals]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-13-fusion-chain-walk-navigation
     minimal_loop: false
     notes: 把"逐条点查"升级成"沿链巡检"，正是关键链分析的真实用法
 

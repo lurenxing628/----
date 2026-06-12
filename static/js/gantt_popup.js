@@ -104,6 +104,23 @@
       ? detailValue(criticalInfo.unavailableMessage, "关键工序关系暂时看不了")
       : detailValue(criticalInfo.statusLabel, "-");
 
+    const walkApi = (window.__APS_GANTT__ || {}).chainWalk;
+    let walkHtml = "";
+    if (walkApi && task && task.id) {
+      const hasPrev = walkApi.hasPrev(task.id);
+      const hasNext = walkApi.hasNext(task.id);
+      const ccPos = walkApi.criticalPosition(task.id);
+      const notice = str(walkApi.currentNotice ? walkApi.currentNotice() : "");
+      const walkTitle = "按排程顺序沿工艺链移动（同批次同件）";
+      walkHtml = [
+        '<div class="aps-gantt-task-walk">',
+        '<button type="button" data-walk="prev"' + (hasPrev ? "" : ' disabled title="已是本件第一道（按排程顺序）"') + (hasPrev ? ' title="' + escapeHtml(walkTitle) + '"' : "") + '>上一道</button>',
+        '<button type="button" data-walk="next"' + (hasNext ? "" : ' disabled title="已是本件最后一道（按排程顺序）"') + (hasNext ? ' title="' + escapeHtml(walkTitle) + '"' : "") + '>下一道</button>',
+        '<span class="aps-gantt-task-walk-cc">' + escapeHtml(ccPos ? ("关键链 " + ccPos.index + "/" + ccPos.total + "（←/→ 巡检）") : "不在关键链") + '</span>',
+        '</div>',
+        notice ? '<div class="aps-gantt-task-walk-notice">' + escapeHtml(notice) + '</div>' : "",
+      ].join("");
+    }
     return [
       '<div class="aps-gantt-task-detail-content">',
         '<div class="aps-gantt-task-detail-head">',
@@ -113,6 +130,7 @@
           '</div>',
           '<span class="aps-gantt-task-detail-badge' + (meta.is_overdue ? ' is-overdue' : '') + '">' + escapeHtml(overdueText) + '</span>',
         '</div>',
+        walkHtml,
         '<div class="aps-gantt-task-detail-summary">' + escapeHtml(actualSummary) + '</div>',
         '<dl class="aps-gantt-task-detail-grid">',
           detailRow("批次", meta.batch_id),

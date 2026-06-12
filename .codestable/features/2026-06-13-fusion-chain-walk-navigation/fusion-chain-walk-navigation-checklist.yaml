@@ -1,0 +1,39 @@
+feature: 2026-06-13-fusion-chain-walk-navigation
+steps:
+  - id: s1
+    desc: gantt_chain_walk.js 新文件（bindChainWalk 一次/rebuildChainIndex 每次/selectTaskById/walkProcess/walkCritical 两级降级）+ render 导出 scrollToTaskStart + popup 巡检行 + boot 接线 + 模板 script 与清聚焦按钮 + ui 绑定
+    status: done
+  - id: s2
+    desc: JS contract 扩展（按钮态走 buildTaskDetailHtml 字符串/动作走程序化 API/keydown FakeEvent 附 key/INPUT 跳过/索引反例/范围外视图外两级降级/focusBatch 幂等新语义）
+    status: done
+  - id: s3
+    desc: 浏览器目检（点击→按钮走链/←→关键链/筛选后视图外提示/跳过 N 道提示/滚动定位/输入框方向键不跳/清聚焦按钮）
+    status: done
+  - id: s4
+    desc: 甘特全量回归 + daily gate
+    status: done
+checks:
+  - id: c1
+    desc: 接口契约与 design 2.1 一致（chainWalk 五函数/巡检行 DOM 形状）
+    status: passed
+  - id: c2
+    desc: 行为决策核对（allTasks 原始 deps 反查/critical.ids 正序/focusBatch 幂等+清聚焦按钮/生命周期两分/script 顺序 decorations 后/运行时读依赖）
+    status: passed
+  - id: c3
+    desc: 验收场景 1-8 全过（链头尾 disabled/范围外跳过 N 道提示/视图外照渲提示/INPUT 跳过）
+    status: passed
+  - id: c4
+    desc: 术语一致性（工艺链=沿边非严格 seq/范围外 vs 视图外两级/程序化选中全文同口径）
+    status: passed
+  - id: c5
+    desc: 架构归并（ui-gantt.md script 顺序协议+巡检交互段；ARCHITECTURE.md 甘特条目补句）
+    status: passed
+  - id: c6
+    desc: requirement 回写结论
+    status: passed
+  - id: c7
+    desc: roadmap 回写（items.yaml + 主文档第 13 条 done）
+    status: passed
+  - id: c8
+    desc: staged diff 不含并行 WIP；core/services/scheduler 零 diff；gantt_contract/gantt_decorations 零 diff
+    status: passed

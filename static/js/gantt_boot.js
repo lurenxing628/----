@@ -290,6 +290,11 @@
     state.emptyMessage = str(data.empty_message || "");
     state.versionTimeSpan = data.version_time_span || null;
     state.allTasks = tasks;
+    if (ns.chainWalk) {
+      // 索引每次数据加载后重建（allTasks 换代）；绑定幂等只生效一次
+      ns.chainWalk.rebuildChainIndex();
+      ns.chainWalk.bindChainWalk();
+    }
     state.overdueMarkersDegraded = data.overdue_markers_degraded === true;
     state.overdueMarkersPartial = data.overdue_markers_partial === true;
     state.overdueMarkersMessage = str(data.overdue_markers_message || "");

@@ -221,21 +221,30 @@
     return result;
   }
 
-  function scrollToAnchor(gantt) {
-    const cfg = state.cfg || {};
+  // 像素公式唯一内核：时间点 → 横向滚动（scrollToAnchor 与 scrollToTaskStart 共用）
+  function scrollToTime(gantt, target) {
     try {
       const container = document.querySelector("#gantt .gantt-container");
-      if (container && gantt && gantt.gantt_start) {
-        const anchor = norm(cfg.startDate || cfg.weekStart || "");
-        const target = new Date(anchor + " 00:00:00");
-        const scale = getGanttScale(gantt);
-        const diffMinutes = (target.getTime() - gantt.gantt_start.getTime()) / 60000.0;
-        const px = (diffMinutes / scale.stepMinutes) * scale.columnWidth - scale.columnWidth;
-        container.scrollLeft = Math.max(0, Math.floor(px));
-      }
+      if (!container || !gantt || !gantt.gantt_start || !target || isNaN(target.getTime())) return;
+      const scale = getGanttScale(gantt);
+      const diffMinutes = (target.getTime() - gantt.gantt_start.getTime()) / 60000.0;
+      const px = (diffMinutes / scale.stepMinutes) * scale.columnWidth - scale.columnWidth;
+      container.scrollLeft = Math.max(0, Math.floor(px));
     } catch (_) {
-      // 不阻断渲染
+      // 不阻断渲染/巡检
     }
+  }
+
+  function scrollToAnchor(gantt) {
+    const cfg = state.cfg || {};
+    const anchor = norm(cfg.startDate || cfg.weekStart || "");
+    scrollToTime(gantt, new Date(anchor + " 00:00:00"));
+  }
+
+  // 仅供 chainWalk 程序化选中调用（fusion-chain-walk-navigation）：滚到指定任务开始时间
+  function scrollToTaskStart(task) {
+    if (!task || !task.start) return;
+    scrollToTime(state.gantt, new Date(String(task.start).replace("T", " ")));
   }
 
   function installPopupAutoFit(gantt) {
@@ -312,12 +321,15 @@
       zoomLevel: zoomSpec.level,
       fallbackViewMode: state.ui && state.ui.viewMode ? state.ui.viewMode : "Day",
       onClick: function (task) {
+        // 选中语义统一走 chainWalk.selectTaskById（focusBatch 幂等赋值——二次点击
+        // 同批次不再清聚焦；清聚焦走 ganttClearFocus 按钮）；chainWalk 缺位时回退旧行为
+        const cw = ns.chainWalk;
+        if (cw && typeof cw.selectTaskById === "function" && cw.selectTaskById(task && task.id, { scroll: false })) return;
         const meta = task && task.meta ? task.meta : {};
         renderTaskDetail($("ganttTaskDetail"), task, state.critical);
         const bid = norm(meta.batch_id);
         if (!bid) return;
-        state.focusBatch = state.focusBatch === bid ? "" : bid;
-        // 纯视觉交互：只做增量装饰（Win7 避免全量重建）
+        state.focusBatch = bid;
         safeDecorateDynamic({ updateLegend: false });
       },
       customPopupHtml: function (task) {
@@ -339,4 +351,5 @@
 
   ns.applyFilters = applyFilters;
   ns.render = render;
+  ns.scrollToTaskStart = scrollToTaskStart;
 })();

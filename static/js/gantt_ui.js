@@ -247,6 +247,16 @@
     if (bindUi._bound === true) return;
     bindUi._bound = true;
 
+    const clearFocusBtn = $("ganttClearFocus");
+    if (clearFocusBtn) {
+      on(clearFocusBtn, "click", function () {
+        // 仅清批次聚焦（fusion-chain-walk-navigation）：onClick 改幂等赋值后，
+        // 这里是不重置缩放/筛选的唯一窄清聚焦入口
+        state.focusBatch = "";
+        if (typeof ns.safeDecorateDynamic === "function") ns.safeDecorateDynamic({ updateLegend: false });
+      });
+    }
+
     const resetBtn = $("ganttResetView");
     if (resetBtn) {
       on(resetBtn, "click", function () {

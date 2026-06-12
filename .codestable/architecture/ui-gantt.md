@@ -35,7 +35,7 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 - `static/js/frappe-gantt.min.js`：本地 vendor 文件，只保留必须落在 Frappe 内部的补丁。
 - `static/css/aps_gantt_simulation.css`：只放模拟调整入口壳样式，避免继续扩大主甘特图样式文件职责。
 
-脚本加载顺序必须保持为 `gantt.js`、`gantt_zoom.js`、`gantt_adapter.js`、`gantt_color.js`、`gantt_outline.js`、`gantt_contract.js`、`gantt_help.js`、`gantt_popup_fit.js`、`gantt_popup.js`、`gantt_legend.js`、`gantt_holidays.js`、`gantt_decorations.js`、`gantt_render.js`、`gantt_ui.js`、`gantt_boot.js`。`gantt_boot.js` 负责请求数据和阻塞式错误展示：HTTP 错误会优先显示后端 JSON 里的业务错误，成功响应必须满足 `success=true` 且 `data.tasks` 是数组；渲染前准备、渲染或适配层异常会显示到页面错误区，不再伪装成空数据，也不会把内部英文错误直接展示给用户。
+脚本加载顺序必须保持为 `gantt.js`、`gantt_zoom.js`、`gantt_adapter.js`、`gantt_color.js`、`gantt_outline.js`、`gantt_contract.js`、`gantt_help.js`、`gantt_popup_fit.js`、`gantt_popup.js`、`gantt_legend.js`、`gantt_holidays.js`、`gantt_decorations.js`、`gantt_chain_walk.js`、`gantt_render.js`、`gantt_ui.js`、`gantt_boot.js`（chain_walk 必须在 decorations 之后、render 之前——它消费 decorations 的装饰导出，且 render 的 onClick 消费它；模块内依赖运行时读取）。`gantt_boot.js` 负责请求数据和阻塞式错误展示：HTTP 错误会优先显示后端 JSON 里的业务错误，成功响应必须满足 `success=true` 且 `data.tasks` 是数组；渲染前准备、渲染或适配层异常会显示到页面错误区，不再伪装成空数据，也不会把内部英文错误直接展示给用户。
 
 ### 2.1 稳定任务详情区
 
@@ -75,6 +75,8 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 这会禁掉拖动、左右拉伸和进度拖动，但保留点击任务条、弹窗、批次聚焦、筛选、配色、关键工序外框和依赖线查看。
 
 任务条的 `progress` 字段由服务端按现场执行事实写死两态（completed→100、其余 0，fusion-gantt-execution-visuals），`readonly_progress: true` 下前端不可改；完工绿罩层与执行态描边的 CSS 协议见 `aps_gantt.css` 执行着色段（罩层三态覆盖/描边 `:not(.overdue)` 守卫/暗色重申）。
+
+沿链巡检（fusion-chain-walk-navigation）：`gantt_chain_walk.js` 的 `ns.chainWalk` 统一「选中任务」状态与程序化跳转——详情面板「上一道/下一道」按钮沿后端已连的 process dependency 边走（索引建在 `state.allTasks` 原始 `dependencies` 上，不读被 depsMode 重写的 currentTasks；同 (batch_id,piece_id) 组内按排程顺序线性串链）；←/→ 键沿 `state.critical.ids` 正序巡检（输入框聚焦时跳过；范围外 id 跳过并提示「已跳过 N 道」，该方向无可达停原地诚实提示）。生命周期两分：`bindChainWalk`（面板容器 click 委托+document keydown）只绑一次，`rebuildChainIndex` 每次数据加载后重建。选中语义：`selectTaskById` 渲染详情+focusBatch 幂等赋值（点击同批次不再 toggle 清聚焦——筛选区新增「清除聚焦」按钮补窄入口）+`ns.scrollToTaskStart` 横向定位（与 scrollToAnchor 共用 scrollToTime 像素内核）；被前端筛选滤掉的目标只渲详情+提示、不装饰不滚动。
 
 `simulate` 模式目前只在 `gantt_adapter.js` 中保留事件出口，不连接保存接口，不创建草稿，也不写正式排产数据。
 

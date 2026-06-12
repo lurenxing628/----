@@ -241,6 +241,7 @@
             <option value="none">不显示关系线</option>
           </select>
         </div>
+        <div class="aps-gantt-filter-item aps-gantt-filter-action">{{ ui.button('清除聚焦', 'secondary', 'md', type_attr='button', element_id='ganttClearFocus') }}</div>
         <div class="aps-gantt-filter-item aps-gantt-filter-action">{{ ui.button('重置', 'secondary', 'md', type_attr='button', class='gantt-reset-btn', element_id='ganttResetView') }}</div>
       </div>
       <div id="ganttLegend" class="aps-gantt-legend mt-2"></div>
@@ -303,6 +304,7 @@
     <script src="{{ url_for('static', filename='js/gantt_legend.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_holidays.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_decorations.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/gantt_chain_walk.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_render.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/report_plan_filter.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_ui.js') }}" defer></script>
