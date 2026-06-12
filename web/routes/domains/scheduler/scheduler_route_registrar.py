@@ -17,6 +17,7 @@ _ROUTE_MODULES = (
     "scheduler_resource_dispatch_execution_routes",
     "scheduler_run",
     "scheduler_week_plan",
+    "scheduler_week_plan_print",
 )
 
 _REGISTERED = False

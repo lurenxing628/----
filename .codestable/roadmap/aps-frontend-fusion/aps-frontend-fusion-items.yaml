@@ -245,8 +245,8 @@ items:
   - slug: fusion-dispatch-print-sheet
     description: 周派工单打印——按设备/按人员双视图（周计划 7 字段行重分组，设备/人员格现成，每行带另一维度做交接参照）+ 窗口周为主附单日切换 + 一资源一页 page-break 整叠打印（无任务资源不出纸）+ 人员视图"外协/未分配"兜底段 + 页眉印方案版本与生成时间 + 行尾空白备注列；入口挂周计划页
     depends_on: [fusion-week-plan-enrich]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-12-fusion-dispatch-print-sheet
     minimal_loop: false
     notes: 模块 N（契约 4.11 共同约束）；2026-06-11 按现场实践重定（车间按周打印）+ 用户两项拍板（周+单日切换；只留备注列不设签字栏）；依赖理由——同文件 gantt_week_plan.py 施工且周选择器/空周提示先就位；资源排班页落地后补导航链接（非依赖）；第一版只含计划任务，要含现场事实必须走 4.10 唯一入口
 

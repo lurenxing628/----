@@ -112,6 +112,7 @@ SCHEDULER_REAL_ROUTE_FILES = (
     "scheduler_run.py",
     "scheduler_utils.py",
     "scheduler_week_plan.py",
+    "scheduler_week_plan_print.py",
 )
 
 
@@ -438,6 +439,7 @@ def test_sp05_route_topology_and_compatibility_matrix() -> None:
         "scheduler_resource_dispatch_execution_routes",
         "scheduler_run",
         "scheduler_week_plan",
+        "scheduler_week_plan_print",
     }
     registered_flag = registrar_assignments.get("_REGISTERED")
     assert isinstance(registered_flag, ast.Constant)

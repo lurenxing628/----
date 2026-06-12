@@ -1,0 +1,90 @@
+{# 周派工单打印模板（fusion-dispatch-print-sheet）——独立不 extends base.html：
+   纸面零侧栏/导航/胶囊；表格边框/列宽/页眉排版自带（不引 style.css/ui_contract.css）。
+   段页眉放 <thead>（浏览器打印对 thead 有每页重复语义——段内行多跨物理纸时
+   版本与警示不丢）；一资源一页 page-break；行尾空白备注列（手写用，不设签字栏）。
+   全仓首个 window.print() 调用方（屏幕态 no-print 工具条）。 #}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/00-tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/print.css') }}" media="print">
+  <style>
+    body { margin: 16px; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; color: var(--ui-text, #0f172a); }
+    .print-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+    .print-toolbar a, .print-toolbar button { font-size: 14px; padding: 6px 14px; border: 1px solid var(--ui-border, #cbd5e1); border-radius: 6px; background: var(--ui-card-bg, #fff); color: inherit; text-decoration: none; cursor: pointer; }
+    .print-sheet { page-break-after: always; margin-bottom: 28px; }
+    .print-sheet:last-child { page-break-after: auto; }
+    .print-sheet table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .print-sheet th, .print-sheet td { border: 1px solid #444444; padding: 6px 8px; font-size: 12px; text-align: left; word-break: break-all; vertical-align: top; }
+    .sheet-head-row th { border: none; padding: 4px 0 8px; font-size: 13px; font-weight: normal; }
+    .sheet-resource { font-size: 16px; font-weight: bold; }
+    .sheet-warning { color: #b91c1c; font-weight: bold; border: 2px solid #b91c1c; padding: 2px 8px; display: inline-block; margin-left: 8px; }
+    .col-date { width: 9%; } .col-batch { width: 15%; } .col-part { width: 14%; } .col-seq { width: 6%; }
+    .col-machine { width: 16%; } .col-operator { width: 13%; } .col-slot { width: 11%; } .col-remark { width: 16%; }
+    .print-empty { padding: 24px; border: 1px dashed var(--ui-border, #cbd5e1); color: var(--ui-muted, #64748b); }
+  </style>
+</head>
+<body>
+  <div class="print-toolbar no-print">
+    <button type="button" onclick="window.print()">打印</button>
+    <a href="{{ links.switch_view_url }}">{{ links.switch_view_label }}</a>
+    <a href="{{ links.back_url }}">返回周计划</a>
+    <span>当前：{{ group_by_label }}视图 · {{ range_label }}</span>
+  </div>
+
+  {% if sheets %}
+    {% for sheet in sheets %}
+      <section class="print-sheet">
+        <table>
+          <thead>
+            <tr class="sheet-head-row">
+              <th colspan="8">
+                <span class="sheet-resource">{{ sheet.resource_label }}</span>
+                <span>　周派工单（{{ group_by_label }}） · v{{ version }} · {{ plan_role_label }} · 生成时间 {{ generated_at_label }} · {{ range_label }}</span>
+                {% if filter_scope_label %}<span>　{{ filter_scope_label }}</span>{% endif %}
+                {% if identity_warning %}<span class="sheet-warning">{{ identity_warning }}</span>{% endif %}
+              </th>
+            </tr>
+            <tr>
+              <th class="col-date">日期</th>
+              <th class="col-batch">批次号</th>
+              <th class="col-part">图号</th>
+              <th class="col-seq">工序</th>
+              <th class="col-machine">设备</th>
+              <th class="col-operator">人员</th>
+              <th class="col-slot">时段</th>
+              <th class="col-remark">备注</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in sheet.rows %}
+              <tr>
+                <td>{{ r['日期'] }}</td>
+                <td>{{ r['批次号'] }}</td>
+                <td>{{ r['图号'] }}</td>
+                <td>{{ r['工序'] }}</td>
+                <td>{{ r['设备'] }}</td>
+                <td>{{ r['人员'] }}</td>
+                <td>{{ r['时段'] }}</td>
+                <td></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% endfor %}
+  {% else %}
+    <div class="print-empty">
+      {% if not has_history %}
+        该版本没有排产历史，无法生成派工单。请回到周计划页选择有排程记录的版本。
+      {% else %}
+        {{ range_label }} 没有排程记录，没有可打印的派工单。请回到周计划页换一个周或版本。
+      {% endif %}
+      <a href="{{ links.back_url }}" class="no-print">返回周计划</a>
+    </div>
+  {% endif %}
+</body>
+</html>

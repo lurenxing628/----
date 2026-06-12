@@ -11,6 +11,9 @@
     {% if export_url %}
       {{ ui.link_button('导出周计划表.xlsx', export_url, 'secondary', 'md') }}
     {% endif %}
+    {% if print_url %}
+      {{ ui.link_button('打印周派工单', print_url, 'secondary', 'md') }}
+    {% endif %}
   {% endset %}
   {{ ui.aps_page_hero(
     '周计划（导出）',

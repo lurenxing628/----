@@ -1,0 +1,39 @@
+feature: 2026-06-12-fusion-dispatch-print-sheet
+steps:
+  - id: s1
+    desc: builder 新文件 week_plan_print_sheet.py + 单测（双视图分组/双视图兜底段排最后/七键 drop 现场状态/day 过滤/空输入）
+    status: done
+  - id: s2
+    desc: 路由新文件（registrar+sp05 门禁清单同步）+ 独立模板（thead 段页眉/备注列/警示三态）+ week_plan.html 入口按钮 → 页面契约测试
+    status: done
+  - id: s3
+    desc: 浏览器打印目检（分页/页眉每页重复含跨页样例/备注列/anchor-baseline 第三节 5 条）
+    status: done
+  - id: s4
+    desc: 既有 week_plan 回归 + daily gate
+    status: done
+checks:
+  - id: c1
+    desc: 接口契约与 design 2.1 一致（build_week_plan_print_sheets 签名/资源段输出形状/七键）
+    status: passed
+  - id: c2
+    desc: 行为决策核对（警示判定 is_current_executable_official_version 三态/双视图兜底段/day+group_by 参数错误明示/筛选透传+页眉数据范围/纸面零现场事实）
+    status: passed
+  - id: c3
+    desc: 验收场景 1-8+7b 全过（重名供应商不错并组/历史正式方案印警示/空行集空态不 404）
+    status: passed
+  - id: c4
+    desc: 术语一致性（派工单页≠资源派工页/资源段/兜底段/单日切换全文同口径）
+    status: passed
+  - id: c5
+    desc: 架构归并（ARCHITECTURE.md 周计划条目追加派工单打印段）
+    status: passed
+  - id: c6
+    desc: requirement 回写结论
+    status: passed
+  - id: c7
+    desc: roadmap 回写（items.yaml + 主文档第 31 条 done）
+    status: passed
+  - id: c8
+    desc: staged diff 不含并行 WIP 文件；gantt_week_plan/_sched_display_utils/scheduler_workbench_link_query 零 diff
+    status: passed

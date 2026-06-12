@@ -61,7 +61,8 @@ def week_plan_data_kwargs(
     return data_kwargs
 
 
-def week_plan_export_url(
+def _week_plan_action_url(
+    endpoint: str,
     *,
     version: Any,
     week_start: str,
@@ -80,7 +81,17 @@ def week_plan_export_url(
         "resource_type": (resource_context or {}).get("resource_type"),
         "resource_id": (resource_context or {}).get("resource_id"),
     }
-    return url_for("scheduler.week_plan_export", **{key: value for key, value in args.items() if _text(value)})
+    return url_for(endpoint, **{key: value for key, value in args.items() if _text(value)})
+
+
+def week_plan_export_url(**kwargs: Any) -> Optional[str]:
+    return _week_plan_action_url("scheduler.week_plan_export", **kwargs)
+
+
+def week_plan_print_url(**kwargs: Any) -> Optional[str]:
+    # 打印周派工单入口（fusion-dispatch-print-sheet）：与导出同形——透传当前
+    # 版本/方案身份/批次/资源筛选，打印的是当前筛选结果
+    return _week_plan_action_url("scheduler.week_plan_print_page", **kwargs)
 
 
 __all__ = [
@@ -88,4 +99,5 @@ __all__ = [
     "request_week_plan_resource_context",
     "week_plan_data_kwargs",
     "week_plan_export_url",
+    "week_plan_print_url",
 ]

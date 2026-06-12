@@ -50,6 +50,7 @@ from .scheduler_week_plan_query import (
     request_week_plan_resource_context,
     week_plan_data_kwargs,
     week_plan_export_url,
+    week_plan_print_url,
 )
 from .scheduler_week_plan_response import send_week_plan_export_file
 
@@ -345,6 +346,13 @@ def week_plan_page():
         preview_rows=preview_state["preview_rows"],
         total_rows=len(preview_state["rows"]),
         export_url=week_plan_export_url(
+            version=ver,
+            week_start=wr.week_start_date.isoformat(),
+            plan_resolution=plan_resolution,
+            resource_context=resource_context,
+            batch_id=batch_id,
+        ),
+        print_url=week_plan_print_url(
             version=ver,
             week_start=wr.week_start_date.isoformat(),
             plan_resolution=plan_resolution,
