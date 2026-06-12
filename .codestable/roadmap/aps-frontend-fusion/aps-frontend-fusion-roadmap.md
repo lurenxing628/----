@@ -287,7 +287,7 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 11. **fusion-handrolled-links-adoption** ✅ done（2026-06-12，feature 2026-06-12-fusion-handrolled-links-adoption，Codex 设计两轮+实现三轮审核零阻塞收口）— 手拼链接收编：history.html 5 链接、analysis _version_picker 2 链接入 WorkbenchLink（修「模拟预览点过去掉回正式视角」缺陷——选择器链带全量身份保留 scenario_id）；TARGET_PAGE_PATHS 扩 history/batch_detail 13 目标（batch_detail 是首个路径参数型目标：{batch_id} 占位 quote 替换、缺参 fail-loud 不随 disabled 摇摆；两新目标 query 合同由 extra_params 禁键集守护）。history 行级 span 先分页后装配、单行坏历史禁用明示。依赖：无。→ 解锁第 18 条。
 
 **模块 W**
-12. **fusion-gantt-execution-visuals** — 甘特现场事实可视化：progress 完工置 100（gantt_tasks.py:245）+ execution-<status> 条形着色（css 列表 :220-223 追加）+ 侧栏详情补优先级/加工方式/时长、popup 补现场摘要一行（meta 字段双向互缺，gantt_popup.js:107-116/:162-176）。依赖：2（甘特模板双写税消除）。
+12. **fusion-gantt-execution-visuals** ✅ done（2026-06-13，feature 2026-06-12-fusion-gantt-execution-visuals，Codex 设计两轮（2 阻塞：罩层 hover/active 三态闪回紫、overdue 优先级靠顺序不稳+dark 覆盖）+实现两轮（零阻塞，3 建议全采纳）审核收口；CDP 双主题目检 computed style 实测）— 甘特现场事实可视化：progress 完工置 100（gantt_tasks.py:245）+ execution-<status> 条形着色（css 列表 :220-223 追加）+ 侧栏详情补优先级/加工方式/时长、popup 补现场摘要一行（meta 字段双向互缺，gantt_popup.js:107-116/:162-176）。依赖：2（甘特模板双写税消除）。
 13. **fusion-chain-walk-navigation** — 沿链巡检：详情面板上一道/下一道（前端 dependencies 反查建 Map，零后端改动）+ 关键链 ←/→（normalizeCriticalChain ids 正序）。依赖：12（软依赖：同在详情面板区施工避免冲突，非产物依赖）。
 14. **fusion-gantt-fix-pack** — 甘特小修包（纯 bugfix/守卫，跑测试即可验收）：select 精确匹配（修 B1 带出 B12）+ 暗色 cc-outline 补丁 + 删"模拟调整"死按钮 + ZOOM_SPECS 与 min.js 双份真相 boot 断言。依赖：12（软依赖：同在甘特 JS 施工避免冲突，非产物依赖）。（UX 重排部分已按拍板拆为第 27 条。）
 15. **fusion-gantt-load-strip** — 资源负荷热力条带（契约 4.6）：新建 gantt_resource_load.py 按资源×日桶聚合 + decorateStaticAfterRender 挂层像素对齐 + 容量来源明示 + 点击色带格弹出该资源当天任务清单与去派工/报表跳转（按 2026-06-11 拍板 B 案吸收老 item 11 验收点）。依赖：12（同在甘特装饰层钩子区施工，且条带格挂详情联动）、5（阈值与状态色 token 须先单源）。

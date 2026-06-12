@@ -102,6 +102,31 @@
   stroke-width: 2.5;
 }
 
+/* ---- execution facts visuals (fusion-gantt-execution-visuals, 4.10) ----
+   优先级用选择器语义钉死（不依赖书写顺序）：
+   - 描边 accent 带 :not(.overdue) 守卫——超期红边永远胜出（风险信号 > 状态信号）
+   - completed 罩层覆盖 普通/:hover/.active 三态——frappe-gantt.css :40/:76/:86
+     的默认紫 #a3a3ff / #8a8aff 否则会在悬停/选中时闪回
+   - fill 仍归配色模式（--aps-bar-color inline），执行态只占 罩层+描边 两通道 */
+.bar-wrapper.execution-processing:not(.overdue) .bar {
+  stroke: var(--ui-primary);
+  stroke-width: 2;
+}
+.bar-wrapper.execution-paused:not(.overdue) .bar {
+  stroke: var(--ui-warning);
+  stroke-width: 2;
+}
+.bar-wrapper.execution-exception:not(.overdue) .bar {
+  stroke: var(--ui-danger);
+  stroke-width: 2;
+}
+.bar-wrapper.execution-completed .bar-progress,
+.gantt .bar-wrapper.execution-completed:hover .bar-progress,
+.gantt .bar-wrapper.execution-completed.active .bar-progress {
+  fill: var(--ui-success);
+  fill-opacity: 0.45;
+}
+
 /* external (dashed border) */
 .bar-wrapper.aps-external .bar {
   stroke-dasharray: 5 3;
@@ -684,6 +709,24 @@ html[data-theme="dark"] .gantt .lower-text {
 }
 html[data-theme="dark"] .gantt .bar-wrapper .bar {
   stroke: rgba(148, 163, 184, 0.35);
+}
+/* dark 基础 stroke 规则特异性 (0,4,1) 会盖掉执行态/overdue 描边——块内重申压回 */
+html[data-theme="dark"] .gantt .bar-wrapper.execution-processing:not(.overdue) .bar {
+  stroke: var(--ui-primary);
+  stroke-width: 2;
+}
+html[data-theme="dark"] .gantt .bar-wrapper.execution-paused:not(.overdue) .bar {
+  stroke: var(--ui-warning);
+  stroke-width: 2;
+}
+html[data-theme="dark"] .gantt .bar-wrapper.execution-exception:not(.overdue) .bar {
+  stroke: var(--ui-danger);
+  stroke-width: 2;
+}
+html[data-theme="dark"] .gantt .bar-wrapper.overdue .bar {
+  /* 零新增裸 hex：用 --ui-danger token（亮色 :100 的 #ef4444 是存量，迁移归 #6） */
+  stroke: var(--ui-danger);
+  stroke-width: 2.5;
 }
 html[data-theme="dark"] .gantt .bar-label.big {
   fill: var(--ui-text, #f1f5f9);

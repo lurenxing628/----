@@ -93,8 +93,8 @@ items:
   - slug: fusion-gantt-execution-visuals
     description: 甘特现场事实可视化——progress 完工置 100（gantt_tasks.py:245 现硬编码 0）、execution-<status> 条形着色、侧栏详情补优先级/加工方式/时长、popup 补现场摘要一行（meta 字段双向互缺）
     depends_on: [fusion-dual-track-retirement]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-12-fusion-gantt-execution-visuals
     minimal_loop: false
     notes: 契约见 roadmap 4.10；progress 只允许 completed→100，禁止部分进度估算伪装精度
 

@@ -1,0 +1,39 @@
+feature: 2026-06-12-fusion-gantt-execution-visuals
+steps:
+  - id: s1
+    desc: gantt_tasks progress 两态 + execution-<status> 四态白名单类 + 后端 payload 断言全集（completed/三描边态/无记录/not_started 假记录/未知码/meta 键集）
+    status: done
+  - id: s2
+    desc: aps_gantt.css 执行着色段（completed 罩层三态选择器+描边 :not(.overdue)+dark 重申）+ gantt_popup.js 侧栏三行+popup 现场行 + legend 样例 → JS/CSS 契约测试
+    status: done
+  - id: s3
+    desc: 浏览器目检（四配色×执行类叠加、亮/暗主题、hover/选中不闪紫、图例）
+    status: done
+  - id: s4
+    desc: 甘特全量回归 + daily gate
+    status: done
+checks:
+  - id: c1
+    desc: 接口契约与 design 2.1 一致（payload 增量示例三态/meta 键集零新增）
+    status: passed
+  - id: c2
+    desc: 行为决策核对（completed 直读 fact.actual_status/has_execution_record 复用 meta 布尔/四态白名单/CSS 写法钉死非顺序）
+    status: passed
+  - id: c3
+    desc: 验收场景 1-8 全过（overdue 胜出/preview 身份逐字节回归/未知码防御）
+    status: passed
+  - id: c4
+    desc: 术语一致性（执行着色类/完工罩层/双向互缺全文同口径）
+    status: passed
+  - id: c5
+    desc: 架构归并（ARCHITECTURE.md 甘特详情区条目+ui-gantt.md 渲染协议）
+    status: passed
+  - id: c6
+    desc: requirement 回写结论（shop-floor-execution-feedback）
+    status: passed
+  - id: c7
+    desc: roadmap 回写（items.yaml + 主文档第 12 条 done，解锁 13/14/15/27）
+    status: passed
+  - id: c8
+    desc: staged diff 不含并行 WIP；resource_dispatch_rows/gantt_color/gantt_service/ExecutionFactProvider 零 diff
+    status: passed

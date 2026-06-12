@@ -74,6 +74,8 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 
 这会禁掉拖动、左右拉伸和进度拖动，但保留点击任务条、弹窗、批次聚焦、筛选、配色、关键工序外框和依赖线查看。
 
+任务条的 `progress` 字段由服务端按现场执行事实写死两态（completed→100、其余 0，fusion-gantt-execution-visuals），`readonly_progress: true` 下前端不可改；完工绿罩层与执行态描边的 CSS 协议见 `aps_gantt.css` 执行着色段（罩层三态覆盖/描边 `:not(.overdue)` 守卫/暗色重申）。
+
 `simulate` 模式目前只在 `gantt_adapter.js` 中保留事件出口，不连接保存接口，不创建草稿，也不写正式排产数据。
 
 真实拖动调整入口尚未开放。当前页面上的 `ganttSimulationEntry` 按钮是 disabled 占位按钮。后端已经有保存模拟方案的接口，但模板仍不注入保存按钮，也不打开拖拽编辑；当前页面不能创建 Draft，也不能保存 Scenario。

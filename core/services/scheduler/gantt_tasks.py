@@ -4,7 +4,13 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from core.models.enums import CalendarDayType, YesNo
-from core.models.operation_execution_event import EXECUTION_STATUS_NOT_STARTED
+from core.models.operation_execution_event import (
+    EXECUTION_STATUS_COMPLETED,
+    EXECUTION_STATUS_EXCEPTION,
+    EXECUTION_STATUS_NOT_STARTED,
+    EXECUTION_STATUS_PAUSED,
+    EXECUTION_STATUS_PROCESSING,
+)
 from core.models.operation_execution_labels import execution_status_label
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationCollector
@@ -138,6 +144,33 @@ def _fmt_fact_dt(value: Any) -> str:
     return _fmt_dt(parsed) if parsed else ""
 
 
+# execution-<status> 着色类四态白名单（fusion-gantt-execution-visuals）：
+# 刻意不用 STATUS_LABELS 全集——词表含 not_started，正常链路被 has_execution_record
+# 排除，但假数据/测试假 fact 可能拼出 execution-not_started 垃圾类，白名单制杜绝。
+_EXECUTION_CSS_STATUSES = frozenset(
+    (
+        EXECUTION_STATUS_PROCESSING,
+        EXECUTION_STATUS_PAUSED,
+        EXECUTION_STATUS_EXCEPTION,
+        EXECUTION_STATUS_COMPLETED,
+    )
+)
+
+
+def _execution_visuals(fact: Any, *, has_record: bool) -> Tuple[List[str], int]:
+    """现场事实可视化（4.10）：返回 (着色类列表, progress)。
+
+    着色类与 progress 都以 has_record 为门槛——无事实=计划行原样（preview/候选
+    身份永远无事实，自动满足）；raw 状态码只在服务端此处消费，meta 只出中文
+    公开标签。4.10 红线：progress 只允许 completed→100，禁部分进度伪装精度。
+    """
+    if not has_record:
+        return [], 0
+    status = str(getattr(fact, "actual_status", "") or "").strip()
+    css = [f"execution-{status}"] if status in _EXECUTION_CSS_STATUSES else []
+    return css, (100 if status == EXECUTION_STATUS_COMPLETED else 0)
+
+
 def _fact_has_site_record(fact: Any) -> bool:
     if fact is None:
         return False
@@ -229,6 +262,8 @@ def _build_one_task(
     except (TypeError, ValueError):
         execution_fact = None
     execution_meta = _execution_detail_meta(execution_fact)
+    execution_css, progress = _execution_visuals(execution_fact, has_record=execution_meta["has_execution_record"])
+    css.extend(execution_css)
     overdue_label = "已标记超期" if is_overdue else "未标记超期"
     delay_hint = (
         "该批次已被标记为超期，建议查看超期清单或排产诊断。"
@@ -242,7 +277,7 @@ def _build_one_task(
         "start": _fmt_dt(st2),
         "end": _fmt_dt(et2),
         "duration_minutes": duration,
-        "progress": 0,
+        "progress": progress,
         "lock_status": row.get("lock_status"),
         "dependencies": "",
         "edge_type": "",

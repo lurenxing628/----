@@ -27,6 +27,16 @@
   if (typeof publicStatusLabel !== "function") return;
   if (typeof formatChineseDateTime !== "function") return;
 
+  function formatDurationMinutes(minutes) {
+    const n = Number(minutes);
+    if (!isFinite(n) || n <= 0) return "-";
+    const h = Math.floor(n / 60);
+    const m = Math.round(n % 60);
+    if (h <= 0) return m + " 分钟";
+    if (m <= 0) return h + " 小时";
+    return h + " 小时 " + m + " 分钟";
+  }
+
   function detailValue(value, fallback) {
     const text = str(value || "");
     return text ? text : (fallback || "-");
@@ -109,7 +119,10 @@
           detailRow("图号或物料", meta.part_label || meta.part_no || meta.part_name || meta.piece_id),
           detailRow("工序", meta.operation_label || ((meta.seq || "-") + "（" + detailValue(meta.op_type_name) + "）")),
           detailRow("资源", meta.resource_label || ("设备：" + detailValue(meta.machine) + "；人员：" + detailValue(meta.operator))),
+          detailRow("优先级", publicPriorityLabel(meta.priority)),
+          detailRow("加工方式", publicSourceLabel(meta.source)),
           detailRow("计划时间", plannedTime),
+          detailRow("时长", formatDurationMinutes(meta.duration_minutes)),
           detailRow("现场状态", statusText),
           detailRow("实际开工", meta.actual_start_time_label),
           detailRow("实际完工", meta.actual_end_time_label),
@@ -170,6 +183,7 @@
       `<div class="subtitle">人员：${operatorText}</div>`,
       `<div class="subtitle">加工方式：${sourceText}</div>`,
       `<div class="subtitle">状态：${statusText}</div>`,
+      `<div class="subtitle">现场：${escapeHtml(str(meta.actual_summary_label || "暂未记录现场实际"))}</div>`,
       `<div class="subtitle">优先级：${priorityText}</div>`,
       `<div class="subtitle">交期：${dueText}</div>`,
       `<div class="subtitle">关键工序：${ccStatusText}</div>`,

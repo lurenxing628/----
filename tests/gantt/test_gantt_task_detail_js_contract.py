@@ -67,6 +67,9 @@ state.allTasks = [{{
     operation_label: "10（车削）",
     resource_label: "设备：M1 一号设备；人员：O1 张三",
     planned_time_label: "2026-05-01 08:00:00 ～ 2026-05-01 09:00:00",
+    priority: "urgent",
+    source: "internal",
+    duration_minutes: 150,
     execution_status_label: "已完工",
     actual_start_time_label: "2026-05-01 08:12:00",
     actual_end_time_label: "2026-05-01 08:58:00",
@@ -139,6 +142,12 @@ process.stdout.write(JSON.stringify({{
         "资源",
         "设备：M1 一号设备；人员：O1 张三",
         "计划时间",
+        "优先级",
+        "急件",
+        "加工方式",
+        "自制",
+        "时长",
+        "2 小时 30 分钟",
         "现场状态",
         "已完工",
         "实际开工",
@@ -194,6 +203,8 @@ process.stdout.write(JSON.stringify({{ popupText, legacyCriticalPopupText }}));
 """
     result = helpers._run_node_json(node_code)
     assert '<div class="title">10（车削）</div>' in result["popupText"]
+    # popup 现场摘要行（fusion-gantt-execution-visuals）：无记录显示诚实缺省
+    assert "现场：暂未记录现场实际" in result["popupText"]
     assert "op_123" not in result["popupText"]
     assert "前面影响它的工序：未命名工序" in result["legacyCriticalPopupText"]
     assert "op_123" not in result["legacyCriticalPopupText"]

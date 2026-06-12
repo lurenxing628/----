@@ -223,6 +223,17 @@
       r3.appendChild(item("关键工序(外框)", { background: "#ffffff", borderColor: "#38bdf8", borderWidth: 2.5 }));
     }
     r3.appendChild(item("外协(虚线)", { background: "#ffffff", borderColor: "#334155", borderWidth: 1.5, borderStyle: "dashed" }));
+    // 执行状态样例（fusion-gantt-execution-visuals）：颜色与 aps_gantt.css 执行着色段
+    // 的 --ui-* token 同源（updateLegend 调用时 getPropertyValue 取当时主题值；
+    // 主题切换不主动刷图例是图例全部样例的既有行为，下次图例实际重建（digest 变化）时刷新）
+    const uiColor = function (name, fallback) {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    };
+    r3.appendChild(item("已完工(绿罩)", { background: uiColor("--ui-success", "#16a34a"), opacity: 0.45 }));
+    r3.appendChild(item("生产中(蓝边)", { background: "#ffffff", borderColor: uiColor("--ui-primary", "#2563eb"), borderWidth: 2 }));
+    r3.appendChild(item("已暂停(琥珀边)", { background: "#ffffff", borderColor: uiColor("--ui-warning", "#d97706"), borderWidth: 2 }));
+    r3.appendChild(item("异常中(红边)", { background: "#ffffff", borderColor: uiColor("--ui-danger", "#dc2626"), borderWidth: 2 }));
     r3.appendChild(item("非聚焦(变淡)", { background: "#94a3b8", opacity: 0.25 }));
     el.appendChild(r3);
   }
