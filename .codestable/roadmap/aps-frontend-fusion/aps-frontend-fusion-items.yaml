@@ -117,8 +117,8 @@ items:
   - slug: fusion-gantt-load-strip
     description: 甘特资源负荷热力条带——新建 core/services/scheduler/gantt_resource_load.py 按资源×日桶聚合，前端挂 decorateStaticAfterRender 与假期层同公式像素对齐，容量来源明示"按全局工作日历估算"，点击色带格弹出该资源当天任务清单与去派工/报表跳转（吸收老 item 11 验收点）
     depends_on: [fusion-gantt-execution-visuals, fusion-tokens-single-source]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-13-fusion-gantt-load-strip
     minimal_loop: false
     notes: 容量口径按 roadmap 4.6 共享协议；gantt_service.py 已 495/500 行禁止加码；对齐不达标止损线=同列宽日历对齐；2026-06-11 用户已拍板 B 案——替代老 roadmap item 11 并吸收其验收点（Top-N 以色带排序承接、任务数与跳转入口经点击弹层承接），老 roadmap update 时将老 11 标 dropped 指向本条
 

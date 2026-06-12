@@ -404,12 +404,12 @@ items:
 
   - slug: gantt-resource-load-summary
     title: 甘特资源负荷摘要
-    description: 第二阶段增强。在甘特图附近显示最忙设备和最忙人员摘要，让计划员不用先跳报表也能看到资源压力。
+    description: 第二阶段增强。在甘特图附近显示最忙设备和最忙人员摘要，让计划员不用先跳报表也能看到资源压力。（2026-06-13 dropped：由 aps-frontend-fusion 的 fusion-gantt-load-strip 替代——Top-N 以色带排序承接、任务数与跳转入口经点击弹层承接，feature 2026-06-13-fusion-gantt-load-strip。）
     depends_on: [workbench-context-link-contract, gantt-task-detail-panel]
     depends_on_reasons:
       workbench-context-link-contract: 资源负荷摘要要能跳资源派工和资源负荷报表，必须复用统一上下文。
       gantt-task-detail-panel: 甘特详情区先稳定，避免同一轮同时重排甘特旁边多个区域。
-    status: planned
+    status: dropped
     feature: null
     minimal_loop: false
     primary_paths:

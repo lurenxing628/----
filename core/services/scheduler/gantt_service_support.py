@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from core.services.common.degradation import DegradationCollector, DegradationEvent
 
 from .gantt_critical_chain import _normalize_critical_chain_result, compute_critical_chain_from_rows
+from .resource_dispatch_support import extract_overdue_batch_ids_with_meta
 
 
 def _text(value: Any) -> str:
@@ -63,8 +64,58 @@ def collect_gantt_degradation_events(
     return collector
 
 
+def log_overdue_marker_degraded(logger: Any, *, version: int, reason: str, message: str) -> None:
+    if logger is None:
+        return
+    logger.warning(
+        "甘特图超期标记降级（service=GanttService, page=gantt, version=%s, source=%s, message=%s）",
+        version,
+        reason or "unknown",
+        message or "",
+    )
+
+
+def log_overdue_marker_partial(logger: Any, *, version: int, reason: str, message: str) -> None:
+    if logger is None:
+        return
+    logger.warning(
+        "甘特图超期标记部分不完整（service=GanttService, page=gantt, version=%s, source=%s, message=%s）",
+        version,
+        reason or "unknown",
+        message or "",
+    )
+
+
+def overdue_batch_ids_from_history_meta(history_repo: Any, logger: Any, version: int) -> Dict[str, Any]:
+    hist = history_repo.get_by_version(int(version))
+    if not hist:
+        meta = {
+            "ids": [],
+            "degraded": True,
+            "partial": False,
+            "message": "排产历史缺失，超期标记可能不完整。",
+            "reason": "history_missing",
+        }
+        log_overdue_marker_degraded(logger, version=int(version), reason=str(meta["reason"]), message=str(meta["message"]))
+        return meta
+
+    meta = extract_overdue_batch_ids_with_meta(hist.result_summary)
+    if meta.get("degraded"):
+        log_overdue_marker_degraded(
+            logger, version=int(version), reason=str(meta.get("reason") or "unknown"), message=str(meta.get("message") or "")
+        )
+    elif meta.get("partial"):
+        log_overdue_marker_partial(
+            logger, version=int(version), reason=str(meta.get("reason") or "unknown"), message=str(meta.get("message") or "")
+        )
+    return meta
+
+
 __all__ = [
     "collect_gantt_degradation_events",
     "critical_chain_for_plan_detail_filter",
+    "log_overdue_marker_degraded",
+    "log_overdue_marker_partial",
+    "overdue_batch_ids_from_history_meta",
     "plan_detail_filter_kwargs",
 ]

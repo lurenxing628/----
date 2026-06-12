@@ -351,6 +351,7 @@
       emptyReason: state.emptyReason,
     });
     initCalendarDays(data.calendar_days || null);
+    if (typeof ns.initResourceLoad === "function") ns.initResourceLoad(data.resource_load || null);
     refreshFilterSelectOptions();
 
     applyUiFromUrl();

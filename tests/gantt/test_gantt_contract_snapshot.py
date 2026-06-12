@@ -110,6 +110,7 @@ def main(monkeypatch) -> None:
         "task_count",
         "tasks",
         "calendar_days",
+        "resource_load",
         "critical_chain",
         "degraded",
         "degradation_events",
@@ -124,6 +125,14 @@ def main(monkeypatch) -> None:
         raise RuntimeError(f"甘特契约缺少顶层字段：{missing_top}")
     if "history" in data:
         raise RuntimeError("默认契约不应包含 history（应按需下发）")
+    if int(data.get("contract_version") or 0) != 3:
+        raise RuntimeError(f"contract_version 应为 3（v3 含 resource_load），实际：{data.get('contract_version')}")
+    # 路由装饰后负荷行=6 个事实字段+severity/links 两个展示字段，禁内部字段
+    for load_row in data.get("resource_load") or []:
+        if set(load_row.keys()) != {
+            "date", "resource_id", "resource_label", "hours", "capacity_hours", "ratio", "severity", "links",
+        }:
+            raise RuntimeError(f"resource_load 行字段越界：{sorted(load_row.keys())}")
 
     tasks = data.get("tasks") or []
     if not tasks:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.services.common.degradation import DegradationCollector
@@ -112,6 +112,22 @@ def fmt_day_segment(start_dt: datetime, end_dt: datetime) -> str:
     )
     end_text = "24:00" if is_exact_next_midnight else fmt_hhmm(end_dt)
     return "全天" if start_text == "00:00" and end_text == "24:00" else f"{start_text}-{end_text}"
+
+
+_NOON = time(12, 0)
+
+
+def capacity_hours_at_noon(calendar: Any, day: Any) -> float:
+    """单日单资源容量：正午采样的 shift_hours×efficiency；休息日（shift_hours≤0）为 0。
+
+    4.6 共享协议唯一实现（周计划 day_totals 与甘特负荷条带共用）——刻意不调
+    calculations.capacity_hours（midnight 采样在跨午夜班次错归属，4.6 红线）。
+    """
+    policy = calendar.policy_for_datetime(datetime.combine(day, _NOON))
+    shift_hours = float(getattr(policy, "shift_hours", 0.0) or 0.0)
+    if shift_hours <= 0:
+        return 0.0
+    return shift_hours * float(getattr(policy, "efficiency", 1.0) or 1.0)
 
 
 def split_by_day(start_dt: datetime, end_dt: datetime) -> List[Tuple[date, datetime, datetime]]:

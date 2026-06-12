@@ -265,6 +265,7 @@
           data-range-source="{{ range_source or '' }}"
           data-fetch-timeout-ms="12000"
         ></div>
+        <div id="ganttLoadStrip" class="aps-load-strip is-hidden" role="region" aria-label="资源负荷条带"></div>
       </div>
       <aside id="ganttTaskDetail" class="aps-gantt-task-detail" role="region" aria-label="甘特任务详情" aria-live="polite">
         <div class="aps-gantt-task-detail-empty">点击甘特条查看任务详情</div>
@@ -288,6 +289,7 @@
     <script src="{{ url_for('static', filename='js/gantt_popup.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_legend.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_holidays.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/gantt_load_strip.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_decorations.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_chain_walk.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_render.js') }}" defer></script>

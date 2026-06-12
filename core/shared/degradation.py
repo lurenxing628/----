@@ -12,6 +12,7 @@ STABLE_DEGRADATION_CODES = (
     "invalid_due_date",
     "bad_time_row_skipped",
     "calendar_load_failed",
+    "resource_load_capacity_failed",
     "critical_chain_unavailable",
     "legacy_external_days_defaulted",
     "freeze_seed_unavailable",

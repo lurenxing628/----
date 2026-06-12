@@ -81,6 +81,7 @@ class GanttContractDTO:
     task_count: int
     tasks: List[Dict[str, Any]] = field(default_factory=list)
     calendar_days: List[Dict[str, Any]] = field(default_factory=list)
+    resource_load: List[Dict[str, Any]] = field(default_factory=list)
     critical_chain: Dict[str, Any] = field(default_factory=dict)
     degraded: bool = False
     degradation_events: List[Dict[str, Any]] = field(default_factory=list)
@@ -101,6 +102,7 @@ class GanttContractDTO:
             "task_count": int(self.task_count),
             "tasks": list(self.tasks or []),
             "calendar_days": list(self.calendar_days or []),
+            "resource_load": list(self.resource_load or []),
             "critical_chain": _public_critical_chain(self.critical_chain or {}),
             "degraded": bool(self.degraded),
             "degradation_events": public_degradation_events(self.degradation_events or []),
@@ -125,6 +127,7 @@ def build_gantt_contract(
     tasks: List[Dict[str, Any]],
     calendar_days: List[Dict[str, Any]],
     critical_chain: Dict[str, Any],
+    resource_load: Optional[List[Dict[str, Any]]] = None,
     degraded: bool = False,
     degradation_events: Optional[List[Dict[str, Any]]] = None,
     degradation_counters: Optional[Dict[str, int]] = None,
@@ -144,6 +147,7 @@ def build_gantt_contract(
         task_count=len(tasks or []),
         tasks=list(tasks or []),
         calendar_days=list(calendar_days or []),
+        resource_load=list(resource_load or []),
         critical_chain=dict(critical_chain or {}),
         degraded=bool(degraded),
         degradation_events=list(degradation_events or []),

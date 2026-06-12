@@ -366,7 +366,7 @@ ResourceDispatchWorkbenchTabs:
 | 8 | `workbench-flow-regression-suite` | 用测试证明第一版“首页 → 异常/方案/甘特/派工/报表/复盘”的主流程存在 | 1-7 | 否 | done |
 | 9 | `workbench-user-guide-refresh` | 更新用户手册，告诉用户每天该先看哪里、怎么查问题 | 8 | 否 | planned |
 | 10 | `delay-diagnosis-site-facts-bridge` | 延期解释接入已录入的现场事实，不能继续固定说没有现场事实 | 1, 6 | 否 | planned |
-| 11 | `gantt-resource-load-summary` | 甘特附近显示最忙设备/人员和资源负荷入口 | 1, 5 | 否 | planned |
+| 11 | `gantt-resource-load-summary` | 甘特附近显示最忙设备/人员和资源负荷入口 | 1, 5 | 否 | dropped（由 aps-frontend-fusion 的 fusion-gantt-load-strip 替代并吸收验收点——2026-06-11 B 案拍板） |
 | 12 | `downtime-task-impact-detail` | 停机影响从设备级说明补到受影响任务级明细 | 1, 7 | 否 | planned |
 | 13 | `downstream-batch-order-impact` | 延期和方案解释在数据足够时说明牵连批次/订单影响面 | 1, 4, 10 | 否 | planned |
 

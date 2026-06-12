@@ -30,11 +30,12 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 - `static/js/gantt_popup.js`：生成任务弹窗和稳定任务详情区 HTML，只拼接已经转义后的公开字段。
 - `static/js/gantt_legend.js`：生成图例、关键工序状态、配色说明和假期背景说明。
 - `static/js/gantt_holidays.js`：管理后端日历或周末弱兜底的假期/停工背景标注，并保证周、月视图下单日背景只占一天宽度。
+- `static/js/gantt_load_strip.js`：渲染甘特下方资源负荷热力条带（Top 5 周内总负荷降序），点击格弹出该资源当天任务清单与去派工/报表链接。
 - `static/js/gantt_decorations.js`：管理条形圆角、外协虚线、超期红框、关键工序外框、聚焦高亮和装饰缓存。
 - `static/js/gantt_render.js`：过滤任务、做范围保护、通过适配层创建 Frappe Gantt，并串联弹窗、假期、图例和视觉装饰模块。
 - `static/js/frappe-gantt.min.js`：本地 vendor 文件，只保留必须落在 Frappe 内部的补丁。
 
-脚本加载顺序必须保持为 `gantt.js`、`gantt_zoom.js`、`gantt_adapter.js`、`gantt_color.js`、`gantt_outline.js`、`gantt_contract.js`、`gantt_help.js`、`gantt_popup_fit.js`、`gantt_popup.js`、`gantt_legend.js`、`gantt_holidays.js`、`gantt_decorations.js`、`gantt_chain_walk.js`、`gantt_render.js`、`gantt_ui.js`、`gantt_boot.js`（chain_walk 必须在 decorations 之后、render 之前——它消费 decorations 的装饰导出，且 render 的 onClick 消费它；模块内依赖运行时读取）。`gantt_boot.js` 负责请求数据和阻塞式错误展示：HTTP 错误会优先显示后端 JSON 里的业务错误，成功响应必须满足 `success=true` 且 `data.tasks` 是数组；渲染前准备、渲染或适配层异常会显示到页面错误区，不再伪装成空数据，也不会把内部英文错误直接展示给用户。
+脚本加载顺序必须保持为 `gantt.js`、`gantt_zoom.js`、`gantt_adapter.js`、`gantt_color.js`、`gantt_outline.js`、`gantt_contract.js`、`gantt_help.js`、`gantt_popup_fit.js`、`gantt_popup.js`、`gantt_legend.js`、`gantt_holidays.js`、`gantt_load_strip.js`、`gantt_decorations.js`、`gantt_chain_walk.js`、`gantt_render.js`、`gantt_ui.js`、`gantt_boot.js`（load_strip 必须在 holidays 之后、decorations 之前——decorations 的静态装饰末尾运行时调用它的 `ns.renderLoadStrip` 导出；chain_walk 必须在 decorations 之后、render 之前——它消费 decorations 的装饰导出，且 render 的 onClick 消费它；模块内依赖运行时读取）。`gantt_boot.js` 负责请求数据和阻塞式错误展示：HTTP 错误会优先显示后端 JSON 里的业务错误，成功响应必须满足 `success=true` 且 `data.tasks` 是数组；渲染前准备、渲染或适配层异常会显示到页面错误区，不再伪装成空数据，也不会把内部英文错误直接展示给用户。
 
 ### 2.1 稳定任务详情区
 
@@ -74,6 +75,8 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 这会禁掉拖动、左右拉伸和进度拖动，但保留点击任务条、弹窗、批次聚焦、筛选、配色、关键工序外框和依赖线查看。
 
 任务条的 `progress` 字段由服务端按现场执行事实写死两态（completed→100、其余 0，fusion-gantt-execution-visuals），`readonly_progress: true` 下前端不可改；完工绿罩层与执行态描边的 CSS 协议见 `aps_gantt.css` 执行着色段（罩层三态覆盖/描边 `:not(.overdue)` 守卫/暗色重申）。
+
+资源负荷条带（fusion-gantt-load-strip，契约 4.6 第二个落地实例）：`/scheduler/gantt/data` 契约 v3 新增 `resource_load` 字段——core 的 `gantt_resource_load.py` 按「资源×自然日」聚合内部行工时（split_by_day 切日桶、clamp 到窗口、外协不计），容量分母走 `_sched_display_utils.capacity_hours_at_noon` 单源 helper（正午采样 shift_hours×efficiency，禁直调 calculations.capacity_hours——4.6 红线有 grep 守卫）；容量算不出 ratio 置 None 不伪装 0，降级码 `resource_load_capacity_failed` 在公开消息表有专用中文文案。severity（unknown/normal/warning/danger，阈值 import dashboard_workbench_cards 唯一字源）与跳转 links（build_workbench_link）由 `web/viewmodels/scheduler_gantt_load_strip.py` 装饰层追加——core 不 import web 常量。前端 `ns.initResourceLoad`（boot 注入数据）/`ns.renderLoadStrip`（decorations 静态装饰末尾调用），列宽与 x 坐标与假期层同像素公式（getGanttScale.dayWidth），渲染后实测 SVG 左缘算 baseOffset 对齐、滚动按容器实例重绑同步；甘特清空（筛到空/缩放守卫拒绝）时条带同步隐藏不留陈旧负荷。
 
 沿链巡检（fusion-chain-walk-navigation）：`gantt_chain_walk.js` 的 `ns.chainWalk` 统一「选中任务」状态与程序化跳转——详情面板「上一道/下一道」按钮沿后端已连的 process dependency 边走（索引建在 `state.allTasks` 原始 `dependencies` 上，不读被 depsMode 重写的 currentTasks；同 (batch_id,piece_id) 组内按排程顺序线性串链）；←/→ 键沿 `state.critical.ids` 正序巡检（输入框聚焦时跳过；范围外 id 跳过并提示「已跳过 N 道」，该方向无可达停原地诚实提示）。生命周期两分：`bindChainWalk`（面板容器 click 委托+document keydown）只绑一次，`rebuildChainIndex` 每次数据加载后重建。选中语义：`selectTaskById` 渲染详情+focusBatch 幂等赋值（点击同批次不再 toggle 清聚焦——筛选区新增「清除聚焦」按钮补窄入口）+`ns.scrollToTaskStart` 横向定位（与 scrollToAnchor 共用 scrollToTime 像素内核）；被前端筛选滤掉的目标只渲详情+提示、不装饰不滚动。
 

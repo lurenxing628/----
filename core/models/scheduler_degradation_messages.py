@@ -35,6 +35,7 @@ _PUBLIC_EVENT_MESSAGES = {
     "fallback_count_parse_failed": "排产降级统计记录异常，部分降级原因无法完整展示。",
     "summary_count_parse_failed": "排产摘要里的数量记录异常，不能按这些数量判断结果。",
     "calendar_load_failed": "工作日历加载失败，当前不显示假期/停工背景标注。",
+    "resource_load_capacity_failed": "部分日期的容量暂时算不了，相关负荷格按「利用率暂时算不了」显示。",
     "bad_time_row_skipped": "有些甘特记录的开始或结束时间写法不对，页面已先过滤。",
     "critical_chain_unavailable": "关键工序关系暂时算不出来，所以甘特图不会显示关键工序的箭头和高亮框。排产结果本身仍可查看。",
     "plugin_bootstrap_db_unavailable": "扩展功能设置暂时读不到，当前按默认开关运行。",

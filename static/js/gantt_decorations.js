@@ -184,6 +184,9 @@
     }
 
     roundBarsOnce();
+
+    // 资源负荷条带（load_strip 加载在本文件之前；运行时判存防旧页面缺脚本）
+    if (typeof ns.renderLoadStrip === "function") ns.renderLoadStrip();
   }
 
   function decorateDynamic(opts) {

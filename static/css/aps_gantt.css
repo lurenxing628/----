@@ -893,3 +893,118 @@ html[data-theme="dark"] .aps-gantt-task-detail-link.is-disabled {
   background: #0f172a;
   color: #64748b;
 }
+
+/* ---- 资源负荷条带（fusion-gantt-load-strip）----
+ * severity 类名由后端装饰层判定（阈值唯一字源在 Python），此处只消费
+ * severity-* 语义色 token，零裸 hex。 */
+.aps-load-strip {
+  margin-top: 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-card-bg);
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.aps-load-strip-head {
+  color: var(--ui-muted);
+  margin-bottom: 6px;
+}
+.aps-load-strip-viewport {
+  position: relative;
+  overflow: hidden;
+}
+.aps-load-strip-row {
+  display: flex;
+  align-items: center;
+  height: 26px;
+}
+.aps-load-strip-label {
+  flex: 0 0 140px;
+  position: relative;
+  z-index: 1;
+  background: var(--ui-card-bg);
+  color: var(--ui-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 8px;
+}
+.aps-load-strip-cells {
+  position: relative;
+  flex: 1 1 auto;
+  height: 22px;
+  will-change: transform;
+}
+/* 全局 button:not(.btn)（style.css:243，特异性 0,1,1 且 hover 刷背景）会盖掉
+   单类格子样式——用 button.aps-load-cell（0,1,1 后加载）+ 双类色彩（0,2,0）
+   按选择器语义压回，hover 态同组重申（#12 纪律：不靠书写顺序） */
+button.aps-load-cell {
+  position: absolute;
+  top: 0;
+  height: 22px;
+  min-height: 0;
+  display: inline-block;
+  border: 1px solid var(--ui-border);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 20px;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.aps-load-cell.aps-load-cell-normal,
+button.aps-load-cell.aps-load-cell-normal:hover {
+  background-color: var(--ui-success-bg);
+  color: var(--ui-success-text);
+}
+.aps-load-cell.aps-load-cell-warning,
+button.aps-load-cell.aps-load-cell-warning:hover {
+  background-color: var(--ui-warning-bg);
+  color: var(--ui-warning-text);
+}
+.aps-load-cell.aps-load-cell-danger,
+button.aps-load-cell.aps-load-cell-danger:hover {
+  background-color: var(--ui-danger-bg);
+  color: var(--ui-danger-text);
+}
+.aps-load-cell.aps-load-cell-unknown,
+button.aps-load-cell.aps-load-cell-unknown:hover {
+  background-color: var(--ui-surface-muted, var(--ui-card-bg));
+  color: var(--ui-muted);
+}
+.aps-load-strip-more {
+  color: var(--ui-muted);
+  margin-top: 4px;
+}
+.aps-load-popup {
+  margin-top: 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-card-bg);
+  padding: 10px 12px;
+}
+.aps-load-popup-title {
+  font-weight: 600;
+  color: var(--ui-text);
+}
+.aps-load-popup-meta {
+  color: var(--ui-muted);
+  margin: 4px 0 6px;
+}
+.aps-load-popup-tasks {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+.aps-load-popup-empty {
+  color: var(--ui-muted);
+  margin: 0 0 8px;
+}
+.aps-load-popup-link {
+  margin-right: 12px;
+}
+.aps-load-popup-link.is-disabled {
+  color: var(--ui-muted);
+  cursor: not-allowed;
+}

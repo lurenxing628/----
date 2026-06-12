@@ -1,0 +1,45 @@
+feature: 2026-06-13-fusion-gantt-load-strip
+steps:
+  - id: s1
+    desc: 微重构腾位——gantt_service.py overdue marker 三方法保签名薄壳化（方法体搬 gantt_service_support.py，monkeypatch/callback 名零变）+ capacity_hours_at_noon 提升 _sched_display_utils 公共单源（week_plan_daily_summary 改引用）；tests/gantt + week_plan 相关零改动全绿 + wc 余量确认
+    status: done
+  - id: s2
+    desc: 后端——gantt_resource_load.py 聚合纯函数（calendar 注入/SourceType 同等判断/split_by_day 日桶/窗口裁剪/容量 0→None/BuildOutcome 降级/负荷降序）+ gantt_contract 字段三处 + gantt_service 接线 + CONTRACT_VERSION 2→3 + 单测（跨午夜/外协剔除/裁剪/None/降级计数）+ snapshot 补 resource_load key
+    status: done
+  - id: s3
+    desc: web 装饰层——scheduler_gantt_load_strip.py severity 四档（阈值 import 唯一字源）+ links（build_workbench_link 派工/报表两条，preview disabled）+ 幂等 + 路由串接 + 单测（0.74/0.75/0.89/0.90/None 边界/links 形状/幂等）
+    status: done
+  - id: s4
+    desc: 前端——gantt_load_strip.js（顶层 ns.initResourceLoad/ns.renderLoadStrip，Top 5 截断+另有 N 提示/unknown 文案/点击弹层过滤 allTasks/scroll 同步）+ boot/decorations/gantt.html（holidays 后 decorations 前）/aps_gantt.css 纯 token 四接线 + JS contract 测试
+    status: done
+  - id: s5
+    desc: 浏览器目检（像素对齐多缩放级别止损判定/弹层/链接/暗色）+ 甘特全量回归 + daily gate（stash 隔离并行 WIP）
+    status: done
+checks:
+  - id: c1
+    desc: 聚合正确性——同日累加/跨午夜切分/窗口裁剪/外协不计
+    status: passed
+  - id: c2
+    desc: 容量与降级——正午采样 7.2 例/节假日 None+unknown+「利用率暂时算不了」/日历失败空数组+中文事件
+    status: passed
+  - id: c3
+    desc: severity 边界五点锁值+阈值无第三份常量（grep 全仓仍仅 dashboard_workbench_cards.py）
+    status: passed
+  - id: c4
+    desc: 条带渲染——Top 5 降序/另有 N/空数组隐藏/容量来源文案可见；点击弹层任务清单+两链接（href 来自后端 links，preview disabled）
+    status: passed
+  - id: c5
+    desc: 契约——resource_load 顶层 key/contract_version=3/行字段恰 8 公开字段（反向断言无内部字段）
+    status: passed
+  - id: c6
+    desc: 明确不做反向核对——capacity_hours( grep 四文件零直调（capacity_hours_at_noon( 豁免）/新文件零 report import/algo+报表链零 diff/无图表库/无第三份阈值/#12-14 段零 diff/并行 WIP 零接触
+    status: passed
+  - id: c7
+    desc: 像素对齐目检过或止损线（同列宽日历对齐）+ 验收记录明示
+    status: passed
+  - id: c8
+    desc: 架构归并（ui-gantt.md 条带段+script 顺序协议；ARCHITECTURE.md 补句）
+    status: passed
+  - id: c9
+    desc: roadmap 回写（items.yaml done + 主文档第 15 条 + 老 roadmap workbench item 11 标 dropped 指向本条）
+    status: passed

@@ -6,6 +6,7 @@ from core.infrastructure.errors import ValidationError
 from core.services.common.degradation import degradation_events_to_dicts
 from data.repositories import ScheduleHistoryRepository, ScheduleRepository
 
+from .calendar_service import CalendarService
 from .execution_fact_provider import ExecutionFactProvider
 from .gantt_contract import build_gantt_contract
 from .gantt_critical_chain_provider import GanttCriticalChainProvider
@@ -16,15 +17,18 @@ from .gantt_plan_query import (
     resolve_gantt_range_for_version,
 )
 from .gantt_range import WeekRange, resolve_week_range
+from .gantt_resource_load import compute_gantt_resource_day_load
 from .gantt_service_support import (
     collect_gantt_degradation_events,
     critical_chain_for_plan_detail_filter,
+    log_overdue_marker_degraded,
+    log_overdue_marker_partial,
+    overdue_batch_ids_from_history_meta,
     plan_detail_filter_kwargs,
 )
 from .gantt_tasks import build_calendar_days, build_tasks
 from .gantt_week_plan import build_week_plan_rows
 from .plan_overdue_markers import build_overdue_meta_for_plan
-from .resource_dispatch_support import extract_overdue_batch_ids_with_meta
 from .schedule_plan_query_service import SchedulePlanQueryService
 from .schedule_result_view_context import (
     ScheduleResultViewContext,
@@ -46,7 +50,7 @@ class GanttService:
     - 生成周计划表导出行（按天切分时段）
     - 复用 ScheduleHistory.result_summary 的超期信息做标记
     """
-    CONTRACT_VERSION = 2
+    CONTRACT_VERSION = 3  # v3：新增 resource_load（fusion-gantt-load-strip）
 
     def __init__(self, conn, logger=None, op_logger=None, plan_query_service=None):
         self.conn = conn
@@ -205,49 +209,16 @@ class GanttService:
             end_date=end_date,
         )
 
+    # 三个薄壳保签名：_overdue_batch_ids_from_history 被测试 monkeypatch、
+    # _log_* 在 build_overdue_meta_for_plan 被当 callback 传出，实现在 support
     def _log_overdue_marker_degraded(self, *, version: int, reason: str, message: str) -> None:
-        if self.logger is None:
-            return
-        self.logger.warning(
-            "甘特图超期标记降级（service=GanttService, page=gantt, version=%s, source=%s, message=%s）",
-            version,
-            reason or "unknown",
-            message or "",
-        )
+        log_overdue_marker_degraded(self.logger, version=version, reason=reason, message=message)
 
     def _log_overdue_marker_partial(self, *, version: int, reason: str, message: str) -> None:
-        if self.logger is None:
-            return
-        self.logger.warning(
-            "甘特图超期标记部分不完整（service=GanttService, page=gantt, version=%s, source=%s, message=%s）",
-            version,
-            reason or "unknown",
-            message or "",
-        )
+        log_overdue_marker_partial(self.logger, version=version, reason=reason, message=message)
 
     def _overdue_batch_ids_from_history(self, version: int) -> Dict[str, Any]:
-        hist = self.history_repo.get_by_version(int(version))
-        if not hist:
-            meta = {
-                "ids": [],
-                "degraded": True,
-                "partial": False,
-                "message": "排产历史缺失，超期标记可能不完整。",
-                "reason": "history_missing",
-            }
-            self._log_overdue_marker_degraded(version=int(version), reason=str(meta["reason"]), message=str(meta["message"]))
-            return meta
-
-        meta = extract_overdue_batch_ids_with_meta(hist.result_summary)
-        if meta.get("degraded"):
-            self._log_overdue_marker_degraded(
-                version=int(version), reason=str(meta.get("reason") or "unknown"), message=str(meta.get("message") or "")
-            )
-        elif meta.get("partial"):
-            self._log_overdue_marker_partial(
-                version=int(version), reason=str(meta.get("reason") or "unknown"), message=str(meta.get("message") or "")
-            )
-        return meta
+        return overdue_batch_ids_from_history_meta(self.history_repo, self.logger, version)
 
     def _history_payload_for_gantt(self, *, version: int, include_history: bool) -> Optional[Dict[str, Any]]:
         if not include_history:
@@ -384,11 +355,18 @@ class GanttService:
                 plan_resolution=plan_resolution,
                 plan_query_service=plan_query,
             )
+        resource_load_outcome = compute_gantt_resource_day_load(
+            view=view,
+            rows=rows,
+            wr=wr,
+            calendar=CalendarService(self.conn, logger=self.logger, op_logger=self.op_logger),
+        )
         degradation_collector = collect_gantt_degradation_events(
             calendar_days_outcome=calendar_days_outcome,
             tasks_outcome=tasks_outcome,
             critical_chain=critical_chain,
         )
+        degradation_collector.extend(resource_load_outcome.events)
         hist_dict = self._history_payload_for_gantt(version=ver, include_history=include_history)
 
         data = build_gantt_contract(
@@ -399,6 +377,7 @@ class GanttService:
             week_end=wr.week_end_date.isoformat(),
             tasks=tasks_outcome.value,
             calendar_days=calendar_days_outcome.value,
+            resource_load=resource_load_outcome.value,
             critical_chain=critical_chain,
             degraded=bool(degradation_collector),
             degradation_events=degradation_events_to_dicts(degradation_collector.to_list()),

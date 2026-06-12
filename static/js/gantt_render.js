@@ -291,6 +291,8 @@
       resetDecorCache();
       updateLegend();
       resetTaskDetail();
+      // 甘特清空时负荷条带同步隐藏（无几何即隐藏），不留上一次的陈旧负荷
+      if (typeof ns.renderLoadStrip === "function") ns.renderLoadStrip();
       return;
     }
     show(emptyEl, false);
@@ -308,6 +310,7 @@
       resetDecorCache();
       updateLegend();
       resetTaskDetail();
+      if (typeof ns.renderLoadStrip === "function") ns.renderLoadStrip();
       return;
     }
     const zoomSpec = getZoomSpec(currentZoomLevel(state.ui));
