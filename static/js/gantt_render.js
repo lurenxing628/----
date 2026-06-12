@@ -73,6 +73,16 @@
     renderTaskDetailEmpty($("ganttTaskDetail"));
   }
 
+  // 宽屏=详情侧栏可见（断点 1180px 与 aps_gantt.css 媒体查询同值互指）；
+  // matchMedia 缺位（DOM shim/旧环境）视为窄屏——保守保留浮层
+  function isWideViewport() {
+    try {
+      return typeof window.matchMedia === "function" && window.matchMedia("(min-width: 1180px)").matches;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function applyFilters(all) {
     const cfg = state.cfg || {};
     const view = norm(cfg.view) || "machine";
@@ -326,6 +336,12 @@
       zoomLevel: zoomSpec.level,
       fallbackViewMode: state.ui && state.ui.viewMode ? state.ui.viewMode : "Day",
       onClick: function (task) {
+        // 宽屏（详情侧栏可见，断点与 aps_gantt.css:613 同值）单一点击反应：
+        // vendor setup_click_event 先 show_popup 再触发本回调——同步 hide 无 paint
+        // 间隙不闪烁；CSS 媒体查询 display:none 兜底 dblclick 等旁路。窄屏保留浮层
+        if (isWideViewport() && state.gantt && typeof state.gantt.hide_popup === "function") {
+          state.gantt.hide_popup();
+        }
         // 选中语义统一走 chainWalk.selectTaskById（focusBatch 幂等赋值——二次点击
         // 同批次不再清聚焦；清聚焦走 ganttClearFocus 按钮）；chainWalk 缺位时回退旧行为
         const cw = ns.chainWalk;

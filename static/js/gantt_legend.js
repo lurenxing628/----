@@ -74,6 +74,25 @@
     return it;
   }
 
+  // 可点批次 chip（解码条点击即筛选）：button 元素带 data-batch；筛中态 is-active
+  function batchChip(bid) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "aps-legend-item aps-legend-batch-chip";
+    btn.setAttribute("data-batch", bid);
+    const active = norm(state.ui.filterBatch) !== "" && norm(state.ui.filterBatch).toLowerCase() === bid.toLowerCase();
+    if (active) btn.classList.add("is-active");
+    btn.title = active ? "再次点击清除批次筛选" : "点击只看批次 " + bid;
+    const c = document.createElement("span");
+    c.className = "aps-legend-chip";
+    c.style.background = String(colorForBatch(bid));
+    const tx = document.createElement("span");
+    tx.textContent = bid;
+    btn.appendChild(c);
+    btn.appendChild(tx);
+    return btn;
+  }
+
   function summaryItem(label, value) {
     const it = document.createElement("span");
     it.className = "aps-legend-summary";
@@ -115,6 +134,18 @@
     return out;
   }
 
+  // chips 截断提示用全量去重数：筛中单批次时 filteredTasks 只剩 1 个批次，
+  // 截断提示要按 allTasks 算才不会把「等 N 个」吞掉
+  function countDistinctBatches() {
+    const seen = new Set();
+    const list = Array.isArray(state.allTasks) ? state.allTasks : [];
+    for (let i = 0; i < list.length; i++) {
+      const bid = norm(list[i] && list[i].meta && list[i].meta.batch_id);
+      if (bid) seen.add(bid);
+    }
+    return seen.size;
+  }
+
   function criticalVisibleCount() {
     if (state.critical && state.critical.available === false) return 0;
     const ids = state.ccIdSet;
@@ -151,7 +182,8 @@
     const ccCacheText = ccUnavailable
       ? "不可用"
       : ((state.critical && state.critical.cache_hit === true) ? "已准备好" : "正在重新计算");
-    const batchSamples = state.ui.colorMode === "batch" ? sampleBatchIds(3) : [];
+    const batchSamples = state.ui.colorMode === "batch" ? sampleBatchIds(8) : [];
+    const batchTotal = state.ui.colorMode === "batch" ? countDistinctBatches() : 0;
     const calendarDisabled = calendarBackgroundDisabled();
     const zoomLevel = currentZoomLevel(state.ui);
 
@@ -168,6 +200,9 @@
       ccCacheText,
       calendarDisabled ? "calendar-off" : "calendar-on",
       batchSamples.join("|"),
+      // 筛中态变化要重渲（chips is-active 高亮跟随）
+      norm(state.ui.filterBatch),
+      String(batchTotal),
     ].join("||");
     if (digest === _perfState.legendDigest) return;
     _perfState.legendDigest = digest;
@@ -192,8 +227,13 @@
     if (state.ui.colorMode === "batch") {
       r2.appendChild(item("同批次同色", { background: "#94a3b8" }));
       for (let i = 0; i < batchSamples.length; i++) {
-        const bid = batchSamples[i];
-        r2.appendChild(item(bid, { background: colorForBatch(bid) }));
+        r2.appendChild(batchChip(batchSamples[i]));
+      }
+      if (batchTotal > batchSamples.length) {
+        const more = document.createElement("span");
+        more.className = "aps-legend-more";
+        more.textContent = "等 " + batchTotal + " 个批次";
+        r2.appendChild(more);
       }
     } else if (state.ui.colorMode === "priority") {
       r2.appendChild(item("普通", { background: colorForPriority("normal") }));
@@ -238,5 +278,35 @@
     el.appendChild(r3);
   }
 
+  // 容器级 click 委托（innerHTML 重写不丢绑定）：点 chip 设/清 filterBatch。
+  // ns.setSelectValueWithFallback/ns.persistUiToUrl/ns.render 运行时读取——
+  // legend 加载在 render/ui 之前，头部硬依赖会让本模块提前 return
+  function bindLegendChips() {
+    if (bindLegendChips._bound === true) return; // 幂等：二次调用不重复绑
+    bindLegendChips._bound = true;
+    const el = $("ganttLegend");
+    if (!el || typeof el.addEventListener !== "function") return;
+    el.addEventListener("click", function (e) {
+      let node = e && e.target;
+      while (node && node !== el) {
+        const bid = node.getAttribute && node.getAttribute("data-batch");
+        if (bid) {
+          const current = norm(state.ui.filterBatch);
+          const next = current.toLowerCase() === String(bid).toLowerCase() ? "" : String(bid);
+          state.ui.filterBatch = next;
+          const select = $("ganttFilterBatch");
+          if (select && typeof ns.setSelectValueWithFallback === "function") {
+            ns.setSelectValueWithFallback(select, next, "批次");
+          }
+          if (typeof ns.persistUiToUrl === "function") ns.persistUiToUrl();
+          if (typeof ns.render === "function") ns.render();
+          return;
+        }
+        node = node.parentNode;
+      }
+    });
+  }
+
   ns.updateLegend = updateLegend;
+  ns.bindLegendChips = bindLegendChips;
 })();

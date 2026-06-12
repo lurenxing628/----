@@ -305,7 +305,7 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 
 **追加条目（2026-06-11 用户拍板拆分，编号顺延）**
 26. **fusion-mirror-sync-guard**（模块 S）✅ done（2026-06-11，快速通道直落；**已随第 2 条完成按计划退役删除**）— 镜像逐字节同步守卫测试：tests/gate_meta/test_v1_v2_mirror_sync_guard.py，6 个镜像模板 + scheduler_manual.md 双份共 7 对参数化全等断言（核证修正：style.css 只存在于 V2 树不是镜像对），登记 QUALITY_GATE_GUARD_TESTS 挂 required 门禁 + ui_layout_presenters_system impact 组；红绿反证自证有效。第 2 条完成后随镜像树一并退役。依赖：无。
-27. **fusion-gantt-controls-rework**（模块 W）— 甘特控件重排（UX，需截图基线评审验收）：解码条取代折叠图例（色样 chips 点击即筛选）+ 控件三层化（上下文面包屑/zoom 步进/筛选收纳）+ 宽屏禁浮层弹窗单一点击反应。依赖：12（软依赖：同区施工）。
+27. **fusion-gantt-controls-rework** ✅ done（2026-06-13，feature 2026-06-13-fusion-gantt-controls-rework，Codex 设计两轮（首轮 3 阻塞：CSS 1010 行漏评/legend 加载顺序/挂载点口径）+实现三轮（首轮 2 阻塞：reset 步进态陈旧/量化口径与常显解码互斥——裁决改解码可见口径 ≥100px 达标 106px，三轮 CLEAN）审核收口；截图基线 A/B 评审通过，双宽度双主题 CDP 实测；模块 W 甘特链全部收口）（模块 W）— 甘特控件重排（UX，需截图基线评审验收）：解码条取代折叠图例（色样 chips 点击即筛选）+ 控件三层化（上下文面包屑/zoom 步进/筛选收纳）+ 宽屏禁浮层弹窗单一点击反应。依赖：12（软依赖：同区施工）。
 
 **追加条目（2026-06-11 视觉定稿后补充）**
 28. **fusion-analysis-action-refresh**（模块 W）— 排产分析页收口（需截图基线评审验收）：按定稿设计语言重排方案对比区（对比表去框化、采用/对比等行动按钮层级收口为一屏一个主按钮）+ 候选/正式身份徽标统一走 4.8 词表 + 页头接 4.2 胶囊不再自拼版本文案 + 空态（无候选方案）明示下一步去执行排产。依赖：9（胶囊先行）、5（token 先单源）。

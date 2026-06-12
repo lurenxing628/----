@@ -118,6 +118,57 @@
     return $("ganttZoomLevel") || $("ganttViewMode");
   }
 
+  // ± 步进的档位序 = select option 顺序（与 gantt.html 9 档一致），
+  // 不在 JS 里手抄第二份档位表
+  function zoomLevelOrder(select) {
+    const out = [];
+    if (!select || !select.options) return out;
+    for (let i = 0; i < select.options.length; i++) {
+      out.push(String(select.options[i].value));
+    }
+    return out;
+  }
+
+  function refreshZoomStepperState() {
+    const select = $("ganttZoomLevel");
+    const minus = $("ganttZoomOut");
+    const plus = $("ganttZoomIn");
+    if (!select || !minus || !plus) return;
+    const order = zoomLevelOrder(select);
+    const idx = order.indexOf(String(select.value));
+    minus.disabled = idx <= 0;
+    plus.disabled = idx < 0 || idx >= order.length - 1;
+  }
+
+  function bindZoomSteppers() {
+    const select = $("ganttZoomLevel");
+    const minus = $("ganttZoomOut");
+    const plus = $("ganttZoomIn");
+    if (!select || !minus || !plus) return;
+    function step(delta) {
+      const order = zoomLevelOrder(select);
+      const idx = order.indexOf(String(select.value));
+      const next = idx + delta;
+      if (idx < 0 || next < 0 || next >= order.length) return;
+      select.value = order[next];
+      refreshZoomStepperState();
+      // 复用 select 的 change 通路（debounce 全量 render + URL 持久化）
+      try {
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      } catch (_) {
+        // 旧环境 Event 构造不可用：直接走与 change 等效的渲染调度
+        setUrlZoomWarning("");
+        readUi();
+        persistUiToUrl();
+        render();
+      }
+    }
+    on(minus, "click", function () { step(-1); });
+    on(plus, "click", function () { step(1); });
+    on(select, "change", refreshZoomStepperState);
+    refreshZoomStepperState();
+  }
+
   function legacyViewModeToZoom(value) {
     return zoom.normalizeZoomLevel(value || "day");
   }
@@ -280,6 +331,7 @@
         const hc = $("ganttHighlightCC");
         if (hc) hc.checked = true;
 
+        refreshZoomStepperState(); // 重置回 day 后 ± 端点 disabled 态同步
         setUrlZoomWarning("");
         readUi();
         persistUiToUrl();
@@ -320,6 +372,12 @@
       const el = $(id);
       if (el) on(el, "change", scheduleFullRender);
     });
+
+    // zoom ± 步进：沿 ZOOM_SPECS 有序档位 ±1，写 select.value 后走同一 change 通路
+    bindZoomSteppers();
+
+    // 解码条批次 chips（点击即筛选）
+    if (typeof ns.bindLegendChips === "function") ns.bindLegendChips();
     ["ganttFilterBatch", "ganttFilterResource"].forEach((id) => {
       const el = $(id);
       if (!el) return;

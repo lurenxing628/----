@@ -122,7 +122,8 @@ def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> No
     assert "mode_zh.get(algo.mode" not in analysis
 
     source = _read("templates/scheduler/gantt.html")
-    assert "排程数据" in source
+    # 原锚点「排程数据」随 #27 删除的提示文案一起消失；改锁空态文案（同义中文承载）
+    assert "没有可显示的排程" in source
     assert "Schedule 数据" not in source
 
     logs = _read("templates/system/logs.html")

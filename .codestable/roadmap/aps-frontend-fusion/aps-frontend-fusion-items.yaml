@@ -213,8 +213,8 @@ items:
   - slug: fusion-gantt-controls-rework
     description: 甘特控件重排（UX）——解码条取代折叠图例（色样 chips 点击即筛选）、控件三层化（上下文面包屑/zoom 步进/筛选收纳）、宽屏禁浮层弹窗单一点击反应
     depends_on: [fusion-gantt-execution-visuals]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-13-fusion-gantt-controls-rework
     minimal_loop: false
     notes: 需截图基线评审验收（与 fusion-gantt-fix-pack 验收方式不同故拆开）；图表本体可提升约 400px 进首屏；默认哈希配色的唯一解码器（图例）不应折叠隐藏
 

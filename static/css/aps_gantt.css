@@ -1008,3 +1008,91 @@ button.aps-load-cell.aps-load-cell-unknown:hover {
   color: var(--ui-muted);
   cursor: not-allowed;
 }
+
+/* ---- 控件重排（fusion-gantt-controls-rework）----
+ * 解码条常显/版本摘要单行/zoom 步进/宽屏浮层抑制/巡检 hover 精修。
+ * #7 css-layer-split 拆层时本段整体迁移。 */
+.aps-gantt-decode-bar {
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-card-bg);
+  padding: 8px 12px;
+}
+.aps-gantt-version-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 8px;
+}
+.aps-gantt-zoom-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* 压 style.css button:not(.btn)（white 背景）：[type="button"] 升到 (0,2,1)
+   不靠加载顺序 + hover 同组重申（#12 纪律） */
+button.aps-zoom-step,
+button.aps-zoom-step[type="button"] {
+  min-height: 0;
+  flex: 0 0 auto;
+  width: 28px;
+  padding: 4px 0;
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  background-color: var(--ui-card-bg);
+  color: var(--ui-text);
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+button.aps-zoom-step[type="button"]:hover {
+  background-color: var(--ui-surface-muted, var(--ui-card-bg));
+  border-color: var(--ui-primary);
+}
+button.aps-zoom-step[type="button"]:disabled,
+button.aps-zoom-step[type="button"]:disabled:hover {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: var(--ui-border);
+  background-color: var(--ui-card-bg);
+}
+/* 批次 chip 可点态：同样 [type="button"] 压全局 button:not(.btn) 背景 */
+button.aps-legend-batch-chip,
+button.aps-legend-batch-chip[type="button"] {
+  min-height: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  background-color: var(--ui-card-bg);
+  font-size: var(--font-size-1, 12px);
+  cursor: pointer;
+}
+button.aps-legend-batch-chip[type="button"]:hover {
+  border-color: var(--ui-primary);
+  background-color: var(--ui-card-bg);
+}
+button.aps-legend-batch-chip[type="button"].is-active,
+button.aps-legend-batch-chip[type="button"].is-active:hover {
+  border-color: var(--ui-primary);
+  box-shadow: 0 0 0 1px var(--ui-primary);
+}
+.aps-legend-more {
+  color: var(--ui-muted);
+  font-size: var(--font-size-1, 12px);
+}
+/* 宽屏（详情侧栏可见，断点与 :613 的 1180px 同值互指）禁浮层：
+   onClick 同步 hide_popup 是主路径，这里兜底 dblclick 等旁路 */
+@media (min-width: 1180px) {
+  #gantt .gantt-container .popup-wrapper {
+    display: none;
+  }
+}
+/* 巡检按钮 hover 与 detail-link 一致（#13 登记欠账收口） */
+.aps-gantt-task-walk button:not(:disabled):hover {
+  border-color: var(--ui-primary);
+  color: var(--ui-text);
+  background: var(--ui-surface-muted, var(--ui-card-bg));
+}

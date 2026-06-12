@@ -1,0 +1,42 @@
+feature: 2026-06-13-fusion-gantt-controls-rework
+steps:
+  - id: s1
+    desc: ①解码条迁出 details 常显（gantt.html 宿主迁移+删提示文案+summary 改「筛选」）+ chips 交互（sampleBatchIds 3→8/data-batch+is-active/容器 click 委托运行时读 ns.persistUiToUrl+ns.render/再点清筛/digest 键补 filterBatch）+ JS contract 测试（上限/点击筛选/清除/active/URL 同步/非 batch 模式不可点）
+    status: done
+  - id: s2
+    desc: ②三层化布局（版本摘要四卡压缩单行+CSS）+ zoom ± 步进（#ganttZoomOut/#ganttZoomIn 沿 ZOOM_SPECS ±1/端点 disabled/写 select.value 复用 change 通路）+ 测试（步进端点/select 同步/URL 持久化不破）+ url_persistence 回归
+    status: done
+  - id: s3
+    desc: ③宽屏禁浮层（onClick matchMedia 1180 先 hide_popup+CSS display:none 兜底，窄屏零变化）+ 测试（matchMedia 桩宽屏 popup hidden/窄屏照常）+ 巡检按钮 hover 精修 CSS（#13 欠账）
+    status: done
+  - id: s4
+    desc: 浏览器双宽度双主题目检 + capture_ui_baseline 复跑与 20260612_032724 基线 A/B 评审 + #gantt top 量化（解码可见口径：基线展开 details 1084 vs 新版常显，上移 ≥100px——原绝对 ≥300px 口径作废，见 design 场景 8）+ 甘特全量回归 + daily gate（stash 隔离并行 WIP）
+    status: done
+checks:
+  - id: c1
+    desc: 解码条常显——details 不展开可见配色解码；details 内无图例；summary=「筛选」
+    status: passed
+  - id: c2
+    desc: chips 筛选——点 chip 只剩该批次+高亮+select 同步+URL gantt_batch；再点清筛；>8 出「等 N 个批次」；非 batch 模式无 data-batch
+    status: passed
+  - id: c3
+    desc: zoom 步进——day+→half-day 且 select/URL 同步；one-minute ＋ disabled；month − disabled
+    status: passed
+  - id: c4
+    desc: 宽屏单一反应——≥1180 点击刷详情且 popup-wrapper 不可见；<1180 浮层照常
+    status: passed
+  - id: c5
+    desc: 版本摘要四项紧凑单行不占四卡高度；巡检按钮 hover 与 detail-link 同 token
+    status: passed
+  - id: c6
+    desc: 截图基线 A/B 评审通过（亮/暗）+ #gantt top 解码可见口径上移 ≥100px（基线展开态 1084 为基准；原绝对 ≥300px 口径作废）
+    status: passed
+  - id: c7
+    desc: 明确不做反向核对——gantt_color.js 零 diff/ZOOM_SPECS 零 diff/胶囊与 context_bar 零 diff/vendor 零 diff/无新筛选 URL 参数/条形无 tabindex/#12-15 段零 diff/HEX_FREEZE 不涨/并行 WIP 零接触
+    status: passed
+  - id: c8
+    desc: 架构归并（ui-gantt.md 控件三层化+解码条+宽屏点击语义段；ARCHITECTURE.md 补句）+ req gantt-readonly-result-view 演进备注核对
+    status: passed
+  - id: c9
+    desc: roadmap 回写（items.yaml done + 主文档第 27 条）
+    status: passed

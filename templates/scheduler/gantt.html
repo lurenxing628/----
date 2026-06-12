@@ -141,41 +141,45 @@
         <div class="aps-query-form-actions">{{ ui.button('加载', 'primary', 'md', type_attr='submit') }}</div>
       </form>
       {% if selected_version_row.item %}
-        <div class="aps-summary-grid aps-version-summary aps-gantt-version-summary">
-          {{ ui.summary_item('版本', 'v' ~ selected_version_row.item.version) }}
-          {{ ui.summary_item('时间', selected_version_row.item.schedule_time_display or selected_version_row.item.schedule_time) }}
-          {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label) }}
-          {{ ui.summary_item('结果', selected_version_row.item.result_status_label or selected_result_status_label) }}
+        <div class="aps-gantt-version-line text-meta">
+          <span><strong>版本</strong> v{{ selected_version_row.item.version }}</span>
+          <span><strong>时间</strong> {{ selected_version_row.item.schedule_time_display or selected_version_row.item.schedule_time }}</span>
+          <span><strong>排产方式</strong> {{ selected_version_row.item.strategy_label }}</span>
+          <span><strong>结果</strong> {{ selected_version_row.item.result_status_label or selected_result_status_label }}</span>
         </div>
       {% endif %}
       {% if not versions or versions|length == 0 %}
         <div class="muted mt-2">还没有排产记录，先去排产页面执行一次吧。</div>
       {% endif %}
     </div>
-    <p class="text-meta mt-3">
-      提示：默认按“批次”配色，可在下方切换为按优先级/来源/状态；红色边框表示该批次在该版本中被判定为“超期”。
-      若看不到条形，请先在【排产调度】执行排产生成排程数据。
-    </p>
     <div id="ganttOverdueWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite"></div>
     <div id="ganttDegradationWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite"></div>
     <div id="ganttZoomWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite"></div>
 
+    {# 解码条（fusion-gantt-controls-rework）：默认哈希配色的唯一解码器常显，
+       不再折叠进 details；批次 chips 点击即筛选（gantt_legend.js 委托） #}
+    <div id="ganttLegend" class="aps-gantt-legend aps-gantt-decode-bar mt-3"></div>
+
     <details class="details-panel">
-      <summary class="details-summary">筛选与配色</summary>
+      <summary class="details-summary">筛选</summary>
       <div class="aps-gantt-filter-grid mt-2">
         <div class="aps-gantt-filter-item">
           <label for="ganttZoomLevel">时间粒度</label><br/>
-          <select id="ganttZoomLevel" class="w-180">
-            <option value="month">月</option>
-            <option value="week">周</option>
-            <option value="day" selected>日</option>
-            <option value="half-day">12小时</option>
-            <option value="quarter-day">6小时</option>
-            <option value="hour">小时</option>
-            <option value="fifteen-minute">15分钟</option>
-            <option value="five-minute">5分钟</option>
-            <option value="one-minute">1分钟</option>
-          </select>
+          <span class="aps-gantt-zoom-group">
+            <button type="button" id="ganttZoomOut" class="aps-zoom-step" aria-label="时间粒度放粗一档" title="放粗一档">−</button>
+            <select id="ganttZoomLevel" class="w-180">
+              <option value="month">月</option>
+              <option value="week">周</option>
+              <option value="day" selected>日</option>
+              <option value="half-day">12小时</option>
+              <option value="quarter-day">6小时</option>
+              <option value="hour">小时</option>
+              <option value="fifteen-minute">15分钟</option>
+              <option value="five-minute">5分钟</option>
+              <option value="one-minute">1分钟</option>
+            </select>
+            <button type="button" id="ganttZoomIn" class="aps-zoom-step" aria-label="时间粒度放细一档" title="放细一档">＋</button>
+          </span>
         </div>
         <div class="aps-gantt-filter-item">
           <label for="ganttColorMode">配色</label><br/>
@@ -229,7 +233,6 @@
         <div class="aps-gantt-filter-item aps-gantt-filter-action">{{ ui.button('清除聚焦', 'secondary', 'md', type_attr='button', element_id='ganttClearFocus') }}</div>
         <div class="aps-gantt-filter-item aps-gantt-filter-action">{{ ui.button('重置', 'secondary', 'md', type_attr='button', class='gantt-reset-btn', element_id='ganttResetView') }}</div>
       </div>
-      <div id="ganttLegend" class="aps-gantt-legend mt-2"></div>
       <details id="ganttHelp" class="aps-gantt-help mt-2">
         <summary>说明（怎么看 / 交互）</summary>
         <div class="muted gantt-help-text">
