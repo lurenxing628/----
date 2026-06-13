@@ -197,3 +197,43 @@ def test_restore_success_condition(app_client, db_env) -> None:
             raise RuntimeError("restore 失败后不应继续执行 ensure_schema")
         if _restore_log_count(test_db) != rollback_failed_before_count:
             raise RuntimeError("restore_failed_rollback_failed 不应写入 restore success 日志")
+
+
+def test_restore_before_restore_backup_failure_shows_specific_route_message(app_client, db_env) -> None:
+    from core.infrastructure.backup import RestoreResult
+
+    test_db = db_env
+    test_backups = os.environ["APS_BACKUP_DIR"]
+
+    backup_filename = "aps_backup_20260318_130000_manual.db"
+    backup_path = os.path.join(test_backups, backup_filename)
+    with open(backup_path, "wb") as f:
+        f.write(b"fake")
+
+    before_count = _restore_log_count(test_db)
+    with mock.patch(
+        "web.routes.system_backup._get_backup_manager",
+        return_value=_FakeManager(
+            RestoreResult(
+                ok=False,
+                code="before_restore_backup_failed",
+                message="恢复前备份创建或完整性检查失败，数据库未恢复，原数据库没有被修改。请查看日志。",
+            )
+        ),
+    ), mock.patch("web.routes.system_backup.ensure_schema") as ensure_patch:
+        html = _assert_status(
+            app_client.post("/system/backup/restore", data={"filename": backup_filename}, follow_redirects=True),
+            "POST /system/backup/restore (before restore backup failed)",
+        )
+        if "恢复前备份创建或完整性检查失败" not in html:
+            raise RuntimeError("恢复前备份失败时未看到具体中文原因")
+        if "数据库未恢复" not in html or "原数据库没有被修改" not in html:
+            raise RuntimeError("恢复前备份失败时未告知数据库未恢复且原库未改动")
+        if "数据库恢复失败，请查看日志" in html:
+            raise RuntimeError("恢复前备份失败不应退化成通用 restore_failed 提示")
+        if f"已从备份恢复：{backup_filename}" in html:
+            raise RuntimeError("恢复前备份失败不应显示 success flash")
+        if ensure_patch.called:
+            raise RuntimeError("恢复前备份失败后不应继续执行 ensure_schema")
+        if _restore_log_count(test_db) != before_count:
+            raise RuntimeError("恢复前备份失败不应写入 restore success 日志")

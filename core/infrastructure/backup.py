@@ -414,15 +414,20 @@ class BackupManager:
         before_restore_path = None
         try:
             with maintenance_window(self.db_path, logger=self.logger, action="restore"):
-                # 恢复前自动备份：此处尚未触碰原库。失败须与「恢复失败」区分——让用户知道是「恢复前保护快照
+                # 恢复前自动备份：此处尚未触碰原库。失败须与「恢复失败」区分——让用户知道是「恢复前备份
                 # 没通过」且原库安全；MaintenanceWindowError 须继续上抛走 busy/锁语义，不得误并入快照失败分支。
                 try:
                     before_restore_path = self.backup(suffix="before_restore")
                 except MaintenanceWindowError:
                     raise
                 except Exception:
-                    fallback_log(self.logger, "error", f"恢复前保护快照创建/校验失败，已中止恢复（原库未改动）\n{traceback.format_exc()}")
-                    return RestoreResult(ok=False, code="pre_restore_snapshot_failed", message="恢复前保护快照创建或完整性校验未通过，已中止恢复（原数据库未改动），请查看日志。", before_restore_path=None)
+                    fallback_log(self.logger, "error", f"恢复前备份创建/完整性检查失败，已中止恢复（原库未改动）\n{traceback.format_exc()}")
+                    return RestoreResult(
+                        ok=False,
+                        code="before_restore_backup_failed",
+                        message="恢复前备份创建或完整性检查失败，数据库未恢复，原数据库没有被修改。请查看日志。",
+                        before_restore_path=None,
+                    )
 
                 self._copy_db_file(backup_path, locked_warning_message="数据库被占用（可能有其它连接未释放），准备重试")
                 fallback_log(self.logger, "info", f"数据库文件复制完成，等待后续结构校验：{backup_path}")
@@ -451,12 +456,6 @@ class BackupManager:
                 message="数据库恢复失败，请查看日志。",
                 before_restore_path=before_restore_path,
             )
-        return RestoreResult(
-            ok=False,
-            code="restore_failed",
-            message="数据库恢复失败，请查看日志。",
-            before_restore_path=before_restore_path,
-        )
 
     def cleanup_old_backups(self):
         cutoff = datetime.now() - timedelta(days=self.keep_days)

@@ -1,8 +1,8 @@
-"""回归测试（F3 修复）：BackupManager.restore() 在「恢复前保护快照」创建/校验失败时，
-必须显式区分为 code=pre_restore_snapshot_failed（而非笼统 restore_failed），中止恢复、
+"""回归测试（F3 修复）：BackupManager.restore() 在「恢复前备份」创建/检查失败时，
+必须显式区分为 code=before_restore_backup_failed（而非笼统 restore_failed），中止恢复、
 原数据库一字未动、before_restore_path 为空。
 
-背景：恢复前 self.backup(suffix="before_restore") 若因完整性校验失败抛 RuntimeError，
+背景：恢复前 self.backup(suffix="before_restore") 若因完整性检查失败抛 RuntimeError，
 旧实现会落入 restore() 的 catch-all，被收成笼统「数据库恢复失败，请查看日志。」，用户分不清
 是「恢复前快照没通过」还是「恢复本身失败」，也不知道原库其实没被动过。本测试钉死区分语义。
 此外 MaintenanceWindowError（busy/锁）不得被误并入快照失败分支。"""
@@ -46,7 +46,7 @@ def test_restore_pre_snapshot_failure_aborts_and_keeps_db(tmp_path, monkeypatch)
     finally:
         conn.close()
 
-    # 让「恢复前保护快照」创建失败（模拟完整性校验执行失败抛裸 RuntimeError）
+    # 让「恢复前备份」创建失败（模拟完整性检查执行失败抛裸 RuntimeError）
     orig_backup = manager.backup
 
     def _boom_before_restore(suffix=None):
@@ -59,10 +59,11 @@ def test_restore_pre_snapshot_failure_aborts_and_keeps_db(tmp_path, monkeypatch)
     result = manager.restore(backup_path)
 
     assert result.ok is False, result
-    assert result.code == "pre_restore_snapshot_failed", (
+    assert result.code == "before_restore_backup_failed", (
         f"恢复前快照失败必须区分语义、不得笼统 restore_failed，实际 {result.code!r}"
     )
-    assert "恢复前" in str(result.message) and "未改动" in str(result.message), result.message
+    assert "恢复前备份" in str(result.message) and "数据库未恢复" in str(result.message), result.message
+    assert "没有被修改" in str(result.message), result.message
     assert result.before_restore_path is None, "快照未生成时 before_restore_path 应为空"
 
     # 原库一字未动：仍是 mutated（恢复被中止在 _copy_db_file 之前）
@@ -91,5 +92,5 @@ def test_restore_pre_snapshot_maintenance_error_not_misclassified(tmp_path, monk
     monkeypatch.setattr(manager, "backup", _busy)
     result = manager.restore(backup_path)
     assert result.code == "busy", (
-        f"维护锁应走 busy 语义、不得被当快照失败 pre_restore_snapshot_failed，实际 {result.code!r}"
+        f"维护锁应走 busy 语义、不得被当快照失败 before_restore_backup_failed，实际 {result.code!r}"
     )
