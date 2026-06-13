@@ -129,7 +129,9 @@
       skipped++;
     }
     if (skipped > 0) {
-      walk.notice = "关键链后续工序在当前日期范围/筛选之外";
+      // 文案按方向区分：ArrowRight/next（delta>0）找下一道、ArrowLeft/prev（delta<0）找上一道
+      var dirWord = delta > 0 ? "下一道" : "上一道";
+      walk.notice = "关键链" + dirWord + "工序在当前日期范围/筛选之外";
       // 停在原地但提示要可见：重渲当前任务面板带提示
       selectTaskById(walk.currentId, { notice: walk.notice, scroll: false });
     }

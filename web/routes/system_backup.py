@@ -114,8 +114,18 @@ def backup_create():
         # 备份完整性检查执行失败/未通过会抛裸 RuntimeError（R32/O27：坏库绝不升正式、loud 不静默）。
         # MaintenanceWindowError 是 RuntimeError 子类、已在上面拦截；此处兜的是完整性检查类失败——
         # 必须转成具体中文，别让用户只看到 errorhandler(500) 的笼统「服务器内部错误，请查看日志」。
-        current_app.logger.error("手动备份失败（完整性检查或写入异常，已放弃本次备份以保护数据）：%s", e)
-        flash("备份完整性检查失败或备份写入异常，已放弃本次备份以保护数据，请查看日志。", "error")
+        current_app.logger.error("手动备份失败（完整性检查未通过，已放弃本次备份以保护数据）：%s", e)
+        flash("备份完整性检查失败，已放弃本次备份以保护数据，请查看日志。", "error")
+        return redirect(url_for("system.backup_page"))
+    except (sqlite3.OperationalError, OSError) as e:
+        # 备份写入阶段的预期运行时失败：sqlite connect/backup 的磁盘满/库被占用/无法打开抛
+        # sqlite3.OperationalError、临时文件原子替换抛 OSError（磁盘满/无写入权限）——都不是
+        # RuntimeError 子类，若不在此拦截会落到 errorhandler(500) 笼统「服务器内部错误」，用户
+        # 看不到这条具体中文提示。只兜 OperationalError（不兜 ProgrammingError/InterfaceError
+        # 等编程错误——那些是 bug，必须 loud 透到 500 不被伪装成「磁盘空间不足」）；logger.exception
+        # 留真实堆栈便于排查。
+        current_app.logger.exception("手动备份写入失败（已放弃本次备份以保护数据）：%s", e)
+        flash("备份写入失败（磁盘空间不足、数据库被占用或无写入权限），已放弃本次备份，请查看日志。", "error")
         return redirect(url_for("system.backup_page"))
     filename = os.path.basename(path)
     size_mb = None

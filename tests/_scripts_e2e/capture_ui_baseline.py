@@ -33,8 +33,10 @@ from tests._support.excel_templates import publish_shared_dir, reset_shared_dir 
 def main() -> int:
     # 纯探测函数（_find_* 系是 pytest fail/skip 语义，手跑工具不适用）
     chrome = _resolve_chrome()
-    if not chrome.exists:
-        print(f"找不到 Chrome：{chrome.message}", file=sys.stderr)
+    # exists=True 但 failure_kind 非空（如 browser_env_chrome_version_failed：Chrome 在但
+    # --version 超时/OSError）也是不可用——与下方 Node 用 failure_kind 同口径，别截到坏环境
+    if not chrome.exists or chrome.failure_kind:
+        print(f"Chrome 运行时不可用：{chrome.message}", file=sys.stderr)
         return 2
     node = _resolve_node_with_browser_runtime()
     if node.failure_kind:
@@ -96,6 +98,22 @@ def _run_capture(node_path, chrome_path, base_url, tmp_path, output_dir):
             results.append(json.loads(line))
     if not results:
         raise RuntimeError(f"capture mjs 零输出（rc={proc.returncode}），stderr={proc.stderr[-2000:]}")
+    # 结果路径集合必须与输入路径集合严格相等：少输出几页（mjs 漏行/中途崩）会被后续成功统计
+    # 吞掉，基线缺页却记成功是验收证据掺假——此处对齐输入清单，缺页/重复/串页即 fail loud
+    # （用集合比对而非仅计数：一缺一重时计数相等仍能抓出）。
+    expected_paths = set(FULL_UI_CONTRACT_PATHS)
+    # 缺 path 键的异常行规范成空串（不直接用 None）：空串不在 expected 里会按「多页」报错、
+    # 仍 fail loud，但避免 None 与 str 混排在 sorted() 里触发 TypeError 把结构化报错退化成崩溃。
+    got_paths = [str(r.get("path") or "") for r in results]
+    got_set = set(got_paths)
+    if got_set != expected_paths or len(got_paths) != len(FULL_UI_CONTRACT_PATHS):
+        missing = sorted(expected_paths - got_set)
+        unexpected = sorted(got_set - expected_paths)
+        duplicated = sorted({p for p in got_paths if got_paths.count(p) > 1})
+        raise RuntimeError(
+            f"capture mjs 结果页与输入页不一致（缺页={missing} 多页={unexpected} 重复={duplicated}），"
+            f"stderr={proc.stderr[-2000:]}"
+        )
     # mjs 退出码非 0 而逐页 JSON 全 ok：进程级失败（profile 清理炸等）必须 fail loud，不静默
     if proc.returncode != 0 and all(r.get("ok") for r in results):
         raise RuntimeError(f"capture mjs 退出码 {proc.returncode} 但逐页全成功，stderr={proc.stderr[-2000:]}")

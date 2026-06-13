@@ -22,7 +22,7 @@ items:
     description: 改版基线三件套——LIVE 文案/结构锚点爆点清单落档、亮/暗双主题截图基线管线、打印介质回归清单
     depends_on: []
     status: done
-    feature: null
+    feature: 2026-06-12-fusion-anchor-baseline-prep
     minimal_loop: false
     notes: 所有动模板的 feature 开工前先查本产物；test_dashboard_overdue_count_tolerance.py:15 正则锚等爆点已在挖掘中点名；CORE_BROWSER_SMOKE_PATHS 现零消费方，接快速浏览器档需先建接线点；文案变更建议攒批合入（language_polish 测试是门禁长缓存指纹源）
 
@@ -38,7 +38,7 @@ items:
     description: 00-tokens.css 唯一真相源——语义色三值合一定版（success/danger/warning）、旧名 --aps-*/--primary-color 降别名块、负荷阈值常量收编单点
     depends_on: [fusion-dual-track-retirement, fusion-anchor-baseline-prep]
     status: done
-    feature: null
+    feature: 2026-06-12-fusion-tokens-single-source
     minimal_loop: false
     notes: 契约见 roadmap 4.4；色值沿 slate 族内推导，不混入 antd 原生暖调状态色
 
@@ -62,7 +62,7 @@ items:
     description: 词表收编——11 处模板内联 strategy/status 中文字典收编到 viewmodel 层唯一字源，三套 status 口径拍板归一并清理 'ok2' 死键，cs-semantic-radar 立概念身份证
     depends_on: [fusion-dual-track-retirement]
     status: done
-    feature: null
+    feature: 2026-06-12-fusion-label-single-source
     minimal_loop: false
     notes: 依赖双轨退役后镜像消失，收编点从 11 处减半；全量清单在 drafts 的 context-nav 域
 
@@ -270,6 +270,6 @@ items:
     description: 运行日志页与诊断包导出——系统管理新增"运行日志"页（与操作日志页并列）：倒序展示 aps_error.log 条目（时间戳边界分组 traceback、块式倒读），可切 aps.log/launcher.log、级别/关键词筛选；一键导出诊断包（*.log 含轮转分卷+版本环境信息+最近操作日志打 zip）；报错出口接门（500 页/error_boundary"请查看日志"升级为发生时刻+打开运行日志链接）
     depends_on: []
     status: done
-    feature: null
+    feature: 2026-06-11-fusion-runtime-log-viewer
     minimal_loop: false
     notes: 模块 N（契约 4.11 共同约束）；2026-06-11 用户提出（现场报错翻文件夹、计划员无法自助反馈）；安全硬约束——诊断包白名单制（*.log+分卷+显式列名 aps_launch_error.txt 例外，2026-06-11 拍板）严禁打入同目录 aps_secret_key.txt；只读不写、不提供删除/清空（证据不许销毁，较操作日志页刻意收窄）；建议排最早批次（与 1/26/3 同批），是后续条目现场排障的眼睛；接线点 error_handlers.py:100-110、error_boundary.py:316/344、core/infrastructure/logging.py 只读消费

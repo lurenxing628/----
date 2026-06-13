@@ -313,8 +313,8 @@ def main():
         ws = wb.active
         assert ws is not None
 
-        headers = [ws.cell(row=1, column=i + 1).value for i in range(7)]
-        expect_headers = ["日期", "批次号", "图号", "工序", "设备", "人员", "时段"]
+        headers = [ws.cell(row=1, column=i + 1).value for i in range(8)]
+        expect_headers = ["日期", "批次号", "图号", "工序", "设备", "人员", "时段", "现场状态"]
         if headers != expect_headers:
             raise RuntimeError(f"周计划表表头不符合预期：got={headers} expect={expect_headers}")
         lines.append("- 周计划表.xlsx 表头校验：通过")

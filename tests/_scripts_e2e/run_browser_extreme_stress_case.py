@@ -67,9 +67,14 @@ def _connect_file_db(db_path: str) -> sqlite3.Connection:
     return conn
 
 
-def _copy_excel_templates(template_dir: str) -> None:
+def _copy_excel_templates(template_dir: str, *, force: bool) -> None:
     src = os.path.join(REPO_ROOT, "templates_excel")
     if os.path.exists(template_dir):
+        # 与 db_path 同一道 --force 守卫（help 文案声明 --force 覆盖 templates_excel）：
+        # 不加 --force 时拒删已存在目录，避免把 --workdir 误指到含 templates_excel 的
+        # 重要目录时静默 rmtree。
+        if not force:
+            raise RuntimeError(f"目标模板目录已存在，请加 --force 或换一个 --workdir：{template_dir}")
         shutil.rmtree(template_dir)
     shutil.copytree(src, template_dir)
 
@@ -520,7 +525,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not args.force:
             raise RuntimeError(f"目标临时库已存在，请加 --force 或换一个 --workdir：{db_path}")
         os.remove(db_path)
-    _copy_excel_templates(template_dir)
+    _copy_excel_templates(template_dir, force=args.force)
 
     conn = _connect_file_db(db_path)
     try:

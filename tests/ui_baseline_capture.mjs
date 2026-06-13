@@ -72,6 +72,14 @@ function safeName(pagePath) {
 
 async function captureOne(client, pagePath) {
   const targetUrl = `${baseUrl}${pagePath}`;
+  // HTTP 状态校验：CDP Page.navigate 的 errorText 只接网络层失败，接不住服务端 500——
+  // errorhandler(500) 原地渲染错误页、URL 不变，会被截图记成功进基线（验收证据掺假）。
+  // 先用一次带超时的 manual-redirect fetch 拿真实状态码，非 200 即暴露。探针 probe.mjs:348
+  // 同样在导航前 fetch 拿状态码（其用 AbortController 实现超时，此处用等价的 AbortSignal.timeout）。
+  const httpResp = await fetch(targetUrl, { redirect: "manual", signal: AbortSignal.timeout(5000) });
+  if (httpResp.status !== 200) {
+    throw new Error(`HTTP ${httpResp.status}（非 200，疑似错误页/重定向），不进基线`);
+  }
   // 照探针先例（probe.mjs:296-309）：先挂 loadEventFired 再 navigate 再等 load——
   // 否则稳定等待表达式可能跑在旧 document 上，截到旧页/空白页还记成功
   const loaded = client.waitEvent("Page.loadEventFired", 30000);
@@ -93,6 +101,17 @@ async function captureOne(client, pagePath) {
   const actual = href && href.result ? String(href.result.value) : "";
   if (actual !== pagePath) {
     throw new Error(`landed on ${actual}, expected ${pagePath}`);
+  }
+  // 关键 DOM 信号：契约页都继承 base.html 的应用外壳——顶栏 + 侧栏导航 + 主题切换按钮三者
+  // 在 base.html 无条件输出。要求三者俱全（非任一），状态 200 但渲染异常/错误页/残页（缺其中
+  // 任一）会被这道挡住，不让进基线。
+  const shell = await client.send("Runtime.evaluate", {
+    expression:
+      "Boolean(document.querySelector('header.top-header')) && Boolean(document.querySelector('nav.sidebar-nav')) && Boolean(document.getElementById('apsThemeToggle'))",
+    returnByValue: true,
+  });
+  if (!(shell && shell.result && shell.result.value === true)) {
+    throw new Error("缺应用外壳（顶栏/侧栏导航/主题切换按钮三者之一缺失），疑似错误页或残页，不进基线");
   }
   const files = [];
   for (const theme of ["light", "dark"]) {

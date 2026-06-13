@@ -36,6 +36,16 @@ DEFINITIVE_COLORS = {
     "--ui-primary: #2563eb",
 }
 
+# 已被定版色取代的旧语义色（success/warning/danger 分叉前的值）。守卫只数数量
+# 会让它们从旁路回潮（finding-09）：这里按 per-file 冻结实际出现次数，只许降不许升，
+# 且不在表内的文件出现任一退役值即拒绝——回潮时能看到「哪个值在哪个文件冒出来」。
+# hex-migration（#6）逐处清零时同步下调；清零后从表里删行。
+RETIRED_SEMANTIC_HEX = ("#10b981", "#f59e0b", "#ef4444")
+RETIRED_HEX_FREEZE = {
+    "aps_gantt.css": {"#f59e0b": 1, "#ef4444": 2},
+    "ui_contract.css": {"#10b981": 1, "#f59e0b": 1},
+}
+
 # 非颜色 token 坍缩值锚：回退链坍缩必须取旧运行时实际值（链首 style.css 的定义），
 # 不是 ui_contract 的 fallback 一层值——实现审核曾抓到 shadow-md 坍缩错
 COLLAPSED_VALUE_ANCHORS = {
@@ -51,6 +61,19 @@ def _strip_comments(css: str) -> str:
 
 def _count_bare_hex(css_path: Path) -> int:
     return len(_HEX_RE.findall(_strip_comments(css_path.read_text(encoding="utf-8"))))
+
+
+def _count_retired_hex(css_text: str, retired_hex: str) -> int:
+    # 退役色是 6 位 hex，可能以 8 位 alpha 变体出现（#10b981ff 等 Tailwind 半透明写法）——
+    # 裸 `re.escape(hx)+\b` 对 8 位变体漏检（6 位末位与 alpha 字符间无词边界）。改按 hex token
+    # 整体比对：6 位精确等于退役值、或 8 位前 6 位等于退役值，都算回潮。
+    target = retired_hex.lower().lstrip("#")
+    hits = 0
+    for token in _HEX_RE.findall(css_text):
+        t = token.lower().lstrip("#")
+        if t == target or (len(t) == 8 and t[:6] == target):
+            hits += 1
+    return hits
 
 
 def test_tokens_file_declares_definitive_colors():
@@ -78,6 +101,27 @@ def test_tokens_dark_block_is_pure_token_reassignment():
     ]
     assert len(offenders) <= 10, f"暗色块非 token 行超红线（≤10）：{offenders}"
     assert not offenders, f"初版暗色块应为纯 token 重赋值（现 {offenders}）"
+    # 暗色块禁止出现已被定版色取代的旧语义色（form 守卫只看行是否以 -- 开头，挡不住
+    # 旧值回潮——finding-09）：暗色 token 的值也必须是定版/暗色族色，不得退回旧语义色。
+    dark_retired = [hx for hx in RETIRED_SEMANTIC_HEX if _count_retired_hex(m.group(1), hx)]
+    assert not dark_retired, f"暗色块出现已退役旧语义色（应用定版色/暗色族）：{dark_retired}"
+
+
+def test_retired_semantic_hex_frozen_only_decreases():
+    # 旧语义色 per-file 冻结：只许降不许升，且不在冻结表内的文件出现任一退役值即拒绝。
+    findings = []
+    for css_path in sorted(CSS_DIR.glob("*.css")):
+        body = _strip_comments(css_path.read_text(encoding="utf-8"))
+        allowed = RETIRED_HEX_FREEZE.get(css_path.name, {})
+        for hx in RETIRED_SEMANTIC_HEX:
+            count = _count_retired_hex(body, hx)
+            ceiling = allowed.get(hx, 0)
+            if count > ceiling:
+                findings.append(f"{css_path.name}: {hx} 出现 {count} 次 > 冻结上限 {ceiling}")
+    assert not findings, (
+        "已退役旧语义色回潮被拒绝（定版色见 DEFINITIVE_COLORS）。新增颜色请用 var(--ui-*)；"
+        "若是 hex-migration 清债后下调，请同步改 RETIRED_HEX_FREEZE：\n  " + "\n  ".join(findings)
+    )
 
 
 def test_bare_hex_frozen_outside_tokens_file():
@@ -94,6 +138,17 @@ def test_bare_hex_frozen_outside_tokens_file():
         "新增颜色请定义 token 或消费既有 var(--ui-*)；若是 hex-migration 清债后"
         "需要下调上限，请同步改 HEX_FREEZE_ALLOWANCE：\n  " + "\n  ".join(findings)
     )
+
+
+def test_count_retired_hex_helper_detects_six_and_eight_digit():
+    # 直接钉死 _count_retired_hex 逻辑（不依赖生产 CSS 恰好有样本）：6 位精确 + 8 位 alpha
+    # 变体都计入、定版色与别的退役色不误判。作为回归锚点——防止未来 helper 被改回旧的
+    # `re.escape(hx)+\b` 写法（对 8 位变体漏检）时，现有生产 CSS 无样本而静默漏过（Codex 建议）。
+    assert _count_retired_hex("a{color:#10b981}", "#10b981") == 1
+    assert _count_retired_hex("a{color:#10b981ff}", "#10b981") == 1  # 8 位 alpha 变体
+    assert _count_retired_hex("a{color:#10b981} b{color:#10b981cc}", "#10b981") == 2
+    assert _count_retired_hex("a{color:#16a34a}", "#10b981") == 0  # 定版色不误判
+    assert _count_retired_hex("a{color:#ef4444}", "#10b981") == 0  # 别的退役色不串记
 
 
 def test_load_ratio_single_source():

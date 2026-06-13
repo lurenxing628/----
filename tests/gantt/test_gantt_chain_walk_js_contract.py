@@ -126,13 +126,29 @@ def test_critical_walk_dead_end_stays_with_honest_notice():
     result = _run(helpers, """
 state.critical = { ids: ["A1", "X9"], edges: [], available: true };
 ns.chainWalk.selectTaskById("A1", { scroll: false });
-const moved = ns.chainWalk.walkCritical(1); // X9 缺失且无后续：停原地
+const moved = ns.chainWalk.walkCritical(1); // X9 缺失且无后续：停原地（向后/下一道）
 process.stdout.write(JSON.stringify({ moved, current: ns.chainWalk.currentTaskId(),
   detail: document.getElementById("ganttTaskDetail").textContent }));
 """)
     assert result["moved"] is False
     assert result["current"] == "A1"
-    assert "关键链后续工序在当前日期范围/筛选之外" in result["detail"]
+    # 越界提示按方向区分：walkCritical(1) 找下一道
+    assert "关键链下一道工序在当前日期范围/筛选之外" in result["detail"]
+
+
+def test_critical_walk_backward_dead_end_notice_says_previous():
+    # walkCritical(-1) 找上一道越界：文案须说「上一道」，不再笼统说「后续」
+    helpers = _load_gantt_helpers()
+    result = _run(helpers, """
+state.critical = { ids: ["X0", "C1"], edges: [], available: true };
+ns.chainWalk.selectTaskById("C1", { scroll: false });
+const moved = ns.chainWalk.walkCritical(-1); // X0 缺失且无前驱：停原地（向前/上一道）
+process.stdout.write(JSON.stringify({ moved, current: ns.chainWalk.currentTaskId(),
+  detail: document.getElementById("ganttTaskDetail").textContent }));
+""")
+    assert result["moved"] is False
+    assert result["current"] == "C1"
+    assert "关键链上一道工序在当前日期范围/筛选之外" in result["detail"]
 
 
 def test_filtered_out_target_renders_detail_with_view_notice():
