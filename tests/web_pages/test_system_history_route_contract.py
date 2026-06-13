@@ -323,5 +323,8 @@ def test_system_history_version_dropdown_uses_completion_status_label(tmp_path, 
 
     assert response.status_code == 200
     assert html.count("模拟排产 / 部分成功") >= 2
-    assert "v3 · 部分成功" in html
+    # 下拉框消费统一字源 result_status_label，simulated 行保留复合标签「模拟排产 / 部分成功」，
+    # 不再被第二套 status 字典压扁成单一 outcome「v3 · 部分成功」（fusion-label-single-source）。
+    assert "v3 · 模拟排产 / 部分成功" in html
+    assert "v3 · 部分成功" not in html
     assert "结果状态未知" not in html

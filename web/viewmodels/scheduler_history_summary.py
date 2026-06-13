@@ -26,13 +26,6 @@ _STRATEGY_LABELS = {
     "manual": "手动排产",
 }
 
-_VERSION_OPTION_STATUS_LABELS = {
-    "success": "成功",
-    "partial": "部分成功",
-    "failed": "失败",
-    "unknown": "有问题，需检查",
-}
-
 _MONTH_NAMES = {
     "jan": 1,
     "january": 1,
@@ -248,9 +241,10 @@ def decorate_history_version_options(versions: Any) -> List[Dict[str, Any]]:
         row["strategy_display_message"] = strategy_state["message"]
         row["schedule_time_display"] = format_public_datetime(row.get("schedule_time"))
         version_text = str(row.get("version") or "").strip()
-        result_state = display_state.get("result_state") if isinstance(display_state, dict) else None
-        outcome_status = str((result_state or {}).get("outcome_status") or "").strip()
-        result_text = _VERSION_OPTION_STATUS_LABELS.get(outcome_status) or row["result_status_label"] or "-"
+        # 下拉框直接消费统一字源 result_status_label（含 simulated 复合标签「模拟排产 /
+        # {outcome}」），不再走第二套 status 字典——后者会把复合标签压扁成单一 outcome、
+        # 丢掉方案身份（fusion-label-single-source 唯一字源裁决）。
+        result_text = row["result_status_label"] or "-"
         row["version_option_label"] = f"v{version_text} · {result_text}" if version_text else result_text
         out.append(row)
     return out

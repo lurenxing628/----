@@ -350,7 +350,9 @@ def build_summary_display_state(
     summary_count_parse_failed = bool(summary_counts.get("_parse_failed"))
     completion_status = str(result_state.get("outcome_status") or "")
     if not completion_status:
-        completion_status = "success"
+        # derive_completion_status 恒返回 4 值之一、不应为空；万一为空，按裁决诚实降级
+        # 为 unknown（「有问题，需检查」），不静默兜成 success。
+        completion_status = "unknown"
     primary_degradation = build_primary_degradation(summary_dict, result_state=result_state, completion_status=completion_status)
     secondary_degradation_messages = build_summary_degradation_messages(summary_dict)
     display_secondary_degradation_messages = build_display_secondary_degradation_messages(

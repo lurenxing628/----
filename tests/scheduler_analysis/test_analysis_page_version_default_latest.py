@@ -113,7 +113,9 @@ def test_analysis_version_dropdown_uses_completion_status_label(tmp_path, monkey
 
     assert response.status_code == 200
     assert "模拟排产 / 部分成功" in html
-    assert "v7 · 部分成功" in html
+    # 下拉框保留复合标签（统一字源），不被压扁成单一 outcome（fusion-label-single-source）
+    assert "v7 · 模拟排产 / 部分成功" in html
+    assert "v7 · 部分成功" not in html
 
 
 def test_analysis_page_shows_degraded_freeze_window_when_config_defaults_to_disabled(tmp_path, monkeypatch) -> None:

@@ -150,6 +150,23 @@ def test_decorate_history_version_options_keeps_legacy_status_aliases() -> None:
     assert decorated[2]["version_option_label"] == "v6 · 失败"
 
 
+def test_version_option_label_keeps_simulated_composite_label() -> None:
+    # 版本下拉框消费统一字源 result_status_label——simulated 行须保留复合标签
+    # 「模拟排产 / {outcome}」，不被第二套 status 字典压扁成单一 outcome（丢方案身份）。
+    decorated = decorate_history_version_options(
+        [
+            {
+                "version": 7,
+                "result_status": "simulated",
+                "result_summary": '{"counts": {"op_count": 5, "scheduled_ops": 3, "failed_ops": 2}}',
+            }
+        ]
+    )
+
+    assert decorated[0]["result_status_label"] == "模拟排产 / 部分成功"
+    assert decorated[0]["version_option_label"] == "v7 · 模拟排产 / 部分成功"
+
+
 def test_strategy_display_label_marks_unknown_values_as_history_error() -> None:
     assert strategy_display_label("priority_first") == "优先级优先"
     assert strategy_display_label("") == "旧历史未记录"

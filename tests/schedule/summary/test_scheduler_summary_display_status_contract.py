@@ -53,6 +53,30 @@ def test_missing_completion_status_without_errors_keeps_legacy_counts_inference(
     assert derive_completion_status(result_status=None, summary=summary) == "success"
 
 
+def test_unknown_result_status_with_successful_counts_is_unknown() -> None:
+    # 未知 result_status（如已删 ok2 残值、写入方笔误）即便计数全成功，也必须诚实降级
+    # 为 unknown，不能被计数推断盖成 success——schedule-result-status.md 裁决。
+    summary = {"counts": {"op_count": 5, "scheduled_ops": 5, "failed_ops": 0}}
+
+    assert derive_completion_status(result_status="ok2", summary=summary) == "unknown"
+    assert derive_completion_status(result_status="future_x", summary=summary) == "unknown"
+    # 对照：result_status 缺省（空）时仍走计数推断，不误伤合法的「状态字段未记录」场景
+    assert derive_completion_status(result_status="", summary=summary) == "success"
+    assert derive_completion_status(result_status=None, summary=summary) == "success"
+    # 显式 'unknown' 原值走 known_status 早返回分支（在词表内），不依赖新增的未知拦截分支
+    assert derive_completion_status(result_status="unknown", summary=summary) == "unknown"
+
+
+def test_simulated_result_status_still_derives_outcome_from_counts() -> None:
+    # simulated 是合法模式标记（在词表内），不属于完成态——其 outcome 仍由计数推断，
+    # 不能被未知降级误伤；否则模拟排产历史会全部错标「有问题，需检查」。
+    full = {"counts": {"op_count": 5, "scheduled_ops": 5, "failed_ops": 0}}
+    partial = {"counts": {"op_count": 5, "scheduled_ops": 3, "failed_ops": 2}}
+
+    assert derive_completion_status(result_status="simulated", summary=full) == "success"
+    assert derive_completion_status(result_status="simulated", summary=partial) == "partial"
+
+
 def test_malformed_counts_make_status_unknown_and_visible() -> None:
     summary = {
         "counts": {"op_count": "bad", "scheduled_ops": 1, "failed_ops": 0},

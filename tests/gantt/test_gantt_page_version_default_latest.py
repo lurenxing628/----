@@ -196,7 +196,9 @@ def test_gantt_page_selected_version_label_includes_simulated_completion_status(
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "v7 · 部分成功" in html
+    # simulated 行保留复合标签「模拟排产 / 部分成功」（统一字源），不被压扁成单一 outcome
+    assert "v7 · 模拟排产 / 部分成功" in html
+    assert "v7 · 部分成功" not in html
 
 
 def test_gantt_page_non_selected_version_option_uses_completion_status_label(tmp_path, monkeypatch) -> None:
@@ -220,7 +222,9 @@ def test_gantt_page_non_selected_version_option_uses_completion_status_label(tmp
 
     assert response.status_code == 200
     assert "v6" in html
-    assert "v6 · 部分成功" in html
+    # simulated 行保留复合标签，不被第二套 status 字典压扁（fusion-label-single-source）
+    assert "v6 · 模拟排产 / 部分成功" in html
+    assert "v6 · 部分成功" not in html
 
 
 def test_gantt_data_uses_app_error_http_mapping(tmp_path, monkeypatch) -> None:

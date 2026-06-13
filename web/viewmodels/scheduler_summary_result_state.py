@@ -5,6 +5,11 @@ from typing import Any, Dict, Optional
 
 from .scheduler_summary_status import error_count_blocks_success_inference
 
+# 排产 result_status 展示词表（唯一字源）。隐含契约（derive_completion_status 依赖）：
+# **这张表的键 = 被识别的合法 raw status**——非空且不在此表的 result_status 一律诚实降级
+# 为 unknown，不走计数推断。故往这里新增键前先确认：该状态应「按计数推断完成态」（如
+# simulated）才加；若是本该显示「有问题，需检查」的临时态（preview/draft 之类）不要加进来，
+# 否则会无意中放它走计数推断、回到「未知推成功」的旧坑。
 _RESULT_STATUS_LABELS = {
     "success": "成功",
     "partial": "部分成功",
@@ -153,6 +158,12 @@ def derive_completion_status(*, result_status: Any, summary: Optional[Dict[str, 
         if known_status == "success" and _has_summary_errors(summary_dict):
             return "unknown"
         return known_status
+    if status and status not in _RESULT_STATUS_LABELS:
+        # 非空但不在词表里的 result_status（含已删 ok2 残值）：诚实降级 unknown，
+        # 不被下方计数推断盖成 success（schedule-result-status.md 裁决：未知值一律
+        # 「有问题，需检查」）。simulated 是合法模式标记（在词表内），其完成态仍由
+        # 计数推断，不在此拦截；result_status 缺省（空串）也照旧走计数推断。
+        return "unknown"
     if _has_summary_errors(summary_dict):
         return "unknown"
     return _completion_status_from_counts(
