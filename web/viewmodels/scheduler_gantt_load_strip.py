@@ -47,7 +47,7 @@ def _strip_context(data: Dict[str, Any], row: Dict[str, Any], resource_type: str
         period_preset="custom",
         resource_type=resource_type,
         resource_id=row.get("resource_id"),
-        resource_label=row.get("resource_label"),
+        resource_label=_text(row.get("resource_label")),
         is_preview=is_preview,
     )
 

@@ -46,7 +46,7 @@ def history_row_capsule_fields(rows: Any, version: Any) -> Dict[str, Any]:
         if not isinstance(row, dict):
             continue
         try:
-            row_version = int(row.get("version"))
+            row_version = int(_text(row.get("version")))
         except (TypeError, ValueError):
             continue
         if row_version == version_int:
