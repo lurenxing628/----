@@ -88,7 +88,7 @@ def _week_plan_execution_status_cell(
 
     facts 为 None = 调用方不提供事实 → "-"（导出同口径）；
     提供后无 fact 的工序按「待开工」（计划行没有事实=尚未开工，
-    与甘特详情 _execution_detail_meta 缺省一致，不是数据缺口）。
+    与甘特详情 execution_fact_presentation.execution_detail_meta 缺省一致，不是数据缺口）。
     """
     if execution_facts_by_op_id is None:
         return "-"

@@ -245,7 +245,9 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 读取唯一入口：ExecutionFactProvider.facts_by_op_id_for_plan_rows(rows, plan_fields, *, include_op_ids=())
  （op_id-only 入口被故意毒化会 raise——这是契约；必须带完整计划身份）
 展示只消费公开标签：actual_summary_label / actual_start_time_label / actual_end_time_label /
- execution_status_label（gantt_tasks.py _execution_detail_meta:152-177 的抽取模式）
+ execution_status_label（ExecutionFact→公开标签全站单源 = core/services/scheduler/
+ execution_fact_presentation.execution_detail_meta，gantt 与批次详情排程去向卡共消费；
+ status 文案走 operation_execution_labels.execution_status_label，新消费方禁内联/重复实现）
 禁止把 ExecutionFact 整体透传给模板/JS（含 schedule_id/source_table/effective_plan_role/scenario_id）
 非 adopted 身份永远无事实（schema CHECK 钉死）：候选/模拟下诚实显示"暂未记录现场实际"，禁止放宽
 甘特 progress 只允许 completed→100，禁止用 quantity_done 估算部分进度伪装精度
@@ -293,7 +295,7 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 15. **fusion-gantt-load-strip** ✅ done（2026-06-13，feature 2026-06-13-fusion-gantt-load-strip，Codex 设计两轮（首轮 3 阻塞：禁直调验收守卫漏 grep/微重构改签名越界/挂载点混入内部实现，二轮 CLEAN）+实现两轮（首轮 3 阻塞：scroll 监听容器重建失联/筛到空留陈旧条带/降级码公开消息表泛化，二轮 CLEAN）审核收口；浏览器 CDP 实测含缩放重建容器后滚动同步与暗色 computed style；老 workbench roadmap item 11 已标 dropped 指向本条）— 资源负荷热力条带（契约 4.6）：新建 gantt_resource_load.py 按资源×日桶聚合 + decorateStaticAfterRender 挂层像素对齐 + 容量来源明示 + 点击色带格弹出该资源当天任务清单与去派工/报表跳转（按 2026-06-11 拍板 B 案吸收老 item 11 验收点）。依赖：12（同在甘特装饰层钩子区施工，且条带格挂详情联动）、5（阈值与状态色 token 须先单源）。
 16. **fusion-week-plan-enrich** ✅ done（2026-06-12，feature 2026-06-12-fusion-week-plan-enrich，Codex 设计两轮+实现两轮审核收口——实现首轮阻塞「空周跳转读错键 plan_resolution 误当 adopted」已修并复审逐条闭环；4.6 容量口径首个落地实例）— 周计划增强：现场状态列（_split_by_day 拆分前注入，逻辑全落 gantt_week_plan.py——gantt_service.py 仅余 5 行余量）+ Excel 导出同列 + 空周提示升级（get_plan_time_span_for_view 告知计划所在周并给跳转）+ 每日合计工时/容量行（容量分母按 4.6 协议：shift_hours×efficiency 同一公式、正午采样，禁直调 capacity_hours）。依赖：无。
 17. **fusion-reports-index-kpi** — 报表中心答案卡（契约 4.7）：三张死文案卡注入最忙资源/停机小时/可复盘记录数 + 身份护栏 + Win7 性能实测与懒加载降级预案。依赖：无。
-18. **fusion-batch-detail-schedule-card** — 批次详情排程去向卡：「最新正式方案中 N 道工序、跨度 X」摘要 +「在甘特中定位本批次」（gantt_batch 参数链路现成）+ 工序表现场实际列（须先查 adopted 计划行拿全身份，禁 op_id-only）。依赖：11（batch_detail 目标入白名单）。
+18. **fusion-batch-detail-schedule-card** ✅ done（2026-06-13，feature 2026-06-13-fusion-batch-detail-schedule-card，Codex+UltraCode 实现审核零阻塞收口）— 批次详情排程去向卡：「最新正式方案中 N 道工序、跨度 X」摘要 +「在甘特中定位本批次」（gantt_batch 参数链路现成）+ 工序表现场实际列（须先查 adopted 计划行拿全身份，禁 op_id-only）。依赖：11（batch_detail 目标入白名单）。落地：路由 `_resolve_schedule_placement` 整段 try/except 取数（get_latest_version≤0→no_official_plan；resolve_plan(version,adopted) 解析一次→list_plan_detail_rows_all_for_resolution；本批次空+版本级 span 区分 plan_empty/not_placed；facts_by_op_id_for_plan_rows 不传 include_op_ids；异常 current_app.logger.exception+error 态不冒泡），纯 viewmodel `scheduler_batch_schedule_placement.py` 装配（禁 import core.services），诚实五态。结构微重构：`_execution_detail_meta` 从 gantt_tasks 抽到共享 `execution_fact_presentation.execution_detail_meta`（4.10 现场标签全站单源，gantt 与本卡共消费）。
 19. **fusion-dashboard-cockpit** — 首页驾驶舱（构图 2026-06-11 定稿，样张 drafts/dashboard-restyle-proto.html）：单栏四段 = 上下文胶囊 → hero 指令卡（待办队列第 1 条置顶展示，下方明细清单**不重复**它；排产失败时 _failed_run_todo 顶格，result_status 已在手）→ 6 格体检表（超期/待排/方案待确认/现场待确认/资源压力/基础数据，每格即入口可点跳，正常项灰显——替代旧 stat-grid，"待排数"承接被裁的"最近一次排产"卡唯一增量信息）→ 其余待处理清单（3px 左语义条，不嵌灰盒）。删 stat-grid（先迁正则锚）+ 删按钮墙 + 删"下一步"链接卡（侧栏做事路线承接）+ 风险卡 severity 按 result_status 分级 + 死字段裁决（overdue_count/latest_summary 零消费且每请求白算一遍）+ 超期 todo 直挂主导线索摘要（性能门槛：仅 overdue_count 小时启用）+ 全健康空态定义（hero 转绿色平静卡"当前没有必须马上处理的风险"）。依赖：2、3（爆点清单先行）。
 20. **fusion-dispatch-import-two-phase**（**已 dropped**）— 原拟接通 Excel 导入两段式预览/确认。2026-06-11 用户拍板不做：导入失败本就有报错与错误明细，预览徒增操作步数。后端两段式端点与契约测试保留不删。
 21. **fusion-dispatch-split-pages** — 派工拆两页：「资源排班（查看）」与「现场记录（代录）」+ 琥珀模式横幅"正在向正式采用方案 vN 写入现场事实" + #rdGantt 补只读保护 + 旧 URL 302 过渡。依赖：10（侧栏分组承载新页入口）。

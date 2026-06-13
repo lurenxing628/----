@@ -141,10 +141,10 @@ items:
   - slug: fusion-batch-detail-schedule-card
     description: 批次详情排程去向卡——最新正式方案中的工序数/时间跨度摘要 +「在甘特中定位本批次」（gantt_batch 链路现成）+ 工序表现场实际列（先查 adopted 计划行拿全身份）
     depends_on: [fusion-handrolled-links-adoption]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-13-fusion-batch-detail-schedule-card
     minimal_loop: false
-    notes: list_plan_detail_rows_all 当前生产代码零调用，本条是它第一个生产消费方；op_id-only 读事实会被毒化口 raise，必须走完整身份
+    notes: list_plan_detail_rows_all 当前生产代码零调用，本条是它第一个生产消费方；op_id-only 读事实会被毒化口 raise，必须走完整身份。已收口（2026-06-13）：本卡走 list_plan_detail_rows_all_for_resolution 单次解析+facts_by_op_id_for_plan_rows 不传 include_op_ids；结构微重构抽 execution_fact_presentation.execution_detail_meta 为 4.10 现场标签全站单源
 
   - slug: fusion-dashboard-cockpit
     description: 首页驾驶舱（构图 2026-06-11 定稿）——单栏四段=胶囊/hero 指令卡（队列首条置顶、明细不重复）/6 格体检表（超期/待排/方案待确认/现场待确认/资源压力/基础数据，格即入口）/其余待处理清单；删 stat-grid（先迁正则锚）+ 删按钮墙 + 删"下一步"卡（侧栏承接）+ 失败排产 hero 顶格（result_status 已在手）+ severity 分级 + 死字段裁决（overdue_count/latest_summary）+ 超期 todo 直挂主导线索摘要 + 全健康绿色空态

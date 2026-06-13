@@ -7,11 +7,9 @@ from core.models.enums import CalendarDayType, YesNo
 from core.models.operation_execution_event import (
     EXECUTION_STATUS_COMPLETED,
     EXECUTION_STATUS_EXCEPTION,
-    EXECUTION_STATUS_NOT_STARTED,
     EXECUTION_STATUS_PAUSED,
     EXECUTION_STATUS_PROCESSING,
 )
-from core.models.operation_execution_labels import execution_status_label
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationCollector
 from core.services.scheduler.calendar_service import CalendarService
@@ -41,6 +39,7 @@ from ._sched_display_utils import (
     record_bad_time_row as _record_bad_time_row,
 )
 from ._sched_utils import _safe_int
+from .execution_fact_presentation import execution_detail_meta
 from .gantt_range import WeekRange
 from .gantt_task_labels import (
     detail_operation_label as _detail_operation_label,
@@ -137,13 +136,6 @@ def _task_name_and_group(
     return name, group_key
 
 
-def _fmt_fact_dt(value: Any) -> str:
-    if isinstance(value, datetime):
-        return _fmt_dt(value)
-    parsed = _parse_dt(value)
-    return _fmt_dt(parsed) if parsed else ""
-
-
 # execution-<status> 着色类四态白名单（fusion-gantt-execution-visuals）：
 # 刻意不用 STATUS_LABELS 全集——词表含 not_started，正常链路被 has_execution_record
 # 排除，但假数据/测试假 fact 可能拼出 execution-not_started 垃圾类，白名单制杜绝。
@@ -169,45 +161,6 @@ def _execution_visuals(fact: Any, *, has_record: bool) -> Tuple[List[str], int]:
     status = str(getattr(fact, "actual_status", "") or "").strip()
     css = [f"execution-{status}"] if status in _EXECUTION_CSS_STATUSES else []
     return css, (100 if status == EXECUTION_STATUS_COMPLETED else 0)
-
-
-def _fact_has_site_record(fact: Any) -> bool:
-    if fact is None:
-        return False
-    if getattr(fact, "actual_start_time", None) is not None:
-        return True
-    if getattr(fact, "actual_end_time", None) is not None:
-        return True
-    status = str(getattr(fact, "actual_status", "") or "").strip()
-    return bool(status and status != EXECUTION_STATUS_NOT_STARTED)
-
-
-def _execution_detail_meta(fact: Any) -> Dict[str, Any]:
-    status = str(getattr(fact, "actual_status", "") or "").strip() or EXECUTION_STATUS_NOT_STARTED
-    status_label = execution_status_label(status)
-    actual_start = _fmt_fact_dt(getattr(fact, "actual_start_time", None))
-    actual_end = _fmt_fact_dt(getattr(fact, "actual_end_time", None))
-    has_record = _fact_has_site_record(fact)
-    if not has_record:
-        summary = "暂未记录现场实际"
-    else:
-        parts = [f"现场状态：{status_label}"]
-        if actual_start:
-            parts.append(f"实际开工：{actual_start}")
-        if actual_end:
-            parts.append(f"实际完工：{actual_end}")
-        if not actual_start and not actual_end:
-            parts.append("暂未填写实际开工和完工")
-        summary = "；".join(parts)
-    return {
-        "execution_status_label": status_label,
-        "actual_start_time": actual_start,
-        "actual_end_time": actual_end,
-        "actual_start_time_label": actual_start or "暂无实际开工",
-        "actual_end_time_label": actual_end or "暂无实际完工",
-        "actual_summary_label": summary,
-        "has_execution_record": has_record,
-    }
 
 
 def _detail_resource_label(machine_disp: str, operator_disp: str) -> str:
@@ -261,7 +214,7 @@ def _build_one_task(
         execution_fact = (execution_facts_by_op_id or {}).get(int(row.get("op_id") or 0))
     except (TypeError, ValueError):
         execution_fact = None
-    execution_meta = _execution_detail_meta(execution_fact)
+    execution_meta = execution_detail_meta(execution_fact)
     execution_css, progress = _execution_visuals(execution_fact, has_record=execution_meta["has_execution_record"])
     css.extend(execution_css)
     overdue_label = "已标记超期" if is_overdue else "未标记超期"

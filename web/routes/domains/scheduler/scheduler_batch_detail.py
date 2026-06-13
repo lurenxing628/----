@@ -1,10 +1,17 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Protocol, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Set, Tuple
 
-from flask import g, render_template, request
+from flask import current_app, g, render_template, request
 
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, SupplierStatus, YesNo
+from core.models.schedule_plan_role import ROLE_ADOPTED
+from core.services.scheduler._sched_display_utils import display_machine, display_operator, parse_dt
+from core.services.scheduler.execution_fact_presentation import execution_detail_meta
+from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
+from core.services.scheduler.gantt_task_labels import public_task_label
+from web.viewmodels.scheduler_batch_schedule_placement import build_schedule_placement
+from web.viewmodels.scheduler_history_summary import format_public_datetime
 from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 
 from .scheduler_bp import _batch_status_zh, _priority_zh, _ready_zh, bp
@@ -206,6 +213,116 @@ def _build_view_ops(ops: List[Any], sch_svc: _MergeHintService) -> List[Dict[str
     return view_ops
 
 
+# 排程去向卡只下传 4.10 公开 *_label/has_* 键，不含裸 actual_start_time/actual_end_time
+_PLACEMENT_OP_LABEL_KEYS = (
+    "execution_status_label",
+    "actual_start_time_label",
+    "actual_end_time_label",
+    "actual_summary_label",
+    "has_execution_record",
+)
+
+
+def _placement_op_row(row: Dict[str, Any], facts: Dict[int, Any]) -> Dict[str, Any]:
+    # 现场事实经 4.10 单源 execution_detail_meta；计划设备/人员走全站单源 display_*（含外协兜底）；
+    # 工序名走 public_task_label 单源。最终只出公开 label，不外显 op_id/machine_id 等 raw 计划内部身份。
+    # int 强转对齐被抽取源 gantt_tasks 惯例：facts 字典以 int(op_id) 为键，显式强转把
+    # 「op_id 是 int」的 DB 列类型假设变成显式契约，防未来 op_id 走字符串路径时静默 miss 退化成空。
+    meta = execution_detail_meta(facts.get(int(row.get("op_id") or 0)))
+    out: Dict[str, Any] = {
+        "op_label": public_task_label(row),
+        "plan_machine_label": display_machine(
+            row.get("machine_id"), row.get("machine_name"), row.get("supplier_name")
+        ),
+        "plan_operator_label": display_operator(row.get("operator_id"), row.get("operator_name")),
+    }
+    for key in _PLACEMENT_OP_LABEL_KEYS:
+        out[key] = meta[key]
+    return out
+
+
+def _placement_span(rows: List[Dict[str, Any]]) -> Tuple[Optional[str], Optional[str], str]:
+    # 解析跳坏值，start/end 各自独立求 min/max（求窗口边界只需端点可解析，不强制逐行 st<et）；
+    # 返回给甘特链接的 YYYY-MM-DD 日期窗口 + 含时分的中文 span_label。
+    starts: List[Tuple[Any, Any]] = []
+    ends: List[Tuple[Any, Any]] = []
+    for row in rows:
+        s_raw = row.get("start_time")
+        s_dt = parse_dt(s_raw)
+        if s_dt is not None:
+            starts.append((s_dt, s_raw))
+        e_raw = row.get("end_time")
+        e_dt = parse_dt(e_raw)
+        if e_dt is not None:
+            ends.append((e_dt, e_raw))
+    if not starts or not ends:
+        return None, None, "时间记录异常"
+    min_start_dt, min_start_raw = min(starts, key=lambda p: p[0])
+    max_end_dt, max_end_raw = max(ends, key=lambda p: p[0])
+    span_label = f"{format_public_datetime(min_start_raw)} ～ {format_public_datetime(max_end_raw)}"
+    return min_start_dt.date().isoformat(), max_end_dt.date().isoformat(), span_label
+
+
+def _resolve_schedule_placement(services: Any, batch_id: str) -> Dict[str, Any]:
+    """批次详情排程去向卡取数（整段含 get_latest_version 与 g.db/provider 构造一并 try）。
+
+    诚实五态：无版本→no_official_plan；本批次无行但版本级有明细→not_placed；版本级也无明细→
+    plan_empty；正常→ok；任何异常→logger.exception 留栈 + error 态（不静默吞，只本卡降级、整页不 500）。
+    现场事实走 4.10 唯一入口、硬钉 adopted、不传 include_op_ids（缺事实工序自然走「暂未记录现场实际」）。
+    """
+    try:
+        history_svc = services.schedule_history_query_service
+        version = history_svc.get_latest_version()
+        if version <= 0:
+            return build_schedule_placement(state="no_official_plan")
+        plan_svc = services.schedule_plan_query_service
+        resolution = plan_svc.resolve_plan(version, ROLE_ADOPTED)
+        rows = plan_svc.list_plan_detail_rows_all_for_resolution(
+            version=version,
+            source_table=resolution.source_table,
+            candidate_id=resolution.candidate_id,
+            scenario_id=resolution.scenario_id,
+            batch_id=batch_id,
+        )
+        if not rows:
+            version_span = plan_svc.get_plan_time_span_for_resolution(
+                version=version,
+                source_table=resolution.source_table,
+                candidate_id=resolution.candidate_id,
+                scenario_id=resolution.scenario_id,
+            )
+            return build_schedule_placement(
+                state="plan_empty" if version_span is None else "not_placed"
+            )
+        hist = history_svc.get_by_version(version)
+        plan_fields = {
+            "version": version,
+            "source_table": resolution.source_table,
+            "effective_plan_role": resolution.selected_role,
+            "scenario_id": resolution.scenario_id,
+        }
+        facts = ExecutionFactProvider(g.db, logger=current_app.logger).facts_by_op_id_for_plan_rows(
+            rows, plan_fields
+        )
+        span_from_date, span_to_date, span_label = _placement_span(rows)
+        return build_schedule_placement(
+            state="ok",
+            batch_id=batch_id,
+            version=version,
+            op_count=len(rows),
+            op_rows=[_placement_op_row(row, facts) for row in rows],
+            span_from_date=span_from_date,
+            span_to_date=span_to_date,
+            span_label=span_label,
+            generated_at=hist.schedule_time if hist is not None else None,
+            strategy=hist.strategy if hist is not None else None,
+            history_present=hist is not None,
+        )
+    except Exception:
+        current_app.logger.exception("批次详情排程去向卡取数失败：batch_id=%s", batch_id)
+        return build_schedule_placement(state="error")
+
+
 @bp.get("/batches/<batch_id>")
 def batch_detail(batch_id: str):
     services = g.services
@@ -240,6 +357,7 @@ def batch_detail(batch_id: str):
     )
 
     view_ops = _build_view_ops(ops, sch_svc)
+    schedule_placement = _resolve_schedule_placement(services, b.batch_id)
 
     return render_template(
         "scheduler/batch_detail.html",
@@ -262,4 +380,5 @@ def batch_detail(batch_id: str):
             "batchDetailStrictMode",
             desc="工艺模板资料不完整时，不刷新本批次工序。",
         ),
+        schedule_placement=schedule_placement,
     )

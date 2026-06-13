@@ -25,6 +25,58 @@
     {{ ui.scheduler_nav('batches_manage') }}
   </div>
 
+  {% if schedule_placement %}
+  <div class="card">
+    <h3 class="section-title">最新方案排程去向</h3>
+    {% if schedule_placement.state == 'ok' %}
+      <div class="aps-summary-grid">
+        {{ ui.summary_item('方案版本', schedule_placement.version_label) }}
+        {{ ui.summary_item('生成时间', schedule_placement.generated_at_label) }}
+        {{ ui.summary_item('排产策略', schedule_placement.strategy_label) }}
+        {{ ui.summary_item('已排工序', (schedule_placement.op_count ~ ' 道')) }}
+        {{ ui.summary_item('时间跨度', schedule_placement.span_label) }}
+      </div>
+      {% if schedule_placement.gantt_link and not schedule_placement.gantt_link.disabled and schedule_placement.gantt_link.url %}
+      <div class="page-actions mt-2">
+        {{ ui.link_button('在甘特中定位本批次', schedule_placement.gantt_link.url, 'secondary', 'md') }}
+      </div>
+      {% endif %}
+      <div class="aps-table-scroll mt-3">
+        <table class="aps-table-wide">
+          <thead>
+            <tr>
+              <th>工序</th>
+              <th>计划设备</th>
+              <th>计划人员</th>
+              <th>现场状态</th>
+              <th>实际开工</th>
+              <th>实际完工</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for op in schedule_placement.op_rows %}
+            <tr>
+              <td>{{ op.op_label }}</td>
+              <td>{{ op.plan_machine_label }}</td>
+              <td>{{ op.plan_operator_label }}</td>
+              {% if op.has_execution_record %}
+              <td>{{ op.execution_status_label }}</td>
+              <td>{{ op.actual_start_time_label }}</td>
+              <td>{{ op.actual_end_time_label }}</td>
+              {% else %}
+              <td colspan="3" class="text-meta">{{ op.actual_summary_label }}</td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-meta">{{ schedule_placement.message }}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <div class="card">
     <h3 class="section-title">批次工序（可编辑补充）</h3>
     <p class="text-meta">

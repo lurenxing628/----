@@ -1,0 +1,42 @@
+feature: 2026-06-13-fusion-batch-detail-schedule-card
+steps:
+  - id: s1
+    desc: 结构微重构（只搬不改+去前缀，独立验证退出）——把 _execution_detail_meta（+私有伴生 _fmt_fact_dt/_fact_has_site_record）从 gantt_tasks.py 抽到新建 core/services/scheduler/execution_fact_presentation.py，去前缀改名公开 execution_detail_meta，gantt_tasks 改 import 公开名回来（datetime util 不搬、新模块从 _sched_display_utils import 公开名 parse_dt/fmt_dt——gantt_tasks 内 _parse_dt/_fmt_dt 是 as 别名；_execution_visuals 留 gantt_tasks）；顺手更新 gantt_week_plan.py:91 注释指向新模块。退出信号：gantt 任务相关测试全绿（行为零变）+ gantt_tasks 行数下降 + gantt_tasks 无对被搬函数的悬挂引用 + 新模块<500 + 全仓 execution_detail_meta 单一定义点
+    status: done
+  - id: s2
+    desc: 后端编排——scheduler_batch_detail.py 路由在 view_ops 后插入「整段（含 get_latest_version 与 g.db/ExecutionFactProvider 构造）被 try/except 包裹」的取数：get_latest_version()≤0→no_official_plan；resolve_plan(version, role=ROLE_ADOPTED) 解析一次→list_plan_detail_rows_all_for_resolution(version=version, source_table=, candidate_id=, scenario_id=, batch_id=)（全 kwarg）→batch rows 空时查版本级 get_plan_time_span_for_resolution(复用同一 resolution、无 batch_id、不二次 resolve) 区分 plan_empty/not_placed；get_by_version(version) 取 schedule_time/strategy（None 则不喂参走「-」）；plan_fields={version,source_table,effective_plan_role=resolution.selected_role,scenario_id}→facts_by_op_id_for_plan_rows(rows,plan_fields)（不传 include_op_ids）；逐 op execution_detail_meta(facts.get(op_id)) 只取公开 *_label/has_* 键（不下传裸 actual_start_time/actual_end_time）+ display_machine/display_operator 算计划资源 label + public_task_label 算 op_label + parse_dt（公开名）跳不可解析值、min(可解析 start)/max(可解析 end) 各独立取 YYYY-MM-DD（给链接）+ 路由算 span_label=format_public_datetime(min_start)～format_public_datetime(max_end) 字符串下传（viewmodel 不碰 rows）；batch_id 全程用 b.batch_id 规范化值；plan/版本 service 取自 g.services（同 gantt），仅 ExecutionFactProvider 从 g.db 构造；except Exception 时 current_app.logger.exception 记栈+state=error。新建纯 viewmodel scheduler_batch_schedule_placement.py（禁 import core.services/禁碰 rows/fact 对象）：摘要 *_label 经 build_workbench_plan_context（generated_at/strategy 有则喂、无则省，plan_role 不显式传默认 adopted）；op_rows 仅公开 label；gantt_link=build_workbench_link(ctx,'gantt',view='machine',batch_id=)（ctx 含 version+span 日期）。render_template 加 schedule_placement 实参
+    status: done
+  - id: s3
+    desc: 前端——batch_detail.html L26 后新增只读「排程去向卡」.card，外层 {% if schedule_placement %} 守卫（缺键零渲染，护住 linkage test 直渲）：摘要 aps-summary-grid（版本/生成时间/策略/工序数/跨度）+ 「在甘特中定位本批次」link_button（仅 gantt_link 存在且 not disabled 且有 url 时渲染）+ 只读工序表（工序/计划设备/计划人员/现场状态/实际开工/实际完工；无记录行用 actual_summary_label「暂未记录现场实际」muted）+ 五态 muted 文案；复用既有 ui_macros，不动既有可编辑工序卡 DOM 锚；无内部身份 raw 值外显
+    status: done
+  - id: s4
+    desc: 测试——viewmodel 单测（ok/no_official_plan/plan_empty/not_placed/error 五态 + 坏时间全坏→gantt_link.disabled=True + 外协行 display label + op_rows 键集恰为 8 个公开字段精确断言（显式断言不含裸 actual_start_time/actual_end_time 及任何内部身份键））；模板/路由渲染测试断言「gantt_link disabled/无 url 时按钮不渲染（无 <a>）」（模板层才决定渲染，非 viewmodel）；路由新增 ok 态契约测试（stub schedule_history_query_service/schedule_plan_query_service + g.db 覆盖正常态，不让绿建立在 error 兜底上）+ 既有 route_contract 测试补 get_latest_version→0 stub（落 no_official_plan 清爽态，免每跑一次记一条 error 兜底 AttributeError 栈）+ linkage 测试保持绿（靠 {% if %} 守卫）；execution_fact_presentation 单测（搬迁后行为锚，含无事实「暂未记录现场实际」/ISO 时间格式）；gantt 回归全绿
+    status: done
+  - id: s5
+    desc: 浏览器目检五态（正常/未排入/整版无明细/尚无方案/读取失败）+ 定位甘特跳转 start_date/end_date 为 YYYY-MM-DD 且落在含本批次的窗口 + 新卡 op_rows/可见文本 grep 无内部身份字段（gantt_link.url 的 plan_role 合同参数除外）+ daily gate（stash 隔离并行 WIP）
+    status: done
+checks:
+  - id: c1
+    desc: 正常态——卡显示 vN/生成时间/策略/N 道工序/跨度；只读工序表逐行工序(public_task_label)/计划设备/计划人员/现场状态/实际起止；定位甘特按钮可点且带 gantt_batch+version+批次跨度日期窗口（start_date/end_date 为 YYYY-MM-DD）
+    status: passed
+  - id: c2
+    desc: 现场实际混合——有记录行显示状态+ISO 实际起止，无记录行显示「暂未记录现场实际」(actual_summary_label)；外协工序计划设备列「外协 {供应商}」/「外协/未分配」不空白
+    status: passed
+  - id: c3
+    desc: 三类空态区分——批次未排入(版本级有明细本批次空)「本批次未排入最新方案」无按钮；整版无明细(版本级 span 空)「最新方案暂无可用排程明细」；尚无方案(get_latest_version≤0)「尚无排产方案」
+    status: passed
+  - id: c4
+    desc: 取数失败 current_app.logger.exception 记一次 + 卡显示「排程信息读取失败…」+ 整页基础信息卡与可编辑工序卡正常不 500（整段含 get_latest_version 在 try 内）；坏时间全坏→span_label「时间记录异常」+ 定位按钮不渲染（日期算不出）
+    status: passed
+  - id: c5
+    desc: 身份护栏反向（限新卡范围）——排程去向卡 op_rows + 卡内可见文本/data-* grep 无 op_id/schedule_id/scenario_id/source_table/candidate_id 等计划内部身份（machine_id/operator_id/supplier_id 是全站公开业务编号经 display_* 正常展示、不在禁列；gantt_link.url 的 version/plan_role/gantt_batch 合同导航参数除外；既有可编辑工序卡不在范围）；现场事实只经 facts_by_op_id_for_plan_rows（本 feature 代码无 facts_by_op_id/list_by_op_ids 调用）
+    status: passed
+  - id: c6
+    desc: 明确不做反向核对——无 publish_workbench_navigation_context 调用、无 batch.status 门控、无 url_for 直拼 gantt、batch_detail 未进 EXPECTED_PAGE_SIGNALS、无写排产数据调用
+    status: passed
+  - id: c7
+    desc: 既有锚点不破——test_batch_detail_linkage.py（靠 {% if schedule_placement %} 守卫）/ test_scheduler_batch_detail_route_contract.py 既有断言全绿；新增 ok 态路由测试（stub services+g.db）覆盖正常态通过
+    status: passed
+  - id: c8
+    desc: gantt 单源不变——execution_detail_meta 抽取后 gantt 任务相关测试全绿、全仓单一定义点；viewmodel 无 core.services import、无 rows/fact 对象透传（fact→label 与 span 日期解析均在路由层）
+    status: passed

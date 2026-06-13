@@ -76,3 +76,86 @@ def test_batch_detail_linkage(app_client) -> None:
 
     # 契约：允许 operatorMachines 为 null（由 machineOperators 反推）
     assert re.search(r'"operatorMachines"\s*:\s*null\b', html_null), "operatorMachines=None 时应以 JSON null 注入"
+
+
+def _placement_base_ctx() -> Dict[str, Any]:
+    from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
+
+    return dict(
+        title="regression",
+        batch={"batch_id": "B_TEST", "part_no": "P1", "part_name": "", "quantity": 1, "due_date": None, "ready_date": None},
+        priority_zh="P", ready_status_zh="Y", batch_status_zh="S",
+        operations=[],
+        machine_options=[], operator_options=[], supplier_options=[],
+        machine_operators={}, operator_machines={}, machine_operator_meta={},
+        prefer_primary_skill="yes", lazy_select_enabled=False,
+        batch_detail_strict_toggle=build_strict_mode_toggle("batchDetailGenerateOpsStrictMode", desc="x"),
+    )
+
+
+def test_batch_detail_schedule_placement_ok_renders_card(app_client) -> None:
+    from flask import render_template
+
+    app = app_client.application
+    ctx = _placement_base_ctx()
+    ctx["schedule_placement"] = {
+        "state": "ok", "message": "",
+        "version_label": "v8", "generated_at_label": "2026年6月1日 08:00",
+        "strategy_label": "综合优先级和交期", "op_count": 1,
+        "span_label": "2026年6月1日 08:00 ～ 2026年6月1日 12:00",
+        "gantt_link": {"label": "在甘特中定位本批次", "url": "/scheduler/gantt?gantt_batch=B_TEST&version=8", "disabled": False},
+        "op_rows": [
+            {
+                "op_label": "OP10", "plan_machine_label": "M1 设备1", "plan_operator_label": "O1 人员1",
+                "execution_status_label": "待开工", "actual_start_time_label": "暂无实际开工",
+                "actual_end_time_label": "暂无实际完工", "actual_summary_label": "暂未记录现场实际",
+                "has_execution_record": False,
+            }
+        ],
+    }
+    with app.test_request_context("/scheduler/batches/B_TEST"):
+        html = render_template("scheduler/batch_detail.html", **ctx)
+
+    assert "最新方案排程去向" in html
+    assert "v8" in html and "1 道" in html
+    assert "OP10" in html and "M1 设备1" in html
+    assert "暂未记录现场实际" in html  # 无记录行单格诚实文案
+    assert "在甘特中定位本批次" in html  # gantt_link 非 disabled 且有 url → 渲染按钮
+
+
+def test_batch_detail_schedule_placement_disabled_link_and_empty_states(app_client) -> None:
+    from flask import render_template
+
+    app = app_client.application
+
+    # gantt_link disabled → 不渲染定位按钮
+    ctx_disabled = _placement_base_ctx()
+    ctx_disabled["schedule_placement"] = {
+        "state": "ok", "message": "", "version_label": "v8", "generated_at_label": "-",
+        "strategy_label": "-", "op_count": 1, "span_label": "时间记录异常",
+        "gantt_link": {"label": "在甘特中定位本批次", "url": "", "disabled": True},
+        "op_rows": [{
+            "op_label": "OP10", "plan_machine_label": "外协 鑫源机械", "plan_operator_label": "外协/未分配",
+            "execution_status_label": "待开工", "actual_start_time_label": "暂无实际开工",
+            "actual_end_time_label": "暂无实际完工", "actual_summary_label": "暂未记录现场实际",
+            "has_execution_record": False,
+        }],
+    }
+    # 未排入空态 → 诚实文案、无表格无按钮
+    ctx_not_placed = _placement_base_ctx()
+    ctx_not_placed["schedule_placement"] = {
+        "state": "not_placed", "message": "本批次未排入最新方案",
+        "version_label": "-", "generated_at_label": "-", "strategy_label": "-",
+        "op_count": 0, "span_label": "-", "gantt_link": None, "op_rows": [],
+    }
+
+    with app.test_request_context("/scheduler/batches/B_TEST"):
+        html_disabled = render_template("scheduler/batch_detail.html", **ctx_disabled)
+        html_not_placed = render_template("scheduler/batch_detail.html", **ctx_not_placed)
+
+    assert "最新方案排程去向" in html_disabled
+    assert "外协 鑫源机械" in html_disabled  # 外协行单源 display 展示
+    assert "在甘特中定位本批次" not in html_disabled  # disabled → 按钮不渲染
+
+    assert "本批次未排入最新方案" in html_not_placed
+    assert "在甘特中定位本批次" not in html_not_placed
