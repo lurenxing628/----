@@ -176,6 +176,49 @@ def test_reports_capsule_fed(app_client, db_env):
     assert "2026年6月1日 08:00" in capsule
 
 
+def _seed_two_versions(db_path: str) -> None:
+    from core.infrastructure.database import get_connection
+
+    conn = get_connection(db_path)
+    # v7 旧版本（早时间/weighted）、v8 最新版本（晚时间/greedy）
+    conn.execute(
+        "INSERT INTO ScheduleHistory (version, schedule_time, strategy, batch_count, op_count, result_status, result_summary, created_by)"
+        " VALUES (7, '2026-06-01 08:00:00', 'weighted', 1, 1, 'success', '{}', 'pytest')"
+    )
+    conn.execute(
+        "INSERT INTO ScheduleHistory (version, schedule_time, strategy, batch_count, op_count, result_status, result_summary, created_by)"
+        " VALUES (8, '2026-06-10 09:00:00', 'greedy', 1, 1, 'success', '{}', 'pytest')"
+    )
+    conn.execute("INSERT INTO Parts (part_no, part_name) VALUES ('P1', '零件1')")
+    conn.execute("INSERT INTO Batches (batch_id, part_no, quantity) VALUES ('B1', 'P1', 10)")
+    conn.execute(
+        "INSERT INTO BatchOperations (op_code, batch_id, seq, op_type_name) VALUES ('B1-10', 'B1', 10, '车')"
+    )
+    op_id = conn.execute("SELECT id FROM BatchOperations WHERE op_code='B1-10'").fetchone()[0]
+    for version, start, end in (
+        (7, "2026-06-01 08:00:00", "2026-06-05 18:00:00"),
+        (8, "2026-06-10 09:00:00", "2026-06-12 18:00:00"),
+    ):
+        conn.execute(
+            "INSERT INTO Schedule (op_id, start_time, end_time, version) VALUES (?, ?, ?, ?)",
+            (op_id, start, end, version),
+        )
+    conn.commit()
+    conn.close()
+
+
+def test_reports_index_old_version_capsule_shows_that_version(app_client, db_env):
+    # #6：报表首页带旧版本号（非最新 v7，最新是 v8）时，胶囊须回显 v7 的生成时间/策略，
+    # 而非因原 limit=1 只取最新版导致显示「-」。
+    _seed_two_versions(db_env)
+    html = app_client.get("/reports/?version=7").get_data(as_text=True)
+    capsule = _capsule_html(html)
+    assert "v7" in capsule
+    assert "2026年6月1日 08:00" in capsule  # v7 的生成时间
+    assert "综合优先级和交期" in capsule  # weighted → v7 策略
+    assert "2026年6月10日 09:00" not in capsule  # 不是最新 v8 的时间
+
+
 def test_resource_dispatch_capsule_fed(app_client, db_env):
     _seed_history(db_env)
     capsule = _capsule_html(app_client.get("/scheduler/resource-dispatch?version=7").get_data(as_text=True))

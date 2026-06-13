@@ -347,7 +347,12 @@ def test_scheduler_pages_keep_batch_and_resource_after_publishing_navigation_con
             assert query[key] == value
 
 
-def test_gantt_data_scope_filters_are_applied_by_backend() -> None:
+def test_gantt_data_endpoint_returns_full_scope_ignoring_view_filters() -> None:
+    # finding-08：甘特数据接口恒返回全量，不按 gantt_batch/gantt_resource 后端预筛——批次/
+    # 资源筛选是纯前端查看态（页面 URL 种子化 filterBatch/filterResource + applyFilters
+    # 客户端过滤），后端预筛会让「清筛选」回不到全量、负荷条带与当前视图割裂。
+    # 「带 scope 进入即聚焦」由前端种子化保留，「scope 跨导航持续」由下一个用例（页面
+    # 导航链接/表单仍带 scope）覆盖；本用例钉死数据接口本身全量。
     client = _client()
     response = client.get(
         "/scheduler/gantt/data?view=machine&version=12&start_date=2026-05-06&end_date=2026-05-06"
@@ -361,8 +366,11 @@ def test_gantt_data_scope_filters_are_applied_by_backend() -> None:
     batch_ids = {str((task.get("meta") or {}).get("batch_id") or "") for task in tasks}
     machine_ids = {str((task.get("meta") or {}).get("machine_id") or "") for task in tasks}
 
-    assert batch_ids == {"B-RPT"}
-    assert machine_ids == {"M-RPT"}
+    # 尽管 URL 带 gantt_batch=B-RPT&gantt_resource=M-RPT，数据接口仍返回全量：
+    # 范围外批次 B-OTHER 与设备 M-OTHER 都在，证明后端未按 scope 裁剪。
+    assert "B-OTHER" in batch_ids, "数据接口不应按 gantt_batch 裁剪（B-OTHER 应仍在）"
+    assert "M-OTHER" in machine_ids, "数据接口不应按 gantt_resource 裁剪（M-OTHER 应仍在）"
+    assert {"B-RPT", "B-SAME"}.issubset(batch_ids)
     assert data["task_count"] == len(tasks)
     assert set((data.get("critical_chain") or {}).get("ids") or []).issubset(task_ids)
 

@@ -66,17 +66,6 @@ def _get_optional_arg(name: str) -> Optional[str]:
     return text or None
 
 
-def _gantt_data_scope_query() -> Dict[str, str]:
-    query: Dict[str, str] = {}
-    batch_id = _get_optional_arg("gantt_batch")
-    resource_id = _get_optional_arg("gantt_resource")
-    if batch_id:
-        query["gantt_batch"] = batch_id
-    if resource_id:
-        query["gantt_resource"] = resource_id
-    return query
-
-
 def _gantt_page_scope_query(*, current_view: str, target_view: str) -> Dict[str, str]:
     query: Dict[str, str] = {}
     batch_id = _get_optional_arg("gantt_batch")
@@ -89,8 +78,11 @@ def _gantt_page_scope_query(*, current_view: str, target_view: str) -> Dict[str,
 
 
 def _gantt_data_url() -> str:
-    query: Dict[str, Any] = dict(_gantt_data_scope_query())
-    return url_for("scheduler.gantt_data", **query)
+    # 数据接口恒返回全量，不按 gantt_batch/gantt_resource 预筛：批次/资源筛选是纯前端
+    # 查看态（applyUiFromUrl 从页面 URL 种子化 filterBatch/filterResource，applyFilters
+    # 客户端过滤）。后端预筛会让「清筛选」回不到全量、负荷条带与当前视图割裂——
+    # finding-08 根因即「后端预筛 + 前端本地筛选」两层不可组合，故数据 URL 不带 scope。
+    return url_for("scheduler.gantt_data")
 
 
 def _gantt_page_url(
@@ -340,13 +332,9 @@ def gantt_data():
             data_kwargs["plan_role"] = plan_role
         if scenario_id is not None:
             data_kwargs["scenario_id"] = scenario_id
-        gantt_batch = _get_optional_arg("gantt_batch")
-        gantt_resource = _get_optional_arg("gantt_resource")
-        if gantt_batch:
-            data_kwargs["batch_id"] = gantt_batch
-        if gantt_resource:
-            data_kwargs["resource_type"] = view
-            data_kwargs["resource_id"] = gantt_resource
+        # 甘特视图恒取全量：gantt_batch/gantt_resource 不在此预筛（批次/资源筛选是纯前端
+        # 查看态，见 _gantt_data_url 注释）。tasks 与 resource_load 同为全量口径，前端
+        # applyFilters 只过滤图区、负荷条带保持全局容量概览，二者不再割裂（finding-08）。
         plan_query_service = getattr(g.services, "schedule_plan_query_service", None)
         if plan_query_service is not None:
             data_kwargs["plan_query_service"] = plan_query_service

@@ -108,7 +108,7 @@
     html += '<div class="aps-load-popup-meta">' + escapeHtml(cellTitle(row)) + "</div>";
     html += items.length
       ? '<ul class="aps-load-popup-tasks">' + items.join("") + "</ul>"
-      : '<p class="aps-load-popup-empty">当天没有可显示的任务（可能被筛选条件过滤）。</p>';
+      : '<p class="aps-load-popup-empty">当天没有可显示的任务。</p>';
     var links = Array.isArray(row.links) ? row.links : [];
     if (links.length) {
       var parts = [];

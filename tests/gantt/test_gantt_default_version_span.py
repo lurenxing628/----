@@ -99,6 +99,34 @@ def test_gantt_data_without_range_uses_selected_version_span(tmp_path, monkeypat
     assert len(data.get("tasks") or []) == 1
 
 
+def test_gantt_data_returns_full_scope_ignoring_gantt_batch(tmp_path, monkeypatch) -> None:
+    # finding-08：数据接口恒返回全量，不按 gantt_batch 预筛——否则带 gantt_batch 深链进入后
+    # 「清筛选」回不到全量。带一个不存在的 gantt_batch 仍应返回 B001 任务（证明未被后端裁掉）。
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    resp = client.get("/scheduler/gantt/data?view=machine&version=3&gantt_batch=NONEXISTENT")
+    payload = resp.get_json()
+    data = payload.get("data") or {}
+
+    assert resp.status_code == 200
+    assert payload.get("success") is True
+    assert len(data.get("tasks") or []) == 1  # 后端不按 gantt_batch 裁剪，全量任务仍在
+
+
+def test_gantt_page_data_url_is_scopeless(tmp_path, monkeypatch) -> None:
+    # 页面带 gantt_batch 时，注入 #gantt 的 data-url 不得带 scope（数据抓取恒全量，
+    # 批次/资源筛选由前端从页面 URL 种子化后客户端过滤）。
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    resp = client.get("/scheduler/gantt?version=3&gantt_batch=B001&gantt_resource=MC001")
+    html = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert 'data-url="/scheduler/gantt/data"' in html  # data-url 无 gantt_batch/gantt_resource
+
+
 def test_gantt_page_and_data_respect_explicit_range(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()

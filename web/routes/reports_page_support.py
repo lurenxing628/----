@@ -139,7 +139,8 @@ def _checked_report_value(factory: Any) -> Any:
 
 
 def reports_index_context(engine: ReportEngine, services) -> Dict[str, Any]:
-    versions = _decorated_versions(engine, limit=1)
+    # limit=30 与子页对齐（原 limit=1 只取最新版，旧版本号进首页时胶囊查不到→错显「-」）
+    versions = _decorated_versions(engine, limit=30)
     has_history = bool(versions)
     latest_version = versions[0] if has_history else None
     report_context = build_report_context(back_to=_request_text("back_to"))
