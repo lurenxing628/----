@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from flask import current_app
+
+from core.infrastructure.errors import ValidationError
 from core.services.scheduler.schedule_result_view_range import get_plan_time_span_dates
 from web.viewmodels.scheduler_workbench_links import (
     FULL_PLAN_GUARD_FIELDS,
@@ -71,10 +74,19 @@ def build_version_picker_gantt_links(
     plan_query_service = getattr(services, "schedule_plan_query_service", None)
     span = None
     span_error = ""
+    span_error_message = "这个版本的计划日期范围读取失败，暂时不能从这里跳转甘特图。"
     try:
         span = get_plan_time_span_dates(plan_query_service, int(version), effective_role, effective_scenario)
+    except ValidationError:
+        # 预期的数据缺失（版本无明细/日期跨度不可解）：链接禁用并友好提示，不渲染错数据
+        span_error = span_error_message
     except Exception:
-        span_error = "这个版本的计划日期范围读取失败，暂时不能从这里跳转甘特图。"
+        # 非预期错误（如 plan_query_service 未注入、编程错误）：同样降级禁用链接，但必须留
+        # 日志——不静默吞掉真因（项目惯例：宽 except 必配 logger.exception），便于排查
+        current_app.logger.exception(
+            "甘特链接日期跨度读取异常 version=%s role=%s", version, effective_role
+        )
+        span_error = span_error_message
     context = build_workbench_plan_context(
         version=int(version),
         plan_role=effective_role,

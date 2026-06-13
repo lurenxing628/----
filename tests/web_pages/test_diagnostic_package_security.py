@@ -12,6 +12,26 @@ import os
 import tempfile
 import zipfile
 
+import pytest
+
+
+def _symlink_supported() -> bool:
+    # Windows（尤其 Win7/无 SeCreateSymbolicLink 权限）创建软链接会 OSError——此时跳过
+    # 软链接安全用例，避免把「平台权限失败」误判成「产品逻辑失败」（finding-01）。
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            target = os.path.join(d, "t")
+            open(target, "w").close()
+            os.symlink(target, os.path.join(d, "l"))
+        return True
+    except (OSError, NotImplementedError):
+        return False
+
+
+_requires_symlink = pytest.mark.skipif(
+    not _symlink_supported(), reason="平台不支持创建软链接（如 Win 无权限），跳过软链接安全用例"
+)
+
 
 def _seed(log_dir: str, name: str, text: str = "x\n"):
     os.makedirs(log_dir, exist_ok=True)
@@ -68,6 +88,7 @@ def test_diagnostic_info_facts(app_client):
     assert "导出时间：" in info
 
 
+@_requires_symlink
 def test_symlink_with_whitelist_name_rejected(app_client):
     # 白名单文件名挡路径注入，islink 挡「白名单名字指向任意文件」——
     # 播种一个名为 evil.log 的 symlink 指向假 secret，断言不进包
@@ -81,6 +102,25 @@ def test_symlink_with_whitelist_name_rejected(app_client):
     names, _ = _download_zip_names(app_client)
     assert "evil.log" not in names, "symlink 不应进诊断包"
     assert "aps.log" in names
+
+
+@_requires_symlink
+def test_runtime_logs_page_refuses_symlink(app_client):
+    # 页面查看日志链路与诊断包同一道锁：白名单真名（aps_error.log）被替换成软链接
+    # 指向假 secret 时，读原语拒读，密文绝不回显到页面（finding-01 页面链路补齐）。
+    log_dir = app_client.application.config["LOG_DIR"]
+    _seed(log_dir, "aps_secret_key.txt", "PAGE-LEAK-SECRET")
+    link = os.path.join(log_dir, "aps_error.log")
+    if os.path.lexists(link):
+        os.remove(link)
+    os.symlink(os.path.join(log_dir, "aps_secret_key.txt"), link)
+
+    resp = app_client.get("/system/runtime-logs?file=aps_error.log")
+    html = resp.get_data(as_text=True)
+    resp.close()
+
+    assert resp.status_code == 200
+    assert "PAGE-LEAK-SECRET" not in html, "页面不应跟随软链接读取并回显非日志内容"
 
 
 def test_operation_logs_failure_yields_explanation_file(app_client, monkeypatch):

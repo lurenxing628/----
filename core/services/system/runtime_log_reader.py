@@ -47,9 +47,15 @@ def read_log_entries_tail(log_path: str, *, max_entries: int = MAX_ENTRIES) -> L
 
     返回 [{"head": 首行, "body": 余下行, "level": "ERROR"}, ...]。
     文件不存在返回 []（路由层据此区分空态文案）；IO 失败抛 OSError，由路由层明示。
+
+    拒绝软链接/非普通文件：与诊断包链路 list_diagnostic_log_names 同一道锁——白名单
+    文件名只挡路径注入，挡不住「白名单名字指向任意文件」的软链接借壳，故读取前先核
+    islink/isfile（页面查看日志与诊断打包共用此读原语，纵深防御一处补齐）。
     """
     if not os.path.exists(log_path):
         return []
+    if os.path.islink(log_path) or not os.path.isfile(log_path):
+        raise OSError("拒绝读取非普通日志文件（疑似软链接或非常规文件）")
     with open(log_path, "rb") as f:
         regions = _scan_tail_regions(f, max_entries)
     return [_build_entry(region) for region in regions]

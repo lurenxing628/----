@@ -26,10 +26,23 @@ def _print_row(row: Mapping[str, Any]) -> Dict[str, Any]:
     return {key: row.get(key, "") for key in _PRINT_ROW_KEYS}
 
 
+def _is_external_or_unassigned_machine(label: str) -> bool:
+    """「设备」展示串是否为外协/未分配兜底——按 display_machine 对空 machine_id 的
+    确定性输出形态精确判定，而非宽泛前缀。
+
+    display_machine（_sched_display_utils）空 machine_id 只产两种串：「外协/未分配」
+    （无供应商）或「外协 {supplier}」（带空格）；厂内设备恒为「{编号} {名}」。用这两种
+    精确形态判定，避免把设备编号以「外协」开头的厂内设备（如「外协机01 数控」）误并入
+    兜底段。残留仅 machine_id 恰为「外协」二字这一极端命名——根治需上游补显式外协标记，
+    但 #16 段行 by-design 零内部键，此处复用上游唯一字源的输出形态已足够。
+    """
+    return label == FALLBACK_RESOURCE_LABEL or label.startswith("外协 ")
+
+
 def _resource_label(row: Mapping[str, Any], group_column: str) -> str:
     label = str(row.get(group_column) or "").strip() or FALLBACK_RESOURCE_LABEL
-    # machine 视图：外协行无 supplier_id（重名供应商会错并组），统一归兜底段
-    if group_column == "设备" and label.startswith("外协"):
+    # machine 视图：外协/无设备行无 supplier_id（重名供应商会错并组），统一归兜底段
+    if group_column == "设备" and _is_external_or_unassigned_machine(label):
         return FALLBACK_RESOURCE_LABEL
     return label
 

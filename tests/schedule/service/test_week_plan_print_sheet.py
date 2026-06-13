@@ -57,6 +57,24 @@ def test_machine_view_outsourced_rows_merge_into_fallback_last():
     assert {r["设备"] for r in fallback_rows} == {"外协 华东外协", "外协/未分配"}
 
 
+def test_machine_view_keeps_real_machine_whose_id_starts_with_external_prefix():
+    # 设备编号字面以「外协」开头的厂内设备（display_machine→「{编号} {名}」）不得被
+    # 误并入外协兜底段——精确形态判定只认「外协/未分配」与「外协 {供应商}」（带空格）。
+    sheets = build_week_plan_print_sheets(
+        [
+            _row(machine="外协机01 数控车床"),
+            _row(machine="外协 华东供应商", batch="B2"),
+            _row(machine="M1 车床", batch="B3"),
+        ],
+        group_by="machine",
+    )
+    labels = [s["resource_label"] for s in sheets]
+    assert "外协机01 数控车床" in labels  # 真实设备自成段，未被兜底吞掉
+    assert labels[-1] == FALLBACK_RESOURCE_LABEL  # 真外协行仍归兜底
+    fallback_rows = sheets[-1]["rows"]
+    assert {r["设备"] for r in fallback_rows} == {"外协 华东供应商"}
+
+
 def test_operator_view_unassigned_fallback_last():
     sheets = build_week_plan_print_sheets(
         [_row(operator="外协/未分配"), _row(operator="OP1 张三", batch="B2"), _row(operator="OP2 李四", batch="B3")],

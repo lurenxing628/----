@@ -167,6 +167,75 @@ def test_version_picker_none_version_returns_empty():
     assert build_version_picker_gantt_links(_AnalysisServices(), None, plan_role="adopted", scenario_id=None) == []
 
 
+class _ValidationErrorServices:
+    """get_plan_time_span 抛 ValueError（get_plan_time_span_dates 包成 ValidationError）：
+    模拟「版本日期跨度不可解」的预期数据缺失。"""
+
+    class _PlanQuery(_AnalysisServices._PlanQuery):
+        def get_plan_time_span(self, version, role=None):
+            raise ValueError("该版本日期跨度不可解")
+
+        def get_plan_time_span_for_view(self, version, role, scenario_id=None):
+            raise ValueError("该版本日期跨度不可解")
+
+    def __init__(self):
+        self.schedule_plan_query_service = self._PlanQuery()
+
+
+class _UnexpectedErrorServices:
+    """get_plan_time_span 抛 KeyError（非 ValueError）：模拟非预期编程错误，走 except Exception。"""
+
+    class _PlanQuery(_AnalysisServices._PlanQuery):
+        def get_plan_time_span(self, version, role=None):
+            raise KeyError("unexpected programming error")
+
+        def get_plan_time_span_for_view(self, version, role, scenario_id=None):
+            raise KeyError("unexpected programming error")
+
+    def __init__(self):
+        self.schedule_plan_query_service = self._PlanQuery()
+
+
+def test_version_picker_validation_error_disables_links_without_logging(monkeypatch):
+    # #5 ValidationError 分支：预期数据缺失 → 链接禁用 + 提示，不记日志（不是 bug 不刷日志）
+    from flask import Flask
+
+    from web.routes.domains.scheduler.scheduler_analysis_links import build_version_picker_gantt_links
+
+    app = Flask(__name__)
+    logged = []
+    monkeypatch.setattr(app.logger, "exception", lambda *a, **k: logged.append((a, k)))
+    with app.app_context():
+        links = build_version_picker_gantt_links(
+            _ValidationErrorServices(), 7, plan_role="adopted", scenario_id=None
+        )
+
+    assert len(links) == 2
+    for link in links:
+        assert link["disabled"], link  # 日期跨度读不到 → 链接禁用
+    assert logged == [], "预期的数据缺失（ValidationError）不应记 exception 日志"
+
+
+def test_version_picker_unexpected_error_logs_exception_and_disables(monkeypatch):
+    # #5 except Exception 分支：非预期错误 → 同样降级禁用链接，但必须 logger.exception 留堆栈
+    from flask import Flask
+
+    from web.routes.domains.scheduler.scheduler_analysis_links import build_version_picker_gantt_links
+
+    app = Flask(__name__)
+    logged = []
+    monkeypatch.setattr(app.logger, "exception", lambda *a, **k: logged.append((a, k)))
+    with app.app_context():
+        links = build_version_picker_gantt_links(
+            _UnexpectedErrorServices(), 7, plan_role="adopted", scenario_id=None
+        )
+
+    assert len(links) == 2
+    for link in links:
+        assert link["disabled"], link
+    assert len(logged) == 1, "非预期异常应 logger.exception 记录一次"
+
+
 # ---------- 页面契约（真应用渲染） ----------
 
 
