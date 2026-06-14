@@ -98,19 +98,47 @@ def _ensure_columns(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
     return merge_outcomes(*outcomes)
 
 
-def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
-    """
-    清洗 Batches 的 DATE 字段（due_date / ready_date）。
+def _norm_batch_date(value) -> Optional[str]:
+    # 逐字搬自原 norm 闭包（不捕获外部变量）：全角 ／：归一、剥时间部分、严格 ^YYYY-M-D$、date() 构造兜底。
+    # 任何收紧/放宽都会改写"不可解析置 NULL / 单数字补零"语义（专测直接断言）。
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    import re
+    from datetime import date
 
-    背景：
-    - V1 业务约定 DATE 字段使用 `YYYY-MM-DD`（开发文档与 schema.sql）
-    - 存量 DB 可能因为 Excel 导入/手工写入导致不合法值（如 `2026`）
-    - 不合法值会导致页面/算法无法正确处理；这里做一次性“最佳努力”规范化：
-      - 支持：YYYY-MM-DD / YYYY/M/D / YYYY/MM/DD / 带时间的 YYYY-MM-DD HH:MM(:SS) / YYYY-MM-DDTHH:MM(:SS)
-      - 无法解析：置为 NULL（避免误判）
-    """
+    s = s.replace("：", ":").replace("/", "-")
+    # 若误写入了时间：只取日期部分（DATE 字段不存时分秒）
+    if "T" in s:
+        s = s.split("T", 1)[0]
+    if " " in s:
+        s = s.split(" ", 1)[0]
+    # 仅接受 YYYY-M-D / YYYY-MM-DD（显式组装，避免依赖 strptime 的宽松/严格差异）
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", s)
+    if not m:
+        return None
     try:
-        rows = conn.execute(
+        y = int(m.group(1))
+        mo = int(m.group(2))
+        d = int(m.group(3))
+        return date(y, mo, d).isoformat()
+    except Exception:
+        return None
+
+
+def _batch_dates_unchanged(old_due, old_ready, new_due, new_ready) -> bool:
+    # 比较基准是 str(old).strip() 而非原值；None 短路不可丢，否则对未变化行多发 UPDATE 污染 updated_at。
+    return (str(old_due).strip() if old_due is not None else None) == new_due and (
+        str(old_ready).strip() if old_ready is not None else None
+    ) == new_ready
+
+
+def _select_dirty_batches(conn: sqlite3.Connection, logger=None) -> Optional[list]:
+    # 返回 None=应 SKIPPED（表/列不存在）、[]=无脏数据（主函数据此 APPLIED）、非空列表=继续清洗。
+    try:
+        return conn.execute(
             """
             SELECT batch_id, due_date, ready_date
             FROM Batches
@@ -123,38 +151,58 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> MigrationOut
         if "no such table" in msg or "no such column" in msg:
             if logger:
                 fallback_log(logger, "warning", f"数据库迁移 v1：Batches 表/列不存在，已跳过日期清洗（{e}）。")
-            return MigrationOutcome.SKIPPED
+            return None
         raise
 
+
+def _apply_one_batch(conn: sqlite3.Connection, bid, new_due, new_ready) -> bool:
+    # 成功 True；OperationalError 必须先于 sqlite3.Error 捕获并原样 raise（触发回滚/备份恢复、不可降级成
+    # PARTIAL，无测试网兜）；其它 sqlite3.Error 返回 False 由主函数计 failed。
+    try:
+        conn.execute(
+            "UPDATE Batches SET due_date = ?, ready_date = ? WHERE batch_id = ?",
+            (new_due, new_ready, bid),
+        )
+        return True
+    except sqlite3.OperationalError:
+        raise
+    except sqlite3.Error:
+        return False
+
+
+def _log_sanitize_result(logger, changed: int, changed_samples, failed: int, failed_samples) -> None:
+    if changed and logger:
+        sample_text = "，".join(changed_samples)
+        fallback_log(
+            logger,
+            "warning",
+            f"已清洗 Batches 的日期字段（due_date/ready_date）：受影响批次数={changed}，样例批次号（最多10个）={sample_text}。",
+        )
+    if failed and logger:
+        sample_text = "，".join(failed_samples)
+        fallback_log(
+            logger,
+            "warning",
+            f"Batches 日期字段清洗更新失败：失败批次数={failed}，样例批次号（最多10个）={sample_text}。",
+        )
+
+
+def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
+    """
+    清洗 Batches 的 DATE 字段（due_date / ready_date）。
+
+    背景：
+    - V1 业务约定 DATE 字段使用 `YYYY-MM-DD`（开发文档与 schema.sql）
+    - 存量 DB 可能因为 Excel 导入/手工写入导致不合法值（如 `2026`）
+    - 不合法值会导致页面/算法无法正确处理；这里做一次性“最佳努力”规范化：
+      - 支持：YYYY-MM-DD / YYYY/M/D / YYYY/MM/DD / 带时间的 YYYY-MM-DD HH:MM(:SS) / YYYY-MM-DDTHH:MM(:SS)
+      - 无法解析：置为 NULL（避免误判）
+    """
+    rows = _select_dirty_batches(conn, logger)
+    if rows is None:
+        return MigrationOutcome.SKIPPED
     if not rows:
         return MigrationOutcome.APPLIED
-
-    import re
-    from datetime import date
-
-    def norm(value) -> Optional[str]:
-        if value is None:
-            return None
-        s = str(value).strip()
-        if not s:
-            return None
-        s = s.replace("：", ":").replace("/", "-")
-        # 若误写入了时间：只取日期部分（DATE 字段不存时分秒）
-        if "T" in s:
-            s = s.split("T", 1)[0]
-        if " " in s:
-            s = s.split(" ", 1)[0]
-        # 仅接受 YYYY-M-D / YYYY-MM-DD（显式组装，避免依赖 strptime 的宽松/严格差异）
-        m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", s)
-        if not m:
-            return None
-        try:
-            y = int(m.group(1))
-            mo = int(m.group(2))
-            d = int(m.group(3))
-            return date(y, mo, d).isoformat()
-        except Exception:
-            return None
 
     changed = 0
     changed_samples = []
@@ -165,48 +213,24 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> MigrationOut
         bid = r["batch_id"]
         old_due = r["due_date"]
         old_ready = r["ready_date"]
-        new_due = norm(old_due)
-        new_ready = norm(old_ready)
+        new_due = _norm_batch_date(old_due)
+        new_ready = _norm_batch_date(old_ready)
 
         # 只在发生变化时写入（避免无谓更新 updated_at）
-        if (str(old_due).strip() if old_due is not None else None) == new_due and (
-            str(old_ready).strip() if old_ready is not None else None
-        ) == new_ready:
+        if _batch_dates_unchanged(old_due, old_ready, new_due, new_ready):
             continue
 
-        try:
-            conn.execute(
-                "UPDATE Batches SET due_date = ?, ready_date = ? WHERE batch_id = ?",
-                (new_due, new_ready, bid),
-            )
+        if _apply_one_batch(conn, bid, new_due, new_ready):
             changed += 1
             if len(changed_samples) < 10:
                 changed_samples.append(str(bid))
-        except sqlite3.OperationalError:
-            # 迁移中不应吞掉数据库级错误；抛出以触发事务回滚与备份恢复
-            raise
-        except sqlite3.Error:
+        else:
             failed += 1
             had_partial_failure = True
             if len(failed_samples) < 10:
                 failed_samples.append(str(bid))
-            continue
 
-    if changed and logger:
-        sample_text = "，".join(changed_samples)
-        fallback_log(
-            logger,
-            "warning",
-            f"已清洗 Batches 的日期字段（due_date/ready_date）：受影响批次数={changed}，样例批次号（最多10个）={sample_text}。",
-        )
-
-    if failed and logger:
-        sample_text = "，".join(failed_samples)
-        fallback_log(
-            logger,
-            "warning",
-            f"Batches 日期字段清洗更新失败：失败批次数={failed}，样例批次号（最多10个）={sample_text}。",
-        )
+    _log_sanitize_result(logger, changed, changed_samples, failed, failed_samples)
     if had_partial_failure:
         return MigrationOutcome.PARTIAL
     return MigrationOutcome.APPLIED

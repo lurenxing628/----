@@ -32,10 +32,37 @@ def _resolve_manual_endpoint(endpoint: Any = None) -> str:
         return ""
 
 
+def _has_forbidden_manual_chars(text: str) -> bool:
+    # 控制字符/反斜杠守卫（开放重定向防护核心）：必须在 urlsplit 之前对原始 text 调用。
+    return any(ch in text for ch in ("\r", "\n", "\x00", "\\"))
+
+
+def _is_same_origin(parsed: Any, current: Any) -> bool:
+    # 空 scheme/netloc 先判否（短路），再比 scheme/netloc 相等——退化输入（无 scheme）不放行。
+    return (
+        bool(parsed.scheme)
+        and bool(parsed.netloc)
+        and parsed.scheme == current.scheme
+        and parsed.netloc == current.netloc
+    )
+
+
+def _compose_same_origin_candidate(parsed: Any, text: str) -> str:
+    # 末尾空问号依赖原始 text（urlsplit 会丢空 query 的 '?'），故须传入 text 而非只传 parsed。
+    candidate = parsed.path or "/"
+    if parsed.query:
+        candidate = f"{candidate}?{parsed.query}"
+    elif text.endswith("?"):
+        candidate = f"{candidate}?"
+    if parsed.fragment:
+        candidate = f"{candidate}#{parsed.fragment}"
+    return candidate
+
+
 def _normalize_relative_manual_src(text: str) -> Optional[str]:
     if not text or not text.startswith("/") or text.startswith("//"):
         return None
-    if any(ch in text for ch in ("\r", "\n", "\x00", "\\")):
+    if _has_forbidden_manual_chars(text):
         return None
     try:
         parts = urlsplit(text)
@@ -50,26 +77,16 @@ def _same_origin_absolute_manual_src(raw: Any = None) -> Optional[str]:
     if not has_request_context():
         return None
     text = ("" if raw is None else str(raw)).strip()
-    if not text or any(ch in text for ch in ("\r", "\n", "\x00", "\\")):
+    if not text or _has_forbidden_manual_chars(text):
         return None
     try:
         parsed = urlsplit(text)
         current = urlsplit(str(request.host_url or ""))
     except ValueError:
         return None
-    if not parsed.scheme or not parsed.netloc:
+    if not _is_same_origin(parsed, current):
         return None
-    if parsed.scheme != current.scheme or parsed.netloc != current.netloc:
-        return None
-
-    candidate = parsed.path or "/"
-    if parsed.query:
-        candidate = f"{candidate}?{parsed.query}"
-    elif text.endswith("?"):
-        candidate = f"{candidate}?"
-    if parsed.fragment:
-        candidate = f"{candidate}#{parsed.fragment}"
-    return _normalize_relative_manual_src(candidate)
+    return _normalize_relative_manual_src(_compose_same_origin_candidate(parsed, text))
 
 
 def normalize_manual_src(raw: Any = None) -> Optional[str]:

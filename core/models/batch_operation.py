@@ -15,6 +15,20 @@ from ._helpers import (
 from .enums import BatchOperationStatus, SourceType
 
 
+def _clean_optional_str(value: Any) -> Optional[str]:
+    # 行映射清洗：非 None 且非空串才 str() 化；保留 0→"0" 行为，禁简化成 `str(v) if v else None`（会把 0 当 falsy）。
+    return str(value) if value is not None and value != "" else None
+
+
+def _normalize_enum(value: Any, default: str) -> str:
+    # 枚举值归一：双层兜底——内层 `value or default` 防 None/""/0，外层 `... or default` 防 strip 后空串。
+    return str(value or default).strip().lower() or default
+
+
+def _str_or_empty(value: Any) -> str:
+    return str(value or "")
+
+
 @dataclass
 class BatchOperation:
     id: Optional[int]
@@ -63,37 +77,23 @@ class BatchOperation:
 
     @classmethod
     def from_row(cls, row: RowLike) -> BatchOperation:
-        raw_id = get(row, "id")
-        seq = get(row, "seq")
-        setup_hours = get(row, "setup_hours")
-        unit_hours = get(row, "unit_hours")
-        ext_days = get(row, "ext_days")
-        op_type_id = get(row, "op_type_id")
-        machine_id = get(row, "machine_id")
-        operator_id = get(row, "operator_id")
-        supplier_id = get(row, "supplier_id")
-        piece_id = get(row, "piece_id")
+        # cls(...) 关键字实参从上到下求值——顺序即多坏字段时 ValueError 的先后契约，禁重排。
         return cls(
-            id=parse_int(raw_id, default=None),
-            op_code=str(get(row, "op_code") or ""),
-            batch_id=str(get(row, "batch_id") or ""),
-            piece_id=str(piece_id) if piece_id is not None and piece_id != "" else None,
-            seq=parse_int_or_default(seq, 0, field="seq"),
-            op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
-            op_type_name=str(get(row, "op_type_name") or ""),
-            source=(
-                str(get(row, "source") or SourceType.INTERNAL.value).strip().lower() or SourceType.INTERNAL.value
-            ),
-            machine_id=str(machine_id) if machine_id is not None and machine_id != "" else None,
-            operator_id=str(operator_id) if operator_id is not None and operator_id != "" else None,
-            supplier_id=str(supplier_id) if supplier_id is not None and supplier_id != "" else None,
-            setup_hours=parse_float_or_default(setup_hours, 0.0, field="setup_hours"),
-            unit_hours=parse_float_or_default(unit_hours, 0.0, field="unit_hours"),
-            ext_days=parse_optional_float(ext_days, field="ext_days"),
-            status=(
-                str(get(row, "status") or BatchOperationStatus.PENDING.value).strip().lower()
-                or BatchOperationStatus.PENDING.value
-            ),
+            id=parse_int(get(row, "id"), default=None),
+            op_code=_str_or_empty(get(row, "op_code")),
+            batch_id=_str_or_empty(get(row, "batch_id")),
+            piece_id=_clean_optional_str(get(row, "piece_id")),
+            seq=parse_int_or_default(get(row, "seq"), 0, field="seq"),
+            op_type_id=_clean_optional_str(get(row, "op_type_id")),
+            op_type_name=_str_or_empty(get(row, "op_type_name")),
+            source=_normalize_enum(get(row, "source"), SourceType.INTERNAL.value),
+            machine_id=_clean_optional_str(get(row, "machine_id")),
+            operator_id=_clean_optional_str(get(row, "operator_id")),
+            supplier_id=_clean_optional_str(get(row, "supplier_id")),
+            setup_hours=parse_float_or_default(get(row, "setup_hours"), 0.0, field="setup_hours"),
+            unit_hours=parse_float_or_default(get(row, "unit_hours"), 0.0, field="unit_hours"),
+            ext_days=parse_optional_float(get(row, "ext_days"), field="ext_days"),
+            status=_normalize_enum(get(row, "status"), BatchOperationStatus.PENDING.value),
             created_at=get(row, "created_at"),
         )
 

@@ -5,7 +5,7 @@ import os
 import secrets
 import sys
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Tuple
 
 from flask import Flask
 
@@ -228,62 +228,25 @@ def app_main(
 
     raw_host = os.environ.get("APS_HOST")
     host = deps.pick_bind_host(raw_host, logger=app.logger)
-
-    raw_port = os.environ.get("APS_PORT")
-    preferred_port = 5000
-    if raw_port is not None and str(raw_port).strip() != "":
-        try:
-            preferred_port = int(str(raw_port).strip())
-        except Exception as exc:
-            preferred_port = 5000
-            safe_log(app.logger, "warning", "APS_PORT=%r 非法，已回退到默认候选端口 5000：%s", raw_port, exc)
-
-    requested_host = host
-    try:
-        host, port = deps.pick_port(host, preferred_port, logger=app.logger, state_dir=prelaunch_log_dir, runtime_dir=runtime_dir)
-    except TypeError:
-        host, port = deps.pick_port(host, preferred_port, logger=app.logger)
-    if host != requested_host:
-        safe_log(app.logger, "warning", "APS_HOST=%s 不可绑定，已回退到 %s（port=%s）", requested_host, host, port)
-
-    try:
-        os.environ["APS_HOST"] = str(host)
-        os.environ["APS_PORT"] = str(int(port))
-    except Exception as exc:
-        safe_log(app.logger, "warning", "回写 APS_HOST/APS_PORT 环境变量失败，开发重载子进程可能拿不到固定监听地址：%s", exc)
+    host, port = _resolve_listen_endpoint(deps, host, prelaunch_log_dir, runtime_dir, logger=app.logger)
+    _writeback_listen_env(host, port, logger=app.logger)
 
     if owns_runtime_resources:
-        try:
-            deps.acquire_runtime_lock(
-                lock_scope_target,
-                lock_scope_log_dir,
-                owner=runtime_owner,
-                exe_path=sys.executable,
-            )
-        except Exception as e:
-            _write_launch_error_with_observability(
-                deps, runtime_dir, str(e), prelaunch_log_dir, logger=app.logger, context="获取运行时锁失败"
-            )
-            return 13
-        deps.atexit_register(deps.release_runtime_lock, lock_scope_target, os.getpid())
-
-        try:
-            configure_runtime_contract(
-                app,
-                runtime_dir,
-                host,
-                port,
-                runtime_owner,
-                default_ui_mode=ui_mode,
-                deps=deps,
-            )
-        except Exception as e:
-            _write_launch_error_with_observability(
-                deps, runtime_dir, str(e), app.config.get("LOG_DIR"), logger=app.logger, context="写入运行时契约失败"
-            )
-            return 15
-        if deps.should_register_runtime_lifecycle_handlers(debug):
-            deps.atexit_register(deps.delete_runtime_contract_files, app.config.get("LOG_DIR") or runtime_dir)
+        rc = _own_runtime_resources(
+            deps,
+            app,
+            runtime_dir=runtime_dir,
+            host=host,
+            port=port,
+            runtime_owner=runtime_owner,
+            ui_mode=ui_mode,
+            debug=debug,
+            lock_scope_target=lock_scope_target,
+            lock_scope_log_dir=lock_scope_log_dir,
+            prelaunch_log_dir=prelaunch_log_dir,
+        )
+        if rc is not None:
+            return rc
     else:
         safe_log(app.logger, "info", "开发重载父进程跳过获取运行时锁与运行时契约。")
 
@@ -292,3 +255,85 @@ def app_main(
         return 0
     deps.serve_runtime_app(app, host, port)
     return 0
+
+
+def _resolve_listen_endpoint(deps, host, prelaunch_log_dir, runtime_dir, *, logger) -> Tuple[str, int]:
+    # 端口解析：APS_PORT 复合条件 + int 回退 5000（含非法告警）、pick_port 双签名兼容（TypeError 回退
+    # 少传 state_dir/runtime_dir，by-design 两路都保留不可统一）、host 回退告警。host 入参须为已 pick_bind_host 的值。
+    raw_port = os.environ.get("APS_PORT")
+    preferred_port = 5000
+    if raw_port is not None and str(raw_port).strip() != "":
+        try:
+            preferred_port = int(str(raw_port).strip())
+        except Exception as exc:
+            preferred_port = 5000
+            safe_log(logger, "warning", "APS_PORT=%r 非法，已回退到默认候选端口 5000：%s", raw_port, exc)
+
+    requested_host = host
+    try:
+        host, port = deps.pick_port(host, preferred_port, logger=logger, state_dir=prelaunch_log_dir, runtime_dir=runtime_dir)
+    except TypeError:
+        host, port = deps.pick_port(host, preferred_port, logger=logger)
+    if host != requested_host:
+        safe_log(logger, "warning", "APS_HOST=%s 不可绑定，已回退到 %s（port=%s）", requested_host, host, port)
+    return host, port
+
+
+def _writeback_listen_env(host, port, *, logger) -> None:
+    # 必须留 entrypoint 模块且走模块 os.environ（测试 monkeypatch entrypoint_mod.os.environ），禁子函数内 import os。
+    try:
+        os.environ["APS_HOST"] = str(host)
+        os.environ["APS_PORT"] = str(int(port))
+    except Exception as exc:
+        safe_log(logger, "warning", "回写 APS_HOST/APS_PORT 环境变量失败，开发重载子进程可能拿不到固定监听地址：%s", exc)
+
+
+def _own_runtime_resources(
+    deps,
+    app,
+    *,
+    runtime_dir,
+    host,
+    port,
+    runtime_owner,
+    ui_mode,
+    debug,
+    lock_scope_target,
+    lock_scope_log_dir,
+    prelaunch_log_dir,
+) -> Optional[int]:
+    # 副作用时序红线：acquire_lock → atexit(release) → configure_contract → atexit(delete) 精确保序，
+    # 任何重排破坏启动语义与崩溃后清理。返回 None=成功继续；13=锁失败；15=契约失败（主函数 if rc is not None: return rc）。
+    # logger 参数语义：锁/契约失败用 app.logger（区别于 create_app 失败用 None），文案不统一化。
+    try:
+        deps.acquire_runtime_lock(
+            lock_scope_target,
+            lock_scope_log_dir,
+            owner=runtime_owner,
+            exe_path=sys.executable,
+        )
+    except Exception as e:
+        _write_launch_error_with_observability(
+            deps, runtime_dir, str(e), prelaunch_log_dir, logger=app.logger, context="获取运行时锁失败"
+        )
+        return 13
+    deps.atexit_register(deps.release_runtime_lock, lock_scope_target, os.getpid())
+
+    try:
+        configure_runtime_contract(
+            app,
+            runtime_dir,
+            host,
+            port,
+            runtime_owner,
+            default_ui_mode=ui_mode,
+            deps=deps,
+        )
+    except Exception as e:
+        _write_launch_error_with_observability(
+            deps, runtime_dir, str(e), app.config.get("LOG_DIR"), logger=app.logger, context="写入运行时契约失败"
+        )
+        return 15
+    if deps.should_register_runtime_lifecycle_handlers(debug):
+        deps.atexit_register(deps.delete_runtime_contract_files, app.config.get("LOG_DIR") or runtime_dir)
+    return None

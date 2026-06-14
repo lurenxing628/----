@@ -133,40 +133,24 @@ class MachineDowntimeService:
             )
         return d
 
-    def create_by_scope(
-        self,
-        *,
-        scope_type: Any,
-        scope_value: Any = None,
-        start_time: Any,
-        end_time: Any,
-        reason_code: Any = None,
-        reason_detail: Any = None,
-        only_active_machines: bool = True,
-    ) -> Dict[str, Any]:
-        """
-        按范围批量创建停机计划：
-        - scope_type=machine：scope_value=machine_id
-        - scope_type=category：scope_value=Machines.category
-        - scope_type=all：scope_value 可空/'*'
-
-        说明：
-        - 为兼容现有 schema 外键（MachineDowntimes.machine_id -> Machines.machine_id），当前实现会把范围展开为“按设备逐条写入”。
-        - 对每台设备做重叠检测；重叠的会跳过并返回失败列表（其余仍会创建）。
-        """
+    def _validate_window(self, start_time: Any, end_time: Any) -> Tuple[str, str]:
         st = self._parse_datetime(start_time, field="停机开始时间")
         et = self._parse_datetime(end_time, field="停机结束时间")
         if et <= st:
             raise ValidationError("“停机结束时间”必须晚于“停机开始时间”", field="停机结束时间")
+        return self._to_db_datetime(st), self._to_db_datetime(et)
 
-        st_db = self._to_db_datetime(st)
-        et_db = self._to_db_datetime(et)
-
+    def _validate_reason(self, reason_code: Any, reason_detail: Any) -> Tuple[str, Optional[str]]:
         rc = self._normalize_text(reason_code) or "maintenance"
         if rc not in self.VALID_REASON_CODES:
             raise ValidationError("“停机原因”不合法", field="停机原因")
-        rd = self._normalize_text(reason_detail)
+        return rc, self._normalize_text(reason_detail)
 
+    def _resolve_targets(
+        self, scope_type: Any, scope_value: Any, only_active_machines: bool
+    ) -> Tuple[str, Optional[str], List[str]]:
+        # 先校验 scope_type 再分支解析；machine/category/all 各自的 DB 读（_ensure_machine_exists /
+        # machine_repo.list）须留事务外；空目标在解析末尾 raise。raise 相对顺序与副作用顺序原样保留。
         stype = (self._normalize_text(scope_type) or "").strip()
         if stype not in ("machine", "category", "all"):
             raise ValidationError("停机范围不正确，请选择：指定设备 / 按类别 / 全部。", field="停机范围")
@@ -191,10 +175,53 @@ class MachineDowntimeService:
 
         if not target_machine_ids:
             raise BusinessError(ErrorCode.NOT_FOUND, "未找到符合范围的设备，无法创建停机计划。")
+        return stype, sval, target_machine_ids
+
+    @staticmethod
+    def _build_downtime_scope_result(
+        stype: str, sval: Optional[str], st_db: str, et_db: str, created_ids: List[int], skipped_overlap: List[str]
+    ) -> Dict[str, Any]:
+        # created_count 取全量 len，created_ids 截断前 50——分离避免计数失真。
+        return {
+            "scope_type": stype,
+            "scope_value": sval,
+            "start_time": st_db,
+            "end_time": et_db,
+            "created_count": len(created_ids),
+            "created_ids": created_ids[:50],
+            "skipped_overlap": skipped_overlap,
+        }
+
+    def create_by_scope(
+        self,
+        *,
+        scope_type: Any,
+        scope_value: Any = None,
+        start_time: Any,
+        end_time: Any,
+        reason_code: Any = None,
+        reason_detail: Any = None,
+        only_active_machines: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        按范围批量创建停机计划：
+        - scope_type=machine：scope_value=machine_id
+        - scope_type=category：scope_value=Machines.category
+        - scope_type=all：scope_value 可空/'*'
+
+        说明：
+        - 为兼容现有 schema 外键（MachineDowntimes.machine_id -> Machines.machine_id），当前实现会把范围展开为“按设备逐条写入”。
+        - 对每台设备做重叠检测；重叠的会跳过并返回失败列表（其余仍会创建）。
+        """
+        # raise 顺序契约：时间窗口 → 原因 → 范围（scope_type / 范围内 ensure / 空目标）。
+        st_db, et_db = self._validate_window(start_time, end_time)
+        rc, rd = self._validate_reason(reason_code, reason_detail)
+        stype, sval, target_machine_ids = self._resolve_targets(scope_type, scope_value, only_active_machines)
 
         created_ids: List[int] = []
         skipped_overlap: List[str] = []
 
+        # 事务仅包裹写入循环：全成或全回滚；范围解析的 DB 读已在事务外完成。
         with self.tx_manager.transaction():
             for mid in target_machine_ids:
                 if self.repo.has_overlap(mid, start_time=st_db, end_time=et_db, exclude_id=None):
@@ -215,15 +242,7 @@ class MachineDowntimeService:
                 if d.id is not None:
                     created_ids.append(int(d.id))
 
-        return {
-            "scope_type": stype,
-            "scope_value": sval,
-            "start_time": st_db,
-            "end_time": et_db,
-            "created_count": len(created_ids),
-            "created_ids": created_ids[:50],
-            "skipped_overlap": skipped_overlap,
-        }
+        return self._build_downtime_scope_result(stype, sval, st_db, et_db, created_ids, skipped_overlap)
 
     def cancel(self, downtime_id: Any, machine_id: Any = None) -> None:
         d = self.get(downtime_id)

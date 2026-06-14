@@ -105,14 +105,9 @@ def _ensure_no_user_tables_db_can_bootstrap(conn: sqlite3.Connection, initial_ve
     )
 
 
-def ensure_schema(
-    db_path: str, logger=None, schema_path: Optional[str] = None, backup_dir: Optional[str] = None
-) -> None:
-    """
-    确保数据库表结构存在。
-
-    说明：使用 IF NOT EXISTS 方式建表，因此可重复执行。
-    """
+def _resolve_schema_path(schema_path: Optional[str]) -> str:
+    # 纯路径解析（无 DB / 无 logger / 无副作用，只读 os/sys）：源码根 → frozen exe 同目录 → cwd 兜底，
+    # 命中即返回 abspath；找不到 / 不存在抛 FileNotFoundError（类型、中文文案、abspath 时序原样保留）。
     if not schema_path:
         # 默认优先：仓库根目录（源码运行）
         candidates = [
@@ -139,6 +134,18 @@ def ensure_schema(
     schema_path = os.path.abspath(schema_path)
     if not os.path.exists(schema_path):
         raise FileNotFoundError(f"找不到数据库结构文件：{schema_path}")
+    return schema_path
+
+
+def ensure_schema(
+    db_path: str, logger=None, schema_path: Optional[str] = None, backup_dir: Optional[str] = None
+) -> None:
+    """
+    确保数据库表结构存在。
+
+    说明：使用 IF NOT EXISTS 方式建表，因此可重复执行。
+    """
+    schema_path = _resolve_schema_path(schema_path)
 
     conn = get_connection(db_path)
     # 防御：确保即使未来 try 内出现局部异常吞掉，也不会在迁移判断处引用未定义变量

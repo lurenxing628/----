@@ -208,6 +208,77 @@ def request_runtime_server_shutdown(logger=None) -> bool:
     return True
 
 
+def _resolve_config_class():
+    # 默认环境：源码运行→development（便于调试）；PyInstaller 打包→production（避免 reloader 多进程与副作用）。
+    env = (os.environ.get("APS_ENV") or "").strip().lower()
+    if not env:
+        env = "production" if getattr(sys, "frozen", False) else "default"
+    return config_map.get(env) or config_map["default"]
+
+
+def _ensure_runtime_dirs(app: Flask) -> None:
+    db_dir = os.path.dirname(app.config["DATABASE_PATH"])
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+    os.makedirs(app.config["LOG_DIR"], exist_ok=True)
+    os.makedirs(app.config["BACKUP_DIR"], exist_ok=True)
+    os.makedirs(app.config["EXCEL_TEMPLATE_DIR"], exist_ok=True)
+
+
+def _init_excel_templates(app: Flask) -> None:
+    # 三出口：成功 else 写 ok 状态；ExcelTemplateError / 未知异常都写失败状态并 raise（启动停止）。
+    # raise 必须早于 ensure_schema / 蓝图——调用点位置不可后移，否则在半装配状态失败、改变副作用时序。
+    try:
+        stats = ensure_excel_templates(app.config["EXCEL_TEMPLATE_DIR"])
+        if stats.get("created"):
+            app.logger.info(f"已生成 Excel 模板：{len(stats.get('created', []))} 个")
+    except ExcelTemplateError as e:
+        app.config["EXCEL_TEMPLATE_INIT_STATUS"] = {"ok": False, "error": str(e)}
+        safe_log(app.logger, "error", f"Excel 模板初始化失败，系统启动已停止：{e}")
+        raise
+    except Exception as e:
+        app.config["EXCEL_TEMPLATE_INIT_STATUS"] = {"ok": False, "error": str(e)}
+        safe_log(app.logger, "error", f"Excel 模板初始化出现未知错误，系统启动已停止：{e}")
+        raise
+    else:
+        app.config["EXCEL_TEMPLATE_INIT_STATUS"] = {"ok": True, "error": None}
+
+
+def _register_all_blueprints(app: Flask) -> None:
+    # 9 蓝图 + scheduler 动态导入；注册顺序与 url_prefix 一字不改。
+    app.register_blueprint(dashboard_bp)
+    app.register_blueprint(excel_demo_bp, url_prefix="/excel-demo")
+    app.register_blueprint(personnel_bp, url_prefix="/personnel")
+    app.register_blueprint(equipment_bp, url_prefix="/equipment")
+    app.register_blueprint(process_bp, url_prefix="/process")
+    scheduler_routes = importlib.import_module("web.routes.scheduler")
+    scheduler_routes.register_scheduler_routes()
+    app.register_blueprint(scheduler_routes.bp, url_prefix="/scheduler")
+    app.register_blueprint(material_bp, url_prefix="/material")
+    app.register_blueprint(reports_bp, url_prefix="/reports")
+    app.register_blueprint(system_bp, url_prefix="/system")
+
+
+def _register_exit_backup(app: Flask) -> None:
+    # global 退出备份：_EXIT_BACKUP_MANAGER 赋值 + atexit 注册须在 BackupManager 构造后、return 前同一逻辑点；
+    # conftest 依赖 _run_exit_backup / _EXIT_BACKUP_REGISTERED 模块级名字不改名。
+    backup_manager = BackupManager(
+        db_path=app.config["DATABASE_PATH"],
+        backup_dir=app.config["BACKUP_DIR"],
+        keep_days=app.config.get("BACKUP_KEEP_DAYS", 7),
+        logger=app.logger,
+    )
+
+    global _EXIT_BACKUP_MANAGER, _EXIT_BACKUP_REGISTERED
+    _EXIT_BACKUP_MANAGER = backup_manager
+
+    if not _EXIT_BACKUP_REGISTERED and _should_register_exit_backup(debug=bool(app.config.get("DEBUG", False))):
+        atexit.register(_run_exit_backup)
+        _EXIT_BACKUP_REGISTERED = True
+    elif not _EXIT_BACKUP_REGISTERED:
+        app.logger.info("开发重载父进程跳过注册退出自动备份。")
+
+
 def create_app_core(
     *,
     ui_mode: str,
@@ -215,13 +286,7 @@ def create_app_core(
     enable_security_headers: bool,
     enable_session_cookie_hardening: bool,
 ) -> Flask:
-    # 默认环境：
-    # - 源码运行：development（便于调试）
-    # - PyInstaller 打包后：production（避免 reloader/调试模式带来的多进程与副作用）
-    env = (os.environ.get("APS_ENV") or "").strip().lower()
-    if not env:
-        env = "production" if getattr(sys, "frozen", False) else "default"
-    cfg_class = config_map.get(env) or config_map["default"]
+    cfg_class = _resolve_config_class()
 
     base_dir = runtime_base_dir(anchor_file=_default_anchor_file())
     static_dir = os.path.join(base_dir, "static")
@@ -257,27 +322,8 @@ def create_app_core(
 
     install_template_globals(app)
 
-    db_dir = os.path.dirname(app.config["DATABASE_PATH"])
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
-    os.makedirs(app.config["LOG_DIR"], exist_ok=True)
-    os.makedirs(app.config["BACKUP_DIR"], exist_ok=True)
-    os.makedirs(app.config["EXCEL_TEMPLATE_DIR"], exist_ok=True)
-
-    try:
-        stats = ensure_excel_templates(app.config["EXCEL_TEMPLATE_DIR"])
-        if stats.get("created"):
-            app.logger.info(f"已生成 Excel 模板：{len(stats.get('created', []))} 个")
-    except ExcelTemplateError as e:
-        app.config["EXCEL_TEMPLATE_INIT_STATUS"] = {"ok": False, "error": str(e)}
-        safe_log(app.logger, "error", f"Excel 模板初始化失败，系统启动已停止：{e}")
-        raise
-    except Exception as e:
-        app.config["EXCEL_TEMPLATE_INIT_STATUS"] = {"ok": False, "error": str(e)}
-        safe_log(app.logger, "error", f"Excel 模板初始化出现未知错误，系统启动已停止：{e}")
-        raise
-    else:
-        app.config["EXCEL_TEMPLATE_INIT_STATUS"] = {"ok": True, "error": None}
+    _ensure_runtime_dirs(app)
+    _init_excel_templates(app)
 
     schema_path = os.path.abspath(os.path.join(base_dir, "schema.sql"))
     ensure_schema(
@@ -441,33 +487,8 @@ def create_app_core(
 
     register_error_handlers(app)
 
-    app.register_blueprint(dashboard_bp)
-    app.register_blueprint(excel_demo_bp, url_prefix="/excel-demo")
-    app.register_blueprint(personnel_bp, url_prefix="/personnel")
-    app.register_blueprint(equipment_bp, url_prefix="/equipment")
-    app.register_blueprint(process_bp, url_prefix="/process")
-    scheduler_routes = importlib.import_module("web.routes.scheduler")
-    scheduler_routes.register_scheduler_routes()
-    app.register_blueprint(scheduler_routes.bp, url_prefix="/scheduler")
-    app.register_blueprint(material_bp, url_prefix="/material")
-    app.register_blueprint(reports_bp, url_prefix="/reports")
-    app.register_blueprint(system_bp, url_prefix="/system")
-
-    backup_manager = BackupManager(
-        db_path=app.config["DATABASE_PATH"],
-        backup_dir=app.config["BACKUP_DIR"],
-        keep_days=app.config.get("BACKUP_KEEP_DAYS", 7),
-        logger=app.logger,
-    )
-
-    global _EXIT_BACKUP_MANAGER, _EXIT_BACKUP_REGISTERED
-    _EXIT_BACKUP_MANAGER = backup_manager
-
-    if not _EXIT_BACKUP_REGISTERED and _should_register_exit_backup(debug=bool(app.config.get("DEBUG", False))):
-        atexit.register(_run_exit_backup)
-        _EXIT_BACKUP_REGISTERED = True
-    elif not _EXIT_BACKUP_REGISTERED:
-        app.logger.info("开发重载父进程跳过注册退出自动备份。")
+    _register_all_blueprints(app)
+    _register_exit_backup(app)
 
     if str(ui_mode or "").strip().lower() == "new_ui":
         app.logger.info("应用启动完成 (UI Test Mode)。")

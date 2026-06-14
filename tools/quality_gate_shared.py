@@ -334,8 +334,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/factory.py",
         symbol="_close_db",
-        line_start=405,
-        line_end=406,
+        line_start=451,
+        line_end=452,
         fallback_kind="cleanup_best_effort",
     ),
     SilentFallbackSample(
@@ -348,8 +348,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/manual_src_security.py",
         symbol="safe_url_for",
-        line_start=144,
-        line_end=152,
+        line_start=159,
+        line_end=169,
         fallback_kind="observable_degrade",
         scope_tag="render_bridge",
     ),
