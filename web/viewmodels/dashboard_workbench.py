@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.models.operation_execution_event import EXECUTION_STATUS_NOT_STARTED
 
+from .dashboard_cockpit_hero import build_cockpit_hero
 from .dashboard_workbench_cards import (
     LOAD_DANGER_RATIO,
     LOAD_WARNING_RATIO,
@@ -24,19 +26,24 @@ def _text(value: Any) -> str:
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(default)  # bool 不是计数：int(True)==1 会把脏 True 冒充「1 套候选」，按类型混入剔除
     try:
         return int(value or default)
-    except (TypeError, ValueError):
-        return int(default)
+    except (TypeError, ValueError, OverflowError):
+        return int(default)  # OverflowError：int(float('inf')) 等脏值不得冒泡崩溃首页
 
 
 def _safe_float(value: Any) -> Optional[float]:
     if value is None or value == "":
         return None
     try:
-        return float(value)
+        number = float(value)
     except (TypeError, ValueError):
         return None
+    if not math.isfinite(number):
+        return None  # NaN/±Inf 不是可用数值，按脏值剔除（否则 nan<0 恒 False 会漏过冒充正常负荷）
+    return number
 
 
 def _datetime_label(value: Any) -> str:
@@ -56,13 +63,11 @@ def _parse_datetime(value: Any) -> datetime:
     if isinstance(value, datetime):
         return value
     text = _text(value).replace("/", "-").replace("T", " ").replace("：", ":")
-    for fmt, size in (
-        ("%Y-%m-%d %H:%M:%S", 19),
-        ("%Y-%m-%d %H:%M", 16),
-        ("%Y-%m-%d", 10),
-    ):
+    # 整串匹配（不截前缀）：坏后缀（'...08:00:00xyz'）应解析失败而非被截断成合法日期
+    # 静默当成正常时间（与 dashboard_cockpit_hero._parse_dt 同口径）。
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
         try:
-            return datetime.strptime(text[:size], fmt)
+            return datetime.strptime(text, fmt)
         except ValueError:
             continue
     raise ValueError("datetime value is required")
@@ -97,26 +102,6 @@ def _todo_item(
     }
 
 
-def _risk_card(
-    *,
-    kind: str,
-    label: str,
-    value: str,
-    helper_text: str,
-    severity: str,
-    link: Dict[str, Any],
-) -> Dict[str, Any]:
-    return {
-        "kind": kind,
-        "label": label,
-        "value": value,
-        "helper_text": helper_text,
-        "severity": severity,
-        "link": link,
-        "target_url": link.get("url") or "",
-    }
-
-
 def _overdue_todo(context: Dict[str, Any], overdue_count: int) -> Optional[Dict[str, Any]]:
     if overdue_count <= 0:
         return None
@@ -139,7 +124,13 @@ def _candidate_comparison(summary: Optional[Dict[str, Any]]) -> Optional[Dict[st
     if not isinstance(algo, dict):
         return None
     comparison = algo.get("candidate_comparison")
-    return comparison if isinstance(comparison, dict) else None
+    if not isinstance(comparison, dict):
+        return None
+    # 与分析页同口径（scheduler_analysis_candidate_helpers._candidate_comparison_summary）：
+    # 候选生成被显式关闭（enabled=False）时视为无候选，首页不误报「方案待确认」。
+    if comparison.get("enabled") is False:
+        return None
+    return comparison
 
 
 def _candidate_todo(context: Dict[str, Any], latest_summary: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -193,17 +184,20 @@ def _machine_util_ratio(latest_summary: Optional[Dict[str, Any]]) -> Optional[fl
     return raw
 
 
-def _summary_metrics(latest_summary: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    algo = latest_summary.get("algo") if isinstance(latest_summary, dict) else None
-    metrics = algo.get("metrics") if isinstance(algo, dict) else None
-    return metrics if isinstance(metrics, dict) else None
-
-
-def _metric_number(metrics: Dict[str, Any], key: str) -> Optional[float]:
-    value = metrics.get(key)
-    if value is None or value == "" or isinstance(value, bool):
-        return None
-    return _safe_float(value)
+def _candidate_count(latest_summary: Optional[Dict[str, Any]]) -> int:
+    """候选方案数（6 格「方案待确认」体检格用，纯值在 build_summary 先算再传 cards）：
+    与 _candidate_todo 同口径——planned/completed/candidates 取最大；无计数但有 adopted_candidate_key
+    视为至少 1（确有候选待确认）；无候选信息返回 0。"""
+    comparison = _candidate_comparison(latest_summary)
+    if comparison is None:
+        return 0
+    planned = _safe_int(comparison.get("planned_candidate_count"))
+    completed = _safe_int(comparison.get("completed_candidate_count"))
+    candidates = comparison.get("candidates")
+    count = max(planned, completed, len(candidates) if isinstance(candidates, list) else 0)
+    if count <= 0 and _text(comparison.get("adopted_candidate_key")):
+        return 1
+    return count
 
 
 def _has_current_summary(
@@ -214,9 +208,11 @@ def _has_current_summary(
 
 
 def _nonnegative_count(value: Any) -> Optional[int]:
+    if isinstance(value, bool):
+        return None  # bool 不是计数：int(True)==1 会把脏 bool 当 1（与 _safe_int 同口径剔除类型混入）
     try:
         count = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     return count if count >= 0 else None
 
@@ -234,34 +230,12 @@ def _site_gap_context(
     summary_available = _has_current_summary(latest_summary, latest_summary_parse_state)
     if not summary_available or rows_load_error or facts_load_error:
         return summary_available, [], None
-    gap_rows = _site_record_gap_rows(today_rows=rows, execution_facts_by_op_id=facts, now=now)
+    gap_rows, has_unparseable = _site_record_gap_rows(today_rows=rows, execution_facts_by_op_id=facts, now=now)
+    if has_unparseable:
+        # 今日计划存在无法解析的开始时间（坏数据）→ 现场缺口无法可靠判定，按「数据不足」诚实降级
+        # （与读取失败同语义：count=None、空行），不静默跳过坏行后伪造「暂未发现/ok」（硬纪律7）。
+        return summary_available, [], None
     return summary_available, gap_rows, len(gap_rows)
-
-
-def _recent_schedule_metrics(
-    latest_summary: Optional[Dict[str, Any]], latest_summary_parse_state: Optional[Dict[str, Any]]
-) -> Dict[str, Any]:
-    parse_state = latest_summary_parse_state if isinstance(latest_summary_parse_state, dict) else {}
-    if parse_state.get("parse_failed"):
-        message = _text(parse_state.get("user_message")) or "当前排产摘要结构无法安全解析。"
-        return {"status": "error", "message": f"当前排产摘要读取失败：{message}", "metric_items": []}
-    metrics = _summary_metrics(latest_summary)
-    util_ratio = _machine_util_ratio(latest_summary)
-    if not metrics or util_ratio is None:
-        return {"status": "missing", "message": "当前排产摘要缺少可信指标，不能把缺失值显示成 0。", "metric_items": []}
-    tardiness = _metric_number(metrics, "total_tardiness_hours")
-    makespan = _metric_number(metrics, "makespan_hours")
-    if tardiness is None or makespan is None:
-        return {"status": "missing", "message": "当前排产摘要缺少可信指标，不能把缺失值显示成 0。", "metric_items": []}
-    return {
-        "status": "ok",
-        "message": "",
-        "metric_items": [
-            {"label": "拖期", "value": f"{round(tardiness, 1)} 小时"},
-            {"label": "总工期", "value": f"{round(makespan, 1)} 小时"},
-            {"label": "设备利用率", "value": f"{round(util_ratio * 100, 1)}%"},
-        ],
-    }
 
 
 def _resource_load_todo(context: Dict[str, Any], latest_summary: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -306,14 +280,18 @@ def _site_record_gap_rows(
     today_rows: Iterable[Dict[str, Any]],
     execution_facts_by_op_id: Dict[int, Any],
     now: datetime,
-) -> List[Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], bool]:
+    """返回 (现场缺口行, 是否存在无法解析开始时间的坏行)。坏行不静默吞掉冒充正常——
+    上层据 has_unparseable 把现场格降级为「数据不足」，而非跳过后伪造「暂未发现/ok」。"""
     out: List[Dict[str, Any]] = []
+    has_unparseable = False
     for row in today_rows or []:
         if not isinstance(row, dict):
             continue
         try:
             start_time = _parse_datetime(row.get("start_time"))
         except ValueError:
+            has_unparseable = True  # 坏开始时间记账，不静默跳过当成正常无缺口
             continue
         if start_time > now:
             continue
@@ -321,7 +299,7 @@ def _site_record_gap_rows(
         if _fact_has_progress(fact):
             continue
         out.append(row)
-    return out
+    return out, has_unparseable
 
 
 def _site_record_gap_todo(
@@ -410,7 +388,6 @@ def _todo_items(
 def build_dashboard_workbench_summary(
     *,
     pending_count: int,
-    scheduled_count: int,
     overdue_count: int,
     latest_history: Any = None,
     latest_summary: Optional[Dict[str, Any]] = None,
@@ -422,6 +399,8 @@ def build_dashboard_workbench_summary(
     execution_facts_by_op_id: Optional[Dict[int, Any]] = None,
     execution_facts_load_error: str = "",
     navigation_context: Optional[Dict[str, Any]] = None,
+    result_status: Any = None,
+    failed_run_applies_to_current_view: bool = False,
     now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     current_now = now or datetime.now()
@@ -457,24 +436,46 @@ def build_dashboard_workbench_summary(
         today_rows_load_error=rows_load_error,
         execution_facts_load_error=facts_load_error,
     )
+    # 6 格新增「方案待确认/基础数据」的纯值：cards 禁扫 rows/禁 import core，故在此先算再传
+    candidate_count = _candidate_count(latest_summary) if current_summary_available else None
+    data_gap_reason = dashboard_data_gap_reason(
+        latest_history=latest_history,
+        context=context,
+        latest_summary=latest_summary,
+        latest_summary_parse_state=latest_summary_parse_state,
+        plan_time_span=plan_time_span,
+        plan_time_span_load_error=plan_time_span_load_error,
+        today_rows_load_error=rows_load_error,
+        execution_facts_load_error=facts_load_error,
+    )
+    empty_state = "当前没有必须马上处理的排产风险，可以继续查看甘特图或排产分析。"
+    hero_bundle = build_cockpit_hero(
+        context=context,
+        todo_items=todo_items,
+        latest_summary=latest_summary,
+        result_status=result_status,
+        failed_run_applies_to_current_view=failed_run_applies_to_current_view,
+        empty_state=empty_state,
+    )
     return {
         "generated_at_label": f"{current_now.year}年{current_now.month}月{current_now.day}日 {current_now.hour:02d}:{current_now.minute:02d}",
         "realtime_note": "待处理项根据当前数据实时生成，暂不保存已处理状态。",
         "latest_plan": context,
-        "recent_metrics": _recent_schedule_metrics(latest_summary, latest_summary_parse_state),
         "summary_stats": {"overdue_count_value": str(current_overdue_count) if current_overdue_count is not None else "数据不足"},
+        "hero": hero_bundle["hero"],
+        "rest_todos": hero_bundle["rest_todos"],
         "risk_cards": build_dashboard_risk_cards(
             context=context,
             pending_count=pending_count,
-            scheduled_count=scheduled_count,
             overdue_count=current_overdue_count,
-            latest_history=latest_history,
+            candidate_count=candidate_count,
+            data_gap_reason=data_gap_reason,
             resource_load_ratio=_machine_util_ratio(latest_summary),
             site_gap_count=site_gap_count,
         ),
         "todo_items": todo_items,
         "quick_links": build_dashboard_quick_links(context),
-        "empty_state": "当前没有必须马上处理的排产风险，可以继续查看甘特图或排产分析。",
+        "empty_state": empty_state,
     }
 
 

@@ -466,6 +466,7 @@ def _assert_delay_context(delay: dict) -> None:
 def test_target_pages_and_public_label_mappings_are_fixed() -> None:
     assert set(TARGET_PAGE_PATHS) == {
         "dashboard",
+        "batches",
         "analysis",
         "gantt",
         "week_plan",
@@ -560,6 +561,17 @@ def test_context_free_targets_reject_extra_params_escape() -> None:
         ("batch_detail", {"resource_id": "M1"}),
         ("batch_detail", {"version": "99"}),
         ("batch_detail", {"gantt_resource": "M1"}),
+        # 'batches'（执行排产页）也是 context-free：不能被 extra_params 注入工作台上下文维度
+        ("batches", {"version": "99"}),
+        ("batches", {"plan_role": "adopted"}),
+        ("batches", {"batch_id": "B2"}),
+        ("batches", {"date_from": "2026-05-25"}),
+        ("batches", {"resource_id": "M1"}),
+        # 内部身份一律不得经 extra_params 注入 context-free 目标 URL（页面禁外显内部身份硬纪律）
+        ("batches", {"op_id": "101"}),
+        ("batches", {"schedule_id": "9"}),
+        ("batches", {"candidate_id": "101"}),
+        ("batches", {"source_table": "schedule_rows"}),
     ):
         with pytest.raises(ValueError):
             build_workbench_link(context, target, extra_params=params)

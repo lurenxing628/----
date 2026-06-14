@@ -16,11 +16,7 @@ from web.viewmodels.dashboard_backup_health import (
     read_latest_backup_time,
 )
 from web.viewmodels.dashboard_workbench import build_dashboard_workbench_summary
-from web.viewmodels.scheduler_history_summary import (
-    decorate_history_version_options,
-    format_public_datetime,
-    parse_history_summary_state,
-)
+from web.viewmodels.scheduler_history_summary import parse_history_summary_state
 
 bp = Blueprint("dashboard", __name__)
 
@@ -40,7 +36,9 @@ def _requested_version() -> Tuple[int, str]:
     try:
         version = int(raw)
     except (TypeError, ValueError):
-        return 0, f"请求的排产版本 {raw} 不是有效数字，已回到最新排产版本显示首页值班台。"
+        # 不回显原始 raw：用户可传任意串（含 op_id 等内部字段名），回显会把它渲染进 hero 可见文本
+        # （经 plan_identity_error→data_gap evidence→hero.evidence_text），违反「禁外显内部身份」。
+        return 0, "请求的排产版本不是有效数字，已回到最新排产版本显示首页值班台。"
     if version <= 0:
         return 0, f"请求的排产版本 v{raw} 不可用，已回到最新排产版本显示首页值班台。"
     return version, ""
@@ -79,8 +77,12 @@ def _strict_count_value(value: Any, field: str) -> Tuple[int, str]:
         if value < 0:
             return 0, f"排产摘要里的{field}不能是负数，首页暂时不能展示准确数量。"
         return value, ""
-    if isinstance(value, str) and value.strip().isdigit():
-        return int(value.strip()), ""
+    if isinstance(value, str):
+        text = value.strip()
+        # 须 isascii()：'²'/'③' 等 unicode 数字 isdigit()==True 但 int() 抛 ValueError，
+        # 不能让坏 count 串冒泡崩溃首页（守卫语义是「剔非整数→降级不冒泡」）。
+        if text.isascii() and text.isdigit():
+            return int(text), ""
     return 0, f"排产摘要里的{field}不是整数，首页暂时不能展示准确数量。"
 
 
@@ -93,7 +95,13 @@ def _summary_overdue_count(summary: Any) -> Tuple[int, str]:
     if isinstance(overdue_payload, dict):
         if "count" not in overdue_payload:
             return 0, "排产摘要缺少超期批次数，首页暂时不能展示准确数量。"
-        return _strict_count_value(overdue_payload.get("count"), "超期批次数")
+        count, count_error = _strict_count_value(overdue_payload.get("count"), "超期批次数")
+        items = overdue_payload.get("items")
+        if not count_error and isinstance(items, list) and count < len(items):
+            # count 少于明细条数：摘要内部不一致（count 是 items 的全量/上界，不应小于明细数）→ 不可信，
+            # 不让 count=0 把 items 里的真超期批次掩盖成「0/正常」（严禁伪造降级掩盖坏值）。
+            return 0, "排产摘要的超期统计与明细不一致，首页暂时不能展示准确数量。"
+        return count, count_error
     if isinstance(overdue_payload, list):
         return len(overdue_payload), ""
     return 0, "排产摘要里的超期批次清单格式不对，首页暂时不能展示准确数量。"
@@ -113,8 +121,8 @@ def _load_plan_time_span(services: Any, version: int, plan_role: str, scenario_i
         return None, ""
     try:
         return services.schedule_plan_query_service.get_plan_time_span_for_view(version, plan_role, scenario_id or None), ""
-    except Exception as exc:  # pragma: no cover - 防止首页被坏历史阻断
-        current_app.logger.warning("首页值班台读取计划日期范围失败（version=%s）：%s", version, exc)
+    except Exception:  # pragma: no cover - 防止首页被坏历史阻断
+        current_app.logger.warning("首页值班台读取计划日期范围失败（version=%s）", version, exc_info=True)
         return None, "计划日期范围读取失败，首页暂时不能判断甘特、资源派工和报表需要的日期。"
 
 
@@ -130,8 +138,8 @@ def _load_today_rows(services: Any, version: int, now: datetime, plan_role: str,
             start_time=dr["start"],
             end_time=dr["end"],
         )
-    except Exception as exc:  # pragma: no cover - 防止首页被坏历史阻断
-        current_app.logger.warning("首页值班台读取今日计划失败（version=%s）：%s", version, exc)
+    except Exception:  # pragma: no cover - 防止首页被坏历史阻断
+        current_app.logger.warning("首页值班台读取今日计划失败（version=%s）", version, exc_info=True)
         return [], "今日正式计划读取失败，首页暂时不能判断哪些任务现场情况待确认。"
     return [dict(row) for row in rows], ""
 
@@ -149,13 +157,34 @@ def _load_execution_facts(rows: List[Dict[str, Any]], plan_fields: Dict[str, Any
             ),
             "",
         )
-    except Exception as exc:  # pragma: no cover - 防止首页被坏现场记录阻断
-        current_app.logger.warning("首页值班台读取现场情况失败：%s", exc)
+    except Exception:  # pragma: no cover - 防止首页被坏现场记录阻断
+        current_app.logger.warning("首页值班台读取现场情况失败", exc_info=True)
         return {}, "现场执行事实读取失败，首页暂时不能判断哪些任务现场情况待确认。"
 
 
 def _request_arg(name: str) -> str:
     return str(request.args.get(name) or "").strip()
+
+
+def _looks_like_date(value: str) -> bool:
+    text = value.replace("/", "-").replace("T", " ")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            datetime.strptime(text, fmt)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _valid_date_arg(*names: str) -> str:
+    # 日期形字段只接受可解析为日期的值；非法值（如 ?date_from=op_id）一律丢弃返回空，避免任意
+    # 用户输入经 WorkbenchLink context_summary 渲染进可见文本（禁外显），也避免坏日期流进链接。
+    for name in names:
+        raw = _request_arg(name)
+        if raw and _looks_like_date(raw):
+            return raw
+    return ""
 
 
 def _plan_resolution_context(services: Any, version: int) -> Dict[str, Any]:
@@ -209,6 +238,31 @@ def _should_expose_summary_parse_failure(context: Dict[str, Any]) -> bool:
     )
 
 
+def _failed_run_applies_to_current_view(
+    *,
+    navigation_context: Dict[str, Any],
+    requested_history_error: str,
+    workbench_version: int,
+    latest_history_record: Any,
+) -> bool:
+    """失败 hero 独立门控（决策 1）：当前正式采用方案 + 非预览/对比 + 请求干净（坏版本被挡）
+    + 看的就是最新正式版本。**独立于 executability**——result_status=failed 时
+    is_current_executable_official_version 恒 False，复用 summary_matches_identity 会让失败
+    hero 永不可达。requested_history_error≠"" 时（坏/不存在版本）不放行。"""
+    latest_version = (
+        _positive_version(getattr(latest_history_record, "version", None))
+        if latest_history_record is not None
+        else 0
+    )
+    return (
+        _is_adopted_role_context(navigation_context)
+        and _is_plain_plan_context(navigation_context)
+        and requested_history_error == ""
+        and workbench_version > 0
+        and workbench_version == latest_version
+    )
+
+
 def _workbench_summary_parse_state(workbench_history: Any, context: Dict[str, Any], summary_matches_identity: bool) -> Dict[str, Any]:
     if workbench_history is None:
         return {"parse_failed": False}
@@ -241,18 +295,13 @@ def _workbench_history_context(history_q: Any) -> Tuple[Any, Any, int, str]:
     return latest, workbench_history, workbench_version, requested_history_error
 
 
-def _workbench_history_time_display(workbench_history: Any) -> str:
-    """「当前查看排产」卡的时间公开口径：坏值显示「时间记录异常」，缺失显示「-」。"""
-    return format_public_datetime(getattr(workbench_history, "schedule_time", None))
-
-
 def _workbench_navigation_context_from_request(services: Any, version: int) -> Dict[str, Any]:
     resource = request_report_resource_context()
     context = {
         "version": str(version) if version > 0 else "",
-        "date_from": _request_arg("date_from") or _request_arg("start_date"),
-        "date_to": _request_arg("date_to") or _request_arg("end_date"),
-        "query_date": _request_arg("query_date"),
+        "date_from": _valid_date_arg("date_from", "start_date"),
+        "date_to": _valid_date_arg("date_to", "end_date"),
+        "query_date": _valid_date_arg("query_date"),
         "period_preset": _request_arg("period_preset"),
         "batch_id": _request_arg("batch_id"),
         "resource_type": resource["resource_type"],
@@ -271,11 +320,9 @@ def index():
     history_q = services.schedule_history_query_service
 
     pending_count = len(batch_svc.list(status="pending"))
-    scheduled_count = len(batch_svc.list(status="scheduled"))
-    overdue_count = 0
 
     now = datetime.now()
-    _latest, workbench_history, workbench_version, requested_history_error = _workbench_history_context(history_q)
+    latest_history_record, workbench_history, workbench_version, requested_history_error = _workbench_history_context(history_q)
     navigation_context = _workbench_navigation_context_from_request(services, workbench_version)
     if requested_history_error:
         navigation_context["plan_identity_error"] = requested_history_error
@@ -296,7 +343,7 @@ def index():
     )
     history_summary_data = _summary_payload_dict(history_summary_parse_state)
     workbench_summary_data = _summary_payload_dict(workbench_summary_parse_state)
-    overdue_count, _history_count_error = _summary_overdue_count(history_summary_data)
+    _, _history_count_error = _summary_overdue_count(history_summary_data)
     workbench_overdue_count, workbench_count_error = _summary_overdue_count(workbench_summary_data)
     count_error = workbench_count_error or (_history_count_error if _should_expose_summary_parse_failure(navigation_context) else "")
     if count_error:
@@ -331,9 +378,17 @@ def index():
             "scenario_id": workbench_scenario_id or None,
         },
     )
+    # 失败 hero 独立门控（决策 1，详见 _failed_run_applies_to_current_view）；result_status 经
+    # build_summary 内 resolve_result_status 归一（禁裸 == 'failed'）。
+    failed_run_applies_to_current_view = _failed_run_applies_to_current_view(
+        navigation_context=navigation_context,
+        requested_history_error=requested_history_error,
+        workbench_version=workbench_version,
+        latest_history_record=latest_history_record,
+    )
+    workbench_result_status = getattr(workbench_history, "result_status", None) if workbench_history is not None else None
     workbench_summary = build_dashboard_workbench_summary(
         pending_count=pending_count,
-        scheduled_count=scheduled_count,
         overdue_count=workbench_overdue_count,
         latest_history=workbench_history,
         latest_summary=latest_summary,
@@ -345,6 +400,8 @@ def index():
         execution_facts_by_op_id=execution_facts_by_op_id,
         execution_facts_load_error=execution_facts_load_error,
         navigation_context=navigation_context,
+        result_status=workbench_result_status,
+        failed_run_applies_to_current_view=failed_run_applies_to_current_view,
         now=now,
     )
     set_current_workbench_navigation_context(workbench_summary["latest_plan"])
@@ -365,18 +422,6 @@ def index():
     return render_template(
         "dashboard.html",
         title="首页",
-        pending_count=pending_count,
-        scheduled_count=scheduled_count,
-        overdue_count=overdue_count,
-        # ScheduleHistory dataclass 先 to_dict 再 decorate（decorate 只吃 mapping）——
-        # 模板直取 result_status_label/strategy_label 行级标签（fusion-label-single-source）
-        latest_history=(
-            decorate_history_version_options([workbench_history.to_dict()])[0]
-            if workbench_history is not None
-            else None
-        ),
-        latest_history_time_display=_workbench_history_time_display(workbench_history),
-        latest_summary=latest_summary,
         workbench_summary=workbench_summary,
         backup_health_hint=backup_health_hint,
     )

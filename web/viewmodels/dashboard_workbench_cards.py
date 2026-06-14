@@ -91,13 +91,62 @@ def _overdue_card(context: Dict[str, Any], overdue_count: Optional[int]) -> Dict
     )
 
 
+def _candidate_card(context: Dict[str, Any], candidate_count: Optional[int]) -> Dict[str, Any]:
+    if candidate_count is None:
+        return _risk_card(
+            kind="candidate_review",
+            label="方案待确认",
+            value="数据不足",
+            helper_text="当前摘要不可用，暂时不能判断有没有需要确认的候选方案。",
+            severity="notice",
+            link=_link(context, "analysis", "复核方案推荐"),
+        )
+    if candidate_count > 0:
+        return _risk_card(
+            kind="candidate_review",
+            label="方案待确认",
+            value=str(candidate_count),
+            helper_text="本次排产有候选方案，建议先复核推荐结论再继续安排。",
+            severity="notice",
+            link=_link(context, "analysis", "复核方案推荐"),
+        )
+    return _risk_card(
+        kind="candidate_review",
+        label="方案待确认",
+        value="无",
+        helper_text="本次排产没有需要确认的候选方案。",
+        severity="ok",
+        link=_link(context, "analysis", "复核方案推荐"),
+    )
+
+
+def _data_gap_card(context: Dict[str, Any], data_gap_reason: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if data_gap_reason:
+        return _risk_card(
+            kind="data_gap",
+            label="基础数据",
+            value="有缺口",
+            helper_text=str(data_gap_reason.get("title") or "首页所需的基础数据还不完整。"),
+            severity="warning",
+            link=_link(context, "analysis", "打开排产分析"),
+        )
+    return _risk_card(
+        kind="data_gap",
+        label="基础数据",
+        value="完整",
+        helper_text="排产版本、日期范围和现场数据齐全。",
+        severity="ok",
+        link=_link(context, "analysis", "打开排产分析"),
+    )
+
+
 def build_dashboard_risk_cards(
     *,
     context: Dict[str, Any],
     pending_count: int,
-    scheduled_count: int,
     overdue_count: Optional[int],
-    latest_history: Any,
+    candidate_count: Optional[int],
+    data_gap_reason: Optional[Dict[str, Any]],
     resource_load_ratio: Optional[float],
     site_gap_count: Optional[int],
 ) -> List[Dict[str, Any]]:
@@ -115,34 +164,22 @@ def build_dashboard_risk_cards(
             helper_text="今日计划或现场事实暂时读不到，不能判断现场情况是否都已反馈。",
             severity="notice",
         )
+    # 6 格体检表（驾驶舱③，顺序=超期/待排/方案待确认/现场情况/资源负荷/基础数据）：
+    # 删 latest_version（版本归壳层胶囊）/scheduled_batches（已排不上首页）；补 方案待确认/基础数据
     return [
-        _risk_card(
-            kind="latest_version",
-            label="当前计划",
-            value=f"v{getattr(latest_history, 'version', '')}" if latest_history is not None else "暂无版本",
-            helper_text="首页按当前查看方案生成提醒。",
-            severity="ok" if latest_history is not None else "notice",
-            link=_link(context, "analysis", "查看排产分析"),
-        ),
+        _overdue_card(context, overdue_count),
         _risk_card(
             kind="pending_batches",
             label="待排批次",
             value=str(max(0, int(pending_count or 0))),
             helper_text="还没有进入排产结果的批次数量。",
             severity="notice" if pending_count else "ok",
-            link=_link(context, "dashboard", "回到计划工作台"),
+            link=_link(context, "batches", "去执行排产"),
         ),
-        _risk_card(
-            kind="scheduled_batches",
-            label="已排批次",
-            value=str(max(0, int(scheduled_count or 0))),
-            helper_text="当前已形成排产结果的批次数量。",
-            severity="ok",
-            link=_link(context, "analysis", "查看排产分析"),
-        ),
-        _overdue_card(context, overdue_count),
-        _resource_load_card(context, resource_load_ratio),
+        _candidate_card(context, candidate_count),
         site_gap_card,
+        _resource_load_card(context, resource_load_ratio),
+        _data_gap_card(context, data_gap_reason),
     ]
 
 

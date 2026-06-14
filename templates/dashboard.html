@@ -6,6 +6,8 @@
   {% endif %}
   {% if workbench_summary %}
     <section class="aps-dashboard-workbench" aria-labelledby="dashboard-workbench-title">
+      {# ① 上下文带：壳层「计划上下文胶囊」在 base.html 单点回显版本/方案身份/排产生成时间/
+         排产方式/数据范围（item#9，本页不搬不改）；此处保留值班台页头（含 realtime_note）#}
       <div class="aps-dashboard-workbench-header">
         <div>
           <div class="aps-section-eyebrow">计划员值班台</div>
@@ -18,7 +20,42 @@
         <div class="aps-dashboard-workbench-note">{{ workbench_summary.realtime_note }}</div>
       </div>
 
-      <div class="aps-dashboard-risk-grid" aria-label="当前查看方案风险概览">
+      {# ② hero 指令卡：当前最要紧的一条（失败/风险/平静三态，severity 四档；
+         文案全由 viewmodel 产出，模板不内联中文词表）#}
+      {% set hero = workbench_summary.hero %}
+      <section class="aps-dashboard-hero severity-{{ hero.severity }}" aria-label="当前最要紧的待处理">
+        <div class="aps-dashboard-hero-body">
+          <h4 class="aps-dashboard-hero-title">{{ hero.title }}</h4>
+          {% if hero.impact_text %}<p class="aps-dashboard-hero-impact">{{ hero.impact_text }}</p>{% endif %}
+          {% if hero.evidence_text %}<p class="aps-dashboard-hero-evidence">{{ hero.evidence_text }}</p>{% endif %}
+        </div>
+        {% if hero.primary_action or hero.secondary_action %}
+          <div class="aps-dashboard-hero-actions">
+            {% set hero_primary = hero.primary_action %}
+            {% if hero_primary %}
+              {% if hero_primary.disabled or not hero_primary.url %}
+                <span class="btn btn-primary btn-sm aps-dashboard-disabled-action" aria-disabled="true" title="{{ hero_primary.disabled_reason }}"><span>{{ hero_primary.label }}</span></span>
+              {% else %}
+                <a class="btn btn-primary btn-sm" href="{{ hero_primary.url }}"><span>{{ hero_primary.label }}</span></a>
+              {% endif %}
+            {% endif %}
+            {% set hero_secondary = hero.secondary_action %}
+            {% if hero_secondary %}
+              {% if hero_secondary.disabled or not hero_secondary.url %}
+                <span class="btn btn-secondary btn-sm aps-dashboard-disabled-action" aria-disabled="true" title="{{ hero_secondary.disabled_reason }}"><span>{{ hero_secondary.label }}</span></span>
+              {% else %}
+                <a class="btn btn-secondary btn-sm" href="{{ hero_secondary.url }}"><span>{{ hero_secondary.label }}</span></a>
+              {% endif %}
+            {% endif %}
+          </div>
+        {% endif %}
+        {% if hero.primary_action and hero.primary_action.context_summary %}
+          <div class="aps-dashboard-action-context">{{ hero.primary_action.context_summary }}</div>
+        {% endif %}
+      </section>
+
+      {# ③ 6 格体检表：超期/待排/方案待确认/现场情况/资源负荷/基础数据，每格可点跳、正常项灰显 #}
+      <div class="aps-dashboard-risk-grid" aria-label="当前查看方案体检表">
         {% for card in workbench_summary.risk_cards %}
           {% if card.link and not card.link.disabled and card.link.url %}
             <a class="aps-dashboard-risk-card severity-{{ card.severity }}" href="{{ card.link.url }}">
@@ -39,114 +76,49 @@
         {% endfor %}
       </div>
 
-      <div class="aps-dashboard-todo-layout">
-        <div class="aps-dashboard-todo-panel">
-          {% if workbench_summary.todo_items %}
-            <div class="aps-dashboard-todo-list">
-              {% for todo in workbench_summary.todo_items %}
-                <article class="aps-dashboard-todo-item severity-{{ todo.severity }}">
-                  <div class="aps-dashboard-todo-meta">
-                    <span>{{ todo.handling_state_label }}</span>
-                  </div>
-                  <h4>{{ todo.title }}</h4>
-                  <p class="aps-dashboard-todo-impact">{{ todo.impact_text }}</p>
-                  <p class="aps-dashboard-todo-evidence">{{ todo.evidence_text }}</p>
-                  <div class="aps-dashboard-todo-actions">
-                    {% set primary = todo.primary_action %}
-                    {% if primary.disabled or not primary.url %}
-                      <span class="btn btn-primary btn-sm aps-dashboard-disabled-action" aria-disabled="true" title="{{ primary.disabled_reason }}">
-                        <span>{{ primary.label }}</span>
-                      </span>
-                    {% else %}
-                      <a class="btn btn-primary btn-sm" href="{{ primary.url }}"><span>{{ primary.label }}</span></a>
-                    {% endif %}
-                    {% set secondary = todo.secondary_action %}
-                    {% if secondary.disabled or not secondary.url %}
-                      <span class="btn btn-secondary btn-sm aps-dashboard-disabled-action" aria-disabled="true" title="{{ secondary.disabled_reason }}">
-                        <span>{{ secondary.label }}</span>
-                      </span>
-                    {% else %}
-                      <a class="btn btn-secondary btn-sm" href="{{ secondary.url }}"><span>{{ secondary.label }}</span></a>
-                    {% endif %}
-                  </div>
-                  {% if primary.context_summary %}
-                    <div class="aps-dashboard-action-context">{{ primary.context_summary }}</div>
-                  {% endif %}
-                  {% if primary.disabled_reason %}
-                    <div class="aps-dashboard-link-disabled-reason">{{ primary.disabled_reason }}</div>
-                  {% endif %}
-                </article>
-              {% endfor %}
-            </div>
-          {% else %}
-            <div class="aps-dashboard-empty-state">{{ workbench_summary.empty_state }}</div>
-          {% endif %}
-        </div>
-
-        <div class="aps-dashboard-quick-panel" aria-label="工作台下一步入口">
-          <div class="aps-dashboard-quick-title">下一步入口</div>
-          <div class="aps-dashboard-quick-links">
-            {% for link in workbench_summary.quick_links %}
-              {% if link.disabled or not link.url %}
-                <span class="aps-dashboard-quick-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">
-                  <span>{{ link.label }}</span>
-                  <small>{{ link.disabled_reason }}</small>
-                </span>
-              {% else %}
-                <a class="aps-dashboard-quick-link" href="{{ link.url }}">
-                  <span>{{ link.label }}</span>
-                  <small>{{ link.context_summary }}</small>
-                </a>
+      {# ④ 其余待处理清单：hero 之外的待办，3px 左语义条去盒 #}
+      {% if workbench_summary.rest_todos %}
+        <div class="aps-dashboard-rest-list" aria-label="其余待处理">
+          {% for todo in workbench_summary.rest_todos %}
+            <article class="aps-dashboard-rest-item severity-{{ todo.severity }}">
+              <div class="aps-dashboard-todo-meta">
+                <span>{{ todo.handling_state_label }}</span>
+              </div>
+              <h4>{{ todo.title }}</h4>
+              <p class="aps-dashboard-todo-impact">{{ todo.impact_text }}</p>
+              <p class="aps-dashboard-todo-evidence">{{ todo.evidence_text }}</p>
+              <div class="aps-dashboard-todo-actions">
+                {% set primary = todo.primary_action %}
+                {% if primary.disabled or not primary.url %}
+                  <span class="btn btn-primary btn-sm aps-dashboard-disabled-action" aria-disabled="true" title="{{ primary.disabled_reason }}">
+                    <span>{{ primary.label }}</span>
+                  </span>
+                {% else %}
+                  <a class="btn btn-primary btn-sm" href="{{ primary.url }}"><span>{{ primary.label }}</span></a>
+                {% endif %}
+                {% set secondary = todo.secondary_action %}
+                {% if secondary.disabled or not secondary.url %}
+                  <span class="btn btn-secondary btn-sm aps-dashboard-disabled-action" aria-disabled="true" title="{{ secondary.disabled_reason }}">
+                    <span>{{ secondary.label }}</span>
+                  </span>
+                {% else %}
+                  <a class="btn btn-secondary btn-sm" href="{{ secondary.url }}"><span>{{ secondary.label }}</span></a>
+                {% endif %}
+              </div>
+              {% if primary.context_summary %}
+                <div class="aps-dashboard-action-context">{{ primary.context_summary }}</div>
               {% endif %}
-            {% endfor %}
-          </div>
+              {% if primary.disabled_reason %}
+                <div class="aps-dashboard-link-disabled-reason">{{ primary.disabled_reason }}</div>
+              {% endif %}
+            </article>
+          {% endfor %}
         </div>
-      </div>
+      {% endif %}
     </section>
   {% endif %}
 
-  <div class="stat-grid">
-    <div class="stat-card type-primary">
-      <div class="stat-card-label">待排批次</div>
-      <div class="stat-card-value primary">{{ pending_count }}</div>
-    </div>
-    <div class="stat-card type-success">
-      <div class="stat-card-label">已排批次</div>
-      <div class="stat-card-value success">{{ scheduled_count }}</div>
-    </div>
-    <div class="stat-card type-danger">
-      <div class="stat-card-label">超期批次</div>
-      <div class="stat-card-value danger">{{ workbench_summary.summary_stats.overdue_count_value }}</div>
-    </div>
-    <div class="stat-card type-info">
-      <div class="stat-card-label">当前查看版本</div>
-      <div class="stat-card-value">{% if latest_history %}v{{ latest_history.version }}{% else %}--{% endif %}</div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>当前查看排产</h3>
-    {% if latest_history %}
-      <div class="aps-summary-grid">
-        {{ ui.summary_item('时间', latest_history_time_display) }}
-        {{ ui.summary_item('方式', latest_history.strategy_label) }}
-        {{ ui.summary_item('结果', latest_history.result_status_label) }}
-      </div>
-      {% set recent_metrics = workbench_summary.recent_metrics %}
-      {% if recent_metrics.status == 'ok' %}
-        <div class="aps-summary-grid mt-2">
-          {% for item in recent_metrics.metric_items %}
-            {{ ui.summary_item(item.label, item.value) }}
-          {% endfor %}
-        </div>
-      {% elif recent_metrics.message %}
-        <div class="muted mt-2">{{ recent_metrics.message }}</div>
-      {% endif %}
-    {% else %}
-      <div class="muted">还没有排产记录，排产后这里会显示结果。</div>
-    {% endif %}
-  </div>
-
+  {# 常用工作区按钮墙（Path C 保留不动；删除推迟 item#10）#}
   <div class="card">
     <h3>常用工作区</h3>
     {% set workspace_links = {} %}

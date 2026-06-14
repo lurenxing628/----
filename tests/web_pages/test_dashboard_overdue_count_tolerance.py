@@ -12,9 +12,15 @@ def _assert_status(resp, name: str, expect: int = 200) -> None:
 
 
 def _extract_overdue_count_text(html: str) -> str:
-    m = re.search(r"超期批次</div>\s*<div class=['\"]stat-card-value danger['\"]>\s*([^<]+)\s*</div>", html, re.S)
+    # fusion-dashboard-cockpit：超期数从被删的 stat-grid「超期批次」卡迁到 6 格体检表的
+    # 「超期批次」体检格（aps-dashboard-risk-value 承载同一 summary_stats.overdue_count_value）。
+    m = re.search(
+        r"超期批次</span>\s*<span class=['\"]aps-dashboard-risk-value['\"]>\s*([^<]+)\s*</span>",
+        html,
+        re.S,
+    )
     if not m:
-        raise RuntimeError(f"未找到首页“超期批次”统计卡片，body={html[:500]!r}")
+        raise RuntimeError(f"未找到首页“超期批次”体检格，body={html[:500]!r}")
     return m.group(1).strip()
 
 

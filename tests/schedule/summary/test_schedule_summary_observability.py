@@ -178,8 +178,10 @@ def test_dashboard_accepts_preparsed_result_summary_dict(tmp_path, monkeypatch) 
         app.preprocess_request()
         ctx = cast(Dict[str, Any], route_mod.index())
 
-    assert ctx["latest_summary"] == summary
-    assert ctx["overdue_count"] == 3
+    # fusion-dashboard-cockpit：latest_summary / overdue_count 两个 render kwarg 退役，
+    # 「预解析 result_summary dict 被消费、超期数算出 3」的可观察证据迁到 workbench_summary
+    # 的超期投影（overdue_batches.count="3" → summary_stats.overdue_count_value="3"）。
+    assert ctx["workbench_summary"]["summary_stats"]["overdue_count_value"] == "3"
 
 
 def test_scheduler_batches_accepts_preparsed_result_summary_dict(tmp_path, monkeypatch) -> None:

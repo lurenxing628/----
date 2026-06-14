@@ -80,7 +80,7 @@ items:
     status: planned
     feature: null
     minimal_loop: false
-    notes: 契约见 roadmap 4.3；与 scheduler_navigation_links 既有 specs 同构扩展，不另起平行体系
+    notes: 契约见 roadmap 4.3；与 scheduler_navigation_links 既有 specs 同构扩展，不另起平行体系。**承接自 #19 fusion-dashboard-cockpit（2026-06-13 验收移交）**：删首页「常用工作区」按钮墙 + 首页带上下文跳转由侧栏「做事路线」承接（#19 Path C 保留按钮墙、待本条侧栏就位再删），届时同步改 test_manual_entry_scope/test_aps_workbench_context_propagation_contract 两契约
 
   - slug: fusion-handrolled-links-adoption
     description: 手拼链接收编——history.html 五个版本跳转链接与 analysis 版本选择器两条甘特链入 WorkbenchLink 合同；TARGET_PAGE_PATHS 白名单扩 history/batch_detail 两目标
@@ -149,10 +149,10 @@ items:
   - slug: fusion-dashboard-cockpit
     description: 首页驾驶舱（构图 2026-06-11 定稿）——单栏四段=胶囊/hero 指令卡（队列首条置顶、明细不重复）/6 格体检表（超期/待排/方案待确认/现场待确认/资源压力/基础数据，格即入口）/其余待处理清单；删 stat-grid（先迁正则锚）+ 删按钮墙 + 删"下一步"卡（侧栏承接）+ 失败排产 hero 顶格（result_status 已在手）+ severity 分级 + 死字段裁决（overdue_count/latest_summary）+ 超期 todo 直挂主导线索摘要 + 全健康绿色空态
     depends_on: [fusion-dual-track-retirement, fusion-anchor-baseline-prep]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-13-fusion-dashboard-cockpit
     minimal_loop: false
-    notes: 样张 drafts/dashboard-restyle-proto.html；"待排数"承接被裁"最近一次排产"卡的唯一增量信息；摘要展开沿用 _should_expose_summary_parse_failure 口径仅 adopted 展开；线索摘要有整方案重算成本，设启用门槛
+    notes: 样张 drafts/dashboard-restyle-proto.html；"待排数"承接被裁"最近一次排产"卡的唯一增量信息；摘要展开沿用 _should_expose_summary_parse_failure 口径仅 adopted 展开；线索摘要有整方案重算成本，设启用门槛。验收 Path C：本 feature 做 ②③④ 重组+删 stat-grid/当前查看排产卡/下一步面板+正文唯一性+死字段清理+文档同步+context-free 'batches' 目标；**删「常用工作区」按钮墙 + 首页带上下文跳转承接移交 #10 fusion-nav-specs-unify**（侧栏做事路线就位再删），故 test_manual_entry_scope/context_propagation 本 feature 不动。实现期 9 轮 Codex+3 轮 UltraCode 对抗硬化双引擎 0 blocker。
 
   - slug: fusion-dispatch-import-two-phase
     description: 现场实际 Excel 导入接通两段式——后端 preview/confirm 端点与 token 契约已建好零前端消费，前端约 30 行改造接通

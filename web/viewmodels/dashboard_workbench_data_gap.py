@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 DataGapReason = Dict[str, str]
@@ -7,6 +8,24 @@ DataGapReason = Dict[str, str]
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _looks_like_date(value: Any) -> bool:
+    """整串匹配判断是否为可解析日期/时间（兼容 `/`、T、纯日期/分钟/秒级）。"""
+    text = str(value or "").strip().replace("/", "-").replace("T", " ")
+    if not text:
+        return False
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            datetime.strptime(text, fmt)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _has_parseable_range(plan_time_span: Dict[str, Any]) -> bool:
+    return _looks_like_date(plan_time_span.get("start_time")) and _looks_like_date(plan_time_span.get("end_time"))
 
 
 def _data_gap_reason(title: str, impact: str, evidence: str) -> DataGapReason:
@@ -51,7 +70,10 @@ def _summary_gap_reason(
             "部分风险只能显示基础信息，建议先打开排产分析核对这版结果。",
             parse_error or "当前排产摘要结构无法安全解析。",
         )
-    if latest_summary is None:
+    # 与 _has_current_summary（dashboard_workbench.py：isinstance dict and bool(summary) and not parse_failed）
+    # 同口径：空 dict {} / 非 dict 也是「摘要不可用」，须进数据缺口——否则 6 格里超期/现场/方案都显
+    # 「数据不足」而「基础数据」却显「完整」，自相矛盾。
+    if not isinstance(latest_summary, dict) or not latest_summary:
         return _data_gap_reason(
             "当前排产摘要为空",
             "首页只能显示版本和基础统计，暂时不能判断方案、负荷和超期细节。",
@@ -73,7 +95,9 @@ def _plan_gap_reason(
             "需要日期的甘特、资源派工和报表入口会先禁用，避免把读取失败误当成没有日期。",
             _text(plan_time_span_load_error),
         )
-    if not isinstance(plan_time_span, dict):
+    if not isinstance(plan_time_span, dict) or not _has_parseable_range(plan_time_span):
+        # 非 dict 或 start/end 无法解析（坏日期范围）都按「缺少日期范围」处理——不让坏日期 dict
+        # 通过 isinstance 检查后冒充「基础数据完整」、把需要日期的入口误放行。
         return _data_gap_reason(
             "当前计划缺少日期范围",
             "需要日期的甘特、资源派工和报表入口会先禁用，避免跳到不确定的范围。",

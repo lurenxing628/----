@@ -8,6 +8,8 @@ muted 行去重后版本号归胶囊单点。
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
+
 from web.viewmodels.plan_context_capsule import build_plan_context_capsule, history_row_capsule_fields
 from web.viewmodels.scheduler_workbench_links import build_workbench_plan_context
 
@@ -134,6 +136,37 @@ def _capsule_html(html: str) -> str:
     return html[start : html.index("</div>", start)]
 
 
+class _VisibleTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        # 跳过 WorkbenchLink 导航面包屑（.aps-dashboard-action-context）——它含「v7，方案身份，日期」
+        # 是链接去向上下文（item#11 全站契约），不是「版本展示字段」，不参与正文唯一性判定
+        cls = dict(attrs).get("class") or ""
+        if self._skip_depth or "aps-dashboard-action-context" in cls:
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag):
+        if self._skip_depth:
+            self._skip_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth:
+            return
+        text = str(data or "").strip()
+        if text:
+            self.parts.append(text)
+
+
+def _visible_text_excluding_breadcrumb(html: str) -> str:
+    parser = _VisibleTextParser()
+    parser.feed(html)
+    return "\n".join(parser.parts)
+
+
 def test_dashboard_capsule_fed_and_chrome_deduped(app_client, db_env):
     _seed_history(db_env)
     html = app_client.get("/").get_data(as_text=True)
@@ -147,6 +180,13 @@ def test_dashboard_capsule_fed_and_chrome_deduped(app_client, db_env):
     workbench_start = html.index("今日待处理")
     muted_section = html[workbench_start : workbench_start + 600]
     assert "v7 ·" not in muted_section
+    # 4.2 阶段二正文唯一性：版本号作为独立展示字段只剩壳层胶囊一处——删 stat-grid 版本卡
+    # （label「当前查看版本」）+ risk latest_version 卡（label「当前计划」）+「当前查看排产」卡。
+    assert "当前查看版本" not in html
+    assert "当前查看排产" not in html
+    # 剔除胶囊与链接面包屑后，正文可见文本无第二处版本号
+    body_visible = _visible_text_excluding_breadcrumb(html.replace(capsule, ""))
+    assert "v7" not in body_visible
 
 
 def test_gantt_capsule_fed(app_client, db_env):

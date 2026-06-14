@@ -17,13 +17,18 @@ def _date_text(value: Any) -> str:
         return value.strftime("%Y-%m-%d")
     if isinstance(value, date):
         return value.strftime("%Y-%m-%d")
-    text = _text(value)
-    if len(text) >= 10:
-        head = text[:10].replace("/", "-")
-        parts = head.split("-")
-        if len(parts) == 3 and all(part.isdigit() for part in parts):
-            return f"{int(parts[0]):04d}-{int(parts[1]):02d}-{int(parts[2]):02d}"
-    return text
+    text = _text(value).replace("/", "-").replace("T", " ")
+    if not text:
+        return ""
+    # 整串匹配验证全串是合法日期/时间后再取日期部分；坏后缀（"2026-06-01 08:00:00xyz"）整串解析失败
+    # 返回 ""，不截前缀冒充合法日期（与 _parse_dt/_parse_datetime 同口径；否则会与 data_gap 的严格
+    # 日期校验自相矛盾——一边判「缺少日期范围」、一边又截出日期进 context_summary 与链接）。
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return ""
 
 
 def _plan_dates(plan_time_span: Optional[Dict[str, Any]]) -> Tuple[str, str]:

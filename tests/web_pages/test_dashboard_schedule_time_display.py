@@ -1,4 +1,8 @@
-"""回归测试：首页「当前查看排产」卡的时间走公开口径 format_public_datetime——正常 DB 时间显示「X年X月X日 HH:MM」，脏 schedule_time 显示「时间记录异常」且裸串绝不泄漏到页面（dashboard 曾是全仓唯一裸渲染 schedule_time 的模板）。"""
+"""回归测试：首页排产生成时间走公开口径 format_public_datetime——正常 DB 时间显示「X年X月X日 HH:MM」，脏 schedule_time 显示「时间记录异常」且裸串绝不泄漏到页面（dashboard 曾是全仓唯一裸渲染 schedule_time 的模板）。
+
+fusion-dashboard-cockpit：「当前查看排产」卡退役后，排产生成时间统一由壳层「计划上下文胶囊」
+的 generated_at_label 承载（latest_plan_context 喂 generated_at → format_public_datetime），
+下列断言经胶囊命中——时间诚实降级口径不变。"""
 
 from __future__ import annotations
 

@@ -15,7 +15,11 @@ from tests.web_pages.reports_workbench_backlink_helpers import (
     _parser_for,
     _visible_text,
 )
-from web.routes.dashboard import _summary_payload_dict, _workbench_summary_parse_state
+from web.routes.dashboard import (
+    _summary_overdue_count,
+    _summary_payload_dict,
+    _workbench_summary_parse_state,
+)
 
 
 def _replace_latest_result_summary(raw_summary: str) -> None:
@@ -281,7 +285,9 @@ def test_dashboard_recent_schedule_metrics_do_not_turn_missing_values_into_zero(
     parser = _parser_for(client, "/?version=12&plan_role=adopted")
     text = _visible_text(parser)
 
-    assert "当前排产摘要缺少可信指标" in text
+    # fusion-dashboard-cockpit：「当前查看排产」卡 recent_metrics 退役，设备利用率缺失态护卫
+    # 迁到 6 格体检表「资源负荷」格——缺失值仍诚实显「数据不足」而非伪装成 0。
+    assert "当前摘要里没有可安全展示的设备平均利用率" in text
     assert "拖期 0 小时" not in text
     assert "总工期 0 小时" not in text
     assert "设备利用率 0%" not in text
@@ -325,7 +331,8 @@ def test_dashboard_recent_schedule_metrics_reject_bool_utilization_without_hidin
     parser = _parser_for(client, "/?version=12&plan_role=adopted")
     text = _visible_text(parser)
 
-    assert "当前排产摘要缺少可信指标" in text
+    # bool 利用率 → 资源负荷格诚实显「数据不足」，不伪装成 0.0%
+    assert "当前摘要里没有可安全展示的设备平均利用率" in text
     assert "设备利用率 0.0%" not in text
 
     _replace_latest_result_summary(
@@ -334,12 +341,10 @@ def test_dashboard_recent_schedule_metrics_reject_bool_utilization_without_hidin
     parser = _parser_for(client, "/?version=12&plan_role=adopted")
     text = _visible_text(parser)
 
-    assert "当前排产摘要缺少可信指标" not in text
-    assert "拖期" in text
-    assert "0.0 小时" in text
-    assert "总工期" in text
-    assert "设备利用率" in text
+    # 真实 0 利用率 → 资源负荷格显「0.0%」而非被当成缺失（不隐藏真零）；
+    # 拖期/总工期已随 recent_metrics 退役离开首页（不再断言其文案）。
     assert "0.0%" in text
+    assert "当前摘要里没有可安全展示的设备平均利用率" not in text
 
 
 def test_dashboard_missing_requested_version_keeps_request_gap_when_latest_summary_is_bad() -> None:
@@ -362,9 +367,53 @@ def test_dashboard_invalid_requested_version_is_visible_gap() -> None:
     text = _visible_text(parser)
 
     assert "当前请求不可用" in text
-    assert "请求的排产版本 abc 不是有效数字" in text
-    assert "当前查看版本" in text
+    # 非数字版本不回显原始 raw（避免 ?version=op_id 把内部字段名渲染进可见文本）：用通用文案，
+    # raw 本身不出现在页面；用户仍能从回退胶囊看到实际生效的 v12。
+    assert "请求的排产版本不是有效数字" in text
+    assert "abc" not in text
+    # 版本回显从被删 stat-grid「当前查看版本」卡迁到壳层胶囊（回退最新版本 v12）
+    assert "v12" in text
     assert "数据库里还没有排产历史" not in text
+
+
+def test_dashboard_invalid_version_does_not_echo_internal_token_into_visible_text() -> None:
+    # ?version=op_id 等：非数字 raw 不得回显进可见文本（禁外显内部身份硬纪律）——
+    # 经 plan_identity_error→data_gap evidence→hero.evidence_text 链路，回显会让 op_id 现身页面。
+    client = _client()
+
+    parser = _parser_for(client, "/?version=op_id")
+    text = _visible_text(parser)
+
+    assert "当前请求不可用" in text
+    assert "请求的排产版本不是有效数字" in text
+    assert "op_id" not in text  # 内部字段名不得因回显用户输入而外显
+
+
+def test_summary_overdue_count_flags_count_items_inconsistency() -> None:
+    # count < len(items)：摘要内部不一致（count 是 items 全量/上界，不应小于明细数）→ 报错（不可信），
+    # 不让 count=0 把 items 里的真超期批次掩盖成「0/正常」（严禁伪造降级掩盖坏值）。
+    count, error = _summary_overdue_count(
+        {"overdue_batches": {"count": 0, "items": [{"batch_id": "B1"}]}}
+    )
+    assert count == 0 and "不一致" in error
+    # 一致（count>=len）放行，无 items 不误判
+    assert _summary_overdue_count({"overdue_batches": {"count": 3, "items": [{"batch_id": "B1"}]}}) == (3, "")
+    assert _summary_overdue_count({"overdue_batches": {"count": 0}}) == (0, "")
+    # unicode 数字 '²'（isdigit 为真但 int() 抛）→ 报「不是整数」降级，不冒泡崩溃
+    bad_count, bad_error = _summary_overdue_count({"overdue_batches": {"count": "²"}})
+    assert bad_count == 0 and "不是整数" in bad_error
+
+
+def test_dashboard_invalid_date_arg_does_not_echo_internal_token_into_visible_text() -> None:
+    # ?date_from=op_id 等非法日期形字段：不得经 WorkbenchLink context_summary（"date_from ～ date_to"）
+    # 渲染进可见文本（禁外显内部身份）。非法日期在路由入口 _valid_date_arg 被丢弃。
+    client = _client()
+
+    parser = _parser_for(client, "/?version=12&plan_role=adopted&date_from=op_id&date_to=2026-05-06")
+    text = _visible_text(parser)
+
+    assert "执行排产" in text  # 页面正常渲染（非空兜底，避免空断言假绿）
+    assert "op_id" not in text
 
 
 def test_dashboard_superseded_official_plan_does_not_fake_empty_site_facts() -> None:
@@ -403,7 +452,7 @@ def test_dashboard_superseded_official_plan_does_not_fake_empty_site_facts() -> 
     parser = _parser_for(client, "/?version=12&plan_role=adopted")
     text = _visible_text(parser)
 
-    assert "当前查看版本" in text
+    # 版本回显归胶囊（v12），不再有 stat-grid「当前查看版本」卡
     assert "v12" in text
     assert "v13" not in text
     assert "现场情况" in text

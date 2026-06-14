@@ -4,8 +4,18 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.models.schedule_plan_role import project_plan_guard_fields
 
+from .scheduler_workbench_link_specs import (
+    _CONTEXT_FREE_TARGET_FORBIDDEN_EXTRA_PARAMS,
+    _CONTEXT_FREE_TARGETS,
+    _EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS,
+    _TARGET_QUERY_SPECS,
+)
+
 TARGET_PAGE_PATHS = {
     "dashboard": "/",
+    # 执行排产页（context-free）：首页「待排批次」体检格点跳回排产入口，
+    # 不带版本/方案身份/日期等工作台上下文（待排是「还没进排产结果」的全量列表）
+    "batches": "/scheduler/",
     "analysis": "/scheduler/analysis",
     "gantt": "/scheduler/gantt",
     "week_plan": "/scheduler/week-plan",
@@ -24,6 +34,7 @@ TARGET_PAGE_PATHS = {
 
 TARGET_DEFAULT_LABELS = {
     "dashboard": "回到计划工作台",
+    "batches": "去执行排产",
     "analysis": "查看排产分析",
     "gantt": "查看甘特图",
     "week_plan": "查看周计划",
@@ -97,133 +108,6 @@ FULL_PLAN_GUARD_FIELDS = (
     + _PLAN_IDENTITY_BLOCKING_FIELDS
     + _PLAN_GUARD_COMMON_FIELDS[10:]
 )
-_EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS = {
-    "plan_role",
-    "requested_plan_role",
-    "effective_plan_role",
-    "scenario_id",
-    "is_preview",
-    "is_scenario_preview",
-    "is_comparison",
-    "is_superseded_by_newer_version",
-    "can_dispatch",
-    "can_write_feedback",
-}
-
-# history/batch_detail 的 query 合同（version 可选+back_to / 仅 back_to）不可被
-# extra_params 绕过——版本/批次/日期/period/资源/视图/方案身份维度键一律拒绝
-# （execution_review 先例同款；version/view/gantt_resource 同属工作台上下文维度）
-_CONTEXT_FREE_TARGET_FORBIDDEN_EXTRA_PARAMS = _EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS | {
-    "version",
-    "view",
-    "batch_id",
-    "gantt_batch",
-    "gantt_resource",
-    "query_date",
-    "period_preset",
-    "date_from",
-    "date_to",
-    "start_date",
-    "end_date",
-    "week_start",
-    "resource_type",
-    "resource_id",
-    "scope_type",
-    "scope_id",
-    "machine_id",
-    "operator_id",
-    "team_id",
-}
-_CONTEXT_FREE_TARGETS = {"history", "batch_detail"}
-
-_TARGET_QUERY_SPECS: Dict[str, Dict[str, Any]] = {
-    "dashboard": {
-        "plan_style": "standard",
-        "date_style": "date_from_to",
-        "batch_position": "before_resource",
-        "resource_style": "resource",
-    },
-    "analysis": {
-        "plan_style": "standard",
-        "date_style": "date_from_to",
-        "batch_position": "before_resource",
-        "resource_style": "resource",
-    },
-    "gantt": {
-        "plan_style": "standard",
-        "date_style": "start_end",
-        "batch_position": "before_resource",
-        "batch_param": "gantt_batch",
-        "resource_style": "gantt_filter",
-        "include_gantt_view": True,
-    },
-    "week_plan": {
-        "plan_style": "standard",
-        "date_style": "date_from_to",
-        "batch_position": "before_resource",
-        "resource_style": "resource",
-        "include_week_start": True,
-    },
-    "resource_dispatch": {
-        "plan_style": "standard",
-        "date_style": "date_from_to",
-        "batch_position": "after_resource",
-        "resource_style": "scope",
-        "default_resource_type": "operator",
-        "period_preset": "custom",
-    },
-    "overdue_report": {
-        "plan_style": "standard",
-        "date_style": "date_from_to",
-        "batch_position": "before_resource",
-        "resource_style": "resource",
-    },
-    "delay_diagnosis": {
-        "plan_style": "standard",
-        "date_style": "date_from_to",
-        "batch_position": "before_resource",
-        "resource_style": "resource",
-    },
-    "utilization_report": {
-        "plan_style": "standard",
-        "date_style": "start_end",
-        "batch_position": "before_resource",
-        "resource_style": "resource",
-    },
-    "downtime_report": {
-        "plan_style": "standard",
-        "date_style": "start_end",
-        "batch_position": "before_resource",
-        "resource_style": "resource",
-    },
-    "execution_review": {
-        "plan_style": "execution_review",
-        "date_style": "date_from_to",
-        "batch_position": "before_resource",
-        "resource_style": "resource",
-    },
-    "reports_index": {
-        "plan_style": "standard",
-        "date_style": "date_from_to",
-        "batch_position": "before_resource",
-        "resource_style": "resource",
-    },
-    # 历史页：version 是可选筛选（无方案身份概念），不带日期/批次/资源/period
-    "history": {
-        "plan_style": "version_only",
-        "date_style": "none",
-        "batch_position": "none",
-        "resource_style": "none",
-    },
-    # 批次详情：batch_id 走路径占位（batch_in_path），query 只剩 back_to
-    "batch_detail": {
-        "plan_style": "none",
-        "date_style": "none",
-        "batch_position": "none",
-        "resource_style": "none",
-        "batch_in_path": True,
-    },
-}
 
 
 def _text(value: Any) -> str:

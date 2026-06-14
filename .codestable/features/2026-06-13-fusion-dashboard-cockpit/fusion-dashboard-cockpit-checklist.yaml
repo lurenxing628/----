@@ -1,0 +1,45 @@
+feature: 2026-06-13-fusion-dashboard-cockpit
+steps:
+  - id: s1
+    desc: 锚点/守卫/文档迁移（先于删 DOM，避免 gate 中途红）——(a) test_dashboard_overdue_count_tolerance.py:15 正则锚 stat-grid→体检格 aps-dashboard-risk-value（保「数据不足」/「1」/「超期批次数不是整数」）；(b) test_scheduler_plan_identity_summary_guard.py 迁 4 个函数：test_dashboard_invalid_requested_version_is_visible_gap(:366) + test_dashboard_superseded_official_plan_does_not_fake_empty_site_facts(:406) 两处「当前查看版本」→断言胶囊 .aps-plan-capsule-version(v12)；test_dashboard_recent_schedule_metrics_do_not_turn_missing_values_into_zero(:284「当前排产摘要缺少可信指标」)→资源压力格缺失文案「当前摘要里没有可安全展示的设备平均利用率」/「数据不足」(cards.py:47-48，非同串不可平移)；test_dashboard_recent_schedule_metrics_reject_bool_utilization_without_hiding_real_zero(:338-342 拖期/0.0小时/总工期/设备利用率/0.0%)→整段删除（首页不再展示这些指标）；(c) test_dashboard_schedule_time_display.py 时间诚实降级→胶囊 generated_at_label；(d) test_schedule_summary_observability.py:181-182 ctx 断言 latest_summary/overdue_count→ctx["workbench_summary"] 投影；(e) 文档迁移 page_manuals_system.py(:19/:61-75/:105-120)+scheduler_manual.md(:58-78) 旧统计卡/最近排产卡说明改驾驶舱四段，同步迁 test_page_manual_registry.py(:252-274)+test_config_manual_markdown.py(:492-508) 钉死文案；(f) test_plan_context_capsule.py:137 扩断言 body 无第二处版本（与正文唯一性同源，不破既有胶囊断言）；(g) 确认 hero/6格/线索文案全走 viewmodel 不内联中文（test_label_single_source_contract 扫 dashboard.html）。退出信号：上述测试对旧 DOM/文案不再依赖、改后绿
+    status: done
+  - id: s2
+    desc: 后端编排+计算节点——route(dashboard.py) 新增读 workbench_history.result_status(core/models/schedule_history.py:17) + 算独立门控 failed_run_applies_to_current_view = _is_adopted_role_context(:181) + _is_plain_plan_context(:187) + requested_history_error=="" + workbench_version==最新版本（**不复用 summary_matches_identity**——其要求 is_current_executable_official_version，failed 恒被 _EXECUTABLE_RESULT_STATUSES={success,partial} 挡死致永不可达；**不用裸 requested_version<=0**——坏版本 version=abc 也返 0 会误放行）；新建 web/viewmodels/dashboard_cockpit_hero.py（禁 import core.services；import build_workbench_link[scheduler_workbench_links.py:367]+resolve_result_status[scheduler_summary_result_state.py:40]，不反向 import dashboard_workbench.py 防循环）：failed hero 走 resolve_result_status 归一后比 'failed'（禁裸比较，覆遗留别名 'fail'）；精简线索取 overdue_batches.items 逾期量最大一条，逾期量=parse(finish_time %Y-%m-%d %H:%M:%S) − due_exclusive(parse(due_date，raw due_text 须宽松兼容 /→-))，due_exclusive=交期+1天00:00；按 count>len(items)/缺失分裁剪「基于前 N 条」vs 笼统降级；hero/rest 切分（失败态 rest=todo_items 全量、风险态 hero=todo_items[0] title 原样 rest=[1:]、平静态 ok 短句），todo_items 保持原样（set 不破）；build_dashboard_risk_cards 扩签名（+latest_summary 算 candidate_count、+data_gap 纯值复用 dashboard_data_gap_reason，纯值在 build_summary 先算再传、cards 禁扫 rows）重组 6 格（删 latest_version/scheduled_batches，补 candidate_review[有候选 notice/无 ok]/data_gap[有缺口 warning/无 ok]，pending_batches 链 'dashboard'→'batches'）；scheduler_workbench_link_query.py 新增 'batches'→'/scheduler/' 4 处（TARGET_PAGE_PATHS/_TARGET_QUERY_SPECS{plan_style/date_style/batch_position/resource_style 全 none}/TARGET_DEFAULT_LABELS/_CONTEXT_FREE_TARGETS，不进 VERSION_REQUIRED/DATE_RANGE_REQUIRED）；退役 _recent_schedule_metrics+_summary_metrics+_metric_number 三函数；删 route 死字段：overdue_count(删 :275 init+:299 改 `_, _history_count_error=`保留调用喂 count_error+:370 kwarg)、scheduled_count 整链(:274 查询+:336 build_summary 入参+cards 形参+:369 kwarg)、pending_count render kwarg(:368，本地保留喂待排格)、latest_summary/latest_history/latest_history_time_display kwarg。退出信号：viewmodel/route 单测覆盖 hero 三态+5 失败场景+6 格+精简线索三态(完整/缺失/裁剪)+死字段消失+'batches' 可点不 raise
+    status: done
+  - id: s3
+    desc: 前端四段+测试——dashboard.html 重排：保留值班台页头(eyebrow 计划员值班台 + h3#dashboard-workbench-title 今日待处理 + generated_at_label + realtime_note) → hero 卡(新 .aps-dashboard-hero 四档 severity CSS 只用 --ui-* token 禁裸 hex；ok 档不套 todo-item；**渲染 primary/secondary action 的 label+url** 经 build_workbench_link 带上下文) → 6 格 signals 带(每格可点跳、正常项 severity-ok/notice 灰显) → 其余待处理清单(3px 左语义条去盒)；删 stat-grid/当前查看排产卡/下一步面板；CSS 同步删/降级 quick-panel(ui_contract.css:6092)+todo-layout 两列改单列(:6010)；**保留常用工作区按钮墙不动**；扩 test_dashboard_workbench_contract 的 _visible_text_from_summary 扫 hero/rest_todos；加正文唯一性断言(版本仅 .aps-plan-capsule-version)。退出信号：四段三态目检 + context_propagation/first_round 实跑全绿(重点验「查看超期清单」→/reports/overdue 带 version/plan_role/date) + workbench_contract 绿
+    status: done
+  - id: s4
+    desc: 持久化——无（纯只读消费既有查询，零排产数据写入）
+    status: done
+  - id: s5
+    desc: 目检+门禁——浏览器目检 hero 三态(失败/风险/平静)+6 格点跳+待排格→/scheduler/不 raise+正文版本仅胶囊；grep 反向核对(op_rows/可见文本无 op_id/schedule_id/scenario_id/plan_role 等内部身份；无 .severity-unknown/_SEVERITY_ORDER['unknown']；模板无内联中文词表；result_status 无裸 =='failed'；无 publish_workbench_navigation_context；无写排产数据)；daily gate(.venv/bin/python scripts/run_daily_quality_gate.py，stash 隔离并行 WIP) 全绿
+    status: done
+checks:
+  - id: c1
+    desc: 四段结构——打开首页：①上下文带(壳层胶囊+页头含 realtime_note) ②hero ③6 格 ④去盒清单；无 stat-grid/当前查看排产卡/下一步面板；保留常用工作区按钮墙；EXPECTED_PAGE_SIGNALS 三锚(计划员值班台/今日待处理/id dashboard-workbench-title)在
+    status: passed
+  - id: c2
+    desc: hero 失败态独立门控——当前正式位置 resolve_result_status==failed→danger hero「最近一次排产没有成功」+去执行排产('batches')/查看历史('history')；历史版本/预览/对比 failed→隐去；最新 failed+?version=abc/999(坏版本 requested_history_error≠"")→隐失败 hero 只显「请求不可用」；'fail' 别名归一后→显示；门控不依赖 summary_matches_identity/is_current_executable_official_version
+    status: passed
+  - id: c3
+    desc: hero 风险态/平静态——风险态 title 原样(超期批次需要先看)+impact 含「N 个批次会晚于交期 · 逾期最久 {批次} 晚 {X}」(逾期量用 due_exclusive 边界、日期宽松解析)+渲染 primary「查看超期清单」→/reports/overdue 带上下文；items 缺失→笼统句、count>len(items) 裁剪→「基于前 N 条」不冒充全量最严重；无 todo→severity-ok 绿 hero「当前没有必须马上处理的排产风险」
+    status: passed
+  - id: c4
+    desc: 6 格体检表——恰 6 格(超期/待排/方案待确认/现场待确认/资源压力/基础数据)，每格可点跳、正常项 ok/notice 灰显；无 latest_version/scheduled_batches 格；待排格点跳→/scheduler/('batches' 目标不 raise)；方案待确认/基础数据 ③(总览计数)与 ④(行动 todo)有意并存；'batches' 传 extra_params 被拒
+    status: passed
+  - id: c5
+    desc: 正文唯一性(4.2 阶段二)——版本仅现 .aps-plan-capsule-version；body 无第二处版本/排产生成时间/策略(stat-grid 版本+risk latest_version 卡+当前查看排产卡均删)；test_plan_context_capsule 既有胶囊+去重断言绿、扩 body 无第二处版本断言绿
+    status: passed
+  - id: c6
+    desc: 死字段裁决精确——route 不传 overdue_count/latest_summary/latest_history/latest_history_time_display/scheduled_count/pending_count 的 render kwarg；删 :275 init + scheduled_count 整链；_summary_overdue_count 调用保留喂 _history_count_error(:301 不 NameError)；test_schedule_summary_observability ctx 断言迁 workbench_summary 投影后绿
+    status: passed
+  - id: c7
+    desc: 迁移测试全绿——overdue 正则锚(体检格)/plan_identity_summary_guard 4 函数(版本→胶囊、利用率缺失→资源格、拖期总工期断言删)/schedule_time_display(胶囊)/page_manual_registry+config_manual_markdown(驾驶舱文案)/label_single_source(模板不内联中文)/workbench_links_contract(set 加 batches + reject extra_params) 全绿
+    status: passed
+  - id: c8
+    desc: 不动契约+纪律(反向)——test_manual_entry_scope(11 按钮/3 分组)+context_propagation(查看超期清单等带上下文，由 hero/④承接)+first_round(realtime_note+四 todo 标题)+css_token_source(hero CSS 用 token 无裸 hex)绿；viewmodel 禁 import core.services(architecture fitness)；Py3.8 typing(禁 PEP604/裸 list[])；severity 不引入 unknown；result_status 走归一单源；LOAD_*_RATIO 两模块同一对象(test_css_token_source:154)；未抽 todo 家族无循环 import
+    status: passed
+  - id: c9
+    desc: daily gate 全绿 + 三态浏览器目检过 + 零写入零新增首屏计划行扫描(精简线索零重算)
+    status: passed
