@@ -39,7 +39,7 @@ class _VisibleTextParser(HTMLParser):
 
 def _visible_text_from_summary(summary: Dict[str, Any]) -> str:
     # fusion-dashboard-cockpit：页面渲染 hero（含失败合成物/超期精简线索等新文本）+ rest_todos
-    # （⊂ todo_items，仍逐项扫描覆盖）+ 6 格 + 按钮墙 quick_links，故须扩扫 hero。
+    # （⊂ todo_items，仍逐项扫描覆盖）+ 7 格 + 按钮墙 quick_links，故须扩扫 hero。
     parts = (
         _summary_hero_text(summary)
         + _summary_card_text(summary)
@@ -143,6 +143,7 @@ def _build_summary(**overrides: Any) -> Dict[str, Any]:
             "can_write_feedback": True,
         },
         "now": datetime(2026, 6, 1, 10, 0),
+        "near_due_count": 0,
     }
     data.update(overrides)
     return build_dashboard_workbench_summary(**data)
@@ -190,11 +191,11 @@ def test_dashboard_workbench_summary_covers_required_todo_types_and_links() -> N
     assert summary["summary_stats"]["overdue_count_value"] == "3"
 
 
-def test_dashboard_six_cell_health_table_composition() -> None:
+def test_dashboard_seven_cell_health_table_composition() -> None:
     summary = _build_summary()
     cards = {str(card.get("kind")): card for card in summary["risk_cards"]}
 
-    # 恰 6 格且顺序锁定（验收 c4）：超期/待排/方案待确认/现场情况/资源负荷/基础数据
+    # 恰 7 格且顺序锁定（验收 c4，临期居末）：超期/待排/方案待确认/现场情况/资源负荷/基础数据/临期
     assert [str(c.get("kind")) for c in summary["risk_cards"]] == [
         "overdue_batches",
         "pending_batches",
@@ -202,6 +203,7 @@ def test_dashboard_six_cell_health_table_composition() -> None:
         "site_record_gap",
         "resource_overload",
         "data_gap",
+        "near_due_batches",
     ]
     # 删的两格不复活（版本归胶囊、已排不上首页）
     assert "latest_version" not in cards
@@ -210,10 +212,57 @@ def test_dashboard_six_cell_health_table_composition() -> None:
     pending_url = cards["pending_batches"]["link"]["url"]
     assert urlparse(pending_url).path == "/scheduler/"
     assert _query(pending_url) == {}
-    # 健康场景：方案待确认有候选→notice/计数；基础数据无缺口→ok 灰
+    # 健康场景：方案待确认有候选→notice/计数；基础数据无缺口→ok 灰；临期 count==0→ok 空态
     assert cards["candidate_review"]["severity"] == "notice"
     assert cards["candidate_review"]["value"] == "3"
     assert cards["data_gap"]["severity"] == "ok"
+    assert cards["near_due_batches"]["severity"] == "ok"
+    assert cards["near_due_batches"]["value"] == "暂无"
+
+
+def test_dashboard_near_due_cell_and_todo_present_when_count_positive() -> None:
+    # 临期 count=3（摘要可用）：第 7 格 warning/3，临期 todo 出现（severity=warning、计数文案、
+    # primary→甘特图、secondary→超期清单），与超期 todo 并存不互相吞。
+    summary = _build_summary(near_due_count=3)
+    cards = {str(c.get("kind")): c for c in summary["risk_cards"]}
+    todos = _todo_by_kind(summary)
+
+    assert cards["near_due_batches"]["severity"] == "warning"
+    assert cards["near_due_batches"]["value"] == "3"
+    assert "near_due" in todos
+    assert todos["near_due"]["severity"] == "warning"
+    assert "3" in todos["near_due"]["impact_text"]
+    assert _action_paths(todos["near_due"]) == ["/scheduler/gantt", "/reports/overdue"]
+    _assert_visible_text_has_no_internal_tokens(summary)
+
+
+def test_dashboard_near_due_cell_data_insufficient_when_count_missing() -> None:
+    # 旧摘要缺 near_due_batches 键 → index() 读出 None；第 7 格数据不足/notice、临期 todo 缺席，
+    # 不 KeyError、不显 0、不放大成全摘要降级（其余 6 格照常）。
+    summary = _build_summary(near_due_count=None)
+    cards = {str(c.get("kind")): c for c in summary["risk_cards"]}
+    todos = _todo_by_kind(summary)
+
+    assert cards["near_due_batches"]["value"] == "数据不足"
+    assert cards["near_due_batches"]["severity"] == "notice"
+    assert "near_due" not in todos
+    # 缺键不牵连其余格：超期照常计数
+    assert cards["overdue_batches"]["value"] == "3"
+
+
+def test_dashboard_near_due_suppressed_when_summary_unavailable() -> None:
+    # 摘要不可用（闸门 current_summary_available=False）→ 即便传入 near_due_count 也强制降级为
+    # 数据不足、临期 todo 缺席（与超期同构，不二次读、仅闸门化）。
+    summary = _build_summary(
+        near_due_count=5,
+        latest_summary=None,
+        latest_summary_parse_state={"parse_failed": False},
+    )
+    cards = {str(c.get("kind")): c for c in summary["risk_cards"]}
+    todos = _todo_by_kind(summary)
+
+    assert cards["near_due_batches"]["value"] == "数据不足"
+    assert "near_due" not in todos
 
 
 def test_dashboard_candidate_cell_respects_disabled_flag() -> None:
@@ -416,9 +465,9 @@ def test_dashboard_data_gap_cell_warns_when_no_version() -> None:
     assert cards["candidate_review"]["value"] == "数据不足"
 
 
-def test_dashboard_six_cell_consistent_when_summary_empty_dict() -> None:
-    # 空摘要 {}（_has_current_summary 判不可用）：超期/方案待确认均「数据不足」时，
-    # 基础数据格须同口径显「有缺口/warning」而非「完整/ok」，6 格不自相矛盾（codex 维度4 修复）
+def test_dashboard_seven_cell_consistent_when_summary_empty_dict() -> None:
+    # 空摘要 {}（_has_current_summary 判不可用）：超期/方案待确认/临期均「数据不足」时，
+    # 基础数据格须同口径显「有缺口/warning」而非「完整/ok」，7 格不自相矛盾（codex 维度4 修复）
     summary = _build_summary(
         latest_summary={},
         navigation_context={"version": "12", "plan_role": "adopted"},

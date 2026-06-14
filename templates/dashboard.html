@@ -54,7 +54,7 @@
         {% endif %}
       </section>
 
-      {# ③ 6 格体检表：超期/待排/方案待确认/现场情况/资源负荷/基础数据，每格可点跳、正常项灰显 #}
+      {# ③ 7 格体检表：超期/待排/方案待确认/现场情况/资源负荷/基础数据/临期，每格可点跳、正常项灰显 #}
       <div class="aps-dashboard-risk-grid" aria-label="当前查看方案体检表">
         {% for card in workbench_summary.risk_cards %}
           {% if card.link and not card.link.disabled and card.link.url %}

@@ -61,6 +61,7 @@ class SummaryBuildContext:
 class RuntimeState:
     finish_by_batch: Dict[str, datetime]
     overdue_items: List[Dict[str, Any]]
+    near_due_items: List[Dict[str, Any]]
     invalid_due_count: int
     invalid_due_batch_ids_sample: List[str]
     unscheduled_batch_count: int
@@ -123,6 +124,7 @@ class TruncationTier:
     best_order_limit: Optional[int] = None
     selected_ids_limit: Optional[int] = None
     overdue_items_limit: Optional[int] = None
+    near_due_items_limit: Optional[int] = None
     errors_limit: Optional[int] = None
     missing_resource_limit: Optional[int] = None
 
@@ -132,9 +134,9 @@ DEFAULT_TRUNCATION_TIERS: Tuple[TruncationTier, ...] = (
     TruncationTier(20, 20, 12, errors_limit=200, missing_resource_limit=200),
     TruncationTier(0, 20, 12, errors_limit=100, missing_resource_limit=100),
     TruncationTier(0, 10, 6, errors_limit=50, missing_resource_limit=50),
-    TruncationTier(0, 0, 6, 2000, 2000, 500, errors_limit=50, missing_resource_limit=50),
-    TruncationTier(0, 0, 6, 500, 1000, 200, errors_limit=30, missing_resource_limit=30),
-    TruncationTier(0, 0, 6, 100, 200, 50, errors_limit=20, missing_resource_limit=20),
-    TruncationTier(0, 0, 6, 0, 50, 20, errors_limit=10, missing_resource_limit=10),
-    TruncationTier(0, 0, 0, 0, 0, 0, errors_limit=10, missing_resource_limit=10),
+    TruncationTier(0, 0, 6, 2000, 2000, 500, near_due_items_limit=500, errors_limit=50, missing_resource_limit=50),
+    TruncationTier(0, 0, 6, 500, 1000, 200, near_due_items_limit=200, errors_limit=30, missing_resource_limit=30),
+    TruncationTier(0, 0, 6, 100, 200, 50, near_due_items_limit=50, errors_limit=20, missing_resource_limit=20),
+    TruncationTier(0, 0, 6, 0, 50, 20, near_due_items_limit=20, errors_limit=10, missing_resource_limit=10),
+    TruncationTier(0, 0, 0, 0, 0, 0, near_due_items_limit=0, errors_limit=10, missing_resource_limit=10),
 )

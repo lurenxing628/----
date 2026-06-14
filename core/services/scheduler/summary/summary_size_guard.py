@@ -121,6 +121,13 @@ def _trim_overdue_items(result_summary_obj: Dict[str, Any], limit: int) -> None:
         overdue_batches["items"] = overdue_items[:limit]
 
 
+def _trim_near_due_items(result_summary_obj: Dict[str, Any], limit: int) -> None:
+    near_due_batches = result_summary_obj.get("near_due_batches")
+    near_due_items = near_due_batches.get("items") if isinstance(near_due_batches, dict) else None
+    if isinstance(near_due_batches, dict) and isinstance(near_due_items, list):
+        near_due_batches["items"] = near_due_items[:limit]
+
+
 def _trim_diagnostic_attempts(
     state: _SizeGuardState,
     *,
@@ -161,6 +168,8 @@ def _apply_truncation_tiers(
             _trim_selected_batch_ids(obj, tier.selected_ids_limit)
         if tier.overdue_items_limit is not None:
             _trim_overdue_items(obj, tier.overdue_items_limit)
+        if tier.near_due_items_limit is not None:
+            _trim_near_due_items(obj, tier.near_due_items_limit)
         if tier.errors_limit is not None:
             _trim_errors(obj, tier.errors_limit)
         if tier.missing_resource_limit is not None:

@@ -10,6 +10,7 @@ from core.services.scheduler.run.auto_assign_resource_errors import auto_assign_
 from core.services.scheduler.run.optimizer_search_state import compact_attempts
 from core.services.scheduler.run.schedule_persistence_errors import missing_internal_resource_samples
 
+from .due_risk_items import NEAR_DUE_WINDOW_DAYS
 from .optimizer_public_summary import project_public_algo_summary
 from .schedule_summary_types import (
     AlgorithmSummaryState,
@@ -109,77 +110,8 @@ def _actionable_missing_internal_resource_op_ids(ctx: SummaryBuildContext) -> Se
     return missing_ids - scheduled_ids - auto_assign_failed_ids
 
 
-def _record_invalid_due(
-    *,
-    batch_id: str,
-    due_text: str,
-    invalid_due_ids_sample: List[str],
-    invalid_due_raw_sample: List[str],
-) -> None:
-    if len(invalid_due_ids_sample) < 10:
-        invalid_due_ids_sample.append(str(batch_id))
-    if len(invalid_due_raw_sample) < 5:
-        invalid_due_raw_sample.append(f"{batch_id}={due_text!r}")
-
-
-def _build_overdue_items(
-    svc,
-    *,
-    batches: Dict[str, Any],
-    finish_by_batch: Dict[str, datetime],
-    summary: Any,
-    due_exclusive_fn: Callable[[Any], datetime],
-    append_summary_warning_fn: Callable[[Any, str], bool],
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    overdue_items: List[Dict[str, Any]] = []
-    invalid_due_count = 0
-    invalid_due_ids_sample: List[str] = []
-    invalid_due_raw_sample: List[str] = []
-
-    for batch_id, batch in batches.items():
-        due_text = svc._normalize_text(getattr(batch, "due_date", None))
-        if not due_text:
-            continue
-        try:
-            due_date = datetime.strptime(due_text.replace("/", "-"), "%Y-%m-%d").date()
-        except Exception:
-            invalid_due_count += 1
-            _record_invalid_due(
-                batch_id=str(batch_id),
-                due_text=due_text,
-                invalid_due_ids_sample=invalid_due_ids_sample,
-                invalid_due_raw_sample=invalid_due_raw_sample,
-            )
-            continue
-
-        finish_time = finish_by_batch.get(str(batch_id))
-        if finish_time is None or finish_time < due_exclusive_fn(due_date):
-            continue
-        overdue_items.append(
-            {
-                "batch_id": batch_id,
-                "due_date": due_text,
-                "finish_time": svc._format_dt(finish_time),
-            }
-        )
-
-    if invalid_due_count > 0:
-        sample_ids = "，".join(invalid_due_ids_sample[:10])
-        message = f"存在 {invalid_due_count} 个批次交期写法不对，已忽略超期判断（示例批次：{sample_ids}）"
-        warning_appended = append_summary_warning_fn(summary, message)
-        logger = getattr(svc, "logger", None)
-        if logger is not None:
-            raw_sample = "；".join(invalid_due_raw_sample[:5])
-            detail = f"{message}；示例原始交期：{raw_sample}"
-            if not warning_appended:
-                detail += "；且 summary.warnings 追加失败"
-            logger.warning(detail)
-
-    return overdue_items, {
-        "invalid_due_count": int(invalid_due_count),
-        "invalid_due_batch_ids_sample": list(invalid_due_ids_sample),
-        "invalid_due_raw_sample": list(invalid_due_raw_sample),
-    }
+# _build_overdue_items / _record_invalid_due 已拆至 due_risk_items.py（fusion-due-soon-alert 微重构，只搬不改）。
+# 由 summary_runtime_state.build_overdue_items 注入 due_exclusive / append_summary_warning 后调用。
 
 
 def _algo_downtime_dict(*, auto_assign_enabled: bool, downtime_state: Dict[str, Any]) -> Dict[str, Any]:
@@ -461,6 +393,11 @@ def _build_result_summary_obj(
             "unscheduled_batch_count": int(runtime_state.unscheduled_batch_count),
         },
         "overdue_batches": {"count": len(runtime_state.overdue_items), "items": runtime_state.overdue_items},
+        "near_due_batches": {
+            "count": len(runtime_state.near_due_items),
+            "items": runtime_state.near_due_items,
+            "window_days": NEAR_DUE_WINDOW_DAYS,
+        },
         "error_count": len(raw_summary_errors),
         "errors": public_error_messages,
         "errors_sample": public_error_messages[:10],

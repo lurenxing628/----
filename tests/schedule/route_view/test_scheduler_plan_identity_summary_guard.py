@@ -286,7 +286,7 @@ def test_dashboard_recent_schedule_metrics_do_not_turn_missing_values_into_zero(
     text = _visible_text(parser)
 
     # fusion-dashboard-cockpit：「当前查看排产」卡 recent_metrics 退役，设备利用率缺失态护卫
-    # 迁到 6 格体检表「资源负荷」格——缺失值仍诚实显「数据不足」而非伪装成 0。
+    # 迁到 7 格体检表「资源负荷」格——缺失值仍诚实显「数据不足」而非伪装成 0。
     assert "当前摘要里没有可安全展示的设备平均利用率" in text
     assert "拖期 0 小时" not in text
     assert "总工期 0 小时" not in text

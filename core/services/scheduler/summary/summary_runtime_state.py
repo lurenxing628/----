@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from .schedule_summary_assembly import (
+from .due_risk_items import (
     _build_overdue_items as _build_overdue_items_impl,
 )
 from .schedule_summary_assembly import (
@@ -189,6 +189,7 @@ def _build_runtime_state(
     return RuntimeState(
         finish_by_batch=finish_by_batch,
         overdue_items=overdue_items,
+        near_due_items=list(overdue_meta.get("near_due_items") or []),
         invalid_due_count=int(invalid_due_count),
         invalid_due_batch_ids_sample=list(invalid_due_batch_ids_sample),
         unscheduled_batch_count=int(unscheduled_batch_count),

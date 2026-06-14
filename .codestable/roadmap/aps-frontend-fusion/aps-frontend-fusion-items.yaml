@@ -237,8 +237,8 @@ items:
   - slug: fusion-due-soon-alert
     description: 临期预警——"3 天内到期且未完工"新待办类别 + 体检表格位（7 格排布或与超期合格，feature-design 裁决）+ 临期窗口常量单点；数据=既有批次交期 vs 正式方案排程结束时间，与超期判定共用同一口径，零新数据链路
     depends_on: [fusion-dashboard-cockpit]
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-06-14-fusion-due-soon-alert
     minimal_loop: false
     notes: 模块 N（契约 4.11 共同约束）；2026-06-11 用户拍板新增；依赖理由——驾驶舱构图先落定，待办类别与体检表格位才有挂点；遵 4.7 身份护栏
 

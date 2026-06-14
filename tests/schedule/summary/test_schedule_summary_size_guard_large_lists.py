@@ -42,6 +42,51 @@ def _overdue_case(n: int):
     }
 
 
+def _near_due_case(n: int):
+    return {
+        "algo": {"attempts": [], "improvement_trace": [], "best_batch_order": []},
+        "warnings": [],
+        "selected_batch_ids": [],
+        "overdue_batches": {"count": 0, "items": []},
+        "near_due_batches": {
+            "count": n,
+            "window_days": 3,
+            "items": [
+                {"batch_id": f"B{i:05d}", "due_date": "2026-06-20", "finish_time": "2026-06-19 12:00:00"}
+                for i in range(n)
+            ],
+        },
+        "time_cost_ms": 1,
+    }
+
+
+def _minimal_trigger_near_due_case():
+    # strategy_params 巨大（非可裁列表）→ tier/diagnostic 都降不下来 → 走 minimal_summary_for_size_guard
+    return {
+        "summary_schema_version": "1.2",
+        "is_simulation": False,
+        "completion_status": "partial",
+        "version": 99,
+        "strategy": "priority_first",
+        "strategy_params": {"payload": "x" * 600000},
+        "algo": {"attempts": [], "improvement_trace": [], "best_batch_order": []},
+        "warnings": [],
+        "selected_batch_ids": [],
+        "overdue_batches": {"count": 7, "items": [{"batch_id": "O1", "due_date": "2026-06-10", "finish_time": "2026-06-12 00:00:00"}]},
+        "near_due_batches": {
+            "count": 5,
+            "window_days": 3,
+            "items": [
+                {"batch_id": f"N{i:05d}", "due_date": "2026-06-20", "finish_time": "2026-06-19 12:00:00"}
+                for i in range(5)
+            ],
+        },
+        "counts": {"scheduled_ops": 1, "failed_ops": 0},
+        "result_status": "success",
+        "time_cost_ms": 1,
+    }
+
+
 def _diagnostics_case(n: int):
     payload = "x" * 12000
     return {
@@ -237,6 +282,34 @@ def main() -> None:
     overdue_batches = overdue_after_obj.get("overdue_batches") or {}
     assert int(overdue_batches.get("count") or 0) == 6000, "overdue_case 不应改动 overdue count"
     assert len(overdue_batches.get("items") or []) < 6000, "overdue_case 未裁剪 overdue items"
+
+    # 临期 tier 路径：与超期同构逐级裁 items、保 count/window_days、降到限内
+    near_due_obj = _near_due_case(6000)
+    near_due_before = _size_bytes(near_due_obj)
+    assert near_due_before > SUMMARY_SIZE_LIMIT_BYTES, "near_due_case 应先超过 size guard 上限"
+    near_due_after_obj = apply_summary_size_guard(near_due_obj)
+    near_due_after = _size_bytes(near_due_after_obj)
+    assert bool(near_due_after_obj.get("summary_truncated")), "near_due_case 未标记 summary_truncated"
+    near_due_batches = near_due_after_obj.get("near_due_batches") or {}
+    assert int(near_due_batches.get("count") or 0) == 6000, "near_due_case 不应改动 near_due count"
+    assert int(near_due_batches.get("window_days") or 0) == 3, "near_due_case 不应丢 window_days"
+    assert len(near_due_batches.get("items") or []) < 6000, "near_due_case 未裁剪 near_due items"
+    assert near_due_after <= SUMMARY_SIZE_LIMIT_BYTES, "near_due_case 截断后仍超过 512KB"
+
+    # minimal 兜底路径：公共字段过大 → 走 minimal，near_due 与 overdue 同构只留 count、丢 items
+    minimal_near_obj = _minimal_trigger_near_due_case()
+    assert _size_bytes(minimal_near_obj) > SUMMARY_SIZE_LIMIT_BYTES, "minimal_near 用例应先超过上限"
+    minimal_near_after = apply_summary_size_guard(minimal_near_obj)
+    assert bool(minimal_near_after.get("summary_truncated")), "minimal_near 未标记 summary_truncated"
+    minimal_near_due = minimal_near_after.get("near_due_batches")
+    assert isinstance(minimal_near_due, dict), "minimal 应保留 near_due_batches 键"
+    assert int(minimal_near_due.get("count") or 0) == 5, "minimal 应保 near_due count"
+    assert "items" not in minimal_near_due, "minimal 应丢 near_due items（仅留 count）"
+    minimal_overdue = minimal_near_after.get("overdue_batches")
+    assert isinstance(minimal_overdue, dict) and int(minimal_overdue.get("count") or 0) == 7 and "items" not in minimal_overdue, (
+        "minimal overdue 同构校验失败"
+    )
+    assert _size_bytes(minimal_near_after) <= SUMMARY_SIZE_LIMIT_BYTES, "minimal_near 后仍超过 512KB"
 
     diagnostics_obj = _diagnostics_case(30)
     diagnostics_before = _size_bytes(diagnostics_obj)

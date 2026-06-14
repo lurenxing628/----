@@ -140,6 +140,36 @@ def _data_gap_card(context: Dict[str, Any], data_gap_reason: Optional[Dict[str, 
     )
 
 
+def _near_due_card(context: Dict[str, Any], near_due_count: Optional[int]) -> Dict[str, Any]:
+    # 三态（与超期/方案待确认同构）：缺键/摘要不可用→数据不足(notice)；count>0→N(warning)；count==0→暂无(ok 空态)。
+    if near_due_count is None:
+        return _risk_card(
+            kind="near_due_batches",
+            label="临期批次",
+            value="数据不足",
+            helper_text="当前摘要不可用，暂时不能判断有没有临近交期的批次。",
+            severity="notice",
+            link=_link(context, "gantt", "查看临期批次", view="machine"),
+        )
+    if near_due_count > 0:
+        return _risk_card(
+            kind="near_due_batches",
+            label="临期批次",
+            value=str(near_due_count),
+            helper_text="这些批次的排程完工时间临近交期、还没真正超期，建议先去甘特图确认进度。",
+            severity="warning",
+            link=_link(context, "gantt", "查看临期批次", view="machine"),
+        )
+    return _risk_card(
+        kind="near_due_batches",
+        label="临期批次",
+        value="暂无",
+        helper_text="按当前排产摘要看，暂时没有排程完工时间临近交期的批次。",
+        severity="ok",
+        link=_link(context, "gantt", "查看临期批次", view="machine"),
+    )
+
+
 def build_dashboard_risk_cards(
     *,
     context: Dict[str, Any],
@@ -149,6 +179,7 @@ def build_dashboard_risk_cards(
     data_gap_reason: Optional[Dict[str, Any]],
     resource_load_ratio: Optional[float],
     site_gap_count: Optional[int],
+    near_due_count: Optional[int],
 ) -> List[Dict[str, Any]]:
     site_gap_card = _risk_card(
         kind="site_record_gap",
@@ -164,8 +195,8 @@ def build_dashboard_risk_cards(
             helper_text="今日计划或现场事实暂时读不到，不能判断现场情况是否都已反馈。",
             severity="notice",
         )
-    # 6 格体检表（驾驶舱③，顺序=超期/待排/方案待确认/现场情况/资源负荷/基础数据）：
-    # 删 latest_version（版本归壳层胶囊）/scheduled_batches（已排不上首页）；补 方案待确认/基础数据
+    # 7 格体检表（驾驶舱③，顺序=超期/待排/方案待确认/现场情况/资源负荷/基础数据/临期，临期居末）：
+    # 删 latest_version（版本归壳层胶囊）/scheduled_batches（已排不上首页）；补 方案待确认/基础数据/临期
     return [
         _overdue_card(context, overdue_count),
         _risk_card(
@@ -180,6 +211,7 @@ def build_dashboard_risk_cards(
         site_gap_card,
         _resource_load_card(context, resource_load_ratio),
         _data_gap_card(context, data_gap_reason),
+        _near_due_card(context, near_due_count),
     ]
 
 

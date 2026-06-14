@@ -215,6 +215,13 @@ def _copy_minimal_warning_fields(minimal: Dict[str, Any], result_summary_obj: Di
         minimal["warnings_truncated"] = True
 
 
+def _minimal_due_count_field(minimal: Dict[str, Any], result_summary_obj: Dict[str, Any], key: str) -> None:
+    # 超期/临期 minimal 兜底同构：dict 非空时只留 count（丢 items），与 tier 路径互补保关键计数。
+    payload = result_summary_obj.get(key)
+    if isinstance(payload, dict) and payload:
+        minimal[key] = {"count": size_guard_scalar(payload.get("count"), max_chars=40)}
+
+
 def minimal_summary_for_size_guard(
     result_summary_obj: Dict[str, Any],
     *,
@@ -223,8 +230,6 @@ def minimal_summary_for_size_guard(
 ) -> Dict[str, Any]:
     algo = result_summary_obj.get("algo")
     algo_dict = algo if isinstance(algo, dict) else {}
-    overdue_batches = result_summary_obj.get("overdue_batches")
-    overdue_dict = overdue_batches if isinstance(overdue_batches, dict) else {}
 
     minimal: Dict[str, Any] = {
         "summary_schema_version": size_guard_scalar(result_summary_obj.get("summary_schema_version") or "1.2", max_chars=20),
@@ -248,8 +253,8 @@ def minimal_summary_for_size_guard(
         minimal["invalid_due_count"] = size_guard_scalar(result_summary_obj.get("invalid_due_count"), max_chars=40)
     if result_summary_obj.get("unscheduled_batch_count") is not None:
         minimal["unscheduled_batch_count"] = size_guard_scalar(result_summary_obj.get("unscheduled_batch_count"), max_chars=40)
-    if overdue_dict:
-        minimal["overdue_batches"] = {"count": size_guard_scalar(overdue_dict.get("count"), max_chars=40)}
+    _minimal_due_count_field(minimal, result_summary_obj, "overdue_batches")
+    _minimal_due_count_field(minimal, result_summary_obj, "near_due_batches")
     _copy_minimal_error_fields(minimal, result_summary_obj)
     _copy_minimal_missing_resource_fields(minimal, result_summary_obj)
     _copy_minimal_degradation_fields(minimal, result_summary_obj)

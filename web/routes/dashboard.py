@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, current_app, g, render_template, request
 
@@ -105,6 +105,27 @@ def _summary_overdue_count(summary: Any) -> Tuple[int, str]:
     if isinstance(overdue_payload, list):
         return len(overdue_payload), ""
     return 0, "排产摘要里的超期批次清单格式不对，首页暂时不能展示准确数量。"
+
+
+def _summary_near_due_count(summary: Any) -> Optional[int]:
+    # 临期 count 独立非致命局部读取（与 _summary_overdue_count 刻意不同构）：
+    # 缺键/坏值→None（第 7 格数据不足、临期 todo 缺席），键在且 count==0→0（空态）；
+    # 绝不返回 (0, error)、不并入全局 count_error→全摘要降级路径（缺键诚实降级，不放大）。
+    if not isinstance(summary, dict):
+        return None
+    payload = summary.get("near_due_batches")
+    if not isinstance(payload, dict) or "count" not in payload:
+        return None
+    count, count_error = _strict_count_value(payload.get("count"), "临期批次数")
+    if count_error:
+        return None
+    items = payload.get("items")
+    if isinstance(items, list) and count < len(items):
+        # count 少于明细条数：摘要内部不一致（count 应是 items 全量/上界）→ 不可信，不让 count 把
+        # items 里的真临期批次掩盖成"暂无/0"。与超期 _summary_overdue_count 同构，但保持局部降级
+        # （返回 None→第 7 格"数据不足"），不像超期那样并入全局 count_error 触发全摘要降级。
+        return None
+    return count
 
 
 def _parse_state_with_summary_error(parse_state: Dict[str, Any], error: str) -> Dict[str, Any]:
@@ -345,6 +366,8 @@ def index():
     workbench_summary_data = _summary_payload_dict(workbench_summary_parse_state)
     _, _history_count_error = _summary_overdue_count(history_summary_data)
     workbench_overdue_count, workbench_count_error = _summary_overdue_count(workbench_summary_data)
+    # 临期 count 独立读点（唯一读点，非致命局部降级，不并入 count_error 全摘要降级链）
+    workbench_near_due_count = _summary_near_due_count(workbench_summary_data)
     count_error = workbench_count_error or (_history_count_error if _should_expose_summary_parse_failure(navigation_context) else "")
     if count_error:
         workbench_summary_parse_state = _parse_state_with_summary_error(workbench_summary_parse_state, count_error)
@@ -390,6 +413,7 @@ def index():
     workbench_summary = build_dashboard_workbench_summary(
         pending_count=pending_count,
         overdue_count=workbench_overdue_count,
+        near_due_count=workbench_near_due_count,
         latest_history=workbench_history,
         latest_summary=latest_summary,
         latest_summary_parse_state=workbench_summary_parse_state,

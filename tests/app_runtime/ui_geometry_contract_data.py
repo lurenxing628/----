@@ -45,7 +45,7 @@ ERROR_PAGE_KEYWORDS: Tuple[str, ...] = (
 EXPECTED_PAGE_SIGNALS: Dict[str, Dict[str, object]] = {
     "/?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY": {
         "path": "/?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
-        "stable_texts": ["计划员值班台", "今日待处理"],
+        "stable_texts": ["计划员值班台", "今日待处理", "临期批次"],
         "diagnostic_texts": [],
         "ids": ["dashboard-workbench-title"],
     },

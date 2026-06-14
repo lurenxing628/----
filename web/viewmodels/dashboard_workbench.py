@@ -1,6 +1,12 @@
+"""首页值班台摘要编排（fusion-due-soon-alert 微重构第 1 步后：纯工具拆至 dashboard_workbench_shared、
+todo builders 拆至 dashboard_workbench_todos；本模块保留 build_summary 编排 + 现场缺口/候选计数等
+非-todo 计算。单向 import shared/todos，不被它们反向 import——无循环依赖）。
+
+注：从 dashboard_workbench_shared re-export 的 `_machine_util_ratio` / `_parse_datetime` 落在本模块
+命名空间，test_dashboard_workbench_contract.py 的既有 import 路径保持可达。"""
+
 from __future__ import annotations
 
-import math
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -15,173 +21,24 @@ from .dashboard_workbench_cards import (
 )
 from .dashboard_workbench_context import latest_plan_context
 from .dashboard_workbench_data_gap import dashboard_data_gap_reason
-from .scheduler_workbench_links import build_workbench_link
+from .dashboard_workbench_shared import (
+    _candidate_comparison,
+    _machine_util_ratio,
+    _parse_datetime,
+    _safe_int,
+    _text,
+)
+from .dashboard_workbench_todos import (
+    _candidate_todo,
+    _data_gap_todo,
+    _near_due_todo,
+    _overdue_todo,
+    _resource_load_todo,
+    _site_record_gap_todo,
+)
 
 _MAX_TODO_ITEMS = 6
 _SEVERITY_ORDER = {"danger": 0, "warning": 1, "notice": 2, "ok": 3}
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _safe_int(value: Any, default: int = 0) -> int:
-    if isinstance(value, bool):
-        return int(default)  # bool 不是计数：int(True)==1 会把脏 True 冒充「1 套候选」，按类型混入剔除
-    try:
-        return int(value or default)
-    except (TypeError, ValueError, OverflowError):
-        return int(default)  # OverflowError：int(float('inf')) 等脏值不得冒泡崩溃首页
-
-
-def _safe_float(value: Any) -> Optional[float]:
-    if value is None or value == "":
-        return None
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(number):
-        return None  # NaN/±Inf 不是可用数值，按脏值剔除（否则 nan<0 恒 False 会漏过冒充正常负荷）
-    return number
-
-
-def _datetime_label(value: Any) -> str:
-    if isinstance(value, datetime):
-        return f"{value.year}年{value.month}月{value.day}日 {value.hour:02d}:{value.minute:02d}"
-    text = _text(value)
-    if not text:
-        return "-"
-    try:
-        parsed = _parse_datetime(text)
-    except ValueError:
-        return text
-    return f"{parsed.year}年{parsed.month}月{parsed.day}日 {parsed.hour:02d}:{parsed.minute:02d}"
-
-
-def _parse_datetime(value: Any) -> datetime:
-    if isinstance(value, datetime):
-        return value
-    text = _text(value).replace("/", "-").replace("T", " ").replace("：", ":")
-    # 整串匹配（不截前缀）：坏后缀（'...08:00:00xyz'）应解析失败而非被截断成合法日期
-    # 静默当成正常时间（与 dashboard_cockpit_hero._parse_dt 同口径）。
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(text, fmt)
-        except ValueError:
-            continue
-    raise ValueError("datetime value is required")
-
-
-def _link(context: Dict[str, Any], target_page: str, label: str, **kwargs: Any) -> Dict[str, Any]:
-    return build_workbench_link(context, target_page, label=label, **kwargs)
-
-
-def _todo_item(
-    *,
-    kind: str,
-    severity: str,
-    title: str,
-    impact_text: str,
-    evidence_text: str,
-    handling_state_label: str,
-    primary_action: Dict[str, Any],
-    secondary_action: Dict[str, Any],
-) -> Dict[str, Any]:
-    return {
-        "kind": kind,
-        "severity": severity,
-        "title": title,
-        "impact_text": impact_text,
-        "evidence_text": evidence_text,
-        "handling_state_label": handling_state_label,
-        "primary_action": primary_action,
-        "secondary_action": secondary_action,
-        "action_label": primary_action.get("label") or "",
-        "target_url": primary_action.get("url") or "",
-    }
-
-
-def _overdue_todo(context: Dict[str, Any], overdue_count: int) -> Optional[Dict[str, Any]]:
-    if overdue_count <= 0:
-        return None
-    return _todo_item(
-        kind="overdue",
-        severity="danger",
-        title="超期批次需要先看",
-        impact_text=f"{overdue_count} 个批次会晚于交期，同类提醒已合并成这一条。",
-        evidence_text="根据当前排产摘要里的超期批次统计生成。",
-        handling_state_label="实时生成，暂未保存已处理状态",
-        primary_action=_link(context, "overdue_report", "查看超期清单"),
-        secondary_action=_link(context, "delay_diagnosis", "查看延期说明"),
-    )
-
-
-def _candidate_comparison(summary: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    if not isinstance(summary, dict):
-        return None
-    algo = summary.get("algo")
-    if not isinstance(algo, dict):
-        return None
-    comparison = algo.get("candidate_comparison")
-    if not isinstance(comparison, dict):
-        return None
-    # 与分析页同口径（scheduler_analysis_candidate_helpers._candidate_comparison_summary）：
-    # 候选生成被显式关闭（enabled=False）时视为无候选，首页不误报「方案待确认」。
-    if comparison.get("enabled") is False:
-        return None
-    return comparison
-
-
-def _candidate_todo(context: Dict[str, Any], latest_summary: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    comparison = _candidate_comparison(latest_summary)
-    if comparison is None:
-        return None
-    planned = _safe_int(comparison.get("planned_candidate_count"))
-    completed = _safe_int(comparison.get("completed_candidate_count"))
-    candidates = comparison.get("candidates")
-    candidate_count = max(planned, completed, len(candidates) if isinstance(candidates, list) else 0)
-    if candidate_count <= 0 and not _text(comparison.get("adopted_candidate_key")):
-        return None
-    count_text = f"{candidate_count} 套候选方案" if candidate_count > 0 else "本次候选方案"
-    evidence_parts = [f"排产摘要记录了{count_text}"]
-    if completed > 0:
-        evidence_parts.append(f"其中 {completed} 套已算完")
-    # O25：此分支经「baseline 缺失」路径生产可达（_baseline_missing_or_failed 无 baseline 候选
-    # 返回 True），不是死分支——失败半边虽生产不可达但随枚举契约保留，禁裸删本分支。
-    if comparison.get("baseline_missing_or_failed"):
-        evidence_parts.append("原算法代表方案没有完整结果")
-    return _todo_item(
-        kind="candidate_review",
-        severity="notice",
-        title="方案需要确认",
-        impact_text="本次排产有候选方案信息，建议先复核推荐结论再继续安排。",
-        evidence_text="，".join(evidence_parts) + "。",
-        handling_state_label="实时生成，暂未保存已处理状态",
-        primary_action=_link(context, "analysis", "复核方案推荐"),
-        secondary_action=_link(context, "gantt", "查看设备甘特图", view="machine"),
-    )
-
-
-def _machine_util_ratio(latest_summary: Optional[Dict[str, Any]]) -> Optional[float]:
-    if not isinstance(latest_summary, dict):
-        return None
-    algo = latest_summary.get("algo")
-    if not isinstance(algo, dict):
-        return None
-    metrics = algo.get("metrics")
-    if not isinstance(metrics, dict):
-        return None
-    if isinstance(metrics.get("machine_util_avg"), bool):
-        return None
-    raw = _safe_float(metrics.get("machine_util_avg"))
-    if raw is None or raw < 0:
-        return None
-    if raw > 1:
-        if raw <= 100:
-            return raw / 100.0
-        return None
-    return raw
 
 
 def _candidate_count(latest_summary: Optional[Dict[str, Any]]) -> int:
@@ -238,24 +95,6 @@ def _site_gap_context(
     return summary_available, gap_rows, len(gap_rows)
 
 
-def _resource_load_todo(context: Dict[str, Any], latest_summary: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    ratio = _machine_util_ratio(latest_summary)
-    if ratio is None or ratio < LOAD_WARNING_RATIO:
-        return None
-    percent = round(ratio * 100, 1)
-    severity = "danger" if ratio >= LOAD_DANGER_RATIO else "warning"
-    return _todo_item(
-        kind="resource_overload",
-        severity=severity,
-        title="资源负荷偏高",
-        impact_text=f"设备平均利用率约 {percent}%，可能需要先看资源排班。",
-        evidence_text="数据来源是当前排产摘要里的设备平均利用率；当前首页暂时只能看到整体压力，受影响批次要去资源页继续看。",
-        handling_state_label="实时生成，暂未保存已处理状态",
-        primary_action=_link(context, "resource_dispatch", "查看资源排班"),
-        secondary_action=_link(context, "utilization_report", "查看资源负荷"),
-    )
-
-
 def _fact_for_op(execution_facts_by_op_id: Dict[int, Any], op_id: Any) -> Any:
     try:
         key = int(op_id)
@@ -302,70 +141,15 @@ def _site_record_gap_rows(
     return out, has_unparseable
 
 
-def _site_record_gap_todo(
-    *,
-    context: Dict[str, Any],
-    site_gap_rows: Iterable[Dict[str, Any]],
-) -> Optional[Dict[str, Any]]:
-    gap_rows = list(site_gap_rows or [])
-    if not gap_rows:
-        return None
-    earliest = ""
-    try:
-        earliest = _datetime_label(min(_parse_datetime(row.get("start_time")) for row in gap_rows))
-    except ValueError:
-        earliest = "今天已到开始时间"
-    count = len(gap_rows)
-    return _todo_item(
-        kind="site_record_gap",
-        severity="warning",
-        title="现场情况待确认",
-        impact_text=f"{count} 道今天已到开始时间的工序暂未收到现场情况，同类提醒已合并成这一条。",
-        evidence_text=f"按当前查看方案和今天计划开始时间统计，最早一条是 {earliest}；未来任务没有计入。",
-        handling_state_label="实时生成，暂未保存已处理状态",
-        primary_action=_link(context, "execution_review", "查看计划和现场实际"),
-        secondary_action=_link(context, "resource_dispatch", "去资源派工查看"),
-    )
-
-
-def _data_gap_todo(
-    *, context: Dict[str, Any], latest_history: Any,
-    latest_summary: Optional[Dict[str, Any]], latest_summary_parse_state: Optional[Dict[str, Any]],
-    plan_time_span: Optional[Dict[str, Any]], plan_time_span_load_error: str,
-    today_rows_load_error: str, execution_facts_load_error: str,
-) -> Optional[Dict[str, Any]]:
-    reason = dashboard_data_gap_reason(
-        latest_history=latest_history,
-        context=context,
-        latest_summary=latest_summary,
-        latest_summary_parse_state=latest_summary_parse_state,
-        plan_time_span=plan_time_span,
-        plan_time_span_load_error=plan_time_span_load_error,
-        today_rows_load_error=today_rows_load_error,
-        execution_facts_load_error=execution_facts_load_error,
-    )
-    if reason is None:
-        return None
-    return _todo_item(
-        kind="data_gap",
-        severity="warning",
-        title=reason["title"],
-        impact_text=reason["impact"],
-        evidence_text=reason["evidence"],
-        handling_state_label="实时生成，暂未保存已处理状态",
-        primary_action=_link(context, "analysis", "打开排产分析"),
-        secondary_action=_link(context, "dashboard", "回到首页值班台"),
-    )
-
-
 def _todo_items(
-    *, context: Dict[str, Any], overdue_count: int, latest_history: Any,
+    *, context: Dict[str, Any], overdue_count: int, near_due_count: int, latest_history: Any,
     latest_summary: Optional[Dict[str, Any]], latest_summary_parse_state: Optional[Dict[str, Any]],
     plan_time_span: Optional[Dict[str, Any]], plan_time_span_load_error: str,
     site_gap_rows: Iterable[Dict[str, Any]], today_rows_load_error: str, execution_facts_load_error: str,
 ) -> List[Dict[str, Any]]:
     candidates = [
         _overdue_todo(context, overdue_count),
+        _near_due_todo(context, near_due_count),
         _resource_load_todo(context, latest_summary),
         _site_record_gap_todo(context=context, site_gap_rows=site_gap_rows),
         _candidate_todo(context, latest_summary),
@@ -389,6 +173,7 @@ def build_dashboard_workbench_summary(
     *,
     pending_count: int,
     overdue_count: int,
+    near_due_count: Optional[int] = None,
     latest_history: Any = None,
     latest_summary: Optional[Dict[str, Any]] = None,
     latest_summary_parse_state: Optional[Dict[str, Any]] = None,
@@ -424,9 +209,13 @@ def build_dashboard_workbench_summary(
         now=current_now,
     )
     current_overdue_count = _nonnegative_count(overdue_count) if current_summary_available else None
+    # 临期 count 仅闸门化（不二次读，index() 是唯一读点）：摘要不可用→强制 None（第7格数据不足、临期 todo 缺席），
+    # 与超期 overdue_count 同构；传入 None（缺键）经 _nonnegative_count 仍为 None。
+    current_near_due_count = _nonnegative_count(near_due_count) if current_summary_available else None
     todo_items = _todo_items(
         context=context,
         overdue_count=current_overdue_count or 0,
+        near_due_count=current_near_due_count or 0,
         latest_history=latest_history,
         latest_summary=latest_summary,
         latest_summary_parse_state=latest_summary_parse_state,
@@ -472,6 +261,7 @@ def build_dashboard_workbench_summary(
             data_gap_reason=data_gap_reason,
             resource_load_ratio=_machine_util_ratio(latest_summary),
             site_gap_count=site_gap_count,
+            near_due_count=current_near_due_count,
         ),
         "todo_items": todo_items,
         "quick_links": build_dashboard_quick_links(context),
@@ -479,4 +269,6 @@ def build_dashboard_workbench_summary(
     }
 
 
-__all__ = ["build_dashboard_workbench_summary"]
+# LOAD_*_RATIO 自 dashboard_workbench_cards re-export（单点真相源在 cards）：保持微重构前
+# dashboard_workbench.LOAD_WARNING_RATIO/LOAD_DANGER_RATIO 对外可达，test_load_ratio_single_source 契约不破。
+__all__ = ["LOAD_DANGER_RATIO", "LOAD_WARNING_RATIO", "build_dashboard_workbench_summary"]
