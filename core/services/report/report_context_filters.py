@@ -7,8 +7,10 @@ from core.models.schedule_resource_filter import (
     SUPPORTED_SCHEDULE_RESOURCE_TYPES,
     normalize_schedule_resource_filter,
 )
+from core.services.common.degradation import DegradationCollector
 
-from .calculation_helpers import overlap_seconds, parse_dt
+from .calculation_helpers import is_valid_interval, overlap_seconds, parse_dt
+from .report_degradation import record_report_bad_time_row
 
 SUPPORTED_REPORT_RESOURCE_TYPES = SUPPORTED_SCHEDULE_RESOURCE_TYPES
 
@@ -208,7 +210,16 @@ def _parsed_interval(row: Dict[str, Any]) -> Optional[Tuple[Any, Any]]:
     end = parse_dt((row or {}).get("end_time"))
     if not start or not end:
         return None
+    if not is_valid_interval(start, end):
+        return None
     return start, end
+
+
+def _has_bad_time(row: Dict[str, Any]) -> bool:
+    # 与 downtime_impact._index_downtime_rows 口径一致：解析不出有效区间即算坏时间行，
+    # 包含 start/end 全空的脏停机记录——此前要求至少一端非空，会把“全空时间”的停机行
+    # 在 batch_filter 路径静默丢弃、不计入降级提示。
+    return _parsed_interval(row or {}) is None
 
 
 def _schedule_overlaps_downtime(
@@ -246,10 +257,18 @@ def _filter_downtime_rows_by_batch_overlap(
     schedule_rows: Iterable[Dict[str, Any]],
     *,
     batch_filter: str,
+    degradation_collector: Optional[DegradationCollector] = None,
 ) -> List[Dict[str, Any]]:
     if not batch_filter:
         return list(downtime_rows or [])
-    return [row for row in downtime_rows or [] if _downtime_row_overlaps_schedule(row, schedule_rows)]
+    rows: List[Dict[str, Any]] = []
+    for row in downtime_rows or []:
+        if _downtime_row_overlaps_schedule(row, schedule_rows):
+            rows.append(row)
+            continue
+        if _has_bad_time(row):
+            record_report_bad_time_row(degradation_collector, scope="report.downtime.downtime", row=row)
+    return rows
 
 
 def filter_downtime_rows_for_report_context(
@@ -259,6 +278,7 @@ def filter_downtime_rows_for_report_context(
     resource_type: Optional[str] = None,
     resource_id: Optional[str] = None,
     batch_id: Optional[str] = None,
+    degradation_collector: Optional[DegradationCollector] = None,
 ) -> List[Dict[str, Any]]:
     resource_type_text, resource_id_text = normalize_report_resource_filter(resource_type, resource_id)
     batch_filter = str(batch_id or "").strip()
@@ -271,4 +291,9 @@ def filter_downtime_rows_for_report_context(
             batch_filter=batch_filter,
         ),
     )
-    return _filter_downtime_rows_by_batch_overlap(filtered_rows, schedule_rows, batch_filter=batch_filter)
+    return _filter_downtime_rows_by_batch_overlap(
+        filtered_rows,
+        schedule_rows,
+        batch_filter=batch_filter,
+        degradation_collector=degradation_collector,
+    )

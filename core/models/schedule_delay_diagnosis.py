@@ -167,6 +167,7 @@ class OverdueDiagnosisReport:
     total_count: int
     scheduled_count: int
     unscheduled_count: int
+    invalid_time_count: int
     top_clues: List[Dict[str, Any]]
     items: List[OverdueDiagnosisItem]
     warnings: List[str]
@@ -180,6 +181,7 @@ class OverdueDiagnosisReport:
             "total_count": int(self.total_count),
             "scheduled_count": int(self.scheduled_count),
             "unscheduled_count": int(self.unscheduled_count),
+            "invalid_time_count": int(self.invalid_time_count),
             "top_clues": [dict(item) for item in self.top_clues],
             "items": [item.to_dict() for item in self.items],
             "warnings": list(self.warnings),

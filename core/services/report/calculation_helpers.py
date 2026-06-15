@@ -28,5 +28,9 @@ def overlap_seconds(a_start: datetime, a_end: datetime, b_start: datetime, b_end
     return float((e - s).total_seconds())
 
 
+def is_valid_interval(start: datetime, end: datetime) -> bool:
+    return end > start
+
+
 def is_internal_source(value: Any) -> bool:
     return str(value or "").strip().lower() == SourceType.INTERNAL.value

@@ -8,6 +8,7 @@ from flask import g, request, send_file, url_for
 from core.services.common.excel_audit import log_excel_export
 from core.services.report import ReportEngine
 from core.services.report.report_number_parsing import parse_report_nonnegative_int
+from web.routes.domains.scheduler.scheduler_plan_context_token import plan_context_token
 from web.routes.report_plan_preview import report_export_filters
 
 # O18(R67) 裁定保持现状:这是含资源 6 键的导出上下文 superset(14 键,不含 scenario_id,
@@ -15,6 +16,7 @@ from web.routes.report_plan_preview import report_export_filters
 # REPORT_RESOURCE_FILTER_ARG_KEYS——资源 6 键只是它的子集,整组键面语义不同。
 _EXPORT_CONTEXT_KEYS = (
     "back_to",
+    "plan_context_token",
     "date_from",
     "date_to",
     "start_date",
@@ -35,9 +37,17 @@ def _has_text(value: Any) -> bool:
     return value is not None and str(value).strip() != ""
 
 
-def current_report_export_url(endpoint: str, **base_params: Any) -> str:
+def current_report_export_url(endpoint: str, exclude_context_keys=(), **base_params: Any) -> str:
+    excluded = {str(key) for key in (exclude_context_keys or ())}
     params = {key: value for key, value in base_params.items() if _has_text(value)}
+    scenario_id = str(params.pop("scenario_id", "") or "").strip()
+    if scenario_id and "plan_context_token" not in params:
+        token = plan_context_token(scenario_id)
+        if token:
+            params["plan_context_token"] = token
     for key in _EXPORT_CONTEXT_KEYS:
+        if key in excluded:
+            continue
         if key not in params and _has_text(request.args.get(key)):
             params[key] = request.args.get(key)
     return url_for(endpoint, **params)

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Mapping, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from .calculation_helpers import is_internal_source, overlap_seconds, parse_dt
+from core.services.common.degradation import DegradationCollector
+
+from .calculation_helpers import is_internal_source, is_valid_interval, overlap_seconds, parse_dt
+from .report_degradation import record_report_bad_time_row
 
 DowntimeSegment = Tuple[datetime, datetime, str, str]
 ScheduleSegment = Tuple[datetime, datetime]
@@ -15,9 +18,10 @@ def compute_downtime_impact(
     schedule_rows: Sequence[Mapping[str, Any]],
     start_dt: datetime,
     end_dt_excl: datetime,
+    degradation_collector: Optional[DegradationCollector] = None,
 ) -> List[Dict[str, Any]]:
-    by_machine_dt, machine_name = _index_downtime_rows(downtime_rows)
-    by_machine_sch = _index_schedule_rows(schedule_rows)
+    by_machine_dt, machine_name = _index_downtime_rows(downtime_rows, degradation_collector=degradation_collector)
+    by_machine_sch = _index_schedule_rows(schedule_rows, degradation_collector=degradation_collector)
 
     items = [
         _build_downtime_impact_row(mc, dts, machine_name.get(mc), by_machine_sch.get(mc) or [], start_dt, end_dt_excl)
@@ -29,6 +33,8 @@ def compute_downtime_impact(
 
 def _index_downtime_rows(
     downtime_rows: List[Dict[str, Any]],
+    *,
+    degradation_collector: Optional[DegradationCollector] = None,
 ) -> Tuple[Dict[str, List[DowntimeSegment]], Dict[str, Any]]:
     by_machine_dt: Dict[str, List[DowntimeSegment]] = {}
     machine_name: Dict[str, Any] = {}
@@ -38,7 +44,8 @@ def _index_downtime_rows(
             continue
         s_dt = parse_dt(r.get("start_time"))
         e_dt = parse_dt(r.get("end_time"))
-        if not s_dt or not e_dt:
+        if not s_dt or not e_dt or not is_valid_interval(s_dt, e_dt):
+            record_report_bad_time_row(degradation_collector, scope="report.downtime.downtime", row=r)
             continue
         by_machine_dt.setdefault(mc, []).append((s_dt, e_dt, str(r.get("reason_code") or ""), str(r.get("reason_detail") or "")))
         if mc not in machine_name:
@@ -46,7 +53,11 @@ def _index_downtime_rows(
     return by_machine_dt, machine_name
 
 
-def _index_schedule_rows(schedule_rows: Sequence[Mapping[str, Any]]) -> Dict[str, List[ScheduleSegment]]:
+def _index_schedule_rows(
+    schedule_rows: Sequence[Mapping[str, Any]],
+    *,
+    degradation_collector: Optional[DegradationCollector] = None,
+) -> Dict[str, List[ScheduleSegment]]:
     by_machine_sch: Dict[str, List[ScheduleSegment]] = {}
     for r in schedule_rows:
         if not is_internal_source(r.get("source")):
@@ -56,7 +67,8 @@ def _index_schedule_rows(schedule_rows: Sequence[Mapping[str, Any]]) -> Dict[str
             continue
         s_dt = parse_dt(r.get("start_time"))
         e_dt = parse_dt(r.get("end_time"))
-        if not s_dt or not e_dt:
+        if not s_dt or not e_dt or not is_valid_interval(s_dt, e_dt):
+            record_report_bad_time_row(degradation_collector, scope="report.downtime.schedule", row=r)
             continue
         by_machine_sch.setdefault(mc, []).append((s_dt, e_dt))
     return by_machine_sch

@@ -7,6 +7,7 @@ from core.infrastructure.errors import ValidationError
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanResolution, plan_role_label
 
 from . import calculations
+from .report_degradation import report_degradation_summary_rows
 
 
 class _ReportPlanHost(Protocol):
@@ -136,16 +137,21 @@ class ReportPlanMixin:
         resolution: SchedulePlanResolution,
         *,
         date_range: Optional[str] = None,
+        degradation: Optional[Dict[str, Any]] = None,
     ) -> List[List[Any]]:
+        rows: List[List[Any]] = []
+        rows.extend(report_degradation_summary_rows(degradation))
         if not resolution.is_scenario_preview:
-            return []
-        rows: List[List[Any]] = [
-            ["导出类型", "模拟方案预览"],
-            ["提示", "这是模拟方案预览，正式计划还没有改变。"],
-            ["模拟方案", resolution.scenario_display_name],
-            ["预览依据版本", f"v{int(resolution.version)}"],
-            ["预览依据方案", plan_role_label(resolution.selected_role)],
-        ]
+            return rows
+        rows.extend(
+            [
+                ["导出类型", "模拟方案预览"],
+                ["提示", "这是模拟方案预览，正式计划还没有改变。"],
+                ["模拟方案", resolution.scenario_display_name],
+                ["预览依据版本", f"v{int(resolution.version)}"],
+                ["预览依据方案", plan_role_label(resolution.selected_role)],
+            ]
+        )
         if date_range:
             rows.append(["查询日期", date_range])
         rows.append(["导出时间", datetime.now().strftime("%Y-%m-%d %H:%M:%S")])

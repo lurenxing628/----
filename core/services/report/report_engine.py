@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any, BinaryIO, Callable, ClassVar, Dict, Iterable, List, Optional
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.services.common.degradation import DegradationCollector
 from core.services.report.delay_diagnosis_presentation import (
     build_delay_diagnosis_export_rows,
     build_delay_diagnosis_page_context,
@@ -19,6 +20,7 @@ from core.services.scheduler.schedule_plan_query_service import (
 from data.repositories import MachineDowntimeRepository, ScheduleHistoryRepository, ScheduleRepository
 
 from . import calculations
+from .date_range_limits import ensure_report_date_range_within_limit
 from .execution_review import ExecutionReviewMixin
 from .exporters import (
     export_downtime_impact_xlsx,
@@ -26,6 +28,7 @@ from .exporters import (
     export_utilization_xlsx,
 )
 from .report_context_filters import filter_downtime_rows_for_report_context, normalize_report_resource_filter
+from .report_degradation import report_degradation_payload
 from .report_number_parsing import parse_report_nonnegative_int
 from .report_plan_helpers import ReportPlanMixin
 
@@ -37,7 +40,6 @@ class ReportExport:
     data: BinaryIO
     mode: str = "direct"
     estimated_rows: int = 0
-
 
 @dataclass(frozen=True)
 class ReportExportDecision:
@@ -174,19 +176,40 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             resource_id=resource_id,
             batch_id=batch_id,
         )
-        scheduled, unscheduled, as_of = calculations.compute_overdue_buckets(rows)
-        items = list(scheduled) + list(unscheduled)
+        scheduled, unscheduled, invalid_time, as_of = calculations.compute_overdue_bucket_groups(rows)
+        items = list(scheduled) + list(invalid_time) + list(unscheduled)
+        # 诚实计数覆盖所有批次：混合批次（有有效完成时间但夹带坏时间行）的坏行也要计入，
+        # 不能只数“排程时间异常”桶，否则会重新制造“部分坏数据被静默吞掉”的问题。
+        invalid_time_count, invalid_time_samples = calculations.collect_bad_time_rows(rows)
+        degradation = {
+            "report_degraded": invalid_time_count > 0,
+            "report_degradation_events": [],
+            "report_degradation_counters": {"bad_time_row_skipped": invalid_time_count} if invalid_time_count > 0 else {},
+            "report_degradation_samples": invalid_time_samples[:3],
+            "report_degradation_message": (
+                f"有 {invalid_time_count} 条排程记录的计划完成时间写法不对，已从相关批次的逾期与跨度计算中剔除；"
+                f"完全没有有效完成时间的批次按“排程时间异常”单列。"
+                if invalid_time_count > 0
+                else ""
+            ),
+            "report_bad_time_skipped_count": invalid_time_count,
+            "report_degradation_count_label": "计划完成时间写法不对的排程记录数",
+            "report_degradation_sample_label": "时间异常记录样例",
+        }
         return {
             "version": v,
             **self._plan_meta(resolution),
             "count": len(items),
             "scheduled_count": len(scheduled),
             "unscheduled_count": len(unscheduled),
+            "invalid_time_count": len(invalid_time),
             "as_of_time": as_of,
+            **degradation,
             # 兼容旧页面：items 仍保留（已排程在前、未排程在后）
             "items": items,
             # 新增分桶输出
             "scheduled_items": list(scheduled),
+            "invalid_time_items": list(invalid_time),
             "unscheduled_items": list(unscheduled),
         }
 
@@ -195,11 +218,18 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         version: int,
         plan_role: Optional[str] = None,
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        resource_type, resource_id = normalize_report_resource_filter(resource_type, resource_id)
         resolution = self._resolve_plan(int(version), plan_role, scenario_id)
         report = self.delay_diagnosis_service.diagnose_resolved_plan_overdue(
             version=int(version),
             resolution=resolution,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            batch_id=batch_id,
         )
         return build_delay_diagnosis_page_context(report)
 
@@ -209,10 +239,17 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         version: int,
         resolution: SchedulePlanResolution,
         batch_ids: Optional[Iterable[Any]] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        resource_type, resource_id = normalize_report_resource_filter(resource_type, resource_id)
         diagnosis_report = self.delay_diagnosis_service.diagnose_resolved_plan_overdue(
             version=int(version),
             resolution=resolution,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            batch_id=batch_id,
         )
         return build_delay_diagnosis_export_rows(
             diagnosis_report,
@@ -245,11 +282,14 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
                 version=int(rep["version"]),
                 resolution=resolution,
                 batch_ids=exported_batch_ids,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                batch_id=batch_id,
             )
             return export_overdue_xlsx(
                 items,
                 diagnosis_rows=diagnosis_rows,
-                summary_rows=self._scenario_export_summary_rows(resolution),
+                summary_rows=self._scenario_export_summary_rows(resolution, degradation=rep),
                 write_only=write_only,
             )
 
@@ -260,6 +300,24 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             build_direct=lambda: build_overdue_export(),
             build_stream=lambda: build_overdue_export(write_only=True),
         )
+
+    def _parse_limited_report_date_range(
+        self,
+        start_date: Any,
+        end_date: Any,
+        *,
+        start_field: str = "start_date",
+        end_field: str = "end_date",
+        limit_field: str = "date_range",
+        enforce_date_range_limit: bool = True,
+    ):
+        sd = calculations.parse_date(start_date, field=start_field)
+        ed = calculations.parse_date(end_date, field=end_field)
+        if ed < sd:
+            raise ValidationError("结束日期不能早于开始日期", field=end_field)
+        if enforce_date_range_limit:
+            ensure_report_date_range_within_limit(sd, ed, field=limit_field)
+        return sd, ed
 
     # -------------------------
     # 2) 资源负荷/利用率
@@ -274,14 +332,16 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
+        enforce_date_range_limit: bool = True,
     ) -> Dict[str, Any]:
         v = int(version or 0)
         resource_type, resource_id = normalize_report_resource_filter(resource_type, resource_id)
         resolution = self._resolve_plan(v, plan_role, scenario_id)
-        sd = calculations.parse_date(start_date, field="start_date")
-        ed = calculations.parse_date(end_date, field="end_date")
-        if ed < sd:
-            raise ValidationError("结束日期不能早于开始日期", field="end_date")
+        sd, ed = self._parse_limited_report_date_range(
+            start_date,
+            end_date,
+            enforce_date_range_limit=enforce_date_range_limit,
+        )
 
         start_dt = datetime(sd.year, sd.month, sd.day, 0, 0, 0)
         end_dt_excl = datetime(ed.year, ed.month, ed.day, 0, 0, 0) + timedelta(days=1)
@@ -303,12 +363,15 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         if cap_hours <= 0:
             cap_hours = 0.0
 
+        degradation_collector = DegradationCollector()
         machine_rows, operator_rows = calculations.compute_utilization(
             schedule_rows=schedule_rows,
             start_dt=start_dt,
             end_dt_excl=end_dt_excl,
             cap_hours=float(cap_hours),
+            degradation_collector=degradation_collector,
         )
+        degradation = report_degradation_payload(degradation_collector)
 
         return {
             "version": v,
@@ -318,6 +381,7 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             "capacity_hours_per_resource": round(float(cap_hours), 2),
             "machines": machine_rows,
             "operators": operator_rows,
+            **degradation,
         }
 
     def export_utilization_xlsx(
@@ -330,12 +394,17 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
+        enforce_date_range_limit: bool = True,
     ) -> ReportExport:
         utilization_kwargs: Dict[str, Any] = {"plan_role": plan_role, "scenario_id": scenario_id}
         if resource_type or resource_id:
             utilization_kwargs.update({"resource_type": resource_type, "resource_id": resource_id})
         if batch_id:
             utilization_kwargs["batch_id"] = batch_id
+        if enforce_date_range_limit:
+            self._parse_limited_report_date_range(start_date, end_date)
+        else:
+            utilization_kwargs["enforce_date_range_limit"] = False
         rep = self.utilization(version, start_date, end_date, **utilization_kwargs)
         machines = list(rep.get("machines") or [])
         operators = list(rep.get("operators") or [])
@@ -352,6 +421,7 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
                 summary_rows=self._scenario_export_summary_rows(
                     resolution,
                     date_range=f"{rep['start_date']} 至 {rep['end_date']}",
+                    degradation=rep,
                 ),
             ),
             build_stream=lambda: export_utilization_xlsx(
@@ -360,6 +430,7 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
                 summary_rows=self._scenario_export_summary_rows(
                     resolution,
                     date_range=f"{rep['start_date']} 至 {rep['end_date']}",
+                    degradation=rep,
                 ),
                 write_only=True,
             ),
@@ -378,14 +449,16 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
+        enforce_date_range_limit: bool = True,
     ) -> Dict[str, Any]:
         v = int(version or 0)
         resource_type, resource_id = normalize_report_resource_filter(resource_type, resource_id)
         resolution = self._resolve_plan(v, plan_role, scenario_id)
-        sd = calculations.parse_date(start_date, field="start_date")
-        ed = calculations.parse_date(end_date, field="end_date")
-        if ed < sd:
-            raise ValidationError("结束日期不能早于开始日期", field="end_date")
+        sd, ed = self._parse_limited_report_date_range(
+            start_date,
+            end_date,
+            enforce_date_range_limit=enforce_date_range_limit,
+        )
 
         start_dt = datetime(sd.year, sd.month, sd.day, 0, 0, 0)
         end_dt_excl = datetime(ed.year, ed.month, ed.day, 0, 0, 0) + timedelta(days=1)
@@ -403,12 +476,14 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             resource_id=resource_id,
             batch_id=batch_id,
         )
+        degradation_collector = DegradationCollector()
         downtime_rows = filter_downtime_rows_for_report_context(
             downtime_rows,
             sch_rows,
             resource_type=resource_type,
             resource_id=resource_id,
             batch_id=batch_id,
+            degradation_collector=degradation_collector,
         )
 
         machines = calculations.compute_downtime_impact(
@@ -416,7 +491,9 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             schedule_rows=sch_rows,
             start_dt=start_dt,
             end_dt_excl=end_dt_excl,
+            degradation_collector=degradation_collector,
         )
+        degradation = report_degradation_payload(degradation_collector)
 
         return {
             "version": v,
@@ -424,6 +501,7 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             "start_date": sd.isoformat(),
             "end_date": ed.isoformat(),
             "machines": machines,
+            **degradation,
         }
 
     def export_downtime_impact_xlsx(
@@ -436,12 +514,17 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
+        enforce_date_range_limit: bool = True,
     ) -> ReportExport:
         downtime_kwargs: Dict[str, Any] = {"plan_role": plan_role, "scenario_id": scenario_id}
         if resource_type or resource_id:
             downtime_kwargs.update({"resource_type": resource_type, "resource_id": resource_id})
         if batch_id:
             downtime_kwargs["batch_id"] = batch_id
+        if enforce_date_range_limit:
+            self._parse_limited_report_date_range(start_date, end_date)
+        else:
+            downtime_kwargs["enforce_date_range_limit"] = False
         rep = self.downtime_impact(version, start_date, end_date, **downtime_kwargs)
         machines = list(rep.get("machines") or [])
         if not machines:
@@ -456,6 +539,7 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
                 summary_rows=self._scenario_export_summary_rows(
                     resolution,
                     date_range=f"{rep['start_date']} 至 {rep['end_date']}",
+                    degradation=rep,
                 ),
             ),
             build_stream=lambda: export_downtime_impact_xlsx(
@@ -463,6 +547,7 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
                 summary_rows=self._scenario_export_summary_rows(
                     resolution,
                     date_range=f"{rep['start_date']} 至 {rep['end_date']}",
+                    degradation=rep,
                 ),
                 write_only=True,
             ),

@@ -7,6 +7,7 @@ from flask import request
 from core.infrastructure.errors import ValidationError
 from core.services.report import ReportEngine
 from web.navigation_context import set_current_workbench_navigation_context
+from web.routes.domains.scheduler.scheduler_plan_context_token import plan_context_token
 from web.routes.history_summary_logging import log_history_version_option_parse_warnings
 from web.routes.report_plan_preview import page_date_range_or_version_span, page_plan_resolution
 from web.routes.reports_execution_review_context import (
@@ -48,16 +49,17 @@ def _request_text(*names: str) -> str:
     return ""
 
 
+def _plan_context_token_for(scenario_id: Any) -> str:
+    return plan_context_token(str(scenario_id or "").strip() or None)
+
+
+_OVERDUE_DATE_CONTEXT_KEYS = ("date_from", "date_to", "start_date", "end_date", "query_date", "period_preset")
 def _decorated_versions(engine: ReportEngine, limit: int = 30):
     versions = decorate_history_version_options(engine.list_versions(limit=limit))
     log_history_version_option_parse_warnings(versions, log_label="报表页")
     return versions
-
-
 def _version_or_none(engine: ReportEngine):
     return page_version_or_latest(engine).selected_version
-
-
 def _standard_request_context(engine: ReportEngine, services, *, start_arg: str, end_arg: str) -> Dict[str, Any]:
     version = _version_or_none(engine)
     raw_plan_role = request_plan_role()
@@ -75,6 +77,7 @@ def _standard_request_context(engine: ReportEngine, services, *, start_arg: str,
         "version": version,
         "raw_plan_role": raw_plan_role,
         "scenario_id": scenario_id,
+        "plan_context_token": _plan_context_token_for(scenario_id),
         "resource_type": resource_type,
         "resource_id": resource_id,
         "plan_resolution": page_plan_resolution(
@@ -87,8 +90,28 @@ def _standard_request_context(engine: ReportEngine, services, *, start_arg: str,
         "end_date": end_date,
         "date_source": date_source,
     }
-
-
+def _version_report_context(engine: ReportEngine, services) -> Dict[str, Any]:
+    version = _version_or_none(engine)
+    raw_plan_role = request_plan_role()
+    scenario_id = request_scenario_id()
+    resource_type, resource_id = request_resource_filter()
+    return {
+        "version": version,
+        "raw_plan_role": raw_plan_role,
+        "scenario_id": scenario_id,
+        "plan_context_token": _plan_context_token_for(scenario_id),
+        "resource_type": resource_type,
+        "resource_id": resource_id,
+        "plan_resolution": page_plan_resolution(
+            services.schedule_plan_query_service,
+            version,
+            raw_plan_role,
+            scenario_id,
+        ),
+        "start_date": None,
+        "end_date": None,
+        "date_source": "none",
+    }
 def _publish_report_context(
     *,
     version: Any,
@@ -100,14 +123,18 @@ def _publish_report_context(
     resource_id: Any = None,
     capsule_rows: Any = None,
     context_overrides: Optional[Dict[str, Any]] = None,
+    include_period_context: bool = True,
 ) -> Dict[str, Any]:
+    query_date = _request_text("query_date") if include_period_context else ""
+    period_preset = _request_text("period_preset") if include_period_context else ""
     context = build_report_context(
         version=version,
         plan_resolution=plan_resolution,
+        plan_context_token=_plan_context_token_for((plan_resolution or {}).get("scenario_id")),
         date_from=date_from,
         date_to=date_to,
-        query_date=_request_text("query_date"),
-        period_preset=_request_text("period_preset"),
+        query_date=query_date,
+        period_preset=period_preset,
         batch_id=batch_id if batch_id is not None else _request_text("batch_id"),
         resource_type=resource_type,
         resource_id=resource_id,
@@ -119,8 +146,6 @@ def _publish_report_context(
         context.update(context_overrides)
     set_current_workbench_navigation_context(context)
     return context
-
-
 def _date_range_empty_reason(has_history: bool, date_source: str) -> str:
     if not has_history:
         return "no_history"
@@ -129,8 +154,6 @@ def _date_range_empty_reason(has_history: bool, date_source: str) -> str:
     if date_source == "version_span":
         return "no_data_in_version_span"
     return "no_data_in_query_range"
-
-
 def _checked_report_value(factory: Any) -> Any:
     try:
         return factory()
@@ -138,6 +161,10 @@ def _checked_report_value(factory: Any) -> Any:
         raise ValidationError(str(exc), field=exc.field) from exc
 
 
+def _export_date_params_for_context(request_ctx: Dict[str, Any], rep: Dict[str, Any]) -> Dict[str, Any]:
+    if request_ctx.get("date_source") == "version_span":
+        return {}
+    return {"start_date": rep.get("start_date"), "end_date": rep.get("end_date")}
 def reports_index_context(engine: ReportEngine, services) -> Dict[str, Any]:
     # limit=30 与子页对齐（原 limit=1 只取最新版，旧版本号进首页时胶囊查不到→错显「-」）
     versions = _decorated_versions(engine, limit=30)
@@ -174,8 +201,6 @@ def reports_index_context(engine: ReportEngine, services) -> Dict[str, Any]:
         "overdue_count": overdue_count,
         "reports_workbench": build_reports_index_workbench(report_context, overdue_count=overdue_count),
     }
-
-
 def _overdue_report(engine: ReportEngine, request_ctx: Dict[str, Any]) -> Dict[str, Any]:
     version = request_ctx["version"]
     if version is None:
@@ -188,13 +213,9 @@ def _overdue_report(engine: ReportEngine, request_ctx: Dict[str, Any]) -> Dict[s
         resource_id=request_ctx["resource_id"],
         batch_id=_request_text("batch_id"),
     )
-
-
 def overdue_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
     versions = _decorated_versions(engine)
-    request_ctx = _standard_request_context(
-        engine, services, start_arg=_request_text("start_date", "date_from"), end_arg=_request_text("end_date", "date_to")
-    )
+    request_ctx = _version_report_context(engine, services)
     rep = _overdue_report(engine, request_ctx)
     has_history = bool(versions)
     has_rows = int(rep.get("count") or 0) > 0
@@ -206,6 +227,7 @@ def overdue_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
         resource_type=request_ctx["resource_type"],
         resource_id=request_ctx["resource_id"],
         capsule_rows=versions,
+        include_period_context=False,
     )
     raw_delay = _raw_delay_diagnosis(engine, request_ctx, has_rows)
     return {
@@ -217,7 +239,11 @@ def overdue_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
         "count": int(rep["count"]),
         "scheduled_count": int(rep.get("scheduled_count") or 0),
         "unscheduled_count": int(rep.get("unscheduled_count") or 0),
+        "invalid_time_count": int(rep.get("invalid_time_count") or 0),
         "as_of_time": rep.get("as_of_time"),
+        "report_degraded": bool(rep.get("report_degraded")),
+        "report_degradation_message": rep.get("report_degradation_message"),
+        "report_degradation_samples": rep.get("report_degradation_samples") or [],
         "delay_diagnosis": decorate_delay_diagnosis_context(raw_delay, report_context),
         "has_history": has_history,
         "empty_reason": None if has_rows else ("no_history" if not has_history else "no_overdue"),
@@ -225,13 +251,12 @@ def overdue_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
         "report_limits": build_report_limitations("overdue"),
         "overdue_export_url": current_report_export_url(
             "reports.overdue_export",
+            exclude_context_keys=_OVERDUE_DATE_CONTEXT_KEYS,
             version=rep.get("version"),
             plan_role=request_ctx["plan_resolution"]["requested_role"],
             scenario_id=request_ctx["scenario_id"],
         ),
     }
-
-
 def _raw_delay_diagnosis(engine: ReportEngine, request_ctx: Dict[str, Any], has_rows: bool) -> Dict[str, Any]:
     if request_ctx["version"] is None or not has_rows:
         return {"generated_at": None, "warnings": [], "items_by_batch": {}}
@@ -239,9 +264,10 @@ def _raw_delay_diagnosis(engine: ReportEngine, request_ctx: Dict[str, Any], has_
         int(request_ctx["version"]),
         plan_role=request_ctx["raw_plan_role"],
         scenario_id=request_ctx["scenario_id"],
+        resource_type=request_ctx["resource_type"],
+        resource_id=request_ctx["resource_id"],
+        batch_id=_request_text("batch_id"),
     )
-
-
 def _utilization_report(engine: ReportEngine, request_ctx: Dict[str, Any]) -> Dict[str, Any]:
     version = request_ctx["version"]
     if version is None:
@@ -253,18 +279,16 @@ def _utilization_report(engine: ReportEngine, request_ctx: Dict[str, Any]) -> Di
             "machines": [],
             "operators": [],
         }
-    return engine.utilization(
-        int(version),
-        request_ctx["start_date"],
-        request_ctx["end_date"],
-        plan_role=request_ctx["raw_plan_role"],
-        scenario_id=request_ctx["scenario_id"],
-        resource_type=request_ctx["resource_type"],
-        resource_id=request_ctx["resource_id"],
-        batch_id=_request_text("batch_id"),
-    )
-
-
+    kwargs: Dict[str, Any] = {
+        "plan_role": request_ctx["raw_plan_role"],
+        "scenario_id": request_ctx["scenario_id"],
+        "resource_type": request_ctx["resource_type"],
+        "resource_id": request_ctx["resource_id"],
+        "batch_id": _request_text("batch_id"),
+    }
+    if request_ctx["date_source"] != "query":
+        kwargs["enforce_date_range_limit"] = False
+    return engine.utilization(int(version), request_ctx["start_date"], request_ctx["end_date"], **kwargs)
 def utilization_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
     versions = _decorated_versions(engine)
     request_ctx = _standard_request_context(engine, services, start_arg=_request_text("start_date"), end_arg=_request_text("end_date"))
@@ -297,26 +321,35 @@ def utilization_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
         "empty_reason": None if has_rows else _date_range_empty_reason(has_history, request_ctx["date_source"]),
         "report_links": build_report_page_links(report_context),
         "report_limits": build_report_limitations("utilization"),
+        "report_degraded": bool(rep.get("report_degraded")),
+        "report_degradation_message": rep.get("report_degradation_message") or "",
+        "report_degradation_samples": list(rep.get("report_degradation_samples") or []),
+        "report_bad_time_skipped_count": int(rep.get("report_bad_time_skipped_count") or 0),
         "utilization_export_url": current_report_export_url(
             "reports.utilization_export",
             version=rep.get("version"),
             plan_role=request_ctx["plan_resolution"]["requested_role"],
             scenario_id=request_ctx["scenario_id"],
-            start_date=rep["start_date"],
-            end_date=rep["end_date"],
+            **_export_date_params_for_context(request_ctx, rep),
         ),
     }
-
-
 def _paired_execution_dates() -> Tuple[str, str]:
     raw_date_from = _request_text("date_from", "start_date")
     raw_date_to = _request_text("date_to", "end_date")
     if bool(raw_date_from) != bool(raw_date_to):
         raise ValidationError("开始日期和结束日期要一起填写。", field="date_from")
     return raw_date_from, raw_date_to
-
-
-def _execution_review_report(engine: ReportEngine, version: Any, date_from: str, date_to: str, batch_id: str, resource_type: str, resource_id: str) -> Dict[str, Any]:
+def _execution_review_report(
+    engine: ReportEngine,
+    version: Any,
+    date_from: str,
+    date_to: str,
+    batch_id: str,
+    resource_type: str,
+    resource_id: str,
+    *,
+    enforce_date_range_limit: bool = True,
+) -> Dict[str, Any]:
     if version is None:
         return {
             "version": None,
@@ -335,15 +368,12 @@ def _execution_review_report(engine: ReportEngine, version: Any, date_from: str,
         batch_id=batch_id,
         resource_type=resource_type,
         resource_id=resource_id,
+        enforce_date_range_limit=enforce_date_range_limit,
     )
-
-
 def _execution_review_date_label(date_from: str, date_to: str) -> str:
     if date_from and date_to:
         return f"{date_from} 至 {date_to}"
     return "全部日期"
-
-
 def _blocked_execution_review_report(version: Any, date_from: str, date_to: str, batch_id: str) -> Dict[str, Any]:
     return {
         "version": version,
@@ -355,8 +385,6 @@ def _blocked_execution_review_report(version: Any, date_from: str, date_to: str,
         "date_range_label": _execution_review_date_label(date_from, date_to),
         "batch_filter_label": batch_id or "全部批次",
     }
-
-
 def _execution_review_text_fields(rep: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "date_from": rep.get("date_from") or "",
@@ -365,25 +393,21 @@ def _execution_review_text_fields(rep: Dict[str, Any]) -> Dict[str, Any]:
         "date_range_label": rep.get("date_range_label") or "全部日期",
         "batch_filter_label": rep.get("batch_filter_label") or "全部批次",
     }
-
-
 def _execution_review_empty_reason(rows: list, has_history: bool) -> Optional[str]:
     if rows:
         return None
     return "no_history" if not has_history else "no_data"
-
-
-def _execution_review_export_url(rep: Dict[str, Any]) -> str:
+def _execution_review_export_url(rep: Dict[str, Any], *, date_source: str = "") -> str:
     fields = _execution_review_text_fields(rep)
+    date_params = {}
+    if date_source != "version_span":
+        date_params = {"date_from": fields["date_from"], "date_to": fields["date_to"]}
     return current_report_export_url(
         "reports.execution_review_export",
         version=rep.get("version"),
-        date_from=fields["date_from"],
-        date_to=fields["date_to"],
         batch_id=fields["batch_id"],
+        **date_params,
     )
-
-
 def execution_review_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
     versions = _decorated_versions(engine)
     version = _version_or_none(engine)
@@ -396,13 +420,29 @@ def execution_review_page_context(engine: ReportEngine, services) -> Dict[str, A
     plan_resolution = page_plan_resolution(services.schedule_plan_query_service, version, "adopted", None)
     raw_date_from, raw_date_to = _paired_execution_dates()
     # 同一护栏也适用于默认日期窗:窗口按正式方案计算,避免模拟预览身份冒充正式复盘。
-    date_from, date_to, _date_source, _span = page_date_range_or_version_span(engine, int(version or 0), "adopted", None, raw_date_from, raw_date_to)
+    date_from, date_to, date_source, _span = page_date_range_or_version_span(
+        engine,
+        int(version or 0),
+        "adopted",
+        None,
+        raw_date_from,
+        raw_date_to,
+    )
     batch_id = _request_text("batch_id")
     resource_type, resource_id = request_resource_filter()
     rep = (
         _blocked_execution_review_report(version, date_from, date_to, batch_id)
         if identity_error
-        else _execution_review_report(engine, version, date_from, date_to, batch_id, resource_type, resource_id)
+        else _execution_review_report(
+            engine,
+            version,
+            date_from,
+            date_to,
+            batch_id,
+            resource_type,
+            resource_id,
+            enforce_date_range_limit=date_source == "query",
+        )
     )
     context_plan_resolution = (
         blocked_execution_review_plan_resolution(plan_resolution, raw_plan_role, scenario_id)
@@ -435,26 +475,22 @@ def execution_review_page_context(engine: ReportEngine, services) -> Dict[str, A
         "report_links": build_report_page_links(report_context),
         "report_limits": build_report_limitations("execution_review"),
         "execution_review_identity_error": identity_error,
-        "execution_review_export_url": "" if identity_error else _execution_review_export_url(rep),
+        "execution_review_export_url": "" if identity_error else _execution_review_export_url(rep, date_source=date_source),
     }
-
-
 def _downtime_report(engine: ReportEngine, request_ctx: Dict[str, Any]) -> Dict[str, Any]:
     version = request_ctx["version"]
     if version is None:
         return {"version": None, "start_date": request_ctx["start_date"], "end_date": request_ctx["end_date"], "machines": []}
-    return engine.downtime_impact(
-        int(version),
-        request_ctx["start_date"],
-        request_ctx["end_date"],
-        plan_role=request_ctx["raw_plan_role"],
-        scenario_id=request_ctx["scenario_id"],
-        resource_type=request_ctx["resource_type"],
-        resource_id=request_ctx["resource_id"],
-        batch_id=_request_text("batch_id"),
-    )
-
-
+    kwargs: Dict[str, Any] = {
+        "plan_role": request_ctx["raw_plan_role"],
+        "scenario_id": request_ctx["scenario_id"],
+        "resource_type": request_ctx["resource_type"],
+        "resource_id": request_ctx["resource_id"],
+        "batch_id": _request_text("batch_id"),
+    }
+    if request_ctx["date_source"] != "query":
+        kwargs["enforce_date_range_limit"] = False
+    return engine.downtime_impact(int(version), request_ctx["start_date"], request_ctx["end_date"], **kwargs)
 def downtime_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
     versions = _decorated_versions(engine)
     request_ctx = _standard_request_context(engine, services, start_arg=_request_text("start_date"), end_arg=_request_text("end_date"))
@@ -488,12 +524,15 @@ def downtime_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
         "downtime_empty_message": downtime_empty_message(empty_reason),
         "report_links": build_report_page_links(report_context),
         "report_limits": build_report_limitations("downtime"),
+        "report_degraded": bool(rep.get("report_degraded")),
+        "report_degradation_message": rep.get("report_degradation_message") or "",
+        "report_degradation_samples": list(rep.get("report_degradation_samples") or []),
+        "report_bad_time_skipped_count": int(rep.get("report_bad_time_skipped_count") or 0),
         "downtime_export_url": current_report_export_url(
             "reports.downtime_export",
             version=rep.get("version"),
             plan_role=request_ctx["plan_resolution"]["requested_role"],
             scenario_id=request_ctx["scenario_id"],
-            start_date=rep["start_date"],
-            end_date=rep["end_date"],
+            **_export_date_params_for_context(request_ctx, rep),
         ),
     }

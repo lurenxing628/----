@@ -10,6 +10,7 @@ from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.services.scheduler.schedule_plan_query_service import plan_role_label
 
 from . import calculations
+from .date_range_limits import ensure_report_date_range_within_limit
 from .exporters import export_execution_review_xlsx
 from .report_number_parsing import parse_report_float, parse_report_int
 
@@ -121,7 +122,13 @@ class ExecutionReviewMixin:
     # -------------------------
     # 计划和现场实际复盘
     # -------------------------
-    def _execution_review_date_bounds(self, date_from: Any = None, date_to: Any = None) -> Dict[str, Any]:
+    def _execution_review_date_bounds(
+        self,
+        date_from: Any = None,
+        date_to: Any = None,
+        *,
+        enforce_date_range_limit: bool = True,
+    ) -> Dict[str, Any]:
         raw_from = str(date_from or "").strip()
         raw_to = str(date_to or "").strip()
         if not raw_from and not raw_to:
@@ -138,6 +145,8 @@ class ExecutionReviewMixin:
         end_date = calculations.parse_date(raw_to, field="date_to")
         if end_date < start_date:
             raise ValidationError("结束日期不能早于开始日期。", field="date_to")
+        if enforce_date_range_limit:
+            ensure_report_date_range_within_limit(start_date, end_date, field="date_range")
         start_dt = datetime(start_date.year, start_date.month, start_date.day, 0, 0, 0)
         end_dt_excl = datetime(end_date.year, end_date.month, end_date.day, 0, 0, 0) + timedelta(days=1)
         return {
@@ -201,12 +210,17 @@ class ExecutionReviewMixin:
         batch_id: Any = None,
         resource_type: Any = None,
         resource_id: Any = None,
+        enforce_date_range_limit: bool = True,
     ) -> Dict[str, Any]:
         host = cast(_ExecutionReviewHost, self)
         v = int(version or 0)
         # 先按正式 adopted/null 解析身份，再进入复盘计算，避免下游读路径被查询参数放宽。
         resolution = host._resolve_plan(v, ROLE_ADOPTED, None)
-        date_bounds = self._execution_review_date_bounds(date_from, date_to)
+        date_bounds = self._execution_review_date_bounds(
+            date_from,
+            date_to,
+            enforce_date_range_limit=enforce_date_range_limit,
+        )
         plan_resolution = resolution.to_dict()
         batch_filter = str(batch_id or "").strip()
         plan_rows = self._execution_review_plan_rows(
@@ -241,6 +255,7 @@ class ExecutionReviewMixin:
         batch_id: Any = None,
         resource_type: Any = None,
         resource_id: Any = None,
+        enforce_date_range_limit: bool = True,
     ) -> Any:
         rep = self.execution_review(
             version,
@@ -249,6 +264,7 @@ class ExecutionReviewMixin:
             batch_id=batch_id,
             resource_type=resource_type,
             resource_id=resource_id,
+            enforce_date_range_limit=enforce_date_range_limit,
         )
         rows = list(rep.get("rows") or [])
         if not rows:

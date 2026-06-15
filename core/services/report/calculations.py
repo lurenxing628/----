@@ -4,7 +4,13 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List
 
 from core.infrastructure.errors import ValidationError
-from core.services.common.overdue_calculations import compute_overdue_buckets, compute_overdue_items, due_exclusive
+from core.services.common.overdue_calculations import (
+    collect_bad_time_rows,
+    compute_overdue_bucket_groups,
+    compute_overdue_buckets,
+    compute_overdue_items,
+    due_exclusive,
+)
 
 from .calculation_helpers import overlap_seconds, parse_dt
 from .downtime_impact import compute_downtime_impact as _compute_downtime_impact
@@ -17,12 +23,14 @@ def compute_downtime_impact(
     schedule_rows,
     start_dt: datetime,
     end_dt_excl: datetime,
+    degradation_collector=None,
 ) -> List[Dict[str, Any]]:
     return _compute_downtime_impact(
         downtime_rows=downtime_rows,
         schedule_rows=schedule_rows,
         start_dt=start_dt,
         end_dt_excl=end_dt_excl,
+        degradation_collector=degradation_collector,
     )
 
 
@@ -32,12 +40,14 @@ def compute_utilization(
     start_dt: datetime,
     end_dt_excl: datetime,
     cap_hours: float,
+    degradation_collector=None,
 ):
     return _compute_utilization(
         schedule_rows=schedule_rows,
         start_dt=start_dt,
         end_dt_excl=end_dt_excl,
         cap_hours=cap_hours,
+        degradation_collector=degradation_collector,
     )
 
 

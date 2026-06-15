@@ -71,6 +71,14 @@
         {{ report_plan_status.source_text }}
       </div>
       <div class="aps-filter-note aps-report-date-source">日期来源：{{ date_source_label }}。</div>
+      {% if report_degraded and report_degradation_message %}
+        <div class="flash-card flash-warning mt-2" role="status">
+          {{ report_degradation_message }}
+          {% if report_degradation_samples %}
+            <div class="text-meta mt-1">已过滤记录样例：{{ report_degradation_samples|join('；') }}</div>
+          {% endif %}
+        </div>
+      {% endif %}
       {% if report_limits %}
         <div class="aps-filter-note">
           能回答：{{ report_limits.answer_text }} 不能证明：{{ report_limits.limitation_text }}

@@ -3,7 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from .calculation_helpers import is_internal_source, overlap_seconds, parse_dt
+from core.services.common.degradation import DegradationCollector
+
+from .calculation_helpers import is_internal_source, is_valid_interval, overlap_seconds, parse_dt
+from .report_degradation import record_report_bad_time_row
 
 
 def compute_utilization(
@@ -12,12 +15,13 @@ def compute_utilization(
     start_dt: datetime,
     end_dt_excl: datetime,
     cap_hours: float,
+    degradation_collector: Optional[DegradationCollector] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     by_machine: Dict[str, Dict[str, Any]] = {}
     by_operator: Dict[str, Dict[str, Any]] = {}
 
     for r in schedule_rows:
-        hours = _row_hours_in_window(r, start_dt, end_dt_excl)
+        hours = _row_hours_in_window(r, start_dt, end_dt_excl, degradation_collector=degradation_collector)
         if hours is None:
             continue
         _add_machine_hours(by_machine, r, hours)
@@ -28,12 +32,19 @@ def compute_utilization(
     return machine_rows, operator_rows
 
 
-def _row_hours_in_window(row: Mapping[str, Any], start_dt: datetime, end_dt_excl: datetime) -> Optional[float]:
+def _row_hours_in_window(
+    row: Mapping[str, Any],
+    start_dt: datetime,
+    end_dt_excl: datetime,
+    *,
+    degradation_collector: Optional[DegradationCollector] = None,
+) -> Optional[float]:
     if not is_internal_source(row.get("source")):
         return None
     s_dt = parse_dt(row.get("start_time"))
     e_dt = parse_dt(row.get("end_time"))
-    if not s_dt or not e_dt:
+    if not s_dt or not e_dt or not is_valid_interval(s_dt, e_dt):
+        record_report_bad_time_row(degradation_collector, scope="report.utilization.schedule", row=row)
         return None
     sec = overlap_seconds(s_dt, e_dt, start_dt, end_dt_excl)
     if sec <= 0:

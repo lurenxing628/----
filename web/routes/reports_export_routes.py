@@ -61,13 +61,15 @@ def register_report_export_routes(bp) -> None:
         plan_role = _request_plan_role()
         scenario_id = _request_scenario_id()
         resource_type, resource_id = _request_resource_filter()
+        raw_start_date = request.args.get("start_date") or ""
+        raw_end_date = request.args.get("end_date") or ""
         start_date, end_date = export_date_range_or_version_span(
             engine,
             int(version or 0),
             plan_role,
             scenario_id,
-            request.args.get("start_date") or "",
-            request.args.get("end_date") or "",
+            raw_start_date,
+            raw_end_date,
         )
         x = engine.export_utilization_xlsx(
             version,
@@ -78,6 +80,7 @@ def register_report_export_routes(bp) -> None:
             resource_type=resource_type,
             resource_id=resource_id,
             batch_id=request.args.get("batch_id") or "",
+            enforce_date_range_limit=bool(raw_start_date or raw_end_date),
         )
         log_report_export(
             engine=engine,
@@ -131,13 +134,15 @@ def register_report_export_routes(bp) -> None:
         plan_role = _request_plan_role()
         scenario_id = _request_scenario_id()
         resource_type, resource_id = _request_resource_filter()
+        raw_start_date = request.args.get("start_date") or ""
+        raw_end_date = request.args.get("end_date") or ""
         start_date, end_date = export_date_range_or_version_span(
             engine,
             int(version or 0),
             plan_role,
             scenario_id,
-            request.args.get("start_date") or "",
-            request.args.get("end_date") or "",
+            raw_start_date,
+            raw_end_date,
         )
         x = engine.export_downtime_impact_xlsx(
             version,
@@ -148,6 +153,7 @@ def register_report_export_routes(bp) -> None:
             resource_type=resource_type,
             resource_id=resource_id,
             batch_id=request.args.get("batch_id") or "",
+            enforce_date_range_limit=bool(raw_start_date or raw_end_date),
         )
         log_report_export(
             engine=engine,

@@ -5,8 +5,10 @@ from typing import Any, Dict, Optional
 
 from core.infrastructure.errors import ValidationError
 from core.services.report import ReportEngine
+from core.services.report.date_range_limits import ensure_report_date_range_within_limit
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED
 from core.services.scheduler.schedule_result_view_context import default_plan_resolution_dict
+from web.routes.domains.scheduler.scheduler_plan_context_token import request_scenario_id_from_args
 
 
 def default_date_range(days: int = 7):
@@ -28,9 +30,19 @@ def validate_ymd_date(raw: str, field: str) -> str:
     return text
 
 
+def validate_explicit_report_date_range(start_raw: str, end_raw: str):
+    start_text = validate_ymd_date(start_raw, field="开始日期")
+    end_text = validate_ymd_date(end_raw, field="结束日期")
+    start_date = datetime.strptime(start_text, "%Y-%m-%d").date()
+    end_date = datetime.strptime(end_text, "%Y-%m-%d").date()
+    if end_date < start_date:
+        raise ValidationError("结束日期不能早于开始日期", field="结束日期")
+    ensure_report_date_range_within_limit(start_date, end_date, field="日期范围")
+    return start_text, end_text
+
+
 def request_scenario_id(args: Any) -> Optional[str]:
-    text = str(args.get("scenario_id") or "").strip()
-    return text or None
+    return request_scenario_id_from_args(args)
 
 
 def default_plan_resolution(version=None, raw_role=None) -> Dict[str, Any]:
@@ -59,12 +71,8 @@ def page_date_range_or_version_span(
     start_text = (start_raw or "").strip()
     end_text = (end_raw or "").strip()
     if start_text or end_text:
-        return (
-            validate_ymd_date(start_text, field="开始日期"),
-            validate_ymd_date(end_text, field="结束日期"),
-            "query",
-            {"has_data": False},
-        )
+        start, end = validate_explicit_report_date_range(start_text, end_text)
+        return start, end, "query", {"has_data": False}
 
     span = engine.version_date_range(int(version or 0), plan_role=plan_role, scenario_id=scenario_id)
     if span.get("has_data") and span.get("start_date") and span.get("end_date"):
@@ -85,7 +93,7 @@ def export_date_range_or_version_span(
     start_text = (start_raw or "").strip()
     end_text = (end_raw or "").strip()
     if start_text or end_text:
-        return validate_ymd_date(start_text, field="开始日期"), validate_ymd_date(end_text, field="结束日期")
+        return validate_explicit_report_date_range(start_text, end_text)
     span = engine.version_date_range(int(version or 0), plan_role=plan_role, scenario_id=scenario_id)
     if span.get("has_data") and span.get("start_date") and span.get("end_date"):
         return str(span["start_date"]), str(span["end_date"])

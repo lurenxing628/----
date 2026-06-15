@@ -40,12 +40,14 @@ def stable_unique(values: Iterable[Any]) -> List[str]:
 
 
 def plan_link(plan_identity: PlanIdentity, target: str, *, scenario_id: Optional[str] = None) -> str:
+    # scenario_id 有意不写入链接：它是内部计划身份，URL 上下文改由不透明的 plan_context_token
+    # 承载（见 web 层），契约亦钉死 scenario_id 不得出现在诊断深链中。保留形参仅为兼容既有
+    # 调用签名、让调用方显式表达“该链接处于某模拟方案上下文”，函数体不再消费它。
+    _ = scenario_id
     parts = [
         f"version={plan_identity.version}",
         f"plan_role={plan_identity.requested_plan_role}",
     ]
-    if scenario_id:
-        parts.append(f"scenario_id={scenario_id}")
     return f"{target}?{'&'.join(parts)}"
 
 

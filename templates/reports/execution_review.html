@@ -11,7 +11,7 @@
   <div class="card aps-report-filter-card">
     {{ ui.aps_card_header('筛选', '选择排产版本、日期范围和批次后查看现场复盘，需要时导出 Excel。') }}
     <form method="get" action="{{ url_for('reports.execution_review_page') }}">
-      {{ reports_ui.preserved_report_context_inputs(exclude=('version', 'plan_role', 'scenario_id', 'date_from', 'date_to', 'start_date', 'end_date', 'batch_id')) }}
+      {{ reports_ui.preserved_report_context_inputs(exclude=('version', 'plan_role', 'scenario_id', 'plan_context_token', 'date_from', 'date_to', 'start_date', 'end_date', 'batch_id')) }}
       <div class="aps-report-filter-grid">
         <div class="form-field aps-report-version-field">
           <label>排产版本</label>

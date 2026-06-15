@@ -11,7 +11,7 @@
   <div class="card aps-report-filter-card">
     {{ ui.aps_card_header('筛选', '选择排产版本后查看超期批次，需要时导出 Excel。') }}
     <form method="get" action="{{ url_for('reports.overdue_page') }}">
-      {{ reports_ui.preserved_report_context_inputs(exclude=('version', 'plan_role')) }}
+      {{ reports_ui.preserved_report_context_inputs(exclude=('version', 'plan_role', 'date_from', 'date_to', 'start_date', 'end_date', 'query_date', 'period_preset')) }}
       <div class="aps-report-filter-grid aps-report-filter-grid--single">
         <div class="form-field aps-report-version-field">
           <label>排产版本</label>
@@ -83,8 +83,17 @@
       {{ ui.summary_item('总数', count ~ ' 个') }}
       {{ ui.summary_item('已排程', scheduled_count ~ ' 个') }}
       {{ ui.summary_item('未排程', unscheduled_count ~ ' 个') }}
+      {{ ui.summary_item('排程时间异常', invalid_time_count ~ ' 个') }}
       {{ ui.summary_item('截至时间', as_of_time if as_of_time else '-') }}
     </div>
+    {% if report_degraded and report_degradation_message %}
+      <div class="flash-card flash-warning mt-2" role="status">
+        {{ report_degradation_message }}
+        {% if report_degradation_samples %}
+          <div class="text-meta mt-1">时间异常记录样例：{{ report_degradation_samples|join('；') }}</div>
+        {% endif %}
+      </div>
+    {% endif %}
     {% if not rows %}
       {% if empty_reason == "no_history" %}
         <div class="muted">暂无排产历史，当前无法生成超期清单。</div>
@@ -116,7 +125,7 @@
             {% set diagnosis = (delay_diagnosis.items_by_batch or {}).get(r.batch_id) if delay_diagnosis else none %}
             <tr>
               <td>{{ r.bucket_label or '-' }}</td>
-              <td><a class="aps-col-code" href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}" title="{{ r.batch_id }}">{{ r.batch_id }}</a></td>
+              <td><a class="aps-col-code" href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id, next=current_public_return_url()) }}" title="{{ r.batch_id }}">{{ r.batch_id }}</a></td>
               <td><span class="aps-col-code" title="{{ r.part_no or '' }}">{{ r.part_no or '-' }}</span></td>
               <td><span class="aps-col-name" title="{{ r.part_name or '' }}">{{ r.part_name or '-' }}</span></td>
               <td>{{ r.quantity if r.quantity is not none else '-' }}</td>

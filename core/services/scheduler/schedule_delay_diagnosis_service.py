@@ -13,7 +13,7 @@ from core.models.schedule_delay_diagnosis import (
     SuggestedAction,
 )
 from core.models.schedule_plan_identity import EvidenceLink, PlanIdentity
-from core.services.common.overdue_calculations import compute_overdue_buckets, parse_dt
+from core.services.common.overdue_calculations import compute_overdue_bucket_groups, parse_dt
 
 from .schedule_delay_diagnosis_clues import ScheduleDelayDiagnosisClueBuilder
 from .schedule_delay_diagnosis_utils import (
@@ -45,6 +45,9 @@ class ScheduleDelayDiagnosisService:
         version: int,
         resolution: Any,
         as_of_time: Optional[Any] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> OverdueDiagnosisReport:
         identity = resolution.plan_identity
         if identity is None:
@@ -56,16 +59,22 @@ class ScheduleDelayDiagnosisService:
             source_table=resolution.source_table,
             candidate_id=resolution.candidate_id,
             scenario_id=resolution.scenario_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            batch_id=batch_id,
         )
-        scheduled, unscheduled, as_of_text = compute_overdue_buckets(base_rows, now_dt=as_of_dt)
+        scheduled, unscheduled, invalid_time, as_of_text = compute_overdue_bucket_groups(base_rows, now_dt=as_of_dt)
         detail_rows = self.plan_query.list_plan_detail_rows_all_for_resolution(
             version=int(version),
             source_table=resolution.source_table,
             candidate_id=resolution.candidate_id,
             scenario_id=resolution.scenario_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            batch_id=batch_id,
         )
         rows_by_batch = self._rows_by_batch(detail_rows)
-        overdue_rows = list(scheduled) + list(unscheduled)
+        overdue_rows = list(scheduled) + list(invalid_time) + list(unscheduled)
         items = [
             self._diagnose_item(
                 row=row,
@@ -91,6 +100,7 @@ class ScheduleDelayDiagnosisService:
             total_count=len(items),
             scheduled_count=len(scheduled),
             unscheduled_count=len(unscheduled),
+            invalid_time_count=len(invalid_time),
             top_clues=top_clues(items),
             items=items,
             warnings=["没有现场执行反馈时，不判断现场做慢了。"],
@@ -136,11 +146,13 @@ class ScheduleDelayDiagnosisService:
             generated_at=generated_at,
             gaps=gaps,
         )
+        if text(row.get("bucket")) == "schedule_time_invalid":
+            gaps.append("这个批次有排程记录，但计划完成时间写法不对，请先修正排程时间后再判断是否真的晚完。")
         if not plan_rows:
             gaps.append("当前方案里没有这个批次的排程明细，只能先确认它已经超过交期。")
         gaps.append("当前还没有现场执行反馈，不能判断是不是现场做慢了。")
         evidences = self._collect_evidences(facts=facts, clues=clues, operation=last_operation)
-        leading = self._leading_clue(clues, bool(plan_rows))
+        leading = self._leading_clue(clues, bool(plan_rows), bucket=text(row.get("bucket")))
         actions = self._suggested_actions(plan_identity=plan_identity, batch_id=batch_id, has_rows=bool(plan_rows))
         trace = build_trace_meta(
             plan_identity=plan_identity,
@@ -217,6 +229,8 @@ class ScheduleDelayDiagnosisService:
             )
         if bucket == "scheduled_overdue":
             fact_text = f"批次 {batch_id} 的计划完成时间已经晚于交期 {due_text}，超期 {delay_hours:.2f} 小时。"
+        elif bucket == "schedule_time_invalid":
+            fact_text = f"批次 {batch_id} 有排程记录，但计划完成时间写法不对，不能把它当作未排程或准时完成。"
         else:
             fact_text = f"批次 {batch_id} 还没有计划完成时间，截至 {row.get('as_of_time')} 已经超过交期 {due_text}。"
         return [ConfirmedFact(text=fact_text, evidences=[evidence])]
@@ -257,7 +271,9 @@ class ScheduleDelayDiagnosisService:
         )
 
     @staticmethod
-    def _leading_clue(clues: Sequence[DiagnosisClue], has_rows: bool) -> Tuple[str, str, str]:
+    def _leading_clue(clues: Sequence[DiagnosisClue], has_rows: bool, *, bucket: str = "") -> Tuple[str, str, str]:
+        if bucket == "schedule_time_invalid":
+            return "schedule_time_invalid", "排程时间异常", "missing_data"
         for clue in clues:
             if clue.confidence == "likely":
                 return clue.clue_code, clue.clue_label, "likely"

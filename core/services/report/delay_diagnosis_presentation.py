@@ -80,6 +80,8 @@ def _delay_text(item: OverdueDiagnosisItem) -> str:
     days = round(_finite_number(item.delay_days, field="delay_days", label="延期天数"), 2)
     if item.bucket == "scheduled_overdue":
         return f"计划完成已经晚了 {hours:.2f} 小时（约 {days:.2f} 天）。"
+    if item.bucket == "schedule_time_invalid":
+        return f"有排程记录，但计划完成时间写法不对；按交期看已经晚了 {hours:.2f} 小时（约 {days:.2f} 天）。"
     return f"还没有计划完成时间，截至当前已经晚了 {hours:.2f} 小时（约 {days:.2f} 天）。"
 
 
