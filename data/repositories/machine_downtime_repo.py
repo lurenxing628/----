@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Set
 from core.models import MachineDowntime
 
 from .base_repo import BaseRepository
+from .schedule_time_sql import overlap_or_bad_time_sql
 
 
 class MachineDowntimeRepository(BaseRepository):
@@ -56,13 +57,12 @@ class MachineDowntimeRepository(BaseRepository):
 
     def list_active_overlaps_with_machine_names(self, start_time: str, end_time: str) -> List[Dict[str, Any]]:
         rows = self.fetchall(
-            """
+            f"""
             SELECT md.machine_id, m.name AS machine_name, md.start_time, md.end_time, md.reason_code, md.reason_detail
             FROM MachineDowntimes md
             LEFT JOIN Machines m ON m.machine_id = md.machine_id
             WHERE md.status = 'active'
-              AND md.start_time < ?
-              AND md.end_time > ?
+              AND {overlap_or_bad_time_sql("md")}
             ORDER BY md.machine_id, md.start_time, md.id
             """,
             (end_time, start_time),

@@ -88,6 +88,7 @@ def resolve_schedule_result_week_range(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     default_to_version_span: bool,
+    max_explicit_date_days: Optional[int] = None,
 ) -> Tuple[WeekRange, Optional[Dict[str, Any]], str]:
     version_span = (
         get_plan_time_span_dates(
@@ -126,4 +127,8 @@ def resolve_schedule_result_week_range(
         start_date=start_date,
         end_date=end_date,
     )
+    if max_explicit_date_days is not None and (_has_text(start_date) or _has_text(end_date)):
+        day_count = (wr.week_end_date - wr.week_start_date).days + 1
+        if day_count > int(max_explicit_date_days):
+            raise ValidationError(f"日期范围不能超过 {int(max_explicit_date_days)} 天", field="date_range")
     return wr, version_span, "request"

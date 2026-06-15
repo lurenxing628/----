@@ -20,17 +20,30 @@ class MaterialRepository(BaseRepository):
     def exists(self, material_id: str) -> bool:
         return bool(self.fetchvalue("SELECT 1 FROM Materials WHERE material_id = ? LIMIT 1", (str(material_id),)))
 
-    def list(self, status: Optional[str] = None) -> List[Material]:
+    @staticmethod
+    def _list_filters(status: Optional[str]) -> tuple:
+        """list 与 count 共用的过滤条件，避免两处各写一套导致分页 total 与实际行数漂移。"""
         if status:
-            rows = self.fetchall(
-                "SELECT material_id, name, spec, unit, stock_qty, status, remark, created_at FROM Materials WHERE status = ? ORDER BY material_id",
-                (str(status),),
-            )
-        else:
-            rows = self.fetchall(
-                "SELECT material_id, name, spec, unit, stock_qty, status, remark, created_at FROM Materials ORDER BY material_id"
-            )
+            return " WHERE status = ?", [str(status)]
+        return "", []
+
+    def list(self, status: Optional[str] = None, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Material]:
+        where_sql, params = self._list_filters(status)
+        sql = (
+            "SELECT material_id, name, spec, unit, stock_qty, status, remark, created_at FROM Materials"
+            + where_sql
+            + " ORDER BY material_id"
+        )
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params.extend([int(limit), int(offset or 0)])
+        rows = self.fetchall(sql, tuple(params) if params else None)
         return [Material.from_row(r) for r in rows]
+
+    def count(self, status: Optional[str] = None) -> int:
+        where_sql, params = self._list_filters(status)
+        sql = "SELECT COUNT(1) FROM Materials" + where_sql
+        return int(self.fetchvalue(sql, tuple(params) if params else None, default=0) or 0)
 
     def create(self, material: Union[Material, Dict[str, Any]]) -> Material:
         m = material if isinstance(material, Material) else Material.from_row(material)
@@ -83,4 +96,3 @@ class MaterialRepository(BaseRepository):
 
     def delete(self, material_id: str) -> None:
         self.execute("DELETE FROM Materials WHERE material_id = ?", (str(material_id),))
-

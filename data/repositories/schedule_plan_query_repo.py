@@ -13,6 +13,7 @@ from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
 from .schedule_resource_sql_filters import append_detail_filters, overdue_resource_filter
 from .schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleTimeSpanRow
+from .schedule_time_sql import DETAIL_OVERLAP_OR_BAD_TIME_SQL, valid_time_range_sql
 
 _SCHEDULE_PLAN_ROWS_SQL = """
 SELECT
@@ -265,37 +266,34 @@ class SchedulePlanQueryRepository(BaseRepository):
     ) -> Optional[ScheduleTimeSpanRow]:
         if source_table == SOURCE_SCHEDULE:
             row = self.fetchone(
-                """
+                f"""
                 SELECT MIN(start_time) AS min_start_time, MAX(end_time) AS max_end_time
                 FROM Schedule
                 WHERE version = ?
-                  AND TRIM(CAST(start_time AS TEXT)) <> ''
-                  AND TRIM(CAST(end_time AS TEXT)) <> ''
+                  AND {valid_time_range_sql(None)}
                 """,
                 (int(version),),
             )
         elif source_table == SOURCE_CANDIDATE_ROWS:
             _require_candidate_id(source_table, candidate_id)
             row = self.fetchone(
-                """
+                f"""
                 SELECT MIN(start_time) AS min_start_time, MAX(end_time) AS max_end_time
                 FROM ScheduleCandidateRows
                 WHERE version = ? AND candidate_id = ?
-                  AND TRIM(CAST(start_time AS TEXT)) <> ''
-                  AND TRIM(CAST(end_time AS TEXT)) <> ''
+                  AND {valid_time_range_sql(None)}
                 """,
                 (int(version), int(candidate_id or 0)),
             )
         elif source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS:
             scenario_key = _require_scenario_id(source_table, scenario_id)
             row = self.fetchone(
-                """
+                f"""
                 SELECT MIN(r.start_time) AS min_start_time, MAX(r.end_time) AS max_end_time
                 FROM ScheduleAdjustmentScenarioRow r
                 JOIN ScheduleAdjustmentScenario s ON s.scenario_id = r.scenario_id
                 WHERE s.base_version = ? AND r.scenario_id = ? AND s.status = 'active'
-                  AND TRIM(CAST(r.start_time AS TEXT)) <> ''
-                  AND TRIM(CAST(r.end_time AS TEXT)) <> ''
+                  AND {valid_time_range_sql("r")}
                 """,
                 (int(version), scenario_key),
             )
@@ -328,7 +326,7 @@ class SchedulePlanQueryRepository(BaseRepository):
             scenario_id=scenario_id,
         )
         params: List[Any] = [int(version)] + extra_params + [end_time, start_time]
-        where_clauses = ["s.start_time < ?", "s.end_time > ?"]
+        where_clauses = [DETAIL_OVERLAP_OR_BAD_TIME_SQL]
         append_detail_filters(
             where_clauses,
             params,
@@ -415,7 +413,12 @@ class SchedulePlanQueryRepository(BaseRepository):
               b.part_name AS part_name,
               b.quantity AS quantity,
               b.due_date AS due_date,
-              MAX(s.end_time) AS finish_time
+              MAX(CASE WHEN {valid_time_range_sql("s")} THEN s.end_time ELSE NULL END) AS finish_time,
+              COUNT(s.id) AS schedule_row_count,
+              COALESCE(
+                SUM(CASE WHEN s.id IS NOT NULL AND NOT ({valid_time_range_sql("s")}) THEN 1 ELSE 0 END),
+                0
+              ) AS invalid_time_count
             FROM Batches b
             LEFT JOIN BatchOperations bo ON bo.batch_id = b.batch_id
             LEFT JOIN plan_rows s ON s.op_id = bo.id
@@ -439,6 +442,9 @@ class SchedulePlanQueryRepository(BaseRepository):
         end_time: str,
         scope_type: Optional[str] = None,
         scope_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
+        schedule_id: Optional[int] = None,
+        op_id: Optional[int] = None,
     ) -> List[ScheduleDispatchRow]:
         plan_sql, extra_params = self._plan_rows_sql(
             source_table=source_table,
@@ -447,11 +453,21 @@ class SchedulePlanQueryRepository(BaseRepository):
         )
         # R05 步3：派工谓词收敛到唯一收口点 normalize_dispatch_resource_filter（含空 id=全量、team 双 join）。
         resource_filter = normalize_dispatch_resource_filter(scope_type, scope_id)
-        where_clauses = ["s.start_time < ?", "s.end_time > ?"]
+        where_clauses = [DETAIL_OVERLAP_OR_BAD_TIME_SQL]
         params: List[Any] = [int(version)] + extra_params + [end_time, start_time]
         if resource_filter.sql_fragment:
             where_clauses.append(resource_filter.sql_fragment)
             params.extend(resource_filter.params)
+        batch_id_text = str(batch_id or "").strip()
+        if batch_id_text:
+            where_clauses.append("TRIM(CAST(bo.batch_id AS TEXT)) = ?")
+            params.append(batch_id_text)
+        if schedule_id is not None:
+            where_clauses.append("s.id = ?")
+            params.append(int(schedule_id))
+        if op_id is not None:
+            where_clauses.append("s.op_id = ?")
+            params.append(int(op_id))
         sql = build_schedule_detail_sql(
             where_clauses=tuple(where_clauses),
             # 此 detail SQL 的列面恒带 team 上下文，include_team_context 保持无条件 True，

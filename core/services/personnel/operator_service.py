@@ -82,6 +82,33 @@ class OperatorService:
                 raise ValidationError("缺少状态参数", field="状态")
         return self.repo.list(status=filter_status, team_id=filter_team_id)
 
+    def list_page(
+        self,
+        status: Optional[str] = None,
+        team_id: Optional[str] = None,
+        page: int = 1,
+        per_page: int = 100,
+    ) -> Tuple[List[Operator], int]:
+        filter_status = None
+        filter_team_id = None
+        if status or team_id is not None:
+            _, _, filter_status, filter_team_id = self._validate_operator_fields(
+                operator_id=None,
+                name=None,
+                status=status,
+                team_id=team_id,
+                allow_partial=True,
+            )
+            if status and filter_status is None:
+                raise ValidationError("缺少状态参数", field="状态")
+        per_page_int = max(1, int(per_page or 100))
+        total = self.repo.count(status=filter_status, team_id=filter_team_id)
+        total_pages = max(1, (int(total) + per_page_int - 1) // per_page_int)
+        page_int = min(max(1, int(page or 1)), total_pages)
+        offset = (page_int - 1) * per_page_int
+        rows = self.repo.list(status=filter_status, team_id=filter_team_id, limit=per_page_int, offset=offset)
+        return rows, int(total)
+
     def get(self, operator_id: str) -> Operator:
         op_id, _, _, _ = self._validate_operator_fields(
             operator_id=operator_id,

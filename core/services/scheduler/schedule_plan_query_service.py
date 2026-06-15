@@ -63,13 +63,11 @@ class SchedulePlanQueryService:
             return [_default_adopted_option()]
         self._validate_plan_role_options_integrity(int(version), options)
         return options
-
     def _option_for_resolution(self, resolution: SchedulePlanResolution) -> Optional[SchedulePlanRoleOption]:
         for option in resolution.available_roles:
             if option.role == resolution.selected_role:
                 return option
         return None
-
     def _with_plan_identity(self, resolution: SchedulePlanResolution) -> SchedulePlanResolution:
         history_row = self.repo.get_history_identity_row(int(resolution.version)) or {}
         source_row = self.repo.get_first_plan_identity_row(
@@ -97,7 +95,6 @@ class SchedulePlanQueryService:
             detail_saved=getattr(option, "detail_saved", None),
         )
         return replace(resolution, plan_identity=identity)
-
     def resolve_plan(self, version: int, role: Optional[str]) -> SchedulePlanResolution:
         requested_role = _normalize_role(role)
         if requested_role not in VALID_PLAN_ROLES:
@@ -139,7 +136,6 @@ class SchedulePlanQueryService:
             message=f"你原本选择的是“{plan_role_label(requested_role)}”，但当前版本没有保存这套方案明细，已显示正式采用方案。",
             available_roles=available_roles,
         ))
-
     def resolve_existing_plan(self, version: int, role: str) -> SchedulePlanResolution:
         requested_role = str(role or "").strip()
         if not requested_role:
@@ -174,7 +170,6 @@ class SchedulePlanQueryService:
             message="",
             available_roles=available_roles,
         ))
-
     def resolve_plan_view(
         self,
         version: int,
@@ -185,7 +180,6 @@ class SchedulePlanQueryService:
         if not scenario_key:
             return self.resolve_plan(version, role)
         return self._resolve_scenario_plan(version=int(version), role=role, scenario_id=scenario_key)
-
     def get_plan_time_span(self, version: int, role: Optional[str]) -> Optional[ScheduleTimeSpanRow]:
         resolution = self.resolve_plan(version, role)
         return self.get_plan_time_span_for_resolution(
@@ -194,7 +188,6 @@ class SchedulePlanQueryService:
             candidate_id=resolution.candidate_id,
             scenario_id=resolution.scenario_id,
         )
-
     def get_plan_time_span_for_view(
         self,
         version: int,
@@ -208,7 +201,6 @@ class SchedulePlanQueryService:
             candidate_id=resolution.candidate_id,
             scenario_id=resolution.scenario_id,
         )
-
     def get_plan_time_span_for_resolution(
         self,
         *,
@@ -223,7 +215,6 @@ class SchedulePlanQueryService:
             candidate_id=candidate_id,
             scenario_id=scenario_id,
         )
-
     def list_plan_detail_rows_between(
         self,
         *,
@@ -241,7 +232,6 @@ class SchedulePlanQueryService:
             start_time=start_time,
             end_time=end_time,
         )
-
     def list_plan_detail_rows_between_for_view(
         self,
         *,
@@ -266,7 +256,6 @@ class SchedulePlanQueryService:
             resource_id=resource_id,
             batch_id=batch_id,
         )
-
     def list_plan_detail_rows_between_for_resolution(
         self,
         *,
@@ -291,7 +280,6 @@ class SchedulePlanQueryService:
             resource_id=resource_id,
             batch_id=batch_id,
         )
-
     def list_plan_detail_rows_all(
         self,
         *,
@@ -311,7 +299,6 @@ class SchedulePlanQueryService:
             resource_id=resource_id,
             batch_id=batch_id,
         )
-
     def list_plan_detail_rows_all_for_resolution(
         self,
         *,
@@ -332,7 +319,6 @@ class SchedulePlanQueryService:
             resource_id=resource_id,
             batch_id=batch_id,
         )
-
     def list_plan_overdue_base_rows(self, *, version: int, role: Optional[str]) -> List[Dict[str, Any]]:
         resolution = self.resolve_plan(version, role)
         return self.list_plan_overdue_base_rows_for_resolution(
@@ -341,7 +327,6 @@ class SchedulePlanQueryService:
             candidate_id=resolution.candidate_id,
             scenario_id=resolution.scenario_id,
         )
-
     def list_plan_overdue_base_rows_for_resolution(
         self,
         *,
@@ -363,7 +348,6 @@ class SchedulePlanQueryService:
             resource_id=resource_filter.resource_id,
             batch_id=batch_id,
         )
-
     def list_plan_dispatch_rows(
         self,
         *,
@@ -373,6 +357,9 @@ class SchedulePlanQueryService:
         end_time: str,
         scope_type: Optional[str] = None,
         scope_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
+        schedule_id: Optional[int] = None,
+        op_id: Optional[int] = None,
     ) -> List[ScheduleDispatchRow]:
         resolution = self.resolve_plan(version, role)
         return self.list_plan_dispatch_rows_for_resolution(
@@ -384,8 +371,10 @@ class SchedulePlanQueryService:
             end_time=end_time,
             scope_type=scope_type,
             scope_id=scope_id,
+            batch_id=batch_id,
+            schedule_id=schedule_id,
+            op_id=op_id,
         )
-
     def list_plan_dispatch_rows_for_resolution(
         self,
         *,
@@ -397,6 +386,9 @@ class SchedulePlanQueryService:
         end_time: str,
         scope_type: Optional[str] = None,
         scope_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
+        schedule_id: Optional[int] = None,
+        op_id: Optional[int] = None,
     ) -> List[ScheduleDispatchRow]:
         return self.repo.list_dispatch_rows(
             version=int(version),
@@ -407,8 +399,10 @@ class SchedulePlanQueryService:
             end_time=end_time,
             scope_type=scope_type,
             scope_id=scope_id,
+            batch_id=batch_id,
+            schedule_id=schedule_id,
+            op_id=op_id,
         )
-
     @staticmethod
     def _role_option_from_row(row: Dict[str, Any]) -> SchedulePlanRoleOption:
         selection_candidate_id = row.get("selection_candidate_id")

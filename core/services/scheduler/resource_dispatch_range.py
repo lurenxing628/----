@@ -7,6 +7,8 @@ from typing import Any, Optional
 
 from core.infrastructure.errors import ValidationError
 
+MAX_DISPATCH_RANGE_DAYS = 62
+
 
 @dataclass(frozen=True)
 class DispatchRange:
@@ -49,7 +51,7 @@ def resolve_dispatch_range(
     query_date: Any = None,
     start_date: Any = None,
     end_date: Any = None,
-    max_day_count: int = 62,
+    max_day_count: int = MAX_DISPATCH_RANGE_DAYS,
 ) -> DispatchRange:
     preset = str(period_preset or "week").strip().lower() or "week"
     if preset not in {"week", "month", "custom"}:

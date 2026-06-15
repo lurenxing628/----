@@ -43,8 +43,45 @@ class BatchRepository(BaseRepository):
         status: Optional[str] = None,
         priority: Optional[str] = None,
         part_no: Optional[str] = None,
+        ready_status: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
     ) -> List[Batch]:
         sql = "SELECT batch_id, part_no, part_name, quantity, due_date, priority, ready_status, ready_date, status, remark, created_at, updated_at FROM Batches"
+        where, params = self._list_filters(status=status, priority=priority, part_no=part_no, ready_status=ready_status)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY created_at DESC, batch_id"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(int(limit))
+            if offset is not None:
+                sql += " OFFSET ?"
+                params.append(int(offset))
+        rows = self.fetchall(sql, tuple(params))
+        return [Batch.from_row(r) for r in rows]
+
+    def count(
+        self,
+        status: Optional[str] = None,
+        priority: Optional[str] = None,
+        part_no: Optional[str] = None,
+        ready_status: Optional[str] = None,
+    ) -> int:
+        sql = "SELECT COUNT(1) FROM Batches"
+        where, params = self._list_filters(status=status, priority=priority, part_no=part_no, ready_status=ready_status)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        return int(self.fetchvalue(sql, tuple(params), default=0) or 0)
+
+    @staticmethod
+    def _list_filters(
+        *,
+        status: Optional[str] = None,
+        priority: Optional[str] = None,
+        part_no: Optional[str] = None,
+        ready_status: Optional[str] = None,
+    ) -> tuple:
         params: List[Any] = []
         where = []
         if status:
@@ -56,11 +93,10 @@ class BatchRepository(BaseRepository):
         if part_no:
             where.append("part_no = ?")
             params.append(part_no)
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY created_at DESC, batch_id"
-        rows = self.fetchall(sql, tuple(params))
-        return [Batch.from_row(r) for r in rows]
+        if ready_status:
+            where.append("ready_status = ?")
+            params.append(ready_status)
+        return where, params
 
     def list_pending(self) -> List[Batch]:
         return self.list(status="pending")

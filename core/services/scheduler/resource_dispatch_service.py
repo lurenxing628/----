@@ -227,6 +227,7 @@ class ResourceDispatchService:
         source_table: str,
         candidate_id: Any = None,
         scenario_id: Any = None,
+        batch_id: Any = None,
     ) -> Dict[str, Any]:
         try:
             return build_overdue_meta_for_plan(
@@ -238,6 +239,7 @@ class ResourceDispatchService:
                     source_table=source_table,
                     candidate_id=candidate_id,
                     scenario_id=scenario_id,
+                    batch_id=batch_id,
                 ),
                 load_adopted_meta=self._load_overdue_meta,
                 log_degraded=self._log_overdue_marker_degraded,
@@ -406,6 +408,7 @@ class ResourceDispatchService:
             source_table=str(plan_role_fields.get("source_table") or ""),
             candidate_id=plan_role_fields.get("candidate_id"),
             scenario_id=plan_role_fields.get("scenario_id"),
+            batch_id=batch_id,
         )
         overdue_set = set(overdue_meta.get("ids") or [])
         rows = self.plan_query_service.list_plan_dispatch_rows_for_resolution(
@@ -417,6 +420,7 @@ class ResourceDispatchService:
             scenario_id=plan_role_fields.get("scenario_id"),
             scope_type=normalized_scope_type,
             scope_id=selected_scope_id,
+            batch_id=batch_id,
         )
         rows = [dict(row) for row in rows]
         rows = self._filter_rows_by_batch(rows, batch_id)

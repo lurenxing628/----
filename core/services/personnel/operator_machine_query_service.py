@@ -95,6 +95,9 @@ class OperatorMachineQueryService:
     def list_simple_rows(self) -> List[Dict[str, Any]]:
         return self._normalize_rows(self.repo.list_simple_rows())
 
+    def list_simple_rows_for_operators(self, operator_ids: Sequence[str]) -> List[Dict[str, Any]]:
+        return self._normalize_rows(self.repo.list_simple_rows_for_operators(operator_ids))
+
     def list_with_names_by_machine(self) -> List[Dict[str, Any]]:
         return self._normalize_rows(self.repo.list_with_names_by_machine())
 

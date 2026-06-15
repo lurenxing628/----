@@ -18,21 +18,43 @@ class OperatorRepository(BaseRepository):
         )
         return Operator.from_row(row) if row else None
 
-    def list(self, status: Optional[str] = None, team_id: Optional[str] = None) -> List[Operator]:
-        sql = "SELECT operator_id, name, status, remark, team_id, created_at, updated_at FROM Operators"
-        params: List[Any] = []
+    @staticmethod
+    def _list_filters(status: Optional[str], team_id: Optional[str]) -> tuple:
+        """list 与 count 共用的过滤条件，避免两处各写一套导致分页 total 与实际行数漂移。"""
         where: List[str] = []
+        params: List[Any] = []
         if status:
             where.append("status = ?")
             params.append(status)
         if team_id:
             where.append("team_id = ?")
             params.append(team_id)
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY operator_id"
+        where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+        return where_sql, params
+
+    def list(
+        self,
+        status: Optional[str] = None,
+        team_id: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> List[Operator]:
+        where_sql, params = self._list_filters(status, team_id)
+        sql = (
+            "SELECT operator_id, name, status, remark, team_id, created_at, updated_at FROM Operators"
+            + where_sql
+            + " ORDER BY operator_id"
+        )
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params.extend([int(limit), int(offset or 0)])
         rows = self.fetchall(sql, tuple(params))
         return [Operator.from_row(r) for r in rows]
+
+    def count(self, status: Optional[str] = None, team_id: Optional[str] = None) -> int:
+        where_sql, params = self._list_filters(status, team_id)
+        sql = "SELECT COUNT(1) FROM Operators" + where_sql
+        return int(self.fetchvalue(sql, tuple(params), default=0) or 0)
 
     def exists(self, operator_id: str) -> bool:
         return bool(self.fetchvalue("SELECT 1 FROM Operators WHERE operator_id = ? LIMIT 1", (operator_id,)))

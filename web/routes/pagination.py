@@ -40,6 +40,13 @@ def parse_page_args(
 
 def paginate_rows(rows: Sequence[T], page: int, per_page: int) -> Tuple[List[T], Dict[str, Any]]:
     total = len(rows or [])
+    pager = build_pager(total, page, per_page)
+    start = (int(pager["page"]) - 1) * int(pager["per_page"])
+    end = start + int(pager["per_page"])
+    return list(rows[start:end]), pager
+
+
+def build_pager(total: int, page: int, per_page: int) -> Dict[str, Any]:
     if per_page <= 0:
         per_page = 100
     total_pages = max(1, (total + per_page - 1) // per_page)
@@ -47,10 +54,7 @@ def paginate_rows(rows: Sequence[T], page: int, per_page: int) -> Tuple[List[T],
         page = total_pages
     if page < 1:
         page = 1
-    start = (page - 1) * per_page
-    end = start + per_page
-    page_rows = list(rows[start:end])
-    pager = {
+    return {
         "page": int(page),
         "per_page": int(per_page),
         "total": int(total),
@@ -60,4 +64,3 @@ def paginate_rows(rows: Sequence[T], page: int, per_page: int) -> Tuple[List[T],
         "prev_page": page - 1 if page > 1 else 1,
         "next_page": page + 1 if page < total_pages else total_pages,
     }
-    return page_rows, pager

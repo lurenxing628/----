@@ -114,6 +114,7 @@ class ResourceDispatchExecutionService:
             scenario_id=plan_role_fields.get("scenario_id"),
             scope_type=normalized_scope_type,
             scope_id=selected_scope_id,
+            batch_id=batch_id,
         )
         normalized_batch_id = _text(batch_id)
         rows = [
@@ -156,6 +157,9 @@ class ResourceDispatchExecutionService:
             scenario_id=_text(context.scenario_id) or None,
             start_time=schedule.start_time,
             end_time=schedule.end_time,
+            batch_id=_text(context.batch_id),
+            schedule_id=int(context.schedule_id),
+            op_id=int(context.op_id),
         )
         row = self._matching_row(rows, context)
         identity = self._plan_identity_from_context(context)

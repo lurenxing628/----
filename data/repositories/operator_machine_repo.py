@@ -45,6 +45,21 @@ class OperatorMachineRepository(BaseRepository):
         """
         return self.fetchall("SELECT operator_id, machine_id, skill_level, is_primary FROM OperatorMachine", None)
 
+    def list_simple_rows_for_operators(self, operator_ids: Sequence[str]) -> List[Dict[str, Any]]:
+        o_list = sorted({str(x).strip() for x in (operator_ids or []) if str(x).strip()})
+        if not o_list:
+            return []
+        placeholders = ",".join(["?"] * len(o_list))
+        return self.fetchall(
+            f"""
+            SELECT operator_id, machine_id, skill_level, is_primary
+            FROM OperatorMachine
+            WHERE operator_id IN ({placeholders})
+            ORDER BY operator_id, machine_id
+            """,
+            tuple(o_list),
+        )
+
     def list_with_names_by_machine(self) -> List[Dict[str, Any]]:
         """
         Excel/页面展示用：返回 machine_name/operator_name（按 machine_id, operator_id 排序）。

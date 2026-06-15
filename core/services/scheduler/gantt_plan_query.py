@@ -19,6 +19,8 @@ from .schedule_result_view_range import (
 )
 from .version_resolution import VersionResolution
 
+GANTT_MAX_EXPLICIT_DATE_DAYS = 62
+
 
 def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, Any]:
     try:
@@ -60,6 +62,7 @@ def resolve_gantt_range_for_version(
         start_date=start_date,
         end_date=end_date,
         default_to_version_span=True,
+        max_explicit_date_days=GANTT_MAX_EXPLICIT_DATE_DAYS,
     )
 
 

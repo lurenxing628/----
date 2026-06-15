@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -42,6 +42,14 @@ class MaterialService:
 
     def list(self, status: Optional[str] = None) -> List[Material]:
         return self.repo.list(status=status)
+
+    def list_page(self, status: Optional[str] = None, page: int = 1, per_page: int = 100) -> Tuple[List[Material], int]:
+        per_page_int = max(1, int(per_page or 100))
+        total = self.repo.count(status=status)
+        total_pages = max(1, (int(total) + per_page_int - 1) // per_page_int)
+        page_int = min(max(1, int(page or 1)), total_pages)
+        offset = (page_int - 1) * per_page_int
+        return self.repo.list(status=status, limit=per_page_int, offset=offset), int(total)
 
     def get(self, material_id: str) -> Material:
         mid = self._norm_text(material_id)

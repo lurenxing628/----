@@ -117,7 +117,62 @@ class BatchService:
     # -------------------------
     # Batches CRUD
     # -------------------------
-    def list(self, status: Optional[str] = None, priority: Optional[str] = None, part_no: Optional[str] = None) -> List[Batch]:
+    def list(
+        self,
+        status: Optional[str] = None,
+        priority: Optional[str] = None,
+        part_no: Optional[str] = None,
+        ready_status: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> List[Batch]:
+        self._validate_list_filters(status=status, priority=priority, ready_status=ready_status)
+        return self.batch_repo.list(
+            status=status,
+            priority=priority,
+            part_no=part_no,
+            ready_status=ready_status,
+            limit=limit,
+            offset=offset,
+        )
+
+    def list_page(
+        self,
+        status: Optional[str] = None,
+        priority: Optional[str] = None,
+        part_no: Optional[str] = None,
+        ready_status: Optional[str] = None,
+        page: int = 1,
+        per_page: int = 100,
+    ) -> Tuple[List[Batch], int]:
+        self._validate_list_filters(status=status, priority=priority, ready_status=ready_status)
+        per_page_int = max(1, int(per_page or 100))
+        total = self.batch_repo.count(
+            status=status,
+            priority=priority,
+            part_no=part_no,
+            ready_status=ready_status,
+        )
+        total_pages = max(1, (int(total) + per_page_int - 1) // per_page_int)
+        page_int = min(max(1, int(page or 1)), total_pages)
+        offset = (page_int - 1) * per_page_int
+        rows = self.batch_repo.list(
+            status=status,
+            priority=priority,
+            part_no=part_no,
+            ready_status=ready_status,
+            limit=per_page_int,
+            offset=offset,
+        )
+        return rows, int(total)
+
+    def _validate_list_filters(
+        self,
+        *,
+        status: Optional[str] = None,
+        priority: Optional[str] = None,
+        ready_status: Optional[str] = None,
+    ) -> None:
         if status:
             self._validate_enum(
                 status,
@@ -136,7 +191,12 @@ class BatchService:
                 (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value),
                 "优先级",
             )
-        return self.batch_repo.list(status=status, priority=priority, part_no=part_no)
+        if ready_status:
+            self._validate_enum(
+                ready_status,
+                (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value),
+                "齐套",
+            )
 
     def get(self, batch_id: Any) -> Batch:
         batch_id_text = self._normalize_text(batch_id)
