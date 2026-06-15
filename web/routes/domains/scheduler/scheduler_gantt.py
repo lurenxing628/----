@@ -14,6 +14,7 @@ from web.routes.history_summary_logging import (
     log_history_version_option_parse_warnings,
 )
 from web.viewmodels.scheduler_gantt_load_strip import decorate_gantt_resource_load_payload
+from web.viewmodels.scheduler_gantt_public_payload import public_gantt_data_payload
 from web.viewmodels.scheduler_gantt_task_detail import decorate_gantt_task_detail_payload
 from web.viewmodels.scheduler_history_summary import (
     build_history_summary_display,
@@ -29,6 +30,7 @@ from .scheduler_navigation_publish import (
     resolve_navigation_plan_context,
     resolved_scenario_id,
 )
+from .scheduler_plan_context_token import plan_context_token, scenario_id_from_plan_context_token
 from .scheduler_utils import get_plan_role_arg
 
 
@@ -98,6 +100,7 @@ def _gantt_page_url(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ) -> str:
+    token = plan_context_token(scenario_id)
     args: Dict[str, Any] = {
         "view": target_view,
         "week_start": week_start,
@@ -106,7 +109,7 @@ def _gantt_page_url(
         "end_date": end_date,
         "version": version,
         "plan_role": plan_role,
-        "scenario_id": scenario_id,
+        "plan_context_token": token,
         "gantt_zoom": gantt_zoom,
     }
     args.update(_gantt_page_scope_query(current_view=current_view, target_view=target_view))
@@ -127,6 +130,9 @@ def _get_effective_offset_for_display_range(*, start_date: Optional[str], end_da
 
 
 def _get_scenario_id_arg() -> Optional[str]:
+    token = request.args.get("plan_context_token")
+    if token is not None and str(token).strip():
+        return scenario_id_from_plan_context_token(token)
     raw = request.args.get("scenario_id")
     if raw is None:
         return None
@@ -204,11 +210,25 @@ def gantt_page():
     selected_result_status_label, capsule_fields = _selected_version_summary_context(services, ver)
     gantt_resource = (request.args.get("gantt_resource") or "").strip()
     gantt_zoom_value = gantt_zoom or "day"
+    explicit_date_range = bool(start_date or end_date)
+    view_range_args: Dict[str, Any] = {}
+    if explicit_date_range:
+        view_range_args.update(
+            start_date=wr.week_start_date.isoformat(),
+            end_date=wr.week_end_date.isoformat(),
+        )
+    elif range_source != "version_span":
+        view_range_args.update(
+            week_start=wr.week_start_date.isoformat(),
+            offset=effective_offset,
+        )
+    navigation_date_from = wr.week_start_date.isoformat() if explicit_date_range else ""
+    navigation_date_to = wr.week_end_date.isoformat() if explicit_date_range else ""
     publish_gantt_navigation_context(
         version=ver,
         plan_resolution=plan_resolution,
-        date_from=wr.week_start_date.isoformat(),
-        date_to=wr.week_end_date.isoformat(),
+        date_from=navigation_date_from,
+        date_to=navigation_date_to,
         view=view,
         gantt_resource=gantt_resource,
         batch_id=_get_optional_arg("gantt_batch"),
@@ -220,21 +240,19 @@ def gantt_page():
             current_view=view,
             target_view="machine",
             version=ver,
-            start_date=wr.week_start_date.isoformat(),
-            end_date=wr.week_end_date.isoformat(),
             plan_role=requested_plan_role(plan_resolution),
             scenario_id=resolved_scenario_id(plan_resolution),
             gantt_zoom=gantt_zoom_value,
+            **view_range_args,
         ),
         "operator": _gantt_page_url(
             current_view=view,
             target_view="operator",
             version=ver,
-            start_date=wr.week_start_date.isoformat(),
-            end_date=wr.week_end_date.isoformat(),
             plan_role=requested_plan_role(plan_resolution),
             scenario_id=resolved_scenario_id(plan_resolution),
             gantt_zoom=gantt_zoom_value,
+            **view_range_args,
         ),
     }
     gantt_week_urls = {
@@ -297,7 +315,7 @@ def gantt_page():
         gantt_week_urls=gantt_week_urls,
         gantt_form_scope=gantt_form_scope,
         gantt_zoom=gantt_zoom,
-        scenario_id=resolved_scenario_id(plan_resolution),
+        plan_context_token=plan_context_token(resolved_scenario_id(plan_resolution)),
         scenario_name=plan_resolution.get("scenario_name"),
         scenario_display_name=plan_resolution.get("scenario_display_name"),
         is_scenario_preview=is_plan_preview(plan_resolution),
@@ -341,7 +359,7 @@ def gantt_data():
         data: Dict[str, Any] = svc.get_gantt_tasks(**data_kwargs)
         decorate_gantt_task_detail_payload(data)
         decorate_gantt_resource_load_payload(data)
-        return jsonify({"success": True, "data": data})
+        return jsonify({"success": True, "data": public_gantt_data_payload(data)})
     except AppError as exc:
         return json_error_response(exc)
     except Exception:

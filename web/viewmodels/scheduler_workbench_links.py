@@ -12,12 +12,14 @@ from .scheduler_plan_guardrail_messages import summary_unavailable_guardrail_tex
 from .scheduler_workbench_link_query import (
     DATE_RANGE_REQUIRED_TARGETS,
     FULL_PLAN_GUARD_FIELDS,
+    PLAN_CONTEXT_TOKEN_TARGETS,
     REPORT_PLAN_GUARD_FIELDS,
     RESOURCE_PLAN_GUARD_FIELDS,
     TARGET_DEFAULT_LABELS,
     TARGET_PAGE_PATHS,
     VERSION_REQUIRED_TARGETS,
     WORKBENCH_CONTINUATION_TARGETS,
+    has_public_plan_context_token_source,
     ordered_required_params,
     plan_guard_fields_for_resolution,
     query_for_target,
@@ -150,6 +152,7 @@ def build_workbench_plan_context(
     plan_guard_fields: Iterable[str] = (),
     plan_role_label_value: str = "",
     scenario_id: Any = None,
+    plan_context_token: Any = None,
     scenario_display_label: str = "",
     date_from: Any = None,
     date_to: Any = None,
@@ -197,6 +200,7 @@ def build_workbench_plan_context(
         "generated_at_label": "-" if generated_at is _UNSET else format_public_datetime(generated_at),
         "strategy_label": "-" if strategy is _UNSET else strategy_display_label(strategy),
         "scenario_id": scenario_text,
+        "plan_context_token": _text(plan_context_token) or None,
         "scenario_display_label": scenario_label,
         "date_from": _text(date_from) or None,
         "date_to": _text(date_to) or None,
@@ -302,6 +306,10 @@ def _preview_without_public_identity_reason(context: Dict[str, Any], target_page
     if target_page not in VERSION_REQUIRED_TARGETS:
         return ""
     if not (context.get("is_preview") or context.get("is_scenario_preview")):
+        return ""
+    if target_page in PLAN_CONTEXT_TOKEN_TARGETS and _text(context.get("scenario_id")):
+        if not has_public_plan_context_token_source(context):
+            return "模拟预览链接暂时不能生成，请刷新页面后重试。"
         return ""
     if _text(context.get("scenario_id")):
         return ""

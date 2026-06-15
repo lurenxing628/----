@@ -5,12 +5,19 @@
     return form && form.querySelector ? form.querySelector('input[name="scenario_id"]') : null;
   }
 
-  function initialScenarioId(input) {
+  function scenarioInputsFor(form) {
+    if (!form || !form.querySelectorAll) return [];
+    var inputs = form.querySelectorAll('input[name="scenario_id"], input[name="plan_context_token"]');
+    return Array.prototype.slice.call(inputs || []);
+  }
+
+  function initialScenarioValue(input) {
     if (!input) return "";
-    if (!input.hasAttribute("data-initial-scenario-id")) {
-      input.setAttribute("data-initial-scenario-id", input.value || "");
+    var attr = input.getAttribute("name") === "plan_context_token" ? "data-initial-plan-context-token" : "data-initial-scenario-id";
+    if (!input.hasAttribute(attr)) {
+      input.setAttribute(attr, input.value || "");
     }
-    return input.getAttribute("data-initial-scenario-id") || "";
+    return input.getAttribute(attr) || "";
   }
 
   function initialPlanValue(control) {
@@ -33,9 +40,16 @@
   }
 
   function syncScenarioId(form) {
-    var scenarioInput = scenarioInputFor(form);
-    var originalScenarioId = initialScenarioId(scenarioInput);
-    if (scenarioInput) scenarioInput.value = hasChangedPlanIdentity(form) ? "" : originalScenarioId;
+    var changed = hasChangedPlanIdentity(form);
+    var inputs = scenarioInputsFor(form);
+    if (!inputs.length) {
+      var legacyInput = scenarioInputFor(form);
+      if (legacyInput) inputs = [legacyInput];
+    }
+    inputs.forEach(function (input) {
+      var originalValue = initialScenarioValue(input);
+      input.value = changed ? "" : originalValue;
+    });
   }
 
   document.addEventListener("change", function (event) {

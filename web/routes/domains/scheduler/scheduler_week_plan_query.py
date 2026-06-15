@@ -7,6 +7,7 @@ from flask import request, url_for
 from web.request_resource_context import request_report_resource_context
 
 from .scheduler_navigation_publish import requested_plan_role, resolved_scenario_id
+from .scheduler_plan_context_token import plan_context_token
 
 
 def _text(value: Any) -> str:
@@ -76,7 +77,7 @@ def _week_plan_action_url(
         "week_start": week_start,
         "version": version,
         "plan_role": requested_plan_role(plan_resolution),
-        "scenario_id": resolved_scenario_id(plan_resolution),
+        "plan_context_token": plan_context_token(resolved_scenario_id(plan_resolution)),
         "batch_id": batch_id,
         "resource_type": (resource_context or {}).get("resource_type"),
         "resource_id": (resource_context or {}).get("resource_id"),

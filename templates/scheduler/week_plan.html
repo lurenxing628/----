@@ -30,8 +30,8 @@
       {'label': '方案', 'value': current_plan_label}
     ]) }}
     <form method="get" action="{{ url_for('scheduler.week_plan_page') }}" class="aps-query-form-grid aps-week-plan-query-grid">
-      {% if scenario_id %}
-        <input type="hidden" name="scenario_id" value="{{ scenario_id }}">
+      {% if plan_context_token %}
+        <input type="hidden" name="plan_context_token" value="{{ plan_context_token }}">
       {% endif %}
       {% if batch_id %}
         <input type="hidden" name="batch_id" value="{{ batch_id }}">
@@ -222,7 +222,7 @@
                 <li>
                   {{ item.label }} 缺{{ item.missing_text }}
                   {% if item.batch_id %}
-                    <a class="table-action-link" href="{{ url_for('scheduler.batch_detail', batch_id=item.batch_id) }}">去补充</a>
+                    <a class="table-action-link" href="{{ url_for('scheduler.batch_detail', batch_id=item.batch_id, next=current_public_return_url()) }}">去补充</a>
                   {% endif %}
                 </li>
               {% endfor %}

@@ -8,7 +8,7 @@ from core.infrastructure.errors import AppError, ValidationError
 from core.models.enums import MaterialStatus
 from core.services.common.enum_normalizers import ready_status_label
 
-from .pagination import paginate_rows, parse_page_args
+from .pagination import build_pager, parse_page_args
 
 bp = Blueprint("material", __name__)
 
@@ -23,8 +23,9 @@ def materials_page():
     services = g.services
     page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
     material_svc = services.material_service
-    items = [m.to_dict() for m in material_svc.list()]
-    items, pager = paginate_rows(items, page, per_page)
+    materials, total = material_svc.list_page(status=None, page=page, per_page=per_page)
+    items = [m.to_dict() for m in materials]
+    pager = build_pager(total, page, per_page)
     return render_template(
         "material/materials.html",
         title="物料管理 - 物料主数据",

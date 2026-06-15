@@ -14,6 +14,7 @@ _EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS = {
     "requested_plan_role",
     "effective_plan_role",
     "scenario_id",
+    "plan_context_token",
     "is_preview",
     "is_scenario_preview",
     "is_comparison",
@@ -99,13 +100,13 @@ _TARGET_QUERY_SPECS: Dict[str, Dict[str, Any]] = {
     },
     "overdue_report": {
         "plan_style": "standard",
-        "date_style": "date_from_to",
+        "date_style": "none",
         "batch_position": "before_resource",
         "resource_style": "resource",
     },
     "delay_diagnosis": {
         "plan_style": "standard",
-        "date_style": "date_from_to",
+        "date_style": "none",
         "batch_position": "before_resource",
         "resource_style": "resource",
     },

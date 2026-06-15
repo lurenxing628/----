@@ -12,10 +12,78 @@ from core.services.personnel import OperatorMachineService, OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 from web.viewmodels.excel_entry_cards import personnel_excel_cards
 
-from .pagination import paginate_rows, parse_page_args
+from .navigation_utils import _safe_next_url
+from .pagination import build_pager, parse_page_args
 from .personnel_bp import _machine_status_zh, _operator_status_zh, bp
 from .personnel_detail_context import build_personnel_detail_context
 from .team_view_helpers import build_team_name_map, load_team_options
+
+
+def _personnel_next_url() -> str:
+    next_raw = (request.form.get("next") or "").strip()
+    next_url = _safe_next_url(next_raw) if next_raw else None
+    return next_url or url_for("personnel.list_page")
+
+
+def _personnel_return_url_from_args() -> str:
+    next_raw = (request.args.get("next") or "").strip()
+    next_url = _safe_next_url(next_raw) if next_raw else None
+    return next_url or url_for("personnel.list_page")
+
+
+def _personnel_detail_redirect(operator_id: str):
+    next_raw = (request.form.get("next") or request.args.get("next") or "").strip()
+    next_url = _safe_next_url(next_raw) if next_raw else None
+    if next_url:
+        return redirect(url_for("personnel.detail_page", operator_id=operator_id, next=next_url))
+    return redirect(url_for("personnel.detail_page", operator_id=operator_id))
+
+
+def _operator_links_by_operator(operator_ids: List[str], machines: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+    link_rows = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None)).list_simple_rows_for_operators(
+        operator_ids
+    )
+    link_rows.sort(key=lambda r: (str(r.get("operator_id") or ""), str(r.get("machine_id") or "")))
+    links_by_operator: Dict[str, List[Dict[str, Any]]] = {}
+    for row in link_rows:
+        op_id = row["operator_id"]
+        machine_id = row["machine_id"]
+        machine = machines.get(machine_id)
+        links_by_operator.setdefault(op_id, []).append(
+            {
+                "machine_id": machine_id,
+                "machine_name": machine.name if machine else None,
+                "machine_status": machine.status if machine else None,
+            }
+        )
+    return links_by_operator
+
+
+def _operator_machine_text(links: List[Dict[str, Any]]) -> str:
+    return ", ".join(
+        [f"{item['machine_id']}{(' ' + item['machine_name']) if item.get('machine_name') else ''}".strip() for item in links]
+    )
+
+
+def _personnel_view_rows(operators: List[Any], team_name_map: Dict[str, str], machines: Dict[str, Any]) -> List[Dict[str, Any]]:
+    links_by_operator = _operator_links_by_operator([op.operator_id for op in operators], machines)
+    rows: List[Dict[str, Any]] = []
+    for op in operators:
+        links = links_by_operator.get(op.operator_id, [])
+        rows.append(
+            {
+                "operator_id": op.operator_id,
+                "name": op.name,
+                "team_id": op.team_id,
+                "team_name": team_name_map.get(op.team_id or ""),
+                "status": op.status,
+                "status_zh": _operator_status_zh(op.status),
+                "remark": op.remark,
+                "machine_text": _operator_machine_text(links),
+                "machine_count": len(links),
+            }
+        )
+    return rows
 
 
 @bp.get("/")
@@ -28,50 +96,16 @@ def list_page():
     team_options = load_team_options()
     team_name_map = build_team_name_map(team_options)
     try:
-        operators = op_svc.list(team_id=selected_team_id)
+        operators, total = op_svc.list_page(status=None, team_id=selected_team_id, page=page, per_page=per_page)
     except BusinessError as e:
         if e.code == ErrorCode.TEAM_NOT_FOUND:
             flash(e.message, "warning")
             return redirect(url_for("personnel.list_page"))
         raise
     machines = {m.machine_id: m for m in mc_svc.list()}
+    view_rows = _personnel_view_rows(operators, team_name_map, machines)
 
-    link_rows = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None)).list_simple_rows()
-    link_rows.sort(key=lambda r: (str(r.get("operator_id") or ""), str(r.get("machine_id") or "")))
-    links_by_operator: Dict[str, List[Dict[str, Any]]] = {}
-    for r in link_rows:
-        op_id = r["operator_id"]
-        mc_id = r["machine_id"]
-        m = machines.get(mc_id)
-        links_by_operator.setdefault(op_id, []).append(
-            {
-                "machine_id": mc_id,
-                "machine_name": (m.name if m else None),
-                "machine_status": (m.status if m else None),
-            }
-        )
-
-    view_rows: List[Dict[str, Any]] = []
-    for op in operators:
-        links = links_by_operator.get(op.operator_id, [])
-        machine_text = ", ".join(
-            [f"{x['machine_id']}{(' ' + x['machine_name']) if x.get('machine_name') else ''}".strip() for x in links]
-        )
-        view_rows.append(
-            {
-                "operator_id": op.operator_id,
-                "name": op.name,
-                "team_id": op.team_id,
-                "team_name": team_name_map.get(op.team_id or ""),
-                "status": op.status,
-                "status_zh": _operator_status_zh(op.status),
-                "remark": op.remark,
-                "machine_text": machine_text,
-                "machine_count": len(links),
-            }
-        )
-
-    view_rows, pager = paginate_rows(view_rows, page, per_page)
+    pager = build_pager(total, page, per_page)
 
     return render_template(
         "personnel/list.html",
@@ -97,18 +131,21 @@ def create_operator():
     try:
         op = svc.create(operator_id=op_id, name=name, status=status, remark=remark, team_id=team_id)
         flash(f"已创建人员：{op.operator_id} {op.name}", "success")
-        return redirect(url_for("personnel.detail_page", operator_id=op.operator_id))
+        return _personnel_detail_redirect(op.operator_id)
     except AppError as e:
         flash(e.message, "error")
-        return redirect(url_for("personnel.list_page"))
+        return redirect(_personnel_next_url())
 
 
 @bp.get("/<operator_id>")
 def detail_page(operator_id: str):
     context = build_personnel_detail_context(g.db, operator_id, op_logger=getattr(g, "op_logger", None))
+    personnel_return_url = _personnel_return_url_from_args()
     return render_template(
         "personnel/detail.html",
         **context,
+        personnel_return_url=personnel_return_url,
+        personnel_return_next=personnel_return_url,
     )
 
 
@@ -122,7 +159,7 @@ def update_operator(operator_id: str):
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     op = svc.update(operator_id=operator_id, name=name, status=status, remark=remark, team_id=team_id)
     flash("人员信息已保存。", "success")
-    return redirect(url_for("personnel.detail_page", operator_id=op.operator_id))
+    return _personnel_detail_redirect(op.operator_id)
 
 
 @bp.post("/<operator_id>/status")
@@ -133,18 +170,19 @@ def set_status(operator_id: str):
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     op = svc.set_status(operator_id=operator_id, status=status)
     flash(f"已更新状态：{op.operator_id}  {_operator_status_zh(op.status)}", "success")
-    return redirect(url_for("personnel.detail_page", operator_id=op.operator_id))
+    return _personnel_detail_redirect(op.operator_id)
 
 
 @bp.post("/<operator_id>/delete")
 def delete_operator(operator_id: str):
+    next_url = _personnel_next_url()
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     try:
         svc.delete(operator_id)
         flash(f"已删除人员：{operator_id}", "success")
     except AppError as e:
         flash(e.message, "error")
-    return redirect(url_for("personnel.list_page"))
+    return redirect(next_url)
 
 
 @bp.post("/bulk/status")
@@ -152,11 +190,12 @@ def bulk_set_status():
     """
     批量设置人员状态（active/inactive）。
     """
+    next_url = _personnel_next_url()
     status = (request.form.get("status") or "").strip()
     operator_ids = request.form.getlist("operator_ids")
     if not operator_ids:
         flash("请至少选择 1 个人员。", "error")
-        return redirect(url_for("personnel.list_page"))
+        return redirect(next_url)
     if status not in (OperatorStatus.ACTIVE.value, OperatorStatus.INACTIVE.value):
         raise ValidationError("状态不正确，请选择：在岗 / 停用或休假。", field="状态")
 
@@ -182,7 +221,7 @@ def bulk_set_status():
     if failed:
         sample = "；".join(failed_details[:10])
         flash(f"失败人员（最多展示 10 个）：{sample}", "warning")
-    return redirect(url_for("personnel.list_page"))
+    return redirect(next_url)
 
 
 @bp.post("/bulk/delete")
@@ -190,10 +229,11 @@ def bulk_delete():
     """
     批量删除人员（受引用保护；建议优先批量停用）。
     """
+    next_url = _personnel_next_url()
     operator_ids = request.form.getlist("operator_ids")
     if not operator_ids:
         flash("请至少选择 1 个人员。", "error")
-        return redirect(url_for("personnel.list_page"))
+        return redirect(next_url)
 
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     ok = 0
@@ -217,7 +257,7 @@ def bulk_delete():
     if failed:
         sample = "；".join(failed_details[:10])
         flash(f"删除失败（最多展示 10 个）：{sample}", "warning")
-    return redirect(url_for("personnel.list_page"))
+    return redirect(next_url)
 
 
 @bp.post("/<operator_id>/link/add")
@@ -226,7 +266,7 @@ def add_link(operator_id: str):
     svc = OperatorMachineService(g.db, op_logger=getattr(g, "op_logger", None))
     svc.add_link(operator_id=operator_id, machine_id=machine_id)
     flash("已添加设备关联。", "success")
-    return redirect(url_for("personnel.detail_page", operator_id=operator_id))
+    return _personnel_detail_redirect(operator_id)
 
 
 @bp.post("/<operator_id>/link/update")
@@ -243,7 +283,7 @@ def update_link(operator_id: str):
         is_primary=is_primary,
     )
     flash("已更新关联字段（技能等级/主操设备）。", "success")
-    return redirect(url_for("personnel.detail_page", operator_id=operator_id))
+    return _personnel_detail_redirect(operator_id)
 
 
 @bp.post("/<operator_id>/link/remove")
@@ -252,4 +292,4 @@ def remove_link(operator_id: str):
     svc = OperatorMachineService(g.db, op_logger=getattr(g, "op_logger", None))
     svc.remove_link(operator_id=operator_id, machine_id=machine_id)
     flash("已解除设备关联。", "success")
-    return redirect(url_for("personnel.detail_page", operator_id=operator_id))
+    return _personnel_detail_redirect(operator_id)

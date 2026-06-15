@@ -44,7 +44,7 @@
   {% if batch %}
     <div class="card aps-form-card">
       {% set batch_actions %}
-        {{ ui.link_button('打开批次详情', url_for('scheduler.batch_detail', batch_id=batch.batch_id), 'secondary', 'sm') }}
+        {{ ui.link_button('打开批次详情', url_for('scheduler.batch_detail', batch_id=batch.batch_id, next=current_public_return_url()), 'secondary', 'sm') }}
       {% endset %}
       {{ ui.aps_card_header('批次信息', actions_html=batch_actions) }}
       <div class="aps-summary-grid aps-batch-info-grid">

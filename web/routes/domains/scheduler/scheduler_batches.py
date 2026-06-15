@@ -23,7 +23,7 @@ from web.viewmodels.scheduler_history_summary import parse_history_summary_state
 from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 
 from ...navigation_utils import _safe_next_url
-from ...pagination import paginate_rows, parse_page_args
+from ...pagination import build_pager, parse_page_args
 from .scheduler_bp import (
     _batch_status_zh,
     _priority_zh,
@@ -40,6 +40,12 @@ if TYPE_CHECKING:
     from core.services.scheduler import BatchService
 
 _CURRENT_PAGE_WARNING_REMAINING_MESSAGE = "另有 {remaining} 条提醒未在当前页显示，请处理已展示提醒后重新检查。"
+
+
+def _batch_manage_next_url() -> str:
+    next_raw = (request.form.get("next") or "").strip()
+    next_url = _safe_next_url(next_raw) if next_raw else None
+    return next_url or url_for("scheduler.batches_manage_page")
 
 
 def _load_latest_schedule_history_panel_inputs(
@@ -70,7 +76,12 @@ def batches_page():
         raw_only_ready=request.args.get("only_ready"),
     )
     page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
-    batches = batch_svc.list(status=filter_state.service_status)
+    batches, total = batch_svc.list_page(
+        status=filter_state.service_status,
+        ready_status=filter_state.only_ready or None,
+        page=page,
+        per_page=per_page,
+    )
     view_rows = build_batch_rows(
         batches,
         only_ready=filter_state.only_ready,
@@ -78,7 +89,7 @@ def batches_page():
         ready_label=_ready_zh,
         batch_status_label=_batch_status_zh,
     )
-    view_rows, pager = paginate_rows(view_rows, page, per_page)
+    pager = build_pager(total, page, per_page)
     config_panel = build_scheduler_batches_config_panel_state(cfg_svc)
     latest_history, latest_summary, latest_summary_parse_state = _load_latest_schedule_history_panel_inputs(
         services.schedule_history_query_service
@@ -137,11 +148,14 @@ def batches_manage_page():
     only_ready = (request.args.get("only_ready") or "").strip()  # yes/no/partial or empty
 
     page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
-    batches = batch_svc.list(status=status if status else None)
+    batches, total = batch_svc.list_page(
+        status=status if status else None,
+        ready_status=only_ready or None,
+        page=page,
+        per_page=per_page,
+    )
     view_rows: List[Dict[str, Any]] = []
     for b in batches:
-        if only_ready and (b.ready_status or "") != only_ready:
-            continue
         view_rows.append(
             {
                 **b.to_dict(),
@@ -151,7 +165,7 @@ def batches_manage_page():
             }
         )
 
-    view_rows, pager = paginate_rows(view_rows, page, per_page)
+    pager = build_pager(total, page, per_page)
     part_svc = services.part_service
     parts = part_svc.list()
     part_options = [(p.part_no, f"{p.part_no} {p.part_name}") for p in parts]
@@ -183,6 +197,7 @@ def create_batch():
     ready_date = request.form.get("ready_date") or None
     remark = request.form.get("remark") or None
 
+    next_url = _batch_manage_next_url()
     batch_svc = g.services.batch_service
     try:
         strict_mode = form_toggle_bool(request.form, "strict_mode")
@@ -208,10 +223,10 @@ def create_batch():
             limit=3,
             remaining_message=_CURRENT_PAGE_WARNING_REMAINING_MESSAGE,
         )
-        return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))
+        return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id, next=next_url))
     except AppError as e:
         flash(user_visible_app_error_message(e), "error")
-        return redirect(url_for("scheduler.batches_manage_page"))
+        return redirect(next_url)
 
 
 @bp.post("/batches/<batch_id>/delete")
@@ -234,10 +249,11 @@ def delete_batch(batch_id: str):
 
 @bp.post("/batches/bulk/delete")
 def bulk_delete_batches():
+    next_url = _batch_manage_next_url()
     batch_ids = request.form.getlist("batch_ids")
     if not batch_ids:
         flash("请至少选择 1 个批次。", "error")
-        return redirect(url_for("scheduler.batches_manage_page"))
+        return redirect(next_url)
 
     batch_svc = g.services.batch_service
     ok = 0
@@ -261,7 +277,7 @@ def bulk_delete_batches():
     if failed:
         sample = "；".join(failed_details[:10])
         flash(f"删除失败（最多展示 10 个）：{sample}", "warning")
-    return redirect(url_for("scheduler.batches_manage_page"))
+    return redirect(next_url)
 
 
 def _next_batch_id_like(src: str, exists_fn) -> str:
@@ -315,10 +331,11 @@ def _bulk_update_one_batch(
 
 @bp.post("/batches/bulk/copy")
 def bulk_copy_batches():
+    next_url = _batch_manage_next_url()
     batch_ids = request.form.getlist("batch_ids")
     if not batch_ids:
         flash("请至少选择 1 个批次。", "error")
-        return redirect(url_for("scheduler.batches_manage_page"))
+        return redirect(next_url)
 
     batch_svc = g.services.batch_service
     ok = 0
@@ -343,15 +360,16 @@ def bulk_copy_batches():
         flash("复制结果（最多 10 条）：" + "，".join(mappings[:10]), "success")
     if failed:
         flash("失败原因（最多 5 条）：" + "；".join(failed[:5]), "warning")
-    return redirect(url_for("scheduler.batches_manage_page"))
+    return redirect(next_url)
 
 
 @bp.post("/batches/bulk/update")
 def bulk_update_batches():
+    next_url = _batch_manage_next_url()
     batch_ids = request.form.getlist("batch_ids")
     if not batch_ids:
         flash("请至少选择 1 个批次。", "error")
-        return redirect(url_for("scheduler.batches_manage_page"))
+        return redirect(next_url)
 
     priority = (request.form.get("bulk_priority") or "").strip() or None
     due_date = (request.form.get("bulk_due_date") or "").strip() or None
@@ -360,7 +378,7 @@ def bulk_update_batches():
 
     if priority is None and due_date is None and remark is None:
         flash("未填写任何要批量修改的字段（优先级/交期/备注）。", "error")
-        return redirect(url_for("scheduler.batches_manage_page"))
+        return redirect(next_url)
 
     batch_svc = g.services.batch_service
     ok = 0
@@ -375,11 +393,12 @@ def bulk_update_batches():
     flash(f"批量修改完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
     if failed:
         flash("失败原因（最多 5 条）：" + "；".join(failed[:5]), "warning")
-    return redirect(url_for("scheduler.batches_manage_page"))
+    return redirect(next_url)
 
 
 @bp.post("/batches/<batch_id>/generate-ops")
 def generate_ops(batch_id: str):
+    next_url = _batch_manage_next_url()
     batch_svc = g.services.batch_service
     b = batch_svc.get(batch_id)
 
@@ -405,4 +424,4 @@ def generate_ops(batch_id: str):
         )
     except AppError as e:
         flash(user_visible_app_error_message(e), "error")
-    return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))
+    return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id, next=next_url))

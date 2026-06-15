@@ -8,6 +8,7 @@ from core.services.common.degradation import DegradationCollector
 from ._sched_display_utils import record_bad_time_row as _record_bad_time_row
 from ._sched_utils import _safe_int
 from .gantt_task_labels import public_task_label as _public_task_label
+from .resource_dispatch_task_ids import public_task_id as _public_task_id
 
 
 def _parse_dt(value: Any) -> Optional[datetime]:
@@ -123,7 +124,7 @@ def _build_nodes(rows: List[Dict[str, Any]], *, collector: Optional[DegradationC
                 _record_bad_time_row(collector, scope="gantt.critical_chain", row=dict(r))
             continue
         op_code = (r.get("op_code") or "").strip()
-        task_id = op_code or f"op_{r.get('op_id')}"
+        task_id = op_code or _public_task_id(r)
 
         nodes[task_id] = {
             "id": task_id,

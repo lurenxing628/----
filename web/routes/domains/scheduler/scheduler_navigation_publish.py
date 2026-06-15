@@ -14,6 +14,8 @@ from web.viewmodels.scheduler_workbench_links import (
     plan_guard_fields_for_context,
 )
 
+from .scheduler_plan_context_token import plan_context_token
+
 _GANTT_RESOURCE_VIEWS = {"machine", "operator"}
 
 
@@ -67,6 +69,9 @@ def _plan_guard_fields(plan_resolution: Dict[str, Any]) -> Dict[str, Any]:
 
 def _publish_context(plan_resolution: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
     guard_fields = _plan_guard_fields(plan_resolution)
+    scenario_id = kwargs.get("scenario_id")
+    if scenario_id and not kwargs.get("plan_context_token"):
+        kwargs["plan_context_token"] = plan_context_token(scenario_id)
     context = publish_workbench_navigation_context(
         can_write_feedback=guard_fields.get("can_write_feedback"),
         **kwargs,

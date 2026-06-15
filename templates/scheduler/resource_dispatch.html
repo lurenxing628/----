@@ -63,8 +63,8 @@
       ]) }}
     {% endif %}
     <form method="get" action="{{ url_for('scheduler.resource_dispatch_page') }}" class="aps-query-form-grid aps-resource-query-grid dispatch-query {% if filters.scope_type == 'team' %}has-team-axis{% endif %} {% if filters.period_preset == 'custom' %}has-custom-period{% endif %}">
-      {% if filters.scenario_id %}
-        <input type="hidden" name="scenario_id" value="{{ filters.scenario_id }}">
+      {% if client_filters.plan_context_token %}
+        <input type="hidden" name="plan_context_token" value="{{ client_filters.plan_context_token }}">
       {% endif %}
       <div class="form-field aps-resource-filter-scope dq-view">
         <label>视角</label>

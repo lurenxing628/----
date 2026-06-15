@@ -12,6 +12,7 @@ ROLE_ADOPTED = "adopted"
 _REPORT_CONTEXT_FIELD_NAMES = (
     "back_to",
     "scenario_id",
+    "plan_context_token",
     "date_from",
     "date_to",
     "start_date",
@@ -57,6 +58,7 @@ def _has_navigation_context(context: Dict[str, Any]) -> bool:
             "resource_type",
             "resource_id",
             "scenario_id",
+            "plan_context_token",
             "back_to",
         )
     ) or _text(context.get("plan_role")) != ROLE_ADOPTED

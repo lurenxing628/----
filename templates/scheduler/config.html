@@ -64,7 +64,7 @@
     <div class="aps-settings-action-grid mt-3">
       {% if preset_apply_url %}
         <form method="post" action="{{ preset_apply_url }}" class="aps-settings-action-card">
-          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <input type="hidden" name="next" value="{{ current_public_return_url() }}">
           <div class="form-field">
             <label for="schedulerPresetApply">切换方案</label>
             <select id="schedulerPresetApply" name="preset_name" data-auto-submit="1" class="w-220">

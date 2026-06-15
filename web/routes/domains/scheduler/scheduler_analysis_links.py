@@ -12,6 +12,8 @@ from web.viewmodels.scheduler_workbench_links import (
     build_workbench_plan_context,
 )
 
+from .scheduler_plan_context_token import plan_context_token
+
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
@@ -59,7 +61,7 @@ def build_version_picker_gantt_links(
 ) -> List[Dict[str, Any]]:
     """版本选择器两条甘特链接（fusion-handrolled-links-adoption）。
 
-    用全量方案身份建 context：场景预览（带 scenario_id）跳甘特保留 scenario_id
+    用全量方案身份建 context：场景预览通过公开 plan_context_token 跳甘特，
     不再掉回正式视角（roadmap 第 11 条点名的真实缺陷）；裸 preview 无 scenario_id
     由合同禁用并明示。resolve 的 ValidationError 穿透——路由对相同参数的
     publish 调用已是同样行为，不引入第二套容错口径。
@@ -93,6 +95,7 @@ def build_version_picker_gantt_links(
         plan_resolution=plan_resolution,
         plan_guard_fields=FULL_PLAN_GUARD_FIELDS,
         scenario_id=effective_scenario,
+        plan_context_token=plan_context_token(effective_scenario),
         date_from=(span or {}).get("start_date"),
         date_to=(span or {}).get("end_date"),
         back_to=back_to,

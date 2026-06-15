@@ -10,6 +10,7 @@ from core.services.scheduler.execution_fact_provider import ExecutionFactProvide
 from core.services.scheduler.schedule_result_view_context import plan_role_filter_fields
 from web.navigation_context import set_current_workbench_navigation_context
 from web.request_resource_context import request_report_resource_context
+from web.routes.domains.scheduler.scheduler_plan_context_token import plan_context_token, request_scenario_id_from_args
 from web.routes.history_summary_logging import log_history_summary_parse_warning
 from web.viewmodels.dashboard_backup_health import (
     build_backup_health_hint,
@@ -212,7 +213,7 @@ def _plan_resolution_context(services: Any, version: int) -> Dict[str, Any]:
     if version <= 0:
         return {}
     raw_role = _request_arg("plan_role") or ROLE_ADOPTED
-    scenario_id = _request_arg("scenario_id") or None
+    scenario_id = request_scenario_id_from_args(request.args)
     try:
         plan_resolution = services.schedule_plan_query_service.resolve_plan_view(version, raw_role, scenario_id).to_dict()
     except ValueError as exc:
@@ -331,6 +332,9 @@ def _workbench_navigation_context_from_request(services: Any, version: int) -> D
         "back_to": _request_arg("back_to"),
     }
     context.update(_plan_resolution_context(services, version))
+    scenario_id = str(context.get("scenario_id") or "").strip()
+    if scenario_id:
+        context["plan_context_token"] = _request_arg("plan_context_token") or plan_context_token(scenario_id)
     return context
 
 

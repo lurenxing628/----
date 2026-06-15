@@ -7,8 +7,27 @@ from core.services.personnel import OperatorService
 from core.services.scheduler import CalendarService, ConfigService
 from web.error_boundary import user_visible_app_error_message
 
+from .navigation_utils import _safe_next_url
 from .normalizers import _normalize_operator_calendar_day_type, _normalize_yesno
 from .personnel_bp import _day_type_zh, bp
+
+
+def _personnel_calendar_return_url_from_args() -> str:
+    next_raw = (request.args.get("next") or "").strip()
+    next_url = _safe_next_url(next_raw) if next_raw else None
+    return next_url or url_for("personnel.list_page")
+
+
+def _personnel_calendar_post_next() -> str:
+    next_raw = (request.form.get("next") or "").strip()
+    next_url = _safe_next_url(next_raw) if next_raw else None
+    return next_url or ""
+
+
+def _operator_calendar_url(operator_id: str, next_url: str = "") -> str:
+    if next_url:
+        return url_for("personnel.operator_calendar_page", operator_id=operator_id, next=next_url)
+    return url_for("personnel.operator_calendar_page", operator_id=operator_id)
 
 
 @bp.get("/<operator_id>/calendar")
@@ -38,6 +57,7 @@ def operator_calendar_page(operator_id: str):
         consumer="个人工作日历页面",
         logger=current_app.logger,
     )
+    personnel_return_url = _personnel_calendar_return_url_from_args()
 
     return render_template(
         "personnel/calendar.html",
@@ -47,6 +67,8 @@ def operator_calendar_page(operator_id: str):
         holiday_default_efficiency=hde,
         holiday_default_efficiency_degraded=hde_degraded,
         holiday_default_efficiency_warning=hde_warning,
+        personnel_return_url=personnel_return_url,
+        personnel_return_next=personnel_return_url,
     )
 
 
@@ -85,6 +107,6 @@ def operator_calendar_upsert(operator_id: str):
             flash(f"“假期工作效率”这项设置现在不能直接用，无法保存个人日历，请先在排产参数中修复。{user_visible_app_error_message(exc)}", "error")
         else:
             flash(user_visible_app_error_message(exc), "error")
-        return redirect(url_for("personnel.operator_calendar_page", operator_id=operator_id))
+        return redirect(_operator_calendar_url(operator_id, _personnel_calendar_post_next()))
     flash("个人日历配置已保存。", "success")
-    return redirect(url_for("personnel.operator_calendar_page", operator_id=operator_id))
+    return redirect(_operator_calendar_url(operator_id, _personnel_calendar_post_next()))

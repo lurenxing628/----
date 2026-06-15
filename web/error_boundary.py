@@ -42,6 +42,7 @@ _KNOWN_FIELD_LABELS = {
     "query_date": "查询日期",
     "scope_id": "范围对象",
     "scope_type": "范围类型",
+    "date_range": "日期范围",
     "start_date": "开始日期",
     "team_axis": "班组维度",
     "team_id": "班组",

@@ -8,6 +8,8 @@ from flask import request, url_for
 from core.infrastructure.errors import AppError
 from web.error_boundary import build_user_visible_app_error_payload, get_user_visible_field_label
 
+from .scheduler_plan_context_token import scenario_id_from_plan_context_token
+
 _DATE_ARG_KEYS = ("period_preset", "query_date", "start_date", "end_date", "date_from", "date_to")
 _SCOPE_ARG_KEYS = ("scope_id", "operator_id", "machine_id", "team_id")
 _EXPORT_ARG_KEYS = (
@@ -25,7 +27,7 @@ _EXPORT_ARG_KEYS = (
     "date_to",
     "version",
     "plan_role",
-    "scenario_id",
+    "plan_context_token",
     "batch_id",
 )
 _FIELD_QUERY_KEY_DROPS = {
@@ -56,6 +58,13 @@ def _arg_text(name: str, *, default: Optional[str] = None) -> Optional[str]:
     return text or default
 
 
+def _scenario_id_arg() -> Optional[str]:
+    token = _arg_text("plan_context_token")
+    if token:
+        return scenario_id_from_plan_context_token(token)
+    return _arg_text("scenario_id")
+
+
 def _request_kwargs() -> Dict[str, Any]:
     return {
         "scope_type": _arg_text("scope_type", default="operator"),
@@ -70,7 +79,7 @@ def _request_kwargs() -> Dict[str, Any]:
         "end_date": _arg_text("end_date") or _arg_text("date_to"),
         "version": _arg_text("version"),
         "plan_role": _arg_text("plan_role"),
-        "scenario_id": _arg_text("scenario_id"),
+        "scenario_id": _scenario_id_arg(),
         "batch_id": _arg_text("batch_id"),
     }
 

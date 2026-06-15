@@ -11,6 +11,7 @@ from .scheduler_analysis_links import attach_candidate_plan_links, build_version
 from .scheduler_analysis_read import build_analysis_read_context
 from .scheduler_bp import bp
 from .scheduler_navigation_publish import publish_analysis_navigation_context, resolve_navigation_plan_context
+from .scheduler_plan_context_token import request_scenario_id_from_args
 
 
 def _request_arg_text(*names: str) -> str:
@@ -46,7 +47,7 @@ def _publish_analysis_navigation_context(selected_version, selected_item=None) -
     if selected_version is None:
         return
     plan_role = _request_arg_text("plan_role") or "adopted"
-    scenario_id = _request_arg_text("scenario_id") or None
+    scenario_id = request_scenario_id_from_args(request.args)
     plan_resolution = resolve_navigation_plan_context(g.services, selected_version, plan_role, scenario_id)
     # 胶囊喂参：read_ctx.selected_item 现成历史行，None 时不喂（胶囊显示「-」）
     capsule_fields = (
@@ -115,7 +116,7 @@ def analysis_page():
         g.services,
         read_ctx.selected_version,
         plan_role=_request_arg_text("plan_role") or "adopted",
-        scenario_id=_request_arg_text("scenario_id") or None,
+        scenario_id=request_scenario_id_from_args(request.args),
         back_to=_request_arg_text("back_to") or None,
     )
 

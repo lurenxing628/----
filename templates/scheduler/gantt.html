@@ -13,7 +13,7 @@
   {% set base_end_date = end_date %}
   {% set display_range = (week_start_display or week_start) ~ ' ～ ' ~ (week_end_display or week_end) %}
   {% set current_plan_role = plan_role or 'adopted' %}
-  {% set current_scenario_id = scenario_id or '' %}
+  {% set current_plan_context_token = plan_context_token or '' %}
   {% set current_scenario_label = (plan_resolution.scenario_display_name or scenario_name or '模拟预览（未命名）') if is_scenario_preview else '' %}
   {% set current_plan_label = current_scenario_label if is_scenario_preview else (plan_resolution.user_label if plan_resolution else '正式采用方案') %}
 
@@ -96,8 +96,8 @@
       <form method="get" action="{{ url_for('scheduler.gantt_page') }}" class="aps-gantt-range-form">
         <input type="hidden" name="view" value="{{ view }}">
         <input type="hidden" id="ganttZoomFormValue" name="gantt_zoom" value="{{ gantt_zoom or 'day' }}">
-        {% if current_scenario_id %}
-          <input type="hidden" name="scenario_id" value="{{ current_scenario_id }}">
+        {% if current_plan_context_token %}
+          <input type="hidden" name="plan_context_token" value="{{ current_plan_context_token }}">
         {% endif %}
         {% if gantt_form_scope.gantt_batch %}
           <input type="hidden" name="gantt_batch" value="{{ gantt_form_scope.gantt_batch }}">
@@ -257,7 +257,7 @@
           data-offset="{{ offset }}"
           data-version="{{ version or '' }}"
           data-plan-role="{{ current_plan_role }}"
-          data-scenario-id="{{ current_scenario_id }}"
+          data-plan-context-token="{{ current_plan_context_token }}"
           data-scenario-preview="{{ '1' if is_scenario_preview else '0' }}"
           data-scenario-label="{{ current_scenario_label or '' }}"
           data-gantt-mode="view"

@@ -10,6 +10,8 @@ from flask import current_app
 from core.services.scheduler.schedule_result_view_range import get_plan_time_span_dates
 from web.viewmodels.scheduler_workbench_links import build_workbench_link, build_workbench_plan_context
 
+from .scheduler_plan_context_token import plan_context_token
+
 
 def week_plan_span_jump(services, data) -> dict:
     """空周升级（fusion-week-plan-enrich）：版本有计划行时告知区间并给跳转链接。
@@ -32,6 +34,7 @@ def week_plan_span_jump(services, data) -> dict:
             return {}
         context = build_workbench_plan_context(
             version=int(version), plan_role=role, scenario_id=scenario,
+            plan_context_token=plan_context_token(scenario),
             date_from=span["start_date"], date_to=span["end_date"],
         )
         link = build_workbench_link(context, "week_plan", label="跳到计划区间")

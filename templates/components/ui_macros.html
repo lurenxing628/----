@@ -378,12 +378,12 @@
   人员导航
   active: list | teams | operator_calendar | global_calendar
 #}
-{% macro personnel_nav(active='', size='sm', class='', operator_id=None, include_calendar=False) %}
+{% macro personnel_nav(active='', size='sm', class='', operator_id=None, include_calendar=False, return_next=None) %}
 <div class="scheduler-subnav scheduler-subnav-main {{ class }}">
   {{ link_button('人员管理', url_for('personnel.list_page'), 'primary' if active == 'list' else 'secondary', size) }}
   {{ link_button('班组管理', url_for('personnel.teams_page'), 'primary' if active == 'teams' else 'secondary', size) }}
   {% if include_calendar and operator_id %}
-    {{ link_button('个人工作日历', url_for('personnel.operator_calendar_page', operator_id=operator_id), 'primary' if active == 'operator_calendar' else 'secondary', size) }}
+    {{ link_button('个人工作日历', url_for('personnel.operator_calendar_page', operator_id=operator_id, next=return_next), 'primary' if active == 'operator_calendar' else 'secondary', size) }}
     {{ link_button('全局工作日历', url_for('scheduler.calendar_page'), 'primary' if active == 'global_calendar' else 'secondary', size) }}
   {% endif %}
 </div>

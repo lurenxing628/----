@@ -10,6 +10,7 @@ from web.navigation_context import (
     build_report_navigation_links,
     build_scheduler_navigation_links,
     build_workbench_navigation_links,
+    current_public_return_url,
     preserved_report_context_fields,
     workbench_plan_capsule,
 )
@@ -31,5 +32,6 @@ def install_template_globals(app) -> None:
     env.globals["build_workbench_navigation_links"] = build_workbench_navigation_links
     env.globals["build_report_navigation_links"] = build_report_navigation_links
     env.globals["build_scheduler_navigation_links"] = build_scheduler_navigation_links
+    env.globals["current_public_return_url"] = current_public_return_url
     env.globals["preserved_report_context_fields"] = preserved_report_context_fields
     env.globals["workbench_plan_capsule"] = workbench_plan_capsule

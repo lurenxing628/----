@@ -63,13 +63,23 @@ VERSION_REQUIRED_TARGETS = {
 }
 
 WORKBENCH_CONTINUATION_TARGETS = VERSION_REQUIRED_TARGETS - {"analysis"}
-
-DATE_RANGE_REQUIRED_TARGETS = {
+PLAN_CONTEXT_TOKEN_TARGETS = {
+    "dashboard",
+    "analysis",
     "gantt",
     "week_plan",
     "resource_dispatch",
     "overdue_report",
     "delay_diagnosis",
+    "utilization_report",
+    "downtime_report",
+    "reports_index",
+}
+
+DATE_RANGE_REQUIRED_TARGETS = {
+    "gantt",
+    "week_plan",
+    "resource_dispatch",
     "utilization_report",
     "execution_review",
     "downtime_report",
@@ -146,9 +156,23 @@ def _append_date_range_as_date_from_to(query: List[Tuple[str, str]], context: Di
     _append_param(query, "date_to", context.get("date_to"))
 
 
-def _append_plan_query(query: List[Tuple[str, str]], context: Dict[str, Any]) -> None:
+def _derived_plan_context_token(context: Dict[str, Any]) -> str:
+    existing_token = context.get("plan_context_token")
+    if _has_value(existing_token):
+        return _text(existing_token)
+    return ""
+
+
+def has_public_plan_context_token_source(context: Dict[str, Any]) -> bool:
+    return _has_value(context.get("plan_context_token"))
+
+
+def _append_plan_query(query: List[Tuple[str, str]], context: Dict[str, Any], target_page: str) -> None:
     _append_param(query, "version", context.get("version"))
     _append_param(query, "plan_role", context.get("plan_role"))
+    if target_page in PLAN_CONTEXT_TOKEN_TARGETS:
+        _append_param(query, "plan_context_token", _derived_plan_context_token(context))
+        return
     _append_param(query, "scenario_id", context.get("scenario_id"))
 
 
@@ -180,7 +204,7 @@ def target_uses_primary_resource_filter(target_page: str) -> bool:
     return str(_target_spec(target_page)["resource_style"]) == "resource"
 
 
-def _append_target_plan_query(query: List[Tuple[str, str]], context: Dict[str, Any], plan_style: str) -> None:
+def _append_target_plan_query(query: List[Tuple[str, str]], context: Dict[str, Any], target_page: str, plan_style: str) -> None:
     if plan_style == "none":
         return
     if plan_style == "version_only":
@@ -191,7 +215,7 @@ def _append_target_plan_query(query: List[Tuple[str, str]], context: Dict[str, A
         _append_param(query, "plan_role", context.get("plan_role"))
         return
     if plan_style == "standard":
-        _append_plan_query(query, context)
+        _append_plan_query(query, context, target_page)
         return
     raise ValueError(f"未知方案参数格式：{plan_style}")
 
@@ -283,6 +307,7 @@ def _append_query_from_spec(
     context: Dict[str, Any],
     spec: Dict[str, Any],
     *,
+    target_page: str,
     view: Optional[str],
     resource_type: Optional[str],
     resource_id: Any,
@@ -290,7 +315,7 @@ def _append_query_from_spec(
 ) -> None:
     if spec.get("include_gantt_view"):
         _append_param(query, "view", view or "machine")
-    _append_target_plan_query(query, context, str(spec["plan_style"]))
+    _append_target_plan_query(query, context, target_page, str(spec["plan_style"]))
     if spec.get("include_week_start"):
         _append_param(query, "week_start", context.get("date_from"))
     _append_target_date_query(query, context, str(spec["date_style"]))
@@ -341,6 +366,7 @@ def query_for_target(
         query,
         context,
         spec,
+        target_page=target_page,
         view=view,
         resource_type=resource_type,
         resource_id=resource_id,
@@ -361,6 +387,7 @@ __all__ = [
     "VERSION_REQUIRED_TARGETS",
     "WORKBENCH_CONTINUATION_TARGETS",
     "ordered_required_params",
+    "PLAN_CONTEXT_TOKEN_TARGETS",
     "plan_guard_fields_for_resolution",
     "query_for_target",
     "target_uses_primary_resource_filter",

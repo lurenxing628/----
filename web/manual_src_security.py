@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from flask import current_app, g, has_request_context, request, url_for
@@ -9,6 +9,20 @@ from werkzeug.routing.exceptions import BuildError
 from core.infrastructure.logging import safe_log
 from core.models.schedule_plan_role import VALID_PLAN_ROLES
 from web.viewmodels.page_manuals import build_manual_for_endpoint, resolve_manual_id
+
+_PLAN_CONTEXT_TOKEN_PATHS = {
+    "/",
+    "/reports",
+    "/reports/",
+    "/reports/overdue",
+    "/reports/utilization",
+    "/reports/execution-review",
+    "/reports/downtime",
+    "/scheduler/analysis",
+    "/scheduler/gantt",
+    "/scheduler/week-plan",
+    "/scheduler/resource-dispatch",
+}
 
 
 def _log_warning(message: str, *args: Any) -> None:
@@ -112,6 +126,49 @@ def _resolve_manual_src(src: Any = None) -> str:
         return "/"
 
 
+def _rewrite_manual_src_query_item(
+    key: str,
+    value: str,
+    supports_plan_context_token: bool,
+) -> Tuple[Optional[Tuple[str, str]], bool, str, bool]:
+    value_text = str(value or "").strip()
+    if key == "plan_role" and value_text not in VALID_PLAN_ROLES:
+        return None, True, "", False
+    if supports_plan_context_token and key == "plan_context_token" and value_text:
+        return (key, value), False, "", True
+    if supports_plan_context_token and key == "scenario_id" and value_text:
+        return None, True, value_text, False
+    return (key, value), False, "", False
+
+
+def _rewrite_manual_src_query(parts: Any) -> Tuple[List[Tuple[str, str]], bool]:
+    query: List[Tuple[str, str]] = []
+    changed = False
+    scenario_for_token = ""
+    has_plan_context_token = False
+    supports_plan_context_token = (parts.path or "") in _PLAN_CONTEXT_TOKEN_PATHS
+    for key, value in parse_qsl(parts.query, keep_blank_values=True):
+        query_item, item_changed, item_scenario, item_has_token = _rewrite_manual_src_query_item(
+            key,
+            value,
+            supports_plan_context_token,
+        )
+        changed = changed or item_changed
+        has_plan_context_token = has_plan_context_token or item_has_token
+        if item_scenario:
+            scenario_for_token = item_scenario
+        if query_item is None:
+            continue
+        query.append(query_item)
+    if scenario_for_token and not has_plan_context_token:
+        from web.routes.domains.scheduler.scheduler_plan_context_token import plan_context_token
+
+        token = plan_context_token(scenario_for_token)
+        if token:
+            query.append(("plan_context_token", token))
+    return query, changed
+
+
 def _sanitize_manual_src_context(src: Optional[str]) -> Optional[str]:
     if not src:
         return src
@@ -119,13 +176,7 @@ def _sanitize_manual_src_context(src: Optional[str]) -> Optional[str]:
         parts = urlsplit(src)
     except ValueError:
         return src
-    query = []
-    changed = False
-    for key, value in parse_qsl(parts.query, keep_blank_values=True):
-        if key == "plan_role" and str(value or "").strip() not in VALID_PLAN_ROLES:
-            changed = True
-            continue
-        query.append((key, value))
+    query, changed = _rewrite_manual_src_query(parts)
     if not changed:
         return src
     return urlunsplit(("", "", parts.path or "/", urlencode(query), parts.fragment))

@@ -20,6 +20,7 @@ from web.viewmodels.scheduler_history_summary import format_public_datetime
 
 from .scheduler_bp import bp
 from .scheduler_navigation_publish import requested_plan_role, resolved_scenario_id
+from .scheduler_plan_context_token import plan_context_token, scenario_id_from_plan_context_token
 from .scheduler_utils import get_plan_role_arg
 from .scheduler_week_plan_query import (
     request_week_plan_batch_id,
@@ -85,7 +86,7 @@ def _print_page_links(*, version: Any, week_start: str, plan_resolution: Dict[st
         "version": version,
         "week_start": week_start,
         "plan_role": requested_plan_role(plan_resolution),
-        "scenario_id": resolved_scenario_id(plan_resolution),
+        "plan_context_token": plan_context_token(resolved_scenario_id(plan_resolution)),
         "batch_id": batch_id,
         "resource_type": (resource_context or {}).get("resource_type"),
         "resource_id": (resource_context or {}).get("resource_id"),
@@ -114,6 +115,8 @@ def week_plan_print_page():
     day = _get_day_arg(week_start, week_end)
     resource_context = request_week_plan_resource_context()
     batch_id = request_week_plan_batch_id()
+    plan_token = str(request.args.get("plan_context_token") or "").strip()
+    scenario_id = scenario_id_from_plan_context_token(plan_token) if plan_token else str(request.args.get("scenario_id") or "").strip() or None
 
     data = svc.get_week_plan_rows(
         **week_plan_data_kwargs(
@@ -121,7 +124,7 @@ def week_plan_print_page():
             offset_weeks=0,
             version=request.args.get("version"),
             plan_role=get_plan_role_arg(),
-            scenario_id=str(request.args.get("scenario_id") or "").strip() or None,
+            scenario_id=scenario_id,
             services=services,
             resource_context=resource_context,
             batch_id=batch_id,

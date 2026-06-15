@@ -7,7 +7,7 @@
       <div class="page-actions page-actions-context"></div>
     </div>
     <p class="page-subtitle text-meta">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong>　班组：<strong>{{ operator_team_name or '未设置' }}</strong></p>
-    {{ ui.personnel_nav('list', operator_id=operator.operator_id, include_calendar=True) }}
+    {{ ui.personnel_nav('list', operator_id=operator.operator_id, include_calendar=True, return_next=personnel_return_next) }}
     <div class="muted mt-2">
       为个别人员设置特殊的工作/休息日（如请假、加班）。
     </div>
@@ -16,6 +16,7 @@
   <div class="card aps-form-card">
     <h3 class="section-title">基本信息</h3>
     <form method="post" action="{{ url_for('personnel.update_operator', operator_id=operator.operator_id) }}">
+      <input type="hidden" name="next" value="{{ personnel_return_next }}">
       <div class="aps-edit-form-grid">
         <div class="form-field">
           <label>工号</label>
@@ -49,7 +50,7 @@
       </div>
       <div class="aps-form-footer">
         {{ ui.button('保存', 'primary', 'md', type_attr='submit') }}
-        {{ ui.link_button('返回列表', url_for('personnel.list_page'), 'secondary', 'md') }}
+        {{ ui.link_button('返回列表', personnel_return_url, 'secondary', 'md') }}
       </div>
     </form>
   </div>
@@ -76,7 +77,9 @@
 
     {% if linked_machines and linked_machines|length > 0 %}
       {% for m in linked_machines %}
-        <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('personnel.update_link', operator_id=operator.operator_id) }}" class="d-none"></form>
+        <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('personnel.update_link', operator_id=operator.operator_id) }}" class="d-none">
+          <input type="hidden" name="next" value="{{ personnel_return_next }}">
+        </form>
       {% endfor %}
       <div class="aps-table-scroll">
       <table id="operatorLinkedMachinesTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_operatorLinkedMachinesTable">
@@ -124,6 +127,7 @@
                   {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='linkform_' ~ loop.index0) }}
                   <form method="post" action="{{ url_for('personnel.remove_link', operator_id=operator.operator_id) }}"
                         data-confirm="确认解除这条设备人员关系吗？只解除关系，不删除设备，也不删除人员。">
+                    <input type="hidden" name="next" value="{{ personnel_return_next }}">
                     <input type="hidden" name="machine_id" value="{{ m.machine_id }}">
                     {{ ui.button('解除关联', 'danger', 'sm', type_attr='submit') }}
                   </form>
@@ -142,6 +146,7 @@
     <h4>添加设备关联</h4>
     {% if available_machines and available_machines|length > 0 %}
       <form method="post" action="{{ url_for('personnel.add_link', operator_id=operator.operator_id) }}">
+        <input type="hidden" name="next" value="{{ personnel_return_next }}">
         <div class="aps-edit-form-grid">
           <div class="form-field">
             <label>选择设备</label>

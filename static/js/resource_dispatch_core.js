@@ -384,7 +384,7 @@
     if (trim(filters.end_date)) params.set("end_date", trim(filters.end_date));
     if (trim(filters.version)) params.set("version", trim(filters.version));
     if (trim(filters.plan_role)) params.set("plan_role", trim(filters.plan_role));
-    if (trim(filters.scenario_id)) params.set("scenario_id", trim(filters.scenario_id));
+    if (trim(filters.plan_context_token)) params.set("plan_context_token", trim(filters.plan_context_token));
     const textQs = params.toString();
     return textQs ? ("?" + textQs) : "";
   }

@@ -42,6 +42,7 @@ from .scheduler_navigation_publish import (
     requested_plan_role,
     resolved_scenario_id,
 )
+from .scheduler_plan_context_token import plan_context_token, scenario_id_from_plan_context_token
 from .scheduler_user_messages import scheduler_user_visible_app_error_message
 from .scheduler_utils import _current_scheduler_operator, get_plan_role_arg
 from .scheduler_week_plan_preview import build_week_plan_preview_state, week_plan_span_jump
@@ -71,6 +72,9 @@ def _safe_redirect_plan_role(plan_role: Optional[str]) -> Optional[str]:
 
 
 def _get_scenario_id_arg() -> Optional[str]:
+    token = str(request.args.get("plan_context_token") or "").strip()
+    if token:
+        return scenario_id_from_plan_context_token(token)
     text = str(request.args.get("scenario_id") or "").strip()
     return text or None
 
@@ -219,7 +223,7 @@ def _week_plan_page_redirect(
     offset: int,
     version: Optional[str],
     plan_role: Optional[str],
-    scenario_id: Optional[str],
+    plan_context_token: Optional[str] = None,
     resource_context: Optional[Dict[str, Any]] = None,
     batch_id: Optional[str] = None,
 ):
@@ -228,7 +232,7 @@ def _week_plan_page_redirect(
         "week_start": week_start,
         "version": version,
         "plan_role": plan_role,
-        "scenario_id": scenario_id,
+        "plan_context_token": plan_context_token,
         "batch_id": batch_id,
         "resource_type": (resource_context or {}).get("resource_type"),
         "resource_id": (resource_context or {}).get("resource_id"),
@@ -339,6 +343,7 @@ def week_plan_page():
         effective_plan_role=selected_plan_role(plan_resolution),
         plan_resolution=plan_resolution,
         scenario_id=resolved_scenario_id(plan_resolution, scenario_id),
+        plan_context_token=plan_context_token(resolved_scenario_id(plan_resolution, scenario_id)),
         batch_id=batch_id,
         resource_type=(resource_context or {}).get("resource_type"),
         resource_id=(resource_context or {}).get("resource_id"),
@@ -376,7 +381,7 @@ def week_plan_export():
         "offset": offset,
         "version": request.args.get("version"),
         "plan_role": _safe_redirect_plan_role(plan_role),
-        "scenario_id": scenario_id,
+        "plan_context_token": plan_context_token(scenario_id),
         "resource_context": resource_context,
         "batch_id": batch_id,
     }

@@ -7,13 +7,13 @@
 {% block content %}
   {% set calendar_actions %}
     {{ ui.link_button('全局工作日历', url_for('scheduler.calendar_page'), 'secondary', 'md') }}
-    {{ ui.link_button('返回人员详情', url_for('personnel.detail_page', operator_id=operator.operator_id), 'secondary', 'md') }}
+    {{ ui.link_button('返回人员详情', url_for('personnel.detail_page', operator_id=operator.operator_id, next=personnel_return_next), 'secondary', 'md') }}
   {% endset %}
   {{ ui.aps_page_hero(
     '个人工作日历',
     '设置个人的特殊工作日，例如请假、加班、轮班；这些日期会优先于全局工作日历。',
     actions_html=calendar_actions,
-    nav_html=ui.personnel_nav('operator_calendar', operator_id=operator.operator_id, include_calendar=True)
+    nav_html=ui.personnel_nav('operator_calendar', operator_id=operator.operator_id, include_calendar=True, return_next=personnel_return_next)
   ) }}
 
   <div class="card">
@@ -34,6 +34,7 @@
       </div>
     {% endif %}
     <form method="post" action="{{ url_for('personnel.operator_calendar_upsert', operator_id=operator.operator_id) }}">
+      <input type="hidden" name="next" value="{{ personnel_return_next }}">
       <div class="aps-calendar-form-grid">
         <div class="form-field wc-date-wrap aps-calendar-date-field">
           <label>日期</label>

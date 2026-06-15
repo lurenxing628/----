@@ -78,6 +78,7 @@ def _context_kwargs(
         "plan_role": _filter_or_none(filters, ("requested_plan_role", "plan_role"), ROLE_ADOPTED),
         "plan_role_label_value": _filter_or_none(filters, ("plan_identity_label", "requested_plan_role_label"), ""),
         "scenario_id": _filter_or_none(filters, ("scenario_id",)),
+        "plan_context_token": _filter_or_none(filters, ("plan_context_token",)),
         "scenario_display_label": _filter_text(filters, "scenario_display_name"),
         "date_from": date_from_value,
         "date_to": date_to_value,

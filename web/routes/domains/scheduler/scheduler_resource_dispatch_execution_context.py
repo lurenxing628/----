@@ -45,10 +45,60 @@ def _actual_record_svc() -> Any:
     return g.services.resource_dispatch_actual_record_service
 
 
+_PUBLIC_ERROR_DETAIL_DROP_KEYS = {
+    "field",
+    "missing_fields",
+    "op_id",
+    "schedule_id",
+    "scenario_id",
+    "candidate_id",
+    "source_table",
+    "source_row_id",
+    "state_revision",
+    "expected_state_revision",
+    "execution_snapshot_revision",
+}
+
+
+def _sanitize_public_error_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        sanitized: Dict[str, Any] = {}
+        for key, item in value.items():
+            key_s = _text(key)
+            if key_s in _PUBLIC_ERROR_DETAIL_DROP_KEYS:
+                continue
+            sanitized[key_s] = _sanitize_public_error_value(item)
+        return sanitized
+    if isinstance(value, list):
+        return [_sanitize_public_error_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_public_error_value(item) for item in value]
+    return value
+
+
+def _public_execution_error_details(raw_details: Mapping[str, Any]) -> Dict[str, Any]:
+    details = dict(raw_details or {})
+    public: Dict[str, Any] = {}
+    field = details.get("field")
+    if field:
+        public["field_label"] = display_field_label(field)
+    missing_fields = details.get("missing_fields")
+    if missing_fields:
+        public["missing_field_labels"] = [
+            display_field_label(item)
+            for item in missing_fields
+            if _text(display_field_label(item))
+        ]
+    for key, value in details.items():
+        key_s = _text(key)
+        if key_s in _PUBLIC_ERROR_DETAIL_DROP_KEYS:
+            continue
+        public[key_s] = _sanitize_public_error_value(value)
+    return public
+
+
 def _execution_error_response(exc: AppError, *, action: Optional[str] = None):
-    details = dict(exc.details or {})
-    if "field" in details:
-        details.setdefault("field_label", display_field_label(details.get("field")))
+    details = _public_execution_error_details(exc.details or {})
     if action and "action" not in details:
         details["action"] = action
     if "action" in details:

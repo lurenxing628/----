@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Set, Tuple
 
-from flask import current_app, g, render_template, request
+from flask import current_app, g, render_template, request, url_for
 
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, SupplierStatus, YesNo
 from core.models.schedule_plan_role import ROLE_ADOPTED
+from core.services.report.calculation_helpers import is_valid_interval
 from core.services.scheduler._sched_display_utils import display_machine, display_operator, parse_dt
 from core.services.scheduler.execution_fact_presentation import execution_detail_meta
 from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
@@ -14,7 +16,9 @@ from web.viewmodels.scheduler_batch_schedule_placement import build_schedule_pla
 from web.viewmodels.scheduler_history_summary import format_public_datetime
 from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 
+from ...navigation_utils import _safe_next_url
 from .scheduler_bp import _batch_status_zh, _priority_zh, _ready_zh, bp
+from .scheduler_ops import operation_update_token
 
 if TYPE_CHECKING:
     from core.services.equipment import MachineService
@@ -241,26 +245,79 @@ def _placement_op_row(row: Dict[str, Any], facts: Dict[int, Any]) -> Dict[str, A
     return out
 
 
-def _placement_span(rows: List[Dict[str, Any]]) -> Tuple[Optional[str], Optional[str], str]:
-    # 解析跳坏值，start/end 各自独立求 min/max（求窗口边界只需端点可解析，不强制逐行 st<et）；
+@dataclass(frozen=True)
+class PlacementSpan:
+    from_date: Optional[str]
+    to_date: Optional[str]
+    label: str
+    status: str
+    bad_time_count: int = 0
+    notice: str = ""
+
+    def __iter__(self):
+        yield self.from_date
+        yield self.to_date
+        yield self.label
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, tuple):
+            return tuple(self) == other
+        return super().__eq__(other)
+
+
+def _has_text(value: Any) -> bool:
+    return value is not None and str(value).strip() != ""
+
+
+def _batch_detail_return_url() -> str:
+    next_raw = (request.args.get("next") or "").strip()
+    next_url = _safe_next_url(next_raw) if next_raw else None
+    return next_url or url_for("scheduler.batches_manage_page")
+
+
+def _placement_span(rows: List[Dict[str, Any]]) -> PlacementSpan:
+    # 只有同一行 start/end 都可解析且区间有效时才参与窗口，避免半条坏时间撑大跨度。
     # 返回给甘特链接的 YYYY-MM-DD 日期窗口 + 含时分的中文 span_label。
     starts: List[Tuple[Any, Any]] = []
     ends: List[Tuple[Any, Any]] = []
+    bad_time_count = 0
     for row in rows:
+        row_bad = False
         s_raw = row.get("start_time")
         s_dt = parse_dt(s_raw)
-        if s_dt is not None:
-            starts.append((s_dt, s_raw))
+        if s_dt is None:
+            row_bad = True
         e_raw = row.get("end_time")
         e_dt = parse_dt(e_raw)
-        if e_dt is not None:
-            ends.append((e_dt, e_raw))
+        if e_dt is None:
+            row_bad = True
+        if s_dt is not None and e_dt is not None and not is_valid_interval(s_dt, e_dt):
+            row_bad = True
+        if row_bad:
+            bad_time_count += 1
+            continue
+        starts.append((s_dt, s_raw))
+        ends.append((e_dt, e_raw))
     if not starts or not ends:
-        return None, None, "时间记录异常"
+        notice = ""
+        if bad_time_count > 0:
+            notice = f"有 {bad_time_count} 条排程记录的开始或结束时间缺失或写法不对，时间跨度无法计算；已排工序数量仍是全量。"
+        return PlacementSpan(None, None, "时间记录异常", "error", bad_time_count=bad_time_count, notice=notice)
     min_start_dt, min_start_raw = min(starts, key=lambda p: p[0])
     max_end_dt, max_end_raw = max(ends, key=lambda p: p[0])
     span_label = f"{format_public_datetime(min_start_raw)} ～ {format_public_datetime(max_end_raw)}"
-    return min_start_dt.date().isoformat(), max_end_dt.date().isoformat(), span_label
+    status = "partial" if bad_time_count > 0 else "ok"
+    notice = ""
+    if bad_time_count > 0:
+        notice = f"有 {bad_time_count} 条排程记录的开始或结束时间缺失或写法不对，时间跨度只按可解析记录计算；已排工序数量仍是全量。"
+    return PlacementSpan(
+        min_start_dt.date().isoformat(),
+        max_end_dt.date().isoformat(),
+        span_label,
+        status,
+        bad_time_count=bad_time_count,
+        notice=notice,
+    )
 
 
 def _resolve_schedule_placement(services: Any, batch_id: str) -> Dict[str, Any]:
@@ -304,16 +361,19 @@ def _resolve_schedule_placement(services: Any, batch_id: str) -> Dict[str, Any]:
         facts = ExecutionFactProvider(g.db, logger=current_app.logger).facts_by_op_id_for_plan_rows(
             rows, plan_fields
         )
-        span_from_date, span_to_date, span_label = _placement_span(rows)
+        span = _placement_span(rows)
         return build_schedule_placement(
             state="ok",
             batch_id=batch_id,
             version=version,
             op_count=len(rows),
             op_rows=[_placement_op_row(row, facts) for row in rows],
-            span_from_date=span_from_date,
-            span_to_date=span_to_date,
-            span_label=span_label,
+            span_from_date=span.from_date,
+            span_to_date=span.to_date,
+            span_label=span.label,
+            span_status=span.status,
+            span_bad_time_count=span.bad_time_count,
+            span_notice=span.notice,
             generated_at=hist.schedule_time if hist is not None else None,
             strategy=hist.strategy if hist is not None else None,
             history_present=hist is not None,
@@ -328,6 +388,7 @@ def batch_detail(batch_id: str):
     services = g.services
     batch_svc = services.batch_service
     sch_svc = services.schedule_service
+    batch_return_url = _batch_detail_return_url()
 
     b = batch_svc.get(batch_id)
     ops = sch_svc.list_batch_operations(batch_id=b.batch_id)
@@ -357,6 +418,15 @@ def batch_detail(batch_id: str):
     )
 
     view_ops = _build_view_ops(ops, sch_svc)
+    operation_update_actions = {}
+    for index, op in enumerate(view_ops, start=1):
+        form_key = f"opform_{index}"
+        op["form_key"] = form_key
+        operation_update_actions[form_key] = url_for(
+            "scheduler.update_op_by_token",
+            token=operation_update_token(int(op.get("id") or 0)),
+            next=batch_return_url,
+        )
     schedule_placement = _resolve_schedule_placement(services, b.batch_id)
 
     return render_template(
@@ -381,4 +451,7 @@ def batch_detail(batch_id: str):
             desc="工艺模板资料不完整时，不刷新本批次工序。",
         ),
         schedule_placement=schedule_placement,
+        operation_update_actions=operation_update_actions,
+        batch_return_url=batch_return_url,
+        batch_return_next=batch_return_url,
     )

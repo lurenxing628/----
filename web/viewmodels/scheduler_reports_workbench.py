@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
+from urllib.parse import urlsplit
 
 from .scheduler_plan_guardrail_messages import summary_unavailable_guardrail_text
 from .scheduler_report_limitations import build_report_limitations
@@ -43,6 +44,7 @@ def build_report_context(
     *,
     version: Any = None,
     plan_resolution: Optional[Dict[str, Any]] = None,
+    plan_context_token: Any = None,
     date_from: Any = None,
     date_to: Any = None,
     query_date: Any = None,
@@ -66,6 +68,7 @@ def build_report_context(
         plan_guard_fields=REPORT_PLAN_GUARD_FIELDS,
         plan_role_label_value=_public_plan_label(data),
         scenario_id=data.get("scenario_id"),
+        plan_context_token=plan_context_token,
         scenario_display_label=_text(data.get("scenario_display_name")) or _text(data.get("scenario_name")),
         date_from=date_from,
         date_to=date_to,
@@ -227,14 +230,32 @@ def _is_gantt_diagnosis_action(action: Dict[str, Any]) -> bool:
     return link.split("?", 1)[0] == "/scheduler/gantt"
 
 
+def _diagnosis_action_target_page(action: Dict[str, Any]) -> str:
+    link = _text(action.get("link"))
+    if not link:
+        return ""
+    if _text(action.get("label")) == "查看甘特图":
+        return "gantt"
+    try:
+        path = urlsplit(link).path
+    except ValueError:
+        return ""
+    return {
+        "/scheduler/gantt": "gantt",
+        "/reports/overdue": "overdue_report",
+        "/reports/downtime": "downtime_report",
+    }.get(path, "")
+
+
 def _decorate_diagnosis_action(action: Dict[str, Any], row_context: Dict[str, Any], batch_id: Any) -> Dict[str, Any]:
     item = dict(action)
-    if _is_gantt_diagnosis_action(item):
+    target_page = _diagnosis_action_target_page(item)
+    if target_page:
         link = build_workbench_link(
             row_context,
-            "gantt",
-            label=_text(item.get("label")) or "查看甘特图",
-            view=_gantt_view_for_context(row_context),
+            target_page,
+            label=_text(item.get("label")),
+            view=_gantt_view_for_context(row_context) if target_page == "gantt" else None,
             batch_id=batch_id,
         )
         item["link"] = link["url"]

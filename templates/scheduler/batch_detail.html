@@ -7,9 +7,10 @@
         <h2 class="page-title">批次详情：{{ batch.batch_id }}</h2>
       </div>
       <div class="page-actions page-actions-context">
-        {{ ui.link_button('返回批次管理', url_for('scheduler.batches_manage_page'), 'secondary', 'md') }}
+        {{ ui.link_button('返回批次管理', batch_return_url, 'secondary', 'md') }}
         <form method="post" action="{{ url_for('scheduler.delete_batch', batch_id=batch.batch_id) }}" class="d-inline"
               data-confirm="确定删除批次 {{ batch.batch_id }} 吗？会同时删除这个批次下面的工序和排程记录（如果有）。">
+          <input type="hidden" name="next" value="{{ batch_return_next }}">
           {{ ui.button('删除批次', 'danger', 'md', type_attr='submit') }}
         </form>
       </div>
@@ -36,6 +37,9 @@
         {{ ui.summary_item('已排工序', (schedule_placement.op_count ~ ' 道')) }}
         {{ ui.summary_item('时间跨度', schedule_placement.span_label) }}
       </div>
+      {% if schedule_placement.span_notice %}
+        <div class="flash-card flash-warning mt-2" role="status">{{ schedule_placement.span_notice }}</div>
+      {% endif %}
       {% if schedule_placement.gantt_link and not schedule_placement.gantt_link.disabled and schedule_placement.gantt_link.url %}
       <div class="page-actions mt-2">
         {{ ui.link_button('在甘特中定位本批次', schedule_placement.gantt_link.url, 'secondary', 'md') }}
@@ -88,6 +92,7 @@
       <form method="post" action="{{ url_for('scheduler.generate_ops', batch_id=batch.batch_id) }}"
             class="aps-inline-run-action"
             data-confirm="确定要按最新工艺模板刷新本批次工序吗？这会清空本批次已补的设备、人员、工时、供应商和外协周期。">
+        <input type="hidden" name="next" value="{{ batch_return_next }}">
         {{ ui.toggle(batch_detail_strict_toggle, class='aps-run-option-row') }}
         {{ ui.button('按最新工艺模板刷新本批次工序', 'secondary', 'md', type_attr='submit') }}
         <span class="muted aps-inline-run-action-note">用于工艺路线或工艺模板调整后同步到本批次。</span>
@@ -125,7 +130,8 @@
         <tbody>
           {% for op in operations %}
             {% set src = (op.source|default('')|lower) %}
-            <tr {% if src == 'internal' %}data-linkage-row="1" data-op-id="{{ op.id }}" data-op-code="{{ op.op_code }}"{% endif %}>
+            {% set form_key = op.form_key %}
+            <tr {% if src == 'internal' %}data-linkage-row="1" data-op-code="{{ op.op_code }}"{% endif %}>
               <td>
               <span class="aps-cell-ellipsis aps-code-cell aps-col-code" title="{{ op.op_code }}">
                   {{ op.op_code }}
@@ -139,7 +145,7 @@
               <td>
                 {% if src == 'internal' %}
                   {% if lazy_select_enabled %}
-                    <select name="machine_id" form="opform_{{ op.id }}" class="js-machine-select" data-lazy="1" data-options-loaded="0">
+                    <select name="machine_id" form="{{ form_key }}" class="js-machine-select" data-lazy="1" data-options-loaded="0">
                       <option value="">（未选择）</option>
                       {% if op.machine_id %}
                         {% set ns = namespace(found=false) %}
@@ -156,7 +162,7 @@
                       {% endif %}
                     </select>
                   {% else %}
-                    <select name="machine_id" form="opform_{{ op.id }}" class="js-machine-select">
+                    <select name="machine_id" form="{{ form_key }}" class="js-machine-select">
                       <option value="">（未选择）</option>
                       {% for opt in machine_options %}
                         <option
@@ -175,7 +181,7 @@
               <td>
                 {% if src == 'internal' %}
                   {% if lazy_select_enabled %}
-                    <select name="operator_id" form="opform_{{ op.id }}" class="js-operator-select" data-lazy="1" data-options-loaded="0">
+                    <select name="operator_id" form="{{ form_key }}" class="js-operator-select" data-lazy="1" data-options-loaded="0">
                       <option value="">（未选择）</option>
                       {% if op.operator_id %}
                         {% set ns = namespace(found=false) %}
@@ -192,7 +198,7 @@
                       {% endif %}
                     </select>
                   {% else %}
-                    <select name="operator_id" form="opform_{{ op.id }}" class="js-operator-select">
+                    <select name="operator_id" form="{{ form_key }}" class="js-operator-select">
                       <option value="">（未选择）</option>
                       {% for opt in operator_options %}
                         <option
@@ -211,21 +217,21 @@
               </td>
               <td>
                 {% if src == 'internal' %}
-                  <input name="setup_hours" form="opform_{{ op.id }}" value="{{ op.setup_hours }}" class="w-90">
+                  <input name="setup_hours" form="{{ form_key }}" value="{{ op.setup_hours }}" class="w-90">
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
               </td>
               <td>
                 {% if src == 'internal' %}
-                  <input name="unit_hours" form="opform_{{ op.id }}" value="{{ op.unit_hours }}" class="w-90">
+                  <input name="unit_hours" form="{{ form_key }}" value="{{ op.unit_hours }}" class="w-90">
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
               </td>
               <td>
                 {% if src == 'external' %}
-                  <select name="supplier_id" form="opform_{{ op.id }}">
+                  <select name="supplier_id" form="{{ form_key }}">
                     <option value="">（未选择）</option>
                     {% for opt in supplier_options %}
                       <option
@@ -247,17 +253,17 @@
               <td>
                 {% if src == 'external' %}
                   {% if op.merge_hint and op.merge_hint.merge_mode == 'merged' %}
-                    <input name="ext_days" form="opform_{{ op.id }}" value="" class="w-110" disabled>
+                    <input name="ext_days" form="{{ form_key }}" value="" class="w-110" disabled>
                     <div class="muted mt-2">该工序的周期由所在外协工序组的“整组周期”统一控制</div>
                   {% else %}
-                    <input name="ext_days" form="opform_{{ op.id }}" value="{{ op.ext_days }}" class="w-110">
+                    <input name="ext_days" form="{{ form_key }}" value="{{ op.ext_days }}" class="w-110">
                   {% endif %}
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
               </td>
               <td>
-                {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='opform_' ~ op.id) }}
+                {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form=form_key) }}
               </td>
             </tr>
           {% endfor %}
@@ -292,21 +298,24 @@
       "machineOperatorMeta": machine_operator_meta,
       "preferPrimarySkill": prefer_primary_skill == 'yes',
       "lazySelectEnabled": lazy_select_enabled,
+      "operationUpdateActions": operation_update_actions|default({}),
     } | tojson }}
   </script>
 
   <script>
+    var linkageNode = document.getElementById("batch-detail-linkage-data");
+    var linkageText = linkageNode && linkageNode.textContent ? linkageNode.textContent : "{}";
+    try {
+      window.__APS_BATCH_DETAIL_LINKAGE__ = JSON.parse(linkageText);
+    } catch (_e) {
+      window.__APS_BATCH_DETAIL_LINKAGE__ = {};
+    }
+
     (function () {
       // DOM 减重：按需创建 opform_*，避免大批次页面首屏渲染 N 个隐藏 form
-      var actionTpl = "{{ url_for('scheduler.update_op', op_id=0) }}";
-
-      function resolveAction(opId) {
-        var marker = "/0/update";
-        var idx = actionTpl.lastIndexOf(marker);
-        if (idx >= 0) {
-          return actionTpl.slice(0, idx) + "/" + String(opId) + "/update";
-        }
-        return actionTpl;
+      var actionByFormId = (window.__APS_BATCH_DETAIL_LINKAGE__ || {}).operationUpdateActions || {};
+      function resolveAction(formId) {
+        return actionByFormId && actionByFormId[formId] ? String(actionByFormId[formId]) : "";
       }
 
       function ensureOpForm(formId) {
@@ -317,14 +326,17 @@
         if (existing) {
           return existing;
         }
-        var opId = String(formId).replace("opform_", "");
-        if (!/^\d+$/.test(opId)) {
+        if (!/^\d+$/.test(String(formId).replace("opform_", ""))) {
+          return null;
+        }
+        var action = resolveAction(formId);
+        if (!action) {
           return null;
         }
         var f = document.createElement("form");
         f.id = formId;
         f.method = "post";
-        f.action = resolveAction(opId);
+        f.action = action;
         f.className = "d-none";
         document.body.appendChild(f);
         return f;
@@ -356,14 +368,6 @@
         }
       }, true);
     })();
-
-    var linkageNode = document.getElementById("batch-detail-linkage-data");
-    var linkageText = linkageNode && linkageNode.textContent ? linkageNode.textContent : "{}";
-    try {
-      window.__APS_BATCH_DETAIL_LINKAGE__ = JSON.parse(linkageText);
-    } catch (_e) {
-      window.__APS_BATCH_DETAIL_LINKAGE__ = {};
-    }
   </script>
   <script src="{{ url_for('static', filename='js/batch_detail_linkage.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/scheduler_form_feedback.js') }}" defer></script>

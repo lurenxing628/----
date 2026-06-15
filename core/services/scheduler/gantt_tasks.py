@@ -50,6 +50,7 @@ from .gantt_task_labels import (
 from .gantt_task_labels import (
     public_task_label as _public_task_label,
 )
+from .resource_dispatch_task_ids import public_task_id as _public_task_id
 
 _CALENDAR_LOAD_EMPTY_REASON = "calendar_load_failed"
 
@@ -188,7 +189,7 @@ def _build_one_task(
     st2, et2 = clamped
 
     op_code = (row.get("op_code") or "").strip()
-    task_id = op_code or f"op_{row.get('op_id')}"
+    task_id = op_code or _public_task_id(row)
     batch_id = (row.get("batch_id") or "").strip()
 
     machine_disp = _display_machine(row.get("machine_id"), row.get("machine_name"), row.get("supplier_name"))
@@ -225,7 +226,6 @@ def _build_one_task(
     )
     task = {
         "id": task_id,
-        "schedule_id": row.get("schedule_id"),
         "name": name,
         "start": _fmt_dt(st2),
         "end": _fmt_dt(et2),
@@ -235,10 +235,8 @@ def _build_one_task(
         "dependencies": "",
         "edge_type": "",
         "custom_class": " ".join(css),
-        # 附加信息（前端可用于 tooltip / 调试，不影响 Frappe Gantt）
+        # 附加信息（前端用于 tooltip / 详情区；只放公开展示字段）
         "meta": {
-            "schedule_id": row.get("schedule_id"),
-            "op_id": row.get("op_id"),
             "batch_id": batch_id,
             "piece_id": row.get("piece_id"),
             "part_no": row.get("part_no"),

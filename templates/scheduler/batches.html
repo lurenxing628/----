@@ -13,7 +13,7 @@
     {% set preset_apply_url = safe_url_for('scheduler.preset_apply') %}
     {% if preset_apply_url %}
       <form method="post" action="{{ preset_apply_url }}" class="aps-scheduler-filter-grid">
-        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <input type="hidden" name="next" value="{{ current_public_return_url() }}">
         <div class="form-field aps-scheduler-filter-wide">
           <label for="schedulerPresetSelect">方案</label>
           <select id="schedulerPresetSelect" name="preset_name" data-scheduler-preset-auto-submit="1">
@@ -102,7 +102,7 @@
       {% for r in batches %}
         <form id="batchDeleteForm_{{ loop.index0 }}" method="post" action="{{ url_for('scheduler.delete_batch', batch_id=r.batch_id) }}" class="d-none"
               data-confirm="确认删除该批次 {{ r.batch_id }} 吗？会同时删除这个批次下面的工序和排程记录（如果有）。">
-          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <input type="hidden" name="next" value="{{ current_public_return_url() }}">
         </form>
       {% endfor %}
       <div class="aps-search-row mb-2">
@@ -148,7 +148,7 @@
                   <span class="muted">-</span>
                 {% endif %}
               </td>
-              <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}">{{ r.batch_id }}</a></td>
+              <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id, next=current_public_return_url()) }}">{{ r.batch_id }}</a></td>
               <td>{{ r.part_no }}</td>
               <td class="text-right">{{ r.quantity }}</td>
               <td>{% if r.due_date %}{{ r.due_date }}{% else %}<span class="muted">-</span>{% endif %}</td>
@@ -158,7 +158,7 @@
               <td>{{ r.status_label }}</td>
               <td>
                 <div class="table-actions">
-                  {{ ui.link_button('查看/编辑', url_for('scheduler.batch_detail', batch_id=r.batch_id), 'secondary', 'sm') }}
+                  {{ ui.link_button('查看/编辑', url_for('scheduler.batch_detail', batch_id=r.batch_id, next=current_public_return_url()), 'secondary', 'sm') }}
                   {{ ui.button('删除', 'danger', 'sm', type_attr='submit', form='batchDeleteForm_' ~ loop.index0) }}
                 </div>
               </td>
@@ -266,7 +266,7 @@
                 <li>
                   {{ item.label }} 缺{{ item.missing_text }}
                   {% if item.batch_id %}
-                    <a class="table-action-link" href="{{ url_for('scheduler.batch_detail', batch_id=item.batch_id) }}">去补充</a>
+                    <a class="table-action-link" href="{{ url_for('scheduler.batch_detail', batch_id=item.batch_id, next=current_public_return_url()) }}">去补充</a>
                   {% endif %}
                 </li>
               {% endfor %}

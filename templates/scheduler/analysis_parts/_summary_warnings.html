@@ -93,7 +93,7 @@
                 <li>
                   {{ item.label }} 缺{{ item.missing_text }}
                   {% if item.batch_id %}
-                    <a class="table-action-link" href="{{ url_for('scheduler.batch_detail', batch_id=item.batch_id) }}">去补充</a>
+                    <a class="table-action-link" href="{{ url_for('scheduler.batch_detail', batch_id=item.batch_id, next=current_public_return_url()) }}">去补充</a>
                   {% endif %}
                 </li>
               {% endfor %}

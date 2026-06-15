@@ -23,6 +23,7 @@
   <div class="card aps-scheduler-filter-card aps-form-card">
     <h3 class="section-title">手工新增批次</h3>
     <form id="batchCreateForm" method="post" action="{{ url_for('scheduler.create_batch') }}" novalidate>
+      <input type="hidden" name="next" value="{{ current_public_return_url() }}">
       <div class="aps-edit-form-grid">
         <div class="form-field">
           <label for="batchManageBatchIdInput">批次号</label>
@@ -127,7 +128,7 @@
       {% for r in batches %}
         <form id="batchManageDeleteForm_{{ loop.index0 }}" method="post" action="{{ url_for('scheduler.delete_batch', batch_id=r.batch_id) }}" class="d-none"
               data-confirm="确认删除该批次 {{ r.batch_id }} 吗？会同时删除这个批次下面的工序和排程记录（如果有）。">
-          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <input type="hidden" name="next" value="{{ current_public_return_url() }}">
         </form>
       {% endfor %}
       <div class="aps-search-row mb-2">
@@ -138,6 +139,7 @@
         <span class="muted text-xs aps-export-note">仅当前页排序</span>
       </div>
       <form method="post" action="{{ url_for('scheduler.bulk_update_batches') }}" data-aps-batch-bulk-form="1" aria-describedby="batchBulkActionHelp batchBulkActionError">
+        <input type="hidden" name="next" value="{{ current_public_return_url() }}">
         <div class="aps-table-scroll">
         <table id="batchesManageTable" data-table-key="v4_batchesManageTable" class="table-sticky table-layout-fixed table-sticky-col aps-table-wide aps-scheduler-batch-table" data-sort-enabled="1" data-col-resize="1">
           <thead>
@@ -160,7 +162,7 @@
                 <td>
                   <input type="checkbox" name="batch_ids" value="{{ r.batch_id }}" class="js-batch-check">
                 </td>
-                <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}">{{ r.batch_id }}</a></td>
+                <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id, next=current_public_return_url()) }}">{{ r.batch_id }}</a></td>
                 <td>{{ r.part_no }}</td>
                 <td class="text-right">{{ r.quantity }}</td>
                 <td>{% if r.due_date %}{{ r.due_date }}{% else %}<span class="muted">-</span>{% endif %}</td>
@@ -170,7 +172,7 @@
                 <td>{{ r.status_label }}</td>
                 <td>
                   <div class="table-actions">
-                    {{ ui.link_button('查看/编辑', url_for('scheduler.batch_detail', batch_id=r.batch_id), 'secondary', 'sm') }}
+                    {{ ui.link_button('查看/编辑', url_for('scheduler.batch_detail', batch_id=r.batch_id, next=current_public_return_url()), 'secondary', 'sm') }}
                     {{ ui.button('删除', 'danger', 'sm', type_attr='submit', form='batchManageDeleteForm_' ~ loop.index0) }}
                   </div>
                 </td>

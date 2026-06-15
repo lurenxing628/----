@@ -26,6 +26,7 @@ from web.viewmodels.scheduler_workbench_links import (
 )
 
 from .scheduler_bp import bp
+from .scheduler_plan_context_token import plan_context_token
 from .scheduler_resource_dispatch_query import (
     _actual_import_url,
     _actual_record_url_template,
@@ -71,12 +72,18 @@ def _workbench_context(filters: Any, plan_identity: Any, *, back_to: Any = None,
     identity = plan_identity if isinstance(plan_identity, dict) else {}
     resource_id = _resource_id_from_filters(filters_dict)
     resource_type = filters_dict.get("scope_type") if resource_id else None
+    scenario_id = filters_dict.get("scenario_id") or identity.get("scenario_id")
     context = build_workbench_plan_context(
         # 胶囊喂参（4.2）：decorated versions 按 version 查（查不到→"-"诚实降级）
         **history_row_capsule_fields(capsule_rows, filters_dict.get("version")),
         version=filters_dict.get("version"),
         plan_role=filters_dict.get("plan_role") or identity.get("plan_role") or "adopted",
-        scenario_id=filters_dict.get("scenario_id") or identity.get("scenario_id"),
+        scenario_id=scenario_id,
+        plan_context_token=(
+            filters_dict.get("plan_context_token")
+            or identity.get("plan_context_token")
+            or plan_context_token(scenario_id)
+        ),
         date_from=filters_dict.get("start_date"),
         date_to=filters_dict.get("end_date"),
         query_date=filters_dict.get("query_date"),
@@ -101,9 +108,12 @@ def _execution_review_link(filters: Any, plan_identity: Any, *, back_to: Any = N
     return build_workbench_link(context, "execution_review", extra_params=extra_params)
 
 
-def _is_scenario_id_error(exc: AppError) -> bool:
+def _is_plan_identity_error(exc: AppError) -> bool:
     details = getattr(exc, "details", None)
-    return isinstance(details, dict) and str(details.get("field") or "").strip() == "scenario_id"
+    return isinstance(details, dict) and str(details.get("field") or "").strip() in {
+        "plan_context",
+        "scenario_id",
+    }
 
 
 def _redirect_for_sanitized_dispatch_query(exc: AppError):
@@ -118,7 +128,7 @@ def _redirect_for_sanitized_dispatch_query(exc: AppError):
 
 
 def _context_after_app_error(svc: Any, exc: AppError):
-    if _is_missing_history_version_error(exc) or _is_scenario_id_error(exc):
+    if _is_missing_history_version_error(exc) or _is_plan_identity_error(exc):
         raise exc
     sanitized_redirect = _redirect_for_sanitized_dispatch_query(exc)
     if sanitized_redirect is not None:
@@ -169,6 +179,39 @@ def _execution_query_has_full_context() -> bool:
     return not execution_query_missing_context_fields()
 
 
+def _client_filters(filters: Any) -> dict:
+    source = dict(filters or {})
+    public_keys = (
+        "scope_type",
+        "scope_id",
+        "operator_id",
+        "machine_id",
+        "team_id",
+        "team_axis",
+        "period_preset",
+        "query_date",
+        "start_date",
+        "end_date",
+        "date_from",
+        "date_to",
+        "version",
+        "batch_id",
+    )
+    public_filters = {key: source.get(key) for key in public_keys if _text(source.get(key))}
+    token = plan_context_token(source.get("scenario_id"))
+    if token:
+        public_filters["plan_context_token"] = token
+    return public_filters
+
+
+def _url_filters(filters: Any) -> dict:
+    query_filters = _client_filters(filters)
+    plan_role = _text((filters or {}).get("plan_role")) if isinstance(filters, dict) else ""
+    if plan_role:
+        query_filters["plan_role"] = plan_role
+    return query_filters
+
+
 @bp.get("/resource-dispatch")
 def resource_dispatch_page():
     loaded_context = _load_resource_dispatch_context(_svc())
@@ -184,8 +227,11 @@ def resource_dispatch_page():
     can_use_current_query = bool(context.get("has_history") and context.get("can_query"))
     can_use_execution_query = can_use_current_query and _execution_query_has_full_context()
     can_write_feedback = can_emit_feedback_write_urls(filters)
+    client_filters = _client_filters(filters)
+    url_filters = _url_filters(filters)
+    context["client_filters"] = client_filters
     write_urls = _execution_write_urls(
-        filters,
+        url_filters,
         can_use_current_query=can_use_execution_query,
         can_write_feedback=can_write_feedback,
     )
@@ -193,10 +239,10 @@ def resource_dispatch_page():
     return render_template(
         "scheduler/resource_dispatch.html",
         title="资源排班",
-        data_url=_data_url(filters),
-        export_url=_export_url(filters) if can_use_current_query else None,
+        data_url=_data_url(url_filters),
+        export_url=_export_url(url_filters) if can_use_current_query else None,
         execution_review_link=_execution_review_link(filters, filters, back_to=back_to),
-        execution_data_url=_execution_data_url(filters) if can_use_execution_query else None,
+        execution_data_url=_execution_data_url(url_filters) if can_use_execution_query else None,
         **write_urls,
         **context,
     )
@@ -263,7 +309,7 @@ def resource_dispatch_export():
         )
         return send_file(buf, as_attachment=True, download_name=filename, mimetype=_EXCEL_MIMETYPE)
     except AppError as exc:
-        if _is_scenario_id_error(exc):
+        if _is_plan_identity_error(exc):
             return user_visible_app_error_message(exc), 400
         if exc.code == ErrorCode.NOT_FOUND:
             return user_visible_app_error_message(exc), 404
