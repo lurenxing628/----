@@ -70,6 +70,9 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/gate_meta/test_scheduler_data_route_error_contract.py",
             "tests/app_runtime/test_safe_next_url_hardening.py",
             "tests/app_runtime/test_safe_next_url_observability.py",
+            "tests/app_runtime/test_fixed_file_security.py",
+            "tests/app_runtime/test_validate_dist_runtime_identity.py",
+            "tests/web_pages/test_system_runtime_log_reader.py",
             "tests/web_pages/test_error_boundary_contract.py",
             # 诊断包安全红线守卫（fusion-runtime-log-viewer）：本组是 web/routes/**、
             # core/services/system/**、templates/system/** 的 owner，恰为该 feature 全部落点
@@ -90,6 +93,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             # P0.2：登记 web/ 顶层请求基础设施文件，避免改它们时因「不属任何组」升全量（从 4 降到 1）。
             "web/__init__.py",
             "web/navigation_context.py",
+            "web/public_token_registry.py",
             "web/request_resource_context.py",
             "web/routes/**/*.py",
             "web/bootstrap/*.py",

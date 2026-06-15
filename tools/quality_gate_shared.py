@@ -320,8 +320,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/launcher_observability.py",
         symbol="_format_message",
-        line_start=77,
-        line_end=78,
+        line_start=79,
+        line_end=80,
         fallback_kind="silent_default_fallback",
     ),
     SilentFallbackSample(
@@ -348,8 +348,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/manual_src_security.py",
         symbol="safe_url_for",
-        line_start=159,
-        line_end=169,
+        line_start=199,
+        line_end=220,
         fallback_kind="observable_degrade",
         scope_tag="render_bridge",
     ),

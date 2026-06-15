@@ -72,13 +72,13 @@ def main() -> int:
     from core.services.process import UnitExcelConverter
 
     parser = argparse.ArgumentParser(
-        description="把回转壳体单元实际运行数据转换为 APS 标准导入模板（工步并工序，去掉技能等级/主操）。"
+        description="把产线单元实际运行数据转换为 APS 标准导入模板（工步并工序，去掉技能等级/主操）。"
     )
     parser.add_argument(
         "--input",
         dest="input_path",
         default=_default_input_path(repo_root),
-        help="源 Excel 路径（默认：templates_excel/回转壳体单元产品数据.xlsx）",
+        help="源 Excel 路径（默认：templates_excel/产品数据.xlsx）",
     )
     parser.add_argument(
         "--output-dir",

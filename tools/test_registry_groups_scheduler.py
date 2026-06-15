@@ -288,6 +288,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/gantt/test_gantt_frontend_error_boundary.py",
             "tests/web_pages/test_reports_page_version_default_latest.py",
             "tests/scheduler_analysis/test_report_context_filters_contract.py",
+            "tests/scheduler_analysis/test_batch_list_pushdown_contract.py",
             "tests/web_pages/test_report_plan_filter_js_contract.py",
             "tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py",
             "tests/scheduler_analysis/test_report_export_size_mode_selection.py",
