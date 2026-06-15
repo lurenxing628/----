@@ -16,8 +16,11 @@ from __future__ import annotations
 import fnmatch
 import os
 import re
+import shutil
 import zipfile
 from typing import BinaryIO, Dict, List, Tuple
+
+from core.infrastructure.safe_files import open_fixed_file_for_read_binary, stat_regular_file
 
 # 页面白名单：只认三个固定文件名，严格相等匹配（目录遍历红线）
 LOG_FILE_CHOICES = ("aps_error.log", "aps.log", "launcher.log")
@@ -52,11 +55,11 @@ def read_log_entries_tail(log_path: str, *, max_entries: int = MAX_ENTRIES) -> L
     文件名只挡路径注入，挡不住「白名单名字指向任意文件」的软链接借壳，故读取前先核
     islink/isfile（页面查看日志与诊断打包共用此读原语，纵深防御一处补齐）。
     """
-    if not os.path.exists(log_path):
+    try:
+        f = open_fixed_file_for_read_binary(log_path)
+    except FileNotFoundError:
         return []
-    if os.path.islink(log_path) or not os.path.isfile(log_path):
-        raise OSError("拒绝读取非普通日志文件（疑似软链接或非常规文件）")
-    with open(log_path, "rb") as f:
+    with f:
         regions = _scan_tail_regions(f, max_entries)
     return [_build_entry(region) for region in regions]
 
@@ -230,6 +233,12 @@ def build_diagnostic_zip(
     """
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for name in list_diagnostic_log_names(log_dir):
-            zf.write(os.path.join(log_dir, name), arcname=name)
+            _write_fixed_file_to_zip(zf, os.path.join(log_dir, name), name)
         zf.writestr("diagnostic_info.txt", info_text)
         zf.writestr(operation_logs_arcname, operation_logs_text)
+
+
+def _write_fixed_file_to_zip(zf: zipfile.ZipFile, path: str, arcname: str) -> None:
+    with open_fixed_file_for_read_binary(path) as src:
+        with zf.open(arcname, "w") as dst:
+            shutil.copyfileobj(src, dst, length=TAIL_BLOCK_SIZE)

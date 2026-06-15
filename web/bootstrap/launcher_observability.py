@@ -6,6 +6,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple
 
+from core.infrastructure.safe_files import write_fixed_text
+
 LAUNCHER_LOG_FILE = "launcher.log"
 RUNTIME_ERROR_FILE = "aps_launch_error.txt"
 
@@ -130,9 +132,7 @@ def _normalize_dir(path: Optional[str]) -> str:
 def _append_text_file(path: str, text: str, attempted_paths: List[str], errors: List[str]) -> bool:
     attempted_paths.append(path)
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(text)
+        write_fixed_text(path, text, append=True)
         return True
     except Exception as exc:
         errors.append(f"{path}:{exc}")
@@ -142,9 +142,7 @@ def _append_text_file(path: str, text: str, attempted_paths: List[str], errors: 
 def _write_text_file(path: str, text: str, attempted_paths: List[str], errors: List[str]) -> bool:
     attempted_paths.append(path)
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(text)
+        write_fixed_text(path, text)
         return True
     except Exception as exc:
         errors.append(f"{path}:{exc}")

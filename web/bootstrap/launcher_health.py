@@ -50,7 +50,7 @@ def probe_runtime_health_result(
     try:
         with urllib.request.urlopen(req, timeout=max(float(timeout_s), 0.2)) as resp:
             status = int(getattr(resp, "status", 200))
-            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+            payload = json.loads(resp.read().decode("utf-8"))
     except (OSError, TypeError, ValueError) as exc:
         if log_failures:
             launcher_log_warning(None, "运行时健康探测失败：url=%s error=%s", url, exc, state_dir=state_dir)

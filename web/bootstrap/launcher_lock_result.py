@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.infrastructure.safe_files import read_fixed_text
+
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import resolve_runtime_state_dir_for_read, runtime_lock_path
 from .runtime_capabilities import CapabilityResult, available, unavailable
@@ -70,7 +72,9 @@ def read_runtime_lock_result(runtime_dir_or_state_dir: str) -> RuntimeLockReadRe
 def read_runtime_lock_result_from_path(path: str, *, state_dir: str = "") -> RuntimeLockReadResult:
     state_dir_s = str(state_dir or os.path.dirname(path)).strip()
     lock_path = str(path)
-    if not os.path.exists(lock_path):
+    try:
+        raw_text = read_fixed_text(lock_path)
+    except FileNotFoundError:
         return RuntimeLockReadResult(
             status=LOCK_STATUS_MISSING,
             payload=None,
@@ -78,9 +82,6 @@ def read_runtime_lock_result_from_path(path: str, *, state_dir: str = "") -> Run
             state_dir=state_dir_s,
             reason="lock_missing",
         )
-    try:
-        with open(lock_path, encoding="utf-8") as f:
-            raw_text = f.read()
     except (OSError, TypeError, ValueError) as exc:
         launcher_log_warning(
             None,

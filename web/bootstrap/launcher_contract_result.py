@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
+
+from core.infrastructure.safe_files import read_fixed_json
 
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import RUNTIME_CONTRACT_VERSION, resolve_runtime_state_dir_for_read
@@ -47,7 +48,9 @@ def _runtime_contract_path(state_dir: str) -> str:
 def read_runtime_contract_result(runtime_dir: str) -> RuntimeContractReadResult:
     state_dir = resolve_runtime_state_dir_for_read(runtime_dir)
     contract_path = _runtime_contract_path(state_dir)
-    if not os.path.exists(contract_path):
+    try:
+        payload = read_fixed_json(contract_path)
+    except FileNotFoundError:
         return RuntimeContractReadResult(
             status=CONTRACT_STATUS_MISSING,
             payload=None,
@@ -55,9 +58,6 @@ def read_runtime_contract_result(runtime_dir: str) -> RuntimeContractReadResult:
             state_dir=state_dir,
             reason="contract_missing",
         )
-    try:
-        with open(contract_path, encoding="utf-8") as f:
-            payload = json.load(f)
     except (OSError, TypeError, ValueError) as exc:
         launcher_log_warning(
             None,

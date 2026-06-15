@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, Tuple
 
+from core.infrastructure.safe_files import read_fixed_text
+
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import state_contract_paths
 
@@ -59,8 +61,8 @@ class RuntimeEndpointReadResult:
         return {
             "host": self.host,
             "port": self.port,
-            "host_exists": os.path.exists(self.host_path),
-            "port_exists": os.path.exists(self.port_path),
+            "host_exists": os.path.lexists(self.host_path),
+            "port_exists": os.path.lexists(self.port_path),
         }
 
 
@@ -86,9 +88,9 @@ def read_runtime_endpoint_files(state_dir: str) -> Dict[str, Any]:
 
 
 def _read_host_file(path: str) -> Tuple[str, str, str]:
-    if not os.path.exists(path):
+    value, error = _read_endpoint_text(path)
+    if error == "missing":
         return "", ENDPOINT_STATUS_MISSING, ""
-    value, error = _read_existing_endpoint_text(path)
     if error:
         return "", ENDPOINT_STATUS_UNREADABLE, error
     value = value.strip()
@@ -98,9 +100,9 @@ def _read_host_file(path: str) -> Tuple[str, str, str]:
 
 
 def _read_port_file(path: str) -> Tuple[int, str, str]:
-    if not os.path.exists(path):
+    value, error = _read_endpoint_text(path)
+    if error == "missing":
         return 0, ENDPOINT_STATUS_MISSING, ""
-    value, error = _read_existing_endpoint_text(path)
     if error:
         return 0, ENDPOINT_STATUS_UNREADABLE, error
     value = value.strip()
@@ -117,10 +119,11 @@ def _read_port_file(path: str) -> Tuple[int, str, str]:
     return port, ENDPOINT_STATUS_VALID, ""
 
 
-def _read_existing_endpoint_text(path: str) -> Tuple[str, str]:
+def _read_endpoint_text(path: str) -> Tuple[str, str]:
     try:
-        with open(path, encoding="utf-8") as f:
-            return (f.read() or "").strip(), ""
+        return (read_fixed_text(path) or "").strip(), ""
+    except FileNotFoundError:
+        return "", "missing"
     except (OSError, UnicodeError) as exc:
         launcher_log_warning(None, "读取运行时端点文件失败：path=%s error=%s", path, exc, state_dir=os.path.dirname(path))
         return "", str(exc)

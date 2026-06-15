@@ -294,7 +294,7 @@ def _has_runtime_artifacts(paths: Dict[str, str]) -> bool:
         paths["lock_path"],
         paths["error_path"],
     )
-    return any(os.path.exists(path) for path in artifact_paths)
+    return any(os.path.lexists(path) for path in artifact_paths)
 
 
 def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:

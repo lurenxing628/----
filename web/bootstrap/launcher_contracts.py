@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import importlib
 import logging
 import os
 import sys
@@ -8,11 +8,16 @@ import time
 from typing import Any, Dict, Optional
 
 from core.infrastructure.logging import safe_log
+from core.infrastructure.safe_files import (
+    create_fixed_file_exclusive,
+    remove_fixed_file,
+    write_fixed_json,
+    write_fixed_text,
+)
 
 from .launcher_cleanup_result import (
     RuntimeCleanupFailure,
     RuntimeCleanupResult,
-    delete_runtime_contract_files_result,
 )
 from .launcher_contract_result import (
     CONTRACT_STATUS_INVALID as CONTRACT_STATUS_INVALID,
@@ -68,6 +73,11 @@ from .launcher_processes import _pid_matches_contract, _pid_state, set_process_l
 _LAUNCHER_CLEANUP_API = (RuntimeCleanupFailure, RuntimeCleanupResult)
 
 
+def delete_runtime_contract_files_result(runtime_dir: str) -> RuntimeCleanupResult:
+    cleanup_result_mod = importlib.import_module("web.bootstrap.launcher_cleanup_result")
+    return cleanup_result_mod.delete_runtime_contract_files_result(runtime_dir)
+
+
 class RuntimeLockError(RuntimeError):
     def __init__(self, message: str, *, owner: str = "", pid: int = 0):
         super().__init__(message)
@@ -81,15 +91,12 @@ class RuntimeLockError(RuntimeError):
 
 def _write_runtime_state_triplet(state_dir: str, host: str, port: int, db_for_runtime: str) -> None:
     host_file, port_file, db_file, _contract_file = state_contract_paths(state_dir)
-    with open(port_file, "w", encoding="utf-8") as f:
-        f.write(str(int(port)) + "\n")
+    write_fixed_text(port_file, str(int(port)) + "\n")
     host_for_client = (str(host or "").strip() or "127.0.0.1")
     if host_for_client == "0.0.0.0":
         host_for_client = "127.0.0.1"
-    with open(host_file, "w", encoding="utf-8") as f:
-        f.write(str(host_for_client) + "\n")
-    with open(db_file, "w", encoding="utf-8") as f:
-        f.write(db_for_runtime + "\n")
+    write_fixed_text(host_file, str(host_for_client) + "\n")
+    write_fixed_text(db_file, db_for_runtime + "\n")
 
 
 def _write_key_value_file(path: str, data: Dict[str, Any]) -> None:
@@ -100,8 +107,7 @@ def _write_key_value_file(path: str, data: Dict[str, Any]) -> None:
             continue
         value_s = str(value if value is not None else "").replace("\r", " ").replace("\n", " ").strip()
         lines.append(f"{key_s}={value_s}")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + ("\n" if lines else ""))
+    write_fixed_text(path, "\n".join(lines) + ("\n" if lines else ""))
 
 
 def _read_key_value_file(path: str) -> Dict[str, str]:
@@ -165,7 +171,7 @@ def _runtime_lock_payload(owner: Optional[str], exe_path: Optional[str]) -> Dict
 
 def _create_new_runtime_lock(lock_path: str, payload: Dict[str, Any]) -> bool:
     try:
-        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        fd = create_fixed_file_exclusive(lock_path)
     except FileExistsError:
         return False
     except Exception as e:
@@ -177,7 +183,7 @@ def _create_new_runtime_lock(lock_path: str, payload: Dict[str, Any]) -> bool:
                 f.write(f"{key}={value_s}\n")
     except Exception:
         try:
-            os.remove(lock_path)
+            remove_fixed_file(lock_path)
         except Exception as cleanup_exc:
             launcher_log_warning(
                 None,
@@ -210,7 +216,7 @@ def _raise_if_runtime_lock_active(existing: Dict[str, Any], owner_s: str, exe_pa
 
 def _remove_stale_runtime_lock(lock_path: str) -> None:
     try:
-        os.remove(lock_path)
+        remove_fixed_file(lock_path)
     except FileNotFoundError:
         pass
     except Exception as e:
@@ -287,7 +293,7 @@ def release_runtime_lock(runtime_dir_or_state_dir: str, expected_pid: Optional[i
     if pid0 > 0 and pid0 != pid_expected:
         return
     try:
-        os.remove(str(existing.get("path") or ""))
+        remove_fixed_file(str(existing.get("path") or ""))
     except FileNotFoundError:
         pass
     except (OSError, TypeError, ValueError) as exc:
@@ -298,8 +304,7 @@ def write_launch_error(runtime_dir: str, message: str, cfg_log_dir: Optional[str
     state_dir = resolve_runtime_state_dir(runtime_dir, cfg_log_dir)
     os.makedirs(state_dir, exist_ok=True)
     error_path = launch_error_path(state_dir)
-    with open(error_path, "w", encoding="utf-8") as f:
-        f.write((str(message or "").strip() or "应用启动失败。") + "\n")
+    write_fixed_text(error_path, (str(message or "").strip() or "应用启动失败。") + "\n")
     return error_path
 
 
@@ -307,7 +312,7 @@ def clear_launch_error(runtime_dir_or_state_dir: str) -> None:
     state_dir = resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir)
     error_path = launch_error_path(state_dir)
     try:
-        os.remove(error_path)
+        remove_fixed_file(error_path)
     except FileNotFoundError:
         pass
     except (OSError, TypeError, ValueError) as exc:
@@ -333,7 +338,7 @@ def write_runtime_host_port_files(
         try:
             os.makedirs(mirror_log_dir, exist_ok=True)
             _write_runtime_state_triplet(mirror_log_dir, host, port, db_for_runtime)
-        except (TypeError, ValueError) as exc:
+        except (OSError, TypeError, ValueError) as exc:
             safe_log(logger, "warning", "写入运行时镜像端点文件失败，主状态文件已写入：dir=%s error=%s", mirror_log_dir, exc)
     if logger is not None:
         try:
@@ -426,7 +431,7 @@ def write_runtime_contract_file(
         try:
             os.makedirs(mirror_log_dir, exist_ok=True)
             _write_runtime_contract_payload(mirror_log_dir, payload)
-        except (TypeError, ValueError) as exc:
+        except (OSError, TypeError, ValueError) as exc:
             safe_log(logger, "warning", "写入运行时镜像契约失败，主契约已写入：dir=%s error=%s", mirror_log_dir, exc)
     if logger is not None:
         try:
@@ -438,9 +443,7 @@ def write_runtime_contract_file(
 
 def _write_runtime_contract_payload(state_dir: str, payload: Dict[str, Any]) -> str:
     contract_path = _runtime_contract_path(state_dir)
-    with open(contract_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
-        f.write("\n")
+    write_fixed_json(contract_path, payload, ensure_ascii=False, indent=2, sort_keys=True)
     return contract_path
 
 

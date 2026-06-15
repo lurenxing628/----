@@ -26,6 +26,9 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Optional, Tuple
+
+from core.infrastructure.safe_files import read_fixed_text, remove_fixed_file
 
 _EXPECTED_CONTRACT_VERSION = 1
 
@@ -50,7 +53,7 @@ def _http_get(url: str, timeout: float = 2.5) -> int:
 def _http_get_text(url: str, timeout: float = 2.5) -> str:
     req = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", errors="ignore")
+        return resp.read().decode("utf-8")
 
 
 def _normalize_db_path(path: str) -> str:
@@ -60,7 +63,7 @@ def _normalize_db_path(path: str) -> str:
     return os.path.normcase(os.path.abspath(raw))
 
 
-def _runtime_contract_paths(log_dir: str) -> tuple[str, str, str]:
+def _runtime_contract_paths(log_dir: str) -> Tuple[str, str, str]:
     return (
         os.path.join(log_dir, "aps_host.txt"),
         os.path.join(log_dir, "aps_port.txt"),
@@ -69,23 +72,26 @@ def _runtime_contract_paths(log_dir: str) -> tuple[str, str, str]:
 
 
 def _read_port_file(path: str) -> int:
-    return int(Path(path).read_text(encoding="utf-8", errors="ignore").strip())
+    return int(read_fixed_text(path).strip())
 
 
 def _read_host_file(path: str) -> str:
-    return str(Path(path).read_text(encoding="utf-8", errors="ignore").strip())
+    return str(read_fixed_text(path).strip())
 
 
 def _read_db_file(path: str) -> str:
-    return _normalize_db_path(Path(path).read_text(encoding="utf-8", errors="ignore").strip())
+    return _normalize_db_path(read_fixed_text(path).strip())
 
 
-def _read_runtime_contract(log_dir: str) -> tuple[str, int, str] | None:
+def _read_runtime_contract(log_dir: str) -> Optional[Tuple[str, int, str]]:
     host_file, port_file, db_file = _runtime_contract_paths(log_dir)
-    if not (os.path.exists(host_file) and os.path.exists(port_file) and os.path.exists(db_file)):
+    if not (os.path.lexists(host_file) and os.path.lexists(port_file) and os.path.lexists(db_file)):
         return None
 
-    host = _read_host_file(host_file)
+    try:
+        host = _read_host_file(host_file)
+    except Exception as e:
+        raise RuntimeError(f"运行时契约文件解析失败：host 文件无效：{host_file}") from e
     if not host:
         raise RuntimeError(f"运行时契约文件解析失败：host 文件为空：{host_file}")
 
@@ -96,7 +102,10 @@ def _read_runtime_contract(log_dir: str) -> tuple[str, int, str] | None:
     if port <= 0:
         raise RuntimeError(f"运行时契约文件解析失败：port 必须大于 0：{port_file}")
 
-    db_path = _read_db_file(db_file)
+    try:
+        db_path = _read_db_file(db_file)
+    except Exception as e:
+        raise RuntimeError(f"运行时契约文件解析失败：db_path 文件无效：{db_file}") from e
     if not db_path:
         raise RuntimeError(f"运行时契约文件解析失败：db_path 文件为空：{db_file}")
 
@@ -105,14 +114,17 @@ def _read_runtime_contract(log_dir: str) -> tuple[str, int, str] | None:
 
 def _clear_runtime_contract_files(log_dir: str) -> None:
     paths = _runtime_contract_paths(log_dir)
+    failures = []
     for path in paths:
         try:
-            os.remove(path)
+            remove_fixed_file(path, allow_symlink=False)
         except FileNotFoundError:
             pass
-        except Exception:
-            pass
-    remaining = [path for path in paths if os.path.exists(path)]
+        except OSError as exc:
+            failures.append(f"{path}: {exc}")
+    if failures:
+        raise RuntimeError(f"无法清理旧的运行时契约文件：{failures}")
+    remaining = [path for path in paths if os.path.lexists(path)]
     if remaining:
         raise RuntimeError(f"无法清理旧的运行时契约文件：{remaining}")
 
@@ -123,7 +135,7 @@ def _assert_process_running(p: subprocess.Popen, context: str) -> None:
         raise RuntimeError(f"进程提前退出（exit_code={exit_code}），{context}")
 
 
-def _wait_for_runtime_contract(log_dir: str, p: subprocess.Popen, timeout_s: float = 20.0) -> tuple[str, int, str]:
+def _wait_for_runtime_contract(log_dir: str, p: subprocess.Popen, timeout_s: float = 20.0) -> Tuple[str, int, str]:
     t0 = time.time()
     while time.time() - t0 < timeout_s:
         _assert_process_running(p, "未生成运行时 host/port/db 契约文件。")
@@ -251,4 +263,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

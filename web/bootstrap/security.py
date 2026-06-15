@@ -6,6 +6,7 @@ import secrets
 from flask import Flask
 
 from core.infrastructure.logging import safe_log
+from core.infrastructure.safe_files import is_regular_file, read_fixed_text, write_fixed_text
 
 
 def ensure_secret_key(app: Flask) -> None:
@@ -39,9 +40,8 @@ def ensure_secret_key(app: Flask) -> None:
         try:
             # 拒绝软链接：与日志读取/诊断包同一道锁，挡「固定文件名指向任意文件」借壳；
             # 是软链接则跳过读取、走下方重新生成（诚实降级，不跟随链接读到非预期内容）。
-            if os.path.isfile(secret_file) and not os.path.islink(secret_file):
-                with open(secret_file, encoding="utf-8") as f:
-                    key0 = (f.read() or "").strip()
+            if is_regular_file(secret_file):
+                key0 = (read_fixed_text(secret_file) or "").strip()
                 if len(key0) >= min_len:
                     app.config["SECRET_KEY"] = key0
                     return
@@ -54,14 +54,7 @@ def ensure_secret_key(app: Flask) -> None:
     if not secret_file:
         return
     try:
-        os.makedirs(log_dir, exist_ok=True)
-        # 不跟随软链接写入：secret_file 是软链接时 open(..,"w") 会写穿到链接目标、覆盖任意文件
-        # （finding-01 写侧补齐——读侧已 islink 跳过，写侧同样不能跟随）。写前移除软链接本身
-        # （os.remove 删链接不删目标），确保创建的是 log_dir 下真实普通文件。
-        if os.path.islink(secret_file):
-            os.remove(secret_file)
-        with open(secret_file, "w", encoding="utf-8") as f:
-            f.write(key + "\n")
+        write_fixed_text(secret_file, key + "\n", replace_symlink=True)
         safe_log(getattr(app, "logger", None), "info", "已生成 SECRET_KEY 并写入：%s", secret_file)
     except Exception as e:
         safe_log(getattr(app, "logger", None), "warning", "写入 SECRET_KEY 文件失败（将使用进程内随机 SECRET_KEY）：%s", e)
@@ -81,4 +74,3 @@ def register_security_headers(app: Flask) -> None:
         resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
         return resp
-

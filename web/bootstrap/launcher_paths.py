@@ -138,7 +138,7 @@ def resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir: str) -> str:
         RUNTIME_LOCK_FILE,
         RUNTIME_ERROR_FILE,
     ]
-    if any(os.path.exists(os.path.join(base, name)) for name in direct_files):
+    if any(os.path.lexists(os.path.join(base, name)) for name in direct_files):
         return base
     return os.path.join(base, "logs")
 

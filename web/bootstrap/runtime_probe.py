@@ -7,6 +7,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
+from core.infrastructure.safe_files import read_fixed_text, remove_fixed_file
+
 from .launcher_observability import launcher_log_warning
 from .runtime_capabilities import CapabilityResult, available, degraded
 
@@ -47,8 +49,14 @@ def _runtime_db_path_file(runtime_dir: str) -> str:
 
 
 def _read_text(path: str) -> str:
-    with open(path, encoding="utf-8", errors="ignore") as f:
-        return f.read().strip()
+    return read_fixed_text(path).strip()
+
+
+def _read_optional_text(path: str) -> Optional[str]:
+    try:
+        return _read_text(path)
+    except FileNotFoundError:
+        return None
 
 
 def _normalize_db_path(path: str) -> str:
@@ -67,12 +75,14 @@ def build_base_url(host: str, port: int) -> str:
 
 def read_runtime_host_port(runtime_dir: str) -> Optional[Tuple[str, int]]:
     host_file, port_file = _runtime_log_paths(runtime_dir)
-    if not os.path.exists(host_file) or not os.path.exists(port_file):
-        return None
     try:
-        host = _read_text(host_file) or "127.0.0.1"
-        port = int(_read_text(port_file))
-    except Exception as exc:
+        host_raw = _read_optional_text(host_file)
+        port_raw = _read_optional_text(port_file)
+        if host_raw is None or port_raw is None:
+            return None
+        host = host_raw or "127.0.0.1"
+        port = int(port_raw)
+    except (OSError, UnicodeError, ValueError, TypeError) as exc:
         launcher_log_warning(None, "读取运行时 host/port 文件失败，已按无运行实例处理：dir=%s error=%s", runtime_dir, exc, runtime_dir=runtime_dir)
         return None
     if port <= 0:
@@ -83,11 +93,12 @@ def read_runtime_host_port(runtime_dir: str) -> Optional[Tuple[str, int]]:
 
 def read_runtime_db_path(runtime_dir: str) -> Optional[str]:
     db_file = _runtime_db_path_file(runtime_dir)
-    if not os.path.exists(db_file):
-        return None
     try:
-        db_path = _normalize_db_path(_read_text(db_file))
-    except Exception as exc:
+        raw = _read_optional_text(db_file)
+        if raw is None:
+            return None
+        db_path = _normalize_db_path(raw)
+    except (OSError, UnicodeError, ValueError, TypeError) as exc:
         launcher_log_warning(None, "读取运行时 db_path 文件失败，已按无 db_path 处理：path=%s error=%s", db_file, exc, runtime_dir=runtime_dir)
         return None
     if not db_path:
@@ -100,10 +111,10 @@ def delete_stale_runtime_files(runtime_dir: str) -> None:
     db_file = _runtime_db_path_file(runtime_dir)
     for path in (host_file, port_file, db_file):
         try:
-            os.remove(path)
+            remove_fixed_file(path, allow_symlink=False)
         except FileNotFoundError:
             pass
-        except Exception as exc:
+        except OSError as exc:
             launcher_log_warning(None, "删除运行时残留文件失败，已继续：path=%s error=%s", path, exc, runtime_dir=runtime_dir)
 
 
@@ -120,7 +131,7 @@ def probe_health_result(
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             status = int(getattr(resp, "status", 200))
-            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+            payload = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
         if log_failures:
             launcher_log_warning(None, "运行时健康探测失败：url=%s error=%s", url, exc, runtime_dir=runtime_dir)

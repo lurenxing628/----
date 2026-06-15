@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, Tuple, Union
 
 from core.infrastructure.logging import safe_log
+from core.infrastructure.safe_files import UnsafeFixedFileError, remove_fixed_file, stat_regular_file
 from core.infrastructure.transaction import TransactionManager
 
 IsDueResult = Union[Tuple[bool, Any], Tuple[bool, Any, str, Any]]
@@ -81,7 +82,10 @@ def cleanup_backups_with_limit(
             continue
         fp = os.path.join(backup_dir, fn)
         try:
-            mtime = datetime.fromtimestamp(os.path.getmtime(fp))
+            st = stat_regular_file(fp)
+            mtime = datetime.fromtimestamp(st.st_mtime)
+        except UnsafeFixedFileError:
+            continue
         except (OSError, OverflowError, ValueError) as exc:
             mtime_error_count += 1
             if len(mtime_error_sample) < 10:
@@ -97,7 +101,7 @@ def cleanup_backups_with_limit(
     delete_error_sample = []
     for _, fn, fp in candidates[: int(max_delete)]:
         try:
-            os.remove(fp)
+            remove_fixed_file(fp, allow_symlink=False)
             removed += 1
             if len(removed_sample) < 10:
                 removed_sample.append(fn)
