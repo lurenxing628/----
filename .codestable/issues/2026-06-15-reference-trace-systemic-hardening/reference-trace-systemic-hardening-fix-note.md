@@ -76,3 +76,9 @@ tags:
 
 - 当前工作区包含用户先前已有的未提交审计材料，以及本轮修复改动；因此即使后续质量门禁通过，也不能称为 clean-worktree proof。
 - 旧模型对象里的 `to_dict()` 保留给服务端内部或既有单元测试使用；公开路由已经改成白名单投影。
+
+## 8. 后续 Review 加固
+
+本轮修复落地后又经过一次深度 code review + 对抗审核，修复了 review 发现的问题（含混合批次坏行静默、
+祖先软链接过度防御等），并新增甘特/派工坏批次降级提示；过程中三次守住了被误判为 bug 的 by-design 安全设计。
+详见续篇 [reference-trace-review-hardening-note.md](reference-trace-review-hardening-note.md)。
