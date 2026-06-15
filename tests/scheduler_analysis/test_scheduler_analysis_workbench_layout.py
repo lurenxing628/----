@@ -144,8 +144,12 @@ def test_analysis_action_hub_shows_disabled_reason_when_date_range_is_missing(mo
     visible = _visible_text(html)
 
     assert hub["next_links"]
-    assert all(link["disabled"] is True for link in hub["next_links"])
-    assert all(link["url"] == "" for link in hub["next_links"])
+    links = {link["label"]: link for link in hub["next_links"]}
+    assert links["超期清单"]["disabled"] is False
+    assert links["超期清单"]["url"]
+    for label in ("设备甘特图", "人员甘特图", "资源排班"):
+        assert links[label]["disabled"] is True
+        assert links[label]["url"] == ""
     assert "日期范围" in visible
     assert "设备甘特图" in visible
     assert "资源排班" in visible

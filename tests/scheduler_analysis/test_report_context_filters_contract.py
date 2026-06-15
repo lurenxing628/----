@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from core.infrastructure.errors import ValidationError
+from core.models.schedule_plan_identity import PlanIdentity
 from core.services.report.report_context_filters import (
     filter_downtime_rows_for_report_context,
     normalize_report_resource_filter,
 )
+from core.services.scheduler.schedule_delay_diagnosis_service import ScheduleDelayDiagnosisService
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
 from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
 from tests.web_pages.reports_workbench_backlink_helpers import _client, _xlsx_text
@@ -243,6 +247,93 @@ def test_plan_detail_repository_pushes_batch_and_resource_filters_to_bottom_sql(
     )
     assert "TRIM(COALESCE(s.operator_id, '')) = ?" in captured["sql"]
     assert captured["params"][-2:] == ("B-RPT", "O-RPT")
+
+
+def _diagnosis_plan_identity() -> PlanIdentity:
+    return PlanIdentity(
+        version=12,
+        requested_plan_role="adopted",
+        effective_plan_role="adopted",
+        plan_resolution_status="resolved_adopted",
+        source_table="schedule",
+        source_row_id=None,
+        candidate_id=None,
+        candidate_key=None,
+        scenario_id=None,
+        schedule_result_status="success",
+        result_summary_parse_failed=False,
+        result_summary_parse_reason="",
+        is_simulation=False,
+        label="正式采用方案",
+        user_label="正式采用方案",
+        is_official=True,
+        is_preview=False,
+        is_current_executable_version=True,
+        is_current_executable_official_version=True,
+        is_superseded_by_newer_version=False,
+        schedule_lock_status=None,
+        can_dispatch=True,
+        can_write_feedback=True,
+        detail_saved=True,
+    )
+
+
+def test_delay_diagnosis_service_pushes_batch_and_resource_filters_to_plan_queries() -> None:
+    calls = []
+
+    class _PlanQuery:
+        def list_plan_overdue_base_rows_for_resolution(self, **kwargs):
+            calls.append(("overdue", kwargs))
+            return []
+
+        def list_plan_detail_rows_all_for_resolution(self, **kwargs):
+            calls.append(("detail", kwargs))
+            return []
+
+    service = ScheduleDelayDiagnosisService.__new__(ScheduleDelayDiagnosisService)
+    service.plan_query = _PlanQuery()
+    service.clue_builder = SimpleNamespace()
+
+    report = service.diagnose_resolved_plan_overdue(
+        version=12,
+        resolution=SimpleNamespace(
+            source_table="schedule",
+            candidate_id=None,
+            scenario_id=None,
+            plan_identity=_diagnosis_plan_identity(),
+        ),
+        resource_type="machine",
+        resource_id="M-RPT",
+        batch_id="B-RPT",
+    )
+
+    assert report.total_count == 0
+    assert calls == [
+        (
+            "overdue",
+            {
+                "version": 12,
+                "source_table": "schedule",
+                "candidate_id": None,
+                "scenario_id": None,
+                "resource_type": "machine",
+                "resource_id": "M-RPT",
+                "batch_id": "B-RPT",
+            },
+        ),
+        (
+            "detail",
+            {
+                "version": 12,
+                "source_table": "schedule",
+                "candidate_id": None,
+                "scenario_id": None,
+                "resource_type": "machine",
+                "resource_id": "M-RPT",
+                "batch_id": "B-RPT",
+            },
+        ),
+    ]
 
 
 def test_report_resource_filter_arg_keys_match_normalizer_signature() -> None:

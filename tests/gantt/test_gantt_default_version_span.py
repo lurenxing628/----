@@ -13,7 +13,14 @@ from tests._support.paths import REPO_ROOT
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 
-def _build_app(tmp_path, monkeypatch, *, with_schedule: bool = True):
+def _build_app(
+    tmp_path,
+    monkeypatch,
+    *,
+    with_schedule: bool = True,
+    schedule_start: str = "2026-05-11 08:00:00",
+    schedule_end: str = "2026-05-16 12:00:00",
+):
     repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
@@ -53,7 +60,7 @@ def _build_app(tmp_path, monkeypatch, *, with_schedule: bool = True):
         op_id = int(cur.lastrowid)
         conn.execute(
             "INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (op_id, "MC001", "OP001", "2026-05-11 08:00:00", "2026-05-16 12:00:00", "locked", 3),
+            (op_id, "MC001", "OP001", schedule_start, schedule_end, "locked", 3),
         )
     conn.commit()
     conn.close()
@@ -79,6 +86,7 @@ def test_gantt_page_without_range_uses_selected_version_span(tmp_path, monkeypat
     assert 'data-range-source="version_span"' in html
     assert "2026年5月11日 ～ 2026年5月16日" in html
     assert 'name="week_start"' not in html
+    assert "view=operator&amp;version=3&amp;plan_role=adopted&amp;start_date=" not in html
 
 
 def test_gantt_data_without_range_uses_selected_version_span(tmp_path, monkeypatch) -> None:
@@ -97,6 +105,30 @@ def test_gantt_data_without_range_uses_selected_version_span(tmp_path, monkeypat
     assert (data.get("version_time_span") or {}).get("start_date") == "2026-05-11"
     assert (data.get("version_time_span") or {}).get("end_date") == "2026-05-16"
     assert len(data.get("tasks") or []) == 1
+
+
+def test_gantt_data_without_range_ignores_bad_version_span_and_reports_degradation(tmp_path, monkeypatch) -> None:
+    app = _build_app(
+        tmp_path,
+        monkeypatch,
+        schedule_start="坏开始时间",
+        schedule_end="坏结束时间",
+    )
+    client = app.test_client()
+
+    resp = client.get("/scheduler/gantt/data?view=machine&version=3")
+    payload = resp.get_json()
+    data = payload.get("data") or {}
+
+    assert resp.status_code == 200
+    assert payload.get("success") is True
+    assert data.get("version_time_span") is None
+    assert data.get("range_source") == "request"
+    assert data.get("degraded") is True
+    assert int((data.get("degradation_counters") or {}).get("bad_time_row_skipped") or 0) == 1
+    assert "开始日期写法不对" not in str(payload)
+    assert "坏开始时间" not in str(payload)
+    assert "坏结束时间" not in str(payload)
 
 
 def test_gantt_data_returns_full_scope_ignoring_gantt_batch(tmp_path, monkeypatch) -> None:
@@ -147,6 +179,39 @@ def test_gantt_page_and_data_respect_explicit_range(tmp_path, monkeypatch) -> No
     assert data.get("tasks") == []
     assert data.get("range_source") == "request"
     assert data.get("empty_message") == "当前范围无任务，请切换到 2026-05-11 ～ 2026-05-16。"
+
+
+def test_gantt_data_rejects_explicit_range_longer_than_62_days(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    resp = client.get("/scheduler/gantt/data?view=machine&version=3&start_date=2026-01-01&end_date=2026-03-04")
+    payload = resp.get_json()
+
+    assert resp.status_code == 400
+    assert payload.get("success") is False
+    assert "62 天" in str(payload)
+    assert (payload.get("error") or {}).get("details", {}).get("field") == "日期范围"
+
+
+def test_gantt_default_version_span_can_be_longer_than_62_days(tmp_path, monkeypatch) -> None:
+    app = _build_app(
+        tmp_path,
+        monkeypatch,
+        schedule_start="2026-01-01 08:00:00",
+        schedule_end="2026-03-15 12:00:00",
+    )
+    client = app.test_client()
+
+    resp = client.get("/scheduler/gantt/data?view=machine&version=3")
+    payload = resp.get_json()
+    data = payload.get("data") or {}
+
+    assert resp.status_code == 200
+    assert payload.get("success") is True
+    assert data.get("range_source") == "version_span"
+    assert data.get("week_start") == "2026-01-01"
+    assert data.get("week_end") == "2026-03-15"
 
 
 def test_gantt_page_and_data_ignore_offset_when_explicit_dates_present(tmp_path, monkeypatch) -> None:

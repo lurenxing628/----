@@ -249,14 +249,14 @@ def test_read_runtime_lock_result_distinguishes_bad_lock_files(monkeypatch, tmp_
     assert invalid_pid.status == "invalid"
     assert invalid_pid.reason == "invalid_pid"
 
-    real_open = open
+    real_read_fixed_text = lock_mod.read_fixed_text
 
-    def _boom_open(path, *args, **kwargs):
+    def _boom_read(path, *args, **kwargs):
         if str(path) == str(lock_path):
             raise PermissionError("denied")
-        return real_open(path, *args, **kwargs)
+        return real_read_fixed_text(path, *args, **kwargs)
 
-    monkeypatch.setattr(lock_mod, "open", _boom_open, raising=False)
+    monkeypatch.setattr(lock_mod, "read_fixed_text", _boom_read)
     unreadable = launcher.read_runtime_lock_result(str(state_dir))
     assert unreadable.status == "unreadable"
 
@@ -284,14 +284,14 @@ def test_acquire_runtime_lock_fails_closed_when_lock_cannot_be_read(monkeypatch,
     state_dir = tmp_path / "logs"
     state_dir.mkdir()
     lock_path = _write_runtime_lock_file(state_dir, 12345)
-    real_open = open
+    real_read_fixed_text = lock_mod.read_fixed_text
 
-    def _boom_open(path, *args, **kwargs):
+    def _boom_read(path, *args, **kwargs):
         if str(path) == str(lock_path):
             raise PermissionError("denied")
-        return real_open(path, *args, **kwargs)
+        return real_read_fixed_text(path, *args, **kwargs)
 
-    monkeypatch.setattr(lock_mod, "open", _boom_open, raising=False)
+    monkeypatch.setattr(lock_mod, "read_fixed_text", _boom_read)
 
     _assert_runtime_lock_error(lambda: launcher.acquire_runtime_lock(str(runtime_dir), str(state_dir)))
     assert lock_path.exists()
@@ -1097,6 +1097,7 @@ def test_stop_runtime_from_dir_waits_for_pid_exit_before_success(monkeypatch, tm
     state_dir.mkdir(parents=True)
     contract_path = state_dir / "aps_runtime.json"
     runtime_dir_json = str(tmp_path / "shared-data").replace("\\", "/")
+    state_dir_json = str(state_dir).replace("\\", "/")
     contract_path.write_text(
         (
             "{\n"
@@ -1108,7 +1109,7 @@ def test_stop_runtime_from_dir_waits_for_pid_exit_before_success(monkeypatch, tm
             '  "chrome_profile_dir": "C:/Temp/chrome-profile",\n'
             '  "shutdown_token": "runtime-stop-token",\n'
             f'  "runtime_dir": "{runtime_dir_json}",\n'
-            '  "data_dirs": {"log_dir": "C:/Temp/runtime-logs"}\n'
+            f'  "data_dirs": {{"log_dir": "{state_dir_json}"}}\n'
             "}\n"
         ),
         encoding="utf-8",
@@ -1459,10 +1460,19 @@ def test_legacy_cleanup_success_is_verified_by_result_cleanup(tmp_path):
     runtime_contract = state_dir / "aps_runtime.json"
     mirror_host = mirror_dir / "aps_host.txt"
     mirror_host.write_text("127.0.0.1\n", encoding="utf-8")
-    runtime_contract.write_text(
-        json.dumps({"contract_version": 1, "data_dirs": {"log_dir": str(mirror_dir)}}),
-        encoding="utf-8",
-    )
+    payload = {
+        "contract_version": 1,
+        "pid": 123,
+        "host": "127.0.0.1",
+        "port": 5728,
+        "shutdown_token": "token",
+        "exe_path": sys.executable,
+        "runtime_dir": str(tmp_path),
+        "chrome_profile_dir": str(tmp_path / "chrome109_profile"),
+        "data_dirs": {"log_dir": str(mirror_dir)},
+    }
+    runtime_contract.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    (mirror_dir / "aps_runtime.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     legacy_calls: List[str] = []
 
     def _legacy_cleanup(path: str) -> None:

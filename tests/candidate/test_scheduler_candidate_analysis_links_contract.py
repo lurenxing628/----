@@ -49,8 +49,10 @@ def test_analysis_candidate_links_accept_start_end_date_aliases(monkeypatch) -> 
 
     assert "start_date=2026-05-25" in links["设备甘特图"]["url"]
     assert "end_date=2026-05-31" in links["人员甘特图"]["url"]
-    assert "date_from=2026-05-25" in links["超期清单"]["url"]
-    assert "date_to=2026-05-31" in links["超期清单"]["url"]
+    assert "date_from=2026-05-25" not in links["超期清单"]["url"]
+    assert "date_to=2026-05-31" not in links["超期清单"]["url"]
+    assert "resource_type=machine" in links["超期清单"]["url"]
+    assert "resource_id=M1" in links["超期清单"]["url"]
     assert "date_from=2026-05-25" in links["周计划"]["url"]
     assert "date_to=2026-05-31" in links["周计划"]["url"]
     assert "week_start=2026-05-25" in links["周计划"]["url"]
@@ -77,10 +79,12 @@ def test_analysis_candidate_links_without_date_are_disabled_with_reason(monkeypa
     row = {item["role"]: item for item in payload["candidate_comparison_display"]["rows"]}[ROLE_ADOPTED]
     links = {link["label"]: link for link in row["links"]}
 
-    for label in ("设备甘特图", "人员甘特图", "资源排班", "超期清单"):
+    for label in ("设备甘特图", "人员甘特图", "资源排班"):
         assert links[label]["disabled"] is True
         assert links[label]["url"] == ""
         assert "日期范围" in links[label]["disabled_reason"]
+    assert links["超期清单"]["disabled"] is False
+    assert links["超期清单"]["url"]
 
     assert links["周计划"]["disabled"] is True
     assert links["周计划"]["url"] == ""

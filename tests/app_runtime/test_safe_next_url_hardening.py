@@ -58,6 +58,14 @@ def test_safe_next_url_hardening(app_client) -> None:
         for raw, expected, message in valid_src_cases:
             _assert_equal(manual_src_security.normalize_manual_src(raw), expected, message)
 
+        report_src = manual_src_security.normalize_manual_src_context(
+            "/reports?version=12&plan_role=adopted&scenario_id=SC-MANUAL"
+        )
+        assert report_src is not None
+        assert "scenario_id=SC-MANUAL" not in report_src
+        assert "plan_context_token=" in report_src
+        assert "SC-MANUAL" not in report_src
+
         invalid_src_cases = [
             ("", "reject manual src empty string"),
             ("   ", "reject manual src whitespace"),
@@ -89,3 +97,36 @@ def test_safe_next_url_hardening(app_client) -> None:
             scheduler_config._resolve_manual_back_url(None),
             "manual back url should fold empty input to None",
         )
+
+
+def test_current_public_return_url_drops_internal_plan_identity_fields(app_client) -> None:
+    from web.navigation_context import current_public_return_url
+
+    app = app_client.application
+    with app.test_request_context(
+        "/scheduler/?"
+        "status=pending&"
+        "candidate_key=SECRET&"
+        "selection_candidate_id=11&"
+        "resolved_candidate_id=22&"
+        "related_op_id=88&"
+        "base_plan_role=baseline_best&"
+        "candidate_id=33&"
+        "source_table=schedule&"
+        "source_row_id=44&"
+        "op_id=55&"
+        "schedule_id=66"
+    ):
+        public_url = current_public_return_url()
+
+    assert public_url == "/scheduler/?status=pending"
+    assert "candidate_key" not in public_url
+    assert "selection_candidate_id" not in public_url
+    assert "resolved_candidate_id" not in public_url
+    assert "related_op_id" not in public_url
+    assert "base_plan_role" not in public_url
+    assert "candidate_id" not in public_url
+    assert "source_table" not in public_url
+    assert "source_row_id" not in public_url
+    assert "op_id" not in public_url
+    assert "schedule_id" not in public_url

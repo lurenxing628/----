@@ -167,26 +167,32 @@ def test_runtime_probe_resolution(tmp_path) -> None:
     _write_runtime_files(bad_tmpdir, "127.0.0.1", "not_a_port")
     _assert(runtime_probe.read_runtime_host_port(bad_tmpdir) is None, "非法端口文件不应被解析")
 
+    bad_bytes_tmpdir = str(tmp_path / "bad_bytes")
+    _write_runtime_files(bad_bytes_tmpdir, "127.0.0.1", 5728)
+    with open(os.path.join(bad_bytes_tmpdir, "logs", "aps_port.txt"), "wb") as f:
+        f.write(b"5728\xff\n")
+    _assert(runtime_probe.read_runtime_host_port(bad_bytes_tmpdir) is None, "含坏字节的端口文件不应被忽略后当正常端口解析")
+
     missing_tmpdir = str(tmp_path / "missing")
     os.makedirs(missing_tmpdir, exist_ok=True)
     _assert(runtime_probe.read_runtime_host_port(missing_tmpdir) is None, "缺失运行时文件时应返回 None")
 
     delete_fail_tmpdir = str(tmp_path / "delete_fail")
     _write_runtime_files(delete_fail_tmpdir, "127.0.0.1", 5000)
-    original_remove = runtime_probe.os.remove
+    original_remove_fixed_file = runtime_probe.remove_fixed_file
 
-    def _remove_with_failure(path: str) -> None:
+    def _remove_with_failure(path: str, **kwargs) -> bool:
         if path.endswith("aps_port.txt"):
             raise PermissionError("locked")
-        original_remove(path)
+        return original_remove_fixed_file(path, **kwargs)
 
-    runtime_probe.os.remove = _remove_with_failure
+    runtime_probe.remove_fixed_file = _remove_with_failure
     delete_fail_stderr = io.StringIO()
     try:
         with contextlib.redirect_stderr(delete_fail_stderr):
             runtime_probe.delete_stale_runtime_files(delete_fail_tmpdir)
     finally:
-        runtime_probe.os.remove = original_remove
+        runtime_probe.remove_fixed_file = original_remove_fixed_file
 
     fail_log_dir = os.path.join(delete_fail_tmpdir, "logs")
     _assert("删除运行时残留文件失败" in delete_fail_stderr.getvalue(), "删除残留文件失败时未输出告警")

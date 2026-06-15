@@ -85,6 +85,30 @@ def test_ok_state_bad_times_disable_gantt_link() -> None:
     assert sp["gantt_link"]["disabled"] is True
 
 
+def test_ok_state_partial_span_surfaces_visible_notice() -> None:
+    sp = build_schedule_placement(
+        state="ok",
+        batch_id="B001",
+        version=8,
+        op_count=3,
+        op_rows=_OK_OP_ROWS,
+        span_from_date="2026-06-01",
+        span_to_date="2026-06-05",
+        span_label="2026年6月1日 08:00 ～ 2026年6月5日 17:00",
+        span_status="partial",
+        span_bad_time_count=2,
+        span_notice="有 2 条开始或结束时间写法不对，时间跨度只按可解析记录计算；已排工序数量仍是全量。",
+        generated_at="2026-06-01 08:00:00",
+        strategy="priority_first",
+        history_present=True,
+    )
+
+    assert sp["op_count"] == 3
+    assert sp["span_status"] == "partial"
+    assert sp["span_bad_time_count"] == 2
+    assert "时间跨度只按可解析记录计算" in sp["span_notice"]
+
+
 def test_ok_state_history_absent_degrades_labels_not_crash() -> None:
     # hist 为 None（极端竞态）→ 不喂 generated_at/strategy → 走 4.2 缺失态「-」，摘要照常出
     sp = build_schedule_placement(

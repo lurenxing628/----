@@ -3,7 +3,7 @@ history 行级 5 链接与 analysis 版本选择器 2 甘特链入 WorkbenchLink
 
 钉死点：有计划行版本 5 链接带 adopted 身份+span 日期（URL 形态逐目标对照）；
 无计划行版本日期必填链接禁用并给原因（比裸链接点过去看空页更诚实，有意行为
-变化）；span 读取异常该行禁用其余行正常；analysis 场景预览保留 scenario_id
+变化）；span 读取异常该行禁用其余行正常；analysis 场景预览用公开 token
 （roadmap 第 11 条点名缺陷的正向钉死），裸 preview 禁用明示。
 """
 
@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
+
+from flask import Flask
 
 from web.routes.system_history import _load_history_span_dates
 from web.viewmodels.system_history_links import build_history_version_links
@@ -149,15 +151,19 @@ class _AnalysisServices:
 def test_version_picker_scenario_preview_keeps_scenario_id():
     from web.routes.domains.scheduler.scheduler_analysis_links import build_version_picker_gantt_links
 
-    links = build_version_picker_gantt_links(
-        _AnalysisServices(), 7, plan_role="adopted", scenario_id="S1"
-    )
+    app = Flask(__name__)
+    with app.app_context():
+        links = build_version_picker_gantt_links(
+            _AnalysisServices(), 7, plan_role="adopted", scenario_id="S1"
+        )
     assert len(links) == 2
     for link in links:
         assert not link["disabled"], link
         q = _query_values(link["url"])
-        # roadmap 第 11 条点名缺陷的正向钉死：场景预览跳甘特不再掉回正式视角
-        assert q["scenario_id"] == "S1"
+        # roadmap 第 11 条点名缺陷的正向钉死：场景预览跳甘特不再掉回正式视角，但公开 URL 不能裸带内部 id
+        assert "scenario_id" not in q
+        assert q["plan_context_token"]
+        assert "S1" not in q["plan_context_token"]
         assert q["version"] == "7"
 
 

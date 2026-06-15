@@ -181,8 +181,6 @@ def test_workbench_main_flow_from_home_keeps_context_and_reaches_first_version_p
             {
                 "version": "12",
                 "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
                 "batch_id": "B-RPT",
                 "resource_type": "machine",
                 "resource_id": "M-RPT",
@@ -191,8 +189,6 @@ def test_workbench_main_flow_from_home_keeps_context_and_reaches_first_version_p
             {
                 "version": "12",
                 "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
                 "batch_id": "B-RPT",
                 "resource_type": "machine",
                 "resource_id": "M-RPT",
@@ -406,7 +402,6 @@ def test_workbench_scenario_preview_home_entry_is_read_only_and_does_not_use_cur
         {
             "version": "12",
             "plan_role": "adopted",
-            "scenario_id": "SCENARIO-RPT",
             "date_from": "2026-05-06",
             "date_to": "2026-05-06",
             "batch_id": "B-RPT",
@@ -414,6 +409,9 @@ def test_workbench_scenario_preview_home_entry_is_read_only_and_does_not_use_cur
             "resource_id": "M-RPT",
         },
     )
+    assert "scenario_id" not in analysis_query
+    assert analysis_query["plan_context_token"]
+    assert "SCENARIO-RPT" not in analysis_query["plan_context_token"][0]
 
 
 def test_workbench_superseded_adopted_home_entry_keeps_guardrail() -> None:
@@ -471,32 +469,18 @@ def _assert_overdue_row_workbench_links(client) -> None:
         "/reports/overdue?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06"
         "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT",
     )
-    gantt = _query(_href_with_text_and_fragment(overdue, "定位甘特", "/scheduler/gantt", "gantt_batch=B-RPT"))
-    dispatch = _query(_href_with_text_and_fragment(overdue, "回资源派工", "/scheduler/resource-dispatch", "batch_id=B-RPT"))
-
+    diagnosis = _query(_href_with_text_and_fragment(overdue, "查看为什么晚了", "/reports/overdue", "batch_id=B-RPT"))
     _assert_query_values(
-        gantt,
+        diagnosis,
         {
             "version": "12",
             "plan_role": "adopted",
-            "start_date": "2026-05-06",
-            "end_date": "2026-05-06",
-            "gantt_batch": "B-RPT",
-            "gantt_resource": "M-RPT",
-        },
-    )
-    _assert_query_values(
-        dispatch,
-        {
-            "version": "12",
-            "plan_role": "adopted",
-            "date_from": "2026-05-06",
-            "date_to": "2026-05-06",
             "batch_id": "B-RPT",
-            "scope_type": "machine",
-            "machine_id": "M-RPT",
+            "resource_type": "machine",
+            "resource_id": "M-RPT",
         },
     )
+    assert "date_from" not in diagnosis and "date_to" not in diagnosis
 
 
 def _assert_utilization_row_workbench_links(client) -> None:

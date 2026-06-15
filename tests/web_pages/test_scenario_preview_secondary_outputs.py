@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import re
 import sys
 from io import BytesIO
 from pathlib import Path
@@ -115,6 +117,12 @@ def _workbook_sheetnames(xlsx_bytes):
         wb.close()
 
 
+def _decode_urlsafe_first_segment(token: str) -> str:
+    first = str(token or "").split(".", 1)[0]
+    padded = first + ("=" * (-len(first) % 4))
+    return base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8", errors="replace")
+
+
 def _assert_report_export_uses_public_scenario_name(response, *, scenario_id: str, expected_name: str) -> str:
     disposition = unquote(str(response.headers.get("Content-Disposition") or ""))
     sheetnames = _workbook_sheetnames(response.data)
@@ -136,7 +144,7 @@ def _assert_report_export_uses_public_scenario_name(response, *, scenario_id: st
 
 
 def _assert_scenario_filter_resets_when_plan_identity_changes(html: str) -> None:
-    assert 'name="scenario_id"' in html
+    assert ('name="plan_context_token"' in html) or ('name="scenario_id"' in html)
     assert "data-report-plan-version-select" in html
     assert "data-report-plan-role-select" in html
     assert "data-initial-version" in html
@@ -199,6 +207,10 @@ def test_secondary_output_services_read_scenario_rows_and_do_not_fallback(tmp_pa
 
         with pytest.raises(ValidationError, match="模拟方案不存在"):
             engine.utilization(VERSION, "2026-05-06", "2026-05-06", plan_role="adopted", scenario_id="missing")
+        with pytest.raises(ValidationError, match="日期范围不能超过 62 天"):
+            engine.utilization(VERSION, "2026-01-01", "2026-04-15", plan_role="adopted", scenario_id=scenario_id)
+        with pytest.raises(ValidationError, match="日期范围不能超过 62 天"):
+            engine.downtime_impact(VERSION, "2026-01-01", "2026-04-15", plan_role="adopted", scenario_id=scenario_id)
         with pytest.raises(ValidationError, match="模拟方案不存在"):
             ResourceDispatchService(conn).get_dispatch_payload(
                 scope_type="operator",
@@ -228,10 +240,16 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     week_html = client.get(f"/scheduler/week-plan?week_start=2026-05-04&{scenario_query}").get_data(as_text=True)
     assert "当前周计划正在预览“二级页模拟”" in week_html
     assert week_html.count("当前周计划正在预览") == 1
-    assert f'name="scenario_id" value="{scenario_id}"' in week_html
-    assert f"scenario_id={scenario_id}" in week_html
-    assert f"/scheduler/resource-dispatch?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in week_html
-    assert f"/scheduler/gantt?view=machine&amp;version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in week_html
+    assert 'name="plan_context_token"' in week_html
+    assert f'name="scenario_id" value="{scenario_id}"' not in week_html
+    token_match = re.search(r'name="plan_context_token"\s+value="([^"]+)"', week_html)
+    assert token_match is not None
+    plan_token = token_match.group(1)
+    assert scenario_id not in plan_token
+    assert scenario_id not in _decode_urlsafe_first_segment(plan_token)
+    assert f"scenario_id={scenario_id}" not in unquote(week_html)
+    assert "/scheduler/resource-dispatch?" in week_html and "plan_context_token=" in week_html
+    assert "/scheduler/gantt?view=machine" in week_html and "plan_context_token=" in week_html
     _assert_scenario_filter_resets_when_plan_identity_changes(week_html)
     assert "这套方案只用于对比，不代表最终采用的排产结果" not in week_html
     assert "2026-05-06" in week_html
@@ -264,9 +282,10 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
         f"/scheduler/resource-dispatch?scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-06&{scenario_query}"
     ).get_data(as_text=True)
     assert "当前资源排班正在预览" in resource_html
-    assert f'name="scenario_id" value="{scenario_id}"' in resource_html
-    assert f"scenario_id={scenario_id}" in resource_html
-    assert f"/scheduler/week-plan?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in resource_html
+    assert 'name="plan_context_token"' in resource_html
+    assert f'name="scenario_id" value="{scenario_id}"' not in resource_html
+    assert f"scenario_id={scenario_id}" not in unquote(resource_html)
+    assert "/scheduler/week-plan?" in resource_html and "plan_context_token=" in resource_html
     _assert_scenario_filter_resets_when_plan_identity_changes(resource_html)
 
     resource_data = client.get(
@@ -290,27 +309,24 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
 
     overdue_html = client.get(f"/reports/overdue?{scenario_query}").get_data(as_text=True)
     assert "当前超期清单正在预览" in overdue_html
-    assert f'name="scenario_id" value="{scenario_id}"' in overdue_html
+    assert f'name="scenario_id" value="{scenario_id}"' not in overdue_html
+    assert f"scenario_id={scenario_id}" not in unquote(overdue_html)
+    assert 'name="plan_context_token"' in overdue_html
     _assert_scenario_filter_resets_when_plan_identity_changes(overdue_html)
-    assert f"/reports/utilization?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in overdue_html
     assert "模拟预览暂不支持导出" not in overdue_html
-    assert f"/reports/overdue/export?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in overdue_html
+    assert f"/reports/overdue/export?version={VERSION}&amp;plan_role=adopted&amp;plan_context_token=" in overdue_html
     assert "B2" in overdue_html
 
     utilization_html = client.get(
         f"/reports/utilization?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}"
     ).get_data(as_text=True)
     assert "当前资源负荷与利用率正在预览" in utilization_html
-    assert f'name="scenario_id" value="{scenario_id}"' in utilization_html
+    assert f'name="scenario_id" value="{scenario_id}"' not in utilization_html
+    assert f"scenario_id={scenario_id}" not in unquote(utilization_html)
+    assert 'name="plan_context_token"' in utilization_html
     _assert_scenario_filter_resets_when_plan_identity_changes(utilization_html)
-    assert (
-        f"/reports/downtime?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}"
-        "&amp;start_date=2026-05-06&amp;end_date=2026-05-06"
-    ) in utilization_html
-    assert (
-        f"/reports/utilization/export?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}"
-        "&amp;start_date=2026-05-06&amp;end_date=2026-05-06"
-    ) in utilization_html
+    assert "/reports/downtime?" in utilization_html and "plan_context_token=" in utilization_html
+    assert "/reports/utilization/export?" in utilization_html and "plan_context_token=" in utilization_html
     assert "M2" in utilization_html
     assert '<div class="aps-summary-label">排产方案</div>' in utilization_html
     assert '<div class="aps-summary-value">二级页模拟</div>' in utilization_html
@@ -321,16 +337,15 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
         f"/reports/downtime?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}"
     ).get_data(as_text=True)
     assert "当前停机影响统计正在预览" in downtime_html
-    assert f'name="scenario_id" value="{scenario_id}"' in downtime_html
+    assert f'name="scenario_id" value="{scenario_id}"' not in downtime_html
+    assert f"scenario_id={scenario_id}" not in unquote(downtime_html)
+    assert 'name="plan_context_token"' in downtime_html
     _assert_scenario_filter_resets_when_plan_identity_changes(downtime_html)
     assert "0.5" in downtime_html
     assert '<div class="aps-summary-label">排产方案</div>' in downtime_html
     assert '<div class="aps-summary-value">二级页模拟</div>' in downtime_html
     assert "当前方案：二级页模拟" in downtime_html
-    assert (
-        f"/reports/downtime/export?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}"
-        "&amp;start_date=2026-05-06&amp;end_date=2026-05-06"
-    ) in downtime_html
+    assert "/reports/downtime/export?" in downtime_html and "plan_context_token=" in downtime_html
     assert "模拟预览暂不支持导出" not in downtime_html
 
     export_resp = client.get(f"/reports/overdue/export?{scenario_query}")

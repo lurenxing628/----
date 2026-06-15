@@ -539,8 +539,6 @@ def test_dashboard_workbench_summary_links_keep_request_batch_and_resource_conte
     assert _query(overdue_url) == {
         "version": ["12"],
         "plan_role": ["adopted"],
-        "date_from": ["2026-05-06"],
-        "date_to": ["2026-05-06"],
         "batch_id": ["B-RPT"],
         "resource_type": ["machine"],
         "resource_id": ["M-RPT"],

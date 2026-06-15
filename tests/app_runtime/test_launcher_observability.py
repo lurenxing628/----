@@ -366,11 +366,12 @@ def test_release_runtime_lock_remove_failure_uses_launcher_log(monkeypatch, tmp_
     )
     monkeypatch.setattr("web.bootstrap.launcher_contracts.os.getpid", lambda: 12345)
 
-    def _boom_remove(path: str) -> None:
+    def _boom_remove(path: str, **_kwargs) -> bool:
         if str(path) == str(lock_path):
             raise PermissionError("locked")
+        return True
 
-    monkeypatch.setattr("web.bootstrap.launcher_contracts.os.remove", _boom_remove)
+    monkeypatch.setattr("web.bootstrap.launcher_contracts.remove_fixed_file", _boom_remove)
 
     release_runtime_lock(str(state_dir))
 

@@ -85,6 +85,9 @@ class _BatchServiceStub:
     def list(self, status=None):
         return []
 
+    def list_page(self, **_kwargs):
+        return [], 0
+
 
 class _HistoryServiceStub:
     def list_recent(self, limit=1):

@@ -158,6 +158,9 @@ def test_dashboard_accepts_preparsed_result_summary_dict(tmp_path, monkeypatch) 
         def list(self, status=None):
             return []
 
+        def list_page(self, **_kwargs):
+            return [], 0
+
     class _StubHistoryService:
         def __init__(self, _conn, logger=None, op_logger=None, **_kwargs):
             self.logger = logger
@@ -199,6 +202,9 @@ def test_scheduler_batches_accepts_preparsed_result_summary_dict(tmp_path, monke
 
         def list(self, status=None):
             return []
+
+        def list_page(self, **_kwargs):
+            return [], 0
 
     class _StubConfigService:
         def __init__(self, _conn, logger=None, op_logger=None, **_kwargs):
@@ -302,6 +308,9 @@ def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_m
 
         def list(self, status=None):
             return []
+
+        def list_page(self, **_kwargs):
+            return [], 0
 
     class _StubConfigService:
         def __init__(self, _conn, logger=None, op_logger=None, **_kwargs):

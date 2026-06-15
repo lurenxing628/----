@@ -6,7 +6,7 @@
 - 缺事实工序走「暂未记录现场实际」诚实态、非崩；
 - 外协行计划设备/人员走 display_* 兜底文案不空白；
 - op_rows 仅 8 个公开 label 键、无 op_id/machine_id 等 raw 内部身份外显；
-- span 解析跳坏值、start/end 各独立 min/max，全坏→「时间记录异常」+ 无日期窗口。
+- span 只按开始和结束都可解析的完整记录取 min/max，全坏→「时间记录异常」+ 无日期窗口。
 """
 
 from __future__ import annotations
@@ -101,10 +101,14 @@ def test_span_all_valid_independent_min_max() -> None:
         {"start_time": "2026-06-01 08:00:00", "end_time": "2026-06-03 17:00:00"},
         {"start_time": "2026-06-01 14:00:00", "end_time": "2026-06-02 18:00:00"},
     ]
-    from_date, to_date, label = _placement_span(rows)
+    span = _placement_span(rows)
+    from_date, to_date, label = span
     assert from_date == "2026-06-01"
     assert to_date == "2026-06-03"
     assert "～" in label
+    assert span.status == "ok"
+    assert span.bad_time_count == 0
+    assert span.notice == ""
 
 
 def test_span_mixed_skips_bad_time_rows() -> None:
@@ -113,11 +117,46 @@ def test_span_mixed_skips_bad_time_rows() -> None:
         {"start_time": "坏值", "end_time": "2026-06-05 17:00:00"},
         {"start_time": "2026-06-02 09:00:00", "end_time": "2026-06-03 12:00:00"},
     ]
-    from_date, to_date, label = _placement_span(rows)
-    # start 可解析的最早是 06-01，end 可解析的最晚是 06-05
-    assert from_date == "2026-06-01"
-    assert to_date == "2026-06-05"
+    span = _placement_span(rows)
+    from_date, to_date, label = span
+    assert from_date == "2026-06-02"
+    assert to_date == "2026-06-03"
     assert "～" in label
+    assert span.status == "partial"
+    assert span.bad_time_count == 2
+    assert "时间跨度只按可解析记录计算" in span.notice
+    assert "已排工序数量仍是全量" in span.notice
+
+
+def test_span_blank_time_rows_are_counted_as_partial() -> None:
+    rows = [
+        {"start_time": "2026-06-01 08:00:00", "end_time": "2026-06-01 10:00:00"},
+        {"start_time": "", "end_time": "2026-06-02 10:00:00"},
+        {"start_time": "2026-06-03 08:00:00", "end_time": None},
+    ]
+
+    span = _placement_span(rows)
+
+    assert span.status == "partial"
+    assert span.bad_time_count == 2
+    assert "时间跨度只按可解析记录计算" in span.notice
+    assert "已排工序数量仍是全量" in span.notice
+
+
+def test_span_reversed_and_zero_length_rows_are_counted_as_bad_time() -> None:
+    rows = [
+        {"start_time": "2026-06-01 08:00:00", "end_time": "2026-06-01 10:00:00"},
+        {"start_time": "2026-06-02 10:00:00", "end_time": "2026-06-02 09:00:00"},
+        {"start_time": "2026-06-03 08:00:00", "end_time": "2026-06-03 08:00:00"},
+    ]
+
+    span = _placement_span(rows)
+
+    assert span.status == "partial"
+    assert span.bad_time_count == 2
+    assert tuple(span) == ("2026-06-01", "2026-06-01", "2026年6月1日 08:00 ～ 2026年6月1日 10:00")
+    assert "时间跨度只按可解析记录计算" in span.notice
+    assert "已排工序数量仍是全量" in span.notice
 
 
 def test_span_all_bad_returns_no_window() -> None:
@@ -125,8 +164,16 @@ def test_span_all_bad_returns_no_window() -> None:
         {"start_time": "坏值", "end_time": None},
         {"start_time": None, "end_time": "也坏"},
     ]
-    assert _placement_span(rows) == (None, None, "时间记录异常")
+    span = _placement_span(rows)
+    assert tuple(span) == (None, None, "时间记录异常")
+    assert span.status == "error"
+    assert span.bad_time_count == 2
+    assert "时间跨度无法计算" in span.notice
+    assert "已排工序数量仍是全量" in span.notice
 
 
 def test_span_empty_rows_returns_no_window() -> None:
-    assert _placement_span([]) == (None, None, "时间记录异常")
+    span = _placement_span([])
+    assert tuple(span) == (None, None, "时间记录异常")
+    assert span.status == "error"
+    assert span.bad_time_count == 0

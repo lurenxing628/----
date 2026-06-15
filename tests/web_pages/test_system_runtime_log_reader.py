@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from core.services.system.runtime_log_reader import (
@@ -175,6 +177,17 @@ def test_missing_file_returns_empty(tmp_path):
     assert read_log_entries_tail(str(tmp_path / "absent.log")) == []
 
 
+def test_dangling_symlink_is_rejected_not_treated_as_missing(tmp_path):
+    log_path = tmp_path / "launcher.log"
+    try:
+        os.symlink(str(tmp_path / "missing-target.log"), str(log_path))
+    except (OSError, NotImplementedError):
+        pytest.skip("平台不支持创建软链接（如 Windows 无权限）")
+
+    with pytest.raises(OSError):
+        read_log_entries_tail(str(log_path))
+
+
 def test_empty_file_returns_empty(tmp_path):
     assert read_log_entries_tail(_write(tmp_path, b"")) == []
 
@@ -183,16 +196,14 @@ def test_io_error_propagates(tmp_path):
     path = _write(tmp_path, b"2026-06-11 10:00:00 [INFO] x\n")
     import core.services.system.runtime_log_reader as mod
 
-    real_open = open
-
     def boom(*args, **kwargs):
         raise OSError("disk error")
 
-    # 仅替换模块内 open；不吞错契约：OSError 必须穿透给路由层
-    mod.__dict__["open"] = boom
+    # 仅替换模块内固定文件读取入口；不吞错契约：OSError 必须穿透给路由层
+    original_reader = mod.open_fixed_file_for_read_binary
+    mod.open_fixed_file_for_read_binary = boom
     try:
         with pytest.raises(OSError):
             read_log_entries_tail(path)
     finally:
-        mod.__dict__.pop("open", None)
-    assert open is real_open
+        mod.open_fixed_file_for_read_binary = original_reader

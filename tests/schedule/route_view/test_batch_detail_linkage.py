@@ -50,6 +50,7 @@ def test_batch_detail_linkage(app_client) -> None:
         machine_operator_meta={"MC1": {"OP1": {"is_primary": "yes", "skill_level": "expert"}}},
         prefer_primary_skill="yes",
         lazy_select_enabled=True,
+        operation_update_actions={"opform_1": "/scheduler/ops/update-token/TOKEN"},
         batch_detail_strict_toggle=build_strict_mode_toggle(
             "batchDetailGenerateOpsStrictMode",
             desc="工序资料不完整时先停下，避免把缺资料的批次继续生成下去。",
@@ -73,6 +74,10 @@ def test_batch_detail_linkage(app_client) -> None:
     assert "window.__APS_BATCH_DETAIL_LINKAGE__" in html, "缺少 linkage 配置注入"
     assert "machineOperators" in html and "operatorMachines" in html, "缺少 linkage 双向映射注入"
     assert "lazySelectEnabled" in html, "缺少 lazySelectEnabled 注入"
+    assert re.search(r'"operationUpdateActions"\s*:\s*\{[^}]*"opform_1"', html), "缺少工序更新地址映射"
+    assert html.index("window.__APS_BATCH_DETAIL_LINKAGE__ = JSON.parse") < html.index("var actionByFormId"), (
+        "工序保存脚本必须先解析 linkage JSON，再读取 operationUpdateActions"
+    )
 
     # 契约：允许 operatorMachines 为 null（由 machineOperators 反推）
     assert re.search(r'"operatorMachines"\s*:\s*null\b', html_null), "operatorMachines=None 时应以 JSON null 注入"
@@ -103,6 +108,7 @@ def test_batch_detail_schedule_placement_ok_renders_card(app_client) -> None:
         "version_label": "v8", "generated_at_label": "2026年6月1日 08:00",
         "strategy_label": "综合优先级和交期", "op_count": 1,
         "span_label": "2026年6月1日 08:00 ～ 2026年6月1日 12:00",
+        "span_notice": "有 1 条排程记录的开始或结束时间缺失或写法不对，时间跨度只按可解析记录计算；已排工序数量仍是全量。",
         "gantt_link": {"label": "在甘特中定位本批次", "url": "/scheduler/gantt?gantt_batch=B_TEST&version=8", "disabled": False},
         "op_rows": [
             {
@@ -120,6 +126,7 @@ def test_batch_detail_schedule_placement_ok_renders_card(app_client) -> None:
     assert "v8" in html and "1 道" in html
     assert "OP10" in html and "M1 设备1" in html
     assert "暂未记录现场实际" in html  # 无记录行单格诚实文案
+    assert "时间跨度只按可解析记录计算" in html
     assert "在甘特中定位本批次" in html  # gantt_link 非 disabled 且有 url → 渲染按钮
 
 

@@ -57,7 +57,7 @@ def _assert_no_adopted_continuation_links(parser) -> None:
     hrefs = [link["href"] for link in parser.links]
     assert all(urlparse(href).path != "/scheduler/resource-dispatch" for href in hrefs)
     assert all(urlparse(href).path != "/reports/execution-review" for href in hrefs)
-    assert all("plan_role=adopted" not in href or "scenario_id=SCENARIO-RPT" in href for href in hrefs)
+    assert all("scenario_id=SCENARIO-RPT" not in href for href in hrefs)
 
 
 class _ReviewResolution:

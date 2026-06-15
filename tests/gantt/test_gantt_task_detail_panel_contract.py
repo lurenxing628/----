@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Tuple
 
@@ -83,14 +84,17 @@ def test_gantt_task_public_title_does_not_use_internal_op_id_fallback() -> None:
     tasks = outcome.value
     assert len(tasks) == 1
     task = tasks[0]
-    assert task["id"] == "op_123"
-    assert "op_123" not in task["name"]
+    assert str(task["id"]).startswith("task_")
+    payload = json.dumps(task, ensure_ascii=False)
+    assert "op_123" not in payload
+    assert '"op_id"' not in payload
+    assert '"schedule_id"' not in payload
     assert task["name"].startswith("20（车削）")
     assert task["meta"]["task_label"] == "20（车削）"
     assert "op_123" not in task["meta"]["detail_title"]
 
 
-def test_critical_chain_edges_keep_internal_ids_but_expose_public_labels() -> None:
+def test_critical_chain_edges_use_public_ids_and_expose_public_labels() -> None:
     rows = [
         {
             "schedule_id": 9001,
@@ -125,11 +129,13 @@ def test_critical_chain_edges_keep_internal_ids_but_expose_public_labels() -> No
     ]
 
     critical_chain = compute_critical_chain_from_rows(rows)
-    assert critical_chain["ids"] == ["op_111", "op_222"]
+    assert len(critical_chain["ids"]) == 2
+    assert all(str(item).startswith("task_") for item in critical_chain["ids"])
+    assert all("op_" not in str(item) for item in critical_chain["ids"])
     assert len(critical_chain["edges"]) == 1
     edge = critical_chain["edges"][0]
-    assert edge["from"] == "op_111"
-    assert edge["to"] == "op_222"
+    assert edge["from"] == critical_chain["ids"][0]
+    assert edge["to"] == critical_chain["ids"][1]
     assert edge["from_label"] == "10（车削）"
     assert edge["to_label"] == "20（精加工）"
     assert "op_" not in edge["from_label"]

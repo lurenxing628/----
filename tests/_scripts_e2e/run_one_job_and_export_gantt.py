@@ -65,6 +65,14 @@ def _assert_status(name: str, resp, expect_code: int = 200):
         raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect_code}；body={body[:500] if body else None}")
 
 
+def _operation_update_url(app, op_id: int) -> str:
+    from web.routes.domains.scheduler.scheduler_ops import operation_update_token
+
+    with app.app_context():
+        token = operation_update_token(int(op_id))
+    return f"/scheduler/ops/update-token/{token}"
+
+
 def main():
     repo_root = find_repo_root()
     tmpdir = tempfile.mkdtemp(prefix="aps_gantt_one_job_")
@@ -229,7 +237,7 @@ def main():
             uh = 1.0
     finally:
         conn.close()
-    r = client.post(f"/scheduler/ops/{op_id}/update", data={"machine_id": "MC001", "operator_id": "OP001", "setup_hours": str(sh), "unit_hours": str(uh)}, follow_redirects=True)
+    r = client.post(_operation_update_url(app, op_id), data={"machine_id": "MC001", "operator_id": "OP001", "setup_hours": str(sh), "unit_hours": str(uh)}, follow_redirects=True)
     _assert_status("update internal op", r, 200)
 
     # 5) 执行排产

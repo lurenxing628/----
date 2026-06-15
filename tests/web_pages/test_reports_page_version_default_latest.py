@@ -114,6 +114,14 @@ def test_reports_page_date_range_requires_both_sides_and_valid_format(tmp_path, 
         ok_resp = client.get(f"{endpoint}?version=latest&start_date=2026-01-01&end_date=2026-01-07")
         assert ok_resp.status_code == 200
 
+        long_resp = client.get(f"{endpoint}?version=latest&start_date=2026-01-01&end_date=2026-04-15")
+        assert long_resp.status_code == 400
+        assert "日期范围不能超过 62 天" in long_resp.get_data(as_text=True)
+
+        long_export = client.get(f"{endpoint}/export?version=latest&start_date=2026-01-01&end_date=2026-04-15")
+        assert long_export.status_code == 400
+        assert "日期范围不能超过 62 天" in long_export.get_data(as_text=True)
+
 
 def test_reports_no_history_pages_do_not_expose_v0_and_exports_404(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch, with_history=False)

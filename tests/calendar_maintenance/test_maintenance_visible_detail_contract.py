@@ -112,21 +112,22 @@ def test_backup_cleanup_reports_mtime_and_delete_failures(monkeypatch, tmp_path:
     old_ts = (datetime.now() - timedelta(days=30)).timestamp()
     old_ok.touch()
     cleanup_task.os.utime(old_ok, (old_ts, old_ts))
-    original_getmtime = cleanup_task.os.path.getmtime
-    original_remove = cleanup_task.os.remove
+    cleanup_task.os.utime(old_bad_delete, (old_ts, old_ts))
+    original_stat_regular_file = cleanup_task.stat_regular_file
+    original_remove_fixed_file = cleanup_task.remove_fixed_file
 
-    def _getmtime(path):
+    def _stat_regular_file(path):
         if str(path).endswith(old_bad_mtime.name):
             raise OSError("mtime denied")
-        return original_getmtime(path) if not str(path).endswith(old_bad_delete.name) else old_ts
+        return original_stat_regular_file(path)
 
-    def _remove(path):
+    def _remove_fixed_file(path, **kwargs):
         if str(path).endswith(old_bad_delete.name):
             raise OSError("delete denied")
-        return original_remove(path)
+        return original_remove_fixed_file(path, **kwargs)
 
-    monkeypatch.setattr(cleanup_task.os.path, "getmtime", _getmtime)
-    monkeypatch.setattr(cleanup_task.os, "remove", _remove)
+    monkeypatch.setattr(cleanup_task, "stat_regular_file", _stat_regular_file)
+    monkeypatch.setattr(cleanup_task, "remove_fixed_file", _remove_fixed_file)
 
     removed, meta = cleanup_task.cleanup_backups_with_limit(
         str(tmp_path),
@@ -154,21 +155,22 @@ def test_auto_backup_cleanup_persists_mtime_and_delete_failures(monkeypatch, tmp
 
     old_ts = (datetime.now() - timedelta(days=30)).timestamp()
     cleanup_task.os.utime(old_ok, (old_ts, old_ts))
-    original_getmtime = cleanup_task.os.path.getmtime
-    original_remove = cleanup_task.os.remove
+    cleanup_task.os.utime(old_bad_delete, (old_ts, old_ts))
+    original_stat_regular_file = cleanup_task.stat_regular_file
+    original_remove_fixed_file = cleanup_task.remove_fixed_file
 
-    def _getmtime(path):
+    def _stat_regular_file(path):
         if str(path).endswith(old_bad_mtime.name):
             raise OSError("mtime denied")
-        return original_getmtime(path) if not str(path).endswith(old_bad_delete.name) else old_ts
+        return original_stat_regular_file(path)
 
-    def _remove(path):
+    def _remove_fixed_file(path, **kwargs):
         if str(path).endswith(old_bad_delete.name):
             raise OSError("delete denied")
-        return original_remove(path)
+        return original_remove_fixed_file(path, **kwargs)
 
-    monkeypatch.setattr(cleanup_task.os.path, "getmtime", _getmtime)
-    monkeypatch.setattr(cleanup_task.os, "remove", _remove)
+    monkeypatch.setattr(cleanup_task, "stat_regular_file", _stat_regular_file)
+    monkeypatch.setattr(cleanup_task, "remove_fixed_file", _remove_fixed_file)
 
     conn = sqlite3.connect(":memory:")
     job_repo = _FakeJobRepo()

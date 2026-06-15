@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from urllib.parse import unquote
 
 import core.infrastructure.backup as backup_mod
 from core.infrastructure.backup import BackupManager
@@ -61,12 +62,19 @@ def _make_manager(tmp_path):
     return BackupManager(db_path=db_path, backup_dir=backup_dir, keep_days=7, logger=None), backup_dir
 
 
+def _sqlite_uri_database_path(database) -> str:
+    text = os.fspath(database)
+    if not text.startswith("file:"):
+        return text
+    return unquote(text[5:].split("?", 1)[0])
+
+
 def _patch_dest_factory(monkeypatch, factory):
     """只对 .tmp 目标连接（备份校验侧）注入工厂，源库与维护窗连接保持原生。"""
     real_connect = sqlite3.connect
 
     def fake_connect(path, *args, **kwargs):
-        if str(path).endswith(".tmp"):
+        if _sqlite_uri_database_path(path).endswith(".tmp"):
             kwargs.setdefault("factory", factory)
         return real_connect(path, *args, **kwargs)
 

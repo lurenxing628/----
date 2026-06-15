@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Tuple
 
 from core.infrastructure.database import get_connection
@@ -40,8 +41,14 @@ def test_write_post_rejects_incomplete_query_plan_identity(tmp_path, monkeypatch
         )
         payload = _json(resp)
         assert resp.status_code == 400
-        assert payload["error"]["details"]["field"] == "plan_identity"
-        assert "missing_fields" in payload["error"]["details"]
+        details = payload["error"]["details"]
+        assert details["field_label"] == "计划上下文"
+        assert "missing_field_labels" in details
+        assert "field" not in details
+        assert "missing_fields" not in details
+        body = json.dumps(payload, ensure_ascii=False)
+        assert "plan_identity" not in body
+        assert "missing_fields" not in body
     assert _event_count(db_path) == 0
 
 
@@ -85,8 +92,10 @@ def test_write_post_requires_query_plan_identity_and_batch_match(tmp_path, monke
     resp = client.post(f"/scheduler/resource-dispatch/execution/{card['op_id']}/start", json=no_query_payload)
     payload = _json(resp)
     assert resp.status_code == 400
-    assert payload["error"]["details"]["field"] == "plan_identity"
+    assert payload["error"]["details"]["field_label"] == "计划上下文"
+    assert "field" not in payload["error"]["details"]
     assert payload["error"]["details"]["can_retry"] is False
+    assert "plan_identity" not in json.dumps(payload, ensure_ascii=False)
     assert _event_count(db_path) == 0
 
     wrong_batch = _post_controlled(
@@ -237,8 +246,10 @@ def test_actual_post_rejects_outside_query_even_when_batch_id_is_missing(tmp_pat
     data = _json(resp)
 
     assert resp.status_code == 400
-    assert data["error"]["details"]["field"] == "batch_id"
+    assert data["error"]["details"]["field_label"] == "批次号"
+    assert "field" not in data["error"]["details"]
     assert data["error"]["details"]["reason"] == "missing_required_field"
+    assert "batch_id" not in json.dumps(data, ensure_ascii=False)
     assert _event_count(db_path) == 0
 
 

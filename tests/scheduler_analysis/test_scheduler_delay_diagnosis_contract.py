@@ -333,6 +333,39 @@ def test_delay_diagnosis_reports_overdue_clues_and_stays_readonly(tmp_path) -> N
         conn.close()
 
 
+def test_delay_diagnosis_does_not_report_bad_finish_time_as_unscheduled(tmp_path) -> None:
+    conn, _scenario_id = _seed_db(tmp_path)
+    try:
+        conn.executescript(
+            """
+            INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
+            VALUES ('B_BAD_TIME', 'P001', '坏时间批次', 1, '2026-05-03', 'normal', 'yes', 'scheduled');
+
+            INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
+            VALUES (50, 'OP-BAD-10', 'B_BAD_TIME', 'piece-bad', 10, '车削', 'internal', 'scheduled');
+
+            INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+            VALUES (150, 50, 'M1', 'O1', '2026-05-04 10:00:00', '坏结束时间', 'unlocked', 11);
+            """
+        )
+        conn.commit()
+
+        report = _diagnose_via_live_door(ScheduleDelayDiagnosisService(conn), plan_role=ROLE_ADOPTED)
+
+        assert report.scheduled_count == 1
+        assert report.unscheduled_count == 1
+        assert report.invalid_time_count == 1
+        bad_item = _item_by_batch(report, "B_BAD_TIME")
+        assert bad_item.bucket == "schedule_time_invalid"
+        assert bad_item.leading_clue_code == "schedule_time_invalid"
+        assert bad_item.confidence == "missing_data"
+        assert bad_item.finish_time is None
+        assert any("时间写法不对" in gap for gap in bad_item.data_gaps)
+        assert "还没有计划完成时间" not in "\n".join(fact.text for fact in bad_item.confirmed_facts)
+    finally:
+        conn.close()
+
+
 def test_delay_diagnosis_reads_candidate_rows_without_fallback(tmp_path) -> None:
     conn, _scenario_id = _seed_db(tmp_path)
     try:
@@ -389,7 +422,8 @@ def test_delay_diagnosis_reads_scenario_rows_without_fallback(tmp_path) -> None:
         assert report.plan_identity.can_write_feedback is False
         item = _item_by_batch(report, "B_SCHEDULED")
         assert item.finish_time == "2026-05-04 16:00:00"
-        assert all(f"scenario_id={scenario_id}" in (evidence.link or "") for evidence in item.evidences if evidence.link)
+        assert all("scenario_id" not in (evidence.link or "") for evidence in item.evidences if evidence.link)
+        assert all(scenario_id not in (evidence.link or "") for evidence in item.evidences if evidence.link)
 
         conn.execute("DELETE FROM ScheduleAdjustmentScenarioRow WHERE scenario_id = ?", (scenario_id,))
         conn.commit()

@@ -53,13 +53,16 @@ def test_span_jump_non_adopted_role_passes_through_to_query_and_link():
 
 def test_span_jump_scenario_identity_uses_view_query_and_link_param():
     stub = _PlanQueryStub()
-    out = week_plan_span_jump(
-        _services(stub),
-        {"version": 7, "plan_role_resolution": {"selected_role": "adopted", "scenario_id": "SC1"}},
-    )
+    app = Flask(__name__)
+    with app.app_context():
+        out = week_plan_span_jump(
+            _services(stub),
+            {"version": 7, "plan_role_resolution": {"selected_role": "adopted", "scenario_id": "SC1"}},
+        )
     assert stub.view_calls == [(7, "adopted", "SC1")]
     assert stub.span_calls == []
-    assert "scenario_id=SC1" in out["jump_link"]["url"]
+    assert "scenario_id=SC1" not in out["jump_link"]["url"]
+    assert "plan_context_token=" in out["jump_link"]["url"]
 
 
 def test_span_jump_missing_meta_defaults_adopted():

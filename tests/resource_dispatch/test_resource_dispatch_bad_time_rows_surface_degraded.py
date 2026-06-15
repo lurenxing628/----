@@ -29,7 +29,8 @@ def test_bad_time_row_sample_keeps_location_without_raw_bad_time() -> None:
     )
 
     assert sample is not None
-    assert "排程记录编号=17" in sample
+    assert "排程记录编号=17" not in sample
+    assert "工序编号=23" not in sample
     assert "工序编码=OP-B001-10" in sample
     assert "批次号=B001" in sample
     assert "字段=开始时间" in sample
@@ -67,7 +68,7 @@ def test_resource_dispatch_bad_time_rows_surface_degraded() -> None:
         op_id = int(cur.lastrowid)
         conn.execute(
             "INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (op_id, "MC001", "OP001", "2026-03-02 99:00:00", "2026-03-02 13:00:00", "locked", 1),
+            (op_id, "MC001", "OP001", "坏时间", "2026-03-02 13:00:00", "locked", 1),
         )
         conn.execute(
             "INSERT INTO ScheduleHistory (version, strategy, batch_count, op_count, result_status, result_summary, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -89,7 +90,7 @@ def test_resource_dispatch_bad_time_rows_surface_degraded() -> None:
         events = list(summary.get("degradation_events") or [])
         assert events
         assert all("sample" not in event for event in events), events
-        assert "99:00:00" not in str(events), events
+        assert "坏时间" not in str(events), events
         assert any("时间写法不对" in str(event.get("message") or "") for event in events), events
         assert summary.get("empty_reason") == "all_rows_filtered_by_invalid_time"
         assert payload.get("detail_rows") == []

@@ -278,6 +278,55 @@ def test_candidate_overdue_marker_projection_does_not_swallow_repository_errors(
     assert degraded_logs == []
 
 
+def test_candidate_overdue_marker_surfaces_invalid_time_batches_without_marking_overdue() -> None:
+    # 有排程但计划完成时间写法坏（读不出有效时间）的批次：不标红（避免冤枉成逾期），
+    # 但通过 partial+message 把批次号浮现给用户，并记一条降级日志（甘特/派工视图据此提示）。
+    rows = [
+        {"batch_id": "B-OK", "due_date": "2020-01-01", "finish_time": "2020-02-01",
+         "invalid_time_count": 0, "schedule_row_count": 3},
+        {"batch_id": "B-BAD", "due_date": "2020-01-01", "finish_time": None,
+         "invalid_time_count": 2, "schedule_row_count": 2},
+    ]
+    degraded_logs: List[Any] = []
+    meta = build_overdue_meta_for_plan(
+        version=VERSION,
+        role=ROLE_BASELINE_BEST,
+        source_table=SOURCE_CANDIDATE_ROWS,
+        list_plan_overdue_base_rows=lambda **_kwargs: rows,
+        load_adopted_meta=lambda _version: {"ids": []},
+        log_degraded=lambda **kwargs: degraded_logs.append(kwargs),
+    )
+    assert "B-OK" in meta["ids"]
+    assert "B-BAD" not in meta["ids"]  # 时间坏的批次不标红
+    assert meta["degraded"] is False
+    assert meta["partial"] is True
+    assert "B-BAD" in meta["message"]  # 提示里列出具体批次号
+    assert meta["reason"] == "schedule_time_invalid"
+    assert degraded_logs and degraded_logs[0]["reason"] == "schedule_time_invalid"
+
+
+def test_candidate_overdue_marker_clean_when_no_invalid_time() -> None:
+    # 没有时间异常批次时不应无中生有任何降级提示（防过度提示）。
+    rows = [
+        {"batch_id": "B-OK", "due_date": "2020-01-01", "finish_time": "2020-02-01",
+         "invalid_time_count": 0, "schedule_row_count": 3},
+    ]
+    degraded_logs: List[Any] = []
+    meta = build_overdue_meta_for_plan(
+        version=VERSION,
+        role=ROLE_BASELINE_BEST,
+        source_table=SOURCE_CANDIDATE_ROWS,
+        list_plan_overdue_base_rows=lambda **_kwargs: rows,
+        load_adopted_meta=lambda _version: {"ids": []},
+        log_degraded=lambda **kwargs: degraded_logs.append(kwargs),
+    )
+    assert meta["ids"] == ["B-OK"]
+    assert meta["partial"] is False
+    assert meta["degraded"] is False
+    assert meta["message"] == ""
+    assert degraded_logs == []
+
+
 def test_plan_query_reads_adopted_and_candidate_rows_with_same_detail_shape(tmp_path: Path) -> None:
     conn = _seed_db(tmp_path)
     try:

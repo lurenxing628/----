@@ -22,6 +22,31 @@ from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 VERSION = 7
+_PUBLIC_GANTT_JSON_FORBIDDEN_KEYS = {
+    "op_id",
+    "schedule_id",
+    "scenario_id",
+    "candidate_id",
+    "selection_candidate_id",
+    "resolved_candidate_id",
+    "candidate_key",
+    "source_row_id",
+    "source_table",
+}
+
+
+def _public_json_forbidden_key_paths(value, *, path: str = "data"):
+    paths = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            key_path = f"{path}.{key}"
+            if str(key) in _PUBLIC_GANTT_JSON_FORBIDDEN_KEYS:
+                paths.append(key_path)
+            paths.extend(_public_json_forbidden_key_paths(child, path=key_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            paths.extend(_public_json_forbidden_key_paths(child, path=f"{path}[{index}]"))
+    return paths
 
 
 def _require_id(value) -> int:
@@ -228,7 +253,7 @@ def test_gantt_data_reads_candidate_rows_and_returns_plan_role_metadata(tmp_path
     assert data.get("requested_plan_role") == ROLE_BASELINE_BEST
     assert data.get("effective_plan_role") == ROLE_BASELINE_BEST
     assert (data.get("plan_role_resolution") or {}).get("is_comparison") is True
-    assert (data.get("plan_role_resolution") or {}).get("source_table") == SOURCE_CANDIDATE_ROWS
+    assert _public_json_forbidden_key_paths(data) == []
     assert (data.get("version_time_span") or {}).get("start_date") == "2026-05-12"
     assert len(tasks) == 1
     assert (tasks[0].get("meta") or {}).get("machine_id") == "M-CANDIDATE"
@@ -457,8 +482,8 @@ def test_gantt_non_adopted_schedule_source_overdue_markers_use_adopted_history(t
 
     assert resp.status_code == 200
     assert data.get("effective_plan_role") == ROLE_BASELINE_BEST
-    assert plan_resolution.get("source_table") == SOURCE_SCHEDULE
     assert plan_resolution.get("is_comparison") is True
+    assert _public_json_forbidden_key_paths(data) == []
     assert data.get("overdue_markers_degraded") is False
     assert len(tasks) == 1
     assert (tasks[0].get("meta") or {}).get("machine_id") == "M-ADOPTED"

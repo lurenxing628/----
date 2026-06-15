@@ -6,6 +6,7 @@ from typing import Tuple
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from flask import Flask
 
 from core.models.schedule_plan_role import PLAN_ROLE_LABELS, SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 from core.services.scheduler.schedule_result_view_context import plan_role_filter_fields
@@ -245,10 +246,6 @@ def test_all_target_pages_preserve_full_workbench_context_matrix() -> None:
         "overdue_report": {
             "version": "12",
             "plan_role": "adopted",
-            "date_from": "2026-05-25",
-            "date_to": "2026-05-31",
-            "query_date": "2026-05-28",
-            "period_preset": "week",
             "batch_id": "B202605-001",
             "resource_type": "machine",
             "resource_id": "M1",
@@ -256,10 +253,6 @@ def test_all_target_pages_preserve_full_workbench_context_matrix() -> None:
         "delay_diagnosis": {
             "version": "12",
             "plan_role": "adopted",
-            "date_from": "2026-05-25",
-            "date_to": "2026-05-31",
-            "query_date": "2026-05-28",
-            "period_preset": "week",
             "batch_id": "B202605-001",
             "resource_type": "machine",
             "resource_id": "M1",
@@ -322,26 +315,49 @@ def test_all_target_pages_preserve_full_workbench_context_matrix() -> None:
 
 
 def test_preview_context_keeps_view_links_but_disables_execution_review() -> None:
-    context = build_workbench_plan_context(
-        version=12,
-        plan_role="baseline_best",
-        scenario_id="scenario-secret",
-        scenario_display_label="模拟方案甲",
-        date_from="2026-05-25",
-        date_to="2026-05-31",
-        can_write_feedback=False,
-    )
+    app = Flask(__name__)
+    with app.app_context():
+        context = build_workbench_plan_context(
+            version=12,
+            plan_role="baseline_best",
+            scenario_id="scenario-secret",
+            plan_context_token="opaque-public-token",
+            scenario_display_label="模拟方案甲",
+            date_from="2026-05-25",
+            date_to="2026-05-31",
+            can_write_feedback=False,
+        )
 
-    overdue = build_workbench_link(context, "overdue_report", label="看晚交")
-    review = build_workbench_link(context, "execution_review")
+        overdue = build_workbench_link(context, "overdue_report", label="看晚交")
+        review = build_workbench_link(context, "execution_review")
 
-    assert "scenario_id=scenario-secret" in overdue["url"]
+    query = _query_values(overdue["url"])
+    assert "scenario_id" not in query
+    assert query["plan_context_token"] == "opaque-public-token"
+    assert "scenario-secret" not in overdue["url"]
     assert "plan_role=baseline_best" in overdue["url"]
     assert overdue["context_summary"].startswith("v12，模拟方案甲")
     assert review["disabled"] is True
     assert review["url"] == ""
     assert "只复盘正式采用方案" in review["disabled_reason"]
     assert "scenario_id" not in review["required_params"]
+
+
+def test_preview_context_without_public_token_source_disables_public_link() -> None:
+    context = build_workbench_plan_context(
+        version=12,
+        plan_role="adopted",
+        scenario_id="scenario-secret",
+        date_from="2026-05-25",
+        date_to="2026-05-31",
+        can_write_feedback=False,
+    )
+
+    link = build_workbench_link(context, "resource_dispatch")
+
+    assert link["disabled"] is True
+    assert link["url"] == ""
+    assert "刷新页面" in link["disabled_reason"]
 
 
 def test_primary_resource_links_disable_unsupported_team_context() -> None:
@@ -443,7 +459,9 @@ def _assert_dispatch_and_overdue_context(dispatch: dict, overdue: dict) -> None:
         "scope_type=machine",
         "machine_id=M1",
     ))
-    _assert_shared_context_fragments(overdue)
+    _assert_url_fragments(overdue["url"], ("version=12", "plan_role=adopted"))
+    for fragment in ("date_from=", "date_to=", "query_date=", "period_preset="):
+        assert fragment not in overdue["url"]
     _assert_url_fragments(overdue["url"], ("resource_type=machine", "resource_id=M1"))
     assert overdue["target_page"] == "overdue_report"
 
@@ -453,13 +471,12 @@ def _assert_delay_context(delay: dict) -> None:
     assert "/reports/overdue?" in delay["url"]
     _assert_url_fragments(delay["url"], (
         "plan_role=adopted",
-        "date_from=2026-05-25",
-        "date_to=2026-05-31",
-        "query_date=2026-05-28",
         "batch_id=B202605-001",
         "resource_type=machine",
         "resource_id=M1",
     ))
+    for fragment in ("date_from=", "date_to=", "query_date=", "period_preset="):
+        assert fragment not in delay["url"]
     assert delay["label"] == "查看延期说明"
 
 

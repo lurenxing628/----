@@ -335,8 +335,8 @@ def test_save_scenario_route_does_not_expose_internal_scenario_fields(tmp_path: 
     data = payload["data"]
     assert data["scenario_name"] == "页面保存模拟"
     assert data["created_by"] == "web"
-    assert data["preview_url"]
-    assert data["message"] == "已保存为模拟方案，正式计划还没有改变。"
+    assert "preview_url" not in data
+    assert data["message"] == "已保存为模拟方案，正式计划还没有改变。请从模拟方案入口打开预览。"
     _assert_no_internal_scenario_fields(data)
 
 

@@ -77,3 +77,76 @@ def test_reports_default_range_from_version_span(app_client, db_path) -> None:
     _assert_contains(dt_html, 'name="start_date" value="2099-01-10"', "downtime start_date")
     _assert_contains(dt_html, 'name="end_date" value="2099-01-10"', "downtime end_date")
     _assert_contains(dt_html, "已按所选版本的排程范围自动带入日期。", "downtime hint")
+
+
+def test_reports_version_span_longer_than_custom_limit_is_allowed(app_client, db_path) -> None:
+    from core.infrastructure.database import get_connection
+
+    conn = get_connection(db_path)
+    try:
+        conn.execute("INSERT INTO Parts(part_no, part_name) VALUES (?, ?)", ("P_LONG_RANGE", "长跨度零件"))
+        conn.execute("INSERT INTO Machines(machine_id, name, status) VALUES (?, ?, ?)", ("MC_LONG_R1", "长跨度设备", "active"))
+        conn.execute("INSERT INTO Operators(operator_id, name, status) VALUES (?, ?, ?)", ("OP_LONG_R1", "长跨度人员", "active"))
+        conn.execute(
+            """
+            INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status, remark)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("B_LONG_RANGE", "P_LONG_RANGE", "长跨度零件", 1, "2099-12-31", "normal", "yes", "pending", "long range"),
+        )
+        conn.execute(
+            """
+            INSERT INTO BatchOperations(op_code, batch_id, seq, op_type_name, source, machine_id, operator_id, setup_hours, unit_hours, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("B_LONG_RANGE_10", "B_LONG_RANGE", 10, "数铣", "internal", "MC_LONG_R1", "OP_LONG_R1", 0.5, 1.0, "scheduled"),
+        )
+        row = conn.execute("SELECT id FROM BatchOperations WHERE op_code=?", ("B_LONG_RANGE_10",)).fetchone()
+        if not row:
+            raise RuntimeError("未插入 BatchOperations")
+        op_id = int(row["id"])
+        conn.execute(
+            """
+            INSERT INTO Schedule(op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (op_id, "MC_LONG_R1", "OP_LONG_R1", "2099-01-10 08:00:00", "2099-04-15 12:00:00", "unlocked", 10),
+        )
+        conn.execute(
+            """
+            INSERT INTO MachineDowntimes(machine_id, start_time, end_time, reason_code, reason_detail, status)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            ("MC_LONG_R1", "2099-04-15 10:00:00", "2099-04-15 11:00:00", "maintenance", "长跨度导出测试", "active"),
+        )
+        conn.execute(
+            """
+            INSERT INTO ScheduleHistory(version, strategy, batch_count, op_count, result_status, result_summary, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (10, "test", 1, 1, "success", "{}", "regression"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    client = app_client
+
+    r = client.get("/reports/utilization?version=10")
+    _assert_status(r, "GET /reports/utilization?version=10")
+    util_html = r.data.decode("utf-8", errors="ignore")
+    _assert_contains(util_html, 'name="start_date" value="2099-01-10"', "long utilization start_date")
+    _assert_contains(util_html, 'name="end_date" value="2099-04-15"', "long utilization end_date")
+    _assert_contains(util_html, "已按所选版本的排程范围自动带入日期。", "long utilization hint")
+    assert "utilization/export" in util_html
+    assert "utilization/export?version=10&amp;start_date" not in util_html
+    _assert_status(client.get("/reports/utilization/export?version=10"), "GET /reports/utilization/export?version=10")
+
+    r = client.get("/reports/downtime?version=10")
+    _assert_status(r, "GET /reports/downtime?version=10")
+    dt_html = r.data.decode("utf-8", errors="ignore")
+    _assert_contains(dt_html, 'name="start_date" value="2099-01-10"', "long downtime start_date")
+    _assert_contains(dt_html, 'name="end_date" value="2099-04-15"', "long downtime end_date")
+    assert "downtime/export" in dt_html
+    assert "downtime/export?version=10&amp;start_date" not in dt_html
+    _assert_status(client.get("/reports/downtime/export?version=10"), "GET /reports/downtime/export?version=10")

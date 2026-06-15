@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from io import BytesIO
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlsplit
 
+from flask import Flask
 from openpyxl import load_workbook
 
 from core.infrastructure.database import ensure_schema, get_connection
@@ -17,12 +19,22 @@ TESTS_ROOT = REPO_ROOT / "tests"
 if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
+from core.models.schedule_plan_identity import PlanIdentity  # noqa: E402
+from core.services.scheduler.schedule_delay_diagnosis_utils import plan_link  # noqa: E402
 from tests._support.excel_templates import point_env_at_shared  # noqa: E402
 from tests.scheduler_analysis.test_scheduler_delay_diagnosis_contract import (  # noqa: E402
     VERSION,
     _seed_base,
     _seed_candidates,
     _seed_scenario,
+)
+from web.routes.domains.scheduler.scheduler_plan_context_token import (  # noqa: E402
+    plan_context_token,
+    scenario_id_from_plan_context_token,
+)
+from web.viewmodels.scheduler_reports_workbench import (  # noqa: E402
+    build_report_context,
+    decorate_delay_diagnosis_context,
 )
 
 INTERNAL_TERMS = (
@@ -80,6 +92,27 @@ def _assert_no_internal_terms(text: str) -> None:
         assert term not in text
 
 
+def _insert_bad_finish_time_batch() -> None:
+    db_path = Path(os.environ["APS_DB_PATH"])
+    conn = get_connection(str(db_path))
+    try:
+        conn.executescript(
+            """
+            INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
+            VALUES ('B_BAD_TIME', 'P001', '坏时间批次', 1, '2026-05-03', 'normal', 'yes', 'scheduled');
+
+            INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
+            VALUES (50, 'OP-BAD-10', 'B_BAD_TIME', 'piece-bad', 10, '车削', 'internal', 'scheduled');
+
+            INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+            VALUES (150, 50, 'M1', 'O1', '2026-05-04 10:00:00', '坏结束时间', 'unlocked', 11);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def test_overdue_page_shows_delay_diagnosis_in_plain_chinese(tmp_path: Path, monkeypatch) -> None:
     app, _scenario_id = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
@@ -98,6 +131,31 @@ def test_overdue_page_shows_delay_diagnosis_in_plain_chinese(tmp_path: Path, mon
     assert "当前物料数据不足，只提示核对物料，不判断一定是物料造成延期" in html
     assert "物料不够导致延期" not in html
     _assert_no_internal_terms(html)
+
+
+def test_overdue_page_and_export_show_bad_finish_time_as_data_issue(tmp_path: Path, monkeypatch) -> None:
+    app, _scenario_id = _build_app(tmp_path, monkeypatch)
+    _insert_bad_finish_time_batch()
+    client = app.test_client()
+
+    page_response = client.get(f"/reports/overdue?version={VERSION}&plan_role=adopted")
+    assert page_response.status_code == 200
+    html = page_response.get_data(as_text=True)
+
+    assert "B_BAD_TIME" in html
+    assert "排程时间异常" in html
+    assert "计划完成时间写法不对" in html
+    assert "有排程记录，但计划完成时间写法不对" in html
+
+    export_response = client.get(f"/reports/overdue/export?version={VERSION}&plan_role=adopted")
+    assert export_response.status_code == 200
+    values = "\n".join(_workbook_texts(export_response.data))
+
+    assert "B_BAD_TIME" in values
+    assert "排程时间异常" in values
+    assert "计划完成时间写法不对" in values
+    assert "坏结束时间" not in values
+    _assert_no_internal_terms(values)
 
 
 def test_overdue_export_contains_trace_sheet_without_internal_terms(tmp_path: Path, monkeypatch) -> None:
@@ -136,3 +194,89 @@ def test_overdue_export_supports_scenario_preview_without_internal_terms(tmp_pat
     assert scenario_id not in disposition
     assert scenario_id not in values
     _assert_no_internal_terms(values)
+
+
+def test_delay_diagnosis_plan_link_does_not_expose_raw_scenario_id() -> None:
+    identity = PlanIdentity(
+        version=12,
+        requested_plan_role="adopted",
+        effective_plan_role="adopted",
+        plan_resolution_status="resolved_scenario",
+        source_table="adjustment_scenario_rows",
+        source_row_id=None,
+        candidate_id=None,
+        candidate_key=None,
+        scenario_id="SC-SECRET",
+        schedule_result_status="success",
+        result_summary_parse_failed=False,
+        result_summary_parse_reason="",
+        is_simulation=True,
+        label="模拟预览",
+        user_label="模拟预览",
+        is_official=False,
+        is_preview=True,
+        is_current_executable_version=False,
+        is_current_executable_official_version=False,
+        is_superseded_by_newer_version=False,
+        schedule_lock_status=None,
+        can_dispatch=False,
+        can_write_feedback=False,
+        detail_saved=True,
+    )
+
+    link = plan_link(identity, "/scheduler/gantt", scenario_id="SC-SECRET")
+
+    assert "version=12" in link
+    assert "plan_role=adopted" in link
+    assert "scenario_id" not in link
+    assert "SC-SECRET" not in link
+
+
+def test_delay_diagnosis_public_action_link_preserves_preview_context_as_token() -> None:
+    app = Flask(__name__)
+    app.secret_key = "delay-diagnosis-public-token"
+    scenario_id = "SC-SECRET"
+    with app.app_context():
+        context = build_report_context(
+            version=12,
+            plan_resolution={
+                "requested_role": "adopted",
+                "selected_role": "adopted",
+                "scenario_id": scenario_id,
+                "scenario_display_name": "预览方案",
+                "is_scenario_preview": True,
+                "is_preview": True,
+                "can_write_feedback": False,
+                "can_dispatch": False,
+            },
+            plan_context_token=plan_context_token(scenario_id),
+            date_from="2026-05-01",
+            date_to="2026-05-07",
+        )
+        decorated = decorate_delay_diagnosis_context(
+            {
+                "items_by_batch": {
+                    "B1": {
+                        "batch_id": "B1",
+                        "suggested_actions": [
+                            {
+                                "label": "查看甘特图",
+                                "reason": "先核对计划里这批次排到了哪里。",
+                                "link": "/scheduler/gantt?version=12&plan_role=adopted",
+                            }
+                        ],
+                    }
+                }
+            },
+            context,
+        )
+
+        link = decorated["items_by_batch"]["B1"]["suggested_actions"][0]["link"]
+        query = parse_qs(urlsplit(link).query)
+        token = query.get("plan_context_token", [""])[0]
+
+        assert link.startswith("/scheduler/gantt?")
+        assert "scenario_id" not in link
+        assert scenario_id not in link
+        assert token
+        assert scenario_id_from_plan_context_token(token) == scenario_id

@@ -305,5 +305,6 @@ def test_actual_post_without_query_rejects_body_plan_identity(tmp_path, monkeypa
     payload = _json(resp)
 
     assert resp.status_code == 400
-    assert payload["error"]["details"]["field"] == "plan_identity"
+    assert payload["error"]["details"]["field_label"] == "计划上下文"
+    assert "field" not in payload["error"]["details"]
     assert _event_count(db_path) == 0

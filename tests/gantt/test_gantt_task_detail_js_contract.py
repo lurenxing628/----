@@ -264,8 +264,11 @@ def test_backend_missing_op_code_tasks_render_public_titles_and_keep_process_dep
         overdue_set=set(),
     )
     tasks = outcome.value
-    assert [task["id"] for task in tasks] == ["op_111", "op_222"]
-    assert tasks[1]["dependencies"] == "op_111"
+    first_id = tasks[0]["id"]
+    second_id = tasks[1]["id"]
+    assert all(str(task["id"]).startswith("task_") for task in tasks)
+    assert all("op_" not in str(task["id"]) for task in tasks)
+    assert tasks[1]["dependencies"] == first_id
     assert all("op_" not in task["name"] for task in tasks)
 
     helpers = _load_gantt_helpers()
@@ -303,10 +306,10 @@ state.cfg = {{
 }};
 state.allTasks = {tasks_json};
 state.critical = {{
-  ids: ["op_111", "op_222"],
+  ids: [{json.dumps(first_id)}, {json.dumps(second_id)}],
   edges: [{{
-    from: "op_111",
-    to: "op_222",
+    from: {json.dumps(first_id)},
+    to: {json.dumps(second_id)},
     from_label: "10（车削）",
     to_label: "20（精加工）",
     edge_type: "process",
@@ -331,7 +334,7 @@ state.ui.filterBatch = "";
 state.ui.filterResource = "";
 
 ns.render();
-const second = state.currentTasks.find((task) => task.id === "op_222");
+const second = state.currentTasks.find((task) => task.id === {json.dumps(second_id)});
 state.gantt.options.on_click(second);
 const detailText = document.getElementById("ganttTaskDetail").textContent;
 const popupText = ns.popup.buildTaskPopupHtml(second, state.critical);
@@ -345,9 +348,9 @@ process.stdout.write(JSON.stringify({{
     result = helpers._run_node_json(node_code)
     dependency = result["dependency"]
     if isinstance(dependency, list):
-        assert dependency == ["op_111"]
+        assert dependency == [first_id]
     else:
-        assert dependency == "op_111"
+        assert dependency == first_id
     assert result["rawName"].startswith("20（精加工）")
     assert "20（精加工）" in result["detailText"]
     assert "20（精加工）" in result["popupText"]

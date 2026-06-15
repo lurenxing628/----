@@ -100,6 +100,14 @@ def _assert_status(lines, name: str, resp, expect_code: int = 200):
         raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect_code}；body={body[:500] if body else None}")
 
 
+def _operation_update_url(test_app, op_id: int) -> str:
+    from web.routes.domains.scheduler.scheduler_ops import operation_update_token
+
+    with test_app.app_context():
+        token = operation_update_token(int(op_id))
+    return f"/scheduler/ops/update-token/{token}"
+
+
 def _assert_xlsx(lines, name: str, resp):
     ct = resp.headers.get("Content-Type", "")
     lines.append(f"- {name}：{resp.status_code} content-type={ct}")
@@ -459,11 +467,11 @@ def main():
 
         _assert_status(lines, "GET /scheduler/batches/B001", client.get("/scheduler/batches/B001"), 200)
         resp = client.post(
-            f"/scheduler/ops/{op_id}/update",
+            _operation_update_url(test_app, op_id),
             data={"machine_id": "MC001", "operator_id": "OP001", "setup_hours": str(sh), "unit_hours": str(uh)},
             follow_redirects=True,
         )
-        _assert_status(lines, f"POST /scheduler/ops/{op_id}/update（{op_code}）", resp, 200)
+        _assert_status(lines, f"POST /scheduler/ops/update-token（{op_code}）", resp, 200)
 
         # 外部工序：若 ext_days 为空则补 1 天（使用路由保存一次）
         conn = get_connection(test_db)
@@ -495,11 +503,11 @@ def main():
             if ext_days_f is None or ext_days_f <= 0:
                 ext_days_f = 1.0
             resp = client.post(
-                f"/scheduler/ops/{ext_id}/update",
+                _operation_update_url(test_app, ext_id),
                 data={"supplier_id": sup_id, "ext_days": str(ext_days_f)},
                 follow_redirects=True,
             )
-            _assert_status(lines, f"POST /scheduler/ops/{ext_id}/update（{ext_code} 外部）", resp, 200)
+            _assert_status(lines, f"POST /scheduler/ops/update-token（{ext_code} 外部）", resp, 200)
 
         # ============================================================
         # 8) 执行排产（从页面入口 /scheduler/run）

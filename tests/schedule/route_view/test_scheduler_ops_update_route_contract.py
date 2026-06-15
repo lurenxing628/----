@@ -1,7 +1,8 @@
-"""回归测试：POST /scheduler/ops/<op_id>/update 路由契约——成功分支把表单字段透传 update_internal_operation 后重定向；内排工序允许清空机台/人员（空串转 None）；设备与人员不匹配的 ValidationError 须以用户可见的 flash 文案拒绝。"""
+"""回归测试：工序保存只能走公开 token 入口，旧数字 ID 入口不再写数据。"""
 
 from __future__ import annotations
 
+import base64
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -12,6 +13,12 @@ from core.models import BatchOperation
 from core.services.scheduler.operation_edit_service import _validate_operator_machine_match
 from web.error_boundary import user_visible_app_error_message
 from web.error_handlers import register_error_handlers
+
+
+def _decode_urlsafe_first_segment(token: str) -> str:
+    first = str(token or "").split(".", 1)[0]
+    padded = first + ("=" * (-len(first) % 4))
+    return base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8", errors="replace")
 
 
 class _ScheduleServiceSuccess:
@@ -52,13 +59,35 @@ def _build_app(monkeypatch, schedule_service) -> Flask:
     return app
 
 
-def test_scheduler_ops_update_route_success_branch(monkeypatch) -> None:
+def test_scheduler_ops_legacy_update_route_is_rejected_without_writing(monkeypatch) -> None:
     schedule_service = _ScheduleServiceSuccess()
     app = _build_app(monkeypatch, schedule_service)
     client = app.test_client()
 
+    with client:
+        response = client.post(
+            "/scheduler/ops/1/update",
+            data={"machine_id": "M1", "operator_id": "O1", "setup_hours": "1.5", "unit_hours": "2.5"},
+        )
+        flashes = get_flashed_messages(with_categories=True)
+
+    assert response.status_code in (301, 302)
+    assert schedule_service.saved is None
+    assert any(cat == "error" and msg == "工序保存入口已失效，请刷新页面后重试。" for cat, msg in flashes), flashes
+
+
+def test_scheduler_ops_update_token_route_success_branch(monkeypatch) -> None:
+    import web.routes.domains.scheduler.scheduler_ops as route_mod
+
+    schedule_service = _ScheduleServiceSuccess()
+    app = _build_app(monkeypatch, schedule_service)
+    client = app.test_client()
+
+    with app.app_context():
+        token = route_mod.operation_update_token(1)
+
     response = client.post(
-        "/scheduler/ops/1/update",
+        f"/scheduler/ops/update-token/{token}",
         data={"machine_id": "M1", "operator_id": "O1", "setup_hours": "1.5", "unit_hours": "2.5"},
     )
 
@@ -72,13 +101,18 @@ def test_scheduler_ops_update_route_success_branch(monkeypatch) -> None:
     }
 
 
-def test_scheduler_ops_update_route_allows_blank_internal_assignment(monkeypatch) -> None:
+def test_scheduler_ops_update_token_route_allows_blank_internal_assignment(monkeypatch) -> None:
+    import web.routes.domains.scheduler.scheduler_ops as route_mod
+
     schedule_service = _ScheduleServiceSuccess()
     app = _build_app(monkeypatch, schedule_service)
     client = app.test_client()
 
+    with app.app_context():
+        token = route_mod.operation_update_token(1)
+
     response = client.post(
-        "/scheduler/ops/1/update",
+        f"/scheduler/ops/update-token/{token}",
         data={"machine_id": "", "operator_id": "", "setup_hours": "", "unit_hours": ""},
     )
 
@@ -92,13 +126,48 @@ def test_scheduler_ops_update_route_allows_blank_internal_assignment(monkeypatch
     }
 
 
-def test_scheduler_ops_update_route_rejects_machine_operator_mismatch(monkeypatch) -> None:
+def test_scheduler_ops_update_token_route_uses_opaque_token(monkeypatch) -> None:
+    import web.routes.domains.scheduler.scheduler_ops as route_mod
+
+    schedule_service = _ScheduleServiceSuccess()
+    app = _build_app(monkeypatch, schedule_service)
+    client = app.test_client()
+
+    with app.app_context():
+        token = route_mod.operation_update_token(123)
+
+    assert "123" not in token
+    decoded = _decode_urlsafe_first_segment(token)
+    assert "123" not in decoded
+    assert '"op"' not in decoded
+
+    response = client.post(
+        f"/scheduler/ops/update-token/{token}",
+        data={"machine_id": "M1", "operator_id": "O1", "setup_hours": "1.5", "unit_hours": "2.5"},
+    )
+
+    assert response.status_code in (301, 302)
+    assert schedule_service.saved == {
+        "op_id": 123,
+        "machine_id": "M1",
+        "operator_id": "O1",
+        "setup_hours": "1.5",
+        "unit_hours": "2.5",
+    }
+
+
+def test_scheduler_ops_update_token_route_rejects_machine_operator_mismatch(monkeypatch) -> None:
+    import web.routes.domains.scheduler.scheduler_ops as route_mod
+
     app = _build_app(monkeypatch, _ScheduleServiceMismatch())
     client = app.test_client()
 
+    with app.app_context():
+        token = route_mod.operation_update_token(1)
+
     with client:
         response = client.post(
-            "/scheduler/ops/1/update",
+            f"/scheduler/ops/update-token/{token}",
             data={"machine_id": "M1", "operator_id": "O9", "setup_hours": "1.5", "unit_hours": "2.5"},
             headers={"Accept": "application/json"},
         )

@@ -86,6 +86,14 @@ def _assert_xlsx(lines, name: str, resp):
         raise RuntimeError(f"{name} content-type 异常：{ct}")
 
 
+def _operation_update_url(test_app, op_id: int) -> str:
+    from web.routes.domains.scheduler.scheduler_ops import operation_update_token
+
+    with test_app.app_context():
+        token = operation_update_token(int(op_id))
+    return f"/scheduler/ops/update-token/{token}"
+
+
 def _query_recent_logs(conn, module: str, action: str, target_type: str, limit: int = 10):
     rows = conn.execute(
         """
@@ -366,22 +374,22 @@ def main():
 
     # 不匹配组合：应报中文错误且包含工号/设备编号
     resp_bad = client.post(
-        f"/scheduler/ops/{op_id}/update",
+        _operation_update_url(test_app, op_id),
         data={"machine_id": "MC003", "operator_id": "OP001", "setup_hours": "0.5", "unit_hours": "0.2"},
-        follow_redirects=False,
+        follow_redirects=True,
     )
-    _assert_status(lines, f"POST /scheduler/ops/{op_id}/update（不匹配应拒绝）", resp_bad, 400)
+    _assert_status(lines, f"POST /scheduler/ops/update-token（{op_code} 不匹配应拒绝）", resp_bad, 200)
     html_bad = resp_bad.data.decode("utf-8", errors="ignore")
     if "未被配置为可操作设备" not in html_bad or "MC003" not in html_bad or "OP001" not in html_bad:
         raise RuntimeError("人机不匹配错误提示不够明确（期望包含中文提示 + 设备编号/工号）")
 
     # 匹配组合：应可保存（返回批次详情页）
     resp_ok = client.post(
-        f"/scheduler/ops/{op_id}/update",
+        _operation_update_url(test_app, op_id),
         data={"machine_id": "MC001", "operator_id": "OP001", "setup_hours": "0.5", "unit_hours": "0.2"},
         follow_redirects=True,
     )
-    _assert_status(lines, f"POST /scheduler/ops/{op_id}/update（匹配应成功）", resp_ok, 200)
+    _assert_status(lines, f"POST /scheduler/ops/update-token（{op_code} 匹配应成功）", resp_ok, 200)
 
     # =====================
     # 3) Scheduler: WorkCalendar Excel

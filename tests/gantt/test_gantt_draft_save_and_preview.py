@@ -22,6 +22,31 @@ from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 VERSION = 5
+_PUBLIC_GANTT_JSON_FORBIDDEN_KEYS = {
+    "op_id",
+    "schedule_id",
+    "scenario_id",
+    "candidate_id",
+    "selection_candidate_id",
+    "resolved_candidate_id",
+    "candidate_key",
+    "source_row_id",
+    "source_table",
+}
+
+
+def _public_json_forbidden_key_paths(value, *, path: str = "data"):
+    paths = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            key_path = f"{path}.{key}"
+            if str(key) in _PUBLIC_GANTT_JSON_FORBIDDEN_KEYS:
+                paths.append(key_path)
+            paths.extend(_public_json_forbidden_key_paths(child, path=key_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            paths.extend(_public_json_forbidden_key_paths(child, path=f"{path}[{index}]"))
+    return paths
 
 
 def _connect(tmp_path: Path):
@@ -278,7 +303,7 @@ def test_gantt_service_and_template_keep_scenario_preview_context(tmp_path: Path
             plan_role="adopted",
             scenario_id=scenario.scenario_id,
         )
-        op30_task = next(task for task in data["tasks"] if task["meta"]["op_id"] == 30)
+        op30_task = next(task for task in data["tasks"] if (task.get("meta") or {}).get("operation_label") == "10（铣削）")
         assert op30_task["start"] == "2026-05-04 11:00:00"
         assert data["is_scenario_preview"] is True
         assert data["scenario_id"] == scenario.scenario_id
@@ -293,15 +318,23 @@ def test_gantt_service_and_template_keep_scenario_preview_context(tmp_path: Path
     html = response.get_data(as_text=True)
     assert response.status_code == 200
     assert "当前正在预览模拟方案" in html
-    assert f'data-scenario-id="{scenario.scenario_id}"' in html
-    assert f'name="scenario_id" value="{scenario.scenario_id}"' in html
-    assert f"scenario_id={scenario.scenario_id}" in html
+    assert 'data-plan-context-token="' in html
+    assert f'data-scenario-id="{scenario.scenario_id}"' not in html
+    assert f'name="scenario_id" value="{scenario.scenario_id}"' not in html
+    data_response = client.get(
+        f"/scheduler/gantt/data?view=machine&version={VERSION}&plan_role=adopted&scenario_id={scenario.scenario_id}"
+    )
+    payload = data_response.get_json() or {}
+    public_data = payload.get("data") or {}
+    assert data_response.status_code == 200
+    assert public_data.get("is_scenario_preview") is True
+    assert _public_json_forbidden_key_paths(public_data) == []
     zoom_html = client.get(
         f"/scheduler/gantt?version={VERSION}&plan_role=adopted&scenario_id={scenario.scenario_id}&gantt_zoom=hour"
     ).get_data(as_text=True)
     assert zoom_html.count("gantt_zoom=hour") >= 5
     assert "offset=-1" in zoom_html
-    assert f"scenario_id={scenario.scenario_id}" in zoom_html
+    assert "plan_context_token=" in zoom_html
 
 
 def test_save_scenario_route_uses_server_operator_not_json_created_by(tmp_path: Path, monkeypatch) -> None:

@@ -399,6 +399,54 @@ def test_validate_simulate_route_is_callable_but_not_wired_to_gantt_page(tmp_pat
         assert "data-adjustment-url" not in text
 
 
+def test_validate_simulate_route_public_json_hides_internal_issue_fields(tmp_path: Path, monkeypatch) -> None:
+    app, _seeded_draft_id = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    create_resp = client.post(
+        "/scheduler/gantt/adjustments/create-draft",
+        json={"base_version": VERSION, "base_plan_role": "adopted"},
+    )
+    draft_id = create_resp.get_json()["data"]["draft_id"]
+    client.post(
+        "/scheduler/gantt/adjustments/record-time-change",
+        json={
+            "draft_id": draft_id,
+            "schedule_id": 90,
+            "op_id": 30,
+            "to_start": "2026-05-04 08:30:00",
+            "to_end": "2026-05-04 09:30:00",
+        },
+    )
+    client.post(
+        "/scheduler/gantt/adjustments/record-resource-change",
+        json={
+            "draft_id": draft_id,
+            "schedule_id": 90,
+            "op_id": 30,
+            "from_machine_id": "M2",
+            "to_machine_id": "M1",
+            "from_operator_id": "O2",
+            "to_operator_id": "O1",
+        },
+    )
+
+    response = client.post("/scheduler/gantt/adjustments/validate-simulate", json={"draft_id": draft_id})
+    payload = response.get_json()
+    data = payload["data"]
+
+    assert response.status_code == 200
+    assert payload["success"] is True
+    assert data["status"] == "blocked"
+    assert data["can_apply"] is False
+    assert data["issue_count"] >= 1
+    assert data["issues"]
+    assert all(set(issue.keys()) <= {"severity", "code", "message"} for issue in data["issues"])
+    forbidden = {"op_id", "related_op_id", "base_plan_role", "schedule_id", "scenario_id", "candidate_id", "source_table"}
+    assert forbidden.isdisjoint(str(payload).split("'"))
+    assert all(key not in str(payload) for key in forbidden)
+
+
 def test_adjustment_draft_routes_create_record_and_discard_without_formal_writes(tmp_path: Path, monkeypatch) -> None:
     app, _seeded_draft_id = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
@@ -421,7 +469,12 @@ def test_adjustment_draft_routes_create_record_and_discard_without_formal_writes
     assert create_resp.status_code == 200
     assert create_payload["success"] is True
     draft_id = create_payload["data"]["draft_id"]
-    assert create_payload["data"]["created_by"] == "web"
+    assert create_payload["data"] == {
+        "draft_id": draft_id,
+        "status": "editing",
+        "change_count": 0,
+        "message": "已创建模拟调整草稿，正式计划还没有改变。",
+    }
 
     time_resp = client.post(
         "/scheduler/gantt/adjustments/record-time-change",
@@ -434,7 +487,13 @@ def test_adjustment_draft_routes_create_record_and_discard_without_formal_writes
         },
     )
     assert time_resp.status_code == 200
-    assert time_resp.get_json()["data"]["change_type"] == "move_time"
+    time_data = time_resp.get_json()["data"]
+    assert time_data == {
+        "draft_id": draft_id,
+        "change_type": "move_time",
+        "validation_status": "pending",
+        "message": "已记录时间调整，正式计划还没有改变。",
+    }
 
     resource_resp = client.post(
         "/scheduler/gantt/adjustments/record-resource-change",
@@ -449,14 +508,47 @@ def test_adjustment_draft_routes_create_record_and_discard_without_formal_writes
         },
     )
     assert resource_resp.status_code == 200
-    assert resource_resp.get_json()["data"]["change_type"] == "change_resource"
+    resource_data = resource_resp.get_json()["data"]
+    assert resource_data == {
+        "draft_id": draft_id,
+        "change_type": "change_resource",
+        "validation_status": "pending",
+        "message": "已记录资源调整，正式计划还没有改变。",
+    }
 
     discard_resp = client.post(
         "/scheduler/gantt/adjustments/discard-draft",
         json={"draft_id": draft_id, "reason": "不采用"},
     )
     assert discard_resp.status_code == 200
-    assert discard_resp.get_json()["data"]["status"] == "discarded"
+    discard_data = discard_resp.get_json()["data"]
+    assert discard_data == {
+        "draft_id": draft_id,
+        "status": "discarded",
+        "change_count": 2,
+        "message": "已废弃模拟调整草稿，正式计划还没有改变。",
+    }
+
+    forbidden = {
+        "schedule_id",
+        "op_id",
+        "scenario_id",
+        "candidate_id",
+        "source_table",
+        "created_by",
+        "base_version",
+        "base_plan_role",
+        "from_start",
+        "from_end",
+        "to_start",
+        "to_end",
+        "from_machine_id",
+        "to_machine_id",
+        "from_operator_id",
+        "to_operator_id",
+    }
+    for payload in (create_payload["data"], time_data, resource_data, discard_data):
+        assert forbidden.isdisjoint(payload.keys())
 
     after_conn = get_connection(str(tmp_path / "route.db"))
     try:

@@ -224,8 +224,8 @@ def test_first_round_workbench_flow_preserves_context_from_homepage_links(monkey
     overdue = _query(_href_for_label(parser, "查看超期清单"))
     assert overdue["version"] == ["12"]
     assert overdue["plan_role"] == ["adopted"]
-    assert overdue["date_from"]
-    assert overdue["date_to"]
+    assert "date_from" not in overdue
+    assert "date_to" not in overdue
 
     utilization = _query(_href_for_label(parser, "查看资源负荷"))
     assert utilization["version"] == ["12"]

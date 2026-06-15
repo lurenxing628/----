@@ -392,8 +392,11 @@ def test_event_list_requires_explicit_plan_query_identity(tmp_path, monkeypatch)
     payload = _json(resp)
 
     assert resp.status_code == 400
-    assert payload["error"]["details"]["field"] == "plan_identity"
-    assert set(payload["error"]["details"]["missing_fields"]) == {"version", "plan_role"}
+    details = payload["error"]["details"]
+    assert details["field_label"] == "计划上下文"
+    assert set(details["missing_field_labels"]) == {"版本", "方案"}
+    assert "field" not in details
+    assert "missing_fields" not in details
 
 
 def test_current_actual_write_validation_ignores_superseded_same_op_feedback(tmp_path, monkeypatch) -> None:

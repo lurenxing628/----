@@ -42,6 +42,18 @@ def _write_contract(log_dir: Path, host: str, port: int, db_path: str) -> None:
     _write_text(log_dir / "aps_db_path.txt", db_path + "\n")
 
 
+def _symlink_supported(tmp_path: Path) -> bool:
+    try:
+        target = tmp_path / "_target"
+        target.write_text("x", encoding="utf-8")
+        link = tmp_path / "_link"
+        os.symlink(str(target), str(link))
+        link.unlink()
+        return True
+    except (OSError, NotImplementedError):
+        return False
+
+
 def test_validate_dist_runtime_identity_contract(tmp_path: Path) -> None:
     runtime_dir = tmp_path / "contract"
     runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -133,3 +145,32 @@ def test_validate_dist_runtime_identity_contract(tmp_path: Path) -> None:
         raise RuntimeError("进程提前退出时应被拒绝")
     except RuntimeError as e:
         _assert("页面检查通过后进程已退出" in str(e), "进程退出错误信息不正确")
+
+
+def test_validate_dist_runtime_contract_refuses_symlink_and_bad_utf8(tmp_path: Path) -> None:
+    log_dir = tmp_path / "logs"
+    db_path = tmp_path / "aps.db"
+    db_path.write_text("", encoding="utf-8")
+    _write_contract(log_dir, "127.0.0.1", 5720, str(db_path))
+    (log_dir / "aps_port.txt").write_bytes(b"57\xff20\n")
+
+    try:
+        mod._read_runtime_contract(str(log_dir))
+        raise RuntimeError("固定名运行时契约文件遇到坏 UTF-8 时应拒绝解析")
+    except RuntimeError as e:
+        _assert("port 文件无效" in str(e), "坏 UTF-8 的错误信息应落到 port 文件无效")
+
+    if not _symlink_supported(tmp_path):
+        return
+
+    victim = tmp_path / "victim.txt"
+    victim.write_text("VICTIM", encoding="utf-8")
+    (log_dir / "aps_host.txt").unlink()
+    os.symlink(str(victim), str(log_dir / "aps_host.txt"))
+
+    try:
+        mod._read_runtime_contract(str(log_dir))
+        raise RuntimeError("固定名运行时契约文件是软链接时应拒绝读取")
+    except RuntimeError as e:
+        _assert("host 文件无效" in str(e), "软链接 host 的错误信息应落到 host 文件无效")
+    _assert(victim.read_text(encoding="utf-8") == "VICTIM", "读取契约不应触碰软链接目标")

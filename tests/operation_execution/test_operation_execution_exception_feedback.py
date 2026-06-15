@@ -330,7 +330,8 @@ def test_internal_execution_token_is_rejected_as_exception_remark(tmp_path, monk
     error = _json(bad_resp)["error"]
 
     assert bad_resp.status_code == 400
-    assert error["details"]["field"] == "remark"
+    assert error["details"]["field_label"] == "情况说明"
+    assert "field" not in error["details"]
     assert "情况说明" in error["message"]
     assert _event_count(db_path) == 1
 

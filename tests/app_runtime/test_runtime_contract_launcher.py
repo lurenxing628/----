@@ -143,14 +143,14 @@ def test_delete_runtime_contract_files_result_reports_remove_failure(monkeypatch
     _write_cleanup_artifacts(state_dir)
     _write_contract_payload(runtime_dir, _valid_contract_payload(runtime_dir))
     blocked_path = str(state_dir / "aps_host.txt")
-    real_remove = cleanup_mod.os.remove
+    real_remove = cleanup_mod.remove_fixed_file
 
-    def _remove(path):
+    def _remove(path, **kwargs):
         if str(path) == blocked_path:
             raise PermissionError("locked")
-        return real_remove(path)
+        return real_remove(path, **kwargs)
 
-    monkeypatch.setattr(cleanup_mod.os, "remove", _remove)
+    monkeypatch.setattr(cleanup_mod, "remove_fixed_file", _remove)
 
     result = launcher.delete_runtime_contract_files_result(str(runtime_dir))
 
@@ -169,15 +169,16 @@ def test_delete_runtime_contract_files_result_reports_mirror_failure(monkeypatch
     payload = _valid_contract_payload(runtime_dir)
     payload["data_dirs"] = {"log_dir": str(mirror_dir)}
     _write_contract_payload(runtime_dir, payload)
+    (mirror_dir / "aps_runtime.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     blocked_path = str(mirror_dir / "aps_host.txt")
-    real_remove = cleanup_mod.os.remove
+    real_remove = cleanup_mod.remove_fixed_file
 
-    def _remove(path):
+    def _remove(path, **kwargs):
         if str(path) == blocked_path:
             raise PermissionError("mirror locked")
-        return real_remove(path)
+        return real_remove(path, **kwargs)
 
-    monkeypatch.setattr(cleanup_mod.os, "remove", _remove)
+    monkeypatch.setattr(cleanup_mod, "remove_fixed_file", _remove)
 
     result = launcher.delete_runtime_contract_files_result(str(runtime_dir))
 
@@ -194,10 +195,10 @@ def test_delete_runtime_contract_files_wrapper_keeps_legacy_no_raise(monkeypatch
     _write_cleanup_artifacts(state_dir)
     _write_contract_payload(runtime_dir, _valid_contract_payload(runtime_dir))
 
-    def _remove(_path):
+    def _remove(_path, **_kwargs):
         raise PermissionError("locked")
 
-    monkeypatch.setattr(cleanup_mod.os, "remove", _remove)
+    monkeypatch.setattr(cleanup_mod, "remove_fixed_file", _remove)
 
     launcher.delete_runtime_contract_files(str(runtime_dir))
 

@@ -83,7 +83,10 @@ def test_scheduler_batch_detail_route_uses_request_services(monkeypatch) -> None
         g.app_logger = app.logger
         g.op_logger = None
 
-    response = client.get("/scheduler/batches/B001")
+    response = client.get(
+        "/scheduler/batches/B001",
+        query_string={"next": "/scheduler/batches?status=&page=2"},
+    )
     payload = response.get_json()
 
     assert response.status_code == 200
@@ -94,6 +97,8 @@ def test_scheduler_batch_detail_route_uses_request_services(monkeypatch) -> None
     # get_latest_version→0 显式落 no_official_plan 诚实空态（非 error 兜底）——把早退分支从隐式
     # smoke 升为显式断言：若守卫回退到取数段会因缺 schedule_plan_query_service 走 error 态而此断言红。
     assert payload["schedule_placement"]["state"] == "no_official_plan"
+    assert payload["batch_return_url"] == "/scheduler/batches?status=&page=2"
+    assert payload["batch_return_next"] == "/scheduler/batches?status=&page=2"
 
 
 def test_scheduler_batch_detail_renders_schedule_placement_ok(monkeypatch) -> None:

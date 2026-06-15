@@ -181,6 +181,9 @@ def test_report_export_size_mode_selection(app_client, db_path, monkeypatch) -> 
         version: int,
         resolution,
         batch_ids: Any = None,
+        resource_type: Any = None,
+        resource_id: Any = None,
+        batch_id: Any = None,
     ) -> List[Dict[str, Any]]:
         return [
             {

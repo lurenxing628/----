@@ -197,6 +197,42 @@ def test_resource_dispatch_history_and_scenario_pages_do_not_emit_review_or_writ
             assert forbidden not in body
 
 
+def test_resource_dispatch_invalid_plan_context_token_is_blocked_without_default_page(tmp_path, monkeypatch) -> None:
+    app, _db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    from web.routes.domains.scheduler import scheduler_resource_dispatch as rd_routes
+
+    monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
+    query = (
+        "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01"
+        "&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted"
+        "&plan_context_token=bad-token"
+    )
+
+    page_resp = client.get(f"/scheduler/resource-dispatch?{query}")
+    page_body = page_resp.get_data(as_text=True)
+
+    assert page_resp.status_code == 400
+    assert "方案预览入口已失效" in page_body
+    assert "data-actual-record-url-template=" not in page_body
+    assert "/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual" not in page_body
+
+    data_resp = client.get(f"/scheduler/resource-dispatch/data?{query}", headers={"Accept": "application/json"})
+    data_payload = data_resp.get_json()
+
+    assert data_resp.status_code == 400
+    assert data_payload["success"] is False
+    assert data_payload["error"]["message"] == "方案预览入口已失效，请刷新页面后重试。"
+    assert "scenario_id" not in str(data_payload)
+
+    export_resp = client.get(f"/scheduler/resource-dispatch/export?{query}")
+    export_body = export_resp.get_data(as_text=True)
+
+    assert export_resp.status_code == 400
+    assert "方案预览入口已失效" in export_body
+    assert export_resp.location is None
+
+
 def test_resource_dispatch_execution_entry_rejects_incomplete_plan_context(tmp_path, monkeypatch) -> None:
     app, _db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
@@ -217,10 +253,15 @@ def test_resource_dispatch_execution_entry_rejects_incomplete_plan_context(tmp_p
 
     assert data_resp.status_code == 400
     assert payload["success"] is False
-    assert payload["error"]["details"]["field"] == "plan_identity"
-    assert "plan_role" in payload["error"]["details"]["missing_fields"]
-    assert "period_preset" in payload["error"]["details"]["missing_fields"]
-    assert "scope_type" in payload["error"]["details"]["missing_fields"]
+    details = payload["error"]["details"]
+    assert "field" not in details
+    assert "missing_fields" not in details
+    assert details["field_label"] == "计划上下文"
+    assert "方案" in details["missing_field_labels"]
+    assert "日期范围" in details["missing_field_labels"]
+    assert "范围类型" in details["missing_field_labels"]
+    assert "开始日期" in details["missing_field_labels"]
+    assert "结束日期" in details["missing_field_labels"]
 
 
 def test_execution_review_link_keeps_server_side_guard_fields() -> None:

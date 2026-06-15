@@ -408,6 +408,23 @@ def test_execution_review_page_and_export_show_no_feedback_state(tmp_path, monke
         wb.close()
 
 
+def test_execution_review_filter_does_not_preserve_preview_token(tmp_path, monkeypatch) -> None:
+    app, _db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    from web.routes.domains.scheduler.scheduler_plan_context_token import plan_context_token
+
+    with app.app_context():
+        token = plan_context_token("scenario-review-preview")
+
+    page = client.get(f"/reports/execution-review?version=2&plan_context_token={token}")
+    body = page.get_data(as_text=True)
+
+    assert page.status_code == 200
+    assert "计划和现场实际只复盘正式采用方案" in body
+    assert 'name="plan_context_token"' not in body
+    assert "scenario-review-preview" not in body
+
+
 def test_execution_review_ignores_feedback_when_plan_identity_mismatches(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _seed_execution_events(db_path)
@@ -526,6 +543,21 @@ def test_execution_review_validation_and_offline_template_contract(tmp_path, mon
     reversed_date = client.get("/reports/execution-review/export?version=2&date_from=2026-05-02&date_to=2026-05-01")
     assert reversed_date.status_code == 400
     assert "结束日期不能早于开始日期" in reversed_date.get_data(as_text=True)
+
+    long_date = client.get("/reports/execution-review?version=2&date_from=2026-01-01&date_to=2026-04-15")
+    assert long_date.status_code == 400
+    assert "日期范围不能超过 62 天" in long_date.get_data(as_text=True)
+
+    long_date_export = client.get("/reports/execution-review/export?version=2&date_from=2026-01-01&date_to=2026-04-15")
+    assert long_date_export.status_code == 400
+    assert "日期范围不能超过 62 天" in long_date_export.get_data(as_text=True)
+
+    conn = get_connection(_db_path)
+    try:
+        with pytest.raises(ValidationError, match="日期范围不能超过 62 天"):
+            ReportEngine(conn).execution_review(2, date_from="2026-01-01", date_to="2026-04-15")
+    finally:
+        conn.close()
 
     with open("templates/reports/execution_review.html", encoding="utf-8") as fh:
         template = fh.read()

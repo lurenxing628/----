@@ -58,6 +58,13 @@ def test_request_scope_app_logger_binding(tmp_path, monkeypatch) -> None:
             captured["status"] = status
             return []
 
+        def list_page(self, status=None, ready_status=None, page=1, per_page=100):
+            captured["status"] = status
+            captured["ready_status"] = ready_status
+            captured["page"] = page
+            captured["per_page"] = per_page
+            return [], 0
+
     class _StubConfigService:
         def __init__(self, _conn, logger=None, op_logger=None, **_kwargs):
             captured["config_logger"] = logger

@@ -1,4 +1,4 @@
-"""回归测试：static/js/report_plan_filter.js 的场景保持契约——在 Node 桩里驱动版本/计划角色下拉的 change/submit 事件，验证改动 version 会清空 scenario_id、改回初始 version 才恢复 SCENARIO-RPT；但当 plan-role 也偏离初始值时，恢复 version 不应恢复 scenario，唯有 role 也改回初始并提交后才恢复。"""
+"""回归测试：static/js/report_plan_filter.js 的场景保持契约——在 Node 桩里驱动版本/计划角色下拉的 change/submit 事件，验证改动 version 会清空 scenario_id/plan_context_token、改回初始 version 才恢复原值；但当 plan-role 也偏离初始值时，恢复 version 不应恢复场景，唯有 role 也改回初始并提交后才恢复。"""
 
 from __future__ import annotations
 
@@ -33,29 +33,40 @@ function element(value, attrs) {
 const version = element("12", {"data-report-plan-version-select": "", "data-initial-version": "12"});
 const role = element("adopted", {"data-report-plan-role-select": "", "data-initial-plan-role": "adopted"});
 const scenario = element("SCENARIO-RPT", {});
+const token = element("TOKEN-RPT", {});
 const form = {
   querySelector(selector) { return selector === 'input[name="scenario_id"]' ? scenario : null; },
-  querySelectorAll() { return [version, role]; },
+  querySelectorAll(selector) {
+    if (selector.indexOf('input[name="scenario_id"]') >= 0 || selector.indexOf('input[name="plan_context_token"]') >= 0) {
+      return [scenario, token];
+    }
+    return [version, role];
+  },
 };
 version.form = role.form = form;
 version.value = "13";
 listeners.change({target: version});
 if (scenario.value !== "") throw new Error("changed version must clear scenario");
+if (token.value !== "") throw new Error("changed version must clear plan token");
 version.value = "12";
 listeners.change({target: version});
 if (scenario.value !== "SCENARIO-RPT") throw new Error("restored version must restore scenario");
+if (token.value !== "TOKEN-RPT") throw new Error("restored version must restore plan token");
 role.value = "baseline_best";
 listeners.submit({target: form});
 if (scenario.value !== "") throw new Error("changed role must clear scenario before submit");
+if (token.value !== "") throw new Error("changed role must clear plan token before submit");
 version.value = "13";
 listeners.change({target: version});
 version.value = "12";
 listeners.change({target: version});
 if (scenario.value !== "") throw new Error("restored version must not restore scenario while role changed");
+if (token.value !== "") throw new Error("restored version must not restore plan token while role changed");
 role.value = "adopted";
 listeners.submit({target: form});
 if (scenario.value !== "SCENARIO-RPT") throw new Error("restored role must restore scenario before submit");
-console.log(JSON.stringify({scenario_id: scenario.value}));
+if (token.value !== "TOKEN-RPT") throw new Error("restored role must restore plan token before submit");
+console.log(JSON.stringify({scenario_id: scenario.value, plan_context_token: token.value}));
 """
     result = subprocess.run(
         ["node", "-e", harness],
@@ -65,4 +76,6 @@ console.log(JSON.stringify({scenario_id: scenario.value}));
         capture_output=True,
         check=True,
     )
-    assert json.loads(result.stdout)["scenario_id"] == "SCENARIO-RPT"
+    payload = json.loads(result.stdout)
+    assert payload["scenario_id"] == "SCENARIO-RPT"
+    assert payload["plan_context_token"] == "TOKEN-RPT"

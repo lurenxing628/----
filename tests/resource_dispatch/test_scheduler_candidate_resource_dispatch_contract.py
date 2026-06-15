@@ -197,6 +197,10 @@ def _json_key_hits(value: Any, forbidden_keys: set) -> List[str]:
     return hits
 
 
+def _json_text(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
 def test_resource_dispatch_service_reads_requested_candidate_plan_and_falls_back_to_adopted(tmp_path: Path) -> None:
     conn = _seed_db(tmp_path)
     try:
@@ -393,6 +397,146 @@ def test_resource_dispatch_batch_id_filters_dispatch_and_execution_rows(tmp_path
         assert [row.get("batch_id") for row in execution_context.get("rows") or []] == ["B1"]
     finally:
         conn.close()
+
+
+def test_dispatch_repository_pushes_batch_schedule_and_op_filters_to_sql() -> None:
+    from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
+
+    repo = SchedulePlanQueryRepository.__new__(SchedulePlanQueryRepository)
+    captured: Dict[str, Any] = {}
+
+    def fake_fetchall(sql, params):
+        captured["sql"] = sql
+        captured["params"] = params
+        return []
+
+    repo.fetchall = fake_fetchall  # type: ignore[method-assign]
+
+    repo.list_dispatch_rows(
+        version=VERSION,
+        source_table=SOURCE_SCHEDULE,
+        candidate_id=None,
+        start_time="2026-05-01 00:00:00",
+        end_time="2026-05-08 00:00:00",
+        scope_type="operator",
+        scope_id="O-ADOPTED",
+        batch_id="B1",
+        schedule_id=90,
+        op_id=30,
+    )
+
+    assert "TRIM(CAST(bo.batch_id AS TEXT)) = ?" in captured["sql"]
+    assert "s.id = ?" in captured["sql"]
+    assert "s.op_id = ?" in captured["sql"]
+    assert captured["params"][-4:] == ("O-ADOPTED", "B1", 90, 30)
+
+
+def test_feedback_task_card_queries_exact_schedule_identity() -> None:
+    from core.models.operation_execution_state import OperationExecutionState
+    from core.services.scheduler.operation_execution_feedback_support import ExecutionFeedbackContext
+    from core.services.scheduler.resource_dispatch_execution_service import ResourceDispatchExecutionService
+
+    calls: List[Dict[str, Any]] = []
+    svc = ResourceDispatchExecutionService.__new__(ResourceDispatchExecutionService)
+    svc.dispatch_service = SimpleNamespace(_latest_version=lambda: VERSION)
+    svc.schedule_repo = SimpleNamespace(
+        get=lambda _schedule_id: SimpleNamespace(start_time="2026-05-01 08:00:00", end_time="2026-05-01 12:00:00")
+    )
+
+    class _PlanQuery:
+        def list_plan_dispatch_rows_for_resolution(self, **kwargs):
+            calls.append(kwargs)
+            return [
+                {
+                    "schedule_id": 90,
+                    "op_id": 30,
+                    "batch_id": "B1",
+                    "start_time": "2026-05-01 08:00:00",
+                    "end_time": "2026-05-01 12:00:00",
+                    "source": "internal",
+                }
+            ]
+
+    svc.plan_query_service = _PlanQuery()
+    context = ExecutionFeedbackContext(
+        schedule_version=VERSION,
+        schedule_id=90,
+        op_id=30,
+        batch_id="B1",
+        expected_state_revision="rev",
+        created_by="pytest",
+        idempotency_key="idem",
+        requested_plan_role=ROLE_ADOPTED,
+        source_table=SOURCE_SCHEDULE,
+        effective_plan_role=ROLE_ADOPTED,
+    )
+
+    card = svc.task_card_for_feedback_context(context, OperationExecutionState(op_id=30, batch_id="B1"))
+
+    assert card["rows"][0]["schedule_id"] == 90
+    assert calls
+    assert calls[0]["schedule_id"] == 90
+    assert calls[0]["op_id"] == 30
+    assert calls[0]["batch_id"] == "B1"
+
+
+def test_overdue_marker_query_keeps_batch_filter() -> None:
+    from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
+
+    calls: List[Dict[str, Any]] = []
+    svc = ResourceDispatchService.__new__(ResourceDispatchService)
+
+    class _PlanQuery:
+        def list_plan_overdue_base_rows_for_resolution(self, **kwargs):
+            calls.append(kwargs)
+            return []
+
+    svc.plan_query_service = _PlanQuery()
+    svc._load_overdue_meta = lambda _version: {"ids": []}
+    svc._log_overdue_marker_degraded = lambda **_kwargs: None
+
+    svc._load_overdue_meta_for_plan(
+        version=VERSION,
+        role=ROLE_BASELINE_BEST,
+        source_table=SOURCE_CANDIDATE_ROWS,
+        candidate_id=7,
+        batch_id="B1",
+    )
+
+    assert calls
+    assert calls[0]["batch_id"] == "B1"
+
+
+def test_execution_error_response_sanitizes_internal_detail_fields() -> None:
+    from core.infrastructure.errors import ValidationError
+    from web.routes.domains.scheduler.scheduler_resource_dispatch_execution_context import _execution_error_response
+
+    exc = ValidationError(
+        "现场记录写入缺少任务定位信息，请刷新资源排班页面后重试。",
+        field="schedule_id",
+        details={
+            "reason": "missing_required_field",
+            "missing_fields": ["schedule_id", "op_id", "scenario_id", "start_date"],
+            "source_table": SOURCE_SCHEDULE,
+            "schedule_id": 90,
+            "op_id": 30,
+            "scenario_id": "SC-SECRET",
+            "nested": {"scenario_id": "SC-NESTED", "safe_label": "可见说明"},
+        },
+    )
+
+    payload, status = _execution_error_response(exc, action="fill_actual")
+    details = (payload.get("error") or {}).get("details") or {}
+    payload_text = _json_text(payload)
+
+    assert status == 400
+    assert "field" not in details
+    assert "missing_fields" not in details
+    assert details["field_label"] == "排程记录"
+    assert "missing_field_labels" in details
+    assert details["nested"] == {"safe_label": "可见说明"}
+    for forbidden in ("schedule_id", "op_id", "scenario_id", "source_table", "SC-SECRET", "SC-NESTED"):
+        assert forbidden not in payload_text
 
 
 def test_resource_dispatch_page_data_and_export_keep_plan_role_in_urls_and_log(tmp_path: Path, monkeypatch) -> None:

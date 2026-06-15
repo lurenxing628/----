@@ -207,7 +207,13 @@ def test_actual_template_and_import_reject_incomplete_query_context(tmp_path, mo
         for resp in (template, preview, direct_import, confirm):
             payload = _json(resp)
             assert resp.status_code == 400
-            assert payload["error"]["details"]["field"] == "plan_identity"
+            details = payload["error"]["details"]
+            assert "field" not in details
+            assert "missing_fields" not in details
+            assert details["field_label"] == "计划上下文"
+            assert details["missing_field_labels"]
+            assert "plan_role" not in str(details["missing_field_labels"])
+            assert "scope_type" not in str(details["missing_field_labels"])
     assert _event_count(db_path) == 0
 
 

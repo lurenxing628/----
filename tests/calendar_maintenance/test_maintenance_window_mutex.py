@@ -6,6 +6,7 @@ import os
 import sqlite3
 import threading
 from unittest import mock
+from urllib.parse import unquote
 
 
 def _set_schema_version(db_path: str, version: int) -> None:
@@ -15,6 +16,13 @@ def _set_schema_version(db_path: str, version: int) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def _sqlite_database_path(database) -> str:
+    text = os.fspath(database)
+    if not text.startswith("file:"):
+        return text
+    return unquote(text[5:].split("?", 1)[0])
 
 
 def test_maintenance_window_mutex(tmp_path, schema_path) -> None:
@@ -177,7 +185,7 @@ def test_maintenance_window_mutex(tmp_path, schema_path) -> None:
 
     def _patched_connect(path, *args, **kwargs):
         inner = real_connect(path, *args, **kwargs)
-        path_abs = os.path.abspath(str(path))
+        path_abs = os.path.abspath(_sqlite_database_path(path))
         if path_abs == os.path.abspath(db_path):
             return _ConnProxy(
                 inner,
@@ -235,5 +243,4 @@ def test_maintenance_window_mutex(tmp_path, schema_path) -> None:
 
     if not observed["inside_window"]:
         raise RuntimeError("预期 ensure_schema() 进入 _migrate_with_backup 时仍处于同一 maintenance window")
-
 

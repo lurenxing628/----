@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 
@@ -10,11 +11,18 @@ from tests.web_pages.reports_workbench_backlink_helpers import (
     _client,
     _href_with_text,
     _href_with_text_and_class,
+    _href_with_text_and_fragment,
     _input_values,
     _parser_for,
     _query,
     _xlsx_text,
 )
+
+
+def _decode_urlsafe_first_segment(token: str) -> str:
+    first = str(token or "").split(".", 1)[0]
+    padded = first + ("=" * (-len(first) % 4))
+    return base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8", errors="replace")
 
 
 def _seed_newer_executable_version(version: int) -> None:
@@ -200,6 +208,60 @@ def test_scheduler_navigation_does_not_cross_wire_gantt_resource_between_views()
     assert operator_query["gantt_resource"] == ["O-RPT"]
 
 
+def test_scheduler_navigation_uses_opaque_plan_context_token_for_preview() -> None:
+    app = _client().application
+    from web.navigation_context import build_scheduler_navigation_links
+
+    with app.test_request_context(
+        "/reports/?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06"
+        "&scenario_id=SC-SECRET"
+    ):
+        links = {item["label"]: item["url"] for item in build_scheduler_navigation_links()}
+
+    for label in ("资源排班", "设备甘特图", "人员甘特图", "周计划"):
+        url = links[label]
+        query = _query(url)
+        assert "scenario_id" not in query, (label, url)
+        assert query.get("plan_context_token"), (label, url)
+        token = query["plan_context_token"][0]
+        assert "SC-SECRET" not in token
+        assert "SC-SECRET" not in _decode_urlsafe_first_segment(token)
+
+
+def test_workbench_links_use_public_plan_context_token_from_context() -> None:
+    from web.viewmodels.scheduler_workbench_links import build_workbench_link, build_workbench_plan_context
+
+    context = build_workbench_plan_context(
+        version=12,
+        plan_role="adopted",
+        scenario_id="SC-SECRET",
+        plan_context_token="opaque-public-token",
+        date_from="2026-05-06",
+        date_to="2026-05-07",
+        query_date="2026-05-06",
+        period_preset="week",
+        batch_id="B-RPT",
+        resource_type="machine",
+        resource_id="M-RPT",
+    )
+    for target, kwargs in (
+        ("dashboard", {}),
+        ("analysis", {}),
+        ("gantt", {"view": "machine"}),
+        ("week_plan", {}),
+        ("resource_dispatch", {}),
+        ("overdue_report", {}),
+        ("utilization_report", {}),
+        ("downtime_report", {}),
+        ("reports_index", {}),
+    ):
+        link = build_workbench_link(context, target, **kwargs)
+        query = _query(link["url"])
+        assert "scenario_id" not in query, (target, link["url"])
+        assert query.get("plan_context_token") == ["opaque-public-token"], (target, link["url"])
+        assert "SC-SECRET" not in link["url"]
+
+
 def test_top_navigation_uses_shared_guardrails_for_partial_context() -> None:
     app = _client().application
     from web.navigation_context import (
@@ -211,9 +273,8 @@ def test_top_navigation_uses_shared_guardrails_for_partial_context() -> None:
         report_links = {item["label"]: item for item in build_report_navigation_links()}
         workbench_links = {item["label"]: item for item in build_workbench_navigation_links()}
 
-    assert report_links["超期清单"]["disabled"]
-    assert report_links["超期清单"]["url"] == ""
-    assert "日期范围" in report_links["超期清单"]["disabled_reason"]
+    assert report_links["超期清单"]["disabled"] is False
+    assert report_links["超期清单"]["url"]
     assert workbench_links["报表中心"]["disabled"]
     assert workbench_links["报表中心"]["url"] == ""
     assert "日期范围" in workbench_links["报表中心"]["disabled_reason"]
@@ -223,21 +284,11 @@ def test_report_top_navigation_uses_resolved_version_span_context() -> None:
     client = _client()
     parser = _parser_for(client, "/reports/overdue?version=12&plan_role=adopted")
 
-    for text, path in (
-        ("报表中心", "/reports/"),
-        ("资源负荷与利用率", "/reports/utilization"),
-        ("计划和现场实际", "/reports/execution-review"),
-        ("停机影响统计", "/reports/downtime"),
-    ):
-        query = _query(_href_with_text(parser, text, path))
-        assert query["version"] == ["12"]
-        assert query["plan_role"] == ["adopted"]
-        if path in {"/reports/utilization", "/reports/downtime"}:
-            assert query["start_date"] == ["2026-05-06"]
-            assert query["end_date"] == ["2026-05-06"]
-        else:
-            assert query["date_from"] == ["2026-05-06"]
-            assert query["date_to"] == ["2026-05-06"]
+    overdue = _query(_href_with_text(parser, "超期清单", "/reports/overdue"))
+    assert overdue["version"] == ["12"]
+    assert overdue["plan_role"] == ["adopted"]
+    for key in ("date_from", "date_to", "start_date", "end_date", "query_date", "period_preset"):
+        assert key not in overdue
 
 
 def test_overdue_delay_diagnosis_gantt_action_keeps_filter_context() -> None:
@@ -249,14 +300,13 @@ def test_overdue_delay_diagnosis_gantt_action_keeps_filter_context() -> None:
         "&back_to=%2Fscheduler%2Fresource-dispatch%3Fscope_type%3Dmachine",
     )
 
-    query = _query(_href_with_text(parser, "查看甘特图", "/scheduler/gantt"))
+    query = _query(_href_with_text_and_fragment(parser, "查看为什么晚了", "/reports/overdue", "batch_id=B-RPT"))
     assert query["version"] == ["12"]
     assert query["plan_role"] == ["adopted"]
-    assert query["start_date"] == ["2026-05-06"]
-    assert query["end_date"] == ["2026-05-06"]
-    assert query["gantt_batch"] == ["B-RPT"]
-    assert query["view"] == ["machine"]
-    assert query["gantt_resource"] == ["M-RPT"]
+    assert query["batch_id"] == ["B-RPT"]
+    assert query["resource_type"] == ["machine"]
+    assert query["resource_id"] == ["M-RPT"]
+    assert "date_from" not in query and "date_to" not in query
     assert query["back_to"] == ["/scheduler/resource-dispatch?scope_type=machine"]
 
 
@@ -304,7 +354,7 @@ def test_scheduler_pages_keep_back_to_after_publishing_navigation_context() -> N
     encoded_back_to = "%2Fscheduler%2Fresource-dispatch%3Fscope_type%3Dmachine"
     for url, text, path in (
         (f"/scheduler/analysis?version=12&back_to={encoded_back_to}", "首页值班台", "/"),
-        (f"/scheduler/gantt?view=machine&version=12&back_to={encoded_back_to}", "报表中心", "/reports/"),
+        (f"/scheduler/gantt?view=machine&version=12&back_to={encoded_back_to}", "首页值班台", "/"),
         (f"/scheduler/resource-dispatch?version=12&back_to={encoded_back_to}", "首页值班台", "/"),
         (f"/scheduler/week-plan?version=12&back_to={encoded_back_to}", "报表中心", "/reports/"),
     ):

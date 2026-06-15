@@ -14,8 +14,8 @@ from typing import Any, Dict, List, Optional
 from tests.excel_data_io.excel_preview_confirm_helpers import build_confirm_payload
 
 XSS = "<img src=x onerror=alert(1)>"
- 
- 
+
+
 def find_repo_root() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
     probe = here
@@ -24,8 +24,8 @@ def find_repo_root() -> str:
             return probe
         probe = os.path.dirname(probe)
     raise RuntimeError("repo root not found (need app.py + schema.sql)")
- 
- 
+
+
 def _make_xlsx_bytes(headers, rows):
     import openpyxl
  
@@ -69,8 +69,16 @@ def _assert_status(name: str, resp, expect_code: int = 200):
         except Exception:
             body = None
         raise RuntimeError(f"{name} -> {resp.status_code} (want {expect_code}) body={body[:800] if body else None}")
- 
- 
+
+
+def _operation_update_url(app, op_id: int) -> str:
+    from web.routes.domains.scheduler.scheduler_ops import operation_update_token
+
+    with app.app_context():
+        token = operation_update_token(int(op_id))
+    return f"/scheduler/ops/update-token/{token}"
+
+
 def _excel_preview_confirm(
     client,
     *,
@@ -397,7 +405,7 @@ def main():
         conn.close()
  
     r = client.post(
-        f"/scheduler/ops/{op_id}/update",
+        _operation_update_url(app, op_id),
         data={"machine_id": "MC001", "operator_id": "OP001", "setup_hours": str(sh), "unit_hours": str(uh)},
         follow_redirects=True,
     )

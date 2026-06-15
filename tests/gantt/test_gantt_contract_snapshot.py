@@ -65,6 +65,7 @@ def main(monkeypatch) -> None:
         sch_svc = ScheduleService(conn, logger=None, op_logger=op_logger)
         cfg_svc = ConfigService(conn, logger=None, op_logger=op_logger)
         cfg_svc.set_strategy("priority_first")
+        cfg_svc.mutation_service.set_fields_mark_custom([("graph_analysis_mode", "off")])
         batch_svc.create_batch_from_template(
             batch_id="B_GANTT",
             part_no="P_GANTT",
@@ -141,13 +142,19 @@ def main(monkeypatch) -> None:
         raise RuntimeError(f"task_count 与 tasks 数量不一致：{data.get('task_count')} vs {len(tasks)}")
 
     t0 = tasks[0]
-    for k in ("schedule_id", "lock_status", "duration_minutes", "edge_type", "meta"):
+    for k in ("lock_status", "duration_minutes", "edge_type", "meta"):
         if k not in t0:
             raise RuntimeError(f"task 缺少字段：{k}")
+    for k in ("schedule_id", "op_id"):
+        if k in t0:
+            raise RuntimeError(f"task 公开字段不应包含内部字段：{k}")
     meta = t0.get("meta") or {}
-    for k in ("schedule_id", "lock_status", "duration_minutes"):
+    for k in ("lock_status", "duration_minutes"):
         if k not in meta:
             raise RuntimeError(f"task.meta 缺少字段：{k}")
+    for k in ("schedule_id", "op_id", "source_table", "candidate_id"):
+        if k in meta:
+            raise RuntimeError(f"task.meta 公开字段不应包含内部字段：{k}")
 
     cc = data.get("critical_chain") or {}
     for k in (
