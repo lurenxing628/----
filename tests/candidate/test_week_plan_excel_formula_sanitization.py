@@ -1,3 +1,9 @@
+"""回归测试：周计划导出 Excel 的查询摘要把以 = 开头的公式样值（如 =HYPERLINK）加 ' 前缀转义，
+
+防止 Excel 公式注入——单元格按文本而非公式（data_type != "f"）写入。对应深审 finding-15
+Excel 模板/导出安全加固里的公式清洗（sanitize_export_cell）。
+"""
+
 from __future__ import annotations
 
 from openpyxl import load_workbook
