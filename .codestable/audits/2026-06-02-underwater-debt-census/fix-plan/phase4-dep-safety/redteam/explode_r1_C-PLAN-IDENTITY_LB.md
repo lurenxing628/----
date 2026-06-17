@@ -100,4 +100,3 @@ dossier 字段 7「委托后多出 3 键无害（schedule_result_status/schedule
 2. **R21 删 import 区致 wrapper 行号上移（≈9 行）**：计划已提醒 R22 用符号名锚，但若 R22 先收口、R21 后删，R22 落地时 wrapper 仍在原行；若顺序反了（R21 先删），R22 锚点漂移。强制顺序「R22 锁约束 → R21 删」必须执行批次显式串行，否则同窗口并行改同文件易交叉返工。
 3. **evidence_contract:194 superset 是双重逃逸口**：不仅放过 drift（0→2），收口后也放过取值翻转。必须与 R22 parity 同批升级为 24 键 exact + 取值断言，否则 R22 收口「CI 全绿」是假绿。
 4. **R72 week_plan.py 当天高频漂移**：def +7/call +15，落地前必须实时 rg 重盘，registry/blast 静态行号已失真；与 R21/R55 同文件须显式串行避免位移返工。
-

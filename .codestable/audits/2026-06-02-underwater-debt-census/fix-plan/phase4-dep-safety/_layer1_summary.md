@@ -14,7 +14,7 @@ LB02 | 真实行号: execution_review签名→execution_review.py:209; 硬钉ROL
 - VERIFY: LB02 | 核验: PASS | 行号复核: 一致(签名:209、硬钉:180-181/:191-192/:221/:236、Protocol:121、import:9 全命中,漂移+68~+70属实) | 争议点: 无(仅留痕 registry顶层fix_invalidation_risk"全仓无请求级回归"已过期,测试173行现存,档案§2已正确推翻,非档案错) | 承重误删风险: 无(全为补注释+回归既有测试,零删/零统一/零透传/零形参,五处禁区明列) | 需升级第三方裁: n
 
 ### LB05
-- DOSSIER: All 12 fields present, dossier staged. 
+- DOSSIER: All 12 fields present, dossier staged.
 
 LB05 | 真实行号: 五处硬钉 ROLE_ADOPTED/None → execution_review.py :58 / :180-181 / :191-192 / :221 / :236（含返回dict键）；execution_review() 签名 :209-217 刻意不收形参 | 漂移: 有，统一 +17 行（相对今晨 evidence），相对 old_location +39；registry blast 的 :112/:123/:153/:166-167/:178/:188 全部失准，已纠为本回盘表 | 修法类: 承重「仅注释+绑契约」(§90 LB-A2)，零删/零统一/零透传/零加形参，不收口非P5 | 同文件兄弟需协调: LB02 同点同动作一次满足两条；R62(:358-417死分支)行段不重叠但注释须先于R62；LB06 web层须同批落齐否则打穿纵深 | 最大爆炸风险: 把硬钉改成透传+默默回退adopted → 模拟/历史候选方案以"既成事实"正式身份呈现并可导出xlsx（数据完整性事故）+ 两层认知错位 | 与既有分析冲突: 有——registry 称下游 operation_execution_event_repo.py:267 aggregate_states_by_op_ids「喂任何op_id照配」，回盘实为 :403 已 raise _unscoped_execution_read_error()（整组by_op_id接口全raise）；实走 :206 get_execution_state_for_scopes（scope维度）；且"无GET级service硬拒断言"盲区已被 identity_guardrail :63/:78/:95/:162 部分补上 | 前置: 无硬前置债（纯增量）；与LB02/LB06同批并行、先于R62；F门=基线四组regression全绿+AST0违规+diff仅注释 | owner_pending: n
 - VERIFY: LB05 | 核验: PASS | 行号复核: 一致（当前工作区五处硬钉 :58/:180-181/:191-192/:221/:236 与档案吻合）| 争议点: 档案三处称「文件 476 行·git 未修改」失实——实测 `MM`，HEAD 原版 407 行硬钉在 :112-167（=registry 那套），是工作区 +69 行未提交改动推漂的；但原 6 处硬钉值零改动、不变量未削弱，回盘行号仍准 | 承重误删风险: 无（零删/零统一/零透传/零加形参，:209-217 禁加形参守住）| 需升级第三方裁: n

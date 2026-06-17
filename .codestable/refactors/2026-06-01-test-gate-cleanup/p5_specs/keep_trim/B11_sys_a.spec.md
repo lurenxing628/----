@@ -141,7 +141,7 @@ TRIM-3a — Section 2 "Markdown 解析核心能力" JS function-name source grep
     ```
     i.e. current lines 626-646 (the `# 2)` comment + the `for needle in (... initManual( ...)` loop at 627-640, plus the 6 follow-up single asserts 641-646).
   why-brittle: js_source_grep — matches function declaration text and exact const-statement source lines. KEEP-context: the line immediately above is Section 1's `assert "相关模块说明" in tpl ...` (line 624) — KEEP that. The line immediately below is the `# 3) 安全约束` comment (line 648) — KEEP Section 3 entirely.
-  CAUTION / boundary: do NOT over-extend into Section 3. The deletion ends at the `markdownSource` assert (line 646); the next kept line is blank (647) then `# 3) 安全约束`. 
+  CAUTION / boundary: do NOT over-extend into Section 3. The deletion ends at the `markdownSource` assert (line 646); the next kept line is blank (647) then `# 3) 安全约束`.
   NOTE on `js = _read(js_path)` (line 598): `js` is still used by Sections 3/4/5, so it stays. Do NOT delete the `_read` of the JS file.
 
 TRIM-3b — the giant exact-manual-phrase lists inside helpers `_assert_scheduler_manual_required_content` (lines 498-587) and its callees. This is the "asserts hundreds of exact manual phrases" the reason flags. These are doc-text snapshots: each asserts a verbatim Chinese sentence is present/absent in scheduler_manual.md. They break on ANY copy edit to the manual. HOWEVER several carry genuine semantic CONTRACTS (the docstring's "必备口径与边界说明在场"):

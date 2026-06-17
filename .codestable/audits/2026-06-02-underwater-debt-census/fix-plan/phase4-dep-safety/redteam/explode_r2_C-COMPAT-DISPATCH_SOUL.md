@@ -93,4 +93,3 @@ R69 不在本簇成员（C-COMPAT-DISPATCH 成员为 R30/R33/R29/R49/R50/R51）�
 - **分层(Q2)**：6 债全纯减法 0 新增 import，0 越层 0 导入环；shared 三模块未 import core.services（实证）。
 - **迁移耦合(Q3)**：本簇不碰 schema/v18/v19 DB CHECK，无迁移耦合。
 - **承重(Q1)**：6 债全 lb=false，无承重点门控；禁区行=core.shared 三模块全文 / degradation :15+:375-390 / forbidden :355 / import math:3 / compat_parse float-int import 块 / sgs_scoring:34 同名活函数 / 收口点 schedule_params+optimizer_config 全文只读。
-

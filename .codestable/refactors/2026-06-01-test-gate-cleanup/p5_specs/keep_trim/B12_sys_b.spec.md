@@ -130,12 +130,12 @@ and
 ```
 Why-brittle: positive Chinese UI copy with no stable key; the behavioral rule (button hidden, no leak) is fully covered by the surrounding `not in` asserts. (Conservative note: if the implementer judges `"维护诊断：1 条"` to encode the "diagnostics counted separately from business warnings" branch rule rather than mere copy, KEEP it — under-trim is safe. The clearer-brittle of the two is the long sentence `"这次没有需要调度员处理的业务提醒"`.)
 
-`test_system_history_page_renders_missing_version_notice` (298-307) — KEEP. `"v999 无对应排产历史"` is the missing-version notice value also pinned in the JSON-route test; paired with `"摘要已加载" not in html`. This is a small load-bearing branch (missing version → notice, no summary). KEEP whole; do not trim (would leave only one assert and lose the branch). 
+`test_system_history_page_renders_missing_version_notice` (298-307) — KEEP. `"v999 无对应排产历史"` is the missing-version notice value also pinned in the JSON-route test; paired with `"摘要已加载" not in html`. This is a small load-bearing branch (missing version → notice, no summary). KEEP whole; do not trim (would leave only one assert and lose the branch).
 
 `test_system_history_version_dropdown_uses_completion_status_label` (310-326) — `html.count("模拟排产 / 部分成功") >= 2` and `"v3 · 部分成功"` and `"结果状态未知" not in html` encode the completion-status-label mapping rule (count >=2 = appears in dropdown AND row). This is presenter-mapping behavior, borderline. BIAS=KEEP whole — the count invariant + negative "未知" guard are real; trimming risks emptying the rule.
 
 ### TRIM (whole-function deletion) — `test_system_history_template_uses_presenter_status_fields` (329-340):
-This entire function is a template-SOURCE grep (`history.html` read as text, asserting Jinja var names / route-name strings / a CSS class `aps-table--multiline` present/absent). Pure source snapshot — breaks on any template rename/refactor with no behavior regression. The presenter→template wiring it guards is already exercised behaviorally by the `_build_real_app` rendered-page tests above (which render through the real template and assert the projected values appear). 
+This entire function is a template-SOURCE grep (`history.html` read as text, asserting Jinja var names / route-name strings / a CSS class `aps-table--multiline` present/absent). Pure source snapshot — breaks on any template rename/refactor with no behavior regression. The presenter→template wiring it guards is already exercised behaviorally by the `_build_real_app` rendered-page tests above (which render through the real template and assert the projected values appear).
 
 grep result (function-name nodeid refs): NONE.
 ```

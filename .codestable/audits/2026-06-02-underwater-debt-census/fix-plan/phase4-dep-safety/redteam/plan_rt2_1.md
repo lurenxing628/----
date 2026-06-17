@@ -34,4 +34,3 @@
 ### 备注（非问题，登记备查）
 - **R49 消费图**：计划 §189 称 `parse_dispatch_rule` 被「greedy 内 `dispatch/sgs_scoring.py`/`dispatch/sgs.py`/`scheduler.py` 多文件消费」，但实盘 `rg parse_dispatch_rule` 全仓仅 2 命中（`dispatch_rules.py:28` 定义自身 + `tests/resource_dispatch/test_dispatch_rule_case_insensitive.py` 测试），**无任何 greedy 子模块消费**。§189 的「跨批串行炸（G25 先删旁支致 G24 主体孤儿 / G24 先删致悬空 NameError）」前提里的「共享 `parse_dispatch_rule` 调用图被 greedy 多文件消费」是夸大——真正待清的是 dossiers/R49.md 写的 `due_exclusive/parse_date` 别名垫片（evaluation/ortools），与 `parse_dispatch_rule` 是两码事。串行序结论（G25 旁支晚于或并回 G24）本身无害（保守），但「炸点」描述基于幻觉消费图，不影响安全只影响可信度，留作他号交叉。本号判其非硬伤。
 - **零 `as n` 别名**：回盘成立（`rg "as n"`=0）。附带订正：collar `build_workbench_plan_context` 真调用方实为 8 个生产文件（计划 §388 记 7），多出 `web/navigation_context.py`；不影响删形参安全性（navigation_context 经 **kwargs 链 plan_id=0，§235 爆点 #12 已覆盖），仅计数下沉。
-

@@ -152,4 +152,3 @@
 5. **【缺失前置:R15/R19 双 owner_pending 卡住整条 SCC 串行链】** R15 是 SCC 最前置(须先于 R13/R17/R19 动3文件),R19 排最晚(Batch-14);两者都 owner_pending=true。⇒ **owner 未裁 R15 收口去向 + R19 repo 落点前,本簇 R13/R17/R20 的「先 R15 后删死物」串行序无法启动**——R17/R20 虽自身可早做(只需 LB01 注释先落),但若严守「R15 先于同文件兄弟」铁律,R17(动 support :81,与 R15 :225 同文件)会被 R15 owner 裁断阻塞。**前置缺口**:需 owner 先对 R15 至少给出「provider 坏值方向 + 三处不统一」的最小裁断,解锁 support 文件的删死物动作,否则整簇卡在两个 pending 上。建议 Layer4 把「R15 最小裁断」作为本簇解锁的唯一硬前置单列。
 
 6. **【schema:284 第二张表是 LB01 反例的活证,但无人守它】** 本轮坐实 schema.sql:284 `CHECK(source_table IN ('schedule','candidate_rows'))` 另一张表确在——这是 LB01「删写死且误写另表则 candidate_rows 不被拒」灾难链的物理依据。但**本簇无任何债守护「事件不会被误写到 :284 那张表」**,该防线完全靠 LB01 写死 + service 路由。属簇外承重底,Layer4 须确认 :284 表的写入路径不被本簇任何改动触及(本簇未触,但记账留痕)。
-

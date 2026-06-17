@@ -81,4 +81,3 @@
 1. **【中】R62 模板 title 清空裂缝**：dossier §7「模板逐字节不变」对 title 属性失真——删 identity 键后 :138-143 的 `title=""` 是可见 diff。修法 §4(b) 虽提"title 改回 _label"，但未把它标成与删键**同 commit 强原子**且**无测试接住**（R62 收口面零断言）。前置：模板 parity 快照升为硬门，断言 title 收口前后相等（应=display 值，非空）。
 2. **【低】R62 actual 早退块边界**：dossier §1/§6 标 :437-440，实测内容 :438-440、闭合 :441。指代同块不影响修法，但 R62 重 grep 时按符号定位勿照抄。
 3. **【低】payload 丢弃真 identity 的隐性事实**：`_resource_pair_payload`(:407-408)只读 machine/operator 的 `display_label`，**完全不读 `_state_resource_identity`(:431)构造的真 identity_label** → 三键恒等的根因是 payload 层就丢了 identity，而非偶然相等。这反向坐实删键安全（下游本就拿不到真 identity），但也说明"恢复真三档身份"远不止删/留键，须改 payload 读 identity_label——owner 若要反向恢复，工作量被 dossier 低估。
-

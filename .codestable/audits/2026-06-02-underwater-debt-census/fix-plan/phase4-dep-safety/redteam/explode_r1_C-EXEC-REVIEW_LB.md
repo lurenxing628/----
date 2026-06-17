@@ -67,4 +67,3 @@
 3. **【演进信号·低，非爆点】R62 收口固化「设计了真值通道但实现没接」**：`_state_resource_identity`(:431)用 `state.{prefix}_identity_label` 真身份构造 ResourceIdentity 的 identity_label 形参，但 `_resource_pair_payload`(:417)随即把 identity_label 压成 display **丢弃了这个真值**。R62 删键 = 固化「压扁」决定，运行期安全(现状就是压扁)，但这是 owner 该认账的演进信号(三档身份本有真值来源但实现没接)。dossier §4 反向兜底已提「若 owner 要恢复真三档身份则反向补齐」，**但未点明真值通道(:431→ResourceIdentity.identity_label)已存在却被 payload 丢弃**——若未来恢复，收口点是接通 payload :417 而非重建通道。非本轮阻塞，记为 owner 认账项。
 
 4. **无环、无分层违规、无迁移耦合**(Q2/Q3 全簇过)：三成员均零新增 import，注释/删键不引入越层或导入环；不碰 schema/v18/v19 CHECK，无启动探针风险。
-
