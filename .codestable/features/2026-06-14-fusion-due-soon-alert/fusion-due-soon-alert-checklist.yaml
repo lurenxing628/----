@@ -27,88 +27,88 @@ steps:
 checks:
   - item: "不新建数据库表、不新增首屏计划行扫描、不改排产算法（临期判定只在 summary 装配侧、不触 core/algorithms/）"
     source: 范围守护
-    status: pending
+    status: passed
   - item: "临期判定不出现 datetime.now()/now 入参（口径甲 finish-基准、now 无关）"
     source: 范围守护
-    status: pending
+    status: passed
   - item: "临期不接现场事实判未完工（纯排程层 finish vs due_exclusive，与超期同源）"
     source: 范围守护
-    status: pending
+    status: passed
   - item: "不引入新 severity 档——临期复用 warning/notice/ok，_SEVERITY_ORDER 与 CSS 不新增 near_due/unknown 档"
     source: 范围守护
-    status: pending
+    status: passed
   - item: "临期 items 不外显内部身份（仅 batch_id，不出 op_id/schedule_id/scenario_id/source_table/candidate_id）"
     source: 范围守护
-    status: pending
+    status: passed
   - item: "summary_schema_version 仍为 '1.2'（纯增量加键不升版本）；不预占第8格、不改其余6格语义、不动按钮墙/侧栏"
     source: 范围守护
-    status: pending
+    status: passed
   - item: "summary 新增键 near_due_batches = {count, items:[{batch_id,due_date,finish_time}], window_days}，与 overdue_batches 并列同构"
     source: 名词契约
-    status: pending
+    status: passed
   - item: "_near_due_card 三态：有值(value=N,warning) / 无(value=暂无,ok,空态一句话) / 缺键(value=数据不足,notice)"
     source: 名词契约
-    status: pending
+    status: passed
   - item: "_near_due_todo：near_due_count>0 → todo(kind=near_due,severity=warning,计数文案)；<=0 → None"
     source: 名词契约
-    status: pending
+    status: passed
   - item: "build_dashboard_risk_cards 扩 near_due_count 纯值入参；纯值在 build_dashboard_workbench_summary 先算再传（cards 禁扫 rows/禁 import core）"
     source: 名词契约
-    status: pending
+    status: passed
   - item: "装配侧同一全批次循环两段切分：finish>=due_exclusive→超期；due_exclusive−3天<=finish<due_exclusive→临期；其余跳过。复用同 due_date/finish/due_exclusive，无第二次遍历"
     source: 编排骨架
-    status: pending
+    status: passed
   - item: "公开 build_overdue_items 保持 (items, meta) 二元返回；near_due 走 meta + RuntimeState 新字段，不改解包形状（test_schedule_summary_overdue_warning_append_fallback 二元解包不破）"
     source: 名词契约
-    status: pending
+    status: passed
   - item: "微重构不引入循环依赖：方案X下 dashboard_workbench/dashboard_workbench_todos 仅单向 import 中立 dashboard_workbench_shared，禁 workbench↔todos 顶层互相 import（双向=导入崩）；assembly→due_risk_items 单向"
     source: 编排骨架
-    status: pending
+    status: passed
   - item: "不为临期改 _todo_items 排序键或 build_cockpit_hero；hero 谁顶格按现有 severity+kind 字母序自然决定（无超期则临期顶 hero 仅在无同档更靠前 warning todo 时成立）"
     source: 编排骨架
-    status: pending
+    status: passed
   - item: "临期与超期对同一批次零重叠双算（finish==due_exclusive 归超期不入临期；finish 严格<due_exclusive 才入临期）"
     source: 流程级约束
-    status: pending
+    status: passed
   - item: "首页临期取数零新增计划行扫描（只读冻结 near_due_batches.count）"
     source: 流程级约束
-    status: pending
+    status: passed
   - item: "临期 count 单一读点：index() 是唯一读点（独立非致命读函数读出 near_due_count 传 build_summary），build_summary 不二次读、仅闸门化（current_summary_available 为假强制 None），与超期 overdue_count 同构"
     source: 编排骨架
-    status: pending
+    status: passed
   - item: "缺键诚实降级：旧摘要无 near_due_batches → 第7格数据不足(None态)、临期 todo 缺席，不 KeyError、不显 0，且不放大成全摘要降级（独立非致命局部读取：键缺失→None / 键在且==0→0，不复用 _summary_overdue_count 的缺键返回0+全局 count_error 路径）"
     source: 流程级约束
-    status: pending
+    status: passed
   - item: "诚实空态：count==0 → 第7格灰显一句话；退化场景（无版本/解析失败/日期读取失败）临期 todo 缺席（set(todos) 不含 near_due）"
     source: 流程级约束
-    status: pending
+    status: passed
   - item: "坏交期复用装配侧 invalid_due 记账跳过，不静默把坏交期批次冒充临期或健康"
     source: 流程级约束
-    status: pending
+    status: passed
   - item: "挂载点 summary schema：core/services/scheduler/summary/ 的 near_due_batches 键（新增）"
     source: 挂载点
-    status: pending
+    status: passed
   - item: "挂载点 体检表数据源：dashboard_workbench_cards.build_dashboard_risk_cards 第7格（修改）"
     source: 挂载点
-    status: pending
+    status: passed
   - item: "挂载点 待办类别：dashboard_workbench._near_due_todo 注入 _todo_items 候选（新增）"
     source: 挂载点
-    status: pending
+    status: passed
   - item: "挂载点 临期窗口常量：NEAR_DUE_WINDOW_DAYS 装配侧单点（新增）"
     source: 挂载点
-    status: pending
+    status: passed
   - item: "挂载点 首页帮助说明书两份：page_manuals_system.py dashboard_first_run + 用户文档 static/docs/scheduler_manual.md:70 体检表段均改'7格'+补'临期'（删则谎报格数违4.11诚实态；前者 test_page_manual_registry 短语锚同步、后者无锚但须改）"
     source: 挂载点
-    status: pending
+    status: passed
   - item: "场景1-3 正常：3 临期批次→第7格 value=3/warning/可点跳(第7格+临期todo primary→gantt、todo secondary→overdue_report)；无超期且无更前 warning todo 时临期顶 hero、有超期时落 rest；体检表恰 7 格顺序临期居末"
     source: 验收场景
-    status: pending
+    status: passed
   - item: "场景4-6 边界互斥：finish==due_exclusive 归超期；finish==due_exclusive−3天 计入临期；finish<due_exclusive−3天 健康"
     source: 验收场景
-    status: pending
+    status: passed
   - item: "场景7-8 空态/体积：count==0 第7格空态一句话+todo缺席；超大临期清单 tier 路径裁剪保 count、总量≤512KB；minimal 兜底经新增白名单分支保 count 丢 items（非靠 tier）"
     source: 验收场景
-    status: pending
+    status: passed
   - item: "场景9-11 错误：旧摘要缺键第7格数据不足不KeyError；退化场景临期todo缺席；非法交期 invalid_due 记账跳过不冒充"
     source: 验收场景
-    status: pending
+    status: passed

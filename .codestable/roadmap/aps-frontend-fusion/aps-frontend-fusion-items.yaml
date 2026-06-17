@@ -237,10 +237,10 @@ items:
   - slug: fusion-due-soon-alert
     description: 临期预警——"3 天内到期且未完工"新待办类别 + 体检表格位（7 格排布或与超期合格，feature-design 裁决）+ 临期窗口常量单点；数据=既有批次交期 vs 正式方案排程结束时间，与超期判定共用同一口径，零新数据链路
     depends_on: [fusion-dashboard-cockpit]
-    status: in-progress
+    status: done
     feature: 2026-06-14-fusion-due-soon-alert
     minimal_loop: false
-    notes: 模块 N（契约 4.11 共同约束）；2026-06-11 用户拍板新增；依赖理由——驾驶舱构图先落定，待办类别与体检表格位才有挂点；遵 4.7 身份护栏
+    notes: 模块 N（契约 4.11 共同约束）；2026-06-11 用户拍板新增；依赖理由——驾驶舱构图先落定，待办类别与体检表格位才有挂点；遵 4.7 身份护栏；2026-06-15 验收闭环完成（裁决：独立第 7 格 + finish-基准口径；near_due_batches 与 overdue 同源切分；NEAR_DUE_WINDOW_DAYS=3 装配侧单点；微重构拆 due_risk_items.py/dashboard_workbench_todos.py/dashboard_workbench_shared.py）
 
   - slug: fusion-dispatch-print-sheet
     description: 周派工单打印——按设备/按人员双视图（周计划 7 字段行重分组，设备/人员格现成，每行带另一维度做交接参照）+ 窗口周为主附单日切换 + 一资源一页 page-break 整叠打印（无任务资源不出纸）+ 人员视图"外协/未分配"兜底段 + 页眉印方案版本与生成时间 + 行尾空白备注列；入口挂周计划页
