@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Sequence
 
+from core.infrastructure.safe_files import write_fixed_bytes
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 
 from .template_builder import ConvertedTemplates
@@ -28,7 +29,6 @@ class UnitTemplateExporter:
             effective_headers,
             [[row.get(h) for h in effective_headers] for row in rows],
             format_spec=template_def.get("format_spec"),
+            sanitize_formula=True,
         )
-        with open(path, "wb") as f:
-            f.write(output.getvalue())
-
+        write_fixed_bytes(path, output.getvalue())

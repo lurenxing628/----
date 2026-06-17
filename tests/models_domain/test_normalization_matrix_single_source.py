@@ -99,5 +99,3 @@ def test_normalization_matrix_single_source() -> None:
         raise RuntimeError("人员设备关联主操设备归一化未对齐矩阵")
     if normalize_yes_no_optional("非主操", field="主操设备") != "no":
         raise RuntimeError("人员设备关联主操设备否值归一化未对齐矩阵")
-
-

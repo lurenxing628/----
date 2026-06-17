@@ -6,6 +6,8 @@ import importlib
 import os
 from pathlib import Path
 
+import pytest
+
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.errors import AppError, ErrorCode
 from core.services.equipment.machine_service import MachineService
@@ -238,3 +240,27 @@ def test_system_backup_batch_delete_shows_specific_failure_reasons(tmp_path, mon
     assert not keep_file.exists()
     assert fail_file.exists()
     assert any("批量删除备份失败（filename=aps_backup_fail.db）" in item for item in logged)
+
+
+def test_system_backup_page_surfaces_unsafe_hidden_backup_file(tmp_path, monkeypatch) -> None:
+    if not hasattr(os, "symlink"):
+        pytest.skip("平台不支持软链接")
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    backup_dir = Path(app.config["BACKUP_DIR"])
+    victim = tmp_path / "victim.db"
+    victim.write_text("VICTIM-UNTOUCHED", encoding="utf-8")
+    unsafe_backup = backup_dir / "aps_backup_20990101_000000_manual.db"
+    try:
+        os.symlink(str(victim), str(unsafe_backup))
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"平台不允许创建软链接：{exc}")
+
+    resp = client.get("/system/backup")
+    body = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert "备份目录需要检查" in body
+    assert "有 1 个备份文件不是安全的普通文件" in body
+    assert unsafe_backup.name in body
+    assert victim.read_text(encoding="utf-8") == "VICTIM-UNTOUCHED"

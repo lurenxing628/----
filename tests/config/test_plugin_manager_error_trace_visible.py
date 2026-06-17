@@ -47,5 +47,3 @@ def test_plugin_manager_error_trace_visible() -> None:
     err = str(bad.get("error") or "")
     assert "boom" in err, f"错误信息未包含异常：{err!r}"
     assert "Traceback" in err, f"错误信息未包含 traceback：{err!r}"
-
-

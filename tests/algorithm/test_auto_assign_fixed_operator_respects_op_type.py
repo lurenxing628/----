@@ -87,5 +87,3 @@ def test_auto_assign_fixed_operator_respects_op_type() -> None:
     r0 = results[0]
     assert r0.machine_id == "M_OK", f"自动选机应尊重 op_type_id，仅允许 M_OK，实际 {r0.machine_id!r}"
     assert r0.operator_id == "O1", f"operator_id 应保持为固定值 O1，实际 {r0.operator_id!r}"
-
-

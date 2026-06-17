@@ -211,6 +211,34 @@ def open_fixed_file_for_write(
             os.close(fd)
 
 
+def open_fixed_file_for_write_binary(
+    path: Any,
+    *,
+    append: bool = False,
+    ensure_parent: bool = True,
+    replace_symlink: bool = False,
+):
+    path_s = _path_text(path)
+    if ensure_parent:
+        _ensure_parent(path_s)
+    expected_stat = _raise_if_existing_path_unsafe(path_s, replace_symlink=replace_symlink)
+    try:
+        if expected_stat is None:
+            fd = _open_new_fixed_file_for_write(path_s)
+        else:
+            fd = _open_existing_fixed_file_for_write(path_s, expected_stat, append=append)
+    except FileExistsError as exc:
+        raise UnsafeFixedFileError(f"固定文件在创建过程中被替换或占用：{path_s}") from exc
+    try:
+        mode = "ab" if append else "wb"
+        f = os.fdopen(fd, mode)
+        fd = -1
+        return f
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
 def write_fixed_text(
     path: Any,
     text: Any,
@@ -231,6 +259,25 @@ def write_fixed_text(
         f.write(data)
 
 
+def write_fixed_bytes(
+    path: Any,
+    data: Any,
+    *,
+    append: bool = False,
+    ensure_parent: bool = True,
+    replace_symlink: bool = False,
+) -> None:
+    path_s = _path_text(path)
+    payload = bytes(data)
+    with open_fixed_file_for_write_binary(
+        path_s,
+        append=append,
+        ensure_parent=ensure_parent,
+        replace_symlink=replace_symlink,
+    ) as f:
+        f.write(payload)
+
+
 def write_fixed_json(
     path: Any,
     payload: Any,
@@ -243,6 +290,26 @@ def write_fixed_json(
 ) -> None:
     text = json.dumps(payload, ensure_ascii=ensure_ascii, indent=indent, sort_keys=sort_keys) + "\n"
     write_fixed_text(path, text, ensure_parent=ensure_parent, replace_symlink=replace_symlink)
+
+
+def guard_fixed_file_replace_target(path: Any, *, ensure_parent: bool = True) -> None:
+    """替换固定名文件前检查目标槽位，拒绝软链接/硬链接/非普通文件占位。"""
+    path_s = _path_text(path)
+    if ensure_parent:
+        _ensure_parent(path_s)
+    else:
+        _guard_fixed_file_parent(path_s)
+    _raise_if_existing_path_unsafe(path_s)
+
+
+def guard_fixed_file_open_target(path: Any, *, ensure_parent: bool = True) -> None:
+    """打开会被程序写入的固定名文件前检查目标槽位。"""
+    path_s = _path_text(path)
+    if ensure_parent:
+        _ensure_parent(path_s)
+    else:
+        _guard_fixed_file_parent(path_s)
+    _raise_if_existing_path_unsafe(path_s)
 
 
 def create_fixed_file_exclusive(path: Any, *, ensure_parent: bool = True) -> int:

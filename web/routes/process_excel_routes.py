@@ -25,6 +25,7 @@ from .excel_utils import (
     load_confirm_payload,
     preview_baseline_is_stale,
     send_excel_template_file,
+    template_file_exists_for_download,
 )
 from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 from .process_excel_route_apply import (
@@ -328,7 +329,7 @@ def excel_routes_confirm():
 def excel_routes_template():
     start = time.time()
     template_path = os.path.join(current_app.config["EXCEL_TEMPLATE_DIR"], "零件工艺路线.xlsx")
-    if os.path.exists(template_path):
+    if template_file_exists_for_download(template_path):
         time_cost_ms = int((time.time() - start) * 1000)
         log_excel_export(
             op_logger=getattr(g, "op_logger", None),

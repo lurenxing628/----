@@ -65,5 +65,3 @@ def test_migrate_v2_unify_workcalendar_day_type(tmp_path, schema_path):
         f for f in os.listdir(backups_dir) if f.startswith("aps_backup_") and expected_suffix in f and f.endswith(".db")
     ]
     assert backup_files, f"未找到迁移前备份文件（dir={backups_dir}）"
-
-

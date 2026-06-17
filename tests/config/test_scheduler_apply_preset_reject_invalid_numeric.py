@@ -124,5 +124,3 @@ def test_scheduler_apply_preset_reject_invalid_numeric(db_path) -> None:
             conn.close()
         except Exception:
             pass
-
-

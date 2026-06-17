@@ -68,5 +68,3 @@ def test_batch_template_autobuild_same_tx(schema_conn) -> None:
 
     finally:
         conn.close()
-
-

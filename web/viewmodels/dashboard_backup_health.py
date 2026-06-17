@@ -18,6 +18,16 @@ from typing import Dict, Optional
 
 BACKUP_STALE_DAYS = 7
 
+
+class UnsafeBackupPathError(OSError):
+    """备份目录/文件不是安全的普通目录或文件（软链接/硬链接借壳等）。
+
+    刻意是 OSError 子类：首页路由统一 `except OSError` 接住并降级为「读取失败」明示；
+    且本异常定义在 viewmodel 内，避免 viewmodel 导入 core.infrastructure（架构门禁
+    禁止 viewmodel 导入 core 非 models 子包）。语义与 safe_files.UnsafeFixedFileError
+    一致，但分属两层、互不依赖。
+    """
+
 _BACKUP_PREFIX = "aps_backup_"
 _BACKUP_SUFFIX = ".db"
 
@@ -34,6 +44,15 @@ def read_latest_backup_time(backup_dir: str) -> Optional[datetime]:
     会把权限失败伪装成目录不存在。
     """
     try:
+        dir_info = os.lstat(backup_dir)
+    except FileNotFoundError:
+        return None
+    if stat_module.S_ISLNK(dir_info.st_mode):
+        raise UnsafeBackupPathError(f"备份目录不是安全目录：{backup_dir}")
+    if not stat_module.S_ISDIR(dir_info.st_mode):
+        raise NotADirectoryError(f"备份目录不是目录：{backup_dir}")
+
+    try:
         names = os.listdir(backup_dir)
     except FileNotFoundError:
         return None
@@ -42,9 +61,13 @@ def read_latest_backup_time(backup_dir: str) -> Optional[datetime]:
     for name in names:
         if not (name.startswith(_BACKUP_PREFIX) and name.endswith(_BACKUP_SUFFIX)):
             continue
-        info = os.stat(os.path.join(backup_dir, name))
+        info = os.lstat(os.path.join(backup_dir, name))
+        if stat_module.S_ISLNK(info.st_mode):
+            raise UnsafeBackupPathError(f"备份文件不是安全的普通文件：{name}")
         if not stat_module.S_ISREG(info.st_mode):
             continue  # 备份只会是普通文件；误放的同名目录不参与计时
+        if int(getattr(info, "st_nlink", 1) or 1) > 1:
+            raise UnsafeBackupPathError(f"备份文件不是安全的普通文件：{name}")
         if latest_mtime is None or info.st_mtime > latest_mtime:
             latest_mtime = info.st_mtime
     if latest_mtime is None:

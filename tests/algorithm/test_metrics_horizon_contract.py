@@ -33,5 +33,3 @@ def test_metrics_horizon_semantics() -> None:
     d = metrics.to_dict()
     assert d.get("util_defined") is False, f"to_dict util_defined 异常：{d!r}"
     assert float(d.get("internal_horizon_hours") or 0.0) == 0.0, f"to_dict internal_horizon_hours 异常：{d!r}"
-
-

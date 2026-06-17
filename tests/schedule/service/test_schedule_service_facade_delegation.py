@@ -36,22 +36,28 @@ def test_schedule_repository_dict_rows_have_named_return_contracts() -> None:
 def test_schedule_service_repository_bundle_aliases_stay_in_sync() -> None:
     from core.services.scheduler.schedule_service import ScheduleService
 
-    service = ScheduleService(object(), logger=None, op_logger=None)
-    repos = getattr(service, "_repos")
+    # 仅验仓储别名与 _repos 同源；BaseRepository.__init__ 会在连接上注册 aps_parse_dt UDF，
+    # 故须传真实 sqlite 连接而非 object() 占位（否则 create_function 不存在直接报错）。
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        service = ScheduleService(conn, logger=None, op_logger=None)
+        repos = getattr(service, "_repos")
 
-    for attr in (
-        "batch_repo",
-        "op_repo",
-        "part_op_repo",
-        "group_repo",
-        "machine_repo",
-        "operator_repo",
-        "operator_machine_repo",
-        "supplier_repo",
-        "schedule_repo",
-        "history_repo",
-    ):
-        assert getattr(service, attr) is getattr(repos, attr)
+        for attr in (
+            "batch_repo",
+            "op_repo",
+            "part_op_repo",
+            "group_repo",
+            "machine_repo",
+            "operator_repo",
+            "operator_machine_repo",
+            "supplier_repo",
+            "schedule_repo",
+            "history_repo",
+        ):
+            assert getattr(service, attr) is getattr(repos, attr)
+    finally:
+        conn.close()
 
 
 def find_repo_root() -> str:

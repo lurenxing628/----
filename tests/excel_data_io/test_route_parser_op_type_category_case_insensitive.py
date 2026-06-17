@@ -40,5 +40,3 @@ def test_route_parser_op_type_category_case_insensitive() -> None:
     assert result.status == ParseStatus.SUCCESS.value or result.status == ParseStatus.SUCCESS, f"解析状态异常：{result.status!r}"
     assert result.operations and result.operations[0].source == "internal", f"category 大小写容错失败：{result.operations!r}"
     assert result.stats.get("internal") == 1 and result.stats.get("external") == 0, f"统计异常：{result.stats!r}"
-
-

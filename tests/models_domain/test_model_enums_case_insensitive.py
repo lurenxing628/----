@@ -152,5 +152,3 @@ def test_model_enums_case_insensitive() -> None:
 
     s = Schedule.from_row({"id": 1, "op_id": 1, "start_time": "x", "end_time": "y", "lock_status": " LOCKED "})
     assert s.lock_status == "locked", f"Schedule.lock_status 未规范化：{s.lock_status!r}"
-
-

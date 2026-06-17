@@ -87,5 +87,3 @@ def test_skill_rank_mapping(db_path):
             conn.close()
         except Exception:
             pass
-
-

@@ -22,6 +22,7 @@ from core.models.operation_execution_scope import parse_positive_execution_int
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.resource_dispatch_execution_tokens import execution_state_key, execution_task_key
 from core.models.resource_identity import ResourceIdentity, build_resource_identity
+from core.models.scheduler_degradation_messages import public_degradation_events
 
 _NOT_CURRENT_OFFICIAL_REASON = "当前不是最新正式采用方案，不能填写现场记录。"
 
@@ -336,16 +337,28 @@ def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: b
     }
 
 
+def _resolve_plan_identity_label(context: Mapping[str, Any], plan_identity: Mapping[str, Any]) -> str:
+    return (
+        _text(context.get("plan_identity_label"))
+        or _text(plan_identity.get("user_label") or plan_identity.get("label"))
+        or "正式采用方案"
+    )
+
+
+def _join_degradation_message(degradation_events: List[Dict[str, Any]]) -> str:
+    return " ".join(
+        str(event.get("message") or "").strip()
+        for event in degradation_events
+        if event.get("message")
+    )
+
+
 def build_execution_payload(context: Mapping[str, Any]) -> Dict[str, Any]:
     can_write = bool(context.get("can_write_feedback"))
     feedback_write_enabled = bool(context.get("feedback_write_enabled"))
     plan_identity_value = context.get("plan_identity")
     plan_identity: Mapping[str, Any] = plan_identity_value if isinstance(plan_identity_value, Mapping) else {}
-    plan_identity_label = (
-        _text(context.get("plan_identity_label"))
-        or _text(plan_identity.get("user_label") or plan_identity.get("label"))
-        or "正式采用方案"
-    )
+    plan_identity_label = _resolve_plan_identity_label(context, plan_identity)
     states_value = context.get("states")
     states = states_value if isinstance(states_value, dict) else {}
     tasks: List[Dict[str, Any]] = []
@@ -366,6 +379,7 @@ def build_execution_payload(context: Mapping[str, Any]) -> Dict[str, Any]:
     disabled_reason = ""
     if not can_write:
         disabled_reason = _NOT_CURRENT_OFFICIAL_REASON
+    degradation_events = public_degradation_events(context.get("degradation_events") or [])
     return {
         "plan_identity": {
             "label": plan_identity_label,
@@ -375,6 +389,8 @@ def build_execution_payload(context: Mapping[str, Any]) -> Dict[str, Any]:
         "plan_identity_label": plan_identity_label,
         "can_write_feedback": can_write,
         "disabled_reason": disabled_reason,
+        "degradation_events": degradation_events,
+        "degradation_message": _join_degradation_message(degradation_events),
         "tasks": tasks,
     }
 

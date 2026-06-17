@@ -179,5 +179,3 @@ def test_objective_case_normalization(schema_conn) -> None:
     )
 
     conn.close()
-
-

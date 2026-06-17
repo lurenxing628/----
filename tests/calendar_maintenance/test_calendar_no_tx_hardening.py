@@ -240,5 +240,3 @@ def test_calendar_no_tx_hardening(db_path) -> None:
             conn.close()
         except Exception:
             pass
-
-

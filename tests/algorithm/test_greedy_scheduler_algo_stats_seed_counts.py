@@ -132,5 +132,3 @@ def test_greedy_scheduler_algo_stats_seed_counts() -> None:
     assert int(fallback_counts.get("seed_duplicate_dropped_count") or 0) == 1, f"重复 seed 计数异常：{fallback_counts!r}"
     assert int(fallback_counts.get("seed_bad_time_dropped_count") or 0) == 1, f"坏时间 seed 计数异常：{fallback_counts!r}"
     assert int(fallback_counts.get("seed_overlap_filtered_count") or 0) == 1, f"overlap 过滤计数异常：{fallback_counts!r}"
-
-

@@ -175,5 +175,3 @@ def test_maintenance_telemetry_isolation(db_path, tmp_path) -> None:
 
     finally:
         conn.close()
-
-

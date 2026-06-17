@@ -7,9 +7,10 @@ from typing import Any, List, Optional
 from flask import current_app, flash, g, redirect, render_template, request, url_for
 
 from core.infrastructure.backup import MaintenanceWindowError
-from core.infrastructure.database import ensure_schema
+from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.logging import OperationLogger
+from core.infrastructure.safe_files import UnsafeFixedFileError, remove_fixed_file
 from web.routes.form_values import form_yes_no_value
 from web.viewmodels.system_backup_page import build_system_backup_page_view_model
 
@@ -37,11 +38,11 @@ def _redirect_restore_maintenance_error(err: MaintenanceWindowError):
     return redirect(url_for("system.backup_page"))
 
 
-def _write_restore_success_log(filename: str, result: Any) -> Optional[sqlite3.Connection]:
+def _write_restore_success_log(filename: str, result: Any):
     conn = None
     before_restore_path = getattr(result, "before_restore_path", None)
     try:
-        conn = sqlite3.connect(current_app.config["DATABASE_PATH"])
+        conn = get_connection(current_app.config["DATABASE_PATH"])
         op_logger = OperationLogger(conn, logger=current_app.logger)
         logged = op_logger.info(
             module="system",
@@ -81,6 +82,10 @@ def backup_page():
     keep_days = int(cfg.auto_backup_keep_days)
     mgr = _get_backup_manager(keep_days=keep_days)
     backups = mgr.list_backups()
+    backup_list_unsafe_count = int(getattr(mgr, "last_list_unsafe_count", 0) or 0)
+    backup_list_unsafe_sample = list(getattr(mgr, "last_list_unsafe_sample", []) or [])
+    backup_list_error_count = int(getattr(mgr, "last_list_error_count", 0) or 0)
+    backup_list_error_sample = list(getattr(mgr, "last_list_error_sample", []) or [])
     from core.services.system import SystemMaintenanceService
 
     plugin_status = current_app.config.get("PLUGIN_STATUS")
@@ -89,6 +94,10 @@ def backup_page():
         "system/backup.html",
         title="系统管理 - 备份/恢复",
         backups=backups,
+        backup_list_unsafe_count=backup_list_unsafe_count,
+        backup_list_unsafe_sample=backup_list_unsafe_sample,
+        backup_list_error_count=backup_list_error_count,
+        backup_list_error_sample=backup_list_error_sample,
         keep_days=keep_days,
         settings=settings,
         job_state=_get_job_state_map(),
@@ -181,11 +190,8 @@ def backup_delete():
     filename = _validate_backup_filename(request.form.get("filename") or "")
     backup_dir = current_app.config["BACKUP_DIR"]
     backup_path = os.path.join(backup_dir, filename)
-    if not os.path.exists(backup_path):
-        flash(f"备份文件不存在：{filename}", "error")
-        return redirect(url_for("system.backup_page"))
     try:
-        os.remove(backup_path)
+        remove_fixed_file(backup_path, missing_ok=False, allow_symlink=False)
         if getattr(g, "op_logger", None) is not None:
             try:
                 g.op_logger.info(
@@ -199,6 +205,11 @@ def backup_delete():
                 # 备份文件已经删除成功，留痕失败只记录日志，不把成功操作改成失败。
                 current_app.logger.exception("删除备份成功后写入操作日志失败（不阻断）")
         flash(f"已删除备份：{filename}", "success")
+    except FileNotFoundError:
+        flash(f"备份文件不存在：{filename}", "error")
+    except UnsafeFixedFileError as exc:
+        current_app.logger.warning("拒绝删除不安全备份文件（filename=%s）：%s", filename, exc)
+        flash("删除备份失败：备份文件不是安全的普通文件，请先检查备份目录。", "error")
     except OSError:
         current_app.logger.exception("删除备份失败（filename=%s）", filename)
         flash("删除备份失败，请稍后重试。", "error")
@@ -226,14 +237,19 @@ def backup_delete_batch():
             failed_details.append(f"{shown}: {e.message}")
             continue
         p = os.path.join(backup_dir, fn)
-        if not os.path.exists(p):
+        try:
+            remove_fixed_file(p, missing_ok=False, allow_symlink=False)
+            ok += 1
+            deleted.append(fn)
+        except FileNotFoundError:
             failed.append(fn)
             failed_details.append(f"{fn}: 文件不存在")
             continue
-        try:
-            os.remove(p)
-            ok += 1
-            deleted.append(fn)
+        except UnsafeFixedFileError as exc:
+            current_app.logger.warning("拒绝批量删除不安全备份文件（filename=%s）：%s", fn, exc)
+            failed.append(fn)
+            failed_details.append(f"{fn}: 不是安全的普通备份文件")
+            continue
         except OSError:
             current_app.logger.exception("批量删除备份失败（filename=%s）", fn)
             failed.append(fn)
@@ -270,10 +286,10 @@ def backup_delete_batch():
 def backup_cleanup():
     cfg = _get_system_cfg_snapshot()
     mgr = _get_backup_manager(keep_days=int(cfg.auto_backup_keep_days))
-    before = mgr.list_backups()
-    mgr.cleanup_old_backups()
-    after = mgr.list_backups()
-    removed = max(0, len(before) - len(after))
+    cleanup_result = mgr.cleanup_old_backups() or {}
+    removed = int(cleanup_result.get("removed_count") or 0)
+    unsafe_count = int(cleanup_result.get("unsafe_count") or 0)
+    error_count = int(cleanup_result.get("error_count") or 0)
 
     if getattr(g, "op_logger", None) is not None:
         g.op_logger.info(
@@ -281,10 +297,22 @@ def backup_cleanup():
             action="cleanup",
             target_type="backup",
             target_id=None,
-            detail={"keep_days": int(mgr.keep_days), "removed_count": int(removed), "mode": "manual"},
+            detail={
+                "keep_days": int(mgr.keep_days),
+                "removed_count": int(removed),
+                "unsafe_count": unsafe_count,
+                "error_count": error_count,
+                "mode": "manual",
+            },
         )
 
     flash(f"已清理过期备份：删除 {removed} 个（保留 {mgr.keep_days} 天内的备份）。", "success")
+    if unsafe_count:
+        sample = "；".join(str(item.get("filename") or "") for item in list(cleanup_result.get("unsafe_sample") or [])[:10])
+        flash(f"有 {unsafe_count} 个备份文件不是安全的普通文件，已跳过：{sample}", "warning")
+    if error_count:
+        sample = "；".join(str(item.get("filename") or "") for item in list(cleanup_result.get("error_sample") or [])[:10])
+        flash(f"有 {error_count} 个备份文件清理失败，请检查日志：{sample}", "warning")
     return redirect(url_for("system.backup_page"))
 
 

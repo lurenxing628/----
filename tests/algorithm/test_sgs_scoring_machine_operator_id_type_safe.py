@@ -116,5 +116,3 @@ def test_sgs_scoring_machine_operator_id_type_safe() -> None:
 
     # 关键断言：第一个被排产的应是更早交期的 OP_EARLY。
     assert [result.op_code for result in results] == ["OP_EARLY", "OP_LATE"], results
-
-

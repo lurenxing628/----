@@ -100,5 +100,3 @@ def test_migrate_v5_normalize_operator_machine_legacy_values(tmp_path, schema_pa
         if name.startswith("aps_backup_") and expected_suffix in name and name.endswith(".db")
     ]
     assert backup_files, f"未找到迁移前备份文件（dir={backups_dir}）"
-
-

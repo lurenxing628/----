@@ -53,5 +53,3 @@ def test_external_merge_mode_case_insensitive() -> None:
     assert result.end_time == base_time + timedelta(days=3), f"merged 外协组 end_time 异常：{result.end_time!r}"
     assert ("B001", "G001") in external_group_cache, "merged 外协组应写入 external_group_cache"
     assert not errors, f"不应产生 errors，实际 errors={errors!r}"
-
-

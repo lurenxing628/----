@@ -54,4 +54,3 @@ def test_system_config_dirty_fields_contract(db_path) -> None:
     assert "本次先按最大值 365 处理" in str(dirty_reasons.get("auto_backup_keep_days") or ""), dirty_reasons
     assert "本次先按 60 处理" in str(dirty_reasons.get("auto_log_cleanup_interval_minutes") or ""), dirty_reasons
     assert _dirty_field_label("new_internal_config_key") == "系统配置项"
-

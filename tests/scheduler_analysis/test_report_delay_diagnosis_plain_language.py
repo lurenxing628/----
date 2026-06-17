@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from io import BytesIO
 from pathlib import Path
@@ -20,6 +21,7 @@ if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
 from core.models.schedule_plan_identity import PlanIdentity  # noqa: E402
+from core.services.report.report_engine import ReportEngine  # noqa: E402
 from core.services.scheduler.schedule_delay_diagnosis_utils import plan_link  # noqa: E402
 from tests._support.excel_templates import point_env_at_shared  # noqa: E402
 from tests.scheduler_analysis.test_scheduler_delay_diagnosis_contract import (  # noqa: E402
@@ -113,6 +115,48 @@ def _insert_bad_finish_time_batch() -> None:
         conn.close()
 
 
+def _insert_bad_due_date_batch() -> None:
+    db_path = Path(os.environ["APS_DB_PATH"])
+    conn = get_connection(str(db_path))
+    try:
+        conn.execute(
+            """
+            INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
+            VALUES ('B_BAD_DUE', 'P001', '坏交期批次', 1, '坏交期', 'normal', 'yes', 'scheduled')
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _insert_mixed_finish_time_batch() -> None:
+    db_path = Path(os.environ["APS_DB_PATH"])
+    conn = get_connection(str(db_path))
+    try:
+        conn.executescript(
+            """
+            INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
+            VALUES ('B_MIXED_FINISH', 'P001', '混合时间批次', 1, '2026-06-02', 'normal', 'yes', 'scheduled');
+
+            INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
+            VALUES (70, 'OP-MIX-10', 'B_MIXED_FINISH', 'piece-mix-1', 10, '车削', 'internal', 'scheduled');
+
+            INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
+            VALUES (71, 'OP-MIX-20', 'B_MIXED_FINISH', 'piece-mix-2', 20, '磨削', 'internal', 'scheduled');
+
+            INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+            VALUES (170, 70, 'M1', 'O1', '2026/06/01 08:00', '2026/06/01 12:00', 'unlocked', 11);
+
+            INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+            VALUES (171, 71, 'M1', 'O1', '2026-06-03 08:00', '2026-06-03 10:00', 'unlocked', 11);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def test_overdue_page_shows_delay_diagnosis_in_plain_chinese(tmp_path: Path, monkeypatch) -> None:
     app, _scenario_id = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
@@ -156,6 +200,81 @@ def test_overdue_page_and_export_show_bad_finish_time_as_data_issue(tmp_path: Pa
     assert "计划完成时间写法不对" in values
     assert "坏结束时间" not in values
     _assert_no_internal_terms(values)
+
+
+def test_overdue_engine_surfaces_bad_due_date_as_data_issue(tmp_path: Path, monkeypatch) -> None:
+    _build_app(tmp_path, monkeypatch)
+    _insert_bad_due_date_batch()
+    db_path = Path(os.environ["APS_DB_PATH"])
+    conn = get_connection(str(db_path))
+    try:
+        report = ReportEngine(conn).overdue_batches(VERSION, plan_role="adopted")
+    finally:
+        conn.close()
+
+    by_batch = {str(item.get("batch_id")): item for item in report["items"]}
+    bad_due = by_batch["B_BAD_DUE"]
+    assert bad_due["bucket"] == "due_date_invalid"
+    assert bad_due["bucket_label"] == "交期写法异常"
+    assert "交期写法不对" in bad_due["data_issue_message"]
+    assert report["report_invalid_due_count"] == 1
+    assert "交期写法不对" in report["report_degradation_message"]
+
+
+def test_overdue_page_keeps_bad_due_separate_from_schedule_time_issue(tmp_path: Path, monkeypatch) -> None:
+    app, _scenario_id = _build_app(tmp_path, monkeypatch)
+    _insert_bad_due_date_batch()
+    client = app.test_client()
+
+    response = client.get(f"/reports/overdue?version={VERSION}&plan_role=adopted")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+
+    assert "交期写法异常" in html
+    assert re.search(
+        r'<div class="aps-summary-label">交期写法异常</div>\s*'
+        r'<div class="aps-summary-value">1 个</div>',
+        html,
+        re.S,
+    )
+    assert re.search(r"排程时间异常.*?0 个", html, re.S)
+    assert "交期写法不对，系统暂时不能判断这个批次是否超期" in html
+    assert "还没有计划完成时间，截至当前已经晚了 0.00 小时" not in html
+
+
+def test_overdue_export_surfaces_bad_due_degradation_even_without_bad_finish_time(tmp_path: Path, monkeypatch) -> None:
+    """仅坏交期、无坏完工时间时，导出 Excel 摘要也必须诚实出现降级提示——
+    防止页面有提示而 Excel 摘要静默为空（两条链路口径不一致，finding-17）。"""
+    app, _scenario_id = _build_app(tmp_path, monkeypatch)
+    _insert_bad_due_date_batch()
+    client = app.test_client()
+
+    export_response = client.get(f"/reports/overdue/export?version={VERSION}&plan_role=adopted")
+    assert export_response.status_code == 200
+    values = "\n".join(_workbook_texts(export_response.data))
+
+    # 摘要降级三件套：数据不完整标记 + 坏交期计数行 + 处理提示文案，缺一不可。
+    assert "数据不完整" in values
+    assert "交期写法异常批次数" in values
+    assert "交期写法不对" in values
+    _assert_no_internal_terms(values)
+
+
+def test_overdue_finish_time_uses_parsed_time_order_not_raw_text(tmp_path: Path, monkeypatch) -> None:
+    _build_app(tmp_path, monkeypatch)
+    _insert_mixed_finish_time_batch()
+    db_path = Path(os.environ["APS_DB_PATH"])
+    conn = get_connection(str(db_path))
+    try:
+        report = ReportEngine(conn).overdue_batches(VERSION, plan_role="adopted")
+    finally:
+        conn.close()
+
+    by_batch = {str(item.get("batch_id")): item for item in report["items"]}
+    mixed = by_batch["B_MIXED_FINISH"]
+    assert mixed["bucket"] == "scheduled_overdue"
+    assert mixed["finish_time"] == "2026-06-03 10:00:00"
+    assert float(mixed["delay_hours"]) == 10.0
 
 
 def test_overdue_export_contains_trace_sheet_without_internal_terms(tmp_path: Path, monkeypatch) -> None:

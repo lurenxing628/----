@@ -117,5 +117,3 @@ def test_unit_excel_converter_duplicate_part_rows_no_override() -> None:
     assert abs(dup_setup_h - 1.5) < 1e-6 and abs(dup_unit_h - 2.0) < 1e-6, (
         f"DUP 累计异常：setup={dup_setup_h}, unit={dup_unit_h}"
     )
-
-

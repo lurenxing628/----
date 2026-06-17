@@ -243,4 +243,3 @@ def test_maintenance_window_mutex(tmp_path, schema_path) -> None:
 
     if not observed["inside_window"]:
         raise RuntimeError("预期 ensure_schema() 进入 _migrate_with_backup 时仍处于同一 maintenance window")
-

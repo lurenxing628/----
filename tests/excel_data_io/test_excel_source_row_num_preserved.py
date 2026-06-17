@@ -58,5 +58,3 @@ def test_excel_source_row_num_preserved(db_path) -> None:
             raise RuntimeError(f"人员设备关联确认导入错误样本文案异常：{sample!r}")
     finally:
         conn.close()
-
-

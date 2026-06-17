@@ -138,5 +138,3 @@ def test_unit_excel_converter_diagnostics_visible() -> None:
     output = stdout.getvalue()
     assert rc == 0, output
     assert "诊断汇总" in output, output
-
-

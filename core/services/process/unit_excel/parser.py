@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import re
 from dataclasses import dataclass, field
@@ -7,6 +8,15 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _close_workbook_best_effort(wb: Any) -> None:
+    try:
+        wb.close()
+    except Exception as exc:
+        _LOGGER.warning("关闭工艺单元 Excel 工作簿失败：%s", exc)
 
 
 @dataclass
@@ -73,10 +83,7 @@ class UnitExcelParser:
                 self._append_station_step_records(ctx, row_values=row_values, stations=stations, row_num=row_num)
             return parts, stations
         finally:
-            try:
-                wb.close()
-            except Exception:
-                pass
+            _close_workbook_best_effort(wb)
 
     def _maybe_update_part_context(
         self, parts: Dict[str, PartContext], *, current_part_no: Optional[str], row_values: Sequence[Any]

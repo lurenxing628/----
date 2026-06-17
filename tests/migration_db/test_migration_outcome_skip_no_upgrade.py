@@ -63,5 +63,3 @@ def test_migration_outcome_skip_no_upgrade(tmp_path, schema_path) -> None:
         if name.startswith("aps_backup_") and "before_migrate" in name and name.endswith(".db")
     ]
     assert not backup_files, f"fail-fast 预检不应生成迁移前备份，实际 {backup_files}"
-
-

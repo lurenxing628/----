@@ -185,5 +185,3 @@ def test_route_parser_strict_mode_rejects_supplier_fallback() -> None:
     assert any("工种映射加载失败" in str(msg) for msg in (result_external.warnings or [])), (
         f"无关供应商脏映射应作为 warning 透出：{result_external.warnings!r}"
     )
-
-

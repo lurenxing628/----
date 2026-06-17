@@ -484,10 +484,14 @@ def test_backup_list_and_cleanup_skip_symlink_backups(tmp_path: Path) -> None:
     manager = BackupManager(db_path=str(db_path), backup_dir=str(backup_dir), keep_days=7, logger=None)
 
     listed = manager.list_backups()
-    manager.cleanup_old_backups()
+    cleanup_result = manager.cleanup_old_backups()
 
     assert all(item["filename"] != link.name for item in listed)
+    assert manager.last_list_unsafe_count == 1
+    assert manager.last_list_unsafe_sample[0]["filename"] == link.name
     assert not old_regular.exists()
+    assert cleanup_result["unsafe_count"] == 1
+    assert cleanup_result["unsafe_sample"][0]["filename"] == link.name
     assert os.path.islink(str(link))
     assert victim.read_text(encoding="utf-8") == "VICTIM-UNTOUCHED"
 
@@ -699,6 +703,93 @@ def test_backup_restore_refuses_hardlink_database_target_without_touching_peer(t
     finally:
         conn.close()
     assert row == ("peer",)
+
+
+def _create_operation_logs_db(path: Path) -> None:
+    import sqlite3
+
+    conn = sqlite3.connect(str(path))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE OperationLogs(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                log_level TEXT,
+                module TEXT,
+                action TEXT,
+                target_type TEXT,
+                target_id TEXT,
+                operator TEXT,
+                detail TEXT,
+                created_at TEXT
+            )
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _operation_log_count(path: Path) -> int:
+    import sqlite3
+
+    conn = sqlite3.connect(str(path))
+    try:
+        return int(conn.execute("SELECT COUNT(1) FROM OperationLogs").fetchone()[0])
+    finally:
+        conn.close()
+
+
+def test_restore_success_log_refuses_symlink_database_path_without_touching_target(tmp_path: Path) -> None:
+    _skip_without_symlink(tmp_path)
+    from types import SimpleNamespace
+
+    from flask import Flask
+
+    from web.routes.system_backup import _write_restore_success_log
+
+    victim_db = tmp_path / "victim.db"
+    _create_operation_logs_db(victim_db)
+    db_link = tmp_path / "aps.db"
+    os.symlink(str(victim_db), str(db_link))
+
+    app = Flask(__name__)
+    app.config["DATABASE_PATH"] = str(db_link)
+    with app.app_context():
+        conn = _write_restore_success_log(
+            "aps_backup_20990101_000000_manual.db",
+            SimpleNamespace(code="verified", before_restore_path=None),
+        )
+
+    assert conn is None
+    assert os.path.islink(str(db_link))
+    assert _operation_log_count(victim_db) == 0
+
+
+def test_restore_success_log_refuses_hardlink_database_path_without_touching_peer(tmp_path: Path) -> None:
+    _skip_without_hardlink(tmp_path)
+    from types import SimpleNamespace
+
+    from flask import Flask
+
+    from web.routes.system_backup import _write_restore_success_log
+
+    peer_db = tmp_path / "peer.db"
+    _create_operation_logs_db(peer_db)
+    db_path = tmp_path / "aps.db"
+    os.link(str(peer_db), str(db_path))
+
+    app = Flask(__name__)
+    app.config["DATABASE_PATH"] = str(db_path)
+    with app.app_context():
+        conn = _write_restore_success_log(
+            "aps_backup_20990101_000000_manual.db",
+            SimpleNamespace(code="verified", before_restore_path=None),
+        )
+
+    assert conn is None
+    assert db_path.exists()
+    assert _operation_log_count(peer_db) == 0
 
 
 def test_backup_temp_symlink_is_refused_before_sqlite_writes(tmp_path: Path) -> None:

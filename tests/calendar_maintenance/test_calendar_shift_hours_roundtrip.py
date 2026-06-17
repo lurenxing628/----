@@ -122,5 +122,3 @@ def test_calendar_shift_hours_roundtrip(db_path) -> None:
             conn.close()
         except Exception:
             pass
-
-

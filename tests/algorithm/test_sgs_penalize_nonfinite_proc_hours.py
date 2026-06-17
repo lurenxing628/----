@@ -152,5 +152,3 @@ def test_sgs_penalize_nonfinite_proc_hours() -> None:
         raise AssertionError("SGS 不应为非有限工时候选生成惩罚排序 key 后继续排产")
 
     assert sched.calls == [], f"评分阶段失败后不应进入正式派工：calls={sched.calls!r}"
-
-

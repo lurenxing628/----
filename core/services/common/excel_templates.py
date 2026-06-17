@@ -9,6 +9,8 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from core.infrastructure.safe_files import read_fixed_bytes, write_fixed_bytes
+
 from .excel_template_defaults import get_default_templates
 
 
@@ -37,12 +39,15 @@ def _require_active_sheet(wb: Any) -> Any:
     return ws
 
 
-def _sanitize_export_cell(value: Any) -> Any:
+def sanitize_export_cell(value: Any) -> Any:
     if isinstance(value, str):
         value = "".join(ch for ch in value if ord(ch) >= 32 or ch in "\t\n\r")
         if value and value[0] in ("=", "+", "-", "@"):
             return "'" + value
     return value
+
+
+_sanitize_export_cell = sanitize_export_cell
 
 
 def _iter_column_indices(spec: Mapping[str, Any], key: str) -> Iterable[int]:
@@ -151,8 +156,17 @@ def _write_xlsx(
 ) -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     output = build_xlsx_bytes(headers, sample_rows, format_spec=format_spec)
-    with open(path, "wb") as f:
-        f.write(output.getvalue())
+    write_fixed_bytes(path, output.getvalue())
+
+
+def _load_fixed_workbook(path: str, *, data_only: bool = False) -> Any:
+    return openpyxl.load_workbook(io.BytesIO(read_fixed_bytes(path)), data_only=data_only)
+
+
+def _save_fixed_workbook(wb: Any, path: str) -> None:
+    output = io.BytesIO()
+    wb.save(output)
+    write_fixed_bytes(path, output.getvalue())
 
 
 def _read_xlsx_headers(path: str) -> List[str]:
@@ -160,7 +174,7 @@ def _read_xlsx_headers(path: str) -> List[str]:
         # 不用 read_only：read_only 懒加载在 Windows 上即便 close() 也可能不立即释放底层归档句柄，
         # 导致调用方临时目录清理报 PermissionError[WinError 32]。模板文件很小，普通模式一次性读入、
         # close() 同步释放句柄；data_only 取缓存值即可读表头文本。
-        wb = openpyxl.load_workbook(path, data_only=True)
+        wb = _load_fixed_workbook(path, data_only=True)
     except Exception as exc:
         raise ExcelTemplateError(f"读取 Excel 模板表头失败：{os.path.basename(path)}") from exc
     try:
@@ -355,7 +369,7 @@ def _refresh_existing_template_headers(path: str, template_def: Mapping[str, Any
     if not expected_headers or not legacy_header_sets:
         return False
     try:
-        wb = openpyxl.load_workbook(path)
+        wb = _load_fixed_workbook(path)
     except Exception as exc:
         raise ExcelTemplateError(f"打开待修复 Excel 模板失败：{os.path.basename(path)}") from exc
     try:
@@ -364,7 +378,7 @@ def _refresh_existing_template_headers(path: str, template_def: Mapping[str, Any
             return False
         _rewrite_template_headers(ws, expected_headers)
         _apply_sheet_layout(ws, format_spec=template_def.get("format_spec"), data_row_count=ws.max_row - 1)
-        wb.save(path)
+        _save_fixed_workbook(wb, path)
         return True
     except ExcelTemplateError:
         raise
@@ -379,7 +393,7 @@ def _refresh_existing_template_layout(path: str, template_def: Mapping[str, Any]
     if repair_plan is None:
         return False
     try:
-        wb = openpyxl.load_workbook(path)
+        wb = _load_fixed_workbook(path)
     except Exception as exc:
         raise ExcelTemplateError(f"打开待修复 Excel 模板失败：{os.path.basename(path)}") from exc
     try:
@@ -391,7 +405,7 @@ def _refresh_existing_template_layout(path: str, template_def: Mapping[str, Any]
         _rewrite_template_headers(ws, repair_plan["headers"])
         _remove_enum_validations(ws, repair_plan["enum_col_indices"])
         _apply_sheet_layout(ws, format_spec=repair_plan["format_spec"], data_row_count=ws.max_row - 1)
-        wb.save(path)
+        _save_fixed_workbook(wb, path)
         return True
     except ExcelTemplateError:
         raise
@@ -416,7 +430,7 @@ def _known_generated_template_needs_refresh(path: str, template_def: Mapping[str
     sample_row_count = len(template_def.get("sample_rows") or [])
     can_repair_extra_rows = str(template_def.get("filename") or "") in _EXTRA_ROW_LAYOUT_REPAIR_TEMPLATES
     try:
-        wb = openpyxl.load_workbook(path, data_only=True)
+        wb = _load_fixed_workbook(path, data_only=True)
     except Exception as exc:
         raise ExcelTemplateError(f"检查 Excel 模板是否需要刷新失败：{os.path.basename(path)}") from exc
     try:

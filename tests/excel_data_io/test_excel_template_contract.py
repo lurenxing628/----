@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import re
 import sys
 import tempfile
@@ -13,6 +14,30 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from tests._support.paths import REPO_ROOT
+
+
+def _can_create_symlink(tmpdir: Path) -> bool:
+    if not hasattr(os, "symlink"):
+        return False
+    target = tmpdir / "_symlink_target"
+    link = tmpdir / "_symlink_probe"
+    target.write_bytes(b"x")
+    try:
+        os.symlink(str(target), str(link))
+    except (OSError, NotImplementedError):
+        return False
+    return True
+
+
+def _can_create_hardlink(tmpdir: Path) -> bool:
+    target = tmpdir / "_hardlink_target"
+    link = tmpdir / "_hardlink_probe"
+    target.write_bytes(b"x")
+    try:
+        os.link(str(target), str(link))
+    except (OSError, NotImplementedError):
+        return False
+    return True
 
 PROCESS_TEMPLATE_FILES = (
     "工种配置.xlsx",
@@ -630,6 +655,54 @@ def _assert_mismatched_existing_template_is_not_silently_overwritten() -> None:
         assert template_path.read_bytes() == original_bytes, "表头不匹配时不能覆盖现场已有模板"
 
 
+def _assert_symlink_template_is_not_silently_overwritten() -> None:
+    _ensure_repo_on_path()
+    excel_templates = importlib.import_module("core.services.common.excel_templates")
+
+    with tempfile.TemporaryDirectory(prefix="aps_excel_template_contract_") as tmp:
+        tmpdir = Path(tmp)
+        if not _can_create_symlink(tmpdir):
+            return
+        victim = tmpdir / "victim.xlsx"
+        original_bytes = b"VICTIM-UNTOUCHED"
+        victim.write_bytes(original_bytes)
+        template_path = tmpdir / "人员基本信息.xlsx"
+        os.symlink(str(victim), str(template_path))
+
+        try:
+            excel_templates.ensure_excel_templates(str(tmpdir))
+        except excel_templates.ExcelTemplateError as exc:
+            assert "人员基本信息.xlsx" in str(exc), "软链接模板报错应带文件名，方便现场定位"
+        else:
+            raise AssertionError("已有模板是软链接时不应被静默覆盖重建")
+        assert os.path.islink(str(template_path)), "软链接模板不能被删除或替换"
+        assert victim.read_bytes() == original_bytes, "软链接指向的文件不能被模板修复流程改动"
+
+
+def _assert_hardlink_template_is_not_silently_overwritten() -> None:
+    _ensure_repo_on_path()
+    excel_templates = importlib.import_module("core.services.common.excel_templates")
+
+    with tempfile.TemporaryDirectory(prefix="aps_excel_template_contract_") as tmp:
+        tmpdir = Path(tmp)
+        if not _can_create_hardlink(tmpdir):
+            return
+        victim = tmpdir / "victim.xlsx"
+        original_bytes = b"VICTIM-UNTOUCHED"
+        victim.write_bytes(original_bytes)
+        template_path = tmpdir / "人员基本信息.xlsx"
+        os.link(str(victim), str(template_path))
+
+        try:
+            excel_templates.ensure_excel_templates(str(tmpdir))
+        except excel_templates.ExcelTemplateError as exc:
+            assert "人员基本信息.xlsx" in str(exc), "硬链接模板报错应带文件名，方便现场定位"
+        else:
+            raise AssertionError("已有模板是硬链接时不应被静默覆盖重建")
+        assert template_path.exists(), "硬链接模板不能被删除"
+        assert victim.read_bytes() == original_bytes, "硬链接另一端不能被模板修复流程改动"
+
+
 def _assert_mismatched_op_type_template_extra_header_is_not_repaired() -> None:
     _ensure_repo_on_path()
     excel_templates = importlib.import_module("core.services.common.excel_templates")
@@ -836,5 +909,6 @@ def test_excel_template_contracts() -> None:
     _assert_legacy_op_type_template_custom_rows_repairs_dropdown_without_overwriting_data()
     _assert_broken_existing_template_is_not_silently_overwritten()
     _assert_mismatched_existing_template_is_not_silently_overwritten()
+    _assert_symlink_template_is_not_silently_overwritten()
+    _assert_hardlink_template_is_not_silently_overwritten()
     _assert_mismatched_op_type_template_extra_header_is_not_repaired()
-

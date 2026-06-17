@@ -158,5 +158,3 @@ def test_optimizer_zero_weight_cfg_preserved() -> None:
     assert abs(float((outcome.used_params or {}).get("due_weight", -1.0)) - 1.0) < 1e-9, (
         f"OptimizationOutcome.used_params 未保留 due_weight=1.0：{outcome.used_params!r}"
     )
-
-

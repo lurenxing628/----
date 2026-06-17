@@ -96,5 +96,3 @@ def test_maintenance_jobstate_retry_signal(db_path, tmp_path) -> None:
         assert "deleted_count" in str(row2[1] or ""), f"last_run_detail 应记录删除结果，实际 {row2[1]!r}"
     finally:
         conn.close()
-
-

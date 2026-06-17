@@ -90,5 +90,3 @@ def test_excel_operator_calendar_cross_midnight(schema_conn) -> None:
             conn.close()
         except Exception:
             pass
-
-

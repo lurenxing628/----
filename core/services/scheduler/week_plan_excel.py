@@ -7,7 +7,7 @@ from typing import Any, Mapping, Optional, Sequence
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Font
 
-from core.services.common.excel_templates import build_xlsx_bytes
+from core.services.common.excel_templates import build_xlsx_bytes, sanitize_export_cell
 
 
 def build_week_plan_export_workbook(
@@ -54,7 +54,7 @@ def _with_plan_summary(
     try:
         ws = wb.create_sheet("查询摘要", 0)
         for key, value in _plan_summary_rows(plan_resolution, export_context):
-            ws.append([key, value])
+            ws.append([sanitize_export_cell(key), sanitize_export_cell(value)])
         ws.freeze_panes = "A2"
         ws.column_dimensions["A"].width = 18
         ws.column_dimensions["B"].width = 42

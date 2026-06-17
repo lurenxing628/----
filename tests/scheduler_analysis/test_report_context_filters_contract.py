@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import sqlite3
 from types import SimpleNamespace
 
 import pytest
 
 from core.infrastructure.errors import ValidationError
 from core.models.schedule_plan_identity import PlanIdentity
+from core.models.schedule_plan_role import SOURCE_SCHEDULE
 from core.services.report.report_context_filters import (
     filter_downtime_rows_for_report_context,
     normalize_report_resource_filter,
@@ -212,6 +214,53 @@ def test_overdue_query_repository_rejects_unsupported_resource_filter_at_bottom(
         )
 
 
+def test_plan_time_span_uses_python_time_parser_not_sqlite_text_order() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute(
+            """
+            CREATE TABLE Schedule(
+                id INTEGER PRIMARY KEY,
+                op_id INTEGER,
+                machine_id TEXT,
+                operator_id TEXT,
+                start_time TEXT,
+                end_time TEXT,
+                lock_status TEXT,
+                version INTEGER
+            )
+            """
+        )
+        conn.executemany(
+            """
+            INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (1, 1, "M1", "O1", "2026/06/02 08:00", "2026/06/02 10:00", "unlocked", 12),
+                (2, 2, "M1", "O1", "2026-06-01T09:00", "2026-06-01T11:00", "unlocked", 12),
+                (3, 3, "M1", "O1", "2026-99-01 08:00", "2026-99-01 10:00", "unlocked", 12),
+                (4, 4, "M1", "O1", "2026-06-03 10:00", "2026-06-03 09:00", "unlocked", 12),
+            ],
+        )
+        repo = SchedulePlanQueryRepository(conn)
+
+        span = repo.get_plan_time_span(
+            version=12,
+            source_table=SOURCE_SCHEDULE,
+            candidate_id=None,
+        )
+
+        assert span == {
+            "version": 12,
+            "start_time": "2026-06-01 09:00:00",
+            "end_time": "2026-06-02 10:00:00",
+        }
+    finally:
+        conn.close()
+
+
 def test_plan_detail_repository_pushes_batch_and_resource_filters_to_bottom_sql() -> None:
     repo = SchedulePlanQueryRepository.__new__(SchedulePlanQueryRepository)
     captured = {}
@@ -247,6 +296,105 @@ def test_plan_detail_repository_pushes_batch_and_resource_filters_to_bottom_sql(
     )
     assert "TRIM(COALESCE(s.operator_id, '')) = ?" in captured["sql"]
     assert captured["params"][-2:] == ("B-RPT", "O-RPT")
+
+
+def test_plan_detail_repository_parses_window_params_with_same_python_contract() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE Schedule(
+                id INTEGER PRIMARY KEY,
+                op_id INTEGER,
+                machine_id TEXT,
+                operator_id TEXT,
+                start_time TEXT,
+                end_time TEXT,
+                lock_status TEXT,
+                version INTEGER
+            );
+            CREATE TABLE BatchOperations(
+                id INTEGER PRIMARY KEY,
+                op_code TEXT,
+                batch_id TEXT,
+                piece_id TEXT,
+                seq INTEGER,
+                op_type_name TEXT,
+                source TEXT,
+                status TEXT,
+                supplier_id TEXT
+            );
+            CREATE TABLE Batches(
+                batch_id TEXT PRIMARY KEY,
+                part_no TEXT,
+                part_name TEXT,
+                due_date TEXT,
+                priority INTEGER
+            );
+            CREATE TABLE Machines(
+                machine_id TEXT PRIMARY KEY,
+                name TEXT
+            );
+            CREATE TABLE Operators(
+                operator_id TEXT PRIMARY KEY,
+                name TEXT
+            );
+            CREATE TABLE Suppliers(
+                supplier_id TEXT PRIMARY KEY,
+                name TEXT
+            );
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
+            VALUES (1, 'OP-1', 'B-RPT', 'P-1', 1, '加工', 'manual', 'active')
+            """
+        )
+        conn.execute("INSERT INTO Batches(batch_id, due_date) VALUES ('B-RPT', '2026-02-15')")
+        conn.execute(
+            """
+            INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+            VALUES (1, 1, 'M1', 'O1', '2026/02/14 08:30:00', '2026/02/14 09:30:00', 'unlocked', 12)
+            """
+        )
+        repo = SchedulePlanQueryRepository(conn)
+
+        rows = repo.list_detail_rows_between(
+            version=12,
+            source_table=SOURCE_SCHEDULE,
+            candidate_id=None,
+            start_time="2026/02/14 08:00:00",
+            end_time="2026/02/14 10:00:00",
+        )
+
+        assert [row["op_id"] for row in rows] == [1]
+    finally:
+        conn.close()
+
+
+def test_plan_detail_repository_rejects_invalid_window_params() -> None:
+    repo = SchedulePlanQueryRepository.__new__(SchedulePlanQueryRepository)
+    repo.fetchall = lambda _sql, _params: []  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="计划明细查询时间写法不对"):
+        repo.list_detail_rows_between(
+            version=12,
+            source_table=SOURCE_SCHEDULE,
+            candidate_id=None,
+            start_time="not-a-time",
+            end_time="2026-02-14 10:00:00",
+        )
+
+    with pytest.raises(ValueError, match="计划明细查询时间写法不对"):
+        repo.list_detail_rows_between(
+            version=12,
+            source_table=SOURCE_SCHEDULE,
+            candidate_id=None,
+            start_time="2026-02-14 08:00:00",
+            end_time="not-a-time",
+        )
 
 
 def _diagnosis_plan_identity() -> PlanIdentity:

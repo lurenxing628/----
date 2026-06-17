@@ -90,5 +90,3 @@ def test_auto_assign_empty_resource_pool():
 
     # 修复目标：resource_pool={} 时仍进入 auto-assign 分支，并说明自动派工缺少哪类资料。
     assert any("缺少自动派工所需工种信息" in (e or "") for e in (summary.errors or [])), f"错误信息不符合预期：{summary.errors!r}"
-
-

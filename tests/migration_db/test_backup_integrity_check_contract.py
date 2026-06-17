@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from datetime import datetime
 from urllib.parse import unquote
+
+import pytest
 
 import core.infrastructure.backup as backup_mod
 from core.infrastructure.backup import BackupManager
+from core.infrastructure.safe_files import UnsafeFixedFileError
 
 
 class _ExecuteBoomConnection(sqlite3.Connection):
@@ -60,6 +64,48 @@ def _make_manager(tmp_path):
     finally:
         conn.close()
     return BackupManager(db_path=db_path, backup_dir=backup_dir, keep_days=7, logger=None), backup_dir
+
+
+class _FixedDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 6, 17, 22, 30, 0, tzinfo=tz)
+
+
+def _backup_name_for_fixed_time(suffix: str) -> str:
+    return f"aps_backup_20260617_223000_{suffix}.db"
+
+
+def _skip_without_symlink(tmp_path) -> None:
+    if not hasattr(os, "symlink"):
+        pytest.skip("平台不支持软链接")
+    target = tmp_path / "_symlink_probe_target"
+    target.write_text("x", encoding="utf-8")
+    link = tmp_path / "_symlink_probe"
+    try:
+        os.symlink(str(target), str(link))
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"平台不允许创建软链接：{exc}")
+    finally:
+        try:
+            link.unlink()
+        except OSError:
+            pass
+
+
+def _skip_without_hardlink(tmp_path) -> None:
+    target = tmp_path / "_hardlink_probe_target"
+    target.write_text("x", encoding="utf-8")
+    link = tmp_path / "_hardlink_probe"
+    try:
+        os.link(str(target), str(link))
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"平台不允许创建硬链接：{exc}")
+    finally:
+        try:
+            link.unlink()
+        except OSError:
+            pass
 
 
 def _sqlite_uri_database_path(database) -> str:
@@ -128,3 +174,37 @@ def test_backup_happy_path_still_produces_backup(tmp_path) -> None:
     assert os.path.exists(backup_path), f"校验通过时应正常生成备份：{backup_path}"
     assert not os.path.exists(backup_path + ".tmp"), "正式备份生成后不得残留 .tmp"
     assert os.path.dirname(backup_path) == backup_dir
+
+
+def test_backup_refuses_symlink_final_path_without_touching_target(tmp_path, monkeypatch) -> None:
+    _skip_without_symlink(tmp_path)
+    manager, backup_dir = _make_manager(tmp_path)
+    monkeypatch.setattr(backup_mod, "datetime", _FixedDatetime)
+    victim = tmp_path / "outside.db"
+    victim.write_text("VICTIM-UNCHANGED", encoding="utf-8")
+    final_path = os.path.join(backup_dir, _backup_name_for_fixed_time("manual"))
+    os.symlink(str(victim), final_path)
+
+    with pytest.raises(UnsafeFixedFileError):
+        manager.backup(suffix="manual")
+
+    assert os.path.islink(final_path)
+    assert victim.read_text(encoding="utf-8") == "VICTIM-UNCHANGED"
+    assert not os.path.exists(final_path + ".tmp")
+
+
+def test_backup_refuses_hardlink_final_path_without_touching_target(tmp_path, monkeypatch) -> None:
+    _skip_without_hardlink(tmp_path)
+    manager, backup_dir = _make_manager(tmp_path)
+    monkeypatch.setattr(backup_mod, "datetime", _FixedDatetime)
+    victim = tmp_path / "outside.db"
+    victim.write_text("VICTIM-UNCHANGED", encoding="utf-8")
+    final_path = os.path.join(backup_dir, _backup_name_for_fixed_time("manual"))
+    os.link(str(victim), final_path)
+
+    with pytest.raises(UnsafeFixedFileError):
+        manager.backup(suffix="manual")
+
+    assert os.path.exists(final_path)
+    assert victim.read_text(encoding="utf-8") == "VICTIM-UNCHANGED"
+    assert not os.path.exists(final_path + ".tmp")

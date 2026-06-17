@@ -60,5 +60,3 @@ def test_scheduler_nonfinite_efficiency_fallback() -> None:
         assert exc.field == "efficiency", f"非有限效率应定位到 efficiency，实际={exc.field!r}"
     else:
         raise AssertionError("非有限效率不应回退到 1.0 后继续排产")
-
-

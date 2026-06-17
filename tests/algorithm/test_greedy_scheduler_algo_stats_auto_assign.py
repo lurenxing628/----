@@ -85,5 +85,3 @@ def test_greedy_scheduler_algo_stats_auto_assign() -> None:
     assert int(fallback_counts.get("auto_assign_missing_op_type_id_count") or 0) == 1, (
         f"auto_assign 根因计数异常：{fallback_counts!r}"
     )
-
-

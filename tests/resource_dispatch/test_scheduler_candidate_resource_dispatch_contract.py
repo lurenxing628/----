@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List
 from urllib.parse import unquote
 
+import pytest
 from flask import Flask, g
 
 from core.infrastructure.database import ensure_schema, get_connection
@@ -429,6 +430,31 @@ def test_dispatch_repository_pushes_batch_schedule_and_op_filters_to_sql() -> No
     assert "s.id = ?" in captured["sql"]
     assert "s.op_id = ?" in captured["sql"]
     assert captured["params"][-4:] == ("O-ADOPTED", "B1", 90, 30)
+
+
+def test_dispatch_repository_rejects_invalid_window_params() -> None:
+    from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
+
+    repo = SchedulePlanQueryRepository.__new__(SchedulePlanQueryRepository)
+    repo.fetchall = lambda _sql, _params: []  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="派工查询时间写法不对"):
+        repo.list_dispatch_rows(
+            version=VERSION,
+            source_table=SOURCE_SCHEDULE,
+            candidate_id=None,
+            start_time="not-a-time",
+            end_time="2026-05-08 00:00:00",
+        )
+
+    with pytest.raises(ValueError, match="派工查询时间写法不对"):
+        repo.list_dispatch_rows(
+            version=VERSION,
+            source_table=SOURCE_SCHEDULE,
+            candidate_id=None,
+            start_time="2026-05-01 00:00:00",
+            end_time="not-a-time",
+        )
 
 
 def test_feedback_task_card_queries_exact_schedule_identity() -> None:

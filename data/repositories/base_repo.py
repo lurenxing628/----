@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from core.infrastructure.errors import AppError, ErrorCode
@@ -30,6 +31,11 @@ class BaseRepository:
     def __init__(self, conn: sqlite3.Connection, logger=None):
         self.conn = conn
         self.logger = logger
+
+        from .schedule_time_sql import register_schedule_time_sql_functions
+
+        if conn is not None:
+            register_schedule_time_sql_functions(conn)
 
     # -------------------------
     # 基础执行与查询
@@ -160,9 +166,9 @@ class BaseRepository:
             except Exception:
                 return "<unloggable params>"
 
+        if self.logger is None:
+            return
         try:
             self.logger.error("数据库错误：%s；SQL=%s；params=%s", e, sql, _safe_params(params))
-        except Exception:
-            # 记录日志失败不应影响主流程
-            pass
-
+        except Exception as log_exc:
+            print(f"数据库错误日志写入失败：{log_exc}", file=sys.stderr)

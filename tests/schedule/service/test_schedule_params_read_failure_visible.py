@@ -85,5 +85,3 @@ def test_schedule_params_read_failure_visible() -> None:
         expected_field="priority_weight",
         expected_text="优先级权重",
     )
-
-

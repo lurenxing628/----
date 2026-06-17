@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import logging
 import os
+from io import BytesIO
 from typing import Any, Dict, Iterable, List, Optional, cast
 
 import openpyxl
 
 from core.infrastructure.errors import AppError, ErrorCode
+from core.infrastructure.safe_files import write_fixed_bytes
 
+from .excel_templates import sanitize_export_cell
 from .tabular_backend import SOURCE_ROW_NUM_KEY, SOURCE_SHEET_NAME_KEY, TabularBackend
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _normalize_header_cell(value: Any) -> str:
@@ -57,6 +63,15 @@ def _append_sheet_row(ws: Any, row: List[Any]) -> None:
             message="写入 Excel 文件失败：工作表对象不支持追加行。",
         )
     append(row)
+
+
+def _close_workbook_best_effort(wb: Any) -> None:
+    if wb is None:
+        return
+    try:
+        wb.close()
+    except Exception as exc:
+        _LOGGER.warning("关闭 Excel 工作簿失败：%s", exc)
 
 
 def _row_to_item(
@@ -124,11 +139,7 @@ class OpenpyxlBackend(TabularBackend):
                 cause=e,
             ) from e
         finally:
-            try:
-                if wb is not None:
-                    wb.close()
-            except Exception:
-                pass
+            _close_workbook_best_effort(wb)
 
     def write(self, rows: List[Dict[str, Any]], file_path: str, sheet: str = "Sheet1") -> None:
         wb = None
@@ -141,16 +152,19 @@ class OpenpyxlBackend(TabularBackend):
                 raise AppError(code=ErrorCode.EXCEL_WRITE_ERROR, message="写入 Excel 文件失败：未能创建默认工作表。")
             ws.title = sheet
 
+            payload = BytesIO()
             if not rows:
-                wb.save(file_path)
+                wb.save(payload)
+                write_fixed_bytes(file_path, payload.getvalue())
                 return
 
-            headers = list(rows[0].keys())
-            _append_sheet_row(ws, headers)
+            source_headers = list(rows[0].keys())
+            _append_sheet_row(ws, [sanitize_export_cell(h) for h in source_headers])
             for r in rows:
-                _append_sheet_row(ws, [r.get(h) for h in headers])
+                _append_sheet_row(ws, [sanitize_export_cell(r.get(h)) for h in source_headers])
 
-            wb.save(file_path)
+            wb.save(payload)
+            write_fixed_bytes(file_path, payload.getvalue())
         except AppError:
             raise
         except Exception as e:
@@ -161,8 +175,4 @@ class OpenpyxlBackend(TabularBackend):
                 cause=e,
             ) from e
         finally:
-            try:
-                if wb is not None:
-                    wb.close()
-            except Exception:
-                pass
+            _close_workbook_best_effort(wb)

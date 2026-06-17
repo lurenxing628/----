@@ -88,5 +88,3 @@ def test_optional_ready_constraint(db_path):
             conn.close()
         except Exception:
             pass
-
-

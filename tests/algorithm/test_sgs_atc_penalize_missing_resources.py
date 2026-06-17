@@ -158,5 +158,3 @@ def test_sgs_atc_penalize_missing_resources() -> None:
         raise AssertionError("ATC 下缺资源候选不应通过惩罚排序继续排产")
 
     assert sched.calls == [], f"评分阶段失败后不应进入正式派工：calls={sched.calls!r}"
-
-

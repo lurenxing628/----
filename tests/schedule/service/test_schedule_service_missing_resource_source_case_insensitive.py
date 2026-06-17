@@ -136,5 +136,3 @@ def test_schedule_service_missing_resource_source_case_insensitive(schema_conn) 
     finally:
         for attr_name, original in patched_attrs.items():
             setattr(schedule_service_mod, attr_name, original)
-
-

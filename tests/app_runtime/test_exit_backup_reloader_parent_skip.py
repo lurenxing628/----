@@ -17,5 +17,3 @@ def test_exit_backup_reloader_parent_skip() -> None:
         got = factory_mod._should_register_exit_backup(debug=debug, frozen=frozen, run_main=run_main)
         if got is not expected:
             raise RuntimeError(f"{label}：期望 {expected!r}，实际 {got!r}")
-
-

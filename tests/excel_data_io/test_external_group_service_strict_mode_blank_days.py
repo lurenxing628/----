@@ -43,5 +43,3 @@ def test_external_group_service_strict_mode_blank_days(schema_conn) -> None:
 
     finally:
         conn.close()
-
-

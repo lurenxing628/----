@@ -79,5 +79,3 @@ def test_dispatch_rules_priority_case_insensitive() -> None:
         )
     )
     assert k_urgent_atc < k_normal_atc, f"ATC priority 大小写归一化失败：urgent={k_urgent_atc} normal={k_normal_atc}"
-
-

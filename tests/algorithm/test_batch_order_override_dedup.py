@@ -147,5 +147,3 @@ def test_batch_order_override_dedup():
         assert exc.field == "batch_order_override", f"重复覆盖顺序应定位到 batch_order_override，实际={exc.field!r}"
     else:
         raise AssertionError("重复 batch_order_override 不应被静默去重后继续排产")
-
-

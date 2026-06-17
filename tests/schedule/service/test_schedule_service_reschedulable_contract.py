@@ -302,5 +302,3 @@ def test_schedule_service_reschedulable_contract(schema_conn, monkeypatch) -> No
             conn1.close()
         except Exception:
             pass
-
-

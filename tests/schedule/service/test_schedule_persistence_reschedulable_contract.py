@@ -163,5 +163,3 @@ def test_schedule_persistence_reschedulable_contract(schema_conn) -> None:
             conn.close()
         except Exception:
             pass
-
-

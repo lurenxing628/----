@@ -77,6 +77,8 @@ def cleanup_backups_with_limit(
     candidates = []
     mtime_error_count = 0
     mtime_error_sample = []
+    unsafe_backup_count = 0
+    unsafe_backup_sample = []
     for fn in os.listdir(backup_dir):
         if not fn.startswith("aps_backup_") or not fn.endswith(".db"):
             continue
@@ -84,7 +86,10 @@ def cleanup_backups_with_limit(
         try:
             st = stat_regular_file(fp)
             mtime = datetime.fromtimestamp(st.st_mtime)
-        except UnsafeFixedFileError:
+        except UnsafeFixedFileError as exc:
+            unsafe_backup_count += 1
+            if len(unsafe_backup_sample) < 10:
+                unsafe_backup_sample.append({"filename": fn, "error": str(exc)})
             continue
         except (OSError, OverflowError, ValueError) as exc:
             mtime_error_count += 1
@@ -117,6 +122,8 @@ def cleanup_backups_with_limit(
         "removed_sample": removed_sample,
         "mtime_error_count": int(mtime_error_count),
         "mtime_error_sample": mtime_error_sample,
+        "unsafe_backup_count": int(unsafe_backup_count),
+        "unsafe_backup_sample": unsafe_backup_sample,
         "delete_error_count": int(delete_error_count),
         "delete_error_sample": delete_error_sample,
     }

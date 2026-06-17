@@ -269,5 +269,3 @@ def test_improve_dispatch_modes() -> None:
     assert all(bool(item.get("used_params", {}).get("strict_mode", False)) for item in (strict_outcome.attempts or [])), (
         f"strict_mode=True 时 attempts 留痕应与 scheduler 接口一致：{strict_outcome.attempts!r}"
     )
-
-

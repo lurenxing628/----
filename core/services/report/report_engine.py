@@ -111,6 +111,17 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             },
         )
 
+    def _raise_empty_export(self, rep: Dict[str, Any]) -> None:
+        bad_time_count = int(rep.get("report_bad_time_skipped_count") or 0)
+        if bad_time_count > 0:
+            degradation_message = str(rep.get("report_degradation_message") or "").strip()
+            prefix = degradation_message or f"已过滤 {bad_time_count} 条开始或结束时间写法不对的记录。"
+            raise ValidationError(
+                f"{prefix} 当前没有可导出的有效数据，不能导出。请先修正这些时间后再试。",
+                field="导出",
+            )
+        raise ValidationError("暂无数据，不能导出。请调整版本或日期范围后再试。", field="导出")
+
     def _build_xlsx_export(
         self,
         *,
@@ -177,24 +188,36 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             batch_id=batch_id,
         )
         scheduled, unscheduled, invalid_time, as_of = calculations.compute_overdue_bucket_groups(rows)
+        invalid_due_items = [item for item in invalid_time if item.get("bucket") == "due_date_invalid"]
+        schedule_time_invalid_items = [item for item in invalid_time if item.get("bucket") != "due_date_invalid"]
         items = list(scheduled) + list(invalid_time) + list(unscheduled)
         # 诚实计数覆盖所有批次：混合批次（有有效完成时间但夹带坏时间行）的坏行也要计入，
         # 不能只数“排程时间异常”桶，否则会重新制造“部分坏数据被静默吞掉”的问题。
         invalid_time_count, invalid_time_samples = calculations.collect_bad_time_rows(rows)
-        degradation = {
-            "report_degraded": invalid_time_count > 0,
-            "report_degradation_events": [],
-            "report_degradation_counters": {"bad_time_row_skipped": invalid_time_count} if invalid_time_count > 0 else {},
-            "report_degradation_samples": invalid_time_samples[:3],
-            "report_degradation_message": (
+        invalid_due_count = len(invalid_due_items)
+        degradation_messages = []
+        if invalid_time_count > 0:
+            degradation_messages.append(
                 f"有 {invalid_time_count} 条排程记录的计划完成时间写法不对，已从相关批次的逾期与跨度计算中剔除；"
                 f"完全没有有效完成时间的批次按“排程时间异常”单列。"
-                if invalid_time_count > 0
-                else ""
-            ),
+            )
+        if invalid_due_count > 0:
+            degradation_messages.append(f"有 {invalid_due_count} 个批次的交期写法不对，已按“交期写法异常”单列。")
+        degradation_counters = {}
+        if invalid_time_count > 0:
+            degradation_counters["bad_time_row_skipped"] = invalid_time_count
+        if invalid_due_count > 0:
+            degradation_counters["bad_due_date"] = invalid_due_count
+        degradation = {
+            "report_degraded": bool(degradation_messages),
+            "report_degradation_events": [],
+            "report_degradation_counters": degradation_counters,
+            "report_degradation_samples": invalid_time_samples[:3],
+            "report_degradation_message": " ".join(degradation_messages),
             "report_bad_time_skipped_count": invalid_time_count,
             "report_degradation_count_label": "计划完成时间写法不对的排程记录数",
             "report_degradation_sample_label": "时间异常记录样例",
+            "report_invalid_due_count": invalid_due_count,
         }
         return {
             "version": v,
@@ -202,7 +225,8 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             "count": len(items),
             "scheduled_count": len(scheduled),
             "unscheduled_count": len(unscheduled),
-            "invalid_time_count": len(invalid_time),
+            "invalid_time_count": len(schedule_time_invalid_items),
+            "invalid_due_count": invalid_due_count,
             "as_of_time": as_of,
             **degradation,
             # 兼容旧页面：items 仍保留（已排程在前、未排程在后）
@@ -409,7 +433,7 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         machines = list(rep.get("machines") or [])
         operators = list(rep.get("operators") or [])
         if not machines and not operators:
-            raise ValidationError("暂无数据，不能导出。请调整版本或日期范围后再试。", field="导出")
+            self._raise_empty_export(rep)
         resolution = self._resolve_plan(int(rep["version"]), plan_role, scenario_id)
         return self._build_xlsx_export(
             report_name="资源负荷与利用率",
@@ -528,7 +552,7 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         rep = self.downtime_impact(version, start_date, end_date, **downtime_kwargs)
         machines = list(rep.get("machines") or [])
         if not machines:
-            raise ValidationError("暂无数据，不能导出。请调整版本或日期范围后再试。", field="导出")
+            self._raise_empty_export(rep)
         resolution = self._resolve_plan(int(rep["version"]), plan_role, scenario_id)
         return self._build_xlsx_export(
             report_name="停机影响统计",

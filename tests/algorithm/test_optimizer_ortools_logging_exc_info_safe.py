@@ -46,5 +46,3 @@ def test_optimizer_ortools_logging_exc_info_safe() -> None:
     warning = logger.warnings[0]
     assert "ortools boom (test)" in warning, warning
     assert "RuntimeError: ortools boom (test)" in warning, warning
-
-

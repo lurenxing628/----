@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
 from typing import Any, Dict, List, Optional
 
 from core.infrastructure.errors import AppError, ErrorCode
@@ -101,8 +102,8 @@ class ScheduleHistoryRepository(BaseRepository):
             if self.logger:
                 try:
                     self.logger.error(f"分配排产版本号失败：{e}", exc_info=True)
-                except Exception:
-                    pass
+                except Exception as log_exc:
+                    print(f"排产版本号错误日志写入失败：{log_exc}", file=sys.stderr)
             raise AppError(ErrorCode.DB_QUERY_ERROR, "分配排产版本号失败，请查看日志。", cause=e) from e
 
     def list_versions(self, limit: int = 30) -> List[Dict[str, Any]]:

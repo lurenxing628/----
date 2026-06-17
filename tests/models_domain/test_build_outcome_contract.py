@@ -50,5 +50,3 @@ def test_build_outcome_contract() -> None:
         assert "invalid_number" in str(exc), f"重复计数报错信息异常：{exc!r}"
     else:
         raise AssertionError("BuildOutcome 遇到 events/counters 原因码重叠时应快速失败")
-
-

@@ -167,5 +167,3 @@ def test_optimizer_outcome_algo_stats() -> None:
     attempt_stats = attempts[0].get("algo_stats") or {}
     assert attempt_stats.get("fallback_counts") == expected_fallback_counts, f"attempts[*].fallback_counts 不精确：{attempt_stats!r}"
     assert attempt_stats.get("param_fallbacks") == expected_param_fallbacks, f"attempts[*].param_fallbacks 不精确：{attempt_stats!r}"
-
-

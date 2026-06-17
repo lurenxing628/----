@@ -79,5 +79,3 @@ def test_schedule_history_not_created_for_empty_schedule(schema_conn) -> None:
             conn.close()
         except Exception:
             pass
-
-

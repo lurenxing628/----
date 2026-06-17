@@ -1105,4 +1105,3 @@ def test_scheduler_config_page_renders_provenance_and_hidden_degraded_html(tmp_p
     assert "平时不直接显示的设置“保存系统补齐的设备和人员”需要重新确认" in body
     assert "保存系统补齐的设备和人员" in body
     assert "auto_assign_persist" not in body
-

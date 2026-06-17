@@ -47,7 +47,7 @@ def _traced_time_span_queries(conn: sqlite3.Connection, call: Callable[[], Any])
     return [
         sql
         for sql in sql_log
-        if "SELECT MIN(start_time)" in sql and "MAX(end_time)" in sql
+        if "SELECT MIN(aps_parse_dt" in sql and "MAX(aps_parse_dt" in sql
     ]
 
 

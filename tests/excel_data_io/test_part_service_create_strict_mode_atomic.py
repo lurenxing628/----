@@ -31,5 +31,3 @@ def test_part_service_create_strict_mode_atomic(schema_conn) -> None:
 
     finally:
         conn.close()
-
-

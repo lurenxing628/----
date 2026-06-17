@@ -22,6 +22,28 @@ from web.viewmodels.dashboard_backup_health import (
 NOW = datetime(2026, 6, 12, 10, 0, 0)
 
 
+def _skip_without_symlink(tmp_path: Path) -> None:
+    if not hasattr(os, "symlink"):
+        pytest.skip("平台不支持软链接")
+    target = tmp_path / "_symlink_target"
+    link = tmp_path / "_symlink_probe"
+    target.write_bytes(b"x")
+    try:
+        os.symlink(str(target), str(link))
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"平台不允许创建软链接：{exc}")
+
+
+def _skip_without_hardlink(tmp_path: Path) -> None:
+    target = tmp_path / "_hardlink_target"
+    link = tmp_path / "_hardlink_probe"
+    target.write_bytes(b"x")
+    try:
+        os.link(str(target), str(link))
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"平台不允许创建硬链接：{exc}")
+
+
 def _seed(directory, name, *, days_ago, base=NOW):
     path = Path(directory) / name
     path.write_bytes(b"x")
@@ -70,14 +92,55 @@ def test_read_latest_not_a_directory_propagates(tmp_path):
         read_latest_backup_time(str(blocker))
 
 
+def test_read_latest_broken_symlink_dir_is_read_error_not_never_backed_up(tmp_path):
+    _skip_without_symlink(tmp_path)
+    link = tmp_path / "backups"
+    os.symlink(str(tmp_path / "missing_target"), str(link))
+
+    with pytest.raises(OSError, match="备份目录不是安全目录"):
+        read_latest_backup_time(str(link))
+
+
+def test_read_latest_symlink_dir_is_read_error_not_followed(tmp_path):
+    _skip_without_symlink(tmp_path)
+    target_dir = tmp_path / "real_backups"
+    target_dir.mkdir()
+    _seed(target_dir, "aps_backup_20260612_090000.db", days_ago=0)
+    link = tmp_path / "backups"
+    os.symlink(str(target_dir), str(link))
+
+    with pytest.raises(OSError, match="备份目录不是安全目录"):
+        read_latest_backup_time(str(link))
+
+
 def test_read_latest_stat_failure_propagates(tmp_path, monkeypatch):
     _seed(tmp_path, "aps_backup_20260612_090000.db", days_ago=0)
 
     def _boom(path):
         raise PermissionError(f"mock denied: {path}")
 
-    monkeypatch.setattr("web.viewmodels.dashboard_backup_health.os.stat", _boom)
+    monkeypatch.setattr("web.viewmodels.dashboard_backup_health.os.lstat", _boom)
     with pytest.raises(PermissionError):
+        read_latest_backup_time(str(tmp_path))
+
+
+def test_read_latest_symlink_backup_is_read_error_not_never_backed_up(tmp_path):
+    _skip_without_symlink(tmp_path)
+    victim = tmp_path / "victim.db"
+    victim.write_bytes(b"outside")
+    os.symlink(str(victim), str(tmp_path / "aps_backup_20260612_090000.db"))
+
+    with pytest.raises(OSError, match="不是安全的普通文件"):
+        read_latest_backup_time(str(tmp_path))
+
+
+def test_read_latest_hardlink_backup_is_read_error_not_never_backed_up(tmp_path):
+    _skip_without_hardlink(tmp_path)
+    source = tmp_path / "source.db"
+    source.write_bytes(b"db")
+    os.link(str(source), str(tmp_path / "aps_backup_20260612_090000.db"))
+
+    with pytest.raises(OSError, match="不是安全的普通文件"):
         read_latest_backup_time(str(tmp_path))
 
 

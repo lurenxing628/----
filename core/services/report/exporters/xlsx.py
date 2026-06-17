@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import tempfile
 from typing import Any, BinaryIO, Dict, List, Optional, cast
 
@@ -11,6 +12,8 @@ from openpyxl.utils import get_column_letter
 
 from core.services.common.excel_templates import _sanitize_export_cell
 from core.services.report.report_number_parsing import parse_optional_report_float
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _auto_width(ws) -> None:
@@ -55,6 +58,13 @@ def _make_output_buffer(*, write_only: bool) -> BinaryIO:
     if write_only:
         return cast(BinaryIO, tempfile.SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b"))
     return io.BytesIO()
+
+
+def _close_workbook_best_effort(wb: Any) -> None:
+    try:
+        wb.close()
+    except Exception as exc:
+        _LOGGER.warning("关闭报表 Excel 工作簿失败：%s", exc)
 
 
 def _utilization_percent(value: Any) -> Optional[float]:
@@ -185,10 +195,7 @@ def export_overdue_xlsx(
         buf.seek(0)
         return buf
     finally:
-        try:
-            wb.close()
-        except Exception:
-            pass
+        _close_workbook_best_effort(wb)
 
 
 def _append_diagnosis_sheet(wb, diagnosis_rows: List[Dict[str, Any]], *, write_only: bool) -> None:
@@ -298,10 +305,7 @@ def export_utilization_xlsx(
         buf.seek(0)
         return buf
     finally:
-        try:
-            wb.close()
-        except Exception:
-            pass
+        _close_workbook_best_effort(wb)
 
 
 def export_downtime_impact_xlsx(
@@ -356,10 +360,7 @@ def export_downtime_impact_xlsx(
         buf.seek(0)
         return buf
     finally:
-        try:
-            wb.close()
-        except Exception:
-            pass
+        _close_workbook_best_effort(wb)
 
 
 def export_execution_review_xlsx(

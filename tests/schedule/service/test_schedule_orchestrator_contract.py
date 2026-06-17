@@ -477,5 +477,3 @@ def test_schedule_orchestrator_contract() -> None:
     assert captured_out_of_scope.get("optimize_strict_mode") is True, captured_out_of_scope
 
     conn.close()
-
-

@@ -15,6 +15,7 @@ from flask import current_app, flash, has_app_context, send_file
 from openpyxl import load_workbook
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.infrastructure.safe_files import UnsafeFixedFileError, read_fixed_bytes, stat_regular_file
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_column_renames import normalize_renamed_column, renamed_column_conflict_message
 from core.services.common.excel_service import ImportMode, RowStatus
@@ -388,7 +389,8 @@ def send_excel_template_file(
 ):
     workbook = None
     try:
-        workbook = load_workbook(template_path, read_only=True, data_only=True)
+        data = read_fixed_bytes(template_path)
+        workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
         _validate_download_template_headers(workbook, download_name=download_name, template_path=template_path)
     except Exception as exc:
         if isinstance(exc, AppError):
@@ -400,10 +402,19 @@ def send_excel_template_file(
     finally:
         if workbook is not None:
             workbook.close()
-    data = Path(template_path).read_bytes()
     return send_file(
         io.BytesIO(data),
         as_attachment=True,
         download_name=download_name,
         mimetype=mimetype,
     )
+
+
+def template_file_exists_for_download(template_path: str) -> bool:
+    try:
+        stat_regular_file(template_path)
+        return True
+    except FileNotFoundError:
+        return False
+    except UnsafeFixedFileError:
+        return True

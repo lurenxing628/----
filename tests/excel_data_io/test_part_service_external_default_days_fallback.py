@@ -61,4 +61,3 @@ def test_part_service_external_default_days_fallback(schema_conn) -> None:
             conn.close()
         except Exception:
             pass
-

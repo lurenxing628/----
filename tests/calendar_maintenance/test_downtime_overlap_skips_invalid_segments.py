@@ -21,5 +21,3 @@ def test_downtime_overlap_skips_invalid_segments() -> None:
     # 3) 合法重叠区间：仍应返回其结束时刻
     seg_valid = (datetime(2026, 1, 1, 10, 45, 0), datetime(2026, 1, 1, 12, 0, 0))
     assert find_overlap_shift_end([seg_valid], start, end) == seg_valid[1], "合法重叠区间应触发 shift"
-
-

@@ -82,6 +82,8 @@ def _delay_text(item: OverdueDiagnosisItem) -> str:
         return f"计划完成已经晚了 {hours:.2f} 小时（约 {days:.2f} 天）。"
     if item.bucket == "schedule_time_invalid":
         return f"有排程记录，但计划完成时间写法不对；按交期看已经晚了 {hours:.2f} 小时（约 {days:.2f} 天）。"
+    if item.bucket == "due_date_invalid":
+        return "交期写法不对，系统暂时不能判断这个批次是否超期；请先修正交期。"
     return f"还没有计划完成时间，截至当前已经晚了 {hours:.2f} 小时（约 {days:.2f} 天）。"
 
 

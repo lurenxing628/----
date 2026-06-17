@@ -27,6 +27,7 @@ from .excel_utils import (
     preview_baseline_is_stale,
     project_preview_rows_for_display,
     send_excel_template_file,
+    template_file_exists_for_download,
 )
 from .personnel_bp import _parse_mode, _read_uploaded_xlsx, bp
 
@@ -243,7 +244,7 @@ def excel_link_confirm():
 def excel_link_template():
     start = time.time()
     template_path = os.path.join(current_app.config["EXCEL_TEMPLATE_DIR"], "人员设备关联.xlsx")
-    if os.path.exists(template_path):
+    if template_file_exists_for_download(template_path):
         time_cost_ms = int((time.time() - start) * 1000)
         log_excel_export(
             op_logger=getattr(g, "op_logger", None),

@@ -60,6 +60,26 @@ def _invalid_time_item(row: Dict[str, Any], *, due_s: Any, as_of: str, now0: dat
     }
 
 
+def _invalid_due_date_item(row: Dict[str, Any], *, due_s: Any, as_of: str) -> Dict[str, Any]:
+    return {
+        "bucket": "due_date_invalid",
+        "bucket_label": "交期写法异常",
+        "is_scheduled": False,
+        "as_of_time": as_of,
+        "batch_id": row.get("batch_id"),
+        "part_no": row.get("part_no"),
+        "part_name": row.get("part_name"),
+        "quantity": row.get("quantity"),
+        "due_date": due_s,
+        "finish_time": row.get("finish_time"),
+        "delay_hours": None,
+        "delay_days": None,
+        "invalid_time_count": _int_value(row.get("invalid_time_count")),
+        "invalid_due_count": 1,
+        "data_issue_message": "批次交期写法不对，系统不能判断它是否超期，请先修正交期。",
+    }
+
+
 def compute_overdue_bucket_groups(
     rows: List[Dict[str, Any]],
     *,
@@ -79,6 +99,7 @@ def compute_overdue_bucket_groups(
         schedule_row_count = _int_value(row.get("schedule_row_count"))
         due_d = parse_dt(due_s)
         if not due_d:
+            invalid_time.append(_invalid_due_date_item(row, due_s=due_s, as_of=as_of))
             continue
         due_excl = due_exclusive(due_d)
 

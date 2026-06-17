@@ -45,5 +45,3 @@ def test_compat_parse_emits_degradation() -> None:
     assert counters["invalid_number"] == 1, f"invalid_number 计数异常：{counters!r}"
     assert counters["legacy_external_days_defaulted"] == 1, f"legacy_external_days_defaulted 计数异常：{counters!r}"
     assert counters["blank_required"] == 1, f"blank_required 计数异常：{counters!r}"
-
-

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import replace
 from typing import Any, Dict, List, Optional, Tuple
@@ -53,6 +54,8 @@ from .summary_size_guard import (
     apply_summary_size_guard,
 )
 
+_LOGGER = logging.getLogger(__name__)
+
 __all__ = [
     "SUMMARY_SIZE_LIMIT_BYTES",
     "apply_summary_size_guard",
@@ -92,8 +95,8 @@ def serialize_end_date(end_date: Optional[Any]) -> Optional[str]:
         isoformat = getattr(end_date, "isoformat", None)
         if callable(isoformat):
             return str(isoformat())
-    except Exception:
-        pass
+    except Exception as exc:
+        _LOGGER.warning("排产摘要结束日期 isoformat 失败，将使用字符串兜底：%s", exc)
     text = str(end_date).strip()
     return text if text else None
 

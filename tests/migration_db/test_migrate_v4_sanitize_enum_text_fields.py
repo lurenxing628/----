@@ -139,5 +139,3 @@ def test_migrate_v4_sanitize_enum_text_fields(tmp_path, schema_path):
     expected_suffix = f"before_migrate_v3_to_v{CURRENT_SCHEMA_VERSION}"
     backup_files = [f for f in os.listdir(backups_dir) if f.startswith("aps_backup_") and expected_suffix in f and f.endswith(".db")]
     assert backup_files, f"未找到迁移前备份文件（dir={backups_dir}）"
-
-

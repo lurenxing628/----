@@ -84,5 +84,3 @@ def test_operator_machine_missing_columns(tmp_path, schema_path):
             conn.close()
         except Exception:
             pass
-
-

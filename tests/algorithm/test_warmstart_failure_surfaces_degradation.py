@@ -125,5 +125,3 @@ def test_warmstart_failure_surfaces_degradation() -> None:
     assert int(degradation_counters.get("ortools_warmstart_failed") or 0) == 1, degradation_counters
     warnings = list(result_summary_obj.get("warnings") or [])
     assert any("OR-Tools 预热失败" in w for w in warnings), warnings
-
-

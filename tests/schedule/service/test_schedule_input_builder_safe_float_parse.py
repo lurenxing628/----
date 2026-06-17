@@ -70,5 +70,3 @@ def test_schedule_input_builder_safe_float_parse() -> None:
     assert float(op1.ext_days or 0.0) == 1.0, f"ext_days 兼容回退异常：{op1.ext_days!r}"
     codes = [event.code for event in outcome.events]
     assert "blank_required" in codes, f"兼容读取事件缺少 blank_required：{codes!r}"
-
-

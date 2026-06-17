@@ -148,7 +148,9 @@ class ScheduleDelayDiagnosisService:
         )
         if text(row.get("bucket")) == "schedule_time_invalid":
             gaps.append("这个批次有排程记录，但计划完成时间写法不对，请先修正排程时间后再判断是否真的晚完。")
-        if not plan_rows:
+        if text(row.get("bucket")) == "due_date_invalid":
+            gaps.append("这个批次的交期写法不对，请先修正交期后再判断是否真的超期。")
+        if not plan_rows and text(row.get("bucket")) != "due_date_invalid":
             gaps.append("当前方案里没有这个批次的排程明细，只能先确认它已经超过交期。")
         gaps.append("当前还没有现场执行反馈，不能判断是不是现场做慢了。")
         evidences = self._collect_evidences(facts=facts, clues=clues, operation=last_operation)
@@ -231,6 +233,8 @@ class ScheduleDelayDiagnosisService:
             fact_text = f"批次 {batch_id} 的计划完成时间已经晚于交期 {due_text}，超期 {delay_hours:.2f} 小时。"
         elif bucket == "schedule_time_invalid":
             fact_text = f"批次 {batch_id} 有排程记录，但计划完成时间写法不对，不能把它当作未排程或准时完成。"
+        elif bucket == "due_date_invalid":
+            fact_text = f"批次 {batch_id} 的交期写法不对，系统不能判断它是否超期。"
         else:
             fact_text = f"批次 {batch_id} 还没有计划完成时间，截至 {row.get('as_of_time')} 已经超过交期 {due_text}。"
         return [ConfirmedFact(text=fact_text, evidences=[evidence])]
@@ -274,6 +278,8 @@ class ScheduleDelayDiagnosisService:
     def _leading_clue(clues: Sequence[DiagnosisClue], has_rows: bool, *, bucket: str = "") -> Tuple[str, str, str]:
         if bucket == "schedule_time_invalid":
             return "schedule_time_invalid", "排程时间异常", "missing_data"
+        if bucket == "due_date_invalid":
+            return "due_date_invalid", "交期写法异常", "missing_data"
         for clue in clues:
             if clue.confidence == "likely":
                 return clue.clue_code, clue.clue_label, "likely"

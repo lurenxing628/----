@@ -96,5 +96,3 @@ def test_schedule_summary_invalid_due_and_unscheduled_counts() -> None:
     warnings = list(result_summary_obj.get("warnings") or [])
     assert any("交期写法不对" in w for w in warnings), warnings
     assert any("未形成完工结果" in w for w in warnings), warnings
-
-

@@ -6,6 +6,10 @@ from io import BytesIO
 from typing import Any, Dict, List
 from urllib.parse import unquote
 
+import pytest
+
+from core.infrastructure.errors import ValidationError
+
 
 def _assert_xlsx(resp, name: str, expect_version: int) -> None:
     if resp.status_code != 200:
@@ -124,6 +128,58 @@ class _FakePlanResolution:
             "candidate_id": 2 if self.selected_role == "baseline_best" else None,
             "candidate_key": "baseline" if self.selected_role == "baseline_best" else None,
         }
+
+
+def test_utilization_export_all_bad_time_rows_says_time_invalid(monkeypatch) -> None:
+    from core.services.report.report_engine import ReportEngine
+
+    def fake_utilization(self, version: int, start_date: Any, end_date: Any, **kwargs) -> Dict[str, Any]:
+        return {
+            "version": int(version),
+            "start_date": str(start_date),
+            "end_date": str(end_date),
+            "capacity_hours_per_resource": 16.0,
+            "machines": [],
+            "operators": [],
+            "report_bad_time_skipped_count": 2,
+            "report_degradation_message": "已过滤 2 条开始或结束时间写法不对的记录，下面结果只按可解析记录计算。",
+        }
+
+    monkeypatch.setattr(ReportEngine, "utilization", fake_utilization)
+    engine = ReportEngine.__new__(ReportEngine)
+
+    with pytest.raises(ValidationError) as exc_info:
+        engine.export_utilization_xlsx(7, "2026-01-01", "2026-01-07")
+
+    message = exc_info.value.message
+    assert "开始或结束时间写法不对" in message
+    assert "当前没有可导出的有效数据" in message
+    assert "暂无数据" not in message
+
+
+def test_downtime_export_all_bad_time_rows_says_time_invalid(monkeypatch) -> None:
+    from core.services.report.report_engine import ReportEngine
+
+    def fake_downtime_impact(self, version: int, start_date: Any, end_date: Any, **kwargs) -> Dict[str, Any]:
+        return {
+            "version": int(version),
+            "start_date": str(start_date),
+            "end_date": str(end_date),
+            "machines": [],
+            "report_bad_time_skipped_count": 3,
+            "report_degradation_message": "已过滤 3 条开始或结束时间写法不对的记录，下面结果只按可解析记录计算。",
+        }
+
+    monkeypatch.setattr(ReportEngine, "downtime_impact", fake_downtime_impact)
+    engine = ReportEngine.__new__(ReportEngine)
+
+    with pytest.raises(ValidationError) as exc_info:
+        engine.export_downtime_impact_xlsx(7, "2026-01-01", "2026-01-07")
+
+    message = exc_info.value.message
+    assert "开始或结束时间写法不对" in message
+    assert "当前没有可导出的有效数据" in message
+    assert "暂无数据" not in message
 
 
 def test_report_export_size_mode_selection(app_client, db_path, monkeypatch) -> None:

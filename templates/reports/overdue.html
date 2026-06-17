@@ -84,6 +84,7 @@
       {{ ui.summary_item('已排程', scheduled_count ~ ' 个') }}
       {{ ui.summary_item('未排程', unscheduled_count ~ ' 个') }}
       {{ ui.summary_item('排程时间异常', invalid_time_count ~ ' 个') }}
+      {{ ui.summary_item('交期写法异常', invalid_due_count ~ ' 个') }}
       {{ ui.summary_item('截至时间', as_of_time if as_of_time else '-') }}
     </div>
     {% if report_degraded and report_degradation_message %}

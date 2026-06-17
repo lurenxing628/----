@@ -31,6 +31,7 @@ from .excel_utils import (
     project_preview_rows_for_display,
     renamed_column_conflict_message,
     send_excel_template_file,
+    template_file_exists_for_download,
 )
 from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
@@ -284,7 +285,7 @@ def excel_op_type_confirm():
 def excel_op_type_template():
     start = time.time()
     template_path = os.path.join(current_app.config["EXCEL_TEMPLATE_DIR"], "工种配置.xlsx")
-    if os.path.exists(template_path):
+    if template_file_exists_for_download(template_path):
         time_cost_ms = int((time.time() - start) * 1000)
         log_excel_export(
             op_logger=getattr(g, "op_logger", None),

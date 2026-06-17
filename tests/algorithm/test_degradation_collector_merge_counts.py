@@ -47,5 +47,3 @@ def test_degradation_collector_merge_counts() -> None:
 
     counters = collector.to_counters()
     assert counters == {"invalid_number": 4, "invalid_due_date": 1}, f"collector counters 异常：{counters!r}"
-
-

@@ -50,5 +50,3 @@ def test_external_group_service_merge_mode_case_insensitive(schema_conn) -> None
     rows = conn.execute("SELECT seq, ext_days FROM PartOperations WHERE part_no='P001' ORDER BY seq ASC").fetchall()
     for r in rows:
         assert r["ext_days"] is None, f"merged 模式下 ext_days 应为 NULL：seq={r['seq']} ext_days={r['ext_days']!r}"
-
-

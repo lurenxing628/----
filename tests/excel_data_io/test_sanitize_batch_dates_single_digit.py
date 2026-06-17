@@ -62,5 +62,3 @@ def test_sanitize_batch_dates_single_digit(tmp_path, schema_path):
             conn.close()
         except Exception:
             pass
-
-

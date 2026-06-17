@@ -2,10 +2,84 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from typing import List
 
 import pytest
+
+
+def test_ensure_schema_refuses_symlink_db_path_without_touching_target(tmp_path):
+    from core.infrastructure.database import ensure_schema
+    from core.infrastructure.safe_files import UnsafeFixedFileError
+    from tests._support.paths import REPO_ROOT
+
+    db_path = tmp_path / "app.db"
+    outside_target = tmp_path / "outside.db"
+    try:
+        os.symlink(outside_target, db_path)
+    except (OSError, NotImplementedError):
+        pytest.skip("当前平台不支持创建软链接")
+
+    with pytest.raises(UnsafeFixedFileError):
+        ensure_schema(str(db_path), schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=None)
+
+    assert db_path.is_symlink()
+    assert not outside_target.exists()
+
+
+def test_ensure_schema_refuses_hardlinked_db_path_without_touching_target(tmp_path):
+    from core.infrastructure.database import ensure_schema
+    from core.infrastructure.safe_files import UnsafeFixedFileError
+    from tests._support.paths import REPO_ROOT
+
+    db_path = tmp_path / "app.db"
+    outside_target = tmp_path / "outside.db"
+    outside_target.write_text("OUTSIDE-UNCHANGED", encoding="utf-8")
+    try:
+        os.link(outside_target, db_path)
+    except (OSError, NotImplementedError):
+        pytest.skip("当前平台不支持创建硬链接")
+
+    with pytest.raises(UnsafeFixedFileError):
+        ensure_schema(str(db_path), schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=None)
+
+    assert db_path.exists()
+    assert outside_target.read_text(encoding="utf-8") == "OUTSIDE-UNCHANGED"
+
+
+def test_get_connection_race_to_dangling_symlink_does_not_create_outside_target(tmp_path, monkeypatch):
+    from core.infrastructure import database as database_mod
+    from core.infrastructure.safe_files import UnsafeFixedFileError
+
+    db_path = tmp_path / "app.db"
+    outside_target = tmp_path / "outside.db"
+    try:
+        probe = tmp_path / "probe"
+        os.symlink(outside_target, probe)
+        probe.unlink()
+    except (OSError, NotImplementedError):
+        pytest.skip("当前平台不支持创建软链接")
+
+    original_connect = sqlite3.connect
+    swapped = {"done": False}
+
+    def replace_db_with_symlink_before_sqlite_connect(database, *args, **kwargs):
+        if not swapped["done"] and str(database).startswith("file:"):
+            swapped["done"] = True
+            if db_path.exists() or db_path.is_symlink():
+                db_path.unlink()
+            os.symlink(outside_target, db_path)
+        return original_connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(database_mod.sqlite3, "connect", replace_db_with_symlink_before_sqlite_connect)
+
+    with pytest.raises(UnsafeFixedFileError):
+        database_mod.get_connection(str(db_path))
+
+    assert swapped["done"] is True
+    assert db_path.is_symlink()
+    assert not outside_target.exists()
 
 
 def test_bootstrap_missing_tables_commit_failure_raises(monkeypatch):
@@ -192,3 +266,74 @@ def test_migrate_with_backup_preserves_migration_error_when_restore_succeeds(mon
         )
 
     assert restored
+
+
+def test_restore_db_file_refuses_broken_symlink_rollback_tmp(tmp_path):
+    from core.infrastructure.migration_backup import restore_db_file_from_backup
+    from core.infrastructure.safe_files import UnsafeFixedFileError
+
+    db_path = tmp_path / "app.db"
+    backup_path = tmp_path / "before.db"
+    rollback_tmp = tmp_path / "app.db.rollback_tmp"
+    outside_target = tmp_path / "outside.db"
+    db_path.write_text("current-db", encoding="utf-8")
+    backup_path.write_text("backup-db", encoding="utf-8")
+    try:
+        os.symlink(outside_target, rollback_tmp)
+    except (OSError, NotImplementedError):
+        pytest.skip("当前平台不支持创建软链接")
+
+    with pytest.raises(UnsafeFixedFileError):
+        restore_db_file_from_backup(str(backup_path), str(db_path), retries=1)
+
+    assert db_path.read_text(encoding="utf-8") == "current-db"
+    assert not outside_target.exists()
+    assert rollback_tmp.is_symlink()
+
+
+def test_restore_db_file_refuses_symlink_sqlite_sidecar_before_replace(tmp_path):
+    from core.infrastructure.migration_backup import restore_db_file_from_backup
+    from core.infrastructure.safe_files import UnsafeFixedFileError
+
+    db_path = tmp_path / "app.db"
+    backup_path = tmp_path / "before.db"
+    sidecar_path = tmp_path / "app.db-wal"
+    outside_target = tmp_path / "outside.wal"
+    db_path.write_text("current-db", encoding="utf-8")
+    backup_path.write_text("backup-db", encoding="utf-8")
+    outside_target.write_text("outside", encoding="utf-8")
+    try:
+        os.symlink(outside_target, sidecar_path)
+    except (OSError, NotImplementedError):
+        pytest.skip("当前平台不支持创建软链接")
+
+    with pytest.raises(UnsafeFixedFileError):
+        restore_db_file_from_backup(str(backup_path), str(db_path), retries=1)
+
+    assert db_path.read_text(encoding="utf-8") == "current-db"
+    assert outside_target.read_text(encoding="utf-8") == "outside"
+    assert sidecar_path.is_symlink()
+
+
+def test_restore_db_file_refuses_hardlinked_sqlite_sidecar_before_replace(tmp_path):
+    from core.infrastructure.migration_backup import restore_db_file_from_backup
+    from core.infrastructure.safe_files import UnsafeFixedFileError
+
+    db_path = tmp_path / "app.db"
+    backup_path = tmp_path / "before.db"
+    sidecar_path = tmp_path / "app.db-shm"
+    outside_target = tmp_path / "outside.shm"
+    db_path.write_text("current-db", encoding="utf-8")
+    backup_path.write_text("backup-db", encoding="utf-8")
+    outside_target.write_text("sidecar", encoding="utf-8")
+    try:
+        os.link(outside_target, sidecar_path)
+    except (OSError, NotImplementedError):
+        pytest.skip("当前平台不支持创建硬链接")
+
+    with pytest.raises(UnsafeFixedFileError):
+        restore_db_file_from_backup(str(backup_path), str(db_path), retries=1)
+
+    assert db_path.read_text(encoding="utf-8") == "current-db"
+    assert outside_target.exists()
+    assert sidecar_path.exists()

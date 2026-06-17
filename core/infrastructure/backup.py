@@ -17,6 +17,7 @@ from core.infrastructure.safe_files import (
     UnsafeFixedFileError,
     assert_same_regular_file,
     create_fixed_file_exclusive,
+    guard_fixed_file_replace_target,
     read_fixed_bytes,
     remove_fixed_file,
     stat_regular_file,
@@ -297,11 +298,12 @@ def maintenance_window(db_path: str, *, logger=None, action: str = "maintenance"
         if entered_root:
             try:
                 delattr(_MAINT_CONTEXT, "state")
-            except Exception:
+            except Exception as e:
+                fallback_log(logger, "warning", f"维护线程上下文清理失败：{e}")
                 try:
                     _MAINT_CONTEXT.state = None
-                except Exception:
-                    pass
+                except Exception as cleanup_exc:
+                    fallback_log(logger, "warning", f"维护线程上下文重置失败：{cleanup_exc}")
             if lock_fd is not None:
                 try:
                     os.close(lock_fd)
@@ -313,8 +315,8 @@ def maintenance_window(db_path: str, *, logger=None, action: str = "maintenance"
                 fallback_log(logger, "warning", f"维护锁文件删除失败：{e}")
         try:
             _MAINT_MUTEX.release()
-        except Exception:
-            pass
+        except Exception as e:
+            fallback_log(logger, "warning", f"维护互斥锁释放失败：{e}")
 
 
 class BackupManager:
@@ -329,6 +331,10 @@ class BackupManager:
         self.backup_dir = backup_dir
         self.keep_days = keep_days
         self.logger = logger or logging.getLogger(__name__)
+        self.last_list_unsafe_count = 0
+        self.last_list_unsafe_sample = []
+        self.last_list_error_count = 0
+        self.last_list_error_sample = []
         os.makedirs(backup_dir, exist_ok=True)
 
     def backup(self, suffix: Optional[str] = None) -> str:
@@ -371,6 +377,7 @@ class BackupManager:
                                 fallback_log(self.logger, "error", f"备份后的数据库完整性检查未通过：{rows}")
                                 raise RuntimeError(f"备份后的数据库完整性检查失败：{rows}")
                 assert_same_regular_file(tmp_path, tmp_stat)
+                guard_fixed_file_replace_target(backup_path)
                 os.replace(tmp_path, backup_path)
                 fallback_log(self.logger, "info", f"数据库已备份：{backup_path}")
                 return backup_path
@@ -391,10 +398,7 @@ class BackupManager:
                 with closing(_connect_existing_sqlite_file(source_path)) as source:
                     assert_same_regular_file(source_path, source_stat)
                     with closing(_connect_existing_sqlite_file(self.db_path, timeout=30)) as dest:
-                        try:
-                            dest.execute("PRAGMA busy_timeout = 30000")
-                        except Exception:
-                            pass
+                        dest.execute("PRAGMA busy_timeout = 30000")
                         assert_same_regular_file(source_path, source_stat)
                         assert_same_regular_file(self.db_path, target_stat)
                         source.backup(dest)
@@ -507,8 +511,9 @@ class BackupManager:
 
     def cleanup_old_backups(self):
         cutoff = datetime.now() - timedelta(days=self.keep_days)
+        result = {"removed_count": 0, "unsafe_count": 0, "unsafe_sample": [], "error_count": 0, "error_sample": []}
         if not os.path.exists(self.backup_dir):
-            return
+            return result
         for filename in os.listdir(self.backup_dir):
             if not filename.startswith("aps_backup_") or not filename.endswith(".db"):
                 continue
@@ -519,14 +524,26 @@ class BackupManager:
                 file_time = datetime.fromtimestamp(st.st_mtime)
                 if file_time < cutoff:
                     remove_fixed_file(filepath, allow_symlink=False)
+                    result["removed_count"] = int(result["removed_count"]) + 1
                     fallback_log(self.logger, "info", f"已清理过期备份：{filename}")
             except UnsafeFixedFileError as e:
+                result["unsafe_count"] = int(result["unsafe_count"]) + 1
+                if len(result["unsafe_sample"]) < 10:
+                    result["unsafe_sample"].append({"filename": filename, "error": str(e)})
                 fallback_log(self.logger, "warning", f"跳过非普通备份文件（{filename}）：{e}")
             except Exception as e:
+                result["error_count"] = int(result["error_count"]) + 1
+                if len(result["error_sample"]) < 10:
+                    result["error_sample"].append({"filename": filename, "error": str(e)})
                 fallback_log(self.logger, "warning", f"清理备份失败（{filename}）：{e}")
+        return result
 
     def list_backups(self) -> list:
         backups = []
+        self.last_list_unsafe_count = 0
+        self.last_list_unsafe_sample = []
+        self.last_list_error_count = 0
+        self.last_list_error_sample = []
         if not os.path.exists(self.backup_dir):
             return backups
 
@@ -538,9 +555,15 @@ class BackupManager:
             try:
                 file_stat = stat_regular_file(filepath)
             except UnsafeFixedFileError as e:
+                self.last_list_unsafe_count += 1
+                if len(self.last_list_unsafe_sample) < 10:
+                    self.last_list_unsafe_sample.append({"filename": filename, "error": str(e)})
                 fallback_log(self.logger, "warning", f"跳过非普通备份文件（{filename}）：{e}")
                 continue
             except (OSError, TypeError, ValueError) as e:
+                self.last_list_error_count += 1
+                if len(self.last_list_error_sample) < 10:
+                    self.last_list_error_sample.append({"filename": filename, "error": str(e)})
                 fallback_log(self.logger, "warning", f"读取备份文件信息失败，已跳过（{filename}）：{e}")
                 continue
             backups.append(

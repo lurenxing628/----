@@ -42,4 +42,3 @@ def test_plugin_bootstrap_telemetry_failure_visible(db_path, tmp_path) -> None:
 
     statuses = list(plugin_status.get("statuses") or [])
     assert any(str(item.get("plugin_id") or "") == "demo_plugin" for item in statuses), statuses
-

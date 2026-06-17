@@ -13,7 +13,7 @@ from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
 from .schedule_resource_sql_filters import append_detail_filters, overdue_resource_filter
 from .schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleTimeSpanRow
-from .schedule_time_sql import DETAIL_OVERLAP_OR_BAD_TIME_SQL, valid_time_range_sql
+from .schedule_time_sql import DETAIL_OVERLAP_OR_BAD_TIME_SQL, require_dt_for_sql, time_dt, valid_time_range_sql
 
 _SCHEDULE_PLAN_ROWS_SQL = """
 SELECT
@@ -267,7 +267,8 @@ class SchedulePlanQueryRepository(BaseRepository):
         if source_table == SOURCE_SCHEDULE:
             row = self.fetchone(
                 f"""
-                SELECT MIN(start_time) AS min_start_time, MAX(end_time) AS max_end_time
+                SELECT MIN({time_dt(None, "start_time")}) AS min_start_time,
+                       MAX({time_dt(None, "end_time")}) AS max_end_time
                 FROM Schedule
                 WHERE version = ?
                   AND {valid_time_range_sql(None)}
@@ -278,7 +279,8 @@ class SchedulePlanQueryRepository(BaseRepository):
             _require_candidate_id(source_table, candidate_id)
             row = self.fetchone(
                 f"""
-                SELECT MIN(start_time) AS min_start_time, MAX(end_time) AS max_end_time
+                SELECT MIN({time_dt(None, "start_time")}) AS min_start_time,
+                       MAX({time_dt(None, "end_time")}) AS max_end_time
                 FROM ScheduleCandidateRows
                 WHERE version = ? AND candidate_id = ?
                   AND {valid_time_range_sql(None)}
@@ -289,7 +291,8 @@ class SchedulePlanQueryRepository(BaseRepository):
             scenario_key = _require_scenario_id(source_table, scenario_id)
             row = self.fetchone(
                 f"""
-                SELECT MIN(r.start_time) AS min_start_time, MAX(r.end_time) AS max_end_time
+                SELECT MIN({time_dt("r", "start_time")}) AS min_start_time,
+                       MAX({time_dt("r", "end_time")}) AS max_end_time
                 FROM ScheduleAdjustmentScenarioRow r
                 JOIN ScheduleAdjustmentScenario s ON s.scenario_id = r.scenario_id
                 WHERE s.base_version = ? AND r.scenario_id = ? AND s.status = 'active'
@@ -325,7 +328,9 @@ class SchedulePlanQueryRepository(BaseRepository):
             candidate_id=candidate_id,
             scenario_id=scenario_id,
         )
-        params: List[Any] = [int(version)] + extra_params + [end_time, start_time]
+        parsed_start_time = require_dt_for_sql(start_time, "计划明细查询时间写法不对，无法读取排程明细")
+        parsed_end_time = require_dt_for_sql(end_time, "计划明细查询时间写法不对，无法读取排程明细")
+        params: List[Any] = [int(version)] + extra_params + [parsed_end_time, parsed_start_time]
         where_clauses = [DETAIL_OVERLAP_OR_BAD_TIME_SQL]
         append_detail_filters(
             where_clauses,
@@ -412,8 +417,8 @@ class SchedulePlanQueryRepository(BaseRepository):
               b.part_no AS part_no,
               b.part_name AS part_name,
               b.quantity AS quantity,
-              b.due_date AS due_date,
-              MAX(CASE WHEN {valid_time_range_sql("s")} THEN s.end_time ELSE NULL END) AS finish_time,
+              CAST(b.due_date AS TEXT) AS due_date,
+              MAX(CASE WHEN {valid_time_range_sql("s")} THEN {time_dt("s", "end_time")} ELSE NULL END) AS finish_time,
               COUNT(s.id) AS schedule_row_count,
               COALESCE(
                 SUM(CASE WHEN s.id IS NOT NULL AND NOT ({valid_time_range_sql("s")}) THEN 1 ELSE 0 END),
@@ -454,7 +459,9 @@ class SchedulePlanQueryRepository(BaseRepository):
         # R05 步3：派工谓词收敛到唯一收口点 normalize_dispatch_resource_filter（含空 id=全量、team 双 join）。
         resource_filter = normalize_dispatch_resource_filter(scope_type, scope_id)
         where_clauses = [DETAIL_OVERLAP_OR_BAD_TIME_SQL]
-        params: List[Any] = [int(version)] + extra_params + [end_time, start_time]
+        parsed_start_time = require_dt_for_sql(start_time, "派工查询时间写法不对，无法读取派工明细")
+        parsed_end_time = require_dt_for_sql(end_time, "派工查询时间写法不对，无法读取派工明细")
+        params: List[Any] = [int(version)] + extra_params + [parsed_end_time, parsed_start_time]
         if resource_filter.sql_fragment:
             where_clauses.append(resource_filter.sql_fragment)
             params.extend(resource_filter.params)

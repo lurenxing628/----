@@ -53,5 +53,3 @@ def test_route_parser_missing_supplier_warning() -> None:
     assert any("没有找到可用的外协供应商" in str(msg) for msg in (result.warnings or [])), (
         f"未透出缺供应商 warning：{result.warnings!r}"
     )
-
-

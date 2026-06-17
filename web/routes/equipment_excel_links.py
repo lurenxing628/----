@@ -27,6 +27,7 @@ from .excel_utils import (
     load_confirm_payload,
     preview_baseline_is_stale,
     send_excel_template_file,
+    template_file_exists_for_download,
 )
 
 # ============================================================
@@ -237,7 +238,7 @@ def excel_link_confirm():
 def excel_link_template():
     start = time.time()
     template_path = os.path.join(current_app.config["EXCEL_TEMPLATE_DIR"], "设备人员关联.xlsx")
-    if os.path.exists(template_path):
+    if template_file_exists_for_download(template_path):
         time_cost_ms = int((time.time() - start) * 1000)
         log_excel_export(
             op_logger=getattr(g, "op_logger", None),

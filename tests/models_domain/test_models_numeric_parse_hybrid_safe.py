@@ -207,5 +207,3 @@ def test_models_numeric_parse_hybrid_safe() -> None:
 
     cfg = ScheduleConfig.from_row({"id": "1.0", "config_key": "k", "config_value": "v"})
     assert cfg.id == 1, f"ScheduleConfig.id 解析异常：{cfg.id!r}"
-
-

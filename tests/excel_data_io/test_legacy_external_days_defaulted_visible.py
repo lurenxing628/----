@@ -117,5 +117,3 @@ def test_legacy_external_days_defaulted_visible() -> None:
 
     warnings = list(result_summary_obj.get("warnings") or [])
     assert any("本次先按 1 天计算" in w for w in warnings), warnings
-
-

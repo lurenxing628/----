@@ -87,5 +87,3 @@ def test_scheduler_accepts_start_dt_string_and_safe_weights() -> None:
     assert due_weight is not None, f"due_weight 不应缺失：{used_params}"
     assert abs(float(priority_weight) - 0.4) < 1e-9, f"priority_weight 回退异常：{used_params}"
     assert abs(float(due_weight) - 0.5) < 1e-9, f"due_weight 回退异常：{used_params}"
-
-

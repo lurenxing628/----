@@ -75,5 +75,3 @@ def test_plugin_capability_conflict_visible() -> None:
     assert plugin_b.get("loaded") == "yes", plugin_b
     assert plugin_b.get("capabilities") == [], plugin_b
     assert plugin_b.get("conflicted_capabilities") == ["demo.capability"], plugin_b
-
-

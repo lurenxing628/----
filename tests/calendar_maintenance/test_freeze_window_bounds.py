@@ -185,5 +185,3 @@ def test_freeze_window_bounds(db_path):
             conn.close()
         except Exception:
             pass
-
-

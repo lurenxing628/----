@@ -39,5 +39,3 @@ def test_calendar_shift_start_rollover(schema_conn) -> None:
     start = datetime(2026, 1, 1, 15, 0, 0)
     end = cal.add_working_hours(start, 2.0, priority="normal")
     assert end == datetime(2026, 1, 2, 8, 0, 0), f"add_working_hours 跨天错误：{end!r}"
-
-

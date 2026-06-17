@@ -178,5 +178,3 @@ def test_schedule_service_empty_reschedulable_rejected() -> None:
         schedule_service_mod.build_algo_operations = original_build_algo_operations
         schedule_service_mod.optimize_schedule = original_optimize_schedule
         schedule_service_mod.persist_schedule = original_persist_schedule
-
-

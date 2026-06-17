@@ -105,5 +105,3 @@ def test_schedule_summary_fallback_counts_output() -> None:
         str(event.get("code") or "") == "fallback_count_parse_failed"
         for event in list(result_summary_obj.get("degradation_events") or [])
     ), f"坏 fallback count 应进入 degradation_events：{result_summary_obj!r}"
-
-

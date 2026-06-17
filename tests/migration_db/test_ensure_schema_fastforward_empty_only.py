@@ -110,4 +110,3 @@ def test_ensure_schema_fastforward_empty_only(tmp_path, schema_path) -> None:
         if name.startswith("aps_backup_") and expected_suffix in name and name.endswith(".db")
     ]
     assert nonempty_backup_files, f"预期存在迁移前备份（suffix={expected_suffix}），实际为空"
-

@@ -173,5 +173,3 @@ def test_status_category_mixed_case():
     ot_svc.repo = cast(Any, ot_repo)
     ot_svc.list(category=" Internal ")
     assert ot_repo.last_category == "internal"
-
-

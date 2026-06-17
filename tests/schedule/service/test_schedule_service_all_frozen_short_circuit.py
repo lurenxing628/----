@@ -222,5 +222,3 @@ def test_schedule_service_all_frozen_short_circuit() -> None:
         schedule_service_mod.extend_downtime_map_for_resource_pool = original_extend_downtime_map
         schedule_service_mod.optimize_schedule = original_optimize_schedule
         schedule_service_mod.persist_schedule = original_persist_schedule
-
-

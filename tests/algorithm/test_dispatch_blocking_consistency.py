@@ -143,5 +143,3 @@ def test_dispatch_blocking_consistency():
         assert exc.field == "resource", f"SGS 缺资源应定位到 resource，实际={exc.field!r}"
     else:
         raise AssertionError("SGS 不应为缺资源内部工序生成不可评分兜底 key")
-
-

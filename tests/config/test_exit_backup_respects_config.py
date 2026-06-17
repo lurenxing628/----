@@ -57,5 +57,3 @@ def test_exit_backup_respects_config(db_path, tmp_path) -> None:
         raise RuntimeError(f"期望生成 1 个 *_exit.db，实际 {exit_backups!r}")
     if any(name.endswith("_auto.db") for name in os.listdir(backup_dir)):
         raise RuntimeError("退出自动备份不应再生成 *_auto.db")
-
-

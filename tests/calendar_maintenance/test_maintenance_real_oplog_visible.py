@@ -130,5 +130,3 @@ def test_maintenance_real_oplog_visibility(db_path, tmp_path) -> None:
         assert log_count == 0, f"OperationLogs 落库被阻断时不应出现成功留痕，实际 {log_count}"
     finally:
         check_conn.close()
-
-

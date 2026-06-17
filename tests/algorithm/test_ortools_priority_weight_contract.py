@@ -28,5 +28,3 @@ def test_ortools_priority_weight_contract() -> None:
         "priority_weight_scaled 排序异常：critical/urgent/normal 应严格递减"
     )
     assert priority_weight_scaled("Urgent", scale=10) == 20, "scale 参数未按预期生效"
-
-

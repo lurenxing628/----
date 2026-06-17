@@ -66,5 +66,3 @@ def test_value_policies_matrix_contract() -> None:
     )
     assert graph_critical_weight.has_compat_default is False, "graph_critical_weight 不应在矩阵中写死运行时默认值"
     assert graph_impact_weight.has_compat_default is False, "graph_impact_weight 不应在矩阵中写死运行时默认值"
-
-

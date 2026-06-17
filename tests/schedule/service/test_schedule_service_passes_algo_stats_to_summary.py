@@ -177,5 +177,3 @@ def test_schedule_service_passes_algo_stats_to_summary(schema_conn) -> None:
         f"ScheduleService 未透传 param_fallbacks：{algo_stats!r}"
     )
     assert captured.get("optimize_strict_mode") is True, f"ScheduleService 未向 optimize_schedule 透传 strict_mode：{captured!r}"
-
-

@@ -159,5 +159,3 @@ def test_optimizer_choice_case_normalization() -> None:
     ]
     assert len(attempts_pairs) == len(expected_pairs), f"attempts 数量异常：{attempts_pairs!r}"
     assert set(attempts_pairs) == expected_pairs, f"attempts 留痕未规范化：{attempts_pairs!r}"
-
-

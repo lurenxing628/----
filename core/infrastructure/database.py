@@ -4,6 +4,7 @@ import logging
 import os
 import sqlite3
 import sys
+from pathlib import Path
 from typing import List, Optional
 
 from .database_bootstrap import (
@@ -37,6 +38,12 @@ from .migration_state import (
     has_no_user_tables as _has_no_user_tables,
 )
 from .migrations.common import fallback_log
+from .safe_files import (
+    UnsafeFixedFileError,
+    create_fixed_file_exclusive,
+    guard_fixed_file_open_target,
+    stat_regular_file,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,24 +55,64 @@ __all__ = [
 ]
 
 
+def _sqlite_file_uri(db_path: str) -> str:
+    return f"{Path(os.path.abspath(db_path)).as_uri()}?mode=rw"
+
+
+def _ensure_sqlite_db_target_ready(db_path: str) -> None:
+    guard_fixed_file_open_target(db_path, ensure_parent=True)
+    try:
+        stat_regular_file(db_path)
+        return
+    except FileNotFoundError:
+        pass
+    fd = create_fixed_file_exclusive(db_path, ensure_parent=True)
+    try:
+        stat_regular_file(db_path)
+    finally:
+        os.close(fd)
+
+
 def get_connection(db_path: str) -> sqlite3.Connection:
     """
     获取 SQLite 连接（每请求一个连接，避免跨线程问题）。
     """
+    is_memory_db = str(db_path or "").strip() == ":memory:"
     # 防御：db_path 可能仅是文件名（dirname 为空串时 makedirs 会报错）
     db_dir = os.path.dirname(db_path)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
+    connect_target = db_path
+    connect_kwargs = {}
+    if not is_memory_db:
+        _ensure_sqlite_db_target_ready(db_path)
+        connect_target = _sqlite_file_uri(db_path)
+        connect_kwargs["uri"] = True
     # 恢复 sqlite3 的类型探测：保持 DATE/TIMESTAMP 等隐式转换行为一致。
     # 例如：声明为 DATE 的列在查询时会自动转换为 datetime.date（而不是 str）。
-    conn = sqlite3.connect(
-        db_path,
-        detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-        check_same_thread=False,
-    )
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+    try:
+        conn = sqlite3.connect(
+            connect_target,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+            check_same_thread=False,
+            **connect_kwargs,
+        )
+    except sqlite3.OperationalError as exc:
+        if not is_memory_db:
+            try:
+                stat_regular_file(db_path)
+            except UnsafeFixedFileError as guard_exc:
+                raise guard_exc from exc
+        raise
+    try:
+        if not is_memory_db:
+            stat_regular_file(db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        return conn
+    except Exception:
+        conn.close()
+        raise
 
 
 def _bootstrap_missing_tables_from_schema(conn: sqlite3.Connection, schema_sql: str, logger=None) -> List[str]:
@@ -114,11 +161,8 @@ def _resolve_schema_path(schema_path: Optional[str]) -> str:
             os.path.join(os.path.dirname(__file__), "..", "..", "schema.sql"),
         ]
         # PyInstaller onedir：schema.sql 与 exe 同目录（在 app.py 中也会显式传入，这里再做兜底）
-        try:
-            if getattr(sys, "frozen", False):
-                candidates.append(os.path.join(os.path.dirname(sys.executable), "schema.sql"))
-        except Exception:
-            pass
+        if getattr(sys, "frozen", False):
+            candidates.append(os.path.join(os.path.dirname(sys.executable), "schema.sql"))
         # 最后兜底：当前工作目录
         candidates.append(os.path.join(os.getcwd(), "schema.sql"))
 

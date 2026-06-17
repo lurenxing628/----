@@ -34,5 +34,3 @@ def test_route_parser_preserve_errors_when_no_matches() -> None:
     assert any("必须以工序号开头" in e for e in errs), f"缺少“必须以工序号开头”错误：{errs!r}"
     assert any("尾部工序号 5 缺少工种名" in e for e in errs), f"缺少“尾部工序号 5 缺少工种名”错误：{errs!r}"
     assert any("无法识别工艺路线格式" in e for e in errs), f"缺少“无法识别工艺路线格式”通用错误：{errs!r}"
-
-

@@ -352,5 +352,3 @@ def test_dict_cfg_contract() -> None:
         "degradation_reason": "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。",
     }, f"dict cfg resource_pool 摘要错误：{dict_algo.get('resource_pool')!r}"
     assert dict_algo == object_algo, "dict cfg 与 object cfg 的 summary 摘要不一致"
-
-

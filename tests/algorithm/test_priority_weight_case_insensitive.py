@@ -38,5 +38,3 @@ def test_priority_weight_case_insensitive():
     # tardiness = 10h, urgent weight=2.0 => weighted tardiness = 20h
     assert abs(float(m.total_tardiness_hours) - 10.0) < 1e-9, f"total_tardiness_hours 异常：{m.total_tardiness_hours}"
     assert abs(float(m.weighted_tardiness_hours) - 20.0) < 1e-9, f"weighted_tardiness_hours 异常：{m.weighted_tardiness_hours}"
-
-

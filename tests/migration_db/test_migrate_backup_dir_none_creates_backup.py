@@ -83,5 +83,3 @@ def test_migrate_backup_dir_none_creates_backup(tmp_path, schema_path):
             conn.close()
         except Exception:
             pass
-
-

@@ -139,5 +139,3 @@ def test_ortools_budget_guard_skip_when_no_time() -> None:
         # 还原 monkeypatch
         ob.try_solve_bottleneck_batch_order = orig_try_solve
         so.time.time = orig_time
-
-

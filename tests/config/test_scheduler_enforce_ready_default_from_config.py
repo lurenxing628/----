@@ -80,5 +80,3 @@ def test_scheduler_enforce_ready_default_from_config(db_path) -> None:
             conn.close()
         except Exception:
             pass
-
-

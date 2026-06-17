@@ -73,5 +73,3 @@ def test_efficiency_greater_than_one_shortens_hours() -> None:
     assert r.start_time == start, f"start_time 异常：{r.start_time!r}"
     assert r.end_time is not None, "end_time 不能为空"
     assert abs((r.end_time - expected_end).total_seconds()) < 1e-6, f"效率>1 未生效：end={r.end_time!r} expected={expected_end!r}"
-
-

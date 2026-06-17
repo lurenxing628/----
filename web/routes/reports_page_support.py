@@ -95,6 +95,14 @@ def _version_report_context(engine: ReportEngine, services) -> Dict[str, Any]:
     raw_plan_role = request_plan_role()
     scenario_id = request_scenario_id()
     resource_type, resource_id = request_resource_filter()
+    start_date, end_date, date_source, _span = page_date_range_or_version_span(
+        engine,
+        int(version or 0),
+        raw_plan_role,
+        scenario_id,
+        "",
+        "",
+    )
     return {
         "version": version,
         "raw_plan_role": raw_plan_role,
@@ -108,9 +116,9 @@ def _version_report_context(engine: ReportEngine, services) -> Dict[str, Any]:
             raw_plan_role,
             scenario_id,
         ),
-        "start_date": None,
-        "end_date": None,
-        "date_source": "none",
+        "start_date": start_date,
+        "end_date": end_date,
+        "date_source": date_source,
     }
 def _publish_report_context(
     *,
@@ -240,6 +248,7 @@ def overdue_page_context(engine: ReportEngine, services) -> Dict[str, Any]:
         "scheduled_count": int(rep.get("scheduled_count") or 0),
         "unscheduled_count": int(rep.get("unscheduled_count") or 0),
         "invalid_time_count": int(rep.get("invalid_time_count") or 0),
+        "invalid_due_count": int(rep.get("invalid_due_count") or 0),
         "as_of_time": rep.get("as_of_time"),
         "report_degraded": bool(rep.get("report_degraded")),
         "report_degradation_message": rep.get("report_degradation_message"),

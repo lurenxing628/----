@@ -305,6 +305,29 @@ def test_candidate_overdue_marker_surfaces_invalid_time_batches_without_marking_
     assert degraded_logs and degraded_logs[0]["reason"] == "schedule_time_invalid"
 
 
+def test_candidate_overdue_marker_surfaces_invalid_due_separately_from_invalid_time() -> None:
+    rows = [
+        {"batch_id": "B-DUE-BAD", "due_date": "坏交期", "finish_time": "2020-02-01",
+         "invalid_time_count": 0, "schedule_row_count": 1},
+    ]
+    degraded_logs: List[Any] = []
+    meta = build_overdue_meta_for_plan(
+        version=VERSION,
+        role=ROLE_BASELINE_BEST,
+        source_table=SOURCE_CANDIDATE_ROWS,
+        list_plan_overdue_base_rows=lambda **_kwargs: rows,
+        load_adopted_meta=lambda _version: {"ids": []},
+        log_degraded=lambda **kwargs: degraded_logs.append(kwargs),
+    )
+    assert meta["ids"] == []
+    assert meta["partial"] is True
+    assert "B-DUE-BAD" in meta["message"]
+    assert "交期写法不对" in meta["message"]
+    assert "计划完成时间写法不对" not in meta["message"]
+    assert meta["reason"] == "due_date_invalid"
+    assert degraded_logs and degraded_logs[0]["reason"] == "due_date_invalid"
+
+
 def test_candidate_overdue_marker_clean_when_no_invalid_time() -> None:
     # 没有时间异常批次时不应无中生有任何降级提示（防过度提示）。
     rows = [
@@ -439,8 +462,8 @@ def test_view_context_resolves_real_critical_best_candidate_rows(tmp_path: Path)
         critical_span = SchedulePlanQueryService(conn).get_plan_time_span(VERSION, ROLE_CRITICAL_BEST)
         assert critical_span == {
             "version": VERSION,
-            "start_time": "2026-05-01 16:00",
-            "end_time": "2026-05-01 18:00",
+            "start_time": "2026-05-01 16:00:00",
+            "end_time": "2026-05-01 18:00:00",
         }
     finally:
         conn.close()
@@ -630,13 +653,13 @@ def test_candidate_plan_time_span_and_dispatch_scope_use_candidate_rows(tmp_path
         baseline_span = service.get_plan_time_span(VERSION, ROLE_BASELINE_BEST)
         assert adopted_span == {
             "version": VERSION,
-            "start_time": "2026-05-01 08:00",
-            "end_time": "2026-05-01 10:00",
+            "start_time": "2026-05-01 08:00:00",
+            "end_time": "2026-05-01 10:00:00",
         }
         assert baseline_span == {
             "version": VERSION,
-            "start_time": "2026-05-01 13:00",
-            "end_time": "2026-05-01 15:00",
+            "start_time": "2026-05-01 13:00:00",
+            "end_time": "2026-05-01 15:00:00",
         }
 
         dispatch_rows = service.list_plan_dispatch_rows(
@@ -665,10 +688,10 @@ def test_plan_query_service_lists_overdue_base_rows_from_candidate_rows(tmp_path
 
         assert len(adopted_rows) == 1
         assert adopted_rows[0]["batch_id"] == "B1"
-        assert adopted_rows[0]["finish_time"] == "2026-05-01 10:00"
+        assert adopted_rows[0]["finish_time"] == "2026-05-01 10:00:00"
 
         assert len(baseline_rows) == 1
         assert baseline_rows[0]["batch_id"] == "B1"
-        assert baseline_rows[0]["finish_time"] == "2026-05-01 15:00"
+        assert baseline_rows[0]["finish_time"] == "2026-05-01 15:00:00"
     finally:
         conn.close()

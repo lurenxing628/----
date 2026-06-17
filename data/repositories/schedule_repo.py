@@ -7,6 +7,7 @@ from core.models import Schedule
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
 from .schedule_rows import ScheduleDetailRow, ScheduleSeedRow
+from .schedule_time_sql import parse_dt_for_sql, time_dt
 
 
 def _require_schedule_op_id(schedule: Schedule) -> int:
@@ -59,6 +60,10 @@ class ScheduleRepository(BaseRepository):
                 ids.append(v)
         if not ids:
             return []
+        parsed_start_time = parse_dt_for_sql(start_time)
+        parsed_end_time = parse_dt_for_sql(end_time)
+        if parsed_start_time is None or parsed_end_time is None:
+            raise ValueError("冻结窗口查询时间写法不对，无法读取旧排程种子")
 
         out: List[ScheduleSeedRow] = []
         for i in range(0, len(ids), int(chunk_size)):
@@ -69,10 +74,10 @@ class ScheduleRepository(BaseRepository):
             FROM Schedule
             WHERE version = ?
               AND op_id IN ({placeholders})
-              AND start_time < ?
-              AND end_time > ?
+              AND {time_dt(None, "start_time")} < ?
+              AND {time_dt(None, "end_time")} > ?
             """
-            params: List[Any] = [int(version)] + list(chunk) + [end_time, start_time]
+            params: List[Any] = [int(version)] + list(chunk) + [parsed_end_time, parsed_start_time]
             out.extend(cast(List[ScheduleSeedRow], self.fetchall(sql, tuple(params))))
         return out
 

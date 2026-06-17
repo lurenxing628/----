@@ -295,6 +295,29 @@ def test_available_actions_reachable_write_gate_combos_stay_stable() -> None:
     assert payload_tt["plan_identity"]["guardrail_text"] == ""
 
 
+def test_empty_execution_cards_surface_public_degradation_message() -> None:
+    from core.models.scheduler_degradation_messages import RESOURCE_POOL_BUILD_FAILED_MESSAGE
+    from web.viewmodels.scheduler_resource_dispatch_execution import build_execution_payload
+
+    payload = build_execution_payload(
+        {
+            "plan_identity": {"label": "正式采用方案"},
+            "can_write_feedback": True,
+            "feedback_write_enabled": True,
+            "rows": [],
+            "states": {},
+            "degradation_events": [{"code": "resource_pool_degraded", "message": "/tmp/internal/raw"}],
+        }
+    )
+
+    assert payload["tasks"] == []
+    assert payload["degradation_message"] == RESOURCE_POOL_BUILD_FAILED_MESSAGE
+    rendered = _render_execution_cards(payload)
+    assert RESOURCE_POOL_BUILD_FAILED_MESSAGE in rendered["html"]
+    assert "当前查询范围内暂无现场记录任务卡" not in rendered["html"]
+    assert "/tmp/internal/raw" not in rendered["html"]
+
+
 def test_positive_int_consolidated_to_execution_scope_strict_parser() -> None:
     # R09 收编 parity:A(service)/B(viewmodel) 两份 _positive_int 已委托 scope.py 收口点
     # parse_positive_execution_int。合法面与收编前零漂移;脏值面(5.9/3.0/True)按 O01 裁定

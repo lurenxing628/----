@@ -66,5 +66,3 @@ def test_batch_excel_import_strict_mode_hardfail_atomic(schema_conn) -> None:
 
     finally:
         conn.close()
-
-

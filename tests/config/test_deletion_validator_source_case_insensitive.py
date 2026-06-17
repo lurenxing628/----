@@ -24,5 +24,3 @@ def test_deletion_validator_source_case_insensitive() -> None:
     ]
     groups = dv.get_deletion_groups(ops2)
     assert groups == [[1, 2]], f"首部连续外部组识别失败：{groups!r}"
-
-

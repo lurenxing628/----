@@ -41,5 +41,3 @@ def test_schedule_summary_overdue_warning_append_fallback() -> None:
     assert any("交期写法不对" in str(item) for item in summary.warnings), (
         f"非法 due_date 告警未写回 summary.warnings：{summary.warnings!r}"
     )
-
-

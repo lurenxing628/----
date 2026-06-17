@@ -73,5 +73,3 @@ def test_schedule_summary_end_date_type_guard() -> None:
     # 2) end_date 是 date：应输出 ISO 字符串
     r2 = _build_summary_with_end_date(date(2026, 2, 11))
     assert r2.get("end_date") == "2026-02-11", f"date end_date 序列化异常：{r2.get('end_date')!r}"
-
-

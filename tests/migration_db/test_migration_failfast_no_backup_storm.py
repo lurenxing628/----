@@ -76,5 +76,3 @@ def test_migration_failfast_no_backup_storm(tmp_path, schema_path) -> None:
         assert version == 3, f"预期 SchemaVersion 保持 3，实际 {version}"
     finally:
         conn.close()
-
-

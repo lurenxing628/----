@@ -207,5 +207,3 @@ def test_scheduler_strict_mode_dispatch_flags(schema_conn) -> None:
         )
     finally:
         conn.close()
-
-

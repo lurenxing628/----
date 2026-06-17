@@ -18,5 +18,3 @@ def test_sort_strategies_priority_case_insensitive() -> None:
     s2 = StrategyFactory.create(SortStrategy.WEIGHTED, priority_weight=0.4, due_weight=0.5)
     out2 = [b.batch_id for b in s2.sort([normal, urgent])]
     assert out2[0] == "B_URGENT", f"WEIGHTED 未正确识别 priority 大小写：{out2!r}"
-
-

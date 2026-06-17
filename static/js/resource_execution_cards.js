@@ -138,12 +138,15 @@
     const data = payload || {};
     const tasks = Array.isArray(data.tasks) ? data.tasks : [];
     const disabledReason = trim(data.disabled_reason);
+    const degradationMessage = trim(data.degradation_message);
     if (notice) {
       if (disabledReason) notice.textContent = disabledReason;
       show(notice, !!disabledReason);
     }
     if (!tasks.length) {
-      wrap.innerHTML = '<div class="muted">当前查询范围内暂无现场记录任务卡。</div>';
+      wrap.innerHTML = '<div class="muted">' + escapeHtml(
+        degradationMessage || "当前查询范围内暂无现场记录任务卡。"
+      ) + '</div>';
       return;
     }
     const cards = [];

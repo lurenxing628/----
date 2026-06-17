@@ -65,5 +65,3 @@ def test_exit_backup_maintenance(db_path, tmp_path) -> None:
         raise RuntimeError(f"_run_exit_backup 预期 fail-fast，不应长时间等待；实际耗时 {elapsed:.3f}s")
     if _list_exit_backups(backup_dir):
         raise RuntimeError("维护窗口期间不应生成 *_exit.db")
-
-

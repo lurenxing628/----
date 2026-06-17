@@ -62,13 +62,19 @@ def report_degradation_payload(collector: DegradationCollector) -> Dict[str, Any
 def report_degradation_summary_rows(degradation: Optional[Mapping[str, Any]]) -> List[List[Any]]:
     data = dict(degradation or {})
     bad_time_count = int(data.get("report_bad_time_skipped_count") or 0)
-    if bad_time_count <= 0:
+    invalid_due_count = int(data.get("report_invalid_due_count") or 0)
+    # 任意一类降级都要在导出摘要里诚实出现，不能只看坏完工时间数。
+    # 否则“仅坏交期、无坏完工时间”时页面有提示而 Excel 摘要静默为空（两条链路口径不一致）。
+    degraded = bool(data.get("report_degraded")) or bad_time_count > 0 or invalid_due_count > 0
+    if not degraded:
         return []
     count_label = _text(data.get("report_degradation_count_label")) or "开始或结束时间写法不对，已过滤的记录数"
     sample_label = _text(data.get("report_degradation_sample_label")) or "已过滤记录样例"
-    return [
-        ["数据不完整", "是"],
-        [count_label, bad_time_count],
-        [sample_label, "；".join(str(item) for item in data.get("report_degradation_samples") or [])],
-        ["处理提示", data.get("report_degradation_message") or ""],
-    ]
+    rows: List[List[Any]] = [["数据不完整", "是"]]
+    if bad_time_count > 0:
+        rows.append([count_label, bad_time_count])
+        rows.append([sample_label, "；".join(str(item) for item in data.get("report_degradation_samples") or [])])
+    if invalid_due_count > 0:
+        rows.append(["交期写法异常批次数", invalid_due_count])
+    rows.append(["处理提示", data.get("report_degradation_message") or ""])
+    return rows

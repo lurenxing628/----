@@ -13,5 +13,3 @@ def test_due_exclusive_guard_contract() -> None:
     assert due_exclusive(None) == expected, "共享 due_exclusive(None) 应返回 datetime.max"
     assert summary_due_exclusive(None) == expected, "schedule_summary._due_exclusive(None) 应返回 datetime.max"
     assert calculations_due_exclusive(None) == expected, "calculations.due_exclusive(None) 应返回 datetime.max"
-
-

@@ -68,5 +68,3 @@ def test_metrics_to_dict_nonfinite_safe() -> None:
             raise AssertionError("负荷波动内部计算错误不能静默变 0")
     finally:
         evaluation.statistics.pstdev = real_pstdev
-
-

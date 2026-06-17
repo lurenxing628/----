@@ -5,6 +5,8 @@ from __future__ import annotations
 import sqlite3
 from typing import Any, Dict, List
 
+import pytest
+
 from data.repositories.schedule_repo import ScheduleRepository
 
 COMMON_DETAIL_KEYS = {
@@ -155,6 +157,35 @@ def _repo() -> ScheduleRepository:
 
 def _ids(rows: List[Dict[str, Any]]) -> List[int]:
     return [int(row["schedule_id"]) for row in rows]
+
+
+def test_seed_range_query_uses_python_time_parser_for_existing_rows() -> None:
+    repo = _repo()
+    repo.conn.execute(
+        "UPDATE Schedule SET start_time = ?, end_time = ? WHERE id = ?",
+        ("2026/05/01 08:00", "2026/05/01 10:00", 1),
+    )
+
+    rows = repo.list_version_rows_by_op_ids_start_range(
+        version=1,
+        op_ids=[10],
+        start_time="2026-05-01 09:00",
+        end_time="2026-05-01 09:30",
+    )
+
+    assert [int(row["op_id"]) for row in rows] == [10]
+
+
+def test_seed_range_query_rejects_invalid_window_boundary() -> None:
+    repo = _repo()
+
+    with pytest.raises(ValueError, match="冻结窗口查询时间写法不对"):
+        repo.list_version_rows_by_op_ids_start_range(
+            version=1,
+            op_ids=[10],
+            start_time="bad-start",
+            end_time="2026-05-01 09:30",
+        )
 
 
 def test_schedule_detail_query_for_version_uses_same_common_shape() -> None:

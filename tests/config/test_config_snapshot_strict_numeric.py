@@ -157,5 +157,3 @@ def test_config_snapshot_strict_numeric() -> None:
         lambda: _build({**defaults, "auto_assign_enabled": "   "}, strict_mode=True),
         "auto_assign_enabled",
     )
-
-

@@ -30,6 +30,7 @@ from .excel_utils import (
     preview_baseline_is_stale,
     read_uploaded_xlsx,
     send_excel_template_file,
+    template_file_exists_for_download,
 )
 
 bp = Blueprint("excel_demo", __name__)
@@ -218,7 +219,7 @@ def download_template():
     """
     start = time.time()
     template_path = os.path.join(current_app.config["EXCEL_TEMPLATE_DIR"], "人员基本信息.xlsx")
-    if os.path.exists(template_path):
+    if template_file_exists_for_download(template_path):
         time_cost_ms = int((time.time() - start) * 1000)
         log_excel_export(
             op_logger=g.op_logger,

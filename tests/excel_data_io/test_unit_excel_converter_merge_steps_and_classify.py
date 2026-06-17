@@ -218,4 +218,3 @@ def test_unit_excel_converter_merge_steps_and_classify(db_path, tmp_path) -> Non
         assert os.path.exists(output_paths[fn]), f"输出文件缺失：{fn}"
     assert _read_headers(output_paths["人员设备关联.xlsx"]) == ["工号", "设备编号", "技能等级", "主操设备"]
     assert _read_headers(output_paths["供应商配置.xlsx"]) == ["供应商编号", "名称", "对应工种", "默认周期", "状态", "备注"]
-

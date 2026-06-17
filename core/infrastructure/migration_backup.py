@@ -3,10 +3,10 @@ from __future__ import annotations
 import gc
 import logging
 import os
-import shutil
 import time
 
 from .migrations.common import fallback_log
+from .safe_files import read_fixed_bytes, remove_fixed_file, stat_regular_file, write_fixed_bytes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,15 +24,15 @@ def is_windows_lock_error(exc: Exception) -> bool:
 
 
 def cleanup_sqlite_sidecars(db_path: str, logger=None) -> None:
-    # WAL/SHM/JOURNAL 残留可能导致“恢复后仍读到旧数据”或打开失败；最佳努力清理
+    # WAL/SHM/JOURNAL 残留可能导致“恢复后仍读到旧数据”或打开失败；遇到危险固定文件必须失败可见。
     for suffix in ("-wal", "-shm", "-journal"):
         path = f"{db_path}{suffix}"
         try:
-            if os.path.exists(path):
-                os.remove(path)
+            remove_fixed_file(path, missing_ok=True, allow_symlink=False)
         except Exception as exc:
             if logger:
                 fallback_log(logger, "warning", f"清理 SQLite sidecar 失败：{exc}（path={path}）")
+            raise
 
 
 def restore_db_file_from_backup(
@@ -52,7 +52,13 @@ def restore_db_file_from_backup(
     for attempt in range(retry_count):
         try:
             _remove_tmp_file(tmp_path)
-            shutil.copy2(backup_abs, tmp_path)
+            backup_payload = read_fixed_bytes(backup_abs)
+            try:
+                stat_regular_file(db_abs)
+            except FileNotFoundError:
+                pass
+            cleanup_sqlite_sidecars(db_abs, logger=logger)
+            write_fixed_bytes(tmp_path, backup_payload, replace_symlink=False)
             os.replace(tmp_path, db_abs)
             cleanup_sqlite_sidecars(db_abs, logger=logger)
             return
@@ -80,10 +86,10 @@ def release_sqlite_connection_reference(conn) -> None:
 
 def _remove_tmp_file(tmp_path: str) -> None:
     try:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        remove_fixed_file(tmp_path, missing_ok=True, allow_symlink=False)
     except Exception as exc:
-        _LOGGER.warning("临时数据库文件清理失败（已继续）：%s（path=%s）", exc, tmp_path)
+        _LOGGER.warning("临时数据库文件清理失败：%s（path=%s）", exc, tmp_path)
+        raise
 
 
 def _collect_garbage() -> None:

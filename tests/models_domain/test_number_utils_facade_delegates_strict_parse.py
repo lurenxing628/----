@@ -70,5 +70,3 @@ def test_number_utils_facade_delegates_strict_parse() -> None:
         assert exc.field == "默认周期", f"parse_finite_float 默认行为字段异常：{exc.field!r}"
     else:
         raise AssertionError("parse_finite_float 省略 allow_none 时应默认按必填解析")
-
-

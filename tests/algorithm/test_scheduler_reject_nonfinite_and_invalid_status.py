@@ -128,5 +128,3 @@ def test_scheduler_reject_nonfinite_and_invalid_status(db_path) -> None:
             conn.close()
         except Exception:
             pass
-
-

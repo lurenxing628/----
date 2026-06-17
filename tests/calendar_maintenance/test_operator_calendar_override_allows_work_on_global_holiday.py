@@ -90,5 +90,3 @@ def test_operator_calendar_override_allows_work_on_global_holiday(db_path):
             conn.close()
         except Exception:
             pass
-
-

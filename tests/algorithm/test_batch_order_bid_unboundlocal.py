@@ -111,5 +111,3 @@ def test_batch_order_bid_unboundlocal():
     assert any(("OP_ERR" in e and "请查看系统日志" in e) for e in summary.errors), f"errors 未包含公开异常文案：{summary.errors!r}"
     assert not any("boom" in e for e in summary.errors), f"errors 不应暴露原异常：{summary.errors!r}"
     assert not any("UnboundLocalError" in e for e in summary.errors), f"不应出现 UnboundLocalError：{summary.errors!r}"
-
-

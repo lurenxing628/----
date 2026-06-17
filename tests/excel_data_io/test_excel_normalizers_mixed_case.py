@@ -362,5 +362,3 @@ def test_excel_normalizers_mixed_case():
     ]:
         got = om_yes_no_stored(raw)
         assert got == expected, f"om_yes_no_stored({raw!r}) 期望 {expected!r}，实际 {got!r}"
-
-

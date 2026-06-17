@@ -76,5 +76,3 @@ def test_external_group_service_compatible_mode_logs_fallback(schema_conn) -> No
 
     finally:
         conn.close()
-
-

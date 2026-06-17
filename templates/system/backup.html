@@ -30,6 +30,14 @@
 
   <div class="card">
     <h3>备份列表</h3>
+    {% if backup_list_unsafe_count %}
+      {% set unsafe_names = (backup_list_unsafe_sample or []) | map(attribute='filename') | list %}
+      {{ ui.notice('备份目录需要检查', '有 ' ~ backup_list_unsafe_count ~ ' 个备份文件不是安全的普通文件，已从列表隐藏：' ~ (unsafe_names | join('、')) ~ '。', tone='warning', class='mb-3') }}
+    {% endif %}
+    {% if backup_list_error_count %}
+      {% set error_names = (backup_list_error_sample or []) | map(attribute='filename') | list %}
+      {{ ui.notice('备份信息读取失败', '有 ' ~ backup_list_error_count ~ ' 个备份文件读取失败，已从列表隐藏：' ~ (error_names | join('、')) ~ '。', tone='warning', class='mb-3') }}
+    {% endif %}
     <div class="aps-settings-action-grid mb-3">
       <form method="post" action="{{ url_for('system.backup_create') }}" class="aps-settings-action-card">
         {{ ui.button('手动备份', 'primary', 'md', type_attr='submit') }}
