@@ -848,16 +848,16 @@ ORDER BY version;
 
 ```bash
 .venv/bin/pytest \
-  tests/test_scheduler_run_view_result_contract.py \
-  tests/regression_scheduler_run_surfaces_resource_pool_warning.py \
-  tests/regression_schedule_service_reject_no_actionable_schedule_rows.py \
-  tests/regression_scheduler_week_plan_no_reschedulable_flash.py
+  tests/schedule/route_view/test_scheduler_run_view_result_contract.py \
+  tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py \
+  tests/schedule/service/test_schedule_service_reject_no_actionable_schedule_rows.py \
+  tests/candidate/test_scheduler_week_plan_no_reschedulable_flash.py
 ```
 
 结果：
 
 ```text
-21 passed in 1.04s
+55 passed in 0.98s
 ```
 
 代码检查：
@@ -870,9 +870,9 @@ ORDER BY version;
   core/services/scheduler/run/schedule_input_collector.py \
   core/services/scheduler/run/schedule_orchestrator.py \
   core/services/scheduler/run/schedule_persistence.py \
-  tests/test_scheduler_run_view_result_contract.py \
-  tests/regression_scheduler_run_surfaces_resource_pool_warning.py \
-  tests/regression_schedule_service_reject_no_actionable_schedule_rows.py
+  tests/schedule/route_view/test_scheduler_run_view_result_contract.py \
+  tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py \
+  tests/schedule/service/test_schedule_service_reject_no_actionable_schedule_rows.py
 ```
 
 结果：

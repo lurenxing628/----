@@ -21,16 +21,16 @@
 
 ```powershell
 py -3.8 -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt -r requirements-dev.txt
+.venv\Scripts\python -m pip install -r requirements.txt -r requirements-dev.txt -r requirements-optimizer-lite-win7.txt
 .venv\Scripts\python -m pre_commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push
 ```
 
 说明：
 
-- `requirements.txt` 是程序运行依赖，`requirements-dev.txt` 是本地检查和托管门禁依赖；新环境两份都要装。
+- `requirements.txt` 是程序运行依赖，`requirements-dev.txt` 是本地检查和托管门禁依赖，`requirements-optimizer-lite-win7.txt` 是图分析/候选方案增强需要的轻量优化依赖；新环境三份都要装。
 - `PyYAML` 是 CodeStable YAML 工具的开发期依赖；缺失时工具只支持极简 Markdown frontmatter，不能校验 checklist / manifest 这类纯 YAML 文件。
 - `ruff` 版本口径固定为 `>=0.15,<0.16`。
-- 若未先在项目 `.venv` 中安装 `requirements.txt` 和 `requirements-dev.txt`，`.pre-commit-config.yaml` 中的 `ruff`、提交说明检查、推送前快门禁以及本地启动都可能无法正常运行。
+- 若未先在项目 `.venv` 中安装 `requirements.txt`、`requirements-dev.txt` 和 `requirements-optimizer-lite-win7.txt`，`.pre-commit-config.yaml` 中的 `ruff`、提交说明检查、推送前快门禁、图分析增强以及本地启动都可能无法正常运行。
 - 推送前快门禁必须使用项目 `.venv` 里的 Python；如果项目 `.venv` 不存在，会直接失败，不会偷偷换成系统 Python，并且会强制使用 UTF-8 环境。本地 hook 不是可选检查，正常提交流程不要绕过它。CI/托管环境会重跑完整质量门禁，不过提交标题检查和“暂存区有没有混入本地运行产物”主要靠本地 hook，绕过后不能当作已经通过本地提交检查。
 
 ## 质量治理入口
@@ -75,7 +75,7 @@ long gate cache 是给长耗时完整门禁准备的本地成功缓存，需要�
 
 单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只会写本次 full-test-debt 的 current/summary 证明，不会写 `evidence/QualityGate/long_gate/results/full_test_debt.success.json`。如果想预热最终完整门禁会用到的缓存，需要跑完整门禁链：`.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
 
-CI 里的 long gate cache 只负责把上一次完整门禁成功后留下的已忽略运行产物带到下一次运行。GitHub Actions 会在完整门禁前 restore，在完整门禁成功后 save；缓存 key 的可恢复前缀会带上系统、Python 3.8、`requirements.txt` / `requirements-dev.txt` 依赖 hash，以及 workflow、门禁脚本、`tools/**/*.py`、pyright 配置等 tooling hash；保存 key 还会带上本次 `github.sha`，避免不同提交写到同一个精确 key。保存范围只包含 `evidence/QualityGate/long_gate/`、collect/full-test-debt/static/required/startup/debt ledger/quickref 等 long gate proof 运行产物，不覆盖历史已跟踪的 `evidence/Conformance/quickref_vs_routes.md`。pull request 可以读取已有缓存帮助判断，但不会把 PR 里的运行产物保存回主仓库缓存；只有 `push` 和手动 `workflow_dispatch` 在完整门禁成功后会保存。
+CI 里的 long gate cache 只负责把上一次完整门禁成功后留下的已忽略运行产物带到下一次运行。GitHub Actions 会在完整门禁前 restore，在完整门禁成功后 save；缓存 key 的可恢复前缀会带上系统、Python 3.8、`requirements.txt` / `requirements-dev.txt` / `requirements-optimizer-lite-win7.txt` 依赖 hash，以及 workflow、门禁脚本、`tools/**/*.py`、pyright 配置等 tooling hash；保存 key 还会带上本次 `github.sha`，避免不同提交写到同一个精确 key。保存范围只包含 `evidence/QualityGate/long_gate/`、collect/full-test-debt/static/required/startup/debt ledger/quickref 等 long gate proof 运行产物，不覆盖历史已跟踪的 `evidence/Conformance/quickref_vs_routes.md`。pull request 可以读取已有缓存帮助判断，但不会把 PR 里的运行产物保存回主仓库缓存；只有 `push` 和手动 `workflow_dispatch` 在完整门禁成功后会保存。
 
 long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；坏证据、缺 proof、日志缺失、输出缺失或 hash 不一致都会自动重跑。`--long-gate-cache-explain` 只打印本次会跑、会复用、还是仍处于 planned 的判断，不执行命令，不写 proof，也不能当作 clean proof。summary counts 只是执行、复用、失败、planned、disabled 的汇总，也不能当作 clean proof。CI 里看到 actions/cache 的 cache hit，也只代表旧运行产物被取回来了，不代表本次 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 已经通过。未登记的新失败仍然必须失败，已登记测试债务仍然必须被台账管住；CI 和最终 clean gate 的要求不降低。维护者要手动完整重跑时，可以直接运行不带 `--long-gate-cache` 的 clean gate，或显式使用 `--no-long-gate-cache`。这种做法只适合强制全量重跑或排查缓存问题；对外收口、PR 和 CI 的最终证明仍按 `--require-clean-worktree --long-gate-cache` 或 `tools\git_hook_checks.py run-final-quality-gate` 口径写。
 
@@ -105,17 +105,17 @@ long gate cache 不是跳过正式门禁。命中前会校验 command、fingerpr
 
 ### 可直接复用的测试落点
 
-- `tests/regression/`：后续新增 `main()` 风格专项回归的默认落点；这类回归由 pytest 收集后通过子进程执行，避免脚本里的全局改动污染后续测试。
-- `tests/regression/regression_collection_contract.py`：最小收集探针，只提供无副作用 `main()` 并返回 `0`，用于证明子目录下的 `regression_*.py` 仍会被当前收集器识别。
+- 历史兼容回归目录不再作为新增 `main()` 风格脚本的默认落点；当前没有可直接复跑的专项脚本集合，不能把它当成现成回归集合。
+- 现有高频回归已经迁到按业务分组的 `tests/schedule/`、`tests/web_pages/`、`tests/resource_dispatch/` 和 `tests/gate_meta/` 等目录；需要找具体守卫时优先看 `tools/test_registry_data.py` 和 `tools/test_registry_groups_*.py`。
 
 ### 命名契约
 
-- `regression_*.py`：用于 `main()` 风格专项回归。
+- `regression_*.py`：历史 `main()` 风格专项回归文件名；仓库当前已移除 main-style 回归收集器，不再新增这类脚本。
 - `test_*.py`：用于标准 `pytest` 用例。
 - 禁止在 `regression_*.py` 中同时声明 `main()` 与 `test_` 用例；若需要标准 `pytest` 用例，必须改为 `test_*.py` 命名，避免收集遗漏。
-- 辅助 runner 不要命名成 `regression_*.py`，否则会被当成 main-style 回归再次收集；当前统一 runner 是 `tests/main_style_regression_runner.py`。
+- 仓库当前已移除 main-style 回归收集器；不要再新增带 `main()` 的 `regression_*.py` 脚本，新增回归优先写成标准 `test_*.py` 用例并放进对应业务目录。
 - 上述契约依赖当前 `tests/conftest.py` 的收集适配保持不变；`SP01` 只补目录、探针与契约，不修改该实现。
-- `SP10` 完成前不迁移旧根层测试；后续新增专项回归优先落到 `tests/regression/`，避免继续把新文件堆回 `tests/` 根层。
+- `SP10` 完成前不迁移旧根层测试；后续新增专项回归优先写成标准 `test_*.py`，放进对应业务目录或 `tests/gate_meta/`，避免继续把新文件堆回 `tests/` 根层。
 
 ## 对 SP02 的承接边界
 
@@ -123,7 +123,7 @@ long gate cache 不是跳过正式门禁。命中前会校验 command、fingerpr
 
 - 可稳定链接的根入口、开发文档入口与审计入口。
 - 本地开发与托管检查共用的开发依赖声明。
-- 可直接承接新增专项回归的 `tests/regression/` 目录。
+- 新增专项回归不再放回历史兼容回归目录；应放到对应业务目录或 `tests/gate_meta/`，并按需要登记到 `tools/test_registry_data.py` 或对应分组文件。
 - 已明确写清的命名契约，以及它对当前 `tests/conftest.py` 收集适配前提的依赖。
 - 统一质量门禁入口 `.venv\Scripts\python scripts/run_quality_gate.py`；只有已经激活 `.venv` 后，才可以简写成 `python scripts/run_quality_gate.py`。
 - 唯一台账写入口 `.venv\Scripts\python scripts/sync_debt_ledger.py`；只有已经激活 `.venv` 后，才可以简写成 `python scripts/sync_debt_ledger.py`。

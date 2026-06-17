@@ -14,7 +14,7 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 - 页面路由：`web/routes/domains/scheduler/scheduler_gantt.py` 的 `/scheduler/gantt`。
 - 数据接口：`/scheduler/gantt/data`。
 - 经典模板：`templates/scheduler/gantt.html`。
-- 现代模板镜像：`web_new_test/templates/scheduler/gantt.html`。
+- 当前唯一模板：`templates/scheduler/gantt.html`。历史 `web_new_test/` 双轨模板已退役。
 
 页面把 `data-gantt-mode="view"` 和 `data-zoom-level` 下发给前端。第一版只读甘特图不提供保存按钮，也不调用任何正式写库接口。
 
@@ -39,7 +39,7 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 
 ### 2.1 稳定任务详情区
 
-甘特图现在除了原有弹窗，还在图表旁边或下方有稳定任务详情区。模板里的挂载点是 `#ganttTaskDetail`，经典模板和现代模板镜像都要保留这个容器。
+甘特图现在除了原有弹窗，还在图表旁边或下方有稳定任务详情区。模板里的挂载点是 `#ganttTaskDetail`，当前唯一模板 `templates/scheduler/gantt.html` 必须保留这个容器。
 
 详情区的数据链是：
 
@@ -127,8 +127,8 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 
 - 周计划页面和导出复用 `GanttService.get_week_plan_rows(..., scenario_id=...)`，公开表单和导出 URL 使用 `plan_context_token`，服务端解析后再把内部 `scenario_id` 传给 service；用户可见位置使用 `scenario_display_name`、`scenario_name` 或“模拟预览（未命名）”，不把 `scenario_id` 拼到页面或文件名里。当前证据在 `templates/scheduler/week_plan.html:16`、`templates/scheduler/week_plan.html:96` 和 `core/services/scheduler/week_plan_excel.py:70`。
 - 资源排班页面、`/scheduler/resource-dispatch/data` 和导出会把 `scenario_id` 传到 `ResourceDispatchService`，明细行、日历矩阵、日历明细和超期标记都按同一份 Scenario 解析结果计算。
-- 资源排班页面和 Excel 摘要会写明模拟预览名称或“模拟预览（未命名）”，并提示“正式计划还没有改变”，不把内部编号当作名称展示；资源排班 Excel 保留矩阵 Sheet，同时新增 `日历明细`，从装饰后的公开 `calendar_rows[*].cells[*].items[*]` 展开，仍不把内部编号放进用户可见表头或单元格。当前证据在 `templates/scheduler/resource_dispatch.html:59`、`templates/scheduler/resource_dispatch.html:160`、`core/services/scheduler/resource_dispatch_excel.py` 和 `tests/regression_resource_dispatch_public_output_contract.py`。
-- 报表页面的超期清单、资源负荷与利用率、停机影响统计会按 Scenario 行计算；对应 Excel 导出也按同一份模拟方案生成，并在摘要里使用模拟预览名称或“模拟预览（未命名）”，不把内部编号当作文件名或表头展示。当前页面提示使用“模拟预览（未命名）”兜底，证据在 `templates/reports/overdue.html:56`、`templates/reports/utilization.html:70`、`templates/reports/downtime.html:77`、`web/routes/reports.py` 的对应报表导出路由和 `tests/regression_scenario_preview_secondary_outputs.py`。
+- 资源排班页面和 Excel 摘要会写明模拟预览名称或“模拟预览（未命名）”，并提示“正式计划还没有改变”，不把内部编号当作名称展示；资源排班 Excel 保留矩阵 Sheet，同时新增 `日历明细`，从装饰后的公开 `calendar_rows[*].cells[*].items[*]` 展开，仍不把内部编号放进用户可见表头或单元格。当前证据在 `templates/scheduler/resource_dispatch.html:59`、`templates/scheduler/resource_dispatch.html:160`、`core/services/scheduler/resource_dispatch_excel.py` 和 `tests/resource_dispatch/test_resource_dispatch_public_output_contract.py`。
+- 报表页面的超期清单、资源负荷与利用率、停机影响统计会按 Scenario 行计算；对应 Excel 导出也按同一份模拟方案生成，并在摘要里使用模拟预览名称或“模拟预览（未命名）”，不把内部编号当作文件名或表头展示。当前页面提示使用“模拟预览（未命名）”兜底，证据在 `templates/reports/overdue.html:56`、`templates/reports/utilization.html:70`、`templates/reports/downtime.html:77`、`web/routes/reports.py` 的对应报表导出路由和 `tests/web_pages/test_scenario_preview_secondary_outputs.py`。
 - 计划和现场实际复盘页第一版只复盘“正式采用方案”，不支持模拟预览和对比参考方案。报表页导航跳到 `/reports/execution-review` 时只保留 `version`、`date_from`、`date_to` 和 `batch_id`，不携带 `plan_role` 或 `scenario_id`，避免用户误以为现场事实复盘支持模拟方案。
 - Scheduler 主导航和普通报表页导航在预览态会在 URL / 查询参数中保留 `version`、`plan_role` 和 `plan_context_token`，避免用户点跨页导航后悄悄掉回正式计划；内部 `scenario_id` 不能直接当公开链接参数、页面文案、按钮文案、导出列名或导出文件名展示。
 - 非法 Scenario 在页面、data 接口和导出入口都必须报错，不允许清掉 `scenario_id` 后展示正式计划。

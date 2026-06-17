@@ -3,7 +3,8 @@
 > **审计基线（实施前）**：当时的 `static/docs/scheduler_manual.md` + 45个 `page_manuals` topic + 11个 Excel 模板；当前说明书行数已经变化，不要按这里的旧行号跳转。
 > **审计方法**：先由12个子代理并行扫描全部模板HTML、路由代码、page_manuals源码、Excel模板文件，后续又由16个只读子代理按页面和模块复核本报告结论
 > **审计结论（实施前）**：说明书核心流程准确，真实 Excel 模板表头和下拉值与模板定义一致，但**页面级操作细节仍有明显缺口**；本报告中若出现“全部”“每个”“都会”等绝对说法，以“复核修正口径”为准
-> **本轮实施状态（2026-05-09）**：本报告是“实施前审计 + 修改建议 + 后续复核记录”的混合文档。行号、行数和“仍需补”的说法只代表当时审计口径，不能当成当前文件状态。当前是否同步、是否修完，以 `static/docs/scheduler_manual.md`、`web_new_test/static/docs/scheduler_manual.md` 和回归测试结果为准。
+> **本轮实施状态（2026-05-09）**：本报告是“实施前审计 + 修改建议 + 后续复核记录”的混合文档。行号、行数和“仍需补”的说法只代表当时审计口径，不能当成当前文件状态。当前是否同步、是否修完，以 `static/docs/scheduler_manual.md`、`web/viewmodels/page_manuals*.py` 和标准 `tests/**/test_*.py` 回归测试结果为准。
+> **历史路径提示（2026-06-17）**：本报告正文里如果出现 `web_new_test/*`、`tests/regression_*.py` 或旧 smoke 路径，只表示当时双轨/旧测试命名下的审计记录；当前仓库已经收敛到 `templates/`、`static/`、`tests/_scripts_e2e/` 和标准 `tests/**/test_*.py`。
 
 ---
 

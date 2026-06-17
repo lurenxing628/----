@@ -199,7 +199,7 @@ def main(argv=None):
     print("[2/4] 运行一致性对标...")
     conf_code, conf_out = run_script(
         repo_root,
-        "tests/generate_conformance_report.py",
+        "tests/gate_meta/generate_conformance_report.py",
         "一致性对标",
         timeout_s=timeout_conf,
     )

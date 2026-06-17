@@ -542,7 +542,7 @@ flowchart LR
 #### 4.6.4 Web 持续迭代门槛（防止“半收口”）
 
 进入下一阶段 UI 收口前，必须同时满足：
-- Web 回归全绿：`tests/smoke_phase8.py` + 甘特专项回归（见 9.5）。
+- Web 回归全绿：`tests/_scripts_e2e/smoke_phase8.py` + 甘特专项回归（见 9.5）。
 - 契约快照稳定：连续两次版本迭代不出现“非预期字段漂移”。
 - 关键交互闭环：设备/人员视图切换、版本切换、URL 状态持久化与关键链高亮在同一周计划下可稳定复现。
 
@@ -1834,14 +1834,14 @@ def test_first_warmup_recoverable():
 
 #### 9.5.1 契约与语义回归（必须）
 
-- `tests/regression_gantt_contract_snapshot.py`
+- `tests/gantt/test_gantt_contract_snapshot.py`
   - 断言：`contract_version/task_count/tasks/calendar_days/critical_chain` 顶层字段稳定；
   - 断言：tasks 扩展字段（`schedule_id/lock_status/duration_minutes/edge_type`）存在；
   - 断言：`include_history=1` 才返回 `history`。
-- `tests/regression_gantt_status_mode_semantics.py`
+- `tests/gantt/test_gantt_status_mode_contract.py`
   - 断言：状态配色语义“后端状态优先，时间仅兜底”；
   - 断言：依赖模式使用 `depsMode` 单一互斥口径，不再使用旧双开关语义。
-- `tests/smoke_phase8.py`
+- `tests/_scripts_e2e/smoke_phase8.py`
   - 断言：甘特图接口字段齐全；
   - 断言：关键链返回 `edge_type/reason/gap_minutes`；
   - 断言：同版本二次请求 `critical_chain.cache_hit=true`。

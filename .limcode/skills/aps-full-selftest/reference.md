@@ -2,11 +2,11 @@
 
 ## 脚本清单（默认）
 
-- smoke phases：`tests/smoke_phase0_phase1.py` ~ `tests/smoke_phase10_sgs_auto_assign.py`
-- web smoke：`tests/smoke_web_phase0_5.py`、`tests/smoke_web_phase0_6.py`
-- FullE2E：`tests/smoke_e2e_excel_to_schedule.py`
-- regressions：`tests/regression_*.py`
-- complex cases：`tests/run_complex_excel_cases_e2e.py`
+- smoke phases：`tests/_scripts_e2e/smoke_phase0_phase1.py` ~ `tests/_scripts_e2e/smoke_phase10_sgs_auto_assign.py`
+- web smoke：`tests/_scripts_e2e/smoke_web_phase0_5.py`、`tests/_scripts_e2e/smoke_web_phase0_6.py`
+- FullE2E：`tests/_scripts_e2e/smoke_e2e_excel_to_schedule.py`
+- regressions：统一登记表里的必跑 `pytest` 守卫；不再自动枚举旧的 main-style 回归入口
+- complex cases：`tests/_scripts_e2e/run_complex_excel_cases_e2e.py`
 
 ## 证据输出（常见路径）
 
@@ -17,4 +17,4 @@
 
 ## 已知注意点
 
-- `tests/smoke_phase10_sgs_auto_assign.py` 的失败可能只写入报告而不一定以非零退出码结束；runner 会额外读取 `evidence/Phase10/smoke_phase10_report.md` 进行兜底判定。
+- `tests/_scripts_e2e/smoke_phase10_sgs_auto_assign.py` 的失败可能只写入报告而不一定以非零退出码结束；runner 会额外读取 `evidence/Phase10/smoke_phase10_report.md` 进行兜底判定。

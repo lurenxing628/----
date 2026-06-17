@@ -54,7 +54,7 @@ description: 对项目的 `开发文档/` 进行“逐文件逐章节”一致�
 无论走哪条路径，输出都必须包含“文件路径 + 关键事实 + 证据定位（函数/路由/表/字段/模板）”。
 
 1. **变更面扫描**：从 `git diff` 归类模块、行为变化、用户可感知变化（尤其是：参数、默认值、错误提示、策略开关）。
-2. **接口与页面事实**：扫描 `app.py`、`web/routes/*.py`、`templates/`、`web_new_test/templates/`，抽取：URL、endpoint、方法、query/form 字段、flash 文案、模板映射（含 UI 模式与 `safe_url_for`）。
+2. **接口与页面事实**：扫描 `app.py`、`web/routes/*.py`、`templates/`，抽取：URL、endpoint、方法、query/form 字段、flash 文案、模板映射（含 `safe_url_for`）。历史 `web_new_test/` 双轨模板已退役，只有续作旧归档任务时才作为历史资料查阅。
 3. **数据库事实**：扫描 `schema.sql`、`core/models/*`、`data/repositories/*`，抽取：表/字段/索引/枚举值口径/预留字段与说明。
 4. **排产与日历事实**：扫描 `core/services/scheduler/*`、`core/algorithms/*`，抽取：ScheduleConfig 键、默认值、排产窗口、齐套约束、日历覆盖语义、落库/留痕点。
 
@@ -113,4 +113,3 @@ description: 对项目的 `开发文档/` 进行“逐文件逐章节”一致�
 
 - 详细核对清单与映射规则见：[reference.md](reference.md)
 - 调用示例见：[examples.md](examples.md)
-

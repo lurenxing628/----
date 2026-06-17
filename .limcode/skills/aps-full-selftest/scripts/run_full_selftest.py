@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(REPO_ROOT) not in sys.path:
@@ -121,41 +121,18 @@ def _git_rev_parse_path(repo_root: Path, *args: str, fallback: Path) -> str:
     return os.path.realpath(str(fallback))
 
 
-def _repo_identity(repo_root: Path) -> tuple[str, str]:
+def _repo_identity(repo_root: Path) -> Tuple[str, str]:
     return (
         _git_rev_parse_path(repo_root, "--show-toplevel", fallback=repo_root),
         _git_rev_parse_path(repo_root, "--git-common-dir", fallback=repo_root / ".git"),
     )
 
 
-def _tracked_regression_files(repo_root: Path) -> List[Path]:
-    proc = subprocess.run(
-        ["git", "ls-files", "--", "tests/regression_*.py"],
-        cwd=str(repo_root),
-        capture_output=True,
-        text=True,
-        errors="replace",
-        timeout=30,
-    )
-    if int(proc.returncode) != 0:
-        return []
-    tracked: List[Path] = []
-    seen = set()
-    for raw_line in str(proc.stdout or "").splitlines():
-        rel_path = str(raw_line or "").strip()
-        if not rel_path or rel_path in seen:
-            continue
-        seen.add(rel_path)
-        tracked.append((repo_root / rel_path).resolve())
-    tracked.sort(key=lambda path: path.name)
-    return tracked
-
-
 def _quality_gate_binding_status(
     repo_root: Path,
     head_sha: str,
     git_status_lines: Sequence[str],
-) -> tuple[bool, str, str]:
+) -> Tuple[bool, str, str]:
     manifest_rel = Path(QUALITY_GATE_MANIFEST_REL).as_posix()
     manifest_path = repo_root / Path(manifest_rel)
     if not manifest_path.exists():
@@ -215,7 +192,7 @@ def _report_header_lines(
     return lines
 
 
-def _run_cmd(*, cmd: Sequence[str], cwd: Path, timeout_s: Optional[int]) -> tuple[int, float, str, bool]:
+def _run_cmd(*, cmd: Sequence[str], cwd: Path, timeout_s: Optional[int]) -> Tuple[int, float, str, bool]:
     t0 = time.time()
     try:
         proc = subprocess.run(
@@ -247,7 +224,7 @@ def _run_cmd(*, cmd: Sequence[str], cwd: Path, timeout_s: Optional[int]) -> tupl
         return TIMEOUT_EXIT_CODE, float(dt), out.strip(), True
 
 
-def _phase10_report_indicates_fail(repo_root: Path) -> tuple[bool, str]:
+def _phase10_report_indicates_fail(repo_root: Path) -> Tuple[bool, str]:
     """
     smoke_phase10 的脚本内部会把 PASS/FAIL 写到报告里，但不一定用非 0 退出码表示失败。
     因此这里以报告内容兜底判断。
@@ -301,7 +278,7 @@ def _resolve_pytest_python(current_python: str, repo_root: Path) -> str:
     return str(current_python or "python")
 
 
-def _build_steps(repo_root: Path, *, complex_repeat: int) -> List[tuple[str, List[str], List[str]]]:
+def _build_steps(repo_root: Path, *, complex_repeat: int) -> List[Tuple[str, List[str], List[str]]]:
     """
     返回 (step_name, cmd, evidence_paths[])。
     cmd 中的脚本路径使用 repo 内相对路径（runner 以 repo_root 为 cwd）。
@@ -309,32 +286,32 @@ def _build_steps(repo_root: Path, *, complex_repeat: int) -> List[tuple[str, Lis
     py = sys.executable or "python"
     pytest_py = _resolve_pytest_python(py, repo_root)
 
-    steps: List[tuple[str, List[str], List[str]]] = []
+    steps: List[Tuple[str, List[str], List[str]]] = []
 
     # smoke phases（固定顺序，避免 smoke_phase10 的字典序问题）
     smoke_files = [
-        "tests/smoke_phase0_phase1.py",
-        "tests/smoke_phase2.py",
-        "tests/smoke_phase3.py",
-        "tests/smoke_phase4.py",
-        "tests/smoke_phase5.py",
-        "tests/smoke_phase6.py",
-        "tests/smoke_phase7.py",
-        "tests/smoke_phase8.py",
-        "tests/smoke_phase9.py",
-        "tests/smoke_phase10_sgs_auto_assign.py",
+        "tests/_scripts_e2e/smoke_phase0_phase1.py",
+        "tests/_scripts_e2e/smoke_phase2.py",
+        "tests/_scripts_e2e/smoke_phase3.py",
+        "tests/_scripts_e2e/smoke_phase4.py",
+        "tests/_scripts_e2e/smoke_phase5.py",
+        "tests/_scripts_e2e/smoke_phase6.py",
+        "tests/_scripts_e2e/smoke_phase7.py",
+        "tests/_scripts_e2e/smoke_phase8.py",
+        "tests/_scripts_e2e/smoke_phase9.py",
+        "tests/_scripts_e2e/smoke_phase10_sgs_auto_assign.py",
     ]
     smoke_evidence = {
-        "tests/smoke_phase0_phase1.py": ["evidence/Phase0_Phase1/smoke_test_report.md"],
-        "tests/smoke_phase2.py": ["evidence/Phase2/smoke_phase2_report.md"],
-        "tests/smoke_phase3.py": ["evidence/Phase3/smoke_phase3_report.md"],
-        "tests/smoke_phase4.py": ["evidence/Phase4/smoke_phase4_report.md"],
-        "tests/smoke_phase5.py": ["evidence/Phase5/smoke_phase5_report.md"],
-        "tests/smoke_phase6.py": ["evidence/Phase6/smoke_phase6_report.md"],
-        "tests/smoke_phase7.py": ["evidence/Phase7/smoke_phase7_report.md"],
-        "tests/smoke_phase8.py": ["evidence/Phase8/smoke_phase8_report.md"],
-        "tests/smoke_phase9.py": ["evidence/Phase9/smoke_phase9_report.md"],
-        "tests/smoke_phase10_sgs_auto_assign.py": ["evidence/Phase10/smoke_phase10_report.md"],
+        "tests/_scripts_e2e/smoke_phase0_phase1.py": ["evidence/Phase0_Phase1/smoke_test_report.md"],
+        "tests/_scripts_e2e/smoke_phase2.py": ["evidence/Phase2/smoke_phase2_report.md"],
+        "tests/_scripts_e2e/smoke_phase3.py": ["evidence/Phase3/smoke_phase3_report.md"],
+        "tests/_scripts_e2e/smoke_phase4.py": ["evidence/Phase4/smoke_phase4_report.md"],
+        "tests/_scripts_e2e/smoke_phase5.py": ["evidence/Phase5/smoke_phase5_report.md"],
+        "tests/_scripts_e2e/smoke_phase6.py": ["evidence/Phase6/smoke_phase6_report.md"],
+        "tests/_scripts_e2e/smoke_phase7.py": ["evidence/Phase7/smoke_phase7_report.md"],
+        "tests/_scripts_e2e/smoke_phase8.py": ["evidence/Phase8/smoke_phase8_report.md"],
+        "tests/_scripts_e2e/smoke_phase9.py": ["evidence/Phase9/smoke_phase9_report.md"],
+        "tests/_scripts_e2e/smoke_phase10_sgs_auto_assign.py": ["evidence/Phase10/smoke_phase10_report.md"],
     }
     for f in smoke_files:
         steps.append((Path(f).name, [py, f], list(smoke_evidence.get(f, []))))
@@ -343,14 +320,14 @@ def _build_steps(repo_root: Path, *, complex_repeat: int) -> List[tuple[str, Lis
     steps.append(
         (
             "smoke_web_phase0_5.py",
-            [py, "tests/smoke_web_phase0_5.py"],
+            [py, "tests/_scripts_e2e/smoke_web_phase0_5.py"],
             ["evidence/Phase0_to_Phase5/web_smoke_report.md"],
         )
     )
     steps.append(
         (
             "smoke_web_phase0_6.py",
-            [py, "tests/smoke_web_phase0_6.py"],
+            [py, "tests/_scripts_e2e/smoke_web_phase0_6.py"],
             ["evidence/Phase0_to_Phase6/web_smoke_report.md"],
         )
     )
@@ -359,18 +336,13 @@ def _build_steps(repo_root: Path, *, complex_repeat: int) -> List[tuple[str, Lis
     steps.append(
         (
             "smoke_e2e_excel_to_schedule.py",
-            [py, "tests/smoke_e2e_excel_to_schedule.py"],
+            [py, "tests/_scripts_e2e/smoke_e2e_excel_to_schedule.py"],
             ["evidence/FullE2E/excel_to_schedule_report.md"],
         )
     )
 
-    # regressions（自动发现 + 按文件名排序）
-    reg_files = _tracked_regression_files(repo_root)
+    # 回归守卫只认统一登记表，不再扫描旧的 main-style 入口。
     scheduled_pytests = set()
-    for p in reg_files:
-        scheduled_pytests.add(f"tests/{p.name}")
-        steps.append((p.name, [pytest_py, "-m", "pytest", f"tests/{p.name}", "-q", "--tb=short"], []))
-
     # 统一 required-tests registry：即使文件命名或收集方式变化，也必须显式补齐。
     for rel_path in _explicit_guard_tests():
         guard_path = repo_root / rel_path
@@ -385,7 +357,7 @@ def _build_steps(repo_root: Path, *, complex_repeat: int) -> List[tuple[str, Lis
             "run_complex_excel_cases_e2e.py",
             [
                 py,
-                "tests/run_complex_excel_cases_e2e.py",
+                "tests/_scripts_e2e/run_complex_excel_cases_e2e.py",
                 "--out",
                 "evidence/ComplexExcelCases",
                 "--repeat",
@@ -407,7 +379,7 @@ def run_full_selftest(
     fail_fast: bool,
     complex_repeat: int,
     step_timeout_s: Optional[int],
-) -> tuple[bool, List[StepResult], str]:
+) -> Tuple[bool, List[StepResult], str]:
     out_dir = repo_root / "evidence" / "FullSelfTest"
     logs_dir = out_dir / "logs"
     _ensure_dir(logs_dir)

@@ -15,7 +15,7 @@ python .limcode/skills/aps-drift-detect/scripts/drift_detect.py
 # python .limcode/skills/aps-drift-detect/scripts/drift_detect.py --timeout 180 --timeout-ruff 300
 
 # Step 2: 架构适应度函数（新增）
-python -m pytest tests/test_architecture_fitness.py -v
+python -m pytest tests/gate_meta/test_architecture_fitness.py -v
 
 # Step 3: 引用链追踪（对近期变更）
 python .limcode/skills/aps-deep-review/scripts/reference_tracer.py --commit HEAD~1
@@ -33,8 +33,8 @@ python .limcode/skills/aps-deep-review/scripts/reference_tracer.py --commit HEAD
 > 说明：`drift_detect.py` 脚本本身覆盖其中的 **1/3/4/5/7**；维度 **2/6** 需要按 Quick start 手工补跑。
 
 1. **架构合规审计** — 调用 `aps-arch-audit`（`drift_detect.py` 自动运行）
-2. **架构适应度函数** — `pytest tests/test_architecture_fitness.py`（手工运行；9 条 PASS/FAIL）
-3. **一致性对标报告** — `tests/generate_conformance_report.py`（`drift_detect.py` 自动运行）
+2. **架构适应度函数** — `pytest tests/gate_meta/test_architecture_fitness.py`（手工运行；9 条 PASS/FAIL）
+3. **一致性对标报告** — `tests/gate_meta/generate_conformance_report.py`（`drift_detect.py` 自动运行）
 4. **Ruff 全量 Lint** — 核心目录全量检查（`drift_detect.py` 自动运行）
 5. **文档新鲜度** — 开发文档 vs 代码的最后修改时间差（`drift_detect.py` 自动运行）
 6. **引用链追踪** — `reference_tracer.py`（手工运行；近期变更的跨层边界风险）
@@ -51,7 +51,7 @@ python .limcode/skills/aps-drift-detect/scripts/drift_detect.py
 ### 2) 运行架构适应度函数
 
 ```bash
-python -m pytest tests/test_architecture_fitness.py -v
+python -m pytest tests/gate_meta/test_architecture_fitness.py -v
 ```
 
 如有 FAILED 用例，说明有**新增的架构违反**（非历史遗留），优先处理。

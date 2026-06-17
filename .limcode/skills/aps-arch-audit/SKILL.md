@@ -12,7 +12,7 @@ description: 全项目架构合规审计：分层违反、文件超限、命名�
 python .limcode/skills/aps-arch-audit/scripts/arch_audit.py
 
 # 方式 2：pytest 架构适应度函数（11 条规则，PASS/FAIL 粒度）
-python -m pytest tests/test_architecture_fitness.py -v
+python -m pytest tests/gate_meta/test_architecture_fitness.py -v
 ```
 
 - 脚本报告：`evidence/ArchAudit/arch_audit_report.md`
@@ -41,7 +41,7 @@ python -m pytest tests/test_architecture_fitness.py -v
 
 ### pytest 架构适应度函数（11 条）
 
-运行 `pytest tests/test_architecture_fitness.py -v`，包含：
+运行 `pytest tests/gate_meta/test_architecture_fitness.py -v`，包含：
 
 1. `test_routes_do_not_execute_sql_directly` — 分层：Route 禁止直接 SQL
 2. `test_services_do_not_import_flask_request` — 分层：Service 禁止 flask.request
@@ -66,7 +66,7 @@ python -m pytest tests/test_architecture_fitness.py -v
 python .limcode/skills/aps-arch-audit/scripts/arch_audit.py
 
 # 适应度函数（PASS/FAIL 粒度，只捕获新增违反）
-python -m pytest tests/test_architecture_fitness.py -v
+python -m pytest tests/gate_meta/test_architecture_fitness.py -v
 ```
 
 ### 2) 阅读报告
@@ -125,7 +125,7 @@ python -m pytest tests/test_architecture_fitness.py -v
 - **文件命名**：`YYYYMMDD_HHMM_arch_audit_review.md`
 - **建议证据清单**：
   - `evidence/ArchAudit/arch_audit_report.md`
-  - `pytest tests/test_architecture_fitness.py -v` 的失败用例摘要（如有）
+  - `pytest tests/gate_meta/test_architecture_fitness.py -v` 的失败用例摘要（如有）
 
 **强制规则（防止幻觉/跑偏）**：
 

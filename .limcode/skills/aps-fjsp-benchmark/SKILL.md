@@ -1,6 +1,6 @@
 ---
 name: aps-fjsp-benchmark
-description: 使用 tests/benchmark_fjsp.py 运行 Brandimarte FJSP 基准（mk01/mk04/mk06/mk08/mk10），生成 evidence/Benchmark/fjsp_benchmark_report.md，并汇总 makespan、利用率与 gap。适用于用户提到基准测试、FJSP、Brandimarte、makespan、排产数据集、调度数据集等场景。
+description: 使用 tests/_scripts_e2e/benchmark_fjsp.py 运行 Brandimarte FJSP 基准（mk01/mk04/mk06/mk08/mk10），生成 evidence/Benchmark/fjsp_benchmark_report.md，并汇总 makespan、利用率与 gap。适用于用户提到基准测试、FJSP、Brandimarte、makespan、排产数据集、调度数据集等场景。
 ---
 
 # APS FJSP 基准测试（Brandimarte）

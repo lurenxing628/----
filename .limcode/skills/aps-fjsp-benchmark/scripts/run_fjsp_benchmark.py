@@ -16,7 +16,7 @@ def _find_repo_root() -> Path:
 
 
 def _build_args(mode: str, *, time_budget: int, allow_download: bool) -> List[str]:
-    # Delegate to tests/benchmark_fjsp.py, only choose a stable default matrix here.
+    # Delegate to tests/_scripts_e2e/benchmark_fjsp.py, only choose a stable default matrix here.
     m = (mode or "").strip().lower() or "full"
     base = ["--time-budget", str(int(time_budget))]
     if allow_download:
@@ -42,9 +42,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = ap.parse_args(list(argv) if argv is not None else None)
 
     repo_root = _find_repo_root()
-    script = repo_root / "tests" / "benchmark_fjsp.py"
+    script = repo_root / "tests" / "_scripts_e2e" / "benchmark_fjsp.py"
     if not script.exists():
-        raise RuntimeError("缺少 tests/benchmark_fjsp.py（请先生成基准脚本）")
+        raise RuntimeError("缺少 tests/_scripts_e2e/benchmark_fjsp.py（请先生成基准脚本）")
 
     cmd = [sys.executable, str(script)] + _build_args(args.mode, time_budget=int(args.time_budget), allow_download=bool(args.allow_download))
     print("Running:", " ".join(cmd), flush=True)
@@ -54,4 +54,3 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

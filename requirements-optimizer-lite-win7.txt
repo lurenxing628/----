@@ -1,6 +1,6 @@
 # Optional scheduler graph-analysis dependency.
 # Windows 7 x64 + Python 3.8.x compatibility target.
 # NetworkX 3.1 is the last NetworkX release supporting Python 3.8.
-# Install this file only when graph_analysis_mode=report/on is being validated.
+# New offline installs should include this file with the base requirements.
 # Keep the dependency pure Python and lightweight; do not install optional NetworkX extras.
 networkx==3.1

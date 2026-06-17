@@ -18,12 +18,12 @@ description: 运行 APS 仓库的全量自测（smoke、web smoke、FullE2E、re
 
 ## 默认覆盖范围
 
-- smoke：`tests/smoke_phase0_phase1.py` ~ `tests/smoke_phase10_sgs_auto_assign.py`
-- web smoke：`tests/smoke_web_phase0_5.py`、`tests/smoke_web_phase0_6.py`
-- FullE2E：`tests/smoke_e2e_excel_to_schedule.py`
-- regression：自动枚举 `tests/regression_*.py`
-- 显式 guard：`tests/test_sp05_path_topology_contract.py`、`tests/test_schedule_input_builder_strict_hours_and_ext_days.py`
-- complex excel cases：`tests/run_complex_excel_cases_e2e.py --out evidence/ComplexExcelCases --repeat 1`
+- smoke：`tests/_scripts_e2e/smoke_phase0_phase1.py` ~ `tests/_scripts_e2e/smoke_phase10_sgs_auto_assign.py`
+- web smoke：`tests/_scripts_e2e/smoke_web_phase0_5.py`、`tests/_scripts_e2e/smoke_web_phase0_6.py`
+- FullE2E：`tests/_scripts_e2e/smoke_e2e_excel_to_schedule.py`
+- regression：运行统一登记表里的必跑 `pytest` 守卫，不再自动枚举旧的 main-style 回归入口
+- 显式 guard：从 `tools/test_registry_data.py` 的统一登记表读取，避免技能说明写死已经迁移的测试路径。
+- complex excel cases：`tests/_scripts_e2e/run_complex_excel_cases_e2e.py --out evidence/ComplexExcelCases --repeat 1`
 
 ## 约束
 

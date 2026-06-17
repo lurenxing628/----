@@ -62,7 +62,15 @@
 - **PyInstaller 4.10**（必须严格 4.10，不是任意 4.x，也不要用 5.x/6.x）
 - **离线依赖准备**（无网环境）：
   - 推荐方式：提前在有网环境下载 wheel 到本地，再拷贝到打包机安装
+  - 打包前必须安装三份依赖：`requirements.txt`、`requirements-dev.txt`、`requirements-optimizer-lite-win7.txt`
+  - 当前图分析默认开启，`requirements-optimizer-lite-win7.txt` 里的 `networkx==3.1` 必须已经装进 Python 3.8 环境；打包脚本里的 `--hidden-import networkx` 只会收集已安装模块，不会自动下载缺失依赖
   - 或者：使用已经安装好依赖的 Python 环境直接打包
+
+离线安装示例：
+
+```bat
+python -m pip install --no-index --find-links C:\wheelhouse -r requirements.txt -r requirements-dev.txt -r requirements-optimizer-lite-win7.txt
+```
 
 ## 2) 生成最小直拷目录（支持）
 

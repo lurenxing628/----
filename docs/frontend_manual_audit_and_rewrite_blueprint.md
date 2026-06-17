@@ -3,6 +3,7 @@
 > 用途：本文件是给开发者、测试人员和说明书改写者看的内部蓝本，不是直接给计划调度员或工艺员看的最终用户说明书。
 > 当前基线：以提交 `552b2916573fd1cefe00c429f488bb63fb1af9ab` 加当前工作区已同步的说明书、页面帮助、Excel 模板和回归测试改动为准；等本轮收口提交后，再把这里更新成新的提交 SHA。
 > 核心纠偏：当前说明体系已经完成一轮补强，不能再把旧缺口当作当前事实；后续重点是统一口径、修正少数不准表达、补齐仍薄的操作说明，并用测试防止倒退。
+> 历史路径提示（2026-06-17）：本文早期段落如果出现 `web_new_test/*`、`tests/regression_*.py` 或旧 smoke 路径，只是历史留痕。当前可执行路径以 `static/`、`templates/`、`tests/_scripts_e2e/`、标准 `tests/**/test_*.py` 和质量门禁登记为准。
 
 ---
 
@@ -22,7 +23,6 @@
 | 文件 | 作用 | 本轮口径 |
 |---|---|---|
 | `static/docs/scheduler_manual.md` | 运行时读取的整本系统说明书 | 正式主说明书 |
-| `web_new_test/static/docs/scheduler_manual.md` | 测试/镜像侧同名说明书 | 必须和主说明书同步 |
 | `web/viewmodels/page_manuals_*.py` | 各页面“本页说明”和速览卡 | 页面级说明事实源 |
 | `templates_excel/*.xlsx` | 用户实际下载的 Excel 模板 | 表头和下拉值事实源 |
 | `docs/frontend_manual_audit_and_rewrite_blueprint.md` | 内部改稿蓝本和验收清单 | 本文件，不给最终用户直接看 |
@@ -36,18 +36,18 @@
 | 已覆盖项 | 当前事实 | 证据位置 | 验收口径 |
 |---|---|---|---|
 | 页面说明入口 | 全站模板统一挂“本页说明”入口，有登记才显示；不同界面版本里位置可能不同 | `templates/base.html`、`templates/components/ui_macros.html`、`web/manual_src_security.py` | 不再把“没有统一入口”写成缺口，也不把位置写死 |
-| 页面说明登记 | 当前约 45 个页面入口 / 说明主题 / 速览卡已登记 | `web/viewmodels/page_manuals_registry.py`、`web/viewmodels/page_manuals.py`、`tests/regression_page_manual_registry.py` | 新增页面时才继续检查是否漏登记 |
+| 页面说明登记 | 当前约 45 个页面入口 / 说明主题 / 速览卡已登记 | `web/viewmodels/page_manuals_registry.py`、`web/viewmodels/page_manuals.py`、`tests/web_pages/test_page_manual_registry.py` | 新增页面时才继续检查是否漏登记 |
 | 完整排产路线 | 首页说明和整本手册已经写了从建资料、模拟、正式排产到看结果的路线，也补了统计卡解释 | `web/viewmodels/page_manuals_system.py`、`static/docs/scheduler_manual.md` | 不再把首页路线或统计卡解释写成当前待办 |
 | 结果页主要说明 | 甘特图、资源排班、优化分析、周计划、报表、历史页都有页面说明和整本章节 | `web/viewmodels/page_manuals_scheduler_outputs.py`、`web/viewmodels/page_manuals_reports.py`、`web/viewmodels/page_manuals_system.py` | 不再写成“结果页从零缺说明” |
 | 物料边界 | 已说明物料主数据、批次物料需求、到料数量、齐套状态和齐套日期区别 | `web/viewmodels/page_manuals_material.py`、`static/docs/scheduler_manual.md` | 保留为其它模块写法参考 |
 | 模拟/正式边界 | 已说明模拟排产生成版本和历史，但不推进批次/工序状态；正式执行才建议发现场 | `static/docs/scheduler_manual.md`、`web/viewmodels/page_manuals_scheduler.py` | 任何说明都不能把模拟版写成现场执行依据 |
-| 齐套检查口径 | 没启用时主要是页面显示信息；启用后选中未齐套/部分齐套会报错停止，不会自动跳过 | `web/viewmodels/scheduler_run_options.py`、`core/services/scheduler/run/schedule_input_collector.py`、`tests/regression_optional_ready_constraint.py` | 必须写完整触发条件 |
+| 齐套检查口径 | 没启用时主要是页面显示信息；启用后选中未齐套/部分齐套会报错停止，不会自动跳过 | `web/viewmodels/scheduler_run_options.py`、`core/services/scheduler/run/schedule_input_collector.py`、`tests/algorithm/test_optional_ready_constraint.py` | 必须写完整触发条件 |
 
 ### 1.2 仍需补强
 
 | 可继续打磨项 | 为什么还可继续打磨 | 建议补到哪里 | 验收标准 |
 |---|---|---|---|
-| 周计划预览/导出合同测试 | 已说明预览前 50 行和导出完整，但可以更直接锁“预览不是完整导出” | `tests/regression_scheduler_week_plan_summary_observability.py` 或新测试 | 构造 51 行或 60 行周计划，断言页面只预览前 50 行、总行数显示完整数量、导出的 xlsx 包含全部行 |
+| 周计划预览/导出合同测试 | 已说明预览前 50 行和导出完整，但可以更直接锁“预览不是完整导出” | 可新增标准命名测试，例如 `tests/web_pages/test_scheduler_week_plan_summary_observability.py` | 构造 51 行或 60 行周计划，断言页面只预览前 50 行、总行数显示完整数量、导出的 xlsx 包含全部行 |
 | 报表导出和操作日志边界 | 报表导出不一定都会写操作日志，后续如改代码应同步说明 | 报表 page manual、整本手册 | 不把“所有导出都会留痕”写成绝对事实 |
 | Excel 模板填写说明工作表 | 能降低现场填表成本，但属于新增模板体验，不是本轮说明书收口必做项 | 另开任务处理模板工作表 | 不只写蓝本，必须同步真实 Excel 模板和测试 |
 
@@ -55,12 +55,12 @@
 
 | 需修正项 | 当前正确口径 | 不要再这样写 | 证据位置 |
 |---|---|---|---|
-| 人员状态推荐值 | 新模板推荐只写 `在岗 / 停用`；`休假 / 离岗` 只是旧写法兼容 | “模板下拉优先选：在岗 / 停用 / 休假” | `core/services/common/excel_template_defaults.py`、`tests/regression_excel_template_contracts.py` |
+| 人员状态推荐值 | 新模板推荐只写 `在岗 / 停用`；`休假 / 离岗` 只是旧写法兼容 | “模板下拉优先选：在岗 / 停用 / 休假” | `core/services/common/excel_template_defaults.py`、`tests/excel_data_io/test_excel_template_contract.py` |
 | 备份文件命名 | 备份文件名由系统生成，用户说明只讲“生成时间”和“备份用途”，不要直接教普通用户看英文后缀 | “建议用户按日期和用途命名”，或在用户说明里直接写 `manual`、`before_restore` | `core/infrastructure/backup.py`、`web/routes/system_backup.py` |
 | 停机时间修改 | 设备详情能新增和取消停机；没有直接编辑时间入口，填错应取消后重建 | “缩短停机 / 延长停机” | `templates/equipment/detail.html`、`web/routes/equipment_downtimes.py` |
 | 保存补齐资源 | `auto_assign_persist` 是隐藏配置；用户最多看到中文摘要“保存补齐资源”，不是可编辑开关 | “去高级设置打开/关闭 auto_assign_persist” | `core/services/scheduler/config/config_field_spec.py`、`templates/scheduler/config.html` |
 | 历史页查询 | 历史页按版本和最近记录条数筛选；不是关键词全文搜索 | “搜索历史版本”导致用户以为有关键词搜索框 | `templates/system/history.html`、`web/viewmodels/page_manuals_system.py` |
-| 批次 Excel 旧值 | `急`、`是`、`否` 是兼容旧写法，不是新模板推荐 | 把旧值写进“可填推荐值” | `static/docs/scheduler_manual.md`、`tests/regression_excel_template_contracts.py` |
+| 批次 Excel 旧值 | `急`、`是`、`否` 是兼容旧写法，不是新模板推荐 | 把旧值写进“可填推荐值” | `static/docs/scheduler_manual.md`、`tests/excel_data_io/test_excel_template_contract.py` |
 
 ### 1.4 需核实
 
@@ -137,7 +137,7 @@
 | 工艺模块 | 工种、供应商、路线、工时说明已比早期完整 | 继续按字段、按钮、错误写成用户可照做的话 | 不再笼统写“工艺说明明显偏短” | `web/viewmodels/page_manuals_process.py` | 按页面逐项做小颗粒验收 |
 | 设备详情 | 设备详情能维护可操作人员和停机计划 | 单台新增停机、取消停机、批量停机差异可继续写白 | 删除“缩短/延长停机”口径 | `templates/equipment/detail.html`、`web/routes/equipment_downtimes.py` | 写成“取消后重建” |
 | 批量停机计划 | 已说明按单台、类别、全部建设备停机 | 重叠设备跳过、其它继续的结果提示要讲清 | 不要写成批量重叠全失败 | `core/services/equipment/machine_downtime_service.py` | 给用户写出“部分成功也要复核” |
-| 人员 Excel | 表头、推荐值和兼容旧写法已锁 | 后续新增状态时同步模板、说明和测试 | `休假`、`离岗` 不放进新模板推荐值 | `core/services/common/excel_template_defaults.py`、`tests/regression_excel_template_contracts.py` | 维护现有口径，防止倒退 |
+| 人员 Excel | 表头、推荐值和兼容旧写法已锁 | 后续新增状态时同步模板、说明和测试 | `休假`、`离岗` 不放进新模板推荐值 | `core/services/common/excel_template_defaults.py`、`tests/excel_data_io/test_excel_template_contract.py` | 维护现有口径，防止倒退 |
 | 物料模块 | 主数据、需求数量、到料数量、齐套状态、齐套日期边界较清楚 | 继续强调库存不自动扣减 | 不写成库存系统 | `web/viewmodels/page_manuals_material.py` | 作为其它模块写法参考 |
 | 排产调度 | 执行/模拟、齐套检查、版本结果已有核心说明 | 黄色提醒按类型说明后续去哪看 | 不统一写死“更多提醒都去历史或分析” | `web/viewmodels/page_manuals_scheduler.py` | 按提醒来源补证据后再写 |
 | 高级设置 | 默认启用齐套检查、自动分配等已有说明基础 | 字段用更白话解释“日常别乱改” | 不把隐藏字段写成可编辑开关 | `core/services/scheduler/config/config_field_spec.py`、`templates/scheduler/config.html` | 只讲页面真实展示的中文项 |
@@ -234,7 +234,7 @@
 
 ### 8.1 本蓝本自身合同
 
-新增或维护 `tests/regression_frontend_manual_blueprint_contract.py`，至少锁住：
+新增或维护 `tests/docs/test_frontend_manual_blueprint_contract.py` 这类标准 `test_*.py`，至少锁住：
 
 - 本文件必须声明自己是内部蓝本，不是最终用户说明书。
 - 必须出现 `已覆盖`、`仍需补强`、`需修正`、`需核实` 四类，其中“仍需补强”只能放后续可打磨项，不能把已收口内容写成当前待办。
@@ -247,19 +247,21 @@
 
 | 测试 | 主要守什么 |
 |---|---|
-| `tests/regression_excel_template_contracts.py` | 页面说明、整本说明书、真实 Excel 模板表头和下拉值一致 |
-| `tests/regression_frontend_ui_language_polish.py` | 前端说明和页面文案里推荐值、兼容旧写法、通俗表达不倒退 |
-| `tests/regression_page_manual_registry.py` | 页面说明主题、页面入口、锚点、速览卡和关键事实口径 |
-| `tests/regression_config_manual_markdown.py` | 整本说明书、镜像说明书、页面/整本模式、Markdown 口径 |
-| `tests/regression_manual_entry_scope.py` | “本页说明”入口、弹层、页面级说明、下载和链接安全 |
+| `tests/excel_data_io/test_excel_template_contract.py` | 页面说明、整本说明书、真实 Excel 模板表头和下拉值一致 |
+| `tests/web_pages/test_frontend_ui_language_polish.py` | 前端说明和页面文案里推荐值、兼容旧写法、通俗表达不倒退 |
+| `tests/web_pages/test_page_manual_registry.py` | 页面说明主题、页面入口、锚点、速览卡和关键事实口径 |
+| `tests/config/test_config_manual_markdown.py` | 整本说明书、页面/整本模式、Markdown 口径 |
+| `tests/web_pages/test_manual_entry_scope.py` | “本页说明”入口、弹层、页面级说明、下载和链接安全 |
 
 ### 8.3 建议执行命令
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_frontend_manual_blueprint_contract.py
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_excel_template_contracts.py tests/regression_frontend_ui_language_polish.py tests/regression_page_manual_registry.py tests/regression_config_manual_markdown.py tests/regression_manual_entry_scope.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/excel_data_io/test_excel_template_contract.py tests/web_pages/test_frontend_ui_language_polish.py tests/web_pages/test_page_manual_registry.py tests/config/test_config_manual_markdown.py tests/web_pages/test_manual_entry_scope.py
 git diff --check
 ```
+
+如果后续新增蓝本自身合同测试，再按标准 `test_*.py` 命名补跑对应文件，例如
+`tests/docs/test_frontend_manual_blueprint_contract.py`。
 
 如果要做最终提交并证明全仓质量，再在工作区干净后执行：
 

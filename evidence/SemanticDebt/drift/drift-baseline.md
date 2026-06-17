@@ -101,4 +101,3 @@
 ---
 
 📣 *Found a false positive or unexpected result? [File an issue](https://github.com/mick-gsk/drift/issues/new?template=false_positive.yml) to help improve drift.*
-
