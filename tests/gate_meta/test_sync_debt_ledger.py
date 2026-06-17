@@ -882,6 +882,57 @@ def test_refresh_auto_fields_allows_legacy_non_startup_cleanup_reclassify(monkey
     assert "legacy architecture silent entry reclassified" in entry["realignment_reason"]
 
 
+def test_refresh_auto_fields_removes_legacy_non_startup_swallow_after_observable_fix(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:legacy-backup-swallow",
+                    "path": "core/infrastructure/backup.py",
+                    "symbol": "maintenance_window",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "legacy architecture counter",
+                    "handler_fingerprint": "sha1:old-swallow",
+                    "handler_context_hash": "sha1:old-context",
+                    "except_ordinal": 7,
+                    "line_start": 10,
+                    "line_end": 12,
+                    "fallback_kind": "silent_swallow",
+                    "source": "migrated_from_architecture_fitness_counter",
+                }
+            ],
+        },
+    }
+    scan_entry = {
+        "id": "fallback:legacy-backup-observable",
+        "path": "core/infrastructure/backup.py",
+        "symbol": "maintenance_window",
+        "handler_fingerprint": "sha1:new-observable",
+        "handler_context_hash": "sha1:new-context",
+        "except_ordinal": 7,
+        "line_start": 20,
+        "line_end": 22,
+        "fallback_kind": "observable_degrade",
+        "legacy_swallow_hit": False,
+    }
+
+    refresh_globals = module.refresh_auto_fields.__globals__
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[scan_entry])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    refreshed = module.refresh_auto_fields(ledger)
+
+    assert refreshed["silent_fallback"]["entries"] == []
+
+
 def test_refresh_auto_fields_rejects_legacy_non_startup_ordinal_drift(monkeypatch):
     module = _import_quality_gate_support()
     ledger = {

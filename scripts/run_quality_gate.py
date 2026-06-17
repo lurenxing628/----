@@ -108,7 +108,6 @@ GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     COLLECT_NODEIDS_REL.replace("\\", "/"),
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"),
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL.replace("\\", "/"),
-    QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL.replace("\\", "/"),
     "evidence/QualityGate/architecture_scan_cache.json",
     QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/"),
     QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"),
@@ -1156,6 +1155,7 @@ def _run_quality_gate_command_plan(
         long_gate_fingerprint: Optional[Dict[str, Any]] = None
         if long_gate_runtime_entry is not None:
             _refresh_full_test_debt_reuse_decision(long_gate_runtime_entry, cache_dir=long_gate_cache_dir)
+            _refresh_required_regressions_reuse_decision(long_gate_runtime_entry, cache_dir=long_gate_cache_dir)
             long_gate_fingerprint = dict(long_gate_runtime_entry.get("fingerprint") or {})
             reuse_evaluation = dict(long_gate_runtime_entry.get("evaluation") or {})
             decision = dict(long_gate_runtime_entry.get("decision") or {})
@@ -1388,6 +1388,11 @@ def _run_quality_gate_command_plan(
             else:
                 if not long_gate_fingerprint:
                     long_gate_fingerprint = _strict_long_gate_fingerprint(long_gate_entry)
+                if bool(long_gate_entry.get("reuse_allowed")):
+                    long_gate_fingerprint = _fingerprint_for_success_cache(
+                        long_gate_entry,
+                        dict(long_gate_fingerprint or {}),
+                    )
                 output_file_paths = _prepare_long_gate_success_output_files(
                     long_gate_entry,
                     result,
@@ -1398,10 +1403,6 @@ def _run_quality_gate_command_plan(
                     fingerprint=dict(long_gate_fingerprint or {}),
                 )
                 if bool(long_gate_entry.get("reuse_allowed")):
-                    long_gate_fingerprint = _fingerprint_for_success_cache(
-                        long_gate_entry,
-                        dict(long_gate_fingerprint or {}),
-                    )
                     long_gate_runtime_entry["fingerprint"] = dict(long_gate_fingerprint)
                     decision_for_summary = long_gate_runtime_entry.get("decision")
                     if isinstance(decision_for_summary, dict):
@@ -2153,7 +2154,7 @@ def _prepare_long_gate_success_output_files(
 
 
 def _fingerprint_for_success_cache(entry: Dict[str, Any], fingerprint: Dict[str, Any]) -> Dict[str, Any]:
-    if str(entry.get("entry_id") or "") == ENTRY_FULL_TEST_DEBT:
+    if str(entry.get("entry_id") or "") in {ENTRY_FULL_TEST_DEBT, ENTRY_REQUIRED_REGRESSIONS}:
         return _strict_long_gate_fingerprint(entry)
     return dict(fingerprint)
 
@@ -2564,6 +2565,20 @@ def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cac
             abs_path = os.path.join(REPO_ROOT, str(rel_path).replace("\\", "/").replace("/", os.sep))
             if os.path.isfile(abs_path):
                 os.remove(abs_path)
+
+
+def _refresh_required_regressions_reuse_decision(runtime_entry: Dict[str, Any], *, cache_dir: str) -> None:
+    entry = dict(runtime_entry.get("entry") or {})
+    if str(entry.get("entry_id") or "") != ENTRY_REQUIRED_REGRESSIONS:
+        return
+    current_decision = dict(runtime_entry.get("decision") or {})
+    if not _full_test_debt_decision_can_refresh(current_decision):
+        return
+    fingerprint = _strict_long_gate_fingerprint(entry)
+    evaluation = evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT, cache_dir=cache_dir)
+    runtime_entry["fingerprint"] = dict(fingerprint)
+    runtime_entry["evaluation"] = dict(evaluation)
+    runtime_entry["decision"] = dict(cast(Mapping[str, Any], evaluation["decision"]))
 
 
 def _full_test_debt_decision_can_refresh(decision: Dict[str, Any]) -> bool:

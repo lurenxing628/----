@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -331,3 +332,33 @@ def test_real_browser_geometry_smoke_stays_manual_acceptance_target() -> None:
     assert smoke_test not in set(ui_group["target_paths"])
     assert "tests/app_runtime/test_ui_browser_geometry_env.py" in set(ui_group["target_paths"])
     assert "tests/app_runtime/test_ui_geometry_html_contract.py" in set(ui_group["target_paths"])
+
+
+def test_test_registry_facade_tools_imports_are_all_quality_gate_tool_paths() -> None:
+    """自动发现型元测试：tools/test_registry.py 这个 facade 的每个 `from tools.X import ...`
+    直接实现依赖，对应的 tools/X.py 必须全部进 QUALITY_GATE_TOOL_PATHS。
+
+    现在三个拆分文件（test_registry_data / groups_misc / groups_scheduler）都已登记；本测试守护
+    “将来再拆第四个实现文件却忘记登记”——届时自动报红，而非静默漏掉门禁源码证明范围（finding-06）。
+    """
+    facade_rel = "tools/test_registry.py"
+    tree = ast.parse(Path(facade_rel).read_text(encoding="utf-8"), filename=facade_rel)
+
+    imported_tool_paths = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            parts = node.module.split(".")
+            # 仅约束直接实现依赖 `from tools.X import ...`（单层子模块），不误伤 tools.sub.pkg 或 from tools import ...
+            if len(parts) == 2 and parts[0] == "tools":
+                imported_tool_paths.add(f"tools/{parts[1]}.py")
+
+    # 至少应覆盖三条已知拆分依赖，保证不是空断言
+    assert REGISTRY_SPLIT_FILES <= imported_tool_paths
+
+    missing = sorted(imported_tool_paths - set(quality_gate_shared.QUALITY_GATE_TOOL_PATHS))
+    assert not missing, (
+        "tools/test_registry.py 的直接实现依赖未全部登记进 QUALITY_GATE_TOOL_PATHS：\n"
+        + "\n".join(missing)
+        + "\n拆分注册表实现文件后，必须同步加入 quality_gate_shared.QUALITY_GATE_TOOL_PATHS"
+        "（及 pyrightconfig.tools.json），否则门禁证明范围不完整。"
+    )

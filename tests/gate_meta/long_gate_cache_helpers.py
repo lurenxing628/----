@@ -355,6 +355,8 @@ def _seed_required_or_startup_success_cache(
         ENTRY_STARTUP_RUNTIME_REGRESSIONS,
     }:
         raise AssertionError(f"unsupported proof entry_id: {entry_id}")
+    if entry_id == ENTRY_REQUIRED_REGRESSIONS:
+        _write_full_test_debt_outputs(repo_root, token="seed")
 
     manifest = _manifest_for(command_plan, repo_root)
     entry = _entry_by_id(manifest, entry_id)

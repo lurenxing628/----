@@ -401,6 +401,30 @@ def _silent_scan_group_has_exact_ledger_peer(
     )
 
 
+def _legacy_nonstartup_silent_entry_can_be_removed(
+    entry: Dict[str, Any],
+    scan_entries: Sequence[Dict[str, Any]],
+) -> bool:
+    if str(entry.get("source") or "") != "migrated_from_architecture_fitness_counter":
+        return False
+    if is_startup_scope_path(str(entry.get("path") or "")):
+        return False
+    group_key = _silent_refresh_group_key(entry)
+    old_context_hash = str(entry.get("handler_context_hash") or "")
+    if any(
+        _silent_refresh_group_key(scan_entry) == group_key
+        and str(scan_entry.get("handler_context_hash") or "") == old_context_hash
+        for scan_entry in scan_entries
+    ):
+        return False
+    return not any(
+        _silent_refresh_group_key(scan_entry) == group_key
+        and str(scan_entry.get("fallback_kind") or "") == "silent_swallow"
+        and bool(scan_entry.get("legacy_swallow_hit"))
+        for scan_entry in scan_entries
+    )
+
+
 def _reject_fixed_silent_entries_still_in_scan(
     silent_entries: Sequence[Dict[str, Any]],
     scan_entries: Sequence[Dict[str, Any]],
@@ -523,6 +547,8 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
             and not is_startup_scope_path(str(entry.get("path") or ""))
             and key not in silent_scan
             and (
+                _legacy_nonstartup_silent_entry_can_be_removed(entry, silent_scan_entries)
+                or
                 not _silent_scan_has_group(entry, silent_scan_entries)
                 or _silent_scan_group_has_exact_ledger_peer(
                     entry,

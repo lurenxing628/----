@@ -848,7 +848,6 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
         "evidence/QualityGate/collect_nodeids.json",
         "evidence/QualityGate/current_full_test_debt.json",
         "evidence/QualityGate/full_test_debt_summary.json",
-        "evidence/QualityGate/full_test_debt_node_cache.json",
         "evidence/QualityGate/architecture_scan_cache.json",
         "evidence/QualityGate/startup_runtime_regressions.json",
         "evidence/QualityGate/required_regressions.json",

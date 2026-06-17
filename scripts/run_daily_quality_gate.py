@@ -665,6 +665,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return collect_returncode
 
     commands = _commands(impact_plan.target_paths, ruff_plan)
+    impact_no_test_labels = set()
+    impact_allowed_labels = {"impact pytest (parallel)", "impact pytest (serial)"}
     for index, (label, command, allow_no_tests) in enumerate(commands, start=1):
         print(f"[daily-fast-gate] {index}/{len(commands)} {label}", flush=True)
         returncode = int(subprocess.call(command, cwd=REPO_ROOT, env=env))
@@ -674,10 +676,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "（pytest no tests collected，exit 5），跳过",
                 flush=True,
             )
+            if label in impact_allowed_labels:
+                impact_no_test_labels.add(label)
             continue
         if returncode != 0:
             print(f"[daily-fast-gate] failed: {label} returncode={returncode}", file=sys.stderr, flush=True)
             return returncode
+    if impact_plan.target_paths and impact_no_test_labels == impact_allowed_labels:
+        print(
+            "[daily-fast-gate] failed: 本次 impact 集有目标文件，但 parallel/serial 两组 pytest 都没有收集到用例",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 1
     print("[daily-fast-gate] passed", flush=True)
     return 0
 

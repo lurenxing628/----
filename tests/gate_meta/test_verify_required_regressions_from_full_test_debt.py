@@ -156,16 +156,31 @@ def test_verify_rejects_failed_required_report() -> None:
 
 
 def test_verify_tolerates_allowlisted_skipped_required_report() -> None:
-    # 白名单内 nodeid 的 skipped（平台合法 skip，如含换行符文件名在 Windows 非法）不算非通过。
+    # 白名单内 nodeid 只有在对应平台的 skipped（如含换行符文件名在 Windows 非法）才不算非通过。
     allowed_nodeid = verifier.quality_gate_shared.REQUIRED_REGRESSION_ALLOWED_SKIPPED_NODEIDS[0]
     required_path = allowed_nodeid.split("::", 1)[0]
     payload = _payload(
         nodeids=[allowed_nodeid],
         reports=[_report(allowed_nodeid, outcome="skipped", when="setup")],
     )
+    payload["os_name"] = "nt"
 
     verification = verifier.verify_required_regressions_from_payload(payload, required_tests=[required_path])
     assert allowed_nodeid in verification["required_nodeids"]
+
+
+def test_verify_rejects_allowlisted_skipped_required_report_on_other_platform() -> None:
+    # 同一个白名单 nodeid 在非 Windows 平台 skipped，说明不是平台限制，仍然要拦住。
+    allowed_nodeid = verifier.quality_gate_shared.REQUIRED_REGRESSION_ALLOWED_SKIPPED_NODEIDS[0]
+    required_path = allowed_nodeid.split("::", 1)[0]
+    payload = _payload(
+        nodeids=[allowed_nodeid],
+        reports=[_report(allowed_nodeid, outcome="skipped", when="setup")],
+    )
+    payload["os_name"] = "posix"
+
+    with pytest.raises(verifier.RequiredRegressionProofError, match="非通过 reports"):
+        verifier.verify_required_regressions_from_payload(payload, required_tests=[required_path])
 
 
 def test_verify_rejects_non_allowlisted_skipped_required_report() -> None:

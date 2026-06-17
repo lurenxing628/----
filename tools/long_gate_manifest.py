@@ -432,6 +432,7 @@ def _scopes_for_entry(
         common_scope_policy = iter_required_regression_common_scope_policy()
         group_rows = iter_required_regression_groups()
         input_scopes = list(required_targets)
+        input_scopes.append(quality_gate_shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"))
         input_scopes.extend(common_scope_policy.get("input_file_scopes") or [])
         config_scopes = list(common_scope_policy.get("config_file_scopes") or [])
         tool_scopes = list(common_scope_policy.get("tool_file_scopes") or [])
@@ -756,6 +757,7 @@ def _scopes_for_entry(
                 "开发文档/技术债务治理台账.md",
                 "tools/check_full_test_debt.py",
                 "tools/collect_full_test_debt.py",
+                "tools/full_test_debt_shards.py",
                 "tools/test_debt_registry.py",
                 "tools/quality_gate_shared.py",
                 "tools/quality_gate_support.py",
@@ -783,6 +785,10 @@ def _scopes_for_entry(
                 "git_version",
                 "APS_BROWSER_SMOKE_REQUIRED",
                 "APS_CHROME_PATH",
+                "chrome_executable_resolution",
+                "chrome_version",
+                "chrome_executable_identity",
+                "chrome_headless_preflight",
                 "node_executable_realpath",
                 "node_version",
                 "node_browser_runtime_capability",

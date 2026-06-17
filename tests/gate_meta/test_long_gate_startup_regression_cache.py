@@ -27,6 +27,7 @@ from tests.gate_meta.long_gate_cache_helpers import (
     _summary_entry,
     _write_file,
 )
+from tools import long_gate_fingerprint as fingerprint_mod
 from tools import quality_gate_shared
 from tools.long_gate_manifest import (
     ENTRY_FULL_TEST_DEBT,
@@ -34,6 +35,18 @@ from tools.long_gate_manifest import (
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
 )
 from tools.test_registry import iter_startup_regressions
+
+
+@pytest.fixture(autouse=True)
+def _stable_chrome_runtime_fingerprint(monkeypatch):
+    # full_test_debt 命令依赖 Chrome（注入 APS_BROWSER_SMOKE_REQUIRED），其指纹含 Chrome
+    # 路径/版本/二进制/headless 预检。本文件验的是 startup 文件变更的缓存隔离性，与 Chrome
+    # 无关——故把 Chrome 探针 pin 成稳定值，避免在无 Chrome 的机器上 strict 指纹失败干扰断言。
+    monkeypatch.setenv("APS_CHROME_PATH", "/stable/chrome")
+    monkeypatch.setattr(fingerprint_mod, "_chrome_executable_resolution", lambda strict=False, environment=None: "/stable/chrome")
+    monkeypatch.setattr(fingerprint_mod, "_chrome_version", lambda strict=False, environment=None: "Chrome 120.0.0.0")
+    monkeypatch.setattr(fingerprint_mod, "_chrome_executable_identity", lambda strict=False, environment=None: "sha256:stable-chrome")
+    monkeypatch.setattr(fingerprint_mod, "_chrome_headless_preflight", lambda strict=False, environment=None: "passed:stable-headless")
 
 
 def _seed_startup_success(module, monkeypatch, repo_root: Path, command_plan: Sequence[dict]) -> None:

@@ -26,6 +26,15 @@ from tools.quality_gate_shared import LEDGER_BEGIN, LEDGER_END
 from tools.test_registry import test_only_helper_impacts_for_path as helper_impacts_for_path
 
 
+@pytest.fixture(autouse=True)
+def _stable_chrome_runtime_fingerprint(monkeypatch):
+    monkeypatch.setenv("APS_CHROME_PATH", "/stable/chrome")
+    monkeypatch.setattr(fingerprint_mod, "_chrome_executable_resolution", lambda strict=False, environment=None: "/stable/chrome")
+    monkeypatch.setattr(fingerprint_mod, "_chrome_version", lambda strict=False, environment=None: "Chrome 120.0.0.0")
+    monkeypatch.setattr(fingerprint_mod, "_chrome_executable_identity", lambda strict=False, environment=None: "sha256:stable-chrome")
+    monkeypatch.setattr(fingerprint_mod, "_chrome_headless_preflight", lambda strict=False, environment=None: "passed:stable-headless")
+
+
 def _repo_root() -> str:
     return REPO_ROOT_STR
 

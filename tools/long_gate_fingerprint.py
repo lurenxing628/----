@@ -21,6 +21,7 @@ from tools import architecture_scan_cache
 from tools.long_gate_schema import LONG_GATE_FINGERPRINT_SCHEMA_VERSION, stable_json_hash
 
 _EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION = 1
+_CURRENT_FULL_TEST_DEBT_REL = "evidence/QualityGate/current_full_test_debt.json"
 _RUNTIME_FINGERPRINT_CACHE: Dict[str, str] = {}
 
 
@@ -453,6 +454,127 @@ def _node_browser_runtime_capability(*, strict: bool = False, environment: Optio
     return value
 
 
+def _chrome_path(environment: Optional[Mapping[str, str]] = None) -> str:
+    source = environment if environment is not None else os.environ
+    return str(source.get("APS_CHROME_PATH") or "").strip()
+
+
+def _chrome_executable_resolution(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+    chrome_path = _chrome_path(environment)
+    if not chrome_path:
+        if strict:
+            raise LongGateFingerprintError("APS_CHROME_PATH is required for Chrome runtime fingerprint")
+        return "__chrome_path_missing__"
+    if not os.path.isfile(chrome_path):
+        if strict:
+            raise LongGateFingerprintError(f"APS_CHROME_PATH does not point to a file: {chrome_path}")
+        return "__chrome_path_not_file__:" + chrome_path
+    return os.path.realpath(chrome_path)
+
+
+def _chrome_version(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+    resolved = _chrome_executable_resolution(strict=strict, environment=environment)
+    if resolved.startswith("__chrome_"):
+        return resolved
+    cache_key = _runtime_probe_cache_key("chrome_version", resolved, {})
+    cached = _RUNTIME_FINGERPRINT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        completed = subprocess.run(
+            [resolved, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        if strict:
+            raise LongGateFingerprintError(f"Chrome version probe failed: {exc}") from exc
+        return "__chrome_version_unavailable__"
+    payload = {
+        "returncode": int(completed.returncode),
+        "stdout": str(completed.stdout or "").strip(),
+        "stderr": str(completed.stderr or "").strip(),
+    }
+    if int(completed.returncode) != 0:
+        if strict:
+            raise LongGateFingerprintError(
+                "Chrome version probe failed: " + json.dumps(payload, ensure_ascii=False, sort_keys=True)
+            )
+        return "__chrome_version_failed__:" + stable_json_hash(payload)
+    value = "passed:" + stable_json_hash(payload)
+    _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
+    return value
+
+
+def _chrome_executable_identity(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+    resolved = _chrome_executable_resolution(strict=strict, environment=environment)
+    if resolved.startswith("__chrome_"):
+        return resolved
+    try:
+        st = os.stat(resolved)
+        payload = {
+            "realpath": resolved,
+            "size": int(st.st_size),
+            "mtime_ns": int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1000000000))),
+            "sha256": _sha256_file(resolved),
+        }
+    except OSError as exc:
+        if strict:
+            raise LongGateFingerprintError(f"Chrome identity probe failed: {exc}") from exc
+        return "__chrome_identity_unavailable__"
+    return "sha256:" + stable_json_hash(payload)
+
+
+def _chrome_headless_preflight(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+    resolved = _chrome_executable_resolution(strict=strict, environment=environment)
+    if resolved.startswith("__chrome_"):
+        return resolved
+    cache_key = _runtime_probe_cache_key("chrome_headless_preflight", resolved, {})
+    cached = _RUNTIME_FINGERPRINT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        with tempfile.TemporaryDirectory(prefix="aps_chrome_preflight_") as tmp_dir:
+            completed = subprocess.run(
+                [
+                    resolved,
+                    "--headless=new",
+                    "--disable-gpu",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    f"--user-data-dir={tmp_dir}",
+                    "about:blank",
+                    "--dump-dom",
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=20,
+            )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        if strict:
+            raise LongGateFingerprintError(f"Chrome headless preflight failed: {exc}") from exc
+        return "__chrome_headless_preflight_unavailable__"
+    payload = {
+        "returncode": int(completed.returncode),
+        "stdout_hash": stable_json_hash(str(completed.stdout or "").strip()[:500]),
+        "stderr_hash": stable_json_hash(str(completed.stderr or "").strip()[:500]),
+    }
+    if int(completed.returncode) != 0:
+        if strict:
+            raise LongGateFingerprintError(
+                "Chrome headless preflight failed: " + json.dumps(payload, ensure_ascii=False, sort_keys=True)
+            )
+        return "__chrome_headless_preflight_failed__:" + stable_json_hash(payload)
+    value = "passed:" + stable_json_hash(payload)
+    _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
+    return value
+
+
 def _pytest_plugin_distribution_versions(*, strict: bool = False) -> str:
     try:
         entry_points = importlib.metadata.entry_points()
@@ -512,6 +634,14 @@ def _runtime_fingerprint_value(
         return _node_version(strict=strict, environment=environment)
     if key == "node_browser_runtime_capability":
         return _node_browser_runtime_capability(strict=strict, environment=environment)
+    if key == "chrome_executable_resolution":
+        return _chrome_executable_resolution(strict=strict, environment=environment)
+    if key == "chrome_version":
+        return _chrome_version(strict=strict, environment=environment)
+    if key == "chrome_executable_identity":
+        return _chrome_executable_identity(strict=strict, environment=environment)
+    if key == "chrome_headless_preflight":
+        return _chrome_headless_preflight(strict=strict, environment=environment)
     if key == "architecture_scan_cache_metadata":
         return "sha256:" + stable_json_hash(architecture_scan_cache.architecture_scan_cache_metadata(repo_root))
     source = environment if environment is not None else os.environ
@@ -546,6 +676,13 @@ def _entry_file_scopes(entry: Mapping[str, Any]) -> List[str]:
     for key in ("input_file_scopes", "config_file_scopes", "tool_file_scopes", "dependency_file_scopes"):
         scopes.extend(str(item) for item in list(entry.get(key) or []))
     return list(dict.fromkeys(scopes))
+
+
+def _entry_file_scopes_for_fingerprint(entry: Mapping[str, Any]) -> List[str]:
+    scopes = _entry_file_scopes(entry)
+    if str(entry.get("entry_id") or "") == "required_regressions":
+        return [scope for scope in scopes if scope.replace("\\", "/") != _CURRENT_FULL_TEST_DEBT_REL]
+    return scopes
 
 
 def _entry_output_result_files(entry: Mapping[str, Any]) -> List[str]:
@@ -600,6 +737,57 @@ def _collect_nodeids_component(repo_root: str) -> Dict[str, Any]:
     return component
 
 
+def _required_full_test_debt_component(repo_root: str) -> Dict[str, Any]:
+    rel_path = _CURRENT_FULL_TEST_DEBT_REL
+    abs_path = _abs_for_scope_path(rel_path, repo_root)
+    component: Dict[str, Any] = {
+        "path": rel_path,
+        "exists": os.path.isfile(abs_path),
+        "validated": False,
+        "required_target_hash": "",
+        "required_nodeid_hash": "",
+        "required_nodeid_count_by_path_hash": "",
+        "group_coverage_hash": "",
+        "hash": "",
+        "error": "",
+    }
+    if not component["exists"]:
+        return component
+    try:
+        with open(abs_path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if not isinstance(payload, dict):
+            component["error"] = "current_full_test_debt payload is not an object"
+            return component
+
+        from tools.verify_required_regressions_from_full_test_debt import (  # noqa: PLC0415
+            verify_required_regressions_from_payload,
+        )
+
+        verification = verify_required_regressions_from_payload(payload)
+    except Exception as exc:  # verifier errors become a fingerprint component, not a cache crash
+        component["error"] = str(exc)
+        return component
+
+    normalized = {
+        "required_target_hash": str(verification.get("required_target_hash") or ""),
+        "required_nodeids": list(verification.get("required_nodeids") or []),
+        "required_nodeid_count_by_path": dict(verification.get("required_nodeid_count_by_path") or {}),
+        "group_coverage": dict(verification.get("group_coverage") or {}),
+    }
+    component.update(
+        {
+            "validated": True,
+            "required_target_hash": normalized["required_target_hash"],
+            "required_nodeid_hash": stable_json_hash(normalized["required_nodeids"]),
+            "required_nodeid_count_by_path_hash": stable_json_hash(normalized["required_nodeid_count_by_path"]),
+            "group_coverage_hash": stable_json_hash(normalized["group_coverage"]),
+            "hash": stable_json_hash(normalized),
+        }
+    )
+    return component
+
+
 def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool = False) -> Dict[str, Any]:
     env_overlay = _normalize_env_overlay(entry.get("env_overlay"))
     effective_environment = {str(key): str(value) for key, value in os.environ.items()}
@@ -614,7 +802,7 @@ def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool 
     env_keys = [str(key) for key in list(entry.get("env_keys") or [])]
     components = {
         "command_hash": fingerprint_command(command_payload),
-        "files": fingerprint_files(_entry_file_scopes(entry), repo_root, strict=strict),
+        "files": fingerprint_files(_entry_file_scopes_for_fingerprint(entry), repo_root, strict=strict),
         "environment": fingerprint_environment(
             env_keys,
             strict=strict,
@@ -628,6 +816,8 @@ def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool 
     }
     if str(entry.get("entry_id") or "") == "full_test_debt":
         components["collect_nodeids"] = _collect_nodeids_component(repo_root)
+    if str(entry.get("entry_id") or "") == "required_regressions":
+        components["required_full_test_debt"] = _required_full_test_debt_component(repo_root)
     payload = {
         "schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
         "components": components,

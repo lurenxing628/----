@@ -533,6 +533,7 @@ def test_main_split_steps_tolerate_no_tests_but_not_real_failure(monkeypatch) ->
     cases = [
         ([0, 5, 0, 0], 0),  # 并行步空集(exit5)被 allow_no_tests 容忍 → 通过
         ([0, 0, 5, 0], 0),  # 串行步空集(exit5)被 allow_no_tests 容忍 → 通过
+        ([0, 5, 5, 0], 1),  # 两组都空集说明目标文件没有真的被覆盖 → 失败
         ([0, 1, 0, 0], 1),  # 并行步真失败(exit1)不在容忍集 → 立即返回 1
         ([0, 0, 0, 5], 5),  # focused 步(allow_no_tests=False)的 exit5 → 不容忍，返回 5
     ]

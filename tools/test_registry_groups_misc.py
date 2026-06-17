@@ -72,6 +72,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/app_runtime/test_safe_next_url_observability.py",
             "tests/app_runtime/test_fixed_file_security.py",
             "tests/app_runtime/test_validate_dist_runtime_identity.py",
+            "tests/gate_meta/test_win7_networkx_package_contract.py",
             "tests/web_pages/test_system_runtime_log_reader.py",
             "tests/web_pages/test_error_boundary_contract.py",
             # 诊断包安全红线守卫（fusion-runtime-log-viewer）：本组是 web/routes/**、
@@ -119,6 +120,8 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/operation_execution/operation_execution_migration_support.py",
             "plugins/**/*.py",
             "templates/system/**/*.html",
+            "build_win7_onedir.bat",
+            "requirements-optimizer-lite-win7.txt",
             "app.py",
             "app_new_ui.py",
             "config.py",

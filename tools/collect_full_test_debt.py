@@ -371,6 +371,7 @@ def _build_payload(
         "worktree_clean_before": worktree_clean_before,
         "python_executable": sys.executable,
         "python_version": sys.version.splitlines()[0],
+        "os_name": os.name,
         "pytest_version": pytest_version,
         "pytest_args": list(pytest_args),
         "exitstatus": int(exitstatus),
@@ -512,6 +513,7 @@ def _run_worker_mode(args: argparse.Namespace) -> int:
         {
             "schema_version": 1,
             "exitstatus": int(exitstatus),
+            "os_name": os.name,
             "collected_nodeids": list(collector.collected_nodeids),
             "collection_errors": list(collector.collection_errors),
             "reports": list(collector.reports),
@@ -588,81 +590,90 @@ def _run_sharded_pytest(args: argparse.Namespace, *, cwd: Path) -> Tuple[FullTes
         return collector, int(collect_exitstatus)
 
     serial_nodeids, parallel_shards = split_nodeids(collector.collected_nodeids, int(args.shard_count))
-    worker_jobs: List[Tuple[str, Sequence[str]]] = []
+    serial_jobs: List[Tuple[str, Sequence[str]]] = []
+    parallel_jobs: List[Tuple[str, Sequence[str]]] = []
     if serial_nodeids:
-        worker_jobs.append(("serial", serial_nodeids))
+        serial_jobs.append(("serial", serial_nodeids))
     for index, shard_nodeids in enumerate(parallel_shards, start=1):
         if shard_nodeids:
-            worker_jobs.append((f"parallel-{index}", shard_nodeids))
+            parallel_jobs.append((f"parallel-{index}", shard_nodeids))
     worker_payloads: List[Dict[str, Any]] = []
     worker_output_errors: List[Dict[str, Any]] = []
     with tempfile.TemporaryDirectory(prefix="aps_full_test_debt_shards_") as tmp_dir:
         work_dir = Path(tmp_dir)
-        processes = []
-        for label, job_nodeids in worker_jobs:
-            payload_path = _worker_payload_path(work_dir, label)
-            nodeids_path = _worker_nodeids_path(work_dir, label)
-            _write_nodeids_file(nodeids_path, job_nodeids)
-            command = [
-                sys.executable,
-                str(Path(__file__).resolve()),
-                "--baseline-kind",
-                str(args.baseline_kind),
-                "--repo-root",
-                str(cwd),
-                "--worker-payload",
-                str(payload_path),
-                "--worker-nodeids-file",
-                str(nodeids_path),
-                "--",
-                *FORMAL_FULL_TEST_PYTEST_ARGS,
-            ]
-            _progress(f"sharded 模式：启动分片 {label}，{len(job_nodeids)} 个 nodeid")
-            processes.append(
-                (
-                    label,
-                    payload_path,
-                    subprocess.Popen(
-                        command,
-                        cwd=str(cwd),
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        encoding="utf-8",
-                        errors="replace",
-                    ),
+
+        def _start_jobs(jobs: Sequence[Tuple[str, Sequence[str]]]):
+            processes = []
+            for label, job_nodeids in jobs:
+                payload_path = _worker_payload_path(work_dir, label)
+                nodeids_path = _worker_nodeids_path(work_dir, label)
+                _write_nodeids_file(nodeids_path, job_nodeids)
+                command = [
+                    sys.executable,
+                    str(Path(__file__).resolve()),
+                    "--baseline-kind",
+                    str(args.baseline_kind),
+                    "--repo-root",
+                    str(cwd),
+                    "--worker-payload",
+                    str(payload_path),
+                    "--worker-nodeids-file",
+                    str(nodeids_path),
+                    "--",
+                    *FORMAL_FULL_TEST_PYTEST_ARGS,
+                ]
+                _progress(f"sharded 模式：启动分片 {label}，{len(job_nodeids)} 个 nodeid")
+                processes.append(
+                    (
+                        label,
+                        payload_path,
+                        subprocess.Popen(
+                            command,
+                            cwd=str(cwd),
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True,
+                            encoding="utf-8",
+                            errors="replace",
+                        ),
+                    )
                 )
-            )
-        for label, payload_path, process in processes:
-            stdout, stderr = process.communicate()
-            returncode = int(process.returncode or 0)
-            if stdout or stderr:
-                worker_output_errors.append(
+            return processes
+
+        def _collect_processes(processes) -> None:
+            for label, payload_path, process in processes:
+                stdout, stderr = process.communicate()
+                returncode = int(process.returncode or 0)
+                if stdout or stderr:
+                    worker_output_errors.append(
+                        {
+                            "nodeid": label,
+                            "outcome": "failed",
+                            "longrepr": str(stderr or stdout),
+                        }
+                    )
+                if payload_path.exists():
+                    with open(payload_path, encoding="utf-8") as handle:
+                        payload = json.load(handle)
+                    if isinstance(payload, dict):
+                        if returncode != int(payload.get("exitstatus") or 0):
+                            payload["exitstatus"] = returncode
+                        worker_payloads.append(payload)
+                        continue
+                worker_payloads.append(
                     {
-                        "nodeid": label,
-                        "outcome": "failed",
-                        "longrepr": str(stderr or stdout),
+                        "schema_version": 1,
+                        "exitstatus": returncode,
+                        "collected_nodeids": [],
+                        "collection_errors": [
+                            {"nodeid": label, "outcome": "failed", "longrepr": "worker did not write payload"}
+                        ],
+                        "reports": [],
                     }
                 )
-            if payload_path.exists():
-                with open(payload_path, encoding="utf-8") as handle:
-                    payload = json.load(handle)
-                if isinstance(payload, dict):
-                    if returncode != int(payload.get("exitstatus") or 0):
-                        payload["exitstatus"] = returncode
-                    worker_payloads.append(payload)
-                    continue
-            worker_payloads.append(
-                {
-                    "schema_version": 1,
-                    "exitstatus": returncode,
-                    "collected_nodeids": [],
-                    "collection_errors": [
-                        {"nodeid": label, "outcome": "failed", "longrepr": "worker did not write payload"}
-                    ],
-                    "reports": [],
-                }
-            )
+
+        _collect_processes(_start_jobs(serial_jobs))
+        _collect_processes(_start_jobs(parallel_jobs))
 
     reports: List[Dict[str, Any]] = []
     collection_errors = [*list(collector.collection_errors), *worker_output_errors]

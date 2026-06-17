@@ -212,18 +212,21 @@ def verify_required_regressions_from_payload(
     if missing_report_nodeids:
         raise RequiredRegressionProofError("required nodeid 缺少 reports 明细：" + ", ".join(missing_report_nodeids[:20]))
 
-    allowed_skipped = set(quality_gate_shared.REQUIRED_REGRESSION_ALLOWED_SKIPPED_NODEIDS)
+    allowed_skipped_platforms = {
+        str(nodeid): {"nt"} for nodeid in quality_gate_shared.REQUIRED_REGRESSION_ALLOWED_SKIPPED_NODEIDS
+    }
+    payload_os_name = str(payload.get("os_name") or payload.get("platform_os_name") or os.name)
     bad_reports: List[str] = []
     xfail_reports: List[str] = []
     for nodeid in required_nodeids:
         for report in reports_by_nodeid[nodeid]:
             when = str(report.get("when") or "")
             outcome = str(report.get("outcome") or "")
-            # 仅白名单内 nodeid 的 skipped 视为可接受（平台合法 skip，如含换行符文件名在 Windows 非法）；
-            # 其余非 passed（failed/error，或未登记的 skipped）一律视为非通过，守卫不放水。
+            # 仅白名单内 nodeid 在对应平台的 skipped 视为可接受；
+            # 其余非 passed（failed/error，或未登记/非平台合法的 skipped）一律视为非通过，守卫不放水。
             if outcome == "passed":
                 pass
-            elif outcome == "skipped" and nodeid in allowed_skipped:
+            elif outcome == "skipped" and payload_os_name in allowed_skipped_platforms.get(nodeid, set()):
                 pass
             else:
                 bad_reports.append(f"{nodeid} [{when or '-'}:{outcome or '-'}]")

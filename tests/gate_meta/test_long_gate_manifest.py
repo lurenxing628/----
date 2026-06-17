@@ -106,6 +106,24 @@ def test_required_and_startup_regression_args_come_from_dynamic_plan():
     assert startup_entry["args"][4:] == iter_startup_regressions()
 
 
+def test_full_test_debt_manifest_tracks_runtime_and_shard_inputs():
+    command_plan = quality_gate_shared.build_quality_gate_command_plan()
+    manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
+
+    full_debt_entry = _entry_by_id(manifest, "full_test_debt")
+    required_entry = _entry_by_id(manifest, "required_regressions")
+
+    assert "tools/full_test_debt_shards.py" in full_debt_entry["config_file_scopes"]
+    for env_key in (
+        "chrome_executable_resolution",
+        "chrome_version",
+        "chrome_executable_identity",
+        "chrome_headless_preflight",
+    ):
+        assert env_key in full_debt_entry["env_keys"]
+    assert "evidence/QualityGate/current_full_test_debt.json" in required_entry["input_file_scopes"]
+
+
 def test_required_groups_cover_required_registry():
     coverage = validate_required_regression_group_coverage(iter_required_tests())
 

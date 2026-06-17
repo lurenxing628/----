@@ -194,6 +194,49 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
     assert required["output_result_files"] == ["evidence/QualityGate/required_regressions.json"]
 
 
+def test_required_current_full_test_debt_uses_semantic_fingerprint_component(tmp_path):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    required_nodeids = [f"{path}::test_required" for path in quality_gate_shared.iter_quality_gate_required_tests()]
+    current_payload = repo_root / "evidence" / "QualityGate" / "current_full_test_debt.json"
+    current_payload.parent.mkdir(parents=True)
+    current_payload.write_text(
+        json.dumps(
+            {
+                "exitstatus": 0,
+                "collection_error_count": 0,
+                "classifications": {
+                    "required_or_quality_gate_self_failure": [],
+                    "main_style_isolation_candidate": [],
+                    "candidate_test_debt": [],
+                },
+                "collected_nodeids": required_nodeids,
+                "reports": [
+                    {"nodeid": nodeid, "when": "call", "outcome": "passed"}
+                    for nodeid in required_nodeids
+                ],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    required = _entry_by_id(_manifest_for(_real_quality_gate_plan(), repo_root), ENTRY_REQUIRED_REGRESSIONS)
+    fingerprint = fingerprint_entry(required, str(repo_root))
+
+    assert "evidence/QualityGate/current_full_test_debt.json" in required["input_file_scopes"]
+    file_paths = {
+        str(row.get("path") or "")
+        for row in list(fingerprint["components"]["files"].get("files") or [])
+        if isinstance(row, dict)
+    }
+    assert "evidence/QualityGate/current_full_test_debt.json" not in file_paths
+    full_debt_component = fingerprint["components"]["required_full_test_debt"]
+    assert full_debt_component["path"] == "evidence/QualityGate/current_full_test_debt.json"
+    assert full_debt_component["validated"] is True
+    assert full_debt_component["hash"]
+
+
 def test_required_success_writes_parent_proof_and_reuses_next_run(monkeypatch, tmp_path):
     ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
     module = ctx.module

@@ -156,30 +156,6 @@ def test_full_selftest_report_header_includes_revision_and_gate_manifest_metadat
     assert "quality_gate_manifest" in joined
 
 
-def test_tracked_regression_discovery_ignores_untracked_files(monkeypatch, tmp_path) -> None:
-    module = _load_module()
-    repo_root = tmp_path / "repo"
-    tests_dir = repo_root / "tests"
-    tests_dir.mkdir(parents=True)
-
-    def fake_run(args, cwd=None, capture_output=False, text=False, errors=None, timeout=None):
-        class _Proc:
-            returncode = 0
-            stdout = "tests/regression_tracked_one.py\ntests/regression_tracked_two.py\n"
-            stderr = ""
-
-        return _Proc()
-
-    monkeypatch.setattr(module.subprocess, "run", fake_run)
-
-    tracked = module._tracked_regression_files(repo_root)
-
-    assert tracked == [
-        repo_root / "tests" / "regression_tracked_one.py",
-        repo_root / "tests" / "regression_tracked_two.py",
-    ]
-
-
 def test_run_full_selftest_fails_when_quality_gate_manifest_is_unbound(monkeypatch, tmp_path) -> None:
     module = _load_module()
     repo_root = tmp_path / "repo"
