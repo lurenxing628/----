@@ -10,19 +10,21 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DRIFT = ROOT / ".venv-semantic" / "bin" / "drift"
+# 走 `python -m drift` 而非 .venv-semantic/bin/drift 控制台脚本：后者 shebang 写死绝对路径,
+# 仓库整体搬迁(如 ~/Documents → ~/GitHub)后会 FileNotFoundError 静默失效;模块入口对搬迁免疫。
+VENV_PY = ROOT / ".venv-semantic" / "bin" / "python"
 OUT = ROOT / "evidence" / "SemanticDebt" / "drift"
 
 
 def main() -> int:
-    if not DRIFT.exists():
-        print(f"缺少 {DRIFT}。先在 .venv-semantic 装 drift-analyzer。", file=sys.stderr)
+    if not VENV_PY.exists():
+        print(f"缺少隔离审计环境 {VENV_PY}。先建 .venv-semantic 并装 drift-analyzer。", file=sys.stderr)
         return 2
     OUT.mkdir(parents=True, exist_ok=True)
     json_path = OUT / "drift-baseline.json"
     md_path = OUT / "drift-baseline.md"
     rc = subprocess.call(
-        [str(DRIFT), "analyze", "--repo", ".", "--format", "json",
+        [str(VENV_PY), "-m", "drift", "analyze", "--repo", ".", "--format", "json",
          "--progress", "none", "-o", str(json_path)],
         cwd=str(ROOT),
     )
@@ -30,7 +32,7 @@ def main() -> int:
         return rc
     with md_path.open("w", encoding="utf-8") as fh:
         subprocess.call(
-            [str(DRIFT), "analyze", "--repo", ".", "--format", "markdown", "--progress", "none"],
+            [str(VENV_PY), "-m", "drift", "analyze", "--repo", ".", "--format", "markdown", "--progress", "none"],
             cwd=str(ROOT), stdout=fh,
         )
     print(f"wrote {json_path} + {md_path}")
