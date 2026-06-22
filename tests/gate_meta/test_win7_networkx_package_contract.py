@@ -17,3 +17,18 @@ def test_win7_onedir_build_declares_networkx_hidden_import() -> None:
 
     assert script.count("--hidden-import networkx") == 2
     assert "networkx==3.1" in requirements
+
+
+def test_win7_onedir_build_installs_networkx_offline_from_vendor_wheel() -> None:
+    """构建前必须从仓库内 wheel 离线安装 networkx,保证 --hidden-import 有料可冻结(finding-22)。"""
+    script = (REPO_ROOT / "build_win7_onedir.bat").read_text(encoding="utf-8")
+
+    assert "--no-index" in script
+    assert "vendor\\wheels\\networkx-3.1-" in script
+
+
+def test_win7_networkx_offline_wheel_is_tracked_in_repo() -> None:
+    """离线交付 wheel 必须随仓库提交,离线包才可复现可审(finding-22)。"""
+    wheel = REPO_ROOT / "vendor" / "wheels" / "networkx-3.1-py3-none-any.whl"
+
+    assert wheel.is_file()

@@ -20,6 +20,30 @@ if not %errorlevel%==0 (
   endlocal & exit /b 2
 )
 
+rem 1.5) Install NetworkX offline from the in-repo wheel BEFORE freezing.
+rem      PyInstaller freezes networkx only if it exists in the build env;
+rem      install it from vendor/wheels so the package never silently ships without it.
+set "NX_WHEEL="
+for %%f in (vendor\wheels\networkx-3.1-*.whl) do set "NX_WHEEL=%%f"
+if not defined NX_WHEEL (
+  echo [build] 缺少离线 wheel：vendor\wheels\networkx-3.1-*.whl，无法保证离线包含 NetworkX。
+  popd >nul 2>&1
+  endlocal & exit /b 5
+)
+echo [build] install NetworkX offline from "%NX_WHEEL%"
+python -m pip install --no-index --no-deps --force-reinstall "%NX_WHEEL%"
+if not %errorlevel%==0 (
+  echo [build] 离线安装 NetworkX 失败。
+  popd >nul 2>&1
+  endlocal & exit /b 6
+)
+python -c "import networkx, sys; sys.exit(0 if networkx.__version__=='3.1' else 1)"
+if not %errorlevel%==0 (
+  echo [build] NetworkX 版本校验失败（期望 3.1）。
+  popd >nul 2>&1
+  endlocal & exit /b 7
+)
+
 rem 2) Clean old artifacts (optional)
 if exist build rmdir /s /q build >nul 2>&1
 if exist build (

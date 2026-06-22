@@ -347,6 +347,7 @@ Chrome109 黑名单：新建 tools/check_css_compat.py，正则拒绝
 - test_frontend_ui_language_polish.py 自身是门禁长缓存的指纹源——文案类变更建议攒批合入，每改一次该文件长缓存全量失效。
 - 设计样张存档 drafts/dashboard-restyle-proto.html（2026-06-11 定稿：浅色侧栏 + 12 列栅格 + 单栏四段构图）——定位是**构图与层级基准**，非像素级验收基准；逐页落地以截图基线评审为准。
 - "现场最新动态流"**已裁决不做**（2026-06-11 用户拍板）：未接 MES/自动采集时，现场记录全部是计划员自己代录的，动态流本质是给自己看自己刚输入的内容，信息价值不成立。若未来接入 MES 再走 cs-req 立愿景；在那之前不要再提案。
+- **超期清单行级跳转按钮在当前实现里全被禁用**（深审 finding-21；2026-06-23 用户裁定随本次前端重设计一并处理、不单独修）：`reports_page_support.py::_version_report_context()` 刻意把 `start_date/end_date` 固定为 None，而行级"定位甘特/回资源派工/查看现场实际"经 `build_workbench_link` 走"日期必需"目标 → 模板渲染成灰色禁用 span，报表↔工作台闭环断裂。重画超期清单（模块 W，与 4.2 胶囊日期口径同源）时必须给行级链接一个真日期来源（版本 span 或每行自身计划跨度），或对不需要日期的目标放开、其余别摆看着可点的死按钮；并补页面级测试（有超期行→可点链接必有 URL，禁用必有明确业务原因）。证据：`reports_page_support.py:93-114/216-238`、`web/viewmodels/scheduler_reports_workbench.py:290-301`、`web/viewmodels/scheduler_workbench_links.py:295-301`、`templates/reports/overdue.html:167-171`。
 
 ## 8. 变更日志
 

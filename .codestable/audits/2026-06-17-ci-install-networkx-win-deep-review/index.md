@@ -168,3 +168,28 @@ ERROR: oversize 条目 current_value 与当前扫描不一致：oversize:core-in
 ```
 
 因此，本轮结论是：该分支不能直接合并，后续修复后必须在最新 HEAD 上重新跑 clean gate。
+
+## 处理进展（2026-06-23）
+
+本节为深审后处理状态汇总，便于追溯；上方 findings 原文保持不动作为历史证据。
+
+已修（深审后三批提交）：
+
+- 门禁证明链 `9fc827f9`：finding 01/04/05/06/07/08/14。
+- 后端安全写删 / 时间口径统一 / 坏数据诚实降级 `cd95b8b0`：finding 02/03/15/16/17/18/20。
+- 文档与测试迁移路径 / NetworkX 安装 / 图分析默认值同步 `12f4b879`：finding 09/10/19。
+- finding-13（clean gate 失配）：台账 oversize `current_value` 已与现扫描一致（backup.py 577），`python scripts/sync_debt_ledger.py check` 通过，阻塞解除；backup.py 仍是登记在册的超长文件债（限 500）。
+
+本批（2026-06-23）落地：
+
+- finding-22（离线包是否含 NetworkX 无 proof）：① `vendor/wheels/networkx-3.1-*.whl` 改为随仓库提交（`.gitignore` 放行）；② `build_win7_onedir.bat` 增构建前从仓库内 wheel 离线装 networkx 的步骤（缺 wheel / 装失败 / 版本不符均 fail-loud，退出码 5/6/7）；③ `validate_dist_exe.py` 增"包内含 networkx 目录"冒烟；④ `tests/gate_meta/test_win7_networkx_package_contract.py` 增锁离线装步骤 + wheel 在仓库。运行时缺库已有 `NetworkXUnavailable` 显式报错（非静默 off）。
+- finding-11（无 token 时裸 scenario_id 回退）：本应用无登录 / 单租户 / 全无网单机离线交付，`plan_context_token` 仅 URL 脱敏、非权限门（进程内存、12h 过期、不绑身份）；评估为**不适用**，保留回退（删除只会弄坏既有测试且无安全收益），在 `web/routes/domains/scheduler/scheduler_plan_context_token.py` 加设计口径注释结案。
+
+延后（用户裁定）：
+
+- finding-21（超期清单行级灰按钮）：随进行中的前端全面重设计一并处理，已记入 `.codestable/roadmap/aps-frontend-fusion` 观察项；不单独修。
+- finding-12（diff-check 空白噪音，P3）：对比 `origin/main` 现仅剩约 1 处，基本清零，不单列任务。
+
+仍需 Win7 真机 / 虚拟机（Mac 开发机无法销）：
+
+- 台账 4 条 accepted risk（绑端口 / 杀进程不误杀普通 Chrome / 运行锁契约 / 运行根 owner），`review_after` 2026-05-31 已过期；管理员 + 域账户共机场景需重点复验运行锁与 owner 归属。

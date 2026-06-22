@@ -174,6 +174,22 @@ def _assert_health(base_url: str, timeout: float = 3.0) -> dict:
     return payload
 
 
+def _assert_networkx_bundled(exe_dir: str) -> None:
+    """确认离线包内含 NetworkX 包目录。
+
+    默认 graph_analysis_mode=on 依赖 NetworkX；onedir 打包会把纯 Python 的
+    networkx 收进 exe 同级目录(PyInstaller 4.10)或 _internal 子目录(6+)。
+    缺包会在运行时触发 NetworkXUnavailable，因此交付前必须可审。
+    """
+    root = Path(exe_dir)
+    for base in (root, root / "_internal"):
+        if (base / "networkx" / "__init__.py").is_file():
+            return
+    raise RuntimeError(
+        "离线包内未发现 NetworkX 包目录；默认 graph_analysis_mode=on 会在运行时报 NetworkXUnavailable。"
+    )
+
+
 def _assert_runtime_db_path(db_path: str) -> None:
     normalized = _normalize_db_path(db_path)
     if not normalized:
@@ -197,6 +213,12 @@ def main() -> int:
     print(f"[validate] 启动：{exe_path}")
     cwd = os.path.dirname(exe_path)
     log_dir = os.path.join(cwd, "logs")
+
+    try:
+        _assert_networkx_bundled(cwd)
+    except Exception as e:
+        print(f"[validate] 验收失败：{e}")
+        return 7
 
     try:
         _clear_runtime_contract_files(log_dir)

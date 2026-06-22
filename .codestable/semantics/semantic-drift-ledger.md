@@ -7,7 +7,7 @@
 
 ## SEM-0001 graph_analysis_mode：ADR-0012 旧口径与当前行为冲突(stale_doc)
 
-- **状态**: open
+- **状态**: resolved (2026-06-23)
 - **类型**: stale_doc
 - **严重度**: medium
 - **概念**: [graph_analysis_mode](concepts/graph-analysis-mode.md)
@@ -34,6 +34,15 @@
 ### 退出条件
 - ADR-0012 被标历史/superseded。
 - 文档不再出现"on 不改变排产结果"的现行陈述。
+
+### 结案(2026-06-23)
+- 上方"漂移证据"中 `ADR-0012:16/:26` 的引文为**历史漂移快照**,保留作证据,不代表当前文件内容。
+- ADR-0012 已**原地重写并提交**(非加 superseded 头,而是改正为现行正确口径):`grep` 验证全文已无
+  "on 只保存配置不执行图分析 / on 不改变排产结果"的现行陈述;正文已写明 `on` 为默认且参与图评分,
+  并新增第 6 条"默认 on 模式下 Win7 离线包必须含 networkx==3.1,缺依赖不得静默当 off"。
+- 退出条件第 2 条(文档不再出现"on 不改变排产结果"现行陈述)已满足;原口径冲突消除。
+- 概念 doc `concepts/graph-analysis-mode.md` 对 ADR-0012 的"口径已过期"交叉引用已同步更新。
+- 关联落地:深审 finding-22 的"离线包含 NetworkX"已补构建离线装 wheel 步骤、validate 冒烟与契约门禁。
 
 ---
 

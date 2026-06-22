@@ -18,8 +18,8 @@
 - `core/services/scheduler/config/config_snapshot.py:43`(default `'on'`)
 - `.codestable/architecture/ARCHITECTURE.md` 第 6 节(:72-78，当前现状)
 
-## ⚠️ 历史/过期来源
-- `开发文档/ADR/0012-networkx-graph-foundation-boundary.md`(2026-05-17，状态"已决策")——**口径已过期**：见 `semantic-drift-ledger.md` SEM-0001。
+## 历史决策来源(已对齐)
+- `开发文档/ADR/0012-networkx-graph-foundation-boundary.md`(2026-05-17 决策,2026-06-17 正文重写为现行口径)——已对齐"on 默认且参与图评分";原 stale_doc 漂移 `semantic-drift-ledger.md` SEM-0001 已于 2026-06-23 结案。
 
 ## 禁止含义
 - ❌ "on 只保存配置不执行图分析"

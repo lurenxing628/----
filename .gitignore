@@ -45,6 +45,9 @@ dist/
 # Optional dependency drop-in folders (keep placeholder if needed)
 vendor/**
 !vendor/.gitkeep
+# Win7 离线交付依赖:随仓库提交,保证离线包含 NetworkX 可复现可审(深审 finding-22)
+!vendor/wheels/
+!vendor/wheels/*.whl
 
 # Local tools / installer outputs (large binaries)
 tools/Chrome.109.0.5414.120.x64/
