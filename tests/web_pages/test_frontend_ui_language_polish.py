@@ -246,7 +246,9 @@ def test_process_excel_current_tables_render_chinese_display_fields() -> None:
 
     operator_machine_service = _read("core/services/personnel/operator_machine_service.py")
     assert "主操设备=yes" not in operator_machine_service
-    assert "主操设备填“是”" in operator_machine_service
+    # “同一人员只能有一条主操设备填是”的文案随主操唯一性强制逻辑抽到了 import 辅助模块
+    operator_machine_import_helpers = _read("core/services/personnel/operator_machine_import_helpers.py")
+    assert "主操设备填“是”" in operator_machine_import_helpers
 
 
 def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compatible() -> None:

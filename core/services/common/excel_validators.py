@@ -87,9 +87,9 @@ def _normalize_batch_date_cell(value: Any, field_label: str) -> Dict[str, Any]:
 def get_batch_row_validate_and_normalize(
     conn=None,
     *,
-    parts_cache: dict | None = None,
+    parts_cache: Optional[dict] = None,
     inplace: bool = True,
-) -> Callable[[dict], str | None]:
+) -> Callable[[dict], Optional[str]]:
     """
     构建“批次信息”Excel 导入行校验器。
 
@@ -105,7 +105,7 @@ def get_batch_row_validate_and_normalize(
             raise ValueError("get_batch_row_validate_and_normalize 缺少 conn 或 parts_cache")
         parts = {p.part_no: p for p in PartRepository(conn).list()}
 
-    def _validate_and_normalize(row: dict) -> str | None:
+    def _validate_and_normalize(row: dict) -> Optional[str]:
         target = row if inplace else dict(row)
 
         if is_blank_value(target.get("批次号")):
@@ -155,19 +155,23 @@ def get_operator_calendar_row_validate_and_normalize(
     holiday_default_efficiency: float,
     op_repo=None,
     inplace: bool = True,
-) -> Callable[[dict], str | None]:
+) -> Callable[[dict], Optional[str]]:
     repo = op_repo if op_repo is not None else OperatorRepository(conn)
     hde = parse_finite_float(holiday_default_efficiency, field="假期工作效率", allow_none=False)
     if hde <= 0:
         raise ValidationError("假期工作效率必须大于 0。", field="假期工作效率")
+    # 一次性预建在册工号集合，避免逐行 repo.exists 的 N+1；与同文件批次校验器 parts_cache
+    # 同一“导入开始定格快照”语义（单次导入内人员表不会增删，集合判定与逐行 exists 等价）。
+    # 等价前提：人员主键经服务层 strip 归一化入库（无前后空格脏键），故两侧归一化判定一致。
+    existing_operator_ids = {to_str_or_blank(o.operator_id) for o in repo.list()}
 
-    def _validate_and_normalize(row: dict) -> str | None:
+    def _validate_and_normalize(row: dict) -> Optional[str]:
         target = row if inplace else dict(row)
 
         op_id = to_str_or_blank(target.get("工号"))
         if not op_id:
             return "“工号”不能为空"
-        if not repo.exists(op_id):
+        if op_id not in existing_operator_ids:
             return f"人员“{op_id}”不存在，请先在人员管理中新增该人员。"
 
         if is_blank_value(target.get("日期")):

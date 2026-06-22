@@ -18,6 +18,11 @@ from core.services.common.normalize import to_str_or_blank
 from data.repositories import MachineRepository, OperatorMachineRepository, OperatorRepository
 
 from . import operator_machine_normalizers as om_normalizers
+from .operator_machine_import_helpers import (
+    detect_optional_columns,
+    detect_optional_columns_from_preview,
+    enforce_primary_unique_in_file,
+)
 
 
 class OperatorMachineService:
@@ -66,18 +71,6 @@ class OperatorMachineService:
         if not self.machine_repo.get(machine_id):
             raise BusinessError(ErrorCode.MACHINE_NOT_FOUND, f"设备“{machine_id}”不存在")
 
-    @staticmethod
-    def _detect_optional_columns(rows: List[Dict[str, Any]]) -> Tuple[bool, bool]:
-        has_skill_col = any(("技能等级" in (r or {})) or ("skill_level" in (r or {})) for r in (rows or []))
-        has_primary_col = any(("主操设备" in (r or {})) or ("is_primary" in (r or {})) for r in (rows or []))
-        return bool(has_skill_col), bool(has_primary_col)
-
-    @staticmethod
-    def _detect_optional_columns_from_preview(preview_rows: List[ImportPreviewRow]) -> Tuple[bool, bool]:
-        has_skill_col = any(("技能等级" in (pr.data or {})) or ("skill_level" in (pr.data or {})) for pr in (preview_rows or []))
-        has_primary_col = any(("主操设备" in (pr.data or {})) or ("is_primary" in (pr.data or {})) for pr in (preview_rows or []))
-        return bool(has_skill_col), bool(has_primary_col)
-
     def _build_existing_link_map(self) -> Dict[str, Dict[str, str]]:
         existing_links = self.repo.list_simple_rows()
         existing_map: Dict[str, Dict[str, str]] = {}
@@ -117,15 +110,16 @@ class OperatorMachineService:
         seen_in_file.add(key)
         return None
 
-    def _check_fk_exists(self, op_id: str, mc_id: str, *, row: Dict[str, Any], row_num: int) -> Optional[ImportPreviewRow]:
-        if not self.operator_repo.exists(op_id):
+    def _check_fk_exists(self, op_id: str, mc_id: str, *, row: Dict[str, Any], row_num: int, existing_operator_ids: Set[str], existing_machine_ids: Set[str]) -> Optional[ImportPreviewRow]:
+        # 预建集合替代逐行 operator_repo.exists/machine_repo.get（消除 2 查询/行 N+1，口径同 _normalize_text）
+        if op_id not in existing_operator_ids:
             return ImportPreviewRow(
                 row_num=row_num,
                 status=RowStatus.ERROR,
                 data=row,
                 message=f"人员“{op_id}”不存在，请先在人员管理中新增该人员。",
             )
-        if not self.machine_repo.get(mc_id):
+        if mc_id not in existing_machine_ids:
             return ImportPreviewRow(
                 row_num=row_num,
                 status=RowStatus.ERROR,
@@ -184,7 +178,7 @@ class OperatorMachineService:
             return ImportPreviewRow(row_num=row_num, status=RowStatus.UNCHANGED, data=row, message="已存在，本次没有需要修改的字段")
         return self._build_overwrite_preview_for_existing(row=row, row_num=row_num, key=key, existing_map=existing_map, has_skill_col=has_skill_col, has_primary_col=has_primary_col, skill_norm=skill_norm, primary_norm=primary_norm)
 
-    def _preview_one_row(self, *, row: Dict[str, Any], row_num: int, mode: ImportMode, has_skill_col: bool, has_primary_col: bool, existing_map: Dict[str, Dict[str, str]], seen_in_file: Set[str]) -> ImportPreviewRow:
+    def _preview_one_row(self, *, row: Dict[str, Any], row_num: int, mode: ImportMode, has_skill_col: bool, has_primary_col: bool, existing_map: Dict[str, Dict[str, str]], seen_in_file: Set[str], existing_operator_ids: Set[str], existing_machine_ids: Set[str]) -> ImportPreviewRow:
         op_id, mc_id, err = self._validate_required_ids_for_preview_row(row, row_num)
         if err is not None:
             return err
@@ -201,7 +195,7 @@ class OperatorMachineService:
         if dup is not None:
             return dup
 
-        fk_err = self._check_fk_exists(op_id, mc_id, row=row, row_num=row_num)
+        fk_err = self._check_fk_exists(op_id, mc_id, row=row, row_num=row_num, existing_operator_ids=existing_operator_ids, existing_machine_ids=existing_machine_ids)
         if fk_err is not None:
             return fk_err
 
@@ -213,44 +207,6 @@ class OperatorMachineService:
             return prim_err
 
         return self._decide_preview_row(row=row, row_num=row_num, mode=mode, key=key, existing_map=existing_map, has_skill_col=has_skill_col, has_primary_col=has_primary_col, skill_norm=skill_norm, primary_norm=primary_norm)
-
-    @staticmethod
-    def _is_primary_yes(data: Dict[str, Any]) -> bool:
-        primary_raw = (data or {}).get("主操设备")
-        if primary_raw is None or to_str_or_blank(primary_raw) == "":
-            primary_raw = (data or {}).get("is_primary")
-        v = to_str_or_blank(primary_raw).lower()
-        return v == YesNo.YES.value
-
-    def _collect_dup_primary_yes_operators(self, preview: List[ImportPreviewRow]) -> Set[str]:
-        counts: Dict[str, int] = {}
-        for pr in preview or []:
-            if pr.status == RowStatus.ERROR:
-                continue
-            op_id = self._normalize_text((pr.data or {}).get("工号")) or ""
-            if not op_id:
-                continue
-            if self._is_primary_yes(pr.data or {}):
-                counts[op_id] = int(counts.get(op_id, 0)) + 1
-        return {op_id for op_id, cnt in counts.items() if int(cnt) > 1}
-
-    @staticmethod
-    def _mark_dup_primary_yes(preview: List[ImportPreviewRow], dup_ops: Set[str]) -> None:
-        for pr in preview or []:
-            if pr.status == RowStatus.ERROR:
-                continue
-            op_id = to_str_or_blank((pr.data or {}).get("工号"))
-            if not op_id:
-                continue
-            if op_id in dup_ops and OperatorMachineService._is_primary_yes(pr.data or {}):
-                pr.status = RowStatus.ERROR
-                pr.message = f"人员“{op_id}”在 Excel 中设置了多个主操设备；同一个人员只能有一条主操设备填“是”。"
-                pr.changes = {}
-
-    def _enforce_primary_unique_in_file(self, preview: List[ImportPreviewRow]) -> None:
-        dup_ops = self._collect_dup_primary_yes_operators(preview)
-        if dup_ops:
-            self._mark_dup_primary_yes(preview, dup_ops)
 
     def _resolve_write_values(
         self,
@@ -423,8 +379,12 @@ class OperatorMachineService:
         - 工号
         - 设备编号
         """
-        has_skill_col, has_primary_col = self._detect_optional_columns(rows)
+        has_skill_col, has_primary_col = detect_optional_columns(rows)
         existing_map = self._build_existing_link_map()
+        # 预建父表存在集合，替代 _check_fk_exists 逐行 exists/get（原 2 查询/行 N+1，与 existing_map 同为导入起点快照）。
+        # 等价前提：人员/设备主键经服务层 strip 归一化入库（无前后空格脏键），故集合归一化判定与原逐行查询一致。
+        existing_operator_ids = {oid for oid in (self._normalize_text(o.operator_id) for o in self.operator_repo.list()) if oid}
+        existing_machine_ids = {mid for mid in (self._normalize_text(m.machine_id) for m in self.machine_repo.list()) if mid}
 
         preview: List[ImportPreviewRow] = []
         seen_in_file: Set[str] = set()
@@ -440,6 +400,8 @@ class OperatorMachineService:
                 has_primary_col=has_primary_col,
                 existing_map=existing_map,
                 seen_in_file=seen_in_file,
+                existing_operator_ids=existing_operator_ids,
+                existing_machine_ids=existing_machine_ids,
             )
             pr.row_num = int(source_row_num)
             pr.source_row_num = int(source_row_num)
@@ -447,7 +409,7 @@ class OperatorMachineService:
             preview.append(pr)
 
         if has_primary_col:
-            self._enforce_primary_unique_in_file(preview)
+            enforce_primary_unique_in_file(preview)
 
         return preview
 
@@ -458,7 +420,7 @@ class OperatorMachineService:
         new_count = update_count = skip_count = error_count = 0
         errors_sample: List[Dict[str, Any]] = []
 
-        has_skill_col, has_primary_col = self._detect_optional_columns_from_preview(preview_rows)
+        has_skill_col, has_primary_col = detect_optional_columns_from_preview(preview_rows)
         existing_map = self._build_existing_link_map()
 
         with self.tx_manager.transaction():
