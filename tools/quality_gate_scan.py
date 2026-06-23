@@ -537,10 +537,6 @@ def validate_startup_samples(entries: Optional[Sequence[Dict[str, Any]]] = None)
     }
 
 
-def _is_name(node: Optional[ast.AST], name: str) -> bool:
-    return isinstance(node, ast.Name) and str(node.id) == str(name)
-
-
 def _scope_key(node: ast.AST) -> str:
     parts = []
     current = node

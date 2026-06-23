@@ -140,12 +140,6 @@ def _pause_duration_minutes(events: Sequence[OperationExecutionEvent]) -> float:
     return total
 
 
-def _label(labels: Dict[str, str], value: Optional[str]) -> Optional[str]:
-    if not value:
-        return None
-    return labels.get(str(value), str(value))
-
-
 def _resource_identity(resources: Dict[str, ResourceIdentity], value: Optional[str]) -> ResourceIdentity:
     text = str(value or "").strip()
     if not text:

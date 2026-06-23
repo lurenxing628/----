@@ -127,7 +127,6 @@ from .quality_gate_shared import (
     hash_quality_gate_source_proof,
     hash_required_tests_registry,
     is_startup_scope_path,
-    iter_non_regression_guard_tests,
     iter_quality_gate_required_tests,
     now_shanghai_iso,
     parse_pytest_collect_nodeids,

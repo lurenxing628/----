@@ -52,12 +52,3 @@ def write_collect_nodeids(payload: Mapping[str, Any], *, repo_root: str = REPO_R
     with open(abs_path, "w", encoding="utf-8") as handle:
         json.dump(dict(payload), handle, ensure_ascii=False, indent=2, sort_keys=True)
     return rel_path
-
-
-def load_collect_nodeids(*, repo_root: str = REPO_ROOT) -> Dict[str, Any]:
-    abs_path = os.path.join(os.path.abspath(repo_root), COLLECT_NODEIDS_REL.replace("/", os.sep))
-    with open(abs_path, encoding="utf-8") as handle:
-        loaded = json.load(handle)
-    if not isinstance(loaded, dict):
-        raise ValueError("collect_nodeids payload must be a JSON object")
-    return loaded

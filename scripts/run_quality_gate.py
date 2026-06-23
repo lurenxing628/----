@@ -2080,12 +2080,6 @@ def _cached_full_test_debt_failure_result(
     }
 
 
-def _long_gate_success_result_rel_path(entry_id: str, *, cache_dir: str) -> str:
-    cache_root = str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/")
-    safe_entry_id = str(entry_id or "").replace("\\", "_").replace("/", "_").strip() or "unknown"
-    return f"{cache_root}/results/{safe_entry_id}.success.json"
-
-
 def _prepare_long_gate_success_output_files(
     entry: Dict[str, Any],
     result: Dict[str, Any],
@@ -2330,12 +2324,6 @@ def _mark_manifest_unbound(manifest: Dict[str, Any]) -> None:
         "claim": "diagnostic_run_completed_in_dirty_worktree",
         "does_not_claim": "required_registry_bound_to_clean_worktree",
     }
-
-
-def _parse_args_legacy(argv: Optional[Sequence[str]]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="APS 质量门禁")
-    parser.add_argument("--require-clean-worktree", action="store_true", help="要求当前 worktree 为 clean")
-    return parser.parse_args(list(argv) if argv is not None else None)
 
 
 def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:

@@ -21,9 +21,6 @@ from tools.test_registry import (
     hash_required_tests_registry as _registry_required_tests_hash,
 )
 from tools.test_registry import (
-    iter_non_regression_guard_tests as _registry_non_regression_guard_tests,
-)
-from tools.test_registry import (
     iter_required_tests as _registry_required_tests,
 )
 from tools.test_registry import (
@@ -689,10 +686,6 @@ def quality_gate_required_test_nodeid_matches(
     required_tests: Sequence[str] = QUALITY_GATE_REQUIRED_TESTS,
 ) -> bool:
     return _registry_required_test_nodeid_matches(nodeid, required_tests)
-
-
-def iter_non_regression_guard_tests() -> List[str]:
-    return _registry_non_regression_guard_tests()
 
 
 def build_quality_gate_command_plan() -> List[Dict[str, Any]]:

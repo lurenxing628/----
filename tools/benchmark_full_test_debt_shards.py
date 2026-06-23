@@ -33,15 +33,6 @@ def _parse_counts(raw_value: str) -> List[int]:
     return counts
 
 
-def _load_nodeids(payload_path: Path) -> List[str]:
-    payload = json.loads(payload_path.read_text(encoding="utf-8"))
-    raw_nodeids = payload.get("collected_nodeids") if isinstance(payload, dict) else None
-    nodeids = [str(item) for item in list(raw_nodeids or []) if str(item)]
-    if not nodeids:
-        raise RuntimeError(f"payload has no collected_nodeids: {payload_path}")
-    return nodeids
-
-
 def _duration_by_nodeid(payload: Dict[str, Any]) -> Dict[str, float]:
     durations: Dict[str, float] = {}
     for report in list(payload.get("reports") or []):

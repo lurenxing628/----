@@ -552,19 +552,6 @@ def run_check(
     return summary
 
 
-def load_current_payload(
-    *,
-    repo_root: str = REPO_ROOT,
-    rel_path: str = QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
-) -> Dict[str, Any]:
-    abs_path = os.path.join(str(repo_root), str(rel_path).replace("\\", "/").replace("/", os.sep))
-    with open(abs_path, encoding="utf-8") as handle:
-        payload = json.load(handle)
-    if not isinstance(payload, dict):
-        raise QualityGateError(f"{rel_path} 顶层必须是 JSON 对象")
-    return payload
-
-
 def run_check_from_existing_payload(
     payload: Dict[str, Any],
     *,
