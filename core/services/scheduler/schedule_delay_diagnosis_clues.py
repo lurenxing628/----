@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, List, Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Dict, Iterable, List, Mapping, Sequence
 
+from core.models import MachineDowntime
 from core.models.schedule_delay_diagnosis import DiagnosisClue
 from core.models.schedule_plan_identity import EvidenceLink, PlanIdentity
 from core.services.common.overdue_calculations import parse_dt
@@ -9,6 +11,15 @@ from core.services.material.batch_material_service import BatchMaterialService
 from data.repositories import BatchRepository, MachineDowntimeRepository
 
 from .schedule_delay_diagnosis_utils import plan_link, text
+
+
+@dataclass
+class DiagnosisPrefetch:
+    """诊断循环前一次性预取的只读上下文，替代逐批次/逐机台查询（消除 N+1）。"""
+
+    ready_status_by_batch: Dict[str, str] = field(default_factory=dict)
+    materials_by_batch: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
+    downtimes_by_machine: Dict[str, List[MachineDowntime]] = field(default_factory=dict)
 
 
 class ScheduleDelayDiagnosisClueBuilder:
@@ -19,6 +30,21 @@ class ScheduleDelayDiagnosisClueBuilder:
         self.batch_material_service = BatchMaterialService(conn, logger=logger)
         self.downtime_repo = MachineDowntimeRepository(conn, logger=logger)
 
+    def build_prefetch(
+        self,
+        *,
+        batch_ids: Iterable[str],
+        machine_ids: Iterable[str],
+    ) -> DiagnosisPrefetch:
+        """诊断循环前一次性批量取齐齐套状态、物料明细、设备停机，避免循环内逐批/逐机台查询。"""
+        batch_id_list = [b for b in {text(x) for x in batch_ids} if b]
+        machine_id_list = [m for m in {text(x) for x in machine_ids} if m]
+        return DiagnosisPrefetch(
+            ready_status_by_batch=self.batch_repo.list_ready_status_by_batch_ids(batch_id_list),
+            materials_by_batch=self.batch_material_service.list_for_batches(batch_id_list),
+            downtimes_by_machine=self.downtime_repo.list_active_by_machines(machine_id_list),
+        )
+
     def candidate_clues(
         self,
         *,
@@ -27,6 +53,7 @@ class ScheduleDelayDiagnosisClueBuilder:
         plan_identity: PlanIdentity,
         generated_at: str,
         gaps: List[str],
+        prefetch: DiagnosisPrefetch,
     ) -> List[DiagnosisClue]:
         clues: List[DiagnosisClue] = []
         clues.extend(
@@ -35,9 +62,10 @@ class ScheduleDelayDiagnosisClueBuilder:
                 plan_identity=plan_identity,
                 generated_at=generated_at,
                 gaps=gaps,
+                prefetch=prefetch,
             )
         )
-        downtime_clue = self._downtime_clue(plan_rows=plan_rows, plan_identity=plan_identity)
+        downtime_clue = self._downtime_clue(plan_rows=plan_rows, plan_identity=plan_identity, prefetch=prefetch)
         if downtime_clue is not None:
             clues.append(downtime_clue)
         if plan_rows:
@@ -75,10 +103,12 @@ class ScheduleDelayDiagnosisClueBuilder:
         plan_identity: PlanIdentity,
         generated_at: str,
         gaps: List[str],
+        prefetch: DiagnosisPrefetch,
     ) -> List[DiagnosisClue]:
-        ready_snapshot = self.batch_repo.get_ready_snapshot(batch_id) or {}
-        ready_status = text(ready_snapshot.get("ready_status")).lower()
-        materials = self.batch_material_service.list_for_batch(batch_id)
+        # 等价口径：原 get_ready_snapshot 只用其中的 ready_status；list_ready_status_by_batch_ids
+        # 对不存在批次不返回键 → .get(batch_id) 为 None → text() 归一为 ""，与原“快照为空”分支一致。
+        ready_status = text(prefetch.ready_status_by_batch.get(batch_id)).lower()
+        materials = list(prefetch.materials_by_batch.get(batch_id) or [])
         if not ready_status:
             gap = "批次齐套状态缺失，暂时不能判断是不是物料问题。"
             gaps.append(gap)
@@ -201,6 +231,7 @@ class ScheduleDelayDiagnosisClueBuilder:
         *,
         plan_rows: Sequence[Mapping[str, Any]],
         plan_identity: PlanIdentity,
+        prefetch: DiagnosisPrefetch,
     ):
         for row in reversed(list(plan_rows)):
             machine_id = text(row.get("machine_id"))
@@ -219,6 +250,7 @@ class ScheduleDelayDiagnosisClueBuilder:
                 start_dt=start_dt,
                 end_dt=end_dt,
                 plan_identity=plan_identity,
+                prefetch=prefetch,
             )
             if clue is not None:
                 return clue
@@ -233,8 +265,11 @@ class ScheduleDelayDiagnosisClueBuilder:
         start_dt,
         end_dt,
         plan_identity: PlanIdentity,
+        prefetch: DiagnosisPrefetch,
     ):
-        for downtime in self.downtime_repo.list_active_after(machine_id, start_time):
+        # 预取按 machine_id 取全部 active 段（start_time/id 升序）；下方 Python 重叠判定与原
+        # list_active_after + 同一过滤逐字一致：重叠成立必有 end_time>窗口起点，候选与首命中顺序不变。
+        for downtime in prefetch.downtimes_by_machine.get(machine_id, []):
             d_start = parse_dt(downtime.start_time)
             d_end = parse_dt(downtime.end_time)
             if not d_start or not d_end or d_end <= start_dt or d_start >= end_dt:

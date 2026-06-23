@@ -31,12 +31,17 @@ class BatchRepository(BaseRepository):
         ids = sorted({str(batch_id or "").strip() for batch_id in batch_ids if str(batch_id or "").strip()})
         if not ids:
             return {}
-        placeholders = ", ".join("?" for _ in ids)
-        rows = self.fetchall(
-            f"SELECT batch_id, ready_status FROM Batches WHERE batch_id IN ({placeholders})",
-            tuple(ids),
-        )
-        return {str(row.get("batch_id") or ""): str(row.get("ready_status") or "").strip() for row in rows}
+        out: Dict[str, str] = {}
+        for i in range(0, len(ids), 900):  # SQLite 默认变量上限约 999，分块留余量
+            chunk = ids[i : i + 900]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = self.fetchall(
+                f"SELECT batch_id, ready_status FROM Batches WHERE batch_id IN ({placeholders})",
+                tuple(chunk),
+            )
+            for row in rows:
+                out[str(row.get("batch_id") or "")] = str(row.get("ready_status") or "").strip()
+        return out
 
     def list(
         self,

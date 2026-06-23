@@ -46,6 +46,17 @@ class BatchMaterialService:
             raise ValidationError("“批次号”不能为空", field="batch_id")
         return self.repo.list_with_material_details_by_batch(bid)
 
+    def list_for_batches(self, batch_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+        """批量版 list_for_batch：一次取回多批次物料明细，按 batch_id 分组。
+
+        逐批口径与 list_for_batch 一致；空白批次号在此被剔除（不进 IN），调用方按
+        “该批无明细”处理，与单批版对空白号抛错的差异仅在退化的空白入参上，正常批次号路径逐字等价。
+        """
+        ids = [bid for bid in (self._norm_text(x) for x in batch_ids) if bid]
+        if not ids:
+            return {}
+        return self.repo.list_with_material_details_by_batches(ids)
+
     def add_requirement(self, batch_id: Any, material_id: Any, required_qty: Any, available_qty: Any = None) -> None:
         bid = self._norm_text(batch_id)
         mid = self._norm_text(material_id)

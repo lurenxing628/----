@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, cast
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
 from core.models.schedule_delay_diagnosis import (
     ConfirmedFact,
@@ -75,6 +75,7 @@ class ScheduleDelayDiagnosisService:
         )
         rows_by_batch = self._rows_by_batch(detail_rows)
         overdue_rows = list(scheduled) + list(invalid_time) + list(unscheduled)
+        prefetch = self._build_clue_prefetch(overdue_rows=overdue_rows, rows_by_batch=rows_by_batch)
         items = [
             self._diagnose_item(
                 row=row,
@@ -82,6 +83,7 @@ class ScheduleDelayDiagnosisService:
                 plan_identity=identity,
                 generated_at=generated_at,
                 as_of_text=as_of_text,
+                prefetch=prefetch,
             )
             for row in overdue_rows
         ]
@@ -113,6 +115,23 @@ class ScheduleDelayDiagnosisService:
         parsed = parse_dt(value)
         return parsed or datetime.now()
 
+    def _build_clue_prefetch(
+        self,
+        *,
+        overdue_rows: Sequence[Mapping[str, Any]],
+        rows_by_batch: Mapping[str, Sequence[Mapping[str, Any]]],
+    ):
+        """循环前一次性批量取齐线索所需数据（齐套/物料/停机），消除 _diagnose_item 内逐批 N+1。"""
+        overdue_batch_ids = {text(row.get("batch_id")) for row in overdue_rows}
+        overdue_batch_ids.discard("")
+        machine_ids: Set[str] = set()
+        for batch_id in overdue_batch_ids:
+            for plan_row in rows_by_batch.get(batch_id) or []:
+                machine_id = text(plan_row.get("machine_id"))
+                if machine_id:
+                    machine_ids.add(machine_id)
+        return self.clue_builder.build_prefetch(batch_ids=overdue_batch_ids, machine_ids=machine_ids)
+
     @staticmethod
     def _rows_by_batch(rows: Sequence[Mapping[str, Any]]) -> Dict[str, List[Mapping[str, Any]]]:
         out: Dict[str, List[Mapping[str, Any]]] = {}
@@ -132,6 +151,7 @@ class ScheduleDelayDiagnosisService:
         plan_identity: PlanIdentity,
         generated_at: str,
         as_of_text: str,
+        prefetch,
     ) -> OverdueDiagnosisItem:
         batch_id = text(row.get("batch_id"))
         plan_rows = list(rows_by_batch.get(batch_id) or [])
@@ -145,6 +165,7 @@ class ScheduleDelayDiagnosisService:
             plan_identity=plan_identity,
             generated_at=generated_at,
             gaps=gaps,
+            prefetch=prefetch,
         )
         if text(row.get("bucket")) == "schedule_time_invalid":
             gaps.append("这个批次有排程记录，但计划完成时间写法不对，请先修正排程时间后再判断是否真的晚完。")

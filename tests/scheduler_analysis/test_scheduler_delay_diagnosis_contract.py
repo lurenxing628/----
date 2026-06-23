@@ -267,6 +267,49 @@ def _diagnose_via_live_door(service: ScheduleDelayDiagnosisService, *, plan_role
     )
 
 
+def test_delay_diagnosis_clue_data_is_prefetched_in_batch_not_per_overdue_batch(tmp_path) -> None:
+    """反 N+1 回归：多个超期批次下，齐套/物料/停机均一次性批量取齐，循环内不再逐批/逐机台查询。
+
+    口径锚定 _seed_base：B_SCHEDULED、B_UNSCHEDULED 两个超期批次。批量方法各调 1 次；
+    旧的逐批方法（get_ready_snapshot / list_for_batch / list_active_after）在诊断期间 0 调用。
+    """
+    conn, _scenario_id = _seed_db(tmp_path)
+    try:
+        service = ScheduleDelayDiagnosisService(conn)
+        counts = {}
+
+        def _spy(owner, name: str):
+            original = getattr(owner, name)
+
+            def wrapped(*args, **kwargs):
+                counts[name] = counts.get(name, 0) + 1
+                return original(*args, **kwargs)
+
+            setattr(owner, name, wrapped)
+
+        cb = service.clue_builder
+        _spy(cb.batch_repo, "list_ready_status_by_batch_ids")
+        _spy(cb.batch_material_service, "list_for_batches")
+        _spy(cb.downtime_repo, "list_active_by_machines")
+        _spy(cb.batch_repo, "get_ready_snapshot")
+        _spy(cb.batch_material_service, "list_for_batch")
+        _spy(cb.downtime_repo, "list_active_after")
+
+        report = _diagnose_via_live_door(service, plan_role=ROLE_ADOPTED)
+
+        assert report.total_count == 2
+        # 批量方法各 1 次（与超期批次数无关）
+        assert counts.get("list_ready_status_by_batch_ids", 0) == 1
+        assert counts.get("list_for_batches", 0) == 1
+        assert counts.get("list_active_by_machines", 0) == 1
+        # 旧逐批/逐机台方法在诊断期间不再被触发
+        assert counts.get("get_ready_snapshot", 0) == 0
+        assert counts.get("list_for_batch", 0) == 0
+        assert counts.get("list_active_after", 0) == 0
+    finally:
+        conn.close()
+
+
 def test_delay_diagnosis_reports_overdue_clues_and_stays_readonly(tmp_path) -> None:
     conn, _scenario_id = _seed_db(tmp_path)
     try:

@@ -52,6 +52,34 @@ class BatchMaterialRepository(BaseRepository):
             (str(batch_id),),
         )
 
+    def list_with_material_details_by_batches(self, batch_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+        """批量版 list_with_material_details_by_batch：一次 IN 查询取回多批次物料明细，按 batch_id 分组。
+
+        等价前提：单批版按 ORDER BY bm.id 返回；这里 ORDER BY bm.batch_id, bm.id 后分组，
+        每个批次内部仍是 bm.id 升序，逐批语义与单批版逐字一致（仅省去 N 次往返）。
+        """
+        ids = sorted({str(b).strip() for b in batch_ids if str(b or "").strip()})
+        out: Dict[str, List[Dict[str, Any]]] = {bid: [] for bid in ids}
+        if not ids:
+            return out
+        for i in range(0, len(ids), 900):  # SQLite 默认变量上限约 999，分块留余量
+            chunk = ids[i : i + 900]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = self.fetchall(
+                f"""
+                SELECT bm.id, bm.batch_id, bm.material_id, m.name AS material_name, m.spec, m.unit,
+                       bm.required_qty, bm.available_qty, bm.ready_status
+                FROM BatchMaterials bm
+                LEFT JOIN Materials m ON m.material_id = bm.material_id
+                WHERE bm.batch_id IN ({placeholders})
+                ORDER BY bm.batch_id, bm.id
+                """,
+                tuple(chunk),
+            )
+            for row in rows:
+                out.setdefault(str(row.get("batch_id") or ""), []).append(row)
+        return out
+
     def add(self, batch_id: str, material_id: str, *, required_qty: float, available_qty: float, ready_status: str) -> BatchMaterial:
         cur = self.execute(
             """

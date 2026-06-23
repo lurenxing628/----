@@ -61,6 +61,39 @@ class MachineDowntimeRepository(BaseRepository):
         )
         return [MachineDowntime.from_row(r) for r in rows]
 
+    def list_active_by_machines(self, machine_ids: List[str]) -> Dict[str, List[MachineDowntime]]:
+        """批量取多台设备的全部有效（status='active'）停机段，按 machine_id 分组、组内 start_time/id 升序。
+
+        与 list_active_after 的等价前提：
+        - list_active_after 用 SQL 预筛 end_time>窗口起点，再由调用方在 Python 里做精确重叠判定
+          （d_end<=start 或 d_start>=end 则跳过）。这里把 SQL 预筛去掉、改在调用方对全部 active 段
+          做同一段 Python 重叠判定——因重叠成立必然 end_time>窗口起点，候选集合与命中顺序逐字一致。
+        - 坏时间段：list_active_after 由 SQL time_dt 解析为 NULL 后剔除；这里这些段会进入 Python，
+          但 parse_dt 解析为 None 后被同样的 None 判定剔除,剔除结果一致。
+        - 组内排序 start_time ASC, id ASC 保持“首个重叠段命中”语义不变。
+        """
+        ids = sorted({str(m).strip() for m in machine_ids if str(m or "").strip()})
+        out: Dict[str, List[MachineDowntime]] = {mid: [] for mid in ids}
+        if not ids:
+            return out
+        for i in range(0, len(ids), 900):  # SQLite 默认变量上限约 999，分块留余量
+            chunk = ids[i : i + 900]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = self.fetchall(
+                f"""
+                SELECT id, machine_id, scope_type, scope_value, start_time, end_time, reason_code, reason_detail,
+                       status, created_at, updated_at
+                FROM MachineDowntimes
+                WHERE machine_id IN ({placeholders})
+                  AND status = 'active'
+                ORDER BY machine_id, start_time ASC, id ASC
+                """,
+                tuple(chunk),
+            )
+            for row in rows:
+                out.setdefault(str(row.get("machine_id") or ""), []).append(MachineDowntime.from_row(row))
+        return out
+
     def list_active_overlaps_with_machine_names(self, start_time: str, end_time: str) -> List[Dict[str, Any]]:
         parsed_start_time = require_dt_for_sql(start_time, "停机重叠查询时间写法不对，无法读取停机线索")
         parsed_end_time = require_dt_for_sql(end_time, "停机重叠查询时间写法不对，无法读取停机线索")

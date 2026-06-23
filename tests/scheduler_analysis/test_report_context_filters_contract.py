@@ -440,7 +440,12 @@ def test_delay_diagnosis_service_pushes_batch_and_resource_filters_to_plan_queri
 
     service = ScheduleDelayDiagnosisService.__new__(ScheduleDelayDiagnosisService)
     service.plan_query = _PlanQuery()
-    service.clue_builder = SimpleNamespace()
+    # 无超期行 → 预取不会被消费；给一个忠实的空预取占位即可（仅为满足循环前的一次性预取调用）。
+    service.clue_builder = SimpleNamespace(
+        build_prefetch=lambda **_kwargs: SimpleNamespace(
+            ready_status_by_batch={}, materials_by_batch={}, downtimes_by_machine={}
+        )
+    )
 
     report = service.diagnose_resolved_plan_overdue(
         version=12,
