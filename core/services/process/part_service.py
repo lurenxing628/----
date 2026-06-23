@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Part
-from core.models.enums import YESNO_VALUES, YesNo
+from core.models.enums import YESNO_VALUES, SupplierStatus, YesNo
 from core.services.common.normalize import append_unique_text_messages, normalize_text
 from core.services.common.safe_logging import safe_warning
 from data.repositories import (
@@ -431,3 +431,47 @@ class PartService:
     # -------------------------
     def build_existing_for_excel_routes(self) -> Dict[str, Dict[str, Any]]:
         return build_existing_for_excel_routes(self.part_repo)
+
+    def build_route_reference_snapshot(self, strict_mode: bool = False) -> Dict[str, Any]:
+        """供 process_excel 路由用的参考数据快照：op_type / supplier 列表等。
+
+        只镜像 RouteParser 真正读取的解析输入：供应商状态会决定外协工序是否可被
+        自动匹配，因此只纳入启用供应商集合。返回结构与预览基线 extra_state 逐位等价。
+        """
+        op_types = sorted(
+            self.op_type_repo.list() or [],
+            key=lambda item: (str(getattr(item, "op_type_id", "") or ""), str(getattr(item, "name", "") or "")),
+        )
+        try:
+            supplier_rows = self.supplier_repo.list(status=SupplierStatus.ACTIVE.value) or []
+        except TypeError:
+            supplier_rows = [
+                item
+                for item in (self.supplier_repo.list() or [])
+                if str(getattr(item, "status", SupplierStatus.ACTIVE.value) or "").strip().lower()
+                == SupplierStatus.ACTIVE.value
+            ]
+        suppliers = sorted(
+            supplier_rows,
+            key=lambda item: (str(getattr(item, "supplier_id", "") or ""), str(getattr(item, "op_type_id", "") or "")),
+        )
+        return {
+            "strict_mode": bool(strict_mode),
+            "op_types": [
+                {
+                    "op_type_id": ot.op_type_id,
+                    "name": ot.name,
+                    "category": ot.category,
+                }
+                for ot in op_types
+            ],
+            "suppliers": [
+                {
+                    "supplier_id": supplier.supplier_id,
+                    "op_type_id": supplier.op_type_id,
+                    "default_days": supplier.default_days,
+                    "status": supplier.status,
+                }
+                for supplier in suppliers
+            ],
+        }

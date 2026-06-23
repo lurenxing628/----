@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional
 from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
-from core.models.enums import SupplierStatus
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ImportMode, ImportPreviewRow
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
@@ -65,44 +64,8 @@ def _validate_route_row(
 
 
 def _route_parse_extra_state(part_svc: PartService, *, strict_mode: bool) -> Dict[str, Any]:
-    # 这里必须只镜像 RouteParser 真正读取的解析输入。
-    # 供应商状态会决定外协工序是否可被自动匹配，因此只纳入启用供应商集合。
-    op_types = sorted(
-        part_svc.op_type_repo.list() or [],
-        key=lambda item: (str(getattr(item, "op_type_id", "") or ""), str(getattr(item, "name", "") or "")),
-    )
-    try:
-        supplier_rows = part_svc.supplier_repo.list(status=SupplierStatus.ACTIVE.value) or []
-    except TypeError:
-        supplier_rows = [
-            item
-            for item in (part_svc.supplier_repo.list() or [])
-            if str(getattr(item, "status", SupplierStatus.ACTIVE.value) or "").strip().lower() == SupplierStatus.ACTIVE.value
-        ]
-    suppliers = sorted(
-        supplier_rows,
-        key=lambda item: (str(getattr(item, "supplier_id", "") or ""), str(getattr(item, "op_type_id", "") or "")),
-    )
-    return {
-        "strict_mode": bool(strict_mode),
-        "op_types": [
-            {
-                "op_type_id": ot.op_type_id,
-                "name": ot.name,
-                "category": ot.category,
-            }
-            for ot in op_types
-        ],
-        "suppliers": [
-            {
-                "supplier_id": supplier.supplier_id,
-                "op_type_id": supplier.op_type_id,
-                "default_days": supplier.default_days,
-                "status": supplier.status,
-            }
-            for supplier in suppliers
-        ],
-    }
+    # 参考数据的读取与组装已收进 core，避免 web 直接穿透 service 触碰 data 仓库。
+    return part_svc.build_route_reference_snapshot(strict_mode=strict_mode)
 
 
 def _render_excel_routes_page(
