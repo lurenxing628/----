@@ -1,1 +1,1 @@
-{"pytest_exit_code":0,"raw_edge_pairs":6858,"reachable_nodes":3430,"resolved_edges":5458,"subset":["tests/schedule","tests/web_pages"],"unresolved_edge_pairs":1400}
+{"pytest_exit_code":0,"raw_edge_pairs":11933,"reachable_nodes":5508,"resolved_edges":9649,"subset":["tests"],"unresolved_edge_pairs":2284}
