@@ -102,6 +102,7 @@ def apply_excel_route_preview_rows(
     mode: ImportMode,
     strict_mode: bool,
     existing: Dict[str, Dict[str, Any]],
+    parse_context: Any = None,
 ) -> RouteImportApplyResult:
     tx = TransactionManager(g.db)
     new_count = update_count = skip_count = error_count = 0
@@ -145,6 +146,7 @@ def apply_excel_route_preview_rows(
                     part_name=name,
                     route_raw=route_raw,
                     strict_mode=strict_mode,
+                    context=parse_context,
                 )
                 for warning in getattr(parse_result, "warnings", None) or []:
                     route_warning_total += 1

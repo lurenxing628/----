@@ -27,7 +27,7 @@ from .part_route_validation import (
     operation_source_or_raise,
     save_template_no_tx,
 )
-from .route_parser import ParseResult, ParseStatus, RouteParser
+from .route_parser import ParseResult, ParseStatus, RouteParseContext, RouteParser
 
 
 class PartService:
@@ -118,11 +118,15 @@ class PartService:
         - 基线只保留会影响自动补建结果的解析事实；
         - route_raw 自身的变化由调用方单独快照，避免这里重复携带原始输入。
         """
+        # 循环外一次性构建解析纯数据，逐零件复用，避免每条路线重查 OpTypes/Suppliers（消除 N+1）。
+        parse_context = self.route_parser.build_parse_context()
         return build_route_parse_baseline_snapshot(
             part_nos=part_nos,
             parts_cache=parts_cache,
             list_parts=self.list,
-            parse_route=lambda route_raw, part_no: self.parse(route_raw, part_no=part_no, strict_mode=False),
+            parse_route=lambda route_raw, part_no: self.parse(
+                route_raw, part_no=part_no, strict_mode=False, context=parse_context
+            ),
         )
 
     def get(self, part_no: str) -> Part:
@@ -231,13 +235,19 @@ class PartService:
     def validate_route_format(self, route_raw: Any) -> Tuple[bool, str]:
         return self.route_parser.validate_format(str(route_raw) if route_raw is not None else "")
 
-    def _parse_route_or_raise(self, *, part_no: str, route_raw: Any, strict_mode: bool = False) -> ParseResult:
+    def build_route_parse_context(self) -> RouteParseContext:
+        """暴露给批量导入/预览：循环外构建一次解析纯数据，逐行经 context= 复用以消除 N+1。"""
+        return self.route_parser.build_parse_context()
+
+    def _parse_route_or_raise(
+        self, *, part_no: str, route_raw: Any, strict_mode: bool = False, context: Optional[RouteParseContext] = None
+    ) -> ParseResult:
         rr = str(route_raw) if route_raw is not None else ""
         ok, msg = self.route_parser.validate_format(rr)
         if not ok:
             raise BusinessError(ErrorCode.ROUTE_PARSE_ERROR, f"工艺路线解析失败：{msg}")
 
-        result = self.route_parser.parse(rr, part_no=part_no, strict_mode=bool(strict_mode))
+        result = self.route_parser.parse(rr, part_no=part_no, strict_mode=bool(strict_mode), context=context)
         if result.status == ParseStatus.FAILED:
             raise BusinessError(
                 ErrorCode.ROUTE_PARSE_ERROR,
@@ -246,9 +256,14 @@ class PartService:
             )
         return result
 
-    def parse(self, route_raw: Any, part_no: str, *, strict_mode: bool = False) -> ParseResult:
+    def parse(
+        self, route_raw: Any, part_no: str, *, strict_mode: bool = False, context: Optional[RouteParseContext] = None
+    ) -> ParseResult:
         return self.route_parser.parse(
-            str(route_raw) if route_raw is not None else "", part_no=part_no, strict_mode=bool(strict_mode)
+            str(route_raw) if route_raw is not None else "",
+            part_no=part_no,
+            strict_mode=bool(strict_mode),
+            context=context,
         )
 
     def reparse_and_save(self, part_no: Any, route_raw: Any, *, strict_mode: bool = False) -> ParseResult:
@@ -285,11 +300,20 @@ class PartService:
 
         return result
 
-    def upsert_and_parse_no_tx(self, part_no: str, part_name: str, route_raw: str, *, strict_mode: bool = False) -> ParseResult:
+    def upsert_and_parse_no_tx(
+        self,
+        part_no: str,
+        part_name: str,
+        route_raw: str,
+        *,
+        strict_mode: bool = False,
+        context: Optional[RouteParseContext] = None,
+    ) -> ParseResult:
         """
         在“外部已开启事务”的情况下导入零件工艺路线：
         - 不自己开启事务（避免嵌套 commit）
         - 若零件不存在则创建；存在则更新；然后覆盖保存模板
+        - context：批量导入时由调用方循环外构建并逐行复用，避免每行重查 OpTypes/Suppliers（消除 N+1）
         """
         pn = self._normalize_text(part_no)
         name = self._normalize_text(part_name)
@@ -298,7 +322,7 @@ class PartService:
             raise ValidationError("“图号”不能为空", field="图号")
         if not name:
             raise ValidationError("“名称”不能为空", field="名称")
-        result = self._parse_route_or_raise(part_no=pn, route_raw=rr, strict_mode=bool(strict_mode))
+        result = self._parse_route_or_raise(part_no=pn, route_raw=rr, strict_mode=bool(strict_mode), context=context)
 
         # upsert part
         existed = self.part_repo.get(pn)

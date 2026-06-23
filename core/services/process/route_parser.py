@@ -89,6 +89,21 @@ class ParseResult:
         }
 
 
+@dataclass
+class RouteParseContext:
+    """一次解析所需的纯数据快照：工种名映射 + 供应商映射/问题/全局问题。
+
+    供批量解析（Excel 路线预览/导入、批次基线快照）在循环外构建一次、经 parse(context=...) 复用，
+    避免每条路线都重查 OpTypes/Suppliers（消除 N+1）。缓存的是纯数据而非 resolver 实例；
+    要求复用窗口内 OpTypes/Suppliers 不被改动（预览/导入循环只写 Parts/PartOperations，不改这两张表）。
+    """
+
+    op_types: Dict[str, Any]
+    suppliers: Dict[str, Tuple[str, float]]
+    supplier_issues: Dict[str, List[str]]
+    supplier_global_issues: List[SupplierGlobalIssue]
+
+
 class RouteParser:
     """
     工艺路线解析器（按开发文档 7.x“预处理 + 容错 + 报告”保留核心逻辑）。
@@ -105,7 +120,25 @@ class RouteParser:
         self.suppliers_repo = suppliers_repo
         self.logger = logger
 
-    def parse(self, route_string: str, part_no: str, *, strict_mode: bool = False) -> ParseResult:
+    def build_parse_context(self) -> RouteParseContext:
+        """一次性构建解析纯数据（工种名映射 + 供应商映射/问题/全局问题），供批量解析循环外复用。"""
+        op_types = {ot.name: ot for ot in (self.op_types_repo.list() or [])}
+        suppliers, supplier_issues, supplier_global_issues = self._build_supplier_map_with_global_issues()
+        return RouteParseContext(
+            op_types=op_types,
+            suppliers=suppliers,
+            supplier_issues=supplier_issues,
+            supplier_global_issues=supplier_global_issues,
+        )
+
+    def parse(
+        self,
+        route_string: str,
+        part_no: str,
+        *,
+        strict_mode: bool = False,
+        context: Optional[RouteParseContext] = None,
+    ) -> ParseResult:
         warnings: List[str] = []
         errors: List[str] = []
         original_input = route_string or ""
@@ -124,8 +157,12 @@ class RouteParser:
             )
 
         errors.extend(route_format_errors(normalized))
-        op_types = {ot.name: ot for ot in (self.op_types_repo.list() or [])}
-        suppliers, supplier_issues, supplier_global_issues = self._build_supplier_map_with_global_issues()
+        # 单次解析 context=None → 每次重建（行为与历史逐字一致）；批量解析传入循环外构建的 context 复用，消除 N+1。
+        ctx = context if context is not None else self.build_parse_context()
+        op_types = ctx.op_types
+        suppliers = ctx.suppliers
+        supplier_issues = ctx.supplier_issues
+        supplier_global_issues = ctx.supplier_global_issues
         matches = route_tokens(normalized)
 
         if not matches:

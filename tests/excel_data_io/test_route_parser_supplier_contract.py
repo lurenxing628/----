@@ -66,9 +66,14 @@ class _StubSuppliersRepo:
 class _SnapshotService(PartService):
     def __init__(self, parser: RouteParser) -> None:
         self._parser = parser
+        # build_route_parse_baseline_snapshot 现会循环外构建一次解析 context 并经 parse(context=) 复用，
+        # stub 需暴露 route_parser 并在 parse 覆写里透传 context（消除 N+1 后的契约）。
+        self.route_parser = parser
 
-    def parse(self, route_raw, part_no: str, *, strict_mode: bool = False):
-        return self._parser.parse(str(route_raw or ""), part_no=part_no, strict_mode=bool(strict_mode))
+    def parse(self, route_raw, part_no: str, *, strict_mode: bool = False, context=None):
+        return self._parser.parse(
+            str(route_raw or ""), part_no=part_no, strict_mode=bool(strict_mode), context=context
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -241,3 +246,46 @@ def test_route_parser_ignores_stale_issue_from_non_effective_supplier() -> None:
     assert len(result.operations) == 1
     assert result.operations[0].supplier_id == "SUP_Z"
     assert result.operations[0].default_days == 5.0
+
+
+# ---------------------------------------------------------------------------
+# 反 N+1 回归：批量基线快照在循环外构建一次解析 context，逐零件复用；
+# OpTypes/Suppliers 仅各查一次，与零件数无关（旧实现是每条路线重查 → N+1）。
+# ---------------------------------------------------------------------------
+class _CountingOpTypesRepo(_StubOpTypesRepo):
+    def __init__(self, op_types: List[_OpType]) -> None:
+        super().__init__(op_types=op_types)
+        self.list_calls = 0
+
+    def list(self):
+        self.list_calls += 1
+        return super().list()
+
+
+class _CountingSuppliersRepo(_StubSuppliersRepo):
+    def __init__(self, suppliers: List[_Supplier]) -> None:
+        super().__init__(suppliers=suppliers)
+        self.list_calls = 0
+
+    def list(self, status: Optional[str] = None):
+        self.list_calls += 1
+        return super().list(status)
+
+
+def test_route_parse_baseline_snapshot_builds_context_once_not_per_part() -> None:
+    op_repo = _CountingOpTypesRepo(op_types=[_OpType(op_type_id="OT_EXT", name="表处理", category="external")])
+    sup_repo = _CountingSuppliersRepo(
+        suppliers=[_Supplier(supplier_id="SUP_Z", op_type_id="OT_EXT", default_days=5.0)]
+    )
+    parser = RouteParser(op_types_repo=op_repo, suppliers_repo=sup_repo, logger=None)
+    svc = _SnapshotService(parser)
+
+    part_nos = ["P1", "P2", "P3", "P4", "P5"]
+    cache = {pn: SimpleNamespace(part_no=pn, route_raw="10表处理") for pn in part_nos}
+
+    snapshot = svc.build_route_parse_baseline_snapshot(part_nos=part_nos, parts_cache=cache)
+
+    assert len(snapshot) == len(part_nos)
+    # 5 个零件，但 OpTypes/Suppliers 各只查一次（context 循环外构建一次复用），与零件数无关。
+    assert op_repo.list_calls == 1, op_repo.list_calls
+    assert sup_repo.list_calls == 1, sup_repo.list_calls

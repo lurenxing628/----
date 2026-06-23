@@ -39,7 +39,9 @@ from .process_excel_route_apply import (
 # ============================================================
 
 
-def _validate_route_row(part_svc: PartService, row: Dict[str, Any], *, strict_mode: bool) -> Optional[str]:
+def _validate_route_row(
+    part_svc: PartService, row: Dict[str, Any], *, strict_mode: bool, parse_context: Any = None
+) -> Optional[str]:
     if is_blank_value(row.get("图号")):
         return "“图号”不能为空"
     if is_blank_value(row.get("名称")):
@@ -52,7 +54,7 @@ def _validate_route_row(part_svc: PartService, row: Dict[str, Any], *, strict_mo
         return f"工艺路线格式不合法：{msg}"
     if strict_mode:
         part_no = str(row.get("图号") or "").strip() or "<unknown>"
-        result = part_svc.parse(route_raw, part_no=part_no, strict_mode=True)
+        result = part_svc.parse(route_raw, part_no=part_no, strict_mode=True, context=parse_context)
         status_value = getattr(getattr(result, "status", None), "value", getattr(result, "status", None))
         if str(status_value or "").strip().lower() == "failed":
             sample = [str(msg) for msg in (getattr(result, "errors", None) or []) if str(msg).strip()]
@@ -214,8 +216,11 @@ def excel_routes_preview():
     part_svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = part_svc.build_existing_for_excel_routes()
 
+    # 严格模式下逐行 parse 校验：循环外构建一次解析纯数据复用，避免每行重查 OpTypes/Suppliers（消除 N+1）。
+    parse_context = part_svc.build_route_parse_context() if strict_mode else None
+
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        return _validate_route_row(part_svc, row, strict_mode=strict_mode)
+        return _validate_route_row(part_svc, row, strict_mode=strict_mode, parse_context=parse_context)
 
     preview_rows = preview_excel_route_rows(
         rows=rows,
@@ -281,8 +286,11 @@ def excel_routes_confirm():
             strict_mode=strict_mode,
         )
 
+    # 确认导入逐行 parse（校验 + 落模板）：循环外构建一次解析纯数据，供校验与落库整批复用（消除 N+1）。
+    parse_context = part_svc.build_route_parse_context()
+
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        return _validate_route_row(part_svc, row, strict_mode=strict_mode)
+        return _validate_route_row(part_svc, row, strict_mode=strict_mode, parse_context=parse_context)
 
     preview_rows = preview_excel_route_rows(
         rows=rows,
@@ -309,6 +317,7 @@ def excel_routes_confirm():
         mode=mode,
         strict_mode=strict_mode,
         existing=existing,
+        parse_context=parse_context,
     )
     time_cost_ms = int((time.time() - start) * 1000)
     result = apply_result.to_import_result()
