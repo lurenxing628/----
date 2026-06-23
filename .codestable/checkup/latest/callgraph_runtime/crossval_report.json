@@ -1,7 +1,7 @@
 {
   "ambiguous_confirmed": {
     "count": 936,
-    "pct_of_ambiguous": 0.0678,
+    "pct_of_ambiguous": 0.0684,
     "samples": [
       {
         "from": "core/algorithms/dispatch_rules.py::build_dispatch_key",
@@ -53,23 +53,23 @@
       }
     ]
   },
-  "confident_corroborated": 7609,
-  "confident_ratio_after_promotion": 0.4428,
-  "confident_ratio_before": 0.4023,
+  "confident_corroborated": 7610,
+  "confident_ratio_after_promotion": 0.4452,
+  "confident_ratio_before": 0.4045,
   "islands": {
-    "never_reached_deadcode_candidate": 156,
+    "never_reached_deadcode_candidate": 109,
     "reached_at_runtime_false_alarm": 224,
-    "total": 380
+    "total": 333
   },
   "note": "运行时仅覆盖本次采集子集,确认数为下界;死代码嫌疑须配合覆盖率背书,勿仅凭未达即判删。",
   "runtime": {
-    "edges": 9649,
-    "reachable_nodes": 5508
+    "edges": 9650,
+    "reachable_nodes": 5509
   },
   "static": {
-    "ambiguous": 13810,
-    "confident": 9294,
-    "total": 23104
+    "ambiguous": 13685,
+    "confident": 9296,
+    "total": 22981
   },
   "static_missed": {
     "count": 1108,
