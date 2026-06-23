@@ -2,22 +2,30 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import dataclass, field, is_dataclass, replace
-from types import SimpleNamespace
-from typing import Any, Callable, Dict, List, Optional, Tuple, cast
+from dataclasses import dataclass, field, replace
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 
-from .schedule_candidate_health import CandidateHealth, evaluate_candidate_health, unavailable_health
+from .schedule_candidate_health import CandidateHealth
+from .schedule_candidate_runtime_helpers import (
+    _candidate_cfg,
+    _candidate_health,
+    _candidate_score,
+    _dict_list,
+    _dict_or_none,
+    _public_budget,
+    _replace_schedule_input_cfg,
+    _resolve_total_budget,
+    _string_list,
+)
 from .schedule_candidate_selection import CandidateSelectionResult, select_candidate_plan
 from .schedule_candidate_specs import (
     CANDIDATE_KIND_BASELINE,
-    CANDIDATE_KIND_CRITICAL_CHAIN,
     CandidateRunSpec,
     generate_candidate_specs,
 )
-from .schedule_graph_report import prepare_schedule_graph_for_dispatch
+from .schedule_graph_report import make_cached_graph_preparation_fn
 from .schedule_optimizer import optimize_schedule
 
 CANDIDATE_STATUS_COMPLETED = "completed"
@@ -115,7 +123,7 @@ def run_candidate_comparison(
 ) -> CandidateComparisonOutcome:
     now = clock or time.time
     optimize = optimize_schedule_fn or optimize_schedule
-    prepare_graph = prepare_graph_fn or prepare_schedule_graph_for_dispatch
+    prepare_graph = prepare_graph_fn if prepare_graph_fn is not None else make_cached_graph_preparation_fn()
     cfg = ensure_schedule_config_snapshot(schedule_input.cfg, strict_mode=bool(strict_mode))
     specs = generate_candidate_specs(
         weight_count=weight_count,
@@ -378,86 +386,6 @@ def _candidate_plan_from_artifacts(
     )
 
 
-def _candidate_score(outcome: Any) -> Tuple[float, ...]:
-    return tuple(float(item) for item in tuple(outcome.best_score))
-
-
-def _string_list(value: Any) -> List[str]:
-    return [str(item) for item in list(value or [])]
-
-
-def _dict_list(value: Any) -> List[Dict[str, Any]]:
-    return [dict(item) for item in list(value or []) if isinstance(item, dict)]
-
-
-def _candidate_cfg(base_cfg: Any, spec: CandidateRunSpec) -> Any:
-    graph_mode = "on" if spec.graph_enabled else "off"
-    return replace(
-        base_cfg,
-        algo_mode="greedy",
-        graph_analysis_mode=graph_mode,
-        graph_critical_weight=int(spec.graph_critical_weight),
-        graph_impact_weight=int(spec.graph_impact_weight),
-        graph_downstream_weight=int(spec.graph_downstream_weight),
-    )
-
-
-def _replace_schedule_input_cfg(schedule_input: Any, *, cfg: Any) -> Any:
-    if is_dataclass(schedule_input) and not isinstance(schedule_input, type):
-        return replace(cast(Any, schedule_input), cfg=cfg)
-    if hasattr(schedule_input, "__dict__"):
-        data = dict(vars(schedule_input))
-        data["cfg"] = cfg
-        return SimpleNamespace(**data)
-    raise TypeError("schedule_input 必须是 dataclass 或普通对象，才能构造候选级输入。")
-
-
-def _candidate_health(
-    spec: CandidateRunSpec,
-    *,
-    baseline_results: List[Any],
-    outcome: Any,
-    graph_preparation: Any,
-) -> CandidateHealth:
-    if spec.kind != CANDIDATE_KIND_CRITICAL_CHAIN:
-        return unavailable_health("baseline")
-    if not baseline_results:
-        return unavailable_health("baseline_result_unavailable")
-    graph_metrics = _graph_health_context_payload(graph_preparation)
-    return evaluate_candidate_health(
-        baseline_results=baseline_results,
-        candidate_results=list(outcome.results or []),
-        graph_metrics=graph_metrics,
-    )
-
-
-def _graph_health_context_payload(graph_preparation: Any) -> Dict[str, Any]:
-    health_context = getattr(graph_preparation, "graph_health_context", None)
-    if isinstance(health_context, dict):
-        return dict(health_context)
-    return {}
-
-
-def _resolve_total_budget(run_time_budget_seconds: Optional[float], *, cfg: Any) -> float:
-    if run_time_budget_seconds is None:
-        return float(cfg.time_budget_seconds)
-    if isinstance(run_time_budget_seconds, bool):
-        raise ValidationError("这次找更好排法先试多久必须是数字。", field="run_time_budget_seconds")
-    try:
-        budget = float(run_time_budget_seconds)
-    except Exception as exc:
-        raise ValidationError("这次找更好排法先试多久必须是数字。", field="run_time_budget_seconds") from exc
-    if budget <= 0:
-        raise ValidationError("这次找更好排法先试多久必须大于 0 秒。", field="run_time_budget_seconds")
-    return budget
-
-
-def _public_budget(total_budget: float) -> Optional[float]:
-    if not math.isfinite(total_budget):
-        return None
-    return float(total_budget)
-
-
 def _skipped_plan(spec: CandidateRunSpec, *, failure_reason: str) -> CandidatePlan:
     return CandidatePlan(
         sequence=int(spec.sequence),
@@ -487,14 +415,6 @@ def _failed_plan(spec: CandidateRunSpec, exc: Exception, *, elapsed_seconds: flo
         failure_reason=str(exc),
         elapsed_seconds=float(elapsed_seconds),
     )
-
-
-def _dict_or_none(value: Any) -> Optional[Dict[str, Any]]:
-    if value is None:
-        return None
-    if isinstance(value, dict):
-        return dict(value)
-    raise TypeError("图分析结果必须是 dict 或 None。")
 
 
 __all__ = ["CANDIDATE_STATUS_COMPLETED", "CANDIDATE_STATUS_FAILED", "CANDIDATE_STATUS_SKIPPED", "CandidateComparisonOutcome", "CandidatePlan", "CandidateTrialFailure", "run_candidate_comparison"]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
 
@@ -92,9 +92,31 @@ def maybe_analyze_schedule_graph(
     return preparation.graph_analysis_public, preparation.graph_analysis_diagnostics
 
 
+def make_cached_graph_preparation_fn() -> Callable[[Any], ScheduleGraphDispatchPreparation]:
+    """返回带 per-comparison 核心缓存的 prepare_graph 闭包。
+
+    候选对比逐候选调用它构建图分析准备时，多个 graph-on 候选会复用同一份权重无关图核心
+    (nodes/edges/payload)，消除每候选重建全图。缓存仅在返回闭包的生命周期内有效（随本次对比销毁），
+    不跨对比泄漏；单次排产路径不经此闭包，行为与历史一致。
+    """
+    core_cache: Dict[str, Any] = {}
+
+    def _prepare(schedule_input: Any) -> ScheduleGraphDispatchPreparation:
+        return prepare_schedule_graph_for_dispatch(schedule_input, core_cache=core_cache)
+
+    return _prepare
+
+
 def prepare_schedule_graph_for_dispatch(
     schedule_input: ScheduleRunInput,
+    *,
+    core_cache: Optional[Dict[str, Any]] = None,
 ) -> ScheduleGraphDispatchPreparation:
+    """构建排产图增强的派工准备。
+
+    core_cache：候选对比时由调用方传入的可变缓存，用于在多个 graph-on 候选间复用权重无关的图核心
+    (nodes/edges/payload)，消除每候选重建全图。单次排产路径不传(默认 None)，行为与历史逐字一致。
+    """
     mode = _graph_analysis_mode(schedule_input.cfg)
     if mode == "off":
         return ScheduleGraphDispatchPreparation(
@@ -109,6 +131,7 @@ def prepare_schedule_graph_for_dispatch(
         schedule_input,
         mode=mode,
         graph_block_on_cycle=graph_block_on_cycle,
+        core_cache=core_cache,
     )
     _enforce_graph_dispatch_policy(
         mode=mode,
@@ -130,6 +153,7 @@ def _build_schedule_graph_analysis_projection(
     *,
     mode: str,
     graph_block_on_cycle: str,
+    core_cache: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str], Optional[Dict[str, Any]]]:
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
     from core.services.scheduler.graph.exporter import graph_summary_to_dict
@@ -141,20 +165,31 @@ def _build_schedule_graph_analysis_projection(
     scope = _graph_input_scope(schedule_input)
     score_weights = _graph_score_weights(schedule_input.cfg) if mode == "on" else None
     score_requested = bool(score_weights is not None and _graph_score_requested(score_weights))
+    metrics_mode = "full" if score_requested else "basic"
     try:
-        nodes = build_operation_nodes_from_rows(
-            schedule_input.algo_ops,
-            batches=schedule_input.batches,
-            resource_pool=schedule_input.resource_pool,
-            frozen_op_ids=schedule_input.frozen_op_ids,
-        )
-        scope = _graph_input_scope(schedule_input, nodes=nodes)
-        edges = build_linear_edges_by_batch(nodes)
-        summary = ScheduleGraphAnalysisService().analyze_linear_batches(
-            nodes,
-            metrics_mode=("full" if score_requested else "basic"),
-        )
-        payload = graph_summary_to_dict(summary)
+        cached_core = core_cache.get(metrics_mode) if core_cache is not None else None
+        if cached_core is not None:
+            # 候选对比复用权重无关核心：nodes/edges 为 frozen dataclass、payload 仅被下游以 dict()/list()
+            # 拷贝读取（已实证全只读），跨候选共享同一份只读安全；analyze_linear_batches 只吃 nodes+
+            # metrics_mode（不吃打分权重），graph-on 候选 metrics_mode 恒 full，故核心逐候选逐字相同。
+            nodes, edges, payload = cached_core
+            scope = _graph_input_scope(schedule_input, nodes=nodes)
+        else:
+            nodes = build_operation_nodes_from_rows(
+                schedule_input.algo_ops,
+                batches=schedule_input.batches,
+                resource_pool=schedule_input.resource_pool,
+                frozen_op_ids=schedule_input.frozen_op_ids,
+            )
+            scope = _graph_input_scope(schedule_input, nodes=nodes)
+            edges = build_linear_edges_by_batch(nodes)
+            summary = ScheduleGraphAnalysisService().analyze_linear_batches(
+                nodes,
+                metrics_mode=metrics_mode,
+            )
+            payload = graph_summary_to_dict(summary)
+            if core_cache is not None:
+                core_cache[metrics_mode] = (nodes, edges, payload)
         health_context = _build_graph_health_context(
             nodes=nodes,
             payload=payload,
