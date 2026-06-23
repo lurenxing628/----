@@ -171,3 +171,9 @@ docs/panorama.css
 docs/panorama.js
 docs/v2/panorama.css
 docs/v2/panorama.js
+
+# coverage 数据(pyproject 已唤醒 pytest-cov，按需 --cov 生成，不入库)
+.coverage
+.coverage.*
+coverage.json
+htmlcov/

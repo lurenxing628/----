@@ -11,12 +11,17 @@ from __future__ import annotations
 import ast
 import json
 import os
+import sys
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 OUT_DIR = os.path.abspath(os.environ.get("CHECKUP_CALLGRAPH") or os.path.join(HERE, "..", "latest", "callgraph"))
+
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import callgraph_type_index as _cti  # 类型感知 attr 消解 leaf helper(拆出以免本文件触 500 行门禁)
 
 FIRST_PARTY_ROOTS = ("core", "web", "data", "tools", "scripts", "plugins", "desktop")
 EXCLUDE = {".git", "__pycache__", ".venv", "venv", "node_modules", "vendor",
@@ -30,7 +35,7 @@ SINK_RENDER = ("render", "to_dict", "jsonify", "make_response")
 SINK_RESOLVE = ("resolve_plan", "resolve_version", "resolve_plan_view", "build_plan_identity")
 
 FuncInfo = Dict[str, Any]
-IndexResult = Tuple[Dict[str, FuncInfo], Dict[str, List[str]], Dict[str, List[FuncInfo]], Dict[str, Dict[str, str]], List[str]]
+IndexResult = Tuple[Dict[str, FuncInfo], Dict[str, List[str]], Dict[str, List[FuncInfo]], Dict[str, Dict[str, str]], List[Tuple[str, str, List[str]]], List[str]]
 EdgeResult = Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Dict[str, List[str]]]]
 
 
@@ -78,6 +83,16 @@ def _import_aliases(tree: ast.Module) -> Dict[str, str]:
             for alias in node.names:
                 imports[alias.asname or alias.name] = f"{module}.{alias.name}" if module else alias.name
     return imports
+
+
+def _class_bases(tree: ast.Module) -> List[Tuple[str, List[str]]]:
+    out: List[Tuple[str, List[str]]] = []
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            bases = [b.id for b in node.bases if isinstance(b, ast.Name)] + \
+                    [b.attr for b in node.bases if isinstance(b, ast.Attribute)]
+            out.append((node.name, bases))
+    return out
 
 
 def _module_functions(tree: ast.Module, rel: str) -> List[FuncInfo]:
@@ -177,6 +192,7 @@ def _index_codebase() -> IndexResult:
     name_to_quals: Dict[str, List[str]] = defaultdict(list)
     file_funcs: Dict[str, List[FuncInfo]] = defaultdict(list)
     file_imports: Dict[str, Dict[str, str]] = {}
+    class_bases: List[Tuple[str, str, List[str]]] = []
     parse_errors: List[str] = []
 
     for fp in _iter_py():
@@ -191,7 +207,9 @@ def _index_codebase() -> IndexResult:
             all_funcs[info["qual"]] = info
             name_to_quals[info["name"]].append(info["qual"])
             file_funcs[rel].append(info)
-    return all_funcs, name_to_quals, file_funcs, file_imports, parse_errors
+        if tree is not None:
+            class_bases.extend((rel, clsname, bases) for clsname, bases in _class_bases(tree))
+    return all_funcs, name_to_quals, file_funcs, file_imports, class_bases, parse_errors
 
 
 def _local_function_names(file_funcs: Dict[str, List[FuncInfo]], info: FuncInfo) -> Set[str]:
@@ -253,6 +271,33 @@ def _resolve_edges(all_funcs: Dict[str, FuncInfo], name_to_quals: Dict[str, List
                         file_imports.get(info["rel"], {}))
         _add_attr_edges(edges, qual, info, attr, _method_names(file_funcs, info), name_to_quals)
     return edges, dynamic_unresolved, dataflow_nodes
+
+
+def _attr_method(to_qual: str) -> str:
+    return to_qual.split("::", 1)[-1].split(".")[-1]
+
+
+def _merge_typed(edges: List[Dict[str, Any]], typed: Set[Tuple[str, str]],
+                 fully: Dict[Tuple[str, str], Set[str]]) -> List[Dict[str, Any]]:
+    """用类型消解结果改写边:命中 typed 的 attr 模糊边升为 typed 实线;整组已定位的删假候选。
+
+    typed/fully 由 callgraph_type_index.resolve_all 给出（self/参数注解/局部注解/构造/带返回注解
+    的赋值 -> 唯一真实方法）。typed 边只在该 (from,to) 尚非确信边时补回，避免与现有边重复计数。
+    """
+    merged: List[Dict[str, Any]] = []
+    for edge in edges:
+        if edge["ambiguous"] and edge["kind"] == "attr":
+            if (edge["from"], edge["to"]) in typed:
+                continue  # 升级为 typed，稍后统一补回
+            if (edge["from"], _attr_method(edge["to"])) in fully:
+                continue  # 整组已类型定位，此候选为假，删除
+        merged.append(edge)
+    confident = {(edge["from"], edge["to"]) for edge in merged if not edge["ambiguous"]}
+    for source, target in sorted(typed):
+        if (source, target) not in confident:
+            merged.append(_edge(source, target, "typed", False))
+            confident.add((source, target))
+    return merged
 
 
 def _fan_counts(edges: List[Dict[str, Any]]) -> Tuple[Dict[str, int], Dict[str, int]]:
@@ -373,6 +418,7 @@ def _summary(all_funcs: Dict[str, FuncInfo], edges: List[Dict[str, Any]],
         "total_edges": len(edges),
         "confident_edges": sum(1 for edge in edges if not edge["ambiguous"]),
         "ambiguous_edges": sum(1 for edge in edges if edge["ambiguous"]),
+        "typed_edges": sum(1 for edge in edges if edge["kind"] == "typed"),
         "dynamic_unresolved_sites": len(dynamic_unresolved),
         "dataflow_flagged_funcs": len(dataflow_nodes),
         "risk_dataflow_count": len(risk),
@@ -427,9 +473,11 @@ def _print_summary(summary: Dict[str, Any], risk: List[Dict[str, Any]]) -> None:
 
 def main() -> None:
     os.makedirs(OUT_DIR, exist_ok=True)
-    all_funcs, name_to_quals, file_funcs, file_imports, parse_errors = _index_codebase()
+    all_funcs, name_to_quals, file_funcs, file_imports, class_bases, parse_errors = _index_codebase()
     _raise_parse_errors(parse_errors)
     edges, dynamic_unresolved, dataflow_nodes = _resolve_edges(all_funcs, name_to_quals, file_funcs, file_imports)
+    typed, fully = _cti.resolve_all(all_funcs, class_bases)
+    edges = _merge_typed(edges, typed, fully)
     fan_in, fan_out = _fan_counts(edges)
     summary, risk = _write_outputs(all_funcs, edges, dynamic_unresolved, dataflow_nodes, fan_in, fan_out, parse_errors)
     _print_summary(summary, risk)

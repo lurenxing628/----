@@ -11,6 +11,18 @@ markers = [
     "perf: 性能基准/重 E2E 用例(口径同 tools.full_test_debt_shards.PERF_FILE_PATTERNS)，daily 门禁 -m \"not perf\" 剔出 push 快速路径、full gate 仍全量覆盖；人用入口 pytest -m perf",
 ]
 
+[tool.coverage.run]
+# 唤醒此前休眠的 pytest-cov：默认就位、仍按需触发（不进 addopts，普通 pytest 不受影响）。
+# dynamic_context 记录"哪条测试跑到哪段代码"，给死代码/弱覆盖判断提供背书。
+source = ["core", "web", "data"]
+branch = true
+dynamic_context = "test_function"
+omit = ["tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
 [tool.ruff]
 target-version = "py38"
 line-length = 120

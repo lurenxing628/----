@@ -1,0 +1,127 @@
+{
+  "ambiguous_confirmed": {
+    "count": 477,
+    "pct_of_ambiguous": 0.0345,
+    "samples": [
+      {
+        "from": "core/algorithms/dispatch_rules.py::build_dispatch_key",
+        "to": "core/algorithms/greedy/date_parsers.py::due_exclusive"
+      },
+      {
+        "from": "core/algorithms/evaluation.py::_parse_due_date_state",
+        "to": "core/algorithms/greedy/date_parsers.py::parse_date"
+      },
+      {
+        "from": "core/algorithms/evaluation.py::_record_tardiness_if_overdue",
+        "to": "core/algorithms/greedy/date_parsers.py::due_exclusive"
+      },
+      {
+        "from": "core/algorithms/greedy/dispatch/batch_order.py::_schedule_op",
+        "to": "core/algorithms/greedy/run_context.py::ScheduleRunContext.schedule_internal"
+      },
+      {
+        "from": "core/algorithms/greedy/dispatch/sgs.py::_dispatch_selected",
+        "to": "core/algorithms/greedy/dispatch/sgs_graph.py::_op_id"
+      },
+      {
+        "from": "core/algorithms/greedy/dispatch/sgs.py::_score_candidate",
+        "to": "core/algorithms/greedy/dispatch/sgs_graph.py::_op_id"
+      },
+      {
+        "from": "core/algorithms/greedy/dispatch/sgs_scoring.py::_parse_due_date",
+        "to": "core/algorithms/greedy/date_parsers.py::parse_date"
+      },
+      {
+        "from": "core/algorithms/greedy/internal_slot.py::_adjust_slot_start",
+        "to": "core/services/scheduler/calendar_service.py::CalendarService.adjust_to_working_time"
+      },
+      {
+        "from": "core/algorithms/greedy/internal_slot.py::_estimate_attempt",
+        "to": "core/services/scheduler/calendar_service.py::CalendarService.add_working_hours"
+      },
+      {
+        "from": "core/algorithms/greedy/internal_slot.py::_resolve_efficiency",
+        "to": "core/services/scheduler/calendar_service.py::CalendarService.get_efficiency"
+      },
+      {
+        "from": "core/algorithms/greedy/run_context.py::ScheduleRunContext.auto_assign_internal_resources_attempt",
+        "to": "core/algorithms/greedy/auto_assign.py::auto_assign_internal_resources_attempt"
+      },
+      {
+        "from": "core/algorithms/greedy/schedule_params.py::_build_runtime_snapshot",
+        "to": "core/models/schedule_config_runtime_coercion.py::ensure_schedule_config_snapshot"
+      }
+    ]
+  },
+  "confident_corroborated": 4423,
+  "confident_ratio_after_promotion": 0.4229,
+  "confident_ratio_before": 0.4023,
+  "islands": {
+    "never_reached_deadcode_candidate": 237,
+    "reached_at_runtime_false_alarm": 143,
+    "total": 380
+  },
+  "note": "运行时仅覆盖本次采集子集,确认数为下界;死代码嫌疑须配合覆盖率背书,勿仅凭未达即判删。",
+  "runtime": {
+    "edges": 5458,
+    "reachable_nodes": 3430
+  },
+  "static": {
+    "ambiguous": 13810,
+    "confident": 9294,
+    "total": 23104
+  },
+  "static_missed": {
+    "count": 559,
+    "samples": [
+      {
+        "from": "core/algorithms/greedy/dispatch/batch_order.py::dispatch_batch_order",
+        "to": "core/algorithms/greedy/run_state.py::ScheduleRunState.scheduled_count"
+      },
+      {
+        "from": "core/algorithms/greedy/dispatch/sgs.py::_score_internal_candidate",
+        "to": "core/algorithms/greedy/dispatch/sgs_scoring.py::_score_internal_candidate"
+      },
+      {
+        "from": "core/algorithms/greedy/dispatch/sgs.py::dispatch_sgs",
+        "to": "core/algorithms/greedy/run_state.py::ScheduleRunState.scheduled_count"
+      },
+      {
+        "from": "core/algorithms/greedy/dispatch/sgs_scoring.py::_auto_assign_attempt_for_scoring",
+        "to": "core/algorithms/greedy/run_context.py::ScheduleRunContext.auto_assign_internal_resources_attempt"
+      },
+      {
+        "from": "core/algorithms/greedy/dispatch/sgs_scoring.py::_dispatch_key",
+        "to": "core/algorithms/dispatch_rules.py::build_dispatch_key"
+      },
+      {
+        "from": "core/algorithms/greedy/dispatch/sgs_scoring.py::_estimate_scoring_slot",
+        "to": "core/algorithms/greedy/internal_slot.py::estimate_internal_slot"
+      },
+      {
+        "from": "core/algorithms/greedy/dispatch/sgs_scoring.py::_score_internal_candidate",
+        "to": "core/infrastructure/errors.py::ValidationError.__init__"
+      },
+      {
+        "from": "core/algorithms/greedy/run_context.py::ScheduleRunContext.schedule_internal",
+        "to": "core/algorithms/greedy/scheduler.py::GreedyScheduler._schedule_internal"
+      },
+      {
+        "from": "core/algorithms/greedy/schedule_params.py::_require_choice",
+        "to": "core/infrastructure/errors.py::ValidationError.__init__"
+      },
+      {
+        "from": "core/algorithms/greedy/schedule_params.py::_resolve_base_time",
+        "to": "core/infrastructure/errors.py::ValidationError.__init__"
+      },
+      {
+        "from": "core/algorithms/greedy/schedule_params.py::_resolve_end_dt_exclusive",
+        "to": "core/infrastructure/errors.py::ValidationError.__init__"
+      },
+      {
+        "from": "core/algorithms/greedy/schedule_params.py::_validate_runtime_field",
+        "to": "core/shared/degradation.py::DegradationCollector.__init__"
+      }
+    ]
+  }
+}
