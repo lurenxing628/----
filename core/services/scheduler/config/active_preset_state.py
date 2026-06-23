@@ -39,16 +39,6 @@ class BaselineResolution:
     baseline_probe_failed: bool = False
     baseline_diff_fields: List[str] = field(default_factory=list)
 
-    @property
-    def drifted(self) -> bool:
-        return bool(self.baseline_diff_fields)
-
-    def to_legacy_dict(self) -> Dict[str, Any]:
-        return {
-            "baseline_probe_failed": bool(self.baseline_probe_failed),
-            "baseline_diff_fields": list(self.baseline_diff_fields),
-        }
-
 
 @dataclass(frozen=True)
 class RuntimeConfigHealth:

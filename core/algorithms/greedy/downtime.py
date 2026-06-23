@@ -6,19 +6,6 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 
-def get_resource_available(
-    timeline: Dict[str, List[Tuple[datetime, datetime]]],
-    resource_id: str,
-    base_time: datetime,
-) -> datetime:
-    if not resource_id:
-        return base_time
-    segments = timeline.get(resource_id) or []
-    if not segments:
-        return base_time
-    return max(end for _, end in segments)
-
-
 def occupy_resource(
     timeline: Dict[str, List[Tuple[datetime, datetime]]],
     resource_id: str,

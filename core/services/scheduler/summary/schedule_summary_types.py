@@ -82,10 +82,6 @@ class FreezeState:
     data: Dict[str, Any]
     all_warnings: List[str]
 
-    @property
-    def status(self) -> str:
-        return str(self.data.get("freeze_state") or "")
-
 
 @dataclass(frozen=True)
 class FallbackState:

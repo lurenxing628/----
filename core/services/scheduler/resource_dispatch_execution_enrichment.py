@@ -1,23 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from core.models.operation_execution_labels import suggest_reschedule_label
-
-
-def positive_row_op_ids(rows: List[Dict[str, Any]]) -> List[int]:
-    op_ids = []
-    seen = set()
-    for row in rows:
-        try:
-            op_id = int(row.get("op_id") or 0)
-        except (TypeError, ValueError):
-            op_id = 0
-        if op_id <= 0 or op_id in seen:
-            continue
-        seen.add(op_id)
-        op_ids.append(op_id)
-    return op_ids
 
 
 def row_op_id(row: Dict[str, Any]) -> Optional[int]:

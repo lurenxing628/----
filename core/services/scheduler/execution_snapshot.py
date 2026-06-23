@@ -16,15 +16,6 @@ class ExecutionSnapshot:
     state_revisions: Dict[int, str]
     identity_revisions: Dict[int, str]
 
-    def to_summary(self) -> Dict[str, object]:
-        return {
-            "execution_snapshot_revision": self.revision,
-            "execution_snapshot_op_ids": list(self.op_ids),
-            "execution_snapshot_op_count": int(self.op_count),
-            "execution_snapshot_op_ids_sample": list(self.op_ids[:50]),
-            "execution_snapshot_op_ids_truncated": len(self.op_ids) > 50,
-        }
-
 
 def positive_op_ids(values: Sequence[int]) -> List[int]:
     seen = set()

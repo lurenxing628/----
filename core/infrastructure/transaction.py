@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import threading
 from contextlib import contextmanager
-from functools import wraps
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -237,14 +236,3 @@ class TransactionManager:
         """
         begin_sql = "BEGIN IMMEDIATE" if begin_immediate else "BEGIN"
         return _transaction_scope(self.conn, begin_sql=begin_sql)
-
-
-def transactional(func):
-    """事务装饰器：要求 self 上存在 tx_manager 字段。"""
-
-    @wraps(func)
-    def wrapper(self, *args, **kwargs):
-        with self.tx_manager.transaction():
-            return func(self, *args, **kwargs)
-
-    return wrapper

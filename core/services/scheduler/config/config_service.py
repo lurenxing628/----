@@ -211,17 +211,8 @@ class ConfigService:
     def _get_raw_value(self, config_key: str, default: Any = None) -> Any:
         return self.repo.get_value(str(config_key), default=None if default is None else str(default))
 
-    def _bootstrap_registered_defaults(self, *, existing_keys: Optional[set] = None) -> set:
-        return self.bootstrap_service.bootstrap_registered_defaults(existing_keys=existing_keys)
-
     def ensure_defaults(self) -> None:
         self.bootstrap_service.ensure_defaults()
-
-    def _is_pristine_store(self) -> bool:
-        return self.bootstrap_service.is_pristine_store()
-
-    def _ensure_defaults_if_pristine(self) -> bool:
-        return self.bootstrap_service.ensure_defaults_if_pristine()
 
     @classmethod
     def _preset_key(cls, name: str) -> str:
@@ -236,84 +227,12 @@ class ConfigService:
             cls.BUILTIN_PRESET_IMPROVE_SLOW,
         }
 
-    @staticmethod
-    def _default_snapshot() -> ScheduleConfigSnapshot:
-        return ConfigBootstrapService.default_snapshot()
-
     def _builtin_presets(self) -> List[Tuple[str, ScheduleConfigSnapshot, str]]:
         return self.preset_service.builtin_presets()
 
     @staticmethod
     def _snapshot_close(a: ScheduleConfigSnapshot, b: ScheduleConfigSnapshot) -> bool:
         return preset_ops.snapshot_close(a, b)
-
-    def _ensure_builtin_presets(self, existing_keys: Optional[set] = None) -> None:
-        self.bootstrap_service.ensure_builtin_presets(existing_keys=existing_keys)
-
-    def _get_snapshot_from_repo(self, *, strict_mode: bool = False) -> ScheduleConfigSnapshot:
-        return self.preset_service.get_snapshot_from_repo(strict_mode=bool(strict_mode))
-
-    @classmethod
-    def _extract_repair_fields(cls, reason: str) -> List[str]:
-        return ActivePresetService.extract_repair_fields(reason)
-
-    @classmethod
-    def _repair_notice_from_reason(cls, reason: str) -> Dict[str, Any]:
-        return ActivePresetService.repair_notice_from_reason(reason)
-
-    @classmethod
-    def _normalize_repair_notice(cls, notice: Any) -> Optional[Dict[str, Any]]:
-        return ActivePresetService.normalize_repair_notice(notice)
-
-    @classmethod
-    def _active_preset_meta_reason_codes(cls) -> Tuple[str, str, str]:
-        return ActivePresetService.meta_reason_codes()
-
-    @classmethod
-    def _active_preset_meta_payload(
-        cls,
-        *,
-        reason_code: Optional[str],
-        repair_notices: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
-        return ActivePresetService.meta_payload(reason_code=reason_code, repair_notices=repair_notices)
-
-    @classmethod
-    def _legacy_active_preset_meta_from_reason(cls, reason: Optional[str]) -> Dict[str, Any]:
-        return ActivePresetService.legacy_meta_from_reason(reason)
-
-    @classmethod
-    def _active_preset_meta_from_value(
-        cls,
-        value: Any,
-        *,
-        reason_fallback: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        return ActivePresetService.meta_from_value(value, reason_fallback=reason_fallback)
-
-    @classmethod
-    def _active_preset_meta_parse_warning(cls, value: Any) -> Optional[Dict[str, Any]]:
-        return ActivePresetService.meta_parse_warning(value)
-
-    @classmethod
-    def _serialize_active_preset_meta(cls, meta: Optional[Dict[str, Any]]) -> str:
-        return ActivePresetService.serialize_meta(meta)
-
-    @classmethod
-    def _reason_in(cls, reason: str, *candidates: str) -> bool:
-        return ConfigReadService.reason_in(reason, *candidates)
-
-    def _active_preset_updates(
-        self,
-        name: Optional[str],
-        reason: Optional[str] = None,
-        *,
-        meta: Optional[Dict[str, Any]] = None,
-    ) -> List[Tuple[str, str, str]]:
-        return self.active_preset_service.active_preset_updates(name, reason=reason, meta=meta)
-
-    def _set_active_preset(self, name: Optional[str], *, reason: Optional[str] = None) -> None:
-        self.active_preset_service.set_active_preset(name, reason=reason)
 
     def mark_active_preset_custom(self, reason: Optional[str] = None) -> None:
         self.active_preset_service.mark_custom(reason=reason)
@@ -344,17 +263,11 @@ class ConfigService:
     def delete_preset(self, name: Any) -> None:
         self.preset_service.delete_preset(name)
 
-    def _normalize_preset_snapshot(self, data: Dict[str, Any]) -> ScheduleConfigSnapshot:
-        return self.preset_service.normalize_preset_snapshot(data)
-
     def apply_preset(self, name: Any) -> Dict[str, Any]:
         return self.preset_service.apply_preset(name)
 
     def get(self, config_key: str) -> Any:
         return self.read_service.get(config_key)
-
-    def _get_registered_field_value(self, key: str, *, strict_mode: bool, source: str) -> Any:
-        return self.read_service.get_registered_field_value(key, strict_mode=strict_mode, source=source)
 
     def get_holiday_default_efficiency(self, *, strict_mode: bool = True) -> float:
         return self.read_service.get_holiday_default_efficiency(strict_mode=strict_mode)

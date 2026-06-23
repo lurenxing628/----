@@ -162,15 +162,6 @@ def app_error_http_status(code: ErrorCode) -> int:
     return 400
 
 
-def success_response(data=None, meta=None) -> dict:
-    result = {"success": True}
-    if data is not None:
-        result["data"] = data
-    if meta is not None:
-        result["meta"] = meta
-    return result
-
-
 def error_response(code: ErrorCode, message: str, details=None) -> dict:
     error = {"code": code.value, "message": message}
     if details:

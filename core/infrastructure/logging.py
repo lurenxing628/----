@@ -5,7 +5,7 @@ import logging
 import logging.handlers
 import os
 import sys
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from core.infrastructure.transaction import in_transaction_context
 
@@ -64,7 +64,7 @@ class AppLogger:
             self._add_file_handler()
             self._add_error_file_handler()
 
-    def _expected_log_files(self) -> tuple[str, str]:
+    def _expected_log_files(self) -> Tuple[str, str]:
         return (
             os.path.abspath(os.path.join(self.log_dir, f"{self.app_name.lower()}.log")),
             os.path.abspath(os.path.join(self.log_dir, f"{self.app_name.lower()}_error.log")),
@@ -132,11 +132,6 @@ class AppLogger:
         )
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
-
-    def get_logger(self, name: Optional[str] = None) -> logging.Logger:
-        if name:
-            return logging.getLogger(f"{self.app_name}.{name}")
-        return self.logger
 
 
 class OperationLogger:

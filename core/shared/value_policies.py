@@ -28,10 +28,6 @@ class FieldPolicy:
     notes: Optional[str] = None
 
     @property
-    def allows_compat_read(self) -> bool:
-        return self.read_mode == READ_COMPAT
-
-    @property
     def has_compat_default(self) -> bool:
         return self.compat_default is not _COMPAT_DEFAULT_UNSET
 
@@ -179,11 +175,6 @@ FIELD_POLICIES_BY_FIELD: Dict[str, FieldPolicy] = {policy.field: policy for poli
 
 def list_field_policies() -> Tuple[FieldPolicy, ...]:
     return tuple(_FIELD_POLICIES)
-
-
-def has_field_policy(field: str) -> bool:
-    key = str(field or "").strip()
-    return key in FIELD_POLICIES_BY_FIELD
 
 
 def get_field_policy(field: str) -> FieldPolicy:
