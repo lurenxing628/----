@@ -82,6 +82,11 @@ def _write_baseline(islands: Sequence[str]) -> None:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="死代码孤岛防回潮扫描器（warn-only）")
     parser.add_argument("--refresh", action="store_true", help="把基线重写为当前孤岛集（受控接受新基线）")
+    parser.add_argument(
+        "--quiet-when-clean",
+        action="store_true",
+        help="无新增孤岛时完全不输出（pre-push 钩子用：平时安静，有新孤岛才大声报）",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     try:
@@ -106,6 +111,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     current_set = set(current)
     new_islands = sorted(current_set - baseline)
     gone_islands = sorted(baseline - current_set)
+
+    if args.quiet_when_clean and not new_islands:
+        return 0  # 平时安静：无新增孤岛就不吭声（pre-push 钩子高频跑用）
 
     if new_islands:
         print(

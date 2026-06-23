@@ -315,20 +315,6 @@ def _daily_gate_command_for_refs(executable: str, refs: Sequence[PrePushRef], *,
     return command
 
 
-def _warn_dead_code_islands(executable: str) -> None:
-    """warn-only 早警：打印死代码孤岛回潮报告，绝不影响 pre-push 门禁成败。
-
-    扫描器自身永远 return 0；这里再包一层 try/except 兜底，确保即使调用失败也不阻断推送。
-    """
-    scanner = os.path.join(str(REPO_ROOT), "tools", "scan_dead_code_islands.py")
-    if not os.path.isfile(scanner):
-        return
-    try:
-        subprocess.call([executable, scanner], cwd=str(REPO_ROOT), env=_quality_gate_env())
-    except Exception as exc:  # warn-only：连调用失败都不拦推送
-        print(f"[dead-code-islands] 跳过（调用失败，不拦）：{exc}", flush=True)
-
-
 def run_quality_gate(args: argparse.Namespace) -> int:
     try:
         executable = _project_python_executable()
@@ -361,9 +347,6 @@ def run_quality_gate(args: argparse.Namespace) -> int:
             return 0
     except git_hook_cache.HookCacheError as exc:
         print(f"[git-hook-cache] pre-push daily gate cache unavailable: {exc}", flush=True)
-
-    # 树有变化（未命中缓存）才扫——正是可能冒出新死代码孤岛的时机；warn-only，不影响下方返回码。
-    _warn_dead_code_islands(executable)
 
     command = _daily_gate_command_for_refs(executable, refs, remote_name=remote_name)
     returncode = subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())

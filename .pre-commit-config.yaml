@@ -25,6 +25,14 @@ repos:
         entry: python tools/git_hook_checks.py check-commit-msg
         language: system
         stages: [commit-msg]
+      - id: dead-code-islands
+        name: dead code islands (warn-only early warning)
+        entry: python tools/scan_dead_code_islands.py --quiet-when-clean
+        language: system
+        pass_filenames: false
+        always_run: true
+        verbose: true
+        stages: [pre-push]
       - id: aps-quality-gate
         name: APS daily fast gate before push
         entry: python tools/git_hook_checks.py run-quality-gate
