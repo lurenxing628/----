@@ -141,10 +141,6 @@ def _chrome_pid_query_script(profile_dir: str) -> str:
     return _chrome._chrome_pid_query_script(profile_dir)
 
 
-def _parse_chrome_pid_output(output: str) -> List[int]:
-    return _chrome._parse_chrome_pid_output(output)
-
-
 def _list_aps_chrome_pids(profile_dir: str) -> Optional[List[int]]:
     return _chrome._list_aps_chrome_pids(profile_dir, run_powershell_text=_run_powershell_text)
 

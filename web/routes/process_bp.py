@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint
 
-from core.infrastructure.errors import ValidationError
 from core.models.enums import MergeMode
 from core.services.common.enum_normalizers import source_type_label
 from core.services.common.excel_service import ImportMode
@@ -26,18 +25,6 @@ def _source_zh(value: str) -> str:
     # 「自制」；标准版 source_type_label 先 normalize_op_type_category 再贴标签，别名正确归类，
     # 未知值显示「未知」不再误贴确定态。
     return source_type_label(value)
-
-
-def _safe_float(value: Any, field: str) -> Optional[float]:
-    if value is None:
-        return None
-    v = str(value).strip()
-    if v == "":
-        return None
-    try:
-        return float(v)
-    except Exception as e:
-        raise ValidationError(f"“{field}”必须是数字", field=field) from e
 
 
 def _parse_mode(value: str) -> ImportMode:

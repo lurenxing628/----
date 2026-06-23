@@ -34,16 +34,6 @@ from .scheduler_plan_context_token import plan_context_token, scenario_id_from_p
 from .scheduler_utils import get_plan_role_arg
 
 
-def _get_int_arg(name: str, default: int = 0) -> int:
-    raw = request.args.get(name)
-    if raw is None or str(raw).strip() == "":
-        return int(default)
-    try:
-        return int(str(raw).strip())
-    except Exception as e:
-        raise ValidationError(f"{name} 填写不对，请填写整数。", field=name) from e
-
-
 def _get_bool_arg(name: str, default: bool = False) -> bool:
     raw = request.args.get(name)
     if raw is None:

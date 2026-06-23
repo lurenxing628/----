@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from .launcher_observability import launcher_log_warning
-from .runtime_capabilities import CapabilityResult, available, degraded
 
 
 @dataclass(frozen=True)
@@ -17,16 +16,6 @@ class HealthProbeResult:
     status: Optional[int] = None
     payload: Optional[Dict[str, Any]] = None
     error: str = ""
-
-    def to_capability(self) -> CapabilityResult:
-        details = {"url": self.url}
-        if self.status is not None:
-            details["status"] = str(self.status)
-        if self.ok:
-            return available("runtime-health", details)
-        if self.error:
-            details["error"] = self.error
-        return degraded("runtime-health", self.reason or "runtime_health_failed", details)
 
 
 def probe_runtime_health_result(

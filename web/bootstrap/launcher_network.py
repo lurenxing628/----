@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from .launcher_observability import launcher_log_warning
-from .runtime_capabilities import CapabilityResult, available, degraded
 
 
 @dataclass(frozen=True)
@@ -17,14 +16,6 @@ class BindProbeResult:
     port: int
     reason: str = ""
     error: str = ""
-
-    def to_capability(self) -> CapabilityResult:
-        details = {"host": self.host, "port": str(self.port)}
-        if self.ok:
-            return available("bind-probe", details)
-        if self.error:
-            details["error"] = self.error
-        return degraded("bind-probe", self.reason or "bind_failed", details)
 
 
 def pick_bind_host(raw_host: Optional[str], *, logger: Optional[logging.Logger] = None) -> str:

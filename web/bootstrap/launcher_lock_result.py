@@ -8,7 +8,6 @@ from core.infrastructure.safe_files import read_fixed_text
 
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import resolve_runtime_state_dir_for_read, runtime_lock_path
-from .runtime_capabilities import CapabilityResult, available, unavailable
 
 LOCK_STATUS_MISSING = "missing"
 LOCK_STATUS_VALID = "valid"
@@ -29,14 +28,6 @@ class RuntimeLockReadResult:
     @property
     def ok(self) -> bool:
         return self.status == LOCK_STATUS_VALID
-
-    def to_capability(self) -> CapabilityResult:
-        details = {"path": self.path, "status": self.status}
-        if self.ok or self.status == LOCK_STATUS_MISSING:
-            return available("runtime-lock", details)
-        if self.error:
-            details["error"] = self.error
-        return unavailable("runtime-lock", self.reason or self.status, details)
 
 
 def _parse_key_value_lines(lines: List[str]) -> Tuple[Dict[str, str], bool]:

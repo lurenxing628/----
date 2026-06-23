@@ -15,10 +15,6 @@ from web.viewmodels.scheduler_workbench_links import (
 from .scheduler_plan_context_token import plan_context_token
 
 
-def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
 def _plan_role_links(
     version: int,
     role: str,

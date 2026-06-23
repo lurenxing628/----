@@ -265,10 +265,6 @@ class PlacementSpan:
         return super().__eq__(other)
 
 
-def _has_text(value: Any) -> bool:
-    return value is not None and str(value).strip() != ""
-
-
 def _batch_detail_return_url() -> str:
     next_raw = (request.args.get("next") or "").strip()
     next_url = _safe_next_url(next_raw) if next_raw else None
