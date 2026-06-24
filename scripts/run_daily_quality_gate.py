@@ -526,7 +526,7 @@ def _commands(required_targets: Sequence[str], ruff_plan: RuffPlan) -> List[Tupl
             (
                 "impact pytest (parallel)",
                 [
-                    sys.executable, "-m", "pytest", "-q",
+                    sys.executable, "-m", "pytest", "-q", "-rfE",
                     "-n", "auto", "--dist", "worksteal",
                     "-m", "not serial and not perf",
                     *normalized_targets,
@@ -537,14 +537,14 @@ def _commands(required_targets: Sequence[str], ruff_plan: RuffPlan) -> List[Tupl
         commands.append(
             (
                 "impact pytest (serial)",
-                [sys.executable, "-m", "pytest", "-q", "-m", "serial and not perf", *normalized_targets],
+                [sys.executable, "-m", "pytest", "-q", "-rfE", "-m", "serial and not perf", *normalized_targets],
                 True,
             )
         )
     commands.append(
         (
             "focused pytest",
-            [sys.executable, "-m", "pytest", "-q", *FOCUSED_PYTEST_NODEIDS],
+            [sys.executable, "-m", "pytest", "-q", "-rfE", *FOCUSED_PYTEST_NODEIDS],
             False,
         )
     )
@@ -567,7 +567,94 @@ def _tail(text: str, *, line_count: int = _TAIL_LINES) -> str:
     return "\n".join(lines[-line_count:])
 
 
-def _run_collect_only(env: Dict[str, str]) -> int:
+_FAILED_SUMMARY_RE = re.compile(r"^(FAILED|ERROR)\s+(\S+)")
+
+
+def _extract_failed_nodeids(output: str) -> List[str]:
+    """从 pytest 短摘要（-rfE）里抽出 FAILED/ERROR 的用例标识，供失败时直接点名。
+
+    只认形如 `FAILED <nodeid>` / `ERROR <path.py>` 的真用例标识（含 :: 或以 .py 结尾），
+    借此避开 pytest log_cli 输出的 `ERROR <logger>:...` 这类日志行被误抓成用例。
+    """
+    found: List[str] = []
+    for raw_line in str(output or "").splitlines():
+        match = _FAILED_SUMMARY_RE.match(raw_line.strip())
+        if not match:
+            continue
+        target = match.group(2)
+        if "::" not in target and not target.endswith(".py"):
+            continue
+        entry = f"{match.group(1)} {target}"
+        if entry not in found:
+            found.append(entry)
+    return found
+
+
+def _failure_log_path() -> Optional[str]:
+    """失败日志落点：.git/aps-hook-cache 下单个固定文件，覆盖写、最多常驻一份、随 git 忽略隐身。
+
+    任何解析/建目录异常都吞掉返回 None——失败日志只是排错便利，绝不能反过来影响门禁判定。
+    """
+    try:
+        common_dir = _git_stdout(["rev-parse", "--git-common-dir"])
+        if not common_dir:
+            return None
+        if not os.path.isabs(common_dir):
+            common_dir = os.path.join(REPO_ROOT, common_dir)
+        cache_dir = os.path.join(os.path.abspath(common_dir), "aps-hook-cache")
+        os.makedirs(cache_dir, exist_ok=True)
+        return os.path.join(cache_dir, "daily-gate-last-failure.log")
+    except Exception:
+        return None
+
+
+def _persist_failure_log(log_path: Optional[str], chunks: Sequence[str]) -> Optional[str]:
+    """把本次运行的全程输出写到单个失败日志（覆盖写）。返回写成功的路径，失败返回 None。"""
+    if not log_path:
+        return None
+    try:
+        with open(log_path, "w", encoding="utf-8", errors="replace") as handle:
+            handle.write("".join(chunks))
+    except OSError:
+        return None
+    return log_path
+
+
+def _remove_failure_log(log_path: Optional[str]) -> None:
+    """门禁通过后清掉上一轮残留的失败日志，让「文件在＝上次失败」语义干净。"""
+    if not log_path:
+        return
+    try:
+        if os.path.isfile(log_path):
+            os.remove(log_path)
+    except OSError:
+        pass
+
+
+def _run_step_streaming(command: Sequence[str], env: Dict[str, str]) -> Tuple[int, str]:
+    """跑一步命令：实时把输出转发到终端，同时捕获全文返回（供失败点名 + 落盘）。"""
+    process = subprocess.Popen(
+        list(command),
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    captured: List[str] = []
+    stream = process.stdout
+    assert stream is not None
+    for line in stream:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        captured.append(line)
+    stream.close()
+    return int(process.wait()), "".join(captured)
+
+
+def _run_collect_only(env: Dict[str, str]) -> Tuple[int, str]:
     command = [sys.executable, "-m", "pytest", "--collect-only", "tests", "-q"]
     result = subprocess.run(
         command,
@@ -591,9 +678,9 @@ def _run_collect_only(env: Dict[str, str]) -> int:
             print(_tail(result.stdout), file=sys.stderr, flush=True)
             print("[daily-fast-gate] pytest collect-only stderr tail:", file=sys.stderr, flush=True)
             print(_tail(result.stderr), file=sys.stderr, flush=True)
-            return 1
+            return 1, combined_output
         print(f"[daily-fast-gate] pytest collect-only collected_count={count}", flush=True)
-        return 0
+        return 0, combined_output
 
     print(
         f"[daily-fast-gate] failed: pytest collect-only returncode={result.returncode}",
@@ -604,7 +691,7 @@ def _run_collect_only(env: Dict[str, str]) -> int:
     print(_tail(result.stdout), file=sys.stderr, flush=True)
     print("[daily-fast-gate] pytest collect-only stderr tail:", file=sys.stderr, flush=True)
     print(_tail(result.stderr), file=sys.stderr, flush=True)
-    return int(result.returncode)
+    return int(result.returncode), combined_output
 
 
 def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
@@ -660,8 +747,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     else:
         print("[daily-fast-gate] ruff: skipped; reason=" + ruff_plan.reason, flush=True)
 
-    collect_returncode = _run_collect_only(env)
+    failure_log = _failure_log_path()
+    run_log: List[str] = []
+
+    def _announce_failure_log() -> None:
+        saved = _persist_failure_log(failure_log, run_log)
+        if saved:
+            print(f"[daily-fast-gate] 完整输出已留存：{saved}", file=sys.stderr, flush=True)
+
+    collect_returncode, collect_output = _run_collect_only(env)
+    run_log.append("# pytest --collect-only -q tests\n")
+    run_log.append(collect_output)
     if collect_returncode != 0:
+        for entry in _extract_failed_nodeids(collect_output):
+            print(f"  - {entry}", file=sys.stderr, flush=True)
+        _announce_failure_log()
         return collect_returncode
 
     commands = _commands(impact_plan.target_paths, ruff_plan)
@@ -669,7 +769,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     impact_allowed_labels = {"impact pytest (parallel)", "impact pytest (serial)"}
     for index, (label, command, allow_no_tests) in enumerate(commands, start=1):
         print(f"[daily-fast-gate] {index}/{len(commands)} {label}", flush=True)
-        returncode = int(subprocess.call(command, cwd=REPO_ROOT, env=env))
+        returncode, step_output = _run_step_streaming(command, env)
+        run_log.append(f"\n# [{index}/{len(commands)}] {label}\n")
+        run_log.append(step_output)
         if returncode == _PYTEST_NO_TESTS_EXITCODE and allow_no_tests:
             print(
                 f"[daily-fast-gate] {label}: 本次 impact 集无该类用例"
@@ -681,6 +783,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             continue
         if returncode != 0:
             print(f"[daily-fast-gate] failed: {label} returncode={returncode}", file=sys.stderr, flush=True)
+            failed_nodeids = _extract_failed_nodeids(step_output)
+            if failed_nodeids:
+                print("[daily-fast-gate] 失败用例（照这几个直接复跑即可定位）：", file=sys.stderr, flush=True)
+                for entry in failed_nodeids:
+                    print(f"  - {entry}", file=sys.stderr, flush=True)
+            _announce_failure_log()
             return returncode
     if impact_plan.target_paths and impact_no_test_labels == impact_allowed_labels:
         print(
@@ -688,7 +796,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             file=sys.stderr,
             flush=True,
         )
+        _announce_failure_log()
         return 1
+    _remove_failure_log(failure_log)
     print("[daily-fast-gate] passed", flush=True)
     return 0
 

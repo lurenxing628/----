@@ -19,6 +19,7 @@ BLOCKED_PATH_RULES: Tuple[Tuple[str, str], ...] = (
     ("*/launcher.log", "APS 本地启动日志可能包含本机路径或错误明细，不能提交"),
     ("evidence/QualityGate/quality_gate_manifest.json", "质量门禁 proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/current_full_test_debt.json", "质量门禁债务快照是运行产物，应由当前门禁重新生成"),
+    ("evidence/QualityGate/current_full_test_debt.failed.json", "失败明细留存是运行产物，仅供本地排错，不能提交"),
     ("evidence/QualityGate/full_test_debt_summary.json", "full-test-debt summary 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/full_test_debt_node_cache.json", "full-test-debt nodeid 缓存是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/architecture_scan_cache.json", "architecture scan 文件级缓存是运行产物，应由当前门禁重新生成"),

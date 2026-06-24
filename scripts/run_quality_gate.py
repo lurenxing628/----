@@ -60,6 +60,7 @@ from tools.quality_gate_support import (  # noqa: E402
     LEDGER_PATH,
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
     QUALITY_GATE_DEBT_LEDGER_SYNC_REL,
+    QUALITY_GATE_FAILED_FULL_TEST_DEBT_REL,
     QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL,
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL,
     QUALITY_GATE_LOGS_DIR_REL,
@@ -822,14 +823,39 @@ def _clear_quality_gate_full_test_debt_summary() -> None:
         os.remove(summary_path)
 
 
+def _preserve_failed_full_test_debt_payload() -> Optional[str]:
+    """把失败的 current 明细改名留存供事后排错；返回留存相对路径（无文件则 None）。
+
+    改名（而非保留原名）是刻意为之：原名一旦消失，下一轮 long-gate 指纹就走「文件不存在＝
+    干净」分支，不会被这份带失败的 payload 污染；同时内容改名留住，省去为看一眼 traceback
+    重跑整轮全量。.failed.json 已纳入 .gitignore 与禁提交名单，os.replace 单文件覆盖（最多常驻
+    一份、不跨次堆积），且不计入 git status，因此也不会判脏工作区。
+    """
+    current_debt_path = os.path.join(REPO_ROOT, QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL)
+    if not os.path.isfile(current_debt_path):
+        return None
+    preserved_path = os.path.join(REPO_ROOT, QUALITY_GATE_FAILED_FULL_TEST_DEBT_REL)
+    try:
+        os.replace(current_debt_path, preserved_path)
+    except OSError:
+        return None
+    return QUALITY_GATE_FAILED_FULL_TEST_DEBT_REL.replace("\\", "/")
+
+
 def _clear_full_test_debt_current_outputs_after_failure(runtime_entry: Optional[Mapping[str, Any]]) -> None:
     if not isinstance(runtime_entry, Mapping):
         return
     entry = dict(runtime_entry.get("entry") or {})
     if str(entry.get("entry_id") or "") != ENTRY_FULL_TEST_DEBT:
         return
-    _clear_quality_gate_current_full_test_debt()
+    preserved_rel = _preserve_failed_full_test_debt_payload()
     _clear_quality_gate_full_test_debt_summary()
+    if preserved_rel:
+        print(
+            f"==> 失败明细已留存：{preserved_rel}"
+            "（含逐用例 traceback/分类，事后排错可直接看，无需重跑全量）",
+            flush=True,
+        )
 
 
 def _remove_quality_gate_manifest() -> None:
@@ -3216,6 +3242,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             manifest["manifest_proof_error"] = str(manifest_proof_exc)
         try:
             _write_quality_gate_manifest(manifest)
+            print(
+                f"==> 失败总账已写入：{QUALITY_GATE_MANIFEST_REL.replace(os.sep, '/')}"
+                "（含每步 receipt 与 failure_message，是事后排错的总入口）",
+                file=sys.stderr,
+                flush=True,
+            )
         except Exception as manifest_write_exc:
             print(f"ERROR: 无法写入失败质量门禁 manifest：{manifest_write_exc}", file=sys.stderr, flush=True)
         if long_gate_cache_enabled:

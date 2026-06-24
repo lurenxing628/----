@@ -1031,6 +1031,8 @@ def test_runner_reuses_strict_full_test_debt_failure_cache(monkeypatch, tmp_path
     assert full_debt["execution_mode"] == "executed"
     assert not _success_path(repo_root).exists()
     assert not (repo_root / "evidence" / "QualityGate" / "current_full_test_debt.json").exists()
+    # 失败后 current 明细改名留存为 .failed.json 供事后排错（原名消失以免污染下轮指纹）。
+    assert (repo_root / "evidence" / "QualityGate" / "current_full_test_debt.failed.json").exists()
     assert not (repo_root / "evidence" / "QualityGate" / "full_test_debt_summary.json").exists()
     assert not (repo_root / NODE_CACHE_REL).exists()
 

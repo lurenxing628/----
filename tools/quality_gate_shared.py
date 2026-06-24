@@ -45,6 +45,12 @@ QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL = os.path.join(
     "QualityGate",
     "current_full_test_debt.json",
 )
+# 失败后把 current 明细改名留存到此处供事后排错（单文件覆盖、不堆积、随 .gitignore 隐身）。
+QUALITY_GATE_FAILED_FULL_TEST_DEBT_REL = os.path.join(
+    "evidence",
+    "QualityGate",
+    "current_full_test_debt.failed.json",
+)
 QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL = os.path.join(
     "evidence",
     "QualityGate",

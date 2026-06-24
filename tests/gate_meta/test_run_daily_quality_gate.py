@@ -48,6 +48,28 @@ def _commit_all(repo_root, message: str) -> str:
     return _git(repo_root, "rev-parse", "HEAD")
 
 
+def test_extract_failed_nodeids_picks_real_targets_and_filters_log_noise() -> None:
+    output = "\n".join(
+        [
+            "=========================== short test summary info ============================",
+            "FAILED tests/x.py::test_boom - AssertionError: boom",
+            "ERROR tests/y.py - collection error",
+            "ERROR    root:plugin.py:12 这是 log_cli 噪音不是用例",
+            "FAILED tests/x.py::test_boom - AssertionError: boom",  # 重复行应去重
+            "1 failed, 2 passed in 0.10s",
+        ]
+    )
+    assert daily_gate._extract_failed_nodeids(output) == [
+        "FAILED tests/x.py::test_boom",
+        "ERROR tests/y.py",
+    ]
+
+
+def test_extract_failed_nodeids_empty_when_no_summary() -> None:
+    assert daily_gate._extract_failed_nodeids("1 passed in 0.1s\n") == []
+    assert daily_gate._extract_failed_nodeids("") == []
+
+
 def test_collect_only_success_prints_count_without_raw_nodeids(monkeypatch, capsys) -> None:
     def fake_run(command, **kwargs):
         assert command == [sys.executable, "-m", "pytest", "--collect-only", "tests", "-q"]
@@ -60,7 +82,7 @@ def test_collect_only_success_prints_count_without_raw_nodeids(monkeypatch, caps
 
     monkeypatch.setattr(daily_gate.subprocess, "run", fake_run)
 
-    assert daily_gate._run_collect_only({}) == 0
+    assert daily_gate._run_collect_only({})[0] == 0
 
     captured = capsys.readouterr()
     assert "collected_count=2307" in captured.out
@@ -77,7 +99,7 @@ def test_collect_only_failure_prints_stdout_and_stderr_tail(monkeypatch, capsys)
 
     monkeypatch.setattr(daily_gate.subprocess, "run", fake_run)
 
-    assert daily_gate._run_collect_only({}) == 3
+    assert daily_gate._run_collect_only({})[0] == 3
 
     captured = capsys.readouterr()
     err_lines = captured.err.splitlines()
@@ -94,7 +116,7 @@ def test_collect_only_success_without_count_is_reported_as_gate_failure(monkeypa
 
     monkeypatch.setattr(daily_gate.subprocess, "run", fake_run)
 
-    assert daily_gate._run_collect_only({}) == 1
+    assert daily_gate._run_collect_only({})[0] == 1
 
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -526,10 +548,12 @@ def test_main_split_steps_tolerate_no_tests_but_not_real_failure(monkeypatch) ->
     )
     monkeypatch.setattr(daily_gate, "build_daily_gate_scope", lambda **_kwargs: scope)
     monkeypatch.setattr(daily_gate, "_gate_env", lambda: {})
-    monkeypatch.setattr(daily_gate, "_run_collect_only", lambda _env: 0)
+    monkeypatch.setattr(daily_gate, "_run_collect_only", lambda _env: (0, ""))
+    # 本测试只验退出码语义，关掉失败日志落盘副作用，避免写到真实 .git/aps-hook-cache。
+    monkeypatch.setattr(daily_gate, "_failure_log_path", lambda: None)
 
     # commands 顺序固定为 block-artifacts→impact(并行)→impact(串行)→focused（ruff_plan 全空故无 ruff 步）；
-    # 下表给每步 subprocess.call 的退出码序列与 main 的期望返回码。
+    # 下表给每步 _run_step_streaming 的退出码序列与 main 的期望返回码。
     cases = [
         ([0, 5, 0, 0], 0),  # 并行步空集(exit5)被 allow_no_tests 容忍 → 通过
         ([0, 0, 5, 0], 0),  # 串行步空集(exit5)被 allow_no_tests 容忍 → 通过
@@ -539,5 +563,5 @@ def test_main_split_steps_tolerate_no_tests_but_not_real_failure(monkeypatch) ->
     ]
     for codes, expected in cases:
         returns = iter(codes)
-        monkeypatch.setattr(daily_gate.subprocess, "call", lambda command, **_kwargs: next(returns))
+        monkeypatch.setattr(daily_gate, "_run_step_streaming", lambda command, env: (next(returns), ""))
         assert daily_gate.main([]) == expected, (codes, expected)

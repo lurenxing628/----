@@ -89,6 +89,7 @@ evidence/QualityGate/logs/
 evidence/QualityGate/long_gate/
 evidence/QualityGate/collect_nodeids.json
 evidence/QualityGate/current_full_test_debt.json
+evidence/QualityGate/current_full_test_debt.failed.json
 evidence/QualityGate/full_test_debt_summary.json
 evidence/QualityGate/full_test_debt_node_cache.json
 evidence/QualityGate/architecture_scan_cache.json
