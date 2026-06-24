@@ -12,7 +12,7 @@ import re
 import shutil
 import subprocess
 import time
-from typing import Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from .static_index import REPO_ROOT
 
@@ -57,8 +57,8 @@ def ensure_index(index_path=None):
     return path
 
 
-def build_index(index_path=None):
-    # type: (Optional[str]) -> str
+def build_index(index_path=None, stdout=None):
+    # type: (Optional[str], Any) -> str
     """用 scip-python 重建索引。成功返回索引绝对路径。"""
     if shutil.which("scip-python") is None:
         raise ScipUnavailable(
@@ -81,6 +81,7 @@ def build_index(index_path=None):
         ],
         cwd=REPO_ROOT,
         check=True,
+        stdout=stdout,
     )
     return path
 

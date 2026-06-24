@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import re
 from pathlib import Path
 
@@ -69,8 +70,21 @@ GATE_INFRASTRUCTURE_TOOLS = {
     "tools/report_full_test_debt_durations.py",
     "tools/scan_aps_three_gap_py38_scope.py",
     "tools/scan_dead_code_islands.py",
+    "tools/dead_code_usage/**/*.py",
     "tools/scan_py38plus_syntax.py",
     "scripts/build_test_inventory.py",
+}
+
+DEAD_CODE_TOOL_PROOF_FILES = {
+    "tools/scan_dead_code_islands.py",
+    "tools/dead_code_usage/__init__.py",
+    "tools/dead_code_usage/ast_nodes.py",
+    "tools/dead_code_usage/ast_usage.py",
+    "tools/dead_code_usage/imports.py",
+    "tools/dead_code_usage/model.py",
+    "tools/dead_code_usage/scip_usage.py",
+    "tools/dead_code_usage/scope.py",
+    "tools/dead_code_usage/type_hints.py",
 }
 
 
@@ -79,6 +93,13 @@ def test_gate_infrastructure_tools_are_common_scope() -> None:
     "不命中任何 group → 漏网 fallback"。删除任一条目会让该工具退回未登记空洞，此测试届时报红。"""
     common_tools = set(REQUIRED_REGRESSION_COMMON_SCOPES["tool_file_scopes"])
     assert GATE_INFRASTRUCTURE_TOOLS <= common_tools
+
+
+def test_dead_code_tools_are_in_quality_gate_source_proof() -> None:
+    pyright_config = json.loads(Path("pyrightconfig.tools.json").read_text(encoding="utf-8"))
+
+    assert DEAD_CODE_TOOL_PROOF_FILES <= set(quality_gate_shared.QUALITY_GATE_TOOL_PATHS)
+    assert DEAD_CODE_TOOL_PROOF_FILES <= set(pyright_config["include"])
 
 
 def test_symbol_locator_contract_is_required_and_grouped() -> None:

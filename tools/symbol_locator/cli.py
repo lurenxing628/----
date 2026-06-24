@@ -32,6 +32,9 @@ def build_parser():
         prog="symbol-locator",
         description="函数定位/影响面查询(静态图秒查 + jedi 实时消歧)")
     sub = parser.add_subparsers(dest="cmd")
+    build = sub.add_parser("build-index", help="重建 SCIP 深度索引")
+    build.add_argument("--json", action="store_true", help="输出结构化 JSON")
+    build.add_argument("--output", default=None, help="索引输出路径(默认 .codestable/checkup/latest/scip/index.scip)")
     specs = (
         ("whereis", "查函数定义位置"),
         ("callers", "查谁调用它(改动影响面)"),
@@ -76,8 +79,33 @@ def main(argv=None):
     if not args.cmd:
         parser.print_help()
         return 2
+    if args.cmd == "build-index":
+        return _build_scip_index(args.output, args.json)
     _ensure_fresh(args.rebuild, args.json)
     index = static_index.load()
     if args.cmd == "whereis":
         return render.render_whereis(args.symbol, index, as_json=args.json, at=args.at)
     return render.render_relation(args.symbol, index, args.cmd, as_json=args.json, deep=args.deep)
+
+
+def _build_scip_index(output, as_json):
+    # type: (Optional[str], bool) -> int
+    import json
+
+    from . import scip_deep
+    try:
+        path = scip_deep.build_index(index_path=output, stdout=sys.stderr if as_json else None)
+    except scip_deep.ScipUnavailable as exc:
+        if as_json:
+            print(json.dumps({"engine": "scip", "error": exc.code, "message": exc.message, "hints": exc.hints},
+                             ensure_ascii=False, indent=2))
+        else:
+            print(f"[scip 建索引不可用] {exc.message}")
+            for hint in exc.hints:
+                print(f"  - {hint}")
+        return 3
+    if as_json:
+        print(json.dumps({"engine": "scip", "index": path}, ensure_ascii=False, indent=2))
+    else:
+        print(path)
+    return 0

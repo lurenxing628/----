@@ -964,6 +964,13 @@ def test_pre_commit_config_wires_quality_gate_and_ruff_hooks() -> None:
     assert hooks["block-local-artifacts"]["pass_filenames"] is False
     assert hooks["block-local-artifacts"]["always_run"] is True
     assert hooks["readable-commit-message"]["stages"] == ["commit-msg"]
+    assert hooks["dead-code-islands"]["entry"] == (
+        "python tools/scan_dead_code_islands.py --mode quick --warn-only --quiet-when-clean"
+    )
+    assert hooks["dead-code-islands"]["language"] == "system"
+    assert hooks["dead-code-islands"]["stages"] == ["pre-push"]
+    assert hooks["dead-code-islands"]["pass_filenames"] is False
+    assert hooks["dead-code-islands"]["always_run"] is True
     assert hooks["aps-quality-gate"]["entry"] == "python tools/git_hook_checks.py run-quality-gate"
     assert hooks["aps-quality-gate"]["language"] == "system"
     assert hooks["aps-quality-gate"]["stages"] == ["pre-push"]
