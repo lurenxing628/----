@@ -1,0 +1,54 @@
+feature: dead-code-usage-graph
+status: implemented
+steps:
+  - id: step-1
+    title: 增加真实使用图底座
+    status: done
+    exit_signal: AST 使用图能解释回调、模块函数调用和对象方法调用。
+  - id: step-2
+    title: 改造死代码扫描入口
+    status: done
+    exit_signal: scan_dead_code_islands 支持 quick/precise/warn-only，并且工具错误不静默成功。
+  - id: step-3
+    title: 接入 SCIP 精确模式
+    status: done
+    exit_signal: 精确模式检查索引新鲜度，过期或工作区脏时非零退出。
+  - id: step-4
+    title: 给 SCIP 建索引 helper 接入口
+    status: done
+    exit_signal: build_index 有明确 CLI 入口，不再是未接线函数。
+  - id: step-5
+    title: 补测试和门禁登记
+    status: done
+    exit_signal: 新合同测试通过，质量门禁登记覆盖新文件。
+  - id: step-6
+    title: 验证和对抗复审
+    status: done
+    exit_signal: 相关测试、语法扫描、dirty 全门禁 passed_but_unbound；两名子代理完成定向复审和盲审，均为零阻塞。
+checks:
+  - id: check-argparse-callback
+    status: passed
+    command: PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/gate_meta/test_dead_code_usage_graph_contract.py
+  - id: check-py38
+    status: passed
+    command: PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit tools/dead_code_usage tools/scan_dead_code_islands.py tools/symbol_locator
+  - id: check-focused-contracts
+    status: passed
+    command: PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/gate_meta/test_dead_code_usage_graph_scope_contract.py tests/gate_meta/test_dead_code_usage_graph_contract.py tests/gate_meta/test_symbol_locator_contract.py tests/gate_meta/test_quality_gate_registry_split_scope_contract.py tests/gate_meta/test_git_hook_checks.py
+  - id: check-ruff-pyright
+    status: passed
+    command: PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check tools/dead_code_usage tools/scan_dead_code_islands.py tools/symbol_locator tests/gate_meta/test_dead_code_usage_graph_contract.py tests/gate_meta/test_dead_code_usage_graph_scope_contract.py tests/gate_meta/test_symbol_locator_contract.py && PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.tools.json
+  - id: check-quick-scan
+    status: passed
+    command: env PYTHONDONTWRITEBYTECODE=1 /usr/bin/time -p .venv/bin/python tools/scan_dead_code_islands.py --mode quick --warn-only --quiet-when-clean
+  - id: check-adversarial-review
+    status: passed
+    command: 两名子代理完成定向复审和盲审，均报告无阻塞问题。
+  - id: check-quality-gate-dirty
+    status: passed_but_unbound
+    command: PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --allow-dirty-worktree
+    note: 17/17 门禁步骤通过；manifest 标记 passed_but_unbound，不能当 clean proof。
+  - id: check-quality-gate-clean
+    status: passed
+    command: PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+    note: 提交后在干净工作区运行通过，用于取代 dirty passed_but_unbound 预跑。
