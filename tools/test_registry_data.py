@@ -318,6 +318,22 @@ REQUIRED_REGRESSION_COMMON_SCOPES = {
         "tools/test_registry_groups_scheduler.py",
         "tools/quality_gate_shared.py",
         "tools/quality_gate_support.py",
+        # scope 空洞审计(2026-06-23)补登：tools/scripts 下服务门禁运行/测试地基的工具脚本——
+        # 改它们影响全套测试打标(full_test_debt_shards)、门禁扫描步骤(scan_*)、git hook 拦截
+        # (git_hook_*)或门禁测量(benchmark/report/capture/build_test_inventory)，故纳入 common
+        # 走全量，语义明确，取代原先"不命中任何 group → 漏网 fallback 全量"。desktop PyQt POC、
+        # 业务转换脚本、空 __init__ 不在此列(非门禁工具，归 common 是错误语义)。
+        "tools/architecture_scan_cache.py",
+        "tools/benchmark_full_test_debt_shards.py",
+        "tools/capture_networkx_phase0_baseline.py",
+        "tools/full_test_debt_shards.py",
+        "tools/git_hook_blocked_paths.py",
+        "tools/git_hook_cache.py",
+        "tools/report_full_test_debt_durations.py",
+        "tools/scan_aps_three_gap_py38_scope.py",
+        "tools/scan_dead_code_islands.py",
+        "tools/scan_py38plus_syntax.py",
+        "scripts/build_test_inventory.py",
     ),
     "dependency_file_scopes": (
         "requirements*.txt",

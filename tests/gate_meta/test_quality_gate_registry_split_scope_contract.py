@@ -57,6 +57,30 @@ def test_registry_split_files_are_quality_gate_inputs() -> None:
     assert REGISTRY_SPLIT_FILES <= set(quality_group["tool_file_scopes"])
 
 
+# scope 空洞审计(2026-06-23)：tools/scripts 下服务门禁运行/测试地基的工具脚本，改它们影响
+# 全套测试打标 / 门禁扫描步骤 / git hook 拦截 / 门禁测量，故纳入 common 走 by-design 全量。
+GATE_INFRASTRUCTURE_TOOLS = {
+    "tools/architecture_scan_cache.py",
+    "tools/benchmark_full_test_debt_shards.py",
+    "tools/capture_networkx_phase0_baseline.py",
+    "tools/full_test_debt_shards.py",
+    "tools/git_hook_blocked_paths.py",
+    "tools/git_hook_cache.py",
+    "tools/report_full_test_debt_durations.py",
+    "tools/scan_aps_three_gap_py38_scope.py",
+    "tools/scan_dead_code_islands.py",
+    "tools/scan_py38plus_syntax.py",
+    "scripts/build_test_inventory.py",
+}
+
+
+def test_gate_infrastructure_tools_are_common_scope() -> None:
+    """防回潮：门禁/测试地基工具必须登记在 common tool_file_scopes，改它们走明确的全量而非
+    "不命中任何 group → 漏网 fallback"。删除任一条目会让该工具退回未登记空洞，此测试届时报红。"""
+    common_tools = set(REQUIRED_REGRESSION_COMMON_SCOPES["tool_file_scopes"])
+    assert GATE_INFRASTRUCTURE_TOOLS <= common_tools
+
+
 def test_symbol_locator_contract_is_required_and_grouped() -> None:
     test_path = "tests/gate_meta/test_symbol_locator_contract.py"
     tool_scope = "tools/symbol_locator/**/*.py"
