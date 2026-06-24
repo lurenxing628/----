@@ -133,6 +133,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
     "tests/gate_meta/test_codestable_architecture_contract.py",
     "tests/gate_meta/test_codestable_tools_contract.py",
+    "tests/gate_meta/test_symbol_locator_contract.py",
     "tests/web_pages/test_request_services_contract.py",
     "tests/web_pages/test_factory_request_lifecycle_observability.py",
     "tests/web_pages/test_system_request_services_contract.py",

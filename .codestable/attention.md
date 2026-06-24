@@ -14,6 +14,8 @@
 
 ### 命令与脚本陷阱
 
+- 做实现/修复前先用 `python3 -m tools.symbol_locator` 查定义和影响面：用户问“X 在哪”跑 `whereis X`；问“谁调用 X / 改 X 影响谁”跑 `callers X`；问“X 调了啥 / 依赖谁”跑 `callees X`；问“调用链/上下游”同时跑 `callers` + `callees`；用户说“彻底/全量/精确/含 tests”时给 `callers/callees` 加 `--deep`；句首出现“定位:”/“用定位工具”/“上 sl”必须按语境先调本工具。
+
 ### 路径与目录约定
 
 ### 环境变量与凭证

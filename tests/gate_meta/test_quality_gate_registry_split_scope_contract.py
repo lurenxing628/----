@@ -57,6 +57,17 @@ def test_registry_split_files_are_quality_gate_inputs() -> None:
     assert REGISTRY_SPLIT_FILES <= set(quality_group["tool_file_scopes"])
 
 
+def test_symbol_locator_contract_is_required_and_grouped() -> None:
+    test_path = "tests/gate_meta/test_symbol_locator_contract.py"
+    tool_scope = "tools/symbol_locator/**/*.py"
+    quality_group = _group("quality_gate")
+
+    assert test_path in quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS
+    assert test_path in set(quality_group["target_paths"])
+    assert tool_scope in set(quality_group["input_file_scopes"])
+    assert tool_scope in set(quality_group["tool_file_scopes"])
+
+
 def test_reports_and_geometry_split_files_are_group_scopes() -> None:
     reports_group = _group("scheduler_analysis_gantt_reports_week_plan")
     ui_group = _group("ui_layout_presenters_system")

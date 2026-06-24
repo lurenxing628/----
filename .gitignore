@@ -160,6 +160,8 @@ evidence/SemanticDebt/drift/drift-baseline.json
 # 漂移雷达扫描缓存（parse 树 / signals / history 等机器生成物，不作为审计证据纳入版本控制）
 .drift-cache/
 # 体检调用图扫描脚本和最新快照都纳入版本控制，避免审计证据被隐藏
+# SCIP 深度索引是本机生成的大二进制，metadata 会记录本机绝对路径；不入库，按需本地重建。
+.codestable/checkup/latest/scip/*.scip
 
 # CodeStable 审计/全景图本地生成数据，不纳入版本控制
 docs/_panorama_data/

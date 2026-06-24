@@ -12,6 +12,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/gate_meta/test_quality_gate_scan_contract.py",
             "tests/gate_meta/test_codestable_tools_contract.py",
             "tests/gate_meta/test_codestable_architecture_contract.py",
+            "tests/gate_meta/test_symbol_locator_contract.py",
             "tests/gate_meta/test_run_full_selftest_report_metadata.py",
             "tests/gate_meta/test_check_full_test_debt.py",
             "tests/gate_meta/test_full_test_debt_registry_contract.py",
@@ -42,6 +43,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tools/test_registry_groups_scheduler.py",
             "tools/quality_gate_*.py",
             "tools/long_gate_*.py",
+            "tools/symbol_locator/**/*.py",
             ".codestable/tools/**/*.py",
             ".codestable/architecture/**/*.md",
             ".codestable/compound/**/*.md",
@@ -82,6 +84,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tools/test_registry_groups_scheduler.py",
             "tools/quality_gate_*.py",
             "tools/long_gate_*.py",
+            "tools/symbol_locator/**/*.py",
         ),
         "env_keys": (
             "git_executable_realpath",

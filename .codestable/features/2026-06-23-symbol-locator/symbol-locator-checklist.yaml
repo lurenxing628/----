@@ -1,0 +1,78 @@
+feature: 2026-06-23-symbol-locator
+created: 2026-06-23
+
+steps:
+  - action: "编排骨架:cli + static_index,whereis/callers/callees 读 json 跑通(唯一名),模块进 tools/symbol_locator/ 子包"
+    exit_signal: "whereis build_dispatch_key 正确回 file:line;callers/callees 出全量 confident 边"
+    status: done
+  - action: "计算节点:同名碰撞列 cls/rel 消歧菜单 + callers/callees 标注 ambiguous/dynamic/tests 盲区"
+    exit_signal: "whereis to_dict 列 64 处菜单;callers 带盲区提示"
+    status: done
+  - action: "计算节点:jedi 实时消歧(--at,lazy import,缺失优雅降级)"
+    exit_signal: "whereis to_dict --at calendar_admin.py:306 精确命中 WorkCalendar.to_dict;无 jedi 时降级不崩"
+    status: done
+  - action: "接通加载:freshness 检测产物时间戳,stale 自动 2s 重建,--rebuild 强制"
+    exit_signal: "改一个函数后查询命中新行号;输出头显示快照时间"
+    status: done
+  - action: "计算节点:scip --deep 全量档(读已生成 index.scip + scip print 转倒排查询层,lazy import,缺失降级提示生成命令)"
+    exit_signal: "callers resolve_plan --deep 给出含 tests 的全量精确结果"
+    status: done
+  - action: "钩子落地:新建项目根 CLAUDE.md(A,含 2.3.1 触发关键词清单)+ cs-note 写 attention.md(B),不动全局 cs 技能"
+    exit_signal: "新会话/cs 技能启动能看到工具提示与触发词"
+    status: done
+  - action: "测试覆盖:补齐验收场景清单(含降级路径)"
+    exit_signal: "所有验收场景有可观察证据"
+    status: done
+
+checks:
+  - item: "whereis 唯一名回 file:line + 扇入扇出"
+    source: 验收场景
+    status: passed
+  - item: "whereis 同名碰撞列 cls/rel 消歧菜单,不瞎选一个"
+    source: 验收场景
+    status: passed
+  - item: "whereis --at 调用点 jedi 精确命中正确定义(如 WorkCalendar.to_dict)"
+    source: 验收场景
+    status: passed
+  - item: "callees 列其调用的函数 file:line"
+    source: 验收场景
+    status: passed
+  - item: "callers/callees 给全量 confident 边 + ambiguous/dynamic/tests 盲区标注"
+    source: 编排骨架
+    status: passed
+  - item: "--deep 用 scip 全量精确(含 tests),输出标索引时间"
+    source: 验收场景
+    status: passed
+  - item: "改函数后查询命中新行号(stale 自动重建生效)"
+    source: 流程级约束
+    status: passed
+  - item: "无 jedi/scip/networkx 时对应路径降级或结构化报错: jedi/networkx 不崩并提示,scip 缺失返回可区分退出码"
+    source: 流程级约束
+    status: passed
+  - item: "--json 输出可被 LLM 解析的结构化 JSON"
+    source: 名词契约
+    status: passed
+  - item: "查不存在的名:非零退出 + 近似名建议"
+    source: 流程级约束
+    status: passed
+  - item: "命令入口落 tools/symbol_locator/(python -m 可跑)"
+    source: 挂载点
+    status: passed
+  - item: "新建项目根 CLAUDE.md(A 钩子 + 触发关键词清单)"
+    source: 挂载点
+    status: passed
+  - item: ".codestable/attention.md 加 B 钩子行(经 cs-note,不改全局技能)"
+    source: 挂载点
+    status: passed
+  - item: "代码不出现实时 Pyright LSP 客户端逻辑"
+    source: 范围守护
+    status: passed
+  - item: "默认路径不依赖 Node/scip(顶层无 scip import;jedi/scip 均 lazy)"
+    source: 范围守护
+    status: passed
+  - item: "不修改 ~/.claude/skills/cs-* 任何文件"
+    source: 范围守护
+    status: passed
+  - item: "工具源码过 scan_py38plus_syntax.py(Py3.8 语法)"
+    source: 范围守护
+    status: passed
