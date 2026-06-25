@@ -335,7 +335,7 @@ def test_search_yaml_skips_markdown_without_frontmatter(tmp_path: Path) -> None:
 
     proc = _run_tool(SEARCH_TOOL, "--dir", str(docs_dir), "--query", "needle")
 
-    assert proc.returncode == 0
+    assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "doc.md" in proc.stdout
     assert "plain.md" not in proc.stdout
 

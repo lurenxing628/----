@@ -168,8 +168,8 @@ def _run_collector(project: Path, *extra_args: str, baseline_kind: str = "raw_be
 
 
 def _payload_from_stdout(proc: subprocess.CompletedProcess) -> dict:
-    assert proc.stdout.strip().startswith("{")
-    assert proc.stdout.strip().endswith("}")
+    assert proc.stdout.strip().startswith("{"), (proc.stdout, proc.stderr)
+    assert proc.stdout.strip().endswith("}"), (proc.stdout, proc.stderr)
     return dict(json.loads(proc.stdout))
 
 
@@ -558,7 +558,7 @@ def test_collect_full_test_debt_writes_importable_debt_baseline(tmp_path: Path) 
     baseline_payload = _payload_from_baseline(baseline_path)
     baseline_text = baseline_path.read_text(encoding="utf-8")
 
-    assert proc.returncode == 0
+    assert proc.returncode == 0, proc.stderr
     assert payload["schema_version"] == 2
     assert payload["exitstatus"] == 1
     assert payload["baseline_kind"] == "after_main_style_isolation"
@@ -680,7 +680,7 @@ def test_collect_full_test_debt_zero_candidate_importable_baseline_is_current_pr
     payload = _payload_from_stdout(proc)
     baseline_text = baseline_path.read_text(encoding="utf-8")
 
-    assert proc.returncode == 0
+    assert proc.returncode == 0, proc.stderr
     assert payload["importable"] is False
     assert payload["importable_blockers"] == ["candidate_test_debt_empty"]
     assert payload["summary"]["classification_counts"]["candidate_test_debt"] == 0
@@ -1256,7 +1256,7 @@ def test_quality_gate_required_startup_and_full_debt_share_registry() -> None:
         capture_output=True,
         text=True,
     )
-    assert tracked.returncode == 0
+    assert tracked.returncode == 0, tracked.stderr
     tracked_paths = {item for item in tracked.stdout.split("\0") if item}
 
     for rel_path in [*required_tests, *startup_regressions]:

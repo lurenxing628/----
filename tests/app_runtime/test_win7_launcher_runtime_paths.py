@@ -1259,16 +1259,12 @@ def test_launcher_profile_pattern_rejects_adjacent_profile_names(tmp_path):
     profile_dir = tmp_path / "APS" / "Chrome109Profile"
     marker = str(profile_dir).lower()
 
-    assert _command_line_matches_exact_profile(
-        f'chrome.exe --user-data-dir="{marker}" --app=http://127.0.0.1:5000', marker
-    )
-    assert _command_line_matches_exact_profile(
-        f'chrome.exe "--user-data-dir={marker}" --app=http://127.0.0.1:5000', marker
-    )
-    assert _command_line_matches_exact_profile(
-        f'chrome.exe --user-data-dir="{marker.replace("chrome109profile", "Chrome109Profile")}"',
-        marker,
-    )
+    cmdline_quoted = f'chrome.exe --user-data-dir="{marker}" --app=http://127.0.0.1:5000'
+    assert _command_line_matches_exact_profile(cmdline_quoted, marker), (cmdline_quoted, marker)
+    cmdline_eq = f'chrome.exe "--user-data-dir={marker}" --app=http://127.0.0.1:5000'
+    assert _command_line_matches_exact_profile(cmdline_eq, marker), (cmdline_eq, marker)
+    cmdline_mixed = f'chrome.exe --user-data-dir="{marker.replace("chrome109profile", "Chrome109Profile")}"'
+    assert _command_line_matches_exact_profile(cmdline_mixed, marker), (cmdline_mixed, marker)
     assert not _command_line_matches_exact_profile(
         f'chrome.exe --user-data-dir="{marker}2" --app=http://127.0.0.1:5000',
         marker,

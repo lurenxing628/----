@@ -306,7 +306,9 @@ def test_runtime_artifact_detection_counts_dangling_symlinks(tmp_path: Path) -> 
     state_dir.mkdir(parents=True)
     os.symlink(str(tmp_path / "missing-host-target"), str(state_dir / "aps_host.txt"))
 
-    assert _has_runtime_artifacts(resolve_runtime_state_paths(str(state_dir)))
+    assert _has_runtime_artifacts(resolve_runtime_state_paths(str(state_dir))), (
+        f"应检出 runtime 产物(含悬空 symlink)，state_dir 实际内容={list(state_dir.iterdir())}"
+    )
 
     direct_state_dir = tmp_path / "direct-state"
     direct_state_dir.mkdir()

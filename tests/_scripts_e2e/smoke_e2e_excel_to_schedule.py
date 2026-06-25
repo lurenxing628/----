@@ -112,7 +112,8 @@ def _assert_xlsx(lines, name: str, resp):
     ct = resp.headers.get("Content-Type", "")
     lines.append(f"- {name}：{resp.status_code} content-type={ct}")
     if resp.status_code != 200:
-        raise RuntimeError(f"{name} 返回非 200")
+        body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
+        raise RuntimeError(f"{name} 返回非 200：{resp.status_code}；body={body[:500]}")
     if "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" not in ct:
         raise RuntimeError(f"{name} content-type 异常：{ct}")
 

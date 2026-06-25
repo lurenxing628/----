@@ -25,8 +25,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from datetime import time as dt_time
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from tests.excel_data_io.excel_preview_confirm_helpers import build_confirm_payload
 
@@ -1569,7 +1568,8 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
                     follow_redirects=True,
                 )
                 if resp.status_code != 200:
-                    raise RuntimeError(f"/scheduler/run 返回 {resp.status_code}")
+                    body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
+                    raise RuntimeError(f"/scheduler/run 返回 {resp.status_code}；body={body[:500]}")
                 ver = _latest_version(conn)
                 if not ver:
                     raise RuntimeError("未写入 ScheduleHistory（无法获取 version）")
@@ -1593,7 +1593,8 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
             first_batches = batch_ids_all[: max(1, int(len(batch_ids_all) * 0.55))]
             resp = client.post("/scheduler/run", data={"batch_ids": first_batches, "start_dt": _fmt_dt(start_dt)}, follow_redirects=True)
             if resp.status_code != 200:
-                raise RuntimeError(f"第一次 /scheduler/run 返回 {resp.status_code}")
+                body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
+                raise RuntimeError(f"第一次 /scheduler/run 返回 {resp.status_code}；body={body[:500]}")
             v1 = _latest_version(conn)
             if not v1:
                 raise RuntimeError("第一次未写入 ScheduleHistory（无法获取 version）")
@@ -1634,7 +1635,8 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
             second_batches = list(first_batches) + [r["批次号"] for r in insert_rows]
             resp = client.post("/scheduler/run", data={"batch_ids": second_batches, "start_dt": _fmt_dt(start_dt)}, follow_redirects=True)
             if resp.status_code != 200:
-                raise RuntimeError(f"第二次 /scheduler/run 返回 {resp.status_code}")
+                body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
+                raise RuntimeError(f"第二次 /scheduler/run 返回 {resp.status_code}；body={body[:500]}")
             v2 = _latest_version(conn)
             if not v2 or int(v2) <= int(v1):
                 raise RuntimeError(f"第二次 version 异常：v1={v1} v2={v2}")
@@ -1677,7 +1679,8 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
             conn.commit()
             resp = client.post("/scheduler/run", data={"batch_ids": batch_ids_all, "start_dt": _fmt_dt(start_dt)}, follow_redirects=True)
             if resp.status_code != 200:
-                raise RuntimeError(f"/scheduler/run 返回 {resp.status_code}")
+                body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
+                raise RuntimeError(f"/scheduler/run 返回 {resp.status_code}；body={body[:500]}")
             ver = _latest_version(conn)
             if not ver:
                 raise RuntimeError("未写入 ScheduleHistory（无法获取 version）")
@@ -1695,13 +1698,15 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
 
             gantt = client.get(f"/scheduler/gantt/data?view=machine&week_start={week_start}&version={int(latest)}")
             if gantt.status_code != 200:
-                issues_all.append(f"甘特数据接口返回非200：{gantt.status_code}")
+                body = gantt.data.decode("utf-8", errors="ignore") if getattr(gantt, "data", None) else ""
+                issues_all.append(f"甘特数据接口返回非200：{gantt.status_code}；body={body[:500]}")
             else:
                 _write_bytes(os.path.join(output_dir, f"gantt_machine_v{latest}.json"), gantt.data)
 
             wp = client.get(f"/scheduler/week-plan/export?week_start={week_start}&version={int(latest)}")
             if wp.status_code != 200:
-                issues_all.append(f"周计划导出返回非200：{wp.status_code}")
+                body = wp.data.decode("utf-8", errors="ignore") if getattr(wp, "data", None) else ""
+                issues_all.append(f"周计划导出返回非200：{wp.status_code}；body={body[:500]}")
             else:
                 _write_bytes(os.path.join(output_dir, f"week_plan_v{latest}.xlsx"), wp.data)
 
@@ -1715,7 +1720,8 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
             for name, url in reports_checks:
                 rr = client.get(url)
                 if rr.status_code != 200:
-                    issues_all.append(f"报表页不可访问：{name} status={rr.status_code}")
+                    body = rr.data.decode("utf-8", errors="ignore") if getattr(rr, "data", None) else ""
+                    issues_all.append(f"报表页不可访问：{name} status={rr.status_code}；body={body[:500]}")
 
             # 留痕抽检：关键 Excel import + 排产（OperationLogs.detail 键名）
             import_keys = [

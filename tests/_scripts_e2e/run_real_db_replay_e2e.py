@@ -23,7 +23,7 @@ import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
 
 def _find_repo_root() -> Path:
@@ -365,7 +365,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             checks["schedule_run"]["status_code"] = int(resp.status_code)
             checks["schedule_run"]["ok"] = (resp.status_code == 200)
             if resp.status_code != 200:
-                issues.append(f"/scheduler/run 返回非200：{resp.status_code}")
+                body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
+                issues.append(f"/scheduler/run 返回非200：{resp.status_code}；body={body[:500]}")
         except Exception as e:
             checks["schedule_run"]["error"] = str(e)
             issues.append(f"/scheduler/run 调用异常：{e}")
@@ -423,7 +424,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     f"/scheduler/gantt/data?view=machine&week_start={week_start}&version={ver}")
                 checks["gantt_data"]["status_code"] = int(gantt_resp.status_code)
                 if gantt_resp.status_code != 200:
-                    issues.append(f"/scheduler/gantt/data 返回非200：{gantt_resp.status_code}")
+                    body = gantt_resp.data.decode("utf-8", errors="ignore") if getattr(gantt_resp, "data", None) else ""
+                    issues.append(f"/scheduler/gantt/data 返回非200：{gantt_resp.status_code}；body={body[:500]}")
                 else:
                     payload = json.loads(gantt_resp.data.decode("utf-8", errors="replace"))
                     ok2 = bool(payload.get("success"))
@@ -444,7 +446,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 checks["week_plan_export"]["status_code"] = int(wp.status_code)
                 checks["week_plan_export"]["ok"] = (wp.status_code == 200)
                 if wp.status_code != 200:
-                    issues.append(f"/scheduler/week-plan/export 返回非200：{wp.status_code}")
+                    body = wp.data.decode("utf-8", errors="ignore") if getattr(wp, "data", None) else ""
+                    issues.append(f"/scheduler/week-plan/export 返回非200：{wp.status_code}；body={body[:500]}")
                 else:
                     b = bytes(wp.data or b"")
                     checks["week_plan_export"]["bytes"] = len(b)
@@ -464,7 +467,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                             {"name": name, "url": url, "status_code": int(rr.status_code), "ok": ok3}
                         )
                         if not ok3:
-                            issues.append(f"报表页不可访问：{name} status={rr.status_code}")
+                            body = rr.data.decode("utf-8", errors="ignore") if getattr(rr, "data", None) else ""
+                            issues.append(f"报表页不可访问：{name} status={rr.status_code}；body={body[:500]}")
                     except Exception as e:
                         checks["reports"].append({"name": name, "url": url, "status_code": None, "ok": False, "error": str(e)})
                         issues.append(f"报表页调用异常：{name} err={e}")

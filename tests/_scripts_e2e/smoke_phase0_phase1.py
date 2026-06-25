@@ -284,12 +284,14 @@ def main():
     r = client.get("/")
     lines.append(f"- GET /：{r.status_code}")
     if r.status_code != 200:
-        raise RuntimeError("GET / 返回非 200")
+        body = r.data.decode("utf-8", errors="ignore") if getattr(r, "data", None) else ""
+        raise RuntimeError(f"GET / 返回非 200：{r.status_code}；body={body[:500]}")
 
     r = client.get("/excel-demo/")
     lines.append(f"- GET /excel-demo/：{r.status_code}")
     if r.status_code != 200:
-        raise RuntimeError("GET /excel-demo/ 返回非 200")
+        body = r.data.decode("utf-8", errors="ignore") if getattr(r, "data", None) else ""
+        raise RuntimeError(f"GET /excel-demo/ 返回非 200：{r.status_code}；body={body[:500]}")
 
     # 用户可见中文提示：404 页面
     r = client.get("/__not_found__")
@@ -303,7 +305,8 @@ def main():
     r = client.get("/excel-demo/template")
     lines.append(f"- GET /excel-demo/template：{r.status_code} content-type={r.headers.get('Content-Type')}")
     if r.status_code != 200:
-        raise RuntimeError("GET /excel-demo/template 返回非 200")
+        body = r.data.decode("utf-8", errors="ignore") if getattr(r, "data", None) else ""
+        raise RuntimeError(f"GET /excel-demo/template 返回非 200：{r.status_code}；body={body[:500]}")
 
     # 端到端：上传 → 预览 → 确认导入（验证 Operators + OperationLogs）
     lines.append("")
@@ -331,7 +334,8 @@ def main():
     )
     lines.append(f"- POST /excel-demo/preview：{resp.status_code}")
     if resp.status_code != 200:
-        raise RuntimeError("预览接口返回非 200")
+        body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
+        raise RuntimeError(f"预览接口返回非 200：{resp.status_code}；body={body[:500]}")
 
     html = resp.data.decode("utf-8", errors="ignore")
     if "检查结果" not in html:
@@ -355,7 +359,8 @@ def main():
     )
     lines.append(f"- POST /excel-demo/confirm（follow_redirects）：{resp2.status_code}")
     if resp2.status_code != 200:
-        raise RuntimeError("确认导入流程返回非 200")
+        body = resp2.data.decode("utf-8", errors="ignore") if getattr(resp2, "data", None) else ""
+        raise RuntimeError(f"确认导入流程返回非 200：{resp2.status_code}；body={body[:500]}")
 
     # 核对数据库写入
     conn = get_connection(test_db)

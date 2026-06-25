@@ -6,7 +6,6 @@ import sys
 import tempfile
 import time
 import traceback
-from datetime import datetime, timedelta
 
 
 def find_repo_root():
@@ -31,7 +30,8 @@ def write_report(path, lines):
 def _assert_status(lines, name: str, resp, expect_code: int = 200):
     lines.append(f"- {name}：{resp.status_code}")
     if resp.status_code != expect_code:
-        raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect_code}")
+        body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
+        raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect_code}；body={body[:500]}")
 
 
 def _parse_detail_json(detail: str) -> dict:
