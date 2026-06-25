@@ -88,7 +88,7 @@ def _patch_schedule_module(monkeypatch, schedule_service_mod, captured):
             used_strategy=cast(Any, SimpleNamespace(value="priority_first")),
             used_params={},
             metrics=None,
-            best_score=(0.0,),
+            best_score=(0.0, 0.0),
             best_order=[],
             attempts=[],
             improvement_trace=[],

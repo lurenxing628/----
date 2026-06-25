@@ -23,6 +23,8 @@ _SUMMARY_DEGRADATION_LABELS = {
     "optimizer_metrics_invalid": "优化指标记录异常",
     "fallback_count_parse_failed": "排产降级统计记录异常",
     "summary_count_parse_failed": "排产摘要数量记录异常",
+    "graph_enhancement_degraded": "工序图增强已退回普通排法",
+    "dispatch_failure_details": "工序失败和跳过明细",
 }
 
 

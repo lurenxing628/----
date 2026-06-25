@@ -468,4 +468,5 @@ def _build_summary(*, state: ScheduleRunState, warnings: List[str], sorted_ops: 
         warnings=warnings,
         errors=state.errors,
         duration_seconds=duration,
+        failure_details=list(state.failure_details),
     )

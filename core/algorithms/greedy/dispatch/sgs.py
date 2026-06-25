@@ -32,8 +32,6 @@ from .sgs_scoring import (
     _score_internal_candidate as _score_internal_candidate_impl,
 )
 
-_SCHEDULE_OPERATION_FAILED_MESSAGE = "排产异常，请查看系统日志。"
-
 
 def _score_internal_candidate(**kwargs: Any) -> Tuple[float, ...]:
     return _score_internal_candidate_impl(
@@ -133,8 +131,7 @@ def _group_sgs_ops(*, sorted_ops: List[Any], batches: Dict[str, Any], state: Sch
     for op in sorted_ops:
         batch_id = str(getattr(op, "batch_id", "") or "").strip()
         if batch_id not in batches:
-            state.failed_count += 1
-            state.errors.append(f"工序 {getattr(op, 'op_code', '-') or '-'}：找不到所属批次 {batch_id}")
+            state.record_missing_batch(op, batch_id)
             continue
         grouped.setdefault(batch_id, []).append(op)
     for operations in grouped.values():
@@ -386,6 +383,7 @@ def _dispatch_selected(
                 _mark_graph_operation_completed(graph_state, _op_id(op))
         else:
             extra_failed_count = 0
+            skipped_ops = _remaining_ops_after(batch_id, next_idx, ops_by_batch)
             if graph_state is not None:
                 failed_op_id = _op_id(op)
                 newly_blocked_op_ids = _block_graph_operation(graph_state, failed_op_id)
@@ -399,13 +397,18 @@ def _dispatch_selected(
             state.record_dispatch_failure(
                 batch_id,
                 block=True,
-                remaining_failed=_remaining_failed(batch_id, next_idx, ops_by_batch) + extra_failed_count,
+                remaining_failed=len(skipped_ops) + extra_failed_count,
+                failed_op=op,
+                skipped_ops=skipped_ops,
             )
     except ValidationError:
         raise
     except Exception:
         extra_failed_count = 0
-        state.errors.append(f"工序 {getattr(op, 'op_code', '-') or '-'} {_SCHEDULE_OPERATION_FAILED_MESSAGE}")
+        state.record_dispatch_exception(op, batch_id, dispatch_mode="sgs")
+        skipped_ops = _remaining_ops_after(batch_id, next_idx, ops_by_batch)
+        for skipped_op in skipped_ops:
+            state.record_skipped_after_batch_failure(skipped_op, batch_id)
         if graph_state is not None:
             failed_op_id = _op_id(op)
             newly_blocked_op_ids = _block_graph_operation(graph_state, failed_op_id)
@@ -416,11 +419,13 @@ def _dispatch_selected(
                 newly_blocked_op_ids=newly_blocked_op_ids,
                 already_counted_op_ids=_batch_failed_op_ids(batch_id, next_idx, ops_by_batch),
             )
-        state.failed_count += 1 + _remaining_failed(batch_id, next_idx, ops_by_batch) + extra_failed_count
-        ctx.log_exception(f"工序 {getattr(op, 'op_code', '-') or '-'} 排产异常")
+        state.failed_count += extra_failed_count
+        op_code = state._safe_text_attr(op, "op_code", "-") or "-"
+        ctx.log_exception(f"工序 {op_code} 排产异常")
         state.blocked_batches.add(batch_id)
 
 
-def _remaining_failed(batch_id: str, next_idx: Dict[str, int], ops_by_batch: Dict[str, List[Any]]) -> int:
+def _remaining_ops_after(batch_id: str, next_idx: Dict[str, int], ops_by_batch: Dict[str, List[Any]]) -> List[Any]:
+    operations = list(ops_by_batch.get(batch_id) or [])
     idx0 = int(next_idx.get(batch_id, 0) or 0)
-    return max(int(len(ops_by_batch.get(batch_id) or [])) - (idx0 + 1), 0)
+    return operations[idx0 + 1 :]

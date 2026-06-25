@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, cast
 
+import pytest
+
 
 def _make_dt(hours: int) -> datetime:
     return datetime(2026, 1, 1, 8, 0, 0) + timedelta(hours=hours)
@@ -477,3 +479,19 @@ def test_schedule_orchestrator_contract() -> None:
     assert captured_out_of_scope.get("optimize_strict_mode") is True, captured_out_of_scope
 
     conn.close()
+
+
+def test_orchestrator_rejects_persist_without_version_allocation() -> None:
+    from core.services.scheduler.schedule_orchestrator import orchestrate_schedule_run
+
+    with pytest.raises(ValueError, match="allocate_version=False"):
+        orchestrate_schedule_run(
+            SimpleNamespace(),
+            schedule_input=_base_input(),
+            simulate=False,
+            strict_mode=True,
+            optimize_schedule_fn=lambda **_kwargs: None,
+            build_result_summary_fn=lambda *_args, **_kwargs: None,
+            allocate_version=False,
+            persist_schedule_fn=lambda _outcome: None,
+        )

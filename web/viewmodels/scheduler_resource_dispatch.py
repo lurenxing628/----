@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable, List, MutableMapping
 
 from core.models.resource_dispatch_public_labels import lock_status_public_label, source_public_label
 from core.models.resource_identity import ResourceIdentity, build_resource_identity
+from core.models.schedule_plan_role import COMPLETED_RESULT_STATUSES
 
 from .scheduler_plan_guardrail_messages import result_status_label, summary_unavailable_guardrail_text
 
@@ -147,7 +148,7 @@ def _public_plan_identity_label(filters: Dict[str, Any]) -> str:
 
 def _has_unexecutable_result(filters: Dict[str, Any]) -> bool:
     status = _text(filters.get("schedule_result_status")).lower()
-    return bool(filters.get("is_official_plan") and status and status not in ("success", "partial"))
+    return bool(filters.get("is_official_plan") and status and status not in COMPLETED_RESULT_STATUSES)
 
 def _official_kind_label(filters: Dict[str, Any]) -> str:
     if filters.get("is_superseded_by_newer_version"):

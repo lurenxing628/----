@@ -11,11 +11,27 @@ SOURCE_SCHEDULE = "schedule"
 SOURCE_CANDIDATE_ROWS = "candidate_rows"
 SOURCE_ADJUSTMENT_SCENARIO_ROWS = "adjustment_scenario_rows"
 
+# 计划“完整成功完成”的 schedule_result_status 集合（单一真相源）。partial/failed/preview 等不在内。
+# 既用于判定“当前可执行正式方案”（派工、现场写入、默认复盘），也用于判定“可只读复盘的正式方案”——
+# 两类判定在 result_status 维度共用同一口径，其余差异（当前/历史、是否被新版本取代）由各自的其他谓词处理。
+# 此前该集合散落在 identity builder / 报表模板 / 复盘合同 / 资源派工四处，收口于此避免某次放开漏改一处造成入口间漂移。
+COMPLETED_RESULT_STATUSES = frozenset({"success"})
+
 PLAN_ROLE_LABELS = {
     ROLE_ADOPTED: "正式采用方案",
     ROLE_BASELINE_BEST: "原算法代表方案",
     ROLE_CRITICAL_BEST: "重点工序优先代表方案",
 }
+
+
+def _text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def truthy_contract_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return _text(value).lower() in {"yes", "true", "1", "on"}
 
 
 def _normalize_role(role: Optional[str]) -> str:
@@ -39,7 +55,7 @@ def is_comparison_plan(
     source_table: Optional[str] = None,
     is_scenario_preview: bool = False,
 ) -> bool:
-    if bool(is_scenario_preview):
+    if truthy_contract_bool(is_scenario_preview):
         return True
     return (
         is_comparison_role(requested_role or role)
@@ -51,10 +67,6 @@ def is_comparison_plan(
 def plan_role_label(role: Optional[str]) -> str:
     normalized = _normalize_role(role)
     return PLAN_ROLE_LABELS.get(normalized, "未知方案身份")
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
 
 
 def _truthy_value(source: Dict[str, Any], keys: tuple, default: Any) -> Any:
@@ -87,11 +99,11 @@ def _plan_guard_status(*, requested_role: str, effective_role: str, source_table
 
 def _identity_bool(plan_identity: Dict[str, Any], source: Dict[str, Any], key: str, alias: Optional[str] = None) -> bool:
     if key in plan_identity:
-        return bool(plan_identity.get(key))
+        return truthy_contract_bool(plan_identity.get(key))
     if key in source:
-        return bool(source.get(key))
+        return truthy_contract_bool(source.get(key))
     if alias and alias in source:
-        return bool(source.get(alias))
+        return truthy_contract_bool(source.get(alias))
     return False
 
 
@@ -112,8 +124,8 @@ def _plan_guard_is_comparison(
     ):
         return True
     if "is_comparison" in overrides:
-        return bool(overrides.get("is_comparison"))
-    return bool(source.get("is_comparison"))
+        return truthy_contract_bool(overrides.get("is_comparison"))
+    return truthy_contract_bool(source.get("is_comparison"))
 
 
 def project_plan_guard_fields(source: Dict[str, Any], overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -142,7 +154,7 @@ def project_plan_guard_fields(source: Dict[str, Any], overrides: Optional[Dict[s
         if override_values.get("message") is not None
         else _text(data.get("message") or data.get("plan_role_message"))
     )
-    is_scenario_preview = bool(_override_or_data(override_values, data, "is_scenario_preview"))
+    is_scenario_preview = truthy_contract_bool(_override_or_data(override_values, data, "is_scenario_preview"))
     return {
         "plan_role": requested_role,
         "requested_plan_role": requested_role,
@@ -170,15 +182,15 @@ def project_plan_guard_fields(source: Dict[str, Any], overrides: Optional[Dict[s
         "plan_identity_label": plan_identity.get("user_label") or data.get("user_label") or plan_role_label(effective_role),
         "can_dispatch": _identity_bool(plan_identity, data, "can_dispatch"),
         "can_write_feedback": _identity_bool(plan_identity, data, "can_write_feedback"),
-        "result_summary_parse_failed": bool(
-            plan_identity.get("result_summary_parse_failed") or data.get("result_summary_parse_failed")
-        ),
+        "result_summary_parse_failed": _identity_bool(plan_identity, data, "result_summary_parse_failed"),
         "result_summary_parse_reason": _text(
             plan_identity.get("result_summary_parse_reason") or data.get("result_summary_parse_reason")
         ),
         "schedule_result_status": _text(
             plan_identity.get("schedule_result_status") or data.get("schedule_result_status")
         ),
+        "detail_saved": _identity_bool(plan_identity, data, "detail_saved"),
+        "is_simulation_plan": _identity_bool(plan_identity, data, "is_simulation", "is_simulation_plan"),
         "is_official_plan": _identity_bool(plan_identity, data, "is_official", "is_official_plan"),
         "is_preview_plan": _identity_bool(plan_identity, data, "is_preview", "is_preview_plan"),
         "is_current_executable_version": _identity_bool(plan_identity, data, "is_current_executable_version"),
@@ -229,4 +241,5 @@ __all__ = [
     "plan_candidate_label",
     "project_plan_guard_fields",
     "plan_role_label",
+    "truthy_contract_bool",
 ]

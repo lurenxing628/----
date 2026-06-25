@@ -259,6 +259,33 @@ def test_scheduler_analysis_diagnostic_contracts_are_required_and_grouped() -> N
     assert "web/viewmodels/**/*.py" in set(scheduler_group["input_file_scopes"])
 
 
+def test_core_algorithm_deep_review_regressions_are_required_and_grouped() -> None:
+    test_paths = {
+        "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py",
+        "tests/algorithm/test_sgs_scoring_fallback_unscorable.py",
+        "tests/algorithm/test_schedule_summary_contract.py",
+        "tests/candidate/test_scheduler_candidate_runner_contract.py",
+        "tests/candidate/test_scheduler_candidate_persistence_contract.py",
+        "tests/schedule/summary/test_schedule_summary_deep_review_degradations.py",
+        "tests/schedule/summary/test_scheduler_summary_public_projection_deep_review.py",
+        "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_deep_review_contract.py",
+    }
+    run_core_group = _group("scheduler_run_core")
+    analysis_group = _group("scheduler_analysis_gantt_reports_week_plan")
+
+    assert test_paths <= set(quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS)
+    assert {
+        "tests/algorithm/test_sgs_scoring_fallback_unscorable.py",
+        "tests/algorithm/test_schedule_summary_contract.py",
+        "tests/candidate/test_scheduler_candidate_runner_contract.py",
+        "tests/candidate/test_scheduler_candidate_persistence_contract.py",
+        "tests/schedule/summary/test_schedule_summary_deep_review_degradations.py",
+        "tests/schedule/summary/test_scheduler_summary_public_projection_deep_review.py",
+        "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_deep_review_contract.py",
+    } <= set(run_core_group["target_paths"])
+    assert {"tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py"} <= set(analysis_group["target_paths"])
+
+
 def test_operation_execution_core_regressions_are_required_and_grouped() -> None:
     test_paths = {
         "tests/operation_execution/test_operation_execution_event_foundation.py",

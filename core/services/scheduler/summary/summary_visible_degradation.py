@@ -163,8 +163,8 @@ def warnings_with_graph(freeze_state: FreezeState, ctx: SummaryBuildContext) -> 
     return warnings
 
 
-def public_summary_error_state(raw_summary_errors: List[Any]) -> Tuple[List[Dict[str, Any]], List[str]]:
-    details = build_public_error_records(raw_summary_errors)
+def public_summary_error_state(raw_summary_errors: List[Any], structured_details: Any = None) -> Tuple[List[Dict[str, Any]], List[str]]:
+    details = build_public_error_records(raw_summary_errors, structured_details=structured_details)
     messages = [str(item.get("message") or "") for item in details if item.get("message")]
     return details, messages
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 from core.models.enums import BatchOperationStatus, BatchStatus, YesNo
 from core.services.scheduler.execution_fact_provider import ExecutionFact
@@ -9,6 +8,7 @@ from core.services.scheduler.execution_fact_provider import ExecutionFact
 from .schedule_candidate_persistence_helpers import persist_schedule_run_with_candidates as _persist_with_candidates
 from .schedule_candidate_persistence_models import operation_log_algo_summary as _operation_log_algo_summary
 from .schedule_execution_persistence_guard import validate_execution_guard_before_persist
+from .schedule_operation_log_details import dispatch_error_summary
 from .schedule_payload_contract import (
     ValidatedSchedulePayload,
     ValidatedScheduleRow,
@@ -165,6 +165,9 @@ def _log_schedule_operation(
         "overdue_batches_sample": overdue_items[:10],
         "time_cost_ms": int(time_cost_ms),
     }
+    dispatch_summary = dispatch_error_summary(result_summary_obj)
+    if dispatch_summary:
+        detail["dispatch_error_summary"] = dispatch_summary
     svc.op_logger.info(
         module="scheduler",
         action="simulate" if simulate else "schedule",
@@ -257,7 +260,7 @@ def persist_schedule_core_in_tx(
     batches: Dict[str, Any],
     reschedulable_operations: List[Any],
     created_by: str,
-    simulate: bool,
+    is_simulation_version: bool,
     frozen_op_ids: Set[int],
     result_status: str,
     result_summary_json: str,
@@ -293,7 +296,7 @@ def persist_schedule_core_in_tx(
     if schedule_rows:
         svc.schedule_repo.bulk_create(schedule_rows)
 
-    if not simulate:
+    if not is_simulation_version:
         _persist_non_simulation_state(
             svc,
             cfg=cfg,
@@ -346,6 +349,14 @@ def persist_schedule(
     execution_facts: Optional[Dict[int, ExecutionFact]] = None,
     payload_validation_operations: Optional[List[Any]] = None,
 ) -> None:
+    """正式/模拟版本落库入口（契约级公开函数，主要被合同测试直接调用；生产路径走
+    persist_schedule_run_with_candidates 包装）。
+
+    关于 ``simulate`` 的层次语义：这里是“持久化层”含义——写一条标记为模拟版本的记录、
+    不改动正式版本状态（内部即 is_simulation_version）。它与“服务层”的 simulate
+    （=完全不落库，由 persist_schedule_fn=None 实现）不是一回事；服务层 simulate 时根本
+    不会调用本函数，两套语义不会交叉，故此处保留 simulate 形参名不构成歧义。
+    """
     with svc.tx_manager.transaction():
         persist_schedule_core_in_tx(
             svc,
@@ -357,7 +368,7 @@ def persist_schedule(
             batches=batches,
             reschedulable_operations=reschedulable_operations,
             created_by=created_by,
-            simulate=simulate,
+            is_simulation_version=simulate,
             frozen_op_ids=frozen_op_ids,
             execution_fixed_op_ids=set(execution_fixed_op_ids or set()),
             execution_completed_op_ids=set(execution_completed_op_ids or set()),
@@ -388,4 +399,16 @@ def persist_schedule(
 
 
 def persist_schedule_run_with_candidates(svc: Any, **kwargs: Any) -> None:
+    if "simulate" in kwargs and "is_simulation_version" not in kwargs:
+        kwargs["is_simulation_version"] = kwargs.pop("simulate")
     _persist_with_candidates(svc, persist_schedule_core_in_tx=persist_schedule_core_in_tx, log_schedule_operation=_log_schedule_operation, **kwargs)
+
+
+__all__ = [
+    "ValidatedSchedulePayload",
+    "ValidatedScheduleRow",
+    "build_validated_schedule_payload",
+    "persist_schedule",
+    "persist_schedule_core_in_tx",
+    "persist_schedule_run_with_candidates",
+]

@@ -123,6 +123,13 @@ _SGS_MISSING_RESOURCE_SUFFIX_CODES: Tuple[Tuple[str, str], ...] = (
     ("缺少人员、设备，请到批次详情补齐后再排产。", "missing_internal_resource"),
 )
 _SGS_RESOURCE_SUFFIX_CODES = _SGS_MISSING_RESOURCE_SUFFIX_CODES + _SGS_AUTO_ASSIGN_SUFFIX_CODES
+_STRUCTURED_FAILURE_CODES = {
+    "dispatch_operation_failed",
+    "dispatch_operation_exception",
+    "graph_blocked_after_failure",
+    "missing_batch",
+    "skipped_after_batch_failure",
+}
 
 
 def _clean_text(value: Any) -> str:
@@ -267,6 +274,10 @@ def public_error_message_from_detail(raw: Any) -> str:
     if schema_version and schema_version != PUBLIC_ERROR_SCHEMA_VERSION:
         return GENERIC_PUBLIC_ERROR_MESSAGE
 
+    structured_message = _structured_failure_message(raw)
+    if structured_message:
+        return structured_message
+
     full_message = _clean_text(raw.get("message"))
     if not full_message:
         return ""
@@ -280,6 +291,44 @@ def public_error_message_from_detail(raw: Any) -> str:
     if message == GENERIC_PUBLIC_ERROR_MESSAGE:
         return GENERIC_PUBLIC_ERROR_MESSAGE
     return GENERIC_PUBLIC_ERROR_MESSAGE
+
+
+def _structured_failure_message(detail: Dict[str, Any]) -> str:
+    code = str(detail.get("code") or "").strip()
+    op_code = public_safe_identifier(detail.get("op_code")) or "-"
+    failed_op_code = public_safe_identifier(detail.get("failed_op_code")) or "-"
+    if code == "dispatch_operation_exception":
+        return f"工序 {op_code} 排产时遇到系统异常，本次没有继续安排该批次后续工序。"
+    if code == "dispatch_operation_failed":
+        return f"工序 {op_code} 没有形成有效排程，本次没有继续安排该批次后续工序。"
+    if code == "skipped_after_batch_failure":
+        if failed_op_code != "-":
+            return f"工序 {op_code}：同批前序工序 {failed_op_code} 排产失败，本次跳过。"
+        return f"工序 {op_code}：同批前序工序排产失败，本次跳过。"
+    if code == "graph_blocked_after_failure":
+        return f"工序 {op_code}：依赖的前序工序 {failed_op_code} 排产失败，本次跳过。"
+    if code == "missing_batch":
+        return f"工序 {op_code} 找不到所属批次，本次无法排产。"
+    return ""
+
+
+def _public_error_from_structured_failure(detail: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(detail, dict):
+        return None
+    code = str(detail.get("code") or "").strip()
+    if code not in _STRUCTURED_FAILURE_CODES:
+        return None
+    message = _structured_failure_message(detail)
+    if not message:
+        return None
+    return make_public_error(
+        code=code,
+        message=message,
+        batch_id=detail.get("batch_id"),
+        op_id=detail.get("op_id"),
+        op_code=detail.get("op_code"),
+        seq=detail.get("seq"),
+    )
 
 
 def infer_legacy_public_code(message: Any) -> str:
@@ -321,7 +370,7 @@ def _normalize_error_list(raw_errors: Any) -> List[str]:
     return out
 
 
-def build_public_error_records(raw_errors: Any) -> List[Dict[str, Any]]:
+def build_public_error_records(raw_errors: Any, structured_details: Any = None) -> List[Dict[str, Any]]:
     records: List[Dict[str, Any]] = []
     seen = set()
     for raw in _normalize_error_list(raw_errors):
@@ -337,6 +386,15 @@ def build_public_error_records(raw_errors: Any) -> List[Dict[str, Any]]:
             continue
         seen.add(dedupe_key)
         records.append(make_public_error(code=code, message=public_message))
+    for detail in list(structured_details or []):
+        record = _public_error_from_structured_failure(detail)
+        if record is None:
+            continue
+        dedupe_key = (record.get("code"), record.get("message"), record.get("op_id"), record.get("batch_id"))
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        records.append(record)
     return records
 
 

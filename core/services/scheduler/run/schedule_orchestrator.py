@@ -285,6 +285,8 @@ def orchestrate_schedule_run(
     version_override: Any = None,
     persist_schedule_fn: Any = None,
 ) -> ScheduleOrchestrationOutcome:
+    if callable(persist_schedule_fn) and not allocate_version:
+        raise ValueError("持久化排产必须分配新版本号，不能在 allocate_version=False 时传入 persist_schedule_fn。")
     optimizer_outcome, graph_analysis_public, graph_analysis_diagnostics, candidate_comparison = _run_plan_selection(
         svc,
         schedule_input=schedule_input,

@@ -163,24 +163,34 @@ def test_resource_dispatch_unqueryable_write_page_does_not_render_none_links(tmp
     assert "/scheduler/resource-dispatch/execution/import?" not in body
 
 
-def test_resource_dispatch_history_and_scenario_pages_do_not_emit_review_or_write_urls(tmp_path, monkeypatch) -> None:
+def test_resource_dispatch_history_can_review_but_scenario_pages_do_not_emit_review_or_write_urls(tmp_path, monkeypatch) -> None:
     app, _db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
     from web.routes.domains.scheduler import scheduler_resource_dispatch as rd_routes
 
     monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
 
-    readonly_urls = [
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-04-30&date_from=2026-04-30&date_to=2026-05-06&version=1&plan_role=adopted",
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted&scenario_id=scenario-plain",
-    ]
+    history_url = (
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week"
+        "&query_date=2026-04-30&date_from=2026-04-30&date_to=2026-05-06&version=1&plan_role=adopted"
+    )
+    scenario_url = (
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week"
+        "&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07"
+        "&version=2&plan_role=adopted&scenario_id=scenario-plain"
+    )
 
-    for url in readonly_urls:
-        resp = client.get(url)
-        body = resp.get_data(as_text=True)
+    history_resp = client.get(history_url)
+    history_body = history_resp.get_data(as_text=True)
+    assert history_resp.status_code == 200
+    assert 'href="/reports/execution-review' in history_body
 
-        assert resp.status_code == 200
-        assert 'href="/reports/execution-review' not in body
+    scenario_resp = client.get(scenario_url)
+    scenario_body = scenario_resp.get_data(as_text=True)
+    assert scenario_resp.status_code == 200
+    assert 'href="/reports/execution-review' not in scenario_body
+
+    for body in (history_body, scenario_body):
         for attr in (
             "data-actual-record-url-template=",
             "data-actual-template-url=",
@@ -278,6 +288,12 @@ def test_execution_review_link_keeps_server_side_guard_fields() -> None:
         "scope_type": "operator",
         "operator_id": "O1",
         "is_current_executable_official_version": True,
+        "source_table": "schedule",
+        "schedule_result_status": "success",
+        "detail_saved": True,
+        "is_official_plan": True,
+        "is_preview_plan": False,
+        "is_simulation_plan": False,
         "can_write_feedback": True,
         "can_dispatch": True,
     }
@@ -285,8 +301,10 @@ def test_execution_review_link_keeps_server_side_guard_fields() -> None:
         {"effective_plan_role": "baseline_best"},
         {"requested_plan_role": "baseline_best"},
         {"is_scenario_preview": True},
-        {"is_current_executable_official_version": False},
         {"is_comparison": True},
+        {"schedule_result_status": "partial"},
+        {"detail_saved": False},
+        {"is_simulation_plan": True},
     ]
 
     for override in blocked_fields:
@@ -299,9 +317,8 @@ def test_execution_review_link_keeps_server_side_guard_fields() -> None:
         dict(base_filters, is_superseded_by_newer_version=True),
         dict(base_filters, is_superseded_by_newer_version=True),
     )
-    assert historical_link["disabled"] is True
-    assert historical_link["url"] == ""
-    assert "这是历史正式方案，只能查看" in historical_link["disabled_reason"]
+    assert historical_link["disabled"] is False
+    assert "plan_role=adopted" in historical_link["url"]
 
     link = _execution_review_link(base_filters, base_filters)
     assert link["disabled"] is False

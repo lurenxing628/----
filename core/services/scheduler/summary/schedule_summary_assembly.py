@@ -26,6 +26,7 @@ from .summary_visible_degradation import (
     apply_summary_count_errors,
     apply_summary_diagnostics,
     public_summary_error_state,
+    record_summary_degradation,
     safe_metrics_dict,
     summary_counts_with_errors,
     warnings_with_graph,
@@ -220,6 +221,13 @@ def _candidate_comparison_algo_dict(ctx: SummaryBuildContext) -> Dict[str, Any]:
     return {"candidate_comparison": dict(ctx.candidate_comparison_public)}
 
 
+def _summary_failure_details(summary: Any) -> List[Dict[str, Any]]:
+    details = getattr(summary, "failure_details", None)
+    if not isinstance(details, list):
+        return []
+    return [dict(item) for item in details if isinstance(item, dict)]
+
+
 def _apply_optional_algo_fields(algo: Dict[str, Any], state: AlgorithmSummaryState, metrics_state: Any) -> None:
     if metrics_state:
         algo["metrics_state"] = metrics_state
@@ -294,6 +302,8 @@ def _apply_visible_degradations(
     causes: List[str],
     completion_status: str,
     degraded_success: bool,
+    graph_analysis_public: Optional[Dict[str, Any]],
+    failure_details: List[Dict[str, Any]],
 ) -> Tuple[bool, int, int, int, List[str]]:
     degraded_success = apply_metrics_degradation(
         metrics_state=public_algo.get("metrics_state"),
@@ -323,7 +333,48 @@ def _apply_visible_degradations(
         completion_status=completion_status,
         degraded_success=degraded_success,
     )
+    if _graph_enhancement_degraded(graph_analysis_public):
+        record_summary_degradation(
+            events=events,
+            counters=counters,
+            causes=causes,
+            code="graph_enhancement_degraded",
+            scope="schedule.summary.graph_analysis",
+            field="graph_analysis",
+            message="工序图报告已生成，但图增强排队因循环依赖关闭，本次退回普通排法。",
+            count=1,
+        )
+        degraded_success = bool(degraded_success or str(completion_status or "") == "success")
+    dispatch_failure_count = _dispatch_failure_detail_count(failure_details)
+    if dispatch_failure_count:
+        # 注意：这里不像上面 graph 分支那样抬 degraded_success——这是刻意的，不是漏写。
+        # 有派工失败/跳过明细蕴含 failed_count>0，故 completion_status 必非 "success"，二者代码层面互斥；
+        # 补 `or completion=="success"` 只会引入一条永不成立的死逻辑。
+        record_summary_degradation(
+            events=events,
+            counters=counters,
+            causes=causes,
+            code="dispatch_failure_details",
+            scope="schedule.summary.failure_details",
+            field="failure_details",
+            message="部分工序没有形成有效排程，摘要已保留失败和跳过明细。",
+            count=dispatch_failure_count,
+        )
     return degraded_success, op_count, scheduled_ops, failed_ops, summary_count_errors
+
+
+def _graph_enhancement_degraded(graph_analysis_public: Optional[Dict[str, Any]]) -> bool:
+    public = graph_analysis_public if isinstance(graph_analysis_public, dict) else {}
+    return bool(
+        str(public.get("status") or "").strip().lower() == "available"
+        and str(public.get("mode") or "").strip().lower() == "on"
+        and public.get("graph_enhancement_allowed") is False
+        and str(public.get("graph_enhancement_disabled_reason") or "").strip() == "schedule_graph_cycle"
+    )
+
+
+def _dispatch_failure_detail_count(failure_details: List[Dict[str, Any]]) -> int:
+    return sum(1 for item in failure_details if str(item.get("code") or "").strip())
 
 
 def _build_result_summary_obj(
@@ -342,7 +393,8 @@ def _build_result_summary_obj(
     serialize_end_date_fn: Callable[[Optional[Any]], Optional[str]],
 ) -> Dict[str, Any]:
     raw_summary_errors = list(getattr(ctx.summary, "errors", None) or [])
-    public_error_details, public_error_messages = public_summary_error_state(raw_summary_errors)
+    failure_details = _summary_failure_details(ctx.summary)
+    public_error_details, public_error_messages = public_summary_error_state(raw_summary_errors, failure_details)
     missing_resource_ops = missing_internal_resource_samples(
         ctx.operations,
         _actionable_missing_internal_resource_op_ids(ctx),
@@ -362,6 +414,8 @@ def _build_result_summary_obj(
         causes=result_degraded_causes,
         completion_status=completion_status,
         degraded_success=bool(degraded_success),
+        graph_analysis_public=ctx.graph_analysis_public,
+        failure_details=failure_details,
     )
 
     result_summary = {
@@ -398,11 +452,14 @@ def _build_result_summary_obj(
             "items": runtime_state.near_due_items,
             "window_days": NEAR_DUE_WINDOW_DAYS,
         },
-        "error_count": len(raw_summary_errors),
+        "error_count": len(public_error_messages),
         "errors": public_error_messages,
         "errors_sample": public_error_messages[:10],
         "public_error_details": public_error_details,
-        "raw_error_count": len(raw_summary_errors),
+        # failure_detail_count 是被 dispatch_error_summary 消费的“真实失败总数”（去重/采样前）。
+        # 原始 failure_details 列表与 raw_error_count 此前落库却无任何消费端，已移除以免摘要膨胀；
+        # 失败的对外展示统一走 public_error_details。
+        "failure_detail_count": len(failure_details),
         "missing_internal_resource_count": len(missing_resource_ops),
         "missing_internal_resource_ops": missing_resource_ops,
         "warnings": warnings,

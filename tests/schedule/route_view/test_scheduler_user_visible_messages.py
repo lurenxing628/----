@@ -241,12 +241,31 @@ def test_error_handler_hides_english_internal_message(tmp_path, monkeypatch) -> 
 
 @pytest.mark.parametrize(
     "field",
-    ["batch_ids", "end_date", "start_dt", "批次", "排产", "排产版本", "齐套"],
+    ["batch_ids", "end_date", "start_dt", "批次", "排产", "排产版本", "齐套", "downtime"],
 )
 def test_scheduler_direct_validation_fields_keep_user_visible_message(field: str) -> None:
     exc = ValidationError("组合模板资料缺失，请先补齐模板后再排产。", field=field)
 
     assert scheduler_user_visible_app_error_message(exc) == "组合模板资料缺失，请先补齐模板后再排产。"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "部分设备停机区间加载失败（1 台，如：MC_BAD），无法读取这些设备的停机记录 本次没有生成新排程，请检查停机记录后再试。",
+        "全部设备停机区间加载失败（2 台，如：MC_A、MC_B），无法读取这些设备的停机记录 本次没有生成新排程，请检查停机记录后再试。",
+    ],
+)
+def test_scheduler_downtime_failure_message_with_machine_samples_reaches_user(message: str) -> None:
+    # 停机失败文案含机器编号样例（带下划线），必须原样透出而不被 error_boundary 内部键正则泛化掉，
+    # 否则“全挂/个别挂”分流对用户不可见。
+    exc = ValidationError(message, field="downtime", details={"reason": "downtime_load_partial_failed"})
+
+    visible = scheduler_user_visible_app_error_message(exc)
+
+    assert visible == message
+    assert "MC_" in visible
+    assert "参数填写不正确" not in visible
 
 
 @pytest.mark.parametrize("field", ["template", "ext_group_id"])

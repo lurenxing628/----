@@ -242,9 +242,9 @@ def _optimizer_outcome() -> OptimizationOutcome:
         used_strategy=SortStrategy.PRIORITY_FIRST,
         used_params={"dispatch": "sgs"},
         metrics=None,
-        best_score=(0.0,),
+        best_score=(0.0, 0.0),
         best_order=["B001"],
-        attempts=[{"score": [0.0]}],
+        attempts=[{"score": [0.0, 0.0]}],
         improvement_trace=[],
         algo_mode="greedy",
         objective_name="min_overdue",
@@ -870,7 +870,11 @@ def test_sgs_graph_ready_context_does_not_release_successor_after_blocked_failur
 
     assert results == []
     assert summary.failed_ops == 2
-    assert any("OP-B2-010" in error and "OP-B1-010" in error and "本次跳过" in error for error in summary.errors)
+    # 阻塞后续的失败统一进结构化 failure_details（含被阻塞工序与失败前序工序），不再塞 summary.errors。
+    assert any(
+        d.get("op_code") == "OP-B2-010" and d.get("failed_op_code") == "OP-B1-010"
+        for d in summary.failure_details
+    )
 
 
 def test_sgs_graph_ready_context_uses_normalized_successor_map_for_blocking() -> None:
@@ -902,7 +906,11 @@ def test_sgs_graph_ready_context_uses_normalized_successor_map_for_blocking() ->
 
     assert results == []
     assert summary.failed_ops == 2
-    assert any("OP-B2-010" in error and "OP-B1-010" in error and "本次跳过" in error for error in summary.errors)
+    # 阻塞后续的失败统一进结构化 failure_details（含被阻塞工序与失败前序工序），不再塞 summary.errors。
+    assert any(
+        d.get("op_code") == "OP-B2-010" and d.get("failed_op_code") == "OP-B1-010"
+        for d in summary.failure_details
+    )
 
 
 @pytest.mark.parametrize("field", ["schedulable_op_ids", "fixed_op_ids"])
@@ -1080,7 +1088,11 @@ def test_sgs_graph_ready_context_does_not_double_count_same_batch_blocked_succes
 
     assert results == []
     assert summary.failed_ops == 2
-    assert any("OP-B1-020" in error and "OP-B1-010" in error and "本次跳过" in error for error in summary.errors)
+    # 同批被阻塞后续只计一次，结构化明细记录被阻塞工序与失败前序工序，不再塞 summary.errors。
+    assert any(
+        d.get("op_code") == "OP-B1-020" and d.get("failed_op_code") == "OP-B1-010"
+        for d in summary.failure_details
+    )
 
 
 def test_sgs_graph_ready_context_exits_when_remaining_ready_ops_are_batch_blocked() -> None:

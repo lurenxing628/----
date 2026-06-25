@@ -9,7 +9,9 @@ from urllib.parse import urlparse
 import pytest
 
 from core.infrastructure.database import get_connection
-from core.models.schedule_plan_role import ROLE_ADOPTED
+from core.infrastructure.errors import ValidationError
+from core.models.execution_review_identity import can_read_execution_review
+from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.services.report.execution_review import ExecutionReviewMixin
 from tests.web_pages.reports_workbench_backlink_helpers import (
     _assert_public_output_boundaries,
@@ -61,8 +63,24 @@ def _assert_no_adopted_continuation_links(parser) -> None:
 
 
 class _ReviewResolution:
+    def __init__(self, *, status: str = "success", detail_saved=True) -> None:
+        self.status = status
+        self.detail_saved = detail_saved
+
     def to_dict(self):
-        return {"plan_identity": {"user_label": "正式采用方案"}}
+        return {
+            "source_table": SOURCE_SCHEDULE,
+            "selected_role": ROLE_ADOPTED,
+            "plan_identity": {
+                "user_label": "正式采用方案",
+                "is_official": True,
+                "is_preview": False,
+                "is_simulation": False,
+                "result_summary_parse_failed": False,
+                "schedule_result_status": self.status,
+                "detail_saved": self.detail_saved,
+            },
+        }
 
 
 class _NoFeedbackService:
@@ -71,13 +89,14 @@ class _NoFeedbackService:
 
 
 class _ReviewHost(ExecutionReviewMixin):
-    def __init__(self) -> None:
+    def __init__(self, resolution: _ReviewResolution = None) -> None:
         self.calls = []
         self.execution_feedback_service = _NoFeedbackService()
+        self.resolution = resolution or _ReviewResolution()
 
     def _resolve_plan(self, version, plan_role, scenario_id=None):
         self.calls.append(("resolve", version, plan_role, scenario_id))
-        return _ReviewResolution()
+        return self.resolution
 
     def _list_plan_rows_between(self, **kwargs):
         self.calls.append(("between", kwargs))
@@ -86,6 +105,26 @@ class _ReviewHost(ExecutionReviewMixin):
     def _list_plan_rows_all(self, **kwargs):
         self.calls.append(("all", kwargs))
         return []
+
+
+def test_execution_review_identity_guard_parses_string_booleans() -> None:
+    base = {
+        "source_table": "schedule",
+        "selected_role": ROLE_ADOPTED,
+        "plan_identity": {
+            "is_official": "yes",
+            "is_preview": "no",
+            "is_simulation": "no",
+            "result_summary_parse_failed": "no",
+            "schedule_result_status": "success",
+            "detail_saved": "yes",
+        },
+    }
+
+    assert can_read_execution_review(base) is True
+
+    blocked = dict(base, plan_identity=dict(base["plan_identity"], result_summary_parse_failed="yes"))
+    assert can_read_execution_review(blocked) is False
 
 
 def test_execution_review_service_hard_pins_adopted_null_scope() -> None:
@@ -108,6 +147,17 @@ def test_execution_review_service_hard_pins_adopted_null_scope() -> None:
     assert host.calls[3][0] == "all"
     assert host.calls[3][1]["plan_role"] == ROLE_ADOPTED
     assert host.calls[3][1]["scenario_id"] is None
+
+
+def test_execution_review_service_blocks_partial_before_reading_plan_rows() -> None:
+    host = _ReviewHost(_ReviewResolution(status="partial"))
+
+    with pytest.raises(ValidationError) as exc_info:
+        host.execution_review(12)
+
+    assert exc_info.value.details.get("field") == "plan_identity"
+    assert exc_info.value.details.get("reason") == "not_reviewable_official_plan"
+    assert host.calls == [("resolve", 12, ROLE_ADOPTED, None)]
 
 
 def test_execution_review_direct_candidate_request_is_visible_blocked() -> None:

@@ -101,7 +101,7 @@ class _CandidateTrialConfigService:
         self.VALID_DISPATCH_MODES = (str(cfg.dispatch_mode).strip().lower(),)
         self.VALID_DISPATCH_RULES = (str(cfg.dispatch_rule).strip().lower(),)
         self.VALID_OBJECTIVES = (str(cfg.objective).strip().lower(),)
-        self.VALID_ALGO_MODES = ("greedy",)
+        self.VALID_ALGO_MODES = (str(cfg.algo_mode).strip().lower(),)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._base_cfg_svc, name)

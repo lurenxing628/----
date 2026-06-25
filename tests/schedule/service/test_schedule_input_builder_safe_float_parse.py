@@ -1,6 +1,10 @@
-"""回归测试：build_algo_operations 对工序数值字段做安全解析——内部工序的空白/非数字 setup_hours、unit_hours 回退为 0.0，外部工序（source 大小写混用仍识别为 external）空白 ext_days 兼容回退为 1.0，全程不抛异常，但会触发真实模板查找并保留 blank_required 等结构化退化事件。"""
+"""回归测试：build_algo_operations 对工序数值字段做安全解析——内部工序的空白/非数字 setup_hours、unit_hours 必须直接报错；外部工序（source 大小写混用仍识别为 external）空白 ext_days 兼容回退为 1.0，并保留 blank_required 等结构化退化事件。"""
 
 from types import SimpleNamespace
+
+import pytest
+
+from core.infrastructure.errors import ValidationError
 
 
 class _StubSvc:
@@ -25,6 +29,25 @@ def test_schedule_input_builder_safe_float_parse() -> None:
 
     svc = _StubSvc()
 
+    invalid_internal = SimpleNamespace(
+        id=1,
+        op_code="OP_INT_01",
+        batch_id="B001",
+        seq=1,
+        op_type_id="OT01",
+        op_type_name="车削",
+        source="internal",
+        machine_id="M001",
+        operator_id="O001",
+        supplier_id=None,
+        setup_hours="   ",
+        unit_hours="abc",
+        ext_days=None,
+    )
+    with pytest.raises(ValidationError) as exc_info:
+        build_algo_operations(svc, [invalid_internal], return_outcome=True)
+    assert exc_info.value.field == "setup_hours"
+
     internal = SimpleNamespace(
         id=1,
         op_code="OP_INT_01",
@@ -36,8 +59,8 @@ def test_schedule_input_builder_safe_float_parse() -> None:
         machine_id="M001",
         operator_id="O001",
         supplier_id=None,
-        setup_hours="   ",  # 空白字符串：应回退为 0.0，不应抛异常
-        unit_hours="abc",  # 非数字：应回退为 0.0
+        setup_hours="0.5",
+        unit_hours="1",
         ext_days=None,
     )
     external = SimpleNamespace(
@@ -65,8 +88,8 @@ def test_schedule_input_builder_safe_float_parse() -> None:
     op0 = out[0]
     op1 = out[1]
 
-    assert float(op0.setup_hours) == 0.0, f"setup_hours 解析异常：{op0.setup_hours!r}"
-    assert float(op0.unit_hours) == 0.0, f"unit_hours 解析异常：{op0.unit_hours!r}"
+    assert float(op0.setup_hours) == 0.5, f"setup_hours 解析异常：{op0.setup_hours!r}"
+    assert float(op0.unit_hours) == 1.0, f"unit_hours 解析异常：{op0.unit_hours!r}"
     assert float(op1.ext_days or 0.0) == 1.0, f"ext_days 兼容回退异常：{op1.ext_days!r}"
     codes = [event.code for event in outcome.events]
     assert "blank_required" in codes, f"兼容读取事件缺少 blank_required：{codes!r}"

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from core.models.schedule_plan_role import COMPLETED_RESULT_STATUSES
 from core.services.scheduler.schedule_plan_option_display import public_plan_role_options
 from web.viewmodels.scheduler_plan_guardrail_messages import result_status_label, summary_unavailable_guardrail_text
 
 ROLE_ADOPTED = "adopted"
 DEFAULT_PLAN_LABEL = "正式采用方案"
 DEFAULT_PREVIEW_LABEL = "模拟预览（未命名）"
-_EXECUTABLE_RESULT_STATUSES = {"success", "partial"}
 
 
 def _text(value: Any) -> str:
@@ -45,7 +45,7 @@ def _not_executable_text(data: Dict[str, Any], label: str) -> str:
     if data.get("is_superseded_by_newer_version") or data.get("result_summary_parse_failed"):
         return ""
     status = _text(data.get("schedule_result_status")).lower()
-    if status in _EXECUTABLE_RESULT_STATUSES:
+    if status in COMPLETED_RESULT_STATUSES:
         return ""
     return f"当前排产结果状态是“{_result_status_label(status)}”，不能当作当前可执行正式方案。当前方案：{label}"
 

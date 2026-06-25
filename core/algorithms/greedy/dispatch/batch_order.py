@@ -11,8 +11,6 @@ from core.infrastructure.errors import ValidationError
 from ..run_context import ensure_run_context
 from ..run_state import ScheduleRunState
 
-_SCHEDULE_OPERATION_FAILED_MESSAGE = "排产异常，请查看系统日志。"
-
 
 def dispatch_batch_order(
     context: Any,
@@ -145,7 +143,7 @@ def _dispatch_one(
         if result and result.start_time and result.end_time:
             state.record_dispatch_success(result)
         else:
-            state.record_dispatch_failure(batch_id, block=True)
+            state.record_dispatch_failure(batch_id, block=True, failed_op=op)
     except ValidationError:
         raise
     except Exception:
@@ -154,11 +152,10 @@ def _dispatch_one(
 
 def _validate_batch(*, op: Any, batch_id: str, batches: Dict[str, Any], state: ScheduleRunState) -> bool:
     if batch_id not in batches:
-        state.failed_count += 1
-        state.errors.append(f"工序 {getattr(op, 'op_code', '-') or '-'}：找不到所属批次 {batch_id}")
+        state.record_missing_batch(op, batch_id)
         return False
     if batch_id in state.blocked_batches:
-        state.failed_count += 1
+        state.record_skipped_after_batch_failure(op, batch_id)
         return False
     return True
 
@@ -207,9 +204,6 @@ def _schedule_op(
 
 
 def _record_dispatch_exception(ctx: Any, *, op: Any, batch_id: str, state: ScheduleRunState) -> None:
-    state.failed_count += 1
-    op_code = getattr(op, "op_code", "-") or "-"
-    state.errors.append(f"工序 {op_code} {_SCHEDULE_OPERATION_FAILED_MESSAGE}")
+    op_code = state._safe_text_attr(op, "op_code", "-") or "-"
+    state.record_dispatch_exception(op, batch_id, dispatch_mode="batch_order")
     ctx.log_exception(f"工序 {op_code} 排产异常")
-    if batch_id:
-        state.blocked_batches.add(batch_id)

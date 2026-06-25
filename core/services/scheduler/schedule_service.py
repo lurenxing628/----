@@ -270,7 +270,7 @@ class ScheduleService:
             extend_downtime_map_for_resource_pool_fn=extend_downtime_map_for_resource_pool,
         )
 
-        simulation_validated_only = bool(simulate)
+        simulate_without_persistence = bool(simulate)
 
         def _validate_execution_guard_before_version(validated_schedule_payload):
             validate_execution_guard_before_persist(
@@ -285,7 +285,9 @@ class ScheduleService:
                 payload_validation_operations=list(schedule_input.payload_validation_operations or []),
             )
 
-        def _persist_orchestration(orchestration):
+        def _persist_formal_orchestration(orchestration):
+            if simulate_without_persistence:
+                raise AssertionError("模拟排产不能进入正式持久化流程。")
             persist_schedule(
                 self,
                 cfg=schedule_input.cfg,
@@ -298,7 +300,7 @@ class ScheduleService:
                 reschedulable_operations=schedule_input.reschedulable_operations,
                 normalized_batch_ids=schedule_input.normalized_batch_ids,
                 created_by=schedule_input.created_by_text,
-                simulate=simulate,
+                simulate=False,
                 frozen_op_ids=set(schedule_input.frozen_op_ids),
                 execution_fixed_op_ids=set(schedule_input.execution_fixed_op_ids),
                 execution_completed_op_ids=set(schedule_input.execution_completed_op_ids),
@@ -324,12 +326,12 @@ class ScheduleService:
             optimize_schedule_fn=optimize_schedule,
             build_result_summary_fn=build_result_summary,
             before_version_allocate_fn=_validate_execution_guard_before_version,
-            allocate_version=not simulation_validated_only,
+            allocate_version=not simulate_without_persistence,
             version_override=schedule_input.prev_version,
-            persist_schedule_fn=None if simulation_validated_only else _persist_orchestration,
+            persist_schedule_fn=None if simulate_without_persistence else _persist_formal_orchestration,
         )
 
-        if simulation_validated_only:
+        if simulate_without_persistence:
             validate_execution_guard_before_persist(
                 self,
                 validated_schedule_payload=orchestration.validated_schedule_payload,
@@ -344,9 +346,9 @@ class ScheduleService:
 
         result: Dict[str, Any] = {
             "is_simulation": bool(simulate),
-            "version": None if simulation_validated_only else int(orchestration.version),
-            "result_persisted": not simulation_validated_only,
-            "can_open_result_version": not simulation_validated_only,
+            "version": None if simulate_without_persistence else int(orchestration.version),
+            "result_persisted": not simulate_without_persistence,
+            "can_open_result_version": not simulate_without_persistence,
             "strategy": orchestration.used_strategy.value,
             "strategy_params": orchestration.used_params or {},
             "result_status": orchestration.result_status,
@@ -354,6 +356,6 @@ class ScheduleService:
             "overdue_batches": orchestration.overdue_items,
             "time_cost_ms": int(orchestration.time_cost_ms),
         }
-        if simulation_validated_only:
+        if simulate_without_persistence:
             result["user_message"] = "这次模拟只做安全检查，没有生成新的排程版本，也没有改动正式排程。"
         return result

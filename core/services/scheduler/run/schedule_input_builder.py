@@ -181,6 +181,18 @@ def _build_external_merge_context(
     )
 
 
+def _internal_work_hour(
+    raw_value: Any,
+    *,
+    field: str,
+    field_label: str,
+) -> float:
+    try:
+        return float(parse_required_float(raw_value, field=field_label, min_value=0.0))
+    except ValidationError as exc:
+        raise ValidationError(f"自制工序的{field_label}必须是大于等于 0 的数字。", field=field) from exc
+
+
 def _make_algo_operation(
     op: Any,
     *,
@@ -231,26 +243,38 @@ def _build_algo_operations_outcome(
         op_code = str(getattr(op, "op_code", "") or "").strip() or "-"
         source_key = str(getattr(op, "source", "") or "").strip().lower()
 
-        setup_hours = parse_field_float(
-            getattr(op, "setup_hours", None),
-            field="setup_hours",
-            field_label="换型时间",
-            strict_mode=bool(strict_mode),
-            scope=scope,
-            fallback=0.0,
-            collector=collector,
-            min_value=0.0,
-        )
-        unit_hours = parse_field_float(
-            getattr(op, "unit_hours", None),
-            field="unit_hours",
-            field_label="单件工时",
-            strict_mode=bool(strict_mode),
-            scope=scope,
-            fallback=0.0,
-            collector=collector,
-            min_value=0.0,
-        )
+        if source_key == SourceType.INTERNAL.value:
+            setup_hours = _internal_work_hour(
+                getattr(op, "setup_hours", None),
+                field="setup_hours",
+                field_label="换型时间",
+            )
+            unit_hours = _internal_work_hour(
+                getattr(op, "unit_hours", None),
+                field="unit_hours",
+                field_label="单件工时",
+            )
+        else:
+            setup_hours = parse_field_float(
+                getattr(op, "setup_hours", None),
+                field="setup_hours",
+                field_label="换型时间",
+                strict_mode=bool(strict_mode),
+                scope=scope,
+                fallback=0.0,
+                collector=collector,
+                min_value=0.0,
+            )
+            unit_hours = parse_field_float(
+                getattr(op, "unit_hours", None),
+                field="unit_hours",
+                field_label="单件工时",
+                strict_mode=bool(strict_mode),
+                scope=scope,
+                fallback=0.0,
+                collector=collector,
+                min_value=0.0,
+            )
 
         external_context = _ExternalMergeContext()
         if source_key == SourceType.EXTERNAL.value:

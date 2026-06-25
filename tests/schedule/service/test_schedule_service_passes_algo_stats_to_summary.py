@@ -79,7 +79,7 @@ def test_schedule_service_passes_algo_stats_to_summary(schema_conn) -> None:
             used_strategy=cast(Any, SimpleNamespace(value="priority_first")),
             used_params={},
             metrics=None,
-            best_score=(0.0,),
+            best_score=(0.0, 0.0),
             best_order=[],
             attempts=[],
             improvement_trace=[],

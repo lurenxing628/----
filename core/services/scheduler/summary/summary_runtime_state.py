@@ -305,6 +305,8 @@ def _degraded_cause_codes(
             "summary_merge_failed",
             "optimizer_metrics_invalid",
             "fallback_count_parse_failed",
+            "graph_enhancement_degraded",
+            "dispatch_failure_details",
         }:
             causes.append(code)
     return _dedupe_text_list(causes)

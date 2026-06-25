@@ -1,4 +1,4 @@
-"""回归测试：resource_pool_builder 的资源池与停机加载契约——auto_assign 关闭时 build_resource_pool 标 attempted=False，开启时按工序工种过滤出 machines_by_op_type/operators_by_machine 并在失败时给出公开 warning 与 build_ok=False；load_machine_downtimes 成功时按起始时间排序区间，部分/全部查询失败时保留健康设备、记 downtime_partial_fail_count 与样例并发「【停机】」告警；extend_downtime_map_for_resource_pool 同样保留既有 map、对候选设备部分失败可见降级。"""
+"""回归测试：resource_pool_builder 的资源池与停机加载契约——auto_assign 关闭时 build_resource_pool 标 attempted=False，开启时按工序工种过滤出 machines_by_op_type/operators_by_machine 并在失败时给出公开 warning 与 build_ok=False；load_machine_downtimes 成功时按起始时间排序区间；停机加载/扩展一旦读取失败必须直接报错，不允许把停机约束当成空数据继续排。"""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from typing import Any, List
 import pytest
 
 import core.services.scheduler.resource_pool_builder as builder_mod
+from core.infrastructure.errors import ValidationError
 
 
 class _StubSvc:
@@ -176,50 +177,52 @@ def test_load_machine_downtimes_no_records_is_ok_without_warning(monkeypatch: py
     assert meta["downtime_load_error"] is None
 
 
-def test_load_machine_downtimes_partial_failure_preserves_successful_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_machine_downtimes_partial_failure_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_repo(monkeypatch, _RepoRows)
     meta = {}
     warnings: List[str] = []
 
-    downtime_map = builder_mod.load_machine_downtimes(
-        _StubSvc(),
-        algo_ops=[
-            SimpleNamespace(source="internal", machine_id="MC_OK"),
-            SimpleNamespace(source="internal", machine_id="MC_BAD"),
-        ],
-        start_dt=datetime(2026, 1, 1, 8, 0, 0),
-        warnings=warnings,
-        meta=meta,
-    )
+    with pytest.raises(ValidationError) as exc_info:
+        builder_mod.load_machine_downtimes(
+            _StubSvc(),
+            algo_ops=[
+                SimpleNamespace(source="internal", machine_id="MC_OK"),
+                SimpleNamespace(source="internal", machine_id="MC_BAD"),
+            ],
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            warnings=warnings,
+            meta=meta,
+        )
 
-    assert "MC_OK" in downtime_map
-    assert "MC_BAD" not in downtime_map
+    assert exc_info.value.field == "downtime"
+    assert exc_info.value.details["reason"] == "downtime_load_partial_failed"
     assert meta["downtime_load_ok"] is False
-    expected_error = "部分设备停机区间加载失败（1 台，如：MC_BAD），这些设备本次先不使用停机约束"
+    expected_error = "部分设备停机区间加载失败（1 台，如：MC_BAD），无法读取这些设备的停机记录"
     assert meta["downtime_load_error"] == expected_error
     assert meta["downtime_partial_fail_count"] == 1
     assert meta["downtime_partial_fail_machines_sample"] == ["MC_BAD"]
     assert warnings == [f"【停机】{expected_error}"]
 
 
-def test_load_machine_downtimes_all_query_failures_use_partial_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_machine_downtimes_all_query_failures_fail_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_repo(monkeypatch, _RepoAlwaysFails)
     meta = {}
     warnings: List[str] = []
 
-    downtime_map = builder_mod.load_machine_downtimes(
-        _StubSvc(),
-        algo_ops=[
-            SimpleNamespace(source="internal", machine_id="MC_A"),
-            SimpleNamespace(source="internal", machine_id="MC_B"),
-        ],
-        start_dt=datetime(2026, 1, 1, 8, 0, 0),
-        warnings=warnings,
-        meta=meta,
-    )
+    with pytest.raises(ValidationError) as exc_info:
+        builder_mod.load_machine_downtimes(
+            _StubSvc(),
+            algo_ops=[
+                SimpleNamespace(source="internal", machine_id="MC_A"),
+                SimpleNamespace(source="internal", machine_id="MC_B"),
+            ],
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            warnings=warnings,
+            meta=meta,
+        )
 
-    expected_error = "部分设备停机区间加载失败（2 台，如：MC_A、MC_B），这些设备本次先不使用停机约束"
-    assert downtime_map == {}
+    expected_error = "全部设备停机区间加载失败（2 台，如：MC_A、MC_B），无法读取这些设备的停机记录"
+    assert exc_info.value.details["reason"] == "downtime_load_failed"
     assert meta["downtime_load_ok"] is False
     assert meta["downtime_load_error"] == expected_error
     assert meta["downtime_partial_fail_count"] == 2
@@ -236,18 +239,19 @@ def test_load_machine_downtimes_repo_failure_sets_public_error(monkeypatch: pyte
     meta = {}
     warnings: List[str] = []
 
-    downtime_map = builder_mod.load_machine_downtimes(
-        _StubSvc(),
-        algo_ops=[SimpleNamespace(source="internal", machine_id="MC_OK")],
-        start_dt=datetime(2026, 1, 1, 8, 0, 0),
-        warnings=warnings,
-        meta=meta,
-    )
+    with pytest.raises(ValidationError) as exc_info:
+        builder_mod.load_machine_downtimes(
+            _StubSvc(),
+            algo_ops=[SimpleNamespace(source="internal", machine_id="MC_OK")],
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            warnings=warnings,
+            meta=meta,
+        )
 
-    assert downtime_map == {}
+    assert exc_info.value.details["reason"] == "downtime_load_failed"
     assert meta["downtime_load_ok"] is False
-    assert meta["downtime_load_error"] == builder_mod.DOWNTIME_LOAD_FAILED_MESSAGE
-    assert warnings == [f"【停机】{builder_mod.DOWNTIME_LOAD_FAILED_MESSAGE}"]
+    assert meta["downtime_load_error"] == builder_mod.DOWNTIME_LOAD_ABORTED_MESSAGE
+    assert warnings == [f"【停机】{builder_mod.DOWNTIME_LOAD_ABORTED_MESSAGE}"]
 
 
 def test_extend_downtime_map_disabled_does_not_mark_attempted(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -291,23 +295,24 @@ def test_extend_downtime_map_candidate_without_records_is_ok_without_empty_key(m
     assert meta["downtime_extend_error"] is None
 
 
-def test_extend_downtime_map_partial_failure_preserves_successful_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_extend_downtime_map_partial_failure_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_repo(monkeypatch, _RepoRows)
     meta = {"downtime_load_ok": True, "downtime_load_error": None}
     warnings: List[str] = []
 
-    downtime_map = builder_mod.extend_downtime_map_for_resource_pool(
-        _StubSvc(),
-        cfg=SimpleNamespace(auto_assign_enabled="yes"),
-        resource_pool={"operators_by_machine": {"MC_OK": ["OP_1"], "MC_BAD": ["OP_2"]}},
-        downtime_map={},
-        start_dt=datetime(2026, 1, 1, 8, 0, 0),
-        warnings=warnings,
-        meta=meta,
-    )
+    with pytest.raises(ValidationError) as exc_info:
+        builder_mod.extend_downtime_map_for_resource_pool(
+            _StubSvc(),
+            cfg=SimpleNamespace(auto_assign_enabled="yes"),
+            resource_pool={"operators_by_machine": {"MC_OK": ["OP_1"], "MC_BAD": ["OP_2"]}},
+            downtime_map={},
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            warnings=warnings,
+            meta=meta,
+        )
 
-    assert "MC_OK" in downtime_map
-    assert "MC_BAD" not in downtime_map
+    assert exc_info.value.field == "downtime"
+    assert exc_info.value.details["reason"] == "downtime_extend_partial_failed"
     assert meta["downtime_extend_ok"] is False
     assert meta["downtime_extend_partial_fail_count"] == 1
     assert meta["downtime_extend_partial_fail_machines_sample"] == ["MC_BAD"]
@@ -331,19 +336,20 @@ def test_extend_downtime_map_repo_failure_preserves_existing_map_and_sets_error(
     meta = {}
     warnings: List[str] = []
 
-    result = builder_mod.extend_downtime_map_for_resource_pool(
-        _StubSvc(),
-        cfg=SimpleNamespace(auto_assign_enabled="yes"),
-        resource_pool={"operators_by_machine": {"MC_NEW": ["OP_1"]}},
-        downtime_map=existing,
-        start_dt=datetime(2026, 1, 1, 8, 0, 0),
-        warnings=warnings,
-        meta=meta,
-    )
+    with pytest.raises(ValidationError) as exc_info:
+        builder_mod.extend_downtime_map_for_resource_pool(
+            _StubSvc(),
+            cfg=SimpleNamespace(auto_assign_enabled="yes"),
+            resource_pool={"operators_by_machine": {"MC_NEW": ["OP_1"]}},
+            downtime_map=existing,
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            warnings=warnings,
+            meta=meta,
+        )
 
-    assert result is existing
-    assert result == expected
+    assert exc_info.value.details["reason"] == "downtime_extend_failed"
+    assert existing == expected
     assert meta["downtime_extend_attempted"] is True
     assert meta["downtime_extend_ok"] is False
-    assert meta["downtime_extend_error"] == builder_mod.DOWNTIME_EXTEND_FAILED_MESSAGE
-    assert warnings == [f"【停机】{builder_mod.DOWNTIME_EXTEND_FAILED_MESSAGE}"]
+    assert meta["downtime_extend_error"] == builder_mod.DOWNTIME_EXTEND_ABORTED_MESSAGE
+    assert warnings == [f"【停机】{builder_mod.DOWNTIME_EXTEND_ABORTED_MESSAGE}"]

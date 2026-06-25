@@ -125,8 +125,11 @@ def guarded_items(raw_list: Any, limit: int, guard_fn: Any) -> List[Dict[str, An
 def _copy_minimal_error_fields(minimal: Dict[str, Any], result_summary_obj: Dict[str, Any]) -> None:
     if result_summary_obj.get("error_count") is not None:
         minimal["error_count"] = size_guard_scalar(result_summary_obj.get("error_count"), max_chars=40)
-    if result_summary_obj.get("raw_error_count") is not None:
-        minimal["raw_error_count"] = size_guard_scalar(result_summary_obj.get("raw_error_count"), max_chars=40)
+    if result_summary_obj.get("failure_detail_count") is not None:
+        minimal["failure_detail_count"] = size_guard_scalar(
+            result_summary_obj.get("failure_detail_count"),
+            max_chars=40,
+        )
     if result_summary_obj.get("summary_count_parse_failed") is not None:
         minimal["summary_count_parse_failed"] = bool(result_summary_obj.get("summary_count_parse_failed"))
     if isinstance(result_summary_obj.get("summary_count_parse_errors"), list):

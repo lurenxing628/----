@@ -97,6 +97,10 @@ _PLAN_GUARD_COMMON_FIELDS = (
     "is_current_executable_official_version",
     "can_dispatch",
     "can_write_feedback",
+    "source_table",
+    "schedule_result_status",
+    "detail_saved",
+    "is_simulation_plan",
     "result_summary_parse_failed",
     "result_summary_parse_reason",
 )

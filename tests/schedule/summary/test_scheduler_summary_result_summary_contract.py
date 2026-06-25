@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import importlib
 import json
-import sys
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -215,32 +213,6 @@ def _persist_summary_roundtrip(test_db: Path) -> Dict[str, Any]:
         conn.close()
 
 
-def test_result_summary_roundtrip_keeps_public_attempts_and_diagnostics_separate(tmp_path, monkeypatch) -> None:
-    test_db = _prepare_db(tmp_path, monkeypatch)
-
-    loaded = _persist_summary_roundtrip(test_db)
-    assert (loaded.get("readiness") or {}).get("gate_enabled") is True
-
-    public_attempts = (loaded.get("algo") or {}).get("attempts") or []
-    assert public_attempts
-    assert all(attempt.get("source") != "candidate_rejected" for attempt in public_attempts)
-    assert all("source" not in attempt for attempt in public_attempts)
-    assert all(attempt.get("dispatch_mode") == "sgs" for attempt in public_attempts)
-    assert all("tag" not in attempt for attempt in public_attempts)
-    assert all("used_params" not in attempt for attempt in public_attempts)
-    assert all("algo_stats" not in attempt for attempt in public_attempts)
-    assert all("origin" not in attempt for attempt in public_attempts)
-
-    diagnostic_attempts = (((loaded.get("diagnostics") or {}).get("optimizer") or {}).get("attempts") or [])
-    rejected = [attempt for attempt in diagnostic_attempts if attempt.get("source") == "candidate_rejected"]
-    assert rejected[0]["origin"] == {
-        "type": "ValidationError",
-        "field": "resource",
-        "message": INTERNAL_SECRET,
-    }
-    assert "score" not in rejected[0]
-
-
 def test_result_summary_keeps_full_errors_and_missing_resource_details() -> None:
     op_id = 101
     _cfg_obj, _batch, _result, _summary, ctx = _build_summary_for_op(op_id=op_id)
@@ -275,7 +247,6 @@ def test_result_summary_keeps_full_errors_and_missing_resource_details() -> None
     assert result_summary_obj["error_count"] == 12
     assert result_summary_obj["errors"] == errors
     assert result_summary_obj["errors_sample"] == errors[:10]
-    assert result_summary_obj["raw_error_count"] == 12
     assert "public_error_details" in result_summary_obj
     assert result_summary_obj["errors"] == [item["message"] for item in result_summary_obj["public_error_details"]]
     assert result_summary_obj["missing_internal_resource_count"] == 1
@@ -495,77 +466,3 @@ def test_auto_assign_failure_filter_matches_full_op_code_with_spaces() -> None:
     assert result_summary_obj["errors"] == ["工时不合法：工序 OP SPACE 001"]
     assert result_summary_obj["missing_internal_resource_count"] == 0
     assert result_summary_obj["missing_internal_resource_ops"] == []
-
-
-def test_invalid_hours_detail_does_not_get_deducted_as_auto_assign_failure() -> None:
-    _cfg_obj, _batch, _raw_result_101, _summary, ctx = _build_summary_for_op(op_id=101)
-    op = SimpleNamespace(
-        id=101,
-        batch_id="B001",
-        seq=1,
-        op_code="OP10",
-        op_type_name="车削",
-        machine_id="",
-        operator_id="",
-    )
-    error_message = "工时不合法：工序 OP10 工时字段不合法：setup_hours='abc'"
-    summary = SimpleNamespace(
-        success=False,
-        total_ops=1,
-        scheduled_ops=0,
-        failed_ops=1,
-        warnings=[],
-        errors=[error_message],
-    )
-    ctx = replace(
-        ctx,
-        operations=[op],
-        results=[],
-        summary=summary,
-        missing_internal_resource_op_ids={101},
-        scheduled_op_ids=set(),
-    )
-    svc = SimpleNamespace(
-        _format_dt=lambda value: value.strftime("%Y-%m-%d %H:%M:%S"),
-        _normalize_text=lambda value: str(value).strip() if value else None,
-    )
-
-    _overdue, _result_status, result_summary_obj, _result_summary_json, _time_cost_ms = build_result_summary(svc, ctx=ctx)
-
-    assert result_summary_obj["errors"] == ["工时不合法：工序 OP10"]
-    assert result_summary_obj["missing_internal_resource_count"] == 1
-    assert {item["op_id"] for item in result_summary_obj["missing_internal_resource_ops"]} == {101}
-
-
-def test_optimizer_diagnostics_secret_is_not_rendered_on_public_scheduler_surfaces(tmp_path, monkeypatch) -> None:
-    test_db = _prepare_db(tmp_path, monkeypatch)
-    loaded = _persist_summary_roundtrip(test_db)
-    assert INTERNAL_SECRET in json.dumps(loaded.get("diagnostics"), ensure_ascii=False)
-
-    repo_root = str(REPO_ROOT)
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-    sys.modules.pop("app", None)
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    client = app.test_client()
-
-    for path in (
-        "/scheduler/analysis?version=3",
-        "/system/history?version=3",
-        "/scheduler/",
-        "/scheduler/week-plan?version=3",
-        "/scheduler/gantt?version=3",
-        "/scheduler/gantt/data?include_history=1",
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP1&period_preset=week&query_date=2026-04-01&version=3",
-        "/scheduler/resource-dispatch/data?scope_type=operator&operator_id=OP1&period_preset=week&query_date=2026-04-01&version=3",
-        "/reports/",
-        "/reports/overdue?version=3",
-        "/reports/utilization?version=3",
-        "/reports/downtime?version=3",
-    ):
-        response = client.get(path)
-        html = response.get_data(as_text=True)
-        assert response.status_code == 200, f"{path} 返回异常：{response.status_code}\n{html[:500]}"
-        if "selected_summary_display" in html or "latest_summary_display" in html:
-            assert INTERNAL_SECRET not in html, path

@@ -1,7 +1,6 @@
-"""回归测试：build_result_summary 的 v1.2 结果摘要契约——summary_schema_version=1.2、comparison_metric 与 best_score_schema 随 objective 落盘、analysis_context 用 comparison_metric 选 objective_key 且兼容旧 summary 回退；超大 warnings/trace 截断到 512KB 内并标 summary_truncated；指标/计数解析失败时标 metrics_state.parse_failed 与 degraded_success 而非伪装成 0；停机加载/扩展的部分失败与坏 meta（含坏布尔/坏计数）一律标 downtime_avoid 降级并进入顶层 degradation_events。"""
+"""回归测试：build_result_summary 的 v1.2 结果摘要契约——summary_schema_version=1.2、comparison_metric 与 best_score_schema 随 objective 落盘、analysis_context 用 comparison_metric 选 objective_key 且兼容旧 summary 回退；超大 warnings/trace 截断到 512KB 内并标 summary_truncated；指标/计数解析失败时标 metrics_state.parse_failed 与 degraded_success 而非伪装成 0；停机坏 meta 一律标 downtime_avoid 降级并进入顶层 degradation_events，停机真实读取部分失败直接阻断排程。"""
 
 import json
-import os
 import sys
 import time
 from datetime import datetime
@@ -131,6 +130,7 @@ def _build_summary(
 
 def _assert_downtime_partial_fail_contract() -> None:
     import core.services.scheduler.resource_pool_builder as builder_mod
+    from core.infrastructure.errors import ValidationError
 
     original_repo = builder_mod.MachineDowntimeRepository
 
@@ -150,18 +150,22 @@ def _assert_downtime_partial_fail_contract() -> None:
         svc = _StubSvc()
         load_warnings: List[str] = []
         load_meta: Dict[str, Any] = {}
-        load_map = builder_mod.load_machine_downtimes(
-            svc,
-            algo_ops=[
-                SimpleNamespace(source="internal", machine_id="MC_OK"),
-                SimpleNamespace(source="internal", machine_id="MC_BAD"),
-            ],
-            start_dt=datetime(2026, 2, 1, 8, 0, 0),
-            warnings=load_warnings,
-            meta=load_meta,
-        )
-        assert "MC_OK" in load_map and len(load_map["MC_OK"]) == 1, f"逐机降级后应保留健康设备停机：{load_map!r}"
-        assert "MC_BAD" not in load_map, f"坏设备不应写入停机区间：{load_map!r}"
+        try:
+            builder_mod.load_machine_downtimes(
+                svc,
+                algo_ops=[
+                    SimpleNamespace(source="internal", machine_id="MC_OK"),
+                    SimpleNamespace(source="internal", machine_id="MC_BAD"),
+                ],
+                start_dt=datetime(2026, 2, 1, 8, 0, 0),
+                warnings=load_warnings,
+                meta=load_meta,
+            )
+        except ValidationError as exc:
+            assert exc.field == "downtime", exc
+            assert exc.details.get("reason") == "downtime_load_partial_failed", exc.details
+        else:
+            raise AssertionError("停机部分加载失败必须直接阻断排程，不能带半份停机约束继续生成。")
         assert not bool(load_meta.get("downtime_load_ok")), f"部分失败时 downtime_load_ok 应为 False：{load_meta!r}"
         assert int(load_meta.get("downtime_partial_fail_count") or 0) == 1, f"部分失败计数异常：{load_meta!r}"
         assert list(load_meta.get("downtime_partial_fail_machines_sample") or []) == ["MC_BAD"], (
@@ -169,36 +173,23 @@ def _assert_downtime_partial_fail_contract() -> None:
         )
         assert any("MC_BAD" in str(w) for w in load_warnings), f"部分失败 warning 未暴露设备样例：{load_warnings!r}"
 
-        _o1, _s1, load_summary_obj, _j1, _m1 = _build_summary(
-            objective_name="min_weighted_tardiness",
-            warnings=[],
-            improvement_trace=[],
-            downtime_meta=load_meta,
-        )
-        load_da = ((load_summary_obj.get("algo") or {}).get("downtime_avoid") or {})
-        assert not bool(load_da.get("loaded_ok")), f"load partial fail 后 loaded_ok 应为 False：{load_da!r}"
-        assert bool(load_da.get("degraded")), f"load partial fail 后应标记 degraded：{load_da!r}"
-        assert int(load_da.get("load_partial_fail_count") or 0) == 1, f"load partial fail count 未入摘要：{load_da!r}"
-        assert list(load_da.get("load_partial_fail_machines_sample") or []) == ["MC_BAD"], (
-            f"load partial fail sample 未入摘要：{load_da!r}"
-        )
-        assert "MC_BAD" in str(load_da.get("degradation_reason") or ""), f"load degradation_reason 未暴露样例：{load_da!r}"
-        hard_constraints = list((load_summary_obj.get("algo") or {}).get("hard_constraints") or [])
-        assert "downtime_avoid" not in hard_constraints, f"部分失败后不应宣称 downtime_avoid 仍是完整硬约束：{hard_constraints!r}"
-
         extend_warnings: List[str] = []
         extend_meta: Dict[str, Any] = {"downtime_load_ok": True, "downtime_load_error": None}
-        extend_map = builder_mod.extend_downtime_map_for_resource_pool(
-            svc,
-            cfg=SimpleNamespace(auto_assign_enabled="yes"),
-            resource_pool={"operators_by_machine": {"MC_OK": ["OP1"], "MC_BAD": ["OP2"]}},
-            downtime_map={},
-            start_dt=datetime(2026, 2, 1, 8, 0, 0),
-            warnings=extend_warnings,
-            meta=extend_meta,
-        )
-        assert "MC_OK" in extend_map and len(extend_map["MC_OK"]) == 1, f"extend 部分失败后应保留健康自动安排设备停机：{extend_map!r}"
-        assert "MC_BAD" not in extend_map, f"坏自动安排设备不应写入停机区间：{extend_map!r}"
+        try:
+            builder_mod.extend_downtime_map_for_resource_pool(
+                svc,
+                cfg=SimpleNamespace(auto_assign_enabled="yes"),
+                resource_pool={"operators_by_machine": {"MC_OK": ["OP1"], "MC_BAD": ["OP2"]}},
+                downtime_map={},
+                start_dt=datetime(2026, 2, 1, 8, 0, 0),
+                warnings=extend_warnings,
+                meta=extend_meta,
+            )
+        except ValidationError as exc:
+            assert exc.field == "downtime", exc
+            assert exc.details.get("reason") == "downtime_extend_partial_failed", exc.details
+        else:
+            raise AssertionError("自动安排资源池停机扩展部分失败必须直接阻断排程。")
         assert bool(extend_meta.get("downtime_extend_attempted")), f"extend_attempted 应为 True：{extend_meta!r}"
         assert not bool(extend_meta.get("downtime_extend_ok")), f"extend 部分失败时 downtime_extend_ok 应为 False：{extend_meta!r}"
         assert int(extend_meta.get("downtime_extend_partial_fail_count") or 0) == 1, (
@@ -208,23 +199,6 @@ def _assert_downtime_partial_fail_contract() -> None:
             f"extend 部分失败 sample 异常：{extend_meta!r}"
         )
         assert any("MC_BAD" in str(w) for w in extend_warnings), f"extend 部分失败 warning 未暴露设备样例：{extend_warnings!r}"
-
-        _o2, _s2, extend_summary_obj, _j2, _m2 = _build_summary(
-            objective_name="min_weighted_tardiness",
-            warnings=[],
-            improvement_trace=[],
-            downtime_meta=extend_meta,
-            auto_assign_enabled="yes",
-        )
-        extend_da = ((extend_summary_obj.get("algo") or {}).get("downtime_avoid") or {})
-        assert bool(extend_da.get("loaded_ok")), f"仅 extend 部分失败时 loaded_ok 应保持 True：{extend_da!r}"
-        assert bool(extend_da.get("degraded")), f"extend partial fail 后应标记 degraded：{extend_da!r}"
-        assert bool(extend_da.get("extend_attempted")), f"extend_attempted 未入摘要：{extend_da!r}"
-        assert int(extend_da.get("extend_partial_fail_count") or 0) == 1, f"extend partial fail count 未入摘要：{extend_da!r}"
-        assert list(extend_da.get("extend_partial_fail_machines_sample") or []) == ["MC_BAD"], (
-            f"extend partial fail sample 未入摘要：{extend_da!r}"
-        )
-        assert "MC_BAD" in str(extend_da.get("degradation_reason") or ""), f"extend degradation_reason 未暴露样例：{extend_da!r}"
 
         partial_load_meta = {
             "downtime_load_ok": True,

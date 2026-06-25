@@ -416,11 +416,11 @@ def test_candidate_trial_mode_locks_sort_dispatch_mode_and_dispatch_rule_to_curr
     assert seen
     assert set(seen) == {
         (
-            "greedy",
+            "improve",
             ("priority_first",),
             ("sgs",),
             ("cr",),
-            ("greedy",),
+            ("improve",),
         )
     }
 

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
+from core.algorithms.greedy.run_state import ScheduleRunState
+
 
 @dataclass
 class _StubCalendarService:
@@ -143,3 +145,107 @@ def test_dispatch_blocking_consistency():
         assert exc.field == "resource", f"SGS 缺资源应定位到 resource，实际={exc.field!r}"
     else:
         raise AssertionError("SGS 不应为缺资源内部工序生成不可评分兜底 key")
+
+
+def test_dispatch_sgs_missing_batch_records_structured_failure_detail() -> None:
+    from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
+
+    op_bad = SimpleNamespace(
+        id=999,
+        op_code="OP_BAD",
+        batch_id="B_BAD",
+        seq=1,
+        source="internal",
+        machine_id="M1",
+        operator_id="O1",
+        setup_hours=1.0,
+        unit_hours=0.0,
+        op_type_id=None,
+        op_type_name=None,
+        supplier_id=None,
+        ext_days=None,
+        ext_group_id=None,
+        ext_merge_mode=None,
+        ext_group_total_days=None,
+    )
+    state = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
+
+    scheduled_count, failed_count = dispatch_sgs(
+        SimpleNamespace(calendar_service=_StubCalendarService()),
+        sorted_ops=[op_bad],
+        batches={},
+        batch_order={},
+        dispatch_rule="slack",
+        base_time=state.base_time,
+        end_dt_exclusive=None,
+        machine_downtimes={},
+        state=state,
+        auto_assign_enabled=False,
+        resource_pool=None,
+        strict_mode=False,
+    )
+
+    assert scheduled_count == 0
+    assert failed_count == 1
+    assert [item["code"] for item in state.failure_details] == ["missing_batch"]
+    assert state.failure_details[0]["op_code"] == "OP_BAD"
+
+
+def test_graph_blocked_ops_already_counted_by_batch_skip_do_not_duplicate_failure_details() -> None:
+    from core.algorithms.greedy.dispatch.sgs_graph import _record_graph_blocked_operations
+
+    failed_op = SimpleNamespace(id=1, op_code="OP1", batch_id="B001", seq=1)
+    blocked_op = SimpleNamespace(id=2, op_code="OP2", batch_id="B001", seq=2)
+    graph_state = {
+        "op_by_id": {
+            1: ("B001", failed_op),
+            2: ("B001", blocked_op),
+        }
+    }
+    state = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
+
+    extra_failed = _record_graph_blocked_operations(
+        state,
+        graph_state=graph_state,
+        failed_op_id=1,
+        newly_blocked_op_ids=[2],
+        already_counted_op_ids={1, 2},
+    )
+
+    assert extra_failed == 0
+    # 已被同批跳过路径计数的工序，图阻塞路径既不重复计数也不写明细；
+    # 且不再往 state.errors 塞原始串（旧行为会回落成 generic “请联系管理员”双发）。
+    assert state.errors == []
+    assert state.failure_details == []
+
+
+def test_dispatch_failures_record_structured_details_without_raw_error_duplication() -> None:
+    """回归：missing_batch / dispatch 异常 / 图阻塞失败只写结构化 failure_details，不再往
+    state.errors 塞原始中文串。旧行为会让原始串回落成 generic_scheduler_error（“请联系管理员”），
+    与结构化具体文案并列形成双发并虚增 error_count。"""
+    from core.algorithms.greedy.dispatch.sgs_graph import _record_graph_blocked_operations
+
+    op = SimpleNamespace(id=1, op_code="OP1", batch_id="B001", seq=1)
+    state = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
+    state.record_missing_batch(op, "B001")
+    state.record_dispatch_exception(op, "B001", dispatch_mode="sgs")
+    assert state.errors == []
+    assert [item["code"] for item in state.failure_details] == [
+        "missing_batch",
+        "dispatch_operation_exception",
+    ]
+
+    failed_op = SimpleNamespace(id=1, op_code="OP1", batch_id="B001", seq=1)
+    blocked_op = SimpleNamespace(id=2, op_code="OP2", batch_id="B001", seq=2)
+    graph_state = {"op_by_id": {1: ("B001", failed_op), 2: ("B001", blocked_op)}}
+    graph_state_run = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
+    extra_failed = _record_graph_blocked_operations(
+        graph_state_run,
+        graph_state=graph_state,
+        failed_op_id=1,
+        newly_blocked_op_ids=[2],
+        already_counted_op_ids={1},
+    )
+    assert extra_failed == 1
+    assert graph_state_run.errors == []
+    assert [item["code"] for item in graph_state_run.failure_details] == ["graph_blocked_after_failure"]

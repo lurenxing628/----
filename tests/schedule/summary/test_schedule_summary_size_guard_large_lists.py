@@ -1,7 +1,6 @@
 """回归测试：apply_summary_size_guard 把超过 SUMMARY_SIZE_LIMIT_BYTES(512KB) 的排产摘要逐级裁剪到限内——优先裁 selected_batch_ids/overdue items/errors/missing_resource_ops 等大列表并打 *_truncated 标记、保留 readiness 与计数/样本，按需丢弃过大或非 optimizer 的 diagnostics（小诊断不误删），并记录 original_size_bytes。"""
 
 import json
-import os
 import sys
 
 from tests._support.paths import REPO_ROOT_STR
@@ -225,7 +224,7 @@ def _large_missing_resource_case(n: int):
         "overdue_batches": {"count": 0, "items": []},
         "counts": {"scheduled_ops": 0, "failed_ops": n},
         "error_count": n,
-        "raw_error_count": n,
+        "failure_detail_count": n,
         "errors": [f"自制工序未补全设备或人员，无法排产：工序 B{i:05d}_05" for i in range(n)],
         "errors_sample": [f"自制工序未补全设备或人员，无法排产：工序 B{i:05d}_05" for i in range(10)],
         "public_error_details": [
@@ -396,6 +395,7 @@ def main() -> None:
         "large_missing_resource_case 未标记 missing_internal_resource_ops_truncated"
     )
     assert int(large_missing_after_obj.get("error_count") or 0) == 10000
+    assert int(large_missing_after_obj.get("failure_detail_count") or 0) == 10000
     assert int(large_missing_after_obj.get("missing_internal_resource_count") or 0) == 10000
     assert len(large_missing_after_obj.get("public_error_details") or []) < 10000
     assert len(large_missing_after_obj.get("missing_internal_resource_ops") or []) < 10000

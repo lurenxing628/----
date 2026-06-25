@@ -4,6 +4,7 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 
 from core.models.schedule_plan_identity import PlanIdentity
 from core.models.schedule_plan_role import (
+    COMPLETED_RESULT_STATUSES,
     ROLE_ADOPTED,
     SOURCE_ADJUSTMENT_SCENARIO_ROWS,
     SOURCE_CANDIDATE_ROWS,
@@ -13,7 +14,6 @@ from core.models.schedule_plan_role import (
 )
 from core.models.scheduler_history_parser import parse_result_summary_payload
 
-_EXECUTABLE_RESULT_STATUSES = frozenset(("success", "partial"))
 _VALID_PLAN_SOURCE_TABLES = frozenset((SOURCE_SCHEDULE, SOURCE_CANDIDATE_ROWS, SOURCE_ADJUSTMENT_SCENARIO_ROWS))
 
 
@@ -146,7 +146,7 @@ def _is_current_official_plan(
         is_official
         and is_current
         and summary_available
-        and result_status in _EXECUTABLE_RESULT_STATUSES
+        and result_status in COMPLETED_RESULT_STATUSES
         and source_row_id is not None
     )
 

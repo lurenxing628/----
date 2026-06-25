@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms.ordering import normalize_text_id
 from core.algorithms.types import ScheduleResult
@@ -32,6 +32,8 @@ class ScheduleRunState:
     missing_seed_operator_count: int = 0
     missing_seed_machine_samples: List[str] = field(default_factory=list)
     missing_seed_operator_samples: List[str] = field(default_factory=list)
+    failure_details: List[Dict[str, Any]] = field(default_factory=list)
+    batch_failure_sources: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
     def from_legacy(
@@ -95,9 +97,74 @@ class ScheduleRunState:
         self.advance_batch(normalize_text_id(result.batch_id), result.end_time)
         self._record_internal_usage(result, seed_mode=False)
 
-    def record_dispatch_failure(self, batch_id: str, *, block: bool, remaining_failed: int = 0) -> None:
+    def record_dispatch_failure(
+        self,
+        batch_id: str,
+        *,
+        block: bool,
+        remaining_failed: int = 0,
+        failed_op: Optional[Any] = None,
+        skipped_ops: Optional[List[Any]] = None,
+    ) -> None:
         self.failed_count += 1 + max(int(remaining_failed or 0), 0)
+        if failed_op is not None:
+            detail = self._failure_detail("dispatch_operation_failed", failed_op, batch_id=batch_id)
+            self.failure_details.append(detail)
+            if batch_id:
+                self.batch_failure_sources[batch_id] = detail
+        for skipped_op in list(skipped_ops or []):
+            self.failure_details.append(
+                self._failure_detail(
+                    "skipped_after_batch_failure",
+                    skipped_op,
+                    batch_id=batch_id,
+                    failed_source=self.batch_failure_sources.get(batch_id),
+                )
+            )
         if block and batch_id:
+            self.blocked_batches.add(batch_id)
+
+    def record_missing_batch(self, op: Any, batch_id: str) -> None:
+        self.failed_count += 1
+        # 失败的用户可见文案统一由结构化 failure_details + _structured_failure_message 单点渲染。
+        # 不再往 state.errors 塞原始中文串：它不匹配任何 legacy 反解模式，会回落成
+        # generic_scheduler_error（“请联系管理员”），与具体文案并列形成双发并虚增 error_count。
+        self.failure_details.append(self._failure_detail("missing_batch", op, batch_id=batch_id))
+
+    def record_skipped_after_batch_failure(self, op: Any, batch_id: str, *, count_failure: bool = True) -> None:
+        if count_failure:
+            self.failed_count += 1
+        self.failure_details.append(
+            self._failure_detail(
+                "skipped_after_batch_failure",
+                op,
+                batch_id=batch_id,
+                failed_source=self.batch_failure_sources.get(batch_id),
+            )
+        )
+
+    def record_graph_blocked_after_failure(self, op: Any, batch_id: str, *, failed_op: Any) -> None:
+        self.failure_details.append(
+            self._failure_detail(
+                "graph_blocked_after_failure",
+                op,
+                batch_id=batch_id,
+                failed_source=self._op_identity(failed_op),
+            )
+        )
+
+    def record_dispatch_exception(self, op: Any, batch_id: str, *, dispatch_mode: str) -> None:
+        self.failed_count += 1
+        # 同 record_missing_batch：只写结构化明细，渲染交给 _structured_failure_message，避免双发。
+        detail = self._failure_detail(
+            "dispatch_operation_exception",
+            op,
+            batch_id=batch_id,
+            extra={"dispatch_mode": str(dispatch_mode or "").strip()},
+        )
+        self.failure_details.append(detail)
+        if batch_id:
+            self.batch_failure_sources[batch_id] = detail
             self.blocked_batches.add(batch_id)
 
     def seed_resource_warnings(self) -> List[str]:
@@ -150,3 +217,45 @@ class ScheduleRunState:
             self.missing_seed_operator_count += 1
             if len(self.missing_seed_operator_samples) < 5:
                 self.missing_seed_operator_samples.append(op_id)
+
+    def _failure_detail(
+        self,
+        code: str,
+        op: Any,
+        *,
+        batch_id: str,
+        failed_source: Optional[Dict[str, Any]] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        detail = self._op_identity(op)
+        detail.update({"code": str(code), "batch_id": normalize_text_id(batch_id) or detail.get("batch_id")})
+        if failed_source:
+            detail["failed_op_id"] = failed_source.get("op_id")
+            detail["failed_op_code"] = failed_source.get("op_code")
+        if extra:
+            detail.update(dict(extra))
+        return detail
+
+    @staticmethod
+    def _op_identity(op: Any) -> Dict[str, Any]:
+        try:
+            op_id = int(getattr(op, "id", 0) or getattr(op, "op_id", 0) or 0)
+        except Exception:
+            op_id = 0
+        try:
+            seq = int(getattr(op, "seq", 0) or 0)
+        except Exception:
+            seq = 0
+        return {
+            "op_id": op_id,
+            "op_code": normalize_text_id(ScheduleRunState._safe_text_attr(op, "op_code", "")),
+            "batch_id": normalize_text_id(ScheduleRunState._safe_text_attr(op, "batch_id", "")),
+            "seq": seq,
+        }
+
+    @staticmethod
+    def _safe_text_attr(op: Any, name: str, default: str) -> str:
+        try:
+            return str(getattr(op, name, default) or default)
+        except Exception:
+            return str(default or "")

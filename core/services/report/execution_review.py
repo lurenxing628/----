@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Protocol, cast
 
 from core.infrastructure.errors import ValidationError
+from core.models.execution_review_identity import can_read_execution_review
 from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.resource_identity import ResourceIdentity, build_resource_identity
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
@@ -29,6 +30,16 @@ def _schedule_id(value: Any) -> int:
 
 def _schedule_version(value: Any) -> int:
     return parse_report_int(value, field="version", label="排产版本", source_label="计划数据", blank_default=0)
+
+
+def _ensure_reviewable_official_plan(plan_resolution: Dict[str, Any], *, action: str) -> None:
+    if can_read_execution_review(plan_resolution):
+        return
+    raise ValidationError(
+        f"计划和现场实际只复盘成功生成明细的正式排产；当前版本不能{action}现场复盘。",
+        field="plan_identity",
+        details={"reason": "not_reviewable_official_plan"},
+    )
 
 
 def _execution_scope(row: Dict[str, Any], op_id: int) -> OperationExecutionScope:
@@ -216,12 +227,13 @@ class ExecutionReviewMixin:
         v = int(version or 0)
         # 先按正式 adopted/null 解析身份，再进入复盘计算，避免下游读路径被查询参数放宽。
         resolution = host._resolve_plan(v, ROLE_ADOPTED, None)
+        plan_resolution = resolution.to_dict()
+        _ensure_reviewable_official_plan(plan_resolution, action="生成")
         date_bounds = self._execution_review_date_bounds(
             date_from,
             date_to,
             enforce_date_range_limit=enforce_date_range_limit,
         )
-        plan_resolution = resolution.to_dict()
         batch_filter = str(batch_id or "").strip()
         plan_rows = self._execution_review_plan_rows(
             version=v,
@@ -256,7 +268,10 @@ class ExecutionReviewMixin:
         resource_type: Any = None,
         resource_id: Any = None,
         enforce_date_range_limit: bool = True,
-    ) -> Any:
+        ) -> Any:
+        host = cast(_ExecutionReviewHost, self)
+        resolution = host._resolve_plan(int(version or 0), ROLE_ADOPTED, None)
+        _ensure_reviewable_official_plan(resolution.to_dict(), action="导出")
         rep = self.execution_review(
             version,
             date_from=date_from,
@@ -276,7 +291,6 @@ class ExecutionReviewMixin:
                 f"计划和现场实际-{plan_label}-v{int(rep['version'])}-"
                 f"{rep['date_from']} 至 {rep['date_to']}.xlsx"
             )
-        host = cast(_ExecutionReviewHost, self)
         return host._build_xlsx_export(
             report_name="计划和现场实际",
             filename=filename,

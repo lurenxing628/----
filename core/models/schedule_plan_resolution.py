@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from .schedule_plan_identity import PlanIdentity
-from .schedule_plan_role import is_comparison_plan, plan_role_label
+from .schedule_plan_role import is_comparison_plan, plan_role_label, truthy_contract_bool
 
 
 @dataclass(frozen=True)
@@ -57,7 +57,7 @@ class SchedulePlanResolution:
 
     @property
     def scenario_display_name(self) -> str:
-        if not self.is_scenario_preview:
+        if not truthy_contract_bool(self.is_scenario_preview):
             return ""
         return str(self.scenario_name or "").strip() or "模拟预览（未命名）"
 
@@ -78,30 +78,30 @@ class SchedulePlanResolution:
             "status": self.status,
             "message": self.message,
             "plan_identity": plan_identity,
-            "can_dispatch": bool(plan_identity.get("can_dispatch")),
-            "can_write_feedback": bool(plan_identity.get("can_write_feedback")),
+            "can_dispatch": truthy_contract_bool(plan_identity.get("can_dispatch")),
+            "can_write_feedback": truthy_contract_bool(plan_identity.get("can_write_feedback")),
             "user_label": plan_identity.get("user_label") or self.scenario_display_name or plan_role_label(self.selected_role),
-            "is_official": bool(plan_identity.get("is_official")),
-            "is_preview": bool(plan_identity.get("is_preview")),
-            "is_current_executable_version": bool(plan_identity.get("is_current_executable_version")),
-            "is_current_executable_official_version": bool(
+            "is_official": truthy_contract_bool(plan_identity.get("is_official")),
+            "is_preview": truthy_contract_bool(plan_identity.get("is_preview")),
+            "is_current_executable_version": truthy_contract_bool(plan_identity.get("is_current_executable_version")),
+            "is_current_executable_official_version": truthy_contract_bool(
                 plan_identity.get("is_current_executable_official_version")
             ),
-            "result_summary_parse_failed": bool(plan_identity.get("result_summary_parse_failed")),
+            "result_summary_parse_failed": truthy_contract_bool(plan_identity.get("result_summary_parse_failed")),
             "result_summary_parse_reason": plan_identity.get("result_summary_parse_reason") or "",
-            "is_superseded_by_newer_version": bool(plan_identity.get("is_superseded_by_newer_version")),
+            "is_superseded_by_newer_version": truthy_contract_bool(plan_identity.get("is_superseded_by_newer_version")),
             "schedule_result_status": plan_identity.get("schedule_result_status"),
             "schedule_lock_status": plan_identity.get("schedule_lock_status"),
-            "detail_saved": bool(plan_identity.get("detail_saved")),
+            "detail_saved": truthy_contract_bool(plan_identity.get("detail_saved")),
             "available_roles": [item.to_dict() for item in self.available_roles],
             "is_fallback": self.status == "fallback_to_adopted",
             "is_comparison": is_comparison_plan(
                 requested_role=self.requested_role,
                 selected_role=self.selected_role,
                 source_table=self.source_table,
-                is_scenario_preview=self.is_scenario_preview,
+                is_scenario_preview=truthy_contract_bool(self.is_scenario_preview),
             ),
-            "is_scenario_preview": self.is_scenario_preview,
+            "is_scenario_preview": truthy_contract_bool(self.is_scenario_preview),
         }
 
 

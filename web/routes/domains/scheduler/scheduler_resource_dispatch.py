@@ -102,6 +102,7 @@ def _workbench_context(filters: Any, plan_identity: Any, *, back_to: Any = None,
 def _execution_review_link(filters: Any, plan_identity: Any, *, back_to: Any = None) -> dict:
     filters_dict = dict(filters or {})
     context = _workbench_context(filters_dict, plan_identity, back_to=back_to)
+    context["execution_review_read_only_allowed"] = True
     extra_params = {}
     if filters_dict.get("team_axis"):
         extra_params["team_axis"] = filters_dict.get("team_axis")

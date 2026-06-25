@@ -3,8 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Set, Tuple
 
-from core.infrastructure.errors import AppError, ErrorCode
+from core.algorithms.greedy.internal_slot import validate_internal_hours
+from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.models import BatchOperation
+from core.models.enums import SourceType
 
 from .schedule_input_contracts import _build_freeze_window_seed_with_meta, _op_seq
 
@@ -39,6 +41,34 @@ def _resolve_algo_ops_to_schedule(
         reason="all_operations_frozen",
     )
     return []
+
+
+def _ensure_internal_runtime_hours(batches: Dict[str, Any], algo_ops: List[Any]) -> None:
+    for op in list(algo_ops or []):
+        if str(getattr(op, "source", "") or "").strip().lower() != SourceType.INTERNAL.value:
+            continue
+        batch_id = str(getattr(op, "batch_id", "") or "").strip()
+        batch = batches.get(batch_id)
+        if batch is None:
+            raise ValidationError(f"自制工序 {getattr(op, 'op_code', '-') or '-'} 找不到所属批次，无法计算总工时。", field="batch_id")
+        # 单一真相源：直接复用算法层 internal_slot.validate_internal_hours 校验自制工时。
+        # 它把 setup/unit/quantity 的缺失/0 统一按 0 处理、只拦非有限数与负总工时（`< 0`），
+        # 与录入/导入/编辑/模型默认“缺失补 0、总工时 0 合法”的全系统口径一致（含 quantity==0：
+        # 总量=setup，算法层按瞬时排）。此处不再手搓第二套 quantity/工时校验，避免口径分叉
+        # （quantity==0 曾被错误硬拦整批，详见 issue 2026-06-24-core-algorithm-deep-review-fixes 复修讨论）。
+        try:
+            validate_internal_hours(op, batch)
+        except ValueError as exc:
+            raise ValidationError(
+                f"自制工序 {getattr(op, 'op_code', '-') or '-'} 的工时不合法，请检查换型时间、单件工时和数量。",
+                field="work_hours",
+                details={
+                    "reason": "invalid_internal_work_hours",
+                    "op_id": int(getattr(op, "id", 0) or 0),
+                    "batch_id": batch_id,
+                    "op_code": str(getattr(op, "op_code", "") or ""),
+                },
+            ) from exc
 
 
 def _load_runtime_resource_inputs(
@@ -88,6 +118,7 @@ def _build_runtime_support_inputs(
     prev_version: int,
     start_dt_norm: datetime,
     run_label: str,
+    batches: Dict[str, Any],
     operations: List[BatchOperation],
     reschedulable_operations: List[BatchOperation],
     algo_ops: List[Any],
@@ -139,6 +170,7 @@ def _build_runtime_support_inputs(
         run_label=run_label,
         raise_schedule_empty_result_fn=raise_schedule_empty_result_fn,
     )
+    _ensure_internal_runtime_hours(batches, algo_ops_to_schedule)
     downtime_meta, resource_pool_meta, downtime_map, resource_pool = _load_runtime_resource_inputs(
         svc,
         cfg=cfg,

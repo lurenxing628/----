@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -111,7 +110,7 @@ class _FakeSvc:
         return datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S")
 
     def _get_batch_or_raise(self, batch_id):
-        return SimpleNamespace(batch_id=batch_id, status="pending", ready_status="yes")
+        return SimpleNamespace(batch_id=batch_id, quantity=1, status="pending", ready_status="yes")
 
     def _is_reschedulable_operation(self, op):
         return str(getattr(op, "status", "") or "").strip().lower() not in {"completed", "skipped"}
@@ -151,6 +150,8 @@ def _strict_build_algo_operations(_svc, ops, *, strict_mode: bool, return_outcom
                 machine_id=op.machine_id,
                 operator_id=op.operator_id,
                 supplier_id=op.supplier_id,
+                setup_hours=op.setup_hours,
+                unit_hours=op.unit_hours,
             )
             for op in ops
         ]
@@ -224,6 +225,68 @@ def test_collect_schedule_run_input_rejects_legacy_freeze_window_signature() -> 
             build_resource_pool_fn=lambda *_args, **_kwargs: ({}, []),
             extend_downtime_map_for_resource_pool_fn=lambda _svc, **kwargs: kwargs.get("downtime_map") or {},
         )
+
+
+def test_collect_schedule_run_input_rejects_invalid_enforce_ready_value() -> None:
+    svc = _FakeSvc(_build_ops())
+
+    with pytest.raises(ValidationError) as exc_info:
+        collect_schedule_run_input(
+            svc,
+            batch_ids=["B001"],
+            start_dt="2026-01-01 08:00:00",
+            enforce_ready="maybe",
+            strict_mode=True,
+            calendar_service_cls=lambda *args, **kwargs: SimpleNamespace(),
+            config_service_cls=lambda *args, **kwargs: SimpleNamespace(),
+            get_snapshot_with_strict_mode=lambda _cfg_svc, strict_mode: SimpleNamespace(enforce_ready_default="no"),
+            build_algo_operations_fn=_strict_build_algo_operations,
+            build_freeze_window_seed_fn=lambda _svc, **kwargs: (set(), [], []),
+            load_machine_downtimes_fn=lambda *_args, **_kwargs: {},
+            build_resource_pool_fn=lambda *_args, **_kwargs: ({}, []),
+            extend_downtime_map_for_resource_pool_fn=lambda _svc, **kwargs: kwargs.get("downtime_map") or {},
+        )
+
+    assert exc_info.value.field == "enforce_ready"
+
+
+def test_ensure_internal_runtime_hours_allows_zero_total() -> None:
+    """选 A：自制工序总工时为 0 是合法值——录入/导入/编辑/模型默认全程允许（缺失自动补 0），
+    算法层 internal_slot.validate_internal_hours 也只拦 `< 0`，故排产入口不再为单道 0 工时硬拦整批。"""
+    from core.services.scheduler.run.schedule_input_runtime_support import _ensure_internal_runtime_hours
+
+    batch = SimpleNamespace(quantity=1)
+    op = SimpleNamespace(id=1, op_code="OP1", batch_id="B001", source="internal", setup_hours=0.0, unit_hours=0.0)
+    # 不抛异常即为放行（与全系统口径一致）
+    _ensure_internal_runtime_hours({"B001": batch}, [op])
+
+
+def test_ensure_internal_runtime_hours_still_rejects_negative_total() -> None:
+    """负数总工时仍 fail-loud，与算法层 `< 0` 口径对齐。"""
+    from core.services.scheduler.run.schedule_input_runtime_support import _ensure_internal_runtime_hours
+
+    batch = SimpleNamespace(quantity=1)
+    op = SimpleNamespace(id=1, op_code="OP1", batch_id="B001", source="internal", setup_hours=-1.0, unit_hours=0.0)
+    with pytest.raises(ValidationError) as exc_info:
+        _ensure_internal_runtime_hours({"B001": batch}, [op])
+
+    assert exc_info.value.field == "work_hours"
+    assert exc_info.value.details["reason"] == "invalid_internal_work_hours"
+
+
+def test_ensure_internal_runtime_hours_allows_zero_quantity() -> None:
+    """批次数量为 0 是合法零工时路径（总量=setup），不得在排产入口硬拦整批——
+    与算法层 internal_slot.validate_internal_hours（quantity 缺失/0 一律按 0）口径一致。
+    钉死复修前 `quantity <= 0` 硬拦的回归（issue 2026-06-24-core-algorithm-deep-review-fixes）。"""
+    from core.services.scheduler.run.schedule_input_runtime_support import _ensure_internal_runtime_hours
+
+    batch = SimpleNamespace(quantity=0)
+    # setup=0 + unit*0 = 0：总工时 0，应放行；不抛异常即为通过
+    op_zero_total = SimpleNamespace(id=1, op_code="OP1", batch_id="B001", source="internal", setup_hours=0.0, unit_hours=5.0)
+    _ensure_internal_runtime_hours({"B001": batch}, [op_zero_total])
+    # setup>0 + unit*0 = setup：数量 0 但总工时为正，同样应放行
+    op_setup_only = SimpleNamespace(id=2, op_code="OP2", batch_id="B001", source="internal", setup_hours=1.5, unit_hours=5.0)
+    _ensure_internal_runtime_hours({"B001": batch}, [op_setup_only])
 
 
 def test_collect_schedule_run_input_rejects_empty_algo_input_without_freeze_mislabel() -> None:

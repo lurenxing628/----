@@ -59,8 +59,8 @@ def test_schedule_input_collector_contract(schema_conn) -> None:
         captured["algo_return_outcome"] = return_outcome
         return BuildOutcome(
             value=[
-                SimpleNamespace(id=1, op_code="B001_10", batch_id="B001", seq=10, source="internal"),
-                SimpleNamespace(id=2, op_code="B001_20", batch_id="B001", seq=20, source="internal"),
+                SimpleNamespace(id=1, op_code="B001_10", batch_id="B001", seq=10, source="internal", setup_hours=1.0, unit_hours=0.0),
+                SimpleNamespace(id=2, op_code="B001_20", batch_id="B001", seq=20, source="internal", setup_hours=1.0, unit_hours=0.0),
             ],
             counters={"collector_contract": 1},
         )

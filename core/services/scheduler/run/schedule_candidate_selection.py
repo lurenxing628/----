@@ -116,6 +116,8 @@ def _completed_candidates(candidates: Sequence[Any]) -> List[Any]:
         score = getattr(candidate, "score", None)
         if not score:
             raise ValidationError("已算成功的试算方案缺少评分，无法自动选结果。", field="candidate_score")
+        if len(_score(candidate)) < 2:
+            raise ValidationError("试算方案评分缺少主目标分数，无法自动选结果。", field="candidate_score")
         out.append(candidate)
     return out
 
@@ -162,6 +164,7 @@ def _critical_candidate_can_override_raw_score(
 ) -> bool:
     return (
         _failed_ops(critical) <= _failed_ops(raw_score_best)
+        and _objective_primary_score(critical) <= _objective_primary_score(raw_score_best)
         and _metric(critical, "overdue_count")
         <= _metric(raw_score_best, "overdue_count") + int(graph_overdue_tolerance_count)
         and _metric(critical, "total_tardiness_hours")
@@ -171,6 +174,13 @@ def _critical_candidate_can_override_raw_score(
 
 def _failed_ops(candidate: Any) -> float:
     return float(_score(candidate)[0])
+
+
+def _objective_primary_score(candidate: Any) -> float:
+    score = _score(candidate)
+    if len(score) < 2:
+        raise ValidationError("试算方案评分缺少主目标分数，无法自动选结果。", field="candidate_score")
+    return float(score[1])
 
 
 def _metric(candidate: Any, name: str) -> float:

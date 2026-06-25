@@ -3,12 +3,19 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import quote, urlencode
 
-from core.models.schedule_plan_role import ROLE_ADOPTED
-from core.models.schedule_plan_role import plan_role_label as _core_plan_role_label
+from core.models.execution_review_identity import can_read_execution_review
+from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE, truthy_contract_bool
 from core.models.schedule_resource_filter import SUPPORTED_SCHEDULE_RESOURCE_TYPES
 
 from .scheduler_history_summary import format_public_datetime, strategy_display_label
 from .scheduler_plan_guardrail_messages import summary_unavailable_guardrail_text
+from .scheduler_workbench_link_labels import (
+    gantt_view_label,
+    guardrail_reason_label,
+    period_preset_label,
+    plan_role_label,
+    resource_type_label,
+)
 from .scheduler_workbench_link_query import (
     DATE_RANGE_REQUIRED_TARGETS,
     FULL_PLAN_GUARD_FIELDS,
@@ -31,30 +38,6 @@ from .scheduler_workbench_link_query import (
 # 未喂参（URL fallback 等路径）显示"-"；喂了缺失值的旧历史行走词表缺失态。
 _UNSET = object()
 
-_GUARDRAIL_REASON_LABELS = {
-    "plan_not_writable": "当前方案不可写",
-    "task_state_blocked": "当前任务状态不可写",
-    "action_unavailable": "后端暂未开放这个动作",
-    "data_gap": "数据不足，暂时不能判断",
-}
-
-_RESOURCE_TYPE_LABELS = {
-    "operator": "人员视角",
-    "machine": "设备视角",
-    "team": "班组视角",
-}
-
-_PERIOD_PRESET_LABELS = {
-    "week": "按周",
-    "month": "按月",
-    "custom": "自定义",
-}
-
-_VIEW_LABELS = {
-    "machine": "设备甘特",
-    "operator": "人员甘特",
-}
-
 def _text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -65,33 +48,6 @@ def _has_value(value: Any) -> bool:
 
 def plan_guard_fields_for_context(plan_resolution: Any, field_names: Iterable[str]) -> Dict[str, Any]:
     return plan_guard_fields_for_resolution(plan_resolution, field_names)
-
-
-def plan_role_label(value: Any, *, is_preview: bool = False, scenario_display_label: str = "") -> str:
-    if is_preview:
-        return _text(scenario_display_label) or "模拟预览（未命名）"
-    text = _text(value) or ROLE_ADOPTED
-    return _core_plan_role_label(text)
-
-
-def guardrail_reason_label(value: Any) -> str:
-    text = _text(value)
-    return _GUARDRAIL_REASON_LABELS.get(text, "未知限制原因")
-
-
-def resource_type_label(value: Any) -> str:
-    text = _text(value)
-    return _RESOURCE_TYPE_LABELS.get(text, "未知资源视角")
-
-
-def period_preset_label(value: Any) -> str:
-    text = _text(value)
-    return _PERIOD_PRESET_LABELS.get(text, "未知日期范围")
-
-
-def gantt_view_label(value: Any) -> str:
-    text = _text(value)
-    return _VIEW_LABELS.get(text, "未知甘特视图")
 
 
 def _preview_context(is_preview: bool, scenario_id: Any, scenario_display_label: str) -> Tuple[Optional[str], bool, str]:
@@ -241,11 +197,18 @@ def _context_summary(context: Dict[str, Any], target_page: str, view: Optional[s
 
 
 def _has_blocked_plan_identity(context: Dict[str, Any]) -> bool:
-    return bool(context.get("plan_identity_blocking_error") or context.get("result_summary_parse_failed"))
+    return bool(
+        truthy_contract_bool(context.get("plan_identity_blocking_error"))
+        or truthy_contract_bool(context.get("result_summary_parse_failed"))
+    )
 
 
 def _has_preview_identity(context: Dict[str, Any]) -> bool:
-    return bool(context.get("is_preview") or context.get("is_scenario_preview") or _text(context.get("scenario_id")))
+    return bool(
+        truthy_contract_bool(context.get("is_preview"))
+        or truthy_contract_bool(context.get("is_scenario_preview"))
+        or _text(context.get("scenario_id"))
+    )
 
 
 def _has_only_adopted_roles(context: Dict[str, Any]) -> bool:
@@ -257,23 +220,51 @@ def _has_only_adopted_roles(context: Dict[str, Any]) -> bool:
     return bool(present_roles) and all(role == ROLE_ADOPTED for role in present_roles)
 
 
-def _is_current_official_identity(context: Dict[str, Any]) -> bool:
-    return (
-        not context.get("is_comparison")
-        and not context.get("is_superseded_by_newer_version")
-        and context.get("is_current_executable_official_version") is True
+def _is_current_writable_official_context(context: Dict[str, Any]) -> bool:
+    return bool(
+        isinstance(context, dict)
+        and not _has_blocked_plan_identity(context)
+        and not _has_preview_identity(context)
+        and _has_only_adopted_roles(context)
+        and (_text(context.get("source_table")) or SOURCE_SCHEDULE) == SOURCE_SCHEDULE
+        and not truthy_contract_bool(context.get("is_comparison"))
+        and not truthy_contract_bool(context.get("is_simulation_plan"))
+        and not truthy_contract_bool(context.get("is_superseded_by_newer_version"))
+        and truthy_contract_bool(context.get("is_current_executable_official_version"))
+    )
+
+
+def _execution_review_plan_resolution(context: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "source_table": _text(context.get("source_table")) or SOURCE_SCHEDULE,
+        "selected_role": _text(context.get("effective_plan_role") or context.get("plan_role")) or ROLE_ADOPTED,
+        "plan_identity": {
+            "is_official": truthy_contract_bool(context.get("is_official_plan")),
+            "is_preview": truthy_contract_bool(context.get("is_preview_plan")) or _has_preview_identity(context),
+            "is_simulation": truthy_contract_bool(context.get("is_simulation_plan")),
+            "result_summary_parse_failed": truthy_contract_bool(context.get("result_summary_parse_failed")),
+            "schedule_result_status": _text(context.get("schedule_result_status")),
+            "detail_saved": truthy_contract_bool(context.get("detail_saved")),
+        },
+    }
+
+
+def _is_readable_official_context(context: Dict[str, Any]) -> bool:
+    return bool(
+        isinstance(context, dict)
+        and not _has_blocked_plan_identity(context)
+        and not truthy_contract_bool(context.get("is_comparison"))
+        and _has_only_adopted_roles(context)
+        and can_read_execution_review(_execution_review_plan_resolution(context))
     )
 
 
 def _is_formal_adopted_context(context: Dict[str, Any]) -> bool:
     if not isinstance(context, dict):
         return False
-    return (
-        not _has_blocked_plan_identity(context)
-        and not _has_preview_identity(context)
-        and _has_only_adopted_roles(context)
-        and _is_current_official_identity(context)
-    )
+    if truthy_contract_bool(context.get("execution_review_read_only_allowed")):
+        return _is_readable_official_context(context)
+    return _is_current_writable_official_context(context)
 
 
 def _unsupported_primary_resource_reason(context: Dict[str, Any], target_page: str, resource_type: Optional[str]) -> str:
@@ -305,7 +296,7 @@ def _date_range_reason(context: Dict[str, Any], target_page: str, *, missing_ver
 def _preview_without_public_identity_reason(context: Dict[str, Any], target_page: str) -> str:
     if target_page not in VERSION_REQUIRED_TARGETS:
         return ""
-    if not (context.get("is_preview") or context.get("is_scenario_preview")):
+    if not _has_preview_identity(context):
         return ""
     if target_page in PLAN_CONTEXT_TOKEN_TARGETS and _text(context.get("scenario_id")):
         if not has_public_plan_context_token_source(context):
@@ -317,7 +308,7 @@ def _preview_without_public_identity_reason(context: Dict[str, Any], target_page
 
 
 def _plan_identity_blocking_reason(context: Dict[str, Any], target_page: str) -> str:
-    if target_page not in VERSION_REQUIRED_TARGETS or not context.get("plan_identity_blocking_error"):
+    if target_page not in VERSION_REQUIRED_TARGETS or not truthy_contract_bool(context.get("plan_identity_blocking_error")):
         return ""
     if (
         _text(context.get("plan_identity_blocking_scope")) == "workbench_continuation"
@@ -328,7 +319,7 @@ def _plan_identity_blocking_reason(context: Dict[str, Any], target_page: str) ->
 
 
 def _summary_parse_blocking_reason(context: Dict[str, Any]) -> str:
-    if not context.get("result_summary_parse_failed"):
+    if not truthy_contract_bool(context.get("result_summary_parse_failed")):
         return ""
     return summary_unavailable_guardrail_text(context.get("result_summary_parse_reason"), blocked_action="不能写现场记录")
 
@@ -337,7 +328,7 @@ def _execution_review_identity_reason(context: Dict[str, Any]) -> str:
     parse_reason = _summary_parse_blocking_reason(context)
     if parse_reason:
         return parse_reason
-    if context.get("is_superseded_by_newer_version"):
+    if truthy_contract_bool(context.get("is_superseded_by_newer_version")):
         return "这是历史正式方案，只能查看；只有当前最新正式方案才能写现场记录。"
     return "计划和现场实际只复盘正式采用方案，请切换到正式采用方案后查看。"
 
@@ -445,10 +436,10 @@ def build_workbench_links(context: Dict[str, Any], specs: Iterable[Dict[str, Any
 
 
 def can_emit_feedback_write_urls(plan_identity_or_context: Any) -> bool:
-    if not _is_formal_adopted_context(plan_identity_or_context):
+    if not _is_current_writable_official_context(plan_identity_or_context):
         return False
-    can_write_feedback = bool(plan_identity_or_context.get("can_write_feedback"))
-    return bool(plan_identity_or_context.get("can_dispatch")) and can_write_feedback
+    can_write_feedback = truthy_contract_bool(plan_identity_or_context.get("can_write_feedback"))
+    return truthy_contract_bool(plan_identity_or_context.get("can_dispatch")) and can_write_feedback
 
 
 __all__ = [

@@ -34,7 +34,7 @@ def _candidate_cfg(base_cfg: Any, spec: CandidateRunSpec) -> Any:
     graph_mode = "on" if spec.graph_enabled else "off"
     return replace(
         base_cfg,
-        algo_mode="greedy",
+        algo_mode=str(getattr(base_cfg, "algo_mode", "") or "").strip().lower(),
         graph_analysis_mode=graph_mode,
         graph_critical_weight=int(spec.graph_critical_weight),
         graph_impact_weight=int(spec.graph_impact_weight),

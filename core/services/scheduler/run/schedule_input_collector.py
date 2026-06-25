@@ -8,14 +8,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from core.infrastructure.errors import ValidationError
 from core.models import Batch, BatchOperation
 from core.models.enums import BatchStatus, ReadyStatus, SourceType, YesNo
-from core.models.operation_execution_event import (
-    EXECUTION_STATUS_COMPLETED,
-    EXECUTION_STATUS_EXCEPTION,
-    EXECUTION_STATUS_PAUSED,
-    EXECUTION_STATUS_PROCESSING,
-)
 from core.services.common.build_outcome import BuildOutcome
 from core.services.scheduler.execution_fact_provider import ExecutionFact
+from core.shared.boolean_normalize import normalize_yes_no_wide
 
 from ..number_utils import parse_finite_float, to_yes_no
 from .schedule_execution_guardrails import (
@@ -128,9 +123,20 @@ def _normalize_schedule_window(svc: Any, *, start_dt: Any, end_date: Any) -> Tup
 def _resolve_enforce_ready_effective(cfg: Any, enforce_ready: Optional[bool]) -> bool:
     if enforce_ready is None:
         return to_yes_no(cfg.enforce_ready_default, default=YesNo.NO.value) == YesNo.YES.value
+    if isinstance(enforce_ready, bool):
+        return bool(enforce_ready)
     if isinstance(enforce_ready, str):
-        return to_yes_no(enforce_ready, default=YesNo.NO.value) == YesNo.YES.value
-    return bool(enforce_ready)
+        text = enforce_ready.strip()
+        if not text:
+            raise ValidationError("齐套检查开关不能为空，请填 yes/no。", field="enforce_ready")
+        # 复用 core 低层唯一别名源（认 是/否/y/n/yes/no/true/false/1/0/on/off）；未知值 fail-loud。
+        # 不再手搓窄别名集，避免与 normalize_yes_no_wide 单边漂移（"是"/"y" 被误判未知而拒绝）。
+        try:
+            normalized = normalize_yes_no_wide(text, unknown_policy="raise")
+        except ValueError as exc:
+            raise ValidationError("齐套检查开关只支持 yes/no。", field="enforce_ready") from exc
+        return normalized == YesNo.YES.value
+    raise ValidationError("齐套检查开关只支持布尔值或 yes/no。", field="enforce_ready")
 
 
 def _normalize_run_time_budget_seconds(value: Any) -> Optional[float]:
@@ -342,6 +348,7 @@ def collect_schedule_run_input(
         prev_version=prev_version,
         start_dt_norm=start_dt_norm,
         run_label=run_label,
+        batches=batches,
         operations=operations,
         reschedulable_operations=reschedulable_operations,
         algo_ops=algo_ops,

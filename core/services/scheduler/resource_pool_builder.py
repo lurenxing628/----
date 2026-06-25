@@ -3,14 +3,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.infrastructure.errors import ValidationError
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, YesNo
 from core.services.common.enum_normalizers import skill_rank as _skill_rank_common
 from core.services.common.safe_logging import safe_warning
 from data.repositories import MachineDowntimeRepository
 
 from .degradation_messages import (
-    DOWNTIME_EXTEND_FAILED_MESSAGE,
-    DOWNTIME_LOAD_FAILED_MESSAGE,
+    DOWNTIME_EXTEND_ABORTED_MESSAGE,
+    DOWNTIME_LOAD_ABORTED_MESSAGE,
     RESOURCE_POOL_BUILD_FAILED_MESSAGE,
 )
 from .number_utils import to_yes_no
@@ -156,6 +157,22 @@ def _partial_failure_message(*, label: str, failed_mids: List[str], suffix: str)
     return msg, sample
 
 
+def _raise_downtime_load_error(message: str, *, field: str = "downtime", reason: str = "downtime_load_failed") -> None:
+    raise ValidationError(
+        f"{message} 本次没有生成新排程，请检查停机记录后再试。",
+        field=field,
+        details={"reason": reason},
+    )
+
+
+def _raise_downtime_extend_error(message: str, *, field: str = "downtime", reason: str = "downtime_extend_failed") -> None:
+    raise ValidationError(
+        f"{message} 本次没有生成新排程，请检查自动安排设备的停机记录后再试。",
+        field=field,
+        details={"reason": reason},
+    )
+
+
 def _record_load_meta_success(meta: Optional[Dict[str, Any]]) -> None:
     if meta is not None:
         meta["downtime_load_ok"] = True
@@ -230,27 +247,30 @@ def load_machine_downtimes(
         downtime_map = {}
         if meta is not None:
             meta["downtime_load_ok"] = False
-            meta["downtime_load_error"] = DOWNTIME_LOAD_FAILED_MESSAGE
-        _append_warning(warnings, f"【停机】{DOWNTIME_LOAD_FAILED_MESSAGE}")
-        _warn_service_logger(svc, f"停机区间加载失败，本次先不使用停机约束：{e}", exc_info=True)
-        return downtime_map
+            meta["downtime_load_error"] = DOWNTIME_LOAD_ABORTED_MESSAGE
+        _append_warning(warnings, f"【停机】{DOWNTIME_LOAD_ABORTED_MESSAGE}")
+        _warn_service_logger(svc, f"停机区间加载失败，本次排产已中止：{e}", exc_info=True)
+        _raise_downtime_load_error(DOWNTIME_LOAD_ABORTED_MESSAGE)
 
     downtime_map, partial_fail_mids = _load_downtime_intervals_for_machines(
         svc,
         dt_repo=dt_repo,
         machine_ids=machine_ids,
         start_str=start_str,
-        failure_log_template="停机区间加载部分失败，设备 {mid} 本次先不使用停机约束：{error}",
+        failure_log_template="停机区间加载失败，设备 {mid} 无法读取停机记录：{error}",
     )
 
     if partial_fail_mids:
+        # 区分“全挂/个别挂”：失败设备覆盖了全部被查设备 = 全挂，否则 = 个别挂。
+        all_failed = len(partial_fail_mids) >= len(machine_ids)
         msg, sample = _partial_failure_message(
-            label="部分设备停机区间加载失败",
+            label="全部设备停机区间加载失败" if all_failed else "部分设备停机区间加载失败",
             failed_mids=partial_fail_mids,
-            suffix="这些设备本次先不使用停机约束",
+            suffix="无法读取这些设备的停机记录",
         )
         _record_load_meta_partial(meta, msg=msg, sample=sample, count=len(partial_fail_mids))
         _append_warning(warnings, f"【停机】{msg}")
+        _raise_downtime_load_error(msg, reason="downtime_load_failed" if all_failed else "downtime_load_partial_failed")
     else:
         _record_load_meta_success(meta)
 
@@ -355,27 +375,32 @@ def extend_downtime_map_for_resource_pool(
     except Exception as e:
         if meta is not None:
             meta["downtime_extend_ok"] = False
-            meta["downtime_extend_error"] = DOWNTIME_EXTEND_FAILED_MESSAGE
-        _append_warning(warnings, f"【停机】{DOWNTIME_EXTEND_FAILED_MESSAGE}")
-        _warn_service_logger(svc, f"停机区间扩展加载失败，自动安排设备可能未覆盖停机约束：{e}", exc_info=True)
-        return downtime_map
+            meta["downtime_extend_error"] = DOWNTIME_EXTEND_ABORTED_MESSAGE
+        _append_warning(warnings, f"【停机】{DOWNTIME_EXTEND_ABORTED_MESSAGE}")
+        _warn_service_logger(svc, f"停机区间扩展加载失败，本次排产已中止：{e}", exc_info=True)
+        _raise_downtime_extend_error(DOWNTIME_EXTEND_ABORTED_MESSAGE)
 
     extra_downtime_map, partial_fail_mids = _load_downtime_intervals_for_machines(
         svc,
         dt_repo=dt_repo,
         machine_ids=extra_mids,
         start_str=start_str,
-        failure_log_template="停机区间扩展部分失败，自动安排设备 {mid} 可能未覆盖停机约束：{error}",
+        failure_log_template="停机区间扩展失败，自动安排设备 {mid} 无法读取停机记录：{error}",
     )
     downtime_map.update(extra_downtime_map)
 
     if partial_fail_mids:
+        # 区分“全挂/个别挂”：失败设备覆盖了全部待扩展设备 = 全挂，否则 = 个别挂。
+        all_failed = len(partial_fail_mids) >= len(extra_mids)
         msg, sample = _partial_failure_message(
-            label="部分自动安排设备停机区间扩展加载失败",
+            label="全部自动安排设备停机区间扩展加载失败" if all_failed else "部分自动安排设备停机区间扩展加载失败",
             failed_mids=partial_fail_mids,
-            suffix="这些设备可能未覆盖停机约束",
+            suffix="无法读取这些设备的停机记录",
         )
         _record_extend_meta_partial(meta, msg=msg, sample=sample, count=len(partial_fail_mids))
         _append_warning(warnings, f"【停机】{msg}")
+        _raise_downtime_extend_error(
+            msg, reason="downtime_extend_failed" if all_failed else "downtime_extend_partial_failed"
+        )
 
     return downtime_map

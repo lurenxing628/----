@@ -263,6 +263,54 @@ def test_plan_metadata_and_resource_dispatch_filter_fields_stay_consistent() -> 
     assert fields["effective_plan_role_label"] == data["effective_plan_role_label"]
 
 
+def test_schedule_plan_resolution_to_dict_parses_plan_identity_string_flags() -> None:
+    plan_identity = SimpleNamespace(
+        to_dict=lambda: {
+            "user_label": "正式采用方案",
+            "can_dispatch": "no",
+            "can_write_feedback": "no",
+            "is_official": "yes",
+            "is_preview": "no",
+            "is_current_executable_version": "yes",
+            "is_current_executable_official_version": "yes",
+            "result_summary_parse_failed": "no",
+            "result_summary_parse_reason": "",
+            "is_superseded_by_newer_version": "no",
+            "schedule_result_status": "success",
+            "schedule_lock_status": "",
+            "detail_saved": "yes",
+        }
+    )
+    resolution = SchedulePlanResolution(
+        version=VERSION,
+        requested_role=ROLE_ADOPTED,
+        selected_role=ROLE_ADOPTED,
+        source_table=SOURCE_SCHEDULE,
+        candidate_id=None,
+        candidate_key=None,
+        status="resolved_adopted",
+        message="",
+        available_roles=[_option(ROLE_ADOPTED)],
+        is_scenario_preview="no",
+        plan_identity=plan_identity,
+    )
+
+    serialized = resolution.to_dict()
+    fields = plan_role_filter_fields(serialized)
+
+    assert serialized["can_dispatch"] is False
+    assert serialized["can_write_feedback"] is False
+    assert serialized["is_official"] is True
+    assert serialized["is_preview"] is False
+    assert serialized["result_summary_parse_failed"] is False
+    assert serialized["is_superseded_by_newer_version"] is False
+    assert serialized["detail_saved"] is True
+    assert serialized["is_scenario_preview"] is False
+    assert fields["is_preview_plan"] is False
+    assert fields["result_summary_parse_failed"] is False
+    assert fields["detail_saved"] is True
+
+
 def test_serialize_plan_role_options_keeps_existing_dict_items() -> None:
     options = [
         {

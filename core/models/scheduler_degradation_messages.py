@@ -5,6 +5,11 @@ from typing import Any, Dict, Iterable, List, Optional
 
 DOWNTIME_LOAD_FAILED_MESSAGE = "停机区间加载失败，本次排产先不使用停机约束。"
 DOWNTIME_EXTEND_FAILED_MESSAGE = "停机区间扩展加载失败，部分自动安排设备可能还没有避开停机时间。"
+# abort 专用中性文案：停机读取失败现已 fail-loud 中止排产（见 resource_pool_builder._raise_downtime_*），
+# 不能复用上面两个“先不使用/可能未避开”的降级文案，否则会与“本次没有生成新排程”自相矛盾。
+# 上面两个常量仅供 summary 降级路径（downtime_avoid_degraded 等“继续排”语义）使用。
+DOWNTIME_LOAD_ABORTED_MESSAGE = "停机区间加载失败。"
+DOWNTIME_EXTEND_ABORTED_MESSAGE = "停机区间扩展加载失败。"
 FREEZE_WINDOW_DEGRADED_MESSAGE = "冻结窗口资料不完整，本次排产未使用冻结窗口。"
 FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE = "冻结窗口资料不完整，本次只保留能确认的冻结工序。"
 RESOURCE_POOL_BUILD_FAILED_MESSAGE = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
@@ -34,6 +39,8 @@ _PUBLIC_EVENT_MESSAGES = {
     "optimizer_metrics_invalid": "优化指标记录异常，不能按这些指标判断结果。",
     "fallback_count_parse_failed": "排产降级统计记录异常，部分降级原因无法完整展示。",
     "summary_count_parse_failed": "排产摘要里的数量记录异常，不能按这些数量判断结果。",
+    "graph_enhancement_degraded": "工序图报告已生成，但图增强排队因循环依赖关闭，本次退回普通排法。",
+    "dispatch_failure_details": "部分工序没有形成有效排程，摘要已保留失败和跳过明细。",
     "calendar_load_failed": "工作日历加载失败，当前不显示假期/停工背景标注。",
     "resource_load_capacity_failed": "部分日期的容量暂时算不了，相关负荷格按「利用率暂时算不了」显示。",
     "bad_time_row_skipped": "有些甘特记录的开始或结束时间写法不对，页面已先过滤。",
@@ -202,7 +209,9 @@ def public_degradation_events(events: Iterable[Any]) -> List[Dict[str, Any]]:
 
 
 __all__ = [
+    "DOWNTIME_EXTEND_ABORTED_MESSAGE",
     "DOWNTIME_EXTEND_FAILED_MESSAGE",
+    "DOWNTIME_LOAD_ABORTED_MESSAGE",
     "DOWNTIME_LOAD_FAILED_MESSAGE",
     "FREEZE_WINDOW_DEGRADED_MESSAGE",
     "FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE",

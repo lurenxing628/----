@@ -326,14 +326,6 @@ def _batch_failed_op_ids(batch_id: str, next_idx: Dict[str, int], ops_by_batch: 
     return {_op_id(op) for op in operations[idx0:]}
 
 
-def _graph_op_label(graph_state: Dict[str, Any], op_id: int) -> str:
-    op_entry = graph_state["op_by_id"].get(op_id)
-    if not op_entry:
-        return str(op_id)
-    _batch_id, op = op_entry
-    return str(getattr(op, "op_code", None) or op_id)
-
-
 def _record_graph_blocked_operations(
     state: Any,
     *,
@@ -343,12 +335,16 @@ def _record_graph_blocked_operations(
     already_counted_op_ids: set,
 ) -> int:
     extra_failed_count = 0
-    failed_label = _graph_op_label(graph_state, failed_op_id)
     for blocked_op_id in sorted(set(newly_blocked_op_ids)):
         if blocked_op_id == failed_op_id or blocked_op_id not in graph_state["op_by_id"]:
             continue
-        blocked_label = _graph_op_label(graph_state, blocked_op_id)
-        state.errors.append(f"工序 {blocked_label}：依赖的前序工序 {failed_label} 排产失败，本次跳过。")
-        if blocked_op_id not in already_counted_op_ids:
-            extra_failed_count += 1
+        blocked_batch_id, blocked_op = graph_state["op_by_id"][blocked_op_id]
+        _failed_batch_id, failed_op = graph_state["op_by_id"].get(failed_op_id, ("", None))
+        # 只走结构化 record_graph_blocked_after_failure；不再 append 原始串到 state.errors，
+        # 否则会回落成 generic_scheduler_error 与具体文案双发（与 missing_batch/异常路径同源问题）。
+        if blocked_op_id in already_counted_op_ids:
+            continue
+        if hasattr(state, "record_graph_blocked_after_failure"):
+            state.record_graph_blocked_after_failure(blocked_op, blocked_batch_id, failed_op=failed_op)
+        extra_failed_count += 1
     return extra_failed_count
