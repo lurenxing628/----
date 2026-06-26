@@ -27,6 +27,16 @@ FORBIDDEN_PUBLIC_TOKENS = (
 
 
 def assert_benchmark_reference_contract(reference: Dict[str, Any]) -> None:
+    """Validate a BenchmarkReference for internal self-consistency.
+
+    This checks only that the payload's fields agree with each other (scopes,
+    gaps, metric keys, public projection, id hygiene). It does NOT re-run any
+    oracle, so it cannot by itself attest that an ``oracle_status="proven_optimal"``
+    reference was really proven: a hand-built, internally-consistent dict would
+    pass. The truthfulness of a proven reference is the producer's job --
+    ``build_tiny_case_reference`` runs the exact oracle and the
+    ``assert_oracle_decoder_matches_greedy`` same-model guard before emitting one.
+    """
     _assert_required_fields(reference)
     objective_name = _assert_objective_metric_keys(reference)
     _assert_oracle_fields(reference)
