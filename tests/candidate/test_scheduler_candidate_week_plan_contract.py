@@ -266,7 +266,10 @@ def test_week_plan_export_uses_same_plan_role_and_logs_requested_effective_roles
     assert filters.get("requested_plan_role") == ROLE_BASELINE_BEST
     assert filters.get("effective_plan_role") == ROLE_BASELINE_BEST
     assert filters.get("plan_role_status") == "resolved_comparison"
-    assert filters.get("candidate_key") == "baseline_best"
+    assert "candidate_key" not in filters
+    filters_text = json.dumps(filters, ensure_ascii=False, sort_keys=True)
+    for forbidden in ("candidate_id", "candidate_key", "source_table", "scenario_id", "schedule_id", "op_id", "node_id", "op:"):
+        assert forbidden not in filters_text
 
     fallback_resp = client.get(f"/scheduler/week-plan/export?week_start=2026-05-11&version={VERSION}&plan_role=critical_best")
     assert fallback_resp.status_code == 200

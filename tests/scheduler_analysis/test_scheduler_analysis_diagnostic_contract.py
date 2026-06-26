@@ -152,7 +152,7 @@ def _full_graph_summary() -> Dict[str, Any]:
                 "warnings_sample": [
                     {
                         "code": "GRAPH_WARNING",
-                        "message": "图分析提醒",
+                        "message": "发现孤立工序：OP010",
                         "data": {
                             "raw": "不要展示",
                         },
@@ -260,8 +260,17 @@ def test_diagnostic_sections_keep_diagnostics_samples_limited_and_safe() -> None
     text_blob = "\n".join(_iter_text(sections))
 
     assert "以下只是样本，不是完整清单。" in text_blob
-    assert "这轮还没排上的工序样本：3、4、5、6、7" in text_blob
+    assert "这轮还没排上的工序：1 道" in text_blob
+    assert "这轮还没排上的工序样本：3、4、5、6、7" not in text_blob
     for forbidden in (
+        "op:",
+        "B001",
+        "OP010",
+        "op_id",
+        "node_id",
+        "candidate_id",
+        "source_table",
+        "发现孤立工序",
         "首波 ready",
         "candidate_machine_ids",
         "resource_pool",

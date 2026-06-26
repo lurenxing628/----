@@ -42,13 +42,17 @@ def test_candidate_display_uses_plan_role_source_table_for_comparison_state() ->
     )
 
     rows = {row["role"]: row for row in display["rows"]}
-    assert rows[ROLE_BASELINE_BEST]["candidate_key"] != rows[ROLE_ADOPTED]["candidate_key"]
-    assert rows[ROLE_BASELINE_BEST]["source_table"] == SOURCE_SCHEDULE
+    assert "candidate_key" not in rows[ROLE_BASELINE_BEST]
+    assert "candidate_key" not in rows[ROLE_ADOPTED]
+    assert "source_table" not in rows[ROLE_BASELINE_BEST]
     assert rows[ROLE_BASELINE_BEST]["is_same_as_adopted"] is False
     assert rows[ROLE_BASELINE_BEST]["is_comparison"] is True
     assert "对比参考方案" in rows[ROLE_BASELINE_BEST]["comparison_note"]
     assert "不能直接派工或反馈" in rows[ROLE_BASELINE_BEST]["comparison_note"]
     assert "正式排程已写入这一版" not in rows[ROLE_BASELINE_BEST]["comparison_note"]
+    text = json.dumps(display, ensure_ascii=False, sort_keys=True)
+    for forbidden in ("candidate_key", "source_table", "candidate_rows"):
+        assert forbidden not in text
 
 
 def test_candidate_display_surfaces_non_representative_failed_candidates() -> None:
@@ -118,6 +122,24 @@ def test_candidate_display_translates_internal_failure_reason_for_users() -> Non
     assert "graph_w4_of_5" not in status_text
 
 
+def test_candidate_display_translates_generic_failed_reason_for_users() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+
+    summary = _comparison_summary(failed_extra=True)
+    failed_candidate = summary["algo"]["candidate_comparison"]["candidates"][-1]
+    failed_candidate["failure_reason"] = "candidate_failed"
+
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    status_text = " ".join(message["text"] for message in display["status_messages"])
+    assert "这套方案没有算成功" in status_text
+    assert "candidate_failed" not in status_text
+
+
 def test_candidate_display_and_plan_role_options_hide_old_internal_labels() -> None:
     from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
 
@@ -159,3 +181,23 @@ def test_candidate_display_does_not_duplicate_adopted_plan_suffix() -> None:
     candidate_labels = [row["candidate_label"] for row in display["rows"]]
     assert "正式采用方案" in candidate_labels
     assert "正式采用方案方案" not in candidate_labels
+
+
+def test_candidate_display_technical_score_label_does_not_leak_internal_score_items() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+
+    summary = _comparison_summary()
+    candidate = summary["algo"]["candidate_comparison"]["candidates"][1]
+    candidate["score"] = [0, "op:SECRET-CANDIDATE", "OP010", {"node_id": "op:SECRET-NODE"}]
+
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    rows = {row["role"]: row for row in display["rows"]}
+    assert rows[ROLE_ADOPTED]["technical_score_label"] == "0"
+    rendered = json.dumps(display, ensure_ascii=False, sort_keys=True)
+    for forbidden in ("op:", "OP010", "SECRET", "node_id"):
+        assert forbidden not in rendered

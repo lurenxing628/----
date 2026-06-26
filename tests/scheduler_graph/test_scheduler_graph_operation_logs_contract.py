@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -66,6 +67,14 @@ _FORBIDDEN_LOG_KEYS = {
     "bottleneck_machine_sample",
     "bottleneck_machine_ids_sample",
     "resource_pool",
+    "op_id",
+    "node_id",
+    "candidate_id",
+    "candidate_key",
+    "adopted_candidate_key",
+    "source_table",
+    "scenario_id",
+    "schedule_id",
 }
 
 
@@ -168,6 +177,11 @@ def _result_summary_obj() -> Dict[str, Any]:
                     "impact_weight": 10,
                     "downstream_minutes_weight": 1,
                 },
+                "node_id": "op:SECRET-NODE",
+                "op_id": 1,
+                "candidate_id": "CANDIDATE-SECRET",
+                "source_table": "graph_debug",
+                "critical_path_sample": ["op:SECRET-NODE"],
             }
         },
         "diagnostics": {
@@ -191,7 +205,10 @@ def _known_error_result_summary_obj() -> Dict[str, Any]:
                 "effective_mode": "report",
                 "status": "unavailable",
                 "reason": "networkx_unavailable",
-                "message": "缺少可选依赖 networkx==3.1",
+                "message": (
+                    "from_node_id='op:SECRET' source_table=graph_debug node_id=op:SECRET "
+                    "样本 op_code：OP010 / OP020；裸编号 OP010 / OP020 candidate_rows attempts_debug target_id=987"
+                ),
                 "time_cost_ms": 4,
                 "input_scope": "all_algo_ops_with_frozen_markers",
                 "total_algo_op_count": 2,
@@ -233,6 +250,9 @@ def _resource_matching_result_summary_obj() -> Dict[str, Any]:
                     "matched_operation_count": 2,
                     "unmatched_operation_count": 1,
                     "bottleneck_machine_count": 2,
+                    "candidate_id": "CANDIDATE-SECRET",
+                    "source_table": "resource_debug",
+                    "unmatched_operation_ids_sample": ["op:SECRET-RESOURCE"],
                 },
             }
         },
@@ -261,6 +281,13 @@ def _iter_keys(value: Any) -> Iterator[str]:
     elif isinstance(value, list):
         for item in value:
             yield from _iter_keys(item)
+
+
+def _assert_no_internal_log_payload(detail: Dict[str, Any]) -> None:
+    text = json.dumps(detail, ensure_ascii=False, sort_keys=True)
+    assert _FORBIDDEN_LOG_KEYS.isdisjoint(set(_iter_keys(detail)))
+    for forbidden in ("op:", "CANDIDATE-SECRET", "graph_debug", "resource_debug"):
+        assert forbidden not in text
 
 
 def _persist_once(*, simulate: bool, result_summary_obj: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -303,7 +330,7 @@ def test_operation_logs_keep_only_graph_public_summary_for_simulate_and_schedule
         assert set(graph_analysis) == _PUBLIC_GRAPH_KEYS
         assert graph_analysis["status"] == "available"
         assert "diagnostics" not in detail
-        assert _FORBIDDEN_LOG_KEYS.isdisjoint(set(_iter_keys(detail)))
+        _assert_no_internal_log_payload(detail)
 
 
 def test_operation_logs_keep_known_graph_error_public_and_small() -> None:
@@ -314,9 +341,23 @@ def test_operation_logs_keep_known_graph_error_public_and_small() -> None:
     assert set(graph_analysis) == _ERROR_PUBLIC_GRAPH_KEYS
     assert graph_analysis["status"] == "unavailable"
     assert graph_analysis["reason"] == "networkx_unavailable"
-    assert graph_analysis["message"] == "缺少可选依赖 networkx==3.1"
+    assert "内部标识已省略" in graph_analysis["message"]
+    for forbidden in (
+        "op:",
+        "node_id",
+        "source_table",
+        "graph_debug",
+        "op_code",
+        "OP010",
+        "OP020",
+        "candidate_rows",
+        "attempts_debug",
+        "target_id",
+        "987",
+    ):
+        assert forbidden not in graph_analysis["message"]
     assert "diagnostics" not in detail
-    assert _FORBIDDEN_LOG_KEYS.isdisjoint(set(_iter_keys(detail)))
+    _assert_no_internal_log_payload(detail)
 
 
 def test_operation_logs_keep_resource_matching_public_counts_without_samples() -> None:
@@ -337,4 +378,4 @@ def test_operation_logs_keep_resource_matching_public_counts_without_samples() -
         "bottleneck_machine_count": 2,
     }
     assert "diagnostics" not in detail
-    assert _FORBIDDEN_LOG_KEYS.isdisjoint(set(_iter_keys(detail)))
+    _assert_no_internal_log_payload(detail)

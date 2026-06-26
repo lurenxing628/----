@@ -452,3 +452,58 @@ def test_known_graph_error_adds_top_level_warning_without_errors_or_diagnostics(
     assert "graph_analysis" not in result_summary_obj.get("diagnostics", {})
     assert result_summary_obj["algo"]["graph_analysis"] == public
     assert result_summary_obj["warnings"] == ["工序图分析没有生成可用报告：缺少可选依赖 networkx==3.1"]
+
+
+def test_graph_warning_message_is_sanitized_before_summary_warnings() -> None:
+    public = {
+        "mode": "report",
+        "effective_mode": "report",
+        "status": "build_error",
+        "reason": "graph_build_contract_error",
+        "message": (
+            "candidate_rows 查询失败 from_node_id=op:SECRET source_table=graph_debug "
+            "node_id=op:SECRET op_code=OP010 裸编号 OP020 target_id=987"
+        ),
+        "time_cost_ms": 3,
+        "input_scope": "all_algo_ops_with_frozen_markers",
+        "total_algo_op_count": 1,
+        "reschedulable_unfrozen_op_count": 1,
+        "frozen_node_count": 0,
+        "seed_result_count": 0,
+    }
+    svc = SimpleNamespace(
+        _format_dt=lambda value: value.strftime("%Y-%m-%d %H:%M:%S"),
+        _normalize_text=lambda value: str(value).strip() if value else None,
+    )
+
+    _overdue, _result_status, result_summary_obj, _json, _time_cost_ms = build_result_summary(
+        svc,
+        ctx=_ctx(
+            graph_analysis_public=public,
+            graph_analysis_diagnostics=None,
+        ),
+    )
+
+    text = json.dumps(
+        {
+            "warnings": result_summary_obj.get("warnings"),
+            "graph_analysis": (result_summary_obj.get("algo") or {}).get("graph_analysis"),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    assert "内部标识已省略" in text
+    for forbidden in (
+        "candidate_rows",
+        "from_node_id",
+        "op:",
+        "source_table",
+        "graph_debug",
+        "node_id",
+        "op_code",
+        "OP010",
+        "OP020",
+        "target_id",
+        "987",
+    ):
+        assert forbidden not in text

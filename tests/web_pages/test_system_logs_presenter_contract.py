@@ -82,6 +82,37 @@ def test_operation_log_detail_parse_state_is_visible(detail, state) -> None:
         assert row["detail_obj"] is None
 
 
+def test_operation_log_error_message_uses_public_projection() -> None:
+    rows = build_operation_log_view_rows(
+        [
+            {
+                "log_level": "ERROR",
+                "module": "scheduler",
+                "action": "schedule",
+                "target_type": "schedule",
+                "detail": "",
+                "error_message": (
+                    '{"candidate_id": 7, "source_table": "candidate_rows", "node_id": "op:SECRET"} '
+                    "candidate_rows attempts_debug graph_debug"
+                ),
+            }
+        ]
+    )
+
+    text = rows[0]["error_message_public"]
+    assert "内部标识已省略" in text
+    for forbidden in (
+        "candidate_id",
+        "source_table",
+        "candidate_rows",
+        "node_id",
+        "op:SECRET",
+        "attempts_debug",
+        "graph_debug",
+    ):
+        assert forbidden not in text
+
+
 def test_operation_log_to_dict_error_is_not_rendered_as_blank_row() -> None:
     class _BadRow:
         def to_dict(self):

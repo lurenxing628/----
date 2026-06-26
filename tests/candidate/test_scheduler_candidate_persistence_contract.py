@@ -254,7 +254,8 @@ def test_schedule_candidate_history_and_rows_are_written_in_one_successful_run(t
         assert len(op_logger.calls) == 1
         log_candidate_summary = op_logger.calls[0]["detail"]["algo"]["candidate_comparison"]
         assert "candidates" not in log_candidate_summary
-        assert log_candidate_summary["adopted_candidate_key"] == "graph_w1_of_3"
+        assert "adopted_candidate_key" not in log_candidate_summary
+        assert "candidate_key" not in str(log_candidate_summary)
     finally:
         conn.close()
 

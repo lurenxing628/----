@@ -150,8 +150,9 @@ def test_scheduler_analysis_route_does_not_plot_missing_trend_metric_as_zero(mon
 def test_scheduler_analysis_route_marks_bad_attempt_and_trace_metrics(monkeypatch) -> None:
     selected_summary = {
         "algo": {
-            "comparison_metric": "overdue_count",
-            "metrics": {"overdue_count": 1},
+            "comparison_metric": "source_table",
+            "best_score_schema": [{"index": 1, "key": "overdue_count", "label": "超期批次"}],
+            "metrics": {"overdue_count": 1, "source_table": "candidate_rows"},
             "attempts": [
                 {
                     "candidate_id": "bad",
@@ -183,6 +184,170 @@ def test_scheduler_analysis_route_marks_bad_attempt_and_trace_metrics(monkeypatc
     assert attempts[0]["failed_ops"] is None
     assert payload["trace_chart"]["metric_parse_failed"] is True
     assert not payload["trace_chart"].get("points"), "坏优化过程指标不能画成 0"
+
+
+def test_scheduler_analysis_route_projects_attempts_before_template(monkeypatch) -> None:
+    selected_summary = {
+        "algo": {
+            "comparison_metric": "overdue_count",
+            "metrics": {"overdue_count": 1},
+            "attempts": [
+                {
+                    "tag": "候选 OP010",
+                    "source": "candidate_id=7",
+                    "source_label": "内部方案 OP020",
+                    "strategy": "greedy",
+                    "dispatch_mode": "sgs",
+                    "dispatch_rule": "cr",
+                    "failed_ops": 0,
+                    "metrics": {
+                        "overdue_count": 1,
+                        "source_table": "candidate_rows",
+                    },
+                    "score": [1, "op:SECRET"],
+                }
+            ],
+            "candidate_comparison": {
+                "enabled": True,
+                "planned_candidate_count": 1,
+                "completed_candidate_count": 1,
+                "failed_candidate_count": 0,
+                "adopted_candidate_key": "graph_w1_of_2",
+                "baseline_best_candidate_key": "baseline",
+                "critical_best_candidate_key": "graph_w1_of_2",
+                "candidates": [
+                    {
+                        "candidate_key": "graph_w1_of_2",
+                        "label": "graph_w1_of_2",
+                        "status": "completed",
+                        "score": [1, "op:SECRET-CANDIDATE"],
+                        "metrics": {"overdue_count": 1, "source_table": "candidate_rows"},
+                        "roles": ["adopted", "critical_best"],
+                        "source_table": "candidate_rows",
+                    }
+                ],
+            },
+        }
+    }
+    history_service = _HistoryServiceStub(selected_summary)
+    app = _build_app(monkeypatch, history_service)
+    client = app.test_client()
+
+    response = client.get("/scheduler/analysis?version=3")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    attempt = payload["attempts"][0]
+    assert attempt["display_tag"] == "方案 1"
+    assert attempt["tag"] == ""
+    assert attempt["score"] == [1]
+    assert attempt["metrics"] == {"overdue_count": 1}
+    selected_attempt = payload["selected_summary"]["algo"]["attempts"][0]
+    assert selected_attempt["score"] == [1]
+    assert selected_attempt["metrics"] == {"overdue_count": 1}
+    assert payload["selected_summary"]["algo"]["comparison_metric"] == "overdue_count"
+    selected_candidate = payload["selected_summary"]["algo"]["candidate_comparison"]["candidates"][0]
+    assert selected_candidate == {
+        "label": "重点工序优先方案 1/2",
+        "status": "completed",
+        "score": [1],
+        "metrics": {"overdue_count": 1},
+        "roles": ["adopted", "critical_best"],
+    }
+    rendered = json.dumps(
+        {
+            "attempts": payload["attempts"],
+            "selected_summary": payload["selected_summary"],
+            "best_score_schema_display": payload["best_score_schema_display"],
+            "candidate_comparison_display": payload["candidate_comparison_display"],
+        },
+        ensure_ascii=False,
+    )
+    for forbidden in (
+        "OP010",
+        "OP020",
+        "op:",
+        "SECRET",
+        "candidate_id",
+        "candidate_key",
+        "source_table",
+        "candidate_rows",
+        "graph_w1_of_2",
+    ):
+        assert forbidden not in rendered
+
+
+def test_scheduler_analysis_route_sanitizes_internal_metric_values_before_template(monkeypatch) -> None:
+    selected_summary = {
+        "algo": {
+            "comparison_metric": "overdue_count",
+            "metrics": {"overdue_count": 1},
+            "config_snapshot": {
+                "sort_strategy": "priority_first",
+                "dispatch_mode": "sgs",
+                "dispatch_rule": "op:SECRET-RULE",
+                "objective": "min_overdue",
+                "time_budget_seconds": 10,
+                "source_table": "config_debug",
+            },
+            "resource_pool": {
+                "enabled": "yes",
+                "attempted": True,
+                "degraded": True,
+                "degradation_reason": "自动分配设备人员所需资料不完整。",
+                "sample": ["op:SECRET-RESOURCE"],
+            },
+            "attempts": [
+                {
+                    "tag": "graph_w1_of_2",
+                    "strategy": "greedy",
+                    "dispatch_mode": "sgs",
+                    "dispatch_rule": "cr",
+                    "failed_ops": 0,
+                    "metrics": {"overdue_count": "op:SECRET-METRIC OP010"},
+                    "score": [1],
+                }
+            ],
+            "improvement_trace": [
+                {
+                    "elapsed_ms": 1,
+                    "metrics": {"overdue_count": "op:SECRET-TRACE OP020"},
+                }
+            ],
+        }
+    }
+    history_service = _HistoryServiceStub(selected_summary)
+    app = _build_app(monkeypatch, history_service)
+    client = app.test_client()
+
+    response = client.get("/scheduler/analysis?version=3")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    attempt = payload["attempts"][0]
+    assert attempt["display_tag"] == "重点工序优先方案 1/2"
+    assert attempt["primary_value_parse_failed"] is True
+    assert attempt["metrics"] == {"overdue_count": "记录异常"}
+    assert payload["trace_chart"] == {"metric_parse_failed": True, "chart": None}
+    rendered = json.dumps(
+        {
+            "attempts": payload["attempts"],
+            "selected_summary": payload["selected_summary"],
+            "algo_config_snapshot_dispatch_rule_label": payload["algo_config_snapshot_dispatch_rule_label"],
+            "trace_chart": payload["trace_chart"],
+        },
+        ensure_ascii=False,
+    )
+    for forbidden in (
+        "op:",
+        "OP010",
+        "OP020",
+        "SECRET",
+        "source_table",
+        "config_debug",
+        "graph_w1_of_2",
+    ):
+        assert forbidden not in rendered
 
 
 def test_scheduler_analysis_route_surfaces_missing_requested_history(monkeypatch) -> None:

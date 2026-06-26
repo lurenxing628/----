@@ -378,7 +378,6 @@ def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels
     assert rows[ROLE_ADOPTED]["role_label"] == plan_role_label(ROLE_ADOPTED)
     assert rows[ROLE_BASELINE_BEST]["role_label"] == plan_role_label(ROLE_BASELINE_BEST)
     assert rows[ROLE_CRITICAL_BEST]["role_label"] == plan_role_label(ROLE_CRITICAL_BEST)
-    assert rows[ROLE_CRITICAL_BEST]["candidate_key"] == rows[ROLE_ADOPTED]["candidate_key"]
     assert rows[ROLE_CRITICAL_BEST]["is_same_as_adopted"] is True
     assert rows[ROLE_CRITICAL_BEST]["is_comparison"] is True
     assert "只作对比参考查看" in rows[ROLE_CRITICAL_BEST]["comparison_note"]

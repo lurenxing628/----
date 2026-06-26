@@ -327,21 +327,20 @@ def test_dict_cfg_contract() -> None:
         "days": 3,
         "frozen_op_count": 0,
         "frozen_batch_count": 0,
-        "frozen_batch_ids_sample": [],
         "degraded": False,
-        "degradation_reason": None,
     }, f"dict cfg freeze_window 摘要错误：{dict_algo.get('freeze_window')!r}"
+    assert "frozen_batch_ids_sample" not in dict_algo.get("freeze_window", {})
     assert dict_algo.get("downtime_avoid") == {
         "loaded_ok": True,
         "degraded": True,
         "degradation_reason": "停机区间扩展加载失败，部分自动安排设备可能还没有避开停机时间。",
         "extend_attempted": True,
         "load_partial_fail_count": 0,
-        "load_partial_fail_machines_sample": [],
         "extend_partial_fail_count": 0,
-        "extend_partial_fail_machines_sample": [],
         "downtime_meta_parse_failed": False,
     }, f"dict cfg downtime_avoid 摘要错误：{dict_algo.get('downtime_avoid')!r}"
+    assert "load_partial_fail_machines_sample" not in dict_algo.get("downtime_avoid", {})
+    assert "extend_partial_fail_machines_sample" not in dict_algo.get("downtime_avoid", {})
     assert dict_algo.get("config_snapshot", {}).get("freeze_window_enabled") == "yes", "config_snapshot 未保留 dict cfg freeze_window_enabled"
     assert dict_algo.get("config_snapshot", {}).get("freeze_window_days") == 3, "config_snapshot 未保留 dict cfg freeze_window_days"
     assert dict_algo.get("config_snapshot", {}).get("auto_assign_enabled") == "yes", "config_snapshot 未保留 dict cfg auto_assign_enabled"

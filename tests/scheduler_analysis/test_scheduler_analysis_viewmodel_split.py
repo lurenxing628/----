@@ -146,6 +146,39 @@ def test_analysis_viewmodel_split_preserves_legacy_compat_fallback() -> None:
     assert ctx["compat_fallback"]["missing_field_labels"] == ["优化对比指标", "系统比较顺序"]
 
 
+def test_build_analysis_context_default_drops_diagnostics_injected_projector_redacts_algo() -> None:
+    """① viewmodel 不依赖 service 层(架构 fitness),投影分两层保证:
+    - 不注入 projector:默认兜底至少剔除 diagnostics(最敏感内部 trace 容器),不退回裸返回 raw;
+    - 注入 service 的 project_public_result_summary(生产 route 走这条):algo 内部候选 key 也脱敏。
+    """
+    from core.services.scheduler.summary.optimizer_public_summary import project_public_result_summary
+
+    summary = {
+        "algo": {
+            "objective": "min_overdue",
+            "metrics": {"overdue_count": 1},
+            "candidate_comparison": {"adopted_candidate_key": "graph_w1_of_3"},
+        },
+        "diagnostics": {"optimizer": {"attempts": [{"tag": "start:1"}]}},
+    }
+    raw_hist = [{"version": 11, "result_summary": summary}]
+    selected_item = {"version": 11, "result_summary": summary}
+
+    # 默认兜底:无注入 projector 也必须剔除 diagnostics,不裸返回 raw
+    ctx_default = build_analysis_context(selected_ver=11, raw_hist=raw_hist, selected_item=selected_item)
+    assert "diagnostics" not in ctx_default["selected_summary"]
+
+    # 注入 service 单一真相源投影(生产路径):algo 内部候选 key 不外泄
+    ctx_injected = build_analysis_context(
+        selected_ver=11,
+        raw_hist=raw_hist,
+        selected_item=selected_item,
+        public_summary_projector=project_public_result_summary,
+    )
+    injected_algo = ctx_injected["selected_summary"].get("algo") or {}
+    assert "adopted_candidate_key" not in (injected_algo.get("candidate_comparison") or {})
+
+
 def test_analysis_metric_cards_surface_non_finite_values_without_template_arithmetic() -> None:
     summary = _selected_summary()
     metrics = summary["algo"]["metrics"]

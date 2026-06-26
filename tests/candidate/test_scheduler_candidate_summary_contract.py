@@ -1,4 +1,4 @@
-"""回归测试：候选方案对比摘要的投影契约——candidate_comparison_public_summary 输出精简、不内嵌 results/start_time/图诊断（nodes/edges/node_metrics）/attempts/improvement_trace；candidate_comparison_log_summary 进一步丢弃候选列表只留计数与选择原因；summary_size_guard 在摘要超限时降级为 minimal 候选摘要但保留 adopted_candidate_key 等关键字段；并保证 baseline 被采纳时仍暴露 critical 方案的图分析 public、以及 skipped_candidate_labels 在 public/minimal/log 三视图一致。"""
+"""回归测试：候选方案对比摘要的投影契约——candidate_comparison_public_summary 输出精简、不内嵌 results/start_time/图诊断（nodes/edges/node_metrics）/attempts/improvement_trace，也不暴露内部 candidate_key；candidate_comparison_log_summary 进一步丢弃候选列表只留计数与选择原因；summary_size_guard 在摘要超限时降级为 minimal 候选摘要；并保证 baseline 被采纳时仍暴露 critical 方案的图分析 public、以及 skipped_candidate_labels 在 public/minimal/log 三视图一致。"""
 
 from __future__ import annotations
 
@@ -166,12 +166,14 @@ def test_candidate_public_summary_is_small_and_does_not_embed_rows_or_graph_diag
     public = candidate_comparison_public_summary(_comparison())
     keys = set(_iter_keys(public))
 
-    assert public["adopted_candidate_key"] == "graph_w1_of_3"
     assert public["run_time_budget_seconds"] == 20.0
     assert public["skipped_candidate_labels"] == []
     assert public["baseline_missing_or_failed"] is True
     assert len(public["candidates"]) == 1
     assert public["candidates"][0]["detail_saved"] is False
+    assert public["candidates"][0]["roles"] == ["adopted", "critical_best"]
+    assert "candidate_key" not in keys
+    assert "adopted_candidate_key" not in keys
     assert "results" not in keys
     assert "start_time" not in keys
     assert "end_time" not in keys
@@ -181,6 +183,23 @@ def test_candidate_public_summary_is_small_and_does_not_embed_rows_or_graph_diag
     assert "graph_analysis_diagnostics" not in keys
     assert "attempts" not in keys
     assert "improvement_trace" not in keys
+
+
+def test_candidate_public_summary_projects_failure_reason_to_safe_code() -> None:
+    comparison = _comparison()
+    failed = replace(
+        comparison.candidates[0],
+        status="failed",
+        failure_reason='candidate_rows node_id=op:SECRET op_code=OP010 source_table="attempts_debug"',
+    )
+    comparison = replace(comparison, candidates=[failed], failed_count=1, completed_count=0)
+
+    public = candidate_comparison_public_summary(comparison)
+    text = str(public)
+
+    assert public["candidates"][0]["failure_reason"] == "candidate_failed"
+    for forbidden in ("candidate_rows", "node_id", "op:", "op_code", "OP010", "source_table", "attempts_debug"):
+        assert forbidden not in text
 
 
 def test_candidate_operation_log_summary_drops_candidate_list_and_details() -> None:
@@ -195,7 +214,6 @@ def test_candidate_operation_log_summary_drops_candidate_list_and_details() -> N
         "run_time_budget_seconds": 20.0,
         "skipped_candidate_labels": [],
         "baseline_missing_or_failed": True,
-        "adopted_candidate_key": "graph_w1_of_3",
         "selection_policy": "balanced",
         "selection_reason_code": "balanced_critical_health_better",
     }
@@ -226,7 +244,7 @@ def test_summary_size_guard_keeps_minimal_candidate_comparison_when_summary_is_t
 
     candidate_summary = guarded["algo"]["candidate_comparison"]
     assert guarded["summary_truncated"] is True
-    assert candidate_summary["adopted_candidate_key"] == "graph_w1_of_3"
+    assert "adopted_candidate_key" not in candidate_summary
     assert candidate_summary["run_time_budget_seconds"] == 20.0
     assert candidate_summary["skipped_candidate_labels"] == []
     assert candidate_summary["baseline_missing_or_failed"] is True
@@ -255,8 +273,9 @@ def test_baseline_adopted_still_exposes_critical_graph_public_summary_without_lo
     )
     keys = set(_iter_keys(algo))
     assert algo["graph_analysis"] == public
-    assert algo["candidate_comparison"]["adopted_candidate_key"] == "baseline"
     assert "candidates" not in keys
+    assert "adopted_candidate_key" not in keys
+    assert "candidate_key" not in keys
     assert "diagnostics" not in keys
     assert "nodes" not in keys
     assert "edges" not in keys

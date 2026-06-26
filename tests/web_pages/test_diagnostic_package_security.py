@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import glob
 import io
+import json
 import os
 import tempfile
 import zipfile
+from types import SimpleNamespace
 
 import pytest
 
@@ -130,7 +132,9 @@ def test_operation_logs_failure_yields_explanation_file(app_client, monkeypatch)
     import web.routes.system_runtime_logs as mod
 
     def boom():
-        raise RuntimeError("db unavailable")
+        raise RuntimeError(
+            '{"source_table": "candidate_rows", "candidate_id": 7, "node_id": "op:SECRET", "op_code": "OP010"}'
+        )
 
     monkeypatch.setattr(mod, "_get_operation_log_service", boom)
     names, data = _download_zip_names(app_client)
@@ -138,7 +142,90 @@ def test_operation_logs_failure_yields_explanation_file(app_client, monkeypatch)
     assert "operation_logs.txt" not in names
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         note = zf.read("operation_logs_读取失败.txt").decode("utf-8")
-    assert "db unavailable" in note
+    assert "操作日志读取失败" in note
+    assert "内部标识已省略" in note
+    for forbidden in ("source_table", "candidate_rows", "candidate_id", "node_id", "op:", "op_code", "OP010"):
+        assert forbidden not in note
+
+
+def test_operation_logs_text_uses_public_projection(app_client, monkeypatch):
+    log_dir = app_client.application.config["LOG_DIR"]
+    _seed(log_dir, "aps.log")
+
+    import web.routes.system_runtime_logs as mod
+
+    detail = json.dumps(
+        {
+            "filters": {
+                "candidate_id": 7,
+                "candidate_key": "graph_w1_of_5",
+                "adopted_candidate_key": "graph_w1_of_5",
+                "source_table": "candidate_rows",
+                "safe_label": "可见说明",
+                "candidate_rows": {"safe_label": "不应保留"},
+                "attempts_debug": "不应保留",
+                "op_ref": "op:SECRET",
+                "op_note": "样本 op_code：OP010 / OP020；裸编号 OP010 / OP020",
+                "standalone": "candidate_rows 查询失败 attempts_debug graph_debug target_id=987",
+            },
+            "attempts": [{"candidate_id": 7, "source_table": "attempts_debug"}],
+            "candidate_comparison": {"adopted_candidate_key": "graph_w1_of_5"},
+            "graph_analysis": {"critical_path_sample": ["op:SECRET-NODE"], "status": "available"},
+        },
+        ensure_ascii=False,
+    )
+
+    class _Svc:
+        @staticmethod
+        def list_recent(limit):
+            return [
+                SimpleNamespace(
+                    log_time="2026-06-26 10:00:00",
+                    log_level="INFO",
+                    module="scheduler",
+                    action="export",
+                    target_type="schedule",
+                    target_id="987",
+                    operator="system",
+                    detail=detail,
+                        error_message=(
+                            "candidate_id=7 node_id=op:SECRET op_code=OP010 裸编号 OP010 "
+                            "candidate_key=graph_w1_of_5 adopted_candidate_key=graph_w1_of_5 "
+                            "candidate_rows attempts_debug graph_debug target_id=987"
+                        ),
+                )
+            ]
+
+    monkeypatch.setattr(mod, "_get_operation_log_service", lambda: _Svc())
+
+    names, data = _download_zip_names(app_client)
+    assert "operation_logs.txt" in names
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        text = zf.read("operation_logs.txt").decode("utf-8")
+
+    assert "可见说明" in text
+    assert "内部标识已省略" in text
+    for forbidden in (
+        "op:",
+        "candidate_id",
+        "candidate_key",
+        "adopted_candidate_key",
+        "source_table",
+        "node_id",
+        "op_code",
+        "OP010",
+        "OP020",
+        "critical_path_sample",
+        "attempts",
+        "SECRET",
+        "candidate_rows",
+        "attempts_debug",
+        "graph_debug",
+        "target_id",
+        "987",
+        "graph_w1_of_5",
+    ):
+        assert forbidden not in text
 
 
 def test_no_temp_file_residue_on_success(app_client):

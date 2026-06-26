@@ -1,5 +1,5 @@
 """回归测试：/reports/overdue|utilization|downtime 及其 export 在带 plan_role 时按所选候选方案(候选行)取数并保持页内导出链接同方案——
-default_plan_resolution 缺失角色回退 adopted 标 is_fallback/is_comparison；候选非 completed 或源不符回 400 提示「不是已完成状态」；导出文件名带方案标签、导出过滤器记 effective_plan_role/candidate_key；页面与导出文本均不泄露 plan_role、candidate_id、scenario_id、source_table 等内部字段。"""
+default_plan_resolution 缺失角色回退 adopted 标 is_fallback/is_comparison；候选非 completed 或源不符回 400 提示「不是已完成状态」；导出文件名带方案标签、导出过滤器只记 public 摘要不记 candidate_key；页面与导出文本均不泄露 plan_role、candidate_id、candidate_key、scenario_id、source_table 等内部字段。"""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from urllib.parse import unquote
 import openpyxl
 
 from core.infrastructure.database import ensure_schema, get_connection
+from core.services.common.excel_audit import public_export_filters
 from core.services.report import ReportEngine
 from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
 from tests._support.excel_templates import point_env_at_shared
@@ -32,6 +33,23 @@ EXPORT_INTERNAL_TERMS = (
     "critical_best",
     "scenario_id",
     "candidate_rows",
+)
+EXPORT_LOG_FORBIDDEN_FILTER_KEYS = (
+    "candidate_id",
+    "source_table",
+    "scenario_id",
+    "schedule_id",
+    "op_id",
+    "node_id",
+    "op:",
+    "target_id",
+    "candidate_key",
+    "adopted_candidate_key",
+    "baseline_best_candidate_key",
+    "critical_best_candidate_key",
+    "raw_score_best_candidate_key",
+    "selected_candidate_key",
+    "graph_w",
 )
 
 
@@ -217,8 +235,45 @@ def _latest_report_export_filters(tmp_path, target_type: str):
     return (json.loads(row["detail"]) or {}).get("filters") or {}
 
 
+def _assert_public_export_log_filters(filters: Any) -> None:
+    text = json.dumps(filters, ensure_ascii=False, sort_keys=True)
+    for forbidden in EXPORT_LOG_FORBIDDEN_FILTER_KEYS:
+        assert forbidden not in text
+
+
 def _assert_number(actual: Any, expected: float) -> None:
     assert round(float(actual), 2) == round(float(expected), 2)
+
+
+def test_public_export_filters_drop_internal_identity_keys() -> None:
+    filters = public_export_filters(
+        {
+            "version": 17,
+            "target_id": 987,
+            "candidate_key": "graph_w1_of_5",
+            "adopted_candidate_key": "graph_w1_of_5",
+            "candidate_id": 99,
+            "source_table": "candidate_rows",
+            "op_ref": "前缀 op:SECRET 后缀；样本 op_code：OP010；裸编号 OP020",
+            "json_like": '{"source_table": "candidate_rows", "candidate_id": 7, "node_id": "op:SECRET"}',
+            "standalone": "candidate_rows 查询失败 attempts_debug graph_debug target_id=987 candidate_key=graph_w1_of_5",
+            "candidate_rows": {"safe_label": "不应保留"},
+            "attempts_debug": "不应保留",
+            "nested": {
+                "scenario_id": "SC-SECRET",
+                "node_id": "op:SECRET-NODE",
+                "safe_label": "可见说明",
+            },
+        }
+    )
+
+    assert filters == {
+        "version": 17,
+        "op_ref": "前缀 内部标识已省略 后缀；样本 内部标识已省略；裸编号 内部标识已省略",
+        "json_like": "{内部标识已省略, 内部标识已省略, 内部标识已省略}",
+        "standalone": "内部标识已省略 查询失败 内部标识已省略 内部标识已省略 内部标识已省略 内部标识已省略",
+        "nested": {"safe_label": "可见说明"},
+    }
 
 
 def test_report_default_plan_resolution_uses_common_fallback_fields() -> None:
@@ -283,7 +338,8 @@ def test_candidate_report_exports_use_selected_plan_rows_and_filename_label(tmp_
     assert overdue_filters.get("requested_plan_role") == "baseline_best"
     assert overdue_filters.get("effective_plan_role") == "baseline_best"
     assert overdue_filters.get("plan_role_status") == "resolved_comparison"
-    assert overdue_filters.get("candidate_key") == "baseline_best"
+    assert "candidate_key" not in overdue_filters
+    _assert_public_export_log_filters(overdue_filters)
     wb = _load_xlsx(overdue_resp)
     try:
         ws = wb["超期清单"]
@@ -299,7 +355,8 @@ def test_candidate_report_exports_use_selected_plan_rows_and_filename_label(tmp_
     assert utilization_filters.get("requested_plan_role") == "baseline_best"
     assert utilization_filters.get("effective_plan_role") == "baseline_best"
     assert utilization_filters.get("plan_role_status") == "resolved_comparison"
-    assert utilization_filters.get("candidate_key") == "baseline_best"
+    assert "candidate_key" not in utilization_filters
+    _assert_public_export_log_filters(utilization_filters)
     wb = _load_xlsx(utilization_resp)
     try:
         ws = wb["设备负荷"]
@@ -316,7 +373,8 @@ def test_candidate_report_exports_use_selected_plan_rows_and_filename_label(tmp_
     assert downtime_filters.get("requested_plan_role") == "baseline_best"
     assert downtime_filters.get("effective_plan_role") == "baseline_best"
     assert downtime_filters.get("plan_role_status") == "resolved_comparison"
-    assert downtime_filters.get("candidate_key") == "baseline_best"
+    assert "candidate_key" not in downtime_filters
+    _assert_public_export_log_filters(downtime_filters)
     wb = _load_xlsx(downtime_resp)
     try:
         ws = wb["停机影响"]
