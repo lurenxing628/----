@@ -1,0 +1,115 @@
+roadmap: scheduler-global-optimizer
+created: 2026-06-26
+
+items:
+  - slug: optimizer-proof-harness
+    description: 建立 tiny oracle、lower bound、best-known 和不写 tracked evidence 的 benchmark check 模式
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: true
+    notes: 最小闭环；gap 必须绑定 objective 和 metric，后续算法增强才有验收标准
+
+  - slug: diagnostic-public-id-boundary-fix
+    description: 修复诊断页展示 op 节点、数字 op_id 和内部样本的 public 边界问题
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 新增 trace/attempt/move 样本前必须先修；页面正文、导出和普通 HTML 不能展示内部 id
+
+  - slug: optimizer-search-report-contract
+    description: 给 optimizer 增加 stop_reason、seed、搜索统计、候选拒绝原因和 trace 合同
+    depends_on: [optimizer-proof-harness, diagnostic-public-id-boundary-fix]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 不能用缺字段代表正常结束；新增 diagnostics 必须先过 public 边界
+
+  - slug: optimizer-candidate-profile-contract
+    description: 定义非 OR-Tools 搜索 profile，收紧配置校验和非法参数 fail-loud 合同
+    depends_on: [optimizer-search-report-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 本阶段 repair 只允许 sgs，未知 profile/neighborhood/acceptance 必须报错
+
+  - slug: grasp-ig-candidate-construction
+    description: 用 GRASP 和 Iterated Greedy 生成更多可行起点，仍由现有 SGS 落位
+    depends_on: [optimizer-candidate-profile-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 目标是扩大起点空间，不绕过现有资源、前后顺序、日历和停机校验
+
+  - slug: business-neighborhood-registry
+    description: 建立关键链、延期批次、瓶颈设备、换型块、资源替换、时间窗 repair 的邻域注册表
+    depends_on: [optimizer-candidate-profile-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 邻域只提出要动哪一块，最终落位仍走 SGS 和 estimate_internal_slot
+
+  - slug: vns-sa-local-search-upgrade
+    description: 把现有 local search 升级为 VNS 和 SA 后处理，先做轻量可复现版本
+    depends_on: [grasp-ig-candidate-construction, business-neighborhood-registry]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 固定 seed、固定预算、明确 stop_reason；不靠多跑时间掩盖邻域不足
+
+  - slug: alns-partial-repair-contract
+    description: 定义 ALNS 局部拆修的 allowed-op、payload validation 和执行态保护复用合同
+    depends_on: [business-neighborhood-registry]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 局部 repair 结果必须复用正式排产守门链，不能只靠 ALNS 内部校验
+
+  - slug: alns-state-operators-core
+    description: 建立 ALNS state、destroy/repair operator 接口、operator reward 和权重更新
+    depends_on: [alns-partial-repair-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 先做纯 Python 外壳，不引入新版 alns 包或重依赖
+
+  - slug: alns-sgs-repair-adapter
+    description: 把 ALNS repair 接到现有 SGS，确保 repair 后完整校验并返回候选结果
+    depends_on: [alns-state-operators-core]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: repair 失败必须明确 rejected/failed，不能返回原方案假装成功
+
+  - slug: alns-selection-acceptance-trace
+    description: 实现 ALNS operator 选择、threshold/SA acceptance、segment 权重更新和 trace 输出
+    depends_on: [alns-sgs-repair-adapter]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: operator reward 只影响后续选择概率，不能直接覆盖 objective score
+
+  - slug: optimizer-integration-auto-selection
+    description: 把 GRASP/IG/VNS/SA/ALNS 候选接回 OptimizationOutcome、候选比较和 summary
+    depends_on: [diagnostic-public-id-boundary-fix, vns-sa-local-search-upgrade, alns-selection-acceptance-trace]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: public 只展示小摘要；diagnostics 不得直接被页面普通模板渲染
+
+  - slug: benchmark-ratchet-quality-gate
+    description: 把 tiny oracle、非劣化阈值、稳定性统计纳入轻/中/长三层门禁
+    depends_on: [optimizer-integration-auto-selection]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 普通 PR 门禁只放快而稳的检查，长跑统计进 long gate
+
+  - slug: long-run-tuning-evidence
+    description: 建立长跑调参、operator 权重、不同 seed 的统计证据和归档口径
+    depends_on: [benchmark-ratchet-quality-gate]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 证据默认写 ignored 或临时目录，显式写 tracked evidence 时必须重新 clean proof
