@@ -5,8 +5,8 @@ items:
   - slug: optimizer-proof-harness
     description: 建立 tiny oracle、lower bound、best-known 和不写 tracked evidence 的 benchmark check 模式
     depends_on: []
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-26-optimizer-proof-harness
     minimal_loop: true
     notes: 最小闭环；gap 必须绑定 objective 和 metric；public benchmark 输出不能含内部 id/sample
 
@@ -16,7 +16,7 @@ items:
     status: planned
     feature: null
     minimal_loop: false
-    notes: 新增 trace/attempt/move/benchmark 样本前必须先修；页面正文、导出和普通 HTML 不能展示内部 id
+    notes: Phase A；depends_on 为空可立即并行，不必串行等；新增 trace/attempt/move/benchmark 样本前必须先修；页面正文、导出和普通 HTML 不能展示内部 id；同时是动 aps-three-gap-directions 已定稿 public/id 契约的跨路线前置，改动须走对方 update gate
 
   - slug: optimizer-search-report-contract
     description: 给 optimizer 增加 stop_reason、seed、搜索统计、候选拒绝原因和 trace 合同
@@ -48,7 +48,7 @@ items:
     status: planned
     feature: null
     minimal_loop: false
-    notes: 目标是扩大起点空间；只生成 order/priority/rule 候选，不生成 ScheduleResult、start/end 或 mutable seed
+    notes: Phase A 末项；可用后作为独立集成里程碑当即接回 OptimizationOutcome/候选比较，不等 item13 与 ALNS 一起大爆炸上线；目标是扩大起点空间；只生成 order/priority/rule 候选，不生成 ScheduleResult、start/end 或 mutable seed
 
   - slug: business-neighborhood-registry
     description: 建立关键链、延期批次、瓶颈设备、换型块、资源替换、时间窗 repair 的邻域注册表
@@ -56,7 +56,7 @@ items:
     status: planned
     feature: null
     minimal_loop: false
-    notes: 邻域只描述 mutable scope 和 move reason；最终落位仍走 SGS 和 estimate_internal_slot，不提前写可变工序时间
+    notes: Phase B 入口；启动须先过 proof-harness 证据闸门(证明 GRASP/IG+现有 SGS 距 oracle/下界仍有值得填的显著 gap)，否则 Phase B 降为后续候选研究；邻域只描述 mutable scope 和 move reason；最终落位仍走 SGS 和 estimate_internal_slot，不提前写可变工序时间
 
   - slug: vns-sa-local-search-upgrade
     description: 把现有 local search 升级为 VNS 和 SA 后处理，先做轻量可复现版本
@@ -72,7 +72,7 @@ items:
     status: planned
     feature: null
     minimal_loop: false
-    notes: 局部 repair 结果必须复用正式排产守门链，不能只靠 ALNS 内部校验
+    notes: Phase B（ALNS 刚性四连 9-12 起点）；同受证据闸门约束，闸门未放行不启动；局部 repair 结果必须复用正式排产守门链，不能只靠 ALNS 内部校验
 
   - slug: alns-state-operators-core
     description: 建立 ALNS state、destroy/repair operator 接口、operator reward 和权重更新
@@ -104,7 +104,7 @@ items:
     status: planned
     feature: null
     minimal_loop: false
-    notes: public 只展示小摘要；diagnostics 不得直接被页面普通模板渲染
+    notes: 职责收敛为"多算法统一自动选择"，不是各算法集成的唯一入口；GRASP/IG 等应在各自 feature 完成时增量接回，不被本项劫持到末尾；public 只展示小摘要；diagnostics 不得直接被页面普通模板渲染
 
   - slug: benchmark-ratchet-quality-gate
     description: 把 tiny oracle、非劣化阈值、稳定性统计纳入轻/中/长三层门禁

@@ -95,7 +95,7 @@ related_architecture:
 
 ### 明确不做
 
-- 本阶段不新增 OR-Tools 作为算法依赖，也不把 OR-Tools 变成主引擎。
+- 本阶段不新增 OR-Tools 作为算法依赖，也不把 OR-Tools 变成主引擎。注意 OR-Tools **当前已作为可选 warm-start 分支存在但默认关闭**（`ortools_enabled` 默认 `no`，且仅在 `algo_mode=improve` 下尝试，不进 `requirements.txt`，缺包走可见降级）；本条约束的是“不把这个已有可选分支升级成主引擎 / 必选依赖”，而非声称仓库内不存在 ortools 代码。
 - 不引入 NumPy、SciPy、Pandas、GPU、云服务、DRL、现代浏览器专属能力。
 - 不把 `alns` 包或 `job-shop-lib` 包作为当前主线依赖；它们只能作为算法设计参考，不能进入 Win7 / Python 3.8 离线交付主包。
 - 不承诺任意规模都数学证明全局最优；只承诺 tiny oracle 可证明，中大规模只报告同目标、同指标、同模型口径下可比较的 gap 和不劣化。
@@ -276,7 +276,7 @@ BenchmarkReference = {
 - 如果实际 `actual_metric_value < lower_bound_value`，说明下界或指标错误，必须 fail。
 - 多指标 objective 只能在所有目标分量都有可比较 reference 时报告全目标 gap；否则只能报告单指标参考 gap。
 - `public` 只允许 case slug、objective、metric、reference_type、gap、status、aggregate counts、runtime 这类摘要。
-- raw `op_id`、`node_id`、`candidate_id`、`source_table`、`op:...`、内部 sample 只能进 diagnostics；stdout、Markdown、CI artifact 和 tracked evidence 默认都不得输出 raw internal id。
+- 内部 id 脱敏口径统一见 4.8；本契约只补一条 benchmark 专属：stdout、Markdown、CI artifact 和 tracked evidence 默认都不得输出 raw internal id。
 - `diagnostics_ref` 只能指向 ignored/temp 目录或受控 diagnostics artifact；不能让页面、导出、OperationLogs 直接渲染。
 - benchmark 默认不能写 `evidence/Benchmark/*.md`；只有显式 `--write-report` 才能写 tracked evidence。
 - `--write-report` 写 tracked evidence 前必须通过 public sanitization check。
@@ -342,7 +342,7 @@ CandidateFingerprint = {
 **约束**：
 
 - `decision_fingerprint` 至少覆盖 `objective_name`、`dispatch_mode`、`dispatch_rule`、`batch_order`、资源 override、locked seed 范围和 mutable scope。
-- `output_fingerprint` 至少覆盖被正式 SGS 解码后的排程结构摘要：排入 / 失败数量、工序-资源-时间归一化签名、主目标指标签名；内部 op/resource id 只能进 diagnostics。
+- `output_fingerprint` 至少覆盖被正式 SGS 解码后的排程结构摘要：排入 / 失败数量、工序-资源-时间归一化签名、主目标指标签名；内部 op/resource id 只能进 diagnostics（脱敏口径见 4.8）。
 - `evaluated_candidates` 可以统计 decode 调用次数；`distinct_candidates` 只能统计 `decision_fingerprint` 或 `output_fingerprint` 未见过的候选，二者口径必须在 report 中声明。
 - `same_as_parent=True` 或 `same_as_seen=True` 时，结果只能是 `no_change` / `candidate_rejected=same_fingerprint` / `feasible_but_not_accepted`，不能记成 improvement。
 - 宣称 `improved=True` 必须同时满足：fingerprint 改变、按当前 objective 的 `score` 严格更优、且通过 acceptance；缺一项都只能报告为未改进。
@@ -368,7 +368,7 @@ NeighborhoodMove = {
 
 **约束**：
 
-- `selected_operation_ids`、`selected_machine_ids` 这类内部 id 不得进入页面正文、导出或 public payload。
+- `selected_operation_ids`、`selected_machine_ids` 这类内部 id 不得进入页面正文、导出或 public payload（脱敏口径见 4.8）。
 - move 只负责提出“动哪一块”，不能直接写开始结束时间。
 - 最终落位必须走现有 `GreedyScheduler.schedule()` / SGS / `estimate_internal_slot()` 链路。
 
@@ -408,6 +408,8 @@ PartialRepairContract = {
 **方向**：ALNS 搜索层 -> 搜索合同与 diagnostics
 **形式**：内部 dict。
 
+> **成熟度（BDUF 收口）**：本契约服务 item 10-12（ALNS 最深、最远期的一段），下面的字段是**前瞻接口占位**。`operator_reward`、`score_before/after`、trace 形状须等 item 6-8（GRASP/IG/VNS/SA）实际落地、看清真实需要后，在 item 10 启动时再定稿，避免在消费者出现前过早逐字段钉死。与此相对，4.6 `PartialRepairContract` 不属于投机设计——它主要把现有正式排产守门链（allowed-op / payload 校验 / repair 失败不许伪成功）提前锁住，是对既有安全不变式的防御，保持现状即可。
+
 **契约**：
 
 ```python
@@ -434,6 +436,8 @@ ALNSOperatorResult = {
 ### 4.8 Public / Diagnostics 分层协议
 
 **方向**：optimizer / graph / ALNS -> 页面 / OperationLogs
+
+> **单一真相源**：本节是 public/diagnostics **展示边界与内部 id 脱敏**的唯一权威。其他契约（4.2 / 4.4 / 4.5 / 4.6）凡涉及“内部 id 只进 diagnostics、public 只放摘要”一律**引用本节口径**，不再各自复述；各契约自身只保留其**业务语义**规则（如 repair 失败不许伪成功、same-fingerprint 不算改进、operator reward 不覆盖 score），那些不收敛到本节。
 
 **public 允许**：
 
@@ -474,8 +478,8 @@ ALNSOperatorResult = {
 1. **optimizer-proof-harness** — 建立 tiny oracle、lower bound 和不写 tracked evidence 的 benchmark check 模式。
    - 所属模块：证明与评测底座
    - 依赖：无
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：`2026-06-26-optimizer-proof-harness`
    - 备注：最小闭环；每条 gap 必须绑定目标和指标，benchmark public 输出必须脱敏，没有它，后续算法增强无法证明收益。
 
 2. **diagnostic-public-id-boundary-fix** — 修复诊断页展示 `op:...`、数字 `op_id`、内部样本的 public 边界问题。
@@ -572,22 +576,40 @@ ALNSOperatorResult = {
 
 **最小闭环**：第 1 条 `optimizer-proof-harness` 做完后，系统能在不改写 tracked evidence 的前提下，运行 tiny oracle / lower bound / 当前算法对比，并明确输出“是否证明最优、gap 绑定的是哪个目标和指标、是否只能参考”。
 
-## 6. 排期思路
+## 6. 排期思路：两段式 + 证据闸门
 
-默认顺序按“先证明，再修 public 边界，再加可观测，再扩搜索，再接 ALNS，最后进门禁”推进。
+本路线**不是一条线性深链**。它分两段，中间用第 1 条 proof harness 产出的证据做闸门——这正是把 harness 排在最前的意义：先有量尺，再决定要不要投最贵的搜索。
 
-1. **先做证明与评测**：否则所有算法增强都只能凭感觉说更好。
-2. **先修诊断 public 边界**：新增 trace 前先堵住内部 id 样本外露。
-3. **再做搜索合同**：没有 `stop_reason`、seed 和 trace，调不清楚，也没法解释为什么没变好。
-4. **先做候选指纹，再做 GRASP/IG 和业务邻域**：先保证“不同候选”有统一口径，再扩大起点和邻域；它们最贴近现有 Greedy/SGS，改动面比完整 ALNS 小。
-5. **再做 VNS/SA**：作为现有 local search 的升级，不先碰持久化和页面。
-6. **再做 ALNS**：先完成 `alns-partial-repair-contract`，再引入 destroy/repair/weight 外壳。
-7. **最后进质量门禁**：避免性能和随机性把普通 PR 门禁拖垮；轻/中/长三层分开。
+### Phase A · 近期可交付段（贴现有主链，低风险，逐项独立集成）
+
+覆盖 item 1-6（proof-harness 已 done）：proof 底座 → public 边界修复 → 搜索可观测合同 → 候选 profile/指纹 → GRASP/IG 候选构造。它们都紧贴现有 Greedy/SGS，改动面小、各自能独立产生价值。
+
+排期要点：
+1. **proof harness（item 1，done）**：先有量尺，否则一切“更好”都是凭感觉。
+2. **public 边界修复（item 2）可立即并行**：它 `depends_on: []`，本就是个安全边界 issue（可单走 `cs-issue`），不必排在主叙事里串行等。它是后续一切 trace/attempt/move/benchmark 样本的硬前置。
+3. **搜索可观测合同（item 3）**：补 `stop_reason`、显式 seed、候选拒绝原因、trace；多为把现有 attempts/`candidate_rejected`/version→RNG 半成品**显式化归一**，不是从零造。
+4. **候选 profile + 指纹（item 4-5）**：先把“不同候选”口径钉死，再扩起点。
+5. **GRASP/IG（item 6）**：贴现有 SGS 落位，改动面最小。
+
+**增量集成（关键，避免价值被劫持）**：GRASP/IG 一旦在 item 6 可用，应作为**自己的集成里程碑**当即接回 `OptimizationOutcome`/候选比较，**不要**等到 item 13 跟全套 ALNS 一起大爆炸上线。即 item 13 的职责收敛为“多算法统一自动选择”，而每个算法的生产接入是增量的。
+
+### 证据闸门（Phase A → Phase B 的启动条件）
+
+Phase B（VNS/SA 深化 + 完整 ALNS + 长跑调参）**不无条件启动**。先决条件：Phase A 完成后，用 proof harness + benchmark 在目标 case 上给出证据，**证明 GRASP/IG + 现有 SGS 距 oracle/可靠下界仍留有值得用 ALNS 去填的 gap**。
+
+- 若证据显示 Phase A 已逼近下界 / gap 很小：Phase B 降级为“后续候选研究”，不挤占主线，不为“看起来高级”硬上纯 Python ALNS。
+- 若证据显示 gap 显著且稳定：才解锁 Phase B，并继续用同一套 harness 度量每一步是否真的不劣化。
+
+这条闸门让 item 9-15 的高风险投入**由数据解锁而非提前承诺**，否则就违背了 item 1 存在的理由。
+
+### Phase B · 证据解锁段（高风险 / 研究型，单独立项推进）
+
+覆盖 item 7-15：业务邻域 → VNS/SA → 完整 ALNS 外壳（state/operator/selection/acceptance + SGS repair adapter）→ 统一自动选择 → 三层门禁 → 长跑调参证据。其中 ALNS 子链（item 9-12）是刚性四连，且在 Python3.8/Win7/无 numpy 的离线包里纯 Python 手写，投入大、收益须靠长跑证据才能证；务必在闸门放行后再启动，避免它堵死前段交付。
 
 ## 7. 观察项
 
 - `.codestable/roadmap/networkx-scheduler-graph-introduction/` 已经完成图分析引入，本路线不能重复“再引入图算法”，只能消费已有图指标。
-- `.codestable/roadmap/aps-three-gap-directions/` 当时明确“不重写排程算法”，那是面向方案解释和现场反馈的范围；本路线是新的算法搜索能力，不能塞进旧路线。
+- `.codestable/roadmap/aps-three-gap-directions/` 当时明确“不重写排程算法”，那是面向方案解释和现场反馈的范围；本路线是新的算法搜索能力，不能塞进旧路线。**算法范围互不冲突，但契约面有真实重叠且须治理**：该路线已 completed 并定稿了 candidate-comparison（`CandidateCard`/`CandidateMetrics`、`diff=current-adopted`）、summary delta、`OverdueDiagnosisReport` 诊断、以及 program-field-vs-user-visible-text 的 public/id 边界。本路线模块 G（`diagnostic-public-id-boundary-fix`、`optimizer-integration-auto-selection`）会改到这四处共享契约——**这不是绿地，改动前必须回 aps-three-gap-directions 走它的 update gate（其 roadmap 明确“改字段/状态/路由/错误码前先回来 update”），不得单方面改动**。`diagnostic-public-id-boundary-fix` 因此是动他人已定稿契约的前置治理项，等级高于普通 issue（口径以那条 roadmap 文档为准：completed + 合同定稿 + update gate 存在；不等于已逐项核对所有相关代码面都已上线）。
 - `schedule-delay-diagnosis` requirement 仍是 draft，但相关能力在多个路线里已有实现片段，后续可能需要单独 `cs-req update`。
 - `candidate-comparison-business-view` 已是 current，但 `VISION.md` 中状态可能需要刷新。
 - `diagnostic-public-id-boundary-fix` 更像 issue/安全边界修复；本路线把它列为新增 search report / diagnostics 的前置 feature，也可以单独走 `cs-issue` 先完成。
@@ -598,3 +620,5 @@ ALNSOperatorResult = {
 - 2026-06-26：创建 roadmap。基于本地调用链、9 个只读 Sub Agent、Exa 深研和现有 CodeStable 路线整理；本阶段明确不引入 OR-Tools，主线为 proof harness + public 边界修复 + GRASP/IG + VNS/SA + ALNS with SGS repair。
 - 2026-06-26：根据线上审阅补强 `APPROVE_WITH_CHANGES` 三项：optimizer 退出路径映射、SearchProfile configured/effective 报告、benchmark public/diagnostics 分层。
 - 2026-06-26：吸收非 OR-Tools 深研报告审阅意见：新增 `distinct-candidate-fingerprint-contract`，收紧全局最优口径、第三方库依赖边界、Record-to-Record Travel 全称命名和 same-fingerprint 不得伪成功合同。
+- 2026-06-26：完成 `optimizer-proof-harness` 最小闭环：新增 tiny exact oracle / objective_score 证明、makespan lower bound 参考字段、FJSP 折叠不可比引用口径和默认 stdout 的 check 脚本；默认不写 tracked evidence。
+- 2026-06-26：经两轮深度 review + Codex 对抗核实后重构排期与契约口径。① 给 proof harness 补 `assert_oracle_decoder_matches_greedy` fail-loud 守卫，把 `same_model` 从字段声明改为每次运行由构造强制（oracle 解码须复现 greedy 实际所选排程，否则禁止声称证明）。② 排期改为 Phase A（item 1-6 贴主链、逐项增量集成）/ Phase B（item 7-15 由 harness 证据闸门解锁），item 2 标可并行，item 13 收敛为“统一自动选择”而非大爆炸集成。③ 4.7 `ALNSOperatorResult` 标注为前瞻接口占位（待 item 10 定稿），4.6 保持（属防御既有安全边界）。④ 4.8 设为 public/id 脱敏单一真相源，其余契约引用而非复述。⑤ OR-Tools 措辞精确化为“已有可选 warm-start 不升级为主引擎”。⑥ 把与已 completed 的 `aps-three-gap-directions` 的契约重叠升级为显式跨路线 update-gate 治理前置。
