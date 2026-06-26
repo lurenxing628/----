@@ -81,7 +81,7 @@ def builtin_presets(default_snapshot: ScheduleConfigSnapshot) -> List[Tuple[str,
         }
     )
     return [
-        (BUILTIN_PRESET_DEFAULT, base, "默认方案：快速、稳定（推荐日常使用）"),
+        (BUILTIN_PRESET_DEFAULT, base, "默认方案：精细计算、更少超期（推荐日常使用，稍慢几秒）"),
         (BUILTIN_PRESET_DUE_FIRST, due_first, "交期优先：更关注交期（适合赶交付场景）"),
         (BUILTIN_PRESET_MIN_CHANGEOVER, min_changeover, "换型最少：倾向减少换型（可能更慢）"),
         (BUILTIN_PRESET_IMPROVE_SLOW, improve_slow, "改进更优：允许更长搜索时间（更慢）"),

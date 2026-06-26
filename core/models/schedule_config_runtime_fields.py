@@ -86,10 +86,10 @@ _FIELD_SPECS: Tuple[RuntimeConfigFieldSpec, ...] = (
     RuntimeConfigFieldSpec(
         key="algo_mode",
         field_type="enum",
-        default="greedy",
+        default="improve",
         choices=("greedy", "improve"),
     ),
-    RuntimeConfigFieldSpec(key="time_budget_seconds", field_type="int", default=20, min_value=1),
+    RuntimeConfigFieldSpec(key="time_budget_seconds", field_type="int", default=5, min_value=1),
     RuntimeConfigFieldSpec(
         key="objective",
         field_type="enum",

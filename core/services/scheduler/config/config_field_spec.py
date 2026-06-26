@@ -259,7 +259,7 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
     ConfigFieldSpec(
         key="algo_mode",
         field_type="enum",
-        default="greedy",
+        default="improve",
         label="计算模式",
         description="计算模式：快速计算 / 精细计算",
         choices=("greedy", "improve"),
@@ -281,7 +281,7 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
     ConfigFieldSpec(
         key="time_budget_seconds",
         field_type="int",
-        default=20,
+        default=5,
         label="找更好排法先试多久",
         description="精细计算会在这段时间里多试排法，建议不超过 180 秒",
         min_value=1,
