@@ -317,15 +317,16 @@ LNS / ALNS 更适合本项目中期升级，因为它不用推翻现有排产器
 2. `diagnostic-public-id-boundary-fix`：诊断页内部样本泄漏修复。
 3. `optimizer-search-report-contract`：搜索过程、`stop_reason`、seed 和候选拒绝原因。
 4. `optimizer-candidate-profile-contract`：非 OR-Tools 搜索 profile 和 fail-loud 配置合同。
-5. `grasp-ig-candidate-construction`：GRASP / Iterated Greedy 可行起点。
-6. `business-neighborhood-registry`：关键链、延期、瓶颈、换型、资源替换和时间窗邻域。
-7. `vns-sa-local-search-upgrade`：VNS / SA 后处理。
-8. `alns-partial-repair-contract`：ALNS 局部拆修的正式排产守门链复用合同。
-9. `alns-state-operators-core`：ALNS state 和 destroy/repair operator 外壳。
-10. `alns-sgs-repair-adapter`：SGS repair 适配。
-11. `alns-selection-acceptance-trace`：ALNS 选择、接受和 trace。
-12. `optimizer-integration-auto-selection`：接回 `OptimizationOutcome`、候选比较和 summary。
-13. `benchmark-ratchet-quality-gate`：算法门禁和非劣化阈值。
-14. `long-run-tuning-evidence`：长跑调参与统计证据。
+5. `distinct-candidate-fingerprint-contract`：候选指纹、去重计数、same-fingerprint 拒绝和 improved 判定合同。
+6. `grasp-ig-candidate-construction`：GRASP / Iterated Greedy 可行起点。
+7. `business-neighborhood-registry`：关键链、延期、瓶颈、换型、资源替换和时间窗邻域。
+8. `vns-sa-local-search-upgrade`：VNS / SA 后处理。
+9. `alns-partial-repair-contract`：ALNS 局部拆修的正式排产守门链复用合同。
+10. `alns-state-operators-core`：ALNS state 和 destroy/repair operator 外壳。
+11. `alns-sgs-repair-adapter`：SGS repair 适配。
+12. `alns-selection-acceptance-trace`：ALNS 选择、接受和 trace。
+13. `optimizer-integration-auto-selection`：接回 `OptimizationOutcome`、候选比较和 summary。
+14. `benchmark-ratchet-quality-gate`：算法门禁和非劣化阈值。
+15. `long-run-tuning-evidence`：长跑调参与统计证据。
 
 未来如果解除“现阶段不加 OR-Tools”的限制，再单独开 `scheduler-cpsat-window-solver`，不要混进本次非 OR-Tools roadmap。
