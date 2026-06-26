@@ -13,10 +13,10 @@ items:
   - slug: diagnostic-public-id-boundary-fix
     description: 修复诊断页展示 op 节点、数字 op_id 和内部样本的 public 边界问题
     depends_on: []
-    status: planned
-    feature: null
-    minimal_loop: false
-    notes: Phase A；depends_on 为空可立即并行，不必串行等；新增 trace/attempt/move/benchmark 样本前必须先修；页面正文、导出和普通 HTML 不能展示内部 id；同时是动 aps-three-gap-directions 已定稿 public/id 契约的跨路线前置，改动须走对方 update gate
+    status: done
+    feature: 2026-06-26-diagnostic-public-id-boundary-fix
+    minimal_loop: true
+    notes: Phase A；public algo/graph/candidate/export/OperationLogs 已收紧为白名单摘要；diagnostics 可保留内部调试但不得进入普通页面、HTML、导出、OperationLogs public 投影；新增 trace/attempt/move/benchmark 样本前必须继续复用该投影边界
 
   - slug: optimizer-search-report-contract
     description: 给 optimizer 增加 stop_reason、seed、搜索统计、候选拒绝原因和 trace 合同
@@ -24,7 +24,7 @@ items:
     status: planned
     feature: null
     minimal_loop: false
-    notes: baseline fallback、optional failure、return best、all rejected、time/iteration stop 都必须有 stop_reason 和 best_origin
+    notes: baseline fallback、optional failure、return best、all rejected、time/iteration stop 都必须有 stop_reason 和 best_origin；已知具体实例：SGS 下现有局搜结构性 no-op 且空烧预算（见 roadmap §7 观察项 2026-06-26），落地时应覆盖 candidate_rejected=noop_neighbor 与 stop_reason=time_budget
 
   - slug: optimizer-candidate-profile-contract
     description: 定义非 OR-Tools 搜索 profile，收紧配置校验和非法参数 fail-loud 合同

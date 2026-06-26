@@ -472,6 +472,7 @@ ALNSOperatorResult = {
 - public 只能展示 `attempts_public`，且每条只允许 `tag`、`strategy`、`dispatch_mode`、`dispatch_rule`、`score`、`failed_ops`、`candidate_status`、安全中文说明；不得把原始 `attempts` dict 整包投到 public。
 - `optimizer-proof-harness` 的 stdout / JSON / Markdown / CI artifact / tracked evidence 也必须遵守 public / diagnostics 分层。
 - OperationLogs 只收 public 小摘要，不收完整图、完整 trace、完整 operator 样本。
+- 2026-06-26 本轮已把 public algo 摘要、图分析摘要、候选方案展示、普通 HTML、导出 filters 和 OperationLogs 普通用户投影收紧为显式白名单；`attempts` 非 list 时直接从 public 输出移除，不能把原始 dict 原样带出。
 
 ## 5. 子 feature 清单
 
@@ -485,16 +486,16 @@ ALNSOperatorResult = {
 2. **diagnostic-public-id-boundary-fix** — 修复诊断页展示 `op:...`、数字 `op_id`、内部样本的 public 边界问题。
    - 所属模块：接入与展示边界层
    - 依赖：无
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：新增 trace / attempts / move / benchmark 样本前必须先修。
+   - 状态：done
+   - 对应 feature：`2026-06-26-diagnostic-public-id-boundary-fix`
+   - 备注：public 只保留安全摘要；diagnostics/internal 仍可保留内部调试信息，但不得进入普通页面、普通 HTML、导出和 OperationLogs public 投影。
 
 3. **optimizer-search-report-contract** — 给 optimizer 增加 `stop_reason`、seed、搜索统计、候选拒绝原因和 trace 合同。
    - 所属模块：搜索合同与可观测层
    - 依赖：`optimizer-proof-harness`、`diagnostic-public-id-boundary-fix`
    - 状态：planned
    - 对应 feature：未启动
-   - 备注：baseline fallback、optional warm-start failure、return best、all rejected、time budget、iteration limit 都必须有明确 stop_reason / best_origin。
+   - 备注：baseline fallback、optional warm-start failure、return best、all rejected、time budget、iteration limit 都必须有明确 stop_reason / best_origin。已知具体实例：SGS 下现有局搜结构性 no-op 且空烧预算（见 §7 观察项 2026-06-26），落地时应同时覆盖 `candidate_rejected=noop_neighbor` 与 `stop_reason=time_budget`。
 
 4. **optimizer-candidate-profile-contract** — 定义非 OR-Tools 搜索 profile，收紧配置校验和非法参数 fail-loud 合同。
    - 所属模块：候选构造层
@@ -582,11 +583,11 @@ ALNSOperatorResult = {
 
 ### Phase A · 近期可交付段（贴现有主链，低风险，逐项独立集成）
 
-覆盖 item 1-6（proof-harness 已 done）：proof 底座 → public 边界修复 → 搜索可观测合同 → 候选 profile/指纹 → GRASP/IG 候选构造。它们都紧贴现有 Greedy/SGS，改动面小、各自能独立产生价值。
+覆盖 item 1-6（proof-harness、public 边界修复已 done）：proof 底座 → public 边界修复 → 搜索可观测合同 → 候选 profile/指纹 → GRASP/IG 候选构造。它们都紧贴现有 Greedy/SGS，改动面小、各自能独立产生价值。
 
 排期要点：
 1. **proof harness（item 1，done）**：先有量尺，否则一切“更好”都是凭感觉。
-2. **public 边界修复（item 2）可立即并行**：它 `depends_on: []`，本就是个安全边界 issue（可单走 `cs-issue`），不必排在主叙事里串行等。它是后续一切 trace/attempt/move/benchmark 样本的硬前置。
+2. **public 边界修复（item 2，done）**：它是后续一切 trace/attempt/move/benchmark 样本的硬前置；后续 item 3 起新增 public 字段必须复用本轮投影函数，不能在模板或导出层临时拼过滤。
 3. **搜索可观测合同（item 3）**：补 `stop_reason`、显式 seed、候选拒绝原因、trace；多为把现有 attempts/`candidate_rejected`/version→RNG 半成品**显式化归一**，不是从零造。
 4. **候选 profile + 指纹（item 4-5）**：先把“不同候选”口径钉死，再扩起点。
 5. **GRASP/IG（item 6）**：贴现有 SGS 落位，改动面最小。
@@ -614,6 +615,14 @@ Phase B（VNS/SA 深化 + 完整 ALNS + 长跑调参）**不无条件启动**。
 - `candidate-comparison-business-view` 已是 current，但 `VISION.md` 中状态可能需要刷新。
 - `diagnostic-public-id-boundary-fix` 更像 issue/安全边界修复；本路线把它列为新增 search report / diagnostics 的前置 feature，也可以单独走 `cs-issue` 先完成。
 - 当前工作区已有未提交改动和 benchmark evidence 修改，任何 clean proof 都必须在最新 HEAD 与干净工作区上重新跑。
+- 2026-06-26 经 proof-harness（item 1）实测发现：现有 `improve` 局部搜索在 SGS 派工模式下是**结构性 no-op**。其唯一邻域是 swap/insert/block 重排 `batch_order`（`core/services/scheduler/run/optimizer_local_search.py:15-61`），但 SGS 只把 `batch_order` 当 `build_dispatch_key` 末位平手决胜键（`core/algorithms/dispatch_rules.py:33-36`、`core/algorithms/greedy/dispatch/sgs.py:44-48,99,215`），slack/atc 近似连续几乎不平手，故批次顺序重排几乎总解出同一张表。证据：SMTWT 同起点重排批次顺序 300 次 overdue 零变化，而 `batch_order` 派工模式下 206/300 更好（34→28）；默认 `dispatch_mode=batch_order` 经多起点扩展后 sgs 起点总胜出、局搜继承胜出起点模式（`optimizer_local_search.py:253`），导致局搜恒 0 改进且空烧满 `time_budget`（budget 5/20s 结果一致）。
+    - 治理归属：no-op 如实记 + 到预算止损归 **item 3 `optimizer-search-report-contract`**（§4.3 已明文要求 `candidate_rejected=noop_neighbor` 与 `stop_reason=time_budget`）；搜索空间本身的修复（让局搜搜在 SGS 决策空间上）归 **item 8 `vns-sa-local-search-upgrade`**（Phase B，受证据闸门约束）。本条为发现归档，按裁决本轮只归档、不改生产代码。
+- 2026-06-26 目标↔基准覆盖盘点（决定后续换目标时拿什么证明）：系统当前有 4 个目标（`core/models/objective.py:18-46`）——`min_overdue` / `min_tardiness` / `min_weighted_tardiness` / `min_changeover`，**没有 makespan 目标**（`makespan_hours` 仅作各目标 5 元组里的低位平手决胜键，从不是主优化项）。
+    - **可比覆盖现状**：目前只有 `min_overdue` 的**首分量 `overdue_count`** 有同模型同指标的精确最优基准（SMTWT + Moore-Hodgson，`tests/_support/optimizer_benchmark_grading.py`），且当前只给 **greedy** 打分、未给 improve 打分；`min_overdue` 后 4 个 tie-break 分量、以及其余 3 个目标**都没有可比的已证明最优基准**。
+    - **拖期/加权拖期缺口**：SMTWT 自带的 `wtopt` 是**自由权重（1–10）的加权拖期**最优，而 APS 加权拖期只有 3 档（critical/urgent/normal），两套权重不同**不可比**；无权重的 1‖ΣT_j 是 NP-hard、本仓库无 oracle。故 `min_tardiness` / `min_weighted_tardiness` 短期只能用下界 / best-known 做参考，做不了"精确最优"对照。
+    - **换型缺口**：`min_changeover` 量的是换型次数，**SMTWT / JSP / RCPSP 一个都不涉及换型**；要证明它须另引**顺序相关换型时间（SDST）基准**（如 OR-Library SDST 集），目前未下。
+    - **makespan 基准（JSP/RCPSP/FJSP）定位**：它们量 makespan，而系统无 makespan 目标，故只能当 `folded_not_comparable` 参考；**仅当将来真新增 makespan 族目标时才会翻成可打分基准**。本系统以交期 / 换型为导向，makespan 是否值得设为目标存疑——建议保持参考态，不为"凑基准"硬加目标。
+    - 归属：本盘点是 **item 14 `benchmark-ratchet-quality-gate`** 的前置输入（每个目标要单独配齐"同目标同指标的量尺"才能纳入非劣化门禁，且应把 improve 也纳入打分）；属观察归档，本轮不改代码。
 
 ## 8. 变更日志
 
@@ -622,3 +631,6 @@ Phase B（VNS/SA 深化 + 完整 ALNS + 长跑调参）**不无条件启动**。
 - 2026-06-26：吸收非 OR-Tools 深研报告审阅意见：新增 `distinct-candidate-fingerprint-contract`，收紧全局最优口径、第三方库依赖边界、Record-to-Record Travel 全称命名和 same-fingerprint 不得伪成功合同。
 - 2026-06-26：完成 `optimizer-proof-harness` 最小闭环：新增 tiny exact oracle / objective_score 证明、makespan lower bound 参考字段、FJSP 折叠不可比引用口径和默认 stdout 的 check 脚本；默认不写 tracked evidence。
 - 2026-06-26：经两轮深度 review + Codex 对抗核实后重构排期与契约口径。① 给 proof harness 补 `assert_oracle_decoder_matches_greedy` fail-loud 守卫，把 `same_model` 从字段声明改为每次运行由构造强制（oracle 解码须复现 greedy 实际所选排程，否则禁止声称证明）。② 排期改为 Phase A（item 1-6 贴主链、逐项增量集成）/ Phase B（item 7-15 由 harness 证据闸门解锁），item 2 标可并行，item 13 收敛为“统一自动选择”而非大爆炸集成。③ 4.7 `ALNSOperatorResult` 标注为前瞻接口占位（待 item 10 定稿），4.6 保持（属防御既有安全边界）。④ 4.8 设为 public/id 脱敏单一真相源，其余契约引用而非复述。⑤ OR-Tools 措辞精确化为“已有可选 warm-start 不升级为主引擎”。⑥ 把与已 completed 的 `aps-three-gap-directions` 的契约重叠升级为显式跨路线 update-gate 治理前置。
+- 2026-06-26：完成 `diagnostic-public-id-boundary-fix`。public algo / graph / candidate / HTML / export / OperationLogs 统一走安全摘要投影；`attempts` 只允许 list 形态下的白名单字段，非 list 原始 dict 直接从 public 输出移除；第二轮定向复审与盲审均未发现 blocker。
+- 2026-06-26：proof-harness 实测暴露现有 improve 局搜在 SGS 下结构性 no-op + 空烧 time_budget（证据见 §7 观察项）；确认机制治理归 item 3、搜索空间修复归 item 8，本轮只归档不改代码。
+- 2026-06-26：补"目标↔基准覆盖盘点"（§7）：系统 4 目标无 makespan；仅 `min_overdue` 首分量 `overdue_count` 有精确可比基准且只测 greedy；拖期/加权拖期因权重口径不一致 + NP-hard 缺 oracle、换型缺 SDST 基准、JSP/RCPSP 属 makespan 休眠参考；列为 item 14 前置输入。本轮只归档不改代码。
