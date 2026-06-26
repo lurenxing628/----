@@ -186,10 +186,10 @@
               </td>
               <td>
                 {% if r.error_code or r.error_message %}
-                  {% if r.error_message %}
+                  {% if r.error_message_public %}
                     <details class="aps-flash-details aps-table-cell-detail">
                       <summary>查看错误</summary>
-                      <div class="aps-flash-details-body error">{{ r.error_message }}</div>
+                      <div class="aps-flash-details-body error">{{ r.error_message_public }}</div>
                     </details>
                   {% else %}
                     <div class="error">处理失败</div>

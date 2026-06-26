@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .scheduler_analysis_diagnostic_helpers import (
     build_item,
     build_section,
-    detail_from_samples,
     error_count,
     format_count,
     format_minutes,
@@ -13,7 +12,6 @@ from .scheduler_analysis_diagnostic_helpers import (
     level_if,
     safe_dict,
     safe_int,
-    sample_text_values,
     status_label,
     summary_warning_count,
     text_if,
@@ -282,8 +280,6 @@ def _build_resource_bottleneck_items(
     matched_count: int,
     unmatched_count: int,
     bottleneck_count: int,
-    unmatched_samples: Sequence[str],
-    bottleneck_samples: Sequence[str],
 ) -> List[Dict[str, Any]]:
     no_candidate_count, waiting_count = _resource_gap_counts(
         ready_count=ready_count,
@@ -329,7 +325,6 @@ def _build_resource_bottleneck_items(
                 no_candidate_count=no_candidate_count,
                 waiting_count=waiting_count,
             ),
-            details=detail_from_samples("这轮还没排上的工序样本：", unmatched_samples),
         ),
         build_item(
             key="bottleneck_machine_count",
@@ -341,7 +336,6 @@ def _build_resource_bottleneck_items(
                 f"有 {bottleneck_count} 台设备同一时间被多道工序需要，后面可能要排队。",
                 "暂时没看到明显不够用的设备。",
             ),
-            details=detail_from_samples("可能不够用的设备样本：", bottleneck_samples),
         ),
     ]
 
@@ -370,8 +364,6 @@ def build_resource_bottleneck_section(
             summary="本版本没有生成设备安排诊断，不能判断第一批可排工序有没有足够设备。",
             empty_reason="可先查看甘特图和资源排班；后续重新排产后，如果诊断数据生成成功，这里会显示设备安排情况。",
         )
-    resource_diagnostics = safe_dict(graph_diagnostics.get("resource_matching"))
-
     status = str(resource_public.get("status") or "unknown")
     reason = str(resource_public.get("reason") or "")
     ready_count = safe_int(resource_public.get("ready_operation_count"))
@@ -381,8 +373,6 @@ def build_resource_bottleneck_section(
     matched_count = safe_int(resource_public.get("matched_operation_count"))
     unmatched_count = safe_int(resource_public.get("unmatched_operation_count"))
     bottleneck_count = safe_int(resource_public.get("bottleneck_machine_count"))
-    unmatched_samples = sample_text_values(resource_diagnostics.get("unmatched_operation_ids_sample"))
-    bottleneck_samples = sample_text_values(resource_diagnostics.get("bottleneck_machine_ids_sample"))
 
     section_status = _resource_matching_status(
         status=status,
@@ -409,8 +399,6 @@ def build_resource_bottleneck_section(
             matched_count=matched_count,
             unmatched_count=unmatched_count,
             bottleneck_count=bottleneck_count,
-            unmatched_samples=unmatched_samples,
-            bottleneck_samples=bottleneck_samples,
         ),
         empty_reason=text_if(status == "empty", "本次没有第一批可排工序，因此没有设备安排情况可分析。", ""),
     )

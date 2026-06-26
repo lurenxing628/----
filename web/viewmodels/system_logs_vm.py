@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from core.models.operation_log_public_projection import public_operation_log_error_message
 
 from .ui_presenters import UiEmptyState, UiToggleRow, checked_attr
 
@@ -129,7 +131,7 @@ def resolve_operation_log_action_filter(value: Any) -> str:
     return _resolve_label_or_code(value, _ACTION_LABELS)
 
 
-def _parse_detail_obj(detail_raw: Any) -> tuple[str, Optional[Dict[str, Any]]]:
+def _parse_detail_obj(detail_raw: Any) -> Tuple[str, Optional[Dict[str, Any]]]:
     if detail_raw is None:
         return "empty", None
     s = str(detail_raw).strip()
@@ -160,6 +162,7 @@ def build_operation_log_view_rows(items: List[Any]) -> List[Dict[str, Any]]:
         d["module_label"] = _label(d.get("module"), _MODULE_LABELS, "其他模块")
         d["action_label"] = _label(d.get("action"), _ACTION_LABELS, "其他操作")
         d["target_type_label"] = _label(d.get("target_type"), _TARGET_TYPE_LABELS, "其他对象")
+        d["error_message_public"] = public_operation_log_error_message(d.get("error_message"))
         detail_parse_state, detail_obj = _parse_detail_obj(d.get("detail"))
         d["detail_parse_state"] = detail_parse_state
         d["detail_obj"] = detail_obj

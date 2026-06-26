@@ -70,7 +70,11 @@ def _candidate_display_row(
     role_label = _public_candidate_label_text((option or {}).get("label") or _plan_role_label(role))
     status = _candidate_status(candidate, option)
     adopted_key = _adopted_candidate_key(comparison)
+    raw_candidate_roles = candidate.get("roles")
+    candidate_roles = raw_candidate_roles if isinstance(raw_candidate_roles, list) else []
     is_same_as_adopted = bool(candidate_key and candidate_key == adopted_key)
+    if role != ROLE_ADOPTED and ROLE_ADOPTED in candidate_roles:
+        is_same_as_adopted = True
     plan_role_available = role in options_by_role
     detail_saved = _role_detail_saved(option)
     completed = _candidate_status_completed(status)
@@ -93,8 +97,6 @@ def _candidate_display_row(
     return {
         "role": role,
         "role_label": role_label,
-        "source_table": _role_source_table(option),
-        "candidate_key": candidate_key,
         "candidate_label": _candidate_label(candidate, option, candidate_key=candidate_key, role=role),
         "kind": _candidate_kind(candidate, option),
         "status": _candidate_status_public_value(status),

@@ -14,7 +14,6 @@ from .scheduler_analysis_diagnostic_helpers import (
     safe_int,
     safe_list,
     safe_text,
-    sample_text_values,
     section_status_from_levels,
     status_label,
     summary_counts,
@@ -158,8 +157,7 @@ def build_delay_risk_section(
 
 def _format_node_metric_sample(value: Any) -> str:
     item = safe_dict(value)
-    node_id = safe_text(item.get("node_id"))
-    if not node_id:
+    if not item:
         return ""
     details: List[str] = []
     rank = item.get("critical_path_rank")
@@ -175,8 +173,8 @@ def _format_node_metric_sample(value: Any) -> str:
     if downstream_minutes is not None:
         details.append(f"后续关键时长 {safe_int(downstream_minutes)} 分钟")
     if details:
-        return f"{node_id}（{'，'.join(details)}）"
-    return node_id
+        return f"影响范围样本（{'，'.join(details)}）"
+    return "影响范围样本"
 
 
 def _format_graph_score_sample(value: Any) -> str:
@@ -212,7 +210,7 @@ def _format_warning_sample(value: Any) -> str:
     elif "internal/external" in (message or code) or "internal / external" in (message or code):
         text = "工序归属数据不完整，请检查工艺路线里的自制/外协设置。"
     else:
-        text = message or "有一条图分析提醒，详细信息请到排产历史查看。"
+        text = "有一条图分析提醒，详细信息请到排产历史查看。"
     if item.get("message_truncated"):
         text = f"{text}（已截断）"
     return text
@@ -229,15 +227,31 @@ def _formatted_samples(values: Sequence[Any], formatter: Any) -> List[str]:
     return out
 
 
-def _impact_samples(graph_diagnostics: Dict[str, Any]) -> Dict[str, Any]:
+def _sample_count(count_value: Any, sample_value: Any) -> int:
+    if count_value is not None:
+        return safe_int(count_value)
+    return len(safe_list(sample_value))
+
+
+def _impact_samples(graph_public: Dict[str, Any], graph_diagnostics: Dict[str, Any]) -> Dict[str, Any]:
+    resource_public = safe_dict(graph_public.get("resource_matching"))
     resource_diagnostics = safe_dict(graph_diagnostics.get("resource_matching"))
     return {
-        "critical_path": sample_text_values(graph_diagnostics.get("critical_path_sample")),
+        "critical_path_count": _sample_count(
+            graph_public.get("critical_path_node_count"),
+            graph_diagnostics.get("critical_path_sample"),
+        ),
         "node_metrics": _formatted_samples(safe_list(graph_diagnostics.get("node_metrics_sample")), _format_node_metric_sample),
         "graph_score": _formatted_samples(safe_list(graph_diagnostics.get("graph_score_sample")), _format_graph_score_sample),
         "warnings": _formatted_samples(safe_list(graph_diagnostics.get("warnings_sample")), _format_warning_sample),
-        "unmatched": sample_text_values(resource_diagnostics.get("unmatched_operation_ids_sample")),
-        "bottlenecks": sample_text_values(resource_diagnostics.get("bottleneck_machine_ids_sample")),
+        "unmatched_count": _sample_count(
+            resource_public.get("unmatched_operation_count"),
+            resource_diagnostics.get("unmatched_operation_ids_sample"),
+        ),
+        "bottleneck_count": _sample_count(
+            resource_public.get("bottleneck_machine_count"),
+            resource_diagnostics.get("bottleneck_machine_ids_sample"),
+        ),
         "node_metrics_status": str(graph_diagnostics.get("node_metrics_status") or ""),
     }
 
@@ -245,12 +259,13 @@ def _impact_samples(graph_diagnostics: Dict[str, Any]) -> Dict[str, Any]:
 def _has_impact_samples(samples: Dict[str, Any]) -> bool:
     return any(
         [
-            samples["critical_path"],
+            samples["critical_path_count"] > 0,
             samples["node_metrics"],
+            samples["node_metrics_status"] == "skipped_basic_report",
             samples["graph_score"],
             samples["warnings"],
-            samples["unmatched"],
-            samples["bottlenecks"],
+            samples["unmatched_count"] > 0,
+            samples["bottleneck_count"] > 0,
         ]
     )
 
@@ -277,10 +292,10 @@ def _node_metrics_item(samples: Dict[str, Any], sample_note: str) -> Dict[str, A
 
 def _resource_sample_details(samples: Dict[str, Any]) -> List[str]:
     details: List[str] = []
-    if samples["unmatched"]:
-        details.append(f"这轮还没排上的工序样本：{'、'.join(samples['unmatched'])}")
-    if samples["bottlenecks"]:
-        details.append(f"可能不够用的设备样本：{'、'.join(samples['bottlenecks'])}")
+    if samples["unmatched_count"] > 0:
+        details.append(f"这轮还没排上的工序：{samples['unmatched_count']} 道")
+    if samples["bottleneck_count"] > 0:
+        details.append(f"可能不够用的设备：{samples['bottleneck_count']} 台")
     return details
 
 
@@ -291,11 +306,10 @@ def _impact_items(samples: Dict[str, Any], sample_note: str) -> List[Dict[str, A
     items = [
         build_item(
             key="critical_path_sample",
-            label="重点工序样本",
-            value=format_count(len(samples["critical_path"]), "条"),
-            level="notice" if samples["critical_path"] else "ok",
+            label="重点工序",
+            value=format_count(samples["critical_path_count"], "道"),
+            level="notice" if samples["critical_path_count"] else "ok",
             message=sample_note,
-            details=samples["critical_path"],
         ),
         _node_metrics_item(samples, sample_note),
     ]
@@ -345,7 +359,7 @@ def build_impact_explanation_section(
     graph_diagnostics: Dict[str, Any],
 ) -> Dict[str, Any]:
     sample_note = "以下只是样本，不是完整清单。"
-    samples = _impact_samples(graph_diagnostics)
+    samples = _impact_samples(graph_public, graph_diagnostics)
     if not _has_impact_samples(samples):
         return build_section(
             key="impact_explanation",

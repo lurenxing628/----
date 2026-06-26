@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
 
+from core.models.public_identifier_redaction import is_forbidden_internal_key, redact_internal_text
+
 from .excel_service import ImportMode, ImportPreviewRow, ImportResult, RowStatus
 
 
@@ -97,6 +99,31 @@ def log_excel_import(
     )
 
 
+def _public_export_filter_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return public_export_filters(value)
+    if isinstance(value, list):
+        return [_public_export_filter_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_public_export_filter_value(item) for item in value]
+    if isinstance(value, str):
+        return redact_internal_text(value)
+    return value
+
+
+def public_export_filters(filters: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Return OperationLogs/export filters without internal plan or graph identifiers."""
+    if not isinstance(filters, dict):
+        return {}
+    public: Dict[str, Any] = {}
+    for key, value in filters.items():
+        key_text = str(key or "").strip()
+        if is_forbidden_internal_key(key_text):
+            continue
+        public[key_text] = _public_export_filter_value(value)
+    return public
+
+
 def log_excel_export(
     op_logger,
     module: str,
@@ -116,7 +143,7 @@ def log_excel_export(
 
     detail: Dict[str, Any] = {
         "template_or_export_type": template_or_export_type,
-        "filters": filters or {},
+        "filters": public_export_filters(filters),
         "row_count": int(row_count) if row_count is not None else 0,
         "time_range": time_range or {},
         "time_cost_ms": int(time_cost_ms) if time_cost_ms is not None else None,
@@ -129,4 +156,3 @@ def log_excel_export(
         target_id=target_id,
         detail=detail,
     )
-

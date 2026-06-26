@@ -3,10 +3,19 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.models.public_identifier_redaction import contains_internal_identifier
 from core.models.scheduler_history_parser import parse_result_summary_payload
 
 from .scheduler_analysis_overview import analysis_choice_label, build_analysis_labels
 from .scheduler_history_summary import strategy_display_label
+
+_PUBLIC_ATTEMPT_METRIC_KEYS = {
+    "changeover_count",
+    "makespan_hours",
+    "overdue_count",
+    "total_tardiness_hours",
+    "weighted_tardiness_hours",
+}
 
 
 def safe_float(v: Any, default: float = 0.0) -> float:
@@ -215,16 +224,66 @@ def _selected_summary_context(selected: Dict[str, Any], *, extract_metrics_from_
     return selected_summary, selected_metrics, (algo if isinstance(algo, dict) else {})
 
 
+def _has_internal_attempt_text(value: Any) -> bool:
+    return contains_internal_identifier(value)
+
+
+def _public_attempt_metrics(value: Any, *, objective_key: str) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    allowed = set(_PUBLIC_ATTEMPT_METRIC_KEYS)
+    if objective_key in _PUBLIC_ATTEMPT_METRIC_KEYS:
+        allowed.add(str(objective_key))
+    out: Dict[str, Any] = {}
+    for key in allowed:
+        if key not in value:
+            continue
+        metric_value = _public_attempt_metric_value(value.get(key))
+        if metric_value is not None:
+            out[key] = metric_value
+    return out
+
+
+def _public_attempt_metric_value(value: Any) -> Any:
+    if isinstance(value, bool):
+        return "记录异常"
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        if _has_internal_attempt_text(text):
+            return "记录异常"
+        return text
+    return "记录异常"
+
+
+def _public_attempt_score(value: Any) -> List[Any]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, (int, float)) and not isinstance(item, bool)]
+
+
+def _public_attempt_code(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text or _has_internal_attempt_text(text):
+        return ""
+    return text
+
+
 def _attempt_metric_state(attempt: Dict[str, Any], *, objective_key: str) -> Tuple[Dict[str, Any], Optional[float], bool]:
     raw_metrics = attempt.get("metrics")
-    metrics = raw_metrics if isinstance(raw_metrics, dict) else {}
+    metrics = _public_attempt_metrics(raw_metrics, objective_key=objective_key)
     primary_value, primary_value_parse_failed = _metric_float_state(metrics.get(objective_key))
     return metrics, primary_value, primary_value_parse_failed
 
 
 def _attempt_dispatch_labels(attempt: Dict[str, Any], labels: Dict[str, Dict[str, str]]) -> Tuple[Any, Any, str]:
-    dispatch_mode = attempt.get("dispatch_mode") or ""
-    dispatch_rule = attempt.get("dispatch_rule") or ""
+    dispatch_mode = _public_attempt_code(attempt.get("dispatch_mode"))
+    dispatch_rule = _public_attempt_code(attempt.get("dispatch_rule"))
     dispatch_mode_label = analysis_choice_label(dispatch_mode, labels.get("dispatch_mode", {}), empty_label="-")
     dispatch_rule_label = analysis_choice_label(dispatch_rule, labels.get("dispatch_rule", {}), empty_label="")
     dispatch_label = f"{dispatch_mode_label} / {dispatch_rule_label}" if dispatch_rule_label else dispatch_mode_label
@@ -243,22 +302,22 @@ def _build_attempt_rows(algo: Dict[str, Any], *, objective_key: str) -> List[Dic
         public_source_label = str(attempt.get("source_label") or "").strip()
         raw_tag = str(attempt.get("tag") or "").strip()
         source_tag = str(attempt.get("source") or attempt.get("origin") or "").strip()
+        display_tag = _public_attempt_display_label(raw_tag=public_source_label, source_tag="") or _public_attempt_display_label(raw_tag=raw_tag, source_tag=source_tag)
         metrics, primary_value, primary_value_parse_failed = _attempt_metric_state(attempt, objective_key=objective_key)
         failed_ops, failed_ops_parse_failed = _int_state(attempt.get("failed_ops"))
         dispatch_mode, dispatch_rule, dispatch_label = _attempt_dispatch_labels(attempt, labels)
         attempts_rows.append(
             {
-                "tag": raw_tag,
-                "display_tag": public_source_label
-                or _public_attempt_display_label(raw_tag=raw_tag, source_tag=source_tag),
-                "strategy": attempt.get("strategy") or "-",
+                "tag": display_tag,
+                "display_tag": display_tag,
+                "strategy": _public_attempt_code(attempt.get("strategy")) or "-",
                 "strategy_label": strategy_display_label(attempt.get("strategy")),
                 "dispatch_mode": dispatch_mode,
                 "dispatch_rule": dispatch_rule,
                 "dispatch_label": dispatch_label,
                 "failed_ops": failed_ops,
                 "failed_ops_parse_failed": bool(failed_ops_parse_failed),
-                "score": attempt.get("score") if isinstance(attempt.get("score"), list) else [],
+                "score": _public_attempt_score(attempt.get("score")),
                 "metrics": metrics,
                 "primary_value": primary_value,
                 "primary_value_parse_failed": bool(primary_value_parse_failed),
@@ -292,6 +351,8 @@ def _known_attempt_display_label(label: str) -> str:
 
 
 def _is_public_attempt_label(label: str) -> bool:
+    if _has_internal_attempt_text(label):
+        return False
     has_chinese = any("\u4e00" <= ch <= "\u9fff" for ch in label)
     has_ascii_letter = any(("a" <= ch.lower() <= "z") for ch in label)
     if any(token in label for token in ("|", ":", "/", "\\")):

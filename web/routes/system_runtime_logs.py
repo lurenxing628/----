@@ -17,6 +17,11 @@ from flask import current_app, flash, g, redirect, render_template, request, sen
 
 from config import Config
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION
+from core.models.operation_log_public_projection import (
+    public_operation_log_detail_text,
+    public_operation_log_error_message,
+    public_operation_log_target_id_text,
+)
 from core.services.system.runtime_log_reader import (
     LOG_FILE_CHOICES,
     MAX_ENTRIES,
@@ -142,7 +147,8 @@ def _collect_operation_logs_text():
     except Exception as e:
         current_app.logger.error("诊断包附操作日志读取失败：%s", e)
         return (
-            f"操作日志读取失败，本文件代替说明。\n失败原因：{e}\n",
+            "操作日志读取失败，本文件代替说明。\n失败原因："
+            f"{public_operation_log_error_message(e) or '读取失败'}\n",
             "operation_logs_读取失败.txt",
         )
     lines = [f"最近 {len(items)} 条操作日志（新→旧）：", ""]
@@ -154,10 +160,10 @@ def _collect_operation_logs_text():
                 log.module,
                 log.action,
                 log.target_type or "-",
-                log.target_id or "-",
+                public_operation_log_target_id_text(log.target_id),
                 log.operator or "-",
-                log.detail or "-",
-                log.error_message or "-",
+                public_operation_log_detail_text(log.detail),
+                public_operation_log_error_message(log.error_message) or "-",
             )
         )
     return "\n".join(lines) + "\n", "operation_logs.txt"

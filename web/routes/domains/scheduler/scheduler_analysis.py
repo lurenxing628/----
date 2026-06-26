@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import g, render_template, request
 
+from core.services.scheduler.summary.optimizer_public_summary import project_public_result_summary
 from web.request_resource_context import request_report_resource_context
 from web.viewmodels.scheduler_analysis_action_hub import build_analysis_action_hub
 from web.viewmodels.scheduler_analysis_vm import build_analysis_context, build_candidate_comparison_display
@@ -77,6 +78,7 @@ def analysis_page():
         selected_ver=read_ctx.selected_version,
         raw_hist=read_ctx.raw_hist,
         selected_item=read_ctx.selected_item,
+        public_summary_projector=project_public_result_summary,
     )
     initial_candidate_display = ctx.get("candidate_comparison_display")
     if isinstance(initial_candidate_display, dict) and (

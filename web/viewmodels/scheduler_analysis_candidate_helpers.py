@@ -34,6 +34,7 @@ _DEFAULT_SELECTION_REASON_LABEL = "系统按本次设置自动选择正式采用
 _INVALID_SELECTION_REASON_LABEL = "推荐理由记录异常，请复核这次方案对比记录。"
 
 _FAILURE_REASON_LABELS = {
+    "candidate_failed": "这套方案没有算成功",
     "candidate_time_budget_reached": "试算时间到了，系统没有继续算这套方案",
 }
 
@@ -95,12 +96,18 @@ def _adopted_candidate_key(comparison: Dict[str, Any]) -> str:
 
 def _candidate_rows_by_key(comparison: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     out: Dict[str, Dict[str, Any]] = {}
-    for raw in list(comparison.get("candidates") or []):
+    for index, raw in enumerate(list(comparison.get("candidates") or []), start=1):
         if not isinstance(raw, dict):
             continue
         key = str(raw.get("candidate_key") or "").strip()
-        if key:
-            out[key] = raw
+        local_key = key or f"_candidate_{index}"
+        out[local_key] = raw
+        roles = raw.get("roles")
+        if isinstance(roles, list):
+            for role in roles:
+                role_key = str(role or "").strip()
+                if role_key:
+                    out.setdefault(f"_role_{role_key}", raw)
     return out
 
 
@@ -112,11 +119,14 @@ def _candidate_key_for_role(
     option: Optional[Dict[str, Any]],
 ) -> str:
     key = str(comparison.get(field) or "").strip()
-    if key:
+    if key and key in candidates_by_key:
         return key
     option_key = str((option or {}).get("candidate_key") or "").strip()
-    if option_key:
+    if option_key and option_key in candidates_by_key:
         return option_key
+    role_key = f"_role_{role}"
+    if role_key in candidates_by_key:
+        return role_key
     for candidate_key, candidate in candidates_by_key.items():
         roles = candidate.get("roles")
         if isinstance(roles, list) and role in roles:
@@ -149,8 +159,28 @@ def _candidate_metric_state(candidate: Dict[str, Any], key: str) -> Tuple[Option
 def _candidate_technical_score_label(candidate: Dict[str, Any]) -> str:
     score = candidate.get("score") if isinstance(candidate, dict) else None
     if isinstance(score, (list, tuple)) and score:
-        return " / ".join(str(item) for item in score)
+        labels: List[str] = []
+        parse_failed = False
+        for item in score:
+            value, failed = _coerce_candidate_metric(item, integer=False)
+            if failed:
+                parse_failed = True
+                continue
+            if value is not None:
+                labels.append(_format_score_number(value))
+        if labels:
+            return " / ".join(labels)
+        return "记录异常" if parse_failed else "-"
     return "-"
+
+
+def _format_score_number(value: Any) -> str:
+    number = _metric_number(value)
+    if number is None:
+        return "记录异常"
+    if abs(number - round(number)) < 0.0001:
+        return str(int(round(number)))
+    return f"{number:.4f}".rstrip("0").rstrip(".")
 
 
 def _metric_number(value: Any) -> Optional[float]:

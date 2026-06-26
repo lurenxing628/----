@@ -6,6 +6,11 @@ from core.models.schedule_plan_role import ROLE_ADOPTED, ROLE_BASELINE_BEST, ROL
 
 from .schedule_candidate_specs import CANDIDATE_KIND_CRITICAL_CHAIN
 
+_PUBLIC_FAILURE_REASON_CODES = {
+    "candidate_failed",
+    "candidate_time_budget_reached",
+}
+
 
 def _candidate_key(value: Any) -> Optional[str]:
     text = str(value or "").strip()
@@ -100,11 +105,19 @@ def candidate_detail_saved(candidate: Any, roles: List[str]) -> bool:
     return ROLE_BASELINE_BEST in roles or ROLE_CRITICAL_BEST in roles
 
 
+def _public_failure_reason(value: Any) -> Optional[str]:
+    reason = str(value or "").strip()
+    if not reason:
+        return None
+    if reason in _PUBLIC_FAILURE_REASON_CODES:
+        return reason
+    return "candidate_failed"
+
+
 def candidate_public_summary(candidate: Any, *, roles: Optional[List[str]] = None) -> Dict[str, Any]:
     role_list = list(roles or [])
     health = candidate_health_summary(candidate)
     summary = {
-        "candidate_key": str(getattr(candidate, "candidate_key", "") or ""),
         "label": str(getattr(candidate, "label", "") or ""),
         "kind": str(getattr(candidate, "kind", "") or ""),
         "status": str(getattr(candidate, "status", "") or ""),
@@ -119,9 +132,9 @@ def candidate_public_summary(candidate: Any, *, roles: Optional[List[str]] = Non
         "detail_saved": candidate_detail_saved(candidate, role_list),
         "roles": role_list,
     }
-    failure_reason = str(getattr(candidate, "failure_reason", "") or "").strip()
+    failure_reason = _public_failure_reason(getattr(candidate, "failure_reason", ""))
     if failure_reason:
-        summary["failure_reason"] = failure_reason[:200]
+        summary["failure_reason"] = failure_reason
     return summary
 
 
@@ -138,10 +151,6 @@ def candidate_comparison_public_summary(candidate_comparison: Any) -> Dict[str, 
         "run_time_budget_seconds": getattr(candidate_comparison, "run_time_budget_seconds", None),
         "skipped_candidate_labels": list(getattr(candidate_comparison, "skipped_candidate_labels", []) or []),
         "baseline_missing_or_failed": bool(getattr(candidate_comparison, "baseline_missing_or_failed", False)),
-        "adopted_candidate_key": getattr(selection, "selected_candidate_key", None),
-        "raw_score_best_candidate_key": getattr(selection, "raw_score_best_key", None),
-        "baseline_best_candidate_key": getattr(selection, "baseline_best_key", None),
-        "critical_best_candidate_key": getattr(selection, "critical_best_key", None),
         "selection_policy": getattr(selection, "selection_policy", None),
         "selection_reason_code": getattr(selection, "reason_code", None),
         "candidates": [
@@ -164,10 +173,6 @@ def candidate_comparison_minimal_summary(raw: Any) -> Dict[str, Any]:
         "run_time_budget_seconds",
         "skipped_candidate_labels",
         "baseline_missing_or_failed",
-        "adopted_candidate_key",
-        "raw_score_best_candidate_key",
-        "baseline_best_candidate_key",
-        "critical_best_candidate_key",
         "selection_policy",
         "selection_reason_code",
     )
@@ -189,7 +194,6 @@ def candidate_comparison_log_summary(raw: Any) -> Dict[str, Any]:
         "run_time_budget_seconds",
         "skipped_candidate_labels",
         "baseline_missing_or_failed",
-        "adopted_candidate_key",
         "selection_policy",
         "selection_reason_code",
     )

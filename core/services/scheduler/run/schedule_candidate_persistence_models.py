@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from core.models.enums import YesNo
 from core.models.schedule_candidate import ScheduleCandidate
+from core.services.scheduler.summary.graph_public_summary import project_public_graph_analysis
 
 from .schedule_candidate_specs import CANDIDATE_KIND_CRITICAL_CHAIN
 from .schedule_candidate_summary import (
@@ -109,7 +110,9 @@ def _copy_known_algo_fields(out: Dict[str, Any], algo: Dict[str, Any]) -> None:
 def _copy_graph_analysis(out: Dict[str, Any], algo: Dict[str, Any]) -> None:
     graph_analysis = algo.get("graph_analysis")
     if isinstance(graph_analysis, dict):
-        out["graph_analysis"] = dict(graph_analysis)
+        public_graph = project_public_graph_analysis(graph_analysis)
+        if public_graph:
+            out["graph_analysis"] = public_graph
 
 
 def _copy_candidate_comparison(out: Dict[str, Any], algo: Dict[str, Any]) -> None:

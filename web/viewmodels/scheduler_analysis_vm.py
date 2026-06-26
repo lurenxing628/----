@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from .scheduler_analysis_candidates import build_candidate_comparison_display
 from .scheduler_analysis_compat import _best_score_schema_display, _compat_fallback_state
@@ -23,13 +23,26 @@ from .scheduler_degradation_presenter import build_primary_degradation, build_su
 from .scheduler_history_summary import strategy_display_label
 from .scheduler_summary_display import build_display_secondary_degradation_messages, build_result_state
 
+_PUBLIC_COMPARISON_METRIC_KEYS = {
+    "changeover_count",
+    "makespan_hours",
+    "overdue_count",
+    "total_tardiness_hours",
+    "weighted_tardiness_hours",
+}
 
-def _public_summary_for_template(summary: Any) -> Any:
+
+def _public_summary_for_template(summary: Any, projector: Optional[Callable[[Any], Any]]) -> Any:
+    if projector is not None:
+        return projector(summary)
+    # 无注入 projector 时的安全兜底:viewmodel 不依赖 service 层(架构 fitness),只做顶层脱敏——
+    # 剔除最敏感的 diagnostics 内部 trace 容器,不退回“裸返回 raw summary”。algo 的精细 public
+    # 投影属 service 职责,由 route 注入 project_public_result_summary 完成(见 scheduler_analysis 路由)。
     if not isinstance(summary, dict):
         return summary
-    public_summary = dict(summary)
-    public_summary.pop("diagnostics", None)
-    return public_summary
+    safe = dict(summary)
+    safe.pop("diagnostics", None)
+    return safe
 
 
 def _public_selected_for_template(selected: Any, public_summary: Any) -> Any:
@@ -50,7 +63,7 @@ def _public_selected_for_template(selected: Any, public_summary: Any) -> Any:
 def _comparison_metric_from_algo(algo: Any) -> str:
     if isinstance(algo, dict):
         metric = str(algo.get("comparison_metric") or "").strip()
-        if metric:
+        if metric in _PUBLIC_COMPARISON_METRIC_KEYS:
             return metric
         schema = algo.get("best_score_schema")
         if isinstance(schema, list):
@@ -58,7 +71,7 @@ def _comparison_metric_from_algo(algo: Any) -> str:
                 if not isinstance(item, dict):
                     continue
                 key = str(item.get("key") or "").strip()
-                if key and key != "failed_ops":
+                if key in _PUBLIC_COMPARISON_METRIC_KEYS:
                     return key
     obj = algo.get("objective") if isinstance(algo, dict) else None
     return objective_key_from_objective(obj)
@@ -92,6 +105,7 @@ def build_analysis_context(
     raw_hist: List[Any],
     selected_item: Any,
     plan_role_options: Optional[List[Any]] = None,
+    public_summary_projector: Optional[Callable[[Any], Any]] = None,
 ) -> Dict[str, Any]:
     trend_all, trend_rows = build_trend_rows(raw_hist, extract_metrics_from_summary=extract_metrics_from_summary)
     trend_charts = build_trend_charts(trend_rows)
@@ -127,10 +141,11 @@ def build_analysis_context(
         primary_degradation,
         summary_degradation_messages,
     )
+    public_selected_summary = _public_summary_for_template(selected_summary, public_summary_projector)
     attempts = sort_and_enrich_attempts(attempts_rows, selected_metrics=selected_metrics, objective_key=objective_key)
-    selected_algo = selected_summary.get("algo") if isinstance(selected_summary, dict) else None
+    selected_algo = public_selected_summary.get("algo") if isinstance(public_selected_summary, dict) else None
     selected_algo = selected_algo if isinstance(selected_algo, dict) else {}
-    best_score_schema_display = _best_score_schema_display(selected_summary)
+    best_score_schema_display = _best_score_schema_display(public_selected_summary)
     compat_fallback = _compat_fallback_state(selected_summary)
     candidate_comparison_display = build_candidate_comparison_display(
         selected_summary,
@@ -187,7 +202,6 @@ def build_analysis_context(
         objective_key,
         algo=selected_algo,
     )
-    public_selected_summary = _public_summary_for_template(selected_summary)
     public_selected = _public_selected_for_template(selected, public_selected_summary)
     return {
         "selected": public_selected,

@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.scheduler_public_errors import build_public_error_records
 
+from .graph_public_summary import project_public_graph_analysis
 from .schedule_summary_types import FreezeState, SummaryBuildContext
 from .summary_count_parse import parse_summary_count
 
@@ -146,6 +147,7 @@ def graph_analysis_summary_warning(ctx: SummaryBuildContext) -> Optional[str]:
     public = ctx.graph_analysis_public if isinstance(ctx.graph_analysis_public, dict) else None
     if not public:
         return None
+    public = project_public_graph_analysis(public)
     status = str(public.get("status") or "").strip().lower()
     if not status or status == "available":
         return None
