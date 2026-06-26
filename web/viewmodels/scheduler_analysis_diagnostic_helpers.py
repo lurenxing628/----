@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional
 
 SAMPLE_LIMIT = 5
 
@@ -203,12 +203,6 @@ def text_if(condition: bool, true_text: str, false_text: str) -> str:
     return true_text if condition else false_text
 
 
-def detail_from_samples(prefix: str, samples: Sequence[str]) -> List[str]:
-    if not samples:
-        return []
-    return [f"{prefix}{'、'.join(samples)}"]
-
-
 def safe_text(value: Any) -> str:
     if value is None:
         return ""
@@ -287,7 +281,6 @@ __all__ = [
     "SAMPLE_LIMIT",
     "build_item",
     "build_section",
-    "detail_from_samples",
     "error_count",
     "format_count",
     "format_hours",
