@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from datetime import date, datetime
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Protocol, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
@@ -29,6 +29,9 @@ from .optimizer_step_report_hooks import (
 from .schedule_signature_support import (
     schedule_with_optional_strict_mode as _schedule_with_optional_strict_mode,
 )
+
+if TYPE_CHECKING:
+    from .optimizer_search_report import OptimizationSearchReportState
 
 
 class SchedulerLike(Protocol):
@@ -175,7 +178,7 @@ def _run_ortools_warmstart(
     graph_ready_context: Optional[Any] = None,
     strict_mode: bool = False,
     clock: Optional[Callable[[], float]] = None,
-    search_report_state: Any = None,
+    search_report_state: Optional[OptimizationSearchReportState] = None,
 ) -> Optional[Dict[str, Any]]:
     # 可选：OR-Tools 高质量起点（瓶颈子问题）
     snapshot = _step_config_snapshot(cfg, strict_mode=bool(strict_mode))
@@ -386,7 +389,7 @@ def _run_multi_start(
     graph_ready_context: Optional[Any] = None,
     strict_mode: bool = False,
     clock: Optional[Callable[[], float]] = None,
-    search_report_state: Any = None,
+    search_report_state: Optional[OptimizationSearchReportState] = None,
 ) -> Optional[Dict[str, Any]]:
     order_cache: Dict[Tuple[str, Tuple[Tuple[str, Any], ...]], List[str]] = {}
     snapshot = _step_config_snapshot(cfg, strict_mode=bool(strict_mode))

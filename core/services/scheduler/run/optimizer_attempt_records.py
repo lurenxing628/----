@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
 
 from .optimizer_search_state import append_unique_rejected_attempt
+
+if TYPE_CHECKING:
+    from .optimizer_search_report import OptimizationSearchReportState
 
 
 def validation_error_origin(exc: ValidationError) -> Dict[str, Any]:
@@ -90,7 +93,7 @@ def evaluate_optional_start_candidate(
     dispatch_rule: str,
     primary: Tuple[str, str, str],
     strict_mode: bool,
-    search_report_state: Any = None,
+    search_report_state: Optional[OptimizationSearchReportState] = None,
 ) -> Optional[Dict[str, Any]]:
     try:
         return evaluate()
@@ -118,7 +121,7 @@ def evaluate_optional_local_candidate(
     dispatch_mode: str,
     dispatch_rule: str,
     strict_mode: bool,
-    search_report_state: Any = None,
+    search_report_state: Optional[OptimizationSearchReportState] = None,
 ) -> Optional[Dict[str, Any]]:
     try:
         return evaluate()

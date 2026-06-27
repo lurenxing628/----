@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, cast
 
 from core.algorithms import ScheduleResult
 from core.algorithms.evaluation import compute_metrics, objective_score
@@ -10,6 +10,9 @@ from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_st
 
 from .optimizer_attempt_records import append_rejected_reason_attempt, evaluate_optional_local_candidate
 from .optimizer_search_state import init_seen_hashes
+
+if TYPE_CHECKING:
+    from .optimizer_search_report import OptimizationSearchReportState
 
 
 def _swap_neighbor(order: List[str], rnd: Any) -> Tuple[List[str], str]:
@@ -202,7 +205,7 @@ def _local_search_skip_reason(
     return None, {}
 
 
-def _mark_local_search_skipped(search_report_state: Any, reason: str, extra: Dict[str, Any]) -> None:
+def _mark_local_search_skipped(search_report_state: Optional[OptimizationSearchReportState], reason: str, extra: Dict[str, Any]) -> None:
     if search_report_state is not None:
         search_report_state.mark_phase_skipped("local_search", reason, **extra)
 
@@ -210,7 +213,7 @@ def _mark_local_search_skipped(search_report_state: Any, reason: str, extra: Dic
 def _record_noop_neighbor(
     *,
     attempts: List[Dict[str, Any]],
-    search_report_state: Any,
+    search_report_state: Optional[OptimizationSearchReportState],
     strategy: Any,
     dispatch_mode: str,
     dispatch_rule: str,
@@ -229,14 +232,14 @@ def _record_noop_neighbor(
     search_report_state.mark_candidate_rejected(reason="noop_neighbor", attempt=attempt)
 
 
-def _mark_local_candidate_evaluated(search_report_state: Any, candidate: Optional[Dict[str, Any]]) -> None:
+def _mark_local_candidate_evaluated(search_report_state: Optional[OptimizationSearchReportState], candidate: Optional[Dict[str, Any]]) -> None:
     if candidate is not None and search_report_state is not None:
         search_report_state.mark_candidate_evaluated(candidate, origin="local_search")
 
 
 def _mark_local_candidate_accepted(
     *,
-    search_report_state: Any,
+    search_report_state: Optional[OptimizationSearchReportState],
     candidate: Optional[Dict[str, Any]],
     best_before: Dict[str, Any],
     best_after: Dict[str, Any],
@@ -256,7 +259,7 @@ def _local_search_stop_reason(*, now_value: float, deadline: float, iteration: i
     return None
 
 
-def _mark_local_search_stop(search_report_state: Any, reason: str) -> None:
+def _mark_local_search_stop(search_report_state: Optional[OptimizationSearchReportState], reason: str) -> None:
     if search_report_state is None:
         return
     if reason == "time_budget":
@@ -304,7 +307,7 @@ def _run_local_search_candidate_round(
     rnd: Any,
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
-    search_report_state: Any,
+    search_report_state: Optional[OptimizationSearchReportState],
     no_improve: int,
     scheduler: Any,
     strict_mode: bool,
@@ -415,7 +418,7 @@ def run_local_search(
     rng_factory: Callable[[int], Any],
     schedule_fn: Callable[..., Any],
     graph_ready_context: Optional[Any] = None,
-    search_report_state: Any = None,
+    search_report_state: Optional[OptimizationSearchReportState] = None,
 ) -> Optional[Dict[str, Any]]:
     skip_reason, skip_extra = _local_search_skip_reason(algo_mode=algo_mode, best=best)
     if skip_reason:

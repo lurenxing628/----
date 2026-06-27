@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import traceback
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from core.algorithms import SortStrategy
 from core.algorithms.greedy.algo_stats import increment_counter
 
 from .optimizer_attempt_records import append_rejected_reason_attempt, candidate_tag
+
+if TYPE_CHECKING:
+    from .optimizer_search_report import OptimizationSearchReportState
 
 
 def _append_ortools_attempt(*, attempts: List[Dict[str, Any]], candidate: Dict[str, Any]) -> None:
@@ -84,28 +87,28 @@ def _record_ortools_rejection_attempt(
     )
 
 
-def _mark_report_phase_skipped(search_report_state: Any, phase: str, reason: str) -> None:
+def _mark_report_phase_skipped(search_report_state: Optional[OptimizationSearchReportState], phase: str, reason: str) -> None:
     if search_report_state is not None:
         search_report_state.mark_phase_skipped(phase, reason)
 
 
-def _mark_report_deadline(search_report_state: Any) -> None:
+def _mark_report_deadline(search_report_state: Optional[OptimizationSearchReportState]) -> None:
     if search_report_state is not None:
         search_report_state.mark_deadline_reached()
 
 
-def _mark_report_deadline_skip(search_report_state: Any, phase: str) -> None:
+def _mark_report_deadline_skip(search_report_state: Optional[OptimizationSearchReportState], phase: str) -> None:
     if search_report_state is not None:
         search_report_state.mark_deadline_reached()
         search_report_state.mark_phase_skipped(phase, "time_budget")
 
 
-def _mark_report_evaluated(search_report_state: Any, candidate: Dict[str, Any], origin: str) -> None:
+def _mark_report_evaluated(search_report_state: Optional[OptimizationSearchReportState], candidate: Dict[str, Any], origin: str) -> None:
     if search_report_state is not None:
         search_report_state.mark_candidate_evaluated(candidate, origin=origin)
 
 
-def _mark_report_accepted(search_report_state: Any, candidate: Dict[str, Any], origin: str) -> None:
+def _mark_report_accepted(search_report_state: Optional[OptimizationSearchReportState], candidate: Dict[str, Any], origin: str) -> None:
     if search_report_state is not None:
         search_report_state.mark_candidate_accepted(candidate, origin=origin)
 
@@ -116,7 +119,7 @@ def _record_ortools_optional_failure(
     strategy: SortStrategy,
     dispatch_mode: str,
     dispatch_rule: str,
-    search_report_state: Any,
+    search_report_state: Optional[OptimizationSearchReportState],
     optimizer_algo_stats: Optional[Dict[str, Any]],
     scheduler: Any,
     logger: Any,
@@ -141,7 +144,7 @@ def _record_ortools_candidate(
     candidate: Dict[str, Any],
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
-    search_report_state: Any,
+    search_report_state: Optional[OptimizationSearchReportState],
     now: Callable[[], float],
     t_begin: float,
 ) -> Optional[Dict[str, Any]]:
@@ -154,7 +157,7 @@ def _record_ortools_candidate(
     return candidate
 
 
-def _multi_start_deadline_reached(*, now: Callable[[], float], deadline: float, search_report_state: Any) -> bool:
+def _multi_start_deadline_reached(*, now: Callable[[], float], deadline: float, search_report_state: Optional[OptimizationSearchReportState]) -> bool:
     if now() <= deadline:
         return False
     _mark_report_deadline(search_report_state)
@@ -220,7 +223,7 @@ def _record_multi_start_candidate(
     dispatch_rule: str,
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
-    search_report_state: Any,
+    search_report_state: Optional[OptimizationSearchReportState],
     now: Callable[[], float],
     t_begin: float,
 ) -> Optional[Dict[str, Any]]:
