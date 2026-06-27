@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: scheduler-global-optimizer
 status: active
 created: 2026-06-26
-last_reviewed: 2026-06-27
+last_reviewed: 2026-06-28
 tags: [scheduler, optimizer, global-search, alns, benchmark, python38, win7]
 related_requirements:
   - candidate-comparison-business-view
@@ -322,6 +322,8 @@ SearchProfile = {
 - no-op 邻域、小规模无法移动、`swap_fallback` 这类 fallback move 必须进入 trace，标记 `fallback_reason` 或 `candidate_rejected=noop_neighbor`；不能让用户误以为目标邻域真的执行成功。
 - 达到时间预算必须 `stop_reason=time_budget`，达到迭代上限必须 `stop_reason=iteration_limit`；不能只返回当前 best。
 
+> **本阶段落地（item 4，2026-06-28）**：契约已落为 `core/services/scheduler/run/optimizer_candidate_profile.py` 的 `CandidateProfile`，作为 `OptimizationSearchReport.candidate_profile` 嵌套字段。与上方"前瞻契约"的差异均为「只锁现有能力」的有意收敛，非违反：①`profile` 取值现仅 `baseline`/`multi_start_local_search`（对应 algo_mode greedy/improve），`grasp/ig/vns/sa/alns` 待 item 6-10 落地再纳入，未知值仍 `ValidationError`；②`acceptance` 现仅 `improve_only`（局搜 score 严格更优的贪心接受），`threshold/record_to_record/simulated_annealing` 待 item 8；③`neighborhoods` 现仅 `swap/insert/block`（现有 batch_order 重排算子），业务邻域待 item 7；④`repair` 仅 `sgs`。另落地三个前瞻契约未列、但本阶段需要的诚实字段：`seed_source`（标 seed 由 version 派生）、`candidate_strategy_family`（multi_start/single_shot）、`validation_status`、`ortools_warmstart_enabled`（仅 improve 下且配置开启才 true，baseline 恒 false）。迭代上限 configured（time_budget×20）vs effective（钳到 [200,5000]）已区分，钳制如实写 `system_limit_reason`；`derive_iteration_limits` 是该公式唯一真相源，局搜与 profile 共用。
+
 ### 4.4 `CandidateFingerprint`
 
 **方向**：candidate construction / local search / ALNS -> search report / benchmark
@@ -504,9 +506,9 @@ ALNSOperatorResult = {
 4. **optimizer-candidate-profile-contract** — 定义非 OR-Tools 搜索 profile，收紧配置校验和非法参数 fail-loud 合同。
    - 所属模块：候选构造层
    - 依赖：`optimizer-search-report-contract`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：configured/effective budget、iteration、restart、system limit 必须可报告；非法值不能静默 clamp。
+   - 状态：done
+   - 对应 feature：`2026-06-28-optimizer-candidate-profile-contract`
+   - 备注：已新增 `core/services/scheduler/run/optimizer_candidate_profile.py`（`CandidateProfile` + `build_candidate_profile` + `derive_iteration_limits`），并作为嵌套字段接入 `OptimizationSearchReport.candidate_profile`，`algorithm_profile` 改由 profile 稳定派生（删除旧模糊串函数）。configured/effective 的 time budget 与 max_iterations 已区分；迭代 `[200,5000]` 系统钳制如实写 `system_limit_applied`/`system_limit_reason`（`iteration_floor`/`iteration_ceiling`）/`iteration_limit_source`；`derive_iteration_limits` 是迭代上限/重启阈值唯一真相源，`optimizer_local_search` 改为共用、行为逐位不变。未知 `profile`/`repair`/`acceptance`/`neighborhood` 与非法 `budget` 一律 fail-loud（与 strict 无关）。profile public 只投白名单安全摘要（`profile_public`），配置来源/邻域等只进 `profile_diagnostics`；size guard 最小摘要保留 `profile_public`。`seed` 如实标记为 version 派生（`seed_source`）。**本阶段 profile 取值限 `baseline`/`multi_start_local_search`**（§4.3 full enum 的 `grasp/ig/vns/sa/alns` 待 item 6-10 扩展，未知值仍 `ValidationError`）；`repair` 仅 `sgs`、`acceptance` 仅 `improve_only`、`neighborhoods` 仅 `swap/insert/block`。未做 item 5 完整 CandidateFingerprint，也未引入新搜索算法。
 
 5. **distinct-candidate-fingerprint-contract** — 定义候选指纹、去重计数、same-fingerprint 拒绝和 improved 判定。
    - 所属模块：候选构造层
@@ -645,3 +647,4 @@ Phase B（VNS/SA 深化 + 完整 ALNS + 长跑调参）**不无条件启动**。
 - 2026-06-26：补"目标↔基准覆盖盘点"（§7）：系统 4 目标无 makespan；仅 `min_overdue` 首分量 `overdue_count` 有精确可比基准且只测 greedy；拖期/加权拖期因权重口径不一致 + NP-hard 缺 oracle、换型缺 SDST 基准、JSP/RCPSP 属 makespan 休眠参考；列为 item 14 前置输入。本轮只归档不改代码。
 - 2026-06-27：完成 `optimizer-search-report-contract`。新增 `core/services/scheduler/run/optimizer_search_report.py`、`core/services/scheduler/run/optimizer_step_report_hooks.py` 和 `core/services/scheduler/summary/optimizer_public_search_report.py`，`OptimizationOutcome`、orchestrator、candidate plan、summary、summary size guard 最小摘要和 OperationLogs 小摘要均接入 search report；新增 `tests/algorithm/test_optimizer_search_report_contract.py` 并登记 test registry，同时收紧 size guard 回归测试。验证覆盖 report 基础字段、baseline fallback、multi-start 成功、optional warm-start failure、strict ValidationError fail-loud、non-strict candidate_rejected、local search time_budget / iteration_limit / skipped、public/diagnostics 分层、size guard 最小摘要保留 public search_report 和 OperationLogs 摘要；proof harness 回归仍通过。边界：本轮只做报告合同，不做 item 4 candidate profile、item 5 完整 CandidateFingerprint，不做 GRASP / IG / VNS / SA / ALNS。
 - 2026-06-28：item 3 `optimizer-search-report-contract` 收尾 review（3 个只读 OPUS 子代理 + Codex 对抗复审，实跑 52 项相关测试全绿）。总裁定：无破坏正确性或泄漏内部 id 的硬 blocker。按裁决本轮清理本 item 代码债（删 `finalize` 兜底 + best 形参、删 `_runtime_ms` 静默兜底）、补 `no_improvement` / `all_candidates_rejected` stop_reason 测试；`distinct_candidates` / `improved` 过渡口径归 item 5，已在 §7 钉遗留，本轮不改其实现。
+- 2026-06-28：完成 `optimizer-candidate-profile-contract`（item 4）。新增 `core/services/scheduler/run/optimizer_candidate_profile.py`（`CandidateProfile` 合同 + `build_candidate_profile` fail-loud 校验 + `derive_iteration_limits` 迭代上限单一真相源），接入 `OptimizationSearchReport.candidate_profile`，`algorithm_profile` 改由 profile 稳定派生并删除旧 `_algorithm_profile` 模糊串函数；`optimizer_local_search` 的内联迭代/重启公式改为共用 `derive_iteration_limits`（逐位等价、零行为变化）；summary 层新增 `profile_public`/`profile_diagnostics` 白名单分层投影，size guard 最小摘要保留 `profile_public`。新增 `tests/algorithm/test_optimizer_candidate_profile_contract.py`（23 用例）并登记 test registry。验证覆盖 configured/effective budget&iteration 区分、系统钳制 floor/ceiling 如实报告、未知 profile/repair/acceptance/neighborhood + 非法 budget fail-loud（与 strict 无关）、baseline 不升 OR-Tools 主引擎、seed version 派生标注、public 无内部 id 泄漏、四出口（页面/OperationLogs/size guard/algo summary）分层不破。执行者记录中含 4 层 OPUS 对抗审查摘要，但仓库当前未附独立审查产物；如需作为可复核 proof，应补原始审查记录或链接。质量门禁 17/17 步通过（`--allow-dirty-worktree`，dirty/unbound proof，非 clean proof）。边界：profile 取值本阶段限 `baseline`/`multi_start_local_search`，repair 仅 `sgs`、acceptance 仅 `improve_only`、neighborhoods 仅 `swap/insert/block`；未做 item 5 完整 CandidateFingerprint，未引入 GRASP/IG/VNS/SA/ALNS。

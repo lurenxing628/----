@@ -29,10 +29,10 @@ items:
   - slug: optimizer-candidate-profile-contract
     description: 定义非 OR-Tools 搜索 profile，收紧配置校验和非法参数 fail-loud 合同
     depends_on: [optimizer-search-report-contract]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-28-optimizer-candidate-profile-contract
     minimal_loop: false
-    notes: 本阶段 repair 只允许 sgs；未知项必须报错；configured/effective budget/iteration/restart/system limit 必须可报告
+    notes: 已落地 CandidateProfile 合同(core/services/scheduler/run/optimizer_candidate_profile.py)并接入 OptimizationSearchReport.candidate_profile；configured/effective time budget 与 max_iterations 区分、迭代 [200,5000] 系统钳制如实写 system_limit_applied/system_limit_reason/iteration_limit_source；derive_iteration_limits 作为迭代上限单一真相源,local search 改为共用(零行为变化);未知 profile/repair/acceptance/neighborhood 与非法 budget 一律 fail-loud(与 strict 无关);profile_public/profile_diagnostics 白名单分层 + size guard 最小摘要保留 profile_public;seed 如实标 version 派生。本阶段 profile 取值限 baseline/multi_start_local_search(§4.3 full enum 的 grasp/ig/vns/sa/alns 待 item 6-10 扩展,未知值仍 ValidationError);repair 仅 sgs、acceptance 仅 improve_only、neighborhoods 仅 swap/insert/block。未做 item 5 完整 CandidateFingerprint。
 
   - slug: distinct-candidate-fingerprint-contract
     description: 定义候选指纹、去重计数、same-fingerprint 拒绝和 improved 判定合同
