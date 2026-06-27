@@ -12,7 +12,8 @@ from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_st
 from core.algorithms.ordering import build_batch_sort_inputs, build_normalized_batches_map
 from core.infrastructure.errors import ValidationError
 
-from .optimizer_config import ensure_optimizer_config_snapshot, resolve_optimizer_config
+from .optimizer_candidate_profile import build_candidate_profile
+from .optimizer_config import ensure_optimizer_config_snapshot, is_ortools_enabled, resolve_optimizer_config
 from .optimizer_local_search import run_local_search as _run_local_search_impl
 from .optimizer_runtime import OptimizerRuntime
 from .optimizer_search_report import OptimizationSearchReportState
@@ -68,12 +69,6 @@ def _default_runtime() -> OptimizerRuntime:
         run_multi_start=_run_multi_start,
         run_local_search=_run_local_search,
     )
-
-
-def _algorithm_profile(*, algo_mode: str) -> str:
-    if str(algo_mode or "").strip().lower() == "improve":
-        return "multi_start_local_search"
-    return "baseline"
 
 
 def _runtime_ms(runtime: OptimizerRuntime, *, t_begin: float) -> int:
@@ -151,6 +146,16 @@ def optimize_schedule(
     graph_sgs_required = graph_ready_context is not None or graph_dispatch_mode_override == "sgs"
     dispatch_mode_cfg = "sgs" if graph_sgs_required else optimizer_cfg.dispatch_mode
     dispatch_modes = ["sgs"] if graph_sgs_required else optimizer_cfg.dispatch_modes()
+    candidate_profile = build_candidate_profile(
+        algo_mode=optimizer_cfg.algo_mode,
+        dispatch_mode=optimizer_cfg.dispatch_mode,
+        dispatch_rule=optimizer_cfg.dispatch_rule,
+        time_budget_seconds=optimizer_cfg.time_budget_seconds,
+        version=version,
+        strict_mode=bool(strict_mode),
+        ortools_enabled=is_ortools_enabled(cfg),
+        graph_sgs_required=graph_sgs_required,
+    )
 
     normalized_batches_for_sort = build_normalized_batches_map(batches)
 
@@ -168,12 +173,13 @@ def optimize_schedule(
     t_begin = runtime.clock()
     deadline = (t_begin + float(optimizer_cfg.time_budget_seconds)) if optimizer_cfg.algo_mode == "improve" else float("inf")
     search_report_state = OptimizationSearchReportState(
-        algorithm_profile=_algorithm_profile(algo_mode=optimizer_cfg.algo_mode),
+        algorithm_profile=candidate_profile.profile,
         seed=int(version),
         time_budget_seconds=int(optimizer_cfg.time_budget_seconds),
         objective_name=str(optimizer_cfg.objective_name),
         started_at=float(t_begin),
         strict_mode=bool(strict_mode),
+        candidate_profile=candidate_profile.to_report_dict(),
     )
 
     state.best = runtime.run_ortools_warmstart(

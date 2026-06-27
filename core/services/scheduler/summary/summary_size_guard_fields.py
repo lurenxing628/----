@@ -78,6 +78,7 @@ def _search_report_minimal_summary(raw: Any) -> Dict[str, Any]:
         "rejection_summary",
         "skipped_phases",
         "public_attempt_summary",
+        "profile_public",
     )
     return {key: public_report[key] for key in allowed if key in public_report}
 

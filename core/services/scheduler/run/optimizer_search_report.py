@@ -106,6 +106,7 @@ class OptimizationSearchReportState:
     objective_name: str
     started_at: float
     strict_mode: bool = False
+    candidate_profile: Optional[Dict[str, Any]] = None
     evaluated_candidates: int = 0
     accepted_candidates: int = 0
     rejected_candidates: int = 0
@@ -187,6 +188,7 @@ class OptimizationSearchReportState:
         return {
             "schema_version": SEARCH_REPORT_SCHEMA_VERSION,
             "algorithm_profile": str(self.algorithm_profile),
+            "candidate_profile": dict(self.candidate_profile or {}),
             "seed": int(self.seed),
             "stop_reason": final_stop,
             "best_origin": str(self.best_origin or "baseline"),

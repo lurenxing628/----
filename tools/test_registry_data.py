@@ -158,6 +158,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/algorithm/test_optimizer_search_report_contract.py",
     "tests/algorithm/test_optimizer_public_summary_projection_contract.py",
     "tests/algorithm/test_optimizer_proof_harness_contract.py",
+    "tests/algorithm/test_optimizer_candidate_profile_contract.py",
     "tests/schedule/service/test_schedule_input_collector_contract.py",
     "tests/schedule/service/test_schedule_input_collector_legacy_compat.py",
     "tests/schedule/service/test_schedule_service_missing_resource_source_case_insensitive.py",

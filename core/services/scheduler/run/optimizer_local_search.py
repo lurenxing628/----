@@ -9,6 +9,7 @@ from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
 
 from .optimizer_attempt_records import append_rejected_reason_attempt, evaluate_optional_local_candidate
+from .optimizer_candidate_profile import derive_iteration_limits
 from .optimizer_search_state import init_seen_hashes
 
 if TYPE_CHECKING:
@@ -435,9 +436,8 @@ def run_local_search(
     cur_dispatch_mode = str(best.get("dispatch_mode") or dispatch_mode_cfg)
     cur_dispatch_rule = str(best.get("dispatch_rule") or dispatch_rule_cfg)
     it = 0
-    it_limit = max(200, min(5000, int(time_budget_seconds) * 20))
+    it_limit, restart_after = derive_iteration_limits(time_budget_seconds)
     no_improve = 0
-    restart_after = max(50, min(800, int(it_limit / 8) if it_limit > 0 else 200))
     seen_hashes = init_seen_hashes(cur_order, best)
 
     while True:
