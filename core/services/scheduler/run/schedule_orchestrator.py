@@ -48,6 +48,7 @@ class ScheduleOrchestrationOutcome:
     objective_name: str
     algo_stats: Dict[str, Any]
     time_budget_seconds: int
+    search_report: Dict[str, Any]
     warning_merge_status: Dict[str, Any]
     algo_warnings: List[str]
     overdue_items: List[Any]
@@ -73,6 +74,7 @@ class _NormalizedOptimizerOutcome:
     objective_name: str
     algo_stats: Dict[str, Any]
     time_budget_seconds: int
+    search_report: Dict[str, Any]
 
 
 def _normalize_optimizer_outcome(optimizer_outcome: Any) -> _NormalizedOptimizerOutcome:
@@ -94,6 +96,7 @@ def _normalize_optimizer_outcome(optimizer_outcome: Any) -> _NormalizedOptimizer
         objective_name=str(optimizer_outcome.objective_name or ""),
         algo_stats=dict(optimizer_outcome.algo_stats or {}),
         time_budget_seconds=int(optimizer_outcome.time_budget_seconds or 0),
+        search_report=dict(optimizer_outcome.search_report or {}),
     )
 
 
@@ -112,6 +115,7 @@ def _normalize_candidate_plan(candidate_plan: Any) -> _NormalizedOptimizerOutcom
         objective_name=str(getattr(candidate_plan, "objective_name", "") or ""),
         algo_stats=dict(getattr(candidate_plan, "algo_stats", None) or {}),
         time_budget_seconds=int(getattr(candidate_plan, "time_budget_seconds", 0) or 0),
+        search_report=dict(getattr(candidate_plan, "search_report", None) or {}),
     )
 
 
@@ -329,6 +333,7 @@ def orchestrate_schedule_run(
             attempts=optimizer_outcome.attempts,
             improvement_trace=optimizer_outcome.improvement_trace,
             frozen_op_ids=set(schedule_input.frozen_op_ids),
+            search_report=optimizer_outcome.search_report,
             missing_internal_resource_op_ids=set(schedule_input.missing_internal_resource_op_ids or set()),
             scheduled_op_ids=set(validated_schedule_payload.scheduled_op_ids),
             freeze_meta=schedule_input.freeze_meta,
@@ -378,6 +383,7 @@ def orchestrate_schedule_run(
             objective_name=optimizer_outcome.objective_name,
             algo_stats=optimizer_outcome.algo_stats,
             time_budget_seconds=optimizer_outcome.time_budget_seconds,
+            search_report=optimizer_outcome.search_report,
             warning_merge_status=warning_merge_status,
             algo_warnings=list(schedule_input.algo_warnings or []),
             overdue_items=overdue_items,

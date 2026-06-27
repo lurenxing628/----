@@ -68,7 +68,46 @@ def _minimal_trigger_near_due_case():
         "version": 99,
         "strategy": "priority_first",
         "strategy_params": {"payload": "x" * 600000},
-        "algo": {"attempts": [], "improvement_trace": [], "best_batch_order": []},
+        "algo": {
+            "attempts": [],
+            "improvement_trace": [],
+            "best_batch_order": [],
+            "search_report": {
+                "schema_version": 1,
+                "algorithm_profile": "multi_start_local_search",
+                "seed": 99,
+                "stop_reason": "time_budget",
+                "best_origin": "multi_start",
+                "time_budget_seconds": 10,
+                "runtime_ms": 123,
+                "iterations": 5,
+                "evaluated_candidates": 8,
+                "distinct_candidates": 4,
+                "accepted_candidates": 2,
+                "accepted_distinct_candidates": 2,
+                "rejected_candidates": 3,
+                "best_score": [0.0, 1.0],
+                "objective_name": "min_overdue",
+                "best_fingerprint_changed": True,
+                "improved": True,
+                "rejection_summary": {"noop_neighbor": 3},
+                "public_attempt_summary": [
+                    {
+                        "origin": "multi_start",
+                        "status": "accepted",
+                        "strategy": "priority_first",
+                        "dispatch_mode": "sgs",
+                        "dispatch_rule": "critical_ratio",
+                        "score": [0.0, 1.0],
+                        "failed_ops": 0,
+                    }
+                ],
+                "attempts": [{"candidate_id": "candidate_secret", "source_table": "internal_table"}],
+                "initial_fingerprint": "op:secret-initial",
+                "best_fingerprint": "graph_w_secret",
+                "improvement_trace": [{"node_id": "node_secret"}],
+            },
+        },
         "warnings": [],
         "selected_batch_ids": [],
         "overdue_batches": {"count": 7, "items": [{"batch_id": "O1", "due_date": "2026-06-10", "finish_time": "2026-06-12 00:00:00"}]},
@@ -308,6 +347,19 @@ def main() -> None:
     assert isinstance(minimal_overdue, dict) and int(minimal_overdue.get("count") or 0) == 7 and "items" not in minimal_overdue, (
         "minimal overdue 同构校验失败"
     )
+    minimal_algo = minimal_near_after.get("algo") or {}
+    minimal_report = minimal_algo.get("search_report") or {}
+    assert minimal_report.get("stop_reason") == "time_budget", "minimal 不应丢 search_report.stop_reason"
+    assert minimal_report.get("best_origin") == "multi_start", "minimal 不应丢 search_report.best_origin"
+    assert int(minimal_report.get("seed") or 0) == 99, "minimal 不应丢 search_report.seed"
+    assert int(minimal_report.get("runtime_ms") or 0) == 123, "minimal 不应丢 search_report.runtime_ms"
+    assert int(minimal_report.get("evaluated_candidates") or 0) == 8, "minimal 不应丢 search_report.evaluated_candidates"
+    assert "attempts" not in minimal_report, "minimal public search_report 不得保留 raw attempts"
+    assert "initial_fingerprint" not in minimal_report, "minimal public search_report 不得保留内部 initial_fingerprint"
+    assert "best_fingerprint" not in minimal_report, "minimal public search_report 不得保留内部 best_fingerprint"
+    minimal_text = json.dumps(minimal_report, ensure_ascii=False, sort_keys=True)
+    assert "candidate_secret" not in minimal_text and "internal_table" not in minimal_text
+    assert "op:secret" not in minimal_text and "graph_w_secret" not in minimal_text and "node_secret" not in minimal_text
     assert _size_bytes(minimal_near_after) <= SUMMARY_SIZE_LIMIT_BYTES, "minimal_near 后仍超过 512KB"
 
     diagnostics_obj = _diagnostics_case(30)

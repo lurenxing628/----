@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: scheduler-global-optimizer
 status: active
 created: 2026-06-26
-last_reviewed: 2026-06-26
+last_reviewed: 2026-06-27
 tags: [scheduler, optimizer, global-search, alns, benchmark, python38, win7]
 related_requirements:
   - candidate-comparison-business-view
@@ -199,7 +199,10 @@ OptimizationSearchReport = {
     "best_score": [],
     "objective_name": "min_overdue",
     "attempts": [],
+    "public_attempt_summary": [],
     "improvement_trace": [],
+    "skipped_phases": [],
+    "rejection_summary": {},
 }
 ```
 
@@ -211,6 +214,7 @@ OptimizationSearchReport = {
 - `distinct_candidates` 和 `accepted_distinct_candidates` 必须来自同一套 `CandidateFingerprint` 合同；不能把同一个排序或同一个解码结果重复计成不同候选。
 - `best_fingerprint_changed=False` 时，public summary 必须写明“本轮未得到不同的更优方案”，不能把跑过搜索包装成改进成功。
 - `attempts` 仍保留最多 12 条公开摘要；完整内部 trace 只能进入 diagnostics，不能进入 public 页面。
+- 本仓库 public 脱敏清单已把 `attempts_public` 视为内部禁用字段；等价 public 白名单摘要落为 `algo.attempts` 与 `search_report.public_attempt_summary`，raw `attempts` 只进入 diagnostics。
 - `repair_failed` 不能返回原方案假装成功。
 - `validation_error` 在主候选 / strict 模式下必须 fail-loud；在可选候选里只能记录为 `candidate_rejected`。
 - 现有 optimizer 的每个 return 分支都必须进入同一份 report；不能只给新算法写 report，让 baseline fallback 或 optional failure 留在旧盲区。
@@ -453,7 +457,7 @@ ALNSOperatorResult = {
 - `distinct_candidates`
 - `improved`
 - `best_fingerprint_changed`
-- `attempts_public`
+- `algo.attempts` / `search_report.public_attempt_summary` 这类等价 public 白名单摘要
 - 中文说明
 
 **diagnostics 允许**：
@@ -469,7 +473,7 @@ ALNSOperatorResult = {
 - diagnostics 不得直接被页面普通模板渲染。
 - 已知的 `critical_path_sample` / `node_metrics_sample.node_id` / `unmatched_operation_ids_sample` 需要先修 public 边界。
 - `optimizer-search-report-contract` 及任何新增 attempts / trace / move 样本都必须依赖这条边界修复完成。
-- public 只能展示 `attempts_public`，且每条只允许 `tag`、`strategy`、`dispatch_mode`、`dispatch_rule`、`score`、`failed_ops`、`candidate_status`、安全中文说明；不得把原始 `attempts` dict 整包投到 public。
+- public 只能展示 `algo.attempts` / `search_report.public_attempt_summary` 这类等价 public 白名单摘要，且每条只允许 `tag`、`strategy`、`dispatch_mode`、`dispatch_rule`、`score`、`failed_ops`、`candidate_status`、安全中文说明；不得把原始 `attempts` dict 整包投到 public；当前脱敏清单禁止新建名为 `attempts_public` 的 public 字段。
 - `optimizer-proof-harness` 的 stdout / JSON / Markdown / CI artifact / tracked evidence 也必须遵守 public / diagnostics 分层。
 - OperationLogs 只收 public 小摘要，不收完整图、完整 trace、完整 operator 样本。
 - 2026-06-26 本轮已把 public algo 摘要、图分析摘要、候选方案展示、普通 HTML、导出 filters 和 OperationLogs 普通用户投影收紧为显式白名单；`attempts` 非 list 时直接从 public 输出移除，不能把原始 dict 原样带出。
@@ -493,9 +497,9 @@ ALNSOperatorResult = {
 3. **optimizer-search-report-contract** — 给 optimizer 增加 `stop_reason`、seed、搜索统计、候选拒绝原因和 trace 合同。
    - 所属模块：搜索合同与可观测层
    - 依赖：`optimizer-proof-harness`、`diagnostic-public-id-boundary-fix`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：baseline fallback、optional warm-start failure、return best、all rejected、time budget、iteration limit 都必须有明确 stop_reason / best_origin。已知具体实例：SGS 下现有局搜结构性 no-op 且空烧预算（见 §7 观察项 2026-06-26），落地时应同时覆盖 `candidate_rejected=noop_neighbor` 与 `stop_reason=time_budget`。
+   - 状态：done
+   - 对应 feature：`2026-06-27-optimizer-search-report-contract`
+   - 备注：已新增 `OptimizationSearchReport` 归一模块和 public 投影：baseline fallback、multi-start、optional warm-start failure、ValidationError candidate_rejected、local search skipped/noop、time budget、iteration limit、no improvement 都有明确 `stop_reason` / `best_origin` / seed / 统计字段。public 只展示安全摘要；raw attempts、内部 fingerprint、完整 trace 留 diagnostics；summary size guard 的最小摘要路径也保留 search_report public 小摘要。未做 item 4 candidate profile、item 5 完整 CandidateFingerprint，也未引入 GRASP / IG / VNS / SA / ALNS。
 
 4. **optimizer-candidate-profile-contract** — 定义非 OR-Tools 搜索 profile，收紧配置校验和非法参数 fail-loud 合同。
    - 所属模块：候选构造层
@@ -624,6 +628,11 @@ Phase B（VNS/SA 深化 + 完整 ALNS + 长跑调参）**不无条件启动**。
     - **makespan 基准（JSP/RCPSP/FJSP）定位**：它们量 makespan，而系统无 makespan 目标，故只能当 `folded_not_comparable` 参考；**仅当将来真新增 makespan 族目标时才会翻成可打分基准**。本系统以交期 / 换型为导向，makespan 是否值得设为目标存疑——建议保持参考态，不为"凑基准"硬加目标。
     - 归属：本盘点是 **item 14 `benchmark-ratchet-quality-gate`** 的前置输入（每个目标要单独配齐"同目标同指标的量尺"才能纳入非劣化门禁，且应把 improve 也纳入打分）；属观察归档，本轮不改代码。
 
+- 2026-06-28 经 item 3 review + Codex 对抗复审：确认 item 3 落地的 `distinct_candidates` 与 `improved` 是**过渡口径**，正确实现归 **item 5 `distinct-candidate-fingerprint-contract`**（其 description 即「候选指纹、去重计数、same-fingerprint 拒绝和 improved 判定合同」）；本轮按裁决只归档口径、不改其实现。
+    - `distinct_candidates`：`candidate_report_fingerprint` 把 `order`/`origin` 编入指纹（`core/services/scheduler/run/optimizer_search_report.py:36-51`），叠加本节已记的 SGS 解码塌缩（不同 batch_order 解出同一张表），会让 distinct 在 improve 默认模式下系统性虚高——同一解码结果被计成多个 distinct，与 §4.4「不能把同一解码结果重复计成不同候选」、§2「不把重复结果包装成探索到很多不同方案」不一致；且 `distinct_candidates` 是 public 展示字段。item 5 落地须改用 output（解码结果）维度去重，并复核 public 是否需在 item 5 前对该字段加口径说明或暂缓展示。
+    - `improved`：当前 `improved = best_fingerprint_changed`（`optimizer_search_report.py` finalize）是单条件。当前实现下与 §4.4 三条件（指纹变 + score 严格更优 + 通过 acceptance）等价（所有 accept 门控均为 score 严格更优），但属隐式耦合；item 8 引入 SA / Record-to-Record Travel 接受非改进解后会假阳。item 5 定 improved 判定合同时须显式化三条件。
+    - 同轮清理本 item 引入的两处代码债（非 item 5 范围）：删除 `finalize` 中 best 非空但无 accept 记录时的兜底 `mark_candidate_accepted`（生产不可达 + 破坏 `accepted_distinct ≤ distinct` 不变式，连带删 `finalize` 的 best 形参）、删除 `_runtime_ms` 的 `except Exception` 静默兜底（改为 clock 异常 fail-loud）；补 `no_improvement` / `all_candidates_rejected` 两个 stop_reason 回归测试。
+
 ## 8. 变更日志
 
 - 2026-06-26：创建 roadmap。基于本地调用链、9 个只读 Sub Agent、Exa 深研和现有 CodeStable 路线整理；本阶段明确不引入 OR-Tools，主线为 proof harness + public 边界修复 + GRASP/IG + VNS/SA + ALNS with SGS repair。
@@ -634,3 +643,5 @@ Phase B（VNS/SA 深化 + 完整 ALNS + 长跑调参）**不无条件启动**。
 - 2026-06-26：完成 `diagnostic-public-id-boundary-fix`。public algo / graph / candidate / HTML / export / OperationLogs 统一走安全摘要投影；`attempts` 只允许 list 形态下的白名单字段，非 list 原始 dict 直接从 public 输出移除；第二轮定向复审与盲审均未发现 blocker。
 - 2026-06-26：proof-harness 实测暴露现有 improve 局搜在 SGS 下结构性 no-op + 空烧 time_budget（证据见 §7 观察项）；确认机制治理归 item 3、搜索空间修复归 item 8，本轮只归档不改代码。
 - 2026-06-26：补"目标↔基准覆盖盘点"（§7）：系统 4 目标无 makespan；仅 `min_overdue` 首分量 `overdue_count` 有精确可比基准且只测 greedy；拖期/加权拖期因权重口径不一致 + NP-hard 缺 oracle、换型缺 SDST 基准、JSP/RCPSP 属 makespan 休眠参考；列为 item 14 前置输入。本轮只归档不改代码。
+- 2026-06-27：完成 `optimizer-search-report-contract`。新增 `core/services/scheduler/run/optimizer_search_report.py`、`core/services/scheduler/run/optimizer_step_report_hooks.py` 和 `core/services/scheduler/summary/optimizer_public_search_report.py`，`OptimizationOutcome`、orchestrator、candidate plan、summary、summary size guard 最小摘要和 OperationLogs 小摘要均接入 search report；新增 `tests/algorithm/test_optimizer_search_report_contract.py` 并登记 test registry，同时收紧 size guard 回归测试。验证覆盖 report 基础字段、baseline fallback、multi-start 成功、optional warm-start failure、strict ValidationError fail-loud、non-strict candidate_rejected、local search time_budget / iteration_limit / skipped、public/diagnostics 分层、size guard 最小摘要保留 public search_report 和 OperationLogs 摘要；proof harness 回归仍通过。边界：本轮只做报告合同，不做 item 4 candidate profile、item 5 完整 CandidateFingerprint，不做 GRASP / IG / VNS / SA / ALNS。
+- 2026-06-28：item 3 `optimizer-search-report-contract` 收尾 review（3 个只读 OPUS 子代理 + Codex 对抗复审，实跑 52 项相关测试全绿）。总裁定：无破坏正确性或泄漏内部 id 的硬 blocker。按裁决本轮清理本 item 代码债（删 `finalize` 兜底 + best 形参、删 `_runtime_ms` 静默兜底）、补 `no_improvement` / `all_candidates_rejected` stop_reason 测试；`distinct_candidates` / `improved` 过渡口径归 item 5，已在 §7 钉遗留，本轮不改其实现。

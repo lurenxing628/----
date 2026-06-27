@@ -64,6 +64,7 @@ class CandidatePlan:
     objective_name: str = ""
     algo_stats: Dict[str, Any] = field(default_factory=dict)
     time_budget_seconds: int = 0
+    search_report: Dict[str, Any] = field(default_factory=dict)
     sort_strategy: str = ""
     dispatch_mode: str = ""
     dispatch_rule: str = ""
@@ -379,6 +380,7 @@ def _candidate_plan_from_artifacts(
         objective_name=str(getattr(outcome, "objective_name", None) or ""),
         algo_stats=dict(getattr(outcome, "algo_stats", None) or {}),
         time_budget_seconds=int(getattr(outcome, "time_budget_seconds", None) or 0),
+        search_report=dict(getattr(outcome, "search_report", None) or {}),
         sort_strategy=str(candidate_cfg.sort_strategy),
         dispatch_mode=str(candidate_cfg.dispatch_mode),
         dispatch_rule=str(candidate_cfg.dispatch_rule),

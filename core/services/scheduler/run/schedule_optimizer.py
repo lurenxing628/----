@@ -15,6 +15,7 @@ from core.infrastructure.errors import ValidationError
 from .optimizer_config import ensure_optimizer_config_snapshot, resolve_optimizer_config
 from .optimizer_local_search import run_local_search as _run_local_search_impl
 from .optimizer_runtime import OptimizerRuntime
+from .optimizer_search_report import OptimizationSearchReportState
 from .optimizer_search_state import (
     OptimizerSearchState,
 )
@@ -47,6 +48,7 @@ class OptimizationOutcome:
     objective_name: str
     time_budget_seconds: int
     algo_stats: Dict[str, Any] = field(default_factory=dict)
+    search_report: Dict[str, Any] = field(default_factory=dict)
 
 
 def _run_local_search(**kwargs):
@@ -66,6 +68,44 @@ def _default_runtime() -> OptimizerRuntime:
         run_multi_start=_run_multi_start,
         run_local_search=_run_local_search,
     )
+
+
+def _algorithm_profile(*, algo_mode: str) -> str:
+    if str(algo_mode or "").strip().lower() == "improve":
+        return "multi_start_local_search"
+    return "baseline"
+
+
+def _runtime_ms(runtime: OptimizerRuntime, *, t_begin: float) -> int:
+    elapsed = float(runtime.clock() - t_begin)
+    return max(int(elapsed * 1000), 0)
+
+
+def _baseline_candidate(
+    *,
+    results: List[ScheduleResult],
+    summary: Any,
+    used_strategy: SortStrategy,
+    used_params: Dict[str, Any],
+    dispatch_mode: str,
+    dispatch_rule: str,
+    best_order: List[str],
+    best_metrics: Any,
+    best_score: Tuple[float, ...],
+    algo_stats: Dict[str, Any],
+) -> Dict[str, Any]:
+    return {
+        "results": results,
+        "summary": summary,
+        "strategy": used_strategy,
+        "params": dict(used_params or {}),
+        "dispatch_mode": dispatch_mode,
+        "dispatch_rule": dispatch_rule,
+        "order": list(best_order or []),
+        "metrics": best_metrics,
+        "score": tuple(best_score or ()),
+        "algo_stats": algo_stats,
+    }
 
 
 def optimize_schedule(
@@ -127,6 +167,14 @@ def optimize_schedule(
     state = OptimizerSearchState()
     t_begin = runtime.clock()
     deadline = (t_begin + float(optimizer_cfg.time_budget_seconds)) if optimizer_cfg.algo_mode == "improve" else float("inf")
+    search_report_state = OptimizationSearchReportState(
+        algorithm_profile=_algorithm_profile(algo_mode=optimizer_cfg.algo_mode),
+        seed=int(version),
+        time_budget_seconds=int(optimizer_cfg.time_budget_seconds),
+        objective_name=str(optimizer_cfg.objective_name),
+        started_at=float(t_begin),
+        strict_mode=bool(strict_mode),
+    )
 
     state.best = runtime.run_ortools_warmstart(
         algo_mode=optimizer_cfg.algo_mode,
@@ -154,6 +202,7 @@ def optimize_schedule(
         strict_mode=bool(strict_mode),
         graph_ready_context=graph_ready_context,
         clock=runtime.clock,
+        search_report_state=search_report_state,
     )
 
     state.best = runtime.run_multi_start(
@@ -182,6 +231,7 @@ def optimize_schedule(
         strict_mode=bool(strict_mode),
         graph_ready_context=graph_ready_context,
         clock=runtime.clock,
+        search_report_state=search_report_state,
     )
 
     state.best = runtime.run_local_search(
@@ -211,6 +261,7 @@ def optimize_schedule(
         clock=runtime.clock,
         rng_factory=runtime.rng_factory,
         schedule_fn=_schedule_with_optional_strict_mode,
+        search_report_state=search_report_state,
     )
 
     if state.best is None:
@@ -234,6 +285,28 @@ def optimize_schedule(
         best_score = (float(summary.failed_ops),) + objective_score(optimizer_cfg.objective_name, best_metrics)
         best_order = _build_order(optimizer_cfg.strategy_enum or SortStrategy.PRIORITY_FIRST, used_params or {})
         algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
+        baseline = _baseline_candidate(
+            results=results,
+            summary=summary,
+            used_strategy=used_strategy,
+            used_params=used_params,
+            dispatch_mode=dispatch_mode_cfg,
+            dispatch_rule=optimizer_cfg.dispatch_rule,
+            best_order=best_order,
+            best_metrics=best_metrics,
+            best_score=best_score,
+            algo_stats=algo_stats,
+        )
+        search_report_state.mark_candidate_evaluated(baseline, origin="baseline")
+        search_report_state.mark_candidate_accepted(baseline, origin="baseline")
+        compacted_attempts = state.compact_attempts(limit=12)
+        compacted_trace = state.compact_trace(limit=200)
+        search_report = search_report_state.finalize(
+            runtime_ms=_runtime_ms(runtime, t_begin=t_begin),
+            attempts=compacted_attempts,
+            improvement_trace=compacted_trace,
+            stop_reason="baseline_scheduled",
+        )
         return OptimizationOutcome(
             results=results,
             summary=summary,
@@ -242,12 +315,13 @@ def optimize_schedule(
             metrics=best_metrics,
             best_score=best_score,
             best_order=best_order,
-            attempts=state.compact_attempts(limit=12),
-            improvement_trace=state.compact_trace(limit=200),
+            attempts=compacted_attempts,
+            improvement_trace=compacted_trace,
             algo_mode=optimizer_cfg.algo_mode,
             objective_name=optimizer_cfg.objective_name,
             time_budget_seconds=optimizer_cfg.time_budget_seconds,
             algo_stats=algo_stats,
+            search_report=search_report,
         )
 
     best = state.best
@@ -260,6 +334,13 @@ def optimize_schedule(
     best_order = best["order"]
     best_algo_stats = best.get("algo_stats") if isinstance(best, dict) else None
     algo_stats = merge_algo_stats(best_algo_stats) if isinstance(best_algo_stats, dict) else merge_algo_stats(optimizer_algo_stats)
+    compacted_attempts = state.compact_attempts(limit=12)
+    compacted_trace = state.compact_trace(limit=200)
+    search_report = search_report_state.finalize(
+        runtime_ms=_runtime_ms(runtime, t_begin=t_begin),
+        attempts=compacted_attempts,
+        improvement_trace=compacted_trace,
+    )
 
     return OptimizationOutcome(
         results=results,
@@ -269,10 +350,11 @@ def optimize_schedule(
         metrics=best_metrics,
         best_score=best_score,
         best_order=list(best_order or []),
-        attempts=state.compact_attempts(limit=12),
-        improvement_trace=state.compact_trace(limit=200),
+        attempts=compacted_attempts,
+        improvement_trace=compacted_trace,
         algo_mode=optimizer_cfg.algo_mode,
         objective_name=optimizer_cfg.objective_name,
         time_budget_seconds=optimizer_cfg.time_budget_seconds,
         algo_stats=algo_stats,
+        search_report=search_report,
     )

@@ -21,10 +21,10 @@ items:
   - slug: optimizer-search-report-contract
     description: 给 optimizer 增加 stop_reason、seed、搜索统计、候选拒绝原因和 trace 合同
     depends_on: [optimizer-proof-harness, diagnostic-public-id-boundary-fix]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-27-optimizer-search-report-contract
     minimal_loop: false
-    notes: baseline fallback、optional failure、return best、all rejected、time/iteration stop 都必须有 stop_reason 和 best_origin；已知具体实例：SGS 下现有局搜结构性 no-op 且空烧预算（见 roadmap §7 观察项 2026-06-26），落地时应覆盖 candidate_rejected=noop_neighbor 与 stop_reason=time_budget
+    notes: baseline fallback、multi-start、optional OR-Tools warm-start failure、candidate_rejected、local search skipped/noop、time_budget、iteration_limit、no_improvement 都进入 OptimizationSearchReport；public 只投安全摘要，raw attempts/fingerprint 留 diagnostics；完整 candidate profile 与完整 CandidateFingerprint 仍留给 item 4/5
 
   - slug: optimizer-candidate-profile-contract
     description: 定义非 OR-Tools 搜索 profile，收紧配置校验和非法参数 fail-loud 合同

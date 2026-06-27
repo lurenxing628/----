@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from core.models.enums import YesNo
 from core.models.schedule_candidate import ScheduleCandidate
 from core.services.scheduler.summary.graph_public_summary import project_public_graph_analysis
+from core.services.scheduler.summary.optimizer_public_search_report import project_search_report
 
 from .schedule_candidate_specs import CANDIDATE_KIND_CRITICAL_CHAIN
 from .schedule_candidate_summary import (
@@ -121,12 +122,22 @@ def _copy_candidate_comparison(out: Dict[str, Any], algo: Dict[str, Any]) -> Non
         out["candidate_comparison"] = candidate_comparison
 
 
+def _copy_search_report(out: Dict[str, Any], algo: Dict[str, Any]) -> None:
+    search_report = algo.get("search_report")
+    if not isinstance(search_report, dict):
+        return
+    public_report, _diagnostics = project_search_report(search_report)
+    if public_report:
+        out["search_report"] = public_report
+
+
 def operation_log_algo_summary(result_summary_obj: Dict[str, Any]) -> Any:
     algo = result_summary_obj.get("algo")
     if not isinstance(algo, dict):
         return algo
     out: Dict[str, Any] = {}
     _copy_known_algo_fields(out, algo)
+    _copy_search_report(out, algo)
     _copy_graph_analysis(out, algo)
     _copy_candidate_comparison(out, algo)
     return out or None

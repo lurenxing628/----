@@ -155,6 +155,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/algorithm/test_optimizer_seed_boundary_contract.py",
     "tests/algorithm/test_optimizer_runtime_seam_contract.py",
     "tests/algorithm/test_optimizer_outcome_type_contract.py",
+    "tests/algorithm/test_optimizer_search_report_contract.py",
     "tests/algorithm/test_optimizer_public_summary_projection_contract.py",
     "tests/algorithm/test_optimizer_proof_harness_contract.py",
     "tests/schedule/service/test_schedule_input_collector_contract.py",

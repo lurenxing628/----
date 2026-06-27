@@ -1,22 +1,30 @@
 from __future__ import annotations
 
 import time
-import traceback
 from datetime import date, datetime
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
-from core.algorithms.greedy.algo_stats import increment_counter, merge_algo_stats, snapshot_algo_stats
+from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
 from core.infrastructure.errors import ValidationError
 
-from .optimizer_attempt_records import candidate_tag, evaluate_optional_start_candidate
+from .optimizer_attempt_records import evaluate_optional_start_candidate
 from .optimizer_config import (
     ensure_optimizer_config_snapshot,
     is_ortools_enabled,
     ortools_time_limit_seconds,
     weighted_strategy_params,
+)
+from .optimizer_step_report_hooks import (
+    _mark_report_deadline_skip,
+    _mark_report_phase_skipped,
+    _multi_start_deadline_reached,
+    _record_multi_start_candidate,
+    _record_ortools_candidate,
+    _record_ortools_failure,
+    _record_ortools_optional_failure,
 )
 from .schedule_signature_support import (
     schedule_with_optional_strict_mode as _schedule_with_optional_strict_mode,
@@ -124,60 +132,20 @@ def _evaluate_ortools_candidate(
     }
 
 
-def _append_ortools_attempt(*, attempts: List[Dict[str, Any]], candidate: Dict[str, Any]) -> None:
-    metrics = candidate["metrics"]
-    dispatch_mode = str(candidate.get("dispatch_mode") or "")
-    dispatch_rule = str(candidate.get("dispatch_rule") or "")
-    attempts.append(
-        {
-            "tag": f"ortools:bottleneck|{dispatch_mode}:{dispatch_rule}",
-            "strategy": candidate["strategy"].value,
-            "dispatch_mode": dispatch_mode,
-            "dispatch_rule": dispatch_rule,
-            "used_params": dict(candidate["params"] or {}),
-            "score": list(candidate["score"]),
-            "failed_ops": int(candidate["summary"].failed_ops),
-            "metrics": metrics.to_dict(),
-            "algo_stats": candidate["algo_stats"],
-        }
-    )
-
-
-def _append_ortools_trace(
+def _ortools_warmstart_skip_reason(
     *,
-    improvement_trace: List[Dict[str, Any]],
-    candidate: Dict[str, Any],
+    algo_mode: str,
+    snapshot: Any,
+    deadline: float,
     now: Callable[[], float],
-    t_begin: float,
-) -> None:
-    if len(improvement_trace) >= 200:
-        return
-    metrics = candidate["metrics"]
-    dispatch_mode = str(candidate.get("dispatch_mode") or "")
-    dispatch_rule = str(candidate.get("dispatch_rule") or "")
-    improvement_trace.append(
-        {
-            "elapsed_ms": int((now() - t_begin) * 1000),
-            "tag": f"ortools:bottleneck|{dispatch_mode}:{dispatch_rule}",
-            "strategy": candidate["strategy"].value,
-            "dispatch_mode": dispatch_mode,
-            "dispatch_rule": dispatch_rule,
-            "score": list(candidate["score"]),
-            "metrics": metrics.to_dict(),
-        }
-    )
-
-
-def _record_ortools_failure(*, optimizer_algo_stats: Optional[Dict[str, Any]], scheduler: SchedulerLike, logger: Any, exc: Exception) -> None:
-    increment_counter(optimizer_algo_stats if isinstance(optimizer_algo_stats, dict) else scheduler, "ortools_warmstart_failed_count")
-    if not logger:
-        return
-    tb = traceback.format_exc(limit=10)
-    # 尽量带堆栈（便于定位依赖缺失/配置错误等）；若 logger 不支持 exc_info 参数则回退为拼接文本。
-    try:
-        logger.warning(f"OR-Tools 预热失败（已忽略）：{exc}", exc_info=True)
-    except TypeError:
-        logger.warning(f"OR-Tools 预热失败（已忽略）：{exc}\n{tb}")
+) -> Optional[str]:
+    if algo_mode != "improve":
+        return "algo_mode_not_improve"
+    if not is_ortools_enabled(snapshot):
+        return "disabled"
+    if float(deadline - now()) < 1.0:
+        return "time_budget"
+    return None
 
 
 def _run_ortools_warmstart(
@@ -207,12 +175,18 @@ def _run_ortools_warmstart(
     graph_ready_context: Optional[Any] = None,
     strict_mode: bool = False,
     clock: Optional[Callable[[], float]] = None,
+    search_report_state: Any = None,
 ) -> Optional[Dict[str, Any]]:
     # 可选：OR-Tools 高质量起点（瓶颈子问题）
     snapshot = _step_config_snapshot(cfg, strict_mode=bool(strict_mode))
     now = clock or time.time
 
-    if algo_mode != "improve" or not is_ortools_enabled(snapshot):
+    skip_reason = _ortools_warmstart_skip_reason(algo_mode=algo_mode, snapshot=snapshot, deadline=deadline, now=now)
+    if skip_reason == "time_budget":
+        _mark_report_deadline_skip(search_report_state, "ortools_warmstart")
+        return best
+    if skip_reason:
+        _mark_report_phase_skipped(search_report_state, "ortools_warmstart", skip_reason)
         return best
 
     try:
@@ -225,7 +199,11 @@ def _run_ortools_warmstart(
             start_dt=start_dt,
             logger=logger,
         )
-        if not ort_order or now() > deadline:
+        if not ort_order:
+            _mark_report_phase_skipped(search_report_state, "ortools_warmstart", "no_candidate")
+            return best
+        if now() > deadline:
+            _mark_report_deadline_skip(search_report_state, "ortools_warmstart")
             return best
 
         ort_strat = strategy_enum
@@ -249,17 +227,49 @@ def _run_ortools_warmstart(
             readiness_gate_enabled=bool(readiness_gate_enabled),
             graph_ready_context=graph_ready_context,
         )
-        _append_ortools_attempt(attempts=attempts, candidate=cand)
-        if best is None or cand["score"] < best["score"]:
-            best = cand
-            _append_ortools_trace(improvement_trace=improvement_trace, candidate=cand, now=now, t_begin=t_begin)
+        best = _record_ortools_candidate(
+            best=best,
+            candidate=cand,
+            attempts=attempts,
+            improvement_trace=improvement_trace,
+            search_report_state=search_report_state,
+            now=now,
+            t_begin=t_begin,
+        )
     except ValidationError as e:
         if bool(strict_mode):
             raise
-        _record_ortools_failure(optimizer_algo_stats=optimizer_algo_stats, scheduler=scheduler, logger=logger, exc=e)
+        _record_ortools_optional_failure(
+            attempts=attempts,
+            strategy=strategy_enum,
+            dispatch_mode=dispatch_mode_cfg,
+            dispatch_rule=dispatch_rule_cfg,
+            search_report_state=search_report_state,
+            optimizer_algo_stats=optimizer_algo_stats,
+            scheduler=scheduler,
+            logger=logger,
+            exc=e,
+        )
     except Exception as e:
-        _record_ortools_failure(optimizer_algo_stats=optimizer_algo_stats, scheduler=scheduler, logger=logger, exc=e)
+        _record_ortools_optional_failure(
+            attempts=attempts,
+            strategy=strategy_enum,
+            dispatch_mode=dispatch_mode_cfg,
+            dispatch_rule=dispatch_rule_cfg,
+            search_report_state=search_report_state,
+            optimizer_algo_stats=optimizer_algo_stats,
+            scheduler=scheduler,
+            logger=logger,
+            exc=e,
+        )
     return best
+
+
+__all__ = [
+    "_record_ortools_failure",
+    "_run_multi_start",
+    "_run_ortools_warmstart",
+]
 
 
 def _dispatch_rules_for_mode(dispatch_mode: str, dispatch_rule_cfg: str, valid_dispatch_rules: List[str]) -> List[str]:
@@ -376,6 +386,7 @@ def _run_multi_start(
     graph_ready_context: Optional[Any] = None,
     strict_mode: bool = False,
     clock: Optional[Callable[[], float]] = None,
+    search_report_state: Any = None,
 ) -> Optional[Dict[str, Any]]:
     order_cache: Dict[Tuple[str, Tuple[Tuple[str, Any], ...]], List[str]] = {}
     snapshot = _step_config_snapshot(cfg, strict_mode=bool(strict_mode))
@@ -388,11 +399,11 @@ def _run_multi_start(
 
     # 执行策略轮询（multi-start）
     for dm in dispatch_modes:
-        if now() > deadline:
+        if _multi_start_deadline_reached(now=now, deadline=deadline, search_report_state=search_report_state):
             break
         dispatch_rules = _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules)
         for k in keys:
-            if now() > deadline:
+            if _multi_start_deadline_reached(now=now, deadline=deadline, search_report_state=search_report_state):
                 break
             strat = SortStrategy(k)
             params0 = _resolve_multi_start_strategy_params(
@@ -403,7 +414,7 @@ def _run_multi_start(
             )
 
             for dr in dispatch_rules:
-                if now() > deadline:
+                if _multi_start_deadline_reached(now=now, deadline=deadline, search_report_state=search_report_state):
                     break
                 order = _get_cached_multi_start_order(
                     strategy=strat,
@@ -439,37 +450,20 @@ def _run_multi_start(
                     dispatch_rule=dr,
                     primary=primary,
                     strict_mode=bool(strict_mode),
+                    search_report_state=search_report_state,
                 )
                 if cand is None:
                     continue
-                score = cand["score"]
-                metrics = cand["metrics"]
-                algo_stats = cand["algo_stats"]
-                attempts.append(
-                    {
-                        "tag": candidate_tag(k, dm, dr),
-                        "strategy": cand["strategy"].value,
-                        "dispatch_mode": dm,
-                        "dispatch_rule": dr,
-                        "used_params": dict(cand["params"] or {}),
-                        "score": list(score),
-                        "failed_ops": int(cand["summary"].failed_ops),
-                        "metrics": metrics.to_dict(),
-                        "algo_stats": algo_stats,
-                    }
+                best = _record_multi_start_candidate(
+                    best=best,
+                    candidate=cand,
+                    strategy_key=k,
+                    dispatch_mode=dm,
+                    dispatch_rule=dr,
+                    attempts=attempts,
+                    improvement_trace=improvement_trace,
+                    search_report_state=search_report_state,
+                    now=now,
+                    t_begin=t_begin,
                 )
-                if best is None or score < best["score"]:
-                    best = cand
-                    if len(improvement_trace) < 200:
-                        improvement_trace.append(
-                            {
-                                "elapsed_ms": int((now() - t_begin) * 1000),
-                                "tag": candidate_tag(k, dm, dr),
-                                "strategy": cand["strategy"].value,
-                                "dispatch_mode": dm,
-                                "dispatch_rule": dr,
-                                "score": list(score),
-                                "metrics": metrics.to_dict(),
-                            }
-                        )
     return best

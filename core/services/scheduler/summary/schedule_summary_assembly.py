@@ -276,6 +276,7 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
         "best_batch_order": list(ctx.best_order or []),
         "attempts": compact_attempts(list(ctx.attempts or []), limit=12),
         "improvement_trace": list(ctx.improvement_trace or [])[:200],
+        "search_report": dict(ctx.search_report or {}),
         "downtime_avoid": _algo_downtime_dict(
             auto_assign_enabled=auto_assign_enabled, downtime_state=state.downtime_state
         ),

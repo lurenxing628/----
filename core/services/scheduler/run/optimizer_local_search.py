@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from core.algorithms import ScheduleResult
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
 
-from .optimizer_attempt_records import evaluate_optional_local_candidate
+from .optimizer_attempt_records import append_rejected_reason_attempt, evaluate_optional_local_candidate
 from .optimizer_search_state import init_seen_hashes
 
 
@@ -187,6 +187,84 @@ def _should_skip_seen(cand_order: List[str], seen_hashes: Optional[set]) -> bool
     return False
 
 
+def _local_search_skip_reason(
+    *,
+    algo_mode: str,
+    best: Optional[Dict[str, Any]],
+) -> Tuple[Optional[str], Dict[str, Any]]:
+    if algo_mode != "improve":
+        return "algo_mode_not_improve", {}
+    if best is None:
+        return "best_missing", {}
+    order_length = len(best.get("order") or [])
+    if order_length < 2:
+        return "order_too_short", {"order_length": order_length}
+    return None, {}
+
+
+def _mark_local_search_skipped(search_report_state: Any, reason: str, extra: Dict[str, Any]) -> None:
+    if search_report_state is not None:
+        search_report_state.mark_phase_skipped("local_search", reason, **extra)
+
+
+def _record_noop_neighbor(
+    *,
+    attempts: List[Dict[str, Any]],
+    search_report_state: Any,
+    strategy: Any,
+    dispatch_mode: str,
+    dispatch_rule: str,
+) -> None:
+    if search_report_state is None:
+        return
+    attempt = append_rejected_reason_attempt(
+        attempts=attempts,
+        tag="local:noop_neighbor",
+        strategy=strategy.value,
+        dispatch_mode=dispatch_mode,
+        dispatch_rule=dispatch_rule,
+        reason="noop_neighbor",
+        message="局部搜索候选与已见过的批次顺序重复，本轮未重新排产。",
+    )
+    search_report_state.mark_candidate_rejected(reason="noop_neighbor", attempt=attempt)
+
+
+def _mark_local_candidate_evaluated(search_report_state: Any, candidate: Optional[Dict[str, Any]]) -> None:
+    if candidate is not None and search_report_state is not None:
+        search_report_state.mark_candidate_evaluated(candidate, origin="local_search")
+
+
+def _mark_local_candidate_accepted(
+    *,
+    search_report_state: Any,
+    candidate: Optional[Dict[str, Any]],
+    best_before: Dict[str, Any],
+    best_after: Dict[str, Any],
+) -> None:
+    if candidate is None or search_report_state is None:
+        return
+    if best_after is candidate and best_before is not candidate:
+        search_report_state.local_search_improved = True
+        search_report_state.mark_candidate_accepted(candidate, origin="local_search")
+
+
+def _local_search_stop_reason(*, now_value: float, deadline: float, iteration: int, iteration_limit: int) -> Optional[str]:
+    if now_value > deadline:
+        return "time_budget"
+    if iteration >= iteration_limit:
+        return "iteration_limit"
+    return None
+
+
+def _mark_local_search_stop(search_report_state: Any, reason: str) -> None:
+    if search_report_state is None:
+        return
+    if reason == "time_budget":
+        search_report_state.mark_deadline_reached()
+    elif reason == "iteration_limit":
+        search_report_state.mark_iteration_limit_reached()
+
+
 def _apply_candidate_result(
     *,
     candidate: Optional[Dict[str, Any]],
@@ -212,6 +290,101 @@ def _apply_candidate_result(
         )
         return candidate, list(candidate["order"]), 0
     return best, cur_order, no_improve + 1
+
+
+def _run_local_search_candidate_round(
+    *,
+    best: Dict[str, Any],
+    cur_order: List[str],
+    cur_strat: Any,
+    cur_params: Dict[str, Any],
+    cur_dispatch_mode: str,
+    cur_dispatch_rule: str,
+    seen_hashes: Optional[set],
+    rnd: Any,
+    attempts: List[Dict[str, Any]],
+    improvement_trace: List[Dict[str, Any]],
+    search_report_state: Any,
+    no_improve: int,
+    scheduler: Any,
+    strict_mode: bool,
+    algo_ops_to_schedule: List[Any],
+    batches: Dict[str, Any],
+    start_dt: datetime,
+    end_date: Optional[date],
+    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
+    seed_sr_list: List[ScheduleResult],
+    resource_pool: Optional[Dict[str, Any]],
+    objective_name: str,
+    optimizer_algo_stats: Optional[Dict[str, Any]],
+    schedule_fn: Callable[..., Any],
+    readiness_gate_enabled: bool,
+    graph_ready_context: Optional[Any],
+    clock: Callable[[], float],
+    t_begin: float,
+) -> Tuple[Dict[str, Any], List[str], int]:
+    cand_order, move = _choose_neighbor(cur_order, rnd)
+    if _should_skip_seen(cand_order, seen_hashes):
+        _record_noop_neighbor(
+            attempts=attempts,
+            search_report_state=search_report_state,
+            strategy=cur_strat,
+            dispatch_mode=cur_dispatch_mode,
+            dispatch_rule=cur_dispatch_rule,
+        )
+        return best, cur_order, no_improve + 1
+
+    candidate = evaluate_optional_local_candidate(
+        evaluate=partial(
+            _evaluate_candidate,
+            scheduler=scheduler,
+            strict_mode=bool(strict_mode),
+            algo_ops_to_schedule=algo_ops_to_schedule,
+            batches=batches,
+            strategy=cur_strat,
+            params=cur_params,
+            start_dt=start_dt,
+            end_date=end_date,
+            downtime_map=downtime_map,
+            order=cand_order,
+            seed_sr_list=seed_sr_list,
+            dispatch_mode=cur_dispatch_mode,
+            dispatch_rule=cur_dispatch_rule,
+            resource_pool=resource_pool,
+            objective_name=objective_name,
+            optimizer_algo_stats=optimizer_algo_stats,
+            schedule_fn=schedule_fn,
+            readiness_gate_enabled=bool(readiness_gate_enabled),
+            graph_ready_context=graph_ready_context,
+        ),
+        attempts=attempts,
+        move=move,
+        strategy=cur_strat,
+        dispatch_mode=cur_dispatch_mode,
+        dispatch_rule=cur_dispatch_rule,
+        strict_mode=bool(strict_mode),
+        search_report_state=search_report_state,
+    )
+    _mark_local_candidate_evaluated(search_report_state, candidate)
+    old_best = best
+    best, cur_order, no_improve = _apply_candidate_result(
+        candidate=candidate,
+        best=best,
+        cur_order=cur_order,
+        no_improve=no_improve,
+        move=move,
+        attempts=attempts,
+        improvement_trace=improvement_trace,
+        clock=clock,
+        t_begin=t_begin,
+    )
+    _mark_local_candidate_accepted(
+        search_report_state=search_report_state,
+        candidate=candidate,
+        best_before=old_best,
+        best_after=best,
+    )
+    return best, cur_order, no_improve
 
 
 def run_local_search(
@@ -242,11 +415,17 @@ def run_local_search(
     rng_factory: Callable[[int], Any],
     schedule_fn: Callable[..., Any],
     graph_ready_context: Optional[Any] = None,
+    search_report_state: Any = None,
 ) -> Optional[Dict[str, Any]]:
-    if algo_mode != "improve" or best is None or len(best.get("order") or []) < 2:
+    skip_reason, skip_extra = _local_search_skip_reason(algo_mode=algo_mode, best=best)
+    if skip_reason:
+        _mark_local_search_skipped(search_report_state, skip_reason, skip_extra)
         return best
+    best = cast(Dict[str, Any], best)
 
     rnd = rng_factory(int(version))
+    if search_report_state is not None:
+        search_report_state.local_search_entered = True
     cur_order = list(best["order"])
     cur_strat = best["strategy"]
     cur_params = dict(best["params"] or {})
@@ -258,51 +437,48 @@ def run_local_search(
     restart_after = max(50, min(800, int(it_limit / 8) if it_limit > 0 else 200))
     seen_hashes = init_seen_hashes(cur_order, best)
 
-    while clock() <= deadline and it < it_limit:
-        it += 1
-        cand_order, move = _choose_neighbor(cur_order, rnd)
-        if _should_skip_seen(cand_order, seen_hashes):
-            no_improve += 1
-            continue
-
-        candidate = evaluate_optional_local_candidate(
-            evaluate=partial(
-                _evaluate_candidate,
-                scheduler=scheduler,
-                strict_mode=bool(strict_mode),
-                algo_ops_to_schedule=algo_ops_to_schedule,
-                batches=batches,
-                strategy=cur_strat,
-                params=cur_params,
-                start_dt=start_dt,
-                end_date=end_date,
-                downtime_map=downtime_map,
-                order=cand_order,
-                seed_sr_list=seed_sr_list,
-                dispatch_mode=cur_dispatch_mode,
-                dispatch_rule=cur_dispatch_rule,
-                resource_pool=resource_pool,
-                objective_name=objective_name,
-                optimizer_algo_stats=optimizer_algo_stats,
-                schedule_fn=schedule_fn,
-                readiness_gate_enabled=bool(readiness_gate_enabled),
-                graph_ready_context=graph_ready_context,
-            ),
-            attempts=attempts,
-            move=move,
-            strategy=cur_strat,
-            dispatch_mode=cur_dispatch_mode,
-            dispatch_rule=cur_dispatch_rule,
-            strict_mode=bool(strict_mode),
+    while True:
+        now_value = clock()
+        stop_reason = _local_search_stop_reason(
+            now_value=now_value,
+            deadline=deadline,
+            iteration=it,
+            iteration_limit=it_limit,
         )
-        best, cur_order, no_improve = _apply_candidate_result(
-            candidate=candidate,
+        if stop_reason:
+            _mark_local_search_stop(search_report_state, stop_reason)
+            break
+        it += 1
+        if search_report_state is not None:
+            search_report_state.set_iterations(it)
+
+        best, cur_order, no_improve = _run_local_search_candidate_round(
             best=best,
             cur_order=cur_order,
-            no_improve=no_improve,
-            move=move,
             attempts=attempts,
             improvement_trace=improvement_trace,
+            cur_strat=cur_strat,
+            cur_params=cur_params,
+            cur_dispatch_mode=cur_dispatch_mode,
+            cur_dispatch_rule=cur_dispatch_rule,
+            seen_hashes=seen_hashes,
+            rnd=rnd,
+            search_report_state=search_report_state,
+            no_improve=no_improve,
+            scheduler=scheduler,
+            strict_mode=strict_mode,
+            algo_ops_to_schedule=algo_ops_to_schedule,
+            batches=batches,
+            start_dt=start_dt,
+            end_date=end_date,
+            downtime_map=downtime_map,
+            seed_sr_list=seed_sr_list,
+            resource_pool=resource_pool,
+            objective_name=objective_name,
+            optimizer_algo_stats=optimizer_algo_stats,
+            schedule_fn=schedule_fn,
+            readiness_gate_enabled=readiness_gate_enabled,
+            graph_ready_context=graph_ready_context,
             clock=clock,
             t_begin=t_begin,
         )

@@ -9,6 +9,7 @@ from core.models.scheduler_public_errors import (
     public_safe_label,
 )
 from core.services.scheduler.run.schedule_candidate_summary import candidate_comparison_minimal_summary
+from core.services.scheduler.summary.optimizer_public_search_report import project_search_report
 
 SUMMARY_SIZE_LIMIT_BYTES = 512 * 1024
 _ALLOWED_MISSING_FIELDS = {"设备", "人员"}
@@ -50,6 +51,35 @@ def size_guard_dict(raw: Any, *, max_items: int = 20, max_value_chars: int = 120
             continue
         out[key_text] = size_guard_scalar(value, max_chars=max_value_chars)
     return out
+
+
+def _search_report_minimal_summary(raw: Any) -> Dict[str, Any]:
+    public_report, _diagnostics = project_search_report(raw)
+    if not public_report:
+        return {}
+    allowed = (
+        "schema_version",
+        "algorithm_profile",
+        "seed",
+        "stop_reason",
+        "best_origin",
+        "time_budget_seconds",
+        "runtime_ms",
+        "iterations",
+        "evaluated_candidates",
+        "distinct_candidates",
+        "accepted_candidates",
+        "accepted_distinct_candidates",
+        "rejected_candidates",
+        "best_score",
+        "objective_name",
+        "best_fingerprint_changed",
+        "improved",
+        "rejection_summary",
+        "skipped_phases",
+        "public_attempt_summary",
+    )
+    return {key: public_report[key] for key in allowed if key in public_report}
 
 
 def _copy_guarded_text_fields(raw: Dict[str, Any], out: Dict[str, Any], fields: Tuple[str, ...], *, max_chars: int) -> None:
@@ -276,6 +306,9 @@ def minimal_summary_for_size_guard(
     candidate_comparison = candidate_comparison_minimal_summary(algo_dict.get("candidate_comparison"))
     if candidate_comparison:
         minimal_algo["candidate_comparison"] = candidate_comparison
+    search_report = _search_report_minimal_summary(algo_dict.get("search_report"))
+    if search_report:
+        minimal_algo["search_report"] = search_report
     if minimal_algo:
         minimal["algo"] = minimal_algo
     if diagnostics_truncated or bool(result_summary_obj.get("diagnostics_truncated")):

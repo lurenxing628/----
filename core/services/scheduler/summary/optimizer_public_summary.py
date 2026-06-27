@@ -25,6 +25,7 @@ from .optimizer_public_safety import (
     safe_non_negative_int,
     safe_public_text_list,
 )
+from .optimizer_public_search_report import project_search_report
 
 _PUBLIC_ALGO_KEYS = {
     "mode",
@@ -55,6 +56,7 @@ _PUBLIC_ALGO_KEYS = {
     "graph_analysis",
     "candidate_comparison",
     "warning_pipeline",
+    "search_report",
 }
 
 
@@ -64,12 +66,16 @@ def project_public_algo_summary(algo: Dict[str, Any]) -> Tuple[Dict[str, Any], D
 
     _project_text_and_budget_fields(public_algo)
     _project_score_fields(public_algo)
+    search_report_diagnostics = _project_search_report_field(public_algo)
     _project_attempt_fields(public_algo)
     _project_algo_context_fields(public_algo)
     _project_auxiliary_fields(public_algo)
     _project_nested_summary_fields(public_algo)
 
-    diagnostics = _optimizer_diagnostics(public_algo.pop("_diagnostic_attempts", []))
+    diagnostics = _optimizer_diagnostics(
+        public_algo.pop("_diagnostic_attempts", []),
+        search_report_diagnostics=search_report_diagnostics,
+    )
     return public_algo, diagnostics
 
 
@@ -127,6 +133,17 @@ def _project_attempt_fields(public_algo: Dict[str, Any]) -> None:
     else:
         public_algo.pop("attempts", None)
     public_algo["_diagnostic_attempts"] = diagnostic_attempts
+
+
+def _project_search_report_field(public_algo: Dict[str, Any]) -> Dict[str, Any]:
+    if "search_report" not in public_algo:
+        return {}
+    public_report, diagnostics = project_search_report(public_algo.get("search_report"))
+    if public_report:
+        public_algo["search_report"] = public_report
+    else:
+        public_algo.pop("search_report", None)
+    return diagnostics
 
 
 def _project_algo_context_fields(public_algo: Dict[str, Any]) -> None:
@@ -202,9 +219,14 @@ def _replace_with_list(data: Dict[str, Any], key: str, projector) -> None:
         data[key] = projector(data.get(key))
 
 
-def _optimizer_diagnostics(diagnostic_attempts: Any) -> Dict[str, Any]:
+def _optimizer_diagnostics(diagnostic_attempts: Any, *, search_report_diagnostics: Any = None) -> Dict[str, Any]:
+    optimizer: Dict[str, Any] = {}
     if diagnostic_attempts:
-        return {"optimizer": {"attempts": diagnostic_attempts}}
+        optimizer["attempts"] = diagnostic_attempts
+    if search_report_diagnostics:
+        optimizer["search_report"] = search_report_diagnostics
+    if optimizer:
+        return {"optimizer": optimizer}
     return {}
 
 

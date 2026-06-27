@@ -37,6 +37,7 @@ class SummaryBuildContext:
     attempts: List[Dict[str, Any]]
     improvement_trace: List[Dict[str, Any]]
     frozen_op_ids: Set[int]
+    search_report: Dict[str, Any] = field(default_factory=dict)
     missing_internal_resource_op_ids: Optional[Set[int]] = None
     scheduled_op_ids: Optional[Set[int]] = None
     freeze_meta: Optional[Dict[str, Any]] = None
