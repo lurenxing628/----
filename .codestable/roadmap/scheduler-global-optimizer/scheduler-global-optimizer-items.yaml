@@ -61,10 +61,10 @@ items:
   - slug: vns-sa-local-search-upgrade
     description: 把现有 local search 升级为 VNS 和 SA 后处理，先做轻量可复现版本
     depends_on: [grasp-ig-candidate-construction, business-neighborhood-registry]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-28-vns-sa-local-search-upgrade
     minimal_loop: false
-    notes: 固定 seed、固定预算、明确 stop_reason；Record-to-Record Travel 必须写全称；no-op 邻域和 fallback move 必须 trace
+    notes: 已落地 VNS/acceptance 局搜升级；新增 current/best 分离状态，非改进候选可按 threshold/record_to_record/simulated_annealing 接受为 current，但 best 只在 acceptance 通过、score 严格更优、output_fingerprint 非 parent 且非 seen 时更新；CandidateProfile 默认 improve 扩展为 vns_sa，acceptance 白名单扩为 improve_only/threshold/record_to_record/simulated_annealing，未知 acceptance 继续 ValidationError fail-loud；SearchReport 新增 acceptance_events/acceptance_summary、vns_events/vns_summary，并把 acceptance_passed 改为真实 best acceptance 事件，不再用 accepted_candidates>1 代理；public/OperationLogs/size guard 只投 acceptance/VNS 安全计数摘要，不泄漏 raw random draw、fingerprint hash、raw move 或内部 op/resource id。未做 ALNS。
 
   - slug: alns-partial-repair-contract
     description: 定义 ALNS 局部拆修的 allowed-op、payload validation 和执行态保护复用合同

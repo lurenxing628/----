@@ -70,6 +70,8 @@ def _search_report_minimal_summary(raw: Any) -> Dict[str, Any]:
         "distinct_candidates",
         "accepted_candidates",
         "accepted_distinct_candidates",
+        "current_accepted_candidates",
+        "best_improved_candidates",
         "rejected_candidates",
         "best_score",
         "objective_name",
@@ -81,6 +83,8 @@ def _search_report_minimal_summary(raw: Any) -> Dict[str, Any]:
         "skipped_phases",
         "public_attempt_summary",
         "neighborhood_summary",
+        "acceptance_summary",
+        "vns_summary",
         "profile_public",
     )
     return {key: public_report[key] for key in allowed if key in public_report}

@@ -308,7 +308,7 @@ def test_grasp_ig_profile_budget_is_seeded_and_clamped() -> None:
         ortools_enabled=False,
         graph_sgs_required=False,
     )
-    assert profile.profile == "grasp_ig"
+    assert profile.profile == "vns_sa"
     assert profile.candidate_strategy_families == ("multi_start", "grasp", "iterated_greedy")
     assert profile.repair == "sgs"
     assert profile.acceptance == "improve_only"
@@ -361,7 +361,7 @@ def test_optimizer_main_entry_invokes_grasp_ig_phase_after_multi_start() -> None
     assert call["version"] == 42
     assert call["sgs_enabled"] is True
     assert call["candidate_construction"]["grasp"]["effective_restarts"] == 5
-    assert outcome.search_report["algorithm_profile"] == "grasp_ig"
+    assert outcome.search_report["algorithm_profile"] == "vns_sa"
 
 
 def test_optimizer_main_entry_does_not_leak_candidate_construction_through_used_params() -> None:

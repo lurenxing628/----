@@ -212,6 +212,7 @@ def test_improved_requires_fingerprint_change_score_gain_and_acceptance() -> Non
     score_only.mark_candidate_accepted(baseline, origin="multi_start")
     score_only.best_score = [0.0, 1.0]
     score_only.accepted_candidates = 2
+    score_only.best_acceptance_passed = True
     report = score_only.finalize(runtime_ms=10, attempts=[], improvement_trace=[])
     assert report["improvement_conditions"]["fingerprint_changed"] is False
     assert report["improvement_conditions"]["score_strictly_better"] is True

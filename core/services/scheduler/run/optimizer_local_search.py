@@ -6,12 +6,25 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, ca
 
 from core.algorithms import ScheduleResult
 
+from .optimizer_acceptance import ACCEPTANCE_IMPROVE_ONLY, AcceptanceDecision, decide_acceptance
 from .optimizer_attempt_records import append_rejected_reason_attempt, evaluate_optional_local_candidate
 from .optimizer_candidate_profile import derive_iteration_limits
 from .optimizer_local_search_candidate_eval import evaluate_local_search_candidate
+from .optimizer_local_search_fingerprints import (
+    LocalSearchFingerprintTracker,
+    local_candidate_fingerprint,
+    should_skip_seen,
+)
+from .optimizer_local_search_report_hooks import (
+    mark_acceptance_rejected,
+    mark_best_candidate_accepted,
+    mark_current_candidate_accepted,
+)
+from .optimizer_local_search_state import LocalSearchState, candidate_can_update_best
 from .optimizer_neighborhood_moves import BUSINESS_NEIGHBORHOODS, NeighborhoodMove
 from .optimizer_neighborhood_registry import choose_neighborhood_move
 from .optimizer_search_state import init_seen_hashes
+from .optimizer_vns import VnsState
 
 if TYPE_CHECKING:
     from .optimizer_search_report import OptimizationSearchReportState
@@ -78,22 +91,6 @@ def _shake_order(order: List[str], rnd: Any) -> List[str]:
     return cur_order
 
 
-def _move_seen_key(move: NeighborhoodMove) -> Tuple[Any, ...]:
-    if move.decision_key:
-        return tuple(move.decision_key)
-    return tuple(move.batch_order or ())
-
-
-def _should_skip_seen(move: NeighborhoodMove, seen_hashes: Optional[set]) -> bool:
-    if seen_hashes is None:
-        return False
-    cand_hash = _move_seen_key(move)
-    if cand_hash in seen_hashes:
-        return True
-    seen_hashes.add(cand_hash)
-    return False
-
-
 def _local_search_skip_reason(
     *,
     algo_mode: str,
@@ -138,11 +135,6 @@ def _record_noop_neighbor(
     search_report_state.mark_candidate_rejected(reason=reason)
 
 
-def _mark_local_candidate_evaluated(search_report_state: Optional[OptimizationSearchReportState], candidate: Optional[Dict[str, Any]]) -> None:
-    if candidate is not None and search_report_state is not None:
-        search_report_state.mark_candidate_evaluated(candidate, origin="local_search")
-
-
 def _mark_neighborhood_move(
     search_report_state: Optional[OptimizationSearchReportState],
     move: NeighborhoodMove,
@@ -165,20 +157,6 @@ def _mark_neighborhood_move(
     search_report_state.mark_neighborhood_move(row)
 
 
-def _mark_local_candidate_accepted(
-    *,
-    search_report_state: Optional[OptimizationSearchReportState],
-    candidate: Optional[Dict[str, Any]],
-    best_before: Dict[str, Any],
-    best_after: Dict[str, Any],
-) -> None:
-    if candidate is None or search_report_state is None:
-        return
-    if best_after is candidate and best_before is not candidate:
-        search_report_state.local_search_improved = True
-        search_report_state.mark_candidate_accepted(candidate, origin="local_search")
-
-
 def _local_search_stop_reason(*, now_value: float, deadline: float, iteration: int, iteration_limit: int) -> Optional[str]:
     if now_value > deadline:
         return "time_budget"
@@ -196,21 +174,22 @@ def _mark_local_search_stop(search_report_state: Optional[OptimizationSearchRepo
         search_report_state.mark_iteration_limit_reached()
 
 
-def _apply_candidate_result(
+def _apply_accepted_candidate(
     *,
     candidate: Optional[Dict[str, Any]],
-    best: Dict[str, Any],
-    cur_order: List[str],
+    local_state: LocalSearchState,
+    candidate_fingerprint: Any,
+    acceptance_decision: AcceptanceDecision,
     no_improve: int,
     move: NeighborhoodMove,
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
     clock: Callable[[], float],
     t_begin: float,
-) -> Tuple[Dict[str, Any], List[str], int]:
+) -> Tuple[bool, bool, int]:
     if candidate is None:
-        return best, cur_order, no_improve + 1
-    if candidate["score"] < best["score"]:
+        return False, False, no_improve + 1
+    if acceptance_decision.accepted and candidate_can_update_best(candidate=candidate, best=local_state.best, fingerprint=candidate_fingerprint):
         _record_improvement(
             candidate=candidate,
             move=move,
@@ -219,25 +198,32 @@ def _apply_candidate_result(
             clock=clock,
             t_begin=t_begin,
         )
-        return candidate, list(candidate["order"]), 0
-    return best, cur_order, no_improve + 1
+        local_state.improve_best(candidate)
+        return True, True, 0
+    if acceptance_decision.accepted:
+        local_state.accept_current(candidate)
+        return True, False, no_improve + 1
+    return False, False, no_improve + 1
 
 
 def _run_local_search_candidate_round(
     *,
-    best: Dict[str, Any],
-    cur_order: List[str],
+    local_state: LocalSearchState,
+    vns_state: VnsState,
     cur_strat: Any,
     cur_params: Dict[str, Any],
     cur_dispatch_mode: str,
     cur_dispatch_rule: str,
-    neighborhoods: Tuple[str, ...],
     seen_hashes: Optional[set],
     rnd: Any,
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
     search_report_state: Optional[OptimizationSearchReportState],
     no_improve: int,
+    acceptance: str,
+    version: int,
+    iteration: int,
+    iteration_limit: int,
     scheduler: Any,
     strict_mode: bool,
     algo_ops_to_schedule: List[Any],
@@ -252,15 +238,16 @@ def _run_local_search_candidate_round(
     schedule_fn: Callable[..., Any],
     readiness_gate_enabled: bool,
     graph_ready_context: Optional[Any],
+    fingerprint_tracker: LocalSearchFingerprintTracker,
     clock: Callable[[], float],
     t_begin: float,
-) -> Tuple[Dict[str, Any], List[str], int]:
+) -> Tuple[int, bool, bool, NeighborhoodMove]:
     move = choose_neighborhood_move(
-        order=cur_order,
-        neighborhoods=neighborhoods,
-        results=list(best.get("results") or []),
+        order=local_state.current_order,
+        neighborhoods=vns_state.current_choice(),
+        results=list(local_state.current.get("results") or []),
         batches=batches,
-        resource_pool=resource_pool,
+        resource_pool=local_state.current_resource_pool or resource_pool,
         rnd=rnd,
     )
     if move.noop:
@@ -273,8 +260,8 @@ def _run_local_search_candidate_round(
             dispatch_rule=cur_dispatch_rule,
             move=move,
         )
-        return best, cur_order, no_improve + 1
-    if _should_skip_seen(move, seen_hashes):
+        return no_improve + 1, False, False, move
+    if should_skip_seen(move, seen_hashes):
         _mark_neighborhood_move(
             search_report_state,
             move,
@@ -290,11 +277,11 @@ def _run_local_search_candidate_round(
             dispatch_rule=cur_dispatch_rule,
             move=move,
         )
-        return best, cur_order, no_improve + 1
+        return no_improve + 1, False, False, move
 
     _mark_neighborhood_move(search_report_state, move)
-    cand_order = list(move.batch_order or cur_order)
-    candidate_resource_pool = move.resource_pool if move.resource_pool is not None else resource_pool
+    cand_order = list(move.batch_order or local_state.current_order)
+    candidate_resource_pool = move.resource_pool if move.resource_pool is not None else (local_state.current_resource_pool or resource_pool)
     candidate = evaluate_optional_local_candidate(
         evaluate=partial(
             evaluate_local_search_candidate,
@@ -327,12 +314,28 @@ def _run_local_search_candidate_round(
         strict_mode=bool(strict_mode),
         search_report_state=search_report_state,
     )
-    _mark_local_candidate_evaluated(search_report_state, candidate)
-    old_best = best
-    best, cur_order, no_improve = _apply_candidate_result(
+    candidate_fingerprint = local_candidate_fingerprint(
+        search_report_state=search_report_state,
+        fingerprint_tracker=fingerprint_tracker,
         candidate=candidate,
-        best=best,
-        cur_order=cur_order,
+    )
+    if candidate is None:
+        return no_improve + 1, False, False, move
+    acceptance_decision = decide_acceptance(
+        acceptance_name=acceptance,
+        candidate_score=candidate.get("score"),
+        current_score=local_state.current.get("score"),
+        best_score=local_state.best.get("score"),
+        iteration=iteration,
+        max_iterations=iteration_limit,
+        random_seed=int(version),
+        rnd=rnd,
+    )
+    accepted_current, best_improved, no_improve = _apply_accepted_candidate(
+        candidate=candidate,
+        local_state=local_state,
+        candidate_fingerprint=candidate_fingerprint,
+        acceptance_decision=acceptance_decision,
         no_improve=no_improve,
         move=move,
         attempts=attempts,
@@ -340,13 +343,26 @@ def _run_local_search_candidate_round(
         clock=clock,
         t_begin=t_begin,
     )
-    _mark_local_candidate_accepted(
-        search_report_state=search_report_state,
-        candidate=candidate,
-        best_before=old_best,
-        best_after=best,
-    )
-    return best, cur_order, no_improve
+    if best_improved:
+        if candidate_fingerprint is not None:
+            fingerprint_tracker.mark_best(candidate_fingerprint)
+        mark_best_candidate_accepted(
+            search_report_state=search_report_state,
+            candidate=candidate,
+            acceptance_decision=acceptance_decision,
+        )
+    elif accepted_current:
+        mark_current_candidate_accepted(
+            search_report_state=search_report_state,
+            candidate=candidate,
+            acceptance_decision=acceptance_decision,
+        )
+    else:
+        mark_acceptance_rejected(
+            search_report_state=search_report_state,
+            acceptance_decision=acceptance_decision,
+        )
+    return no_improve, accepted_current, best_improved, move
 
 
 def run_local_search(
@@ -379,6 +395,7 @@ def run_local_search(
     graph_ready_context: Optional[Any] = None,
     search_report_state: Optional[OptimizationSearchReportState] = None,
     neighborhoods: Optional[Tuple[str, ...]] = None,
+    acceptance: str = ACCEPTANCE_IMPROVE_ONLY,
 ) -> Optional[Dict[str, Any]]:
     skip_reason, skip_extra = _local_search_skip_reason(algo_mode=algo_mode, best=best)
     if skip_reason:
@@ -389,16 +406,18 @@ def run_local_search(
     rnd = rng_factory(int(version))
     if search_report_state is not None:
         search_report_state.local_search_entered = True
-    cur_order = list(best["order"])
+    local_state = LocalSearchState.from_best(best, resource_pool=resource_pool)
     cur_strat = best["strategy"]
     cur_params = dict(best["params"] or {})
     cur_dispatch_mode = str(best.get("dispatch_mode") or dispatch_mode_cfg)
     cur_dispatch_rule = str(best.get("dispatch_rule") or dispatch_rule_cfg)
     active_neighborhoods = tuple(neighborhoods or BUSINESS_NEIGHBORHOODS)
+    vns_state = VnsState(active_neighborhoods)
+    fingerprint_tracker = LocalSearchFingerprintTracker(objective_name=objective_name, initial_best=best)
     it = 0
     it_limit, restart_after = derive_iteration_limits(time_budget_seconds)
     no_improve = 0
-    seen_hashes = init_seen_hashes(cur_order, best)
+    seen_hashes = init_seen_hashes(local_state.current_order, best)
 
     while True:
         now_value = clock()
@@ -415,10 +434,9 @@ def run_local_search(
         if search_report_state is not None:
             search_report_state.set_iterations(it)
 
-        best, cur_order, no_improve = _run_local_search_candidate_round(
-            best=best,
-            cur_order=cur_order,
-            neighborhoods=active_neighborhoods,
+        no_improve, _accepted_current, best_improved, move = _run_local_search_candidate_round(
+            local_state=local_state,
+            vns_state=vns_state,
             attempts=attempts,
             improvement_trace=improvement_trace,
             cur_strat=cur_strat,
@@ -429,6 +447,10 @@ def run_local_search(
             rnd=rnd,
             search_report_state=search_report_state,
             no_improve=no_improve,
+            acceptance=acceptance,
+            version=version,
+            iteration=it,
+            iteration_limit=it_limit,
             scheduler=scheduler,
             strict_mode=strict_mode,
             algo_ops_to_schedule=algo_ops_to_schedule,
@@ -443,12 +465,25 @@ def run_local_search(
             schedule_fn=schedule_fn,
             readiness_gate_enabled=readiness_gate_enabled,
             graph_ready_context=graph_ready_context,
+            fingerprint_tracker=fingerprint_tracker,
             clock=clock,
             t_begin=t_begin,
         )
+        vns_event = vns_state.record_round(
+            best_improved=best_improved,
+            noop=bool(move.noop),
+            fallback_used=bool(move.fallback_used),
+        )
+        if search_report_state is not None:
+            search_report_state.mark_vns_event(
+                vns_event
+            )
 
         if no_improve >= restart_after:
             no_improve = 0
-            cur_order = _shake_order(list(best.get("order") or cur_order), rnd)
-            seen_hashes = init_seen_hashes(cur_order, best)
-    return best
+            vns_state.mark_shake()
+            local_state.reset_current_to_best(
+                order=_shake_order(list(local_state.best.get("order") or local_state.current_order), rnd)
+            )
+            seen_hashes = init_seen_hashes(local_state.current_order, local_state.best)
+    return local_state.best

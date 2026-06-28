@@ -367,6 +367,7 @@ def optimize_schedule(
         schedule_fn=_schedule_with_optional_strict_mode,
         search_report_state=search_report_state,
         neighborhoods=tuple(candidate_profile.neighborhoods),
+        acceptance=candidate_profile.acceptance,
     )
 
     if state.best is None:

@@ -85,6 +85,8 @@ def _minimal_trigger_near_due_case():
                 "distinct_candidates": 4,
                 "accepted_candidates": 2,
                 "accepted_distinct_candidates": 2,
+                "current_accepted_candidates": 1,
+                "best_improved_candidates": 1,
                 "rejected_candidates": 3,
                 "best_score": [0.0, 1.0],
                 "objective_name": "min_overdue",
@@ -96,6 +98,10 @@ def _minimal_trigger_near_due_case():
                 "neighborhood_summary": {
                     "critical_chain": {"attempted": 2, "effective": 1, "noop": 1, "fallback": 0, "rejected": 1}
                 },
+                "acceptance_summary": {
+                    "threshold": {"attempted": 2, "accepted": 1, "rejected": 1, "non_improving_accepted": 1}
+                },
+                "vns_summary": {"current_neighborhood": "tardy_window", "neighborhood_index": 1},
                 "public_attempt_summary": [
                     {
                         "origin": "multi_start",
@@ -365,6 +371,10 @@ def main() -> None:
     assert minimal_report.get("neighborhood_summary", {}).get("critical_chain", {}).get("attempted") == 2, (
         "minimal 不应丢 business neighborhood 口径"
     )
+    assert minimal_report.get("acceptance_summary", {}).get("threshold", {}).get("non_improving_accepted") == 1, (
+        "minimal 不应丢 acceptance 口径"
+    )
+    assert minimal_report.get("vns_summary", {}).get("current_neighborhood") == "tardy_window", "minimal 不应丢 VNS 口径"
     assert "attempts" not in minimal_report, "minimal public search_report 不得保留 raw attempts"
     assert "initial_fingerprint" not in minimal_report, "minimal public search_report 不得保留内部 initial_fingerprint"
     assert "best_fingerprint" not in minimal_report, "minimal public search_report 不得保留内部 best_fingerprint"

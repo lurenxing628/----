@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from core.infrastructure.errors import ValidationError
 
+from .optimizer_acceptance import ALLOWED_ACCEPTANCES
 from .optimizer_candidate_fingerprint import (
     DISTINCT_FINGERPRINT_DESCRIPTION,
     DISTINCT_FINGERPRINT_SCOPE,
@@ -88,8 +89,61 @@ def _safe_neighborhood_move(move: Dict[str, Any]) -> Dict[str, Any]:
     return row
 
 
+def _safe_acceptance_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    name = _safe_text(event.get("acceptance_name"))
+    if name not in set(ALLOWED_ACCEPTANCES):
+        raise ValidationError(f"非法接受事件：未知接受准则“{name or event.get('acceptance_name')}”。", field="acceptance")
+    return {
+        "schema_version": int(event.get("schema_version") or 1),
+        "acceptance_name": name,
+        "accepted": bool(event.get("accepted")),
+        "acceptance_reason": _safe_text(event.get("acceptance_reason")),
+        "score_delta": float(event.get("score_delta") or 0.0),
+        "threshold": _optional_float(event.get("threshold")),
+        "temperature": _optional_float(event.get("temperature")),
+        "record_distance": _optional_float(event.get("record_distance")),
+        "random_seed": int(event.get("random_seed") or 0),
+        "deterministic_random_draw": _optional_float(event.get("deterministic_random_draw")),
+        "worse_solution_allowed": bool(event.get("worse_solution_allowed")),
+    }
+
+
+def _safe_vns_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    current = _safe_text(event.get("current_neighborhood"))
+    next_name = _safe_text(event.get("next_neighborhood"))
+    allowed = set(ALLOWED_NEIGHBORHOODS)
+    if current not in allowed or next_name not in allowed:
+        raise ValidationError("非法 VNS 事件：未知业务邻域。", field="vns")
+    return {
+        "schema_version": int(event.get("schema_version") or 1),
+        "current_neighborhood": current,
+        "neighborhood_index": max(int(event.get("neighborhood_index") or 0), 0),
+        "next_neighborhood": next_name,
+        "next_neighborhood_index": max(int(event.get("next_neighborhood_index") or 0), 0),
+        "neighborhood_switch_reason": _safe_text(event.get("neighborhood_switch_reason")),
+        "shake_count": max(int(event.get("shake_count") or 0), 0),
+        "no_improve_count": max(int(event.get("no_improve_count") or 0), 0),
+        "noop_count": max(int(event.get("noop_count") or 0), 0),
+        "fallback_count": max(int(event.get("fallback_count") or 0), 0),
+        "best_improved": bool(event.get("best_improved")),
+    }
+
+
 def _empty_neighborhood_counter() -> Dict[str, int]:
     return {"attempted": 0, "effective": 0, "noop": 0, "fallback": 0, "rejected": 0}
+
+
+def _empty_acceptance_counter() -> Dict[str, int]:
+    return {"attempted": 0, "accepted": 0, "rejected": 0, "non_improving_accepted": 0}
+
+
+def _optional_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def _list_copy(value: Any) -> List[Any]:
@@ -136,6 +190,8 @@ def _final_report_payload(
         "distinct_candidates": int(len(state.candidate_fingerprints)),
         "accepted_candidates": int(state.accepted_candidates),
         "accepted_distinct_candidates": int(len(state.accepted_fingerprints)),
+        "current_accepted_candidates": int(state.current_accepted_candidates),
+        "best_improved_candidates": int(state.best_improved_candidates),
         "rejected_candidates": int(state.rejected_candidates),
         "initial_fingerprint": state.initial_fingerprint,
         "best_fingerprint": state.best_fingerprint,
@@ -152,6 +208,10 @@ def _final_report_payload(
         "fingerprint_events": _list_copy(state.fingerprint_events),
         "neighborhood_moves": _list_copy(state.neighborhood_moves),
         "neighborhood_summary": _dict_copy(state.neighborhood_summary),
+        "acceptance_events": _list_copy(state.acceptance_events),
+        "acceptance_summary": _dict_copy(state.acceptance_summary),
+        "vns_events": _list_copy(state.vns_events),
+        "vns_summary": _dict_copy(state.vns_summary),
         "improvement_conditions": improvement_conditions,
         "skipped_phases": _list_copy(state.skipped_phases),
         "rejection_summary": dict(state.rejection_summary),
@@ -170,6 +230,8 @@ class OptimizationSearchReportState:
     candidate_profile: Optional[Dict[str, Any]] = None
     evaluated_candidates: int = 0
     accepted_candidates: int = 0
+    current_accepted_candidates: int = 0
+    best_improved_candidates: int = 0
     rejected_candidates: int = 0
     iterations: int = 0
     initial_fingerprint: Optional[str] = None
@@ -187,6 +249,11 @@ class OptimizationSearchReportState:
     attempt_summary: List[Dict[str, Any]] = field(default_factory=list)
     neighborhood_moves: List[Dict[str, Any]] = field(default_factory=list)
     neighborhood_summary: Dict[str, Dict[str, int]] = field(default_factory=dict)
+    acceptance_events: List[Dict[str, Any]] = field(default_factory=list)
+    acceptance_summary: Dict[str, Dict[str, int]] = field(default_factory=dict)
+    vns_events: List[Dict[str, Any]] = field(default_factory=list)
+    vns_summary: Dict[str, Any] = field(default_factory=dict)
+    best_acceptance_passed: bool = False
     deadline_reached: bool = False
     iteration_limit_reached: bool = False
     local_search_entered: bool = False
@@ -201,19 +268,27 @@ class OptimizationSearchReportState:
         if row not in self.skipped_phases:
             self.skipped_phases.append(row)
 
-    def mark_candidate_evaluated(self, candidate: Dict[str, Any], *, origin: str) -> None:
+    def mark_candidate_evaluated(self, candidate: Dict[str, Any], *, origin: str) -> CandidateFingerprint:
         self.evaluated_candidates += 1
         fingerprint = self._candidate_fingerprint(candidate, seen=self.candidate_fingerprints)
         self.candidate_fingerprints.add(fingerprint.output_fingerprint)
         _append_fingerprint_event(self.fingerprint_events, origin=origin, status="evaluated", fingerprint=fingerprint)
         if fingerprint.same_as_parent or fingerprint.same_as_seen:
             self._record_rejection_reason("same_fingerprint")
+        return fingerprint
 
-    def mark_candidate_accepted(self, candidate: Dict[str, Any], *, origin: str) -> None:
+    def mark_candidate_accepted(
+        self,
+        candidate: Dict[str, Any],
+        *,
+        origin: str,
+        acceptance_event: Optional[Dict[str, Any]] = None,
+    ) -> None:
         fingerprint = self._candidate_fingerprint(candidate, seen=self.accepted_fingerprints)
         if fingerprint.output_fingerprint not in self.candidate_fingerprints:
             self.evaluated_candidates += 1
             self.candidate_fingerprints.add(fingerprint.output_fingerprint)
+        was_initial = self.initial_fingerprint is None
         if self.initial_fingerprint is None:
             self.initial_fingerprint = fingerprint.output_fingerprint
             self.initial_candidate_fingerprint = fingerprint.to_report_dict()
@@ -224,11 +299,72 @@ class OptimizationSearchReportState:
         self.best_score = list(candidate.get("score") or [])
         self.accepted_candidates += 1
         self.accepted_fingerprints.add(fingerprint.output_fingerprint)
+        if not was_initial:
+            self.best_acceptance_passed = True
+            self.best_improved_candidates += 1
         _append_fingerprint_event(self.fingerprint_events, origin=origin, status="accepted", fingerprint=fingerprint)
-        self._append_attempt_summary(_candidate_summary(candidate, origin=origin, status="accepted"))
+        self._append_attempt_summary(_candidate_summary(candidate, origin=origin, status="best_improved" if not was_initial else "accepted"))
+        if acceptance_event is not None:
+            self.mark_acceptance_event(acceptance_event, best_improved=not was_initial, current_accepted=True)
+
+    def mark_current_candidate_accepted(
+        self,
+        candidate: Dict[str, Any],
+        *,
+        origin: str,
+        acceptance_event: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        fingerprint = self._candidate_fingerprint(candidate, seen=self.accepted_fingerprints)
+        if fingerprint.output_fingerprint not in self.candidate_fingerprints:
+            self.evaluated_candidates += 1
+            self.candidate_fingerprints.add(fingerprint.output_fingerprint)
+        self.accepted_candidates += 1
+        self.current_accepted_candidates += 1
+        self.accepted_fingerprints.add(fingerprint.output_fingerprint)
+        _append_fingerprint_event(self.fingerprint_events, origin=origin, status="current_accepted", fingerprint=fingerprint)
+        self._append_attempt_summary(_candidate_summary(candidate, origin=origin, status="current_accepted"))
+        if acceptance_event is not None:
+            self.mark_acceptance_event(acceptance_event, best_improved=False, current_accepted=True)
 
     def mark_candidate_rejected(self, *, reason: str) -> None:
         self._record_rejection_reason(reason)
+
+    def mark_acceptance_event(
+        self,
+        event: Dict[str, Any],
+        *,
+        best_improved: bool = False,
+        current_accepted: bool = False,
+    ) -> None:
+        row = _safe_acceptance_event(event)
+        name = _safe_text(row.get("acceptance_name")) or "unknown"
+        bucket = self.acceptance_summary.setdefault(name, _empty_acceptance_counter())
+        bucket["attempted"] += 1
+        if bool(row.get("accepted")):
+            bucket["accepted"] += 1
+        else:
+            bucket["rejected"] += 1
+        if current_accepted and not best_improved:
+            bucket["non_improving_accepted"] += 1
+        if len(self.acceptance_events) < 50:
+            stored = dict(row)
+            stored["best_improved"] = bool(best_improved)
+            stored["current_accepted"] = bool(current_accepted)
+            self.acceptance_events.append(stored)
+
+    def mark_vns_event(self, event: Dict[str, Any]) -> None:
+        row = _safe_vns_event(event)
+        self.vns_summary = {
+            "current_neighborhood": row["next_neighborhood"],
+            "neighborhood_index": row["next_neighborhood_index"],
+            "shake_count": row["shake_count"],
+            "no_improve_count": row["no_improve_count"],
+            "noop_count": row["noop_count"],
+            "fallback_count": row["fallback_count"],
+            "last_switch_reason": row["neighborhood_switch_reason"],
+        }
+        if len(self.vns_events) < 50:
+            self.vns_events.append(row)
 
     def mark_neighborhood_move(self, move: Dict[str, Any]) -> None:
         row = _safe_neighborhood_move(move)
@@ -280,11 +416,7 @@ class OptimizationSearchReportState:
     def _improvement_conditions(self, fingerprint_changed: bool) -> Dict[str, Any]:
         score_improved = score_strictly_better(self.best_score, self.initial_score)
         acceptance = _safe_text((self.candidate_profile or {}).get("acceptance")) or "improve_only"
-        # acceptance_passed 当前是 improve_only 专用代理:improve_only 下任何「baseline 之后再被接受」
-        # 都必然严格更优,故 accepted_candidates>1 等价于「通过接受准则」。item 8 引入
-        # threshold/record_to_record/simulated_annealing(会接受非改进解)后本式将失真,必须改为依据
-        # 真实 acceptance 判定结果(acceptance 归 item 8,见 roadmap §4.3/§7)。
-        acceptance_passed = bool(self.accepted_candidates > 1 and self.best_candidate_fingerprint)
+        acceptance_passed = bool(self.best_acceptance_passed and self.best_candidate_fingerprint)
         return {
             "fingerprint_changed": bool(fingerprint_changed),
             "score_strictly_better": bool(score_improved),

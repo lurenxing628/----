@@ -31,6 +31,8 @@ _PUBLIC_INT_KEYS = (
     "distinct_candidates",
     "accepted_candidates",
     "accepted_distinct_candidates",
+    "current_accepted_candidates",
+    "best_improved_candidates",
     "rejected_candidates",
 )
 _PUBLIC_BOOL_KEYS = ("best_fingerprint_changed", "improved")
@@ -42,6 +44,8 @@ _DIAGNOSTIC_KEYS = (
     "fingerprint_events",
     "improvement_conditions",
     "neighborhood_moves",
+    "acceptance_events",
+    "vns_events",
     "attempts",
     "improvement_trace",
     "public_attempt_summary",
@@ -49,7 +53,7 @@ _DIAGNOSTIC_KEYS = (
 
 # candidate profile（roadmap item 4）public 白名单：只投安全摘要字段。
 # 与 roadmap 4.8 一致：raw config / 内部调试细节只进 diagnostics，不进普通页面。
-_PROFILE_PUBLIC_TEXT_KEYS = ("profile", "system_limit_reason", "message")
+_PROFILE_PUBLIC_TEXT_KEYS = ("profile", "acceptance", "system_limit_reason", "message")
 _PROFILE_PUBLIC_INT_KEYS = (
     "seed",
     "configured_time_budget_seconds",
@@ -63,7 +67,6 @@ _PROFILE_DIAGNOSTIC_TEXT_KEYS = (
     "seed_source",
     "iteration_limit_source",
     "repair",
-    "acceptance",
     "candidate_strategy_family",
     "dispatch_mode",
     "dispatch_rule",
@@ -72,6 +75,9 @@ _PROFILE_DIAGNOSTIC_TEXT_KEYS = (
 _PROFILE_DIAGNOSTIC_INT_KEYS = ("schema_version", "restart_after_iterations")
 _PROFILE_DIAGNOSTIC_BOOL_KEYS = ("ortools_warmstart_enabled", "strict_mode")
 _NEIGHBORHOOD_COUNTER_KEYS = ("attempted", "effective", "noop", "fallback", "rejected")
+_ACCEPTANCE_COUNTER_KEYS = ("attempted", "accepted", "rejected", "non_improving_accepted")
+_VNS_TEXT_KEYS = ("current_neighborhood", "last_switch_reason")
+_VNS_INT_KEYS = ("neighborhood_index", "shake_count", "no_improve_count", "noop_count", "fallback_count")
 
 
 def _safe_candidate_construction(value: Any) -> Dict[str, Any]:
@@ -182,6 +188,39 @@ def _project_neighborhood_summary(value: Any) -> Dict[str, Dict[str, int]]:
     return out
 
 
+def _project_acceptance_summary(value: Any) -> Dict[str, Dict[str, int]]:
+    if not isinstance(value, dict):
+        return {}
+    out: Dict[str, Dict[str, int]] = {}
+    for raw_name, raw_counts in value.items():
+        name = safe_attempt_text(raw_name)
+        if not name or not isinstance(raw_counts, dict):
+            continue
+        row: Dict[str, int] = {}
+        for key in _ACCEPTANCE_COUNTER_KEYS:
+            number = safe_non_negative_int(raw_counts.get(key))
+            if number is not None:
+                row[key] = number
+        if row:
+            out[name] = row
+    return out
+
+
+def _project_vns_summary(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for key in _VNS_TEXT_KEYS:
+        text = safe_attempt_text(value.get(key))
+        if text:
+            out[key] = text
+    for key in _VNS_INT_KEYS:
+        number = safe_non_negative_int(value.get(key))
+        if number is not None:
+            out[key] = number
+    return out
+
+
 def _project_candidate_profile(value: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """把 candidate profile 合同拆成 (profile_public, profile_diagnostics)。
 
@@ -259,6 +298,14 @@ def project_search_report(value: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     neighborhood_summary = _project_neighborhood_summary(value.get("neighborhood_summary"))
     if neighborhood_summary:
         public["neighborhood_summary"] = neighborhood_summary
+
+    acceptance_summary = _project_acceptance_summary(value.get("acceptance_summary"))
+    if acceptance_summary:
+        public["acceptance_summary"] = acceptance_summary
+
+    vns_summary = _project_vns_summary(value.get("vns_summary"))
+    if vns_summary:
+        public["vns_summary"] = vns_summary
 
     diagnostics = {key: value[key] for key in _DIAGNOSTIC_KEYS if key in value and value[key]}
 

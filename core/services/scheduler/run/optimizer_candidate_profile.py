@@ -2,16 +2,17 @@
 
 本模块只锁现有 optimizer 已有能力的 profile 合同与校验边界：
 
-- 现有能力包括 ``baseline``（单次排产）与 ``grasp_ig``（多起点 + GRASP/IG 起点
-  + 局部搜索，可选 OR-Tools warm-start）。
-- 本阶段 ``repair`` 只允许 ``sgs``，``acceptance`` 只允许 ``improve_only``，
-  ``neighborhoods`` 默认且仅允许业务邻域 registry 的六个邻域。
+- 现有能力包括 ``baseline``（单次排产）与 ``vns_sa``（多起点 + GRASP/IG 起点
+  + 业务邻域 VNS 局部搜索，可选阈值/模拟退火类接受，可选 OR-Tools warm-start）。
+- 本阶段 ``repair`` 只允许 ``sgs``，``acceptance`` 允许 improve_only / threshold /
+  record_to_record / simulated_annealing，``neighborhoods`` 默认且仅允许业务邻域
+  registry 的六个邻域。
 - ``configured`` 与 ``effective`` 必须区分：时间预算当前无系统上限，迭代上限受
   ``[200, 5000]`` 系统下/上限钳制，被钳制时如实写出 ``system_limit_applied`` 与
   ``system_limit_reason``。
 - ``seed`` 由排产版本号派生，``seed_source`` 如实写出，不伪造成用户显式 seed。
 
-本模块不实现 VNS / SA / ALNS，也不实现 CandidateFingerprint 的 hash 逻辑（属 item 5）。
+本模块不实现 ALNS，也不实现 CandidateFingerprint 的 hash 逻辑（属 item 5）。
 public/diagnostics 分层投影由 summary 层
 ``optimizer_public_search_report`` 负责，本模块只产出结构化合同。
 """
@@ -23,6 +24,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
 
+from .optimizer_acceptance import ALLOWED_ACCEPTANCES
 from .optimizer_neighborhood_moves import ALLOWED_NEIGHBORHOODS, BUSINESS_NEIGHBORHOODS
 
 CANDIDATE_PROFILE_SCHEMA_VERSION = 1
@@ -30,11 +32,15 @@ CANDIDATE_PROFILE_SCHEMA_VERSION = 1
 PROFILE_BASELINE = "baseline"
 PROFILE_MULTI_START_LOCAL_SEARCH = "multi_start_local_search"
 PROFILE_GRASP_IG = "grasp_ig"
-ALLOWED_PROFILES: Tuple[str, ...] = (PROFILE_BASELINE, PROFILE_MULTI_START_LOCAL_SEARCH, PROFILE_GRASP_IG)
+PROFILE_VNS_SA = "vns_sa"
+ALLOWED_PROFILES: Tuple[str, ...] = (
+    PROFILE_BASELINE,
+    PROFILE_MULTI_START_LOCAL_SEARCH,
+    PROFILE_GRASP_IG,
+    PROFILE_VNS_SA,
+)
 
-# 本阶段只允许下列取值；扩展属后续 roadmap item，不在本轮范围。
 ALLOWED_REPAIRS: Tuple[str, ...] = ("sgs",)
-ALLOWED_ACCEPTANCES: Tuple[str, ...] = ("improve_only",)
 
 # 迭代上限 / 重启阈值的系统钳制窗口（与历史 optimizer_local_search 内联公式逐位一致）。
 ITERATION_FLOOR = 200
@@ -139,7 +145,7 @@ def _require_neighborhoods(values: Tuple[str, ...]) -> Tuple[str, ...]:
 def _profile_for_algo_mode(algo_mode: str) -> str:
     text = str(algo_mode or "").strip().lower()
     if text == "improve":
-        return PROFILE_GRASP_IG
+        return PROFILE_VNS_SA
     if text == "greedy":
         return PROFILE_BASELINE
     raise ValidationError(
@@ -160,7 +166,7 @@ def _build_message(
     if not enabled:
         return "基础排产模式：仅单次排产，未启用多起点与局部搜索增强；随机种子由排产版本号自动派生（非手工指定）。"
     parts = [
-        f"多起点+GRASP/IG候选+局部搜索模式：配置时间预算 {configured_budget} 秒，目标迭代上限 {configured_iters} 次。"
+        f"多起点+GRASP/IG候选+VNS局部搜索模式：配置时间预算 {configured_budget} 秒，目标迭代上限 {configured_iters} 次。"
     ]
     if system_limit_applied and system_limit_reason == SYSTEM_LIMIT_REASON_FLOOR:
         parts.append(f"实际迭代上限被系统下限抬升到 {effective_iters} 次。")
@@ -261,7 +267,7 @@ def build_candidate_profile(
     if configured_budget < 1:
         raise ValidationError("时间预算必须为不小于 1 的整数。", field="time_budget_seconds")
 
-    enabled = profile in (PROFILE_MULTI_START_LOCAL_SEARCH, PROFILE_GRASP_IG)
+    enabled = profile in (PROFILE_MULTI_START_LOCAL_SEARCH, PROFILE_GRASP_IG, PROFILE_VNS_SA)
     effective_dispatch_mode = "sgs" if graph_sgs_required else str(dispatch_mode or "").strip().lower()
     resolved_neighborhoods = (BUSINESS_NEIGHBORHOODS if enabled else ()) if neighborhoods is None else tuple(neighborhoods)
     validated_neighborhoods = _require_neighborhoods(resolved_neighborhoods)
@@ -343,6 +349,7 @@ __all__ = [
     "PROFILE_BASELINE",
     "PROFILE_GRASP_IG",
     "PROFILE_MULTI_START_LOCAL_SEARCH",
+    "PROFILE_VNS_SA",
     "build_candidate_profile",
     "derive_grasp_ig_limits",
     "derive_iteration_limits",

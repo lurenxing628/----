@@ -192,6 +192,8 @@ def _required_report_fields() -> set:
         "distinct_candidates",
         "accepted_candidates",
         "accepted_distinct_candidates",
+        "current_accepted_candidates",
+        "best_improved_candidates",
         "rejected_candidates",
         "initial_fingerprint",
         "best_fingerprint",
@@ -208,6 +210,10 @@ def _required_report_fields() -> set:
         "fingerprint_events",
         "neighborhood_moves",
         "neighborhood_summary",
+        "acceptance_events",
+        "acceptance_summary",
+        "vns_events",
+        "vns_summary",
         "improvement_conditions",
         "skipped_phases",
         "rejection_summary",
@@ -481,6 +487,8 @@ def test_search_report_public_projection_keeps_internal_fields_in_diagnostics_on
                 "distinct_candidates": 3,
                 "accepted_candidates": 2,
                 "accepted_distinct_candidates": 2,
+                "current_accepted_candidates": 1,
+                "best_improved_candidates": 1,
                 "rejected_candidates": 7,
                 "initial_fingerprint": "internal-fp-op:SECRET",
                 "best_fingerprint": "internal-best-fp",
@@ -522,7 +530,28 @@ def test_search_report_public_projection_keeps_internal_fields_in_diagnostics_on
                     "critical_chain": {"attempted": 2, "effective": 1, "noop": 1, "fallback": 0, "rejected": 1},
                     "op:SECRET": {"attempted": 9},
                 },
-                "improvement_conditions": {"acceptance": "improve_only"},
+                "acceptance_events": [
+                    {
+                        "acceptance_name": "simulated_annealing",
+                        "accepted": True,
+                        "acceptance_reason": "annealing_probability",
+                        "deterministic_random_draw": "op:SECRET",
+                    }
+                ],
+                "acceptance_summary": {
+                    "simulated_annealing": {"attempted": 2, "accepted": 1, "rejected": 1, "non_improving_accepted": 1}
+                },
+                "vns_events": [{"current_neighborhood": "critical_chain", "neighborhood_switch_reason": "op:SECRET"}],
+                "vns_summary": {
+                    "current_neighborhood": "tardy_window",
+                    "neighborhood_index": 1,
+                    "shake_count": 0,
+                    "no_improve_count": 1,
+                    "noop_count": 1,
+                    "fallback_count": 0,
+                    "last_switch_reason": "no_best_improvement_next_neighborhood",
+                },
+                "improvement_conditions": {"acceptance": "simulated_annealing"},
                 "skipped_phases": [{"phase": "ortools_warmstart", "reason": "time_budget", "op_id": 1}],
                 "rejection_summary": {"noop_neighbor": 7, "op_id": 1},
                 "improved": True,
@@ -543,6 +572,12 @@ def test_search_report_public_projection_keeps_internal_fields_in_diagnostics_on
     assert public_report["neighborhood_summary"] == {
         "critical_chain": {"attempted": 2, "effective": 1, "noop": 1, "fallback": 0, "rejected": 1}
     }
+    assert public_report["acceptance_summary"] == {
+        "simulated_annealing": {"attempted": 2, "accepted": 1, "rejected": 1, "non_improving_accepted": 1}
+    }
+    assert public_report["vns_summary"]["current_neighborhood"] == "tardy_window"
+    assert "acceptance_events" not in public_report
+    assert "vns_events" not in public_report
 
     diagnostic_report = diagnostics["optimizer"]["search_report"]
     assert diagnostic_report["initial_fingerprint"] == "internal-fp-op:SECRET"
@@ -550,7 +585,9 @@ def test_search_report_public_projection_keeps_internal_fields_in_diagnostics_on
     assert diagnostic_report["best_candidate_fingerprint"]["output_fingerprint"] == "output-best"
     assert diagnostic_report["fingerprint_events"][0]["output_fingerprint"] == "output-op:SECRET"
     assert diagnostic_report["neighborhood_moves"][0]["diagnostics"]["op_id"] == "op:SECRET"
-    assert diagnostic_report["improvement_conditions"]["acceptance"] == "improve_only"
+    assert diagnostic_report["acceptance_events"][0]["deterministic_random_draw"] == "op:SECRET"
+    assert diagnostic_report["vns_events"][0]["neighborhood_switch_reason"] == "op:SECRET"
+    assert diagnostic_report["improvement_conditions"]["acceptance"] == "simulated_annealing"
     assert diagnostic_report["attempts"][0]["candidate_id"] == "CANDIDATE-SECRET"
 
 
@@ -570,6 +607,11 @@ def test_operation_log_algo_summary_keeps_search_report_public_only() -> None:
                 "neighborhood_summary": {
                     "critical_chain": {"attempted": 2, "effective": 1, "noop": 1, "fallback": 0, "rejected": 1}
                 },
+                "acceptance_events": [{"acceptance_name": "simulated_annealing", "deterministic_random_draw": "op:SECRET"}],
+                "acceptance_summary": {
+                    "simulated_annealing": {"attempted": 2, "accepted": 1, "rejected": 1, "non_improving_accepted": 1}
+                },
+                "vns_summary": {"current_neighborhood": "critical_chain", "neighborhood_index": 0},
                 "neighborhood_moves": [
                     {
                         "neighborhood_name": "critical_chain",
@@ -592,5 +634,7 @@ def test_operation_log_algo_summary_keeps_search_report_public_only() -> None:
     public_text = json.dumps(public_log_algo, ensure_ascii=False, sort_keys=True)
     assert public_log_algo["search_report"]["stop_reason"] == "time_budget"
     assert public_log_algo["search_report"]["neighborhood_summary"]["critical_chain"]["attempted"] == 2
-    for forbidden in ("op:", "machine_id", "candidate_id", "initial_fingerprint", '"best_fingerprint"', '"attempts"'):
+    assert public_log_algo["search_report"]["acceptance_summary"]["simulated_annealing"]["attempted"] == 2
+    assert public_log_algo["search_report"]["vns_summary"]["current_neighborhood"] == "critical_chain"
+    for forbidden in ("op:", "machine_id", "candidate_id", "initial_fingerprint", '"best_fingerprint"', '"attempts"', "deterministic_random_draw"):
         assert forbidden not in public_text
