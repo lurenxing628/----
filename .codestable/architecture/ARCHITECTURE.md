@@ -39,6 +39,7 @@ implements: []
 - `tests/`：自动化测试。
 - `tools/`、`scripts/`：质量门禁、治理台账、辅助检查脚本。
 - `开发文档/`、`audit/`、`evidence/`：开发说明、审计记录和验证证据。
+- `.codestable/architecture/service-scheduler.md`：排产调度模块(`core/services/scheduler`，占 core/services 约 70%)内部结构现状——13 个 Service 惰性门面、run/summary/analysis/graph/config 五子包、根目录 78 文件业务族、排产主链数据流、内部依赖方向与 run↔summary 包级循环依赖等结构张力。
 - `.codestable/architecture/ui-gantt.md`：甘特图结果查看页面、缩放协议、只读边界、模拟预览身份传递和本地 Frappe 补丁治理现状。
 - 车间执行事件基础：`OperationExecutionEvents`、执行事件仓储、执行反馈服务和执行状态读模型记录现场开工、暂停、继续、完工、报异常这些事实。
 - 资源派工现场记录：资源派工页用户入口叫“现场记录”，支持单条填写实际情况、下载填写模板、导入实际情况 Excel；普通页面是一键导入，后台先整批检查，有错不写库并返回错误明细，无错才事务写入；route 拆在 `scheduler_resource_dispatch_execution_routes.py`，业务编排拆在 `resource_dispatch_actual_*` service 文件。页面把计划员查看排班和计划员代录现场事实分成两个区域；执行区 JS 按 context、cards、actual、import 和 coordinator 拆分，任务卡公开图号/物料、计划/实际时间偏差，执行流水把 `created_at/source_table` 转成中文记录时间和来源。
