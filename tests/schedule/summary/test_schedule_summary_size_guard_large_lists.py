@@ -274,6 +274,8 @@ def _large_missing_resource_case(n: int):
                 "code": "missing_internal_resource",
                 "severity": "error",
                 "message": f"自制工序未补全设备或人员，无法排产：工序 B{i:05d}_05",
+                "op_id": i + 1,
+                "op_code": "OP" + "y" * 1000,
             }
             for i in range(n)
         ],
@@ -455,9 +457,13 @@ def main() -> None:
     assert len(large_missing_after_obj.get("public_error_details") or []) < 10000
     assert len(large_missing_after_obj.get("missing_internal_resource_ops") or []) < 10000
     assert large_missing_after <= SUMMARY_SIZE_LIMIT_BYTES, "large_missing_resource_case 截断后仍超过 512KB"
+    for item in large_missing_after_obj.get("public_error_details") or []:
+        assert "op_id" not in item
+        assert "op_code" not in item
     for item in large_missing_after_obj.get("missing_internal_resource_ops") or []:
+        assert "op_id" not in item
+        assert "op_code" not in item
         assert len(item.get("batch_id", "")) <= 80
-        assert len(item.get("op_code", "")) <= 80
         assert len(item.get("op_type_name", "")) <= 80
         assert set(item.get("missing_fields", [])) <= {"设备", "人员"}
 

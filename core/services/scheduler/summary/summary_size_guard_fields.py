@@ -116,13 +116,10 @@ def size_guard_public_error_detail(raw: Any) -> Dict[str, Any]:
     message = public_error_message_from_detail(raw)
     if message:
         out["message"] = message
-    _copy_guarded_int_fields(raw, out, ("op_id", "seq"))
+    _copy_guarded_int_fields(raw, out, ("seq",))
     batch_id = public_safe_identifier(raw.get("batch_id"))
     if batch_id:
         out["batch_id"] = batch_id
-    op_code = public_safe_identifier(raw.get("op_code"))
-    if op_code:
-        out["op_code"] = op_code
     fields = _guard_missing_fields(raw.get("missing_fields"))
     if fields:
         out["missing_fields"] = fields
@@ -133,13 +130,10 @@ def size_guard_missing_resource_item(raw: Any) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
     out: Dict[str, Any] = {}
-    _copy_guarded_int_fields(raw, out, ("op_id", "seq"))
+    _copy_guarded_int_fields(raw, out, ("seq",))
     batch_id = public_safe_identifier(raw.get("batch_id"))
     if batch_id:
         out["batch_id"] = batch_id
-    op_code = public_safe_identifier(raw.get("op_code"))
-    if op_code:
-        out["op_code"] = op_code
     op_type_name = public_safe_label(raw.get("op_type_name"))
     if op_type_name:
         out["op_type_name"] = op_type_name

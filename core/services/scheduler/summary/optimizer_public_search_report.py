@@ -57,6 +57,7 @@ _PROFILE_PUBLIC_INT_KEYS = (
     "effective_max_iterations",
 )
 _PROFILE_PUBLIC_BOOL_KEYS = ("enabled", "system_limit_applied")
+_PROFILE_PUBLIC_LIST_KEYS = ("candidate_strategy_families",)
 _PROFILE_DIAGNOSTIC_TEXT_KEYS = (
     "seed_source",
     "iteration_limit_source",
@@ -69,6 +70,31 @@ _PROFILE_DIAGNOSTIC_TEXT_KEYS = (
 )
 _PROFILE_DIAGNOSTIC_INT_KEYS = ("schema_version", "restart_after_iterations")
 _PROFILE_DIAGNOSTIC_BOOL_KEYS = ("ortools_warmstart_enabled", "strict_mode")
+
+
+def _safe_candidate_construction(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for family in ("grasp", "iterated_greedy"):
+        source = value.get(family)
+        if not isinstance(source, dict):
+            continue
+        row: Dict[str, Any] = {}
+        for key in (
+            "configured_restarts",
+            "effective_restarts",
+            "configured_rcl_size",
+            "effective_rcl_size",
+            "configured_destruction_size",
+            "effective_destruction_size",
+        ):
+            number = safe_non_negative_int(source.get(key))
+            if number is not None:
+                row[key] = number
+        if row:
+            out[family] = row
+    return out
 
 
 def _copy_text_fields(source: Dict[str, Any]) -> Dict[str, Any]:
@@ -144,7 +170,10 @@ def _project_candidate_profile(value: Any) -> Tuple[Dict[str, Any], Dict[str, An
     """
     if not isinstance(value, dict):
         return {}, {}
+    return _project_profile_public(value), _project_profile_diagnostics(value)
 
+
+def _project_profile_public(value: Dict[str, Any]) -> Dict[str, Any]:
     public: Dict[str, Any] = {}
     for key in _PROFILE_PUBLIC_TEXT_KEYS:
         text = safe_attempt_text(value.get(key))
@@ -157,7 +186,14 @@ def _project_candidate_profile(value: Any) -> Tuple[Dict[str, Any], Dict[str, An
     for key in _PROFILE_PUBLIC_BOOL_KEYS:
         if key in value:
             public[key] = safe_bool(value.get(key))
+    for key in _PROFILE_PUBLIC_LIST_KEYS:
+        values = safe_public_text_list(value.get(key))
+        if values:
+            public[key] = values
+    return public
 
+
+def _project_profile_diagnostics(value: Dict[str, Any]) -> Dict[str, Any]:
     diagnostics: Dict[str, Any] = {}
     for key in _PROFILE_DIAGNOSTIC_TEXT_KEYS:
         text = safe_attempt_text(value.get(key))
@@ -173,8 +209,10 @@ def _project_candidate_profile(value: Any) -> Tuple[Dict[str, Any], Dict[str, An
     neighborhoods = safe_public_text_list(value.get("neighborhoods"))
     if neighborhoods:
         diagnostics["neighborhoods"] = neighborhoods
-
-    return public, diagnostics
+    candidate_construction = _safe_candidate_construction(value.get("candidate_construction"))
+    if candidate_construction:
+        diagnostics["candidate_construction"] = candidate_construction
+    return diagnostics
 
 
 def project_search_report(value: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:

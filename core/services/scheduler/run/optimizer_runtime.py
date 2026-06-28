@@ -12,3 +12,4 @@ class OptimizerRuntime:
     run_ortools_warmstart: Callable[..., Optional[dict]]
     run_multi_start: Callable[..., Optional[dict]]
     run_local_search: Callable[..., Optional[dict]]
+    run_grasp_ig_candidates: Optional[Callable[..., Optional[dict]]] = None

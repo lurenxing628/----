@@ -74,6 +74,10 @@ def _source_label(attempt: Dict[str, Any]) -> str:
         return "多起点方案"
     if raw_tag.startswith("ortools:"):
         return "深度优化起点"
+    if raw_tag.startswith("grasp:"):
+        return "GRASP（贪心随机自适应搜索）候选起点"
+    if raw_tag.startswith("ig:"):
+        return "迭代贪心候选起点"
     if raw_tag.startswith("local:"):
         return "局部搜索"
     return ""

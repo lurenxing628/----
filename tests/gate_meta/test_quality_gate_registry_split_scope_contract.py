@@ -269,6 +269,7 @@ def test_core_algorithm_deep_review_regressions_are_required_and_grouped() -> No
         "tests/schedule/summary/test_schedule_summary_deep_review_degradations.py",
         "tests/schedule/summary/test_scheduler_summary_public_projection_deep_review.py",
         "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_deep_review_contract.py",
+        "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
     }
     run_core_group = _group("scheduler_run_core")
     analysis_group = _group("scheduler_analysis_gantt_reports_week_plan")
@@ -282,6 +283,7 @@ def test_core_algorithm_deep_review_regressions_are_required_and_grouped() -> No
         "tests/schedule/summary/test_schedule_summary_deep_review_degradations.py",
         "tests/schedule/summary/test_scheduler_summary_public_projection_deep_review.py",
         "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_deep_review_contract.py",
+        "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
     } <= set(run_core_group["target_paths"])
     assert {"tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py"} <= set(analysis_group["target_paths"])
 

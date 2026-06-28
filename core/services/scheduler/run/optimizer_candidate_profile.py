@@ -2,8 +2,8 @@
 
 本模块只锁现有 optimizer 已有能力的 profile 合同与校验边界：
 
-- 现有能力只有两种 profile：``baseline``（单次排产）与
-  ``multi_start_local_search``（多起点 + 局部搜索，可选 OR-Tools warm-start）。
+- 现有能力包括 ``baseline``（单次排产）与 ``grasp_ig``（多起点 + GRASP/IG 起点
+  + 局部搜索，可选 OR-Tools warm-start）。
 - 本阶段 ``repair`` 只允许 ``sgs``，``acceptance`` 只允许 ``improve_only``，
   ``neighborhoods`` 只允许现有 swap/insert/block 邻域；未知项一律 fail-loud。
 - ``configured`` 与 ``effective`` 必须区分：时间预算当前无系统上限，迭代上限受
@@ -11,8 +11,8 @@
   ``system_limit_reason``。
 - ``seed`` 由排产版本号派生，``seed_source`` 如实写出，不伪造成用户显式 seed。
 
-本模块不实现 GRASP / IG / VNS / SA / ALNS，也不实现完整 CandidateFingerprint
-（分别属 roadmap item 6+ 与 item 5）。public/diagnostics 分层投影由 summary 层
+本模块不实现 VNS / SA / ALNS，也不实现 CandidateFingerprint 的 hash 逻辑（属 item 5）。
+public/diagnostics 分层投影由 summary 层
 ``optimizer_public_search_report`` 负责，本模块只产出结构化合同。
 """
 
@@ -27,7 +27,8 @@ CANDIDATE_PROFILE_SCHEMA_VERSION = 1
 
 PROFILE_BASELINE = "baseline"
 PROFILE_MULTI_START_LOCAL_SEARCH = "multi_start_local_search"
-ALLOWED_PROFILES: Tuple[str, ...] = (PROFILE_BASELINE, PROFILE_MULTI_START_LOCAL_SEARCH)
+PROFILE_GRASP_IG = "grasp_ig"
+ALLOWED_PROFILES: Tuple[str, ...] = (PROFILE_BASELINE, PROFILE_MULTI_START_LOCAL_SEARCH, PROFILE_GRASP_IG)
 
 # 本阶段只允许下列取值；扩展属后续 roadmap item，不在本轮范围。
 ALLOWED_REPAIRS: Tuple[str, ...] = ("sgs",)
@@ -40,6 +41,11 @@ ITERATION_CEILING = 5000
 RESTART_FLOOR = 50
 RESTART_CEILING = 800
 ITERATIONS_PER_SECOND = 20
+
+GRASP_RESTART_CEILING = 6
+IG_RESTART_CEILING = 4
+GRASP_RCL_SIZE_DEFAULT = 3
+IG_DESTRUCTION_SIZE_DEFAULT = 3
 
 # system_limit_reason 取值（迭代上限来源）。
 ITERATION_SOURCE_PROFILE_DEFAULT = "profile_default"
@@ -71,6 +77,33 @@ def derive_iteration_limits(time_budget_seconds: int) -> Tuple[int, int]:
     it_limit = max(ITERATION_FLOOR, min(ITERATION_CEILING, budget * ITERATIONS_PER_SECOND))
     restart_after = max(RESTART_FLOOR, min(RESTART_CEILING, int(it_limit / 8) if it_limit > 0 else 200))
     return it_limit, restart_after
+
+
+def derive_grasp_ig_limits(time_budget_seconds: int) -> Dict[str, Any]:
+    """把 optimizer 时间预算换算成 GRASP / IG 候选构造预算。
+
+    配置预算取自同一个 ``time_budget_seconds``，有效预算再按系统上限钳住，避免一次
+    普通排产在大预算下突然解码过多候选。这里只计算预算，不做候选构造。
+    """
+    budget = int(time_budget_seconds)
+    configured_grasp_restarts = max(1, budget)
+    configured_ig_restarts = max(1, int((budget + 1) / 2))
+    return {
+        "schema_version": CANDIDATE_PROFILE_SCHEMA_VERSION,
+        "seed_source": SEED_SOURCE_OPTIMIZER_VERSION,
+        "grasp": {
+            "configured_restarts": configured_grasp_restarts,
+            "effective_restarts": min(configured_grasp_restarts, GRASP_RESTART_CEILING),
+            "configured_rcl_size": GRASP_RCL_SIZE_DEFAULT,
+            "effective_rcl_size": GRASP_RCL_SIZE_DEFAULT,
+        },
+        "iterated_greedy": {
+            "configured_restarts": configured_ig_restarts,
+            "effective_restarts": min(configured_ig_restarts, IG_RESTART_CEILING),
+            "configured_destruction_size": IG_DESTRUCTION_SIZE_DEFAULT,
+            "effective_destruction_size": IG_DESTRUCTION_SIZE_DEFAULT,
+        },
+    }
 
 
 def _profile_label(field: str) -> str:
@@ -105,7 +138,7 @@ def _require_neighborhoods(values: Tuple[str, ...]) -> Tuple[str, ...]:
 def _profile_for_algo_mode(algo_mode: str) -> str:
     text = str(algo_mode or "").strip().lower()
     if text == "improve":
-        return PROFILE_MULTI_START_LOCAL_SEARCH
+        return PROFILE_GRASP_IG
     if text == "greedy":
         return PROFILE_BASELINE
     raise ValidationError(
@@ -125,7 +158,9 @@ def _build_message(
 ) -> str:
     if not enabled:
         return "基础排产模式：仅单次排产，未启用多起点与局部搜索增强；随机种子由排产版本号自动派生（非手工指定）。"
-    parts = [f"多起点+局部搜索模式：配置时间预算 {configured_budget} 秒，目标迭代上限 {configured_iters} 次。"]
+    parts = [
+        f"多起点+GRASP/IG候选+局部搜索模式：配置时间预算 {configured_budget} 秒，目标迭代上限 {configured_iters} 次。"
+    ]
     if system_limit_applied and system_limit_reason == SYSTEM_LIMIT_REASON_FLOOR:
         parts.append(f"实际迭代上限被系统下限抬升到 {effective_iters} 次。")
     elif system_limit_applied:
@@ -156,6 +191,8 @@ class CandidateProfile:
     acceptance: str
     neighborhoods: Tuple[str, ...]
     candidate_strategy_family: str
+    candidate_strategy_families: Tuple[str, ...]
+    candidate_construction: Dict[str, Any]
     dispatch_mode: str
     dispatch_rule: str
     ortools_warmstart_enabled: bool
@@ -182,6 +219,8 @@ class CandidateProfile:
             "acceptance": self.acceptance,
             "neighborhoods": list(self.neighborhoods),
             "candidate_strategy_family": self.candidate_strategy_family,
+            "candidate_strategy_families": list(self.candidate_strategy_families),
+            "candidate_construction": dict(self.candidate_construction or {}),
             "dispatch_mode": self.dispatch_mode,
             "dispatch_rule": self.dispatch_rule,
             "ortools_warmstart_enabled": bool(self.ortools_warmstart_enabled),
@@ -221,7 +260,7 @@ def build_candidate_profile(
     if configured_budget < 1:
         raise ValidationError("时间预算必须为不小于 1 的整数。", field="time_budget_seconds")
 
-    enabled = profile == PROFILE_MULTI_START_LOCAL_SEARCH
+    enabled = profile in (PROFILE_MULTI_START_LOCAL_SEARCH, PROFILE_GRASP_IG)
     effective_dispatch_mode = "sgs" if graph_sgs_required else str(dispatch_mode or "").strip().lower()
     resolved_neighborhoods = (ALLOWED_NEIGHBORHOODS if enabled else ()) if neighborhoods is None else tuple(neighborhoods)
     validated_neighborhoods = _require_neighborhoods(resolved_neighborhoods)
@@ -241,7 +280,9 @@ def build_candidate_profile(
                 SYSTEM_LIMIT_REASON_FLOOR if effective_iters > configured_iters else SYSTEM_LIMIT_REASON_CEILING
             )
         effective_budget = configured_budget
-        candidate_strategy_family = "multi_start"
+        candidate_strategy_family = "multi_start_grasp_ig"
+        candidate_strategy_families = ("multi_start", "grasp", "iterated_greedy")
+        candidate_construction = derive_grasp_ig_limits(configured_budget)
     else:
         configured_iters = 0
         effective_iters = 0
@@ -251,6 +292,8 @@ def build_candidate_profile(
         iteration_limit_source = ITERATION_SOURCE_NOT_APPLICABLE
         effective_budget = 0
         candidate_strategy_family = "single_shot"
+        candidate_strategy_families = ("single_shot",)
+        candidate_construction = {}
 
     message = _build_message(
         enabled=enabled,
@@ -278,6 +321,8 @@ def build_candidate_profile(
         acceptance=acceptance_value,
         neighborhoods=validated_neighborhoods,
         candidate_strategy_family=candidate_strategy_family,
+        candidate_strategy_families=candidate_strategy_families,
+        candidate_construction=candidate_construction,
         dispatch_mode=effective_dispatch_mode,
         dispatch_rule=str(dispatch_rule or "").strip().lower(),
         ortools_warmstart_enabled=ortools_warmstart_enabled,
@@ -295,7 +340,9 @@ __all__ = [
     "CANDIDATE_PROFILE_SCHEMA_VERSION",
     "CandidateProfile",
     "PROFILE_BASELINE",
+    "PROFILE_GRASP_IG",
     "PROFILE_MULTI_START_LOCAL_SEARCH",
     "build_candidate_profile",
+    "derive_grasp_ig_limits",
     "derive_iteration_limits",
 ]

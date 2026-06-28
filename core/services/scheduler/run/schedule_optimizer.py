@@ -14,6 +14,7 @@ from core.infrastructure.errors import ValidationError
 
 from .optimizer_candidate_profile import build_candidate_profile
 from .optimizer_config import ensure_optimizer_config_snapshot, is_ortools_enabled, resolve_optimizer_config
+from .optimizer_grasp_ig_candidates import run_grasp_ig_candidates as _run_grasp_ig_candidates_impl
 from .optimizer_local_search import run_local_search as _run_local_search_impl
 from .optimizer_runtime import OptimizerRuntime
 from .optimizer_search_report import OptimizationSearchReportState
@@ -60,6 +61,11 @@ def _run_local_search(**kwargs):
     return _run_local_search_impl(**kwargs)
 
 
+def _run_grasp_ig_candidates(**kwargs):
+    kwargs.setdefault("schedule_fn", _schedule_with_optional_strict_mode)
+    return _run_grasp_ig_candidates_impl(**kwargs)
+
+
 def _default_runtime() -> OptimizerRuntime:
     return OptimizerRuntime(
         scheduler_factory=lambda **kwargs: GreedyScheduler(**kwargs),
@@ -67,6 +73,7 @@ def _default_runtime() -> OptimizerRuntime:
         rng_factory=random.Random,
         run_ortools_warmstart=_run_ortools_warmstart,
         run_multi_start=_run_multi_start,
+        run_grasp_ig_candidates=_run_grasp_ig_candidates,
         run_local_search=_run_local_search,
     )
 
@@ -107,6 +114,67 @@ def _baseline_candidate(
         "locked_seed_range": [getattr(item, "op_id", None) for item in list(seed_sr_list or [])],
         "mutable_scope": {"scope": "batch_order", "batch_count": len(best_order or [])},
     }
+
+
+def _run_grasp_ig_candidate_phase(
+    *,
+    runtime: OptimizerRuntime,
+    optimizer_cfg: Any,
+    candidate_profile: Any,
+    state: OptimizerSearchState,
+    scheduler: Any,
+    algo_ops_to_schedule: List[Any],
+    batches: Dict[str, Any],
+    start_dt: datetime,
+    end_date: Optional[date],
+    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
+    seed_sr_list: List[ScheduleResult],
+    build_order: Any,
+    dispatch_modes: List[str],
+    resource_pool: Optional[Dict[str, Any]],
+    deadline: float,
+    optimizer_algo_stats: Dict[str, Any],
+    t_begin: float,
+    readiness_gate_enabled: bool,
+    strict_mode: bool,
+    graph_ready_context: Optional[Any],
+    search_report_state: OptimizationSearchReportState,
+) -> Optional[Dict[str, Any]]:
+    if runtime.run_grasp_ig_candidates is None:
+        return state.best
+    return runtime.run_grasp_ig_candidates(
+        algo_mode=optimizer_cfg.algo_mode,
+        best=state.best,
+        version=int(candidate_profile.seed),
+        candidate_construction=dict(candidate_profile.candidate_construction or {}),
+        scheduler=scheduler,
+        algo_ops_to_schedule=algo_ops_to_schedule,
+        batches=batches,
+        start_dt=start_dt,
+        end_date=end_date,
+        downtime_map=downtime_map,
+        seed_sr_list=seed_sr_list,
+        base_strategy=optimizer_cfg.strategy_enum,
+        base_params=dict(optimizer_cfg.strategy_params or {}),
+        build_order=build_order,
+        dispatch_rule_cfg=optimizer_cfg.dispatch_rule,
+        valid_dispatch_rules=list(optimizer_cfg.valid_dispatch_rules),
+        sgs_enabled="sgs" in set(dispatch_modes),
+        resource_pool=resource_pool,
+        objective_name=optimizer_cfg.objective_name,
+        deadline=deadline,
+        attempts=state.attempts,
+        improvement_trace=state.improvement_trace,
+        optimizer_algo_stats=optimizer_algo_stats,
+        t_begin=t_begin,
+        readiness_gate_enabled=bool(readiness_gate_enabled),
+        strict_mode=bool(strict_mode),
+        graph_ready_context=graph_ready_context,
+        clock=runtime.clock,
+        rng_factory=runtime.rng_factory,
+        schedule_fn=_schedule_with_optional_strict_mode,
+        search_report_state=search_report_state,
+    )
 
 
 def optimize_schedule(
@@ -243,6 +311,30 @@ def optimize_schedule(
         strict_mode=bool(strict_mode),
         graph_ready_context=graph_ready_context,
         clock=runtime.clock,
+        search_report_state=search_report_state,
+    )
+
+    state.best = _run_grasp_ig_candidate_phase(
+        runtime=runtime,
+        optimizer_cfg=optimizer_cfg,
+        candidate_profile=candidate_profile,
+        state=state,
+        scheduler=scheduler,
+        algo_ops_to_schedule=algo_ops_to_schedule,
+        batches=batches,
+        start_dt=start_dt,
+        end_date=end_date,
+        downtime_map=downtime_map,
+        seed_sr_list=seed_sr_list,
+        build_order=_build_order,
+        dispatch_modes=dispatch_modes,
+        resource_pool=resource_pool,
+        deadline=deadline,
+        optimizer_algo_stats=optimizer_algo_stats,
+        t_begin=t_begin,
+        readiness_gate_enabled=bool(readiness_gate_enabled),
+        strict_mode=bool(strict_mode),
+        graph_ready_context=graph_ready_context,
         search_report_state=search_report_state,
     )
 

@@ -45,10 +45,10 @@ items:
   - slug: grasp-ig-candidate-construction
     description: 用 GRASP 和 Iterated Greedy 生成更多可行起点，仍由现有 SGS 落位
     depends_on: [distinct-candidate-fingerprint-contract]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-28-grasp-ig-candidate-construction
     minimal_loop: false
-    notes: Phase A 末项；可用后作为独立集成里程碑当即接回 OptimizationOutcome/候选比较，不等 item13 与 ALNS 一起大爆炸上线；目标是扩大起点空间；只生成 order/priority/rule 候选，不生成 ScheduleResult、start/end 或 mutable seed
+    notes: 已落地 GRASP/IG 候选构造；默认 improve profile 扩展为 grasp_ig，candidate_strategy_families=multi_start/grasp/iterated_greedy；GRASP/IG 只生成批次顺序和派工规则候选，正式结果仍由现有 SGS 解码；候选接入 CandidateProfile/SearchReport/CandidateFingerprint，distinct 继续按 decoded_output 去重，same-fingerprint 不算 improved；public/OperationLogs/size guard 只投安全摘要。
 
   - slug: business-neighborhood-registry
     description: 建立关键链、延期批次、瓶颈设备、换型块、资源替换、时间窗 repair 的邻域注册表

@@ -1,14 +1,14 @@
 """回归测试：optimizer candidate profile 合同（roadmap item 4）。
 
 只锁现有 optimizer 已有能力的 profile 合同与校验边界：
-- 现有能力只有 baseline / multi_start_local_search 两种 profile；
+- 现有能力包括 baseline 与 grasp_ig（多起点 + GRASP/IG候选 + 局部搜索）；
 - configured 与 effective 的时间预算、迭代上限必须可区分、可报告；
 - 系统钳制迭代上限时如实写 system_limit_applied / system_limit_reason；
 - 未知 profile / repair / acceptance / neighborhood 一律 fail-loud（与 strict 无关）；
 - profile 接入 OptimizationSearchReport，且 algorithm_profile 由 profile 派生；
 - profile public 投影只露安全摘要，内部配置细节只进 diagnostics。
 
-本轮不实现 GRASP / IG / VNS / SA / ALNS，也不实现完整 CandidateFingerprint。
+本轮只扩展 GRASP / IG 候选构造画像；不实现 VNS / SA / ALNS，也不实现完整 CandidateFingerprint。
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from core.services.scheduler.run.optimizer_candidate_profile import (
     ITERATION_CEILING,
     ITERATION_FLOOR,
     build_candidate_profile,
+    derive_grasp_ig_limits,
     derive_iteration_limits,
 )
 from core.services.scheduler.run.optimizer_runtime import OptimizerRuntime
@@ -59,6 +60,8 @@ _PROFILE_DIAGNOSTIC_ONLY_KEYS = (
     "restart_after_iterations",
     "ortools_warmstart_enabled",
     "schema_version",
+    "candidate_strategy_family",
+    "candidate_construction",
 )
 
 
@@ -94,7 +97,7 @@ def _build(**overrides: Any):
 
 def test_improve_profile_reports_configured_and_effective_with_system_floor() -> None:
     profile = _build(time_budget_seconds=5)
-    assert profile.profile == "multi_start_local_search"
+    assert profile.profile == "grasp_ig"
     assert profile.enabled is True
     assert profile.seed == 42
     assert profile.seed_source == "optimizer_version"
@@ -109,7 +112,14 @@ def test_improve_profile_reports_configured_and_effective_with_system_floor() ->
     assert profile.repair == "sgs"
     assert profile.acceptance == "improve_only"
     assert profile.neighborhoods == ("swap", "insert", "block")
-    assert profile.candidate_strategy_family == "multi_start"
+    assert profile.candidate_strategy_family == "multi_start_grasp_ig"
+    assert profile.candidate_strategy_families == ("multi_start", "grasp", "iterated_greedy")
+    assert profile.candidate_construction == derive_grasp_ig_limits(5)
+    assert profile.candidate_construction["seed_source"] == "optimizer_version"
+    assert profile.candidate_construction["grasp"]["configured_restarts"] == 5
+    assert profile.candidate_construction["grasp"]["effective_restarts"] == 5
+    assert profile.candidate_construction["iterated_greedy"]["configured_restarts"] == 3
+    assert profile.candidate_construction["iterated_greedy"]["effective_restarts"] == 3
     assert profile.validation_status == "ok"
 
 
@@ -141,6 +151,8 @@ def test_baseline_profile_disables_search_budget() -> None:
     assert profile.iteration_limit_source == "not_applicable"
     assert profile.neighborhoods == ()
     assert profile.candidate_strategy_family == "single_shot"
+    assert profile.candidate_strategy_families == ("single_shot",)
+    assert profile.candidate_construction == {}
     # OR-Tools warm-start 只在 improve 下尝试：baseline 即便配置开启也不升主引擎。
     assert profile.ortools_warmstart_enabled is False
 
@@ -356,7 +368,7 @@ def test_every_outcome_carries_candidate_profile_traceable_to_search_report() ->
 def test_legacy_improve_profile_is_explicit() -> None:
     outcome = _optimize(_runtime=_runtime(run_multi_start=_run_multi_start))
     profile = outcome.search_report["candidate_profile"]
-    assert profile["profile"] == "multi_start_local_search"
+    assert profile["profile"] == "grasp_ig"
     assert profile["enabled"] is True
     # 不改变既有 best_origin 语义。
     assert outcome.search_report["best_origin"] == "multi_start"
@@ -401,13 +413,14 @@ def test_profile_public_projection_whitelist_only() -> None:
     public, diagnostics = project_search_report(_profile_report_dict(time_budget_seconds=5))
     profile_public = public["profile_public"]
     # 白名单字段齐全。
-    assert profile_public["profile"] == "multi_start_local_search"
+    assert profile_public["profile"] == "grasp_ig"
     assert profile_public["enabled"] is True
     assert profile_public["seed"] == 42
     assert profile_public["configured_time_budget_seconds"] == 5
     assert profile_public["effective_max_iterations"] == 200
     assert profile_public["system_limit_applied"] is True
     assert profile_public["system_limit_reason"] == "iteration_floor"
+    assert profile_public["candidate_strategy_families"] == ["multi_start", "grasp", "iterated_greedy"]
     assert profile_public["message"]
     # 配置内部细节绝不进 public。
     for key in _PROFILE_DIAGNOSTIC_ONLY_KEYS:
@@ -418,6 +431,9 @@ def test_profile_public_projection_whitelist_only() -> None:
     assert profile_diag["acceptance"] == "improve_only"
     assert profile_diag["neighborhoods"] == ["swap", "insert", "block"]
     assert profile_diag["iteration_limit_source"] == "system_limit"
+    assert profile_diag["candidate_strategy_family"] == "multi_start_grasp_ig"
+    assert profile_diag["candidate_construction"]["grasp"]["effective_restarts"] == 5
+    assert profile_diag["candidate_construction"]["iterated_greedy"]["effective_restarts"] == 3
 
 
 def test_profile_public_has_no_internal_identifier_tokens() -> None:
@@ -430,7 +446,7 @@ def test_profile_public_has_no_internal_identifier_tokens() -> None:
 def test_profile_public_flows_through_algo_summary_and_keeps_diagnostics_split() -> None:
     public_algo, diagnostics = project_public_algo_summary({"search_report": _profile_report_dict()})
     profile_public = public_algo["search_report"]["profile_public"]
-    assert profile_public["profile"] == "multi_start_local_search"
+    assert profile_public["profile"] == "grasp_ig"
     public_text = json.dumps(public_algo, ensure_ascii=False, sort_keys=True)
     for forbidden in _FORBIDDEN_PUBLIC_TOKENS:
         assert forbidden not in public_text
@@ -453,13 +469,14 @@ def test_operation_log_algo_summary_keeps_profile_public_only() -> None:
     }
     public_log_algo = operation_log_algo_summary(summary)
     profile_public = public_log_algo["search_report"]["profile_public"]
-    assert profile_public["profile"] == "multi_start_local_search"
+    assert profile_public["profile"] == "grasp_ig"
     public_text = json.dumps(public_log_algo, ensure_ascii=False, sort_keys=True)
     for forbidden in _FORBIDDEN_PUBLIC_TOKENS:
         assert forbidden not in public_text
     # diagnostics-only 字段不得出现在 OperationLogs public 投影。
     assert "repair" not in profile_public
     assert "neighborhoods" not in profile_public
+    assert "candidate_construction" not in profile_public
 
 
 def test_size_guard_minimal_fallback_keeps_profile_public() -> None:
@@ -470,7 +487,7 @@ def test_size_guard_minimal_fallback_keeps_profile_public() -> None:
             "time_budget_seconds": 5,
             "search_report": {
                 "schema_version": 1,
-                "algorithm_profile": "multi_start_local_search",
+                "algorithm_profile": "grasp_ig",
                 "stop_reason": "time_budget",
                 "best_origin": "local_search",
                 "candidate_profile": _build().to_report_dict(),
@@ -479,6 +496,6 @@ def test_size_guard_minimal_fallback_keeps_profile_public() -> None:
     }
     minimal = minimal_summary_for_size_guard(result_summary, original_size=999999, diagnostics_truncated=True)
     profile_public = minimal["algo"]["search_report"]["profile_public"]
-    assert profile_public["profile"] == "multi_start_local_search"
+    assert profile_public["profile"] == "grasp_ig"
     assert profile_public["effective_max_iterations"] == 200
     assert profile_public["system_limit_applied"] is True
