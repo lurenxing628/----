@@ -57,7 +57,7 @@ tags: [scheduler, optimizer, candidate-fingerprint, search-report, public-bounda
 
 对 item 5 做对抗 review（OPUS 子代理定向+盲审 + Codex 复审）后，处理发现的缺陷与代码债。判断规则：路线图后续 item 无覆盖的就地处理，已覆盖的留给对应 item。
 
-- **B1 崩溃根治**：`_result_signature` 的排序键首元素用了类型漂移的 `op_id`（旧 `_identity_value`：正整数→`int`、`0`/`None`→`""`），一批 `results` 中 `op_id` 同时含正整数与 `0`/`None` 时排序抛 `TypeError`、中断整条 finalize 报告链。已删 `_identity_value`、签名内 `op_id` 统一 `str`，排序键类型恒定。
+- **B1 指纹排序防御性硬化（真实数据流不可达，非生产崩溃 bug）**：`_result_signature` 旧实现的排序键首元素用了类型漂移的 `op_id`（旧 `_identity_value`：正整数→`int`、`0`/`None`/≤0→`str`），一批 `results` 混入正整数与 `0`/`None` 时 `sorted` 拿 int 与 str 比较抛 `TypeError`。**经核实生产不可达**：`BatchOperations.id` 是 `INTEGER PRIMARY KEY AUTOINCREMENT`（`schema.sql:148`）必正整数、排产工序全经 `op_repo.list_by_batch` 从库查（`schedule_input_collector.py:162`）、生产代码无内存构造 `BatchOperation`，故 op_id 必正整数、混合不会出现。脆弱本质：`_identity_value`「为非正整数留 str 兜底」与排序「假设同质可比」两个假设自相矛盾，兜底反而埋了崩溃点。已删 `_identity_value`、签名内 `op_id` 统一 `str` 使排序键类型恒定，焊死未来若引入「未入库工序参与排产」时的潜伏崩溃点。前轮含 Codex 标「偏 blocker」系高估（未闭合「主键自增 + 全量从库查」这一环）。
 - **O1**：删 `_resource_override_payload` 三个无写入方的 key 别名（`resource_override`/`resource_overrides`/`resource_pool_override`），只留 `resource_pool`。
 - **O3**：删孤儿函数 `candidate_report_fingerprint`/`attempt_report_fingerprint`/`stable_report_fingerprint` 及连带 import 与 `__all__`（dead-code 岛屿 358→355）。
 - **O4**：删 `mark_candidate_rejected`/`mark_optional_warmstart_failed` 的 dead `attempt` 形参，同步 `optimizer_attempt_records`(×2)/`optimizer_local_search`/`optimizer_step_report_hooks` 四个调用点。
@@ -66,6 +66,6 @@ tags: [scheduler, optimizer, candidate-fingerprint, search-report, public-bounda
 - **M1（仅注释）**：`acceptance_passed = accepted_candidates>1` 是 improve_only 专用代理，item 8 引入非贪心 acceptance 后须改为依据真实 acceptance 判定，已加注释钉住。
 - **I1/I2（仅注释）**：`_jsonable` 未知对象的 `{"type":类名}` 有损降级仅影响 `decision_fingerprint` 与 skipped 诊断 extra；`output_fingerprint`（去重/improved 判定用）全纯量、不经该分支，正确性无影响。
 - **O2（撤回）**：`_mutable_scope_payload` 的 fallback 经复查是测试可达的优雅降级（测试候选不带 `mutable_scope`），非生产死分支，不删。
-- **遗留（另立 issue）**：`batch_order` 落位对 `op_id<=0` 无校验，与 SGS 的 `ready_queue` fail-loud 不一致；根因 `BatchOperation.id: Optional[int]` + `_build_internal_result` 把 `None`/`0` 落成 `op_id=0`。B1 修复后指纹层已对任意 op_id 健壮，引擎层一致性归排产引擎单独评估。
+- **batch_order/SGS 的 `op_id<=0` 差异（已评估，不立 issue）**：`batch_order` 落位对 `op_id<=0` 无校验、SGS 经 `ready_queue` fail-loud，写法不一致；但同因 op_id 必正整数（自增主键 + 全量从库查 + 无内存构造），两条路径都遇不到 `op_id<=0`，该差异不可达，**不单独立 issue**。`_build_internal_result`（`internal_operation.py:211`）的 `op.id or 0` 也是对不可达输入的防御，保留无害。
 
 验证：48 项针对性 + 352 项算法/registry 测试全绿；质量门禁 17/17 通过（`--allow-dirty-worktree`，dirty/unbound proof）。
