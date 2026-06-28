@@ -206,6 +206,8 @@ def _required_report_fields() -> set:
         "public_attempt_summary",
         "improvement_trace",
         "fingerprint_events",
+        "neighborhood_moves",
+        "neighborhood_summary",
         "improvement_conditions",
         "skipped_phases",
         "rejection_summary",
@@ -509,6 +511,17 @@ def test_search_report_public_projection_keeps_internal_fields_in_diagnostics_on
                 ],
                 "improvement_trace": [{"candidate_id": "CANDIDATE-SECRET"}],
                 "fingerprint_events": [{"output_fingerprint": "output-op:SECRET"}],
+                "neighborhood_moves": [
+                    {
+                        "neighborhood_name": "critical_chain",
+                        "move_kind": "pull_latest_chain_batch",
+                        "diagnostics": {"op_id": "op:SECRET", "machine_id": "MC-SECRET"},
+                    }
+                ],
+                "neighborhood_summary": {
+                    "critical_chain": {"attempted": 2, "effective": 1, "noop": 1, "fallback": 0, "rejected": 1},
+                    "op:SECRET": {"attempted": 9},
+                },
                 "improvement_conditions": {"acceptance": "improve_only"},
                 "skipped_phases": [{"phase": "ortools_warmstart", "reason": "time_budget", "op_id": 1}],
                 "rejection_summary": {"noop_neighbor": 7, "op_id": 1},
@@ -527,12 +540,16 @@ def test_search_report_public_projection_keeps_internal_fields_in_diagnostics_on
     assert public_report["best_score"] == [0.0]
     assert public_report["rejection_summary"] == {"noop_neighbor": 7}
     assert public_report["public_attempt_summary"][0]["origin"] == "local_search"
+    assert public_report["neighborhood_summary"] == {
+        "critical_chain": {"attempted": 2, "effective": 1, "noop": 1, "fallback": 0, "rejected": 1}
+    }
 
     diagnostic_report = diagnostics["optimizer"]["search_report"]
     assert diagnostic_report["initial_fingerprint"] == "internal-fp-op:SECRET"
     assert diagnostic_report["best_fingerprint"] == "internal-best-fp"
     assert diagnostic_report["best_candidate_fingerprint"]["output_fingerprint"] == "output-best"
     assert diagnostic_report["fingerprint_events"][0]["output_fingerprint"] == "output-op:SECRET"
+    assert diagnostic_report["neighborhood_moves"][0]["diagnostics"]["op_id"] == "op:SECRET"
     assert diagnostic_report["improvement_conditions"]["acceptance"] == "improve_only"
     assert diagnostic_report["attempts"][0]["candidate_id"] == "CANDIDATE-SECRET"
 
@@ -550,6 +567,16 @@ def test_operation_log_algo_summary_keeps_search_report_public_only() -> None:
                 "initial_fingerprint": "internal-fp-op:SECRET",
                 "best_fingerprint": "internal-best-fp",
                 "attempts": [{"candidate_id": "CANDIDATE-SECRET"}],
+                "neighborhood_summary": {
+                    "critical_chain": {"attempted": 2, "effective": 1, "noop": 1, "fallback": 0, "rejected": 1}
+                },
+                "neighborhood_moves": [
+                    {
+                        "neighborhood_name": "critical_chain",
+                        "move_kind": "pull_latest_chain_batch",
+                        "diagnostics": {"op_id": "op:SECRET", "machine_id": "MC-SECRET"},
+                    }
+                ],
             },
         },
         "diagnostics": {
@@ -564,5 +591,6 @@ def test_operation_log_algo_summary_keeps_search_report_public_only() -> None:
     public_log_algo = operation_log_algo_summary(summary)
     public_text = json.dumps(public_log_algo, ensure_ascii=False, sort_keys=True)
     assert public_log_algo["search_report"]["stop_reason"] == "time_budget"
-    for forbidden in ("op:", "candidate_id", "initial_fingerprint", '"best_fingerprint"', '"attempts"'):
+    assert public_log_algo["search_report"]["neighborhood_summary"]["critical_chain"]["attempted"] == 2
+    for forbidden in ("op:", "machine_id", "candidate_id", "initial_fingerprint", '"best_fingerprint"', '"attempts"'):
         assert forbidden not in public_text

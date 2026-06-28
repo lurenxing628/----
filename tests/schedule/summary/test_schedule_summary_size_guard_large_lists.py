@@ -93,6 +93,9 @@ def _minimal_trigger_near_due_case():
                 "best_fingerprint_changed": True,
                 "improved": True,
                 "rejection_summary": {"noop_neighbor": 3},
+                "neighborhood_summary": {
+                    "critical_chain": {"attempted": 2, "effective": 1, "noop": 1, "fallback": 0, "rejected": 1}
+                },
                 "public_attempt_summary": [
                     {
                         "origin": "multi_start",
@@ -359,6 +362,9 @@ def main() -> None:
     assert int(minimal_report.get("runtime_ms") or 0) == 123, "minimal 不应丢 search_report.runtime_ms"
     assert int(minimal_report.get("evaluated_candidates") or 0) == 8, "minimal 不应丢 search_report.evaluated_candidates"
     assert minimal_report.get("distinct_fingerprint_scope") == "decoded_output", "minimal 不应丢 distinct 口径"
+    assert minimal_report.get("neighborhood_summary", {}).get("critical_chain", {}).get("attempted") == 2, (
+        "minimal 不应丢 business neighborhood 口径"
+    )
     assert "attempts" not in minimal_report, "minimal public search_report 不得保留 raw attempts"
     assert "initial_fingerprint" not in minimal_report, "minimal public search_report 不得保留内部 initial_fingerprint"
     assert "best_fingerprint" not in minimal_report, "minimal public search_report 不得保留内部 best_fingerprint"

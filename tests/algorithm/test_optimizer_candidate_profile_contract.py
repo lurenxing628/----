@@ -28,6 +28,7 @@ from core.services.scheduler.run.optimizer_candidate_profile import (
     derive_grasp_ig_limits,
     derive_iteration_limits,
 )
+from core.services.scheduler.run.optimizer_neighborhood_moves import BUSINESS_NEIGHBORHOODS
 from core.services.scheduler.run.optimizer_runtime import OptimizerRuntime
 from core.services.scheduler.run.schedule_candidate_persistence_models import operation_log_algo_summary
 from core.services.scheduler.run.schedule_optimizer import optimize_schedule
@@ -50,7 +51,6 @@ _FORBIDDEN_PUBLIC_TOKENS = (
 _PROFILE_DIAGNOSTIC_ONLY_KEYS = (
     "repair",
     "acceptance",
-    "neighborhoods",
     "dispatch_mode",
     "dispatch_rule",
     "strict_mode",
@@ -111,7 +111,7 @@ def test_improve_profile_reports_configured_and_effective_with_system_floor() ->
     assert profile.restart_after_iterations == 50
     assert profile.repair == "sgs"
     assert profile.acceptance == "improve_only"
-    assert profile.neighborhoods == ("swap", "insert", "block")
+    assert profile.neighborhoods == BUSINESS_NEIGHBORHOODS
     assert profile.candidate_strategy_family == "multi_start_grasp_ig"
     assert profile.candidate_strategy_families == ("multi_start", "grasp", "iterated_greedy")
     assert profile.candidate_construction == derive_grasp_ig_limits(5)
@@ -192,7 +192,7 @@ def test_unknown_acceptance_fail_loud() -> None:
 
 def test_unknown_neighborhood_fail_loud() -> None:
     with pytest.raises(ValidationError) as exc:
-        _build(neighborhoods=("swap", "teleport"))  # 未知邻域不能静默接受
+        _build(neighborhoods=("critical_chain", "teleport"))  # 未知邻域不能静默接受
     assert exc.value.field == "neighborhood"
 
 
@@ -421,6 +421,7 @@ def test_profile_public_projection_whitelist_only() -> None:
     assert profile_public["system_limit_applied"] is True
     assert profile_public["system_limit_reason"] == "iteration_floor"
     assert profile_public["candidate_strategy_families"] == ["multi_start", "grasp", "iterated_greedy"]
+    assert profile_public["neighborhoods"] == list(BUSINESS_NEIGHBORHOODS)
     assert profile_public["message"]
     # 配置内部细节绝不进 public。
     for key in _PROFILE_DIAGNOSTIC_ONLY_KEYS:
@@ -429,7 +430,6 @@ def test_profile_public_projection_whitelist_only() -> None:
     profile_diag = diagnostics["profile_diagnostics"]
     assert profile_diag["repair"] == "sgs"
     assert profile_diag["acceptance"] == "improve_only"
-    assert profile_diag["neighborhoods"] == ["swap", "insert", "block"]
     assert profile_diag["iteration_limit_source"] == "system_limit"
     assert profile_diag["candidate_strategy_family"] == "multi_start_grasp_ig"
     assert profile_diag["candidate_construction"]["grasp"]["effective_restarts"] == 5
@@ -470,12 +470,12 @@ def test_operation_log_algo_summary_keeps_profile_public_only() -> None:
     public_log_algo = operation_log_algo_summary(summary)
     profile_public = public_log_algo["search_report"]["profile_public"]
     assert profile_public["profile"] == "grasp_ig"
+    assert profile_public["neighborhoods"] == list(BUSINESS_NEIGHBORHOODS)
     public_text = json.dumps(public_log_algo, ensure_ascii=False, sort_keys=True)
     for forbidden in _FORBIDDEN_PUBLIC_TOKENS:
         assert forbidden not in public_text
     # diagnostics-only 字段不得出现在 OperationLogs public 投影。
     assert "repair" not in profile_public
-    assert "neighborhoods" not in profile_public
     assert "candidate_construction" not in profile_public
 
 

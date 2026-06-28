@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
+from core.infrastructure.errors import ValidationError
+
 from .optimizer_candidate_fingerprint import (
     DISTINCT_FINGERPRINT_DESCRIPTION,
     DISTINCT_FINGERPRINT_SCOPE,
@@ -11,6 +13,7 @@ from .optimizer_candidate_fingerprint import (
     jsonable_fingerprint_payload,
     score_strictly_better,
 )
+from .optimizer_neighborhood_moves import ALLOWED_NEIGHBORHOODS
 
 SEARCH_REPORT_SCHEMA_VERSION = 1
 
@@ -51,6 +54,111 @@ def _append_fingerprint_event(rows: List[Dict[str, Any]], *, origin: str, status
     rows.append(row)
 
 
+def _safe_neighborhood_move(move: Dict[str, Any]) -> Dict[str, Any]:
+    name = _safe_text(move.get("neighborhood_name"))
+    move_kind = _safe_text(move.get("move_kind"))
+    input_scope = _safe_text(move.get("input_scope"))
+    if name not in set(ALLOWED_NEIGHBORHOODS):
+        raise ValidationError(f"非法邻域移动：未知邻域“{name or move.get('neighborhood_name')}”。", field="neighborhood_move")
+    if not move_kind or not input_scope:
+        raise ValidationError("非法邻域移动：缺少 move_kind 或 input_scope。", field="neighborhood_move")
+    row: Dict[str, Any] = {
+        "schema_version": int(move.get("schema_version") or 1),
+        "name": name,
+        "neighborhood_name": name,
+        "scope": input_scope,
+        "move_kind": move_kind,
+        "input_scope": input_scope,
+        "selected_operation_ids": _list_copy(move.get("selected_operation_ids")),
+        "selected_batch_ids": _list_copy(move.get("selected_batch_ids")),
+        "selected_machine_ids": _list_copy(move.get("selected_machine_ids")),
+        "reason": _safe_text(move.get("reason")),
+        "changed_decision_count": max(int(move.get("changed_decision_count") or 0), 0),
+        "expected_effect": _safe_text(move.get("expected_effect")),
+        "noop": bool(move.get("noop")),
+        "fallback_used": bool(move.get("fallback_used")),
+        "candidate_rejected": _safe_text(move.get("candidate_rejected")),
+    }
+    fallback_reason = _safe_text(move.get("fallback_reason"))
+    if fallback_reason:
+        row["fallback_reason"] = fallback_reason
+    diagnostics = move.get("diagnostics")
+    if isinstance(diagnostics, dict):
+        row["diagnostics"] = jsonable_fingerprint_payload(diagnostics)
+    return row
+
+
+def _empty_neighborhood_counter() -> Dict[str, int]:
+    return {"attempted": 0, "effective": 0, "noop": 0, "fallback": 0, "rejected": 0}
+
+
+def _list_copy(value: Any) -> List[Any]:
+    if isinstance(value, list):
+        return list(value)
+    if isinstance(value, tuple):
+        return list(value)
+    return []
+
+
+def _dict_copy(value: Any) -> Dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _improved_from_conditions(conditions: Dict[str, Any]) -> bool:
+    return all(
+        bool(conditions.get(key))
+        for key in ("fingerprint_changed", "score_strictly_better", "acceptance_passed")
+    )
+
+
+def _final_report_payload(
+    state: OptimizationSearchReportState,
+    *,
+    runtime_ms: int,
+    attempts: List[Dict[str, Any]],
+    improvement_trace: List[Dict[str, Any]],
+    final_stop: str,
+    fingerprint_changed: bool,
+    improvement_conditions: Dict[str, Any],
+    improved: bool,
+) -> Dict[str, Any]:
+    return {
+        "schema_version": SEARCH_REPORT_SCHEMA_VERSION,
+        "algorithm_profile": str(state.algorithm_profile),
+        "candidate_profile": _dict_copy(state.candidate_profile),
+        "seed": int(state.seed),
+        "stop_reason": final_stop,
+        "best_origin": str(state.best_origin or "baseline"),
+        "time_budget_seconds": int(state.time_budget_seconds),
+        "runtime_ms": max(int(runtime_ms), 0),
+        "iterations": int(state.iterations),
+        "evaluated_candidates": int(state.evaluated_candidates),
+        "distinct_candidates": int(len(state.candidate_fingerprints)),
+        "accepted_candidates": int(state.accepted_candidates),
+        "accepted_distinct_candidates": int(len(state.accepted_fingerprints)),
+        "rejected_candidates": int(state.rejected_candidates),
+        "initial_fingerprint": state.initial_fingerprint,
+        "best_fingerprint": state.best_fingerprint,
+        "initial_candidate_fingerprint": _dict_copy(state.initial_candidate_fingerprint),
+        "best_candidate_fingerprint": _dict_copy(state.best_candidate_fingerprint),
+        "distinct_fingerprint_scope": DISTINCT_FINGERPRINT_SCOPE,
+        "distinct_fingerprint_description": DISTINCT_FINGERPRINT_DESCRIPTION,
+        "best_fingerprint_changed": fingerprint_changed,
+        "best_score": _list_copy(state.best_score),
+        "objective_name": str(state.objective_name),
+        "attempts": _list_copy(attempts),
+        "public_attempt_summary": _list_copy(state.attempt_summary),
+        "improvement_trace": _list_copy(improvement_trace),
+        "fingerprint_events": _list_copy(state.fingerprint_events),
+        "neighborhood_moves": _list_copy(state.neighborhood_moves),
+        "neighborhood_summary": _dict_copy(state.neighborhood_summary),
+        "improvement_conditions": improvement_conditions,
+        "skipped_phases": _list_copy(state.skipped_phases),
+        "rejection_summary": dict(state.rejection_summary),
+        "improved": improved,
+    }
+
+
 @dataclass
 class OptimizationSearchReportState:
     algorithm_profile: str
@@ -77,6 +185,8 @@ class OptimizationSearchReportState:
     skipped_phases: List[Dict[str, Any]] = field(default_factory=list)
     rejection_summary: Dict[str, int] = field(default_factory=dict)
     attempt_summary: List[Dict[str, Any]] = field(default_factory=list)
+    neighborhood_moves: List[Dict[str, Any]] = field(default_factory=list)
+    neighborhood_summary: Dict[str, Dict[str, int]] = field(default_factory=dict)
     deadline_reached: bool = False
     iteration_limit_reached: bool = False
     local_search_entered: bool = False
@@ -119,6 +229,22 @@ class OptimizationSearchReportState:
 
     def mark_candidate_rejected(self, *, reason: str) -> None:
         self._record_rejection_reason(reason)
+
+    def mark_neighborhood_move(self, move: Dict[str, Any]) -> None:
+        row = _safe_neighborhood_move(move)
+        name = _safe_text(row.get("neighborhood_name")) or "unknown"
+        bucket = self.neighborhood_summary.setdefault(name, _empty_neighborhood_counter())
+        bucket["attempted"] += 1
+        if bool(row.get("noop")):
+            bucket["noop"] += 1
+        else:
+            bucket["effective"] += 1
+        if bool(row.get("fallback_used")):
+            bucket["fallback"] += 1
+        if _safe_text(row.get("candidate_rejected")):
+            bucket["rejected"] += 1
+        if len(self.neighborhood_moves) < 50:
+            self.neighborhood_moves.append(row)
 
     def mark_optional_warmstart_failed(self, *, reason: str) -> None:
         self.optional_warmstart_failed = True
@@ -177,44 +303,17 @@ class OptimizationSearchReportState:
         final_stop = stop_reason or self._infer_stop_reason()
         fingerprint_changed = _fingerprint_changed(self.initial_fingerprint, self.best_fingerprint)
         improvement_conditions = self._improvement_conditions(fingerprint_changed)
-        improved = bool(
-            improvement_conditions["fingerprint_changed"]
-            and improvement_conditions["score_strictly_better"]
-            and improvement_conditions["acceptance_passed"]
+        improved = _improved_from_conditions(improvement_conditions)
+        return _final_report_payload(
+            self,
+            runtime_ms=runtime_ms,
+            attempts=attempts,
+            improvement_trace=improvement_trace,
+            final_stop=final_stop,
+            fingerprint_changed=fingerprint_changed,
+            improvement_conditions=improvement_conditions,
+            improved=improved,
         )
-        return {
-            "schema_version": SEARCH_REPORT_SCHEMA_VERSION,
-            "algorithm_profile": str(self.algorithm_profile),
-            "candidate_profile": dict(self.candidate_profile or {}),
-            "seed": int(self.seed),
-            "stop_reason": final_stop,
-            "best_origin": str(self.best_origin or "baseline"),
-            "time_budget_seconds": int(self.time_budget_seconds),
-            "runtime_ms": max(int(runtime_ms), 0),
-            "iterations": int(self.iterations),
-            "evaluated_candidates": int(self.evaluated_candidates),
-            "distinct_candidates": int(len(self.candidate_fingerprints)),
-            "accepted_candidates": int(self.accepted_candidates),
-            "accepted_distinct_candidates": int(len(self.accepted_fingerprints)),
-            "rejected_candidates": int(self.rejected_candidates),
-            "initial_fingerprint": self.initial_fingerprint,
-            "best_fingerprint": self.best_fingerprint,
-            "initial_candidate_fingerprint": dict(self.initial_candidate_fingerprint or {}),
-            "best_candidate_fingerprint": dict(self.best_candidate_fingerprint or {}),
-            "distinct_fingerprint_scope": DISTINCT_FINGERPRINT_SCOPE,
-            "distinct_fingerprint_description": DISTINCT_FINGERPRINT_DESCRIPTION,
-            "best_fingerprint_changed": fingerprint_changed,
-            "best_score": list(self.best_score or []),
-            "objective_name": str(self.objective_name),
-            "attempts": list(attempts or []),
-            "public_attempt_summary": list(self.attempt_summary or []),
-            "improvement_trace": list(improvement_trace or []),
-            "fingerprint_events": list(self.fingerprint_events or []),
-            "improvement_conditions": improvement_conditions,
-            "skipped_phases": list(self.skipped_phases or []),
-            "rejection_summary": dict(self.rejection_summary or {}),
-            "improved": improved,
-        }
 
     def _infer_stop_reason(self) -> str:
         if self.deadline_reached:

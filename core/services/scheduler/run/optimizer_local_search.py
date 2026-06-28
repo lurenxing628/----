@@ -5,130 +5,22 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, cast
 
 from core.algorithms import ScheduleResult
-from core.algorithms.evaluation import compute_metrics, objective_score
-from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
 
 from .optimizer_attempt_records import append_rejected_reason_attempt, evaluate_optional_local_candidate
 from .optimizer_candidate_profile import derive_iteration_limits
+from .optimizer_local_search_candidate_eval import evaluate_local_search_candidate
+from .optimizer_neighborhood_moves import BUSINESS_NEIGHBORHOODS, NeighborhoodMove
+from .optimizer_neighborhood_registry import choose_neighborhood_move
 from .optimizer_search_state import init_seen_hashes
 
 if TYPE_CHECKING:
     from .optimizer_search_report import OptimizationSearchReportState
 
 
-def _swap_neighbor(order: List[str], rnd: Any) -> Tuple[List[str], str]:
-    cand_order = list(order)
-    i, j = rnd.sample(range(len(cand_order)), 2)
-    cand_order[i], cand_order[j] = cand_order[j], cand_order[i]
-    return cand_order, "swap"
-
-
-def _insert_neighbor(order: List[str], rnd: Any) -> Tuple[List[str], str]:
-    cand_order = list(order)
-    i = rnd.randrange(len(cand_order))
-    j = rnd.randrange(len(cand_order))
-    item = cand_order.pop(i)
-    cand_order.insert(j, item)
-    return cand_order, "insert"
-
-
-def _block_neighbor(order: List[str], rnd: Any) -> Tuple[List[str], str]:
-    cand_order = list(order)
-    n = len(cand_order)
-    if n < 4:
-        cand_order, _move = _swap_neighbor(cand_order, rnd)
-        return cand_order, "swap_fallback"
-
-    i = rnd.randrange(n - 1)
-    max_len = min(6, n - i)
-    ln = rnd.randrange(2, max_len + 1)
-    block = cand_order[i : i + ln]
-    del cand_order[i : i + ln]
-    j = rnd.randrange(len(cand_order) + 1)
-    for item in reversed(block):
-        cand_order.insert(j, item)
-    return cand_order, "block"
-
-
-def _choose_neighbor(order: List[str], rnd: Any) -> Tuple[List[str], str]:
-    r0 = rnd.random()
-    if r0 < 0.55:
-        cand_order, move = _swap_neighbor(order, rnd)
-    elif r0 < 0.85:
-        cand_order, move = _insert_neighbor(order, rnd)
-    else:
-        cand_order, move = _block_neighbor(order, rnd)
-
-    if cand_order == order and len(order) >= 2:
-        cand_order, _move = _swap_neighbor(order, rnd)
-        move = "swap_fallback"
-    return cand_order, move
-
-
-def _evaluate_candidate(
-    *,
-    scheduler: Any,
-    strict_mode: bool,
-    algo_ops_to_schedule: List[Any],
-    batches: Dict[str, Any],
-    strategy: Any,
-    params: Dict[str, Any],
-    start_dt: datetime,
-    end_date: Optional[date],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    order: List[str],
-    seed_sr_list: List[ScheduleResult],
-    dispatch_mode: str,
-    dispatch_rule: str,
-    resource_pool: Optional[Dict[str, Any]],
-    objective_name: str,
-    optimizer_algo_stats: Optional[Dict[str, Any]],
-    schedule_fn: Callable[..., Any],
-    readiness_gate_enabled: bool,
-    graph_ready_context: Optional[Any],
-) -> Dict[str, Any]:
-    res, summ, used_strat, used_params = schedule_fn(
-        scheduler,
-        strict_mode=bool(strict_mode),
-        operations=algo_ops_to_schedule,
-        batches=batches,
-        strategy=strategy,
-        strategy_params=params,
-        start_dt=start_dt,
-        end_date=end_date,
-        machine_downtimes=downtime_map,
-        batch_order_override=order,
-        seed_results=seed_sr_list,
-        dispatch_mode=dispatch_mode,
-        dispatch_rule=dispatch_rule,
-        resource_pool=resource_pool,
-        readiness_gate_enabled=bool(readiness_gate_enabled),
-        graph_ready_context=graph_ready_context,
-    )
-    metrics = compute_metrics(res, batches)
-    algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
-    return {
-        "algo_stats": algo_stats,
-        "results": res,
-        "summary": summ,
-        "strategy": used_strat,
-        "params": used_params,
-        "dispatch_mode": dispatch_mode,
-        "dispatch_rule": dispatch_rule,
-        "order": order,
-        "metrics": metrics,
-        "score": (float(summ.failed_ops),) + objective_score(objective_name, metrics),
-        "resource_pool": resource_pool or {},
-        "seed_result_count": len(seed_sr_list or []),
-        "locked_seed_range": [getattr(item, "op_id", None) for item in list(seed_sr_list or [])],
-        "mutable_scope": {"scope": "batch_order", "batch_count": len(order or [])},
-    }
-
-
 def _record_improvement(
     *,
     candidate: Dict[str, Any],
-    move: str,
+    move: NeighborhoodMove,
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
     clock: Callable[[], float],
@@ -140,11 +32,12 @@ def _record_improvement(
     used_params = candidate["params"]
     dispatch_mode = str(candidate.get("dispatch_mode") or "")
     dispatch_rule = str(candidate.get("dispatch_rule") or "")
+    move_tag = f"local:{move.neighborhood_name}"
     if len(improvement_trace) < 200:
         improvement_trace.append(
             {
                 "elapsed_ms": int((clock() - t_begin) * 1000),
-                "tag": f"local:{move}",
+                "tag": move_tag,
                 "strategy": used_strat.value,
                 "dispatch_mode": dispatch_mode,
                 "dispatch_rule": dispatch_rule,
@@ -155,7 +48,7 @@ def _record_improvement(
     if len(attempts) < 12:
         attempts.append(
             {
-                "tag": f"local:{move}",
+                "tag": move_tag,
                 "strategy": used_strat.value,
                 "dispatch_mode": dispatch_mode,
                 "dispatch_rule": dispatch_rule,
@@ -185,10 +78,16 @@ def _shake_order(order: List[str], rnd: Any) -> List[str]:
     return cur_order
 
 
-def _should_skip_seen(cand_order: List[str], seen_hashes: Optional[set]) -> bool:
+def _move_seen_key(move: NeighborhoodMove) -> Tuple[Any, ...]:
+    if move.decision_key:
+        return tuple(move.decision_key)
+    return tuple(move.batch_order or ())
+
+
+def _should_skip_seen(move: NeighborhoodMove, seen_hashes: Optional[set]) -> bool:
     if seen_hashes is None:
         return False
-    cand_hash = tuple(cand_order)
+    cand_hash = _move_seen_key(move)
     if cand_hash in seen_hashes:
         return True
     seen_hashes.add(cand_hash)
@@ -222,24 +121,48 @@ def _record_noop_neighbor(
     strategy: Any,
     dispatch_mode: str,
     dispatch_rule: str,
+    move: NeighborhoodMove,
 ) -> None:
     if search_report_state is None:
         return
+    reason = str(move.candidate_rejected or "noop_neighbor")
     append_rejected_reason_attempt(
         attempts=attempts,
-        tag="local:noop_neighbor",
+        tag=f"local:{move.neighborhood_name}",
         strategy=strategy.value,
         dispatch_mode=dispatch_mode,
         dispatch_rule=dispatch_rule,
-        reason="noop_neighbor",
-        message="局部搜索候选与已见过的批次顺序重复，本轮未重新排产。",
+        reason=reason,
+        message=f"业务邻域 {move.neighborhood_name} 未产生有效候选：{reason}",
     )
-    search_report_state.mark_candidate_rejected(reason="noop_neighbor")
+    search_report_state.mark_candidate_rejected(reason=reason)
 
 
 def _mark_local_candidate_evaluated(search_report_state: Optional[OptimizationSearchReportState], candidate: Optional[Dict[str, Any]]) -> None:
     if candidate is not None and search_report_state is not None:
         search_report_state.mark_candidate_evaluated(candidate, origin="local_search")
+
+
+def _mark_neighborhood_move(
+    search_report_state: Optional[OptimizationSearchReportState],
+    move: NeighborhoodMove,
+    *,
+    noop: Optional[bool] = None,
+    candidate_rejected: str = "",
+    reason: str = "",
+) -> None:
+    if search_report_state is None:
+        return
+    row = move.to_report_dict()
+    if noop is not None:
+        row["noop"] = bool(noop)
+    if candidate_rejected:
+        row["candidate_rejected"] = str(candidate_rejected)
+    if reason:
+        diagnostics = dict(row.get("diagnostics") or {})
+        diagnostics["reason"] = str(reason)
+        row["diagnostics"] = diagnostics
+    search_report_state.mark_neighborhood_move(row)
 
 
 def _mark_local_candidate_accepted(
@@ -279,7 +202,7 @@ def _apply_candidate_result(
     best: Dict[str, Any],
     cur_order: List[str],
     no_improve: int,
-    move: str,
+    move: NeighborhoodMove,
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
     clock: Callable[[], float],
@@ -308,6 +231,7 @@ def _run_local_search_candidate_round(
     cur_params: Dict[str, Any],
     cur_dispatch_mode: str,
     cur_dispatch_rule: str,
+    neighborhoods: Tuple[str, ...],
     seen_hashes: Optional[set],
     rnd: Any,
     attempts: List[Dict[str, Any]],
@@ -331,20 +255,49 @@ def _run_local_search_candidate_round(
     clock: Callable[[], float],
     t_begin: float,
 ) -> Tuple[Dict[str, Any], List[str], int]:
-    cand_order, move = _choose_neighbor(cur_order, rnd)
-    if _should_skip_seen(cand_order, seen_hashes):
+    move = choose_neighborhood_move(
+        order=cur_order,
+        neighborhoods=neighborhoods,
+        results=list(best.get("results") or []),
+        batches=batches,
+        resource_pool=resource_pool,
+        rnd=rnd,
+    )
+    if move.noop:
+        _mark_neighborhood_move(search_report_state, move)
         _record_noop_neighbor(
             attempts=attempts,
             search_report_state=search_report_state,
             strategy=cur_strat,
             dispatch_mode=cur_dispatch_mode,
             dispatch_rule=cur_dispatch_rule,
+            move=move,
+        )
+        return best, cur_order, no_improve + 1
+    if _should_skip_seen(move, seen_hashes):
+        _mark_neighborhood_move(
+            search_report_state,
+            move,
+            noop=True,
+            candidate_rejected="noop_neighbor",
+            reason="duplicate_decision",
+        )
+        _record_noop_neighbor(
+            attempts=attempts,
+            search_report_state=search_report_state,
+            strategy=cur_strat,
+            dispatch_mode=cur_dispatch_mode,
+            dispatch_rule=cur_dispatch_rule,
+            move=move,
         )
         return best, cur_order, no_improve + 1
 
+    _mark_neighborhood_move(search_report_state, move)
+    cand_order = list(move.batch_order or cur_order)
+    candidate_resource_pool = move.resource_pool if move.resource_pool is not None else resource_pool
     candidate = evaluate_optional_local_candidate(
         evaluate=partial(
-            _evaluate_candidate,
+            evaluate_local_search_candidate,
             scheduler=scheduler,
             strict_mode=bool(strict_mode),
             algo_ops_to_schedule=algo_ops_to_schedule,
@@ -358,15 +311,16 @@ def _run_local_search_candidate_round(
             seed_sr_list=seed_sr_list,
             dispatch_mode=cur_dispatch_mode,
             dispatch_rule=cur_dispatch_rule,
-            resource_pool=resource_pool,
+            resource_pool=candidate_resource_pool,
             objective_name=objective_name,
             optimizer_algo_stats=optimizer_algo_stats,
             schedule_fn=schedule_fn,
             readiness_gate_enabled=bool(readiness_gate_enabled),
             graph_ready_context=graph_ready_context,
+            neighborhood_move=move,
         ),
         attempts=attempts,
-        move=move,
+        move=move.neighborhood_name,
         strategy=cur_strat,
         dispatch_mode=cur_dispatch_mode,
         dispatch_rule=cur_dispatch_rule,
@@ -424,6 +378,7 @@ def run_local_search(
     schedule_fn: Callable[..., Any],
     graph_ready_context: Optional[Any] = None,
     search_report_state: Optional[OptimizationSearchReportState] = None,
+    neighborhoods: Optional[Tuple[str, ...]] = None,
 ) -> Optional[Dict[str, Any]]:
     skip_reason, skip_extra = _local_search_skip_reason(algo_mode=algo_mode, best=best)
     if skip_reason:
@@ -439,6 +394,7 @@ def run_local_search(
     cur_params = dict(best["params"] or {})
     cur_dispatch_mode = str(best.get("dispatch_mode") or dispatch_mode_cfg)
     cur_dispatch_rule = str(best.get("dispatch_rule") or dispatch_rule_cfg)
+    active_neighborhoods = tuple(neighborhoods or BUSINESS_NEIGHBORHOODS)
     it = 0
     it_limit, restart_after = derive_iteration_limits(time_budget_seconds)
     no_improve = 0
@@ -462,6 +418,7 @@ def run_local_search(
         best, cur_order, no_improve = _run_local_search_candidate_round(
             best=best,
             cur_order=cur_order,
+            neighborhoods=active_neighborhoods,
             attempts=attempts,
             improvement_trace=improvement_trace,
             cur_strat=cur_strat,

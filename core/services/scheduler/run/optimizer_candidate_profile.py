@@ -5,7 +5,7 @@
 - 现有能力包括 ``baseline``（单次排产）与 ``grasp_ig``（多起点 + GRASP/IG 起点
   + 局部搜索，可选 OR-Tools warm-start）。
 - 本阶段 ``repair`` 只允许 ``sgs``，``acceptance`` 只允许 ``improve_only``，
-  ``neighborhoods`` 只允许现有 swap/insert/block 邻域；未知项一律 fail-loud。
+  ``neighborhoods`` 默认且仅允许业务邻域 registry 的六个邻域。
 - ``configured`` 与 ``effective`` 必须区分：时间预算当前无系统上限，迭代上限受
   ``[200, 5000]`` 系统下/上限钳制，被钳制时如实写出 ``system_limit_applied`` 与
   ``system_limit_reason``。
@@ -23,6 +23,8 @@ from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
 
+from .optimizer_neighborhood_moves import ALLOWED_NEIGHBORHOODS, BUSINESS_NEIGHBORHOODS
+
 CANDIDATE_PROFILE_SCHEMA_VERSION = 1
 
 PROFILE_BASELINE = "baseline"
@@ -33,7 +35,6 @@ ALLOWED_PROFILES: Tuple[str, ...] = (PROFILE_BASELINE, PROFILE_MULTI_START_LOCAL
 # 本阶段只允许下列取值；扩展属后续 roadmap item，不在本轮范围。
 ALLOWED_REPAIRS: Tuple[str, ...] = ("sgs",)
 ALLOWED_ACCEPTANCES: Tuple[str, ...] = ("improve_only",)
-ALLOWED_NEIGHBORHOODS: Tuple[str, ...] = ("swap", "insert", "block")
 
 # 迭代上限 / 重启阈值的系统钳制窗口（与历史 optimizer_local_search 内联公式逐位一致）。
 ITERATION_FLOOR = 200
@@ -249,8 +250,8 @@ def build_candidate_profile(
     校验失败一律 fail-loud（与 strict_mode 无关）：profile 合同错误是合同违反，
     不是可选候选拒绝，不能静默回退默认值，也不能在非 strict 下被吞掉。
 
-    ``neighborhoods`` 默认按 profile 派生（improve 用现有 swap/insert/block，baseline
-    为空）；若调用方显式传入，则逐项校验，未知邻域 fail-loud。
+    ``neighborhoods`` 默认按 profile 派生（improve 用业务邻域 registry，baseline 为空）；
+    若调用方显式传入，则逐项校验，未知邻域 fail-loud。
     """
     profile = _profile_for_algo_mode(algo_mode)
     repair_value = _require_allowed(repair, ALLOWED_REPAIRS, field="repair")
@@ -262,7 +263,7 @@ def build_candidate_profile(
 
     enabled = profile in (PROFILE_MULTI_START_LOCAL_SEARCH, PROFILE_GRASP_IG)
     effective_dispatch_mode = "sgs" if graph_sgs_required else str(dispatch_mode or "").strip().lower()
-    resolved_neighborhoods = (ALLOWED_NEIGHBORHOODS if enabled else ()) if neighborhoods is None else tuple(neighborhoods)
+    resolved_neighborhoods = (BUSINESS_NEIGHBORHOODS if enabled else ()) if neighborhoods is None else tuple(neighborhoods)
     validated_neighborhoods = _require_neighborhoods(resolved_neighborhoods)
     ortools_warmstart_enabled = bool(ortools_enabled) and enabled
 

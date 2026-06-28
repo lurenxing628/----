@@ -1,4 +1,4 @@
-"""回归测试：_run_local_search 局部搜索 swap 邻域的去重与拒绝记录契约——长 order 跳过重复邻域只调度一次、短 order 允许重试同一邻域；候选被 ValidationError 拒绝时 relaxed 模式记 source=candidate_rejected 的 attempt（保留 field/message 来源）并保留原 best，strict 模式直接抛 ValidationError；且 compact_attempts/project_public_algo_summary 把 candidate_rejected 仅留在诊断面、不进对外 attempts。"""
+"""回归测试：_run_local_search 局部搜索业务邻域的去重与拒绝记录契约。"""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import pytest
 import core.services.scheduler.schedule_optimizer as schedule_optimizer_module
 from core.algorithms.sort_strategies import SortStrategy
 from core.infrastructure.errors import ValidationError
+from core.services.scheduler.run.optimizer_neighborhood_moves import CRITICAL_CHAIN
 from core.services.scheduler.run.optimizer_search_state import compact_attempts
 from core.services.scheduler.schedule_optimizer import _run_local_search
 from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
@@ -28,7 +29,7 @@ class _FakeTime:
 
 class _DeterministicRandom:
     def random(self):
-        return 0.1  # 永远走 swap
+        return 0.1
 
     def sample(self, seq, n):
         return [0, 1]
@@ -40,8 +41,16 @@ class _DeterministicRandom:
         return a
 
 
-def _first_swap_order(order_length: int) -> Tuple[str, ...]:
+def _first_critical_chain_order(order_length: int) -> Tuple[str, ...]:
     return ("B1", "B0", *(f"B{i}" for i in range(2, order_length)))
+
+
+def _critical_chain_results(latest_batch_id: str = "B1"):
+    earlier_batch_id = "B0" if latest_batch_id != "B0" else "B1"
+    return [
+        SimpleNamespace(batch_id=earlier_batch_id, end_time=datetime(2026, 1, 1, 9, 0, 0), seq=10),
+        SimpleNamespace(batch_id=latest_batch_id, end_time=datetime(2026, 1, 1, 10, 0, 0), seq=10),
+    ]
 
 
 def _run_case(monkeypatch, *, order_length: int):
@@ -67,7 +76,7 @@ def _run_case(monkeypatch, *, order_length: int):
     monkeypatch.setattr(schedule_optimizer_module, "_schedule_with_optional_strict_mode", _fake_schedule_with_optional_strict_mode)
 
     best = {
-        "results": [],
+        "results": _critical_chain_results("B1"),
         "summary": SimpleNamespace(success=True, total_ops=0, scheduled_ops=0, failed_ops=0, warnings=[], errors=[], duration_seconds=0.0),
         "strategy": SortStrategy.PRIORITY_FIRST,
         "params": {},
@@ -101,19 +110,20 @@ def _run_case(monkeypatch, *, order_length: int):
         optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}},
         t_begin=1000.0,
         strict_mode=False,
+        neighborhoods=(CRITICAL_CHAIN,),
     )
     return schedule_calls
 
 
 def test_local_search_dedups_duplicate_neighbors_when_order_large(monkeypatch):
     schedule_calls = _run_case(monkeypatch, order_length=10)
-    assert schedule_calls == [_first_swap_order(10)]
+    assert schedule_calls == [_first_critical_chain_order(10)]
 
 
 def test_local_search_keeps_retrying_duplicates_when_order_small(monkeypatch):
     schedule_calls = _run_case(monkeypatch, order_length=5)
     assert len(schedule_calls) >= 2
-    assert set(schedule_calls) == {_first_swap_order(5)}
+    assert set(schedule_calls) == {_first_critical_chain_order(5)}
 
 
 def test_local_search_records_rejected_neighbor_and_keeps_existing_best(monkeypatch):
@@ -127,7 +137,7 @@ def test_local_search_records_rejected_neighbor_and_keeps_existing_best(monkeypa
     monkeypatch.setattr(schedule_optimizer_module, "_schedule_with_optional_strict_mode", _rejecting_schedule_with_optional_strict_mode)
 
     best = {
-        "results": [],
+        "results": _critical_chain_results("B2"),
         "summary": SimpleNamespace(success=True, total_ops=0, scheduled_ops=0, failed_ops=0, warnings=[], errors=[], duration_seconds=0.0),
         "strategy": SortStrategy.PRIORITY_FIRST,
         "params": {},
@@ -162,13 +172,14 @@ def test_local_search_records_rejected_neighbor_and_keeps_existing_best(monkeypa
         optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}},
         t_begin=1000.0,
         strict_mode=False,
+        neighborhoods=(CRITICAL_CHAIN,),
     )
 
     assert returned is best
     rejected = [attempt for attempt in attempts if attempt.get("source") == "candidate_rejected"]
     assert rejected == [
         {
-            "tag": "local:swap",
+            "tag": "local:critical_chain",
             "strategy": SortStrategy.PRIORITY_FIRST.value,
             "dispatch_mode": "sgs",
             "dispatch_rule": "slack",
@@ -193,7 +204,7 @@ def test_local_search_strict_mode_raises_rejected_neighbor_validation_error(monk
     monkeypatch.setattr(schedule_optimizer_module, "_schedule_with_optional_strict_mode", _rejecting_schedule_with_optional_strict_mode)
 
     best = {
-        "results": [],
+        "results": _critical_chain_results("B2"),
         "summary": SimpleNamespace(success=True, total_ops=0, scheduled_ops=0, failed_ops=0, warnings=[], errors=[], duration_seconds=0.0),
         "strategy": SortStrategy.PRIORITY_FIRST,
         "params": {},
@@ -225,10 +236,11 @@ def test_local_search_strict_mode_raises_rejected_neighbor_validation_error(monk
             objective_name="min_overdue",
             attempts=[],
             improvement_trace=[],
-            optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}},
-            t_begin=1000.0,
-            strict_mode=True,
-        )
+                optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}},
+                t_begin=1000.0,
+                strict_mode=True,
+                neighborhoods=(CRITICAL_CHAIN,),
+            )
 
     assert exc_info.value.field == "resource"
 
@@ -244,7 +256,7 @@ def test_local_search_records_rejected_neighbor_after_existing_attempt_cap(monke
     monkeypatch.setattr(schedule_optimizer_module, "_schedule_with_optional_strict_mode", _rejecting_schedule_with_optional_strict_mode)
 
     best = {
-        "results": [],
+        "results": _critical_chain_results("B2"),
         "summary": SimpleNamespace(success=True, total_ops=0, scheduled_ops=0, failed_ops=0, warnings=[], errors=[], duration_seconds=0.0),
         "strategy": SortStrategy.PRIORITY_FIRST,
         "params": {},
@@ -288,12 +300,13 @@ def test_local_search_records_rejected_neighbor_after_existing_attempt_cap(monke
         optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}},
         t_begin=1000.0,
         strict_mode=False,
+        neighborhoods=(CRITICAL_CHAIN,),
     )
 
     rejected = [attempt for attempt in attempts if attempt.get("source") == "candidate_rejected"]
     assert rejected == [
         {
-            "tag": "local:swap",
+            "tag": "local:critical_chain",
             "strategy": SortStrategy.PRIORITY_FIRST.value,
             "dispatch_mode": "sgs",
             "dispatch_rule": "slack",
@@ -341,7 +354,7 @@ def test_local_search_keeps_distinct_rejected_neighbor_origins(monkeypatch):
     monkeypatch.setattr(schedule_optimizer_module, "_schedule_with_optional_strict_mode", _recording_rejecting_schedule)
 
     best = {
-        "results": [],
+        "results": _critical_chain_results("B2"),
         "summary": SimpleNamespace(success=True, total_ops=0, scheduled_ops=0, failed_ops=0, warnings=[], errors=[], duration_seconds=0.0),
         "strategy": SortStrategy.PRIORITY_FIRST,
         "params": {},
@@ -376,13 +389,14 @@ def test_local_search_keeps_distinct_rejected_neighbor_origins(monkeypatch):
         optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}},
         t_begin=1000.0,
         strict_mode=False,
+        neighborhoods=(CRITICAL_CHAIN,),
     )
 
     rejected_attempts = [attempt for attempt in attempts if attempt.get("source") == "candidate_rejected"]
     assert len(schedule_calls) > len(rejected_attempts)
     assert rejected_attempts == [
         {
-            "tag": "local:swap",
+            "tag": "local:critical_chain",
             "strategy": SortStrategy.PRIORITY_FIRST.value,
             "dispatch_mode": "sgs",
             "dispatch_rule": "slack",
@@ -394,7 +408,7 @@ def test_local_search_keeps_distinct_rejected_neighbor_origins(monkeypatch):
             },
         },
         {
-            "tag": "local:swap",
+            "tag": "local:critical_chain",
             "strategy": SortStrategy.PRIORITY_FIRST.value,
             "dispatch_mode": "sgs",
             "dispatch_rule": "slack",

@@ -53,10 +53,10 @@ items:
   - slug: business-neighborhood-registry
     description: 建立关键链、延期批次、瓶颈设备、换型块、资源替换、时间窗 repair 的邻域注册表
     depends_on: [distinct-candidate-fingerprint-contract]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-28-business-neighborhood-registry
     minimal_loop: false
-    notes: Phase B 入口；启动须先过 proof-harness 证据闸门(证明 GRASP/IG+现有 SGS 距 oracle/下界仍有值得填的显著 gap)，否则 Phase B 降为后续候选研究；邻域只描述 mutable scope 和 move reason；最终落位仍走 SGS 和 estimate_internal_slot，不提前写可变工序时间
+    notes: 已落地业务邻域 registry 与 NeighborhoodMove 合同；支持 critical_chain/tardy_window/bottleneck_machine/changeover_block/resource_alternative/time_window，旧 swap/insert/block 不在正式 registry 和 profile 白名单里；默认 improve profile 的 neighborhoods 改为六个业务邻域并公开安全名称，未知邻域 ValidationError fail-loud；local search 通过 registry 生成 move 后仍调用现有 SGS 解码，SearchReport 记录 neighborhood_moves diagnostics 与 neighborhood_summary public 小摘要；no-op 记 noop_neighbor，fallback 必写 fallback_reason；public/OperationLogs/size guard 不透传 raw move、内部 op/resource id、fingerprint hash。未做 VNS/SA acceptance，未做 ALNS。
 
   - slug: vns-sa-local-search-upgrade
     description: 把现有 local search 升级为 VNS 和 SA 后处理，先做轻量可复现版本

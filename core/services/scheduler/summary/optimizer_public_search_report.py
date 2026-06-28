@@ -41,6 +41,7 @@ _DIAGNOSTIC_KEYS = (
     "best_candidate_fingerprint",
     "fingerprint_events",
     "improvement_conditions",
+    "neighborhood_moves",
     "attempts",
     "improvement_trace",
     "public_attempt_summary",
@@ -57,7 +58,7 @@ _PROFILE_PUBLIC_INT_KEYS = (
     "effective_max_iterations",
 )
 _PROFILE_PUBLIC_BOOL_KEYS = ("enabled", "system_limit_applied")
-_PROFILE_PUBLIC_LIST_KEYS = ("candidate_strategy_families",)
+_PROFILE_PUBLIC_LIST_KEYS = ("candidate_strategy_families", "neighborhoods")
 _PROFILE_DIAGNOSTIC_TEXT_KEYS = (
     "seed_source",
     "iteration_limit_source",
@@ -70,6 +71,7 @@ _PROFILE_DIAGNOSTIC_TEXT_KEYS = (
 )
 _PROFILE_DIAGNOSTIC_INT_KEYS = ("schema_version", "restart_after_iterations")
 _PROFILE_DIAGNOSTIC_BOOL_KEYS = ("ortools_warmstart_enabled", "strict_mode")
+_NEIGHBORHOOD_COUNTER_KEYS = ("attempted", "effective", "noop", "fallback", "rejected")
 
 
 def _safe_candidate_construction(value: Any) -> Dict[str, Any]:
@@ -162,11 +164,29 @@ def _project_attempt_summary(value: Any) -> List[Dict[str, Any]]:
     return out
 
 
+def _project_neighborhood_summary(value: Any) -> Dict[str, Dict[str, int]]:
+    if not isinstance(value, dict):
+        return {}
+    out: Dict[str, Dict[str, int]] = {}
+    for raw_name, raw_counts in value.items():
+        name = safe_attempt_text(raw_name)
+        if not name or not isinstance(raw_counts, dict):
+            continue
+        row: Dict[str, int] = {}
+        for key in _NEIGHBORHOOD_COUNTER_KEYS:
+            number = safe_non_negative_int(raw_counts.get(key))
+            if number is not None:
+                row[key] = number
+        if row:
+            out[name] = row
+    return out
+
+
 def _project_candidate_profile(value: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """把 candidate profile 合同拆成 (profile_public, profile_diagnostics)。
 
-    public 只投 roadmap item 4 允许的安全摘要字段；配置来源、邻域、策略族等内部调试
-    细节只进 diagnostics。所有字段仍过 safe_* 兜底，杜绝内部标识泄漏。
+    public 只投 roadmap 允许的安全摘要字段；邻域只公开白名单名称，配置来源和构造预算等
+    内部调试细节只进 diagnostics。所有字段仍过 safe_* 兜底，杜绝内部标识泄漏。
     """
     if not isinstance(value, dict):
         return {}, {}
@@ -206,9 +226,6 @@ def _project_profile_diagnostics(value: Dict[str, Any]) -> Dict[str, Any]:
     for key in _PROFILE_DIAGNOSTIC_BOOL_KEYS:
         if key in value:
             diagnostics[key] = safe_bool(value.get(key))
-    neighborhoods = safe_public_text_list(value.get("neighborhoods"))
-    if neighborhoods:
-        diagnostics["neighborhoods"] = neighborhoods
     candidate_construction = _safe_candidate_construction(value.get("candidate_construction"))
     if candidate_construction:
         diagnostics["candidate_construction"] = candidate_construction
@@ -238,6 +255,10 @@ def project_search_report(value: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     attempt_summary = _project_attempt_summary(value.get("public_attempt_summary"))
     if attempt_summary:
         public["public_attempt_summary"] = attempt_summary
+
+    neighborhood_summary = _project_neighborhood_summary(value.get("neighborhood_summary"))
+    if neighborhood_summary:
+        public["neighborhood_summary"] = neighborhood_summary
 
     diagnostics = {key: value[key] for key in _DIAGNOSTIC_KEYS if key in value and value[key]}
 

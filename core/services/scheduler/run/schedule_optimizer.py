@@ -366,6 +366,7 @@ def optimize_schedule(
         rng_factory=runtime.rng_factory,
         schedule_fn=_schedule_with_optional_strict_mode,
         search_report_state=search_report_state,
+        neighborhoods=tuple(candidate_profile.neighborhoods),
     )
 
     if state.best is None:
