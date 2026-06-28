@@ -37,10 +37,10 @@ items:
   - slug: distinct-candidate-fingerprint-contract
     description: 定义候选指纹、去重计数、same-fingerprint 拒绝和 improved 判定合同
     depends_on: [optimizer-candidate-profile-contract]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-28-distinct-candidate-fingerprint-contract
     minimal_loop: false
-    notes: 防止重复顺序、重复解码结果或返回原方案被包装成不同候选或优化成功
+    notes: 已落地 CandidateFingerprint 合同(core/services/scheduler/run/optimizer_candidate_fingerprint.py);decision_fingerprint 覆盖 objective/strategy/params/dispatch/batch_order/resource/seed/mutable_scope,output_fingerprint 覆盖正式解码结果数量、工序-资源-时间签名、summary 与当前 objective score;distinct_candidates/accepted_distinct_candidates 改为按 decoded_output 去重并在 public/minimal 摘要声明口径;improved 显式要求 fingerprint_changed + score_strictly_better + acceptance_passed(acceptance=improve_only);same_as_parent/same_as_seen 记 same_fingerprint 拒绝,不算 improvement;hash 和内部输入只进 diagnostics,public/OperationLogs/size guard 不透传内部 id 或 fingerprint hash。
 
   - slug: grasp-ig-candidate-construction
     description: 用 GRASP 和 Iterated Greedy 生成更多可行起点，仍由现有 SGS 落位

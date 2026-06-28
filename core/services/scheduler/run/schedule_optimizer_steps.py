@@ -132,6 +132,10 @@ def _evaluate_ortools_candidate(
         "metrics": metrics,
         "score": score,
         "algo_stats": algo_stats,
+        "resource_pool": resource_pool or {},
+        "seed_result_count": len(seed_sr_list or []),
+        "locked_seed_range": [getattr(item, "op_id", None) for item in list(seed_sr_list or [])],
+        "mutable_scope": {"scope": "batch_order", "batch_count": len(ort_order or [])},
     }
 
 
@@ -359,6 +363,10 @@ def _evaluate_multi_start_candidate(
         "metrics": metrics,
         "score": score,
         "algo_stats": algo_stats,
+        "resource_pool": resource_pool or {},
+        "seed_result_count": len(seed_sr_list or []),
+        "locked_seed_range": [getattr(item, "op_id", None) for item in list(seed_sr_list or [])],
+        "mutable_scope": {"scope": "batch_order", "batch_count": len(order or [])},
     }
 
 

@@ -88,6 +88,8 @@ def _baseline_candidate(
     best_metrics: Any,
     best_score: Tuple[float, ...],
     algo_stats: Dict[str, Any],
+    resource_pool: Optional[Dict[str, Any]],
+    seed_sr_list: List[ScheduleResult],
 ) -> Dict[str, Any]:
     return {
         "results": results,
@@ -100,6 +102,10 @@ def _baseline_candidate(
         "metrics": best_metrics,
         "score": tuple(best_score or ()),
         "algo_stats": algo_stats,
+        "resource_pool": resource_pool or {},
+        "seed_result_count": len(seed_sr_list or []),
+        "locked_seed_range": [getattr(item, "op_id", None) for item in list(seed_sr_list or [])],
+        "mutable_scope": {"scope": "batch_order", "batch_count": len(best_order or [])},
     }
 
 
@@ -302,6 +308,8 @@ def optimize_schedule(
             best_metrics=best_metrics,
             best_score=best_score,
             algo_stats=algo_stats,
+            resource_pool=resource_pool,
+            seed_sr_list=seed_sr_list,
         )
         search_report_state.mark_candidate_evaluated(baseline, origin="baseline")
         search_report_state.mark_candidate_accepted(baseline, origin="baseline")

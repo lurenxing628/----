@@ -118,6 +118,10 @@ def _evaluate_candidate(
         "order": order,
         "metrics": metrics,
         "score": (float(summ.failed_ops),) + objective_score(objective_name, metrics),
+        "resource_pool": resource_pool or {},
+        "seed_result_count": len(seed_sr_list or []),
+        "locked_seed_range": [getattr(item, "op_id", None) for item in list(seed_sr_list or [])],
+        "mutable_scope": {"scope": "batch_order", "batch_count": len(order or [])},
     }
 
 
@@ -221,7 +225,7 @@ def _record_noop_neighbor(
 ) -> None:
     if search_report_state is None:
         return
-    attempt = append_rejected_reason_attempt(
+    append_rejected_reason_attempt(
         attempts=attempts,
         tag="local:noop_neighbor",
         strategy=strategy.value,
@@ -230,7 +234,7 @@ def _record_noop_neighbor(
         reason="noop_neighbor",
         message="局部搜索候选与已见过的批次顺序重复，本轮未重新排产。",
     )
-    search_report_state.mark_candidate_rejected(reason="noop_neighbor", attempt=attempt)
+    search_report_state.mark_candidate_rejected(reason="noop_neighbor")
 
 
 def _mark_local_candidate_evaluated(search_report_state: Optional[OptimizationSearchReportState], candidate: Optional[Dict[str, Any]]) -> None:

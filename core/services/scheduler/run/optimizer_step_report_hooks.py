@@ -125,7 +125,7 @@ def _record_ortools_optional_failure(
     logger: Any,
     exc: Exception,
 ) -> None:
-    attempt = _record_ortools_rejection_attempt(
+    _record_ortools_rejection_attempt(
         attempts=attempts,
         strategy=strategy,
         dispatch_mode=dispatch_mode,
@@ -134,7 +134,7 @@ def _record_ortools_optional_failure(
         message=str(exc),
     )
     if search_report_state is not None:
-        search_report_state.mark_optional_warmstart_failed(reason="optional_warmstart_failed", attempt=attempt)
+        search_report_state.mark_optional_warmstart_failed(reason="optional_warmstart_failed")
     _record_ortools_failure(optimizer_algo_stats=optimizer_algo_stats, scheduler=scheduler, logger=logger, exc=exc)
 
 

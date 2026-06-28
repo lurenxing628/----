@@ -21,7 +21,16 @@ from core.models.public_identifier_redaction import (
 
 
 def test_contains_internal_identifier_hits_internal_passes_normal() -> None:
-    for hit in ("op_id", "candidate_key", "graph_w1_of_3", "a op:batch:5 b", "OP123", "node_metrics_sample"):
+    for hit in (
+        "op_id",
+        "candidate_key",
+        "decision_fingerprint",
+        "output_fingerprint",
+        "graph_w1_of_3",
+        "a op:batch:5 b",
+        "OP123",
+        "node_metrics_sample",
+    ):
         assert contains_internal_identifier(hit) is True, hit
     for ok in ("edd", "批次顺序优化", "多起点方案", "baseline", ""):
         assert contains_internal_identifier(ok) is False, ok
@@ -31,7 +40,9 @@ def test_is_forbidden_internal_key_blocks_internal_passes_public() -> None:
     for forbidden in (
         "op_id",
         "candidate_key",
+        "decision_fingerprint",
         "node_metrics_sample",
+        "output_fingerprint",
         "unmatched_operation_ids_sample",
         "scenario_id",
         "op:1",
@@ -66,6 +77,9 @@ def test_forbidden_keys_union_is_not_narrowed() -> None:
         "raw_score_best_candidate_key",
         "selected_candidate_key",
         "candidate_fingerprint",
+        "decision_fingerprint",
+        "output_fingerprint",
+        "parent_fingerprint",
         "attempts",
         "attempts_public",
         # 图 / 节点

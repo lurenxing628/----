@@ -88,6 +88,8 @@ def _minimal_trigger_near_due_case():
                 "rejected_candidates": 3,
                 "best_score": [0.0, 1.0],
                 "objective_name": "min_overdue",
+                "distinct_fingerprint_scope": "decoded_output",
+                "distinct_fingerprint_description": "distinct_candidates 按正式 SGS 解码结果去重",
                 "best_fingerprint_changed": True,
                 "improved": True,
                 "rejection_summary": {"noop_neighbor": 3},
@@ -354,6 +356,7 @@ def main() -> None:
     assert int(minimal_report.get("seed") or 0) == 99, "minimal 不应丢 search_report.seed"
     assert int(minimal_report.get("runtime_ms") or 0) == 123, "minimal 不应丢 search_report.runtime_ms"
     assert int(minimal_report.get("evaluated_candidates") or 0) == 8, "minimal 不应丢 search_report.evaluated_candidates"
+    assert minimal_report.get("distinct_fingerprint_scope") == "decoded_output", "minimal 不应丢 distinct 口径"
     assert "attempts" not in minimal_report, "minimal public search_report 不得保留 raw attempts"
     assert "initial_fingerprint" not in minimal_report, "minimal public search_report 不得保留内部 initial_fingerprint"
     assert "best_fingerprint" not in minimal_report, "minimal public search_report 不得保留内部 best_fingerprint"

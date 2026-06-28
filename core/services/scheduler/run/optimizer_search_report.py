@@ -1,78 +1,22 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
-from .optimizer_search_state import attempt_identity, is_candidate_rejected_attempt
+from .optimizer_candidate_fingerprint import (
+    DISTINCT_FINGERPRINT_DESCRIPTION,
+    DISTINCT_FINGERPRINT_SCOPE,
+    CandidateFingerprint,
+    build_candidate_fingerprint,
+    jsonable_fingerprint_payload,
+    score_strictly_better,
+)
 
 SEARCH_REPORT_SCHEMA_VERSION = 1
-FINGERPRINT_SCOPE = "report_candidate_identity"
 
 
 def _safe_text(value: Any) -> str:
     return str(value or "").strip()
-
-
-def _jsonable(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, dict):
-        return {str(key): _jsonable(child) for key, child in sorted(value.items(), key=lambda item: str(item[0]))}
-    if isinstance(value, (list, tuple)):
-        return [_jsonable(item) for item in value]
-    enum_value = getattr(value, "value", None)
-    if enum_value is not None:
-        return _jsonable(enum_value)
-    return {"type": value.__class__.__name__}
-
-
-def stable_report_fingerprint(payload: Dict[str, Any]) -> str:
-    text = json.dumps(_jsonable(payload), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:24]
-
-
-def candidate_report_fingerprint(candidate: Dict[str, Any], *, origin: str, objective_name: str) -> str:
-    strategy = candidate.get("strategy")
-    return stable_report_fingerprint(
-        {
-            "schema_version": SEARCH_REPORT_SCHEMA_VERSION,
-            "fingerprint_scope": FINGERPRINT_SCOPE,
-            "origin": origin,
-            "objective_name": objective_name,
-            "strategy": getattr(strategy, "value", strategy),
-            "params": candidate.get("params") or {},
-            "dispatch_mode": candidate.get("dispatch_mode"),
-            "dispatch_rule": candidate.get("dispatch_rule"),
-            "order": list(candidate.get("order") or []),
-            "score": list(candidate.get("score") or []),
-        }
-    )
-
-
-def attempt_report_fingerprint(attempt: Dict[str, Any], *, objective_name: str) -> str:
-    if is_candidate_rejected_attempt(attempt):
-        return stable_report_fingerprint(
-            {
-                "schema_version": SEARCH_REPORT_SCHEMA_VERSION,
-                "fingerprint_scope": FINGERPRINT_SCOPE,
-                "objective_name": objective_name,
-                "attempt_identity": list(attempt_identity(attempt)),
-            }
-        )
-    return stable_report_fingerprint(
-        {
-            "schema_version": SEARCH_REPORT_SCHEMA_VERSION,
-            "fingerprint_scope": FINGERPRINT_SCOPE,
-            "objective_name": objective_name,
-            "tag": attempt.get("tag"),
-            "strategy": attempt.get("strategy"),
-            "dispatch_mode": attempt.get("dispatch_mode"),
-            "dispatch_rule": attempt.get("dispatch_rule"),
-            "score": list(attempt.get("score") or []),
-        }
-    )
 
 
 def _candidate_summary(candidate: Dict[str, Any], *, origin: str, status: str) -> Dict[str, Any]:
@@ -98,6 +42,15 @@ def _fingerprint_changed(initial_fingerprint: Optional[str], best_fingerprint: O
     return bool(initial_fingerprint and best_fingerprint and initial_fingerprint != best_fingerprint)
 
 
+def _append_fingerprint_event(rows: List[Dict[str, Any]], *, origin: str, status: str, fingerprint: CandidateFingerprint) -> None:
+    if len(rows) >= 12:
+        return
+    row = fingerprint.to_report_dict()
+    row["origin"] = str(origin)
+    row["status"] = str(status)
+    rows.append(row)
+
+
 @dataclass
 class OptimizationSearchReportState:
     algorithm_profile: str
@@ -113,10 +66,14 @@ class OptimizationSearchReportState:
     iterations: int = 0
     initial_fingerprint: Optional[str] = None
     best_fingerprint: Optional[str] = None
+    initial_candidate_fingerprint: Optional[Dict[str, Any]] = None
+    best_candidate_fingerprint: Optional[Dict[str, Any]] = None
     best_origin: Optional[str] = None
+    initial_score: List[Any] = field(default_factory=list)
     best_score: List[Any] = field(default_factory=list)
     candidate_fingerprints: Set[str] = field(default_factory=set)
     accepted_fingerprints: Set[str] = field(default_factory=set)
+    fingerprint_events: List[Dict[str, Any]] = field(default_factory=list)
     skipped_phases: List[Dict[str, Any]] = field(default_factory=list)
     rejection_summary: Dict[str, int] = field(default_factory=dict)
     attempt_summary: List[Dict[str, Any]] = field(default_factory=list)
@@ -130,36 +87,42 @@ class OptimizationSearchReportState:
         row: Dict[str, Any] = {"phase": _safe_text(phase), "reason": _safe_text(reason)}
         for key, value in extra.items():
             if value is not None:
-                row[str(key)] = _jsonable(value)
+                row[str(key)] = jsonable_fingerprint_payload(value)
         if row not in self.skipped_phases:
             self.skipped_phases.append(row)
 
     def mark_candidate_evaluated(self, candidate: Dict[str, Any], *, origin: str) -> None:
         self.evaluated_candidates += 1
-        fingerprint = candidate_report_fingerprint(candidate, origin=origin, objective_name=self.objective_name)
-        self.candidate_fingerprints.add(fingerprint)
+        fingerprint = self._candidate_fingerprint(candidate, seen=self.candidate_fingerprints)
+        self.candidate_fingerprints.add(fingerprint.output_fingerprint)
+        _append_fingerprint_event(self.fingerprint_events, origin=origin, status="evaluated", fingerprint=fingerprint)
+        if fingerprint.same_as_parent or fingerprint.same_as_seen:
+            self._record_rejection_reason("same_fingerprint")
 
     def mark_candidate_accepted(self, candidate: Dict[str, Any], *, origin: str) -> None:
-        fingerprint = candidate_report_fingerprint(candidate, origin=origin, objective_name=self.objective_name)
+        fingerprint = self._candidate_fingerprint(candidate, seen=self.accepted_fingerprints)
+        if fingerprint.output_fingerprint not in self.candidate_fingerprints:
+            self.evaluated_candidates += 1
+            self.candidate_fingerprints.add(fingerprint.output_fingerprint)
         if self.initial_fingerprint is None:
-            self.initial_fingerprint = fingerprint
-        self.best_fingerprint = fingerprint
+            self.initial_fingerprint = fingerprint.output_fingerprint
+            self.initial_candidate_fingerprint = fingerprint.to_report_dict()
+            self.initial_score = list(candidate.get("score") or [])
+        self.best_fingerprint = fingerprint.output_fingerprint
+        self.best_candidate_fingerprint = fingerprint.to_report_dict()
         self.best_origin = str(origin)
         self.best_score = list(candidate.get("score") or [])
         self.accepted_candidates += 1
-        self.accepted_fingerprints.add(fingerprint)
+        self.accepted_fingerprints.add(fingerprint.output_fingerprint)
+        _append_fingerprint_event(self.fingerprint_events, origin=origin, status="accepted", fingerprint=fingerprint)
         self._append_attempt_summary(_candidate_summary(candidate, origin=origin, status="accepted"))
 
-    def mark_candidate_rejected(self, *, reason: str, attempt: Optional[Dict[str, Any]] = None) -> None:
-        safe_reason = _safe_reason(reason)
-        self.rejected_candidates += 1
-        self.rejection_summary[safe_reason] = int(self.rejection_summary.get(safe_reason, 0)) + 1
-        if attempt is not None:
-            self.candidate_fingerprints.add(attempt_report_fingerprint(attempt, objective_name=self.objective_name))
+    def mark_candidate_rejected(self, *, reason: str) -> None:
+        self._record_rejection_reason(reason)
 
-    def mark_optional_warmstart_failed(self, *, reason: str, attempt: Optional[Dict[str, Any]] = None) -> None:
+    def mark_optional_warmstart_failed(self, *, reason: str) -> None:
         self.optional_warmstart_failed = True
-        self.mark_candidate_rejected(reason=reason or "optional_warmstart_failed", attempt=attempt)
+        self.mark_candidate_rejected(reason=reason or "optional_warmstart_failed")
 
     def mark_deadline_reached(self) -> None:
         self.deadline_reached = True
@@ -175,6 +138,34 @@ class OptimizationSearchReportState:
             return
         self.attempt_summary.append(dict(row))
 
+    def _record_rejection_reason(self, reason: str) -> None:
+        safe_reason = _safe_reason(reason)
+        self.rejected_candidates += 1
+        self.rejection_summary[safe_reason] = int(self.rejection_summary.get(safe_reason, 0)) + 1
+
+    def _candidate_fingerprint(self, candidate: Dict[str, Any], *, seen: Set[str]) -> CandidateFingerprint:
+        return build_candidate_fingerprint(
+            candidate,
+            objective_name=self.objective_name,
+            parent_fingerprint=self.best_fingerprint,
+            seen_output_fingerprints=seen,
+        )
+
+    def _improvement_conditions(self, fingerprint_changed: bool) -> Dict[str, Any]:
+        score_improved = score_strictly_better(self.best_score, self.initial_score)
+        acceptance = _safe_text((self.candidate_profile or {}).get("acceptance")) or "improve_only"
+        # acceptance_passed 当前是 improve_only 专用代理:improve_only 下任何「baseline 之后再被接受」
+        # 都必然严格更优,故 accepted_candidates>1 等价于「通过接受准则」。item 8 引入
+        # threshold/record_to_record/simulated_annealing(会接受非改进解)后本式将失真,必须改为依据
+        # 真实 acceptance 判定结果(acceptance 归 item 8,见 roadmap §4.3/§7)。
+        acceptance_passed = bool(self.accepted_candidates > 1 and self.best_candidate_fingerprint)
+        return {
+            "fingerprint_changed": bool(fingerprint_changed),
+            "score_strictly_better": bool(score_improved),
+            "acceptance": acceptance,
+            "acceptance_passed": bool(acceptance_passed),
+        }
+
     def finalize(
         self,
         *,
@@ -185,6 +176,12 @@ class OptimizationSearchReportState:
     ) -> Dict[str, Any]:
         final_stop = stop_reason or self._infer_stop_reason()
         fingerprint_changed = _fingerprint_changed(self.initial_fingerprint, self.best_fingerprint)
+        improvement_conditions = self._improvement_conditions(fingerprint_changed)
+        improved = bool(
+            improvement_conditions["fingerprint_changed"]
+            and improvement_conditions["score_strictly_better"]
+            and improvement_conditions["acceptance_passed"]
+        )
         return {
             "schema_version": SEARCH_REPORT_SCHEMA_VERSION,
             "algorithm_profile": str(self.algorithm_profile),
@@ -202,16 +199,21 @@ class OptimizationSearchReportState:
             "rejected_candidates": int(self.rejected_candidates),
             "initial_fingerprint": self.initial_fingerprint,
             "best_fingerprint": self.best_fingerprint,
-            "fingerprint_scope": FINGERPRINT_SCOPE,
+            "initial_candidate_fingerprint": dict(self.initial_candidate_fingerprint or {}),
+            "best_candidate_fingerprint": dict(self.best_candidate_fingerprint or {}),
+            "distinct_fingerprint_scope": DISTINCT_FINGERPRINT_SCOPE,
+            "distinct_fingerprint_description": DISTINCT_FINGERPRINT_DESCRIPTION,
             "best_fingerprint_changed": fingerprint_changed,
             "best_score": list(self.best_score or []),
             "objective_name": str(self.objective_name),
             "attempts": list(attempts or []),
             "public_attempt_summary": list(self.attempt_summary or []),
             "improvement_trace": list(improvement_trace or []),
+            "fingerprint_events": list(self.fingerprint_events or []),
+            "improvement_conditions": improvement_conditions,
             "skipped_phases": list(self.skipped_phases or []),
             "rejection_summary": dict(self.rejection_summary or {}),
-            "improved": fingerprint_changed,
+            "improved": improved,
         }
 
     def _infer_stop_reason(self) -> str:
@@ -229,10 +231,6 @@ class OptimizationSearchReportState:
 
 
 __all__ = [
-    "FINGERPRINT_SCOPE",
     "SEARCH_REPORT_SCHEMA_VERSION",
     "OptimizationSearchReportState",
-    "attempt_report_fingerprint",
-    "candidate_report_fingerprint",
-    "stable_report_fingerprint",
 ]

@@ -17,6 +17,8 @@ _PUBLIC_TEXT_KEYS = (
     "algorithm_profile",
     "best_origin",
     "objective_name",
+    "distinct_fingerprint_scope",
+    "distinct_fingerprint_description",
     "message",
 )
 _PUBLIC_INT_KEYS = (
@@ -35,6 +37,10 @@ _PUBLIC_BOOL_KEYS = ("best_fingerprint_changed", "improved")
 _DIAGNOSTIC_KEYS = (
     "initial_fingerprint",
     "best_fingerprint",
+    "initial_candidate_fingerprint",
+    "best_candidate_fingerprint",
+    "fingerprint_events",
+    "improvement_conditions",
     "attempts",
     "improvement_trace",
     "public_attempt_summary",

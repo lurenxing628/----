@@ -100,7 +100,7 @@ def evaluate_optional_start_candidate(
     except ValidationError as exc:
         if bool(strict_mode) or (strategy_key, dispatch_mode, dispatch_rule) == primary:
             raise
-        attempt = append_rejected_start_attempt(
+        append_rejected_start_attempt(
             attempts=attempts,
             strategy_key=strategy_key,
             dispatch_mode=dispatch_mode,
@@ -108,7 +108,7 @@ def evaluate_optional_start_candidate(
             exc=exc,
         )
         if search_report_state is not None:
-            search_report_state.mark_candidate_rejected(reason="validation_error", attempt=attempt)
+            search_report_state.mark_candidate_rejected(reason="validation_error")
         return None
 
 
@@ -128,7 +128,7 @@ def evaluate_optional_local_candidate(
     except ValidationError as exc:
         if bool(strict_mode):
             raise
-        attempt = append_rejected_local_attempt(
+        append_rejected_local_attempt(
             attempts=attempts,
             move=move,
             strategy=strategy,
@@ -137,5 +137,5 @@ def evaluate_optional_local_candidate(
             exc=exc,
         )
         if search_report_state is not None:
-            search_report_state.mark_candidate_rejected(reason="validation_error", attempt=attempt)
+            search_report_state.mark_candidate_rejected(reason="validation_error")
         return None

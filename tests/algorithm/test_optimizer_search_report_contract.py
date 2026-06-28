@@ -195,12 +195,18 @@ def _required_report_fields() -> set:
         "rejected_candidates",
         "initial_fingerprint",
         "best_fingerprint",
+        "initial_candidate_fingerprint",
+        "best_candidate_fingerprint",
+        "distinct_fingerprint_scope",
+        "distinct_fingerprint_description",
         "best_fingerprint_changed",
         "best_score",
         "objective_name",
         "attempts",
         "public_attempt_summary",
         "improvement_trace",
+        "fingerprint_events",
+        "improvement_conditions",
         "skipped_phases",
         "rejection_summary",
     }
@@ -476,6 +482,16 @@ def test_search_report_public_projection_keeps_internal_fields_in_diagnostics_on
                 "rejected_candidates": 7,
                 "initial_fingerprint": "internal-fp-op:SECRET",
                 "best_fingerprint": "internal-best-fp",
+                "initial_candidate_fingerprint": {
+                    "decision_fingerprint": "decision-op:SECRET",
+                    "output_fingerprint": "output-op:SECRET",
+                },
+                "best_candidate_fingerprint": {
+                    "decision_fingerprint": "decision-best",
+                    "output_fingerprint": "output-best",
+                },
+                "distinct_fingerprint_scope": "decoded_output",
+                "distinct_fingerprint_description": "distinct_candidates 按正式 SGS 解码结果去重",
                 "best_fingerprint_changed": True,
                 "best_score": [0.0, "op:SECRET"],
                 "objective_name": "min_overdue",
@@ -492,6 +508,8 @@ def test_search_report_public_projection_keeps_internal_fields_in_diagnostics_on
                     }
                 ],
                 "improvement_trace": [{"candidate_id": "CANDIDATE-SECRET"}],
+                "fingerprint_events": [{"output_fingerprint": "output-op:SECRET"}],
+                "improvement_conditions": {"acceptance": "improve_only"},
                 "skipped_phases": [{"phase": "ortools_warmstart", "reason": "time_budget", "op_id": 1}],
                 "rejection_summary": {"noop_neighbor": 7, "op_id": 1},
                 "improved": True,
@@ -505,6 +523,7 @@ def test_search_report_public_projection_keeps_internal_fields_in_diagnostics_on
         assert forbidden not in public_text
     assert public_report["stop_reason"] == "time_budget"
     assert public_report["best_origin"] == "local_search"
+    assert public_report["distinct_fingerprint_scope"] == "decoded_output"
     assert public_report["best_score"] == [0.0]
     assert public_report["rejection_summary"] == {"noop_neighbor": 7}
     assert public_report["public_attempt_summary"][0]["origin"] == "local_search"
@@ -512,6 +531,9 @@ def test_search_report_public_projection_keeps_internal_fields_in_diagnostics_on
     diagnostic_report = diagnostics["optimizer"]["search_report"]
     assert diagnostic_report["initial_fingerprint"] == "internal-fp-op:SECRET"
     assert diagnostic_report["best_fingerprint"] == "internal-best-fp"
+    assert diagnostic_report["best_candidate_fingerprint"]["output_fingerprint"] == "output-best"
+    assert diagnostic_report["fingerprint_events"][0]["output_fingerprint"] == "output-op:SECRET"
+    assert diagnostic_report["improvement_conditions"]["acceptance"] == "improve_only"
     assert diagnostic_report["attempts"][0]["candidate_id"] == "CANDIDATE-SECRET"
 
 

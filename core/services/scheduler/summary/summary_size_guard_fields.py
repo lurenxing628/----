@@ -73,6 +73,8 @@ def _search_report_minimal_summary(raw: Any) -> Dict[str, Any]:
         "rejected_candidates",
         "best_score",
         "objective_name",
+        "distinct_fingerprint_scope",
+        "distinct_fingerprint_description",
         "best_fingerprint_changed",
         "improved",
         "rejection_summary",
