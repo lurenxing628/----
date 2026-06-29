@@ -91,7 +91,7 @@ def _minimal_trigger_near_due_case():
                 "best_score": [0.0, 1.0],
                 "objective_name": "min_overdue",
                 "distinct_fingerprint_scope": "decoded_output",
-                "distinct_fingerprint_description": "distinct_candidates 按正式 SGS 解码结果去重",
+                "distinct_fingerprint_description": "distinct_candidates 按正式解码结果去重",
                 "best_fingerprint_changed": True,
                 "improved": True,
                 "rejection_summary": {"noop_neighbor": 3},

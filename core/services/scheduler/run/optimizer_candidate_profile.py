@@ -5,8 +5,8 @@
 - 现有能力包括 ``baseline``（单次排产）与 ``vns_sa``（多起点 + GRASP/IG 起点
   + 业务邻域 VNS 局部搜索，可选阈值/模拟退火类接受，可选 OR-Tools warm-start）。
 - 本阶段 ``repair`` 只允许 ``sgs``，``acceptance`` 允许 improve_only / threshold /
-  record_to_record / simulated_annealing，``neighborhoods`` 默认且仅允许业务邻域
-  registry 的六个邻域。
+  record_to_record / simulated_annealing，``configured_neighborhoods`` 默认且仅允许业务邻域
+  registry 的六个邻域；SGS 运行入口会另行报告实际生效的 ``sgs_dispatch_rule``。
 - ``configured`` 与 ``effective`` 必须区分：时间预算当前无系统上限，迭代上限受
   ``[200, 5000]`` 系统下/上限钳制，被钳制时如实写出 ``system_limit_applied`` 与
   ``system_limit_reason``。
@@ -225,6 +225,7 @@ class CandidateProfile:
             "repair": self.repair,
             "acceptance": self.acceptance,
             "neighborhoods": list(self.neighborhoods),
+            "configured_neighborhoods": list(self.neighborhoods),
             "candidate_strategy_family": self.candidate_strategy_family,
             "candidate_strategy_families": list(self.candidate_strategy_families),
             "candidate_construction": dict(self.candidate_construction or {}),

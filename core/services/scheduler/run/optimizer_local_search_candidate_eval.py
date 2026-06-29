@@ -78,6 +78,8 @@ def _mutable_scope_payload(neighborhood_move: NeighborhoodMove, order: List[str]
         "batch_count": len(order or []),
         "neighborhood_name": str(neighborhood_move.neighborhood_name),
         "move_kind": str(neighborhood_move.move_kind),
+        "dispatch_mode": str(neighborhood_move.dispatch_mode or ""),
+        "dispatch_rule": str(neighborhood_move.dispatch_rule or ""),
         "changed_decision_count": int(neighborhood_move.changed_decision_count),
         "fallback_used": bool(neighborhood_move.fallback_used),
         "fallback_reason": str(neighborhood_move.fallback_reason or ""),

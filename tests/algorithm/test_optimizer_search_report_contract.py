@@ -501,7 +501,7 @@ def test_search_report_public_projection_keeps_internal_fields_in_diagnostics_on
                     "output_fingerprint": "output-best",
                 },
                 "distinct_fingerprint_scope": "decoded_output",
-                "distinct_fingerprint_description": "distinct_candidates 按正式 SGS 解码结果去重",
+                "distinct_fingerprint_description": "distinct_candidates 按正式解码结果去重",
                 "best_fingerprint_changed": True,
                 "best_score": [0.0, "op:SECRET"],
                 "objective_name": "min_overdue",

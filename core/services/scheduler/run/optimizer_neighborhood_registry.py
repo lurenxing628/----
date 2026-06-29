@@ -10,6 +10,7 @@ from .optimizer_neighborhood_moves import (
     CHANGEOVER_BLOCK,
     CRITICAL_CHAIN,
     RESOURCE_ALTERNATIVE,
+    SGS_DISPATCH_RULE,
     TARDY_WINDOW,
     TIME_WINDOW,
     NeighborhoodMove,
@@ -17,6 +18,7 @@ from .optimizer_neighborhood_moves import (
     changeover_block_move,
     critical_chain_move,
     resource_alternative_move,
+    sgs_dispatch_rule_move,
     tardy_window_move,
     time_window_move,
 )
@@ -30,6 +32,7 @@ _GENERATOR_NAMES: Tuple[str, ...] = (
     CHANGEOVER_BLOCK,
     RESOURCE_ALTERNATIVE,
     TIME_WINDOW,
+    SGS_DISPATCH_RULE,
 )
 
 
@@ -60,6 +63,12 @@ def _generators() -> Dict[str, Callable[..., NeighborhoodMove]]:
         CHANGEOVER_BLOCK: lambda **kwargs: changeover_block_move(kwargs["order"], kwargs["results"]),
         RESOURCE_ALTERNATIVE: lambda **kwargs: resource_alternative_move(kwargs["order"], kwargs["resource_pool"]),
         TIME_WINDOW: lambda **kwargs: time_window_move(kwargs["order"], kwargs["results"], kwargs["batches"]),
+        SGS_DISPATCH_RULE: lambda **kwargs: sgs_dispatch_rule_move(
+            kwargs["order"],
+            kwargs["current_dispatch_rule"],
+            kwargs["valid_dispatch_rules"],
+            kwargs["rnd"],
+        ),
     }
 
 
@@ -71,6 +80,8 @@ def build_neighborhood_move(
     batches: Dict[str, Any],
     resource_pool: Optional[Dict[str, Any]],
     rnd: Any,
+    current_dispatch_rule: str = "",
+    valid_dispatch_rules: Optional[List[str]] = None,
 ) -> NeighborhoodMove:
     key = validate_neighborhood_name(name)
     generators = _generators()
@@ -85,6 +96,8 @@ def build_neighborhood_move(
         batches=batches or {},
         resource_pool=resource_pool,
         rnd=rnd,
+        current_dispatch_rule=str(current_dispatch_rule or ""),
+        valid_dispatch_rules=list(valid_dispatch_rules or []),
     )
 
 
@@ -96,6 +109,8 @@ def choose_neighborhood_move(
     batches: Dict[str, Any],
     resource_pool: Optional[Dict[str, Any]],
     rnd: Any,
+    current_dispatch_rule: str = "",
+    valid_dispatch_rules: Optional[List[str]] = None,
 ) -> NeighborhoodMove:
     choices = validate_neighborhoods(neighborhoods or ALLOWED_NEIGHBORHOODS)
     if not choices:
@@ -108,6 +123,8 @@ def choose_neighborhood_move(
         batches=batches,
         resource_pool=resource_pool,
         rnd=rnd,
+        current_dispatch_rule=current_dispatch_rule,
+        valid_dispatch_rules=valid_dispatch_rules,
     )
 
 

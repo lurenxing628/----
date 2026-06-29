@@ -62,7 +62,11 @@ _PROFILE_PUBLIC_INT_KEYS = (
     "effective_max_iterations",
 )
 _PROFILE_PUBLIC_BOOL_KEYS = ("enabled", "system_limit_applied")
-_PROFILE_PUBLIC_LIST_KEYS = ("candidate_strategy_families", "neighborhoods")
+_PROFILE_PUBLIC_LIST_KEYS = (
+    "candidate_strategy_families",
+    "configured_neighborhoods",
+    "effective_neighborhoods",
+)
 _PROFILE_DIAGNOSTIC_TEXT_KEYS = (
     "seed_source",
     "iteration_limit_source",
@@ -70,6 +74,8 @@ _PROFILE_DIAGNOSTIC_TEXT_KEYS = (
     "candidate_strategy_family",
     "dispatch_mode",
     "dispatch_rule",
+    "effective_dispatch_mode",
+    "effective_neighborhood_reason",
     "validation_status",
 )
 _PROFILE_DIAGNOSTIC_INT_KEYS = ("schema_version", "restart_after_iterations")

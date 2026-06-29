@@ -28,6 +28,8 @@ BOTTLENECK_MACHINE = "bottleneck_machine"
 CHANGEOVER_BLOCK = "changeover_block"
 RESOURCE_ALTERNATIVE = "resource_alternative"
 TIME_WINDOW = "time_window"
+SGS_DISPATCH_RULE = "sgs_dispatch_rule"
+DEFAULT_SGS_DISPATCH_RULES: Tuple[str, ...] = ("slack", "cr", "atc")
 
 BUSINESS_NEIGHBORHOODS: Tuple[str, ...] = (
     CRITICAL_CHAIN,
@@ -37,7 +39,7 @@ BUSINESS_NEIGHBORHOODS: Tuple[str, ...] = (
     RESOURCE_ALTERNATIVE,
     TIME_WINDOW,
 )
-ALLOWED_NEIGHBORHOODS: Tuple[str, ...] = BUSINESS_NEIGHBORHOODS
+ALLOWED_NEIGHBORHOODS: Tuple[str, ...] = BUSINESS_NEIGHBORHOODS + (SGS_DISPATCH_RULE,)
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,8 @@ class NeighborhoodMove:
     batch_order: Tuple[str, ...]
     changed_decision_count: int
     expected_effect: str
+    dispatch_mode: str = ""
+    dispatch_rule: str = ""
     noop: bool = False
     fallback_used: bool = False
     fallback_reason: str = ""
@@ -62,6 +66,11 @@ class NeighborhoodMove:
     reason: str = ""
 
     def to_report_dict(self) -> Dict[str, Any]:
+        diagnostics = dict(self.diagnostics or {})
+        if self.dispatch_mode:
+            diagnostics["dispatch_mode"] = str(self.dispatch_mode)
+        if self.dispatch_rule:
+            diagnostics["dispatch_rule"] = str(self.dispatch_rule)
         row = {
             "schema_version": int(self.schema_version),
             "name": str(self.neighborhood_name),
@@ -78,7 +87,7 @@ class NeighborhoodMove:
             "noop": bool(self.noop),
             "fallback_used": bool(self.fallback_used),
             "candidate_rejected": str(self.candidate_rejected or ""),
-            "diagnostics": dict(self.diagnostics or {}),
+            "diagnostics": diagnostics,
         }
         if self.fallback_reason:
             row["fallback_reason"] = str(self.fallback_reason)
@@ -185,7 +194,15 @@ def resource_alternative_move(order: List[str], resource_pool: Optional[Dict[str
         return noop_move(RESOURCE_ALTERNATIVE, reason="no_alternative_resource_pair", order=order, input_scope="resource_pool")
     operator_id, machine_id, old_rank = picked
     pair_rank = pool.setdefault("pair_rank", {})
-    pair_rank[(operator_id, machine_id)] = min(int(old_rank), -1)
+    new_rank = min(int(old_rank), -1)
+    if new_rank == int(old_rank):
+        return noop_move(
+            RESOURCE_ALTERNATIVE,
+            reason="resource_pair_rank_unchanged",
+            order=order,
+            input_scope="resource_pool",
+        )
+    pair_rank[(operator_id, machine_id)] = new_rank
     diagnostics = {"alternative_pair_count": 1, "resource_pool_adjusted": True}
     return NeighborhoodMove(
         schema_version=NEIGHBORHOOD_MOVE_SCHEMA_VERSION,
@@ -220,6 +237,34 @@ def time_window_move(order: List[str], results: List[Any], batches: Dict[str, An
     )
 
 
+def sgs_dispatch_rule_move(order: List[str], current_rule: str, valid_dispatch_rules: Optional[List[str]], rnd: Any) -> NeighborhoodMove:
+    rules = _normalized_sgs_dispatch_rules(valid_dispatch_rules)
+    current = str(current_rule or "").strip().lower()
+    candidates = [item for item in rules if item != current]
+    if not candidates:
+        return noop_move(SGS_DISPATCH_RULE, reason="sgs_dispatch_rule_unavailable", order=order, input_scope="dispatch_rule")
+    index = int(rnd.randrange(len(candidates))) if len(candidates) > 1 else 0
+    selected = candidates[index]
+    return NeighborhoodMove(
+        schema_version=NEIGHBORHOOD_MOVE_SCHEMA_VERSION,
+        neighborhood_name=SGS_DISPATCH_RULE,
+        move_kind="switch_sgs_dispatch_rule",
+        input_scope="dispatch_rule",
+        batch_order=tuple(order or []),
+        changed_decision_count=1,
+        expected_effect="try_alternative_sgs_dispatch_rule",
+        dispatch_mode="sgs",
+        dispatch_rule=selected,
+        diagnostics={
+            "from_dispatch_rule": current,
+            "to_dispatch_rule": selected,
+            "candidate_rule_count": len(candidates),
+        },
+        decision_key=(SGS_DISPATCH_RULE, current, selected, tuple(order or [])),
+        reason="sgs_rule_search",
+    )
+
+
 def _with_fallback(move: NeighborhoodMove, *, neighborhood_name: str, fallback_reason: str) -> NeighborhoodMove:
     return NeighborhoodMove(
         schema_version=NEIGHBORHOOD_MOVE_SCHEMA_VERSION,
@@ -229,6 +274,8 @@ def _with_fallback(move: NeighborhoodMove, *, neighborhood_name: str, fallback_r
         batch_order=move.batch_order,
         changed_decision_count=move.changed_decision_count,
         expected_effect=move.expected_effect,
+        dispatch_mode=move.dispatch_mode,
+        dispatch_rule=move.dispatch_rule,
         fallback_used=True,
         fallback_reason=fallback_reason,
         diagnostics=dict(move.diagnostics or {}),
@@ -335,14 +382,27 @@ def _changed_batch_ids(before: List[str], after: List[str]) -> List[str]:
     return changed
 
 
+def _normalized_sgs_dispatch_rules(valid_dispatch_rules: Optional[List[str]]) -> List[str]:
+    out: List[str] = []
+    for item in list(valid_dispatch_rules or DEFAULT_SGS_DISPATCH_RULES):
+        text = str(item or "").strip().lower()
+        if text and text not in out:
+            out.append(text)
+    if not out:
+        out.extend(DEFAULT_SGS_DISPATCH_RULES)
+    return out
+
+
 __all__ = [
     "ALLOWED_NEIGHBORHOODS",
     "BOTTLENECK_MACHINE",
     "BUSINESS_NEIGHBORHOODS",
     "CHANGEOVER_BLOCK",
     "CRITICAL_CHAIN",
+    "DEFAULT_SGS_DISPATCH_RULES",
     "NEIGHBORHOOD_MOVE_SCHEMA_VERSION",
     "RESOURCE_ALTERNATIVE",
+    "SGS_DISPATCH_RULE",
     "TARDY_WINDOW",
     "TIME_WINDOW",
     "NeighborhoodMove",
@@ -351,6 +411,7 @@ __all__ = [
     "critical_chain_move",
     "noop_move",
     "resource_alternative_move",
+    "sgs_dispatch_rule_move",
     "tardy_window_move",
     "time_window_move",
 ]

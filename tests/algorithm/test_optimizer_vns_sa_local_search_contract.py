@@ -7,15 +7,31 @@ from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
 
-from core.algorithms.evaluation import ScheduleMetrics
+from core.algorithms import GreedyScheduler
+from core.algorithms.evaluation import ScheduleMetrics, compute_metrics, objective_score
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.types import ScheduleResult, ScheduleSummary
 from core.services.scheduler.run.optimizer_acceptance import decide_acceptance
 from core.services.scheduler.run.optimizer_local_search import run_local_search
 from core.services.scheduler.run.optimizer_local_search_state import LocalSearchState, candidate_can_update_best
-from core.services.scheduler.run.optimizer_neighborhood_moves import CRITICAL_CHAIN, TARDY_WINDOW
+from core.services.scheduler.run.optimizer_neighborhood_moves import (
+    BUSINESS_NEIGHBORHOODS,
+    CRITICAL_CHAIN,
+    SGS_DISPATCH_RULE,
+    TARDY_WINDOW,
+)
+from core.services.scheduler.run.optimizer_proof_cases import TinyBatchSpec, TinyBenchmarkCase, TinyOperationSpec
+from core.services.scheduler.run.optimizer_proof_oracle import (
+    _ContinuousCalendar,
+    _default_config,
+    _operation_object,
+    batch_objects,
+)
 from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
 from core.services.scheduler.run.optimizer_vns import VnsState
+from core.services.scheduler.summary.optimizer_public_search_report import project_search_report
+from tests._support.optimizer_benchmark_grading import smtwt_overdue_case
+from tests._support.optimizer_benchmark_loaders import load_smtwt_instances
 
 _START = datetime(2026, 1, 1, 8, 0, 0)
 
@@ -43,6 +59,11 @@ class _DeterministicRandom:
 
     def randint(self, a: int, b: int) -> int:
         return a
+
+
+class _PickSecondRandom(_DeterministicRandom):
+    def randrange(self, n: int) -> int:
+        return 1 if int(n) > 1 else 0
 
 
 def _result(op_id: int, *, batch_id: str, start_offset: int) -> ScheduleResult:
@@ -97,6 +118,109 @@ def _candidate(*, order: List[str], failed_ops: int, overdue_count: int = 0) -> 
         "algo_stats": {"fallback_counts": {}, "param_fallbacks": {}},
         "resource_pool": {},
     }
+
+
+def _tiny_op(op_id: int, batch_id: str) -> TinyOperationSpec:
+    return TinyOperationSpec(
+        op_id=op_id,
+        op_code=f"S{op_id}",
+        batch_id=batch_id,
+        seq=1,
+        machine_id="machine-main",
+        operator_id="operator-main",
+        duration_hours=24.0,
+    )
+
+
+def _improvable_batch_order_case() -> TinyBenchmarkCase:
+    return TinyBenchmarkCase(
+        slug="vns-real-greedy-improvement",
+        objective_name="min_overdue",
+        batches=(
+            TinyBatchSpec(batch_id="batch-a", due_date="2026-01-02"),
+            TinyBatchSpec(batch_id="batch-b", due_date="2026-01-03"),
+            TinyBatchSpec(batch_id="batch-c", due_date="2026-01-04"),
+            TinyBatchSpec(batch_id="batch-d", due_date="2026-01-02"),
+        ),
+        operations=(
+            _tiny_op(1, "batch-a"),
+            _tiny_op(2, "batch-b"),
+            _tiny_op(3, "batch-c"),
+            _tiny_op(4, "batch-d"),
+        ),
+    )
+
+
+def _real_candidate_for_order(order: List[str]) -> Dict[str, Any]:
+    case = _improvable_batch_order_case()
+    batches = batch_objects(case)
+    scheduler = GreedyScheduler(calendar_service=_ContinuousCalendar(), config_service=_default_config())
+    results, summary, strategy, params = scheduler.schedule(
+        operations=[_operation_object(op) for op in case.operations],
+        batches=batches,
+        strategy=SortStrategy.PRIORITY_FIRST,
+        start_dt=case.start_dt,
+        dispatch_mode="batch_order",
+        dispatch_rule="slack",
+        batch_order_override=list(order),
+        seed_results=[],
+        strict_mode=True,
+    )
+    metrics = compute_metrics(results, batches)
+    return {
+        "results": results,
+        "summary": summary,
+        "strategy": strategy,
+        "params": dict(params or {}),
+        "dispatch_mode": "batch_order",
+        "dispatch_rule": "slack",
+        "order": list(order),
+        "metrics": metrics,
+        "score": (float(summary.failed_ops),) + tuple(float(item) for item in objective_score("min_overdue", metrics)),
+        "algo_stats": {"fallback_counts": {}, "param_fallbacks": {}},
+        "resource_pool": {},
+        "seed_result_count": 0,
+        "locked_seed_range": [],
+        "mutable_scope": {"scope": "batch_order", "batch_count": len(order)},
+    }
+
+
+def _real_sgs_candidate_for_rule(rule: str) -> Tuple[Dict[str, Any], TinyBenchmarkCase]:
+    case = smtwt_overdue_case(load_smtwt_instances(40)[0])
+    batches = batch_objects(case)
+    scheduler = GreedyScheduler(calendar_service=_ContinuousCalendar(), config_service=_default_config())
+    results, summary, strategy, params = scheduler.schedule(
+        operations=[_operation_object(op) for op in case.operations],
+        batches=batches,
+        strategy=SortStrategy.PRIORITY_FIRST,
+        start_dt=case.start_dt,
+        dispatch_mode="sgs",
+        dispatch_rule=rule,
+        seed_results=[],
+        strict_mode=True,
+    )
+    metrics = compute_metrics(results, batches)
+    order = [batch.batch_id for batch in case.batches]
+    return {
+        "results": results,
+        "summary": summary,
+        "strategy": strategy,
+        "params": dict(params or {}),
+        "dispatch_mode": "sgs",
+        "dispatch_rule": rule,
+        "order": order,
+        "metrics": metrics,
+        "score": (float(summary.failed_ops),) + tuple(float(item) for item in objective_score("min_overdue", metrics)),
+        "algo_stats": {"fallback_counts": {}, "param_fallbacks": {}},
+        "resource_pool": {},
+        "seed_result_count": 0,
+        "locked_seed_range": [],
+        "mutable_scope": {"scope": "dispatch_rule", "batch_count": len(order)},
+    }, case
+
+
+def _real_schedule_fn(scheduler: Any, **kwargs: Any):
+    return scheduler.schedule(**kwargs)
 
 
 def _candidate_three_batches() -> Dict[str, Any]:
@@ -210,7 +334,7 @@ def test_improve_only_updates_best_only_for_accepted_changed_better_output() -> 
     assert report["improvement_conditions"]["acceptance_passed"] is True
 
 
-def test_vns_local_search_candidate_still_decodes_with_sgs() -> None:
+def test_vns_local_search_sgs_candidate_switches_dispatch_rule() -> None:
     best = _candidate(order=["B0", "B1"], failed_ops=1, overdue_count=1)
     decode_calls: List[Dict[str, Any]] = []
 
@@ -225,7 +349,8 @@ def test_vns_local_search_candidate_still_decodes_with_sgs() -> None:
 
     assert decode_calls
     assert {str(call.get("dispatch_mode")) for call in decode_calls} == {"sgs"}
-    assert decode_calls[0]["batch_order_override"] == ["B1", "B0"]
+    assert decode_calls[0]["dispatch_rule"] == "cr"
+    assert decode_calls[0]["batch_order_override"] == ["B0", "B1"]
 
 
 def test_record_to_record_accepts_candidate_within_best_record_distance_as_current() -> None:
@@ -242,6 +367,42 @@ def test_record_to_record_accepts_candidate_within_best_record_distance_as_curre
     assert report["best_improved_candidates"] == 0
     assert report["acceptance_summary"]["record_to_record"]["non_improving_accepted"] == 1
     assert report["improved"] is False
+
+
+def test_threshold_rejects_candidate_with_more_failed_ops_even_when_objective_within_threshold() -> None:
+    decision = decide_acceptance(
+        acceptance_name="threshold",
+        candidate_score=(1.0, 0.0, 0.0),
+        current_score=(0.0, 100.0, 100.0),
+        best_score=(0.0, 100.0, 100.0),
+        iteration=0,
+        max_iterations=100,
+        random_seed=42,
+        rnd=random.Random(42),
+    )
+
+    assert decision.accepted is False
+    assert decision.acceptance_reason == "failed_ops_worse"
+    assert decision.score_delta == 1.0
+
+
+def test_record_to_record_rejects_candidate_with_more_failed_ops_than_record() -> None:
+    decision = decide_acceptance(
+        acceptance_name="record_to_record",
+        candidate_score=(1.0, 0.0, 0.0),
+        current_score=(2.0, 0.0, 0.0),
+        best_score=(0.0, 100.0, 100.0),
+        iteration=0,
+        max_iterations=100,
+        random_seed=42,
+        rnd=random.Random(42),
+    )
+
+    assert decision.accepted is False
+    assert decision.acceptance_reason == "failed_ops_worse"
+    assert decision.record_distance == 1.0
+    assert decision.score_delta_reference == "current_score"
+    assert decision.record_distance_reference == "best_score"
 
 
 def test_local_search_state_keeps_current_and_best_separate() -> None:
@@ -281,6 +442,7 @@ def test_best_update_requires_candidate_fingerprint_even_without_report() -> Non
 
 def test_vns_switches_neighborhood_even_without_search_report_state() -> None:
     best = _candidate_three_batches()
+    best["dispatch_mode"] = "batch_order"
     batches = {
         "B0": SimpleNamespace(due_date=date(2026, 1, 2)),
         "B1": SimpleNamespace(due_date=date(2025, 12, 31)),
@@ -305,7 +467,7 @@ def test_vns_switches_neighborhood_even_without_search_report_state() -> None:
         end_date=None,
         downtime_map={},
         seed_sr_list=[],
-        dispatch_mode_cfg="sgs",
+        dispatch_mode_cfg="batch_order",
         dispatch_rule_cfg="slack",
         resource_pool=None,
         objective_name="min_overdue",
@@ -327,11 +489,182 @@ def test_vns_switches_neighborhood_even_without_search_report_state() -> None:
     assert decode_orders[:2] == [("B2", "B0", "B1"), ("B1", "B0", "B2")]
 
 
+def test_vns_real_greedy_local_search_updates_best_on_batch_order_path() -> None:
+    best = _real_candidate_for_order(["batch-a", "batch-d", "batch-b", "batch-c"])
+    case = _improvable_batch_order_case()
+    report_state = OptimizationSearchReportState(
+        algorithm_profile="vns_sa",
+        seed=1,
+        time_budget_seconds=1,
+        objective_name="min_overdue",
+        started_at=1000.0,
+        candidate_profile={"acceptance": "improve_only", "neighborhoods": [CRITICAL_CHAIN, TARDY_WINDOW]},
+    )
+    report_state.mark_candidate_accepted(best, origin="multi_start")
+    attempts: List[Dict[str, Any]] = []
+    trace: List[Dict[str, Any]] = []
+
+    returned = run_local_search(
+        algo_mode="improve",
+        best=best,
+        version=1,
+        time_budget_seconds=1,
+        deadline=1000.08,
+        scheduler=GreedyScheduler(calendar_service=_ContinuousCalendar(), config_service=_default_config()),
+        algo_ops_to_schedule=[_operation_object(op) for op in case.operations],
+        batches=batch_objects(case),
+        start_dt=case.start_dt,
+        end_date=None,
+        downtime_map={},
+        seed_sr_list=[],
+        dispatch_mode_cfg="batch_order",
+        dispatch_rule_cfg="slack",
+        resource_pool=None,
+        objective_name="min_overdue",
+        attempts=attempts,
+        improvement_trace=trace,
+        optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}},
+        t_begin=1000.0,
+        readiness_gate_enabled=False,
+        strict_mode=True,
+        clock=_Clock(start=1000.0, step=0.01),
+        rng_factory=lambda _seed: _DeterministicRandom(),
+        schedule_fn=_real_schedule_fn,
+        search_report_state=report_state,
+        neighborhoods=(CRITICAL_CHAIN, TARDY_WINDOW),
+        acceptance="improve_only",
+    )
+    report = report_state.finalize(runtime_ms=20, attempts=attempts, improvement_trace=trace)
+
+    assert returned is not None
+    assert returned["score"] < best["score"]
+    assert report["best_origin"] == "local_search"
+    assert report["best_improved_candidates"] >= 1
+    assert report["improved"] is True
+
+
+def test_vns_real_greedy_local_search_updates_best_on_sgs_rule_path() -> None:
+    best, case = _real_sgs_candidate_for_rule("slack")
+    report_state = OptimizationSearchReportState(
+        algorithm_profile="vns_sa",
+        seed=1,
+        time_budget_seconds=1,
+        objective_name="min_overdue",
+        started_at=1000.0,
+        candidate_profile={"acceptance": "improve_only", "neighborhoods": list(BUSINESS_NEIGHBORHOODS)},
+    )
+    report_state.mark_candidate_accepted(best, origin="multi_start")
+    attempts: List[Dict[str, Any]] = []
+    trace: List[Dict[str, Any]] = []
+
+    returned = run_local_search(
+        algo_mode="improve",
+        best=best,
+        version=1,
+        time_budget_seconds=1,
+        deadline=1000.08,
+        scheduler=GreedyScheduler(calendar_service=_ContinuousCalendar(), config_service=_default_config()),
+        algo_ops_to_schedule=[_operation_object(op) for op in case.operations],
+        batches=batch_objects(case),
+        start_dt=case.start_dt,
+        end_date=None,
+        downtime_map={},
+        seed_sr_list=[],
+        dispatch_mode_cfg="sgs",
+        dispatch_rule_cfg="slack",
+        resource_pool=None,
+        objective_name="min_overdue",
+        attempts=attempts,
+        improvement_trace=trace,
+        optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}},
+        t_begin=1000.0,
+        readiness_gate_enabled=False,
+        strict_mode=True,
+        clock=_Clock(start=1000.0, step=0.01),
+        rng_factory=lambda _seed: _PickSecondRandom(),
+        schedule_fn=_real_schedule_fn,
+        search_report_state=report_state,
+        neighborhoods=BUSINESS_NEIGHBORHOODS,
+        valid_dispatch_rules=["slack", "cr", "atc"],
+        acceptance="improve_only",
+    )
+    report = report_state.finalize(runtime_ms=20, attempts=attempts, improvement_trace=trace)
+
+    assert returned is not None
+    assert returned["dispatch_rule"] == "atc"
+    assert returned["score"] < best["score"]
+    assert report["best_origin"] == "local_search"
+    assert report["neighborhood_summary"][SGS_DISPATCH_RULE]["effective"] >= 1
+    assert report["candidate_profile"]["configured_neighborhoods"] == list(BUSINESS_NEIGHBORHOODS)
+    assert report["candidate_profile"]["effective_neighborhoods"] == [SGS_DISPATCH_RULE]
+    public_report, diagnostics = project_search_report(report)
+    profile_public = public_report["profile_public"]
+    assert profile_public["configured_neighborhoods"] == list(BUSINESS_NEIGHBORHOODS)
+    assert profile_public["effective_neighborhoods"] == [SGS_DISPATCH_RULE]
+    assert "neighborhoods" not in profile_public
+    assert set(public_report["neighborhood_summary"]) == {SGS_DISPATCH_RULE}
+    assert diagnostics["profile_diagnostics"]["effective_neighborhood_reason"] == "sgs_dispatch_rule_only"
+    assert report["improved"] is True
+
+
+def test_graph_ready_local_search_skips_batch_order_neighborhoods() -> None:
+    best = _real_candidate_for_order(["batch-a", "batch-d", "batch-b", "batch-c"])
+    report_state = OptimizationSearchReportState(
+        algorithm_profile="vns_sa",
+        seed=1,
+        time_budget_seconds=1,
+        objective_name="min_overdue",
+        started_at=1000.0,
+        candidate_profile={"acceptance": "improve_only", "neighborhoods": [CRITICAL_CHAIN]},
+    )
+    report_state.mark_candidate_accepted(best, origin="multi_start")
+    schedule_calls: List[Dict[str, Any]] = []
+
+    returned = run_local_search(
+        algo_mode="improve",
+        best=best,
+        version=1,
+        time_budget_seconds=1,
+        deadline=1000.08,
+        scheduler=SimpleNamespace(_last_algo_stats={"fallback_counts": {}, "param_fallbacks": {}}),
+        algo_ops_to_schedule=[],
+        batches={},
+        start_dt=_START,
+        end_date=None,
+        downtime_map={},
+        seed_sr_list=[],
+        dispatch_mode_cfg="sgs",
+        dispatch_rule_cfg="slack",
+        resource_pool=None,
+        objective_name="min_overdue",
+        attempts=[],
+        improvement_trace=[],
+        optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}},
+        t_begin=1000.0,
+        readiness_gate_enabled=True,
+        strict_mode=False,
+        clock=_Clock(start=1000.0, step=0.01),
+        rng_factory=lambda _seed: _DeterministicRandom(),
+        schedule_fn=lambda *args, **kwargs: schedule_calls.append(dict(kwargs)),
+        graph_ready_context={"enabled": True},
+        search_report_state=report_state,
+        neighborhoods=(CRITICAL_CHAIN,),
+        acceptance="improve_only",
+    )
+    report = report_state.finalize(runtime_ms=20, attempts=[], improvement_trace=[])
+
+    assert returned is best
+    assert schedule_calls == []
+    assert report["skipped_phases"] == [
+        {"phase": "local_search", "reason": "graph_ready_requires_graph_neighborhood"}
+    ]
+
+
 def test_simulated_annealing_acceptance_is_seeded_and_deterministic() -> None:
     first = decide_acceptance(
         acceptance_name="simulated_annealing",
-        candidate_score=(1.0,),
-        current_score=(0.0,),
+        candidate_score=(0.0, 1.0),
+        current_score=(0.0, 0.0),
         best_score=(0.0,),
         iteration=1,
         max_iterations=200,
@@ -340,8 +673,8 @@ def test_simulated_annealing_acceptance_is_seeded_and_deterministic() -> None:
     )
     second = decide_acceptance(
         acceptance_name="simulated_annealing",
-        candidate_score=(1.0,),
-        current_score=(0.0,),
+        candidate_score=(0.0, 1.0),
+        current_score=(0.0, 0.0),
         best_score=(0.0,),
         iteration=1,
         max_iterations=200,
@@ -353,6 +686,24 @@ def test_simulated_annealing_acceptance_is_seeded_and_deterministic() -> None:
     assert first.random_seed == 42
     assert first.deterministic_random_draw is not None
     assert first.worse_solution_allowed is True
+
+
+def test_simulated_annealing_rejects_candidate_with_more_failed_ops() -> None:
+    decision = decide_acceptance(
+        acceptance_name="simulated_annealing",
+        candidate_score=(1.0, 0.0, 0.0),
+        current_score=(0.0, 100.0, 100.0),
+        best_score=(0.0, 100.0, 100.0),
+        iteration=0,
+        max_iterations=100,
+        random_seed=1,
+        rnd=random.Random(1),
+    )
+
+    assert decision.accepted is False
+    assert decision.acceptance_reason == "failed_ops_worse"
+    assert decision.score_delta == 1.0
+    assert decision.deterministic_random_draw is None
 
 
 def test_vns_switches_neighborhood_after_no_improvement_and_resets_after_best_improvement() -> None:

@@ -9,6 +9,7 @@ from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_st
 from core.infrastructure.errors import ValidationError
 
 from .optimizer_attempt_records import validation_error_origin
+from .optimizer_candidate_fingerprint import stable_fingerprint
 from .optimizer_grasp_ig_specs import GRASP_ORIGIN, IG_ORIGIN, build_grasp_ig_candidate_specs
 from .optimizer_search_state import append_unique_rejected_attempt
 
@@ -48,6 +49,7 @@ def _evaluate_candidate(
     downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     order: List[str],
     seed_sr_list: List[ScheduleResult],
+    dispatch_mode: str,
     dispatch_rule: str,
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
@@ -71,7 +73,7 @@ def _evaluate_candidate(
         machine_downtimes=downtime_map,
         batch_order_override=list(order),
         seed_results=seed_sr_list,
-        dispatch_mode="sgs",
+        dispatch_mode=dispatch_mode,
         dispatch_rule=dispatch_rule,
         resource_pool=resource_pool,
         readiness_gate_enabled=bool(readiness_gate_enabled),
@@ -84,7 +86,7 @@ def _evaluate_candidate(
         "summary": summ,
         "strategy": used_strat,
         "params": _public_candidate_params(used_params),
-        "dispatch_mode": "sgs",
+        "dispatch_mode": dispatch_mode,
         "dispatch_rule": dispatch_rule,
         "order": list(order),
         "metrics": metrics,
@@ -154,15 +156,16 @@ def _append_rejected_attempt(
     origin: str,
     index: int,
     strategy: SortStrategy,
+    dispatch_mode: str,
     dispatch_rule: str,
     exc: ValidationError,
 ) -> None:
     append_unique_rejected_attempt(
         attempts,
         {
-            "tag": _candidate_tag(origin, index, "sgs", dispatch_rule),
+            "tag": _candidate_tag(origin, index, dispatch_mode, dispatch_rule),
             "strategy": strategy.value,
-            "dispatch_mode": "sgs",
+            "dispatch_mode": dispatch_mode,
             "dispatch_rule": dispatch_rule,
             "source": "candidate_rejected",
             "origin": validation_error_origin(exc),
@@ -228,15 +231,15 @@ def _candidate_specs_for_run(
     candidate_construction: Dict[str, Any],
     dispatch_rule_cfg: str,
     valid_dispatch_rules: List[str],
-    sgs_enabled: bool,
+    batch_order_enabled: bool,
     rng_factory: Callable[[int], Any],
     search_report_state: Optional[OptimizationSearchReportState],
 ) -> Optional[List[Dict[str, Any]]]:
     if str(algo_mode or "").strip().lower() != "improve":
         _mark_phase_skipped(search_report_state, "algo_mode_not_improve")
         return None
-    if not bool(sgs_enabled):
-        _mark_phase_skipped(search_report_state, "sgs_dispatch_unavailable")
+    if not bool(batch_order_enabled):
+        _mark_phase_skipped(search_report_state, "batch_order_dispatch_unavailable")
         return None
 
     base_order = list(build_order(base_strategy, base_params or {}))
@@ -257,7 +260,33 @@ def _candidate_specs_for_run(
     if not specs:
         _mark_phase_skipped(search_report_state, "candidate_budget_empty")
         return None
-    return specs
+    for spec in specs:
+        spec["dispatch_mode"] = "batch_order"
+    return _dedupe_candidate_specs(specs)
+
+
+def _dedupe_candidate_specs(specs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    seen = set()
+    out: List[Dict[str, Any]] = []
+    for spec in list(specs or []):
+        fingerprint = _spec_decision_fingerprint(spec)
+        if fingerprint in seen:
+            continue
+        seen.add(fingerprint)
+        out.append(spec)
+    return out
+
+
+def _spec_decision_fingerprint(spec: Dict[str, Any]) -> str:
+    return stable_fingerprint(
+        {
+            "schema_version": 1,
+            "fingerprint_scope": "candidate_spec_decision",
+            "dispatch_mode": str(spec.get("dispatch_mode") or "batch_order"),
+            "dispatch_rule": str(spec.get("dispatch_rule") or ""),
+            "batch_order": list(spec.get("order") or []),
+        }
+    )
 
 
 def _run_candidate_spec(
@@ -288,6 +317,7 @@ def _run_candidate_spec(
 ) -> Optional[Dict[str, Any]]:
     origin = str(spec["origin"])
     index = int(spec["restart_index"])
+    dispatch_mode = str(spec.get("dispatch_mode") or "batch_order")
     dispatch_rule = str(spec["dispatch_rule"])
     try:
         candidate = _evaluate_candidate(
@@ -302,6 +332,7 @@ def _run_candidate_spec(
             downtime_map=downtime_map,
             order=list(spec["order"]),
             seed_sr_list=seed_sr_list,
+            dispatch_mode=dispatch_mode,
             dispatch_rule=dispatch_rule,
             resource_pool=resource_pool,
             objective_name=objective_name,
@@ -319,6 +350,7 @@ def _run_candidate_spec(
             origin=origin,
             index=index,
             strategy=base_strategy,
+            dispatch_mode=dispatch_mode,
             dispatch_rule=dispatch_rule,
             exc=exc,
         )
@@ -356,7 +388,6 @@ def run_grasp_ig_candidates(
     build_order: Callable[[SortStrategy, Dict[str, Any]], List[str]],
     dispatch_rule_cfg: str,
     valid_dispatch_rules: List[str],
-    sgs_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
     deadline: float,
@@ -370,8 +401,12 @@ def run_grasp_ig_candidates(
     clock: Callable[[], float],
     rng_factory: Callable[[int], Any],
     schedule_fn: Callable[..., Any],
+    batch_order_enabled: bool = True,
     search_report_state: Optional[OptimizationSearchReportState] = None,
 ) -> Optional[Dict[str, Any]]:
+    if graph_ready_context is not None:
+        _mark_phase_skipped(search_report_state, "graph_ready_requires_graph_neighborhood")
+        return best
     specs = _candidate_specs_for_run(
         algo_mode=algo_mode,
         best=best,
@@ -382,7 +417,7 @@ def run_grasp_ig_candidates(
         candidate_construction=candidate_construction,
         dispatch_rule_cfg=dispatch_rule_cfg,
         valid_dispatch_rules=valid_dispatch_rules,
-        sgs_enabled=sgs_enabled,
+        batch_order_enabled=batch_order_enabled,
         rng_factory=rng_factory,
         search_report_state=search_report_state,
     )

@@ -5,7 +5,7 @@ scope: core/services/scheduler 排产调度模块的内部结构现状——对�
 summary: 占 core/services 约 70% 的排产巨型模块的系统地图,记录其子包划分、业务族、枢纽文件和 run↔summary 包级循环依赖等现状
 status: current
 created: 2026-06-28
-last_reviewed: 2026-06-28
+last_reviewed: 2026-06-29
 tags: [scheduler, core, service, 排产, architecture]
 depends_on: []
 implements: []
@@ -73,6 +73,8 @@ core/services/scheduler/
 ### run/ —— 排产执行引擎
 - **职责**:收集排产输入 → 跑算法 / 多候选对比 → 校验产出 → 持久化。排产主链的执行核心。
 - **核心文件**:`run/schedule_orchestrator.py:279` `orchestrate_schedule_run`(总编排,把算法和摘要函数作为参数**注入**)、`run/schedule_input_collector.py` `collect_schedule_run_input`(输入收集)、`run/schedule_optimizer.py` `optimize_schedule`(算法入口)、`run/schedule_persistence.py`(持久化)。内部成簇:`optimizer_*`(15)、`schedule_candidate_*`(9)、`schedule_graph_*`(4,graph 子包唯一消费者)。
+- **optimizer 现状**:`run/schedule_optimizer.py` 的 improve 主链包含多起点、GRASP/IG 批次顺序候选、VNS/acceptance 局搜和 search report。GRASP/IG 生产候选只走 `batch_order` 解码，不保留不可达的 `sgs` 候选入口。局搜的 profile 默认配置六个业务邻域，但当当前 best 是 `dispatch_mode=sgs` 时，实际 effective 邻域只使用 SGS 专用 `sgs_dispatch_rule`，报告中必须分开 configured/effective，不能让页面或 diagnostics 误以为 SGS 跑了 critical_chain/tardy_window 等业务邻域。
+- **graph ready 现状**:工序图分析仍是可选基础设施；`GraphReadyOptimizationProfile` 只存在于路线图未来合同。当前生产链遇到 `graph_ready_context` 时，GRASP/IG 与局搜会记录 `graph_ready_requires_graph_neighborhood` 并跳过，因为图邻域 / 图权重局搜尚未实现。
 - **对外依赖**:`core.infrastructure.errors`、`core.models.enums`、`core.algorithms.*`、`core.shared.strict_parse`、`core.services.common.build_outcome`;不直接 import `data`(经 svc 句柄)。
 - **对其它子包**:→ graph(13 处,**全是函数内延迟 import**)、→ summary(4 处)、→ config(3 处)。
 
@@ -157,6 +159,7 @@ core/services/scheduler/
 - **性质(静态)**:8 处全是模块顶层 import、相关文件均无 `TYPE_CHECKING`,故**加载期是真环**,当前不报 ImportError 仅因环切在双方的"叶子纯函数模块"上;任一叶子模块新增一条回指对面顶层的 import 即会触发"半初始化模块" ImportError。checkup 的 `cycle_count`(`callgraph/summary.json`)是**函数级 SCC**,看不到此**包级**环——这是它长期潜伏的原因。
 - **性质(动态实测)**:8 条跨包边运行时**全部真实触发(函数体执行),无死边**。拓扑是**嵌套回调**——run 编排时调注入的 `build_result_summary`(summary 组装),summary 组装内部再回调 run 的 4 个纯函数;stub 掉 summary 时反向边一条不触发,证明反向边只从 summary 内部发起,不是两包对穿。被反借的 4 个 run 符号**均为无副作用纯函数**(算缺资源 op / 压缩 attempts / 取样本 / 最小化候选对比),summary 当工具借用。
 - **客观影响**:运行时无死锁/正确性风险;张力集中在**分层与可维护性**——summary(数据流下游)反向依赖 run(上游)的内部模块,且加载期真环随时可被一次普通改动引爆。
+- **全景定位(2026-06-28 全仓普查)**:本环在循环依赖普查中编号 **A1**——实为 `scheduler 根 ⇄ run ⇄ summary ⇄ config` 的**四方**硬加载期目录环的一段(不是孤立的 run⇄summary 两方环),与 infrastructure/models(A2)等共 **6 个硬加载期目录环**并列。完整三类口径 + Codex 对抗核验见 `.codestable/audits/2026-06-28-circular-imports/`;复扫工具 `python3 -m tools.scan_import_cycles`。
 
 ### 8.2 分包标准不统一,78 文件平铺根目录
 - 已按"计算流程"切出 run/summary/graph/config,但占 49 文件的 `resource`(17)/`schedule`(16)/`gantt`(16)三大**业务族**仍平铺根目录,每族体量都大于已成包的 graph/(13)。一半按流程分包、一半按业务族平铺,目录可读性与心智负担偏高。
@@ -173,5 +176,6 @@ core/services/scheduler/
 ## 9. 相关文档
 
 - `.codestable/architecture/ARCHITECTURE.md` —— 项目架构总入口。
+- `.codestable/audits/2026-06-28-circular-imports/` —— 全仓循环依赖普查(本模块 run⇄summary 即其中 A1 四方环),三类口径 + Codex 对抗核验。
 - `.codestable/architecture/ui-gantt.md` —— 甘特图结果查看页面(前端职责/缩放/只读边界),与本文档的后端 service 视角互补。
 - `core/services/scheduler/__init__.py` —— 本模块对外 13 个 Service 的惰性门面。

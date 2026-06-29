@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pytest
 
+from core.algorithms import GreedyScheduler
 from core.algorithms.evaluation import ScheduleMetrics, compute_metrics, objective_score
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.types import ScheduleResult, ScheduleSummary
@@ -16,6 +17,13 @@ from core.infrastructure.errors import ValidationError
 from core.services.scheduler.run.optimizer_candidate_fingerprint import build_candidate_fingerprint
 from core.services.scheduler.run.optimizer_candidate_profile import build_candidate_profile, derive_grasp_ig_limits
 from core.services.scheduler.run.optimizer_grasp_ig_candidates import run_grasp_ig_candidates
+from core.services.scheduler.run.optimizer_proof_cases import TinyBatchSpec, TinyBenchmarkCase, TinyOperationSpec
+from core.services.scheduler.run.optimizer_proof_oracle import (
+    _ContinuousCalendar,
+    _default_config,
+    _operation_object,
+    batch_objects,
+)
 from core.services.scheduler.run.optimizer_runtime import OptimizerRuntime
 from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
 from core.services.scheduler.run.schedule_candidate_persistence_models import operation_log_algo_summary
@@ -59,6 +67,14 @@ class _SeedAwareRandom:
         return rotated[: int(n)]
 
 
+class _StaticRandom:
+    def randrange(self, n: int) -> int:
+        return 0
+
+    def sample(self, seq: Any, n: int) -> List[Any]:
+        return list(seq)[: int(n)]
+
+
 def _summary(results: List[ScheduleResult], *, failed_ops: int = 0) -> ScheduleSummary:
     return ScheduleSummary(
         success=failed_ops == 0,
@@ -90,6 +106,37 @@ def _results_for_order(
     order: List[str], *, machine_id: str = "MC-1", operator_id: str = "OP-1"
 ) -> List[ScheduleResult]:
     return [_result(index, batch_id, machine_id=machine_id, operator_id=operator_id) for index, batch_id in enumerate(order)]
+
+
+def _tiny_op(op_id: int, batch_id: str) -> TinyOperationSpec:
+    return TinyOperationSpec(
+        op_id=op_id,
+        op_code=f"S{op_id}",
+        batch_id=batch_id,
+        seq=1,
+        machine_id="machine-main",
+        operator_id="operator-main",
+        duration_hours=24.0,
+    )
+
+
+def _improvable_batch_order_case() -> TinyBenchmarkCase:
+    return TinyBenchmarkCase(
+        slug="grasp-ig-real-greedy-improvement",
+        objective_name=_OBJECTIVE,
+        batches=(
+            TinyBatchSpec(batch_id="batch-a", due_date="2026-01-02"),
+            TinyBatchSpec(batch_id="batch-b", due_date="2026-01-03"),
+            TinyBatchSpec(batch_id="batch-c", due_date="2026-01-04"),
+            TinyBatchSpec(batch_id="batch-d", due_date="2026-01-02"),
+        ),
+        operations=(
+            _tiny_op(1, "batch-a"),
+            _tiny_op(2, "batch-b"),
+            _tiny_op(3, "batch-c"),
+            _tiny_op(4, "batch-d"),
+        ),
+    )
 
 
 def _batches(order: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -138,6 +185,40 @@ def _candidate(
     }
 
 
+def _real_candidate_for_order(order: List[str]) -> Dict[str, Any]:
+    case = _improvable_batch_order_case()
+    batches = batch_objects(case)
+    scheduler = GreedyScheduler(calendar_service=_ContinuousCalendar(), config_service=_default_config())
+    results, summary, strategy, params = scheduler.schedule(
+        operations=[_operation_object(op) for op in case.operations],
+        batches=batches,
+        strategy=SortStrategy.PRIORITY_FIRST,
+        start_dt=case.start_dt,
+        dispatch_mode="batch_order",
+        dispatch_rule="slack",
+        batch_order_override=list(order),
+        seed_results=[],
+        strict_mode=True,
+    )
+    metrics = compute_metrics(results, batches)
+    return {
+        "results": results,
+        "summary": summary,
+        "strategy": strategy,
+        "params": dict(params or {}),
+        "dispatch_mode": "batch_order",
+        "dispatch_rule": "slack",
+        "order": list(order),
+        "metrics": metrics,
+        "score": (float(summary.failed_ops),) + tuple(float(item) for item in objective_score(_OBJECTIVE, metrics)),
+        "algo_stats": {"fallback_counts": {}, "param_fallbacks": {}},
+        "resource_pool": {},
+        "seed_result_count": 0,
+        "locked_seed_range": [],
+        "mutable_scope": {"scope": "batch_order", "batch_count": len(order)},
+    }
+
+
 def _construction(*, grasp_restarts: int = 2, ig_restarts: int = 1) -> Dict[str, Any]:
     return {
         "schema_version": 1,
@@ -176,6 +257,9 @@ def _run_phase(
     schedule_fn: Callable[..., Any],
     strict_mode: bool = False,
     search_report_state: Optional[OptimizationSearchReportState] = None,
+    valid_dispatch_rules: Optional[List[str]] = None,
+    rng_factory: Optional[Callable[[int], Any]] = None,
+    graph_ready_context: Optional[Any] = None,
 ) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
     attempts: List[Dict[str, Any]] = []
     trace: List[Dict[str, Any]] = []
@@ -196,8 +280,7 @@ def _run_phase(
         base_params={},
         build_order=lambda _strategy, _params: list(_BASE_ORDER),
         dispatch_rule_cfg="slack",
-        valid_dispatch_rules=["slack", "cr"],
-        sgs_enabled=True,
+        valid_dispatch_rules=list(valid_dispatch_rules or ["slack", "cr"]),
         resource_pool=None,
         objective_name=_OBJECTIVE,
         deadline=2000.0,
@@ -207,9 +290,9 @@ def _run_phase(
         t_begin=1000.0,
         readiness_gate_enabled=False,
         strict_mode=bool(strict_mode),
-        graph_ready_context=None,
+        graph_ready_context=graph_ready_context,
         clock=clock,
-        rng_factory=lambda seed: _SeedAwareRandom(seed),
+        rng_factory=rng_factory or (lambda seed: _SeedAwareRandom(seed)),
         schedule_fn=schedule_fn,
         search_report_state=search_report_state,
     )
@@ -359,7 +442,7 @@ def test_optimizer_main_entry_invokes_grasp_ig_phase_after_multi_start() -> None
     call = calls[0]
     assert call["algo_mode"] == "improve"
     assert call["version"] == 42
-    assert call["sgs_enabled"] is True
+    assert call["batch_order_enabled"] is True
     assert call["candidate_construction"]["grasp"]["effective_restarts"] == 5
     assert outcome.search_report["algorithm_profile"] == "vns_sa"
 
@@ -406,7 +489,7 @@ def test_optimizer_main_entry_does_not_leak_candidate_construction_through_used_
     assert "candidate_construction" not in exposed_text
 
 
-def test_grasp_ig_candidates_are_deterministic_by_seed_and_always_decode_with_sgs() -> None:
+def test_grasp_ig_candidates_are_deterministic_by_seed_and_decode_with_batch_order() -> None:
     first_calls: List[Dict[str, Any]] = []
     second_calls: List[Dict[str, Any]] = []
     third_calls: List[Dict[str, Any]] = []
@@ -418,8 +501,25 @@ def test_grasp_ig_candidates_are_deterministic_by_seed_and_always_decode_with_sg
     assert first_calls == second_calls
     assert [call["order"] for call in first_calls] != [call["order"] for call in third_calls]
     assert len(first_calls) == 3
-    assert {call["dispatch_mode"] for call in first_calls} == {"sgs"}
+    assert {call["dispatch_mode"] for call in first_calls} == {"batch_order"}
     assert all("candidate_construction" in call["strategy_params"] for call in first_calls)
+
+
+def test_duplicate_grasp_ig_candidate_specs_are_deduped_before_decode() -> None:
+    construction = _construction(grasp_restarts=3, ig_restarts=0)
+    construction["grasp"]["effective_rcl_size"] = 1
+    calls: List[Dict[str, Any]] = []
+
+    _run_phase(
+        candidate_construction=construction,
+        schedule_fn=_recording_schedule(calls),
+        valid_dispatch_rules=["slack"],
+        rng_factory=lambda _seed: _StaticRandom(),
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["order"] == _BASE_ORDER
+    assert calls[0]["dispatch_mode"] == "batch_order"
 
 
 def test_grasp_ig_decode_validation_error_is_rejected_or_fail_loud() -> None:
@@ -471,7 +571,7 @@ def test_collapsed_grasp_ig_outputs_do_not_inflate_distinct_or_improved() -> Non
     assert report["improved"] is False
 
 
-def test_best_origin_can_report_grasp_when_sgs_decoded_candidate_really_improves() -> None:
+def test_best_origin_can_report_grasp_when_batch_order_decoded_candidate_really_improves() -> None:
     baseline = _candidate(_BASE_ORDER, failed_ops=1)
     state = _state()
     state.mark_candidate_accepted(baseline, origin="multi_start")
@@ -490,9 +590,63 @@ def test_best_origin_can_report_grasp_when_sgs_decoded_candidate_really_improves
         "fingerprint_changed": True,
         "score_strictly_better": True,
         "acceptance": "improve_only",
-        "acceptance_passed": True,
+        "acceptance_passed": False,
     }
-    assert report["improved"] is True
+    assert report["acceptance_events"] == []
+    assert report["improved"] is False
+
+
+def test_grasp_ig_real_greedy_candidate_improves_batch_order_path() -> None:
+    case = _improvable_batch_order_case()
+    baseline = _real_candidate_for_order(["batch-a", "batch-d", "batch-b", "batch-c"])
+    state = _state()
+    state.mark_candidate_accepted(baseline, origin="multi_start")
+    attempts: List[Dict[str, Any]] = []
+    trace: List[Dict[str, Any]] = []
+    construction = _construction(grasp_restarts=1, ig_restarts=0)
+    construction["grasp"]["effective_rcl_size"] = 1
+
+    best = run_grasp_ig_candidates(
+        algo_mode="improve",
+        best=baseline,
+        version=1,
+        candidate_construction=construction,
+        scheduler=GreedyScheduler(calendar_service=_ContinuousCalendar(), config_service=_default_config()),
+        algo_ops_to_schedule=[_operation_object(op) for op in case.operations],
+        batches=batch_objects(case),
+        start_dt=case.start_dt,
+        end_date=None,
+        downtime_map={},
+        seed_sr_list=[],
+        base_strategy=SortStrategy.PRIORITY_FIRST,
+        base_params={},
+        build_order=lambda _strategy, _params: ["batch-a", "batch-b", "batch-c", "batch-d"],
+        dispatch_rule_cfg="slack",
+        valid_dispatch_rules=["slack"],
+        resource_pool=None,
+        objective_name=_OBJECTIVE,
+        deadline=2000.0,
+        attempts=attempts,
+        improvement_trace=trace,
+        optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}},
+        t_begin=1000.0,
+        readiness_gate_enabled=False,
+        strict_mode=True,
+        graph_ready_context=None,
+        clock=_Clock(),
+        rng_factory=lambda _seed: _StaticRandom(),
+        schedule_fn=lambda scheduler, **kwargs: scheduler.schedule(**kwargs),
+        search_report_state=state,
+    )
+    report = state.finalize(runtime_ms=10, attempts=attempts, improvement_trace=trace)
+
+    assert best is not None
+    assert best["score"] < baseline["score"]
+    assert best["dispatch_mode"] == "batch_order"
+    assert report["best_origin"] == "grasp"
+    assert report["improvement_conditions"]["acceptance_passed"] is False
+    assert report["acceptance_events"] == []
+    assert report["improved"] is False
 
 
 def test_best_origin_can_report_ig_when_iterated_greedy_candidate_really_improves() -> None:
@@ -517,10 +671,34 @@ def test_best_origin_can_report_ig_when_iterated_greedy_candidate_really_improve
     report = state.finalize(runtime_ms=10, attempts=attempts, improvement_trace=trace)
 
     assert [attempt["tag"].split(":", 1)[0] for attempt in attempts] == ["grasp", "ig"]
-    assert {call["dispatch_mode"] for call in calls} == {"sgs"}
+    assert {call["dispatch_mode"] for call in calls} == {"batch_order"}
     assert report["best_origin"] == "ig"
     assert report["accepted_candidates"] == 2
-    assert report["improved"] is True
+    assert report["improvement_conditions"]["acceptance_passed"] is False
+    assert report["acceptance_events"] == []
+    assert report["improved"] is False
+
+
+def test_grasp_ig_skips_graph_ready_path_until_graph_neighborhood_exists() -> None:
+    state = _state()
+    best = _candidate(_BASE_ORDER)
+    state.mark_candidate_accepted(best, origin="multi_start")
+    calls: List[Dict[str, Any]] = []
+
+    out, attempts, trace = _run_phase(
+        best=best,
+        candidate_construction=_construction(grasp_restarts=1, ig_restarts=0),
+        schedule_fn=_recording_schedule(calls),
+        search_report_state=state,
+        graph_ready_context={"enabled": True},
+    )
+    report = state.finalize(runtime_ms=10, attempts=attempts, improvement_trace=trace)
+
+    assert out is best
+    assert calls == []
+    assert report["skipped_phases"] == [
+        {"phase": "grasp_ig_candidate_construction", "reason": "graph_ready_requires_graph_neighborhood"}
+    ]
 
 
 def test_candidate_construction_metadata_splits_decision_fingerprint_but_not_output_fingerprint() -> None:
@@ -574,9 +752,9 @@ def test_grasp_ig_public_operation_log_and_size_guard_do_not_leak_raw_inputs() -
     state.mark_candidate_accepted(better, origin="grasp")
     attempts = [
         {
-            "tag": "grasp:r0|sgs:slack",
+            "tag": "grasp:r0|batch_order:slack",
             "strategy": "priority_first",
-            "dispatch_mode": "sgs",
+            "dispatch_mode": "batch_order",
             "dispatch_rule": "slack",
             "used_params": {"candidate_construction": {"raw_order": secret_order}},
             "score": list(better["score"]),
@@ -615,9 +793,9 @@ def test_grasp_ig_attempt_source_labels_are_safe_public_text() -> None:
         {
             "attempts": [
                 {
-                    "tag": "grasp:r0|sgs:slack",
+                    "tag": "grasp:r0|batch_order:slack",
                     "strategy": "priority_first",
-                    "dispatch_mode": "sgs",
+                    "dispatch_mode": "batch_order",
                     "dispatch_rule": "slack",
                     "used_params": {"candidate_construction": {"raw_order": ["B-INTERNAL"]}},
                     "score": [0.0],
@@ -625,9 +803,9 @@ def test_grasp_ig_attempt_source_labels_are_safe_public_text() -> None:
                     "metrics": {"overdue_count": 0},
                 },
                 {
-                    "tag": "ig:r0|sgs:cr",
+                    "tag": "ig:r0|batch_order:cr",
                     "strategy": "priority_first",
-                    "dispatch_mode": "sgs",
+                    "dispatch_mode": "batch_order",
                     "dispatch_rule": "cr",
                     "used_params": {"candidate_construction": {"raw_order": ["B-INTERNAL"]}},
                     "score": [0.0],
@@ -644,4 +822,4 @@ def test_grasp_ig_attempt_source_labels_are_safe_public_text() -> None:
     assert "used_params" not in attempts[0]
     public_text = json.dumps(public_algo, ensure_ascii=False, sort_keys=True)
     assert "B-INTERNAL" not in public_text
-    assert diagnostics["optimizer"]["attempts"][0]["tag"] == "grasp:r0|sgs:slack"
+    assert diagnostics["optimizer"]["attempts"][0]["tag"] == "grasp:r0|batch_order:slack"

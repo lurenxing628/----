@@ -31,9 +31,11 @@ class AcceptanceDecision:
     accepted: bool
     acceptance_reason: str
     score_delta: float
+    score_delta_reference: str
     threshold: Optional[float]
     temperature: Optional[float]
     record_distance: Optional[float]
+    record_distance_reference: Optional[str]
     random_seed: int
     deterministic_random_draw: Optional[float]
     worse_solution_allowed: bool
@@ -45,9 +47,11 @@ class AcceptanceDecision:
             "accepted": bool(self.accepted),
             "acceptance_reason": str(self.acceptance_reason),
             "score_delta": float(self.score_delta),
+            "score_delta_reference": str(self.score_delta_reference),
             "threshold": self.threshold,
             "temperature": self.temperature,
             "record_distance": self.record_distance,
+            "record_distance_reference": self.record_distance_reference,
             "random_seed": int(self.random_seed),
             "deterministic_random_draw": self.deterministic_random_draw,
             "worse_solution_allowed": bool(self.worse_solution_allowed),
@@ -78,6 +82,8 @@ def decide_acceptance(
     name = validate_acceptance_name(acceptance_name)
     delta_current = _score_delta(candidate_score, current_score)
     delta_record = _score_delta(candidate_score, best_score)
+    objective_delta_current = _score_delta(candidate_score, current_score, start_index=1)
+    objective_delta_record = _score_delta(candidate_score, best_score, start_index=1)
     better_than_current = score_strictly_better(candidate_score, current_score)
     progress = _progress(iteration=iteration, max_iterations=max_iterations)
     threshold = DEFAULT_THRESHOLD * (1.0 - progress)
@@ -96,12 +102,17 @@ def decide_acceptance(
             random_draw=None,
         )
     if name == ACCEPTANCE_THRESHOLD:
-        accepted = better_than_current or delta_current <= threshold
+        failed_ops_worse = _failed_ops_worse(candidate_score, current_score)
+        accepted = False if failed_ops_worse else (better_than_current or objective_delta_current <= threshold)
         return _decision(
             name=name,
             accepted=accepted,
-            reason="within_threshold" if accepted and not better_than_current else ("score_improved" if accepted else "threshold_rejected"),
-            delta_current=delta_current,
+            reason=(
+                "failed_ops_worse"
+                if failed_ops_worse
+                else ("within_threshold" if accepted and not better_than_current else ("score_improved" if accepted else "threshold_rejected"))
+            ),
+            delta_current=delta_current if failed_ops_worse else objective_delta_current,
             threshold=threshold,
             temperature=None,
             record_distance=None,
@@ -109,15 +120,20 @@ def decide_acceptance(
             random_draw=None,
         )
     if name == ACCEPTANCE_RECORD_TO_RECORD:
-        accepted = better_than_current or delta_record <= threshold
+        failed_ops_worse = _failed_ops_worse(candidate_score, best_score)
+        accepted = False if failed_ops_worse else (better_than_current or objective_delta_record <= threshold)
         return _decision(
             name=name,
             accepted=accepted,
-            reason="within_record_distance" if accepted and not better_than_current else ("score_improved" if accepted else "record_distance_rejected"),
-            delta_current=delta_current,
+            reason=(
+                "failed_ops_worse"
+                if failed_ops_worse
+                else ("within_record_distance" if accepted and not better_than_current else ("score_improved" if accepted else "record_distance_rejected"))
+            ),
+            delta_current=delta_current if failed_ops_worse else objective_delta_current,
             threshold=threshold,
             temperature=None,
-            record_distance=delta_record,
+            record_distance=delta_record if failed_ops_worse else objective_delta_record,
             random_seed=random_seed,
             random_draw=None,
         )
@@ -125,6 +141,7 @@ def decide_acceptance(
         name=name,
         better_than_current=better_than_current,
         delta_current=delta_current,
+        failed_ops_worse=_failed_ops_worse(candidate_score, current_score),
         temperature=temperature,
         random_seed=random_seed,
         rnd=rnd,
@@ -136,10 +153,23 @@ def _simulated_annealing_decision(
     name: str,
     better_than_current: bool,
     delta_current: float,
+    failed_ops_worse: bool,
     temperature: float,
     random_seed: int,
     rnd: Any,
 ) -> AcceptanceDecision:
+    if failed_ops_worse:
+        return _decision(
+            name=name,
+            accepted=False,
+            reason="failed_ops_worse",
+            delta_current=delta_current,
+            threshold=None,
+            temperature=temperature,
+            record_distance=None,
+            random_seed=random_seed,
+            random_draw=None,
+        )
     if better_than_current:
         return _decision(
             name=name,
@@ -185,20 +215,38 @@ def _decision(
         accepted=bool(accepted),
         acceptance_reason=str(reason),
         score_delta=float(round(delta_current, 6)),
+        score_delta_reference="current_score",
         threshold=_round_optional(threshold),
         temperature=_round_optional(temperature),
         record_distance=_round_optional(record_distance),
+        record_distance_reference="best_score" if record_distance is not None else None,
         random_seed=int(random_seed),
         deterministic_random_draw=_round_optional(random_draw),
+        # 报表里的 worse_solution_allowed 不是“本次候选已经作为更差排程被接收”的结果。
+        # 它只说明当前接受准则是否允许探索更差的 current：除 improve_only 外，
+        # threshold / record_to_record / simulated_annealing 都可能为了跳出局部最优接收
+        # 非改进候选。真正是否接收看 accepted 和 acceptance_reason；是否进入最终 best，
+        # 还要再过 score_strictly_better 与候选指纹门禁。
         worse_solution_allowed=name != ACCEPTANCE_IMPROVE_ONLY,
     )
 
 
-def _score_delta(candidate_score: Any, reference_score: Any) -> float:
+def _failed_ops_worse(candidate_score: Any, reference_score: Any) -> bool:
+    candidate = _score_tuple(candidate_score)
+    reference = _score_tuple(reference_score)
+    if not candidate or not reference:
+        return False
+    return candidate[0] > reference[0]
+
+
+def _score_delta(candidate_score: Any, reference_score: Any, *, start_index: int = 0) -> float:
     candidate = _score_tuple(candidate_score)
     reference = _score_tuple(reference_score)
     if not candidate or not reference:
         return 0.0
+    index = max(int(start_index), 0)
+    candidate = candidate[index:]
+    reference = reference[index:]
     for cand_value, ref_value in zip(candidate, reference):
         delta = cand_value - ref_value
         if delta:

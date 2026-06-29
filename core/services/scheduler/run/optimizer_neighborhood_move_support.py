@@ -31,7 +31,7 @@ def latest_result(results: List[Any]) -> Optional[Any]:
 def positive_count(value: Any) -> int:
     try:
         return max(int(len(value or [])), 0)
-    except Exception:
+    except TypeError:
         return 0
 
 

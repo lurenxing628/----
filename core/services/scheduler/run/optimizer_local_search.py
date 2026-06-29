@@ -21,7 +21,12 @@ from .optimizer_local_search_report_hooks import (
     mark_current_candidate_accepted,
 )
 from .optimizer_local_search_state import LocalSearchState, candidate_can_update_best
-from .optimizer_neighborhood_moves import BUSINESS_NEIGHBORHOODS, NeighborhoodMove
+from .optimizer_neighborhood_moves import (
+    BUSINESS_NEIGHBORHOODS,
+    DEFAULT_SGS_DISPATCH_RULES,
+    SGS_DISPATCH_RULE,
+    NeighborhoodMove,
+)
 from .optimizer_neighborhood_registry import choose_neighborhood_move
 from .optimizer_search_state import init_seen_hashes
 from .optimizer_vns import VnsState
@@ -238,6 +243,7 @@ def _run_local_search_candidate_round(
     schedule_fn: Callable[..., Any],
     readiness_gate_enabled: bool,
     graph_ready_context: Optional[Any],
+    valid_dispatch_rules: List[str],
     fingerprint_tracker: LocalSearchFingerprintTracker,
     clock: Callable[[], float],
     t_begin: float,
@@ -249,6 +255,8 @@ def _run_local_search_candidate_round(
         batches=batches,
         resource_pool=local_state.current_resource_pool or resource_pool,
         rnd=rnd,
+        current_dispatch_rule=cur_dispatch_rule,
+        valid_dispatch_rules=valid_dispatch_rules,
     )
     if move.noop:
         _mark_neighborhood_move(search_report_state, move)
@@ -282,6 +290,8 @@ def _run_local_search_candidate_round(
     _mark_neighborhood_move(search_report_state, move)
     cand_order = list(move.batch_order or local_state.current_order)
     candidate_resource_pool = move.resource_pool if move.resource_pool is not None else (local_state.current_resource_pool or resource_pool)
+    candidate_mode = str(move.dispatch_mode or cur_dispatch_mode)
+    candidate_rule = str(move.dispatch_rule or cur_dispatch_rule)
     candidate = evaluate_optional_local_candidate(
         evaluate=partial(
             evaluate_local_search_candidate,
@@ -296,8 +306,8 @@ def _run_local_search_candidate_round(
             downtime_map=downtime_map,
             order=cand_order,
             seed_sr_list=seed_sr_list,
-            dispatch_mode=cur_dispatch_mode,
-            dispatch_rule=cur_dispatch_rule,
+            dispatch_mode=candidate_mode,
+            dispatch_rule=candidate_rule,
             resource_pool=candidate_resource_pool,
             objective_name=objective_name,
             optimizer_algo_stats=optimizer_algo_stats,
@@ -309,8 +319,8 @@ def _run_local_search_candidate_round(
         attempts=attempts,
         move=move.neighborhood_name,
         strategy=cur_strat,
-        dispatch_mode=cur_dispatch_mode,
-        dispatch_rule=cur_dispatch_rule,
+        dispatch_mode=candidate_mode,
+        dispatch_rule=candidate_rule,
         strict_mode=bool(strict_mode),
         search_report_state=search_report_state,
     )
@@ -395,11 +405,15 @@ def run_local_search(
     graph_ready_context: Optional[Any] = None,
     search_report_state: Optional[OptimizationSearchReportState] = None,
     neighborhoods: Optional[Tuple[str, ...]] = None,
+    valid_dispatch_rules: Optional[List[str]] = None,
     acceptance: str = ACCEPTANCE_IMPROVE_ONLY,
 ) -> Optional[Dict[str, Any]]:
     skip_reason, skip_extra = _local_search_skip_reason(algo_mode=algo_mode, best=best)
     if skip_reason:
         _mark_local_search_skipped(search_report_state, skip_reason, skip_extra)
+        return best
+    if graph_ready_context is not None:
+        _mark_local_search_skipped(search_report_state, "graph_ready_requires_graph_neighborhood", {})
         return best
     best = cast(Dict[str, Any], best)
 
@@ -411,7 +425,15 @@ def run_local_search(
     cur_params = dict(best["params"] or {})
     cur_dispatch_mode = str(best.get("dispatch_mode") or dispatch_mode_cfg)
     cur_dispatch_rule = str(best.get("dispatch_rule") or dispatch_rule_cfg)
-    active_neighborhoods = tuple(neighborhoods or BUSINESS_NEIGHBORHOODS)
+    sgs_dispatch_rules = _resolve_sgs_dispatch_rules(valid_dispatch_rules, cur_dispatch_rule)
+    active_neighborhoods = (SGS_DISPATCH_RULE,) if cur_dispatch_mode == "sgs" else tuple(neighborhoods or BUSINESS_NEIGHBORHOODS)
+    if search_report_state is not None:
+        search_report_state.set_effective_neighborhoods(
+            configured=tuple(neighborhoods or BUSINESS_NEIGHBORHOODS),
+            effective=active_neighborhoods,
+            reason="sgs_dispatch_rule_only" if cur_dispatch_mode == "sgs" else "configured_neighborhoods",
+            dispatch_mode=cur_dispatch_mode,
+        )
     vns_state = VnsState(active_neighborhoods)
     fingerprint_tracker = LocalSearchFingerprintTracker(objective_name=objective_name, initial_best=best)
     it = 0
@@ -465,10 +487,15 @@ def run_local_search(
             schedule_fn=schedule_fn,
             readiness_gate_enabled=readiness_gate_enabled,
             graph_ready_context=graph_ready_context,
+            valid_dispatch_rules=sgs_dispatch_rules,
             fingerprint_tracker=fingerprint_tracker,
             clock=clock,
             t_begin=t_begin,
         )
+        cur_strat = local_state.current["strategy"]
+        cur_params = dict(local_state.current["params"] or {})
+        cur_dispatch_mode = str(local_state.current.get("dispatch_mode") or dispatch_mode_cfg)
+        cur_dispatch_rule = str(local_state.current.get("dispatch_rule") or dispatch_rule_cfg)
         vns_event = vns_state.record_round(
             best_improved=best_improved,
             noop=bool(move.noop),
@@ -485,5 +512,23 @@ def run_local_search(
             local_state.reset_current_to_best(
                 order=_shake_order(list(local_state.best.get("order") or local_state.current_order), rnd)
             )
+            cur_strat = local_state.current["strategy"]
+            cur_params = dict(local_state.current["params"] or {})
+            cur_dispatch_mode = str(local_state.current.get("dispatch_mode") or dispatch_mode_cfg)
+            cur_dispatch_rule = str(local_state.current.get("dispatch_rule") or dispatch_rule_cfg)
             seen_hashes = init_seen_hashes(local_state.current_order, local_state.best)
     return local_state.best
+
+
+def _resolve_sgs_dispatch_rules(valid_dispatch_rules: Optional[List[str]], current_dispatch_rule: str) -> List[str]:
+    out: List[str] = []
+    for item in list(valid_dispatch_rules or DEFAULT_SGS_DISPATCH_RULES):
+        text = str(item or "").strip().lower()
+        if text and text not in out:
+            out.append(text)
+    current = str(current_dispatch_rule or "").strip().lower()
+    if current and current not in out:
+        out.insert(0, current)
+    if not out:
+        out.extend(DEFAULT_SGS_DISPATCH_RULES)
+    return out

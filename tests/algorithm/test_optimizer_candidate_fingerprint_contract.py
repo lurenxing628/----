@@ -119,6 +119,24 @@ def _state() -> OptimizationSearchReportState:
     )
 
 
+def _acceptance_event() -> Dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "acceptance_name": "improve_only",
+        "accepted": True,
+        "acceptance_reason": "score_improved",
+        "score_delta": -1.0,
+        "score_delta_reference": "current_score",
+        "threshold": None,
+        "temperature": None,
+        "record_distance": None,
+        "record_distance_reference": None,
+        "random_seed": 42,
+        "deterministic_random_draw": None,
+        "worse_solution_allowed": False,
+    }
+
+
 def test_candidate_fingerprint_is_deterministic_and_order_normalized_for_output() -> None:
     metrics = _metrics()
     first = _candidate(
@@ -204,7 +222,7 @@ def test_improved_requires_fingerprint_change_score_gain_and_acceptance() -> Non
         "fingerprint_changed": True,
         "score_strictly_better": False,
         "acceptance": "improve_only",
-        "acceptance_passed": True,
+        "acceptance_passed": False,
     }
     assert report["improved"] is False
 
@@ -216,7 +234,31 @@ def test_improved_requires_fingerprint_change_score_gain_and_acceptance() -> Non
     report = score_only.finalize(runtime_ms=10, attempts=[], improvement_trace=[])
     assert report["improvement_conditions"]["fingerprint_changed"] is False
     assert report["improvement_conditions"]["score_strictly_better"] is True
-    assert report["improvement_conditions"]["acceptance_passed"] is True
+    assert report["improvement_conditions"]["acceptance_passed"] is False
+    assert report["acceptance_events"] == []
+    assert report["improved"] is False
+
+    no_acceptance_event = _state()
+    no_acceptance_event.mark_candidate_accepted(baseline, origin="multi_start")
+    no_acceptance_event_candidate_fp = build_candidate_fingerprint(
+        changed_better,
+        objective_name=_OBJECTIVE,
+        parent_fingerprint=no_acceptance_event.best_fingerprint,
+        seen_output_fingerprints=set(),
+    )
+    # 白盒兜底：就算旧布尔状态被误置真，没有真实 best acceptance event 也不能通过。
+    no_acceptance_event.best_fingerprint = no_acceptance_event_candidate_fp.output_fingerprint
+    no_acceptance_event.best_candidate_fingerprint = no_acceptance_event_candidate_fp.to_report_dict()
+    no_acceptance_event.best_score = list(changed_better["score"])
+    no_acceptance_event.best_acceptance_passed = True
+    report = no_acceptance_event.finalize(runtime_ms=10, attempts=[], improvement_trace=[])
+    assert report["improvement_conditions"] == {
+        "fingerprint_changed": True,
+        "score_strictly_better": True,
+        "acceptance": "improve_only",
+        "acceptance_passed": False,
+    }
+    assert report["acceptance_events"] == []
     assert report["improved"] is False
 
     not_accepted = _state()
@@ -243,7 +285,7 @@ def test_improved_requires_fingerprint_change_score_gain_and_acceptance() -> Non
 
     all_conditions = _state()
     all_conditions.mark_candidate_accepted(baseline, origin="multi_start")
-    all_conditions.mark_candidate_accepted(changed_better, origin="local_search")
+    all_conditions.mark_candidate_accepted(changed_better, origin="local_search", acceptance_event=_acceptance_event())
     report = all_conditions.finalize(runtime_ms=10, attempts=[], improvement_trace=[])
     assert report["improvement_conditions"] == {
         "fingerprint_changed": True,
@@ -266,7 +308,7 @@ def test_public_operation_log_and_size_guard_keep_scope_without_hash_or_internal
     )
     state = _state()
     state.mark_candidate_accepted(baseline, origin="multi_start")
-    state.mark_candidate_accepted(better, origin="local_search")
+    state.mark_candidate_accepted(better, origin="local_search", acceptance_event=_acceptance_event())
     report = state.finalize(runtime_ms=10, attempts=[], improvement_trace=[])
 
     public, diagnostics = project_search_report(report)

@@ -99,9 +99,11 @@ def _safe_acceptance_event(event: Dict[str, Any]) -> Dict[str, Any]:
         "accepted": bool(event.get("accepted")),
         "acceptance_reason": _safe_text(event.get("acceptance_reason")),
         "score_delta": float(event.get("score_delta") or 0.0),
+        "score_delta_reference": _safe_text(event.get("score_delta_reference")) or "current_score",
         "threshold": _optional_float(event.get("threshold")),
         "temperature": _optional_float(event.get("temperature")),
         "record_distance": _optional_float(event.get("record_distance")),
+        "record_distance_reference": _safe_text(event.get("record_distance_reference")),
         "random_seed": int(event.get("random_seed") or 0),
         "deterministic_random_draw": _optional_float(event.get("deterministic_random_draw")),
         "worse_solution_allowed": bool(event.get("worse_solution_allowed")),
@@ -254,6 +256,7 @@ class OptimizationSearchReportState:
     vns_events: List[Dict[str, Any]] = field(default_factory=list)
     vns_summary: Dict[str, Any] = field(default_factory=dict)
     best_acceptance_passed: bool = False
+    best_acceptance_event_count: int = 0
     deadline_reached: bool = False
     iteration_limit_reached: bool = False
     local_search_entered: bool = False
@@ -300,7 +303,6 @@ class OptimizationSearchReportState:
         self.accepted_candidates += 1
         self.accepted_fingerprints.add(fingerprint.output_fingerprint)
         if not was_initial:
-            self.best_acceptance_passed = True
             self.best_improved_candidates += 1
         _append_fingerprint_event(self.fingerprint_events, origin=origin, status="accepted", fingerprint=fingerprint)
         self._append_attempt_summary(_candidate_summary(candidate, origin=origin, status="best_improved" if not was_initial else "accepted"))
@@ -346,11 +348,37 @@ class OptimizationSearchReportState:
             bucket["rejected"] += 1
         if current_accepted and not best_improved:
             bucket["non_improving_accepted"] += 1
+        if best_improved and bool(row.get("accepted")):
+            self.best_acceptance_passed = True
+            self.best_acceptance_event_count += 1
         if len(self.acceptance_events) < 50:
             stored = dict(row)
             stored["best_improved"] = bool(best_improved)
             stored["current_accepted"] = bool(current_accepted)
             self.acceptance_events.append(stored)
+
+    def set_effective_neighborhoods(
+        self,
+        *,
+        configured: Any,
+        effective: Any,
+        reason: str,
+        dispatch_mode: str,
+    ) -> None:
+        profile = dict(self.candidate_profile or {})
+        configured_values = _list_copy(configured) or _list_copy(profile.get("configured_neighborhoods")) or _list_copy(profile.get("neighborhoods"))
+        effective_values = _list_copy(effective)
+        if configured_values:
+            profile["configured_neighborhoods"] = configured_values
+        if effective_values:
+            profile["effective_neighborhoods"] = effective_values
+        reason_text = _safe_text(reason)
+        if reason_text:
+            profile["effective_neighborhood_reason"] = reason_text
+        dispatch_text = _safe_text(dispatch_mode)
+        if dispatch_text:
+            profile["effective_dispatch_mode"] = dispatch_text
+        self.candidate_profile = profile
 
     def mark_vns_event(self, event: Dict[str, Any]) -> None:
         row = _safe_vns_event(event)
@@ -416,7 +444,11 @@ class OptimizationSearchReportState:
     def _improvement_conditions(self, fingerprint_changed: bool) -> Dict[str, Any]:
         score_improved = score_strictly_better(self.best_score, self.initial_score)
         acceptance = _safe_text((self.candidate_profile or {}).get("acceptance")) or "improve_only"
-        acceptance_passed = bool(self.best_acceptance_passed and self.best_candidate_fingerprint)
+        acceptance_passed = bool(
+            self.best_acceptance_passed
+            and self.best_acceptance_event_count > 0
+            and self.best_candidate_fingerprint
+        )
         return {
             "fingerprint_changed": bool(fingerprint_changed),
             "score_strictly_better": bool(score_improved),

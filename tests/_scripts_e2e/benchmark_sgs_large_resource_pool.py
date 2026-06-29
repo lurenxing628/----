@@ -229,7 +229,7 @@ def main() -> int:
         "# SGS 大资源池基准报告",
         "",
         f"- 生成时间：{time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"- 项目根目录：`{repo_root}`",
+        "- 项目根目录：当前仓库",
         "",
     ]
 
@@ -261,7 +261,8 @@ def main() -> int:
 
     report_path = os.path.join(repo_root, "evidence", "Benchmark", "sgs_large_resource_pool_report.md")
     _write_report(report_path, lines)
-    print(f"[benchmark_sgs_large_resource_pool] report: {report_path}")
+    report_relpath = os.path.relpath(report_path, repo_root)
+    print(f"[benchmark_sgs_large_resource_pool] report: {report_relpath}")
     if all_errors:
         raise RuntimeError("SGS 大资源池基准失败：\n- " + "\n- ".join(all_errors))
     return 0

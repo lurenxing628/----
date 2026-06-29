@@ -428,7 +428,8 @@ def test_profile_public_projection_whitelist_only() -> None:
     assert profile_public["system_limit_applied"] is True
     assert profile_public["system_limit_reason"] == "iteration_floor"
     assert profile_public["candidate_strategy_families"] == ["multi_start", "grasp", "iterated_greedy"]
-    assert profile_public["neighborhoods"] == list(BUSINESS_NEIGHBORHOODS)
+    assert profile_public["configured_neighborhoods"] == list(BUSINESS_NEIGHBORHOODS)
+    assert "neighborhoods" not in profile_public
     assert profile_public["message"]
     # 配置内部细节绝不进 public。
     for key in _PROFILE_DIAGNOSTIC_ONLY_KEYS:
@@ -476,7 +477,8 @@ def test_operation_log_algo_summary_keeps_profile_public_only() -> None:
     public_log_algo = operation_log_algo_summary(summary)
     profile_public = public_log_algo["search_report"]["profile_public"]
     assert profile_public["profile"] == "vns_sa"
-    assert profile_public["neighborhoods"] == list(BUSINESS_NEIGHBORHOODS)
+    assert profile_public["configured_neighborhoods"] == list(BUSINESS_NEIGHBORHOODS)
+    assert "neighborhoods" not in profile_public
     public_text = json.dumps(public_log_algo, ensure_ascii=False, sort_keys=True)
     for forbidden in _FORBIDDEN_PUBLIC_TOKENS:
         assert forbidden not in public_text

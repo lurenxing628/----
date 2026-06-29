@@ -15,8 +15,8 @@ items:
     depends_on: []
     status: done
     feature: 2026-06-26-diagnostic-public-id-boundary-fix
-    minimal_loop: true
-    notes: Phase A；public algo/graph/candidate/export/OperationLogs 已收紧为白名单摘要；diagnostics 可保留内部调试但不得进入普通页面、HTML、导出、OperationLogs public 投影；新增 trace/attempt/move/benchmark 样本前必须继续复用该投影边界
+    minimal_loop: false
+    notes: 已完成前置治理；public algo/graph/candidate/export/OperationLogs 已收紧为白名单摘要；diagnostics 可保留内部调试但不得进入普通页面、HTML、导出、OperationLogs public 投影；新增 trace/attempt/move/benchmark 样本前必须继续复用该投影边界
 
   - slug: optimizer-search-report-contract
     description: 给 optimizer 增加 stop_reason、seed、搜索统计、候选拒绝原因和 trace 合同
@@ -32,7 +32,7 @@ items:
     status: done
     feature: 2026-06-28-optimizer-candidate-profile-contract
     minimal_loop: false
-    notes: 已落地 CandidateProfile 合同(core/services/scheduler/run/optimizer_candidate_profile.py)并接入 OptimizationSearchReport.candidate_profile；configured/effective time budget 与 max_iterations 区分、迭代 [200,5000] 系统钳制如实写 system_limit_applied/system_limit_reason/iteration_limit_source；derive_iteration_limits 作为迭代上限单一真相源,local search 改为共用(零行为变化);未知 profile/repair/acceptance/neighborhood 与非法 budget 一律 fail-loud(与 strict 无关);profile_public/profile_diagnostics 白名单分层 + size guard 最小摘要保留 profile_public;seed 如实标 version 派生。本阶段 profile 取值限 baseline/multi_start_local_search(§4.3 full enum 的 grasp/ig/vns/sa/alns 待 item 6-10 扩展,未知值仍 ValidationError);repair 仅 sgs、acceptance 仅 improve_only、neighborhoods 仅 swap/insert/block。未做 item 5 完整 CandidateFingerprint。
+    notes: 已落地 CandidateProfile 合同(core/services/scheduler/run/optimizer_candidate_profile.py)并接入 OptimizationSearchReport.candidate_profile；configured/effective time budget 与 max_iterations 区分、迭代 [200,5000] 系统钳制如实写 system_limit_applied/system_limit_reason/iteration_limit_source；derive_iteration_limits 作为迭代上限单一真相源,local search 改为共用(零行为变化);未知 profile/repair/acceptance/neighborhood 与非法 budget 一律 fail-loud(与 strict 无关);profile_public/profile_diagnostics 白名单分层 + size guard 最小摘要保留 profile_public;seed 如实标 version 派生。item 4 初始落地时只覆盖 baseline/multi_start_local_search、repair=sgs、acceptance=improve_only 与旧 swap/insert/block 邻域；当前生产能力已由 item 6/7/8 扩展为 grasp_ig/vns_sa、六个业务邻域 + SGS 专用 sgs_dispatch_rule，以及 improve_only/threshold/record_to_record/simulated_annealing acceptance，未知值仍 ValidationError。未做 item 5 完整 CandidateFingerprint。
 
   - slug: distinct-candidate-fingerprint-contract
     description: 定义候选指纹、去重计数、same-fingerprint 拒绝和 improved 判定合同
@@ -48,7 +48,7 @@ items:
     status: done
     feature: 2026-06-28-grasp-ig-candidate-construction
     minimal_loop: false
-    notes: 已落地 GRASP/IG 候选构造；默认 improve profile 扩展为 grasp_ig，candidate_strategy_families=multi_start/grasp/iterated_greedy；GRASP/IG 只生成批次顺序和派工规则候选，正式结果仍由现有 SGS 解码；候选接入 CandidateProfile/SearchReport/CandidateFingerprint，distinct 继续按 decoded_output 去重，same-fingerprint 不算 improved；public/OperationLogs/size guard 只投安全摘要。
+    notes: 已落地 GRASP/IG 候选构造；默认 improve profile 扩展为 grasp_ig，candidate_strategy_families=multi_start/grasp/iterated_greedy；GRASP/IG 只生成批次顺序候选并通过 batch_order 派工解码，不保留不可达的 sgs 候选分支；候选接入 CandidateProfile/SearchReport/CandidateFingerprint，distinct 继续按 decoded_output 去重，same-fingerprint 不算 improved；没有真实 best acceptance event 时 acceptance_passed=false 且 improved=false；public/OperationLogs/size guard 只投安全摘要。
 
   - slug: business-neighborhood-registry
     description: 建立关键链、延期批次、瓶颈设备、换型块、资源替换、时间窗 repair 的邻域注册表
@@ -56,7 +56,7 @@ items:
     status: done
     feature: 2026-06-28-business-neighborhood-registry
     minimal_loop: false
-    notes: 已落地业务邻域 registry 与 NeighborhoodMove 合同；支持 critical_chain/tardy_window/bottleneck_machine/changeover_block/resource_alternative/time_window，旧 swap/insert/block 不在正式 registry 和 profile 白名单里；默认 improve profile 的 neighborhoods 改为六个业务邻域并公开安全名称，未知邻域 ValidationError fail-loud；local search 通过 registry 生成 move 后仍调用现有 SGS 解码，SearchReport 记录 neighborhood_moves diagnostics 与 neighborhood_summary public 小摘要；no-op 记 noop_neighbor，fallback 必写 fallback_reason；public/OperationLogs/size guard 不透传 raw move、内部 op/resource id、fingerprint hash。未做 VNS/SA acceptance，未做 ALNS。
+    notes: 已落地业务邻域 registry 与 NeighborhoodMove 合同；支持 critical_chain/tardy_window/bottleneck_machine/changeover_block/resource_alternative/time_window 六个业务邻域，另有 SGS 专用 sgs_dispatch_rule 用于 dispatch_mode=sgs 时切换派工规则；旧 swap/insert/block 不在正式 registry 和 profile 白名单里；默认 improve profile 的 configured_neighborhoods 为六个业务邻域，实际执行 effective_neighborhoods 需按当前派工模式报告，SGS 时只能是 sgs_dispatch_rule，未知邻域 ValidationError fail-loud；local search 通过 registry 生成 move 后仍调用现有正式解码链，SearchReport 记录 neighborhood_moves diagnostics 与 neighborhood_summary public 小摘要；no-op 记 noop_neighbor，fallback 必写 fallback_reason；public/OperationLogs/size guard 不透传 raw move、内部 op/resource id、fingerprint hash。未做 VNS/SA acceptance，未做 ALNS。
 
   - slug: vns-sa-local-search-upgrade
     description: 把现有 local search 升级为 VNS 和 SA 后处理，先做轻量可复现版本
@@ -66,45 +66,29 @@ items:
     minimal_loop: false
     notes: 已落地 VNS/acceptance 局搜升级；新增 current/best 分离状态，非改进候选可按 threshold/record_to_record/simulated_annealing 接受为 current，但 best 只在 acceptance 通过、score 严格更优、output_fingerprint 非 parent 且非 seen 时更新；CandidateProfile 默认 improve 扩展为 vns_sa，acceptance 白名单扩为 improve_only/threshold/record_to_record/simulated_annealing，未知 acceptance 继续 ValidationError fail-loud；SearchReport 新增 acceptance_events/acceptance_summary、vns_events/vns_summary，并把 acceptance_passed 改为真实 best acceptance 事件，不再用 accepted_candidates>1 代理；public/OperationLogs/size guard 只投 acceptance/VNS 安全计数摘要，不泄漏 raw random draw、fingerprint hash、raw move 或内部 op/resource id。未做 ALNS。
 
-  - slug: alns-partial-repair-contract
-    description: 定义 ALNS 局部拆修的 allowed-op、payload validation 和执行态保护复用合同
-    depends_on: [business-neighborhood-registry]
+  - slug: graph-ready-local-search-contract
+    description: 定义工序图就绪队列派工的局部搜索合同、候选口径和 public/diagnostics 边界
+    depends_on: [vns-sa-local-search-upgrade]
     status: planned
     feature: null
     minimal_loop: false
-    notes: Phase B（ALNS 刚性四连 9-12 起点）；同受证据闸门约束，闸门未放行不启动；局部 repair 结果必须复用正式排产守门链，不能只靠 ALNS 内部校验
+    notes: 未来计划合同，尚无生产实现；当前生产遇到 graph_ready_context 会因图邻域未实现而记录 graph_ready_requires_graph_neighborhood 并跳过 GRASP/IG 与局搜候选。真正落地时只消费已有 graph_ready_context 和 ready 候选排序信息，不重新引入图分析主链；局部搜索只改变图权重、ready 候选排序和候选策略，正式时间落位仍由 SGS 完成；必须校验 schedulable_op_ids/fixed_op_ids/predecessor_op_ids_by_op_id/successor_op_ids_by_op_id/sort_key_by_op_id/graph_priority_key_by_op_id；图不可用、有环、缺字段、权重非法、候选重复或解码后同一张表必须写 skipped/candidate_rejected/strict fail-loud 原因
 
-  - slug: alns-state-operators-core
-    description: 建立 ALNS state、destroy/repair operator 接口、operator reward 和权重更新
-    depends_on: [alns-partial-repair-contract]
+  - slug: graph-ready-priority-tuning
+    description: 围绕关键路径、后续影响、下游工时和瓶颈资源做工序图权重多起点比较
+    depends_on: [graph-ready-local-search-contract]
     status: planned
     feature: null
     minimal_loop: false
-    notes: 先做纯 Python 外壳，不引入 alns/job-shop-lib 包、NumPy/Matplotlib 或重依赖
-
-  - slug: alns-sgs-repair-adapter
-    description: 把 ALNS repair 接到现有 SGS，确保 repair 后完整校验并返回候选结果
-    depends_on: [alns-state-operators-core]
-    status: planned
-    feature: null
-    minimal_loop: false
-    notes: repair 失败必须明确 rejected/failed；seed_results 只能放保护/执行态固定片段，mutable operations 必须由 SGS 重新落位
-
-  - slug: alns-selection-acceptance-trace
-    description: 实现 ALNS operator 选择、threshold/Record-to-Record Travel/SA acceptance、segment 权重更新和 trace 输出
-    depends_on: [alns-sgs-repair-adapter]
-    status: planned
-    feature: null
-    minimal_loop: false
-    notes: operator reward 只影响后续选择概率，不能直接覆盖 objective score
+    notes: 先落 balanced/critical_path_first/successor_fanout_first/downstream_work_first/bottleneck_relief/critical_bottleneck/fanout_downstream/bottleneck_downstream/graph_neutral 九组默认图权重；必须记录 max_weight_profiles 截断原因、raw/effective 权重、同分选择规则；使用 CandidateFingerprint 去重，用 OptimizationSearchReport 解释试了哪些图策略和为什么选这个；FJSP 这类有工序前后关系的样例必须作为主要验收面
 
   - slug: optimizer-integration-auto-selection
-    description: 把 GRASP/IG/VNS/SA/ALNS 候选接回 OptimizationOutcome、候选比较和 summary
-    depends_on: [diagnostic-public-id-boundary-fix, vns-sa-local-search-upgrade, alns-selection-acceptance-trace]
+    description: 把 GRASP/IG/VNS/SA 和工序图候选接回 OptimizationOutcome、候选比较和 summary
+    depends_on: [diagnostic-public-id-boundary-fix, vns-sa-local-search-upgrade, graph-ready-priority-tuning]
     status: planned
     feature: null
     minimal_loop: false
-    notes: 职责收敛为"多算法统一自动选择"，不是各算法集成的唯一入口；GRASP/IG 等应在各自 feature 完成时增量接回，不被本项劫持到末尾；public 只展示小摘要；diagnostics 不得直接被页面普通模板渲染
+    notes: 一阶段统一自动选择不等自适应大邻域拆修搜索完成；候选必须按 failed_ops、objective_score、best_fingerprint_changed、runtime_ms、candidate_origin 稳定顺序比较，重复 output_fingerprint 只能记 same_fingerprint；执行前必须回 aps-three-gap-directions 做 update gate 复核候选比较、summary delta、诊断和 public/id 边界；后续拆修搜索完成后再以 algorithm_profile=alns 增量接入同一合同；public 只展示小摘要；diagnostics 不得直接被页面普通模板渲染
 
   - slug: benchmark-ratchet-quality-gate
     description: 把 tiny oracle、非劣化阈值、稳定性统计纳入轻/中/长三层门禁
@@ -112,12 +96,52 @@ items:
     status: planned
     feature: null
     minimal_loop: false
-    notes: 普通 PR 门禁只放快而稳的检查，长跑统计进 long gate
+    notes: 按路线图 4.10 落轻/中/长门禁矩阵；先覆盖 tiny proof、tiny DAG 图样例、FJSP 工序图收益、SMTWT 无图关系持平、大资源池性能不退步、图异常合同；普通 PR 门禁只放快而稳的检查，长跑统计进 long gate；FJSP makespan 只能作技术参考，不能证明 APS 业务目标全局最优
 
   - slug: long-run-tuning-evidence
-    description: 建立长跑调参、operator 权重、不同 seed 的统计证据和归档口径
+    description: 建立工序图权重、不同 seed、不同基准集的长跑统计证据和归档口径
     depends_on: [benchmark-ratchet-quality-gate]
     status: planned
     feature: null
     minimal_loop: false
-    notes: 证据默认写 ignored 或临时目录，显式写 tracked evidence 时必须重新 clean proof
+    notes: 本项先覆盖工序图权重和自动选择稳定性；长跑证据必须包含 seed、样例、预算、均值、最差值、标准差、重复候选率、候选拒绝率和相对 ratchet baseline 的改善/持平/退步；后续拆修搜索完成时复用同一证据口径；证据默认写 ignored 或临时目录，显式写 tracked evidence 时必须重新 clean proof
+
+  - slug: alns-graph-ready-bridge-contract
+    description: 定义工序图闭环产物如何喂给自适应大邻域拆修搜索
+    depends_on: [long-run-tuning-evidence]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 只消费第 9-13 项已校验的图摘要、ready rank、瓶颈和 ratchet baseline，不重新跑另一套图主链；桥接结果只能影响 destroy scope/repair priority，不能直接写可变工序时间；拆修搜索后续必须复用同一自动选择和 benchmark 矩阵
+
+  - slug: alns-partial-repair-contract
+    description: 定义自适应大邻域拆修搜索的局部拆修 allowed-op、payload validation 和执行态保护复用合同
+    depends_on: [alns-graph-ready-bridge-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 局部 repair 结果必须复用正式排产守门链，不能只靠拆修搜索内部校验
+
+  - slug: alns-state-operators-core
+    description: 建立自适应大邻域拆修搜索 state、destroy/repair operator 接口、operator reward 和权重更新
+    depends_on: [alns-partial-repair-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 先做纯 Python 外壳，不引入 alns/job-shop-lib 包、NumPy/Matplotlib 或重依赖；ALNSOperatorResult 字段必须在本项启动时定稿，非法 score/repair 输出/seed_results 必须 fail-loud
+
+  - slug: alns-sgs-repair-adapter
+    description: 把拆修搜索 repair 接到现有 SGS，确保 repair 后完整校验并返回候选结果
+    depends_on: [alns-state-operators-core]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: repair 失败必须明确 rejected/failed；seed_results 只能放保护/执行态固定片段，mutable operations 必须由 SGS 重新落位
+
+  - slug: alns-selection-acceptance-trace
+    description: 实现拆修搜索 operator 选择、threshold/Record-to-Record Travel/SA acceptance、segment 权重更新和 trace 输出
+    depends_on: [alns-sgs-repair-adapter]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: operator reward 只影响后续选择概率，不能直接覆盖 objective score

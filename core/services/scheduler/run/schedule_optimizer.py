@@ -159,7 +159,7 @@ def _run_grasp_ig_candidate_phase(
         build_order=build_order,
         dispatch_rule_cfg=optimizer_cfg.dispatch_rule,
         valid_dispatch_rules=list(optimizer_cfg.valid_dispatch_rules),
-        sgs_enabled="sgs" in set(dispatch_modes),
+        batch_order_enabled="batch_order" in set(dispatch_modes),
         resource_pool=resource_pool,
         objective_name=optimizer_cfg.objective_name,
         deadline=deadline,
@@ -367,6 +367,7 @@ def optimize_schedule(
         schedule_fn=_schedule_with_optional_strict_mode,
         search_report_state=search_report_state,
         neighborhoods=tuple(candidate_profile.neighborhoods),
+        valid_dispatch_rules=list(optimizer_cfg.valid_dispatch_rules),
         acceptance=candidate_profile.acceptance,
     )
 
