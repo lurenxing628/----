@@ -130,10 +130,19 @@ def _apply_accepted_candidate(
     improvement_trace: List[Dict[str, Any]],
     clock: Callable[[], float],
     t_begin: float,
+    incumbent_origin: str,
+    incumbent_fingerprint_changed: bool,
 ) -> Tuple[bool, bool, int]:
     if candidate is None:
         return False, False, no_improve + 1
-    if acceptance_decision.accepted and candidate_can_update_best(candidate=candidate, best=local_state.best, fingerprint=candidate_fingerprint):
+    if acceptance_decision.accepted and candidate_can_update_best(
+        candidate=candidate,
+        best=local_state.best,
+        fingerprint=candidate_fingerprint,
+        candidate_origin="local_search",
+        incumbent_origin=incumbent_origin,
+        incumbent_fingerprint_changed=incumbent_fingerprint_changed,
+    ):
         _record_improvement(
             candidate=candidate,
             move=move,
@@ -291,7 +300,40 @@ def run_local_search_candidate_round(
         improvement_trace=improvement_trace,
         clock=clock,
         t_begin=t_begin,
+        incumbent_origin=_incumbent_origin(local_state.best, search_report_state),
+        incumbent_fingerprint_changed=bool(search_report_state and search_report_state.best_fingerprint_changed()),
     )
+    _record_acceptance_result(
+        best_improved=best_improved,
+        accepted_current=accepted_current,
+        candidate_fingerprint=candidate_fingerprint,
+        fingerprint_tracker=fingerprint_tracker,
+        search_report_state=search_report_state,
+        candidate=candidate,
+        acceptance_decision=acceptance_decision,
+    )
+    return no_improve, accepted_current, best_improved, move
+
+
+def _incumbent_origin(
+    best: Dict[str, Any],
+    search_report_state: Optional[OptimizationSearchReportState],
+) -> str:
+    if search_report_state is not None:
+        return str(search_report_state.best_origin or "baseline")
+    return str((best or {}).get("candidate_origin") or "baseline")
+
+
+def _record_acceptance_result(
+    *,
+    best_improved: bool,
+    accepted_current: bool,
+    candidate_fingerprint: Any,
+    fingerprint_tracker: LocalSearchFingerprintTracker,
+    search_report_state: Optional[OptimizationSearchReportState],
+    candidate: Dict[str, Any],
+    acceptance_decision: AcceptanceDecision,
+) -> None:
     if best_improved:
         if candidate_fingerprint is not None:
             fingerprint_tracker.mark_best(candidate_fingerprint)
@@ -300,18 +342,18 @@ def run_local_search_candidate_round(
             candidate=candidate,
             acceptance_decision=acceptance_decision,
         )
-    elif accepted_current:
+        return
+    if accepted_current:
         mark_current_candidate_accepted(
             search_report_state=search_report_state,
             candidate=candidate,
             acceptance_decision=acceptance_decision,
         )
-    else:
-        mark_acceptance_rejected(
-            search_report_state=search_report_state,
-            acceptance_decision=acceptance_decision,
-        )
-    return no_improve, accepted_current, best_improved, move
+        return
+    mark_acceptance_rejected(
+        search_report_state=search_report_state,
+        acceptance_decision=acceptance_decision,
+    )
 
 
 __all__ = ["run_local_search_candidate_round"]

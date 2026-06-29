@@ -19,9 +19,6 @@ from .schedule_graph_dispatch_context import (
     build_graph_resource_matching_projection as _build_graph_resource_matching_projection,
 )
 from .schedule_graph_dispatch_context import (
-    build_graph_score_projection as _build_graph_score_projection,
-)
-from .schedule_graph_dispatch_context import (
     effective_graph_analysis_mode as _effective_graph_analysis_mode,
 )
 from .schedule_graph_dispatch_context import (
@@ -33,20 +30,23 @@ from .schedule_graph_dispatch_context import (
 from .schedule_graph_dispatch_context import (
     graph_ready_public_fields as _graph_ready_public_fields,
 )
-from .schedule_graph_dispatch_context import (
-    graph_score_requested as _graph_score_requested,
-)
-from .schedule_graph_dispatch_context import (
-    graph_score_weights as _graph_score_weights,
-)
-from .schedule_graph_dispatch_context import (
-    score_disabled_public_fields as _score_disabled_public_fields,
-)
 from .schedule_graph_projection_helpers import (
     graph_node_metrics_sample as _graph_node_metrics_sample,
 )
 from .schedule_graph_projection_helpers import (
     project_graph_warning as _project_graph_warning,
+)
+from .schedule_graph_score_projection import (
+    build_graph_score_projection as _build_graph_score_projection,
+)
+from .schedule_graph_score_projection import (
+    graph_score_requested as _graph_score_requested,
+)
+from .schedule_graph_score_projection import (
+    graph_score_weights as _graph_score_weights,
+)
+from .schedule_graph_score_projection import (
+    score_disabled_public_fields as _score_disabled_public_fields,
 )
 from .schedule_input_collector import ScheduleRunInput
 

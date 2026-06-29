@@ -323,6 +323,11 @@ def test_on_dag_prepares_plain_graph_ready_context_before_optimizer() -> None:
     )
 
     context = captured["graph_ready_context"]
+    _assert_plain_graph_ready_context(context)
+    _assert_graph_ready_outcome(outcome)
+
+
+def _assert_plain_graph_ready_context(context: Any) -> None:
     assert isinstance(context, dict)
     assert set(context["schedulable_op_ids"]) == {2, 3}
     assert set(context["fixed_op_ids"]) == {1}
@@ -330,7 +335,12 @@ def test_on_dag_prepares_plain_graph_ready_context_before_optimizer() -> None:
     assert context["predecessor_op_ids_by_op_id"][3] == set()
     assert context["score_enabled"] is True
     assert set(context["graph_priority_key_by_op_id"]) == {2, 3}
+    assert context["node_metrics_by_op_id"][2]["bottleneck_machine_score"] == 3.0
+    assert context["node_metrics_by_op_id"][3]["bottleneck_machine_score"] == 3.0
     assert "graph" not in context
+
+
+def _assert_graph_ready_outcome(outcome: OptimizationOutcome) -> None:
     assert outcome.result_summary_obj["algo"]["graph_analysis"]["status"] == "available"
     assert outcome.result_summary_obj["algo"]["graph_analysis"]["effective_mode"] == "graph_ready_queue"
     assert outcome.result_summary_obj["algo"]["graph_analysis"]["ready_queue_enabled"] is True
@@ -362,6 +372,10 @@ def test_on_dag_score_context_uses_single_full_metrics_pass(monkeypatch: Any) ->
     assert preparation.graph_analysis_diagnostics is not None
     assert preparation.graph_analysis_diagnostics["node_metrics_status"] == "available"
     assert "graph_score_sample" in preparation.graph_analysis_diagnostics
+    assert all(
+        "bottleneck_machine_score" in row
+        for row in preparation.graph_analysis_diagnostics["graph_score_sample"]
+    )
 
 
 def test_on_dag_zero_graph_weights_keep_ready_queue_but_disable_scoring(monkeypatch: Any) -> None:

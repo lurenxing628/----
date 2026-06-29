@@ -13,3 +13,4 @@ class OptimizerRuntime:
     run_multi_start: Callable[..., Optional[dict]]
     run_local_search: Callable[..., Optional[dict]]
     run_grasp_ig_candidates: Optional[Callable[..., Optional[dict]]] = None
+    run_graph_ready_candidates: Optional[Callable[..., Optional[dict]]] = None

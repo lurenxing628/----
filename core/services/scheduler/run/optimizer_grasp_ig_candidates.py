@@ -9,6 +9,7 @@ from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_st
 from core.infrastructure.errors import ValidationError
 
 from .optimizer_attempt_records import validation_error_origin
+from .optimizer_candidate_comparison import candidate_is_preferred
 from .optimizer_candidate_fingerprint import stable_fingerprint
 from .optimizer_grasp_ig_specs import GRASP_ORIGIN, IG_ORIGIN, build_grasp_ig_candidate_specs
 from .optimizer_search_state import append_unique_rejected_attempt
@@ -185,10 +186,20 @@ def _record_candidate(
     now: Callable[[], float],
     t_begin: float,
 ) -> Optional[Dict[str, Any]]:
+    fingerprint = None
     if search_report_state is not None:
-        search_report_state.mark_candidate_evaluated(candidate, origin=origin)
+        fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin=origin)
     _append_attempt(attempts=attempts, candidate=candidate, origin=origin, index=index)
-    if best is not None and candidate["score"] >= best["score"]:
+    if fingerprint is not None and (fingerprint.same_as_parent or fingerprint.same_as_seen):
+        return best
+    if not candidate_is_preferred(
+        candidate=candidate,
+        incumbent=best,
+        candidate_origin=origin,
+        incumbent_origin=_incumbent_origin(best, search_report_state),
+        candidate_fingerprint=fingerprint,
+        incumbent_fingerprint_changed=bool(search_report_state and search_report_state.best_fingerprint_changed()),
+    ):
         return best
     if search_report_state is not None:
         search_report_state.mark_candidate_accepted(candidate, origin=origin)
@@ -201,6 +212,15 @@ def _record_candidate(
         t_begin=t_begin,
     )
     return candidate
+
+
+def _incumbent_origin(
+    best: Optional[Dict[str, Any]],
+    search_report_state: Optional[OptimizationSearchReportState],
+) -> str:
+    if search_report_state is not None:
+        return str(search_report_state.best_origin or "baseline")
+    return str((best or {}).get("candidate_origin") or "baseline")
 
 
 def _mark_phase_skipped(
@@ -405,7 +425,7 @@ def run_grasp_ig_candidates(
     search_report_state: Optional[OptimizationSearchReportState] = None,
 ) -> Optional[Dict[str, Any]]:
     if graph_ready_context is not None:
-        _mark_phase_skipped(search_report_state, "graph_ready_requires_graph_neighborhood")
+        _mark_phase_skipped(search_report_state, "graph_ready_uses_graph_candidate_phase")
         return best
     specs = _candidate_specs_for_run(
         algo_mode=algo_mode,

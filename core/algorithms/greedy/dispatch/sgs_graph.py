@@ -50,6 +50,7 @@ def _prepare_graph_ready_state(
 
     schedulable_ids = _graph_ready_op_id_set(graph_ready_context.get("schedulable_op_ids"), field="schedulable_op_ids")
     fixed_op_ids = _graph_ready_op_id_set(graph_ready_context.get("fixed_op_ids"), field="fixed_op_ids")
+    _validate_fixed_op_sources(graph_ready_context.get("fixed_op_sources_by_op_id"), fixed_op_ids=fixed_op_ids)
     overlap = sorted(schedulable_ids.intersection(fixed_op_ids))
     if overlap:
         sample = overlap[:20]
@@ -71,6 +72,7 @@ def _prepare_graph_ready_state(
         predecessor_map=predecessor_map,
         successor_map=successor_map,
     )
+    _detect_graph_ready_cycle(schedulable_ids=set(op_by_id), predecessor_map=predecessor_map)
     score_enabled = _graph_score_enabled(graph_ready_context.get("score_enabled", False))
     graph_priority_key_by_op_id: Dict[int, Tuple[float, ...]] = {}
     if score_enabled:
@@ -119,6 +121,7 @@ def _graph_priority_key_number(value: Any) -> float:
 def _graph_priority_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tuple[float, ...]]:
     if not isinstance(value, dict):
         raise ValidationError("图评分上下文缺少 graph_priority_key_by_op_id 映射。", field="graph_ready_context")
+    _validate_exact_key_set(value, schedulable_ids=schedulable_ids, label="图评分 key")
     normalized: Dict[int, Tuple[float, ...]] = {}
     for op_id in sorted(schedulable_ids):
         if op_id not in value:
@@ -139,6 +142,7 @@ def _graph_priority_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tu
 def _graph_sort_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tuple[int, int, int]]:
     if not isinstance(value, dict):
         raise ValidationError("图 ready 队列上下文 sort_key_by_op_id 必须是映射。", field="graph_ready_context")
+    _validate_exact_key_set(value, schedulable_ids=schedulable_ids, label="图 ready 队列上下文 sort_key_by_op_id")
     for raw_op_id in value:
         if isinstance(raw_op_id, bool) or not isinstance(raw_op_id, int) or raw_op_id <= 0:
             raise ValidationError("图 ready 队列上下文 sort_key_by_op_id 的 key 必须是正整数 op_id。", field="graph_ready_context")
@@ -159,6 +163,30 @@ def _graph_sort_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tuple[
         except ValidationError as exc:
             raise ValidationError(f"图 ready 队列工序 {op_id} 的排序 key 必须只包含整数。", field="graph_ready_context") from exc
     return normalized
+
+
+def _validate_exact_key_set(value: Dict[Any, Any], *, schedulable_ids: set, label: str) -> None:
+    actual_ids = set()
+    for raw_op_id in value:
+        try:
+            actual_ids.add(parse_required_int(raw_op_id, field="graph_ready_context", min_value=1))
+        except ValidationError as exc:
+            raise ValidationError(f"{label} 的 key 必须是正整数 op_id。", field="graph_ready_context") from exc
+    if actual_ids != set(schedulable_ids):
+        raise ValidationError(f"{label} 的 key 必须和待排工序完全一致。", field="graph_ready_context")
+
+
+def _validate_fixed_op_sources(value: Any, *, fixed_op_ids: set) -> None:
+    if value is None:
+        return
+    if not isinstance(value, dict):
+        raise ValidationError("图 ready 队列上下文 fixed_op_sources_by_op_id 必须是映射。", field="graph_ready_context")
+    source_ids = {
+        parse_required_int(raw_op_id, field="fixed_op_sources_by_op_id", min_value=1)
+        for raw_op_id in value
+    }
+    if source_ids != set(fixed_op_ids):
+        raise ValidationError("图 ready 队列上下文 fixed_op_sources_by_op_id 和 fixed_op_ids 不一致。", field="graph_ready_context")
 
 
 def _normalize_link_map(value: Any, *, field: str) -> Dict[int, set]:
@@ -209,6 +237,32 @@ def _validate_graph_ready_links(*, op_ids: set, predecessor_map: Any, successor_
                     field="graph_ready_context",
                 )
     return predecessors, successors
+
+
+def _detect_graph_ready_cycle(*, schedulable_ids: set, predecessor_map: Dict[int, set]) -> None:
+    remaining = {
+        op_id: {predecessor_id for predecessor_id in predecessor_map.get(op_id, set()) if predecessor_id in schedulable_ids}
+        for op_id in schedulable_ids
+    }
+    ready = [op_id for op_id, predecessor_ids in remaining.items() if not predecessor_ids]
+    visited = set()
+    while ready:
+        current = ready.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        _release_graph_successors(current, remaining=remaining, ready=ready, visited=visited)
+    if visited != set(schedulable_ids):
+        raise ValidationError("图 ready 队列上下文包含环形前后置关系。", field="graph_ready_context")
+
+
+def _release_graph_successors(current: int, *, remaining: Dict[int, set], ready: List[int], visited: set) -> None:
+    for op_id, predecessor_ids in remaining.items():
+        if current not in predecessor_ids:
+            continue
+        predecessor_ids.discard(current)
+        if not predecessor_ids and op_id not in visited:
+            ready.append(op_id)
 
 
 def _validate_link_scope(*, link_map: Dict[int, set], known_op_ids: set, link_label: str) -> None:

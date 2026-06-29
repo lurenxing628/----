@@ -571,6 +571,29 @@ def test_collapsed_grasp_ig_outputs_do_not_inflate_distinct_or_improved() -> Non
     assert report["improved"] is False
 
 
+def test_grasp_ig_uses_unified_candidate_tie_breaker_for_changed_same_score_output() -> None:
+    baseline = _candidate(_BASE_ORDER)
+    state = _state()
+    state.mark_candidate_accepted(baseline, origin="multi_start")
+    changed_results = _results_for_order(["B4", "B3", "B2", "B1"])
+
+    best, attempts, trace = _run_phase(
+        best=baseline,
+        candidate_construction=_construction(grasp_restarts=1, ig_restarts=0),
+        schedule_fn=_recording_schedule([], fixed_results=changed_results),
+        search_report_state=state,
+    )
+    report = state.finalize(runtime_ms=10, attempts=attempts, improvement_trace=trace)
+
+    assert best is not baseline
+    assert best is not None
+    assert best["score"] == baseline["score"]
+    assert report["best_origin"] == "grasp"
+    assert report["best_fingerprint_changed"] is True
+    assert report["improvement_conditions"]["score_strictly_better"] is False
+    assert report["improved"] is False
+
+
 def test_best_origin_can_report_grasp_when_batch_order_decoded_candidate_really_improves() -> None:
     baseline = _candidate(_BASE_ORDER, failed_ops=1)
     state = _state()
@@ -697,7 +720,7 @@ def test_grasp_ig_skips_graph_ready_path_until_graph_neighborhood_exists() -> No
     assert out is best
     assert calls == []
     assert report["skipped_phases"] == [
-        {"phase": "grasp_ig_candidate_construction", "reason": "graph_ready_requires_graph_neighborhood"}
+        {"phase": "grasp_ig_candidate_construction", "reason": "graph_ready_uses_graph_candidate_phase"}
     ]
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .nx_runtime import import_networkx
@@ -149,6 +150,42 @@ def get_downstream_critical_minutes(graph: Any, node_id: str) -> int:
     return _build_downstream_critical_minutes_by_node(graph)[node_id]
 
 
+def _machine_ids_for_node(data: Dict[str, Any]) -> Tuple[str, ...]:
+    ids: List[str] = []
+    for raw in list(data.get("candidate_machine_ids") or ()):
+        text = str(raw or "").strip()
+        if text:
+            ids.append(text)
+    machine_id = str(data.get("machine_id") or "").strip()
+    if machine_id:
+        ids.append(machine_id)
+    return tuple(dict.fromkeys(ids))
+
+
+def _build_bottleneck_machine_score_by_node(graph: Any) -> Dict[str, float]:
+    machine_ids_by_node: Dict[str, Tuple[str, ...]] = {}
+    load_minutes_by_machine: Dict[str, float] = {}
+    for node_id in graph.nodes:
+        machine_ids = _machine_ids_for_node(graph.nodes[node_id])
+        machine_ids_by_node[node_id] = machine_ids
+        duration_minutes = _duration_of(graph, node_id)
+        if not machine_ids:
+            continue
+        shared_minutes = float(duration_minutes) / float(len(machine_ids))
+        for machine_id in machine_ids:
+            load_minutes_by_machine[machine_id] = load_minutes_by_machine.get(machine_id, 0.0) + shared_minutes
+
+    result: Dict[str, float] = {}
+    for node_id, machine_ids in machine_ids_by_node.items():
+        if not machine_ids:
+            result[node_id] = 0.0
+            continue
+        min_candidate_load = min(load_minutes_by_machine[machine_id] for machine_id in machine_ids)
+        flexibility_discount = math.sqrt(float(len(machine_ids)))
+        result[node_id] = round((min_candidate_load / 60.0) / flexibility_discount, 6)
+    return result
+
+
 def build_node_metrics(
     graph: Any,
     *,
@@ -173,6 +210,7 @@ def build_node_metrics(
         graph,
         topological_order=topological_order,
     )
+    bottleneck_machine_score_by_node = _build_bottleneck_machine_score_by_node(graph)
 
     result: Dict[str, Dict[str, Any]] = {}
 
@@ -183,6 +221,7 @@ def build_node_metrics(
             "impact_count": impact_count_by_node[node_id],
             "generation_index": generation_index[node_id],
             "downstream_critical_minutes": downstream_critical_minutes[node_id],
+            "bottleneck_machine_score": bottleneck_machine_score_by_node[node_id],
         }
 
     return result

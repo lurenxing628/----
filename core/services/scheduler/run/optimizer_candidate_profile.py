@@ -25,6 +25,7 @@ from typing import Any, Dict, Optional, Tuple
 from core.infrastructure.errors import ValidationError
 
 from .optimizer_acceptance import ALLOWED_ACCEPTANCES
+from .optimizer_graph_ready_profiles import graph_ready_weight_profile_summary
 from .optimizer_neighborhood_moves import ALLOWED_NEIGHBORHOODS, BUSINESS_NEIGHBORHOODS
 
 CANDIDATE_PROFILE_SCHEMA_VERSION = 1
@@ -33,11 +34,13 @@ PROFILE_BASELINE = "baseline"
 PROFILE_MULTI_START_LOCAL_SEARCH = "multi_start_local_search"
 PROFILE_GRASP_IG = "grasp_ig"
 PROFILE_VNS_SA = "vns_sa"
+PROFILE_GRAPH_READY = "graph_ready"
 ALLOWED_PROFILES: Tuple[str, ...] = (
     PROFILE_BASELINE,
     PROFILE_MULTI_START_LOCAL_SEARCH,
     PROFILE_GRASP_IG,
     PROFILE_VNS_SA,
+    PROFILE_GRAPH_READY,
 )
 
 ALLOWED_REPAIRS: Tuple[str, ...] = ("sgs",)
@@ -154,6 +157,33 @@ def _profile_for_algo_mode(algo_mode: str) -> str:
     )
 
 
+def _resolved_neighborhoods(
+    profile: str,
+    *,
+    enabled: bool,
+    neighborhoods: Optional[Tuple[str, ...]],
+) -> Tuple[str, ...]:
+    if neighborhoods is not None:
+        return tuple(neighborhoods)
+    if not enabled or profile == PROFILE_GRAPH_READY:
+        return ()
+    return BUSINESS_NEIGHBORHOODS
+
+
+def _candidate_strategy_contract(profile: str, *, configured_budget: int) -> Tuple[str, Tuple[str, ...], Dict[str, Any]]:
+    if profile == PROFILE_GRAPH_READY:
+        return (
+            "graph_ready_weight_grid",
+            ("graph_ready_base", "graph_ready_weight_grid"),
+            {"graph_ready_optimization": graph_ready_weight_profile_summary()},
+        )
+    return (
+        "multi_start_grasp_ig",
+        ("multi_start", "grasp", "iterated_greedy"),
+        derive_grasp_ig_limits(configured_budget),
+    )
+
+
 def _build_message(
     *,
     enabled: bool,
@@ -162,9 +192,15 @@ def _build_message(
     effective_iters: int,
     system_limit_applied: bool,
     system_limit_reason: Optional[str],
+    graph_ready: bool = False,
 ) -> str:
     if not enabled:
         return "基础排产模式：仅单次排产，未启用多起点与局部搜索增强；随机种子由排产版本号自动派生（非手工指定）。"
+    if graph_ready:
+        return (
+            f"图 ready 候选模式：配置时间预算 {configured_budget} 秒，先使用 SGS 正式解码，"
+            "再按多组图权重生成候选并择优；随机种子由排产版本号自动派生（非手工指定）。"
+        )
     parts = [
         f"多起点+GRASP/IG候选+VNS局部搜索模式：配置时间预算 {configured_budget} 秒，目标迭代上限 {configured_iters} 次。"
     ]
@@ -261,6 +297,8 @@ def build_candidate_profile(
     若调用方显式传入，则逐项校验，未知邻域 fail-loud。
     """
     profile = _profile_for_algo_mode(algo_mode)
+    if graph_sgs_required and profile == PROFILE_VNS_SA:
+        profile = PROFILE_GRAPH_READY
     repair_value = _require_allowed(repair, ALLOWED_REPAIRS, field="repair")
     acceptance_value = _require_allowed(acceptance, ALLOWED_ACCEPTANCES, field="acceptance")
 
@@ -268,9 +306,9 @@ def build_candidate_profile(
     if configured_budget < 1:
         raise ValidationError("时间预算必须为不小于 1 的整数。", field="time_budget_seconds")
 
-    enabled = profile in (PROFILE_MULTI_START_LOCAL_SEARCH, PROFILE_GRASP_IG, PROFILE_VNS_SA)
+    enabled = profile in (PROFILE_MULTI_START_LOCAL_SEARCH, PROFILE_GRASP_IG, PROFILE_VNS_SA, PROFILE_GRAPH_READY)
     effective_dispatch_mode = "sgs" if graph_sgs_required else str(dispatch_mode or "").strip().lower()
-    resolved_neighborhoods = (BUSINESS_NEIGHBORHOODS if enabled else ()) if neighborhoods is None else tuple(neighborhoods)
+    resolved_neighborhoods = _resolved_neighborhoods(profile, enabled=enabled, neighborhoods=neighborhoods)
     validated_neighborhoods = _require_neighborhoods(resolved_neighborhoods)
     ortools_warmstart_enabled = bool(ortools_enabled) and enabled
 
@@ -288,9 +326,10 @@ def build_candidate_profile(
                 SYSTEM_LIMIT_REASON_FLOOR if effective_iters > configured_iters else SYSTEM_LIMIT_REASON_CEILING
             )
         effective_budget = configured_budget
-        candidate_strategy_family = "multi_start_grasp_ig"
-        candidate_strategy_families = ("multi_start", "grasp", "iterated_greedy")
-        candidate_construction = derive_grasp_ig_limits(configured_budget)
+        candidate_strategy_family, candidate_strategy_families, candidate_construction = _candidate_strategy_contract(
+            profile,
+            configured_budget=configured_budget,
+        )
     else:
         configured_iters = 0
         effective_iters = 0
@@ -310,6 +349,7 @@ def build_candidate_profile(
         effective_iters=effective_iters,
         system_limit_applied=system_limit_applied,
         system_limit_reason=system_limit_reason,
+        graph_ready=profile == PROFILE_GRAPH_READY,
     )
 
     return CandidateProfile(
@@ -350,6 +390,7 @@ __all__ = [
     "PROFILE_BASELINE",
     "PROFILE_GRASP_IG",
     "PROFILE_MULTI_START_LOCAL_SEARCH",
+    "PROFILE_GRAPH_READY",
     "PROFILE_VNS_SA",
     "build_candidate_profile",
     "derive_grasp_ig_limits",

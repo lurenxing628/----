@@ -12,8 +12,10 @@ from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_st
 from core.algorithms.ordering import build_batch_sort_inputs, build_normalized_batches_map
 from core.infrastructure.errors import ValidationError
 
+from .optimizer_candidate_phases import run_heuristic_candidate_phases
 from .optimizer_candidate_profile import build_candidate_profile
 from .optimizer_config import ensure_optimizer_config_snapshot, is_ortools_enabled, resolve_optimizer_config
+from .optimizer_graph_ready import run_graph_ready_candidates as _run_graph_ready_candidates_impl
 from .optimizer_grasp_ig_candidates import run_grasp_ig_candidates as _run_grasp_ig_candidates_impl
 from .optimizer_local_search import run_local_search as _run_local_search_impl
 from .optimizer_runtime import OptimizerRuntime
@@ -66,6 +68,11 @@ def _run_grasp_ig_candidates(**kwargs):
     return _run_grasp_ig_candidates_impl(**kwargs)
 
 
+def _run_graph_ready_candidates(**kwargs):
+    kwargs.setdefault("schedule_fn", _schedule_with_optional_strict_mode)
+    return _run_graph_ready_candidates_impl(**kwargs)
+
+
 def _default_runtime() -> OptimizerRuntime:
     return OptimizerRuntime(
         scheduler_factory=lambda **kwargs: GreedyScheduler(**kwargs),
@@ -73,6 +80,7 @@ def _default_runtime() -> OptimizerRuntime:
         rng_factory=random.Random,
         run_ortools_warmstart=_run_ortools_warmstart,
         run_multi_start=_run_multi_start,
+        run_graph_ready_candidates=_run_graph_ready_candidates,
         run_grasp_ig_candidates=_run_grasp_ig_candidates,
         run_local_search=_run_local_search,
     )
@@ -116,12 +124,13 @@ def _baseline_candidate(
     }
 
 
-def _run_grasp_ig_candidate_phase(
+def _baseline_outcome(
     *,
     runtime: OptimizerRuntime,
     optimizer_cfg: Any,
-    candidate_profile: Any,
+    optimizer_algo_stats: Dict[str, Any],
     state: OptimizerSearchState,
+    search_report_state: OptimizationSearchReportState,
     scheduler: Any,
     algo_ops_to_schedule: List[Any],
     batches: Dict[str, Any],
@@ -129,51 +138,73 @@ def _run_grasp_ig_candidate_phase(
     end_date: Optional[date],
     downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     seed_sr_list: List[ScheduleResult],
-    build_order: Any,
-    dispatch_modes: List[str],
+    dispatch_mode_cfg: str,
     resource_pool: Optional[Dict[str, Any]],
-    deadline: float,
-    optimizer_algo_stats: Dict[str, Any],
-    t_begin: float,
     readiness_gate_enabled: bool,
     strict_mode: bool,
     graph_ready_context: Optional[Any],
-    search_report_state: OptimizationSearchReportState,
-) -> Optional[Dict[str, Any]]:
-    if runtime.run_grasp_ig_candidates is None:
-        return state.best
-    return runtime.run_grasp_ig_candidates(
-        algo_mode=optimizer_cfg.algo_mode,
-        best=state.best,
-        version=int(candidate_profile.seed),
-        candidate_construction=dict(candidate_profile.candidate_construction or {}),
-        scheduler=scheduler,
-        algo_ops_to_schedule=algo_ops_to_schedule,
+    build_order: Any,
+    t_begin: float,
+) -> OptimizationOutcome:
+    results, summary, used_strategy, used_params = _schedule_with_optional_strict_mode(
+        scheduler,
+        strict_mode=bool(strict_mode),
+        operations=algo_ops_to_schedule,
         batches=batches,
+        strategy=optimizer_cfg.strategy_enum,
+        strategy_params=optimizer_cfg.strategy_params,
         start_dt=start_dt,
         end_date=end_date,
-        downtime_map=downtime_map,
-        seed_sr_list=seed_sr_list,
-        base_strategy=optimizer_cfg.strategy_enum,
-        base_params=dict(optimizer_cfg.strategy_params or {}),
-        build_order=build_order,
-        dispatch_rule_cfg=optimizer_cfg.dispatch_rule,
-        valid_dispatch_rules=list(optimizer_cfg.valid_dispatch_rules),
-        batch_order_enabled="batch_order" in set(dispatch_modes),
+        machine_downtimes=downtime_map,
+        seed_results=seed_sr_list,
+        dispatch_mode=dispatch_mode_cfg,
         resource_pool=resource_pool,
-        objective_name=optimizer_cfg.objective_name,
-        deadline=deadline,
-        attempts=state.attempts,
-        improvement_trace=state.improvement_trace,
-        optimizer_algo_stats=optimizer_algo_stats,
-        t_begin=t_begin,
         readiness_gate_enabled=bool(readiness_gate_enabled),
-        strict_mode=bool(strict_mode),
         graph_ready_context=graph_ready_context,
-        clock=runtime.clock,
-        rng_factory=runtime.rng_factory,
-        schedule_fn=_schedule_with_optional_strict_mode,
-        search_report_state=search_report_state,
+    )
+    best_metrics = compute_metrics(results, batches)
+    best_score = (float(summary.failed_ops),) + objective_score(optimizer_cfg.objective_name, best_metrics)
+    best_order = build_order(optimizer_cfg.strategy_enum or SortStrategy.PRIORITY_FIRST, used_params or {})
+    algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
+    baseline = _baseline_candidate(
+        results=results,
+        summary=summary,
+        used_strategy=used_strategy,
+        used_params=used_params,
+        dispatch_mode=dispatch_mode_cfg,
+        dispatch_rule=optimizer_cfg.dispatch_rule,
+        best_order=best_order,
+        best_metrics=best_metrics,
+        best_score=best_score,
+        algo_stats=algo_stats,
+        resource_pool=resource_pool,
+        seed_sr_list=seed_sr_list,
+    )
+    search_report_state.mark_candidate_evaluated(baseline, origin="baseline")
+    search_report_state.mark_candidate_accepted(baseline, origin="baseline")
+    compacted_attempts = state.compact_attempts(limit=12)
+    compacted_trace = state.compact_trace(limit=200)
+    search_report = search_report_state.finalize(
+        runtime_ms=_runtime_ms(runtime, t_begin=t_begin),
+        attempts=compacted_attempts,
+        improvement_trace=compacted_trace,
+        stop_reason="baseline_scheduled",
+    )
+    return OptimizationOutcome(
+        results=results,
+        summary=summary,
+        used_strategy=used_strategy,
+        used_params=used_params,
+        metrics=best_metrics,
+        best_score=best_score,
+        best_order=best_order,
+        attempts=compacted_attempts,
+        improvement_trace=compacted_trace,
+        algo_mode=optimizer_cfg.algo_mode,
+        objective_name=optimizer_cfg.objective_name,
+        time_budget_seconds=optimizer_cfg.time_budget_seconds,
+        algo_stats=algo_stats,
+        search_report=search_report,
     )
 
 
@@ -314,7 +345,7 @@ def optimize_schedule(
         search_report_state=search_report_state,
     )
 
-    state.best = _run_grasp_ig_candidate_phase(
+    state.best = run_heuristic_candidate_phases(
         runtime=runtime,
         optimizer_cfg=optimizer_cfg,
         candidate_profile=candidate_profile,
@@ -336,6 +367,7 @@ def optimize_schedule(
         strict_mode=bool(strict_mode),
         graph_ready_context=graph_ready_context,
         search_report_state=search_report_state,
+        schedule_fn=_schedule_with_optional_strict_mode,
     )
 
     state.best = runtime.run_local_search(
@@ -372,65 +404,26 @@ def optimize_schedule(
     )
 
     if state.best is None:
-        results, summary, used_strategy, used_params = _schedule_with_optional_strict_mode(
-            scheduler,
-            strict_mode=bool(strict_mode),
-            operations=algo_ops_to_schedule,
+        return _baseline_outcome(
+            runtime=runtime,
+            optimizer_cfg=optimizer_cfg,
+            optimizer_algo_stats=optimizer_algo_stats,
+            state=state,
+            search_report_state=search_report_state,
+            scheduler=scheduler,
+            algo_ops_to_schedule=algo_ops_to_schedule,
             batches=batches,
-            strategy=optimizer_cfg.strategy_enum,
-            strategy_params=optimizer_cfg.strategy_params,
             start_dt=start_dt,
             end_date=end_date,
-            machine_downtimes=downtime_map,
-            seed_results=seed_sr_list,
-            dispatch_mode=dispatch_mode_cfg,
+            downtime_map=downtime_map,
+            seed_sr_list=seed_sr_list,
+            dispatch_mode_cfg=dispatch_mode_cfg,
             resource_pool=resource_pool,
             readiness_gate_enabled=bool(readiness_gate_enabled),
+            strict_mode=bool(strict_mode),
             graph_ready_context=graph_ready_context,
-        )
-        best_metrics = compute_metrics(results, batches)
-        best_score = (float(summary.failed_ops),) + objective_score(optimizer_cfg.objective_name, best_metrics)
-        best_order = _build_order(optimizer_cfg.strategy_enum or SortStrategy.PRIORITY_FIRST, used_params or {})
-        algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
-        baseline = _baseline_candidate(
-            results=results,
-            summary=summary,
-            used_strategy=used_strategy,
-            used_params=used_params,
-            dispatch_mode=dispatch_mode_cfg,
-            dispatch_rule=optimizer_cfg.dispatch_rule,
-            best_order=best_order,
-            best_metrics=best_metrics,
-            best_score=best_score,
-            algo_stats=algo_stats,
-            resource_pool=resource_pool,
-            seed_sr_list=seed_sr_list,
-        )
-        search_report_state.mark_candidate_evaluated(baseline, origin="baseline")
-        search_report_state.mark_candidate_accepted(baseline, origin="baseline")
-        compacted_attempts = state.compact_attempts(limit=12)
-        compacted_trace = state.compact_trace(limit=200)
-        search_report = search_report_state.finalize(
-            runtime_ms=_runtime_ms(runtime, t_begin=t_begin),
-            attempts=compacted_attempts,
-            improvement_trace=compacted_trace,
-            stop_reason="baseline_scheduled",
-        )
-        return OptimizationOutcome(
-            results=results,
-            summary=summary,
-            used_strategy=used_strategy,
-            used_params=used_params,
-            metrics=best_metrics,
-            best_score=best_score,
-            best_order=best_order,
-            attempts=compacted_attempts,
-            improvement_trace=compacted_trace,
-            algo_mode=optimizer_cfg.algo_mode,
-            objective_name=optimizer_cfg.objective_name,
-            time_budget_seconds=optimizer_cfg.time_budget_seconds,
-            algo_stats=algo_stats,
-            search_report=search_report,
+            build_order=_build_order,
+            t_begin=t_begin,
         )
 
     best = state.best

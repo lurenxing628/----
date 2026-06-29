@@ -108,6 +108,32 @@ def _safe_candidate_construction(value: Any) -> Dict[str, Any]:
                 row[key] = number
         if row:
             out[family] = row
+    graph_ready = _safe_graph_ready_optimization(value.get("graph_ready_optimization"))
+    if graph_ready:
+        out["graph_ready_optimization"] = graph_ready
+    return out
+
+
+def _safe_graph_ready_optimization(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for key in ("phase", "candidate_policy", "truncation_reason"):
+        text = safe_attempt_text(value.get(key))
+        if text:
+            out[key] = text
+    for key in ("schema_version", "max_weight_profiles", "configured_weight_profile_count", "effective_weight_profile_count"):
+        number = safe_non_negative_int(value.get(key))
+        if number is not None:
+            out[key] = number
+    slugs = safe_public_text_list(value.get("weight_profile_slugs"))
+    if slugs:
+        out["weight_profile_slugs"] = slugs
+    if "truncated" in value:
+        out["truncated"] = safe_bool(value.get("truncated"))
+    tie_breaker = safe_public_text_list(value.get("selection_tiebreaker"))
+    if tie_breaker:
+        out["selection_tiebreaker"] = tie_breaker
     return out
 
 

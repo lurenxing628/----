@@ -1,4 +1,4 @@
-"""单元测试：scheduler.graph.metrics 工序图影响度量——get_downstream/upstream_operations、get_impact_count（含菱形结构不重复计共享后继、多条独立链各算各的）、get_downstream_critical_minutes（含边 lag、缺 lag/duration 时保留 KeyError），以及 build_node_metrics 一次产出全节点 5 字段、只算一次关键路径不逐节点重建、可复用预计算上下文且不改动原图。"""
+"""单元测试：scheduler.graph.metrics 工序图影响度量——get_downstream/upstream_operations、get_impact_count（含菱形结构不重复计共享后继、多条独立链各算各的）、get_downstream_critical_minutes（含边 lag、缺 lag/duration 时保留 KeyError），以及 build_node_metrics 一次产出全节点图指标、只算一次关键路径不逐节点重建、可复用预计算上下文且不改动原图。"""
 
 from __future__ import annotations
 
@@ -93,6 +93,7 @@ def test_build_node_metrics_fields_and_json_values() -> None:
         "impact_count",
         "generation_index",
         "downstream_critical_minutes",
+        "bottleneck_machine_score",
     }
     assert set(metrics) == {"op:A", "op:B", "op:C", "op:D"}
     assert all(set(item) == expected_fields for item in metrics.values())
@@ -103,7 +104,64 @@ def test_build_node_metrics_fields_and_json_values() -> None:
     assert metrics["op:A"]["impact_count"] == 3
     assert metrics["op:A"]["downstream_critical_minutes"] == 120
     assert metrics["op:D"]["downstream_critical_minutes"] == 10
+    assert metrics["op:A"]["bottleneck_machine_score"] == 0.0
     json.dumps(metrics, ensure_ascii=False)
+
+
+def test_build_node_metrics_bottleneck_machine_score_uses_shared_candidate_load_and_flexibility_discount() -> None:
+    from core.services.scheduler.graph.metrics import build_node_metrics
+
+    graph = build_precedence_graph(
+        [
+            _node(node_id="op:A", op_code="B001_10", seq=10, duration_minutes=30, machine_id="MC-A"),
+            _node(node_id="op:B", op_code="B001_20", seq=20, duration_minutes=90, machine_id="MC-A"),
+            _node(node_id="op:C", op_code="B001_30", seq=30, duration_minutes=60, machine_id="MC-B"),
+            _node(
+                node_id="op:D",
+                op_code="B001_40",
+                seq=40,
+                duration_minutes=15,
+                candidate_machine_ids=("MC-B", "MC-C"),
+            ),
+        ],
+        [],
+    )
+
+    metrics = build_node_metrics(graph)
+
+    assert metrics["op:A"]["bottleneck_machine_score"] == 2.0
+    assert metrics["op:B"]["bottleneck_machine_score"] == 2.0
+    assert metrics["op:C"]["bottleneck_machine_score"] == 1.125
+    assert metrics["op:D"]["bottleneck_machine_score"] == 0.088388
+
+
+def test_build_node_metrics_bottleneck_machine_score_keeps_flexible_machine_candidates_light() -> None:
+    from core.services.scheduler.graph.metrics import build_node_metrics
+
+    graph = build_precedence_graph(
+        [
+            _node(node_id="op:busy", op_code="B001_10", seq=10, duration_minutes=120, machine_id="MC-B"),
+            _node(node_id="op:light", op_code="B001_20", seq=20, duration_minutes=30, machine_id="MC-A"),
+            _node(
+                node_id="op:flex",
+                op_code="B001_30",
+                seq=30,
+                duration_minutes=60,
+                candidate_machine_ids=("MC-A", "MC-B"),
+            ),
+        ],
+        [],
+    )
+
+    scores = {
+        node_id: metrics["bottleneck_machine_score"]
+        for node_id, metrics in build_node_metrics(graph).items()
+    }
+
+    assert scores["op:busy"] == 2.5
+    assert scores["op:light"] == 1.0
+    assert scores["op:flex"] == 0.707107
+    assert scores["op:flex"] < scores["op:light"] < scores["op:busy"]
 
 
 def test_build_node_metrics_impact_count_diamond_does_not_double_count_shared_successor() -> None:

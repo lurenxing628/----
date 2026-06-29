@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from .optimizer_candidate_fingerprint import CandidateFingerprint, score_strictly_better
+from .optimizer_candidate_comparison import candidate_is_preferred
+from .optimizer_candidate_fingerprint import CandidateFingerprint
 
 
 @dataclass
@@ -45,14 +46,22 @@ def candidate_can_update_best(
     candidate: Dict[str, Any],
     best: Dict[str, Any],
     fingerprint: Optional[CandidateFingerprint],
+    candidate_origin: str = "local_search",
+    incumbent_origin: str = "baseline",
+    incumbent_fingerprint_changed: bool = False,
 ) -> bool:
-    if not score_strictly_better(candidate.get("score"), best.get("score")):
-        return False
     if fingerprint is None:
         return False
     if fingerprint.same_as_parent or fingerprint.same_as_seen:
         return False
-    return True
+    return candidate_is_preferred(
+        candidate=candidate,
+        incumbent=best,
+        candidate_origin=candidate_origin,
+        incumbent_origin=incumbent_origin,
+        candidate_fingerprint=fingerprint,
+        incumbent_fingerprint_changed=bool(incumbent_fingerprint_changed),
+    )
 
 
 def resolve_current_strategy_state(

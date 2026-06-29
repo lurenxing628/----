@@ -12,6 +12,7 @@ from core.algorithms.evaluation import ScheduleMetrics, compute_metrics, objecti
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.types import ScheduleResult, ScheduleSummary
 from core.services.scheduler.run.optimizer_acceptance import decide_acceptance
+from core.services.scheduler.run.optimizer_candidate_fingerprint import build_candidate_fingerprint
 from core.services.scheduler.run.optimizer_local_search import run_local_search
 from core.services.scheduler.run.optimizer_local_search_state import LocalSearchState, candidate_can_update_best
 from core.services.scheduler.run.optimizer_neighborhood_moves import (
@@ -440,6 +441,32 @@ def test_best_update_requires_candidate_fingerprint_even_without_report() -> Non
     assert candidate_can_update_best(candidate=better, best=best, fingerprint=None) is False
 
 
+def test_best_update_uses_unified_tie_breaker_for_changed_same_score_output() -> None:
+    best = _candidate(order=["B0", "B1"], failed_ops=0, overdue_count=0)
+    candidate = _candidate(order=["B1", "B0"], failed_ops=0, overdue_count=0)
+    parent = build_candidate_fingerprint(
+        best,
+        objective_name="min_overdue",
+        parent_fingerprint=None,
+        seen_output_fingerprints=set(),
+    )
+    fingerprint = build_candidate_fingerprint(
+        candidate,
+        objective_name="min_overdue",
+        parent_fingerprint=parent.output_fingerprint,
+        seen_output_fingerprints={parent.output_fingerprint},
+    )
+
+    assert candidate_can_update_best(
+        candidate=candidate,
+        best=best,
+        fingerprint=fingerprint,
+        candidate_origin="local_search",
+        incumbent_origin="multi_start",
+        incumbent_fingerprint_changed=False,
+    ) is True
+
+
 def test_vns_switches_neighborhood_even_without_search_report_state() -> None:
     best = _candidate_three_batches()
     best["dispatch_mode"] = "batch_order"
@@ -656,7 +683,7 @@ def test_graph_ready_local_search_skips_batch_order_neighborhoods() -> None:
     assert returned is best
     assert schedule_calls == []
     assert report["skipped_phases"] == [
-        {"phase": "local_search", "reason": "graph_ready_requires_graph_neighborhood"}
+        {"phase": "local_search", "reason": "graph_ready_uses_graph_candidate_phase"}
     ]
 
 

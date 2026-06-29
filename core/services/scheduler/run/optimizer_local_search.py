@@ -76,6 +76,69 @@ def _mark_local_search_stop(search_report_state: Optional[OptimizationSearchRepo
         search_report_state.mark_iteration_limit_reached()
 
 
+def _mark_local_search_entered(search_report_state: Optional[OptimizationSearchReportState]) -> None:
+    if search_report_state is not None:
+        search_report_state.local_search_entered = True
+
+
+def _active_neighborhoods(
+    *,
+    neighborhoods: Optional[Tuple[str, ...]],
+    cur_dispatch_mode: str,
+    search_report_state: Optional[OptimizationSearchReportState],
+) -> Tuple[str, ...]:
+    configured = tuple(neighborhoods or BUSINESS_NEIGHBORHOODS)
+    active = (SGS_DISPATCH_RULE,) if cur_dispatch_mode == "sgs" else configured
+    if search_report_state is not None:
+        search_report_state.set_effective_neighborhoods(
+            configured=configured,
+            effective=active,
+            reason="sgs_dispatch_rule_only" if cur_dispatch_mode == "sgs" else "configured_neighborhoods",
+            dispatch_mode=cur_dispatch_mode,
+        )
+    return active
+
+
+def _mark_vns_round(
+    search_report_state: Optional[OptimizationSearchReportState],
+    vns_state: VnsState,
+    *,
+    best_improved: bool,
+    move: Any,
+) -> None:
+    vns_event = vns_state.record_round(
+        best_improved=best_improved,
+        noop=bool(move.noop),
+        fallback_used=bool(move.fallback_used),
+    )
+    if search_report_state is not None:
+        search_report_state.mark_vns_event(vns_event)
+
+
+def _restart_after_stall(
+    *,
+    local_state: LocalSearchState,
+    rnd: Any,
+    dispatch_mode_cfg: str,
+    dispatch_rule_cfg: str,
+    vns_state: VnsState,
+) -> Tuple[Any, Any, str, str, Optional[set]]:
+    vns_state.mark_shake()
+    local_state.reset_current_to_best(
+        order=_shake_order(list(local_state.best.get("order") or local_state.current_order), rnd)
+    )
+    cur_strat, cur_params, cur_dispatch_mode, cur_dispatch_rule = resolve_current_strategy_state(
+        local_state.current, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg
+    )
+    return (
+        cur_strat,
+        cur_params,
+        cur_dispatch_mode,
+        cur_dispatch_rule,
+        init_seen_hashes(local_state.current_order, local_state.best),
+    )
+
+
 def run_local_search(
     *,
     algo_mode: str,
@@ -114,26 +177,22 @@ def run_local_search(
         _mark_local_search_skipped(search_report_state, skip_reason, skip_extra)
         return best
     if graph_ready_context is not None:
-        _mark_local_search_skipped(search_report_state, "graph_ready_requires_graph_neighborhood", {})
+        _mark_local_search_skipped(search_report_state, "graph_ready_uses_graph_candidate_phase", {})
         return best
     best = cast(Dict[str, Any], best)
 
     rnd = rng_factory(int(version))
-    if search_report_state is not None:
-        search_report_state.local_search_entered = True
+    _mark_local_search_entered(search_report_state)
     local_state = LocalSearchState.from_best(best, resource_pool=resource_pool)
     cur_strat, cur_params, cur_dispatch_mode, cur_dispatch_rule = resolve_current_strategy_state(
         best, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg
     )
     sgs_dispatch_rules = _resolve_sgs_dispatch_rules(valid_dispatch_rules, cur_dispatch_rule)
-    active_neighborhoods = (SGS_DISPATCH_RULE,) if cur_dispatch_mode == "sgs" else tuple(neighborhoods or BUSINESS_NEIGHBORHOODS)
-    if search_report_state is not None:
-        search_report_state.set_effective_neighborhoods(
-            configured=tuple(neighborhoods or BUSINESS_NEIGHBORHOODS),
-            effective=active_neighborhoods,
-            reason="sgs_dispatch_rule_only" if cur_dispatch_mode == "sgs" else "configured_neighborhoods",
-            dispatch_mode=cur_dispatch_mode,
-        )
+    active_neighborhoods = _active_neighborhoods(
+        neighborhoods=neighborhoods,
+        cur_dispatch_mode=cur_dispatch_mode,
+        search_report_state=search_report_state,
+    )
     vns_state = VnsState(active_neighborhoods)
     fingerprint_tracker = LocalSearchFingerprintTracker(objective_name=objective_name, initial_best=best)
     it = 0
@@ -195,26 +254,17 @@ def run_local_search(
         cur_strat, cur_params, cur_dispatch_mode, cur_dispatch_rule = resolve_current_strategy_state(
             local_state.current, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg
         )
-        vns_event = vns_state.record_round(
-            best_improved=best_improved,
-            noop=bool(move.noop),
-            fallback_used=bool(move.fallback_used),
-        )
-        if search_report_state is not None:
-            search_report_state.mark_vns_event(
-                vns_event
-            )
+        _mark_vns_round(search_report_state, vns_state, best_improved=best_improved, move=move)
 
         if no_improve >= restart_after:
             no_improve = 0
-            vns_state.mark_shake()
-            local_state.reset_current_to_best(
-                order=_shake_order(list(local_state.best.get("order") or local_state.current_order), rnd)
+            cur_strat, cur_params, cur_dispatch_mode, cur_dispatch_rule, seen_hashes = _restart_after_stall(
+                local_state=local_state,
+                rnd=rnd,
+                dispatch_mode_cfg=dispatch_mode_cfg,
+                dispatch_rule_cfg=dispatch_rule_cfg,
+                vns_state=vns_state,
             )
-            cur_strat, cur_params, cur_dispatch_mode, cur_dispatch_rule = resolve_current_strategy_state(
-                local_state.current, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg
-            )
-            seen_hashes = init_seen_hashes(local_state.current_order, local_state.best)
     return local_state.best
 
 
