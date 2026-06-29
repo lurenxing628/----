@@ -22,6 +22,7 @@ from .optimizer_graph_ready_profiles import (
     GRAPH_READY_WEIGHT_GRID_ORIGIN,
     GraphReadyWeightProfile,
     default_weight_profiles,
+    graph_ready_v2_profile_summary,
     graph_ready_weight_profile_summary,
 )
 from .optimizer_graph_ready_reporting import (
@@ -65,6 +66,8 @@ def run_graph_ready_candidates(
     schedule_fn: Callable[..., Any],
     search_report_state: Optional[OptimizationSearchReportState] = None,
     max_weight_profiles: int = 9,
+    profiles_override: Optional[List[GraphReadyWeightProfile]] = None,
+    profile_summary_override: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     skip_reason = _phase_skip_reason(algo_mode=algo_mode, graph_ready_context=graph_ready_context)
     if skip_reason:
@@ -84,9 +87,16 @@ def run_graph_ready_candidates(
     if metrics_by_op_id is None:
         return best
 
-    _update_graph_ready_profile(search_report_state, max_weight_profiles=max_weight_profiles)
+    _update_graph_ready_profile(
+        search_report_state,
+        max_weight_profiles=max_weight_profiles,
+        profile_summary_override=profile_summary_override,
+    )
 
-    profiles, _truncated, _reason = default_weight_profiles(max_weight_profiles=max_weight_profiles)
+    if profiles_override is None:
+        profiles, _truncated, _reason = default_weight_profiles(max_weight_profiles=max_weight_profiles)
+    else:
+        profiles = list(profiles_override)
     order = _candidate_order(best, build_order=build_order, base_strategy=base_strategy, base_params=base_params)
     return _run_weight_profiles(
         profiles=profiles,
@@ -184,10 +194,12 @@ def _update_graph_ready_profile(
     search_report_state: Optional[OptimizationSearchReportState],
     *,
     max_weight_profiles: int,
+    profile_summary_override: Optional[Dict[str, Any]] = None,
 ) -> None:
     if search_report_state is not None:
         search_report_state.update_candidate_profile(
-            graph_ready_optimization=graph_ready_weight_profile_summary(max_weight_profiles=max_weight_profiles)
+            graph_ready_optimization=profile_summary_override
+            or graph_ready_weight_profile_summary(max_weight_profiles=max_weight_profiles)
         )
 
 
@@ -426,6 +438,7 @@ __all__ = [
     "GRAPH_READY_PHASE",
     "GRAPH_READY_REQUIRED_CONTEXT_FIELDS",
     "GRAPH_READY_WEIGHT_GRID_ORIGIN",
+    "graph_ready_v2_profile_summary",
     "graph_ready_weight_profile_summary",
     "run_graph_ready_candidates",
 ]
