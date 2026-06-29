@@ -141,6 +141,7 @@ scheduler-global-optimizer
 
 - **职责**：给算法升级建立“能不能证明更好”的标准，包括 tiny oracle、lower bound、best-known、gap、回归阈值、不写 tracked evidence 的 benchmark check 模式，以及 benchmark public/diagnostics 分层。
 - **承载的子 feature**：`optimizer-proof-harness`、`benchmark-ratchet-quality-gate`、`long-run-tuning-evidence`
+- **2026-06-29 增补承载**：`benchmark-reference-diagnostics-baseline`，只补同目标下界、不可比诊断和换型基准准备，不重复已有 noop / same-fingerprint / improved 合同。
 - **触碰的现有代码 / 模块**：`tests/_scripts_e2e/benchmark_fjsp.py`、`tests/_scripts_e2e/benchmark_sgs_large_resource_pool.py`、`evidence/Benchmark/` 使用口径、`tools/test_registry_data.py`、新增算法测试工具。
 
 ### 模块 B · 搜索合同与可观测层
@@ -165,13 +166,14 @@ scheduler-global-optimizer
 ### 模块 E · 工序图就绪优化层
 
 - **职责**：在已有工序图 report/on 能力之上，优化“这一轮哪些工序已经具备排产资格、多个就绪工序之间先排谁”。本层只调就绪候选排序、图权重和候选选择，不重新引入图分析主链，也不提前写任何可变工序的开始/结束时间。
-- **承载的子 feature**：`graph-ready-local-search-contract`、`graph-ready-priority-tuning`
+- **承载的子 feature**：`graph-ready-local-search-contract`、`graph-ready-priority-tuning`、`graph-ready-v2-objective-feature-contract`、`graph-ready-v2-bottleneck-resource-score`、`graph-ready-v2-candidate-portfolio`、`graph-ready-v2-elite-local-repair`
 - **触碰的现有代码 / 模块**：`schedule_graph_dispatch_context.py`、`core/algorithms/greedy/dispatch/sgs_graph.py`、`core/algorithms/greedy/dispatch/sgs.py`、`sgs_scoring.py`、`optimizer_local_search.py`、`optimizer_candidate_profile.py`、`optimizer_search_report.py`。
 
 ### 模块 F · 自适应大邻域拆修搜索层
 
 - **职责**：实现纯 Python 的自适应大邻域拆修搜索外壳：选择 destroy/repair 算子、记录算子权重、按 acceptance 接受或拒绝候选、持续维护 best/current。
 - **承载的子 feature**：`alns-graph-ready-bridge-contract`、`alns-state-operators-core`、`alns-selection-acceptance-trace`
+- **2026-06-29 增补承载**：`alns-domain-neighborhood-operators`、`alns-setup-aware-neighborhoods`，只在 SGS repair 适配和基准量尺到位后补领域算子，不提前写可变工序时间。
 - **触碰的现有代码 / 模块**：新增 `core/services/scheduler/run/alns_*` 或同级窄职责模块；不直接放进 GreedyScheduler 内部。
 
 ### 模块 G · SGS repair 适配层
@@ -183,13 +185,13 @@ scheduler-global-optimizer
 ### 模块 H · 接入与展示边界层
 
 - **职责**：让新算法候选接回 `OptimizationOutcome`、候选比较、summary、diagnostics，同时修掉已知内部 id 泄漏风险。当前先覆盖 GRASP/IG、VNS/SA 和工序图候选；后续自适应大邻域拆修搜索完成时再接入同一合同。
-- **承载的子 feature**：`diagnostic-public-id-boundary-fix`、`optimizer-integration-auto-selection`
+- **承载的子 feature**：`diagnostic-public-id-boundary-fix`、`optimizer-integration-auto-selection`、`graph-ready-v2-portfolio-integration`
 - **触碰的现有代码 / 模块**：`scheduler_analysis_diagnostic_*`、`schedule_summary_*`、`schedule_candidate_*`、OperationLogs 投影。
 
 ### 模块 I · 长跑调参与门禁层
 
 - **职责**：把工序图就绪队列派工、图权重组合、自动选择结果和后续拆修搜索都纳入同一套基准门槛，防止今天看起来更好、明天被别的改动退回去。
-- **承载的子 feature**：`benchmark-ratchet-quality-gate`、`long-run-tuning-evidence`
+- **承载的子 feature**：`benchmark-ratchet-quality-gate`、`long-run-tuning-evidence`、`graph-ready-v2-comparison-baseline-contract`、`graph-ready-v2-comparative-ratchet-gate`
 - **触碰的现有代码 / 模块**：`tests/_scripts_e2e/benchmark_fjsp.py`、`tests/_scripts_e2e/benchmark_smtwt_localsearch.py`、`tests/_scripts_e2e/benchmark_sgs_large_resource_pool.py`、`evidence/Benchmark/` 使用口径、质量门禁脚本和 benchmark public/diagnostics 投影。
 
 ## 4. 模块间接口契约 / 共享协议（架构层详设）
@@ -409,7 +411,7 @@ NeighborhoodMove = {
 
 ### 4.6 `GraphReadyOptimizationProfile`
 
-> **当前状态（2026-06-29）**：本节是未来计划合同，不代表已有生产实现。当前生产代码遇到 `graph_ready_context` 时会记录 `graph_ready_requires_graph_neighborhood` 并跳过 GRASP/IG 与局搜候选，因为图就绪队列专用邻域和图权重局搜尚未实现；这不是已经启用的图优化能力。
+> **当前状态（2026-06-29）**：第一版图 ready 候选搜索已随 `scheduler-global-optimizer-items-9-13` 落地。它已经能消费既有 `graph_ready_context`、用 9 组图权重 profile 生成 SGS ready 排序候选，并通过统一候选比较接回 optimizer。当前已知缺口是：第一版仍偏“结构重要性排序”，在 `min_overdue` 场景下缺少交期压力、可救批次、剩余工时和目标感知瓶颈分，因此会赢过贪心基线，但可能输给 GRASP/IG 或允许 `atc` 的局部搜索。下一阶段以 4.6.1 的 GraphReady v2 计划补齐，不回改本节已完成的一版记录。
 
 **方向**：工序图就绪优化层 -> SGS ready 候选排序 / 搜索报告 / 候选比较
 **形式**：纯 dict；进入 optimizer 前必须 strict 校验，public 只能展示中文摘要和聚合计数。
@@ -455,7 +457,7 @@ GraphReadyOptimizationProfile = {
 - `priority_weights` 必须确定性可复现；同一 seed、同一输入、同一权重组合必须得到同一候选顺序。
 - public 只展示“用了哪类图策略、试了几组、是否得到更优结果、基准差距变化”等摘要；完整节点 id、内部 op/resource id、图样本和 raw trace 只能进入 diagnostics。
 - 基准门禁必须同时覆盖“有工序前后关系的样例”和“没有可利用图关系的样例”：前者防止收益丢失，后者防止无关场景被拖慢或改坏。
-- 当前生产跳过原因 `graph_ready_requires_graph_neighborhood` 的含义是“缺少图邻域实现”，不是输入已经通过图优化。
+- 历史跳过原因 `graph_ready_requires_graph_neighborhood` 已随第一版落地替换为 `graph_ready_uses_graph_candidate_phase`；后续文档和测试如果仍看到旧原因，要先判断是否是 stale fixture / stale 文档，而不是继续按“图邻域未实现”解释现状。
 
 **输入字段硬合同**：
 
@@ -503,6 +505,84 @@ GraphReadyOptimizationProfile = {
 7. 仍同分时按 `candidate_origin` 稳定顺序：`baseline` -> `grasp` -> `ig` -> `vns` -> `sa` -> `graph_ready_base` -> `graph_ready_weight_grid` -> `graph_ready_local_search` -> `alns`。
 
 第 11 项会触碰 candidate comparison、summary delta、诊断和 public/id 边界，执行前必须回 `.codestable/roadmap/aps-three-gap-directions/` 做 update gate 复核；如果该路线的字段、状态、路由或错误码合同需要变化，必须先更新那条路线图，不得在实现里单方面绕开。
+
+### 4.6.1 GraphReady v2 目标感知候选与多算法对比合同
+
+**方向**：工序图就绪优化层 v2 -> 候选组合池 -> 多算法 benchmark / ratchet
+**对应子 feature**：`graph-ready-v2-comparison-baseline-contract`、`graph-ready-v2-objective-feature-contract`、`graph-ready-v2-bottleneck-resource-score`、`graph-ready-v2-candidate-portfolio`、`graph-ready-v2-elite-local-repair`、`graph-ready-v2-portfolio-integration`、`graph-ready-v2-comparative-ratchet-gate`
+**新增前置量尺**：`benchmark-reference-diagnostics-baseline`
+
+GraphReady v2 的目标不是把 9 组图权重再调细一点，而是把 `graph_ready` 从“结构重要性排序器”升级为“目标函数感知候选生成器”。第一版的失败样例已经证明：真实 SGS 可以解出更优顺序，最终 objective 也能选中更优候选，问题在于候选池没有生成那个区域的顺序。v2 因此必须先补比较量尺，再补特征，再补候选组合。
+
+**v2 候选 profile 形状**：
+
+```python
+GraphReadyV2CandidateProfile = {
+    "schema_version": 1,
+    "algorithm_version": "graph_ready_v2",
+    "candidate_policy": "objective_rule|graph_due_hybrid|bottleneck_due|moore_like|perturbed|elite_repair|portfolio_all",
+    "objective_name": "min_overdue",
+    "objective_features": {
+        "due_pressure": True,
+        "slack_hours": True,
+        "remaining_work_hours": True,
+        "saveability": True,
+        "processing_time_rank": True,
+        "sacrifice_penalty": True,
+    },
+    "bottleneck_features": {
+        "residual_capacity": True,
+        "split_load": True,
+        "min_candidate_load": True,
+        "flexibility_discount": True,
+        "due_gate": True,
+        "bottleneck_on": True,
+        "bottleneck_release": True,
+    },
+    "rule_family": "edd|spt|min_slack|critical_ratio|atc_like|saveability|sacrifice_long|graph_due_hybrid|bottleneck_due_gated",
+    "perturbation": {
+        "enabled": False,
+        "seed": 0,
+        "top_k": 0,
+        "noise_scale": 0.0,
+    },
+    "elite_repair": {
+        "enabled": False,
+        "top_k": 0,
+        "max_neighbors_per_elite": 0,
+        "moves": ["adjacent_ready_swap", "single_insert", "tardy_boundary_move"],
+    },
+    "comparison_baseline_ref": "BenchmarkAlgorithmComparisonSnapshot",
+}
+```
+
+**v2 特征约束**：
+
+- `objective_features` 必须按当前 `objective_name` 派生。`min_overdue` 第一优先级是减少超期批次数，因此至少要能表达“这个批次是否还救得回来”“单位剩余工时能救多少交付风险”“容量不足时谁应被放到后面牺牲”。
+- `min_overdue` 的候选排序解释必须保留完整 objective score 字典序：超期批次数 -> 加权拖期 -> 总拖期 -> makespan -> 换型。v2 特征可以帮助生成候选，但最终比较仍只能用正式 SGS 解码后的完整 `objective_score`，不能把 makespan 或单个启发式分数提前冒充主目标。
+- `due_pressure`、`slack_hours`、`remaining_work_hours`、`saveability`、`processing_time_rank`、`sacrifice_penalty` 是 v2 的最低目标特征；缺少这些字段时，v2 候选只能 `skipped` / `candidate_rejected`，不能静默降级为 v1 成功。
+- `bottleneck_machine_score` 不能继续只表达“能跑瓶颈机”。v2 必须拆出 `bottleneck_on` 和 `bottleneck_release`：前者表示本工序消耗稀缺资源，后者表示本工序完成后能释放下游瓶颈路径。
+- 柔性资源必须做负荷分摊、最小候选负荷和灵活性降权：一个工序如果可以去空闲机器，就不能因为它也能去瓶颈机而被误判为必须优先。
+- 瓶颈分必须有交期门控。瓶颈很忙但相关批次交期很松时，只能作为 tie-break；瓶颈忙且批次交期紧、仍可救时，才允许进入主排序。
+- 所有特征进候选排序前必须做 rank / percentile 归一化或等价的量纲处理；不能把分钟数、比例、布尔值和指数分直接裸加，避免某个大数值天然压倒其他特征。
+
+**v2 候选组合约束**：
+
+- v2 不替代 GRASP/IG、VNS/SA 或 v1；它是候选来源之一。最终仍由真实 SGS + 当前 `objective_score` 做裁判。
+- 候选家族至少覆盖：旧 9 组图权重、EDD、SPT、最小松弛时间、关键比率、ATC-like、可救批次优先、长尾牺牲、交期门控瓶颈、图 + 交期混合。
+- EDD、最小松弛时间、关键比率、ATC-like 不能只停留在名字：item 17 设计时必须写明每个规则的输入字段、计算公式、同分规则、缺字段时的 skipped / candidate_rejected 原因，并把公式版本写进 diagnostics，避免后续实现各自猜。
+- 不允许写死当前 4 工序样例的赢家顺序。v2 要抽象为“保护更多可准交批次、必要时牺牲长尾批次”，并用反例样例防过拟合。
+- 小规模扰动只能在分数接近的 ready 候选之间做，必须 seed 派生、可复现、进 diagnostics；扰动不能绕过前后置、资源资格、冻结、执行态保护。
+- v2 后接轻量局部修补时，只能对 top-K elite 候选做有限邻域，如相邻 ready swap、single insert、tardy boundary move；每个候选必须有硬 `max_neighbors_per_elite` 和 `time_budget_ms`，只接受真实 objective 严格改进。
+
+**多算法同台比较要求**：
+
+- v2 实现前必须先补一个可复跑的多算法基准合同，避免“先改完再找证据”。这份基准要记录当前 baseline，作为“修改前”的对照。
+- 同一个 case、同一个 seed、同一个 time budget、同一个 objective 下，至少比较：`greedy`、`local_search`、`grasp_ig`、`graph_ready_v1`、`graph_ready_v2_no_repair`、`graph_ready_v2_with_repair`、`portfolio_all`。
+- 每行结果必须包含：`case_group`、`case_slug`、`algorithm_profile`、`algorithm_version`、`seed`、`time_budget_seconds`、`objective_name`、`objective_score`、`failed_ops`、`runtime_ms`、`evaluated_candidates`、`distinct_candidates`、`accepted_candidates`、`candidate_rejections`、`best_origin`、`best_order` 或安全顺序摘要、`comparison_to_current_baseline`、`comparison_to_graph_ready_v1`、`comparison_to_portfolio_best`。
+- 多算法 ratchet key 至少包含 `case_group + case_slug + algorithm_profile + algorithm_version + seed`。当前只用 `case_group + case_slug` 的轻门禁键不能承载多算法同台比较，否则不同算法会互相覆盖。
+- 汇总必须报告胜 / 平 / 负，不只报告“赢 greedy”。尤其要单列 v2 对 `local_search`、`grasp_ig`、`graph_ready_v1`、`portfolio_all` 的胜负。
+- 如果某算法缺跑、缺关键字段、目标不可比、或 dirty baseline 被包装成 clean proof，则该比较报告必须 fail-loud 或标 `not_comparable`，不能算通过。
 
 ### 4.7 `PartialRepairContract`
 
@@ -617,7 +697,9 @@ ALNSOperatorResult = {
 | 轻门禁 | tiny exact oracle + tiny DAG 工序图样例 + 图合同异常样例 | item 12 必须提供可由普通质量门禁调用的快速命令；每个 case 默认 stdout，不写 tracked evidence | tiny oracle 可证明样例 `gap_to_oracle_pct=0`；图不可用、有环、缺字段、非法权重、重复候选都必须有明确 `skipped` / `candidate_rejected` / fail-loud |
 | 中门禁 | FJSP 5 样例图就绪矩阵 + SMTWT 无图关系持平 + 大资源池性能 | 复用或扩展 `tests/_scripts_e2e/benchmark_fjsp.py`、`benchmark_smtwt_localsearch.py`、`benchmark_sgs_large_resource_pool.py`；缺少字段时 item 12 负责补脚本 | FJSP 技术参考口径不得差于首次 ratchet baseline；SMTWT `overdue_count` 不劣化；大资源池 `failed_ops=0` 且耗时不超过 ratchet baseline 125% |
 | 长门禁 | 多 seed、多预算、多样例集的图权重稳定性 | item 13 必须提供长跑命令，默认写 ignored / temp 目录 | 至少 10 个 seed；同一图权重策略不得只靠单 seed 取胜；均值、最差值、标准差、重复候选率、候选拒绝率都必须入报告 |
-| 后续拆修复用 | ALNS / 拆修搜索接入后的同一套样例 | 第 14 项以后复用本矩阵，不得另建不可比 benchmark | ALNS 候选必须同时报告相对 graph-ready ratchet baseline 和相对当前自动选择基线的改善 / 持平 / 退步 |
+| 同目标量尺补强 | Jackson 单机抢占参考下界 + WTSDS / Cicirello / SDST 换型基准准备 + 不可比诊断 | `benchmark-reference-diagnostics-baseline` 只定义装载、评分、脱敏和默认 stdout / ignored 输出口径；不下载 tracked 数据 | 可比时才进入 gap；不可比时必须标 `not_comparable`；不得重复 item 3/5/7/8 已有 no-op、same-fingerprint、improved 合同 |
+| GraphReady v2 多算法对比 | 当前基准 + greedy / local_search / GRASP/IG / graph_ready_v1 / graph_ready_v2 / portfolio_all 同台比较 | 新增或扩展多算法对比脚本；比较键必须包含 case、算法、算法版本和 seed；默认 stdout / ignored evidence，不写 tracked evidence | 不能只证明 v2 赢 greedy；必须报告 v2 对 local_search、GRASP/IG、v1、portfolio_all 的胜 / 平 / 负；缺算法、缺指标或不可比必须失败或标 `not_comparable` |
+| 后续拆修复用 | ALNS / 拆修搜索接入后的同一套样例 | GraphReady v2 之后复用本矩阵，不得另建不可比 benchmark | ALNS 候选必须同时报告相对 graph-ready v2 ratchet baseline 和相对当前自动选择基线的改善 / 持平 / 退步 |
 
 **当前推荐 ratchet 字段**：
 
@@ -630,6 +712,7 @@ BenchmarkRatchetSnapshot = {
     "case_group": "tiny|fjsp|smtwt|large_pool|long_run|sdst_changeover",
     "case_slug": "mk01",
     "algorithm_profile": "graph_ready",
+    "algorithm_version": "graph_ready_v1",
     "candidate_origin": "graph_ready_weight_grid",
     "seed": 0,
     "time_budget_seconds": 0,
@@ -645,6 +728,10 @@ BenchmarkRatchetSnapshot = {
     "distinct_candidates": 0,
     "same_fingerprint_rejections": 0,
     "candidate_rejections": {},
+    "evaluated_candidates": 0,
+    "accepted_candidates": 0,
+    "best_origin": "graph_ready_weight_grid",
+    "best_order": [],
     "reference_type": "proven_optimum|lower_bound|best_known|folded_not_comparable|ratchet_baseline",
     "comparison_to_meta_baseline": {
         "metric": "overdue_count|makespan_hours|runtime_ms",
@@ -654,17 +741,36 @@ BenchmarkRatchetSnapshot = {
         "delta_pct": None,
         "status": "improved|same|degraded|not_comparable",
     },
+    "comparison_to_current_baseline": {
+        "baseline_algorithm_profile": "graph_ready",
+        "baseline_algorithm_version": "graph_ready_v1",
+        "metric": "objective_score",
+        "status": "improved|same|degraded|not_comparable",
+    },
+    "comparison_to_portfolio_best": {
+        "portfolio_algorithm_profile": "portfolio_all",
+        "metric": "objective_score",
+        "status": "winner|tied|lost|not_comparable",
+    },
 }
 ```
 
 FJSP 的 `makespan_hours` 只作为技术参考和图关系收益证据，不得证明 `min_overdue`、`min_tardiness`、`min_weighted_tardiness` 或 `min_changeover` 已全局最优。SMTWT 当前只可用于 `min_overdue` 首分量 `overdue_count` 的同目标可比证明。`min_changeover` 的同目标证据需要后续引入加权拖期 + 序列相关准备时间或 SDST 类基准；在那之前只能写“换型基准缺口已知”，不能写“换型目标已被 benchmark 证明”。
+
+**GraphReady v2 多算法对比强制口径**：
+
+- 当前 `benchmark-ratchet-baseline.json` 是 v1 的脏工作区快照，只能作为“现在这批未提交改动的参考基线”；下一轮实现 v2 前，必须先用多算法 compare 脚本重新采集“修改前”基准，报告 `dirty_worktree`、`git_commit` 和脚本命令。
+- 多算法比较必须用同一个 case 集、同一个 seed 集、同一个 time budget、同一个 objective。不能拿 v2 的长预算结果去比 GRASP/IG 的短预算结果。
+- `graph_ready_v2` 必须至少拆成 `graph_ready_v2_no_repair` 和 `graph_ready_v2_with_repair` 两列，避免局部修补收益被误写成纯候选生成收益。
+- `portfolio_all` 是所有候选来源统一入池后按真实 objective 择优的结果，它不是 GraphReady 独占收益。报告里必须区分 `graph_ready_generated_best`、`graph_ready_repaired_best`、`graph_ready_seeded_other_best` 和 `graph_ready_not_in_best_path`。
+- 轻门禁可以只跑小样本和核心对比；中门禁必须跑 FJSP / SMTWT / 大资源池；长门禁至少 10 seed，并报告均值、最差值、标准差、重复候选率、候选拒绝率和每个算法族胜 / 平 / 负。
 
 ### 4.11 工序图到拆修搜索桥接合同
 
 **方向**：工序图闭环 -> 自适应大邻域拆修搜索
 **对应子 feature**：`alns-graph-ready-bridge-contract`
 
-自适应大邻域拆修搜索不能重新发明图算法。它只能消费第 9-13 项已经稳定下来的工序图摘要、候选比较和门禁证据。
+自适应大邻域拆修搜索不能重新发明图算法。它只能消费第 9-13 项已经稳定下来的工序图摘要，以及 GraphReady v2 在第 14-20 项沉淀出的目标感知 ready rank、瓶颈资源分、多算法对比和门禁证据。
 
 ```python
 GraphReadyRepairBridge = {
@@ -684,10 +790,10 @@ GraphReadyRepairBridge = {
 **桥接约束**：
 
 - 桥接项必须在 `alns-partial-repair-contract` 之前完成；否则拆修搜索不能消费图指标。
-- `critical_operation_ids`、`bottleneck_machine_ids`、`downstream_work_by_op_id`、`ready_rank_by_op_id` 只能来自第 9-10 项已校验过的图上下文或 diagnostics，不能在 ALNS 内部重新跑另一套图分析主链。
+- `critical_operation_ids`、`bottleneck_machine_ids`、`downstream_work_by_op_id`、`ready_rank_by_op_id` 只能来自第 9-13 项和 GraphReady v2 已校验过的图上下文、目标感知特征或 diagnostics，不能在 ALNS 内部重新跑另一套图分析主链。
 - 图桥接只能帮助选择 destroy scope 或 repair 优先级；不能直接写可变工序 `start_time` / `end_time`。
-- 拆修搜索完成后必须以 `algorithm_profile=alns`、`best_origin=alns`、`candidate_origin=alns_*` 接回第 11 项同一套自动选择合同。
-- 拆修搜索接入后，item 12 / 13 的基准矩阵必须原样复用，并新增 repair 失败、重复候选、同一张表、图不可用、图桥接缺字段五类异常样例。
+- 拆修搜索完成后必须以 `algorithm_profile=alns`、`best_origin=alns`、`candidate_origin=alns_*` 接回第 11 项和第 19 项同一套自动选择合同。
+- 拆修搜索接入后，item 20 的多算法基准矩阵必须原样复用，并新增 repair 失败、重复候选、同一张表、图不可用、图桥接缺字段五类异常样例。
 - 主候选的非法 score、非法 repair 输出、非法 seed_results 必须 fail-loud；只有 diagnostics 展示排序这类只读辅助面可以做容错展示，且必须明确“不参与采纳”。
 
 ## 5. 子 feature 清单
@@ -746,83 +852,153 @@ GraphReadyRepairBridge = {
    - 依赖：`grasp-ig-candidate-construction`、`business-neighborhood-registry`
    - 状态：done
    - 对应 feature：`2026-06-28-vns-sa-local-search-upgrade`
-   - 备注：已新增 `optimizer_acceptance.py`、`optimizer_local_search_state.py`、`optimizer_vns.py` 与 `optimizer_local_search_report_hooks.py`；local search 维护 current/best 分离状态，VNS 按业务邻域切换，threshold/record_to_record/simulated_annealing 可接受非改进候选为 current，但 best 只在真实 acceptance 通过、score 严格更优、output_fingerprint 非 parent 且非 seen 时更新。`OptimizationSearchReport` 新增 acceptance/VNS trace 与 public 安全摘要，并修复 `acceptance_passed` 代理问题。未做 ALNS。
+   - 备注：已新增 `optimizer_acceptance.py`、`optimizer_local_search_state.py`、`optimizer_vns.py` 与 `optimizer_local_search_report_hooks.py`；local search 维护 current/best 分离状态，VNS 按业务邻域切换，threshold/record_to_record/simulated_annealing 可接受非改进候选为 current。2026-06-29 统一候选择优后，best 更新复用 `failed_ops`、`objective_score`、`best_fingerprint_changed`、`runtime_ms`、`candidate_origin` 顺序；同分但正式输出指纹变化的候选可以成为 best，但 `improved` 仍要求 score 严格更优并通过 acceptance，不把“换了一个同分方案”包装成业务改进。`OptimizationSearchReport` 新增 acceptance/VNS trace 与 public 安全摘要，并修复 `acceptance_passed` 代理问题。未做 ALNS。
 
 9. **graph-ready-local-search-contract** — 定义工序图就绪队列派工的局部搜索合同、候选口径和 public/diagnostics 边界。
    - 所属模块：工序图就绪优化层
    - 依赖：`vns-sa-local-search-upgrade`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：未来计划合同。只消费已有工序图上下文和 ready 候选排序信息，不重新引入图分析主链；局部搜索只改变图权重、ready 候选排序和候选策略，正式时间落位仍由 SGS 完成。当前生产尚无图邻域实现，遇到 `graph_ready_context` 会以 `graph_ready_requires_graph_neighborhood` 跳过 GRASP/IG 与局搜候选。真正落地时，进入 optimizer 前必须校验 `GraphReadyOptimizationProfile.required_context_fields`，图不可用、有环、缺字段、权重非法、候选重复或解码后同一张表都必须写 `skipped` / `candidate_rejected` / strict fail-loud 原因。
+   - 状态：done
+   - 对应 feature：`2026-06-29-scheduler-global-optimizer-items-9-13`
+   - 备注：已落地图 ready 候选搜索合同；生产只消费既有 `graph_ready_context` 和 `node_metrics_by_op_id`，不重跑图主链；候选只改变图优先级权重和 SGS ready 排序，正式时间仍由 SGS 解码；图上下文字段、指标和重复 output fingerprint 均有 skipped / candidate_rejected / strict fail-loud 证据。
 
 10. **graph-ready-priority-tuning** — 围绕关键路径、后续影响、下游工时和瓶颈资源做工序图权重多起点比较。
    - 所属模块：工序图就绪优化层
    - 依赖：`graph-ready-local-search-contract`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：先落 4.6 的 9 组默认图权重表，最多候选组数、截断原因、原始权重 / effective 权重、同分选择规则都必须进 diagnostics；使用 `CandidateFingerprint` 去重，用 `OptimizationSearchReport` 解释“试了哪些图策略、为什么选这个”；FJSP 这类有工序前后关系的样例必须作为主要验收面。
+   - 状态：done
+   - 对应 feature：`2026-06-29-scheduler-global-optimizer-items-9-13`
+   - 备注：已落 9 组默认图权重 profile，并通过正式 SGS 解码与 `CandidateFingerprint` 去重；生产 `bottleneck_machine_score` 已提前吸收后续 v2 中“候选资源分摊负荷、最小候选负荷、灵活性降权”的基础部分。当前已知缺口是权重仍偏结构重要性，不能覆盖 `min_overdue` 下的目标感知候选区域，v2 仍需补交期压力、可救性、残余容量和候选组合。
 
 11. **optimizer-integration-auto-selection** — 把 GRASP/IG/VNS/SA 和工序图候选接回 `OptimizationOutcome`、候选比较和 summary。
     - 所属模块：接入与展示边界层
     - 依赖：`diagnostic-public-id-boundary-fix`、`vns-sa-local-search-upgrade`、`graph-ready-priority-tuning`
-    - 状态：planned
-    - 对应 feature：未启动
-    - 备注：本项是一阶段统一自动选择，不等自适应大邻域拆修搜索完成；候选选择必须按 4.6 的自动选择规则走同一套 objective score、fingerprint、失败候选和同分规则。执行前必须回 `.codestable/roadmap/aps-three-gap-directions/` 走 update gate 复核候选比较、summary delta、诊断和 public/id 边界；后续拆修搜索完成后再以 `algorithm_profile=alns` 增量接入同一合同。public 只展示小摘要；diagnostics 不得直接被页面普通模板渲染。
+    - 状态：done
+    - 对应 feature：`2026-06-29-scheduler-global-optimizer-items-9-13`
+    - 备注：已通过 `OptimizerRuntime.run_graph_ready_candidates` 和 `run_heuristic_candidate_phases` 接回 optimizer；候选比较统一按 `failed_ops`、`objective_score`、`best_fingerprint_changed`、`runtime_ms`、`candidate_origin`，并已覆盖 GraphReady、GRASP/IG、VNS/SA 的 best 更新；重复 output fingerprint 只记 same_fingerprint。
 
 12. **benchmark-ratchet-quality-gate** — 把 tiny oracle、非劣化阈值、稳定性统计纳入轻/中/长三层门禁。
     - 所属模块：证明与评测底座
     - 依赖：`optimizer-integration-auto-selection`
-    - 状态：planned
-    - 对应 feature：未启动
-    - 备注：按 4.10 落轻 / 中 / 长门禁矩阵；先覆盖 tiny proof、tiny DAG 图样例、FJSP 工序图收益、SMTWT 无图关系持平、大资源池性能不退步、图异常合同。普通 PR 门禁只放快而稳的检查，长跑统计进 long gate；FJSP makespan 只能是技术参考，不能证明 APS 业务目标全局最优。
+    - 状态：done
+    - 对应 feature：`2026-06-29-scheduler-global-optimizer-items-9-13`
+    - 备注：已新增轻/中/长门禁脚本和 baseline snapshot；当前 `--check-baseline` snapshot 为 dirty worktree 证明，只能证明相对 dirty baseline 未退化，不能包装成 clean proof；当前门禁能证明 v1 graph_ready 赢自己的贪心基线，但不能证明赢 `local_search`、GRASP/IG 或 `portfolio_all`，v2 多算法对比另列后续 item。
 
 13. **long-run-tuning-evidence** — 建立工序图权重、不同 seed、不同基准集的长跑统计证据和归档口径。
     - 所属模块：长跑调参与门禁层
     - 依赖：`benchmark-ratchet-quality-gate`
+    - 状态：done
+    - 对应 feature：`2026-06-29-scheduler-global-optimizer-items-9-13`
+    - 备注：已新增长跑脚本和 ignored evidence 口径；当前长跑主要重复 graph_ready 单一案例，不是多算法公平横评，v2 的多算法长跑由 item 20 扩展。
+
+14. **graph-ready-v2-comparison-baseline-contract** — 建立 GraphReady v2 修改前的多算法同台比较基准，补齐算法名 / 版本 / seed 维度的 ratchet key。
+    - 所属模块：证明与评测底座
+    - 依赖：`benchmark-reference-diagnostics-baseline`
     - 状态：planned
     - 对应 feature：未启动
-    - 备注：本项先覆盖工序图权重和自动选择稳定性；长跑证据必须包含 seed、样例、预算、均值、最差值、标准差、重复候选率、候选拒绝率和相对 ratchet baseline 的改善 / 持平 / 退步。证据默认写 ignored 或临时目录，显式写 tracked evidence 时必须重新 clean proof。后续拆修搜索完成时复用同一证据口径。
+    - 备注：下一轮改算法前先完成本项；同一 case / seed / time budget / objective 下跑 `greedy`、`local_search`、`grasp_ig`、`graph_ready_v1` 和 `portfolio_all`，记录“修改前”基准；ratchet key 至少包含 `case_group`、`case_slug`、`algorithm_profile`、`algorithm_version`、`seed`；启动前先消费 `benchmark-reference-diagnostics-baseline` 输出的同目标量尺和不可比诊断。
 
-14. **alns-graph-ready-bridge-contract** — 定义工序图闭环产物如何喂给自适应大邻域拆修搜索。
+15. **graph-ready-v2-objective-feature-contract** — 为 GraphReady v2 定义交期压力、松弛时间、可救批次、剩余工时、工时密度和长尾牺牲等目标感知特征。
+    - 所属模块：工序图就绪优化层
+    - 依赖：`graph-ready-v2-comparison-baseline-contract`
+    - 状态：planned
+    - 对应 feature：未启动
+    - 备注：`min_overdue` 下必须表达“批次是否还可救、单位剩余工时能救多少交付风险、容量不足时谁应后置牺牲”；未知目标或缺必要目标特征时，v2 候选必须 skipped / candidate_rejected / strict fail-loud。
+
+16. **graph-ready-v2-bottleneck-resource-score** — 将瓶颈机器分升级为残余容量、分摊负荷、最小候选负荷、灵活性降权和交期门控的瓶颈资源分。
+    - 所属模块：工序图就绪优化层
+    - 依赖：`graph-ready-v2-objective-feature-contract`
+    - 状态：planned
+    - 对应 feature：未启动
+    - 备注：2026-06-29 第 9-13 项已提前把“候选资源分摊负荷、最小候选负荷、可选资源灵活性降权”落入生产 `bottleneck_machine_score` 基础图指标；本项后续不得重复实现这部分。剩余未做：不再把“能跑瓶颈机”直接当高优先级的目标门控、残余容量、`bottleneck_on` / `bottleneck_release` 拆分，以及 due pressure / saveability 门控。
+
+17. **graph-ready-v2-candidate-portfolio** — 建立 GraphReady v2 候选家族，覆盖目标规则、图交期混合、瓶颈交期混合、长尾牺牲和小扰动候选。
+    - 所属模块：工序图就绪优化层
+    - 依赖：`graph-ready-v2-bottleneck-resource-score`
+    - 状态：planned
+    - 对应 feature：未启动
+    - 备注：保留旧九组图权重作为 v1 对照，但新增 EDD、SPT、min_slack、critical_ratio、ATC-like、saveability、sacrifice_long、graph_due_hybrid、bottleneck_due_gated 等候选；不允许写死当前 4 工序样例的赢家顺序。
+
+18. **graph-ready-v2-elite-local-repair** — 对 GraphReady v2 前 K 个候选做轻量局部修补，修复接近好解但差一两步的排序。
+    - 所属模块：工序图就绪优化层
+    - 依赖：`graph-ready-v2-candidate-portfolio`
+    - 状态：planned
+    - 对应 feature：未启动
+    - 备注：只对 top-K elite 候选做相邻 ready swap、single insert、tardy boundary move 等有限邻域；必须报告 `graph_ready_v2_no_repair` 与 `graph_ready_v2_with_repair`，避免把修补收益算成纯候选生成收益。
+
+19. **graph-ready-v2-portfolio-integration** — 把 GraphReady v2 作为候选来源接入统一候选池，与贪心、局部搜索、GRASP/IG、GraphReady v1 共同择优。
+    - 所属模块：接入与展示边界层
+    - 依赖：`graph-ready-v2-elite-local-repair`
+    - 状态：planned
+    - 对应 feature：未启动
+    - 备注：v2 不独立替代 GRASP/IG 或 VNS/SA；统一选择仍复用 output fingerprint 去重和真实 objective 比较；报告必须区分 `graph_ready_generated_best`、`graph_ready_repaired_best`、`graph_ready_seeded_other_best`、`graph_ready_not_in_best_path`。
+
+20. **graph-ready-v2-comparative-ratchet-gate** — 建立 GraphReady v2 修改后的轻 / 中 / 长对比门禁，和当前基准及其他算法做胜平负统计。
+    - 所属模块：长跑调参与门禁层
+    - 依赖：`graph-ready-v2-portfolio-integration`
+    - 状态：planned
+    - 对应 feature：未启动
+    - 备注：修改完成后必须和 item 14 的“修改前”基准比较；至少输出 v2 对 `local_search`、`grasp_ig`、`graph_ready_v1`、`portfolio_all` 的胜 / 平 / 负；缺算法、缺指标、目标不可比或 dirty proof 冒充 clean proof 时必须失败或标 `not_comparable`。
+
+21. **alns-graph-ready-bridge-contract** — 定义工序图闭环产物如何喂给自适应大邻域拆修搜索。
    - 所属模块：自适应大邻域拆修搜索层
-   - 依赖：`long-run-tuning-evidence`
+   - 依赖：`graph-ready-v2-comparative-ratchet-gate`
    - 状态：planned
    - 对应 feature：未启动
-   - 备注：桥接项只消费第 9-13 项已经校验过的图摘要、ready rank、瓶颈和 ratchet baseline，不重新跑另一套图主链；桥接结果只能影响 destroy scope / repair priority，不能直接写可变工序时间。
+   - 备注：桥接项只消费第 9-13 项和 GraphReady v2 已校验过的图摘要、目标感知 ready rank、瓶颈资源分和多算法 ratchet baseline，不重新跑另一套图主链；桥接结果只能影响 destroy scope / repair priority，不能直接写可变工序时间。
 
-15. **alns-partial-repair-contract** — 定义自适应大邻域拆修搜索的局部拆修 allowed-op、payload validation 和执行态保护复用合同。
+22. **alns-partial-repair-contract** — 定义自适应大邻域拆修搜索的局部拆修 allowed-op、payload validation 和执行态保护复用合同。
    - 所属模块：SGS repair 适配层
    - 依赖：`alns-graph-ready-bridge-contract`
    - 状态：planned
    - 对应 feature：未启动
    - 备注：局部 repair 结果必须复用正式排产守门链，不能只靠拆修搜索内部校验。
 
-16. **alns-state-operators-core** — 建立自适应大邻域拆修搜索 state、destroy/repair operator 接口、operator reward 和权重更新。
+23. **alns-state-operators-core** — 建立自适应大邻域拆修搜索 state、destroy/repair operator 接口、operator reward 和权重更新。
     - 所属模块：自适应大邻域拆修搜索层
     - 依赖：`alns-partial-repair-contract`
     - 状态：planned
     - 对应 feature：未启动
     - 备注：先做纯 Python 外壳，不引入 `alns` / `job-shop-lib` 包、NumPy/Matplotlib 或重依赖。`ALNSOperatorResult` 字段必须在本项启动时定稿，非法 score / repair 输出 / seed_results 必须 fail-loud。
 
-17. **alns-sgs-repair-adapter** — 把拆修搜索 repair 接到现有 SGS，确保 repair 后完整校验并返回候选结果。
+24. **alns-sgs-repair-adapter** — 把拆修搜索 repair 接到现有 SGS，确保 repair 后完整校验并返回候选结果。
     - 所属模块：SGS repair 适配层
     - 依赖：`alns-state-operators-core`
     - 状态：planned
     - 对应 feature：未启动
     - 备注：`seed_results` 只能放保护/执行态固定片段，mutable operations 必须由 SGS 重新落位。
 
-18. **alns-selection-acceptance-trace** — 实现拆修搜索 operator 选择、threshold / Record-to-Record Travel / SA acceptance、segment 权重更新和 trace 输出。
+25. **alns-selection-acceptance-trace** — 实现拆修搜索 operator 选择、threshold / Record-to-Record Travel / SA acceptance、segment 权重更新和 trace 输出。
     - 所属模块：自适应大邻域拆修搜索层
     - 依赖：`alns-sgs-repair-adapter`
     - 状态：planned
     - 对应 feature：未启动
     - 备注：operator reward 只影响后续选择概率，不能直接覆盖 objective score。
 
+26. **benchmark-reference-diagnostics-baseline** — 补齐 GraphReady v2 前的同目标下界、不可比诊断和换型基准准备口径。
+    - 所属模块：证明与评测底座
+    - 依赖：`long-run-tuning-evidence`
+    - 状态：planned
+    - 对应 feature：未启动
+    - 备注：只补量尺和诊断，不重复 item 3/5/7/8 已有 no-op、no-improvement、same-fingerprint、improved 合同；Jackson 单机抢占下界只在同目标同指标可声明时进入 gap，否则标 `not_comparable`；WTSDS / Cicirello / SDST 换型基准先定义装载、评分、脱敏和默认 stdout / ignored 输出口径，不下载 tracked 数据。
+
+27. **alns-domain-neighborhood-operators** — 定义 ALNS 领域邻域算子：联合机器-排序、关键块 N5 和移动瓶颈候选。
+    - 所属模块：自适应大邻域拆修搜索层
+    - 依赖：`alns-sgs-repair-adapter`
+    - 状态：planned
+    - 对应 feature：未启动
+    - 备注：只生成资源 override、batch_order 或 repair request，不直接写工序时间；机器选择必须先确认业务资源资格真实可选，缺资格数据一律 rejected / fail-loud；关键块 N5 和移动瓶颈只作为 destroy scope、repair priority 或 operator 候选，仍复用正式 SGS 解码和 CandidateFingerprint。
+
+28. **alns-setup-aware-neighborhoods** — 在换型基准量尺到位后定义 setup-aware 拆修邻域。
+    - 所属模块：自适应大邻域拆修搜索层
+    - 依赖：`alns-domain-neighborhood-operators`、`benchmark-reference-diagnostics-baseline`
+    - 状态：planned
+    - 对应 feature：未启动
+    - 备注：等换型基准、不可比诊断和 ALNS repair 链到位后再做；只优化换型相关候选作用域和排序/资源决策，不把 setup 收益写成缺证据的 objective improvement；无 SDST / WTSDS 等可比样例时只能跳过或标 `not_comparable`。
+
 **最小闭环**：第 1 条 `optimizer-proof-harness` 做完后，系统能在不改写 tracked evidence 的前提下，运行 tiny oracle / lower bound / 当前算法对比，并明确输出“是否证明最优、gap 绑定的是哪个目标和指标、是否只能参考”。
 
-## 6. 排期思路：已落地基础 → 工序图闭环 → 拆修搜索
+## 6. 排期思路：已落地基础 → 工序图 v1 闭环 → GraphReady v2 → 拆修搜索
 
-本路线现在不再按旧“两段式”推进。前 8 项已经把证明底座、搜索报告、候选指纹、GRASP/IG、业务邻域和 VNS/SA 打完；接下来先把基准里真正显著变好的工序图就绪队列派工做成稳定闭环，再接后面的自适应大邻域拆修搜索。
+本路线现在不再按旧“两段式”推进。前 13 项已经把证明底座、搜索报告、候选指纹、GRASP/IG、业务邻域、VNS/SA、GraphReady v1、统一自动选择和轻/中/长门禁打完。下一段不是直接进入 ALNS，而是先做 GraphReady v2：把 v1 从“图结构重要性排序”升级为“目标函数感知候选生成”，并且必须在修改前后都和其他算法同台对比。
 
 ### 第一段 · 已完成的基础能力（item 1-8）
 
@@ -830,9 +1006,9 @@ GraphReadyRepairBridge = {
 
 这些项的价值是把“试了什么、有没有真的变好、是否只是重复同一张表、有没有泄漏内部 id”先钉死。没有这层底座，后面的工序图权重和拆修搜索都会变成凭感觉调参。
 
-### 第二段 · 工序图就绪队列派工闭环（item 9-13）
+### 第二段 · 已完成的工序图 v1 闭环（item 9-13）
 
-后续主线先走工序图：
+v1 已完成链路是：
 
 1. **工序图局部搜索合同（item 9）**：先规定图候选能动什么、不能动什么，尤其不能直接写可变工序时间。
 2. **图权重多起点比较（item 10）**：围绕关键路径、后续影响、下游工时、瓶颈资源跑多组候选，避免只靠一组默认权重。
@@ -840,19 +1016,37 @@ GraphReadyRepairBridge = {
 4. **基准门禁（item 12）**：把 FJSP 工序图收益、SMTWT 持平、大资源池性能不退步纳入轻/中/长门禁。
 5. **长跑证据（item 13）**：多 seed、多样例跑稳定性，证明图权重不是只在某一个样例上碰巧好。
 
-这一段的重点不是“再引入图算法”，而是消费已有工序图上下文，把“哪些工序现在能排、多个能排的先排谁”这件事做扎实。
+这一段的价值是让图 ready 候选真正跑进生产 optimizer，并留下 ratchet 证据。它的已知缺口也要写清：v1 当前能证明赢贪心基线，但还不能证明赢 `local_search`、GRASP/IG 或 `portfolio_all`；v1 的 9 组图权重偏结构重要性，目标函数感知不足。
 
-### 第三段 · 自适应大邻域拆修搜索（item 14-18）
+### 第三段 · GraphReady v2 目标感知候选与多算法对比（item 14-20）
+
+下一步先做 v2，不直接进入 ALNS：
+
+本轮审查新增 `benchmark-reference-diagnostics-baseline` 作为 item 14 的前置量尺。原因很简单：已有 proof harness 和 search report 能说明“有没有改进”，但还缺更具体的同目标下界、不可比诊断和换型基准准备；不先补这层，v2 改完后容易拿不可比数据证明收益。
+
+1. **多算法修改前基准（item 14）**：改算法前先建立同台比较量尺，补 `algorithm_profile` / `algorithm_version` / `seed` 维度的 ratchet key，记录当前基准。
+2. **目标感知特征（item 15）**：加入交期压力、松弛时间、可救批次、剩余工时、工时密度和长尾牺牲等特征，让 `min_overdue` 先懂“能不能多救一个批次”。
+3. **瓶颈资源分 v2（item 16）**：用残余容量、负荷分摊、最小候选负荷、灵活性降权和交期门控，替换“能跑瓶颈机就高分”的粗糙口径。
+4. **候选家族（item 17）**：新增目标规则、图交期混合、瓶颈交期混合、长尾牺牲和小扰动候选，不再只调旧 9 组图权重。
+5. **轻量 elite 修补（item 18）**：只对 top-K 候选做有限邻域修补，并单独报告有无修补的收益。
+6. **组合池接入（item 19）**：v2 只作为候选来源之一，与贪心、局部搜索、GRASP/IG、v1 一起入池，统一 SGS 解码和 objective 择优。
+7. **修改后对比门禁（item 20）**：和 item 14 的“修改前”基准比较，并输出 v2 对 `local_search`、GRASP/IG、v1、`portfolio_all` 的胜 / 平 / 负。
+
+这一段的硬要求是“改完必须和现在的基准比，也必须和其他算法比”。不能只写“v2 赢 greedy”，不能拿 FJSP makespan 当 APS 业务目标最优证明，也不能把 dirty proof 包装成 clean proof。
+
+### 第四段 · 自适应大邻域拆修搜索（item 21-25）
 
 工序图闭环之后，再做自适应大邻域拆修搜索五项：
 
-1. **工序图桥接合同（item 14）**：先规定拆修搜索只能消费第 9-13 项沉淀出的图摘要、ready rank 和基准证据，不能重建图主链。
-2. **局部拆修合同（item 15）**：锁住 allowed-op、payload 校验和执行态保护，防止拆修搜索绕开正式排产守门链。
-3. **搜索状态和算子外壳（item 16）**：纯 Python 实现 state、destroy/repair operator、operator reward 和权重更新，不引入重依赖。
-4. **SGS repair 适配（item 17）**：被拆掉的工序必须交回现有 SGS 正式落位，不能由新算法直接写开始结束时间。
-5. **选择、接受和 trace（item 18）**：把算子选择、接受准则、权重更新和 trace 归一到搜索报告里。
+1. **工序图桥接合同（item 21）**：先规定拆修搜索只能消费第 9-13 项和 v2 沉淀出的图摘要、目标感知 ready rank、瓶颈资源分和多算法基准，不能重建图主链。
+2. **局部拆修合同（item 22）**：锁住 allowed-op、payload 校验和执行态保护，防止拆修搜索绕开正式排产守门链。
+3. **搜索状态和算子外壳（item 23）**：纯 Python 实现 state、destroy/repair operator、operator reward 和权重更新，不引入重依赖。
+4. **SGS repair 适配（item 24）**：被拆掉的工序必须交回现有 SGS 正式落位，不能由新算法直接写开始结束时间。
+5. **选择、接受和 trace（item 25）**：把算子选择、接受准则、权重更新和 trace 归一到搜索报告里。
 
-这五项仍然保留为 planned，并且排在工序图闭环之后。这样路线图不会删除后续高级搜索，但实际推进顺序会先吃下已经有基准证据的工序图收益，再让拆修搜索复用同一套图摘要、自动选择和 benchmark 证据。
+本轮新增的 ALNS 领域算子不前移到 GraphReady v2：`alns-domain-neighborhood-operators` 等 SGS repair 适配完成后，再定义联合机器-排序、关键块 N5 和移动瓶颈这类 operator 候选；`alns-setup-aware-neighborhoods` 还要等换型基准量尺到位，避免把缺证据的 setup 收益写成真实 objective 改进。
+
+这五项仍然保留为 planned，并且排在 GraphReady v2 之后。这样路线图不会删除后续高级搜索，但实际推进顺序会先把图候选自身做强、量尺做准，再让拆修搜索复用同一套图摘要、自动选择和 benchmark 证据。
 
 ## 7. 观察项
 
@@ -864,8 +1058,10 @@ GraphReadyRepairBridge = {
 - 当前工作区已有未提交改动和 benchmark evidence 修改，任何 clean proof 都必须在最新 HEAD 与干净工作区上重新跑。
 - 2026-06-29 基准复核确认：工序图就绪队列派工的收益集中在有工序前后关系的场景。FJSP 默认 5 个样例里，平均总完工时长从批次顺序派工 262.60h、普通串行派工 236.20h，降到工序图就绪队列派工 206.60h；平均参考差距从 62.67% / 46.37% 降到 33.79%。但在 SMTWT 这类单工序样例上，普通串行派工和工序图就绪队列派工都是平均 gap 16.16、达最优 39/250；大资源池和碎片时间线也基本持平。归属：item 9-13 先做工序图局部搜索、权重比较、自动选择和门禁。
 - 2026-06-29 Exa MCP 补强调研没有推翻当前主线，但补出三个路线图缺口：① FJSP/JSP 常见算法证据支持大邻域搜索、禁忌搜索、移动瓶颈法和图 / 优先级规则混合，但本仓库仍应先走纯 Python、SGS repair、无重依赖路线；② 拖期和换型目标必须有专门基准，不能用 FJSP makespan 参考结果替代；③ 启发式算法验收必须多样例、多 seed、报告均值和最差值，不能只展示单次最好结果。归属：item 12 / 13 的门禁矩阵和长跑证据格式。
+- 2026-06-29 对抗审查后确认：GP 超启发式只适合作为研究候选，不进入当前主线 items。原因是两份路线图文件里没有现成接口、基准或 Win7 / Python 3.8 / 纯 Python 落地边界支撑；若未来重新评估，必须先证明它只生成可解释的规则 / 候选决策，并继续回 SGS 解码。
+- 2026-06-29 对抗审查后确认：联合机器-排序邻域只有在业务机器资格真实可选时才成立。当前 roadmap 只能证明“资源 override / repair request 可以回 SGS 解码”，不能证明每个业务场景都有可替代机器；后续 `alns-domain-neighborhood-operators` 启动时必须先查资源资格数据，缺数据就拒绝候选，不能回退成“所有机器都可选”。
 - 2026-06-26 经 proof-harness（item 1）实测发现：现有 `improve` 局部搜索在 SGS 派工模式下是**结构性 no-op**。其唯一邻域是 swap/insert/block 重排 `batch_order`（`core/services/scheduler/run/optimizer_local_search.py:15-61`），但 SGS 只把 `batch_order` 当 `build_dispatch_key` 末位平手决胜键（`core/algorithms/dispatch_rules.py:33-36`、`core/algorithms/greedy/dispatch/sgs.py:44-48,99,215`），slack/atc 近似连续几乎不平手，故批次顺序重排几乎总解出同一张表。证据：SMTWT 同起点重排批次顺序 300 次 overdue 零变化，而 `batch_order` 派工模式下 206/300 更好（34→28）；默认 `dispatch_mode=batch_order` 经多起点扩展后 sgs 起点总胜出、局搜继承胜出起点模式（`optimizer_local_search.py:253`），导致局搜恒 0 改进且空烧满 `time_budget`（budget 5/20s 结果一致）。
-    - 治理归属：no-op 如实记 + 到预算止损归 **item 3 `optimizer-search-report-contract`**（§4.3 已明文要求 `candidate_rejected=noop_neighbor` 与 `stop_reason=time_budget`）；业务邻域的 no-op/fallback 可解释记录已由 **item 7 `business-neighborhood-registry`** 治理为 `neighborhood_summary`/`neighborhood_moves`；搜索状态机与非改进接受已由 **item 8 `vns-sa-local-search-upgrade`** 治理为 current/best 分离、VNS 邻域切换与真实 acceptance trace。后续真正补搜索空间，先归 item 9-13 工序图闭环，再归 item 14-18 拆修搜索。
+    - 治理归属：no-op 如实记 + 到预算止损归 **item 3 `optimizer-search-report-contract`**（§4.3 已明文要求 `candidate_rejected=noop_neighbor` 与 `stop_reason=time_budget`）；业务邻域的 no-op/fallback 可解释记录已由 **item 7 `business-neighborhood-registry`** 治理为 `neighborhood_summary`/`neighborhood_moves`；搜索状态机与非改进接受已由 **item 8 `vns-sa-local-search-upgrade`** 治理为 current/best 分离、VNS 邻域切换与真实 acceptance trace。item 9-13 已完成工序图 v1 闭环；后续真正补目标感知搜索空间，归 item 14-20 GraphReady v2，再归 item 21-25 拆修搜索。
 - 2026-06-26 目标↔基准覆盖盘点（决定后续换目标时拿什么证明）：系统当前有 4 个目标（`core/models/objective.py:18-46`）——`min_overdue` / `min_tardiness` / `min_weighted_tardiness` / `min_changeover`，**没有 makespan 目标**（`makespan_hours` 仅作各目标 5 元组里的低位平手决胜键，从不是主优化项）。
     - **可比覆盖现状**：目前只有 `min_overdue` 的**首分量 `overdue_count`** 有同模型同指标的精确最优基准（SMTWT + Moore-Hodgson，`tests/_support/optimizer_benchmark_grading.py`），且当前只给 **greedy** 打分、未给 improve 打分；`min_overdue` 后 4 个 tie-break 分量、以及其余 3 个目标**都没有可比的已证明最优基准**。
     - **拖期/加权拖期缺口**：SMTWT 自带的 `wtopt` 是**自由权重（1–10）的加权拖期**最优，而 APS 加权拖期只有 3 档（critical/urgent/normal），两套权重不同**不可比**；无权重的 1‖ΣT_j 是 NP-hard、本仓库无 oracle。故 `min_tardiness` / `min_weighted_tardiness` 短期只能用下界 / best-known 做参考，做不了"精确最优"对照。
@@ -905,3 +1101,5 @@ GraphReadyRepairBridge = {
 - 2026-06-28：完成 `vns-sa-local-search-upgrade`（item 8）。新增 `core/services/scheduler/run/optimizer_acceptance.py`、`optimizer_local_search_state.py`、`optimizer_vns.py`、`optimizer_local_search_report_hooks.py`，在 item 7 业务邻域之上实现 current/best 分离、VNS 邻域切换、`improve_only`/`threshold`/`record_to_record`/`simulated_annealing` acceptance 语义；非改进候选可被接受为 current，但 best 只在真实 acceptance 通过、score 严格更优、`output_fingerprint` 非 parent 且非 seen 时更新。`CandidateProfile` 默认 improve 扩展为 `vns_sa`，acceptance 白名单扩为四种且未知值 fail-loud；`OptimizationSearchReport` 新增 `current_accepted_candidates`、`best_improved_candidates`、`acceptance_events`/`acceptance_summary`、`vns_events`/`vns_summary`，并把 `acceptance_passed` 改为真实 best acceptance 事件，修复 item 5 review 记录的 M1 代理问题。public、OperationLogs、size guard 只投 acceptance/VNS 安全计数摘要，不展示 raw random draw、fingerprint hash、raw move 或内部 op/resource id。新增 `tests/algorithm/test_optimizer_vns_sa_local_search_contract.py` 并登记 test registry；验证覆盖 current/best 分离、非改进接受不制造 improved、best 真改善、SA 确定性、VNS 切换、public 边界。边界：未做 ALNS destroy/repair/selection/weight update。
 - 2026-06-29：按基准复核和用户拍板重排后续路线：新增 `graph-ready-local-search-contract` 与 `graph-ready-priority-tuning`，把工序图就绪队列派工局部搜索、图权重比较、统一自动选择、基准门禁和长跑证据排在前面；原自适应大邻域拆修搜索四项继续保留为 planned，顺序排到工序图闭环之后。同步新增 4.6 `GraphReadyOptimizationProfile` 合同，并把 public/diagnostics 分层编号顺延为 4.9。
 - 2026-06-29：路线图补强。吸收 4 个只读子代理审查和 Exa MCP 补强调研结论：① 4.6 补 `GraphReadyOptimizationProfile` 必填上下文字段、默认 9 组图权重表和统一自动选择规则；② 新增 4.10 基准门禁矩阵，明确轻 / 中 / 长门禁、ratchet snapshot 字段、FJSP makespan 仅作技术参考、SMTWT 只证明 `min_overdue.overdue_count`、换型目标需要 SDST 类基准；③ 新增 4.11 工序图到拆修搜索桥接合同；④ 子 feature 增加 `alns-graph-ready-bridge-contract`，原拆修搜索四项后移为 item 15-18；⑤ 第 9-13 项备注补足字段校验、权重、自动选择、门禁阈值和长跑证据格式。
+- 2026-06-29：按 GraphReady v1 未赢 GRASP/IG / `atc` 局搜的复盘结果，新增 GraphReady v2 阶段（item 14-20），并把 ALNS 后移到 item 21-25。v2 阶段要求先采集修改前多算法基准，再实现目标感知特征、瓶颈资源分、候选家族、elite 轻量修补和组合池接入；修改后必须和当前基准、`local_search`、GRASP/IG、GraphReady v1、`portfolio_all` 做同 case / seed / time budget / objective 的胜平负对比。同步新增 4.6.1 v2 合同、4.10 多算法对比口径、修正文档中 9-13 的 done 状态，并落盘下一轮执行提示词 `drafts/graph-ready-v2-next-agent-prompt.md`。
+- 2026-06-29：对“算法方向 -> roadmap 阶段归属”做 3 路子代理对抗审查后，只新增确认未被完整覆盖的项：`benchmark-reference-diagnostics-baseline` 作为 GraphReady v2 修改前基准的前置量尺，`alns-domain-neighborhood-operators` 作为 ALNS repair 链后的联合机器-排序 / 关键块 N5 / 移动瓶颈算子项，`alns-setup-aware-neighborhoods` 作为换型基准到位后的 setup-aware 邻域项。确认不新增泛化 no-op / 恒 0 改进诊断，因为 item 3/5/7/8 和 §7 已覆盖；GP 超启发式只进观察项，不进主线 items。
