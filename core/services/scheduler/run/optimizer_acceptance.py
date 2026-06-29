@@ -80,10 +80,6 @@ def decide_acceptance(
     rnd: Any,
 ) -> AcceptanceDecision:
     name = validate_acceptance_name(acceptance_name)
-    delta_current = _score_delta(candidate_score, current_score)
-    delta_record = _score_delta(candidate_score, best_score)
-    objective_delta_current = _score_delta(candidate_score, current_score, start_index=1)
-    objective_delta_record = _score_delta(candidate_score, best_score, start_index=1)
     better_than_current = score_strictly_better(candidate_score, current_score)
     progress = _progress(iteration=iteration, max_iterations=max_iterations)
     threshold = DEFAULT_THRESHOLD * (1.0 - progress)
@@ -94,7 +90,7 @@ def decide_acceptance(
             name=name,
             accepted=better_than_current,
             reason="score_improved" if better_than_current else "not_improved",
-            delta_current=delta_current,
+            delta_current=_score_delta(candidate_score, current_score),
             threshold=None,
             temperature=None,
             record_distance=None,
@@ -102,50 +98,109 @@ def decide_acceptance(
             random_draw=None,
         )
     if name == ACCEPTANCE_THRESHOLD:
-        failed_ops_worse = _failed_ops_worse(candidate_score, current_score)
-        accepted = False if failed_ops_worse else (better_than_current or objective_delta_current <= threshold)
-        return _decision(
+        return _threshold_decision(
             name=name,
-            accepted=accepted,
-            reason=(
-                "failed_ops_worse"
-                if failed_ops_worse
-                else ("within_threshold" if accepted and not better_than_current else ("score_improved" if accepted else "threshold_rejected"))
-            ),
-            delta_current=delta_current if failed_ops_worse else objective_delta_current,
+            candidate_score=candidate_score,
+            current_score=current_score,
+            better_than_current=better_than_current,
             threshold=threshold,
-            temperature=None,
-            record_distance=None,
             random_seed=random_seed,
-            random_draw=None,
         )
     if name == ACCEPTANCE_RECORD_TO_RECORD:
-        failed_ops_worse = _failed_ops_worse(candidate_score, best_score)
-        accepted = False if failed_ops_worse else (better_than_current or objective_delta_record <= threshold)
-        return _decision(
+        return _record_to_record_decision(
             name=name,
-            accepted=accepted,
-            reason=(
-                "failed_ops_worse"
-                if failed_ops_worse
-                else ("within_record_distance" if accepted and not better_than_current else ("score_improved" if accepted else "record_distance_rejected"))
-            ),
-            delta_current=delta_current if failed_ops_worse else objective_delta_current,
+            candidate_score=candidate_score,
+            current_score=current_score,
+            best_score=best_score,
+            better_than_current=better_than_current,
             threshold=threshold,
-            temperature=None,
-            record_distance=delta_record if failed_ops_worse else objective_delta_record,
             random_seed=random_seed,
-            random_draw=None,
         )
     return _simulated_annealing_decision(
         name=name,
         better_than_current=better_than_current,
-        delta_current=delta_current,
+        delta_current=_score_delta(candidate_score, current_score),
         failed_ops_worse=_failed_ops_worse(candidate_score, current_score),
         temperature=temperature,
         random_seed=random_seed,
         rnd=rnd,
     )
+
+
+def _threshold_decision(
+    *,
+    name: str,
+    candidate_score: Any,
+    current_score: Any,
+    better_than_current: bool,
+    threshold: float,
+    random_seed: int,
+) -> AcceptanceDecision:
+    failed_ops_worse = _failed_ops_worse(candidate_score, current_score)
+    objective_delta_current = _score_delta(candidate_score, current_score, start_index=1)
+    accepted = False if failed_ops_worse else (better_than_current or objective_delta_current <= threshold)
+    return _decision(
+        name=name,
+        accepted=accepted,
+        reason=_threshold_reason(
+            failed_ops_worse=failed_ops_worse,
+            accepted=accepted,
+            better_than_current=better_than_current,
+        ),
+        delta_current=_score_delta(candidate_score, current_score) if failed_ops_worse else objective_delta_current,
+        threshold=threshold,
+        temperature=None,
+        record_distance=None,
+        random_seed=random_seed,
+        random_draw=None,
+    )
+
+
+def _threshold_reason(*, failed_ops_worse: bool, accepted: bool, better_than_current: bool) -> str:
+    if failed_ops_worse:
+        return "failed_ops_worse"
+    if accepted and not better_than_current:
+        return "within_threshold"
+    return "score_improved" if accepted else "threshold_rejected"
+
+
+def _record_to_record_decision(
+    *,
+    name: str,
+    candidate_score: Any,
+    current_score: Any,
+    best_score: Any,
+    better_than_current: bool,
+    threshold: float,
+    random_seed: int,
+) -> AcceptanceDecision:
+    failed_ops_worse = _failed_ops_worse(candidate_score, best_score)
+    objective_delta_current = _score_delta(candidate_score, current_score, start_index=1)
+    objective_delta_record = _score_delta(candidate_score, best_score, start_index=1)
+    accepted = False if failed_ops_worse else (better_than_current or objective_delta_record <= threshold)
+    return _decision(
+        name=name,
+        accepted=accepted,
+        reason=_record_to_record_reason(
+            failed_ops_worse=failed_ops_worse,
+            accepted=accepted,
+            better_than_current=better_than_current,
+        ),
+        delta_current=_score_delta(candidate_score, current_score) if failed_ops_worse else objective_delta_current,
+        threshold=threshold,
+        temperature=None,
+        record_distance=_score_delta(candidate_score, best_score) if failed_ops_worse else objective_delta_record,
+        random_seed=random_seed,
+        random_draw=None,
+    )
+
+
+def _record_to_record_reason(*, failed_ops_worse: bool, accepted: bool, better_than_current: bool) -> str:
+    if failed_ops_worse:
+        return "failed_ops_worse"
+    if accepted and not better_than_current:
+        return "within_record_distance"
+    return "score_improved" if accepted else "record_distance_rejected"
 
 
 def _simulated_annealing_decision(

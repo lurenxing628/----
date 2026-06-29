@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .optimizer_candidate_fingerprint import CandidateFingerprint, score_strictly_better
 
@@ -55,4 +55,18 @@ def candidate_can_update_best(
     return True
 
 
-__all__ = ["LocalSearchState", "candidate_can_update_best"]
+def resolve_current_strategy_state(
+    source: Dict[str, Any],
+    *,
+    dispatch_mode_cfg: str,
+    dispatch_rule_cfg: str,
+) -> Tuple[Any, Dict[str, Any], str, str]:
+    return (
+        source["strategy"],
+        dict(source["params"] or {}),
+        str(source.get("dispatch_mode") or dispatch_mode_cfg),
+        str(source.get("dispatch_rule") or dispatch_rule_cfg),
+    )
+
+
+__all__ = ["LocalSearchState", "candidate_can_update_best", "resolve_current_strategy_state"]
