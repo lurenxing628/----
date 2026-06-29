@@ -1,0 +1,13 @@
+{
+ "note": "循环依赖硬加载期环基线。门禁(--fail-on-new-cycle)只挡基线外的新增环,现存环按治理节奏消除。受控更新:python3 -m tools.scan_import_cycles --update-baseline。",
+ "schema_version": 1,
+ "hard_dir_cycles": [
+  "core/algorithms|core/algorithms/greedy|core/algorithms/greedy/dispatch",
+  "core/infrastructure|core/infrastructure/migrations|core/models|core/shared",
+  "core/plugins|core/services/common",
+  "core/services/report|core/services/report/exporters",
+  "core/services/scheduler|core/services/scheduler/config|core/services/scheduler/run|core/services/scheduler/summary",
+  "web/routes|web/routes/domains/scheduler"
+ ],
+ "hard_file_cycles": []
+}

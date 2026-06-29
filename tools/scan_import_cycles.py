@@ -40,11 +40,22 @@ import sys
 from collections import defaultdict
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from tools.import_cycle_analysis import classify, dyn_imports, resolve_targets, tarjan
+from tools.import_cycle_baseline import (
+    compare_with_baseline,
+    current_signatures,
+    default_baseline_path,
+    print_new_cycles,
+    write_baseline,
+)
+
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 PROD_ROOTS = ["core", "web", "data", "desktop", "tools", "scripts"]
 TEST_ROOTS = ["tests"]
 KINDS = ("hard", "cond", "lazy", "typeonly")
+
+BASELINE_PATH = default_baseline_path(REPO_ROOT)
 
 
 def path_to_mod(rel: str) -> str:
@@ -59,164 +70,9 @@ def cur_pkg_parts(ab: str, mod: str) -> List[str]:
     return parts if os.path.basename(ab) == "__init__.py" else parts[:-1]
 
 
-def resolve_rel(pkg: List[str], level: int, module: Optional[str]) -> str:
-    base = pkg[: len(pkg) - (level - 1)]
-    return ".".join(base + module.split(".")) if module else ".".join(base)
-
-
 def tdir(mod: str, mod_to_file: Dict[str, str], repo_root: str) -> Optional[str]:
     f = mod_to_file.get(mod)
     return os.path.dirname(os.path.relpath(f, repo_root)) if f else None
-
-
-def classify(tree: ast.AST) -> List[Tuple[ast.AST, str]]:
-    """把每条 import 语句归到 hard / cond / lazy / typeonly。"""
-    out: List[Tuple[ast.AST, str]] = []
-
-    def stmt(s: ast.AST, ctx: str) -> None:
-        if isinstance(s, (ast.Import, ast.ImportFrom)):
-            out.append((s, ctx))
-        elif isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for b in s.body:
-                stmt(b, "lazy")
-        elif isinstance(s, ast.ClassDef):
-            for b in s.body:
-                stmt(b, ctx)
-        elif isinstance(s, ast.If):
-            t = s.test
-            tc = (isinstance(t, ast.Name) and t.id == "TYPE_CHECKING") or (
-                isinstance(t, ast.Attribute) and t.attr == "TYPE_CHECKING"
-            )
-            if tc:
-                for b in s.body:
-                    stmt(b, "typeonly")
-                for b in s.orelse:
-                    stmt(b, ctx)  # else 运行时必执行
-            else:
-                for b in s.body:
-                    stmt(b, "cond")
-                for b in s.orelse:
-                    stmt(b, "cond")
-        elif isinstance(s, ast.Try):
-            for b in s.body:
-                stmt(b, "cond")
-            for h in s.handlers:
-                for b in h.body:
-                    stmt(b, "cond")
-            for b in s.orelse:
-                stmt(b, "cond")
-            for b in s.finalbody:
-                stmt(b, ctx)
-        elif isinstance(s, ast.With):
-            for b in s.body:
-                stmt(b, ctx)
-
-    for s in tree.body:  # type: ignore[attr-defined]
-        stmt(s, "hard")
-    return out
-
-
-def dyn_imports(tree: ast.AST) -> List[Tuple[str, bool, int]]:
-    """收集 importlib.import_module("字面量"):返回 (模块, 是否在函数内, 行号)。"""
-    res: List[Tuple[str, bool, int]] = []
-
-    def walk(node: ast.AST, infunc: bool) -> None:
-        for c in ast.iter_child_nodes(node):
-            nf = infunc or isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            if isinstance(c, ast.Call):
-                f = c.func
-                nm = f.attr if isinstance(f, ast.Attribute) else (f.id if isinstance(f, ast.Name) else None)
-                if (
-                    nm == "import_module"
-                    and c.args
-                    and isinstance(c.args[0], ast.Constant)
-                    and isinstance(c.args[0].value, str)
-                ):
-                    res.append((c.args[0].value, nf, c.lineno))
-            walk(c, nf)
-
-    walk(tree, False)
-    return res
-
-
-def resolve_targets(node: ast.AST, pkg: List[str], mod_to_file: Dict[str, str]) -> List[str]:
-    """把一条 import 语句解析成本仓内的目标模块列表。
-
-    修正点:`from . import 兄弟模块` 不连"包根"假边——只有当某个 name 来自包
-    __init__ 的符号(不是子模块)时,才把包根算成依赖。
-    """
-    tg: List[str] = []
-    if isinstance(node, ast.ImportFrom):
-        base = resolve_rel(pkg, node.level, node.module) if (node.level and node.level > 0) else node.module
-        if not base:
-            return tg
-        names = [a.name for a in node.names]
-        for n in names:
-            if (base + "." + n) in mod_to_file:
-                tg.append(base + "." + n)  # 兄弟/子模块 = 真边
-        if base in mod_to_file:
-            all_sub = bool(names) and all((base + "." + n) in mod_to_file for n in names)
-            if not all_sub:  # 有 name 来自 __init__ 符号 -> 才依赖包根
-                tg.append(base)
-    else:
-        for a in node.names:
-            tg.append(a.name)
-    return [t for t in tg if t in mod_to_file]
-
-
-def tarjan(graph: Dict[str, List[str]]) -> List[List[str]]:
-    """迭代版 Tarjan 求 SCC(size>1 即环);迭代避免深递归爆栈。"""
-    nodes = set(graph) | {w for vs in graph.values() for w in vs}
-    idx: Dict[str, int] = {}
-    low: Dict[str, int] = {}
-    on: Dict[str, bool] = {}
-    st: List[str] = []
-    sccs: List[List[str]] = []
-    cnt = [0]
-
-    def strongconnect(v: str) -> None:
-        work = [(v, 0)]
-        while work:
-            node, pi = work[-1]
-            if pi == 0:
-                idx[node] = low[node] = cnt[0]
-                cnt[0] += 1
-                st.append(node)
-                on[node] = True
-            recurse = False
-            nb = graph.get(node, ())
-            i = pi
-            while i < len(nb):
-                w = nb[i]
-                if w not in idx:
-                    work[-1] = (node, i + 1)
-                    work.append((w, 0))
-                    recurse = True
-                    break
-                elif on.get(w):
-                    low[node] = min(low[node], idx[w])
-                i += 1
-            if recurse:
-                continue
-            if low[node] == idx[node]:
-                comp = []
-                while True:
-                    w = st.pop()
-                    on[w] = False
-                    comp.append(w)
-                    if w == node:
-                        break
-                if len(comp) > 1:
-                    sccs.append(comp)
-            work.pop()
-            if work:
-                parent = work[-1][0]
-                low[parent] = min(low[parent], low[node])
-
-    for v in list(nodes):
-        if v not in idx:
-            strongconnect(v)
-    return sccs
 
 
 def _adj(edge_map: Dict[Tuple[str, str], list]) -> Dict[str, List[str]]:
@@ -266,6 +122,91 @@ def _dir_cycle_records(sccs: List[List[str]], dmap: Dict[Tuple[str, str], list])
     return out
 
 
+def _add_edge(
+    edges_file: dict,
+    edges_dir: dict,
+    *,
+    kind: str,
+    source_mod: str,
+    target_mod: str,
+    source_dir: str,
+    rel_path: str,
+    line: int,
+    mod_to_file: Dict[str, str],
+    repo_root: str,
+) -> None:
+    if target_mod == source_mod:
+        return
+    edges_file[kind][(source_mod, target_mod)].append((rel_path, line))
+    target_dir = tdir(target_mod, mod_to_file, repo_root)
+    if target_dir is not None and target_dir != source_dir:
+        edges_dir[kind][(source_dir, target_dir)].append((rel_path, line, target_mod))
+
+
+def _collect_module_edges(
+    ab: str,
+    mod: str,
+    tree: ast.AST,
+    file_to_mod: Dict[str, str],
+    mod_to_file: Dict[str, str],
+    edges_file: dict,
+    edges_dir: dict,
+    repo_root: str,
+) -> None:
+    pkg = cur_pkg_parts(ab, mod)
+    rel = os.path.relpath(ab, repo_root)
+    source_dir = os.path.dirname(rel)
+    for node, kind in classify(tree):
+        for target_mod in resolve_targets(node, pkg, mod_to_file):
+            _add_edge(
+                edges_file,
+                edges_dir,
+                kind=kind,
+                source_mod=mod,
+                target_mod=target_mod,
+                source_dir=source_dir,
+                rel_path=rel,
+                line=node.lineno,  # type: ignore[attr-defined]
+                mod_to_file=mod_to_file,
+                repo_root=repo_root,
+            )
+    for target_mod, infunc, line in dyn_imports(tree):
+        if target_mod in mod_to_file:
+            _add_edge(
+                edges_file,
+                edges_dir,
+                kind="lazy" if infunc else "hard",
+                source_mod=mod,
+                target_mod=target_mod,
+                source_dir=source_dir,
+                rel_path=rel,
+                line=line,
+                mod_to_file=mod_to_file,
+                repo_root=repo_root,
+            )
+
+
+def _delayed_dir_cycle_records(rt_dir_sccs: List[List[str]], hard_dir_sccs: List[List[str]], rt_dir: dict) -> List[dict]:
+    hardsets = [frozenset(c) for c in hard_dir_sccs]
+    delayed: List[dict] = []
+    for comp in sorted(rt_dir_sccs, key=len, reverse=True):
+        cs = frozenset(comp)
+        if any(cs == h for h in hardsets):
+            continue
+        delayed.append(_runtime_cycle_record(comp, rt_dir))
+    return delayed
+
+
+def _runtime_cycle_record(comp: List[str], rt_dir: dict) -> dict:
+    cset = set(comp)
+    ev: List[dict] = []
+    for (s, t), locs in rt_dir.items():
+        if s in cset and t in cset:
+            rel, line, tmod = locs[0]
+            ev.append({"src": rel, "line": line, "target": tmod, "extra": len(locs) - 1})
+    return {"members": sorted(comp), "edges": ev}
+
+
 def scan(roots: Sequence[str], repo_root: str = REPO_ROOT) -> dict:
     """扫描给定根目录,返回三类环 + 边计数 + 解析失败的结构化结果。"""
     file_to_mod, mod_to_file = _index_modules(roots, repo_root)
@@ -280,24 +221,7 @@ def scan(roots: Sequence[str], repo_root: str = REPO_ROOT) -> dict:
         except Exception as exc:
             parse_errors.append({"file": os.path.relpath(ab, repo_root), "error": str(exc)})
             continue
-        pkg = cur_pkg_parts(ab, mod)
-        rel = os.path.relpath(ab, repo_root)
-        sd = os.path.dirname(rel)
-        for node, kind in classify(tree):
-            for tmod in resolve_targets(node, pkg, mod_to_file):
-                if tmod == mod:
-                    continue
-                edges_file[kind][(mod, tmod)].append((rel, node.lineno))  # type: ignore[attr-defined]
-                td = tdir(tmod, mod_to_file, repo_root)
-                if td is not None and td != sd:
-                    edges_dir[kind][(sd, td)].append((rel, node.lineno, tmod))  # type: ignore[attr-defined]
-        for tmod, infunc, ln in dyn_imports(tree):
-            if tmod in mod_to_file and tmod != mod:
-                kind = "lazy" if infunc else "hard"
-                edges_file[kind][(mod, tmod)].append((rel, ln))
-                td = tdir(tmod, mod_to_file, repo_root)
-                if td is not None and td != sd:
-                    edges_dir[kind][(sd, td)].append((rel, ln, tmod))
+        _collect_module_edges(ab, mod, tree, file_to_mod, mod_to_file, edges_file, edges_dir, repo_root)
 
     hard_dir = edges_dir["hard"]
     hard_file = edges_file["hard"]
@@ -309,27 +233,13 @@ def scan(roots: Sequence[str], repo_root: str = REPO_ROOT) -> dict:
     rt_dir_sccs = tarjan(_adj(rt_dir))
     rt_file_sccs = tarjan(_adj(rt_file))
 
-    hardsets = [frozenset(c) for c in hard_dir_sccs]
-    delayed: List[dict] = []
-    for comp in sorted(rt_dir_sccs, key=len, reverse=True):
-        cs = frozenset(comp)
-        if any(cs == h for h in hardsets):
-            continue
-        cset = set(comp)
-        ev: List[dict] = []
-        for (s, t), locs in rt_dir.items():
-            if s in cset and t in cset:
-                rel, line, tmod = locs[0]
-                ev.append({"src": rel, "line": line, "target": tmod, "extra": len(locs) - 1})
-        delayed.append({"members": sorted(comp), "edges": ev})
-
     return {
         "module_count": len(file_to_mod),
         "parse_errors": parse_errors,
         "edge_counts": {k: sum(len(v) for v in edges_file[k].values()) for k in KINDS},
         "hard_dir_cycles": _dir_cycle_records(hard_dir_sccs, hard_dir),
         "hard_file_cycles": [sorted(c) for c in sorted(hard_file_sccs, key=len, reverse=True)],
-        "delayed_dir_cycles": delayed,
+        "delayed_dir_cycles": _delayed_dir_cycle_records(rt_dir_sccs, hard_dir_sccs, rt_dir),
         "runtime_file_cycle_count": len(rt_file_sccs),
     }
 
@@ -367,35 +277,92 @@ def render_text(result: dict) -> str:
     return "\n".join(lines)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="包级/文件级循环依赖扫描器")
     parser.add_argument("--json", action="store_true", help="输出机器可读 JSON(供门禁/checkup 消费)")
     parser.add_argument("--include-tests", action="store_true", help="把 tests 也纳入扫描(默认只扫生产代码)")
     parser.add_argument(
         "--fail-on-hard-cycle",
         action="store_true",
-        help="检出硬加载期目录环/文件环时退出码 1(门禁用)",
+        help="检出任何硬加载期目录环/文件环即退出码 1(治理完成后用,严格禁环)",
+    )
+    parser.add_argument(
+        "--fail-on-new-cycle",
+        action="store_true",
+        help="只在出现基线外新增硬加载期环时退出码 1(治理期门禁推荐:现存环按节奏消,只挡回潮)",
+    )
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="把当前硬加载期环写入基线文件(受控刷新),退出码 0",
+    )
+    parser.add_argument(
+        "--baseline",
+        default=BASELINE_PATH,
+        help="基线文件路径(默认 .codestable/checkup/import_cycles_baseline.json)",
     )
     parser.add_argument(
         "--quiet-when-clean",
         action="store_true",
-        help="无硬加载期环时完全不输出(钩子高频跑用)",
+        help="无需报告时完全不输出(钩子高频跑用;clean 含义随模式:无新增环 / 无任何硬环)",
     )
-    args = parser.parse_args(list(argv) if argv is not None else None)
+    return parser.parse_args(list(argv) if argv is not None else None)
 
+
+def _load_scan_result(args: argparse.Namespace) -> Tuple[Optional[dict], int]:
     roots = list(PROD_ROOTS) + (list(TEST_ROOTS) if args.include_tests else [])
     try:
-        result = scan(roots)
+        return scan(roots), 0
     except Exception as exc:
         print(f"[import-cycles] 扫描失败:{exc}", flush=True)
-        return 2
+        return None, 2
 
-    has_hard = bool(result["hard_dir_cycles"]) or bool(result["hard_file_cycles"])
 
+def _print_result(result: dict, args: argparse.Namespace, comparison: object) -> None:
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
-    elif not (args.quiet_when_clean and not has_hard):
-        print(render_text(result), flush=True)
+        return
+    print(render_text(result), flush=True)
+    if not args.fail_on_new_cycle:
+        return
+    if comparison.baseline_missing:
+        rel = os.path.relpath(args.baseline, REPO_ROOT)
+        print(
+            f"[import-cycles] 未建立基线(先跑 `python3 -m tools.scan_import_cycles --update-baseline` 写 {rel});本次跳过新增判定。",
+            flush=True,
+        )
+    elif comparison.has_new:
+        print_new_cycles(result, comparison.new_dir, comparison.new_file)
+    else:
+        dir_sigs, _ = current_signatures(result)
+        print(f"[import-cycles] 无新增硬加载期环(基线内 {len(dir_sigs)} 现存环按治理节奏消除)。", flush=True)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = _parse_args(argv)
+    result, error_code = _load_scan_result(args)
+    if result is None:
+        return error_code
+
+    dir_sigs, file_sigs = current_signatures(result)
+    has_hard = bool(result["hard_dir_cycles"]) or bool(result["hard_file_cycles"])
+
+    if args.update_baseline:
+        write_baseline(args.baseline, dir_sigs, file_sigs)
+        rel = os.path.relpath(args.baseline, REPO_ROOT)
+        print(
+            f"[import-cycles] 基线已刷新:{len(dir_sigs)} 个硬目录环 + {len(file_sigs)} 个硬文件环 -> {rel}",
+            flush=True,
+        )
+        return 0
+
+    comparison = compare_with_baseline(args.baseline, dir_sigs, file_sigs)
+    clean = comparison.clean if args.fail_on_new_cycle else not has_hard
+
+    if args.quiet_when_clean and clean and not args.json:
+        return 0
+
+    _print_result(result, args, comparison)
 
     if args.fail_on_hard_cycle and has_hard:
         if not args.json:
@@ -404,6 +371,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 f"文件 {len(result['hard_file_cycles'])}),按 --fail-on-hard-cycle 阻断。",
                 flush=True,
             )
+        return 1
+    if args.fail_on_new_cycle and comparison.has_new:
         return 1
     return 0
 
