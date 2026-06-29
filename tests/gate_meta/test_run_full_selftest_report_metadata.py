@@ -32,6 +32,10 @@ def _load_shared_module():
     return __import__("tools.quality_gate_shared", fromlist=["QUALITY_GATE_REQUIRED_TESTS"])
 
 
+def _is_collect_command(command: Dict[str, object]) -> bool:
+    return list(command.get("args") or []) == ["python", "-m", "pytest", "--collect-only", "-q", "tests"]
+
+
 def test_legacy_full_selftest_root_report_is_not_current_artifact() -> None:
     assert not (REPO_ROOT / "evidence" / "FullSelfTest" / "full_selftest_report.md").exists()
 
@@ -79,7 +83,7 @@ def _write_verified_manifest(
         receipt_rel = shared.build_quality_gate_receipt_rel_path(index, command["display"])
         receipt_path = repo_root / receipt_rel
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        is_collect_command = command["display"] == "python -m pytest --collect-only -q tests"
+        is_collect_command = _is_collect_command(command)
         stdout_text = collect_proc.stdout if is_collect_command else (f"{command['display']} ok\n" if command.get("capture_output") else "")
         stderr_text = collect_proc.stderr if is_collect_command else ""
         stem = receipt_path.stem
@@ -578,12 +582,17 @@ def test_quality_gate_binding_status_rejects_fabricated_collect_receipt(tmp_path
     repo_root = tmp_path / "repo"
     manifest_path = _write_verified_manifest(repo_root)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    receipt_rel = manifest["command_receipts"][0]["path"]
+    receipt_entry = next(
+        receipt
+        for command, receipt in zip(manifest["commands"], manifest["command_receipts"])
+        if _is_collect_command(command)
+    )
+    receipt_rel = receipt_entry["path"]
     receipt_path = repo_root / receipt_rel
     receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
     receipt_payload["stdout_sha256"] = "0" * 64
     receipt_path.write_text(json.dumps(receipt_payload, ensure_ascii=False), encoding="utf-8")
-    manifest["command_receipts"][0]["sha256"] = hashlib.sha256(receipt_path.read_bytes()).hexdigest()
+    receipt_entry["sha256"] = hashlib.sha256(receipt_path.read_bytes()).hexdigest()
     manifest["command_receipts_hash"] = shared.hash_quality_gate_command_receipts(manifest["command_receipts"])
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
 

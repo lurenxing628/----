@@ -1108,11 +1108,15 @@ def _verify_receipt_output_hashes(
         if not path.startswith(QUALITY_GATE_LOGS_DIR_REL.replace("\\", "/") + "/"):
             return f"UNBOUND: quality gate command receipt {key} mismatch"
     collect_policy = _command_output_policy(normalized_command)
-    if index == 1 and receipt.get("stdout_sha256") != _hash_command_output(current_collect_stdout, policy=collect_policy):
+    if _is_default_collect_command(normalized_command) and receipt.get("stdout_sha256") != _hash_command_output(current_collect_stdout, policy=collect_policy):
         return "UNBOUND: quality gate collect receipt stdout hash mismatch"
-    if index == 1 and receipt.get("stderr_sha256") != _hash_command_output(current_collect_stderr, policy=collect_policy):
+    if _is_default_collect_command(normalized_command) and receipt.get("stderr_sha256") != _hash_command_output(current_collect_stderr, policy=collect_policy):
         return "UNBOUND: quality gate collect receipt stderr hash mismatch"
     return None
+
+
+def _is_default_collect_command(normalized_command: Dict[str, Any]) -> bool:
+    return list(normalized_command.get("args") or []) == ["python", "-m", "pytest", "--collect-only", "-q", "tests"]
 
 
 def _verify_receipt_execution_fields(receipt: Dict[str, Any]) -> Optional[str]:
