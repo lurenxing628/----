@@ -259,7 +259,14 @@ def main() -> int:
             ]
         )
 
-    report_path = os.path.join(repo_root, "evidence", "Benchmark", "sgs_large_resource_pool_report.md")
+    report_path = os.path.join(
+        repo_root,
+        "evidence",
+        "QualityGate",
+        "long_gate",
+        "optimizer_benchmark",
+        "sgs_large_resource_pool_report.md",
+    )
     _write_report(report_path, lines)
     report_relpath = os.path.relpath(report_path, repo_root)
     print(f"[benchmark_sgs_large_resource_pool] report: {report_relpath}")

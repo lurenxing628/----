@@ -707,19 +707,6 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
     startup_regressions = _registry_startup_regressions()
     return [
         {
-            "display": "python -m pytest --collect-only -q tests",
-            "args": ["python", "-m", "pytest", "--collect-only", "-q", "tests"],
-            "capture_output": True,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python tools/check_full_test_debt.py --sharded --shard-count 3",
-            "args": ["python", "tools/check_full_test_debt.py", "--sharded", "--shard-count", "3"],
-            "capture_output": True,
-            "output_policy": "exact",
-            "env_overlay": dict(REQUIRED_BROWSER_ENV_OVERLAY),
-        },
-        {
             "display": "python -m ruff --version",
             "args": ["python", "-m", "ruff", "--version"],
             "capture_output": True,
@@ -744,34 +731,9 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": f"python -m pyright -p {QUALITY_GATE_PYRIGHT_GATE_CONFIG}",
-            "args": ["python", "-m", "pyright", "-p", QUALITY_GATE_PYRIGHT_GATE_CONFIG],
-            "capture_output": False,
-            "output_policy": "normalized",
-        },
-        {
-            "display": f"python -m pyright -p {QUALITY_GATE_PYRIGHT_TOOLS_CONFIG}",
-            "args": ["python", "-m", "pyright", "-p", QUALITY_GATE_PYRIGHT_TOOLS_CONFIG],
-            "capture_output": False,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python -m pytest -q tests/gate_meta/test_architecture_fitness.py",
-            "args": ["python", "-m", "pytest", "-q", "tests/gate_meta/test_architecture_fitness.py"],
-            "capture_output": False,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python tools/verify_required_regressions_from_full_test_debt.py",
-            "args": ["python", "tools/verify_required_regressions_from_full_test_debt.py"],
+            "display": "python -m pytest --collect-only -q tests",
+            "args": ["python", "-m", "pytest", "--collect-only", "-q", "tests"],
             "capture_output": True,
-            "output_policy": "normalized",
-            "env_overlay": dict(REQUIRED_BROWSER_ENV_OVERLAY),
-        },
-        {
-            "display": "python scripts/sync_debt_ledger.py check",
-            "args": ["python", "scripts/sync_debt_ledger.py", "check"],
-            "capture_output": False,
             "output_policy": "normalized",
         },
         {
@@ -788,17 +750,6 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
                 "created",
                 "--require",
                 "items",
-            ],
-            "capture_output": True,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77",
-            "args": [
-                "python",
-                "tools/scan_aps_three_gap_py38_scope.py",
-                "--base-ref",
-                "d4589d77",
             ],
             "capture_output": True,
             "output_policy": "normalized",
@@ -824,12 +775,6 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": "python -m pytest -q " + " ".join(startup_regressions),
-            "args": ["python", "-m", "pytest", "-q"] + list(startup_regressions),
-            "capture_output": False,
-            "output_policy": "normalized",
-        },
-        {
             "display": "python tests/gate_meta/check_quickref_vs_routes.py",
             "args": ["python", "tests/gate_meta/check_quickref_vs_routes.py"],
             "capture_output": False,
@@ -840,6 +785,61 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "args": ["python", "tools/scan_anti_regression_gate.py", "--base-ref", "d4589d77"],
             "capture_output": True,
             "output_policy": "normalized",
+        },
+        {
+            "display": f"python -m pyright -p {QUALITY_GATE_PYRIGHT_GATE_CONFIG}",
+            "args": ["python", "-m", "pyright", "-p", QUALITY_GATE_PYRIGHT_GATE_CONFIG],
+            "capture_output": False,
+            "output_policy": "normalized",
+        },
+        {
+            "display": f"python -m pyright -p {QUALITY_GATE_PYRIGHT_TOOLS_CONFIG}",
+            "args": ["python", "-m", "pyright", "-p", QUALITY_GATE_PYRIGHT_TOOLS_CONFIG],
+            "capture_output": False,
+            "output_policy": "normalized",
+        },
+        {
+            "display": "python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77",
+            "args": [
+                "python",
+                "tools/scan_aps_three_gap_py38_scope.py",
+                "--base-ref",
+                "d4589d77",
+            ],
+            "capture_output": True,
+            "output_policy": "normalized",
+        },
+        {
+            "display": "python -m pytest -q tests/gate_meta/test_architecture_fitness.py",
+            "args": ["python", "-m", "pytest", "-q", "tests/gate_meta/test_architecture_fitness.py"],
+            "capture_output": False,
+            "output_policy": "normalized",
+        },
+        {
+            "display": "python scripts/sync_debt_ledger.py check",
+            "args": ["python", "scripts/sync_debt_ledger.py", "check"],
+            "capture_output": False,
+            "output_policy": "normalized",
+        },
+        {
+            "display": "python -m pytest -q " + " ".join(startup_regressions),
+            "args": ["python", "-m", "pytest", "-q"] + list(startup_regressions),
+            "capture_output": False,
+            "output_policy": "normalized",
+        },
+        {
+            "display": "python tools/check_full_test_debt.py --sharded --shard-count 3",
+            "args": ["python", "tools/check_full_test_debt.py", "--sharded", "--shard-count", "3"],
+            "capture_output": True,
+            "output_policy": "exact",
+            "env_overlay": dict(REQUIRED_BROWSER_ENV_OVERLAY),
+        },
+        {
+            "display": "python tools/verify_required_regressions_from_full_test_debt.py",
+            "args": ["python", "tools/verify_required_regressions_from_full_test_debt.py"],
+            "capture_output": True,
+            "output_policy": "normalized",
+            "env_overlay": dict(REQUIRED_BROWSER_ENV_OVERLAY),
         },
     ]
 

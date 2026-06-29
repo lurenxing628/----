@@ -349,32 +349,37 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     required_display = "python tools/verify_required_regressions_from_full_test_debt.py"
     assert required_display in displays
     assert "python scripts/sync_debt_ledger.py check" in displays
-    assert displays.index("guard_preflight") < displays.index("python -m pytest --collect-only -q tests")
-    assert displays.index("python -m pytest --collect-only -q tests") < displays.index("python -m ruff --version")
     assert displays.index("guard_preflight") < displays.index("python -m ruff --version")
     assert displays.index("python -m ruff --version") < displays.index("python -m pyright --version")
     assert displays.index("python -m pyright --version") < displays.index('python -c "import radon"')
-    assert displays.index("python -m ruff check") < displays.index("python -m pyright -p pyrightconfig.gate.json")
+    assert displays.index("python -m ruff check") < displays.index("python -m pytest --collect-only -q tests")
+    assert displays.index("python -m pytest --collect-only -q tests") < displays.index(
+        "python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items"
+    )
+    assert displays.index(
+        "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py"
+    ) < displays.index("python tests/gate_meta/check_quickref_vs_routes.py")
+    assert displays.index("python tools/scan_anti_regression_gate.py --base-ref d4589d77") < displays.index(
+        "python -m pyright -p pyrightconfig.gate.json"
+    )
     assert displays.index("python -m pyright -p pyrightconfig.gate.json") < displays.index(tool_pyright_display)
-    assert displays.index(tool_pyright_display) < displays.index(
+    assert displays.index(tool_pyright_display) < displays.index("python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77")
+    assert displays.index("python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77") < displays.index(
         "python -m pytest -q tests/gate_meta/test_architecture_fitness.py"
     )
     assert displays.index("guard_preflight") < displays.index(
         "python -m pytest -q tests/gate_meta/test_architecture_fitness.py"
     )
+    full_debt_display = "python tools/check_full_test_debt.py --sharded --shard-count 3"
     assert displays.index("python -m pytest -q tests/gate_meta/test_architecture_fitness.py") < displays.index(
-        "python scripts/sync_debt_ledger.py check"
-    )
-    assert displays.index(required_display) < displays.index(
-        "python scripts/sync_debt_ledger.py check"
-    )
-    assert displays.index("guard_preflight") < displays.index(required_display)
-    assert displays.index(required_display) < displays.index(
         "python scripts/sync_debt_ledger.py check"
     )
     assert displays.index("python scripts/sync_debt_ledger.py check") < displays.index(
         "python -m pytest -q " + " ".join(module.STARTUP_REGRESSION_ARGS)
     )
+    assert displays.index("python -m pytest -q " + " ".join(module.STARTUP_REGRESSION_ARGS)) < displays.index(full_debt_display)
+    assert displays.index(full_debt_display) < displays.index(required_display)
+    assert displays.index("guard_preflight") < displays.index(required_display)
 
 
 def test_main_executes_every_shared_command_when_plan_inserts_preflight(monkeypatch, tmp_path):
@@ -438,7 +443,12 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
     full_debt_command = command_plan[displays.index(full_debt_display)]
 
     assert displays.index("python -m pytest --collect-only -q tests") < displays.index(full_debt_display)
-    assert displays.index(full_debt_display) < displays.index("python -m ruff --version")
+    assert displays.index("python -m ruff --version") < displays.index("python -m ruff check")
+    assert displays.index("python -m ruff check") < displays.index(full_debt_display)
+    assert displays.index("python -m pyright -p pyrightconfig.gate.json") < displays.index(full_debt_display)
+    assert displays.index("python scripts/sync_debt_ledger.py check") < displays.index(full_debt_display)
+    assert displays.index("python -m pytest -q " + " ".join(module.STARTUP_REGRESSION_ARGS)) < displays.index(full_debt_display)
+    assert displays.index(full_debt_display) < displays.index("python tools/verify_required_regressions_from_full_test_debt.py")
     assert full_debt_command["args"] == ["python", "tools/check_full_test_debt.py", "--sharded", "--shard-count", "3"]
     assert full_debt_command["capture_output"] is True
     assert full_debt_command["output_policy"] == "exact"
@@ -715,10 +725,12 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     displays = [str(command["display"]) for command in command_plan]
     required_display = "python tools/verify_required_regressions_from_full_test_debt.py"
     startup_display = "python -m pytest -q " + " ".join(startup_from_registry)
+    full_debt_display = "python tools/check_full_test_debt.py --sharded --shard-count 3"
     assert required_display in displays
     assert startup_display in displays
-    assert displays.index(required_display) < displays.index("python scripts/sync_debt_ledger.py check")
     assert displays.index("python scripts/sync_debt_ledger.py check") < displays.index(startup_display)
+    assert displays.index(startup_display) < displays.index(full_debt_display)
+    assert displays.index(full_debt_display) < displays.index(required_display)
 
 
 def test_browser_required_env_overlay_is_in_shared_quality_gate_plan() -> None:
@@ -1474,6 +1486,7 @@ def test_main_updates_manifest_to_failed_on_command_error(monkeypatch, tmp_path)
     git_status_calls = iter([[], []])
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
 
     def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff --version":

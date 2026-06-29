@@ -163,6 +163,8 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
     "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
     "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py",
+    "tests/algorithm/test_optimizer_graph_ready_candidate_contract.py",
+    "tests/algorithm/test_optimizer_benchmark_ratchet_gate.py",
     "tests/algorithm/test_localsearch_batch_order_actuator.py",
     "tests/schedule/service/test_schedule_input_collector_contract.py",
     "tests/schedule/service/test_schedule_input_collector_legacy_compat.py",

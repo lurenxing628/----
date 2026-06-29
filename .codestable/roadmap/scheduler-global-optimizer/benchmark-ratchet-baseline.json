@@ -1,0 +1,181 @@
+{
+  "case_count": 3,
+  "cases": [
+    {
+      "algorithm_profile": "graph_ready",
+      "candidate_origin": "graph_ready_weight_grid",
+      "candidate_rejections": {},
+      "case_group": "tiny",
+      "case_slug": "tiny-sgs-single-machine",
+      "comparison_to_meta_baseline": {
+        "actual_value": 0.0,
+        "baseline_value": 0.0,
+        "delta_abs": 0.0,
+        "delta_pct": 0.0,
+        "metric": "gap_to_oracle_pct",
+        "status": "same"
+      },
+      "distinct_candidates": 0,
+      "failed_ops": 0,
+      "gap_to_oracle_pct": 0.0,
+      "objective_name": "min_overdue",
+      "objective_score": [],
+      "objective_score_matched": true,
+      "reference_type": "proven_optimum",
+      "runtime_ms": 0,
+      "same_fingerprint_rejections": 0,
+      "schema_version": 1,
+      "seed": 0,
+      "time_budget_seconds": 0
+    },
+    {
+      "accepted_distinct_candidates": 3,
+      "algorithm_profile": "graph_ready",
+      "baseline_failed_ops": 0,
+      "baseline_objective_score": [
+        0.0,
+        3.0,
+        18.0,
+        18.0,
+        24.0,
+        0.0
+      ],
+      "baseline_order": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "best_order": [
+        3,
+        4,
+        1,
+        2
+      ],
+      "best_origin": "graph_ready_weight_grid",
+      "candidate_origin": "graph_ready_weight_grid",
+      "candidate_profile_count": 9,
+      "candidate_rejections": {
+        "same_fingerprint": 4
+      },
+      "case_group": "graph_ready",
+      "case_slug": "graph-ready-weight-grid-real-sgs",
+      "comparison_to_meta_baseline": {
+        "actual_value": [
+          0.0,
+          2.0,
+          8.0,
+          8.0,
+          24.0,
+          0.0
+        ],
+        "baseline_value": [
+          0.0,
+          3.0,
+          18.0,
+          18.0,
+          24.0,
+          0.0
+        ],
+        "metric": "objective_score",
+        "status": "improved"
+      },
+      "distinct_candidates": 6,
+      "evaluated_candidates": 10,
+      "failed_ops": 0,
+      "gap_to_oracle_pct": 0.0,
+      "objective_name": "min_overdue",
+      "objective_score": [
+        0.0,
+        2.0,
+        8.0,
+        8.0,
+        24.0,
+        0.0
+      ],
+      "objective_score_matched": true,
+      "runtime_ms": 109,
+      "same_fingerprint_rejections": 4,
+      "seed": 0,
+      "status": "passed",
+      "time_budget_seconds": 1
+    },
+    {
+      "accepted_distinct_candidates": 0,
+      "algorithm_profile": "graph_ready",
+      "baseline_failed_ops": 0,
+      "baseline_objective_score": [],
+      "best_origin": "graph_ready_metric",
+      "bottleneck_scores": {
+        "busy": 2.5,
+        "flex": 0.707107,
+        "light": 1.0
+      },
+      "candidate_origin": "graph_ready_metric",
+      "candidate_profile_count": 0,
+      "candidate_rejections": {},
+      "case_group": "graph_ready_metric",
+      "case_slug": "graph-ready-flexible-machine-bottleneck-metric",
+      "comparison_to_meta_baseline": {
+        "actual_value": {
+          "busy": 2.5,
+          "flex": 0.707107,
+          "light": 1.0
+        },
+        "baseline_value": {
+          "busy": 2.5,
+          "flex": 0.707107,
+          "light": 1.0
+        },
+        "metric": "bottleneck_scores",
+        "status": "same"
+      },
+      "distinct_candidates": 0,
+      "evaluated_candidates": 0,
+      "failed_ops": 0,
+      "gap_to_oracle_pct": 0.0,
+      "objective_name": "min_overdue",
+      "objective_score": [],
+      "objective_score_matched": true,
+      "runtime_ms": 0,
+      "same_fingerprint_rejections": 0,
+      "seed": 0,
+      "status": "passed",
+      "time_budget_seconds": 0
+    }
+  ],
+  "dirty_worktree": true,
+  "generated_at": "2026-06-29T05:37:15Z",
+  "git_commit": "8711b9d259b4b79105e0f424b9c909510b63d317",
+  "graph_ready_optimization": {
+    "candidate_policy": "weight_grid",
+    "configured_weight_profile_count": 9,
+    "effective_weight_profile_count": 9,
+    "max_weight_profiles": 9,
+    "phase": "graph_ready_candidate_search",
+    "schema_version": 1,
+    "selection_tiebreaker": [
+      "failed_ops",
+      "objective_score",
+      "best_fingerprint_changed",
+      "runtime_ms",
+      "candidate_origin"
+    ],
+    "truncated": false,
+    "truncation_reason": null,
+    "weight_profile_slugs": [
+      "balanced",
+      "critical_path_first",
+      "successor_fanout_first",
+      "downstream_work_first",
+      "bottleneck_relief",
+      "critical_bottleneck",
+      "fanout_downstream",
+      "bottleneck_downstream",
+      "graph_neutral"
+    ]
+  },
+  "schema_version": 1,
+  "status": "passed",
+  "tier": "light"
+}
