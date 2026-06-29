@@ -11,16 +11,22 @@
 - `.codestable/roadmap/scheduler-global-optimizer/scheduler-global-optimizer-roadmap.md`
 - `.codestable/roadmap/scheduler-global-optimizer/scheduler-global-optimizer-items.yaml`
 - `.codestable/roadmap/scheduler-global-optimizer/benchmark-ratchet-baseline.json`
+- `.codestable/features/2026-06-29-scheduler-global-optimizer-items-9-13/scheduler-global-optimizer-items-9-13-acceptance.md`
+- `.codestable/issues/2026-06-29-graph-ready-ratchet-bottleneck/graph-ready-ratchet-bottleneck-fix-note.md`
 
 再看当前现场：
 
 ```bash
 git status --short
+git rev-parse HEAD
+git log -6 --oneline
 ```
 
-当前工作区大概率已有大量未提交改动。不要回退、清理或覆盖用户已有改动。只改你本轮明确负责的文件。
+截至本提示词核对时，当前分支已经 clean 且推到远端，HEAD 是 `4fbe2331`。但下一轮仍必须以自己运行的 `git status --short` 和 `git rev-parse HEAD` 为准：如果现场变脏，不要回退、清理或覆盖用户已有改动；如果现场仍干净，也不要被旧基准文件里的 `dirty_worktree=true` 误导成“当前工作区是脏的”。
 
 路线图推进顺序以 `scheduler-global-optimizer-items.yaml` 的 `depends_on` 为准，不要只按旧编号记忆推进。当前 GraphReady v2 的多算法基准 item 已依赖 `benchmark-reference-diagnostics-baseline`。
+
+门禁相关现状也要注意：最近一次收口已经修过 `collect-only` 缓存回执按命令识别、长门禁缓存清单顺序稳定这两类门禁问题。跑质量门禁时看当前命令、当前 HEAD 和当前工作区状态，不要手改缓存文件来制造绿灯。
 
 ## 1. 本轮目标
 
@@ -155,7 +161,7 @@ rg -n "bottleneck_machine_score|due_pressure|saveability|objective_score|candida
   - `comparison_to_graph_ready_v1`
   - `comparison_to_portfolio_best`
 
-注意：`.codestable/roadmap/scheduler-global-optimizer/benchmark-ratchet-baseline.json` 里有 `dirty_worktree=true`，只能当当前工作区参考快照，不能说成 clean proof。
+注意：`.codestable/roadmap/scheduler-global-optimizer/benchmark-ratchet-baseline.json` 里有 `dirty_worktree=true`，而且文件内记录的 `git_commit` 是旧提交 `8711b9d259b4b79105e0f424b9c909510b63d317`。它只能当 GraphReady v1 的历史参考快照，不能说成当前 HEAD 的 clean proof。要拿它做最终证明，必须在当前 HEAD 和 clean worktree 上重新跑对应 benchmark 或生成新的对比证据。
 
 ### item 15：`graph-ready-v2-objective-feature-contract`
 
@@ -189,16 +195,14 @@ GraphReady v2 的特征只能用于生成候选，不能绕过正式 SGS 解码�
 
 ### item 16：`graph-ready-v2-bottleneck-resource-score`
 
-重算瓶颈资源分，不要继续简单按“能跑瓶颈机”给高分。
+重算瓶颈资源分，但不要重复实现 items 9-13 已经落地的基础图指标。上一轮已经把 `bottleneck_machine_score` 接到生产图指标里：多候选机器按工时分摊、取最小候选机器负荷、再按候选机器数做灵活性降权；缺该字段时要 fail-loud，不能默认 0。
 
-要求实现或明确设计：
+本 item 要先复用并守住上述现状，再补剩余未做部分：
 
 - 残余容量：考虑日历、停机、冻结、已排片段。
-- 分摊负荷：柔性工序不要把全部负荷算到每台候选机器。
-- 最小候选负荷：如果工序能去空闲机器，就不能因为它也能去瓶颈机而误判为瓶颈紧急。
-- 灵活性降权：可选机器越多，瓶颈紧迫性越低。
-- 交期门控：交期不紧或不可救时，瓶颈分只能作为 tie-break。
+- 交期门控：结合 `due_pressure` / `saveability`，交期不紧或不可救时，瓶颈分只能作为 tie-break。
 - 拆分 `bottleneck_on` 和 `bottleneck_release`。
+- 回归保护：保留“分摊负荷 / 最小候选负荷 / 灵活性降权 / 缺字段 fail-loud”已有行为，防止 v2 重写时退回旧逻辑。
 
 ### item 17：`graph-ready-v2-candidate-portfolio`
 
@@ -362,3 +366,4 @@ rg -n "BenchmarkReference|not_comparable|changeover|same_fingerprint|no_improvem
 - 哪些 case 退步，为什么可接受或需要继续修。
 - 跑了哪些测试和 benchmark。
 - 如果没法跑完整门禁，明确写原因，不要包装成已完成。
+- 当前 Git 现场和基准快照口径：当前 HEAD 是什么、工作区是否干净、是否复用了旧 `dirty_worktree=true` 快照、是否在当前 clean HEAD 上补跑了新证据。
