@@ -83,15 +83,15 @@ def test_required_entry_comes_from_real_command_plan_and_enables_only_current_ca
     assert "required_regression_group_coverage" not in required_entry
     assert "required_regression_group_scope_policy" not in required_entry
     assert enabled == [
-        "pytest_collect_all",
-        "full_test_debt",
         "ruff_check_full",
+        "pytest_collect_all",
+        "quickref_vs_routes",
         "pyright_gate_full",
         "pyright_tools_full",
-        "required_regressions",
         "debt_ledger_sync",
         "startup_runtime_regressions",
-        "quickref_vs_routes",
+        "full_test_debt",
+        "required_regressions",
     ]
     assert _entry_by_id(manifest, "architecture_fitness")["cache_status"] == "planned"
     assert _entry_by_id(manifest, "quickref_vs_routes")["cache_status"] == "enabled"

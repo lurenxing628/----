@@ -73,15 +73,15 @@ def test_startup_entry_comes_from_real_command_plan_and_enables_only_current_cac
     assert startup_entry["args"] == [str(arg) for arg in startup_command["args"]]
     assert startup_entry["args"][4:] == iter_startup_regressions()
     assert enabled == [
-        "pytest_collect_all",
-        "full_test_debt",
         "ruff_check_full",
+        "pytest_collect_all",
+        "quickref_vs_routes",
         "pyright_gate_full",
         "pyright_tools_full",
-        "required_regressions",
         "debt_ledger_sync",
         "startup_runtime_regressions",
-        "quickref_vs_routes",
+        "full_test_debt",
+        "required_regressions",
     ]
     assert _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)["cache_status"] == "enabled"
 
