@@ -22,6 +22,11 @@ REPO_ROOT = _find_repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tests._support.benchmark_parallel import (  # noqa: E402
+    DEFAULT_BENCHMARK_WORKERS,
+    parallel_map_ordered,
+    positive_worker_count,
+)
 from tests._support.optimizer_fjsp_dataset import (  # noqa: E402
     DATASET_SOURCES,
     FjspInstance,
@@ -40,6 +45,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--allow-download", action="store_true", help="try downloading raw .fjs from GitHub")
     parser.add_argument("--calendar-days", type=int, default=120, help="how many days to seed 24h calendar")
     parser.add_argument("--time-budget", type=int, default=20, help="time_budget_seconds for improve mode")
+    parser.add_argument("--workers", type=int, default=DEFAULT_BENCHMARK_WORKERS, help="parallel worker processes")
     parser.add_argument("--full-matrix", action="store_true", help="run all fold strategies for all algo modes")
     parser.add_argument("--allow-invalid", action="store_true", help="write the report even if a run has failed_ops or no makespan")
     parser.add_argument(
@@ -74,30 +80,30 @@ def _selected_instances(raw_instances: str) -> List[str]:
 def _run_matrix(selected: Sequence[str], args: argparse.Namespace) -> List[Dict[str, Any]]:
     start_dt = datetime(2026, 1, 1, 0, 0, 0)
     due_date = "2099-12-31"
-    runs: List[Dict[str, Any]] = []
+    tasks: List[Dict[str, Any]] = []
     for instance_key in selected:
-        runs.extend(_run_instance_matrix(instance_key, args, start_dt=start_dt, due_date=due_date))
-    return runs
+        tasks.extend(_run_instance_tasks(instance_key, args, start_dt=start_dt, due_date=due_date))
+    return parallel_map_ordered(_run_case_task, tasks, workers=positive_worker_count(args.workers))
 
 
-def _run_instance_matrix(
+def _run_instance_tasks(
     instance_key: str,
     args: argparse.Namespace,
     *,
     start_dt: datetime,
     due_date: str,
 ) -> List[Dict[str, Any]]:
-    runs: List[Dict[str, Any]] = []
+    tasks: List[Dict[str, Any]] = []
     for fold_strategy in ("A_shortest", "B_balanced"):
-        runs.append(_run_case(instance_key, fold_strategy, "greedy", args, start_dt=start_dt, due_date=due_date))
+        tasks.append(_case_task(instance_key, fold_strategy, "greedy", args, start_dt=start_dt, due_date=due_date))
         if args.full_matrix:
-            runs.append(_run_case(instance_key, fold_strategy, "improve", args, start_dt=start_dt, due_date=due_date))
+            tasks.append(_case_task(instance_key, fold_strategy, "improve", args, start_dt=start_dt, due_date=due_date))
     if not args.full_matrix:
-        runs.append(_run_case(instance_key, "B_balanced", "improve", args, start_dt=start_dt, due_date=due_date))
-    return runs
+        tasks.append(_case_task(instance_key, "B_balanced", "improve", args, start_dt=start_dt, due_date=due_date))
+    return tasks
 
 
-def _run_case(
+def _case_task(
     instance_key: str,
     fold_strategy: str,
     algo_mode: str,
@@ -106,16 +112,29 @@ def _run_case(
     start_dt: datetime,
     due_date: str,
 ) -> Dict[str, Any]:
+    return {
+        "instance_key": instance_key,
+        "fold_strategy": fold_strategy,
+        "algo_mode": algo_mode,
+        "time_budget_seconds": int(args.time_budget),
+        "allow_download": bool(args.allow_download),
+        "calendar_days": int(args.calendar_days),
+        "start_dt": start_dt,
+        "due_date": due_date,
+    }
+
+
+def _run_case_task(task: Dict[str, Any]) -> Dict[str, Any]:
     return run_one_case(
         repo_root=REPO_ROOT,
-        instance_key=instance_key,
-        fold_strategy=fold_strategy,
-        algo_mode=algo_mode,
-        time_budget_seconds=int(args.time_budget),
-        allow_download=bool(args.allow_download),
-        calendar_days=int(args.calendar_days),
-        start_dt=start_dt,
-        due_date=due_date,
+        instance_key=str(task["instance_key"]),
+        fold_strategy=str(task["fold_strategy"]),
+        algo_mode=str(task["algo_mode"]),
+        time_budget_seconds=int(task["time_budget_seconds"]),
+        allow_download=bool(task["allow_download"]),
+        calendar_days=int(task["calendar_days"]),
+        start_dt=task["start_dt"],
+        due_date=str(task["due_date"]),
     )
 
 

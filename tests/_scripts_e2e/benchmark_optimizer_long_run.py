@@ -26,12 +26,18 @@ REPO_ROOT = find_repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tests._support.benchmark_parallel import (  # noqa: E402
+    DEFAULT_BENCHMARK_WORKERS,
+    parallel_map_ordered,
+    positive_worker_count,
+)
 from tests._support.optimizer_graph_ready_benchmark import run_graph_ready_real_sgs_case  # noqa: E402
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run graph-ready optimizer long benchmark.")
     parser.add_argument("--seeds", type=int, default=10, help="number of seeds; must be at least 10")
+    parser.add_argument("--workers", type=int, default=DEFAULT_BENCHMARK_WORKERS, help="parallel worker processes")
     parser.add_argument("--output-dir", default="evidence/QualityGate/long_gate/optimizer_benchmark")
     parser.add_argument("--no-write", action="store_true", help="only print JSON to stdout")
     return parser
@@ -66,6 +72,7 @@ def write_reports(output_dir: Path, payload: Dict[str, Any]) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "optimizer_long_run.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     lines = ["# Optimizer Long Run", "", f"- status: {payload['status']}", f"- seeds: {payload['aggregate']['seed_count']}"]
+    lines.append(f"- workers: {payload['workers']}")
     lines.append(f"- mean duplicate rate: {payload['aggregate']['mean_duplicate_candidate_rate']}")
     lines.append(f"- mean rejection rate: {payload['aggregate']['mean_candidate_rejection_rate']}")
     (output_dir / "optimizer_long_run.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -75,11 +82,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_arg_parser().parse_args(list(argv) if argv is not None else None)
     if int(args.seeds) < 10:
         raise SystemExit("--seeds must be at least 10")
-    rows = [run_seed(seed) for seed in range(int(args.seeds))]
+    workers = positive_worker_count(args.workers)
+    rows = parallel_map_ordered(run_seed, range(int(args.seeds)), workers=workers)
     payload = {
         "schema_version": 1,
         "status": "passed" if rows and all(row.get("status") == "passed" for row in rows) else "failed",
         "tier": "long_run",
+        "workers": workers,
         "cases": rows,
         "aggregate": aggregate(rows),
     }
@@ -89,7 +98,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if not output_dir.is_absolute():
             output_dir = REPO_ROOT / output_dir
         write_reports(output_dir, payload)
-    return 0
+    return 0 if payload["status"] == "passed" else 1
 
 
 if __name__ == "__main__":

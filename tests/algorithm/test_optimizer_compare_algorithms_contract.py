@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import subprocess
+from copy import deepcopy
 from pathlib import Path
 
 from tests._scripts_e2e.benchmark_optimizer_compare_algorithms import _proof_check
 from tests._support.optimizer_compare_algorithms import (
+    POSTHOC_UPPER_BOUND_SEMANTICS,
     _comparison,
     _portfolio_row,
     build_algorithm_comparison,
@@ -31,6 +33,7 @@ def _minimal_compare_payload(*, dirty_worktree: bool) -> dict:
                 "algorithm_profile": "greedy",
                 "algorithm_version": "baseline_v1",
                 "seed": 0,
+                "time_budget_seconds": 1,
                 "objective_score": [0.0, 1.0],
             }
         ],
@@ -46,6 +49,7 @@ def test_algorithm_comparison_matrix_consumes_reference_diagnostics_and_uses_ful
     by_profile = {str(row["algorithm_profile"]): row for row in rows}
 
     assert payload["status"] == "passed"
+    assert payload["command_args"]["workers"] == 10
     assert payload["ratchet_key_fields"] == [
         "case_group",
         "case_slug",
@@ -58,6 +62,12 @@ def test_algorithm_comparison_matrix_consumes_reference_diagnostics_and_uses_ful
     assert by_profile["graph_ready_v1"]["comparison_to_current_baseline"]["status"] == "improved"
     assert by_profile["portfolio_all"]["best_origin"].startswith("grasp_ig:")
     assert by_profile["portfolio_all"]["candidate_origin"] == "portfolio_all:grasp_ig"
+    assert by_profile["portfolio_all"]["comparison_semantics"] == POSTHOC_UPPER_BOUND_SEMANTICS
+    assert by_profile["portfolio_all"]["time_budget_seconds"] == 4
+    assert by_profile["portfolio_all"]["comparison_to_current_baseline"]["status"] == "not_comparable"
+    assert by_profile["portfolio_all"]["comparison_to_current_baseline"]["reason"] == "actual_is_posthoc_upper_bound"
+    assert by_profile["graph_ready_v1"]["comparison_to_portfolio_best"]["status"] == "not_comparable"
+    assert by_profile["graph_ready_v1"]["comparison_to_portfolio_best"]["reason"] == "reference_is_posthoc_upper_bound"
     assert payload["dirty_worktree"] in {True, False}
     assert payload["git_commit"]
     assert payload["generated_at"]
@@ -122,10 +132,34 @@ def test_algorithm_comparison_failed_actual_score_is_not_improvement() -> None:
     assert result["reason"] == "actual_status_not_passed"
 
 
+def test_algorithm_comparison_time_budget_mismatch_is_not_comparable() -> None:
+    result = _comparison(
+        {
+            "algorithm_profile": "graph_ready_v2_no_repair",
+            "time_budget_seconds": 10,
+            "objective_score": [0.0, 1.0],
+            "status": "passed",
+        },
+        {
+            "algorithm_profile": "graph_ready_v1",
+            "time_budget_seconds": 1,
+            "objective_score": [0.0, 2.0],
+            "status": "passed",
+        },
+        label="graph_ready_v1",
+    )
+
+    assert result["status"] == "not_comparable"
+    assert result["reason"] == "time_budget_mismatch"
+    assert result["actual_time_budget_seconds"] == 10
+    assert result["baseline_time_budget_seconds"] == 1
+
+
 def test_algorithm_portfolio_distinct_candidates_deduplicate_output_fingerprint() -> None:
     rows = [
         {
             "algorithm_profile": "a",
+            "time_budget_seconds": 1,
             "objective_score": [0.0, 1.0],
             "failed_ops": 0,
             "runtime_ms": 1,
@@ -143,6 +177,7 @@ def test_algorithm_portfolio_distinct_candidates_deduplicate_output_fingerprint(
         },
         {
             "algorithm_profile": "b",
+            "time_budget_seconds": 1,
             "objective_score": [0.0, 1.0],
             "failed_ops": 0,
             "runtime_ms": 1,
@@ -163,6 +198,8 @@ def test_algorithm_portfolio_distinct_candidates_deduplicate_output_fingerprint(
     row = _portfolio_row(rows, seed=0)
 
     assert row["evaluated_candidates"] == 5
+    assert row["time_budget_seconds"] == 2
+    assert row["comparison_semantics"] == POSTHOC_UPPER_BOUND_SEMANTICS
     assert row["distinct_candidates"] == 1
     assert row["accepted_distinct_candidates"] == 1
 
@@ -212,6 +249,34 @@ def test_algorithm_portfolio_rejects_failed_source_and_uses_passed_candidate() -
     assert row["failed_source_profiles"] == ["bad"]
 
 
+def test_algorithm_portfolio_rejects_missing_source_time_budget() -> None:
+    rows = [
+        {
+            "algorithm_profile": "missing-budget",
+            "objective_score": [0.0, 1.0],
+            "failed_ops": 0,
+            "runtime_ms": 1,
+            "evaluated_candidates": 1,
+            "distinct_candidates": 1,
+            "accepted_candidates": 1,
+            "accepted_distinct_candidates": 1,
+            "candidate_rejections": {},
+            "best_origin": "source",
+            "best_order": [1],
+            "best_output_fingerprint": "source-output",
+            "candidate_output_fingerprints": ["source-output"],
+            "accepted_output_fingerprints": ["source-output"],
+            "status": "passed",
+        }
+    ]
+
+    row = _portfolio_row(rows, seed=0)
+
+    assert row["status"] == "failed"
+    assert row["invalid_time_budget_sources"] == ["missing-budget"]
+    assert row["source_time_budget_seconds_by_profile"] == {"missing-budget": None}
+
+
 def test_algorithm_portfolio_has_no_best_when_all_sources_fail() -> None:
     rows = [
         {
@@ -254,7 +319,28 @@ def test_algorithm_summary_does_not_count_failed_row_as_win() -> None:
     )
 
     assert summary[0]["wins_vs_current_baseline"] == 0
-    assert summary[0]["mean_primary_delta_vs_current_baseline"] == 0.0
+    assert summary[0]["mean_primary_delta_vs_current_baseline"] is None
+    assert summary[0]["worst_primary_delta_vs_current_baseline"] is None
+
+
+def test_algorithm_summary_does_not_turn_not_comparable_delta_into_zero() -> None:
+    summary = summarize_comparison_rows(
+        [
+            {
+                "algorithm_profile": "portfolio_all",
+                "status": "passed",
+                "runtime_ms": 1,
+                "comparison_to_current_baseline": {
+                    "status": "not_comparable",
+                    "primary_delta": None,
+                },
+            }
+        ]
+    )
+
+    assert summary[0]["wins_vs_current_baseline"] == 0
+    assert summary[0]["mean_primary_delta_vs_current_baseline"] is None
+    assert summary[0]["worst_primary_delta_vs_current_baseline"] is None
 
 
 def test_algorithm_comparison_baseline_rejects_profile_regression() -> None:
@@ -301,6 +387,77 @@ def test_algorithm_comparison_baseline_rejects_score_shape_mismatch() -> None:
             "actual": [0.0],
         }
     ]
+
+
+def test_algorithm_comparison_baseline_rejects_time_budget_mismatch() -> None:
+    baseline = _minimal_compare_payload(dirty_worktree=False)
+    actual = _minimal_compare_payload(dirty_worktree=False)
+    actual["rows"][0]["time_budget_seconds"] = 10
+
+    result = compare_to_algorithm_baseline(actual, baseline)
+
+    assert result["status"] == "failed"
+    assert result["failures"] == [
+        {
+            "reason": "time_budget_mismatch",
+            "key": ["graph_ready", "graph-ready-weight-grid-real-sgs", "greedy", "baseline_v1", 0],
+            "baseline_time_budget_seconds": 1,
+            "actual_time_budget_seconds": 10,
+        }
+    ]
+
+
+def test_algorithm_comparison_baseline_rejects_missing_seed_key() -> None:
+    baseline = _minimal_compare_payload(dirty_worktree=False)
+    actual = _minimal_compare_payload(dirty_worktree=False)
+    actual["rows"][0].pop("seed")
+
+    result = compare_to_algorithm_baseline(actual, baseline)
+
+    assert result["status"] == "failed"
+    reasons = {failure["reason"] for failure in result["failures"]}
+    assert "missing_actual_seed" in reasons
+    assert "missing_actual_row" in reasons
+
+
+def test_algorithm_comparison_baseline_rejects_invalid_seed_key() -> None:
+    baseline = _minimal_compare_payload(dirty_worktree=False)
+    actual = _minimal_compare_payload(dirty_worktree=False)
+    actual["rows"][0]["seed"] = 0.5
+
+    result = compare_to_algorithm_baseline(actual, baseline)
+
+    assert result["status"] == "failed"
+    reasons = {failure["reason"] for failure in result["failures"]}
+    assert "invalid_actual_seed" in reasons
+    assert "missing_actual_row" in reasons
+
+
+def test_algorithm_comparison_baseline_rejects_duplicate_ratchet_key_without_overwrite() -> None:
+    baseline = _minimal_compare_payload(dirty_worktree=False)
+    actual = _minimal_compare_payload(dirty_worktree=False)
+    regressed_row = deepcopy(actual["rows"][0])
+    regressed_row["objective_score"] = [99.0, 99.0]
+    actual["rows"] = [regressed_row, deepcopy(baseline["rows"][0])]
+
+    result = compare_to_algorithm_baseline(actual, baseline)
+
+    assert result["status"] == "failed"
+    reasons = {failure["reason"] for failure in result["failures"]}
+    assert "duplicate_actual_ratchet_key" in reasons
+    assert "objective_score_regressed" in reasons
+
+
+def test_algorithm_comparison_baseline_rejects_duplicate_baseline_ratchet_key() -> None:
+    baseline = _minimal_compare_payload(dirty_worktree=False)
+    actual = _minimal_compare_payload(dirty_worktree=False)
+    baseline["rows"].append(deepcopy(baseline["rows"][0]))
+
+    result = compare_to_algorithm_baseline(actual, baseline)
+
+    assert result["status"] == "failed"
+    reasons = {failure["reason"] for failure in result["failures"]}
+    assert "duplicate_baseline_ratchet_key" in reasons
 
 
 def test_algorithm_comparison_baseline_blocks_dirty_clean_proof_by_default() -> None:
@@ -380,6 +537,7 @@ def test_algorithm_comparison_script_no_write_runs_requested_profiles() -> None:
 
     payload = json.loads(out)
     assert payload["comparison"]["status"] == "passed"
+    assert payload["comparison"]["command_args"]["workers"] == 10
     assert payload["comparison"]["proof_binding_status"] in {"clean_worktree", "unbound_dirty_worktree"}
     assert payload["proof_check"]["status"] == "passed"
     assert "graph_ready_v1" in out

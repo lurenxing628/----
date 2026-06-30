@@ -10,6 +10,7 @@ from core.services.scheduler.run.optimizer_candidate_fingerprint import build_ca
 from core.services.scheduler.run.optimizer_proof_oracle import _operation_object, batch_objects
 from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
 from tests._support.optimizer_smtwt_compare_common import (
+    SAME_BUDGET_SEMANTICS,
     SMTWT_COMPARE_SCHEMA_VERSION,
     make_scheduler,
     score_list,
@@ -134,6 +135,7 @@ def _base_row(*, profile: str, version: str, context: Dict[str, Any], seed: int)
         "algorithm_version": version,
         "seed": int(seed),
         "time_budget_seconds": int(context["time_budget_seconds"]),
+        "comparison_semantics": SAME_BUDGET_SEMANTICS,
         "objective_name": str(context["case"].objective_name),
     }
 

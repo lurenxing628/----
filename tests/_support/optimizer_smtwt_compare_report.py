@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import math
+from collections import Counter
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from tests._support.optimizer_smtwt_compare_common import (
+    POSTHOC_UPPER_BOUND_SEMANTICS,
     SMTWT_COMPARE_SCHEMA_VERSION,
     SMTWT_OBJECTIVE_NAME,
     first_changed_delta,
@@ -21,11 +24,13 @@ def portfolio_row(rows: Sequence[Dict[str, Any]], *, seed: int, optimum: int) ->
     invalid_sources = _invalid_score_sources(rows)
     failed_sources = _failed_sources(rows)
     shape_mismatch_sources = _shape_mismatch_sources(rows)
+    invalid_time_budget_sources = _invalid_time_budget_sources(rows)
     eligible_rows = _eligible_portfolio_rows(rows)
     accepted_fingerprints = _output_fingerprint_union(rows, field="accepted_output_fingerprints")
     best = min(eligible_rows, key=lambda row: score_tuple(row.get("objective_score"))) if eligible_rows else {}
     row = _portfolio_base(best=best, seed=seed, optimum=optimum)
     row.update(_portfolio_totals(rows, accepted_fingerprints=accepted_fingerprints))
+    row.update(_portfolio_source_metadata(rows))
     row.update(
         {
             "candidate_rejections": merge_rejections(rows),
@@ -38,7 +43,10 @@ def portfolio_row(rows: Sequence[Dict[str, Any]], *, seed: int, optimum: int) ->
             "invalid_objective_score_sources": invalid_sources,
             "failed_source_profiles": failed_sources,
             "objective_score_shape_mismatch_sources": shape_mismatch_sources,
-            "status": "failed" if invalid_sources or failed_sources or shape_mismatch_sources or not eligible_rows else "passed",
+            "invalid_time_budget_sources": invalid_time_budget_sources,
+            "status": "failed"
+            if invalid_sources or failed_sources or shape_mismatch_sources or invalid_time_budget_sources or not eligible_rows
+            else "passed",
         }
     )
     return row
@@ -74,6 +82,10 @@ def comparison(row: Dict[str, Any], reference: Optional[Dict[str, Any]], *, labe
         return {"reference": label, "status": "not_comparable", "primary_delta": None, "reason": "missing_reference_algorithm"}
     if row.get("status") != "passed":
         return {"reference": label, "status": "not_comparable", "primary_delta": None, "reason": "actual_status_not_passed"}
+    if row.get("comparison_semantics") == POSTHOC_UPPER_BOUND_SEMANTICS:
+        return {"reference": label, "status": "not_comparable", "primary_delta": None, "reason": "actual_is_posthoc_upper_bound"}
+    if reference.get("comparison_semantics") == POSTHOC_UPPER_BOUND_SEMANTICS:
+        return {"reference": label, "status": "not_comparable", "primary_delta": None, "reason": "reference_is_posthoc_upper_bound"}
     if reference.get("status") != "passed":
         return {"reference": label, "status": "not_comparable", "primary_delta": None, "reason": "reference_status_not_passed"}
     actual = valid_score_tuple(row.get("objective_score"))
@@ -84,6 +96,17 @@ def comparison(row: Dict[str, Any], reference: Optional[Dict[str, Any]], *, labe
         return {"reference": label, "status": "not_comparable", "primary_delta": None, "reason": "invalid_reference_objective_score"}
     if len(actual) != len(baseline):
         return {"reference": label, "status": "not_comparable", "primary_delta": None, "reason": "objective_score_shape_mismatch"}
+    budget_mismatch = _time_budget_mismatch(row, reference)
+    if budget_mismatch is not None:
+        reason, actual_budget, baseline_budget = budget_mismatch
+        return {
+            "reference": label,
+            "status": "not_comparable",
+            "primary_delta": None,
+            "reason": reason,
+            "actual_time_budget_seconds": actual_budget,
+            "baseline_time_budget_seconds": baseline_budget,
+        }
     status = "same"
     if actual < baseline:
         status = "improved"
@@ -108,12 +131,13 @@ def _portfolio_base(*, best: Dict[str, Any], seed: int, optimum: int) -> Dict[st
         "algorithm_profile": "portfolio_all",
         "algorithm_version": "posthoc_same_seed_v1",
         "seed": int(seed),
-        "time_budget_seconds": int(best.get("time_budget_seconds") or 1),
+        "time_budget_seconds": 0,
+        "comparison_semantics": POSTHOC_UPPER_BOUND_SEMANTICS,
         "objective_name": SMTWT_OBJECTIVE_NAME,
         "objective_score": list(best.get("objective_score") or []),
         "overdue_count": int(best.get("overdue_count") or 0),
         "optimal_overdue_count": int(optimum),
-        "overdue_gap_to_opt": int(best.get("overdue_gap_to_opt") or 0),
+        "overdue_gap_to_opt": _valid_int(best.get("overdue_gap_to_opt")),
         "failed_ops": int(best.get("failed_ops") or 0),
     }
 
@@ -128,17 +152,45 @@ def _portfolio_totals(rows: Sequence[Dict[str, Any]], *, accepted_fingerprints: 
     }
 
 
+def _portfolio_source_metadata(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    source_profiles = [str(row.get("algorithm_profile") or "") for row in rows]
+    source_time_budgets = {
+        str(row.get("algorithm_profile") or ""): _valid_time_budget_seconds(row)
+        for row in rows
+    }
+    total_time_budget = sum(value for value in source_time_budgets.values() if value is not None)
+    return {
+        "time_budget_seconds": int(total_time_budget),
+        "comparison_semantics": POSTHOC_UPPER_BOUND_SEMANTICS,
+        "source_algorithm_profiles": source_profiles,
+        "source_time_budget_seconds_by_profile": source_time_budgets,
+        "source_time_budget_seconds_total": int(total_time_budget),
+    }
+
+
 def _summary_for_profile(rows: Sequence[Dict[str, Any]], profile: str) -> Dict[str, Any]:
     profile_rows = [row for row in rows if row.get("algorithm_profile") == profile]
+    valid_gap_rows = [
+        row
+        for row in profile_rows
+        if row.get("status") == "passed" and _valid_int(row.get("overdue_gap_to_opt")) is not None
+    ]
+    valid_overdue_count_rows = [
+        row for row in profile_rows if _valid_int(row.get("overdue_count")) is not None
+    ]
     return {
         "algorithm_profile": profile,
         "case_count": len(profile_rows),
-        "mean_overdue_gap_to_opt": mean(row.get("overdue_gap_to_opt") for row in profile_rows),
-        "mean_overdue_count": mean(row.get("overdue_count") for row in profile_rows),
+        "mean_overdue_gap_to_opt": mean(row.get("overdue_gap_to_opt") for row in valid_gap_rows)
+        if valid_gap_rows
+        else None,
+        "mean_overdue_count": mean(row.get("overdue_count") for row in valid_overdue_count_rows)
+        if valid_overdue_count_rows
+        else None,
         "optimal_case_count": sum(
             1
-            for row in profile_rows
-            if row.get("status") == "passed" and int(row.get("overdue_gap_to_opt") or 0) == 0
+            for row in valid_gap_rows
+            if _valid_int(row.get("overdue_gap_to_opt")) == 0
         ),
         "wins_vs_greedy": _count_status(profile_rows, "comparison_to_greedy", "improved"),
         "ties_vs_greedy": _count_status(profile_rows, "comparison_to_greedy", "same"),
@@ -152,6 +204,12 @@ def _summary_for_profile(rows: Sequence[Dict[str, Any]], profile: str) -> Dict[s
 def _pairwise_row(rows: Sequence[Dict[str, Any]], *, subject: str, reference: str) -> Dict[str, Any]:
     paired = _paired_rows(rows, subject=subject, reference=reference)
     statuses = [_pairwise_status(row, ref) for row, ref in paired]
+    comparable_pairs = [
+        (row, ref)
+        for (row, ref), status in zip(paired, statuses)
+        if status != "not_comparable" and ref is not None
+    ]
+    comparable_gap_deltas = _comparable_overdue_gap_deltas(comparable_pairs)
     return {
         "subject": subject,
         "reference": reference,
@@ -160,14 +218,55 @@ def _pairwise_row(rows: Sequence[Dict[str, Any]], *, subject: str, reference: st
         "ties": statuses.count("same"),
         "losses": statuses.count("degraded"),
         "not_comparable": statuses.count("not_comparable"),
-        "mean_overdue_gap_delta": mean((row.get("overdue_gap_to_opt") or 0) - (ref.get("overdue_gap_to_opt") or 0) for row, ref in paired),
+        "mean_overdue_gap_delta": mean(comparable_gap_deltas) if comparable_gap_deltas else None,
     }
 
 
-def _paired_rows(rows: Sequence[Dict[str, Any]], *, subject: str, reference: str) -> List[Tuple[Dict[str, Any], Dict[str, Any]]]:
+def _paired_rows(rows: Sequence[Dict[str, Any]], *, subject: str, reference: str) -> List[Tuple[Dict[str, Any], Optional[Dict[str, Any]]]]:
     subject_rows = [row for row in rows if row.get("algorithm_profile") == subject]
-    ref_by_key = {row_key(row): row for row in rows if row.get("algorithm_profile") == reference}
-    return [(row, ref_by_key[row_key(row)]) for row in subject_rows if row_key(row) in ref_by_key]
+    reference_rows = [row for row in rows if row.get("algorithm_profile") == reference]
+    ref_by_key, duplicate_ref_keys = _unique_rows_by_key(reference_rows)
+    subject_key_counts = Counter(key for row in subject_rows if (key := row_key(row)) is not None)
+    pairs: List[Tuple[Dict[str, Any], Optional[Dict[str, Any]]]] = []
+    for row in subject_rows:
+        key = row_key(row)
+        if key is None or subject_key_counts[key] > 1 or key in duplicate_ref_keys:
+            pairs.append((row, None))
+            continue
+        pairs.append((row, ref_by_key.get(key)))
+    return pairs
+
+
+def _unique_rows_by_key(rows: Sequence[Dict[str, Any]]) -> Tuple[Dict[Tuple[str, int], Dict[str, Any]], set]:
+    out: Dict[Tuple[str, int], Dict[str, Any]] = {}
+    duplicate_keys = set()
+    for row in rows:
+        key = row_key(row)
+        if key is None:
+            continue
+        if key in out:
+            duplicate_keys.add(key)
+            out.pop(key, None)
+            continue
+        out[key] = row
+    return out, duplicate_keys
+
+
+def _overdue_gap_delta(row: Dict[str, Any], ref: Dict[str, Any]) -> Optional[float]:
+    actual = _valid_number(row.get("overdue_gap_to_opt"))
+    baseline = _valid_number(ref.get("overdue_gap_to_opt"))
+    if actual is None or baseline is None:
+        return None
+    return actual - baseline
+
+
+def _comparable_overdue_gap_deltas(pairs: Sequence[Tuple[Dict[str, Any], Dict[str, Any]]]) -> List[float]:
+    deltas: List[float] = []
+    for row, ref in pairs:
+        delta = _overdue_gap_delta(row, ref)
+        if delta is not None:
+            deltas.append(delta)
+    return deltas
 
 
 def _profiles(rows: Sequence[Dict[str, Any]]) -> set:
@@ -181,8 +280,14 @@ def _find_profile(rows: Sequence[Dict[str, Any]], profile: str) -> Optional[Dict
     return None
 
 
-def _pairwise_status(row: Dict[str, Any], ref: Dict[str, Any]) -> str:
+def _pairwise_status(row: Dict[str, Any], ref: Optional[Dict[str, Any]]) -> str:
+    if ref is None:
+        return "not_comparable"
     if row.get("status") != "passed" or ref.get("status") != "passed":
+        return "not_comparable"
+    if row.get("comparison_semantics") == POSTHOC_UPPER_BOUND_SEMANTICS:
+        return "not_comparable"
+    if ref.get("comparison_semantics") == POSTHOC_UPPER_BOUND_SEMANTICS:
         return "not_comparable"
     actual = valid_score_tuple(row.get("objective_score"))
     baseline = valid_score_tuple(ref.get("objective_score"))
@@ -190,11 +295,51 @@ def _pairwise_status(row: Dict[str, Any], ref: Dict[str, Any]) -> str:
         return "not_comparable"
     if len(actual) != len(baseline):
         return "not_comparable"
+    if _time_budget_mismatch(row, ref) is not None:
+        return "not_comparable"
     if actual < baseline:
         return "improved"
     if actual > baseline:
         return "degraded"
     return "same"
+
+
+def _valid_time_budget_seconds(row: Dict[str, Any]) -> Optional[int]:
+    value = row.get("time_budget_seconds")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not math.isfinite(number) or number < 0 or int(number) != number:
+        return None
+    return int(number)
+
+
+def _valid_int(value: Any) -> Optional[int]:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not math.isfinite(number) or int(number) != number:
+        return None
+    return int(number)
+
+
+def _valid_number(value: Any) -> Optional[float]:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _time_budget_mismatch(row: Dict[str, Any], reference: Dict[str, Any]) -> Optional[Tuple[str, Optional[int], Optional[int]]]:
+    actual_budget = _valid_time_budget_seconds(row)
+    baseline_budget = _valid_time_budget_seconds(reference)
+    if actual_budget is None:
+        return "missing_actual_time_budget_seconds", actual_budget, baseline_budget
+    if baseline_budget is None:
+        return "missing_reference_time_budget_seconds", actual_budget, baseline_budget
+    if actual_budget != baseline_budget:
+        return "time_budget_mismatch", actual_budget, baseline_budget
+    return None
 
 
 def _invalid_score_sources(rows: Sequence[Dict[str, Any]]) -> List[str]:
@@ -222,6 +367,14 @@ def _shape_mismatch_sources(rows: Sequence[Dict[str, Any]]) -> List[str]:
         for row in rows
         if (score := valid_score_tuple(row.get("objective_score"))) is not None
         and len(score) != expected_len
+    ]
+
+
+def _invalid_time_budget_sources(rows: Sequence[Dict[str, Any]]) -> List[str]:
+    return [
+        str(row.get("algorithm_profile") or "")
+        for row in rows
+        if _valid_time_budget_seconds(row) is None
     ]
 
 

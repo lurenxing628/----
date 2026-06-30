@@ -22,6 +22,7 @@ REPO_ROOT = find_repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tests._support.benchmark_parallel import DEFAULT_BENCHMARK_WORKERS, positive_worker_count  # noqa: E402
 from tests._support.optimizer_compare_algorithms import (  # noqa: E402
     DEFAULT_ALGORITHM_PROFILES,
     build_algorithm_comparison,
@@ -35,6 +36,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Compare optimizer algorithm profiles.")
     parser.add_argument("--profiles", default=",".join(DEFAULT_ALGORITHM_PROFILES), help="comma-separated algorithm profiles")
     parser.add_argument("--seeds", type=int, default=10, help="seed count")
+    parser.add_argument("--workers", type=int, default=DEFAULT_BENCHMARK_WORKERS, help="parallel worker processes")
     parser.add_argument("--baseline", default=str(DEFAULT_COMPARE_BASELINE), help="comparison baseline path")
     parser.add_argument("--update-baseline", action="store_true", help="write current comparison baseline")
     parser.add_argument("--check-baseline", action="store_true", help="compare current output with baseline")
@@ -51,7 +53,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_arg_parser().parse_args(list(argv) if argv is not None else None)
     profiles = [item.strip() for item in str(args.profiles or "").split(",") if item.strip()]
-    payload = build_algorithm_comparison(profiles=profiles, seeds=int(args.seeds))
+    workers = positive_worker_count(args.workers)
+    payload = build_algorithm_comparison(profiles=profiles, seeds=int(args.seeds), workers=workers)
     baseline_path = _repo_path(Path(args.baseline))
     result = {"comparison": payload}
     status = str(payload.get("status") or "failed")

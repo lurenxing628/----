@@ -16,6 +16,11 @@ from core.services.scheduler.run.optimizer_candidate_profile import derive_grasp
 from core.services.scheduler.run.optimizer_grasp_ig_candidates import run_grasp_ig_candidates
 from core.services.scheduler.run.optimizer_local_search import run_local_search
 from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from tests._support.benchmark_parallel import (
+    DEFAULT_BENCHMARK_WORKERS,
+    parallel_map_ordered,
+    positive_worker_count,
+)
 from tests._support.optimizer_compare_algorithms_report import (
     compare_to_algorithm_baseline,
     summarize_comparison_rows,
@@ -40,6 +45,8 @@ from tests._support.optimizer_reference_diagnostics import build_reference_diagn
 COMPARE_SCHEMA_VERSION = 1
 COMPARE_CASE_GROUP = "graph_ready"
 COMPARE_CASE_SLUG = "graph-ready-weight-grid-real-sgs"
+POSTHOC_UPPER_BOUND_SEMANTICS = "posthoc_upper_bound"
+SAME_BUDGET_SEMANTICS = "same_budget_algorithm"
 DEFAULT_ALGORITHM_PROFILES = (
     "greedy",
     "local_search",
@@ -51,12 +58,12 @@ DEFAULT_ALGORITHM_PROFILES = (
 )
 
 
-def build_algorithm_comparison(*, profiles: Sequence[str], seeds: int) -> Dict[str, Any]:
+def build_algorithm_comparison(*, profiles: Sequence[str], seeds: int, workers: int = DEFAULT_BENCHMARK_WORKERS) -> Dict[str, Any]:
     normalized_profiles = _normalize_profiles(profiles)
+    worker_count = positive_worker_count(workers)
     all_rows: List[Dict[str, Any]] = []
-    for seed in range(int(seeds)):
-        seed_rows = _run_seed_profiles(seed=seed, profiles=normalized_profiles)
-        _attach_comparisons(seed_rows)
+    seed_tasks = [(seed, normalized_profiles) for seed in range(int(seeds))]
+    for seed_rows in parallel_map_ordered(_run_seed_profiles_task, seed_tasks, workers=worker_count):
         all_rows.extend(seed_rows)
     dirty_worktree = _dirty_worktree(Path.cwd())
     payload = {
@@ -67,7 +74,7 @@ def build_algorithm_comparison(*, profiles: Sequence[str], seeds: int) -> Dict[s
         "dirty_worktree": dirty_worktree,
         "proof_binding_status": "unbound_dirty_worktree" if dirty_worktree else "clean_worktree",
         "command": "build_algorithm_comparison",
-        "command_args": {"profiles": list(normalized_profiles), "seeds": int(seeds)},
+        "command_args": {"profiles": list(normalized_profiles), "seeds": int(seeds), "workers": worker_count},
         "case_group": COMPARE_CASE_GROUP,
         "case_slug": COMPARE_CASE_SLUG,
         "seed_count": int(seeds),
@@ -78,6 +85,13 @@ def build_algorithm_comparison(*, profiles: Sequence[str], seeds: int) -> Dict[s
         "summary": summarize_comparison_rows(all_rows),
     }
     return payload
+
+
+def _run_seed_profiles_task(task: Tuple[int, Tuple[str, ...]]) -> List[Dict[str, Any]]:
+    seed, profiles = task
+    seed_rows = _run_seed_profiles(seed=int(seed), profiles=profiles)
+    _attach_comparisons(seed_rows)
+    return seed_rows
 
 
 def _normalize_profiles(profiles: Sequence[str]) -> Tuple[str, ...]:
@@ -309,6 +323,7 @@ def _row_from_candidate(
         "algorithm_version": version,
         "seed": int(seed),
         "time_budget_seconds": 1,
+        "comparison_semantics": SAME_BUDGET_SEMANTICS,
         "objective_name": OBJECTIVE_NAME,
         "objective_score": _score_list(candidate.get("score")),
         "failed_ops": int(getattr(summary, "failed_ops", 0) or 0),
@@ -340,10 +355,17 @@ def _portfolio_row(rows: Sequence[Dict[str, Any]], *, seed: int) -> Dict[str, An
     invalid_sources = _invalid_score_sources(rows)
     failed_sources = _failed_sources(rows)
     shape_mismatch_sources = _shape_mismatch_sources(rows)
+    invalid_time_budget_sources = _invalid_time_budget_sources(rows)
     eligible_rows = _eligible_portfolio_rows(rows)
     best = min(eligible_rows, key=lambda row: _score_tuple(row.get("objective_score"))) if eligible_rows else {}
     candidate_fingerprints = _output_fingerprint_union(rows, field="candidate_output_fingerprints")
     accepted_fingerprints = _output_fingerprint_union(rows, field="accepted_output_fingerprints")
+    source_profiles = [str(row.get("algorithm_profile") or "") for row in rows]
+    source_time_budgets = {
+        str(row.get("algorithm_profile") or ""): _valid_time_budget_seconds(row)
+        for row in rows
+    }
+    total_time_budget = sum(value for value in source_time_budgets.values() if value is not None)
     return {
         "schema_version": COMPARE_SCHEMA_VERSION,
         "case_group": COMPARE_CASE_GROUP,
@@ -351,7 +373,11 @@ def _portfolio_row(rows: Sequence[Dict[str, Any]], *, seed: int) -> Dict[str, An
         "algorithm_profile": "portfolio_all",
         "algorithm_version": "posthoc_same_seed_v1",
         "seed": int(seed),
-        "time_budget_seconds": 1,
+        "time_budget_seconds": int(total_time_budget),
+        "comparison_semantics": POSTHOC_UPPER_BOUND_SEMANTICS,
+        "source_algorithm_profiles": source_profiles,
+        "source_time_budget_seconds_by_profile": source_time_budgets,
+        "source_time_budget_seconds_total": int(total_time_budget),
         "objective_name": OBJECTIVE_NAME,
         "objective_score": list(best.get("objective_score") or []),
         "failed_ops": int(best.get("failed_ops") or 0),
@@ -371,7 +397,10 @@ def _portfolio_row(rows: Sequence[Dict[str, Any]], *, seed: int) -> Dict[str, An
         "invalid_objective_score_sources": invalid_sources,
         "failed_source_profiles": failed_sources,
         "objective_score_shape_mismatch_sources": shape_mismatch_sources,
-        "status": "failed" if invalid_sources or failed_sources or shape_mismatch_sources or not eligible_rows else "passed",
+        "invalid_time_budget_sources": invalid_time_budget_sources,
+        "status": "failed"
+        if invalid_sources or failed_sources or shape_mismatch_sources or invalid_time_budget_sources or not eligible_rows
+        else "passed",
     }
 
 
@@ -422,6 +451,30 @@ def _comparison(row: Dict[str, Any], reference: Optional[Dict[str, Any]], *, lab
             "status": "not_comparable",
             "reason": "actual_status_not_passed",
         }
+    if row.get("comparison_semantics") == POSTHOC_UPPER_BOUND_SEMANTICS:
+        actual = _valid_score_tuple(row.get("objective_score"))
+        baseline = _valid_score_tuple(reference.get("objective_score"))
+        return {
+            "reference": label,
+            "baseline_algorithm_profile": reference.get("algorithm_profile"),
+            "baseline_value": list(baseline or ()),
+            "actual_value": list(actual or ()),
+            "primary_delta": None,
+            "status": "not_comparable",
+            "reason": "actual_is_posthoc_upper_bound",
+        }
+    if reference.get("comparison_semantics") == POSTHOC_UPPER_BOUND_SEMANTICS:
+        actual = _valid_score_tuple(row.get("objective_score"))
+        baseline = _valid_score_tuple(reference.get("objective_score"))
+        return {
+            "reference": label,
+            "baseline_algorithm_profile": reference.get("algorithm_profile"),
+            "baseline_value": list(baseline or ()),
+            "actual_value": list(actual or ()),
+            "primary_delta": None,
+            "status": "not_comparable",
+            "reason": "reference_is_posthoc_upper_bound",
+        }
     if reference.get("status") != "passed":
         return {
             "reference": label,
@@ -464,6 +517,20 @@ def _comparison(row: Dict[str, Any], reference: Optional[Dict[str, Any]], *, lab
             "status": "not_comparable",
             "reason": "objective_score_shape_mismatch",
         }
+    budget_mismatch = _time_budget_mismatch(row, reference)
+    if budget_mismatch is not None:
+        reason, actual_budget, baseline_budget = budget_mismatch
+        return {
+            "reference": label,
+            "baseline_algorithm_profile": reference.get("algorithm_profile"),
+            "baseline_value": list(baseline),
+            "actual_value": list(actual),
+            "primary_delta": None,
+            "status": "not_comparable",
+            "reason": reason,
+            "actual_time_budget_seconds": actual_budget,
+            "baseline_time_budget_seconds": baseline_budget,
+        }
     status = "same"
     if actual < baseline:
         status = "improved"
@@ -498,6 +565,28 @@ def _valid_score_tuple(value: Any) -> Optional[Tuple[float, ...]]:
             return None
         score.append(number)
     return tuple(score)
+
+
+def _valid_time_budget_seconds(row: Dict[str, Any]) -> Optional[int]:
+    value = row.get("time_budget_seconds")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not math.isfinite(number) or number < 0 or int(number) != number:
+        return None
+    return int(number)
+
+
+def _time_budget_mismatch(row: Dict[str, Any], reference: Dict[str, Any]) -> Optional[Tuple[str, Optional[int], Optional[int]]]:
+    actual_budget = _valid_time_budget_seconds(row)
+    baseline_budget = _valid_time_budget_seconds(reference)
+    if actual_budget is None:
+        return "missing_actual_time_budget_seconds", actual_budget, baseline_budget
+    if baseline_budget is None:
+        return "missing_reference_time_budget_seconds", actual_budget, baseline_budget
+    if actual_budget != baseline_budget:
+        return "time_budget_mismatch", actual_budget, baseline_budget
+    return None
 
 
 def _eligible_portfolio_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -550,6 +639,14 @@ def _shape_mismatch_sources(rows: Sequence[Dict[str, Any]]) -> List[str]:
     ]
 
 
+def _invalid_time_budget_sources(rows: Sequence[Dict[str, Any]]) -> List[str]:
+    return [
+        str(row.get("algorithm_profile") or "")
+        for row in rows
+        if _valid_time_budget_seconds(row) is None
+    ]
+
+
 def _first_changed_delta(actual: Tuple[float, ...], baseline: Tuple[float, ...]) -> float:
     for actual_item, baseline_item in zip(actual, baseline):
         delta = float(actual_item) - float(baseline_item)
@@ -599,6 +696,8 @@ def _output_fingerprint_union(rows: Sequence[Dict[str, Any]], *, field: str) -> 
 __all__ = [
     "COMPARE_SCHEMA_VERSION",
     "DEFAULT_ALGORITHM_PROFILES",
+    "POSTHOC_UPPER_BOUND_SEMANTICS",
+    "SAME_BUDGET_SEMANTICS",
     "build_algorithm_comparison",
     "compare_to_algorithm_baseline",
     "summarize_comparison_rows",

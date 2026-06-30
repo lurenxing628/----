@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -44,11 +45,18 @@ def compare_to_baseline(actual: Dict[str, Any], baseline: Dict[str, Any]) -> Dic
     baseline_cases = [row for row in baseline.get("cases") or [] if isinstance(row, dict)]
     actual_rows = {_case_key(row): row for row in actual_cases}
     baseline_rows = {_case_key(row): row for row in baseline_cases}
-    failures = _case_collection_failures(actual, actual_cases, baseline, baseline_cases)
+    failures = _worktree_proof_failures(actual, baseline)
+    failures.extend(_case_collection_failures(actual, actual_cases, baseline, baseline_cases))
     failures.extend(_missing_case_failures(actual_rows, baseline_rows))
     failures.extend(_matching_row_failures(actual_cases, baseline_rows))
     status = "passed" if not failures and actual.get("status") == "passed" else "failed"
-    return {"schema_version": RATCHET_SCHEMA_VERSION, "status": status, "failure_count": len(failures), "failures": failures}
+    return {
+        "schema_version": RATCHET_SCHEMA_VERSION,
+        "status": status,
+        "failure_count": len(failures),
+        "failures": failures,
+        "proof_binding_status": _proof_binding_status(actual, baseline),
+    }
 
 
 def load_baseline(path: Path) -> Optional[Dict[str, Any]]:
@@ -64,6 +72,8 @@ def write_baseline(path: Path, snapshot: Dict[str, Any]) -> None:
 
 def _proof_case_row(case: Dict[str, Any]) -> Dict[str, Any]:
     counts = case.get("aggregate_counts") if isinstance(case.get("aggregate_counts"), dict) else {}
+    gap_to_oracle = _valid_float(case.get("gap_to_oracle_pct"))
+    gap_comparison = _gap_comparison(gap_to_oracle)
     return {
         "schema_version": RATCHET_SCHEMA_VERSION,
         "case_group": "tiny",
@@ -74,7 +84,8 @@ def _proof_case_row(case: Dict[str, Any]) -> Dict[str, Any]:
         "time_budget_seconds": 0,
         "objective_name": str(case.get("objective_name") or "min_overdue"),
         "objective_score": [],
-        "gap_to_oracle_pct": float(case.get("gap_to_oracle_pct") or 0.0),
+        "oracle_status": str(case.get("oracle_status") or ""),
+        "gap_to_oracle_pct": gap_to_oracle,
         "objective_score_matched": bool(case.get("objective_score_matched")),
         "failed_ops": int(counts.get("failed_ops") or 0),
         "runtime_ms": 0,
@@ -85,10 +96,10 @@ def _proof_case_row(case: Dict[str, Any]) -> Dict[str, Any]:
         "comparison_to_meta_baseline": {
             "metric": "gap_to_oracle_pct",
             "baseline_value": 0.0,
-            "actual_value": float(case.get("gap_to_oracle_pct") or 0.0),
-            "delta_abs": float(case.get("gap_to_oracle_pct") or 0.0),
+            "actual_value": gap_to_oracle,
+            "delta_abs": gap_to_oracle,
             "delta_pct": 0.0,
-            "status": "same" if float(case.get("gap_to_oracle_pct") or 0.0) == 0.0 else "degraded",
+            "status": gap_comparison,
         },
     }
 
@@ -121,6 +132,23 @@ def _case_collection_failures(
         failures.append({"reason": "empty_baseline_cases"})
     failures.extend(_case_count_failures("actual", actual, actual_cases))
     failures.extend(_case_count_failures("baseline", baseline, baseline_cases))
+    return failures
+
+
+def _proof_binding_status(actual: Dict[str, Any], baseline: Dict[str, Any]) -> str:
+    if actual.get("dirty_worktree") is True or baseline.get("dirty_worktree") is True:
+        return "unbound_dirty_worktree"
+    if actual.get("dirty_worktree") is False and baseline.get("dirty_worktree") is False:
+        return "clean_worktree"
+    return "unknown_worktree_state"
+
+
+def _worktree_proof_failures(actual: Dict[str, Any], baseline: Dict[str, Any]) -> List[Dict[str, str]]:
+    failures: List[Dict[str, str]] = []
+    if actual.get("dirty_worktree") is True:
+        failures.append({"reason": "dirty_actual_worktree"})
+    if baseline.get("dirty_worktree") is True:
+        failures.append({"reason": "dirty_baseline_worktree"})
     return failures
 
 
@@ -247,11 +275,34 @@ def _float_metric_increase_failure(
     *,
     tolerance: float = 0.0,
 ) -> Optional[Dict[str, Any]]:
-    actual = float(row.get(metric) or 0.0)
-    baseline = float(base.get(metric) or 0.0)
+    actual = _valid_float(row.get(metric))
+    baseline = _valid_float(base.get(metric))
+    if actual is None:
+        return {"case": case, "metric": metric, "reason": f"missing_or_invalid_actual_{metric}"}
+    if baseline is None:
+        return {"case": case, "metric": metric, "reason": f"missing_or_invalid_baseline_{metric}"}
     if actual <= baseline + tolerance:
         return None
     return {"case": case, "metric": metric, "baseline": baseline, "actual": actual}
+
+
+def _valid_float(value: Any) -> Optional[float]:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _gap_comparison(gap_to_oracle: Optional[float]) -> str:
+    if gap_to_oracle is None:
+        return "not_comparable"
+    return "same" if gap_to_oracle == 0.0 else "degraded"
+
+
+def _valid_int_metric(value: Any) -> Optional[int]:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
 
 
 def _int_metric_increase_failure(
@@ -260,8 +311,12 @@ def _int_metric_increase_failure(
     base: Dict[str, Any],
     metric: str,
 ) -> Optional[Dict[str, Any]]:
-    actual = int(row.get(metric) or 0)
-    baseline = int(base.get(metric) or 0)
+    actual = _valid_int_metric(row.get(metric))
+    baseline = _valid_int_metric(base.get(metric))
+    if actual is None:
+        return {"case": case, "metric": metric, "reason": f"missing_or_invalid_actual_{metric}"}
+    if baseline is None:
+        return {"case": case, "metric": metric, "reason": f"missing_or_invalid_baseline_{metric}"}
     if actual <= baseline:
         return None
     return {"case": case, "metric": metric, "baseline": baseline, "actual": actual}
@@ -273,8 +328,12 @@ def _int_metric_decrease_failure(
     base: Dict[str, Any],
     metric: str,
 ) -> Optional[Dict[str, Any]]:
-    actual = int(row.get(metric) or 0)
-    baseline = int(base.get(metric) or 0)
+    actual = _valid_int_metric(row.get(metric))
+    baseline = _valid_int_metric(base.get(metric))
+    if actual is None:
+        return {"case": case, "metric": metric, "reason": f"missing_or_invalid_actual_{metric}"}
+    if baseline is None:
+        return {"case": case, "metric": metric, "reason": f"missing_or_invalid_baseline_{metric}"}
     if actual >= baseline:
         return None
     return {"case": case, "metric": metric, "baseline": baseline, "actual": actual}

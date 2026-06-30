@@ -11,6 +11,8 @@ from core.services.scheduler.run.optimizer_search_report import OptimizationSear
 
 SMTWT_COMPARE_SCHEMA_VERSION = 1
 SMTWT_OBJECTIVE_NAME = "min_overdue"
+POSTHOC_UPPER_BOUND_SEMANTICS = "posthoc_upper_bound"
+SAME_BUDGET_SEMANTICS = "same_budget_algorithm"
 DEFAULT_SMTWT_PROFILES = (
     "greedy",
     "local_search",
@@ -79,8 +81,21 @@ def score_list(value: Any) -> List[float]:
     return list(score or ())
 
 
-def row_key(row: Dict[str, Any]) -> Tuple[str, int]:
-    return str(row.get("case_slug") or ""), int(row.get("seed") or 0)
+def row_key(row: Dict[str, Any]) -> Optional[Tuple[str, int]]:
+    case_slug = str(row.get("case_slug") or "").strip()
+    seed = _valid_seed(row.get("seed"))
+    if not case_slug or seed is None:
+        return None
+    return case_slug, seed
+
+
+def _valid_seed(value: Any) -> Optional[int]:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not math.isfinite(number) or number < 0 or int(number) != number:
+        return None
+    return int(number)
 
 
 def first_changed_delta(actual: Tuple[float, ...], baseline: Tuple[float, ...]) -> float:
@@ -92,7 +107,11 @@ def first_changed_delta(actual: Tuple[float, ...], baseline: Tuple[float, ...]) 
 
 
 def mean(values: Any) -> float:
-    items = [float(item or 0.0) for item in values]
+    items = [
+        float(item)
+        for item in values
+        if not isinstance(item, bool) and isinstance(item, (int, float)) and math.isfinite(float(item))
+    ]
     return round(sum(items) / len(items), 6) if items else 0.0
 
 

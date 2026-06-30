@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 import time
 from contextlib import ExitStack
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 from unittest import mock
 
 
@@ -20,6 +21,17 @@ def find_repo_root() -> str:
             return probe
         probe = os.path.dirname(probe)
     raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+
+
+REPO_ROOT = find_repo_root()
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from tests._support.benchmark_parallel import (  # noqa: E402
+    DEFAULT_BENCHMARK_WORKERS,
+    parallel_map_ordered,
+    positive_worker_count,
+)
 
 
 class _Calendar:
@@ -66,7 +78,7 @@ def _resource_pool(machine_count: int, operators_per_machine: int) -> Tuple[Dict
 
 
 def _run_case(*, name: str, operations, batches, start_dt: datetime, resource_pool, seed_results=None):
-    repo_root = find_repo_root()
+    repo_root = REPO_ROOT
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
@@ -113,6 +125,17 @@ def _run_case(*, name: str, operations, batches, start_dt: datetime, resource_po
     }
 
 
+def _run_case_from_entry(case: Dict[str, object]) -> Dict[str, object]:
+    return _run_case(
+        name=str(case["name"]),
+        operations=case["operations"],
+        batches=case["batches"],
+        start_dt=case["start_dt"],
+        resource_pool=case["resource_pool"],
+        seed_results=case["seed_results"],
+    )
+
+
 def _benchmark_errors(outcome: Dict[str, object]) -> List[str]:
     name = str(outcome.get("name") or "<unknown>")
     scheduled_ops = int(outcome.get("scheduled_ops") or 0)
@@ -128,8 +151,16 @@ def _benchmark_errors(outcome: Dict[str, object]) -> List[str]:
     return errors
 
 
-def main() -> int:
-    repo_root = find_repo_root()
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run SGS large resource-pool benchmark.")
+    parser.add_argument("--workers", type=int, default=DEFAULT_BENCHMARK_WORKERS, help="parallel worker processes")
+    return parser
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = build_arg_parser().parse_args(list(argv) if argv is not None else None)
+    workers = positive_worker_count(args.workers)
+    repo_root = REPO_ROOT
     start_dt = datetime(2026, 1, 1, 8, 0, 0)
 
     pool_large, pair_count = _resource_pool(machine_count=30, operators_per_machine=10)
@@ -211,6 +242,7 @@ def main() -> int:
             "name": "候选对大于 200 的大资源池",
             "operations": large_pool_ops,
             "batches": large_pool_batches,
+            "start_dt": start_dt,
             "resource_pool": pool_large,
             "seed_results": [],
             "candidate_pairs": pair_count,
@@ -219,6 +251,7 @@ def main() -> int:
             "name": "1000+ seed 碎片时间线",
             "operations": fragmented_ops,
             "batches": fragmented_batches,
+            "start_dt": start_dt,
             "resource_pool": pool_large,
             "seed_results": fragmented_seed_results,
             "candidate_pairs": 1,
@@ -230,19 +263,13 @@ def main() -> int:
         "",
         f"- 生成时间：{time.strftime('%Y-%m-%d %H:%M:%S')}",
         "- 项目根目录：当前仓库",
+        f"- 工作进程数：{workers}",
         "",
     ]
 
     all_errors: List[str] = []
-    for case in cases:
-        outcome = _run_case(
-            name=case["name"],
-            operations=case["operations"],
-            batches=case["batches"],
-            start_dt=start_dt,
-            resource_pool=case["resource_pool"],
-            seed_results=case["seed_results"],
-        )
+    outcomes = parallel_map_ordered(_run_case_from_entry, cases, workers=workers)
+    for case, outcome in zip(cases, outcomes):
         errors = _benchmark_errors(outcome)
         all_errors.extend(errors)
         lines.extend(

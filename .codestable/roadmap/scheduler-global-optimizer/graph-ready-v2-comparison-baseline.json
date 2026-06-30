@@ -21,11 +21,12 @@
       "graph_ready_v2_with_repair",
       "portfolio_all"
     ],
-    "seeds": 10
+    "seeds": 10,
+    "workers": 10
   },
   "dirty_worktree": true,
-  "generated_at": "2026-06-29T14:21:01Z",
-  "git_commit": "4fbe233169daa8f4fae2c2270e860f120692bfd6",
+  "generated_at": "2026-06-30T16:41:21Z",
+  "git_commit": "e3ed32c868b108d7d0198a334725ab7292bb4454",
   "proof_binding_status": "unbound_dirty_worktree",
   "ratchet_key_fields": [
     "case_group",
@@ -36,7 +37,7 @@
   ],
   "reference_diagnostics": {
     "case_count": 5,
-    "generated_at": "2026-06-29T14:21:01Z",
+    "generated_at": "2026-06-30T16:41:21Z",
     "objective_metric_keys": [
       "overdue_count",
       "weighted_tardiness_hours",
@@ -224,6 +225,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -286,9 +288,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -334,6 +337,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -396,9 +400,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -446,6 +451,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -508,9 +514,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 3,
       "evaluated_candidates": 3,
@@ -661,14 +668,15 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 6,
       "evaluated_candidates": 10,
       "failed_ops": 0,
-      "gap_to_oracle_pct": 0.0,
+      "gap_to_oracle_pct": null,
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -679,6 +687,7 @@
         0.0
       ],
       "objective_score_matched": true,
+      "oracle_status": "not_run",
       "runtime_ms": 109,
       "same_fingerprint_rejections": 4,
       "schema_version": 1,
@@ -691,7 +700,7 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "3aa461bcdf184d07e7c722ad",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485"
       ],
@@ -713,13 +722,13 @@
         4
       ],
       "best_order": [
-        4,
         2,
+        4,
         3,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "3aa461bcdf184d07e7c722ad",
+      "best_output_fingerprint": "660d29d8cac6330570618110",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -738,8 +747,8 @@
         "082949e6bc9bd7d6e86b657a",
         "221ac1438c693fd179be3f9a",
         "3a8e673d1ad7b3368736b067",
-        "3aa461bcdf184d07e7c722ad",
         "58af198761d13912dd30fac6",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
@@ -834,9 +843,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 9,
       "evaluated_candidates": 20,
@@ -882,7 +892,7 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "3aa461bcdf184d07e7c722ad",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485"
       ],
@@ -904,13 +914,13 @@
         4
       ],
       "best_order": [
-        4,
         2,
+        4,
         3,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "3aa461bcdf184d07e7c722ad",
+      "best_output_fingerprint": "660d29d8cac6330570618110",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -929,8 +939,8 @@
         "082949e6bc9bd7d6e86b657a",
         "221ac1438c693fd179be3f9a",
         "3a8e673d1ad7b3368736b067",
-        "3aa461bcdf184d07e7c722ad",
         "58af198761d13912dd30fac6",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
@@ -1025,9 +1035,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 9,
       "evaluated_candidates": 20,
@@ -1075,7 +1086,7 @@
         "082949e6bc9bd7d6e86b657a",
         "0fca1cdfc1fdaee6f364b611",
         "3a8e673d1ad7b3368736b067",
-        "3aa461bcdf184d07e7c722ad",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485"
       ],
@@ -1095,8 +1106,8 @@
         "0fca1cdfc1fdaee6f364b611",
         "221ac1438c693fd179be3f9a",
         "3a8e673d1ad7b3368736b067",
-        "3aa461bcdf184d07e7c722ad",
         "58af198761d13912dd30fac6",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
@@ -1109,6 +1120,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "posthoc_upper_bound",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -1127,9 +1139,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -2.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "current_baseline",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_graph_ready_v1": {
         "actual_value": [
@@ -1149,9 +1162,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -1.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "graph_ready_v1",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_portfolio_best": {
         "actual_value": [
@@ -1171,15 +1185,17 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 10,
       "evaluated_candidates": 55,
       "failed_ops": 0,
       "failed_source_profiles": [],
       "invalid_objective_score_sources": [],
+      "invalid_time_budget_sources": [],
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -1193,8 +1209,25 @@
       "runtime_ms": 547,
       "schema_version": 1,
       "seed": 0,
+      "source_algorithm_profiles": [
+        "greedy",
+        "local_search",
+        "grasp_ig",
+        "graph_ready_v1",
+        "graph_ready_v2_no_repair",
+        "graph_ready_v2_with_repair"
+      ],
+      "source_time_budget_seconds_by_profile": {
+        "graph_ready_v1": 1,
+        "graph_ready_v2_no_repair": 1,
+        "graph_ready_v2_with_repair": 1,
+        "grasp_ig": 1,
+        "greedy": 1,
+        "local_search": 1
+      },
+      "source_time_budget_seconds_total": 6,
       "status": "passed",
-      "time_budget_seconds": 1
+      "time_budget_seconds": 6
     },
     {
       "accepted_candidates": 1,
@@ -1220,6 +1253,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -1282,9 +1316,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -1330,6 +1365,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -1392,9 +1428,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -1441,6 +1478,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -1503,9 +1541,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 3,
       "evaluated_candidates": 3,
@@ -1656,14 +1695,15 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 6,
       "evaluated_candidates": 10,
       "failed_ops": 0,
-      "gap_to_oracle_pct": 0.0,
+      "gap_to_oracle_pct": null,
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -1674,6 +1714,7 @@
         0.0
       ],
       "objective_score_matched": true,
+      "oracle_status": "not_run",
       "runtime_ms": 109,
       "same_fingerprint_rejections": 4,
       "schema_version": 1,
@@ -1686,7 +1727,7 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "1602418ba7a2328e1f34f6bd",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485"
       ],
@@ -1708,13 +1749,13 @@
         4
       ],
       "best_order": [
+        2,
         4,
         3,
-        2,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "1602418ba7a2328e1f34f6bd",
+      "best_output_fingerprint": "660d29d8cac6330570618110",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -1731,10 +1772,10 @@
       "candidate_origin": "graph_ready_v2_generated",
       "candidate_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "1602418ba7a2328e1f34f6bd",
         "221ac1438c693fd179be3f9a",
         "3a8e673d1ad7b3368736b067",
         "58af198761d13912dd30fac6",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
@@ -1829,9 +1870,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 9,
       "evaluated_candidates": 20,
@@ -1877,7 +1919,7 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "1602418ba7a2328e1f34f6bd",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485"
       ],
@@ -1899,13 +1941,13 @@
         4
       ],
       "best_order": [
+        2,
         4,
         3,
-        2,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "1602418ba7a2328e1f34f6bd",
+      "best_output_fingerprint": "660d29d8cac6330570618110",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -1922,10 +1964,10 @@
       "candidate_origin": "graph_ready_v2_generated",
       "candidate_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "1602418ba7a2328e1f34f6bd",
         "221ac1438c693fd179be3f9a",
         "3a8e673d1ad7b3368736b067",
         "58af198761d13912dd30fac6",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
@@ -2020,9 +2062,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 9,
       "evaluated_candidates": 20,
@@ -2068,27 +2111,27 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "1602418ba7a2328e1f34f6bd",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485"
       ],
       "algorithm_profile": "portfolio_all",
       "algorithm_version": "posthoc_same_seed_v1",
       "best_order": [
+        2,
         4,
         3,
-        2,
         1
       ],
       "best_origin": "graph_ready_v2_no_repair:graph_ready_v2_generated",
-      "best_output_fingerprint": "1602418ba7a2328e1f34f6bd",
+      "best_output_fingerprint": "660d29d8cac6330570618110",
       "candidate_origin": "portfolio_all:graph_ready_v2_no_repair",
       "candidate_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "1602418ba7a2328e1f34f6bd",
         "221ac1438c693fd179be3f9a",
         "3a8e673d1ad7b3368736b067",
         "58af198761d13912dd30fac6",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
@@ -2101,6 +2144,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "posthoc_upper_bound",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -2119,9 +2163,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -2.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "current_baseline",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_graph_ready_v1": {
         "actual_value": [
@@ -2141,9 +2186,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -1.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "graph_ready_v1",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_portfolio_best": {
         "actual_value": [
@@ -2163,15 +2209,17 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 9,
       "evaluated_candidates": 55,
       "failed_ops": 0,
       "failed_source_profiles": [],
       "invalid_objective_score_sources": [],
+      "invalid_time_budget_sources": [],
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -2185,8 +2233,25 @@
       "runtime_ms": 547,
       "schema_version": 1,
       "seed": 1,
+      "source_algorithm_profiles": [
+        "greedy",
+        "local_search",
+        "grasp_ig",
+        "graph_ready_v1",
+        "graph_ready_v2_no_repair",
+        "graph_ready_v2_with_repair"
+      ],
+      "source_time_budget_seconds_by_profile": {
+        "graph_ready_v1": 1,
+        "graph_ready_v2_no_repair": 1,
+        "graph_ready_v2_with_repair": 1,
+        "grasp_ig": 1,
+        "greedy": 1,
+        "local_search": 1
+      },
+      "source_time_budget_seconds_total": 6,
       "status": "passed",
-      "time_budget_seconds": 1
+      "time_budget_seconds": 6
     },
     {
       "accepted_candidates": 1,
@@ -2212,6 +2277,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -2274,9 +2340,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -2322,6 +2389,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -2384,9 +2452,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -2434,6 +2503,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -2496,9 +2566,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 3,
       "evaluated_candidates": 3,
@@ -2649,14 +2720,15 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 6,
       "evaluated_candidates": 10,
       "failed_ops": 0,
-      "gap_to_oracle_pct": 0.0,
+      "gap_to_oracle_pct": null,
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -2667,6 +2739,7 @@
         0.0
       ],
       "objective_score_matched": true,
+      "oracle_status": "not_run",
       "runtime_ms": 109,
       "same_fingerprint_rejections": 4,
       "schema_version": 1,
@@ -2679,9 +2752,9 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
+        "3a8e673d1ad7b3368736b067",
         "67ac54c27263a91a50bca9a2",
-        "888d112679bc3f5bc59c2485",
-        "e5c8b65d16ab2573e8aafe54"
+        "888d112679bc3f5bc59c2485"
       ],
       "algorithm_profile": "graph_ready_v2_no_repair",
       "algorithm_version": "graph_ready_v2_objective_features_v2",
@@ -2701,13 +2774,13 @@
         4
       ],
       "best_order": [
+        2,
         3,
         4,
-        2,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "e5c8b65d16ab2573e8aafe54",
+      "best_output_fingerprint": "3a8e673d1ad7b3368736b067",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -2821,9 +2894,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 8,
       "evaluated_candidates": 20,
@@ -2869,9 +2943,9 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
+        "3a8e673d1ad7b3368736b067",
         "67ac54c27263a91a50bca9a2",
-        "888d112679bc3f5bc59c2485",
-        "e5c8b65d16ab2573e8aafe54"
+        "888d112679bc3f5bc59c2485"
       ],
       "algorithm_profile": "graph_ready_v2_with_repair",
       "algorithm_version": "graph_ready_v2_objective_features_v2",
@@ -2891,13 +2965,13 @@
         4
       ],
       "best_order": [
+        2,
         3,
         4,
-        2,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "e5c8b65d16ab2573e8aafe54",
+      "best_output_fingerprint": "3a8e673d1ad7b3368736b067",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -3011,9 +3085,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 8,
       "evaluated_candidates": 20,
@@ -3059,9 +3134,9 @@
       "accepted_distinct_candidates": 5,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
+        "3a8e673d1ad7b3368736b067",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
-        "e5c8b65d16ab2573e8aafe54",
         "e6d44bb84c8850dbdc4b7fe8"
       ],
       "algorithm_profile": "portfolio_all",
@@ -3093,6 +3168,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "posthoc_upper_bound",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -3111,9 +3187,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -2.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "current_baseline",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_graph_ready_v1": {
         "actual_value": [
@@ -3133,9 +3210,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -1.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "graph_ready_v1",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_portfolio_best": {
         "actual_value": [
@@ -3155,15 +3233,17 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 9,
       "evaluated_candidates": 55,
       "failed_ops": 0,
       "failed_source_profiles": [],
       "invalid_objective_score_sources": [],
+      "invalid_time_budget_sources": [],
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -3177,8 +3257,25 @@
       "runtime_ms": 547,
       "schema_version": 1,
       "seed": 2,
+      "source_algorithm_profiles": [
+        "greedy",
+        "local_search",
+        "grasp_ig",
+        "graph_ready_v1",
+        "graph_ready_v2_no_repair",
+        "graph_ready_v2_with_repair"
+      ],
+      "source_time_budget_seconds_by_profile": {
+        "graph_ready_v1": 1,
+        "graph_ready_v2_no_repair": 1,
+        "graph_ready_v2_with_repair": 1,
+        "grasp_ig": 1,
+        "greedy": 1,
+        "local_search": 1
+      },
+      "source_time_budget_seconds_total": 6,
       "status": "passed",
-      "time_budget_seconds": 1
+      "time_budget_seconds": 6
     },
     {
       "accepted_candidates": 1,
@@ -3204,6 +3301,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -3266,9 +3364,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -3314,6 +3413,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -3376,9 +3476,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -3425,6 +3526,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -3487,9 +3589,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 3,
       "evaluated_candidates": 3,
@@ -3640,14 +3743,15 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 6,
       "evaluated_candidates": 10,
       "failed_ops": 0,
-      "gap_to_oracle_pct": 0.0,
+      "gap_to_oracle_pct": null,
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -3658,6 +3762,7 @@
         0.0
       ],
       "objective_score_matched": true,
+      "oracle_status": "not_run",
       "runtime_ms": 109,
       "same_fingerprint_rejections": 4,
       "schema_version": 1,
@@ -3670,7 +3775,7 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "1602418ba7a2328e1f34f6bd",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485"
       ],
@@ -3692,13 +3797,13 @@
         4
       ],
       "best_order": [
+        2,
         4,
         3,
-        2,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "1602418ba7a2328e1f34f6bd",
+      "best_output_fingerprint": "660d29d8cac6330570618110",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -3715,10 +3820,10 @@
       "candidate_origin": "graph_ready_v2_generated",
       "candidate_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "1602418ba7a2328e1f34f6bd",
         "221ac1438c693fd179be3f9a",
         "3a8e673d1ad7b3368736b067",
         "58af198761d13912dd30fac6",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
@@ -3813,9 +3918,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 9,
       "evaluated_candidates": 20,
@@ -3861,7 +3967,7 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "1602418ba7a2328e1f34f6bd",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485"
       ],
@@ -3883,13 +3989,13 @@
         4
       ],
       "best_order": [
+        2,
         4,
         3,
-        2,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "1602418ba7a2328e1f34f6bd",
+      "best_output_fingerprint": "660d29d8cac6330570618110",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -3906,10 +4012,10 @@
       "candidate_origin": "graph_ready_v2_generated",
       "candidate_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "1602418ba7a2328e1f34f6bd",
         "221ac1438c693fd179be3f9a",
         "3a8e673d1ad7b3368736b067",
         "58af198761d13912dd30fac6",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
@@ -4004,9 +4110,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 9,
       "evaluated_candidates": 20,
@@ -4052,29 +4159,29 @@
       "accepted_distinct_candidates": 5,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "1602418ba7a2328e1f34f6bd",
         "58af198761d13912dd30fac6",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485"
       ],
       "algorithm_profile": "portfolio_all",
       "algorithm_version": "posthoc_same_seed_v1",
       "best_order": [
+        2,
         4,
         3,
-        2,
         1
       ],
       "best_origin": "graph_ready_v2_no_repair:graph_ready_v2_generated",
-      "best_output_fingerprint": "1602418ba7a2328e1f34f6bd",
+      "best_output_fingerprint": "660d29d8cac6330570618110",
       "candidate_origin": "portfolio_all:graph_ready_v2_no_repair",
       "candidate_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
         "0fca1cdfc1fdaee6f364b611",
-        "1602418ba7a2328e1f34f6bd",
         "221ac1438c693fd179be3f9a",
         "3a8e673d1ad7b3368736b067",
         "58af198761d13912dd30fac6",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
@@ -4087,6 +4194,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "posthoc_upper_bound",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -4105,9 +4213,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -2.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "current_baseline",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_graph_ready_v1": {
         "actual_value": [
@@ -4127,9 +4236,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -1.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "graph_ready_v1",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_portfolio_best": {
         "actual_value": [
@@ -4149,15 +4259,17 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 10,
       "evaluated_candidates": 55,
       "failed_ops": 0,
       "failed_source_profiles": [],
       "invalid_objective_score_sources": [],
+      "invalid_time_budget_sources": [],
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -4171,8 +4283,25 @@
       "runtime_ms": 547,
       "schema_version": 1,
       "seed": 3,
+      "source_algorithm_profiles": [
+        "greedy",
+        "local_search",
+        "grasp_ig",
+        "graph_ready_v1",
+        "graph_ready_v2_no_repair",
+        "graph_ready_v2_with_repair"
+      ],
+      "source_time_budget_seconds_by_profile": {
+        "graph_ready_v1": 1,
+        "graph_ready_v2_no_repair": 1,
+        "graph_ready_v2_with_repair": 1,
+        "grasp_ig": 1,
+        "greedy": 1,
+        "local_search": 1
+      },
+      "source_time_budget_seconds_total": 6,
       "status": "passed",
-      "time_budget_seconds": 1
+      "time_budget_seconds": 6
     },
     {
       "accepted_candidates": 1,
@@ -4198,6 +4327,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -4260,9 +4390,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -4308,6 +4439,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -4370,9 +4502,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -4420,6 +4553,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -4482,9 +4616,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 3,
       "evaluated_candidates": 3,
@@ -4635,14 +4770,15 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 6,
       "evaluated_candidates": 10,
       "failed_ops": 0,
-      "gap_to_oracle_pct": 0.0,
+      "gap_to_oracle_pct": null,
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -4653,6 +4789,7 @@
         0.0
       ],
       "objective_score_matched": true,
+      "oracle_status": "not_run",
       "runtime_ms": 109,
       "same_fingerprint_rejections": 4,
       "schema_version": 1,
@@ -4807,9 +4944,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 8,
       "evaluated_candidates": 20,
@@ -4997,9 +5135,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 8,
       "evaluated_candidates": 20,
@@ -5079,6 +5218,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "posthoc_upper_bound",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -5097,9 +5237,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -2.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "current_baseline",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_graph_ready_v1": {
         "actual_value": [
@@ -5119,9 +5260,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -1.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "graph_ready_v1",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_portfolio_best": {
         "actual_value": [
@@ -5141,15 +5283,17 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 9,
       "evaluated_candidates": 55,
       "failed_ops": 0,
       "failed_source_profiles": [],
       "invalid_objective_score_sources": [],
+      "invalid_time_budget_sources": [],
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -5163,8 +5307,25 @@
       "runtime_ms": 547,
       "schema_version": 1,
       "seed": 4,
+      "source_algorithm_profiles": [
+        "greedy",
+        "local_search",
+        "grasp_ig",
+        "graph_ready_v1",
+        "graph_ready_v2_no_repair",
+        "graph_ready_v2_with_repair"
+      ],
+      "source_time_budget_seconds_by_profile": {
+        "graph_ready_v1": 1,
+        "graph_ready_v2_no_repair": 1,
+        "graph_ready_v2_with_repair": 1,
+        "grasp_ig": 1,
+        "greedy": 1,
+        "local_search": 1
+      },
+      "source_time_budget_seconds_total": 6,
       "status": "passed",
-      "time_budget_seconds": 1
+      "time_budget_seconds": 6
     },
     {
       "accepted_candidates": 1,
@@ -5190,6 +5351,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -5252,9 +5414,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -5300,6 +5463,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -5362,9 +5526,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -5412,6 +5577,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -5474,9 +5640,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 3,
       "evaluated_candidates": 3,
@@ -5627,14 +5794,15 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 6,
       "evaluated_candidates": 10,
       "failed_ops": 0,
-      "gap_to_oracle_pct": 0.0,
+      "gap_to_oracle_pct": null,
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -5645,6 +5813,7 @@
         0.0
       ],
       "objective_score_matched": true,
+      "oracle_status": "not_run",
       "runtime_ms": 109,
       "same_fingerprint_rejections": 4,
       "schema_version": 1,
@@ -5657,9 +5826,9 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
+        "3a8e673d1ad7b3368736b067",
         "67ac54c27263a91a50bca9a2",
-        "888d112679bc3f5bc59c2485",
-        "e6d44bb84c8850dbdc4b7fe8"
+        "888d112679bc3f5bc59c2485"
       ],
       "algorithm_profile": "graph_ready_v2_no_repair",
       "algorithm_version": "graph_ready_v2_objective_features_v2",
@@ -5679,13 +5848,13 @@
         4
       ],
       "best_order": [
-        3,
         2,
+        3,
         4,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "e6d44bb84c8850dbdc4b7fe8",
+      "best_output_fingerprint": "3a8e673d1ad7b3368736b067",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -5708,12 +5877,11 @@
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
-        "e5c8b65d16ab2573e8aafe54",
-        "e6d44bb84c8850dbdc4b7fe8"
+        "e5c8b65d16ab2573e8aafe54"
       ],
       "candidate_profile_count": 19,
       "candidate_rejections": {
-        "same_fingerprint": 11
+        "same_fingerprint": 12
       },
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
@@ -5800,11 +5968,12 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
-      "distinct_candidates": 9,
+      "distinct_candidates": 8,
       "evaluated_candidates": 20,
       "failed_ops": 0,
       "formula_versions": [
@@ -5830,7 +5999,7 @@
       "repair_scope": "benchmark_support_only_not_core",
       "repair_status": "not_run",
       "runtime_ms": 219,
-      "same_fingerprint_rejections": 11,
+      "same_fingerprint_rejections": 12,
       "seed": 5,
       "status": "passed",
       "time_budget_seconds": 1,
@@ -5848,9 +6017,9 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
+        "3a8e673d1ad7b3368736b067",
         "67ac54c27263a91a50bca9a2",
-        "888d112679bc3f5bc59c2485",
-        "e6d44bb84c8850dbdc4b7fe8"
+        "888d112679bc3f5bc59c2485"
       ],
       "algorithm_profile": "graph_ready_v2_with_repair",
       "algorithm_version": "graph_ready_v2_objective_features_v2",
@@ -5870,13 +6039,13 @@
         4
       ],
       "best_order": [
-        3,
         2,
+        3,
         4,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "e6d44bb84c8850dbdc4b7fe8",
+      "best_output_fingerprint": "3a8e673d1ad7b3368736b067",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -5899,12 +6068,11 @@
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
-        "e5c8b65d16ab2573e8aafe54",
-        "e6d44bb84c8850dbdc4b7fe8"
+        "e5c8b65d16ab2573e8aafe54"
       ],
       "candidate_profile_count": 19,
       "candidate_rejections": {
-        "same_fingerprint": 11
+        "same_fingerprint": 12
       },
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
@@ -5991,11 +6159,12 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
-      "distinct_candidates": 9,
+      "distinct_candidates": 8,
       "evaluated_candidates": 20,
       "failed_ops": 0,
       "formula_versions": [
@@ -6021,7 +6190,7 @@
       "repair_scope": "benchmark_support_only_not_core",
       "repair_status": "no_strict_improvement",
       "runtime_ms": 219,
-      "same_fingerprint_rejections": 11,
+      "same_fingerprint_rejections": 12,
       "seed": 5,
       "status": "passed",
       "time_budget_seconds": 1,
@@ -6040,20 +6209,20 @@
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
         "221ac1438c693fd179be3f9a",
+        "3a8e673d1ad7b3368736b067",
         "67ac54c27263a91a50bca9a2",
-        "888d112679bc3f5bc59c2485",
-        "e6d44bb84c8850dbdc4b7fe8"
+        "888d112679bc3f5bc59c2485"
       ],
       "algorithm_profile": "portfolio_all",
       "algorithm_version": "posthoc_same_seed_v1",
       "best_order": [
-        3,
         2,
+        3,
         4,
         1
       ],
       "best_origin": "graph_ready_v2_no_repair:graph_ready_v2_generated",
-      "best_output_fingerprint": "e6d44bb84c8850dbdc4b7fe8",
+      "best_output_fingerprint": "3a8e673d1ad7b3368736b067",
       "candidate_origin": "portfolio_all:graph_ready_v2_no_repair",
       "candidate_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
@@ -6063,16 +6232,16 @@
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
-        "e5c8b65d16ab2573e8aafe54",
-        "e6d44bb84c8850dbdc4b7fe8"
+        "e5c8b65d16ab2573e8aafe54"
       ],
       "candidate_rejections": {
         "noop_neighbor": 100,
-        "same_fingerprint": 26
+        "same_fingerprint": 28
       },
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "posthoc_upper_bound",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -6091,9 +6260,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -2.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "current_baseline",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_graph_ready_v1": {
         "actual_value": [
@@ -6113,9 +6283,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -1.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "graph_ready_v1",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_portfolio_best": {
         "actual_value": [
@@ -6135,15 +6306,17 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
-      "distinct_candidates": 9,
+      "distinct_candidates": 8,
       "evaluated_candidates": 55,
       "failed_ops": 0,
       "failed_source_profiles": [],
       "invalid_objective_score_sources": [],
+      "invalid_time_budget_sources": [],
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -6157,8 +6330,25 @@
       "runtime_ms": 547,
       "schema_version": 1,
       "seed": 5,
+      "source_algorithm_profiles": [
+        "greedy",
+        "local_search",
+        "grasp_ig",
+        "graph_ready_v1",
+        "graph_ready_v2_no_repair",
+        "graph_ready_v2_with_repair"
+      ],
+      "source_time_budget_seconds_by_profile": {
+        "graph_ready_v1": 1,
+        "graph_ready_v2_no_repair": 1,
+        "graph_ready_v2_with_repair": 1,
+        "grasp_ig": 1,
+        "greedy": 1,
+        "local_search": 1
+      },
+      "source_time_budget_seconds_total": 6,
       "status": "passed",
-      "time_budget_seconds": 1
+      "time_budget_seconds": 6
     },
     {
       "accepted_candidates": 1,
@@ -6184,6 +6374,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -6246,9 +6437,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -6294,6 +6486,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -6356,9 +6549,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -6405,6 +6599,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -6467,9 +6662,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 3,
       "evaluated_candidates": 3,
@@ -6620,14 +6816,15 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 6,
       "evaluated_candidates": 10,
       "failed_ops": 0,
-      "gap_to_oracle_pct": 0.0,
+      "gap_to_oracle_pct": null,
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -6638,6 +6835,7 @@
         0.0
       ],
       "objective_score_matched": true,
+      "oracle_status": "not_run",
       "runtime_ms": 109,
       "same_fingerprint_rejections": 4,
       "schema_version": 1,
@@ -6650,9 +6848,9 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
+        "3a8e673d1ad7b3368736b067",
         "67ac54c27263a91a50bca9a2",
-        "888d112679bc3f5bc59c2485",
-        "e5c8b65d16ab2573e8aafe54"
+        "888d112679bc3f5bc59c2485"
       ],
       "algorithm_profile": "graph_ready_v2_no_repair",
       "algorithm_version": "graph_ready_v2_objective_features_v2",
@@ -6672,13 +6870,13 @@
         4
       ],
       "best_order": [
+        2,
         3,
         4,
-        2,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "e5c8b65d16ab2573e8aafe54",
+      "best_output_fingerprint": "3a8e673d1ad7b3368736b067",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -6792,9 +6990,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 8,
       "evaluated_candidates": 20,
@@ -6840,9 +7039,9 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
+        "3a8e673d1ad7b3368736b067",
         "67ac54c27263a91a50bca9a2",
-        "888d112679bc3f5bc59c2485",
-        "e5c8b65d16ab2573e8aafe54"
+        "888d112679bc3f5bc59c2485"
       ],
       "algorithm_profile": "graph_ready_v2_with_repair",
       "algorithm_version": "graph_ready_v2_objective_features_v2",
@@ -6862,13 +7061,13 @@
         4
       ],
       "best_order": [
+        2,
         3,
         4,
-        2,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "e5c8b65d16ab2573e8aafe54",
+      "best_output_fingerprint": "3a8e673d1ad7b3368736b067",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -6982,9 +7181,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 8,
       "evaluated_candidates": 20,
@@ -7030,21 +7230,21 @@
       "accepted_distinct_candidates": 5,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
+        "3a8e673d1ad7b3368736b067",
         "67ac54c27263a91a50bca9a2",
         "7a7a4fd7196ba9b039f37031",
-        "888d112679bc3f5bc59c2485",
-        "e5c8b65d16ab2573e8aafe54"
+        "888d112679bc3f5bc59c2485"
       ],
       "algorithm_profile": "portfolio_all",
       "algorithm_version": "posthoc_same_seed_v1",
       "best_order": [
+        2,
         3,
         4,
-        2,
         1
       ],
       "best_origin": "graph_ready_v2_no_repair:graph_ready_v2_generated",
-      "best_output_fingerprint": "e5c8b65d16ab2573e8aafe54",
+      "best_output_fingerprint": "3a8e673d1ad7b3368736b067",
       "candidate_origin": "portfolio_all:graph_ready_v2_no_repair",
       "candidate_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
@@ -7065,6 +7265,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "posthoc_upper_bound",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -7083,9 +7284,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -2.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "current_baseline",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_graph_ready_v1": {
         "actual_value": [
@@ -7105,9 +7307,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -1.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "graph_ready_v1",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_portfolio_best": {
         "actual_value": [
@@ -7127,15 +7330,17 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 10,
       "evaluated_candidates": 55,
       "failed_ops": 0,
       "failed_source_profiles": [],
       "invalid_objective_score_sources": [],
+      "invalid_time_budget_sources": [],
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -7149,8 +7354,25 @@
       "runtime_ms": 547,
       "schema_version": 1,
       "seed": 6,
+      "source_algorithm_profiles": [
+        "greedy",
+        "local_search",
+        "grasp_ig",
+        "graph_ready_v1",
+        "graph_ready_v2_no_repair",
+        "graph_ready_v2_with_repair"
+      ],
+      "source_time_budget_seconds_by_profile": {
+        "graph_ready_v1": 1,
+        "graph_ready_v2_no_repair": 1,
+        "graph_ready_v2_with_repair": 1,
+        "grasp_ig": 1,
+        "greedy": 1,
+        "local_search": 1
+      },
+      "source_time_budget_seconds_total": 6,
       "status": "passed",
-      "time_budget_seconds": 1
+      "time_budget_seconds": 6
     },
     {
       "accepted_candidates": 1,
@@ -7176,6 +7398,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -7238,9 +7461,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -7286,6 +7510,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -7348,9 +7573,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -7397,6 +7623,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -7459,9 +7686,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 3,
       "evaluated_candidates": 3,
@@ -7612,14 +7840,15 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 6,
       "evaluated_candidates": 10,
       "failed_ops": 0,
-      "gap_to_oracle_pct": 0.0,
+      "gap_to_oracle_pct": null,
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -7630,6 +7859,7 @@
         0.0
       ],
       "objective_score_matched": true,
+      "oracle_status": "not_run",
       "runtime_ms": 109,
       "same_fingerprint_rejections": 4,
       "schema_version": 1,
@@ -7642,7 +7872,7 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "3aa461bcdf184d07e7c722ad",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485"
       ],
@@ -7664,13 +7894,13 @@
         4
       ],
       "best_order": [
-        4,
         2,
+        4,
         3,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "3aa461bcdf184d07e7c722ad",
+      "best_output_fingerprint": "660d29d8cac6330570618110",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -7689,8 +7919,8 @@
         "082949e6bc9bd7d6e86b657a",
         "221ac1438c693fd179be3f9a",
         "3a8e673d1ad7b3368736b067",
-        "3aa461bcdf184d07e7c722ad",
         "58af198761d13912dd30fac6",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
@@ -7785,9 +8015,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 9,
       "evaluated_candidates": 20,
@@ -7833,7 +8064,7 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "3aa461bcdf184d07e7c722ad",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485"
       ],
@@ -7855,13 +8086,13 @@
         4
       ],
       "best_order": [
-        4,
         2,
+        4,
         3,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "3aa461bcdf184d07e7c722ad",
+      "best_output_fingerprint": "660d29d8cac6330570618110",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -7880,8 +8111,8 @@
         "082949e6bc9bd7d6e86b657a",
         "221ac1438c693fd179be3f9a",
         "3a8e673d1ad7b3368736b067",
-        "3aa461bcdf184d07e7c722ad",
         "58af198761d13912dd30fac6",
+        "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
@@ -7976,9 +8207,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 9,
       "evaluated_candidates": 20,
@@ -8020,11 +8252,10 @@
       ]
     },
     {
-      "accepted_candidates": 5,
-      "accepted_distinct_candidates": 5,
+      "accepted_candidates": 4,
+      "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
-        "3aa461bcdf184d07e7c722ad",
         "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485"
@@ -8045,7 +8276,6 @@
         "139594b2da291ba15e187761",
         "221ac1438c693fd179be3f9a",
         "3a8e673d1ad7b3368736b067",
-        "3aa461bcdf184d07e7c722ad",
         "58af198761d13912dd30fac6",
         "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
@@ -8060,6 +8290,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "posthoc_upper_bound",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -8078,9 +8309,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -2.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "current_baseline",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_graph_ready_v1": {
         "actual_value": [
@@ -8100,9 +8332,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -1.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "graph_ready_v1",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_portfolio_best": {
         "actual_value": [
@@ -8122,15 +8355,17 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
-      "distinct_candidates": 11,
+      "distinct_candidates": 10,
       "evaluated_candidates": 55,
       "failed_ops": 0,
       "failed_source_profiles": [],
       "invalid_objective_score_sources": [],
+      "invalid_time_budget_sources": [],
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -8144,8 +8379,25 @@
       "runtime_ms": 547,
       "schema_version": 1,
       "seed": 7,
+      "source_algorithm_profiles": [
+        "greedy",
+        "local_search",
+        "grasp_ig",
+        "graph_ready_v1",
+        "graph_ready_v2_no_repair",
+        "graph_ready_v2_with_repair"
+      ],
+      "source_time_budget_seconds_by_profile": {
+        "graph_ready_v1": 1,
+        "graph_ready_v2_no_repair": 1,
+        "graph_ready_v2_with_repair": 1,
+        "grasp_ig": 1,
+        "greedy": 1,
+        "local_search": 1
+      },
+      "source_time_budget_seconds_total": 6,
       "status": "passed",
-      "time_budget_seconds": 1
+      "time_budget_seconds": 6
     },
     {
       "accepted_candidates": 1,
@@ -8171,6 +8423,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -8233,9 +8486,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -8281,6 +8535,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -8343,9 +8598,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -8392,6 +8648,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -8454,9 +8711,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 3,
       "evaluated_candidates": 3,
@@ -8607,14 +8865,15 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 6,
       "evaluated_candidates": 10,
       "failed_ops": 0,
-      "gap_to_oracle_pct": 0.0,
+      "gap_to_oracle_pct": null,
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -8625,6 +8884,7 @@
         0.0
       ],
       "objective_score_matched": true,
+      "oracle_status": "not_run",
       "runtime_ms": 109,
       "same_fingerprint_rejections": 4,
       "schema_version": 1,
@@ -8779,9 +9039,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 8,
       "evaluated_candidates": 20,
@@ -8969,9 +9230,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 8,
       "evaluated_candidates": 20,
@@ -9051,6 +9313,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "posthoc_upper_bound",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -9069,9 +9332,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -2.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "current_baseline",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_graph_ready_v1": {
         "actual_value": [
@@ -9091,9 +9355,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -1.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "graph_ready_v1",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_portfolio_best": {
         "actual_value": [
@@ -9113,15 +9378,17 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 9,
       "evaluated_candidates": 55,
       "failed_ops": 0,
       "failed_source_profiles": [],
       "invalid_objective_score_sources": [],
+      "invalid_time_budget_sources": [],
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -9135,8 +9402,25 @@
       "runtime_ms": 547,
       "schema_version": 1,
       "seed": 8,
+      "source_algorithm_profiles": [
+        "greedy",
+        "local_search",
+        "grasp_ig",
+        "graph_ready_v1",
+        "graph_ready_v2_no_repair",
+        "graph_ready_v2_with_repair"
+      ],
+      "source_time_budget_seconds_by_profile": {
+        "graph_ready_v1": 1,
+        "graph_ready_v2_no_repair": 1,
+        "graph_ready_v2_with_repair": 1,
+        "grasp_ig": 1,
+        "greedy": 1,
+        "local_search": 1
+      },
+      "source_time_budget_seconds_total": 6,
       "status": "passed",
-      "time_budget_seconds": 1
+      "time_budget_seconds": 6
     },
     {
       "accepted_candidates": 1,
@@ -9162,6 +9446,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -9224,9 +9509,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -9272,6 +9558,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -9334,9 +9621,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 2.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 1,
       "evaluated_candidates": 1,
@@ -9383,6 +9671,7 @@
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "same_budget_algorithm",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -9445,9 +9734,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
       "distinct_candidates": 3,
       "evaluated_candidates": 3,
@@ -9598,14 +9888,15 @@
           24.0,
           0.0
         ],
-        "primary_delta": 1.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "degraded"
+        "status": "not_comparable"
       },
       "distinct_candidates": 6,
       "evaluated_candidates": 10,
       "failed_ops": 0,
-      "gap_to_oracle_pct": 0.0,
+      "gap_to_oracle_pct": null,
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -9616,6 +9907,7 @@
         0.0
       ],
       "objective_score_matched": true,
+      "oracle_status": "not_run",
       "runtime_ms": 109,
       "same_fingerprint_rejections": 4,
       "schema_version": 1,
@@ -9628,9 +9920,9 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
+        "3a8e673d1ad7b3368736b067",
         "67ac54c27263a91a50bca9a2",
-        "888d112679bc3f5bc59c2485",
-        "e6d44bb84c8850dbdc4b7fe8"
+        "888d112679bc3f5bc59c2485"
       ],
       "algorithm_profile": "graph_ready_v2_no_repair",
       "algorithm_version": "graph_ready_v2_objective_features_v2",
@@ -9650,13 +9942,13 @@
         4
       ],
       "best_order": [
-        3,
         2,
+        3,
         4,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "e6d44bb84c8850dbdc4b7fe8",
+      "best_output_fingerprint": "3a8e673d1ad7b3368736b067",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -9679,12 +9971,11 @@
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
-        "e5c8b65d16ab2573e8aafe54",
-        "e6d44bb84c8850dbdc4b7fe8"
+        "e5c8b65d16ab2573e8aafe54"
       ],
       "candidate_profile_count": 19,
       "candidate_rejections": {
-        "same_fingerprint": 11
+        "same_fingerprint": 12
       },
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
@@ -9771,11 +10062,12 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
-      "distinct_candidates": 9,
+      "distinct_candidates": 8,
       "evaluated_candidates": 20,
       "failed_ops": 0,
       "formula_versions": [
@@ -9801,7 +10093,7 @@
       "repair_scope": "benchmark_support_only_not_core",
       "repair_status": "not_run",
       "runtime_ms": 219,
-      "same_fingerprint_rejections": 11,
+      "same_fingerprint_rejections": 12,
       "seed": 9,
       "status": "passed",
       "time_budget_seconds": 1,
@@ -9819,9 +10111,9 @@
       "accepted_distinct_candidates": 4,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
+        "3a8e673d1ad7b3368736b067",
         "67ac54c27263a91a50bca9a2",
-        "888d112679bc3f5bc59c2485",
-        "e6d44bb84c8850dbdc4b7fe8"
+        "888d112679bc3f5bc59c2485"
       ],
       "algorithm_profile": "graph_ready_v2_with_repair",
       "algorithm_version": "graph_ready_v2_objective_features_v2",
@@ -9841,13 +10133,13 @@
         4
       ],
       "best_order": [
-        3,
         2,
+        3,
         4,
         1
       ],
       "best_origin": "graph_ready_v2_generated",
-      "best_output_fingerprint": "e6d44bb84c8850dbdc4b7fe8",
+      "best_output_fingerprint": "3a8e673d1ad7b3368736b067",
       "candidate_families": [
         "v1_weighted_graph",
         "edd",
@@ -9870,12 +10162,11 @@
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
-        "e5c8b65d16ab2573e8aafe54",
-        "e6d44bb84c8850dbdc4b7fe8"
+        "e5c8b65d16ab2573e8aafe54"
       ],
       "candidate_profile_count": 19,
       "candidate_rejections": {
-        "same_fingerprint": 11
+        "same_fingerprint": 12
       },
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
@@ -9962,11 +10253,12 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "reference_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
-      "distinct_candidates": 9,
+      "distinct_candidates": 8,
       "evaluated_candidates": 20,
       "failed_ops": 0,
       "formula_versions": [
@@ -9992,7 +10284,7 @@
       "repair_scope": "benchmark_support_only_not_core",
       "repair_status": "no_strict_improvement",
       "runtime_ms": 219,
-      "same_fingerprint_rejections": 11,
+      "same_fingerprint_rejections": 12,
       "seed": 9,
       "status": "passed",
       "time_budget_seconds": 1,
@@ -10010,10 +10302,10 @@
       "accepted_distinct_candidates": 5,
       "accepted_output_fingerprints": [
         "082949e6bc9bd7d6e86b657a",
+        "3a8e673d1ad7b3368736b067",
         "660d29d8cac6330570618110",
         "67ac54c27263a91a50bca9a2",
-        "888d112679bc3f5bc59c2485",
-        "e6d44bb84c8850dbdc4b7fe8"
+        "888d112679bc3f5bc59c2485"
       ],
       "algorithm_profile": "portfolio_all",
       "algorithm_version": "posthoc_same_seed_v1",
@@ -10035,16 +10327,16 @@
         "67ac54c27263a91a50bca9a2",
         "888d112679bc3f5bc59c2485",
         "963eb539ebf2b540a4195342",
-        "e5c8b65d16ab2573e8aafe54",
-        "e6d44bb84c8850dbdc4b7fe8"
+        "e5c8b65d16ab2573e8aafe54"
       ],
       "candidate_rejections": {
         "noop_neighbor": 100,
-        "same_fingerprint": 26
+        "same_fingerprint": 28
       },
       "case_group": "graph_ready",
       "case_slug": "graph-ready-weight-grid-real-sgs",
       "comparison_reference_status": "reference_diagnostics_attached",
+      "comparison_semantics": "posthoc_upper_bound",
       "comparison_to_current_baseline": {
         "actual_value": [
           0.0,
@@ -10063,9 +10355,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -2.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "current_baseline",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_graph_ready_v1": {
         "actual_value": [
@@ -10085,9 +10378,10 @@
           24.0,
           0.0
         ],
-        "primary_delta": -1.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "graph_ready_v1",
-        "status": "improved"
+        "status": "not_comparable"
       },
       "comparison_to_portfolio_best": {
         "actual_value": [
@@ -10107,15 +10401,17 @@
           24.0,
           0.0
         ],
-        "primary_delta": 0.0,
+        "primary_delta": null,
+        "reason": "actual_is_posthoc_upper_bound",
         "reference": "portfolio_best",
-        "status": "same"
+        "status": "not_comparable"
       },
-      "distinct_candidates": 10,
+      "distinct_candidates": 9,
       "evaluated_candidates": 55,
       "failed_ops": 0,
       "failed_source_profiles": [],
       "invalid_objective_score_sources": [],
+      "invalid_time_budget_sources": [],
       "objective_name": "min_overdue",
       "objective_score": [
         0.0,
@@ -10129,8 +10425,25 @@
       "runtime_ms": 547,
       "schema_version": 1,
       "seed": 9,
+      "source_algorithm_profiles": [
+        "greedy",
+        "local_search",
+        "grasp_ig",
+        "graph_ready_v1",
+        "graph_ready_v2_no_repair",
+        "graph_ready_v2_with_repair"
+      ],
+      "source_time_budget_seconds_by_profile": {
+        "graph_ready_v1": 1,
+        "graph_ready_v2_no_repair": 1,
+        "graph_ready_v2_with_repair": 1,
+        "grasp_ig": 1,
+        "greedy": 1,
+        "local_search": 1
+      },
+      "source_time_budget_seconds_total": 6,
       "status": "passed",
-      "time_budget_seconds": 1
+      "time_budget_seconds": 6
     }
   ],
   "schema_version": 1,
@@ -10201,11 +10514,11 @@
       "algorithm_profile": "portfolio_all",
       "case_count": 10,
       "losses_vs_current_baseline": 0,
-      "mean_primary_delta_vs_current_baseline": -2.0,
+      "mean_primary_delta_vs_current_baseline": null,
       "runtime_ms": 547.0,
       "ties_vs_current_baseline": 0,
-      "wins_vs_current_baseline": 10,
-      "worst_primary_delta_vs_current_baseline": -2.0
+      "wins_vs_current_baseline": 0,
+      "worst_primary_delta_vs_current_baseline": null
     }
   ]
 }
