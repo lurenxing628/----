@@ -1,0 +1,1690 @@
+{
+ "algorithm": [
+  {
+   "kind": "EXACT",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": "-",
+   "members": [
+    {
+     "file": "tests/algorithm/test_optimizer_compare_algorithms_contract.py",
+     "func": "test_algorithm_comparison_proof_check_keeps_dirty_output_unbound",
+     "line": 332
+    },
+    {
+     "file": "tests/algorithm/test_optimizer_smtwt_compare_algorithms_contract.py",
+     "func": "test_smtwt_proof_check_keeps_dirty_result_unbound",
+     "line": 336
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/algorithm/test_algorithm_date_boundary_split.py",
+     "func": "test_schedule_override_full_cover_skips_default_sort_only_for_due_and_created_at",
+     "line": 72
+    },
+    {
+     "file": "tests/algorithm/test_algorithm_date_boundary_split.py",
+     "func": "test_schedule_override_full_cover_ignores_ready_date_when_readiness_gate_disabled",
+     "line": 90
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/algorithm/test_optimizer_benchmark_ratchet_gate.py",
+     "func": "test_benchmark_ratchet_blocks_dirty_actual_worktree_proof",
+     "line": 53
+    },
+    {
+     "file": "tests/algorithm/test_optimizer_benchmark_ratchet_gate.py",
+     "func": "test_benchmark_ratchet_blocks_dirty_baseline_worktree_proof",
+     "line": 64
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/algorithm/test_optimizer_compare_algorithms_contract.py",
+     "func": "test_algorithm_comparison_proof_check_keeps_dirty_output_unbound",
+     "line": 332
+    },
+    {
+     "file": "tests/algorithm/test_optimizer_smtwt_compare_algorithms_contract.py",
+     "func": "test_smtwt_proof_check_keeps_dirty_result_unbound",
+     "line": 336
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/algorithm/test_optimizer_proof_harness_contract.py",
+     "func": "test_benchmark_reference_contract_rejects_folded_reference_with_bad_best_known_gap",
+     "line": 219
+    },
+    {
+     "file": "tests/algorithm/test_optimizer_proof_harness_contract.py",
+     "func": "test_benchmark_reference_contract_rejects_folded_reference_with_bad_gap_metric_key",
+     "line": 235
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py",
+     "func": "test_optimizer_strict_mode_rejects_blank_numeric_for_all_cfg_shapes",
+     "line": 187
+    },
+    {
+     "file": "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py",
+     "func": "test_optimizer_strict_mode_rejects_blank_numeric_on_raw_cfg",
+     "line": 227
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/algorithm/test_optimizer_compare_algorithms_contract.py",
+     "func": "test_algorithm_comparison_invalid_actual_score_is_not_improvement",
+     "line": 93
+    },
+    {
+     "file": "tests/algorithm/test_optimizer_smtwt_compare_algorithms_contract.py",
+     "func": "test_smtwt_invalid_actual_score_is_not_improvement",
+     "line": 58
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/algorithm/test_optimizer_compare_algorithms_contract.py",
+     "func": "test_algorithm_comparison_short_actual_score_is_not_improvement",
+     "line": 104
+    },
+    {
+     "file": "tests/algorithm/test_optimizer_smtwt_compare_algorithms_contract.py",
+     "func": "test_smtwt_short_actual_score_is_not_improvement",
+     "line": 69
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/algorithm/test_optimizer_compare_algorithms_contract.py",
+     "func": "test_algorithm_comparison_failed_actual_score_is_not_improvement",
+     "line": 115
+    },
+    {
+     "file": "tests/algorithm/test_optimizer_smtwt_compare_algorithms_contract.py",
+     "func": "test_smtwt_failed_actual_score_is_not_improvement",
+     "line": 80
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py",
+     "func": "test_optimizer_accepts_plain_object_cfg",
+     "line": 149
+    },
+    {
+     "file": "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py",
+     "func": "test_optimizer_accepts_schedule_config_snapshot",
+     "line": 155
+    }
+   ]
+  }
+ ],
+ "app_runtime": [
+  {
+   "kind": "EXACT",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": "-",
+   "members": [
+    {
+     "file": "tests/app_runtime/test_startup_host_portfile.py",
+     "func": "test_startup_host_portfile",
+     "line": 273
+    },
+    {
+     "file": "tests/app_runtime/test_startup_host_portfile_new_ui.py",
+     "func": "test_startup_host_portfile_new_ui",
+     "line": 265
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 18,
+   "members": [
+    {
+     "file": "tests/app_runtime/test_win7_launcher_runtime_paths.py",
+     "func": "test_stop_runtime_blocks_when_only_port_file_exists",
+     "line": 578
+    },
+    {
+     "file": "tests/app_runtime/test_win7_launcher_runtime_paths.py",
+     "func": "test_stop_runtime_blocks_when_only_host_file_exists",
+     "line": 603
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/app_runtime/test_startup_host_portfile.py",
+     "func": "test_startup_host_portfile",
+     "line": 273
+    },
+    {
+     "file": "tests/app_runtime/test_startup_host_portfile_new_ui.py",
+     "func": "test_startup_host_portfile_new_ui",
+     "line": 265
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/app_runtime/test_ui_geometry_html_contract.py",
+     "func": "test_error_keyword_detector_does_not_flag_normal_app_shell_log_text",
+     "line": 92
+    },
+    {
+     "file": "tests/app_runtime/test_ui_geometry_html_contract.py",
+     "func": "test_error_keyword_detector_flags_error_page_title",
+     "line": 104
+    }
+   ]
+  }
+ ],
+ "schedule": [
+  {
+   "kind": "EXACT",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": "-",
+   "members": [
+    {
+     "file": "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py",
+     "func": "test_latest_history_panel_rejects_unknown_display_values",
+     "line": 516
+    },
+    {
+     "file": "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py",
+     "func": "test_latest_history_panel_rejects_incomplete_display_values",
+     "line": 556
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 3,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
+     "func": "test_schedule_input_builder_strict_blank_setup_hours_rejected",
+     "line": 32
+    },
+    {
+     "file": "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
+     "func": "test_schedule_input_builder_strict_nan_unit_hours_rejected_with_user_label",
+     "line": 58
+    },
+    {
+     "file": "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
+     "func": "test_schedule_input_builder_strict_blank_ext_days_rejected",
+     "line": 84
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 8,
+   "members": [
+    {
+     "file": "tests/schedule/route_view/test_scheduler_ops_update_route_contract.py",
+     "func": "test_scheduler_ops_update_token_route_success_branch",
+     "line": 79
+    },
+    {
+     "file": "tests/schedule/route_view/test_scheduler_ops_update_route_contract.py",
+     "func": "test_scheduler_ops_update_token_route_allows_blank_internal_assignment",
+     "line": 104
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
+     "func": "test_summary_display_secondary_degradation_does_not_promote_raw_message_after_dedupe",
+     "line": 605
+    },
+    {
+     "file": "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
+     "func": "test_summary_display_freeze_secondary_requires_public_allowlist_message",
+     "line": 977
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    {
+     "file": "tests/schedule/route_view/test_route_version_normalizers_contract.py",
+     "func": "test_resolve_version_or_latest_missing_explicit_version_is_not_selected",
+     "line": 71
+    },
+    {
+     "file": "tests/schedule/route_view/test_route_version_normalizers_contract.py",
+     "func": "test_version_resolution_reports_missing_explicit_history",
+     "line": 104
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    {
+     "file": "tests/schedule/route_view/test_scheduler_historical_plan_label_contract.py",
+     "func": "test_gantt_page_labels_superseded_adopted_version_as_historical",
+     "line": 81
+    },
+    {
+     "file": "tests/schedule/route_view/test_scheduler_historical_plan_label_contract.py",
+     "func": "test_week_plan_page_labels_superseded_adopted_version_as_historical",
+     "line": 94
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    {
+     "file": "tests/schedule/route_view/test_scheduler_route_registration_contract.py",
+     "func": "test_explicit_scheduler_registration_imports_route_graph_once",
+     "line": 57
+    },
+    {
+     "file": "tests/schedule/route_view/test_scheduler_route_registration_contract.py",
+     "func": "test_legacy_leaf_import_loads_only_requested_leaf",
+     "line": 91
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/schedule/route_view/test_scheduler_historical_plan_label_contract.py",
+     "func": "test_resource_dispatch_labels_superseded_adopted_option_as_historical",
+     "line": 145
+    },
+    {
+     "file": "tests/schedule/route_view/test_scheduler_historical_plan_label_contract.py",
+     "func": "test_report_filter_option_labels_superseded_adopted_version_as_historical",
+     "line": 158
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/schedule/route_view/test_scheduler_run_view_result_contract.py",
+     "func": "test_run_schedule_view_result_keeps_auto_assign_resource_warning",
+     "line": 222
+    },
+    {
+     "file": "tests/schedule/route_view/test_scheduler_run_view_result_contract.py",
+     "func": "test_run_schedule_view_result_keeps_unscheduled_batch_warning_without_batch_samples",
+     "line": 325
+    }
+   ]
+  }
+ ],
+ "scheduler_graph": [
+  {
+   "kind": "EXACT",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": "-",
+   "members": [
+    {
+     "file": "tests/scheduler_graph/test_graph_types.py",
+     "func": "test_operation_graph_node_rejects_blank_required_identifiers",
+     "line": 82
+    },
+    {
+     "file": "tests/scheduler_graph/test_graph_types.py",
+     "func": "test_operation_graph_node_rejects_non_integer_runtime_fields",
+     "line": 102
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-dir",
+   "count": 3,
+   "stmts": 8,
+   "members": [
+    {
+     "file": "tests/scheduler_graph/test_input_adapter.py",
+     "func": "test_input_adapter_does_not_import_networkx",
+     "line": 257
+    },
+    {
+     "file": "tests/scheduler_graph/test_nx_runtime.py",
+     "func": "test_graph_package_import_does_not_import_networkx",
+     "line": 13
+    },
+    {
+     "file": "tests/scheduler_graph/test_precedence_builder.py",
+     "func": "test_precedence_builder_import_does_not_import_networkx",
+     "line": 239
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": 9,
+   "members": [
+    {
+     "file": "tests/scheduler_graph/test_metrics_impact.py",
+     "func": "test_metrics_functions_do_not_modify_original_graph",
+     "line": 365
+    },
+    {
+     "file": "tests/scheduler_graph/test_validators.py",
+     "func": "test_validators_do_not_modify_original_graph",
+     "line": 218
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": 9,
+   "members": [
+    {
+     "file": "tests/scheduler_graph/test_metrics_topology.py",
+     "func": "test_metrics_import_does_not_import_networkx",
+     "line": 41
+    },
+    {
+     "file": "tests/scheduler_graph/test_validators.py",
+     "func": "test_validators_import_does_not_import_networkx",
+     "line": 74
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 9,
+   "members": [
+    {
+     "file": "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py",
+     "func": "test_sgs_graph_ready_context_does_not_release_successor_after_blocked_failure",
+     "line": 858
+    },
+    {
+     "file": "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py",
+     "func": "test_sgs_graph_ready_context_uses_normalized_successor_map_for_blocking",
+     "line": 894
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/scheduler_graph/test_graph_dispatch_context.py",
+     "func": "test_build_predecessor_successor_maps_rejects_unknown_from_node",
+     "line": 176
+    },
+    {
+     "file": "tests/scheduler_graph/test_graph_dispatch_context.py",
+     "func": "test_build_predecessor_successor_maps_rejects_unknown_to_node",
+     "line": 190
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    {
+     "file": "tests/scheduler_graph/test_metrics_critical_path.py",
+     "func": "test_cycle_critical_path_exposes_networkx_unfeasible",
+     "line": 93
+    },
+    {
+     "file": "tests/scheduler_graph/test_metrics_topology.py",
+     "func": "test_cycle_topology_exposes_networkx_unfeasible",
+     "line": 100
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/scheduler_graph/test_analysis_service.py",
+     "func": "test_analysis_service_import_does_not_import_networkx",
+     "line": 183
+    },
+    {
+     "file": "tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py",
+     "func": "test_scheduler_graph_modules_do_not_import_networkx_during_module_import",
+     "line": 13
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py",
+     "func": "test_balanced_allows_healthy_critical_candidate_to_override_within_tolerance",
+     "line": 84
+    },
+    {
+     "file": "tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py",
+     "func": "test_balanced_does_not_override_when_primary_objective_is_worse",
+     "line": 105
+    }
+   ]
+  }
+ ],
+ "web_pages": [
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 9,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/web_pages/test_page_manual_registry.py",
+     "func": "test_process_page_manual_title_contracts",
+     "line": 903
+    },
+    {
+     "file": "tests/web_pages/test_page_manual_registry.py",
+     "func": "test_excel_page_manual_title_contracts",
+     "line": 910
+    },
+    {
+     "file": "tests/web_pages/test_page_manual_registry.py",
+     "func": "test_process_user_corrected_wording_contracts",
+     "line": 917
+    },
+    {
+     "file": "tests/web_pages/test_page_manual_registry.py",
+     "func": "test_scheduler_page_manual_title_contracts",
+     "line": 924
+    },
+    {
+     "file": "tests/web_pages/test_page_manual_registry.py",
+     "func": "test_home_page_manual_contract",
+     "line": 931
+    },
+    {
+     "file": "tests/web_pages/test_page_manual_registry.py",
+     "func": "test_page_manual_closeout_forbidden_phrases",
+     "line": 938
+    },
+    {
+     "file": "tests/web_pages/test_page_manual_registry.py",
+     "func": "test_page_manual_refusal_conditions",
+     "line": 953
+    },
+    {
+     "file": "tests/web_pages/test_page_manual_registry.py",
+     "func": "test_material_manual_scope_contracts",
+     "line": 960
+    },
+    {
+     "file": "tests/web_pages/test_page_manual_registry.py",
+     "func": "test_blank_default_pages_do_not_conflict_with_common_errors",
+     "line": 967
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 4,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/web_pages/test_plan_context_capsule.py",
+     "func": "test_analysis_capsule_fed",
+     "line": 199
+    },
+    {
+     "file": "tests/web_pages/test_plan_context_capsule.py",
+     "func": "test_week_plan_capsule_fed",
+     "line": 205
+    },
+    {
+     "file": "tests/web_pages/test_plan_context_capsule.py",
+     "func": "test_reports_capsule_fed",
+     "line": 211
+    },
+    {
+     "file": "tests/web_pages/test_plan_context_capsule.py",
+     "func": "test_resource_dispatch_capsule_fed",
+     "line": 262
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 3,
+   "stmts": 5,
+   "members": [
+    {
+     "file": "tests/web_pages/test_dashboard_cockpit_hero.py",
+     "func": "test_overdue_clue_unparseable_item_is_honestly_hedged",
+     "line": 144
+    },
+    {
+     "file": "tests/web_pages/test_dashboard_cockpit_hero.py",
+     "func": "test_overdue_clue_all_unparseable_says_cannot_judge",
+     "line": 200
+    },
+    {
+     "file": "tests/web_pages/test_dashboard_cockpit_hero.py",
+     "func": "test_overdue_clue_garbage_suffix_finish_not_silently_truncated",
+     "line": 310
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/web_pages/test_system_logs_presenter_contract.py",
+     "func": "test_unknown_operation_log_codes_keep_raw_values_visible",
+     "line": 10
+    },
+    {
+     "file": "tests/web_pages/test_system_logs_presenter_contract.py",
+     "func": "test_empty_operation_log_codes_stay_empty_state",
+     "line": 31
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    {
+     "file": "tests/web_pages/test_dashboard_cockpit_hero.py",
+     "func": "test_overdue_clue_truncated_and_unparseable_combines_hedges",
+     "line": 217
+    },
+    {
+     "file": "tests/web_pages/test_dashboard_cockpit_hero.py",
+     "func": "test_overdue_clue_truncated_says_based_on_first_n",
+     "line": 234
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    {
+     "file": "tests/web_pages/test_history_links_adoption.py",
+     "func": "test_analysis_version_picker_links_keep_plan_identity",
+     "line": 290
+    },
+    {
+     "file": "tests/web_pages/test_week_plan_enrich_page.py",
+     "func": "test_week_plan_empty_week_upgraded_hint_with_jump_link",
+     "line": 50
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/web_pages/test_history_summary_parser.py",
+     "func": "test_parse_result_summary_payload_reports_json_decode_error",
+     "line": 35
+    },
+    {
+     "file": "tests/web_pages/test_history_summary_parser.py",
+     "func": "test_parse_result_summary_payload_rejects_json_list_as_invalid_structure",
+     "line": 80
+    }
+   ]
+  }
+ ],
+ "gate_meta": [
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 5,
+   "stmts": 7,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_previous_failure_is_not_reused",
+     "line": 740
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_bad_duration_s_is_not_reused",
+     "line": 867
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_entry_id_mismatch_is_not_reused",
+     "line": 1088
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_runner_version_hash_change_is_not_reused",
+     "line": 1192
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_tooling_version_hash_change_is_not_reused",
+     "line": 1204
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 4,
+   "stmts": 7,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_sync_debt_ledger.py",
+     "func": "test_refresh_auto_fields_rejects_silent_realign_when_context_hash_changed",
+     "line": 675
+    },
+    {
+     "file": "tests/gate_meta/test_sync_debt_ledger.py",
+     "func": "test_refresh_auto_fields_rejects_silent_kind_regression",
+     "line": 783
+    },
+    {
+     "file": "tests/gate_meta/test_sync_debt_ledger.py",
+     "func": "test_refresh_auto_fields_rejects_legacy_non_startup_ordinal_drift",
+     "line": 936
+    },
+    {
+     "file": "tests/gate_meta/test_sync_debt_ledger.py",
+     "func": "test_refresh_auto_fields_rejects_startup_cleanup_reclassify",
+     "line": 985
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 3,
+   "stmts": 9,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_long_gate_collect_cache.py",
+     "func": "test_collect_cache_invalidates_when_conftest_changes",
+     "line": 143
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_collect_cache.py",
+     "func": "test_collect_cache_invalidates_when_pyproject_changes",
+     "line": 170
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_collect_cache.py",
+     "func": "test_collect_cache_invalidates_when_dependency_file_changes",
+     "line": 184
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 3,
+   "stmts": 8,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_ruff_check_full_fingerprint_tracks_ruff_version",
+     "line": 382
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_pyright_gate_full_fingerprint_tracks_pyright_version",
+     "line": 475
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_pyright_tools_full_fingerprint_tracks_pyright_version",
+     "line": 544
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 3,
+   "stmts": 7,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_ruff_check_full_fingerprint_tracks_python_config_and_dependencies",
+     "line": 370
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_pyright_gate_full_fingerprint_tracks_gate_inputs_config_and_dependencies",
+     "line": 432
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_pyright_tools_full_fingerprint_tracks_tools_inputs_config_and_dependencies",
+     "line": 521
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 3,
+   "stmts": 7,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_cache_missing_required_field_is_not_reused",
+     "line": 806
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_missing_cache_schema_version_is_not_reused",
+     "line": 818
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_missing_integrity_field_is_not_reused",
+     "line": 830
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 3,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_ruff_check_full_fingerprint_tracks_declared_output_path",
+     "line": 395
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_pyright_gate_full_fingerprint_tracks_declared_output_path",
+     "line": 488
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_pyright_tools_full_fingerprint_tracks_declared_output_path",
+     "line": 557
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 3,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_run_daily_quality_gate.py",
+     "func": "test_docs_only_changes_skip_required_pytest",
+     "line": 301
+    },
+    {
+     "file": "tests/gate_meta/test_run_daily_quality_gate.py",
+     "func": "test_codestable_only_changes_skip_required_pytest",
+     "line": 348
+    },
+    {
+     "file": "tests/gate_meta/test_run_daily_quality_gate.py",
+     "func": "test_readme_only_changes_skip_required_pytest",
+     "line": 373
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 13,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_sync_debt_ledger.py",
+     "func": "test_import_test_debt_baseline_command_rejects_malformed_machine_contract",
+     "line": 2404
+    },
+    {
+     "file": "tests/gate_meta/test_sync_debt_ledger.py",
+     "func": "test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero",
+     "line": 2497
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 8,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_dead_code_usage_graph_scope_contract.py",
+     "func": "test_module_without_functions_can_register_callback_usage",
+     "line": 148
+    },
+    {
+     "file": "tests/gate_meta/test_dead_code_usage_graph_scope_contract.py",
+     "func": "test_module_registration_before_rebinding_keeps_imported_function_usage",
+     "line": 384
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 7,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_corrupt_cache_json_is_not_reused",
+     "line": 770
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_success_cache_top_level_json_array_is_not_reused",
+     "line": 782
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 7,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_schema_version_change_is_not_reused",
+     "line": 1112
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_cache_schema_version_change_is_not_reused",
+     "line": 1124
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": 7,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_long_gate_required_regression_cache.py",
+     "func": "test_required_classification_does_not_depend_on_command_position",
+     "line": 100
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_startup_regression_cache.py",
+     "func": "test_startup_classification_does_not_depend_on_command_position",
+     "line": 89
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-dir",
+   "count": 2,
+   "stmts": 7,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_long_gate_required_regression_cache.py",
+     "func": "test_required_tracked_scope_changes_update_fingerprint",
+     "line": 400
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_startup_regression_cache.py",
+     "func": "test_startup_tracked_scope_changes_update_fingerprint",
+     "line": 289
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 7,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_sync_debt_ledger.py",
+     "func": "test_check_rejects_fixed_silent_entry_still_in_scan",
+     "line": 1203
+    },
+    {
+     "file": "tests/gate_meta/test_sync_debt_ledger.py",
+     "func": "test_validate_ledger_rejects_silent_fallback_line_drift",
+     "line": 1317
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_codestable_tools_contract.py",
+     "func": "test_search_yaml_rejects_unclosed_frontmatter",
+     "line": 244
+    },
+    {
+     "file": "tests/gate_meta/test_codestable_tools_contract.py",
+     "func": "test_search_yaml_rejects_non_line_frontmatter_delimiter",
+     "line": 255
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_pyright_gate_full_fingerprint_tracks_environment",
+     "line": 464
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_pyright_tools_full_fingerprint_tracks_environment",
+     "line": 534
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_stdout_log_hash_mismatch_is_not_reused",
+     "line": 890
+    },
+    {
+     "file": "tests/gate_meta/test_long_gate_cache.py",
+     "func": "test_stderr_log_hash_mismatch_is_not_reused",
+     "line": 901
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py",
+     "func": "test_resource_dispatch_site_records_frontend_contract_is_required_and_grouped",
+     "line": 218
+    },
+    {
+     "file": "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py",
+     "func": "test_resource_dispatch_workbench_lane_contract_is_required_and_grouped",
+     "line": 229
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_codestable_tools_contract.py",
+     "func": "test_validate_yaml_builtin_fallback_rejects_bad_block_list",
+     "line": 386
+    },
+    {
+     "file": "tests/gate_meta/test_codestable_tools_contract.py",
+     "func": "test_validate_yaml_builtin_fallback_rejects_unclosed_quote",
+     "line": 441
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py",
+     "func": "test_scheduler_historical_plan_label_contract_is_required_and_grouped",
+     "line": 167
+    },
+    {
+     "file": "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py",
+     "func": "test_import_execution_stats_regression_is_required_and_grouped",
+     "line": 356
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_quality_gate_scan_contract.py",
+     "func": "test_request_service_scan_flags_import_from_as_alias",
+     "line": 217
+    },
+    {
+     "file": "tests/gate_meta/test_quality_gate_scan_contract.py",
+     "func": "test_request_service_scan_flags_g_db_local_alias_for_service_and_helper",
+     "line": 264
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_quality_gate_scan_contract.py",
+     "func": "test_request_service_scan_keeps_module_import_alias_detection",
+     "line": 243
+    },
+    {
+     "file": "tests/gate_meta/test_quality_gate_scan_contract.py",
+     "func": "test_request_service_scan_flags_private_helper_with_g_db_alias",
+     "line": 293
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_run_full_selftest_report_metadata.py",
+     "func": "test_quality_gate_normalized_output_ignores_volatile_iso_timestamp",
+     "line": 375
+    },
+    {
+     "file": "tests/gate_meta/test_run_full_selftest_report_metadata.py",
+     "func": "test_quality_gate_normalized_output_ignores_pyright_update_notice",
+     "line": 389
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/gate_meta/test_architecture_fitness.py",
+     "func": "test_routes_do_not_execute_sql_directly",
+     "line": 83
+    },
+    {
+     "file": "tests/gate_meta/test_architecture_fitness.py",
+     "func": "test_services_do_not_import_flask_request",
+     "line": 96
+    }
+   ]
+  }
+ ],
+ "calendar_maintenance": [
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 3,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/calendar_maintenance/test_freeze_window_fail_closed_contract.py",
+     "func": "test_freeze_window_duplicate_previous_rows_strict_mode_fail_closed",
+     "line": 577
+    },
+    {
+     "file": "tests/calendar_maintenance/test_freeze_window_fail_closed_contract.py",
+     "func": "test_freeze_window_missing_prefix_strict_mode_fail_closed",
+     "line": 667
+    },
+    {
+     "file": "tests/calendar_maintenance/test_freeze_window_fail_closed_contract.py",
+     "func": "test_freeze_window_invalid_time_range_strict_mode_fail_closed",
+     "line": 687
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    {
+     "file": "tests/calendar_maintenance/test_calendar_invalid_shift_window_contract.py",
+     "func": "test_engine_allows_blank_shift_start_default_and_hhmmss",
+     "line": 54
+    },
+    {
+     "file": "tests/calendar_maintenance/test_calendar_invalid_shift_window_contract.py",
+     "func": "test_engine_accepts_full_width_colon_shift_start",
+     "line": 63
+    }
+   ]
+  }
+ ],
+ "candidate": [
+  {
+   "kind": "SKEL",
+   "scope": "cross-dir",
+   "count": 3,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/candidate/test_scheduler_candidate_reports_contract.py",
+     "func": "test_report_pages_reject_unknown_plan_role_without_history",
+     "line": 525
+    },
+    {
+     "file": "tests/gantt/test_gantt_default_version_span.py",
+     "func": "test_gantt_page_data_url_is_scopeless",
+     "line": 149
+    },
+    {
+     "file": "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py",
+     "func": "test_gantt_page_rejects_unknown_plan_role_without_history",
+     "line": 495
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 11,
+   "members": [
+    {
+     "file": "tests/candidate/test_scheduler_candidate_analysis_links_contract.py",
+     "func": "test_analysis_route_validates_plan_role_targets_before_attaching_links",
+     "line": 364
+    },
+    {
+     "file": "tests/candidate/test_scheduler_candidate_analysis_links_contract.py",
+     "func": "test_analysis_route_rejects_plan_role_target_drift_before_attaching_links",
+     "line": 385
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 10,
+   "members": [
+    {
+     "file": "tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py",
+     "func": "test_analysis_candidate_links_use_plan_option_status_when_summary_is_stale",
+     "line": 174
+    },
+    {
+     "file": "tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py",
+     "func": "test_analysis_candidate_links_are_hidden_when_plan_option_status_is_missing",
+     "line": 208
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/candidate/test_scheduler_candidate_plain_language.py",
+     "func": "test_candidate_missing_status_is_not_rendered_as_table_dash_or_bad_status",
+     "line": 313
+    },
+    {
+     "file": "tests/candidate/test_scheduler_candidate_plain_language.py",
+     "func": "test_candidate_unknown_status_does_not_keep_raw_bad_value",
+     "line": 328
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    {
+     "file": "tests/candidate/test_scheduler_candidate_health_contract.py",
+     "func": "test_candidate_health_treats_small_relative_improvement_as_same",
+     "line": 69
+    },
+    {
+     "file": "tests/candidate/test_scheduler_candidate_health_contract.py",
+     "func": "test_candidate_health_requires_at_least_two_positive_signals_for_better",
+     "line": 83
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    {
+     "file": "tests/candidate/test_scheduler_candidate_health_contract.py",
+     "func": "test_candidate_health_rejects_critical_path_sample_only",
+     "line": 136
+    },
+    {
+     "file": "tests/candidate/test_scheduler_candidate_health_contract.py",
+     "func": "test_candidate_health_rejects_truncated_critical_path_sample",
+     "line": 154
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "cross-dir",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/candidate/test_scheduler_candidate_analysis_links_contract.py",
+     "func": "test_analysis_candidate_empty_role_label_stays_placeholder",
+     "line": 263
+    },
+    {
+     "file": "tests/web_pages/test_label_single_source_contract.py",
+     "func": "test_unknown_status_user_visible_label_is_unified",
+     "line": 62
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/candidate/test_scheduler_candidate_plain_language.py",
+     "func": "test_degradation_duplicate_later_bad_count_is_not_swallowed",
+     "line": 343
+    },
+    {
+     "file": "tests/candidate/test_scheduler_candidate_plain_language.py",
+     "func": "test_degradation_duplicate_good_counts_are_accumulated",
+     "line": 357
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/candidate/test_scheduler_candidate_runner_contract.py",
+     "func": "test_candidate_runner_propagates_unexpected_contract_errors",
+     "line": 520
+    },
+    {
+     "file": "tests/candidate/test_scheduler_candidate_runner_contract.py",
+     "func": "test_candidate_runner_propagates_runtime_contract_errors",
+     "line": 544
+    }
+   ]
+  }
+ ],
+ "migration_db": [
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 3,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/migration_db/test_backup_integrity_check_contract.py",
+     "func": "test_backup_raises_when_integrity_check_execution_fails",
+     "line": 135
+    },
+    {
+     "file": "tests/migration_db/test_backup_integrity_check_contract.py",
+     "func": "test_backup_raises_when_integrity_fetchall_fails",
+     "line": 147
+    },
+    {
+     "file": "tests/migration_db/test_backup_integrity_check_contract.py",
+     "func": "test_backup_raises_when_integrity_result_not_ok",
+     "line": 159
+    }
+   ]
+  }
+ ],
+ "resource_dispatch": [
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 12,
+   "members": [
+    {
+     "file": "tests/resource_dispatch/test_resource_dispatch_actual_import.py",
+     "func": "test_actual_import_rejects_wrong_workbook_shape",
+     "line": 49
+    },
+    {
+     "file": "tests/resource_dispatch/test_resource_dispatch_actual_import.py",
+     "func": "test_actual_import_rejects_missing_task_code_header",
+     "line": 66
+    }
+   ]
+  }
+ ],
+ "scheduler_analysis": [
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 7,
+   "members": [
+    {
+     "file": "tests/scheduler_analysis/test_report_context_filters_contract.py",
+     "func": "test_report_request_rejects_resource_type_without_resource_id",
+     "line": 108
+    },
+    {
+     "file": "tests/scheduler_analysis/test_report_context_filters_contract.py",
+     "func": "test_report_request_rejects_conflicting_resource_aliases",
+     "line": 126
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    {
+     "file": "tests/scheduler_analysis/test_scheduler_analysis_read_context.py",
+     "func": "test_analysis_read_context_defaults_to_latest_version",
+     "line": 164
+    },
+    {
+     "file": "tests/scheduler_analysis/test_scheduler_analysis_read_context.py",
+     "func": "test_analysis_read_context_latest_query_still_selects_latest",
+     "line": 175
+    }
+   ]
+  }
+ ],
+ "gantt": [
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    {
+     "file": "tests/gantt/test_gantt_chain_walk_js_contract.py",
+     "func": "test_critical_walk_dead_end_stays_with_honest_notice",
+     "line": 124
+    },
+    {
+     "file": "tests/gantt/test_gantt_chain_walk_js_contract.py",
+     "func": "test_critical_walk_backward_dead_end_notice_says_previous",
+     "line": 139
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/gantt/test_gantt_execution_visuals_contract.py",
+     "func": "test_not_started_fake_record_gets_no_class",
+     "line": 79
+    },
+    {
+     "file": "tests/gantt/test_gantt_execution_visuals_contract.py",
+     "func": "test_unknown_status_code_gets_no_class_no_progress",
+     "line": 86
+    }
+   ]
+  }
+ ],
+ "models_domain": [
+  {
+   "kind": "SKEL",
+   "scope": "cross-dir",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    {
+     "file": "tests/models_domain/test_normalize_text.py",
+     "func": "test_normalize_text_str_and_non_str",
+     "line": 15
+    },
+    {
+     "file": "tests/scheduler_graph/test_id_policy.py",
+     "func": "test_display_id_is_tolerant_for_diagnostics",
+     "line": 108
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "cross-dir",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/models_domain/test_normalize_text.py",
+     "func": "test_normalize_text_none_and_blank",
+     "line": 9
+    },
+    {
+     "file": "tests/web_pages/test_scheduler_plan_role_arg_contract.py",
+     "func": "test_get_plan_role_arg_returns_none_for_missing_blank_and_whitespace",
+     "line": 17
+    }
+   ]
+  }
+ ],
+ "config": [
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/config/test_config_service_component_contract.py",
+     "func": "test_algorithm_domain_does_not_import_scheduler_services_directly",
+     "line": 301
+    },
+    {
+     "file": "tests/config/test_config_service_component_contract.py",
+     "func": "test_web_layer_uses_config_facade_instead_of_config_leaves",
+     "line": 405
+    }
+   ]
+  },
+  {
+   "kind": "SKEL",
+   "scope": "same-file",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    {
+     "file": "tests/config/test_config_service_strict_blank_contract.py",
+     "func": "test_save_page_config_rejects_blank_priority_weight",
+     "line": 46
+    },
+    {
+     "file": "tests/config/test_config_service_strict_blank_contract.py",
+     "func": "test_save_page_config_rejects_blank_due_weight",
+     "line": 60
+    }
+   ]
+  }
+ ]
+}

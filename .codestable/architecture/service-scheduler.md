@@ -5,7 +5,7 @@ scope: core/services/scheduler 排产调度模块的内部结构现状——对�
 summary: 占 core/services 约 70% 的排产巨型模块的系统地图,记录其子包划分、业务族、枢纽文件和 run↔summary 包级循环依赖等现状
 status: current
 created: 2026-06-28
-last_reviewed: 2026-06-29
+last_reviewed: 2026-06-30
 tags: [scheduler, core, service, 排产, architecture]
 depends_on: []
 implements: []
@@ -18,9 +18,9 @@ implements: []
 
 ## 1. 定位与规模
 
-`core/services/scheduler/` 是 APS 的排产核心,也是全仓最大的单一模块:**约 38312 行 / 183 个 Python 文件**,占整个 `core/services/` 约 **70%**。它对上承接 web 层的排产请求,对下编排算法层(`core.algorithms`)、基础资料服务(equipment / material / personnel / process)、数据访问层(`data/repositories`),产出正式排产版本、甘特视图、资源派工、周计划、报表底数和现场执行事实。
+`core/services/scheduler/` 是 APS 的排产核心,也是全仓最大的单一模块:**约 43628 行 / 206 个 Python 文件**,占整个 `core/services/` 约 **70%**。它对上承接 web 层的排产请求,对下编排算法层(`core.algorithms`)、基础资料服务(equipment / material / personnel / process)、数据访问层(`data/repositories`),产出正式排产版本、甘特视图、资源派工、周计划、报表底数和现场执行事实。
 
-模块内部已切出 5 个子包(`run/`、`summary/`、`analysis/`、`graph/`、`config/`),但仍有 **78 个业务文件直接平铺在根目录**(约占文件数 43%),按业务族聚集而未成包——这是理解本模块结构时最需要先建立的一张图(见 §3、§5)。
+模块内部已切出 5 个子包(`run/`、`summary/`、`analysis/`、`graph/`、`config/`),但仍有 **79 个业务文件直接平铺在根目录**(约占文件数 38%),按业务族聚集而未成包——这是理解本模块结构时最需要先建立的一张图(见 §3、§5)。
 
 ## 2. 对外接口面
 
@@ -46,7 +46,7 @@ core/services/scheduler/
 ├── __init__.py                 13 Service 惰性门面
 │
 ├── 【已分包子系统】(按"排产计算流程"切)
-│   ├── run/      (49 文件 / ~12555 行)  排产执行引擎:收输入→跑算法→多候选→校验→持久化
+│   ├── run/      (71 文件 / ~17567 行)  排产执行引擎:收输入→跑算法→多候选→校验→持久化
 │   ├── summary/  (20 文件 / ~4124 行)   结果摘要投影:原始结果→公开摘要+降级+体积护栏
 │   ├── config/   (21 文件 / ~5012 行)   排产策略配置:读写/预设/校验(自洽,唯一直连 data)
 │   ├── graph/    (13 文件 / ~1675 行)   可选工序图分析(NetworkX,延迟 import 隔离)
@@ -60,7 +60,7 @@ core/services/scheduler/
     ├── 现场事实 exec_feedback      执行快照/事实 provider/反馈(共享服务层)
     ├── 工作日历 calendar           日历引擎/管理/门面
     ├── 延误诊断 delay_diag         延误根因诊断
-    ├── 批次主数据 batch            批次 CRUD/模板/导入(与排产视图零纠缠)
+    ├── 批次主数据 batch            批次 CRUD/模板/导入(与排产执行主链基本分离)
     ├── 周计划导出 week_plan        Excel/打印纸面/合计行
     ├── 排产门面 sched_svc          schedule_service + history + repository_bundle
     └── 共享层 shared_util / run_shim  纯工具 + run/ 回兼垫片
@@ -72,9 +72,9 @@ core/services/scheduler/
 
 ### run/ —— 排产执行引擎
 - **职责**:收集排产输入 → 跑算法 / 多候选对比 → 校验产出 → 持久化。排产主链的执行核心。
-- **核心文件**:`run/schedule_orchestrator.py:279` `orchestrate_schedule_run`(总编排,把算法和摘要函数作为参数**注入**)、`run/schedule_input_collector.py` `collect_schedule_run_input`(输入收集)、`run/schedule_optimizer.py` `optimize_schedule`(算法入口)、`run/schedule_persistence.py`(持久化)。内部成簇:`optimizer_*`(15)、`schedule_candidate_*`(9)、`schedule_graph_*`(4,graph 子包唯一消费者)。
+- **核心文件**:`run/schedule_orchestrator.py:279` `orchestrate_schedule_run`(总编排,把算法和摘要函数作为参数**注入**)、`run/schedule_input_collector.py` `collect_schedule_run_input`(输入收集)、`run/schedule_optimizer.py` `optimize_schedule`(算法入口)、`run/schedule_persistence.py`(持久化)。内部成簇:`optimizer_*`(36)、`schedule_candidate_*`(9)、`schedule_graph_*`(5,graph 子包消费者)。
 - **optimizer 现状**:`run/schedule_optimizer.py` 的 improve 主链包含多起点、GRASP/IG 批次顺序候选、VNS/acceptance 局搜和 search report。GRASP/IG 生产候选只走 `batch_order` 解码，不保留不可达的 `sgs` 候选入口。局搜的 profile 默认配置六个业务邻域，但当当前 best 是 `dispatch_mode=sgs` 时，实际 effective 邻域只使用 SGS 专用 `sgs_dispatch_rule`，报告中必须分开 configured/effective，不能让页面或 diagnostics 误以为 SGS 跑了 critical_chain/tardy_window 等业务邻域。
-- **graph ready 现状**:工序图分析仍是可选基础设施；`GraphReadyOptimizationProfile` 只存在于路线图未来合同。当前生产链遇到 `graph_ready_context` 时，GRASP/IG 与局搜会记录 `graph_ready_requires_graph_neighborhood` 并跳过，因为图邻域 / 图权重局搜尚未实现。
+- **graph ready 现状**:工序图分析仍是可选基础设施。生产链遇到 `graph_ready_context` 时,会先走 GraphReady 专用候选池:保留 v1 九组图权重,并可按 `objective_aware_portfolio` 生成 v2 目标感知候选。v2 候选只改 ready 工序排序键,仍交给正式 SGS 解码,不直接写排程结果。批次交期允许为空,空交期生成 no-due 特征并后置,非空非法交期一律 fail-loud。GRASP/IG 与局搜仍不会复用批次顺序邻域处理 graph ready;需要图邻域时记录 `graph_ready_uses_graph_candidate_phase` 并跳过。
 - **对外依赖**:`core.infrastructure.errors`、`core.models.enums`、`core.algorithms.*`、`core.shared.strict_parse`、`core.services.common.build_outcome`;不直接 import `data`(经 svc 句柄)。
 - **对其它子包**:→ graph(13 处,**全是函数内延迟 import**)、→ summary(4 处)、→ config(3 处)。
 
@@ -96,7 +96,7 @@ core/services/scheduler/
 - **职责**:基于工序前驱关系建图、算关键路径/拓扑层/图警告。package docstring 明确"图分析是可选基础设施,import 期不得要求 NetworkX"(`graph/__init__.py:1-6`)。
 - **核心文件**:`graph/analysis_service.py:14` `ScheduleGraphAnalysisService`、`graph/precedence_builder.py`(建图)、`graph/metrics.py`(指标)、`graph/nx_runtime.py` `NetworkXUnavailable`(缺失隔离闸)。
 - **依赖现状**:几乎零外部依赖(仅 `graph/scoring.py` 引 `core.algorithms.greedy.dispatch.ready_queue`)。
-- **唯一消费者**:run/ 的 3 个 `schedule_graph_*` 文件,**全部函数体内延迟 import**(如 `run/schedule_graph_report.py:158-162`),贯彻"不在 import 期拉 NetworkX"。代价是 graph 的真实接入点散落在 run/ 里、不在 graph 包边界上。
+- **唯一消费者**:run/ 的 5 个 `schedule_graph_*` 文件,其中 4 个直接函数体内延迟 import graph 子包(如 `run/schedule_graph_report.py:158-162`),贯彻"不在 import 期拉 NetworkX"。代价是 graph 的真实接入点散落在 run/ 里、不在 graph 包边界上。
 
 ### analysis/ —— 诊断合同事实面(休眠/兼容)
 - **职责**:仅 `analysis/schedule_diagnostic_contract.py`,提供诊断合同构造器。
@@ -104,7 +104,7 @@ core/services/scheduler/
 
 ## 5. 根目录业务族(尚未分包)
 
-78 个根目录业务文件按业务对象聚成 13 族 + 2 共享层。多数文件无 docstring,职责按文件名 + import 结构推断;每族"可否独立成包"判断依据是"族内互依紧、跨族缠绕松"。
+79 个根目录业务文件按业务对象聚成 13 族 + 2 共享层。多数文件无 docstring,职责按文件名 + import 结构推断;每族"可否独立成包"判断依据是"族内互依紧、跨族缠绕松"。
 
 | 族 | 代表文件 | 职责 | 内聚现状 |
 |---|---|---|---|
@@ -116,7 +116,7 @@ core/services/scheduler/
 | **exec_feedback 现场事实** | `execution_fact_provider.py`、`execution_snapshot.py`、`operation_execution_feedback_*`、`operation_execution_scope_read.py`(in-deg 5) | 现场执行事实采集/反馈(契约 4.10) | **实为共享服务层**,被 adjustment/dispatch/actual 三族共依;`execution_fact_provider ↔ execution_snapshot` 已用 `TYPE_CHECKING` 拆环(`execution_snapshot.py:8`,`:103` 注释"勿上提否则 ImportError") |
 | **calendar 工作日历** | `calendar_service.py`、`calendar_admin.py`、`calendar_engine.py` | 日历引擎/管理/门面 | 干净单向链,稳定底座(in-deg 4) |
 | **delay_diag 延误诊断** | `schedule_delay_diagnosis_service.py`、`…clues.py`、`…utils.py` | 排产延误根因诊断 | 内聚高、只回依赖 plan_core,最干净的可独立候选之一 |
-| **batch 批次主数据** | `batch_service.py`、`batch_template_ops.py`、`batch_excel_import.py`、`batch_copy.py`、`batch_query_service.py` | 批次 CRUD/模板/写规则/导入/复制 | **6 文件全在孤立集,对排产其它族零 sibling import**,直接吃 `data.repositories`+`core.models`(`batch_service.py:7,11`) |
+| **batch 批次主数据** | `batch_service.py`、`batch_template_ops.py`、`batch_write_rules.py`、`batch_excel_import.py`、`batch_copy.py`、`batch_query_service.py` | 批次 CRUD/模板/写规则/导入/复制 | **围绕 `batch_service.py` 形成批次主数据簇**;`batch_service.py` 同目录导入 `batch_copy` / `batch_excel_import` / `batch_template_ops` / `batch_write_rules`,并通过 `batch_template_ops` 从模板建批次;对 run/summary/graph 等排产执行族仍基本无反向耦合 |
 | **week_plan 周计划导出** | `week_plan_excel.py`、`week_plan_print_sheet.py`、`week_plan_daily_summary.py` | 周计划/派工单 Excel/打印/合计 | 纯展示转换层,三文件互不 import |
 | **op_edit / resource_pool / sched_svc** | `operation_edit_service.py` / `resource_pool_builder.py` / `schedule_service.py`、`schedule_history_query_service.py`、`repository_bundle.py` | 工序编辑 / 资源池构建 / 排产运行门面 | op_edit 孤立;resource_pool 只被 sched_svc 用;sched_svc 是 run+summary 引擎对外门面 |
 
@@ -161,11 +161,11 @@ core/services/scheduler/
 - **客观影响**:运行时无死锁/正确性风险;张力集中在**分层与可维护性**——summary(数据流下游)反向依赖 run(上游)的内部模块,且加载期真环随时可被一次普通改动引爆。
 - **全景定位(2026-06-28 全仓普查)**:本环在循环依赖普查中编号 **A1**——实为 `scheduler 根 ⇄ run ⇄ summary ⇄ config` 的**四方**硬加载期目录环的一段(不是孤立的 run⇄summary 两方环),与 infrastructure/models(A2)等共 **6 个硬加载期目录环**并列。完整三类口径 + Codex 对抗核验见 `.codestable/audits/2026-06-28-circular-imports/`;复扫工具 `python3 -m tools.scan_import_cycles`。
 
-### 8.2 分包标准不统一,78 文件平铺根目录
-- 已按"计算流程"切出 run/summary/graph/config,但占 49 文件的 `resource`(17)/`schedule`(16)/`gantt`(16)三大**业务族**仍平铺根目录,每族体量都大于已成包的 graph/(13)。一半按流程分包、一半按业务族平铺,目录可读性与心智负担偏高。
+### 8.2 分包标准不统一,79 文件平铺根目录
+- 已按"计算流程"切出 run/summary/graph/config,但 resource / schedule / gantt 等多组**业务族**仍平铺根目录,每族体量都不小。一半按流程分包、一半按业务族平铺,目录可读性与心智负担偏高。
 
-### 8.3 batch 族与排产视图零纠缠
-- `batch` 族 6 文件(批次主数据 CRUD/模板/导入)直接吃 `data.repositories`+`core.models`,对 scheduler 其它族零 sibling import(`batch_service.py:7,11`)。它本质是"批次主数据服务",归在 scheduler 内属历史归类。
+### 8.3 batch 族与排产执行主链基本分离
+- `batch` 族 6 文件(批次主数据 CRUD/模板/导入/复制)通过 `batch_service.py` 串起多个同目录 helper,不是静态调用图里的全孤岛。它本质仍是"批次主数据服务":主要依赖 `data.repositories`+`core.models`,没有被 run/summary/graph 这些排产执行族反向调用,归在 scheduler 内属历史归类。
 
 ### 8.4 run_shim 双入口
 - 根目录 7 个 `schedule_*` 是 re-export 垫片(逻辑已在 `run/` 子包),导致同一能力既能从 `scheduler.run.X` 也能从 `scheduler.X` 进入;新代码该走哪个入口当前无文档约定(**TODO: 待确认是否有约定文件**)。外部(web/report/tools/tests)仍大量 import 根路径符号。

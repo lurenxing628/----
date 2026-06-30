@@ -1,0 +1,2742 @@
+{
+ "summary": {
+  "n_files": 614,
+  "n_tests": 3837,
+  "total_lines": 155036,
+  "assertion_free_funcs": 3,
+  "empty_body_funcs": 0,
+  "trivial_assert_funcs": 0,
+  "skipped_funcs": 8,
+  "mock_heavy_noassert_funcs": 0,
+  "exact_duplicate_groups": 4,
+  "exact_duplicate_funcs": 8,
+  "skeleton_duplicate_groups": 81,
+  "skeleton_duplicate_funcs": 188,
+  "parse_errors": 0
+ },
+ "exact_duplicates": [
+  {
+   "hash": "9ba3f76a3407168d5c1736cc5df5c8e9",
+   "count": 2,
+   "members": [
+    "tests/algorithm/test_optimizer_compare_algorithms_contract.py::test_algorithm_comparison_proof_check_keeps_dirty_output_unbound",
+    "tests/algorithm/test_optimizer_smtwt_compare_algorithms_contract.py::test_smtwt_proof_check_keeps_dirty_result_unbound"
+   ]
+  },
+  {
+   "hash": "b1fb2d747bd1486c77bb348a59eb524e",
+   "count": 2,
+   "members": [
+    "tests/app_runtime/test_startup_host_portfile.py::test_startup_host_portfile",
+    "tests/app_runtime/test_startup_host_portfile_new_ui.py::test_startup_host_portfile_new_ui"
+   ]
+  },
+  {
+   "hash": "b4892c46d76117b0368623f259eba621",
+   "count": 2,
+   "members": [
+    "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py::test_latest_history_panel_rejects_unknown_display_values",
+    "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py::test_latest_history_panel_rejects_incomplete_display_values"
+   ]
+  },
+  {
+   "hash": "e56755fd62e34ff893b3d1c420085b73",
+   "count": 2,
+   "members": [
+    "tests/scheduler_graph/test_graph_types.py::test_operation_graph_node_rejects_blank_required_identifiers",
+    "tests/scheduler_graph/test_graph_types.py::test_operation_graph_node_rejects_non_integer_runtime_fields"
+   ]
+  }
+ ],
+ "skeleton_duplicates": [
+  {
+   "hash": "a234e47cd3d8f0174a0711354572e436",
+   "count": 9,
+   "stmts": 4,
+   "members": [
+    "tests/web_pages/test_page_manual_registry.py::test_process_page_manual_title_contracts",
+    "tests/web_pages/test_page_manual_registry.py::test_excel_page_manual_title_contracts",
+    "tests/web_pages/test_page_manual_registry.py::test_process_user_corrected_wording_contracts",
+    "tests/web_pages/test_page_manual_registry.py::test_scheduler_page_manual_title_contracts",
+    "tests/web_pages/test_page_manual_registry.py::test_home_page_manual_contract",
+    "tests/web_pages/test_page_manual_registry.py::test_page_manual_closeout_forbidden_phrases",
+    "tests/web_pages/test_page_manual_registry.py::test_page_manual_refusal_conditions",
+    "tests/web_pages/test_page_manual_registry.py::test_material_manual_scope_contracts",
+    "tests/web_pages/test_page_manual_registry.py::test_blank_default_pages_do_not_conflict_with_common_errors"
+   ]
+  },
+  {
+   "hash": "0ae4429d4f8805b73be332eb045740ef",
+   "count": 5,
+   "stmts": 7,
+   "members": [
+    "tests/gate_meta/test_long_gate_cache.py::test_previous_failure_is_not_reused",
+    "tests/gate_meta/test_long_gate_cache.py::test_bad_duration_s_is_not_reused",
+    "tests/gate_meta/test_long_gate_cache.py::test_entry_id_mismatch_is_not_reused",
+    "tests/gate_meta/test_long_gate_cache.py::test_runner_version_hash_change_is_not_reused",
+    "tests/gate_meta/test_long_gate_cache.py::test_tooling_version_hash_change_is_not_reused"
+   ]
+  },
+  {
+   "hash": "807f99db91d7558b9fbb6fda0be695e5",
+   "count": 4,
+   "stmts": 7,
+   "members": [
+    "tests/gate_meta/test_sync_debt_ledger.py::test_refresh_auto_fields_rejects_silent_realign_when_context_hash_changed",
+    "tests/gate_meta/test_sync_debt_ledger.py::test_refresh_auto_fields_rejects_silent_kind_regression",
+    "tests/gate_meta/test_sync_debt_ledger.py::test_refresh_auto_fields_rejects_legacy_non_startup_ordinal_drift",
+    "tests/gate_meta/test_sync_debt_ledger.py::test_refresh_auto_fields_rejects_startup_cleanup_reclassify"
+   ]
+  },
+  {
+   "hash": "b82339a5f165d1ecb726db93f45923cd",
+   "count": 4,
+   "stmts": 3,
+   "members": [
+    "tests/web_pages/test_plan_context_capsule.py::test_analysis_capsule_fed",
+    "tests/web_pages/test_plan_context_capsule.py::test_week_plan_capsule_fed",
+    "tests/web_pages/test_plan_context_capsule.py::test_reports_capsule_fed",
+    "tests/web_pages/test_plan_context_capsule.py::test_resource_dispatch_capsule_fed"
+   ]
+  },
+  {
+   "hash": "e088b6abebeae98ed2473bbd1567c758",
+   "count": 3,
+   "stmts": 9,
+   "members": [
+    "tests/gate_meta/test_long_gate_collect_cache.py::test_collect_cache_invalidates_when_conftest_changes",
+    "tests/gate_meta/test_long_gate_collect_cache.py::test_collect_cache_invalidates_when_pyproject_changes",
+    "tests/gate_meta/test_long_gate_collect_cache.py::test_collect_cache_invalidates_when_dependency_file_changes"
+   ]
+  },
+  {
+   "hash": "2f54f4dc53cc415565750fb5ff34967b",
+   "count": 3,
+   "stmts": 8,
+   "members": [
+    "tests/gate_meta/test_long_gate_cache.py::test_ruff_check_full_fingerprint_tracks_ruff_version",
+    "tests/gate_meta/test_long_gate_cache.py::test_pyright_gate_full_fingerprint_tracks_pyright_version",
+    "tests/gate_meta/test_long_gate_cache.py::test_pyright_tools_full_fingerprint_tracks_pyright_version"
+   ]
+  },
+  {
+   "hash": "7de28056c41bbb48e21dcf1e7b352126",
+   "count": 3,
+   "stmts": 8,
+   "members": [
+    "tests/scheduler_graph/test_input_adapter.py::test_input_adapter_does_not_import_networkx",
+    "tests/scheduler_graph/test_nx_runtime.py::test_graph_package_import_does_not_import_networkx",
+    "tests/scheduler_graph/test_precedence_builder.py::test_precedence_builder_import_does_not_import_networkx"
+   ]
+  },
+  {
+   "hash": "beee46dd22e69a59adddc11af249328a",
+   "count": 3,
+   "stmts": 7,
+   "members": [
+    "tests/gate_meta/test_long_gate_cache.py::test_ruff_check_full_fingerprint_tracks_python_config_and_dependencies",
+    "tests/gate_meta/test_long_gate_cache.py::test_pyright_gate_full_fingerprint_tracks_gate_inputs_config_and_dependencies",
+    "tests/gate_meta/test_long_gate_cache.py::test_pyright_tools_full_fingerprint_tracks_tools_inputs_config_and_dependencies"
+   ]
+  },
+  {
+   "hash": "5facca0ac66af83ce14cf672c3555b86",
+   "count": 3,
+   "stmts": 7,
+   "members": [
+    "tests/gate_meta/test_long_gate_cache.py::test_cache_missing_required_field_is_not_reused",
+    "tests/gate_meta/test_long_gate_cache.py::test_missing_cache_schema_version_is_not_reused",
+    "tests/gate_meta/test_long_gate_cache.py::test_missing_integrity_field_is_not_reused"
+   ]
+  },
+  {
+   "hash": "2e238cb23df36e2407b02d47b5bb1660",
+   "count": 3,
+   "stmts": 6,
+   "members": [
+    "tests/calendar_maintenance/test_freeze_window_fail_closed_contract.py::test_freeze_window_duplicate_previous_rows_strict_mode_fail_closed",
+    "tests/calendar_maintenance/test_freeze_window_fail_closed_contract.py::test_freeze_window_missing_prefix_strict_mode_fail_closed",
+    "tests/calendar_maintenance/test_freeze_window_fail_closed_contract.py::test_freeze_window_invalid_time_range_strict_mode_fail_closed"
+   ]
+  },
+  {
+   "hash": "5b01454118a5255e7f4ad208b76c6e01",
+   "count": 3,
+   "stmts": 6,
+   "members": [
+    "tests/candidate/test_scheduler_candidate_reports_contract.py::test_report_pages_reject_unknown_plan_role_without_history",
+    "tests/gantt/test_gantt_default_version_span.py::test_gantt_page_data_url_is_scopeless",
+    "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py::test_gantt_page_rejects_unknown_plan_role_without_history"
+   ]
+  },
+  {
+   "hash": "d347cf30e77530b8e8c33e91b6d60748",
+   "count": 3,
+   "stmts": 6,
+   "members": [
+    "tests/gate_meta/test_long_gate_cache.py::test_ruff_check_full_fingerprint_tracks_declared_output_path",
+    "tests/gate_meta/test_long_gate_cache.py::test_pyright_gate_full_fingerprint_tracks_declared_output_path",
+    "tests/gate_meta/test_long_gate_cache.py::test_pyright_tools_full_fingerprint_tracks_declared_output_path"
+   ]
+  },
+  {
+   "hash": "5875c965cc79f1bcd8849fd25c3710a0",
+   "count": 3,
+   "stmts": 6,
+   "members": [
+    "tests/gate_meta/test_run_daily_quality_gate.py::test_docs_only_changes_skip_required_pytest",
+    "tests/gate_meta/test_run_daily_quality_gate.py::test_codestable_only_changes_skip_required_pytest",
+    "tests/gate_meta/test_run_daily_quality_gate.py::test_readme_only_changes_skip_required_pytest"
+   ]
+  },
+  {
+   "hash": "20ce5ea9bf0ca3e1e0d5ee12a0278899",
+   "count": 3,
+   "stmts": 6,
+   "members": [
+    "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_setup_hours_rejected",
+    "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_nan_unit_hours_rejected_with_user_label",
+    "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_ext_days_rejected"
+   ]
+  },
+  {
+   "hash": "427210df377a00ee6ec0f8eadc849d19",
+   "count": 3,
+   "stmts": 5,
+   "members": [
+    "tests/web_pages/test_dashboard_cockpit_hero.py::test_overdue_clue_unparseable_item_is_honestly_hedged",
+    "tests/web_pages/test_dashboard_cockpit_hero.py::test_overdue_clue_all_unparseable_says_cannot_judge",
+    "tests/web_pages/test_dashboard_cockpit_hero.py::test_overdue_clue_garbage_suffix_finish_not_silently_truncated"
+   ]
+  },
+  {
+   "hash": "361b4eb72ae5e4fef1cc9b41baa5bcac",
+   "count": 3,
+   "stmts": 4,
+   "members": [
+    "tests/migration_db/test_backup_integrity_check_contract.py::test_backup_raises_when_integrity_check_execution_fails",
+    "tests/migration_db/test_backup_integrity_check_contract.py::test_backup_raises_when_integrity_fetchall_fails",
+    "tests/migration_db/test_backup_integrity_check_contract.py::test_backup_raises_when_integrity_result_not_ok"
+   ]
+  },
+  {
+   "hash": "17ca611e6bc761aa7df0fcb692e55277",
+   "count": 2,
+   "stmts": 18,
+   "members": [
+    "tests/app_runtime/test_win7_launcher_runtime_paths.py::test_stop_runtime_blocks_when_only_port_file_exists",
+    "tests/app_runtime/test_win7_launcher_runtime_paths.py::test_stop_runtime_blocks_when_only_host_file_exists"
+   ]
+  },
+  {
+   "hash": "2811918af416c9bad4ab57f326513e6e",
+   "count": 2,
+   "stmts": 13,
+   "members": [
+    "tests/gate_meta/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract",
+    "tests/gate_meta/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero"
+   ]
+  },
+  {
+   "hash": "84463aad75b025ef76a4929b52cb55d9",
+   "count": 2,
+   "stmts": 12,
+   "members": [
+    "tests/resource_dispatch/test_resource_dispatch_actual_import.py::test_actual_import_rejects_wrong_workbook_shape",
+    "tests/resource_dispatch/test_resource_dispatch_actual_import.py::test_actual_import_rejects_missing_task_code_header"
+   ]
+  },
+  {
+   "hash": "25d83595ec17bfe9729f7d80e2a67d8c",
+   "count": 2,
+   "stmts": 11,
+   "members": [
+    "tests/candidate/test_scheduler_candidate_analysis_links_contract.py::test_analysis_route_validates_plan_role_targets_before_attaching_links",
+    "tests/candidate/test_scheduler_candidate_analysis_links_contract.py::test_analysis_route_rejects_plan_role_target_drift_before_attaching_links"
+   ]
+  },
+  {
+   "hash": "65957a38243a4e6625e0226697c72663",
+   "count": 2,
+   "stmts": 10,
+   "members": [
+    "tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py::test_analysis_candidate_links_use_plan_option_status_when_summary_is_stale",
+    "tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py::test_analysis_candidate_links_are_hidden_when_plan_option_status_is_missing"
+   ]
+  },
+  {
+   "hash": "a34894f2b39450fc1ce239b409c140a2",
+   "count": 2,
+   "stmts": 9,
+   "members": [
+    "tests/scheduler_graph/test_metrics_impact.py::test_metrics_functions_do_not_modify_original_graph",
+    "tests/scheduler_graph/test_validators.py::test_validators_do_not_modify_original_graph"
+   ]
+  },
+  {
+   "hash": "693ac3e78ef480913f720e04399244ca",
+   "count": 2,
+   "stmts": 9,
+   "members": [
+    "tests/scheduler_graph/test_metrics_topology.py::test_metrics_import_does_not_import_networkx",
+    "tests/scheduler_graph/test_validators.py::test_validators_import_does_not_import_networkx"
+   ]
+  },
+  {
+   "hash": "2bff4c8eb37eeeee5793a4a84b39bc6f",
+   "count": 2,
+   "stmts": 9,
+   "members": [
+    "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py::test_sgs_graph_ready_context_does_not_release_successor_after_blocked_failure",
+    "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py::test_sgs_graph_ready_context_uses_normalized_successor_map_for_blocking"
+   ]
+  },
+  {
+   "hash": "f10e2ebc6a5c193aa3b0bfe03022a1a3",
+   "count": 2,
+   "stmts": 8,
+   "members": [
+    "tests/gate_meta/test_dead_code_usage_graph_scope_contract.py::test_module_without_functions_can_register_callback_usage",
+    "tests/gate_meta/test_dead_code_usage_graph_scope_contract.py::test_module_registration_before_rebinding_keeps_imported_function_usage"
+   ]
+  },
+  {
+   "hash": "5eb4fda7ece65085ebd89dd18ecf8ce4",
+   "count": 2,
+   "stmts": 8,
+   "members": [
+    "tests/schedule/route_view/test_scheduler_ops_update_route_contract.py::test_scheduler_ops_update_token_route_success_branch",
+    "tests/schedule/route_view/test_scheduler_ops_update_route_contract.py::test_scheduler_ops_update_token_route_allows_blank_internal_assignment"
+   ]
+  },
+  {
+   "hash": "b3d4a282080b85b50eba493b2c476e20",
+   "count": 2,
+   "stmts": 7,
+   "members": [
+    "tests/gate_meta/test_long_gate_cache.py::test_corrupt_cache_json_is_not_reused",
+    "tests/gate_meta/test_long_gate_cache.py::test_success_cache_top_level_json_array_is_not_reused"
+   ]
+  },
+  {
+   "hash": "ec7f24d126624693ec5953b871439666",
+   "count": 2,
+   "stmts": 7,
+   "members": [
+    "tests/gate_meta/test_long_gate_cache.py::test_schema_version_change_is_not_reused",
+    "tests/gate_meta/test_long_gate_cache.py::test_cache_schema_version_change_is_not_reused"
+   ]
+  },
+  {
+   "hash": "b296e5e22d4b000fd8d5d1102f49fb82",
+   "count": 2,
+   "stmts": 7,
+   "members": [
+    "tests/gate_meta/test_long_gate_required_regression_cache.py::test_required_classification_does_not_depend_on_command_position",
+    "tests/gate_meta/test_long_gate_startup_regression_cache.py::test_startup_classification_does_not_depend_on_command_position"
+   ]
+  },
+  {
+   "hash": "e1cec4c04e26c7c122a9f66750699953",
+   "count": 2,
+   "stmts": 7,
+   "members": [
+    "tests/gate_meta/test_long_gate_required_regression_cache.py::test_required_tracked_scope_changes_update_fingerprint",
+    "tests/gate_meta/test_long_gate_startup_regression_cache.py::test_startup_tracked_scope_changes_update_fingerprint"
+   ]
+  },
+  {
+   "hash": "ecfc159e3bf54192d1afd9e64c7a0434",
+   "count": 2,
+   "stmts": 7,
+   "members": [
+    "tests/gate_meta/test_sync_debt_ledger.py::test_check_rejects_fixed_silent_entry_still_in_scan",
+    "tests/gate_meta/test_sync_debt_ledger.py::test_validate_ledger_rejects_silent_fallback_line_drift"
+   ]
+  },
+  {
+   "hash": "c8328cb05282ebc4d3d6977268e64b63",
+   "count": 2,
+   "stmts": 7,
+   "members": [
+    "tests/scheduler_analysis/test_report_context_filters_contract.py::test_report_request_rejects_resource_type_without_resource_id",
+    "tests/scheduler_analysis/test_report_context_filters_contract.py::test_report_request_rejects_conflicting_resource_aliases"
+   ]
+  },
+  {
+   "hash": "e3d13a643a87a1cf75b0367b5681490b",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    "tests/algorithm/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_skips_default_sort_only_for_due_and_created_at",
+    "tests/algorithm/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_ignores_ready_date_when_readiness_gate_disabled"
+   ]
+  },
+  {
+   "hash": "27444b268f8bffe4d567460826ca59fc",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    "tests/algorithm/test_optimizer_benchmark_ratchet_gate.py::test_benchmark_ratchet_blocks_dirty_actual_worktree_proof",
+    "tests/algorithm/test_optimizer_benchmark_ratchet_gate.py::test_benchmark_ratchet_blocks_dirty_baseline_worktree_proof"
+   ]
+  },
+  {
+   "hash": "cab1e9bc28a5d73970dd9b1ccad3bf24",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    "tests/candidate/test_scheduler_candidate_plain_language.py::test_candidate_missing_status_is_not_rendered_as_table_dash_or_bad_status",
+    "tests/candidate/test_scheduler_candidate_plain_language.py::test_candidate_unknown_status_does_not_keep_raw_bad_value"
+   ]
+  },
+  {
+   "hash": "3a39dbc57c78c4c8eaade44a2c601ceb",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    "tests/gate_meta/test_codestable_tools_contract.py::test_search_yaml_rejects_unclosed_frontmatter",
+    "tests/gate_meta/test_codestable_tools_contract.py::test_search_yaml_rejects_non_line_frontmatter_delimiter"
+   ]
+  },
+  {
+   "hash": "93a4ff7a4c466a98318e05190eacfec6",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    "tests/gate_meta/test_long_gate_cache.py::test_pyright_gate_full_fingerprint_tracks_environment",
+    "tests/gate_meta/test_long_gate_cache.py::test_pyright_tools_full_fingerprint_tracks_environment"
+   ]
+  },
+  {
+   "hash": "abe44bd0f0e12709f4231fd309edaf20",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    "tests/gate_meta/test_long_gate_cache.py::test_stdout_log_hash_mismatch_is_not_reused",
+    "tests/gate_meta/test_long_gate_cache.py::test_stderr_log_hash_mismatch_is_not_reused"
+   ]
+  },
+  {
+   "hash": "55c5a5de9dc2f8ae798e5f4088c8f22e",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py::test_resource_dispatch_site_records_frontend_contract_is_required_and_grouped",
+    "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py::test_resource_dispatch_workbench_lane_contract_is_required_and_grouped"
+   ]
+  },
+  {
+   "hash": "8e70b2db32e3c8be6279b1fb31c482b0",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py::test_summary_display_secondary_degradation_does_not_promote_raw_message_after_dedupe",
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py::test_summary_display_freeze_secondary_requires_public_allowlist_message"
+   ]
+  },
+  {
+   "hash": "67bcdfba8c704d93feaffbf663177c2c",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    "tests/scheduler_analysis/test_scheduler_analysis_read_context.py::test_analysis_read_context_defaults_to_latest_version",
+    "tests/scheduler_analysis/test_scheduler_analysis_read_context.py::test_analysis_read_context_latest_query_still_selects_latest"
+   ]
+  },
+  {
+   "hash": "ab77abeaa6fc24a144c90b3cf7160f1d",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    "tests/scheduler_graph/test_graph_dispatch_context.py::test_build_predecessor_successor_maps_rejects_unknown_from_node",
+    "tests/scheduler_graph/test_graph_dispatch_context.py::test_build_predecessor_successor_maps_rejects_unknown_to_node"
+   ]
+  },
+  {
+   "hash": "a5c6a7c9e794574072ff0a464ba0e090",
+   "count": 2,
+   "stmts": 6,
+   "members": [
+    "tests/web_pages/test_system_logs_presenter_contract.py::test_unknown_operation_log_codes_keep_raw_values_visible",
+    "tests/web_pages/test_system_logs_presenter_contract.py::test_empty_operation_log_codes_stay_empty_state"
+   ]
+  },
+  {
+   "hash": "20a1b30859645cb76be669f5935709b7",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    "tests/calendar_maintenance/test_calendar_invalid_shift_window_contract.py::test_engine_allows_blank_shift_start_default_and_hhmmss",
+    "tests/calendar_maintenance/test_calendar_invalid_shift_window_contract.py::test_engine_accepts_full_width_colon_shift_start"
+   ]
+  },
+  {
+   "hash": "50455a09bbfcad92be8901db8435657d",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    "tests/candidate/test_scheduler_candidate_health_contract.py::test_candidate_health_treats_small_relative_improvement_as_same",
+    "tests/candidate/test_scheduler_candidate_health_contract.py::test_candidate_health_requires_at_least_two_positive_signals_for_better"
+   ]
+  },
+  {
+   "hash": "96a781cb02386cf7a357252694453e8d",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    "tests/candidate/test_scheduler_candidate_health_contract.py::test_candidate_health_rejects_critical_path_sample_only",
+    "tests/candidate/test_scheduler_candidate_health_contract.py::test_candidate_health_rejects_truncated_critical_path_sample"
+   ]
+  },
+  {
+   "hash": "daa3ccf20aeb895300d97b6b4a1d3db7",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    "tests/gantt/test_gantt_chain_walk_js_contract.py::test_critical_walk_dead_end_stays_with_honest_notice",
+    "tests/gantt/test_gantt_chain_walk_js_contract.py::test_critical_walk_backward_dead_end_notice_says_previous"
+   ]
+  },
+  {
+   "hash": "aac871bd6f9f3b87e5d9e9696c7eb79f",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    "tests/gate_meta/test_codestable_tools_contract.py::test_validate_yaml_builtin_fallback_rejects_bad_block_list",
+    "tests/gate_meta/test_codestable_tools_contract.py::test_validate_yaml_builtin_fallback_rejects_unclosed_quote"
+   ]
+  },
+  {
+   "hash": "6b64e177199a4de56c715c2847ffb09a",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    "tests/schedule/route_view/test_route_version_normalizers_contract.py::test_resolve_version_or_latest_missing_explicit_version_is_not_selected",
+    "tests/schedule/route_view/test_route_version_normalizers_contract.py::test_version_resolution_reports_missing_explicit_history"
+   ]
+  },
+  {
+   "hash": "f299bf5a98a7b7d3d0922fbd2fbaf815",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    "tests/schedule/route_view/test_scheduler_historical_plan_label_contract.py::test_gantt_page_labels_superseded_adopted_version_as_historical",
+    "tests/schedule/route_view/test_scheduler_historical_plan_label_contract.py::test_week_plan_page_labels_superseded_adopted_version_as_historical"
+   ]
+  },
+  {
+   "hash": "469a61d85d4c3243f54e64dd8a22b941",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    "tests/schedule/route_view/test_scheduler_route_registration_contract.py::test_explicit_scheduler_registration_imports_route_graph_once",
+    "tests/schedule/route_view/test_scheduler_route_registration_contract.py::test_legacy_leaf_import_loads_only_requested_leaf"
+   ]
+  },
+  {
+   "hash": "c2fe191315a98c3aa79700d51c9af91d",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    "tests/scheduler_graph/test_metrics_critical_path.py::test_cycle_critical_path_exposes_networkx_unfeasible",
+    "tests/scheduler_graph/test_metrics_topology.py::test_cycle_topology_exposes_networkx_unfeasible"
+   ]
+  },
+  {
+   "hash": "36dc8d97ad0959ecc450f22c9ddb74a7",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    "tests/web_pages/test_dashboard_cockpit_hero.py::test_overdue_clue_truncated_and_unparseable_combines_hedges",
+    "tests/web_pages/test_dashboard_cockpit_hero.py::test_overdue_clue_truncated_says_based_on_first_n"
+   ]
+  },
+  {
+   "hash": "d43e241b8c19e193472f74cff9628836",
+   "count": 2,
+   "stmts": 5,
+   "members": [
+    "tests/web_pages/test_history_links_adoption.py::test_analysis_version_picker_links_keep_plan_identity",
+    "tests/web_pages/test_week_plan_enrich_page.py::test_week_plan_empty_week_upgraded_hint_with_jump_link"
+   ]
+  },
+  {
+   "hash": "71a9e640ea60a75e7e2807a75c6d7ee3",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    "tests/algorithm/test_optimizer_compare_algorithms_contract.py::test_algorithm_comparison_proof_check_keeps_dirty_output_unbound",
+    "tests/algorithm/test_optimizer_smtwt_compare_algorithms_contract.py::test_smtwt_proof_check_keeps_dirty_result_unbound"
+   ]
+  },
+  {
+   "hash": "23bfdc1f40b4a06d17e7d99b10f5fb7f",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    "tests/algorithm/test_optimizer_proof_harness_contract.py::test_benchmark_reference_contract_rejects_folded_reference_with_bad_best_known_gap",
+    "tests/algorithm/test_optimizer_proof_harness_contract.py::test_benchmark_reference_contract_rejects_folded_reference_with_bad_gap_metric_key"
+   ]
+  },
+  {
+   "hash": "8ce41c8223431aac2bca7870667a7bf8",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py::test_optimizer_strict_mode_rejects_blank_numeric_for_all_cfg_shapes",
+    "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py::test_optimizer_strict_mode_rejects_blank_numeric_on_raw_cfg"
+   ]
+  },
+  {
+   "hash": "55d201b06e474964ed44f5da53e4ed5d",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py::test_scheduler_historical_plan_label_contract_is_required_and_grouped",
+    "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py::test_import_execution_stats_regression_is_required_and_grouped"
+   ]
+  },
+  {
+   "hash": "6a9a64866e90356efe6eb416278f852d",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    "tests/gate_meta/test_quality_gate_scan_contract.py::test_request_service_scan_flags_import_from_as_alias",
+    "tests/gate_meta/test_quality_gate_scan_contract.py::test_request_service_scan_flags_g_db_local_alias_for_service_and_helper"
+   ]
+  },
+  {
+   "hash": "af5137ba0aae14ad2d78cabbea91f59d",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    "tests/gate_meta/test_quality_gate_scan_contract.py::test_request_service_scan_keeps_module_import_alias_detection",
+    "tests/gate_meta/test_quality_gate_scan_contract.py::test_request_service_scan_flags_private_helper_with_g_db_alias"
+   ]
+  },
+  {
+   "hash": "e94dee5d03fb0ec59e52862df5269b27",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    "tests/gate_meta/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_volatile_iso_timestamp",
+    "tests/gate_meta/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_pyright_update_notice"
+   ]
+  },
+  {
+   "hash": "05718177cf8521bbc477df6c7d1f52ff",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    "tests/models_domain/test_normalize_text.py::test_normalize_text_str_and_non_str",
+    "tests/scheduler_graph/test_id_policy.py::test_display_id_is_tolerant_for_diagnostics"
+   ]
+  },
+  {
+   "hash": "ea64240c05335ab7c7772b950870d8f3",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    "tests/schedule/route_view/test_scheduler_historical_plan_label_contract.py::test_resource_dispatch_labels_superseded_adopted_option_as_historical",
+    "tests/schedule/route_view/test_scheduler_historical_plan_label_contract.py::test_report_filter_option_labels_superseded_adopted_version_as_historical"
+   ]
+  },
+  {
+   "hash": "26ae244a95ae0ac9c94a86ccb3f6ca78",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    "tests/schedule/route_view/test_scheduler_run_view_result_contract.py::test_run_schedule_view_result_keeps_auto_assign_resource_warning",
+    "tests/schedule/route_view/test_scheduler_run_view_result_contract.py::test_run_schedule_view_result_keeps_unscheduled_batch_warning_without_batch_samples"
+   ]
+  },
+  {
+   "hash": "d1cc27831dec879c3d49b75df232d814",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    "tests/scheduler_graph/test_analysis_service.py::test_analysis_service_import_does_not_import_networkx",
+    "tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py::test_scheduler_graph_modules_do_not_import_networkx_during_module_import"
+   ]
+  },
+  {
+   "hash": "1bf98e28052c2eec34678d772c0f6677",
+   "count": 2,
+   "stmts": 4,
+   "members": [
+    "tests/web_pages/test_history_summary_parser.py::test_parse_result_summary_payload_reports_json_decode_error",
+    "tests/web_pages/test_history_summary_parser.py::test_parse_result_summary_payload_rejects_json_list_as_invalid_structure"
+   ]
+  },
+  {
+   "hash": "fd292df812dc946dd88e0b2e66b9c0ee",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/algorithm/test_optimizer_compare_algorithms_contract.py::test_algorithm_comparison_invalid_actual_score_is_not_improvement",
+    "tests/algorithm/test_optimizer_smtwt_compare_algorithms_contract.py::test_smtwt_invalid_actual_score_is_not_improvement"
+   ]
+  },
+  {
+   "hash": "b496226ea2c1ea7180ef50c962927cc9",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/algorithm/test_optimizer_compare_algorithms_contract.py::test_algorithm_comparison_short_actual_score_is_not_improvement",
+    "tests/algorithm/test_optimizer_smtwt_compare_algorithms_contract.py::test_smtwt_short_actual_score_is_not_improvement"
+   ]
+  },
+  {
+   "hash": "32a554bdc7dd99ee1667df6f8da76bbb",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/algorithm/test_optimizer_compare_algorithms_contract.py::test_algorithm_comparison_failed_actual_score_is_not_improvement",
+    "tests/algorithm/test_optimizer_smtwt_compare_algorithms_contract.py::test_smtwt_failed_actual_score_is_not_improvement"
+   ]
+  },
+  {
+   "hash": "6028d82b98a54455104b0c71143fe4c0",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py::test_optimizer_accepts_plain_object_cfg",
+    "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py::test_optimizer_accepts_schedule_config_snapshot"
+   ]
+  },
+  {
+   "hash": "8ec994908b9c49971948e6bcbeba307d",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/app_runtime/test_startup_host_portfile.py::test_startup_host_portfile",
+    "tests/app_runtime/test_startup_host_portfile_new_ui.py::test_startup_host_portfile_new_ui"
+   ]
+  },
+  {
+   "hash": "1e24618720603f206538d9d9bc6897f7",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/app_runtime/test_ui_geometry_html_contract.py::test_error_keyword_detector_does_not_flag_normal_app_shell_log_text",
+    "tests/app_runtime/test_ui_geometry_html_contract.py::test_error_keyword_detector_flags_error_page_title"
+   ]
+  },
+  {
+   "hash": "5d3f9676f0defcd61885bc826ee69869",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/candidate/test_scheduler_candidate_analysis_links_contract.py::test_analysis_candidate_empty_role_label_stays_placeholder",
+    "tests/web_pages/test_label_single_source_contract.py::test_unknown_status_user_visible_label_is_unified"
+   ]
+  },
+  {
+   "hash": "0d46df9e565dcddaf27a1791ddb4073b",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/candidate/test_scheduler_candidate_plain_language.py::test_degradation_duplicate_later_bad_count_is_not_swallowed",
+    "tests/candidate/test_scheduler_candidate_plain_language.py::test_degradation_duplicate_good_counts_are_accumulated"
+   ]
+  },
+  {
+   "hash": "c6bdbd9ee534aa0cc9b6d36d8a4f3c7e",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/candidate/test_scheduler_candidate_runner_contract.py::test_candidate_runner_propagates_unexpected_contract_errors",
+    "tests/candidate/test_scheduler_candidate_runner_contract.py::test_candidate_runner_propagates_runtime_contract_errors"
+   ]
+  },
+  {
+   "hash": "cb1c0cd21435762fa41d5728d473044f",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/config/test_config_service_component_contract.py::test_algorithm_domain_does_not_import_scheduler_services_directly",
+    "tests/config/test_config_service_component_contract.py::test_web_layer_uses_config_facade_instead_of_config_leaves"
+   ]
+  },
+  {
+   "hash": "d7c2fda83e6c23773a7043d90916f992",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/config/test_config_service_strict_blank_contract.py::test_save_page_config_rejects_blank_priority_weight",
+    "tests/config/test_config_service_strict_blank_contract.py::test_save_page_config_rejects_blank_due_weight"
+   ]
+  },
+  {
+   "hash": "831ba5a1f437b8440520806d254602d3",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/gantt/test_gantt_execution_visuals_contract.py::test_not_started_fake_record_gets_no_class",
+    "tests/gantt/test_gantt_execution_visuals_contract.py::test_unknown_status_code_gets_no_class_no_progress"
+   ]
+  },
+  {
+   "hash": "9b8a16f966587753dab4fe46b3822c0b",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/gate_meta/test_architecture_fitness.py::test_routes_do_not_execute_sql_directly",
+    "tests/gate_meta/test_architecture_fitness.py::test_services_do_not_import_flask_request"
+   ]
+  },
+  {
+   "hash": "014c5419ea4f430b9821862e9ef999fa",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/models_domain/test_normalize_text.py::test_normalize_text_none_and_blank",
+    "tests/web_pages/test_scheduler_plan_role_arg_contract.py::test_get_plan_role_arg_returns_none_for_missing_blank_and_whitespace"
+   ]
+  },
+  {
+   "hash": "53271f6584ce56a15b5df890c4bccb9b",
+   "count": 2,
+   "stmts": 3,
+   "members": [
+    "tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py::test_balanced_allows_healthy_critical_candidate_to_override_within_tolerance",
+    "tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py::test_balanced_does_not_override_when_primary_objective_is_worse"
+   ]
+  }
+ ],
+ "module_concentration": [
+  {
+   "module": "core.infrastructure.database",
+   "n_files": 150,
+   "files": [
+    "tests/algorithm/test_auto_assign_persist_truthy_variants.py",
+    "tests/algorithm/test_optional_ready_constraint.py",
+    "tests/algorithm/test_schedule_persistence_auto_assign_contract.py",
+    "tests/algorithm/test_scheduler_reject_nonfinite_and_invalid_status.py",
+    "tests/algorithm/test_skill_rank_mapping.py",
+    "tests/app_runtime/test_app_error_route_contract.py",
+    "tests/calendar_maintenance/test_calendar_export_normalization.py",
+    "tests/calendar_maintenance/test_calendar_no_tx_hardening.py",
+    "tests/calendar_maintenance/test_calendar_pages_readside_normalization.py",
+    "tests/calendar_maintenance/test_calendar_shift_hours_roundtrip.py",
+    "tests/calendar_maintenance/test_equipment_page_downtime_overlay_degraded.py",
+    "tests/calendar_maintenance/test_exit_backup_maintenance.py",
+    "tests/calendar_maintenance/test_freeze_window_bounds.py",
+    "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py",
+    "tests/calendar_maintenance/test_maintenance_jobstate_retry_signal.py",
+    "tests/calendar_maintenance/test_maintenance_real_oplog_visible.py",
+    "tests/calendar_maintenance/test_maintenance_telemetry_isolation.py",
+    "tests/calendar_maintenance/test_maintenance_window_mutex.py",
+    "tests/calendar_maintenance/test_migrate_v2_unify_workcalendar_day_type.py",
+    "tests/calendar_maintenance/test_operator_calendar_override_allows_work_on_global_holiday.py",
+    "tests/calendar_maintenance/test_scheduler_excel_calendar_strict_numeric.py",
+    "tests/calendar_maintenance/test_scheduler_excel_calendar_uses_executor.py",
+    "tests/calendar_maintenance/test_system_maintenance_invalid_last_run_visible.py",
+    "tests/calendar_maintenance/test_system_maintenance_jobstate_commit.py",
+    "tests/calendar_maintenance/test_system_maintenance_throttle_short_circuit.py",
+    "tests/candidate/test_scheduler_candidate_config_contract.py",
+    "tests/candidate/test_scheduler_candidate_performance_guard.py",
+    "tests/candidate/test_scheduler_candidate_persistence_contract.py",
+    "tests/candidate/test_scheduler_candidate_plan_query_contract.py",
+    "tests/candidate/test_scheduler_candidate_reports_contract.py",
+    "tests/candidate/test_scheduler_candidate_schema_contract.py",
+    "tests/candidate/test_scheduler_candidate_week_plan_contract.py",
+    "tests/candidate/test_scheduler_week_plan_summary_observability.py",
+    "tests/candidate/test_week_plan_filename_uses_normalized_version.py",
+    "tests/config/test_config_field_spec_contract.py",
+    "tests/config/test_config_service_strict_blank_contract.py",
+    "tests/config/test_exit_backup_respects_config.py",
+    "tests/config/test_plugin_bootstrap_config_failure_visible.py",
+    "tests/config/test_scheduler_apply_preset_reject_invalid_numeric.py",
+    "tests/config/test_scheduler_config_route_contract.py",
+    "tests/config/test_scheduler_enforce_ready_default_from_config.py",
+    "tests/config/test_system_config_dirty_fields_contract.py",
+    "tests/excel_data_io/test_batch_excel_preview_confirm_strict_mode_extra_state_guard.py",
+    "tests/excel_data_io/test_batch_material_default_ready.py",
+    "tests/excel_data_io/test_excel_failure_semantics_contract.py",
+    "tests/excel_data_io/test_excel_hidden_payload_contract.py",
+    "tests/excel_data_io/test_excel_import_hardening.py",
+    "tests/excel_data_io/test_excel_import_result_contract.py",
+    "tests/excel_data_io/test_excel_import_strict_reference_apply.py",
+    "tests/excel_data_io/test_excel_preview_confirm_baseline_guard.py",
+    "tests/excel_data_io/test_excel_preview_confirm_extra_state_guard.py",
+    "tests/excel_data_io/test_excel_renamed_column_conflicts.py",
+    "tests/excel_data_io/test_excel_source_row_num_preserved.py",
+    "tests/excel_data_io/test_operator_machine_detail_readside_normalization.py",
+    "tests/excel_data_io/test_operator_machine_dirty_flags_visible.py",
+    "tests/excel_data_io/test_operator_machine_excel_route_error_handling.py",
+    "tests/excel_data_io/test_operator_machine_missing_columns.py",
+    "tests/excel_data_io/test_personnel_excel_links_header_aliases.py",
+    "tests/excel_data_io/test_process_create_part_surfaces_autoparse_failure.py",
+    "tests/excel_data_io/test_process_excel_part_operation_hours_append_fill_empty_only.py",
+    "tests/excel_data_io/test_process_excel_part_operation_hours_source_row_num.py",
+    "tests/excel_data_io/test_process_excel_routes_extra_state_guard.py",
+    "tests/excel_data_io/test_process_reparse_part_surfaces_warning_text.py",
+    "tests/excel_data_io/test_process_reparse_preserve_internal_hours.py",
+    "tests/excel_data_io/test_process_suppliers_route_reject_blank_default_days.py",
+    "tests/excel_data_io/test_sanitize_batch_dates_single_digit.py",
+    "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py",
+    "tests/excel_data_io/test_team_pages_excel_smoke.py",
+    "tests/excel_data_io/test_unit_excel_converter_merge_steps_and_classify.py",
+    "tests/gantt/test_gantt_adjustment_draft_model.py",
+    "tests/gantt/test_gantt_adjustment_publish_execution_revision.py",
+    "tests/gantt/test_gantt_adjustment_validate_simulate.py",
+    "tests/gantt/test_gantt_contract_snapshot.py",
+    "tests/gantt/test_gantt_default_version_span.py",
+    "tests/gantt/test_gantt_degradation_surface.py",
+    "tests/gantt/test_gantt_draft_save_and_preview.py",
+    "tests/gantt/test_gantt_page_version_default_latest.py",
+    "tests/gantt/test_gantt_scenario_publish.py",
+    "tests/gantt/test_gantt_url_persistence.py",
+    "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py",
+    "tests/migration_db/test_database_high_version_failfast.py",
+    "tests/migration_db/test_database_migration_runner_delegation.py",
+    "tests/migration_db/test_ensure_schema_fastforward_empty_only.py",
+    "tests/migration_db/test_migrate_backup_dir_none_creates_backup.py",
+    "tests/migration_db/test_migrate_v4_sanitize_enum_text_fields.py",
+    "tests/migration_db/test_migrate_v5_normalize_operator_machine_legacy_values.py",
+    "tests/migration_db/test_migration_failfast_no_backup_storm.py",
+    "tests/migration_db/test_migration_logging_fallback.py",
+    "tests/migration_db/test_migration_outcome_skip_no_upgrade.py",
+    "tests/migration_db/test_migration_schema_contract.py",
+    "tests/migration_db/test_migrations.py",
+    "tests/migration_db/test_sqlite_detect_types_enabled.py",
+    "tests/models_domain/test_resource_reference_guard_schedule.py",
+    "tests/operation_execution/test_execution_review_identity_guard.py",
+    "tests/operation_execution/test_operation_execution_event_foundation.py",
+    "tests/operation_execution/test_operation_execution_event_time_contract.py",
+    "tests/operation_execution/test_operation_execution_exception_feedback.py",
+    "tests/operation_execution/test_operation_execution_exception_surfaces.py",
+    "tests/operation_execution/test_operation_execution_feedback_guard_routes.py",
+    "tests/operation_execution/test_operation_execution_migration_v19_contract.py",
+    "tests/operation_execution/test_operation_execution_scope_read_contract.py",
+    "tests/operation_execution/test_operation_execution_state_revision.py",
+    "tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
+    "tests/resource_dispatch/test_resource_dispatch_task_card_schedule_missing_contract.py",
+    "tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py",
+    "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
+    "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
+    "tests/resource_dispatch/test_scheduler_resource_dispatch_smoke.py",
+    "tests/schedule/route_view/test_dashboard_cockpit_failed_hero.py",
+    "tests/schedule/route_view/test_scheduler_batch_template_warning_surface.py",
+    "tests/schedule/route_view/test_scheduler_batches_degraded_visible.py",
+    "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py",
+    "tests/schedule/route_view/test_scheduler_historical_plan_label_contract.py",
+    "tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py",
+    "tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py",
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
+    "tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py",
+    "tests/schedule/summary/test_schedule_summary_observability.py",
+    "tests/schedule/summary/test_scheduler_summary_result_summary_contract.py",
+    "tests/scheduler_analysis/test_analysis_page_version_default_latest.py",
+    "tests/scheduler_analysis/test_plan_vs_actual_review.py",
+    "tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py",
+    "tests/scheduler_analysis/test_report_export_large_scope_rejects_need_async.py",
+    "tests/scheduler_analysis/test_report_export_size_mode_selection.py",
+    "tests/scheduler_analysis/test_scheduler_analysis_read_context.py",
+    "tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py",
+    "tests/scheduler_graph/test_graph_config_bootstrap_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_report_mode_service_contract.py",
+    "tests/web_pages/test_aps_workbench_context_propagation_contract.py",
+    "tests/web_pages/test_aps_workbench_first_round_flow_contract.py",
+    "tests/web_pages/test_bulk_route_error_visible.py",
+    "tests/web_pages/test_dashboard_near_due.py",
+    "tests/web_pages/test_dashboard_overdue_count_tolerance.py",
+    "tests/web_pages/test_dashboard_schedule_time_display.py",
+    "tests/web_pages/test_error_field_label_source.py",
+    "tests/web_pages/test_external_group_route_surfaces_fallback_warning.py",
+    "tests/web_pages/test_form_run_option_checkbox_layout_contract.py",
+    "tests/web_pages/test_history_links_adoption.py",
+    "tests/web_pages/test_plan_context_capsule.py",
+    "tests/web_pages/test_reports_default_range_from_version_span.py",
+    "tests/web_pages/test_reports_export_version_default_latest.py",
+    "tests/web_pages/test_reports_page_version_default_latest.py",
+    "tests/web_pages/test_reports_workbench_backlink_contract.py",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py",
+    "tests/web_pages/test_request_scope_app_logger_binding.py",
+    "tests/web_pages/test_request_service_test_factory_invariant.py",
+    "tests/web_pages/test_system_history_route_contract.py",
+    "tests/web_pages/test_system_logs_delete_no_clamp.py",
+    "tests/web_pages/test_week_plan_enrich_page.py",
+    "tests/web_pages/test_week_plan_print_page.py"
+   ]
+  },
+  {
+   "module": "core.infrastructure.errors",
+   "n_files": 143,
+   "files": [
+    "tests/algorithm/test_algorithm_date_boundary_split.py",
+    "tests/algorithm/test_batch_order_override_dedup.py",
+    "tests/algorithm/test_dispatch_blocking_consistency.py",
+    "tests/algorithm/test_greedy_ordering_contract.py",
+    "tests/algorithm/test_greedy_refactor_contract.py",
+    "tests/algorithm/test_internal_slot_estimator_consistency.py",
+    "tests/algorithm/test_optimizer_benchmark_grading.py",
+    "tests/algorithm/test_optimizer_build_order_once_per_strategy.py",
+    "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
+    "tests/algorithm/test_optimizer_candidate_fingerprint_contract.py",
+    "tests/algorithm/test_optimizer_candidate_profile_contract.py",
+    "tests/algorithm/test_optimizer_graph_ready_candidate_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_local_search_neighbor_dedup.py",
+    "tests/algorithm/test_optimizer_proof_harness_contract.py",
+    "tests/algorithm/test_optimizer_search_report_contract.py",
+    "tests/algorithm/test_optimizer_seed_boundary_contract.py",
+    "tests/algorithm/test_optimizer_seed_results_contract.py",
+    "tests/algorithm/test_optional_ready_constraint.py",
+    "tests/algorithm/test_resource_pool_builder_contract.py",
+    "tests/algorithm/test_schedule_optimizer_cfg_float_strict_blank.py",
+    "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py",
+    "tests/algorithm/test_schedule_optimizer_strict_mode_signature_cache.py",
+    "tests/algorithm/test_schedule_persistence_auto_assign_contract.py",
+    "tests/algorithm/test_scheduler_nonfinite_efficiency_fallback.py",
+    "tests/algorithm/test_scheduler_reject_nonfinite_and_invalid_status.py",
+    "tests/algorithm/test_scheduler_strict_mode_dispatch_flags.py",
+    "tests/algorithm/test_sgs_atc_penalize_missing_resources.py",
+    "tests/algorithm/test_sgs_penalize_nonfinite_proc_hours.py",
+    "tests/algorithm/test_sgs_pre_sort_strict_nonfinite_rejected.py",
+    "tests/algorithm/test_sgs_scoring_fallback_unscorable.py",
+    "tests/algorithm/test_sgs_total_hours_cache.py",
+    "tests/app_runtime/test_app_error_route_contract.py",
+    "tests/app_runtime/test_safe_next_url_observability.py",
+    "tests/calendar_maintenance/test_calendar_invalid_shift_window_contract.py",
+    "tests/calendar_maintenance/test_calendar_no_tx_hardening.py",
+    "tests/calendar_maintenance/test_freeze_window_fail_closed_contract.py",
+    "tests/candidate/test_scheduler_candidate_config_contract.py",
+    "tests/candidate/test_scheduler_candidate_generation_contract.py",
+    "tests/candidate/test_scheduler_candidate_persistence_contract.py",
+    "tests/candidate/test_scheduler_candidate_runner_contract.py",
+    "tests/candidate/test_scheduler_week_plan_no_reschedulable_flash.py",
+    "tests/config/test_config_field_spec_contract.py",
+    "tests/config/test_config_service_active_preset_custom_sync.py",
+    "tests/config/test_config_service_relaxed_missing_visible.py",
+    "tests/config/test_config_service_strict_blank_contract.py",
+    "tests/config/test_config_snapshot_projection_sync.py",
+    "tests/config/test_config_snapshot_strict_numeric.py",
+    "tests/config/test_config_validator_preset_degradation.py",
+    "tests/config/test_schedule_config_snapshot_optional_guard.py",
+    "tests/config/test_scheduler_apply_preset_reject_invalid_numeric.py",
+    "tests/config/test_scheduler_config_route_contract.py",
+    "tests/config/test_scheduler_config_spec_sync_contract.py",
+    "tests/config/test_scheduler_enforce_ready_default_from_config.py",
+    "tests/excel_data_io/test_batch_excel_import_reject_part_change_without_rebuild.py",
+    "tests/excel_data_io/test_batch_excel_import_strict_mode_hardfail_atomic.py",
+    "tests/excel_data_io/test_batch_service_update_reject_part_change_without_rebuild.py",
+    "tests/excel_data_io/test_excel_failure_semantics_contract.py",
+    "tests/excel_data_io/test_excel_import_apply_defense.py",
+    "tests/excel_data_io/test_excel_import_executor_status_gate.py",
+    "tests/excel_data_io/test_excel_import_hardening.py",
+    "tests/excel_data_io/test_excel_import_strict_reference_apply.py",
+    "tests/excel_data_io/test_excel_normalizers_mixed_case.py",
+    "tests/excel_data_io/test_excel_renamed_column_conflicts.py",
+    "tests/excel_data_io/test_excel_template_download_validation.py",
+    "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
+    "tests/excel_data_io/test_external_group_service_strict_mode_blank_days.py",
+    "tests/excel_data_io/test_field_parse_contract.py",
+    "tests/excel_data_io/test_import_execution_stats_source_row_num.py",
+    "tests/excel_data_io/test_openpyxl_backend_fixed_file_security.py",
+    "tests/excel_data_io/test_operation_edit_external_days_required.py",
+    "tests/excel_data_io/test_operator_machine_exception_paths.py",
+    "tests/excel_data_io/test_part_service_create_strict_mode_atomic.py",
+    "tests/excel_data_io/test_schedule_input_builder_external_merge_contract.py",
+    "tests/excel_data_io/test_supplier_service_invalid_default_days_not_silent.py",
+    "tests/gantt/test_gantt_adjustment_draft_model.py",
+    "tests/gantt/test_gantt_adjustment_publish_execution_revision.py",
+    "tests/gantt/test_gantt_adjustment_validate_simulate.py",
+    "tests/gantt/test_gantt_draft_save_and_preview.py",
+    "tests/gantt/test_gantt_page_version_default_latest.py",
+    "tests/gantt/test_gantt_scenario_publish.py",
+    "tests/models_domain/test_domain_model_internal_source_contract.py",
+    "tests/models_domain/test_number_utils_facade_delegates_strict_parse.py",
+    "tests/models_domain/test_resource_reference_guard_schedule.py",
+    "tests/models_domain/test_schedule_resource_filter.py",
+    "tests/models_domain/test_status_category_mixed_case.py",
+    "tests/models_domain/test_strict_parse_blank_required.py",
+    "tests/models_domain/test_yesno_normalization_contract.py",
+    "tests/operation_execution/test_execution_review_identity_guard.py",
+    "tests/operation_execution/test_operation_execution_state_flow.py",
+    "tests/operation_execution/test_operation_execution_state_revision.py",
+    "tests/operation_execution/test_scheduler_reschedule_execution_facts.py",
+    "tests/resource_dispatch/test_resource_dispatch_actual_import.py",
+    "tests/resource_dispatch/test_resource_dispatch_task_card_schedule_missing_contract.py",
+    "tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py",
+    "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_deep_review_contract.py",
+    "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
+    "tests/schedule/route_view/test_route_version_normalizers_contract.py",
+    "tests/schedule/route_view/test_scheduler_missing_resource_message.py",
+    "tests/schedule/route_view/test_scheduler_ops_update_route_contract.py",
+    "tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py",
+    "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
+    "tests/schedule/route_view/test_scheduler_run_no_reschedulable_flash.py",
+    "tests/schedule/route_view/test_scheduler_run_view_result_contract.py",
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
+    "tests/schedule/service/test_repository_silent_fallback_contract.py",
+    "tests/schedule/service/test_schedule_history_not_created_for_empty_schedule.py",
+    "tests/schedule/service/test_schedule_input_builder_safe_float_parse.py",
+    "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
+    "tests/schedule/service/test_schedule_input_builder_template_missing_surfaces_event.py",
+    "tests/schedule/service/test_schedule_input_collector_legacy_compat.py",
+    "tests/schedule/service/test_schedule_orchestrator_contract.py",
+    "tests/schedule/service/test_schedule_params_direct_call_contract.py",
+    "tests/schedule/service/test_schedule_params_read_failure_visible.py",
+    "tests/schedule/service/test_schedule_params_strict_blank_numeric.py",
+    "tests/schedule/service/test_schedule_persistence_reject_empty_actionable_schedule.py",
+    "tests/schedule/service/test_schedule_persistence_reschedulable_contract.py",
+    "tests/schedule/service/test_schedule_service_all_frozen_short_circuit.py",
+    "tests/schedule/service/test_schedule_service_empty_reschedulable_rejected.py",
+    "tests/schedule/service/test_schedule_service_reject_no_actionable_schedule_rows.py",
+    "tests/schedule/service/test_schedule_service_reschedulable_contract.py",
+    "tests/schedule/service/test_schedule_template_lookup_contract.py",
+    "tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py",
+    "tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py",
+    "tests/schedule/summary/test_schedule_result_view_context.py",
+    "tests/schedule/summary/test_schedule_result_view_range.py",
+    "tests/schedule/summary/test_schedule_summary_v11_contract.py",
+    "tests/scheduler_analysis/test_plan_vs_actual_review.py",
+    "tests/scheduler_analysis/test_report_context_filters_contract.py",
+    "tests/scheduler_analysis/test_report_export_size_mode_selection.py",
+    "tests/scheduler_graph/test_ready_queue.py",
+    "tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_cycle_policy_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py",
+    "tests/web_pages/test_batch_service_strict_mode_template.py",
+    "tests/web_pages/test_batch_template_autobuild_same_tx.py",
+    "tests/web_pages/test_batch_template_ops_due_date_validation.py",
+    "tests/web_pages/test_bulk_route_error_visible.py",
+    "tests/web_pages/test_error_boundary_contract.py",
+    "tests/web_pages/test_error_field_label_source.py",
+    "tests/web_pages/test_infra_silent_fallback_contract.py",
+    "tests/web_pages/test_scenario_preview_secondary_outputs.py",
+    "tests/web_pages/test_web_silent_fallback_contract.py"
+   ]
+  },
+  {
+   "module": "core.algorithms",
+   "n_files": 29,
+   "files": [
+    "tests/algorithm/test_auto_assign_empty_resource_pool.py",
+    "tests/algorithm/test_auto_assign_fixed_operator_respects_op_type.py",
+    "tests/algorithm/test_batch_order_bid_unboundlocal.py",
+    "tests/algorithm/test_batch_order_override_dedup.py",
+    "tests/algorithm/test_compute_metrics_contract.py",
+    "tests/algorithm/test_dict_cfg_contract.py",
+    "tests/algorithm/test_dispatch_blocking_consistency.py",
+    "tests/algorithm/test_efficiency_greater_than_one_shortens_hours.py",
+    "tests/algorithm/test_greedy_scheduler_algo_stats_auto_assign.py",
+    "tests/algorithm/test_greedy_scheduler_algo_stats_seed_counts.py",
+    "tests/algorithm/test_localsearch_batch_order_actuator.py",
+    "tests/algorithm/test_metrics_to_dict_nonfinite_safe.py",
+    "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
+    "tests/algorithm/test_optimizer_graph_ready_candidate_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py",
+    "tests/algorithm/test_scheduler_accepts_start_dt_string_and_safe_weights.py",
+    "tests/algorithm/test_scheduler_nonfinite_efficiency_fallback.py",
+    "tests/algorithm/test_seed_results_sanitize_contract.py",
+    "tests/algorithm/test_sgs_internal_scoring_matches_execution.py",
+    "tests/algorithm/test_sgs_scoring_fallback_unscorable.py",
+    "tests/algorithm/test_sgs_scoring_machine_operator_id_type_safe.py",
+    "tests/algorithm/test_sgs_total_hours_cache.py",
+    "tests/algorithm/test_warmstart_failure_surfaces_degradation.py",
+    "tests/candidate/test_scheduler_candidate_health_contract.py",
+    "tests/candidate/test_scheduler_candidate_runner_contract.py",
+    "tests/models_domain/test_value_domains_consistency.py",
+    "tests/schedule/summary/test_schedule_summary_invalid_due_and_unscheduled_counts.py",
+    "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.summary.schedule_summary",
+   "n_files": 24,
+   "files": [
+    "tests/algorithm/test_dict_cfg_contract.py",
+    "tests/algorithm/test_due_exclusive_consistency.py",
+    "tests/algorithm/test_due_exclusive_guard_contract.py",
+    "tests/algorithm/test_objective_projection_contract.py",
+    "tests/algorithm/test_optimizer_public_summary_projection_contract.py",
+    "tests/algorithm/test_warmstart_failure_surfaces_degradation.py",
+    "tests/excel_data_io/test_legacy_external_days_defaulted_visible.py",
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
+    "tests/schedule/service/test_schedule_service_input_merge_context_contract.py",
+    "tests/schedule/summary/test_near_due_items.py",
+    "tests/schedule/summary/test_schedule_summary_algo_warnings_union.py",
+    "tests/schedule/summary/test_schedule_summary_cfg_snapshot_contract.py",
+    "tests/schedule/summary/test_schedule_summary_deep_review_degradations.py",
+    "tests/schedule/summary/test_schedule_summary_end_date_type_guard.py",
+    "tests/schedule/summary/test_schedule_summary_fallback_counts_output.py",
+    "tests/schedule/summary/test_schedule_summary_freeze_state_contract.py",
+    "tests/schedule/summary/test_schedule_summary_input_fallback_contract.py",
+    "tests/schedule/summary/test_schedule_summary_invalid_due_and_unscheduled_counts.py",
+    "tests/schedule/summary/test_schedule_summary_merge_context_degraded_code.py",
+    "tests/schedule/summary/test_schedule_summary_overdue_warning_append_fallback.py",
+    "tests/schedule/summary/test_schedule_summary_size_guard_large_lists.py",
+    "tests/schedule/summary/test_schedule_summary_v11_contract.py",
+    "tests/schedule/summary/test_scheduler_summary_result_summary_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_summary_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.schedule_service",
+   "n_files": 24,
+   "files": [
+    "tests/algorithm/test_schedule_persistence_auto_assign_contract.py",
+    "tests/calendar_maintenance/test_schedule_input_collector_downtime_resource_pool_contract.py",
+    "tests/candidate/test_scheduler_candidate_persistence_contract.py",
+    "tests/candidate/test_scheduler_week_plan_no_reschedulable_flash.py",
+    "tests/excel_data_io/test_operation_edit_external_days_required.py",
+    "tests/operation_execution/test_scheduler_reschedule_execution_facts.py",
+    "tests/schedule/route_view/test_scheduler_run_no_reschedulable_flash.py",
+    "tests/schedule/service/test_schedule_history_not_created_for_empty_schedule.py",
+    "tests/schedule/service/test_schedule_input_collector_contract.py",
+    "tests/schedule/service/test_schedule_orchestrator_contract.py",
+    "tests/schedule/service/test_schedule_persistence_reject_empty_actionable_schedule.py",
+    "tests/schedule/service/test_schedule_persistence_reschedulable_contract.py",
+    "tests/schedule/service/test_schedule_service_all_frozen_short_circuit.py",
+    "tests/schedule/service/test_schedule_service_empty_reschedulable_rejected.py",
+    "tests/schedule/service/test_schedule_service_facade_delegation.py",
+    "tests/schedule/service/test_schedule_service_input_merge_context_contract.py",
+    "tests/schedule/service/test_schedule_service_missing_resource_source_case_insensitive.py",
+    "tests/schedule/service/test_schedule_service_passes_algo_stats_to_summary.py",
+    "tests/schedule/service/test_schedule_service_reject_no_actionable_schedule_rows.py",
+    "tests/schedule/service/test_schedule_service_reschedulable_contract.py",
+    "tests/schedule/service/test_schedule_service_strict_snapshot_guard.py",
+    "tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py",
+    "tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py",
+    "tests/web_pages/test_error_boundary_contract.py"
+   ]
+  },
+  {
+   "module": "tools",
+   "n_files": 22,
+   "files": [
+    "tests/app_runtime/test_fast_static_precheck.py",
+    "tests/gate_meta/test_anti_regression_gate.py",
+    "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
+    "tests/gate_meta/test_architecture_scan_cache.py",
+    "tests/gate_meta/test_benchmark_full_test_debt_shards.py",
+    "tests/gate_meta/test_collect_full_test_debt_sharded.py",
+    "tests/gate_meta/test_dead_code_usage_graph_contract.py",
+    "tests/gate_meta/test_full_test_debt_registry_contract.py",
+    "tests/gate_meta/test_git_hook_checks.py",
+    "tests/gate_meta/test_long_gate_cache.py",
+    "tests/gate_meta/test_long_gate_debt_ledger_cache.py",
+    "tests/gate_meta/test_long_gate_full_test_debt_cache.py",
+    "tests/gate_meta/test_long_gate_manifest.py",
+    "tests/gate_meta/test_long_gate_probe_memo.py",
+    "tests/gate_meta/test_long_gate_quickref_cache.py",
+    "tests/gate_meta/test_long_gate_required_regression_cache.py",
+    "tests/gate_meta/test_long_gate_startup_regression_cache.py",
+    "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py",
+    "tests/gate_meta/test_run_quality_gate.py",
+    "tests/gate_meta/test_scan_py38plus_syntax.py",
+    "tests/gate_meta/test_sync_debt_ledger.py",
+    "tests/gate_meta/test_verify_required_regressions_from_full_test_debt.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler",
+   "n_files": 21,
+   "files": [
+    "tests/algorithm/test_auto_assign_persist_truthy_variants.py",
+    "tests/algorithm/test_optional_ready_constraint.py",
+    "tests/algorithm/test_scheduler_reject_nonfinite_and_invalid_status.py",
+    "tests/algorithm/test_skill_rank_mapping.py",
+    "tests/calendar_maintenance/test_calendar_no_tx_hardening.py",
+    "tests/calendar_maintenance/test_calendar_shift_hours_roundtrip.py",
+    "tests/calendar_maintenance/test_calendar_shift_start_rollover.py",
+    "tests/calendar_maintenance/test_freeze_window_bounds.py",
+    "tests/calendar_maintenance/test_operator_calendar_override_allows_work_on_global_holiday.py",
+    "tests/candidate/test_scheduler_candidate_plan_query_contract.py",
+    "tests/config/test_config_field_spec_contract.py",
+    "tests/config/test_scheduler_apply_preset_reject_invalid_numeric.py",
+    "tests/config/test_scheduler_enforce_ready_default_from_config.py",
+    "tests/excel_data_io/test_batch_import_unchanged_no_rebuild.py",
+    "tests/excel_data_io/test_excel_failure_semantics_contract.py",
+    "tests/excel_data_io/test_excel_preview_confirm_baseline_guard.py",
+    "tests/gantt/test_gantt_contract_snapshot.py",
+    "tests/gantt/test_gantt_critical_chain_unavailable.py",
+    "tests/gantt/test_gantt_safe_int_parsing.py",
+    "tests/schedule/summary/test_schedule_result_view_context.py",
+    "tests/scheduler_graph/test_scheduler_graph_report_mode_service_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.schedule_plan_query_service",
+   "n_files": 21,
+   "files": [
+    "tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py",
+    "tests/candidate/test_scheduler_candidate_analysis_contract.py",
+    "tests/candidate/test_scheduler_candidate_analysis_links_contract.py",
+    "tests/candidate/test_scheduler_candidate_display_contract.py",
+    "tests/candidate/test_scheduler_candidate_performance_guard.py",
+    "tests/candidate/test_scheduler_candidate_plan_query_contract.py",
+    "tests/candidate/test_scheduler_candidate_week_plan_contract.py",
+    "tests/gantt/test_gantt_critical_chain_provider.py",
+    "tests/gantt/test_gantt_draft_save_and_preview.py",
+    "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py",
+    "tests/operation_execution/test_operation_execution_scope_read_contract.py",
+    "tests/operation_execution/test_operation_execution_state_revision.py",
+    "tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py",
+    "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
+    "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
+    "tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py",
+    "tests/schedule/route_view/test_scheduler_plan_identity_evidence_link_contract.py",
+    "tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py",
+    "tests/schedule/summary/test_schedule_result_view_context.py",
+    "tests/scheduler_analysis/test_report_context_filters_contract.py",
+    "tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py"
+   ]
+  },
+  {
+   "module": "core.algorithms.evaluation",
+   "n_files": 20,
+   "files": [
+    "tests/algorithm/test_compute_metrics_contract.py",
+    "tests/algorithm/test_due_exclusive_consistency.py",
+    "tests/algorithm/test_localsearch_batch_order_actuator.py",
+    "tests/algorithm/test_metrics_horizon_contract.py",
+    "tests/algorithm/test_metrics_to_dict_nonfinite_safe.py",
+    "tests/algorithm/test_objective_projection_contract.py",
+    "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
+    "tests/algorithm/test_optimizer_candidate_fingerprint_contract.py",
+    "tests/algorithm/test_optimizer_graph_ready_candidate_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_public_summary_projection_contract.py",
+    "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py",
+    "tests/algorithm/test_priority_weight_case_insensitive.py",
+    "tests/algorithm/test_warmstart_failure_surfaces_degradation.py",
+    "tests/algorithm/test_weighted_tardiness_objective.py",
+    "tests/excel_data_io/test_legacy_external_days_defaulted_visible.py",
+    "tests/schedule/summary/test_schedule_summary_invalid_due_and_unscheduled_counts.py",
+    "tests/schedule/summary/test_schedule_summary_v11_contract.py",
+    "tests/schedule/summary/test_scheduler_summary_result_summary_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_summary_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.config.config_service",
+   "n_files": 20,
+   "files": [
+    "tests/algorithm/test_objective_case_normalization.py",
+    "tests/algorithm/test_scheduler_strict_mode_dispatch_flags.py",
+    "tests/algorithm/test_weighted_tardiness_objective.py",
+    "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py",
+    "tests/calendar_maintenance/test_scheduler_excel_calendar_strict_numeric.py",
+    "tests/calendar_maintenance/test_scheduler_excel_calendar_uses_executor.py",
+    "tests/candidate/test_scheduler_candidate_config_contract.py",
+    "tests/config/test_apply_preset_adjusted_marks_custom.py",
+    "tests/config/test_config_presets_baseline_degraded_visible.py",
+    "tests/config/test_config_service_active_preset_custom_sync.py",
+    "tests/config/test_config_service_relaxed_missing_visible.py",
+    "tests/config/test_config_service_strict_blank_contract.py",
+    "tests/config/test_scheduler_config_route_contract.py",
+    "tests/excel_data_io/test_excel_preview_confirm_extra_state_guard.py",
+    "tests/schedule/route_view/test_scheduler_batches_degraded_visible.py",
+    "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py",
+    "tests/schedule/service/test_schedule_service_input_merge_context_contract.py",
+    "tests/schedule/service/test_schedule_service_passes_algo_stats_to_summary.py",
+    "tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py",
+    "tests/scheduler_graph/test_graph_config_bootstrap_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.config.config_snapshot",
+   "n_files": 18,
+   "files": [
+    "tests/algorithm/test_objective_case_normalization.py",
+    "tests/algorithm/test_schedule_optimizer_cfg_float_strict_blank.py",
+    "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py",
+    "tests/algorithm/test_scheduler_strict_mode_dispatch_flags.py",
+    "tests/candidate/test_scheduler_candidate_config_contract.py",
+    "tests/candidate/test_scheduler_candidate_runner_contract.py",
+    "tests/config/test_config_field_spec_contract.py",
+    "tests/config/test_config_snapshot_projection_sync.py",
+    "tests/config/test_config_snapshot_strict_numeric.py",
+    "tests/config/test_config_validator_preset_degradation.py",
+    "tests/config/test_schedule_config_snapshot_optional_guard.py",
+    "tests/config/test_scheduler_config_spec_sync_contract.py",
+    "tests/schedule/service/test_schedule_orchestrator_contract.py",
+    "tests/schedule/service/test_schedule_params_direct_call_contract.py",
+    "tests/schedule/service/test_schedule_service_input_merge_context_contract.py",
+    "tests/schedule/summary/test_schedule_summary_cfg_snapshot_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_cycle_policy_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.config.config_field_spec",
+   "n_files": 17,
+   "files": [
+    "tests/algorithm/test_algorithm_date_boundary_split.py",
+    "tests/algorithm/test_greedy_refactor_contract.py",
+    "tests/algorithm/test_scheduler_objective_labels.py",
+    "tests/candidate/test_scheduler_candidate_config_contract.py",
+    "tests/config/test_config_field_spec_contract.py",
+    "tests/config/test_config_service_component_contract.py",
+    "tests/config/test_config_service_relaxed_missing_visible.py",
+    "tests/config/test_config_snapshot_projection_sync.py",
+    "tests/config/test_schedule_config_snapshot_optional_guard.py",
+    "tests/config/test_scheduler_config_route_contract.py",
+    "tests/config/test_scheduler_config_spec_sync_contract.py",
+    "tests/schedule/service/test_schedule_service_input_merge_context_contract.py",
+    "tests/schedule/summary/test_schedule_summary_cfg_snapshot_contract.py",
+    "tests/schedule/summary/test_schedule_summary_freeze_state_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_report_mode_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_resource_matching_report_contract.py",
+    "tests/web_pages/test_error_field_label_source.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.run.schedule_optimizer",
+   "n_files": 17,
+   "files": [
+    "tests/algorithm/test_algorithm_date_boundary_split.py",
+    "tests/algorithm/test_optimizer_candidate_profile_contract.py",
+    "tests/algorithm/test_optimizer_graph_ready_candidate_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_runtime_seam_contract.py",
+    "tests/algorithm/test_optimizer_search_report_contract.py",
+    "tests/algorithm/test_optimizer_seed_results_contract.py",
+    "tests/candidate/test_scheduler_candidate_config_contract.py",
+    "tests/schedule/service/test_schedule_orchestrator_contract.py",
+    "tests/schedule/service/test_schedule_service_missing_resource_source_case_insensitive.py",
+    "tests/schedule/service/test_schedule_service_passes_algo_stats_to_summary.py",
+    "tests/schedule/service/test_schedule_service_reject_no_actionable_schedule_rows.py",
+    "tests/schedule/service/test_schedule_service_reschedulable_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_cycle_policy_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_report_mode_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_resource_matching_report_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.common.excel_service",
+   "n_files": 16,
+   "files": [
+    "tests/excel_data_io/test_batch_excel_import_reject_part_change_without_rebuild.py",
+    "tests/excel_data_io/test_batch_excel_import_strict_mode_hardfail_atomic.py",
+    "tests/excel_data_io/test_batch_import_unchanged_no_rebuild.py",
+    "tests/excel_data_io/test_excel_failure_semantics_contract.py",
+    "tests/excel_data_io/test_excel_import_apply_defense.py",
+    "tests/excel_data_io/test_excel_import_executor_status_gate.py",
+    "tests/excel_data_io/test_excel_import_hardening.py",
+    "tests/excel_data_io/test_excel_import_strict_reference_apply.py",
+    "tests/excel_data_io/test_excel_renamed_column_conflicts.py",
+    "tests/excel_data_io/test_excel_service_calc_changes_row.py",
+    "tests/excel_data_io/test_excel_source_row_num_preserved.py",
+    "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
+    "tests/excel_data_io/test_import_execution_stats_source_row_num.py",
+    "tests/excel_data_io/test_operator_machine_exception_paths.py",
+    "tests/excel_data_io/test_part_operation_hours_service_stats_gate.py",
+    "tests/excel_data_io/test_unit_excel_converter_merge_steps_and_classify.py"
+   ]
+  },
+  {
+   "module": "core.algorithms.sort_strategies",
+   "n_files": 15,
+   "files": [
+    "tests/algorithm/test_algorithm_date_boundary_split.py",
+    "tests/algorithm/test_greedy_ordering_contract.py",
+    "tests/algorithm/test_greedy_scheduler_base_date.py",
+    "tests/algorithm/test_localsearch_batch_order_actuator.py",
+    "tests/algorithm/test_optimizer_build_order_once_per_strategy.py",
+    "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
+    "tests/algorithm/test_optimizer_graph_ready_candidate_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_local_search_neighbor_dedup.py",
+    "tests/algorithm/test_optimizer_search_report_contract.py",
+    "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py",
+    "tests/algorithm/test_scheduler_accepts_start_dt_string_and_safe_weights.py",
+    "tests/algorithm/test_sort_strategies_priority_case_insensitive.py",
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
+    "tests/schedule/service/test_schedule_params_direct_call_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.graph.types",
+   "n_files": 13,
+   "files": [
+    "tests/scheduler_graph/test_analysis_service.py",
+    "tests/scheduler_graph/test_exporter.py",
+    "tests/scheduler_graph/test_graph_dispatch_context.py",
+    "tests/scheduler_graph/test_graph_performance.py",
+    "tests/scheduler_graph/test_graph_types.py",
+    "tests/scheduler_graph/test_metrics_critical_path.py",
+    "tests/scheduler_graph/test_metrics_impact.py",
+    "tests/scheduler_graph/test_metrics_topology.py",
+    "tests/scheduler_graph/test_precedence_builder.py",
+    "tests/scheduler_graph/test_resource_matching.py",
+    "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_report_mode_contract.py",
+    "tests/scheduler_graph/test_validators.py"
+   ]
+  },
+  {
+   "module": "core.algorithms.types",
+   "n_files": 12,
+   "files": [
+    "tests/algorithm/test_due_exclusive_consistency.py",
+    "tests/algorithm/test_greedy_refactor_contract.py",
+    "tests/algorithm/test_greedy_run_state_contract.py",
+    "tests/algorithm/test_metrics_horizon_contract.py",
+    "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
+    "tests/algorithm/test_optimizer_candidate_fingerprint_contract.py",
+    "tests/algorithm/test_optimizer_graph_ready_candidate_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py",
+    "tests/algorithm/test_schedule_summary_contract.py",
+    "tests/algorithm/test_sgs_atc_penalize_missing_resources.py",
+    "tests/algorithm/test_sgs_penalize_nonfinite_proc_hours.py"
+   ]
+  },
+  {
+   "module": "core.services.common.build_outcome",
+   "n_files": 11,
+   "files": [
+    "tests/calendar_maintenance/test_schedule_input_collector_downtime_resource_pool_contract.py",
+    "tests/gantt/test_gantt_degradation_surface.py",
+    "tests/models_domain/test_build_outcome_contract.py",
+    "tests/schedule/service/test_schedule_input_collector_contract.py",
+    "tests/schedule/service/test_schedule_input_collector_legacy_compat.py",
+    "tests/schedule/service/test_schedule_service_all_frozen_short_circuit.py",
+    "tests/schedule/service/test_schedule_service_passes_algo_stats_to_summary.py",
+    "tests/schedule/service/test_schedule_service_reject_no_actionable_schedule_rows.py",
+    "tests/schedule/service/test_schedule_service_reschedulable_contract.py",
+    "tests/schedule/summary/test_schedule_summary_input_fallback_contract.py",
+    "tests/schedule/summary/test_schedule_summary_merge_context_degraded_code.py"
+   ]
+  },
+  {
+   "module": "core.models.schedule_plan_role",
+   "n_files": 11,
+   "files": [
+    "tests/candidate/test_scheduler_candidate_plan_query_contract.py",
+    "tests/gantt/test_gantt_adjustment_publish_execution_revision.py",
+    "tests/operation_execution/test_execution_review_identity_guard.py",
+    "tests/operation_execution/test_scheduler_reschedule_execution_facts.py",
+    "tests/schedule/route_view/test_scheduler_workbench_link_execution_review_contract.py",
+    "tests/schedule/route_view/test_scheduler_workbench_link_guardrails_contract.py",
+    "tests/schedule/route_view/test_scheduler_workbench_link_matrix_contract.py",
+    "tests/schedule/route_view/test_scheduler_workbench_link_targets_contract.py",
+    "tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py",
+    "tests/schedule/summary/test_schedule_result_view_context.py",
+    "tests/scheduler_analysis/test_report_context_filters_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.common.degradation",
+   "n_files": 10,
+   "files": [
+    "tests/algorithm/test_degradation_collector_merge_counts.py",
+    "tests/excel_data_io/test_field_parse_contract.py",
+    "tests/gantt/test_gantt_degradation_surface.py",
+    "tests/gate_meta/test_architecture_fitness.py",
+    "tests/models_domain/test_build_outcome_contract.py",
+    "tests/models_domain/test_compat_parse_emits_degradation.py",
+    "tests/schedule/summary/test_schedule_summary_input_fallback_contract.py",
+    "tests/schedule/summary/test_schedule_summary_merge_context_degraded_code.py",
+    "tests/scheduler_analysis/test_report_source_case_insensitive.py",
+    "tests/web_pages/test_reports_workbench_backlink_contract.py"
+   ]
+  },
+  {
+   "module": "web.viewmodels.scheduler_analysis_vm",
+   "n_files": 10,
+   "files": [
+    "tests/algorithm/test_objective_case_normalization.py",
+    "tests/algorithm/test_objective_projection_contract.py",
+    "tests/algorithm/test_scheduler_objective_labels.py",
+    "tests/schedule/summary/test_schedule_summary_observability.py",
+    "tests/schedule/summary/test_schedule_summary_v11_contract.py",
+    "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_contract.py",
+    "tests/scheduler_analysis/test_scheduler_analysis_observability.py",
+    "tests/scheduler_analysis/test_scheduler_analysis_viewmodel_split.py",
+    "tests/scheduler_analysis/test_scheduler_analysis_vm_legacy_summary_bridge.py",
+    "tests/web_pages/test_web_silent_fallback_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.batch_service",
+   "n_files": 10,
+   "files": [
+    "tests/excel_data_io/test_batch_excel_import_reject_part_change_without_rebuild.py",
+    "tests/excel_data_io/test_batch_excel_import_strict_mode_hardfail_atomic.py",
+    "tests/excel_data_io/test_batch_service_update_reject_part_change_without_rebuild.py",
+    "tests/excel_data_io/test_excel_import_hardening.py",
+    "tests/excel_data_io/test_excel_import_result_contract.py",
+    "tests/scheduler_analysis/test_batch_list_pushdown_contract.py",
+    "tests/web_pages/test_batch_service_strict_mode_template.py",
+    "tests/web_pages/test_batch_template_autobuild_same_tx.py",
+    "tests/web_pages/test_batch_template_ops_due_date_validation.py",
+    "tests/web_pages/test_bulk_route_error_visible.py"
+   ]
+  },
+  {
+   "module": "core.infrastructure.migration_state",
+   "n_files": 10,
+   "files": [
+    "tests/excel_data_io/test_batch_material_default_ready.py",
+    "tests/gantt/test_gantt_adjustment_draft_model.py",
+    "tests/gantt/test_gantt_adjustment_publish_execution_revision.py",
+    "tests/gantt/test_gantt_draft_save_and_preview.py",
+    "tests/gantt/test_gantt_scenario_publish.py",
+    "tests/migration_db/test_migration_schema_contract.py",
+    "tests/migration_db/test_migrations.py",
+    "tests/operation_execution/test_operation_execution_event_foundation.py",
+    "tests/operation_execution/test_operation_execution_migration_v19_contract.py",
+    "tests/web_pages/test_diagnostic_package_security.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.graph",
+   "n_files": 10,
+   "files": [
+    "tests/scheduler_graph/test_analysis_service.py",
+    "tests/scheduler_graph/test_graph_dispatch_context.py",
+    "tests/scheduler_graph/test_metrics_impact.py",
+    "tests/scheduler_graph/test_nx_runtime.py",
+    "tests/scheduler_graph/test_resource_matching.py",
+    "tests/scheduler_graph/test_scheduler_graph_cycle_policy_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_report_mode_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_resource_matching_report_contract.py",
+    "tests/scheduler_graph/test_validators.py"
+   ]
+  },
+  {
+   "module": "core.algorithms.dispatch_rules",
+   "n_files": 9,
+   "files": [
+    "tests/algorithm/test_batch_order_bid_unboundlocal.py",
+    "tests/algorithm/test_greedy_refactor_contract.py",
+    "tests/algorithm/test_sgs_atc_penalize_missing_resources.py",
+    "tests/algorithm/test_sgs_penalize_nonfinite_proc_hours.py",
+    "tests/algorithm/test_sgs_pre_sort_strict_nonfinite_rejected.py",
+    "tests/resource_dispatch/test_dispatch_rules_nonfinite_proc_hours_safe.py",
+    "tests/resource_dispatch/test_dispatch_rules_priority_case_insensitive.py",
+    "tests/schedule/route_view/test_scheduler_missing_resource_message.py",
+    "tests/schedule/service/test_schedule_params_direct_call_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.schedule_optimizer",
+   "n_files": 9,
+   "files": [
+    "tests/algorithm/test_dict_cfg_contract.py",
+    "tests/algorithm/test_improve_dispatch_modes.py",
+    "tests/algorithm/test_optimizer_choice_case_normalization.py",
+    "tests/algorithm/test_optimizer_local_search_neighbor_dedup.py",
+    "tests/algorithm/test_optimizer_outcome_algo_stats.py",
+    "tests/algorithm/test_optimizer_zero_weight_cfg_preserved.py",
+    "tests/algorithm/test_ortools_budget_guard_skip_when_no_time.py",
+    "tests/algorithm/test_schedule_optimizer_cfg_float_strict_blank.py",
+    "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.summary.optimizer_public_summary",
+   "n_files": 9,
+   "files": [
+    "tests/algorithm/test_optimizer_attempt_compaction_contract.py",
+    "tests/algorithm/test_optimizer_candidate_profile_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_local_search_neighbor_dedup.py",
+    "tests/algorithm/test_optimizer_public_summary_projection_contract.py",
+    "tests/algorithm/test_optimizer_search_report_contract.py",
+    "tests/schedule/service/test_schedule_service_input_merge_context_contract.py",
+    "tests/schedule/summary/test_scheduler_public_summary_projection.py",
+    "tests/scheduler_analysis/test_scheduler_analysis_viewmodel_split.py"
+   ]
+  },
+  {
+   "module": "core.infrastructure.backup",
+   "n_files": 9,
+   "files": [
+    "tests/app_runtime/test_fixed_file_security.py",
+    "tests/app_runtime/test_restore_success_condition.py",
+    "tests/calendar_maintenance/test_exit_backup_maintenance.py",
+    "tests/calendar_maintenance/test_maintenance_window_mutex.py",
+    "tests/config/test_exit_backup_respects_config.py",
+    "tests/migration_db/test_backup_integrity_check_contract.py",
+    "tests/migration_db/test_backup_restore_pending_verify_code.py",
+    "tests/migration_db/test_restore_pre_snapshot_failure_contract.py",
+    "tests/web_pages/test_factory_request_lifecycle_observability.py"
+   ]
+  },
+  {
+   "module": "core.models.enums",
+   "n_files": 9,
+   "files": [
+    "tests/calendar_maintenance/test_calendar_export_normalization.py",
+    "tests/calendar_maintenance/test_schedule_input_collector_downtime_resource_pool_contract.py",
+    "tests/excel_data_io/test_schedule_input_builder_external_merge_contract.py",
+    "tests/models_domain/test_domain_model_methods.py",
+    "tests/models_domain/test_normalization_matrix_single_source.py",
+    "tests/models_domain/test_value_domains_consistency.py",
+    "tests/models_domain/test_yesno_normalization_contract.py",
+    "tests/schedule/service/test_schedule_template_lookup_contract.py",
+    "tests/web_pages/test_frontend_ui_language_polish.py"
+   ]
+  },
+  {
+   "module": "core.infrastructure.logging",
+   "n_files": 9,
+   "files": [
+    "tests/calendar_maintenance/test_maintenance_real_oplog_visible.py",
+    "tests/calendar_maintenance/test_system_maintenance_jobstate_commit.py",
+    "tests/gantt/test_gantt_adjustment_publish_execution_revision.py",
+    "tests/gantt/test_gantt_contract_snapshot.py",
+    "tests/gantt/test_gantt_scenario_publish.py",
+    "tests/schedule/service/test_schedule_history_not_created_for_empty_schedule.py",
+    "tests/schedule/service/test_schedule_persistence_reject_empty_actionable_schedule.py",
+    "tests/web_pages/test_infra_silent_fallback_contract.py",
+    "tests/web_pages/test_request_service_test_factory_invariant.py"
+   ]
+  },
+  {
+   "module": "core.services.process.part_service",
+   "n_files": 9,
+   "files": [
+    "tests/excel_data_io/test_excel_failure_semantics_contract.py",
+    "tests/excel_data_io/test_excel_import_result_contract.py",
+    "tests/excel_data_io/test_excel_preview_confirm_extra_state_guard.py",
+    "tests/excel_data_io/test_part_service_create_strict_mode_atomic.py",
+    "tests/excel_data_io/test_part_service_external_default_days_fallback.py",
+    "tests/excel_data_io/test_route_parser_supplier_contract.py",
+    "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py",
+    "tests/models_domain/test_domain_model_internal_source_contract.py",
+    "tests/web_pages/test_bulk_route_error_visible.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.run.schedule_persistence",
+   "n_files": 8,
+   "files": [
+    "tests/algorithm/test_schedule_persistence_auto_assign_contract.py",
+    "tests/candidate/test_scheduler_candidate_persistence_contract.py",
+    "tests/candidate/test_scheduler_candidate_summary_contract.py",
+    "tests/schedule/service/test_schedule_persistence_reject_empty_actionable_schedule.py",
+    "tests/schedule/service/test_schedule_persistence_reschedulable_contract.py",
+    "tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py",
+    "tests/schedule/summary/test_scheduler_summary_result_summary_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_operation_logs_contract.py"
+   ]
+  },
+  {
+   "module": "core.models",
+   "n_files": 8,
+   "files": [
+    "tests/candidate/test_scheduler_candidate_plan_query_contract.py",
+    "tests/config/test_scheduler_config_spec_sync_contract.py",
+    "tests/models_domain/test_domain_model_internal_source_contract.py",
+    "tests/models_domain/test_domain_model_methods.py",
+    "tests/models_domain/test_model_enums_case_insensitive.py",
+    "tests/models_domain/test_models_numeric_parse_hybrid_safe.py",
+    "tests/schedule/route_view/test_scheduler_ops_update_route_contract.py",
+    "tests/web_pages/test_model_helper_silent_fallback_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.gantt_service",
+   "n_files": 8,
+   "files": [
+    "tests/candidate/test_scheduler_week_plan_summary_observability.py",
+    "tests/candidate/test_week_plan_bad_time_rows_surface_degraded.py",
+    "tests/candidate/test_week_plan_filename_uses_normalized_version.py",
+    "tests/gantt/test_gantt_critical_chain_unavailable.py",
+    "tests/gantt/test_gantt_degradation_surface.py",
+    "tests/gantt/test_gantt_draft_save_and_preview.py",
+    "tests/gantt/test_gantt_page_version_default_latest.py",
+    "tests/web_pages/test_scenario_preview_secondary_outputs.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.gantt_range",
+   "n_files": 8,
+   "files": [
+    "tests/gantt/test_gantt_critical_chain_unavailable.py",
+    "tests/gantt/test_gantt_execution_visuals_contract.py",
+    "tests/gantt/test_gantt_resource_load_contract.py",
+    "tests/gantt/test_gantt_task_detail_js_contract.py",
+    "tests/gantt/test_gantt_task_detail_panel_contract.py",
+    "tests/schedule/route_view/test_scheduler_result_navigation_contract.py",
+    "tests/schedule/service/test_week_plan_enrich.py",
+    "tests/schedule/summary/test_schedule_result_view_range.py"
+   ]
+  },
+  {
+   "module": "web.viewmodels.scheduler_resource_dispatch",
+   "n_files": 8,
+   "files": [
+    "tests/operation_execution/test_operation_execution_exception_surfaces.py",
+    "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
+    "tests/resource_dispatch/test_resource_dispatch_public_output_contract.py",
+    "tests/resource_dispatch/test_resource_dispatch_viewmodel.py",
+    "tests/resource_dispatch/test_resource_dispatch_viewmodel_public_output_contract.py",
+    "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
+    "tests/schedule/route_view/test_scheduler_result_navigation_contract.py",
+    "tests/web_pages/test_web_silent_fallback_contract.py"
+   ]
+  },
+  {
+   "module": "web.viewmodels.scheduler_workbench_links",
+   "n_files": 8,
+   "files": [
+    "tests/schedule/route_view/test_scheduler_workbench_link_execution_review_contract.py",
+    "tests/schedule/route_view/test_scheduler_workbench_link_guardrails_contract.py",
+    "tests/schedule/route_view/test_scheduler_workbench_link_matrix_contract.py",
+    "tests/schedule/route_view/test_scheduler_workbench_link_targets_contract.py",
+    "tests/web_pages/test_dashboard_cockpit_hero.py",
+    "tests/web_pages/test_plan_context_capsule.py",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py",
+    "tests/web_pages/test_workbench_nav_entry_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.graph.precedence_builder",
+   "n_files": 8,
+   "files": [
+    "tests/scheduler_graph/test_analysis_service.py",
+    "tests/scheduler_graph/test_exporter.py",
+    "tests/scheduler_graph/test_graph_performance.py",
+    "tests/scheduler_graph/test_metrics_critical_path.py",
+    "tests/scheduler_graph/test_metrics_impact.py",
+    "tests/scheduler_graph/test_metrics_topology.py",
+    "tests/scheduler_graph/test_precedence_builder.py",
+    "tests/scheduler_graph/test_validators.py"
+   ]
+  },
+  {
+   "module": "core.algorithms.greedy.dispatch.sgs",
+   "n_files": 7,
+   "files": [
+    "tests/algorithm/test_batch_order_bid_unboundlocal.py",
+    "tests/algorithm/test_dispatch_blocking_consistency.py",
+    "tests/algorithm/test_greedy_refactor_contract.py",
+    "tests/algorithm/test_sgs_atc_penalize_missing_resources.py",
+    "tests/algorithm/test_sgs_penalize_nonfinite_proc_hours.py",
+    "tests/algorithm/test_sgs_pre_sort_strict_nonfinite_rejected.py",
+    "tests/algorithm/test_sgs_total_hours_cache.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.schedule_optimizer_steps",
+   "n_files": 7,
+   "files": [
+    "tests/algorithm/test_dict_cfg_contract.py",
+    "tests/algorithm/test_improve_dispatch_modes.py",
+    "tests/algorithm/test_optimizer_build_order_once_per_strategy.py",
+    "tests/algorithm/test_optimizer_choice_case_normalization.py",
+    "tests/algorithm/test_optimizer_outcome_algo_stats.py",
+    "tests/algorithm/test_optimizer_zero_weight_cfg_preserved.py",
+    "tests/algorithm/test_warmstart_failure_surfaces_degradation.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.summary.schedule_summary_types",
+   "n_files": 7,
+   "files": [
+    "tests/algorithm/test_dict_cfg_contract.py",
+    "tests/algorithm/test_due_exclusive_consistency.py",
+    "tests/algorithm/test_optimizer_public_summary_projection_contract.py",
+    "tests/schedule/service/test_schedule_orchestrator_contract.py",
+    "tests/schedule/summary/test_schedule_summary_v11_contract.py",
+    "tests/schedule/summary/test_scheduler_summary_result_summary_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_summary_contract.py"
+   ]
+  },
+  {
+   "module": "core.algorithms.greedy.schedule_params",
+   "n_files": 7,
+   "files": [
+    "tests/algorithm/test_greedy_date_parsers.py",
+    "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py",
+    "tests/algorithm/test_scheduler_strict_mode_dispatch_flags.py",
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
+    "tests/schedule/service/test_schedule_params_direct_call_contract.py",
+    "tests/schedule/service/test_schedule_params_read_failure_visible.py",
+    "tests/schedule/service/test_schedule_params_strict_blank_numeric.py"
+   ]
+  },
+  {
+   "module": "core.services.equipment.machine_service",
+   "n_files": 7,
+   "files": [
+    "tests/calendar_maintenance/test_equipment_page_downtime_overlay_degraded.py",
+    "tests/excel_data_io/test_excel_import_result_contract.py",
+    "tests/excel_data_io/test_excel_preview_confirm_baseline_guard.py",
+    "tests/excel_data_io/test_excel_preview_confirm_extra_state_guard.py",
+    "tests/models_domain/test_resource_reference_guard_schedule.py",
+    "tests/models_domain/test_status_category_mixed_case.py",
+    "tests/web_pages/test_bulk_route_error_visible.py"
+   ]
+  },
+  {
+   "module": "core.models.schedule_candidate",
+   "n_files": 7,
+   "files": [
+    "tests/candidate/test_scheduler_candidate_plan_query_contract.py",
+    "tests/candidate/test_scheduler_candidate_week_plan_contract.py",
+    "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py",
+    "tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py",
+    "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
+    "tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py",
+    "tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py"
+   ]
+  },
+  {
+   "module": "web.viewmodels.scheduler_summary_display",
+   "n_files": 7,
+   "files": [
+    "tests/candidate/test_scheduler_week_plan_summary_observability.py",
+    "tests/schedule/route_view/test_scheduler_batches_degraded_visible.py",
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
+    "tests/schedule/summary/test_schedule_summary_deep_review_degradations.py",
+    "tests/schedule/summary/test_scheduler_summary_display_status_contract.py",
+    "tests/scheduler_analysis/test_scheduler_analysis_observability.py",
+    "tests/scheduler_analysis/test_scheduler_analysis_vm_legacy_summary_bridge.py"
+   ]
+  },
+  {
+   "module": "core.services.process.op_type_service",
+   "n_files": 7,
+   "files": [
+    "tests/excel_data_io/test_excel_failure_semantics_contract.py",
+    "tests/excel_data_io/test_excel_import_result_contract.py",
+    "tests/excel_data_io/test_excel_import_strict_reference_apply.py",
+    "tests/excel_data_io/test_excel_preview_confirm_extra_state_guard.py",
+    "tests/excel_data_io/test_process_excel_routes_extra_state_guard.py",
+    "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py",
+    "tests/models_domain/test_status_category_mixed_case.py"
+   ]
+  },
+  {
+   "module": "core.services.process.route_parser",
+   "n_files": 7,
+   "files": [
+    "tests/excel_data_io/test_part_service_external_default_days_fallback.py",
+    "tests/excel_data_io/test_route_parser_missing_supplier_warning.py",
+    "tests/excel_data_io/test_route_parser_op_type_category_case_insensitive.py",
+    "tests/excel_data_io/test_route_parser_preserve_errors_when_no_matches.py",
+    "tests/excel_data_io/test_route_parser_strict_mode_rejects_supplier_fallback.py",
+    "tests/excel_data_io/test_route_parser_supplier_contract.py",
+    "tests/models_domain/test_domain_model_internal_source_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.operation_execution_feedback_service",
+   "n_files": 7,
+   "files": [
+    "tests/gantt/test_gantt_adjustment_publish_execution_revision.py",
+    "tests/operation_execution/test_operation_execution_scope_read_contract.py",
+    "tests/operation_execution/test_operation_execution_state_flow.py",
+    "tests/operation_execution/test_operation_execution_state_revision.py",
+    "tests/operation_execution/test_scheduler_reschedule_execution_facts.py",
+    "tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py",
+    "tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py"
+   ]
+  },
+  {
+   "module": "tools.long_gate_fingerprint",
+   "n_files": 7,
+   "files": [
+    "tests/gate_meta/test_long_gate_cache.py",
+    "tests/gate_meta/test_long_gate_collect_cache.py",
+    "tests/gate_meta/test_long_gate_debt_ledger_cache.py",
+    "tests/gate_meta/test_long_gate_full_test_debt_cache.py",
+    "tests/gate_meta/test_long_gate_manifest.py",
+    "tests/gate_meta/test_long_gate_quickref_cache.py",
+    "tests/gate_meta/test_long_gate_required_regression_cache.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.resource_dispatch_service",
+   "n_files": 7,
+   "files": [
+    "tests/operation_execution/test_operation_execution_exception_surfaces.py",
+    "tests/resource_dispatch/test_resource_dispatch_bad_time_rows_surface_degraded.py",
+    "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
+    "tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py",
+    "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
+    "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
+    "tests/web_pages/test_scenario_preview_secondary_outputs.py"
+   ]
+  },
+  {
+   "module": "core.algorithms.greedy.scheduler",
+   "n_files": 6,
+   "files": [
+    "tests/algorithm/test_algorithm_date_boundary_split.py",
+    "tests/algorithm/test_greedy_refactor_contract.py",
+    "tests/algorithm/test_greedy_scheduler_base_date.py",
+    "tests/algorithm/test_internal_slot_estimator_consistency.py",
+    "tests/calendar_maintenance/test_downtime_timeline_ordered_insert.py",
+    "tests/calendar_maintenance/test_operator_calendar_override_allows_work_on_global_holiday.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.config.config_validator",
+   "n_files": 6,
+   "files": [
+    "tests/algorithm/test_objective_case_normalization.py",
+    "tests/algorithm/test_scheduler_strict_mode_dispatch_flags.py",
+    "tests/candidate/test_scheduler_candidate_config_contract.py",
+    "tests/config/test_config_field_spec_contract.py",
+    "tests/config/test_config_snapshot_projection_sync.py",
+    "tests/config/test_config_validator_preset_degradation.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.run.optimizer_search_report",
+   "n_files": 6,
+   "files": [
+    "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
+    "tests/algorithm/test_optimizer_candidate_fingerprint_contract.py",
+    "tests/algorithm/test_optimizer_graph_ready_candidate_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_search_report_contract.py",
+    "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.summary.optimizer_public_search_report",
+   "n_files": 6,
+   "files": [
+    "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
+    "tests/algorithm/test_optimizer_candidate_fingerprint_contract.py",
+    "tests/algorithm/test_optimizer_candidate_profile_contract.py",
+    "tests/algorithm/test_optimizer_graph_ready_candidate_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.run.optimizer_runtime",
+   "n_files": 6,
+   "files": [
+    "tests/algorithm/test_optimizer_candidate_profile_contract.py",
+    "tests/algorithm/test_optimizer_graph_ready_candidate_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_runtime_seam_contract.py",
+    "tests/algorithm/test_optimizer_search_report_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.process.supplier_service",
+   "n_files": 6,
+   "files": [
+    "tests/app_runtime/test_app_error_route_contract.py",
+    "tests/excel_data_io/test_excel_import_result_contract.py",
+    "tests/excel_data_io/test_process_excel_routes_extra_state_guard.py",
+    "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py",
+    "tests/excel_data_io/test_supplier_service_invalid_default_days_not_silent.py",
+    "tests/models_domain/test_status_category_mixed_case.py"
+   ]
+  },
+  {
+   "module": "core.services.system.maintenance.cleanup_task",
+   "n_files": 6,
+   "files": [
+    "tests/app_runtime/test_fixed_file_security.py",
+    "tests/calendar_maintenance/test_maintenance_jobstate_retry_signal.py",
+    "tests/calendar_maintenance/test_maintenance_real_oplog_visible.py",
+    "tests/calendar_maintenance/test_maintenance_telemetry_isolation.py",
+    "tests/calendar_maintenance/test_maintenance_visible_detail_contract.py",
+    "tests/calendar_maintenance/test_system_maintenance_jobstate_commit.py"
+   ]
+  },
+  {
+   "module": "web.navigation_context",
+   "n_files": 6,
+   "files": [
+    "tests/app_runtime/test_safe_next_url_hardening.py",
+    "tests/app_runtime/test_safe_next_url_observability.py",
+    "tests/schedule/route_view/test_scheduler_navigation_unknown_plan_role_contract.py",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py",
+    "tests/web_pages/test_reports_workbench_navigation_publish_contract.py",
+    "tests/web_pages/test_workbench_nav_entry_contract.py"
+   ]
+  },
+  {
+   "module": "web.routes.domains.scheduler.scheduler_batches",
+   "n_files": 6,
+   "files": [
+    "tests/app_runtime/test_safe_next_url_observability.py",
+    "tests/schedule/route_view/test_scheduler_batches_degraded_visible.py",
+    "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
+    "tests/schedule/summary/test_schedule_summary_observability.py",
+    "tests/scheduler_analysis/test_batch_list_pushdown_contract.py",
+    "tests/web_pages/test_request_scope_app_logger_binding.py"
+   ]
+  },
+  {
+   "module": "core.services.common.excel_validators",
+   "n_files": 6,
+   "files": [
+    "tests/calendar_maintenance/test_excel_operator_calendar_cross_midnight.py",
+    "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py",
+    "tests/excel_data_io/test_excel_import_hardening.py",
+    "tests/excel_data_io/test_excel_normalizers_mixed_case.py",
+    "tests/models_domain/test_normalization_matrix_single_source.py",
+    "tests/models_domain/test_yesno_normalization_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.system",
+   "n_files": 6,
+   "files": [
+    "tests/calendar_maintenance/test_exit_backup_maintenance.py",
+    "tests/calendar_maintenance/test_maintenance_jobstate_retry_signal.py",
+    "tests/calendar_maintenance/test_system_maintenance_jobstate_commit.py",
+    "tests/calendar_maintenance/test_system_maintenance_throttle_short_circuit.py",
+    "tests/config/test_exit_backup_respects_config.py",
+    "tests/web_pages/test_factory_request_lifecycle_observability.py"
+   ]
+  },
+  {
+   "module": "core.services.personnel.operator_service",
+   "n_files": 6,
+   "files": [
+    "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py",
+    "tests/excel_data_io/test_excel_preview_confirm_extra_state_guard.py",
+    "tests/models_domain/test_resource_reference_guard_schedule.py",
+    "tests/models_domain/test_status_category_mixed_case.py",
+    "tests/scheduler_analysis/test_batch_list_pushdown_contract.py",
+    "tests/web_pages/test_bulk_route_error_visible.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.run.schedule_candidate_runner",
+   "n_files": 6,
+   "files": [
+    "tests/candidate/test_baseline_missing_or_failed_four_state_parity.py",
+    "tests/candidate/test_scheduler_candidate_persistence_contract.py",
+    "tests/candidate/test_scheduler_candidate_runner_contract.py",
+    "tests/candidate/test_scheduler_candidate_summary_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.schedule_result_view_context",
+   "n_files": 6,
+   "files": [
+    "tests/candidate/test_scheduler_candidate_plan_query_contract.py",
+    "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
+    "tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py",
+    "tests/schedule/route_view/test_scheduler_workbench_link_execution_review_contract.py",
+    "tests/schedule/summary/test_schedule_result_view_context.py",
+    "tests/web_pages/test_reports_workbench_navigation_publish_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.common.excel_templates",
+   "n_files": 6,
+   "files": [
+    "tests/excel_data_io/test_excel_conversion_output_contract.py",
+    "tests/excel_data_io/test_excel_import_hardening.py",
+    "tests/excel_data_io/test_excel_template_download_validation.py",
+    "tests/resource_dispatch/test_resource_dispatch_public_output_contract.py",
+    "tests/web_pages/test_frontend_ui_language_polish.py",
+    "tests/web_pages/test_request_service_test_factory_invariant.py"
+   ]
+  },
+  {
+   "module": "web.bootstrap.request_services",
+   "n_files": 6,
+   "files": [
+    "tests/excel_data_io/test_excel_import_hardening.py",
+    "tests/schedule/route_view/test_dashboard_cockpit_failed_hero.py",
+    "tests/schedule/summary/test_schedule_summary_observability.py",
+    "tests/web_pages/test_request_scope_app_logger_binding.py",
+    "tests/web_pages/test_request_service_test_factory_invariant.py",
+    "tests/web_pages/test_request_services_contract.py"
+   ]
+  },
+  {
+   "module": "tools.long_gate_manifest",
+   "n_files": 6,
+   "files": [
+    "tests/gate_meta/test_long_gate_cache.py",
+    "tests/gate_meta/test_long_gate_collect_cache.py",
+    "tests/gate_meta/test_long_gate_full_test_debt_cache.py",
+    "tests/gate_meta/test_long_gate_quickref_cache.py",
+    "tests/gate_meta/test_long_gate_required_regression_cache.py",
+    "tests/gate_meta/test_long_gate_startup_regression_cache.py"
+   ]
+  },
+  {
+   "module": "core.algorithms.greedy.run_state",
+   "n_files": 5,
+   "files": [
+    "tests/algorithm/test_batch_order_bid_unboundlocal.py",
+    "tests/algorithm/test_dispatch_blocking_consistency.py",
+    "tests/algorithm/test_greedy_refactor_contract.py",
+    "tests/algorithm/test_greedy_run_state_contract.py",
+    "tests/schedule/route_view/test_scheduler_missing_resource_message.py"
+   ]
+  },
+  {
+   "module": "core.algorithms.ortools_bottleneck",
+   "n_files": 5,
+   "files": [
+    "tests/algorithm/test_dict_cfg_contract.py",
+    "tests/algorithm/test_optimizer_build_order_once_per_strategy.py",
+    "tests/algorithm/test_ortools_budget_guard_skip_when_no_time.py",
+    "tests/algorithm/test_ortools_warmstart_failure_contract.py",
+    "tests/algorithm/test_ortools_warmstart_skip_nonfinite.py"
+   ]
+  },
+  {
+   "module": "core.services.report.calculations",
+   "n_files": 5,
+   "files": [
+    "tests/algorithm/test_due_exclusive_consistency.py",
+    "tests/algorithm/test_due_exclusive_guard_contract.py",
+    "tests/calendar_maintenance/test_calendar_shift_hours_roundtrip.py",
+    "tests/scheduler_analysis/test_report_source_case_insensitive.py",
+    "tests/scheduler_analysis/test_source_merge_mode_constants.py"
+   ]
+  },
+  {
+   "module": "web.bootstrap.entrypoint",
+   "n_files": 5,
+   "files": [
+    "tests/app_runtime/test_entrypoint_meta_failure_visible.py",
+    "tests/app_runtime/test_launcher_observability.py",
+    "tests/app_runtime/test_runtime_lock_reloader_parent_skip.py",
+    "tests/app_runtime/test_win7_launcher_runtime_paths.py",
+    "tests/web_pages/test_factory_request_lifecycle_observability.py"
+   ]
+  },
+  {
+   "module": "web.bootstrap",
+   "n_files": 5,
+   "files": [
+    "tests/app_runtime/test_exit_backup_reloader_parent_skip.py",
+    "tests/app_runtime/test_fixed_file_security.py",
+    "tests/app_runtime/test_launcher_observability.py",
+    "tests/calendar_maintenance/test_exit_backup_maintenance.py",
+    "tests/config/test_exit_backup_respects_config.py"
+   ]
+  },
+  {
+   "module": "web.routes.excel_utils",
+   "n_files": 5,
+   "files": [
+    "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py",
+    "tests/excel_data_io/test_excel_import_hardening.py",
+    "tests/excel_data_io/test_excel_template_download_validation.py",
+    "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
+    "tests/web_pages/test_frontend_ui_language_polish.py"
+   ]
+  },
+  {
+   "module": "core.infrastructure",
+   "n_files": 5,
+   "files": [
+    "tests/calendar_maintenance/test_maintenance_window_mutex.py",
+    "tests/migration_db/test_database_high_version_failfast.py",
+    "tests/migration_db/test_database_migration_runner_delegation.py",
+    "tests/migration_db/test_transaction_savepoint_nested.py",
+    "tests/operation_execution/test_operation_execution_migration_v19_contract.py"
+   ]
+  },
+  {
+   "module": "web.viewmodels.scheduler_analysis_diagnostics",
+   "n_files": 5,
+   "files": [
+    "tests/candidate/test_scheduler_candidate_plain_language.py",
+    "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_contract.py",
+    "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_error_contract.py",
+    "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_graph_score_contract.py",
+    "tests/web_pages/test_web_silent_fallback_contract.py"
+   ]
+  },
+  {
+   "module": "web.routes.domains.scheduler.scheduler_week_plan",
+   "n_files": 5,
+   "files": [
+    "tests/candidate/test_scheduler_candidate_week_plan_contract.py",
+    "tests/candidate/test_scheduler_week_plan_summary_observability.py",
+    "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
+    "tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py",
+    "tests/web_pages/test_reports_workbench_navigation_publish_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.process.op_type_excel_import_service",
+   "n_files": 5,
+   "files": [
+    "tests/excel_data_io/test_excel_failure_semantics_contract.py",
+    "tests/excel_data_io/test_excel_import_apply_defense.py",
+    "tests/excel_data_io/test_excel_import_hardening.py",
+    "tests/excel_data_io/test_excel_normalizers_mixed_case.py",
+    "tests/excel_data_io/test_excel_renamed_column_conflicts.py"
+   ]
+  },
+  {
+   "module": "core.services.process.supplier_excel_import_service",
+   "n_files": 5,
+   "files": [
+    "tests/excel_data_io/test_excel_failure_semantics_contract.py",
+    "tests/excel_data_io/test_excel_import_apply_defense.py",
+    "tests/excel_data_io/test_excel_import_strict_reference_apply.py",
+    "tests/excel_data_io/test_excel_normalizers_mixed_case.py",
+    "tests/excel_data_io/test_excel_renamed_column_conflicts.py"
+   ]
+  },
+  {
+   "module": "core.models.operation_execution_event",
+   "n_files": 5,
+   "files": [
+    "tests/gantt/test_execution_fact_presentation.py",
+    "tests/operation_execution/test_operation_execution_event_foundation.py",
+    "tests/operation_execution/test_operation_execution_event_sequence_contract.py",
+    "tests/operation_execution/test_operation_execution_event_time_contract.py",
+    "tests/schedule/route_view/test_batch_schedule_placement_helpers.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.gantt_adjustment_draft_service",
+   "n_files": 5,
+   "files": [
+    "tests/gantt/test_gantt_adjustment_draft_model.py",
+    "tests/gantt/test_gantt_adjustment_publish_execution_revision.py",
+    "tests/gantt/test_gantt_adjustment_validate_simulate.py",
+    "tests/gantt/test_gantt_draft_save_and_preview.py",
+    "tests/gantt/test_gantt_scenario_publish.py"
+   ]
+  },
+  {
+   "module": "tools.quality_gate_shared",
+   "n_files": 5,
+   "files": [
+    "tests/gate_meta/test_check_full_test_debt.py",
+    "tests/gate_meta/test_full_test_debt_registry_contract.py",
+    "tests/gate_meta/test_long_gate_full_test_debt_cache.py",
+    "tests/gate_meta/test_quality_gate_scan_contract.py",
+    "tests/gate_meta/test_sync_debt_ledger.py"
+   ]
+  },
+  {
+   "module": "tools.test_registry",
+   "n_files": 5,
+   "files": [
+    "tests/gate_meta/test_full_test_debt_shards.py",
+    "tests/gate_meta/test_long_gate_full_test_debt_cache.py",
+    "tests/gate_meta/test_long_gate_manifest.py",
+    "tests/gate_meta/test_long_gate_required_regression_cache.py",
+    "tests/gate_meta/test_long_gate_startup_regression_cache.py"
+   ]
+  },
+  {
+   "module": "tools.long_gate_cache",
+   "n_files": 5,
+   "files": [
+    "tests/gate_meta/test_long_gate_cache.py",
+    "tests/gate_meta/test_long_gate_collect_cache.py",
+    "tests/gate_meta/test_long_gate_debt_ledger_cache.py",
+    "tests/gate_meta/test_long_gate_full_test_debt_cache.py",
+    "tests/gate_meta/test_long_gate_quickref_cache.py"
+   ]
+  },
+  {
+   "module": "web.routes.domains.scheduler",
+   "n_files": 5,
+   "files": [
+    "tests/resource_dispatch/test_resource_dispatch_site_records_frontend_contract.py",
+    "tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py",
+    "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
+    "tests/web_pages/test_scheduler_plan_role_arg_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.schedule_orchestrator",
+   "n_files": 5,
+   "files": [
+    "tests/schedule/service/test_schedule_orchestrator_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_cycle_policy_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_report_mode_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_resource_matching_report_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.report.report_engine",
+   "n_files": 5,
+   "files": [
+    "tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py",
+    "tests/scheduler_analysis/test_report_export_large_scope_rejects_need_async.py",
+    "tests/scheduler_analysis/test_report_export_size_mode_selection.py",
+    "tests/scheduler_analysis/test_report_source_case_insensitive.py",
+    "tests/web_pages/test_web_silent_fallback_contract.py"
+   ]
+  },
+  {
+   "module": "core.algorithms.greedy.run_context",
+   "n_files": 4,
+   "files": [
+    "tests/algorithm/test_batch_order_bid_unboundlocal.py",
+    "tests/algorithm/test_greedy_algo_stats_contract.py",
+    "tests/algorithm/test_greedy_refactor_contract.py",
+    "tests/schedule/route_view/test_scheduler_missing_resource_message.py"
+   ]
+  },
+  {
+   "module": "core.algorithms.greedy.dispatch.sgs_scoring",
+   "n_files": 4,
+   "files": [
+    "tests/algorithm/test_greedy_refactor_contract.py",
+    "tests/algorithm/test_sgs_internal_scoring_matches_execution.py",
+    "tests/algorithm/test_sgs_total_hours_cache.py",
+    "tests/schedule/route_view/test_scheduler_missing_resource_message.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.run.optimizer_proof_cases",
+   "n_files": 4,
+   "files": [
+    "tests/algorithm/test_localsearch_batch_order_actuator.py",
+    "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.run.optimizer_proof_oracle",
+   "n_files": 4,
+   "files": [
+    "tests/algorithm/test_localsearch_batch_order_actuator.py",
+    "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.run.optimizer_candidate_fingerprint",
+   "n_files": 4,
+   "files": [
+    "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
+    "tests/algorithm/test_optimizer_candidate_fingerprint_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.run.optimizer_neighborhood_moves",
+   "n_files": 4,
+   "files": [
+    "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
+    "tests/algorithm/test_optimizer_candidate_profile_contract.py",
+    "tests/algorithm/test_optimizer_local_search_neighbor_dedup.py",
+    "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.run.schedule_candidate_persistence_models",
+   "n_files": 4,
+   "files": [
+    "tests/algorithm/test_optimizer_candidate_fingerprint_contract.py",
+    "tests/algorithm/test_optimizer_candidate_profile_contract.py",
+    "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+    "tests/algorithm/test_optimizer_search_report_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.run.schedule_optimizer_steps",
+   "n_files": 4,
+   "files": [
+    "tests/algorithm/test_optimizer_candidate_profile_contract.py",
+    "tests/algorithm/test_optimizer_ortools_logging_exc_info_safe.py",
+    "tests/algorithm/test_optimizer_search_report_contract.py",
+    "tests/algorithm/test_schedule_optimizer_strict_mode_signature_cache.py"
+   ]
+  },
+  {
+   "module": "web.viewmodels.scheduler_history_summary",
+   "n_files": 4,
+   "files": [
+    "tests/algorithm/test_v2_strategy_zh_contract.py",
+    "tests/candidate/test_scheduler_candidate_plain_language.py",
+    "tests/schedule/summary/test_scheduler_bp_result_summary_guard.py",
+    "tests/web_pages/test_history_summary_parser.py"
+   ]
+  },
+  {
+   "module": "core.infrastructure.safe_files",
+   "n_files": 4,
+   "files": [
+    "tests/app_runtime/test_fixed_file_security.py",
+    "tests/excel_data_io/test_excel_conversion_output_contract.py",
+    "tests/migration_db/test_backup_integrity_check_contract.py",
+    "tests/migration_db/test_database_migration_runner_delegation.py"
+   ]
+  },
+  {
+   "module": "web.routes.system_backup",
+   "n_files": 4,
+   "files": [
+    "tests/app_runtime/test_fixed_file_security.py",
+    "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
+    "tests/web_pages/test_system_backup_presenter_contract.py",
+    "tests/web_pages/test_system_request_services_contract.py"
+   ]
+  },
+  {
+   "module": "web.bootstrap.plugins",
+   "n_files": 4,
+   "files": [
+    "tests/app_runtime/test_plugin_bootstrap_telemetry_failure_visible.py",
+    "tests/app_runtime/test_plugin_enabled_source_contract.py",
+    "tests/config/test_plugin_bootstrap_config_failure_visible.py",
+    "tests/config/test_plugin_bootstrap_injects_config_reader.py"
+   ]
+  },
+  {
+   "module": "core.plugins.manager",
+   "n_files": 4,
+   "files": [
+    "tests/app_runtime/test_plugin_enabled_source_contract.py",
+    "tests/config/test_plugin_capability_conflict_visible.py",
+    "tests/config/test_plugin_manager_error_trace_visible.py",
+    "tests/models_domain/test_yesno_normalization_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.common.excel_backend_factory",
+   "n_files": 4,
+   "files": [
+    "tests/app_runtime/test_plugin_enabled_source_contract.py",
+    "tests/config/test_plugin_bootstrap_config_failure_visible.py",
+    "tests/excel_data_io/test_excel_backend_factory_observability.py",
+    "tests/excel_data_io/test_excel_import_hardening.py"
+   ]
+  },
+  {
+   "module": "web.routes.domains.scheduler.scheduler_batch_detail",
+   "n_files": 4,
+   "files": [
+    "tests/app_runtime/test_safe_next_url_observability.py",
+    "tests/schedule/route_view/test_batch_schedule_placement_helpers.py",
+    "tests/schedule/route_view/test_scheduler_batch_detail_merge_hint_fast_path.py",
+    "tests/schedule/route_view/test_scheduler_batch_detail_route_contract.py"
+   ]
+  },
+  {
+   "module": "web.routes.domains.scheduler.scheduler_config",
+   "n_files": 4,
+   "files": [
+    "tests/app_runtime/test_safe_next_url_observability.py",
+    "tests/candidate/test_scheduler_candidate_config_contract.py",
+    "tests/config/test_scheduler_config_manual_url_normalization.py",
+    "tests/config/test_scheduler_config_route_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.common.normalization_matrix",
+   "n_files": 4,
+   "files": [
+    "tests/calendar_maintenance/test_calendar_export_normalization.py",
+    "tests/models_domain/test_normalization_matrix_single_source.py",
+    "tests/models_domain/test_yesno_normalization_contract.py",
+    "tests/web_pages/test_frontend_ui_language_polish.py"
+   ]
+  },
+  {
+   "module": "web.routes",
+   "n_files": 4,
+   "files": [
+    "tests/calendar_maintenance/test_equipment_page_downtime_overlay_degraded.py",
+    "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
+    "tests/web_pages/test_bulk_route_error_visible.py",
+    "tests/web_pages/test_web_silent_fallback_contract.py"
+   ]
+  },
+  {
+   "module": "web.viewmodels.scheduler_analysis_candidates",
+   "n_files": 4,
+   "files": [
+    "tests/candidate/test_scheduler_candidate_analysis_links_contract.py",
+    "tests/candidate/test_scheduler_candidate_display_contract.py",
+    "tests/candidate/test_scheduler_candidate_plain_language.py",
+    "tests/web_pages/test_web_silent_fallback_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.run.schedule_candidate_selection",
+   "n_files": 4,
+   "files": [
+    "tests/candidate/test_scheduler_candidate_persistence_contract.py",
+    "tests/candidate/test_scheduler_candidate_runner_contract.py",
+    "tests/candidate/test_scheduler_candidate_summary_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.report",
+   "n_files": 4,
+   "files": [
+    "tests/candidate/test_scheduler_candidate_reports_contract.py",
+    "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_deep_review_contract.py",
+    "tests/scheduler_analysis/test_plan_vs_actual_review.py",
+    "tests/web_pages/test_scenario_preview_secondary_outputs.py"
+   ]
+  },
+  {
+   "module": "core.services.process",
+   "n_files": 4,
+   "files": [
+    "tests/excel_data_io/test_excel_conversion_output_contract.py",
+    "tests/excel_data_io/test_unit_excel_converter_diagnostics_visible.py",
+    "tests/excel_data_io/test_unit_excel_converter_duplicate_part_rows_no_override.py",
+    "tests/excel_data_io/test_unit_excel_converter_merge_steps_and_classify.py"
+   ]
+  },
+  {
+   "module": "core.services.equipment.machine_excel_import_service",
+   "n_files": 4,
+   "files": [
+    "tests/excel_data_io/test_excel_failure_semantics_contract.py",
+    "tests/excel_data_io/test_excel_import_apply_defense.py",
+    "tests/excel_data_io/test_excel_import_strict_reference_apply.py",
+    "tests/excel_data_io/test_excel_normalizers_mixed_case.py"
+   ]
+  },
+  {
+   "module": "core.services.common.enum_normalizers",
+   "n_files": 4,
+   "files": [
+    "tests/excel_data_io/test_excel_normalizers_mixed_case.py",
+    "tests/models_domain/test_normalization_matrix_single_source.py",
+    "tests/models_domain/test_skill_level_normalization_contract.py",
+    "tests/web_pages/test_frontend_ui_language_polish.py"
+   ]
+  },
+  {
+   "module": "web.routes.normalizers",
+   "n_files": 4,
+   "files": [
+    "tests/excel_data_io/test_excel_normalizers_mixed_case.py",
+    "tests/models_domain/test_normalization_matrix_single_source.py",
+    "tests/models_domain/test_yesno_normalization_contract.py",
+    "tests/schedule/route_view/test_route_version_normalizers_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.schedule_input_builder",
+   "n_files": 4,
+   "files": [
+    "tests/excel_data_io/test_schedule_input_builder_external_merge_contract.py",
+    "tests/schedule/service/test_schedule_input_builder_safe_float_parse.py",
+    "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
+    "tests/schedule/service/test_schedule_input_builder_template_missing_surfaces_event.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.gantt_critical_chain_provider",
+   "n_files": 4,
+   "files": [
+    "tests/gantt/test_gantt_critical_chain_cache_thread_safe.py",
+    "tests/gantt/test_gantt_critical_chain_provider.py",
+    "tests/gantt/test_gantt_critical_chain_unavailable.py",
+    "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.gantt_tasks",
+   "n_files": 4,
+   "files": [
+    "tests/gantt/test_gantt_critical_chain_unavailable.py",
+    "tests/gantt/test_gantt_execution_visuals_contract.py",
+    "tests/gantt/test_gantt_task_detail_js_contract.py",
+    "tests/gantt/test_gantt_task_detail_panel_contract.py"
+   ]
+  },
+  {
+   "module": "core.infrastructure.migrations.common",
+   "n_files": 4,
+   "files": [
+    "tests/migration_db/test_migration_v4_sanitizers.py",
+    "tests/models_domain/test_common_broad_false_fixed.py",
+    "tests/scheduler_graph/test_migrate_v9_graph_config_defaults.py",
+    "tests/web_pages/test_infra_silent_fallback_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.resource_dispatch_excel",
+   "n_files": 4,
+   "files": [
+    "tests/operation_execution/test_operation_execution_exception_surfaces.py",
+    "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
+    "tests/resource_dispatch/test_resource_dispatch_public_output_contract.py",
+    "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py"
+   ]
+  },
+  {
+   "module": "web.routes.dashboard",
+   "n_files": 4,
+   "files": [
+    "tests/schedule/route_view/test_dashboard_cockpit_failed_hero.py",
+    "tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py",
+    "tests/schedule/summary/test_schedule_summary_observability.py",
+    "tests/web_pages/test_dashboard_near_due.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.version_resolution",
+   "n_files": 4,
+   "files": [
+    "tests/schedule/route_view/test_route_version_normalizers_contract.py",
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
+    "tests/web_pages/test_reports_export_version_default_latest.py",
+    "tests/web_pages/test_reports_page_version_default_latest.py"
+   ]
+  },
+  {
+   "module": "web.error_handlers",
+   "n_files": 4,
+   "files": [
+    "tests/schedule/route_view/test_scheduler_ops_update_route_contract.py",
+    "tests/web_pages/test_error_boundary_contract.py",
+    "tests/web_pages/test_request_service_test_factory_invariant.py",
+    "tests/web_pages/test_system_history_route_contract.py"
+   ]
+  },
+  {
+   "module": "web.routes.system_history",
+   "n_files": 4,
+   "files": [
+    "tests/schedule/summary/test_schedule_summary_observability.py",
+    "tests/web_pages/test_history_links_adoption.py",
+    "tests/web_pages/test_system_history_route_contract.py",
+    "tests/web_pages/test_system_request_services_contract.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.graph.metrics",
+   "n_files": 4,
+   "files": [
+    "tests/scheduler_graph/test_graph_performance.py",
+    "tests/scheduler_graph/test_metrics_critical_path.py",
+    "tests/scheduler_graph/test_metrics_impact.py",
+    "tests/scheduler_graph/test_metrics_topology.py"
+   ]
+  },
+  {
+   "module": "core.services.scheduler.run.schedule_graph_report",
+   "n_files": 4,
+   "files": [
+    "tests/scheduler_graph/test_graph_performance.py",
+    "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_resource_matching_report_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_summary_contract.py"
+   ]
+  }
+ ],
+ "parse_errors": [],
+ "func_index_size": 3837
+}

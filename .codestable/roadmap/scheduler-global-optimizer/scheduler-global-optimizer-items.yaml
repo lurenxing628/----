@@ -96,7 +96,7 @@ items:
     status: done
     feature: 2026-06-29-scheduler-global-optimizer-items-9-13
     minimal_loop: false
-    notes: 已新增 benchmark-ratchet-baseline.json、benchmark_optimizer_ratchet.py、benchmark_optimizer_medium_gate.py 和 required 测试 test_optimizer_benchmark_ratchet_gate.py；轻门禁覆盖 tiny proof + 图异常合同，baseline check 通过但当前 snapshot 为 dirty_worktree=true，只能证明相对 dirty baseline 未退化；中门禁实际跑通 FJSP mk01、SMTWT 250x2 模式和 SGS 大资源池，报告默认写 ignored long_gate；FJSP 原 700 行脚本已按数据镜像/装载/运行/报告拆成支撑模块，避免为了门禁硬压行数；FJSP makespan 仍只作技术参考，不证明 APS 业务目标全局最优
+    notes: 已新增 benchmark-ratchet-baseline.json、benchmark_optimizer_ratchet.py、benchmark_optimizer_medium_gate.py 和 required 测试 test_optimizer_benchmark_ratchet_gate.py；轻门禁覆盖 tiny proof + 图异常合同；当前 tracked baseline 和 actual snapshot 均为 dirty_worktree=true 时，--check-baseline 会按合同失败并返回 unbound_dirty_worktree，不能写成通过证明；中门禁实际跑通 FJSP mk01、SMTWT 250x2 模式和 SGS 大资源池，报告默认写 ignored long_gate；FJSP 原 700 行脚本已按数据镜像/装载/运行/报告拆成支撑模块，避免为了门禁硬压行数；FJSP makespan 仍只作技术参考，不证明 APS 业务目标全局最优
 
   - slug: long-run-tuning-evidence
     description: 建立工序图权重、不同 seed、不同基准集的长跑统计证据和归档口径
@@ -109,66 +109,66 @@ items:
   - slug: benchmark-reference-diagnostics-baseline
     description: 补齐 GraphReady v2 前的同目标下界、不可比诊断和换型基准准备口径
     depends_on: [long-run-tuning-evidence]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-29-graph-ready-v2-hardening
     minimal_loop: false
-    notes: 只补量尺和诊断，不重复 item 3/5/7/8 已有 noop/no_improvement/same_fingerprint/improved 合同；Jackson 单机抢占下界只能在同目标同指标可声明时进入 gap，否则标 not_comparable；WTSDS/Cicirello/SDST 换型基准先定义装载、评分、脱敏和默认 stdout/ignored 口径，不下载 tracked 数据；graph-ready-v2-comparison-baseline-contract 启动前必须消费本项输出
+    notes: 已落地 reference_diagnostics；只补量尺和诊断，不重复 item 3/5/7/8 已有 noop/no_improvement/same_fingerprint/improved 合同；Jackson 单机抢占下界只能在同目标同指标可声明时进入 gap，否则标 not_comparable；WTSDS/Cicirello/SDST 换型基准已定义装载、评分、脱敏和默认 stdout/ignored 口径，不下载 tracked 数据；graph-ready-v2-comparison-baseline-contract 已消费本项输出
 
   - slug: graph-ready-v2-comparison-baseline-contract
     description: 建立 GraphReady v2 修改前的多算法同台比较基准，补齐算法名/版本/seed 维度的 ratchet key
     depends_on: [benchmark-reference-diagnostics-baseline]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-29-graph-ready-v2-hardening
     minimal_loop: false
-    notes: 下一轮改算法前先完成本项；同一 case/seed/time_budget/objective 下跑 greedy、local_search、grasp_ig、graph_ready_v1 和 portfolio_all，记录当前工作区基准；ratchet key 至少包含 case_group、case_slug、algorithm_profile、algorithm_version、seed，禁止继续用只含 case 的 key 承载多算法比较；当前 benchmark-ratchet-baseline.json dirty_worktree=true，只能作为参考快照，不能包装成 clean proof；默认输出 stdout 或 ignored evidence，显式写 tracked evidence 后必须重新跑最新 HEAD 质量门禁
+    notes: 已建立同一 case/seed/time_budget/objective 下 greedy、local_search、grasp_ig、graph_ready_v1、graph_ready_v2_no_repair、graph_ready_v2_with_repair 的 compare_algorithms 基准；portfolio_all 只作为事后上界行，必须标 comparison_semantics=posthoc_upper_bound，普通胜平负必须标 not_comparable，不能伪装成同预算算法；ratchet key 包含 case_group、case_slug、algorithm_profile、algorithm_version、seed，禁止继续用只含 case 的 key 承载多算法比较；当前对比可在脏工作区以 unbound_dirty_worktree 运行，但不能包装成 clean proof；默认输出 stdout 或 ignored evidence，显式写 tracked evidence 后必须重新跑最新 HEAD 质量门禁
 
   - slug: graph-ready-v2-objective-feature-contract
     description: 为 GraphReady v2 定义 due pressure、slack、saveability、remaining work、processing time 和 sacrifice penalty 等目标感知特征
     depends_on: [graph-ready-v2-comparison-baseline-contract]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-29-graph-ready-v2-hardening
     minimal_loop: false
-    notes: 只消费已有 graph_ready_context、node_metrics_by_op_id、批次交期和正式 SGS 可见输入，不重跑图主链；min_overdue 下必须表达“批次是否还可救、单位剩余工时能救多少交付风险、容量不足时谁应后置牺牲”；未知 objective 或缺少必要目标特征时，v2 候选必须 skipped/candidate_rejected/strict fail-loud，不能静默退化成 v1 成功；所有特征进入排序前要做 rank/percentile 或等价归一化，避免分钟数裸加压倒其他信号
+    notes: 已落地 due_pressure、slack_hours、remaining_work_hours、remaining_due_burden_hours、due_budget_hours、saveability、processing_time_rank、sacrifice_penalty、critical_ratio 等目标感知特征；只消费已有 graph_ready_context、node_metrics_by_op_id、批次交期和正式 SGS 可见输入，不重跑图主链；min_overdue 下表达“批次是否还可救、单位剩余工时能救多少交付风险、容量不足时谁应后置牺牲”；批次 due_date 是合法可空业务字段，空交期不再让 v2 整池静默退化成 v1 成功，而是生成 no_due_placeholder 特征并在交期型公式中后置；非空非法交期、缺必要特征、非法数字和 NaN/Inf 均 fail-loud；所有特征进入排序前做 rank/percentile 归一化，避免分钟数裸加压倒其他信号
 
   - slug: graph-ready-v2-bottleneck-resource-score
     description: 将 bottleneck_machine_score 升级为残余容量、分摊负荷、最小候选负荷、灵活性降权和交期门控的瓶颈资源分
     depends_on: [graph-ready-v2-objective-feature-contract]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-30-graph-ready-v2-production-capacity
     minimal_loop: false
-    notes: 2026-06-29 第 9-13 项已提前把“候选资源分摊负荷、最小候选负荷、可选资源灵活性降权”落入生产 `bottleneck_machine_score` 基础图指标，并用轻门禁锁定 busy/light/flex 顺序；本项后续不得重复实现这部分。剩余未做：残余容量、due_pressure/saveability 门控、bottleneck_on 与 bottleneck_release 拆分，以及“交期不紧或不可救时只能作为 tie-break”的目标感知规则。
+    notes: 2026-06-29 第 9-13 项已提前把“候选资源分摊负荷、最小候选负荷、可选资源灵活性降权”落入生产 `bottleneck_machine_score` 基础图指标，并用轻门禁锁定 busy/light/flex 顺序；本轮补齐 GraphReady v2 残余容量特征，按交期窗口统计日历可用工时，扣除设备停机和 seed_results 中冻结/执行态/已排片段占用；新增 residual_capacity_hours/window/blocked/ratio/pressure 与 candidate_machine_count，旧 `bottleneck_machine_score` 不改写；交期压力计算区分 due_deadline_hours 与 due_budget_hours，内制工序有日历时用窗口产能(毛,未扣占用)小时，外协交付周期继续用自然小时(毛/净口径决策见 .codestable/compound/2026-06-30-due-budget-window-vs-residual/)，避免把内制净工时、外协自然日和交期自然小时裸混成同一口径；bottleneck_on/release/due_gate 结合残余容量压力、候选设备灵活性、due_pressure 和 saveability，交期不紧或不可救时不会让瓶颈分越过主交期信号
 
   - slug: graph-ready-v2-candidate-portfolio
     description: 建立 GraphReady v2 候选家族，覆盖目标规则、图交期混合、瓶颈交期混合、长尾牺牲和小扰动候选
     depends_on: [graph-ready-v2-bottleneck-resource-score]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-30-graph-ready-v2-production-capacity
     minimal_loop: false
-    notes: 保留旧九组图权重作为 v1 对照，但 v2 还必须生成 EDD、SPT、min_slack、critical_ratio、ATC-like、saveability、sacrifice_long、graph_due_hybrid、bottleneck_due_gated 等候选；不允许写死当前 4 工序样例的 [2,3,4,1]，必须抽象为“保护更多可准交批次、必要时牺牲长尾”；小扰动只允许在分数接近的 ready 候选之间做，seed 派生且可复现，不能绕过前后置、资源资格、冻结或执行态保护；候选总量先控制在 20-60，超预算必须报告截断原因
+    notes: 已保留旧九组图权重作为 v1 对照，并生成 EDD、SPT、min_slack、critical_ratio、ATC-like、saveability、sacrifice_long、graph_due_hybrid、bottleneck_due_gated、micro_perturbation 等候选；候选逻辑抽象为“保护更多可准交批次、必要时牺牲长尾”，不写死当前 4 工序样例；v2 公式不再让 ATC-like、saveability、graph_due_hybrid、bottleneck_due_gated 等大面积共享 sacrifice_penalty 首键，基准夹具锁住 10 个 v2 公式至少产生 6 种 ready 排序；小扰动只在主交期目标相同时作为平局信号，seed 派生且可复现；候选仍通过正式 SGS，因此不能绕过前后置、资源资格、冻结或执行态保护；默认 GraphReady 候选 profile 为 19 个（9 个 v1 对照 + 10 个 v2），若报告口径把 baseline 也算入 evaluated_candidates，常见展示为 20；配置上限仍为 60，超预算报告截断原因
 
   - slug: graph-ready-v2-elite-local-repair
     description: 对 GraphReady v2 前 K 个候选做轻量局部修补，修复接近好解但差一两步的排序
     depends_on: [graph-ready-v2-candidate-portfolio]
-    status: planned
+    status: in_progress
     feature: null
     minimal_loop: false
-    notes: 只对 top-K elite 候选做 adjacent_ready_swap、single_insert、tardy_boundary_move 等有限邻域；每个候选必须有 max_neighbors_per_elite 和 time_budget_ms，达到预算立即停止；修补后仍由正式 SGS 解码并按真实 objective_score 接受，不能直接写 ScheduleResult/start_time/end_time；报告必须区分 graph_ready_v2_no_repair 与 graph_ready_v2_with_repair，避免把修补收益算成纯候选生成收益
+    notes: benchmark 支撑里已有 adjacent swap 与 single insert 的确定性 repair 脚手架，并能区分 graph_ready_v2_no_repair / graph_ready_v2_with_repair；生产 core 仍未落地，缺 top-K elite、max_neighbors_per_elite、time_budget_ms、tardy_boundary_move 和正式 SGS 接受链；本轮未把 repair 做成半成品，后续必须补到 core 后才可置为 done
 
   - slug: graph-ready-v2-portfolio-integration
     description: 把 GraphReady v2 作为候选来源接入统一候选池，与 greedy、local_search、GRASP/IG、GraphReady v1 共同择优
     depends_on: [graph-ready-v2-elite-local-repair]
-    status: planned
+    status: in_progress
     feature: null
     minimal_loop: false
-    notes: v2 不独立替代 GRASP/IG 或 VNS/SA，只作为候选来源；统一选择仍复用 failed_ops、objective_score、best_fingerprint_changed、runtime_ms、candidate_origin 和 output_fingerprint 去重规则；public 只展示候选族计数、胜出来源和中文摘要，完整 attempts、指纹、内部节点/工序/资源 id 只能进 diagnostics；报告必须区分 graph_ready_generated_best、graph_ready_repaired_best、graph_ready_seeded_other_best、graph_ready_not_in_best_path
+    notes: 本轮已把 GraphReady v2 no-repair 候选池接入生产 GraphReady 正式 profile，不再依赖 benchmark 的 profiles_override/profile_summary_override；生产路径从 CandidateProfile.candidate_construction 选择 objective_aware_portfolio，经 run_graph_ready_candidates 补 v2 特征，再走正式 SGS 和统一 candidate_is_preferred/output_fingerprint 去重，胜出来源为 graph_ready_v2_generated；仍未完成“与 GRASP/IG、VNS/SA 同一生产候选池并行择优”和 graph_ready_v2_repaired 生产来源，因此保持 in_progress；public 只展示候选族计数、胜出来源和中文摘要，完整 attempts、指纹、内部节点/工序/资源 id 只能进 diagnostics
 
   - slug: graph-ready-v2-comparative-ratchet-gate
     description: 建立 GraphReady v2 修改后的轻/中/长对比门禁，和当前基准及其他算法做胜平负统计
     depends_on: [graph-ready-v2-portfolio-integration]
-    status: planned
+    status: in_progress
     feature: null
     minimal_loop: false
-    notes: 修改完成后必须和 graph-ready-v2-comparison-baseline-contract 采集的“修改前”基准比较；至少输出 v2 对 local_search、grasp_ig、graph_ready_v1、portfolio_all 的胜/平/负；轻门禁跑小样本和核心对比，中门禁跑 FJSP/SMTWT/大资源池，长门禁至少 10 seed；命令必须覆盖 benchmark_optimizer_ratchet.py --check-baseline、benchmark_optimizer_long_run.py --seeds 10 --no-write、benchmark_optimizer_medium_gate.py --run，以及新增的 benchmark_optimizer_compare_algorithms.py 多算法脚本；缺算法、缺指标、目标不可比或 dirty proof 冒充 clean proof 时必须失败或标 not_comparable
+    notes: 本轮已跑 benchmark_optimizer_ratchet.py --check-baseline、benchmark_optimizer_compare_algorithms.py --check-baseline --allow-dirty-proof --no-write、benchmark_optimizer_long_run.py --seeds 10 --no-write、benchmark_optimizer_medium_gate.py --run；v2_no_repair 在 GraphReady 10 seed 基准中对 greedy/local_search 为 10/0/0，对 grasp_ig 为 5/5/0，对 graph_ready_v1 为 10/0/0，均值 primary_delta 分别为 -2.0/-2.0/-0.6/-1.0；portfolio_all 是事后上界，只能报告差距、来源和 not_comparable，旧 0/10/0 不能作为同预算普通胜负；但本轮证据为 dirty_worktree/unbound_dirty_worktree，且长跑脚本仍是旧 graph_ready 长跑，未建立最新 HEAD clean comparative ratchet baseline，因此保持 in_progress；缺算法、缺指标、目标不可比或 dirty proof 冒充 clean proof 时必须失败或标 not_comparable
 
   - slug: alns-graph-ready-bridge-contract
     description: 定义工序图闭环产物如何喂给自适应大邻域拆修搜索
