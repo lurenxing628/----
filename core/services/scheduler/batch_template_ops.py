@@ -144,7 +144,7 @@ def _ensure_batch_exists_for_template_ops(
             "part_no": part_no,
             "part_name": part_name,
             "quantity": int(quantity),
-            "due_date": due_date,
+            "due_date": svc._normalize_date(due_date),
             "priority": priority,
             "ready_status": ready_status,
             "ready_date": svc._normalize_date(ready_date),
