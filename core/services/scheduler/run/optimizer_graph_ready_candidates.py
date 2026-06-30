@@ -18,6 +18,19 @@ from .optimizer_graph_ready_profiles import GraphReadyWeightProfile, finite_numb
 from .optimizer_graph_ready_reporting import public_params
 
 GRAPH_READY_V2_NORMALIZATION_VERSION = "rank_percentile_v1"
+_V2_COMMON_RANK_FIELDS = (
+    ("due_deadline_hours", lambda metric: _required_finite_metric(metric, "due_deadline_hours")),
+    ("due_budget_hours", lambda metric: _v2_due_budget_hours(metric)),
+    ("due_pressure", lambda metric: _required_non_negative_metric(metric, "due_pressure")),
+    ("slack_hours", lambda metric: _required_finite_metric(metric, "slack_hours")),
+    ("remaining_work_hours", lambda metric: _required_positive_metric(metric, "remaining_work_hours")),
+    ("remaining_due_burden_hours", lambda metric: _v2_remaining_due_burden_hours(metric)),
+    ("saveability", lambda metric: _required_non_negative_metric(metric, "saveability")),
+    ("processing_time_rank", lambda metric: _required_non_negative_metric(metric, "processing_time_rank")),
+    ("sacrifice_penalty", lambda metric: _required_non_negative_metric(metric, "sacrifice_penalty")),
+    ("critical_ratio", lambda metric: _required_finite_metric(metric, "critical_ratio")),
+    ("bottleneck_due_gate", lambda metric: _required_non_negative_metric(metric, "bottleneck_due_gate")),
+)
 
 
 def evaluate_graph_ready_candidate(
@@ -44,11 +57,13 @@ def evaluate_graph_ready_candidate(
     readiness_gate_enabled: bool,
     version: int,
     runtime_ms: int,
+    v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]] = None,
 ) -> Dict[str, Any]:
     candidate_context = context_for_profile(
         graph_ready_context=graph_ready_context,
         metrics_by_op_id=metrics_by_op_id,
         profile=profile,
+        v2_common_rank_cache=v2_common_rank_cache,
     )
     res, summ, used_strat, used_params = schedule_fn(
         scheduler,
@@ -93,10 +108,15 @@ def context_for_profile(
     graph_ready_context: Dict[str, Any],
     metrics_by_op_id: Dict[int, Dict[str, Any]],
     profile: GraphReadyWeightProfile,
+    v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]] = None,
 ) -> Dict[str, Any]:
     context = dict(graph_ready_context)
     context["score_enabled"] = True
-    metrics_for_profile = _metrics_for_profile(metrics_by_op_id, profile=profile)
+    metrics_for_profile = _metrics_for_profile(
+        metrics_by_op_id,
+        profile=profile,
+        v2_common_rank_cache=v2_common_rank_cache,
+    )
     context["graph_priority_key_by_op_id"] = {
         op_id: priority_key_for_metric(metric, profile=profile)
         for op_id, metric in sorted(metrics_for_profile.items())
@@ -146,10 +166,15 @@ def _metrics_for_profile(
     metrics_by_op_id: Dict[int, Dict[str, Any]],
     *,
     profile: GraphReadyWeightProfile,
+    v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]] = None,
 ) -> Dict[int, Dict[str, Any]]:
     if not _uses_v2_formula(profile):
         return {int(op_id): dict(metric) for op_id, metric in metrics_by_op_id.items()}
-    return _normalized_v2_metrics_by_op_id(metrics_by_op_id, profile=profile)
+    return _normalized_v2_metrics_by_op_id(
+        metrics_by_op_id,
+        profile=profile,
+        v2_common_rank_cache=v2_common_rank_cache,
+    )
 
 
 def _uses_v2_formula(profile: GraphReadyWeightProfile) -> bool:
@@ -160,22 +185,43 @@ def _normalized_v2_metrics_by_op_id(
     metrics_by_op_id: Dict[int, Dict[str, Any]],
     *,
     profile: GraphReadyWeightProfile,
+    v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]] = None,
 ) -> Dict[int, Dict[str, Any]]:
     out = {int(op_id): dict(metric) for op_id, metric in metrics_by_op_id.items()}
-    _attach_rank01(out, field="due_deadline_hours", value_getter=lambda metric: _required_finite_metric(metric, "due_deadline_hours"))
-    _attach_rank01(out, field="due_pressure", value_getter=lambda metric: _required_non_negative_metric(metric, "due_pressure"))
-    _attach_rank01(out, field="slack_hours", value_getter=lambda metric: _required_finite_metric(metric, "slack_hours"))
-    _attach_rank01(out, field="remaining_work_hours", value_getter=lambda metric: _required_positive_metric(metric, "remaining_work_hours"))
-    _attach_rank01(out, field="saveability", value_getter=lambda metric: _required_non_negative_metric(metric, "saveability"))
-    _attach_rank01(out, field="processing_time_rank", value_getter=lambda metric: _required_non_negative_metric(metric, "processing_time_rank"))
-    _attach_rank01(out, field="sacrifice_penalty", value_getter=lambda metric: _required_non_negative_metric(metric, "sacrifice_penalty"))
-    _attach_rank01(out, field="critical_ratio", value_getter=lambda metric: _required_finite_metric(metric, "critical_ratio"))
-    _attach_rank01(out, field="bottleneck_due_gate", value_getter=lambda metric: _required_non_negative_metric(metric, "bottleneck_due_gate"))
-    _attach_rank01(out, field="graph_bonus", value_getter=lambda metric: _metric_bonus(metric, weights=profile.effective_weights))
+    if v2_common_rank_cache is None:
+        for field, value_getter in _V2_COMMON_RANK_FIELDS:
+            _attach_rank01(out, field=field, value_getter=value_getter)
+    else:
+        _attach_common_rank_cache(out, v2_common_rank_cache)
+    _attach_rank01(out, field="graph_bonus", value_getter=lambda metric: _v2_metric_bonus(metric, weights=profile.effective_weights))
     for op_id, metric in out.items():
         metric["graph_ready_v2_jitter"] = _seeded_jitter(op_id=op_id, seed=int(profile.jitter_seed))
         metric["graph_ready_v2_normalization_version"] = GRAPH_READY_V2_NORMALIZATION_VERSION
     return out
+
+
+def build_v2_common_rank_cache(metrics_by_op_id: Dict[int, Dict[str, Any]]) -> Dict[str, Dict[int, float]]:
+    metrics = {int(op_id): dict(metric) for op_id, metric in metrics_by_op_id.items()}
+    cache: Dict[str, Dict[int, float]] = {}
+    for field, value_getter in _V2_COMMON_RANK_FIELDS:
+        values = {op_id: float(value_getter(metric)) for op_id, metric in metrics.items()}
+        cache[field + "_rank01"] = _rank01_by_op_id(values)
+    return cache
+
+
+def _attach_common_rank_cache(
+    metrics_by_op_id: Dict[int, Dict[str, Any]],
+    v2_common_rank_cache: Dict[str, Dict[int, float]],
+) -> None:
+    for rank_field, ranks_by_op_id in v2_common_rank_cache.items():
+        for op_id in metrics_by_op_id:
+            if op_id not in ranks_by_op_id:
+                raise ValidationError(
+                    f"GraphReady v2 图指标缺少 {rank_field} 缓存。",
+                    field="graph_ready_v2_features",
+                    details={"reason": "graph_ready_missing_v2_feature"},
+                )
+            metrics_by_op_id[op_id][rank_field] = float(ranks_by_op_id[op_id])
 
 
 def _attach_rank01(
@@ -223,9 +269,10 @@ def _seeded_jitter(*, op_id: int, seed: int) -> float:
 def _v2_priority_key_for_metric(metric: Dict[str, Any], *, profile: GraphReadyWeightProfile) -> Tuple[float, ...]:
     formula = str(profile.formula_slug or "").strip()
     due_deadline = _required_non_negative_metric(metric, "due_deadline_hours_rank01")
+    due_budget = _required_non_negative_metric(metric, "due_budget_hours_rank01")
     due_pressure = _required_non_negative_metric(metric, "due_pressure_rank01")
     slack_hours = _required_non_negative_metric(metric, "slack_hours_rank01")
-    remaining = _required_non_negative_metric(metric, "remaining_work_hours_rank01")
+    remaining = _required_non_negative_metric(metric, "remaining_due_burden_hours_rank01")
     saveability = _required_non_negative_metric(metric, "saveability_rank01")
     processing_rank = _required_non_negative_metric(metric, "processing_time_rank_rank01")
     sacrifice_penalty = _required_non_negative_metric(metric, "sacrifice_penalty_rank01")
@@ -237,21 +284,21 @@ def _v2_priority_key_for_metric(metric: Dict[str, Any], *, profile: GraphReadyWe
     if formula == "edd":
         return (due_deadline, sacrifice_penalty, processing_rank, jitter)
     if formula == "spt":
-        return (processing_rank, due_deadline, sacrifice_penalty, jitter)
+        return (processing_rank, due_budget, sacrifice_penalty, jitter)
     if formula == "min_slack":
         return (slack_hours, sacrifice_penalty, processing_rank, jitter)
     if formula == "critical_ratio":
         return (critical_ratio, sacrifice_penalty, processing_rank, jitter)
     if formula == "atc_like":
-        return (sacrifice_penalty, -due_pressure, -saveability, processing_rank, jitter)
+        return (-due_pressure, sacrifice_penalty, -saveability, processing_rank, jitter)
     if formula == "saveability":
-        return (sacrifice_penalty, -due_pressure, -saveability, remaining, processing_rank, jitter)
+        return (-saveability, sacrifice_penalty, -due_pressure, remaining, processing_rank, jitter)
     if formula == "sacrifice_long":
-        return (sacrifice_penalty, -saveability, remaining, processing_rank, jitter)
+        return (sacrifice_penalty, remaining, -saveability, due_budget, processing_rank, jitter)
     if formula == "graph_due_hybrid":
-        return (sacrifice_penalty, -due_pressure, -graph_bonus, processing_rank, jitter)
+        return (-graph_bonus, -due_pressure, sacrifice_penalty, processing_rank, jitter)
     if formula == "bottleneck_due_gated":
-        return (sacrifice_penalty, -due_pressure, -bottleneck_due_gate, processing_rank, jitter)
+        return (-bottleneck_due_gate, sacrifice_penalty, -due_pressure, processing_rank, jitter)
     if formula == "micro_perturbation":
         # 小扰动只在两个主交期目标(牺牲度、交期压力)都相同的候选间用 jitter 打破平局(压过次要的工时排名),
         # 不跨交期分数差异重排,符合"只在分数接近的 ready 候选之间做";同分时不同 seed 产生不同候选以提供多样性。
@@ -267,10 +314,13 @@ def _required_finite_metric(metric: Dict[str, Any], field: str) -> float:
     if field not in metric:
         raise ValidationError(
             f"GraphReady v2 图指标缺少 {field}。",
-            field="graph_ready_context",
+            field="graph_ready_v2_features",
             details={"reason": "graph_ready_missing_v2_feature"},
         )
-    return float(finite_number(metric.get(field), field=field, reason="graph_ready_bad_v2_feature"))
+    try:
+        return float(finite_number(metric.get(field), field=field, reason="graph_ready_bad_v2_feature"))
+    except ValidationError as exc:
+        raise ValidationError(exc.message, field="graph_ready_v2_features", details=exc.details) from exc
 
 
 def _required_non_negative_metric(metric: Dict[str, Any], field: str) -> float:
@@ -278,10 +328,23 @@ def _required_non_negative_metric(metric: Dict[str, Any], field: str) -> float:
     if number < 0.0:
         raise ValidationError(
             f"GraphReady v2 图指标 {field} 必须是非负数。",
-            field="graph_ready_context",
+            field="graph_ready_v2_features",
             details={"reason": "graph_ready_bad_v2_feature"},
         )
     return number
+
+
+def _v2_metric_bonus(metric: Dict[str, Any], *, weights: Dict[str, float]) -> float:
+    try:
+        return _metric_bonus(metric, weights=weights)
+    except ValidationError as exc:
+        raise ValidationError(exc.message, field="graph_ready_v2_features", details=_v2_feature_details(exc)) from exc
+
+
+def _v2_feature_details(exc: ValidationError) -> Dict[str, Any]:
+    details = dict(getattr(exc, "details", None) or {})
+    details["reason"] = "graph_ready_bad_v2_feature"
+    return details
 
 
 def _required_positive_metric(metric: Dict[str, Any], field: str) -> float:
@@ -289,10 +352,18 @@ def _required_positive_metric(metric: Dict[str, Any], field: str) -> float:
     if number <= 0.0:
         raise ValidationError(
             f"GraphReady v2 图指标 {field} 必须大于 0。",
-            field="graph_ready_context",
+            field="graph_ready_v2_features",
             details={"reason": "graph_ready_bad_v2_feature"},
         )
     return number
+
+
+def _v2_due_budget_hours(metric: Dict[str, Any]) -> float:
+    return _required_finite_metric(metric, "due_budget_hours")
+
+
+def _v2_remaining_due_burden_hours(metric: Dict[str, Any]) -> float:
+    return _required_positive_metric(metric, "remaining_due_burden_hours")
 
 
 def _stable_jitter(metric: Dict[str, Any]) -> float:
@@ -308,6 +379,9 @@ def _candidate_params(params: Dict[str, Any], *, profile: GraphReadyWeightProfil
 def _candidate_payload(**kwargs: Any) -> Dict[str, Any]:
     profile = kwargs["profile"]
     metrics = kwargs["metrics"]
+    decision_order = list(kwargs["order"])
+    decoded_batch_order = _decoded_batch_order(kwargs["res"])
+    result_order = _result_batch_order(decoded_batch_order, decision_order=decision_order)
     return {
         "results": kwargs["res"],
         "summary": kwargs["summ"],
@@ -315,7 +389,9 @@ def _candidate_payload(**kwargs: Any) -> Dict[str, Any]:
         "params": public_params(kwargs["used_params"]),
         "dispatch_mode": "sgs",
         "dispatch_rule": str(kwargs["dispatch_rule"] or ""),
-        "order": list(kwargs["order"]),
+        "order": result_order,
+        "decision_batch_order": decision_order,
+        "decoded_batch_order": decoded_batch_order,
         "metrics": metrics,
         "score": (float(kwargs["summ"].failed_ops),) + objective_score(kwargs["objective_name"], metrics),
         "algo_stats": merge_algo_stats(kwargs["optimizer_algo_stats"], snapshot_algo_stats(kwargs["scheduler"])),
@@ -327,6 +403,37 @@ def _candidate_payload(**kwargs: Any) -> Dict[str, Any]:
         "runtime_ms": int(kwargs["runtime_ms"]),
         "graph_ready_profile": profile_payload(profile, version=int(kwargs["version"])),
     }
+
+
+def _decoded_batch_order(results: List[ScheduleResult]) -> List[str]:
+    order: List[str] = []
+    seen = set()
+    for result in sorted(
+        list(results or []),
+        key=lambda item: (
+            getattr(item, "start_time", None) or datetime.max,
+            getattr(item, "end_time", None) or datetime.max,
+            int(getattr(item, "seq", 0) or 0),
+            int(getattr(item, "op_id", 0) or 0),
+        ),
+    ):
+        batch_id = str(getattr(result, "batch_id", "") or "").strip()
+        if not batch_id or batch_id in seen:
+            continue
+        seen.add(batch_id)
+        order.append(batch_id)
+    return order
+
+
+def _result_batch_order(decoded_batch_order: List[str], *, decision_order: List[str]) -> List[str]:
+    out = list(decoded_batch_order or [])
+    seen = set(out)
+    for batch_id in list(decision_order or []):
+        text = str(batch_id or "").strip()
+        if text and text not in seen:
+            seen.add(text)
+            out.append(text)
+    return out
 
 
 def _mutable_scope(profile: GraphReadyWeightProfile, *, version: int) -> Dict[str, Any]:

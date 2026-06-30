@@ -1,0 +1,360 @@
+{
+  "tight_bottleneck": {
+    "per_basis": {
+      "gross": {
+        "1": {
+          "due_deadline_hours": 40.0,
+          "due_budget_hours": 16.0,
+          "residual_capacity_window_hours": 16.0,
+          "residual_capacity_hours": 6.0,
+          "residual_capacity_blocked_hours": 10.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.375,
+          "slack_hours": 10.0
+        },
+        "2": {
+          "due_deadline_hours": 64.0,
+          "due_budget_hours": 24.0,
+          "residual_capacity_window_hours": 24.0,
+          "residual_capacity_hours": 10.0,
+          "residual_capacity_blocked_hours": 14.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.20833333333333334,
+          "slack_hours": 19.0
+        },
+        "3": {
+          "due_deadline_hours": 136.0,
+          "due_budget_hours": 48.0,
+          "residual_capacity_window_hours": 48.0,
+          "residual_capacity_hours": 34.0,
+          "residual_capacity_blocked_hours": 14.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.08333333333333333,
+          "slack_hours": 44.0
+        },
+        "4": {
+          "due_deadline_hours": 184.0,
+          "due_budget_hours": 64.0,
+          "residual_capacity_window_hours": 64.0,
+          "residual_capacity_hours": 50.0,
+          "residual_capacity_blocked_hours": 14.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.046875,
+          "slack_hours": 61.0
+        }
+      },
+      "net": {
+        "1": {
+          "due_deadline_hours": 40.0,
+          "due_budget_hours": 6.0,
+          "residual_capacity_window_hours": 16.0,
+          "residual_capacity_hours": 6.0,
+          "residual_capacity_blocked_hours": 10.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 1.0,
+          "slack_hours": 0.0
+        },
+        "2": {
+          "due_deadline_hours": 64.0,
+          "due_budget_hours": 10.0,
+          "residual_capacity_window_hours": 24.0,
+          "residual_capacity_hours": 10.0,
+          "residual_capacity_blocked_hours": 14.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.5,
+          "slack_hours": 5.0
+        },
+        "3": {
+          "due_deadline_hours": 136.0,
+          "due_budget_hours": 34.0,
+          "residual_capacity_window_hours": 48.0,
+          "residual_capacity_hours": 34.0,
+          "residual_capacity_blocked_hours": 14.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.11764705882352941,
+          "slack_hours": 30.0
+        },
+        "4": {
+          "due_deadline_hours": 184.0,
+          "due_budget_hours": 50.0,
+          "residual_capacity_window_hours": 64.0,
+          "residual_capacity_hours": 50.0,
+          "residual_capacity_blocked_hours": 14.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.06,
+          "slack_hours": 47.0
+        }
+      }
+    },
+    "diff": {
+      "1": {
+        "gross": 16.0,
+        "net": 6.0,
+        "net_minus_gross": -10.0
+      },
+      "2": {
+        "gross": 24.0,
+        "net": 10.0,
+        "net_minus_gross": -14.0
+      },
+      "3": {
+        "gross": 48.0,
+        "net": 34.0,
+        "net_minus_gross": -14.0
+      },
+      "4": {
+        "gross": 64.0,
+        "net": 50.0,
+        "net_minus_gross": -14.0
+      }
+    },
+    "any_differ": true
+  },
+  "two_machine_pool": {
+    "per_basis": {
+      "gross": {
+        "1": {
+          "due_deadline_hours": 40.0,
+          "due_budget_hours": 16.0,
+          "residual_capacity_window_hours": 16.0,
+          "residual_capacity_hours": 10.0,
+          "residual_capacity_blocked_hours": 6.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.4375,
+          "slack_hours": 9.0
+        },
+        "2": {
+          "due_deadline_hours": 64.0,
+          "due_budget_hours": 24.0,
+          "residual_capacity_window_hours": 24.0,
+          "residual_capacity_hours": 18.0,
+          "residual_capacity_blocked_hours": 6.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.25,
+          "slack_hours": 18.0
+        },
+        "3": {
+          "due_deadline_hours": 112.0,
+          "due_budget_hours": 40.0,
+          "residual_capacity_window_hours": 40.0,
+          "residual_capacity_hours": 34.0,
+          "residual_capacity_blocked_hours": 6.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.1,
+          "slack_hours": 36.0
+        },
+        "4": {
+          "due_deadline_hours": 208.0,
+          "due_budget_hours": 72.0,
+          "residual_capacity_window_hours": 72.0,
+          "residual_capacity_hours": 66.0,
+          "residual_capacity_blocked_hours": 6.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.041666666666666664,
+          "slack_hours": 69.0
+        },
+        "5": {
+          "due_deadline_hours": 88.0,
+          "due_budget_hours": 32.0,
+          "residual_capacity_window_hours": 32.0,
+          "residual_capacity_hours": 26.0,
+          "residual_capacity_blocked_hours": 6.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.15625,
+          "slack_hours": 27.0
+        }
+      },
+      "net": {
+        "1": {
+          "due_deadline_hours": 40.0,
+          "due_budget_hours": 10.0,
+          "residual_capacity_window_hours": 16.0,
+          "residual_capacity_hours": 10.0,
+          "residual_capacity_blocked_hours": 6.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.7,
+          "slack_hours": 3.0
+        },
+        "2": {
+          "due_deadline_hours": 64.0,
+          "due_budget_hours": 18.0,
+          "residual_capacity_window_hours": 24.0,
+          "residual_capacity_hours": 18.0,
+          "residual_capacity_blocked_hours": 6.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.3333333333333333,
+          "slack_hours": 12.0
+        },
+        "3": {
+          "due_deadline_hours": 112.0,
+          "due_budget_hours": 34.0,
+          "residual_capacity_window_hours": 40.0,
+          "residual_capacity_hours": 34.0,
+          "residual_capacity_blocked_hours": 6.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.11764705882352941,
+          "slack_hours": 30.0
+        },
+        "4": {
+          "due_deadline_hours": 208.0,
+          "due_budget_hours": 66.0,
+          "residual_capacity_window_hours": 72.0,
+          "residual_capacity_hours": 66.0,
+          "residual_capacity_blocked_hours": 6.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.045454545454545456,
+          "slack_hours": 63.0
+        },
+        "5": {
+          "due_deadline_hours": 88.0,
+          "due_budget_hours": 26.0,
+          "residual_capacity_window_hours": 32.0,
+          "residual_capacity_hours": 26.0,
+          "residual_capacity_blocked_hours": 6.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.19230769230769232,
+          "slack_hours": 21.0
+        }
+      }
+    },
+    "diff": {
+      "1": {
+        "gross": 16.0,
+        "net": 10.0,
+        "net_minus_gross": -6.0
+      },
+      "2": {
+        "gross": 24.0,
+        "net": 18.0,
+        "net_minus_gross": -6.0
+      },
+      "3": {
+        "gross": 40.0,
+        "net": 34.0,
+        "net_minus_gross": -6.0
+      },
+      "4": {
+        "gross": 72.0,
+        "net": 66.0,
+        "net_minus_gross": -6.0
+      },
+      "5": {
+        "gross": 32.0,
+        "net": 26.0,
+        "net_minus_gross": -6.0
+      }
+    },
+    "any_differ": true
+  },
+  "heavy_seed_choke": {
+    "per_basis": {
+      "gross": {
+        "1": {
+          "due_deadline_hours": 40.0,
+          "due_budget_hours": 16.0,
+          "residual_capacity_window_hours": 16.0,
+          "residual_capacity_hours": 2.0,
+          "residual_capacity_blocked_hours": 14.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.375,
+          "slack_hours": 10.0
+        },
+        "2": {
+          "due_deadline_hours": 64.0,
+          "due_budget_hours": 24.0,
+          "residual_capacity_window_hours": 24.0,
+          "residual_capacity_hours": 5.0,
+          "residual_capacity_blocked_hours": 19.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.25,
+          "slack_hours": 18.0
+        },
+        "3": {
+          "due_deadline_hours": 88.0,
+          "due_budget_hours": 32.0,
+          "residual_capacity_window_hours": 32.0,
+          "residual_capacity_hours": 13.0,
+          "residual_capacity_blocked_hours": 19.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.15625,
+          "slack_hours": 27.0
+        },
+        "4": {
+          "due_deadline_hours": 160.0,
+          "due_budget_hours": 56.0,
+          "residual_capacity_window_hours": 56.0,
+          "residual_capacity_hours": 37.0,
+          "residual_capacity_blocked_hours": 19.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.07142857142857142,
+          "slack_hours": 52.0
+        }
+      },
+      "net": {
+        "1": {
+          "due_deadline_hours": 40.0,
+          "due_budget_hours": 2.0,
+          "residual_capacity_window_hours": 16.0,
+          "residual_capacity_hours": 2.0,
+          "residual_capacity_blocked_hours": 14.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 1.0,
+          "slack_hours": -4.0
+        },
+        "2": {
+          "due_deadline_hours": 64.0,
+          "due_budget_hours": 5.0,
+          "residual_capacity_window_hours": 24.0,
+          "residual_capacity_hours": 5.0,
+          "residual_capacity_blocked_hours": 19.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 1.0,
+          "slack_hours": -1.0
+        },
+        "3": {
+          "due_deadline_hours": 88.0,
+          "due_budget_hours": 13.0,
+          "residual_capacity_window_hours": 32.0,
+          "residual_capacity_hours": 13.0,
+          "residual_capacity_blocked_hours": 19.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.38461538461538464,
+          "slack_hours": 8.0
+        },
+        "4": {
+          "due_deadline_hours": 160.0,
+          "due_budget_hours": 37.0,
+          "residual_capacity_window_hours": 56.0,
+          "residual_capacity_hours": 37.0,
+          "residual_capacity_blocked_hours": 19.0,
+          "due_budget_basis": "calendar_capacity_hours",
+          "due_pressure": 0.10810810810810811,
+          "slack_hours": 33.0
+        }
+      }
+    },
+    "diff": {
+      "1": {
+        "gross": 16.0,
+        "net": 2.0,
+        "net_minus_gross": -14.0
+      },
+      "2": {
+        "gross": 24.0,
+        "net": 5.0,
+        "net_minus_gross": -19.0
+      },
+      "3": {
+        "gross": 32.0,
+        "net": 13.0,
+        "net_minus_gross": -19.0
+      },
+      "4": {
+        "gross": 56.0,
+        "net": 37.0,
+        "net_minus_gross": -19.0
+      }
+    },
+    "any_differ": true
+  }
+}

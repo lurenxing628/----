@@ -118,11 +118,24 @@ def _safe_graph_ready_optimization(value: Any) -> Dict[str, Any]:
     if not isinstance(value, dict):
         return {}
     out: Dict[str, Any] = {}
-    for key in ("phase", "candidate_policy", "truncation_reason"):
+    for key in (
+        "phase",
+        "candidate_policy",
+        "truncation_reason",
+        "normalization_version",
+    ):
         text = safe_attempt_text(value.get(key))
         if text:
             out[key] = text
-    for key in ("schema_version", "max_weight_profiles", "configured_weight_profile_count", "effective_weight_profile_count"):
+    for key in (
+        "schema_version",
+        "max_weight_profiles",
+        "configured_weight_profile_count",
+        "effective_weight_profile_count",
+        "max_candidate_profiles",
+        "configured_candidate_profile_count",
+        "effective_candidate_profile_count",
+    ):
         number = safe_non_negative_int(value.get(key))
         if number is not None:
             out[key] = number
@@ -134,6 +147,9 @@ def _safe_graph_ready_optimization(value: Any) -> Dict[str, Any]:
     tie_breaker = safe_public_text_list(value.get("selection_tiebreaker"))
     if tie_breaker:
         out["selection_tiebreaker"] = tie_breaker
+    formula_versions = safe_public_text_list(value.get("formula_versions"))
+    if formula_versions:
+        out["formula_versions"] = formula_versions
     return out
 
 

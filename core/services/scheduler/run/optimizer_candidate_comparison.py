@@ -15,6 +15,8 @@ CANDIDATE_ORIGIN_ORDER = (
     "local_search",
     "graph_ready_base",
     "graph_ready_weight_grid",
+    "graph_ready_v2_generated",
+    "graph_ready_v2_repaired",
     "graph_ready_local_search",
     "alns",
 )
@@ -43,8 +45,13 @@ def candidate_score_tuple(candidate: Optional[Dict[str, Any]]) -> Tuple[float, .
 def candidate_runtime_ms(candidate: Optional[Dict[str, Any]]) -> int:
     if not isinstance(candidate, dict):
         return 1_000_000_000
+    raw = candidate.get("runtime_ms", 1_000_000_000)
+    # runtime_ms 缺失或为 None 都表示"耗时未知",按最不被偏好处理;
+    # 不能用 `or 0` 把 None 折成 0ms,否则未知耗时候选会在同分 tie-break 里被当成最快胜出。
+    if raw is None:
+        return 1_000_000_000
     try:
-        value = int(candidate.get("runtime_ms", 1_000_000_000) or 0)
+        value = int(raw)
     except (TypeError, ValueError, OverflowError):
         return 1_000_000_000
     return max(value, 0)

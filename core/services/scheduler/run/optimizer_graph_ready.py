@@ -7,12 +7,13 @@ from core.algorithms import ScheduleResult, SortStrategy
 from core.infrastructure.errors import ValidationError
 
 from .optimizer_candidate_comparison import candidate_is_preferred
-from .optimizer_graph_ready_candidates import evaluate_graph_ready_candidate
+from .optimizer_graph_ready_candidates import build_v2_common_rank_cache, evaluate_graph_ready_candidate
 from .optimizer_graph_ready_context import (
     graph_node_metrics_by_op_id,
     reason_from_validation,
     validate_graph_ready_context,
 )
+from .optimizer_graph_ready_profile_selection import resolve_graph_ready_profiles_and_metrics
 from .optimizer_graph_ready_profiles import (
     GRAPH_READY_BASE_ORIGIN,
     GRAPH_READY_DEFAULT_WEIGHT_PROFILES,
@@ -21,7 +22,6 @@ from .optimizer_graph_ready_profiles import (
     GRAPH_READY_REQUIRED_CONTEXT_FIELDS,
     GRAPH_READY_WEIGHT_GRID_ORIGIN,
     GraphReadyWeightProfile,
-    default_weight_profiles,
     graph_ready_v2_profile_summary,
     graph_ready_weight_profile_summary,
 )
@@ -68,6 +68,7 @@ def run_graph_ready_candidates(
     max_weight_profiles: int = 9,
     profiles_override: Optional[List[GraphReadyWeightProfile]] = None,
     profile_summary_override: Optional[Dict[str, Any]] = None,
+    candidate_construction: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     skip_reason = _phase_skip_reason(algo_mode=algo_mode, graph_ready_context=graph_ready_context)
     if skip_reason:
@@ -87,16 +88,36 @@ def run_graph_ready_candidates(
     if metrics_by_op_id is None:
         return best
 
-    _update_graph_ready_profile(
-        search_report_state,
-        max_weight_profiles=max_weight_profiles,
-        profile_summary_override=profile_summary_override,
-    )
+    try:
+        profiles, profile_summary, metrics_by_op_id = resolve_graph_ready_profiles_and_metrics(
+            metrics_by_op_id,
+            max_weight_profiles=max_weight_profiles,
+            profiles_override=profiles_override,
+            profile_summary_override=profile_summary_override,
+            candidate_construction=candidate_construction,
+            version=version,
+            scheduler=scheduler,
+            algo_ops_to_schedule=algo_ops_to_schedule,
+            batches=batches,
+            start_dt=start_dt,
+            downtime_map=downtime_map,
+            seed_sr_list=seed_sr_list,
+            resource_pool=resource_pool,
+            strict_mode=bool(strict_mode),
+        )
+    except ValidationError as exc:
+        if strict_mode or _is_graph_ready_v2_feature_error(exc) or _is_graph_ready_candidate_policy_error(exc):
+            raise
+        _record_invalid_context(
+            exc,
+            attempts=attempts,
+            base_strategy=base_strategy,
+            dispatch_rule_cfg=dispatch_rule_cfg,
+            search_report_state=search_report_state,
+        )
+        return best
 
-    if profiles_override is None:
-        profiles, _truncated, _reason = default_weight_profiles(max_weight_profiles=max_weight_profiles)
-    else:
-        profiles = list(profiles_override)
+    _update_graph_ready_profile(search_report_state, profile_summary=profile_summary)
     order = _candidate_order(best, build_order=build_order, base_strategy=base_strategy, base_params=base_params)
     return _run_weight_profiles(
         profiles=profiles,
@@ -136,6 +157,21 @@ def _phase_skip_reason(*, algo_mode: str, graph_ready_context: Optional[Any]) ->
     if str(algo_mode or "").strip().lower() != "improve":
         return "algo_mode_not_improve"
     return None
+
+
+def _is_graph_ready_v2_feature_error(exc: ValidationError) -> bool:
+    if str(getattr(exc, "field", "") or "") == "graph_ready_v2_features":
+        return True
+    details = getattr(exc, "details", None) or {}
+    reason = str(details.get("reason") or "")
+    return reason in {"graph_ready_bad_v2_feature", "graph_ready_missing_v2_feature"}
+
+
+def _is_graph_ready_candidate_policy_error(exc: ValidationError) -> bool:
+    if str(getattr(exc, "field", "") or "") == "graph_ready_candidate_policy":
+        return True
+    details = getattr(exc, "details", None) or {}
+    return str(details.get("reason") or "") == "graph_ready_bad_candidate_policy"
 
 
 def _validated_context_metrics(
@@ -193,14 +229,10 @@ def _record_invalid_context(
 def _update_graph_ready_profile(
     search_report_state: Optional[OptimizationSearchReportState],
     *,
-    max_weight_profiles: int,
-    profile_summary_override: Optional[Dict[str, Any]] = None,
+    profile_summary: Dict[str, Any],
 ) -> None:
     if search_report_state is not None:
-        search_report_state.update_candidate_profile(
-            graph_ready_optimization=profile_summary_override
-            or graph_ready_weight_profile_summary(max_weight_profiles=max_weight_profiles)
-        )
+        search_report_state.update_candidate_profile(graph_ready_optimization=dict(profile_summary or {}))
 
 
 def _run_weight_profiles(
@@ -234,6 +266,7 @@ def _run_weight_profiles(
     search_report_state: Optional[OptimizationSearchReportState],
     order: List[str],
 ) -> Optional[Dict[str, Any]]:
+    v2_common_rank_cache = build_v2_common_rank_cache(metrics_by_op_id) if _has_v2_profile(profiles) else None
     for profile in profiles:
         if _deadline_reached(clock=clock, deadline=deadline, search_report_state=search_report_state):
             break
@@ -262,6 +295,7 @@ def _run_weight_profiles(
             runtime_ms=max(int((clock() - t_begin) * 1000), 0),
             attempts=attempts,
             search_report_state=search_report_state,
+            v2_common_rank_cache=v2_common_rank_cache,
         )
         if candidate is None:
             continue
@@ -313,6 +347,7 @@ def _evaluate_profile(
     runtime_ms: int,
     attempts: List[Dict[str, Any]],
     search_report_state: Optional[OptimizationSearchReportState],
+    v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]],
 ) -> Optional[Dict[str, Any]]:
     try:
         return evaluate_graph_ready_candidate(
@@ -338,9 +373,10 @@ def _evaluate_profile(
             readiness_gate_enabled=bool(readiness_gate_enabled),
             version=int(version),
             runtime_ms=int(runtime_ms),
+            v2_common_rank_cache=v2_common_rank_cache,
         )
     except ValidationError as exc:
-        if strict_mode:
+        if strict_mode or _is_graph_ready_v2_feature_error(exc):
             raise
         _record_profile_rejection(
             exc,
@@ -351,6 +387,10 @@ def _evaluate_profile(
             search_report_state=search_report_state,
         )
         return None
+
+
+def _has_v2_profile(profiles: List[GraphReadyWeightProfile]) -> bool:
+    return any(str(profile.formula_version or "").startswith("graph_ready_v2") for profile in list(profiles or []))
 
 
 def _record_profile_rejection(

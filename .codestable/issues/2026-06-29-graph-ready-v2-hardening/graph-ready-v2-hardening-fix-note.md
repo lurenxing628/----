@@ -1,10 +1,19 @@
 ---
-doc_type: fix-note
-status: done
+doc_type: issue-fix
+issue: 2026-06-29-graph-ready-v2-hardening
+path: fast-track
+fix_date: 2026-06-29
+status: completed
+severity: P1
 slug: graph-ready-v2-hardening
 date: 2026-06-29
 owners:
   - codex
+tags:
+  - scheduler
+  - optimizer
+  - graph-ready
+  - benchmark
 related:
   - .codestable/roadmap/scheduler-global-optimizer/drafts/graph-ready-v2-next-agent-prompt.md
   - .codestable/roadmap/scheduler-global-optimizer/graph-ready-v2-comparison-baseline.json
@@ -112,7 +121,7 @@ related:
   - GraphReady v1：10/10 比当前 baseline 改进，平均主指标变化 `-1.0`。
   - GraphReady v2 no repair：10/10 比当前 baseline 改进，平均主指标变化 `-2.0`。
   - GraphReady v2 with repair：10/10 比当前 baseline 改进，平均主指标变化 `-2.0`。
-  - `portfolio_all` 与 v2 达到同一档平均主指标变化 `-2.0`。
+  - `portfolio_all` 是事后上界，不能作为同预算普通算法胜平负；旧输出只能说明 v2 与该上界在这批脏工作区样本上的主指标差距为 0，不能写成“普通平局”或 clean proof。
 
 - SMTWT 单机形状检查，严格 proof：
   - 命令：`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tests/_scripts_e2e/benchmark_optimizer_smtwt_compare_algorithms.py --profiles greedy,local_search,grasp_ig,graph_ready_v1,graph_ready_v2_no_repair,graph_ready_v2_with_repair,portfolio_all --sizes 40 --limit-per-size 2 --seeds 1 --workers 1 --no-write --summary-only`
@@ -124,7 +133,7 @@ related:
   - v2 no repair 对 v1：2 胜 0 平 0 负。
   - v2 no repair 对 grasp_ig：2 胜 0 平 0 负。
   - v2 no repair 对 greedy/local_search：各 2 胜 0 平 0 负。
-  - v2 no repair 对 portfolio_all：0 胜 2 平 0 负。
+  - `portfolio_all` 是事后上界，不能作为同预算普通算法胜平负；旧输出只能说明 v2 no repair 与该上界在这批 SMTWT 脏工作区样本上的主指标差距为 0，当前口径必须标 `not_comparable`。
 
 - APS 快速门禁：
   - 命令：`.venv/bin/python scripts/run_quality_gate.py --fast-precheck`
@@ -136,8 +145,8 @@ related:
 
 ## 对“是否更接近全局最优”的诚实结论
 
-- 可以说：在当前 GraphReady real SGS 小样本比较里，v2 的主指标比 v1 更好，并且与 `portfolio_all` 持平。
-- 可以说：在 SMTWT 单机形状检查里，v2 no repair 对 v1、greedy、local_search、grasp_ig 都赢，对 `portfolio_all` 持平。
+- 可以说：在当前 GraphReady real SGS 小样本比较里，v2 的主指标比 v1 更好；相对 `portfolio_all` 只能报告事后上界差距和来源，不能说成同预算普通持平。
+- 可以说：在 SMTWT 单机形状检查里，v2 no repair 对 v1、greedy、local_search、grasp_ig 都赢；相对 `portfolio_all` 只能报告事后上界差距和来源，不能说成同预算普通持平。
 - 不能说：已经证明 APS 全局最优。
 - 不能说：已经证明 v2 离全局最优的 gap 是多少。
 - 原因很直接：当前 GraphReady v2 real SGS case 没有运行可比 oracle，报告里已经写成 `oracle_status=not_run`，`gap_to_oracle_pct=null`；参考诊断也只有一个 tiny case 可比，另外四个参考不可比或数据不可用。

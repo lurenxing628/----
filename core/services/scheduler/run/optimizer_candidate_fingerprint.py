@@ -95,7 +95,7 @@ def _validate_candidate(candidate: Dict[str, Any]) -> None:
 
 def _decision_payload(candidate: Dict[str, Any], *, objective_name: str) -> Dict[str, Any]:
     strategy = candidate.get("strategy")
-    order = list(candidate.get("order") or [])
+    order = list(candidate.get("decision_batch_order") or candidate.get("order") or [])
     return {
         "schema_version": CANDIDATE_FINGERPRINT_SCHEMA_VERSION,
         "fingerprint_scope": DECISION_FINGERPRINT_SCOPE,

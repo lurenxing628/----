@@ -118,6 +118,7 @@ def _run_graph_ready_candidate_phase(**kwargs: Any) -> Optional[Dict[str, Any]]:
         clock=runtime.clock,
         schedule_fn=kwargs["schedule_fn"],
         search_report_state=kwargs["search_report_state"],
+        candidate_construction=dict(candidate_profile.candidate_construction or {}),
     )
 
 

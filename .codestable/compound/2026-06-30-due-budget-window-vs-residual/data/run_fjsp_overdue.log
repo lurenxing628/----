@@ -1,0 +1,94 @@
+[objective=min_overdue]
+
+===== SELFCHECK scenario=fjsp:mk01 any_differ=True (18/55 ops have net<gross) =====
+  op 7: gross_budget=24.000  net_budget=16.320  net-gross=-7.680
+  op 9: gross_budget=17.000  net_budget=9.320  net-gross=-7.680
+  op 12: gross_budget=32.000  net_budget=20.720  net-gross=-11.280
+  op 14: gross_budget=24.000  net_budget=20.400  net-gross=-3.600
+  op 18: gross_budget=23.000  net_budget=15.320  net-gross=-7.680
+  op 23: gross_budget=31.000  net_budget=27.400  net-gross=-3.600
+  op 24: gross_budget=30.000  net_budget=18.720  net-gross=-11.280
+  op 26: gross_budget=24.000  net_budget=20.400  net-gross=-3.600
+  op 29: gross_budget=30.000  net_budget=22.320  net-gross=-7.680
+  op 31: gross_budget=24.000  net_budget=12.720  net-gross=-11.280
+
+===== SELFCHECK scenario=fjsp:mk06 any_differ=True (150/150 ops have net<gross) =====
+  op 1: gross_budget=40.000  net_budget=36.400  net-gross=-3.600
+  op 2: gross_budget=38.000  net_budget=34.400  net-gross=-3.600
+  op 3: gross_budget=36.000  net_budget=32.400  net-gross=-3.600
+  op 4: gross_budget=35.000  net_budget=31.400  net-gross=-3.600
+  op 5: gross_budget=34.000  net_budget=30.400  net-gross=-3.600
+  op 6: gross_budget=32.000  net_budget=28.400  net-gross=-3.600
+  op 7: gross_budget=32.000  net_budget=28.400  net-gross=-3.600
+  op 8: gross_budget=32.000  net_budget=28.400  net-gross=-3.600
+  op 9: gross_budget=32.000  net_budget=28.400  net-gross=-3.600
+  op 10: gross_budget=32.000  net_budget=28.400  net-gross=-3.600
+
+===== SELFCHECK scenario=fjsp:mk10 any_differ=True (233/240 ops have net<gross) =====
+  op 1: gross_budget=80.000  net_budget=76.400  net-gross=-3.600
+  op 2: gross_budget=75.000  net_budget=71.400  net-gross=-3.600
+  op 3: gross_budget=72.000  net_budget=60.720  net-gross=-11.280
+  op 4: gross_budget=72.000  net_budget=68.400  net-gross=-3.600
+  op 5: gross_budget=68.000  net_budget=64.400  net-gross=-3.600
+  op 6: gross_budget=64.000  net_budget=60.400  net-gross=-3.600
+  op 7: gross_budget=64.000  net_budget=60.400  net-gross=-3.600
+  op 8: gross_budget=64.000  net_budget=60.400  net-gross=-3.600
+  op 9: gross_budget=56.000  net_budget=52.400  net-gross=-3.600
+  op 10: gross_budget=56.000  net_budget=52.400  net-gross=-3.600
+
+
+############ RESULTS ############
+
+===== scenario=fjsp:mk01 =====
+seed | gross_ovd gross_tard gross_fail | net_ovd  net_tard net_fail |  d_ovd   d_tard
+   0 |         6     361.00          0 |       5    374.00        0 |     -1   +13.00
+   1 |         6     361.00          0 |       5    374.00        0 |     -1   +13.00
+   2 |         6     361.00          0 |       5    374.00        0 |     -1   +13.00
+   3 |         6     361.00          0 |       5    374.00        0 |     -1   +13.00
+   4 |         6     361.00          0 |       5    374.00        0 |     -1   +13.00
+   5 |         6     361.00          0 |       5    374.00        0 |     -1   +13.00
+   6 |         6     361.00          0 |       5    374.00        0 |     -1   +13.00
+   7 |         6     361.00          0 |       5    374.00        0 |     -1   +13.00
+   8 |         6     361.00          0 |       5    374.00        0 |     -1   +13.00
+   9 |         6     361.00          0 |       5    374.00        0 |     -1   +13.00
+  AVG  | gross: ovd=6.00 tard=361.00 fail=0.00  || net: ovd=5.00 tard=374.00 fail=0.00
+  DELTA(net-gross): d_ovd_avg=-1.00 d_tard_avg=+13.00  ==> NET BETTER (fewer overdue)
+  instance meta: {'machines': 6, 'n_batches': 10, 'n_ops': 55, 'n_op_types': 14, 'span_days': 8, 'proc_repr': 'min', 'tightness': 1.0, 'differential': True}
+  baseline(no-graph): ovd=7 tard=401.28 fail=0
+
+===== scenario=fjsp:mk06 =====
+seed | gross_ovd gross_tard gross_fail | net_ovd  net_tard net_fail |  d_ovd   d_tard
+   0 |         6     385.00          0 |       5    417.00        0 |     -1   +32.00
+   1 |         6     385.00          0 |       4    361.40        0 |     -2   -23.60
+   2 |         6     385.00          0 |       6    408.60        0 |     +0   +23.60
+   3 |         6     385.00          0 |       5    463.00        0 |     -1   +78.00
+   4 |         6     385.00          0 |       4    406.40        0 |     -2   +21.40
+   5 |         6     385.00          0 |       6    380.60        0 |     +0    -4.40
+   6 |         6     385.00          0 |       6    408.60        0 |     +0   +23.60
+   7 |         6     385.00          0 |       6    408.60        0 |     +0   +23.60
+   8 |         6     385.00          0 |       5    435.00        0 |     -1   +50.00
+   9 |         6     385.00          0 |       6    408.60        0 |     +0   +23.60
+  AVG  | gross: ovd=6.00 tard=385.00 fail=0.00  || net: ovd=5.30 tard=409.78 fail=0.00
+  DELTA(net-gross): d_ovd_avg=-0.70 d_tard_avg=+24.78  ==> NET BETTER (fewer overdue)
+  instance meta: {'machines': 10, 'n_batches': 10, 'n_ops': 150, 'n_op_types': 15, 'span_days': 9, 'proc_repr': 'min', 'tightness': 1.0, 'differential': True}
+  baseline(no-graph): ovd=6 tard=408.60 fail=0
+
+===== scenario=fjsp:mk10 =====
+seed | gross_ovd gross_tard gross_fail | net_ovd  net_tard net_fail |  d_ovd   d_tard
+   0 |        18    6748.80          0 |      18   7506.80        0 |     +0  +758.00
+   1 |        18    6748.80          0 |      18   6879.80        0 |     +0  +131.00
+   2 |        18    6748.80          0 |      18   6879.80        0 |     +0  +131.00
+   3 |        18    6748.80          0 |      18   6879.80        0 |     +0  +131.00
+   4 |        18    6748.80          0 |      18   7506.80        0 |     +0  +758.00
+   5 |        18    6748.80          0 |      18   7506.80        0 |     +0  +758.00
+   6 |        18    6748.80          0 |      18   7506.80        0 |     +0  +758.00
+   7 |        18    6748.80          0 |      18   6879.80        0 |     +0  +131.00
+   8 |        18    6748.80          0 |      18   6879.80        0 |     +0  +131.00
+   9 |        18    6748.80          0 |      18   7506.80        0 |     +0  +758.00
+  AVG  | gross: ovd=18.00 tard=6748.80 fail=0.00  || net: ovd=18.00 tard=7193.30 fail=0.00
+  DELTA(net-gross): d_ovd_avg=+0.00 d_tard_avg=+444.50  ==> NET WORSE on tard
+  instance meta: {'machines': 15, 'n_batches': 20, 'n_ops': 240, 'n_op_types': 25, 'span_days': 20, 'proc_repr': 'min', 'tightness': 1.0, 'differential': True}
+  baseline(no-graph): ovd=20 tard=7489.00 fail=0
+
+wrote /Users/lurenxing/.claude/jobs/73607545/tmp/experiment_fjsp_overdue.json
+monkeypatch restored OK: True

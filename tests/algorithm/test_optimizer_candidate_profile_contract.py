@@ -159,6 +159,10 @@ def test_baseline_profile_disables_search_budget() -> None:
 def test_graph_context_forces_sgs_and_ceiling_clamp() -> None:
     profile = _build(time_budget_seconds=300, graph_sgs_required=True, ortools_enabled=True)
     assert profile.dispatch_mode == "sgs"
+    assert profile.profile == "graph_ready"
+    assert profile.candidate_strategy_family == "graph_ready_objective_aware_portfolio"
+    assert profile.candidate_strategy_families == ("graph_ready_base", "graph_ready_weight_grid", "graph_ready_v2_no_repair")
+    assert profile.candidate_construction["graph_ready_optimization"]["candidate_policy"] == "objective_aware_portfolio"
     assert profile.effective_max_iterations == 5000
     assert profile.ortools_warmstart_enabled is True
 

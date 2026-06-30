@@ -1,0 +1,4109 @@
+{
+  "selfcheck": {
+    "fjsp:mk06": {
+      "per_basis": {
+        "gross": {
+          "1": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "2": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 38.0,
+            "residual_capacity_window_hours": 38.0,
+            "residual_capacity_hours": 34.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.868421052631579,
+            "slack_hours": 5.0
+          },
+          "3": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 36.0,
+            "residual_capacity_window_hours": 36.0,
+            "residual_capacity_hours": 32.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9166666666666666,
+            "slack_hours": 3.0
+          },
+          "4": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 35.0,
+            "residual_capacity_window_hours": 35.0,
+            "residual_capacity_hours": 31.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9428571428571428,
+            "slack_hours": 2.0
+          },
+          "5": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 34.0,
+            "residual_capacity_window_hours": 34.0,
+            "residual_capacity_hours": 30.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9705882352941176,
+            "slack_hours": 1.0
+          },
+          "6": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "7": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "8": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "9": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "10": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "11": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "12": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 30.0,
+            "residual_capacity_window_hours": 30.0,
+            "residual_capacity_hours": 26.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -3.0
+          },
+          "13": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 29.0,
+            "residual_capacity_window_hours": 29.0,
+            "residual_capacity_hours": 25.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.0
+          },
+          "14": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 27.0,
+            "residual_capacity_window_hours": 27.0,
+            "residual_capacity_hours": 23.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -6.0
+          },
+          "15": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 24.0,
+            "residual_capacity_window_hours": 24.0,
+            "residual_capacity_hours": 20.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -9.0
+          },
+          "16": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 48.0,
+            "residual_capacity_window_hours": 48.0,
+            "residual_capacity_hours": 40.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.6875,
+            "slack_hours": 15.0
+          },
+          "17": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 45.0,
+            "residual_capacity_window_hours": 45.0,
+            "residual_capacity_hours": 41.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7333333333333333,
+            "slack_hours": 12.0
+          },
+          "18": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 44.0,
+            "residual_capacity_window_hours": 44.0,
+            "residual_capacity_hours": 40.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.75,
+            "slack_hours": 11.0
+          },
+          "19": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 43.0,
+            "residual_capacity_window_hours": 43.0,
+            "residual_capacity_hours": 39.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7674418604651163,
+            "slack_hours": 10.0
+          },
+          "20": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 42.0,
+            "residual_capacity_window_hours": 42.0,
+            "residual_capacity_hours": 38.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7857142857142857,
+            "slack_hours": 9.0
+          },
+          "21": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "22": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "23": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "24": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "25": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "26": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 38.0,
+            "residual_capacity_window_hours": 38.0,
+            "residual_capacity_hours": 34.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.868421052631579,
+            "slack_hours": 5.0
+          },
+          "27": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 37.0,
+            "residual_capacity_window_hours": 37.0,
+            "residual_capacity_hours": 33.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8918918918918919,
+            "slack_hours": 4.0
+          },
+          "28": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 35.0,
+            "residual_capacity_window_hours": 35.0,
+            "residual_capacity_hours": 28.72,
+            "residual_capacity_blocked_hours": 6.28,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9428571428571428,
+            "slack_hours": 2.0
+          },
+          "29": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 34.0,
+            "residual_capacity_window_hours": 34.0,
+            "residual_capacity_hours": 30.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9705882352941176,
+            "slack_hours": 1.0
+          },
+          "30": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "31": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 48.0,
+            "residual_capacity_window_hours": 48.0,
+            "residual_capacity_hours": 40.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.6875,
+            "slack_hours": 15.0
+          },
+          "32": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 47.0,
+            "residual_capacity_window_hours": 47.0,
+            "residual_capacity_hours": 43.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7021276595744681,
+            "slack_hours": 14.0
+          },
+          "33": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 41.0,
+            "residual_capacity_window_hours": 41.0,
+            "residual_capacity_hours": 33.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8048780487804879,
+            "slack_hours": 8.0
+          },
+          "34": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "35": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "36": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "37": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "38": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "39": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "40": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "41": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "42": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "43": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 38.0,
+            "residual_capacity_window_hours": 38.0,
+            "residual_capacity_hours": 34.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.868421052631579,
+            "slack_hours": 5.0
+          },
+          "44": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 37.0,
+            "residual_capacity_window_hours": 37.0,
+            "residual_capacity_hours": 33.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8918918918918919,
+            "slack_hours": 4.0
+          },
+          "45": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.0,
+            "residual_capacity_window_hours": 36.0,
+            "residual_capacity_hours": 32.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9166666666666666,
+            "slack_hours": 3.0
+          },
+          "46": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "47": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 39.0,
+            "residual_capacity_window_hours": 39.0,
+            "residual_capacity_hours": 35.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8461538461538461,
+            "slack_hours": 6.0
+          },
+          "48": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 38.0,
+            "residual_capacity_window_hours": 38.0,
+            "residual_capacity_hours": 34.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.868421052631579,
+            "slack_hours": 5.0
+          },
+          "49": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 35.0,
+            "residual_capacity_window_hours": 35.0,
+            "residual_capacity_hours": 31.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9428571428571428,
+            "slack_hours": 2.0
+          },
+          "50": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 34.0,
+            "residual_capacity_window_hours": 34.0,
+            "residual_capacity_hours": 30.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9705882352941176,
+            "slack_hours": 1.0
+          },
+          "51": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "52": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "53": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "54": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "55": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "56": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "57": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "58": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "59": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 31.0,
+            "residual_capacity_window_hours": 31.0,
+            "residual_capacity_hours": 27.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -2.0
+          },
+          "60": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 25.0,
+            "residual_capacity_window_hours": 25.0,
+            "residual_capacity_hours": 21.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -8.0
+          },
+          "61": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 48.0,
+            "residual_capacity_window_hours": 48.0,
+            "residual_capacity_hours": 40.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.6875,
+            "slack_hours": 15.0
+          },
+          "62": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 46.0,
+            "residual_capacity_window_hours": 46.0,
+            "residual_capacity_hours": 38.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.717391304347826,
+            "slack_hours": 13.0
+          },
+          "63": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 45.0,
+            "residual_capacity_window_hours": 45.0,
+            "residual_capacity_hours": 41.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7333333333333333,
+            "slack_hours": 12.0
+          },
+          "64": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 44.0,
+            "residual_capacity_window_hours": 44.0,
+            "residual_capacity_hours": 40.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.75,
+            "slack_hours": 11.0
+          },
+          "65": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 42.0,
+            "residual_capacity_window_hours": 42.0,
+            "residual_capacity_hours": 38.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7857142857142857,
+            "slack_hours": 9.0
+          },
+          "66": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "67": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "68": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "69": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "70": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "71": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "72": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "73": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 37.0,
+            "residual_capacity_window_hours": 37.0,
+            "residual_capacity_hours": 33.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8918918918918919,
+            "slack_hours": 4.0
+          },
+          "74": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.0,
+            "residual_capacity_window_hours": 36.0,
+            "residual_capacity_hours": 28.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9166666666666666,
+            "slack_hours": 3.0
+          },
+          "75": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 33.0,
+            "residual_capacity_window_hours": 33.0,
+            "residual_capacity_hours": 29.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": 0.0
+          },
+          "76": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 48.0,
+            "residual_capacity_window_hours": 48.0,
+            "residual_capacity_hours": 44.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.6875,
+            "slack_hours": 15.0
+          },
+          "77": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 43.0,
+            "residual_capacity_window_hours": 43.0,
+            "residual_capacity_hours": 35.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7674418604651163,
+            "slack_hours": 10.0
+          },
+          "78": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "79": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "80": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "81": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "82": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "83": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "84": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "85": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "86": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "87": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 39.0,
+            "residual_capacity_window_hours": 39.0,
+            "residual_capacity_hours": 35.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8461538461538461,
+            "slack_hours": 6.0
+          },
+          "88": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.0,
+            "residual_capacity_window_hours": 36.0,
+            "residual_capacity_hours": 28.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9166666666666666,
+            "slack_hours": 3.0
+          },
+          "89": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 34.0,
+            "residual_capacity_window_hours": 34.0,
+            "residual_capacity_hours": 30.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9705882352941176,
+            "slack_hours": 1.0
+          },
+          "90": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 33.0,
+            "residual_capacity_window_hours": 33.0,
+            "residual_capacity_hours": 25.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": 0.0
+          },
+          "91": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "92": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 39.0,
+            "residual_capacity_window_hours": 39.0,
+            "residual_capacity_hours": 35.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8461538461538461,
+            "slack_hours": 6.0
+          },
+          "93": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 37.0,
+            "residual_capacity_window_hours": 37.0,
+            "residual_capacity_hours": 33.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8918918918918919,
+            "slack_hours": 4.0
+          },
+          "94": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "95": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "96": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "97": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "98": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "99": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "100": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "101": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "102": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "103": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "104": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 26.0,
+            "residual_capacity_window_hours": 26.0,
+            "residual_capacity_hours": 22.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -7.0
+          },
+          "105": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 24.0,
+            "residual_capacity_window_hours": 24.0,
+            "residual_capacity_hours": 20.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -9.0
+          },
+          "106": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 48.0,
+            "residual_capacity_window_hours": 48.0,
+            "residual_capacity_hours": 44.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.6875,
+            "slack_hours": 15.0
+          },
+          "107": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 47.0,
+            "residual_capacity_window_hours": 47.0,
+            "residual_capacity_hours": 43.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7021276595744681,
+            "slack_hours": 14.0
+          },
+          "108": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 44.0,
+            "residual_capacity_window_hours": 44.0,
+            "residual_capacity_hours": 40.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.75,
+            "slack_hours": 11.0
+          },
+          "109": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "110": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "111": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "112": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "113": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "114": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "115": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "116": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "117": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "118": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "119": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 38.0,
+            "residual_capacity_window_hours": 38.0,
+            "residual_capacity_hours": 34.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.868421052631579,
+            "slack_hours": 5.0
+          },
+          "120": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 37.0,
+            "residual_capacity_window_hours": 37.0,
+            "residual_capacity_hours": 33.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8918918918918919,
+            "slack_hours": 4.0
+          },
+          "121": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 48.0,
+            "residual_capacity_window_hours": 48.0,
+            "residual_capacity_hours": 44.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.6875,
+            "slack_hours": 15.0
+          },
+          "122": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 46.0,
+            "residual_capacity_window_hours": 46.0,
+            "residual_capacity_hours": 42.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.717391304347826,
+            "slack_hours": 13.0
+          },
+          "123": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 45.0,
+            "residual_capacity_window_hours": 45.0,
+            "residual_capacity_hours": 41.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7333333333333333,
+            "slack_hours": 12.0
+          },
+          "124": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "125": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "126": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "127": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "128": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "129": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "130": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "131": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "132": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "133": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 39.0,
+            "residual_capacity_window_hours": 39.0,
+            "residual_capacity_hours": 35.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8461538461538461,
+            "slack_hours": 6.0
+          },
+          "134": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 33.0,
+            "residual_capacity_window_hours": 33.0,
+            "residual_capacity_hours": 28.72,
+            "residual_capacity_blocked_hours": 4.28,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": 0.0
+          },
+          "135": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "136": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 40.0,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.825,
+            "slack_hours": 7.0
+          },
+          "137": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 39.0,
+            "residual_capacity_window_hours": 39.0,
+            "residual_capacity_hours": 35.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8461538461538461,
+            "slack_hours": 6.0
+          },
+          "138": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 37.0,
+            "residual_capacity_window_hours": 37.0,
+            "residual_capacity_hours": 33.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8918918918918919,
+            "slack_hours": 4.0
+          },
+          "139": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 35.0,
+            "residual_capacity_window_hours": 35.0,
+            "residual_capacity_hours": 31.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9428571428571428,
+            "slack_hours": 2.0
+          },
+          "140": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "141": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "142": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "143": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "144": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "145": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "146": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.0,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.0
+          },
+          "147": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 29.0,
+            "residual_capacity_window_hours": 29.0,
+            "residual_capacity_hours": 25.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.0
+          },
+          "148": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.0,
+            "residual_capacity_window_hours": 28.0,
+            "residual_capacity_hours": 24.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -5.0
+          },
+          "149": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 27.0,
+            "residual_capacity_window_hours": 27.0,
+            "residual_capacity_hours": 23.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -6.0
+          },
+          "150": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 25.0,
+            "residual_capacity_window_hours": 25.0,
+            "residual_capacity_hours": 21.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -8.0
+          }
+        },
+        "net": {
+          "1": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "2": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 34.4,
+            "residual_capacity_window_hours": 38.0,
+            "residual_capacity_hours": 34.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9593023255813954,
+            "slack_hours": 1.3999999999999986
+          },
+          "3": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 32.4,
+            "residual_capacity_window_hours": 36.0,
+            "residual_capacity_hours": 32.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.6000000000000014
+          },
+          "4": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 31.4,
+            "residual_capacity_window_hours": 35.0,
+            "residual_capacity_hours": 31.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.6000000000000014
+          },
+          "5": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 30.4,
+            "residual_capacity_window_hours": 34.0,
+            "residual_capacity_hours": 30.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -2.6000000000000014
+          },
+          "6": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "7": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "8": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "9": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "10": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "11": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "12": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 26.4,
+            "residual_capacity_window_hours": 30.0,
+            "residual_capacity_hours": 26.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -6.600000000000001
+          },
+          "13": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 25.4,
+            "residual_capacity_window_hours": 29.0,
+            "residual_capacity_hours": 25.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -7.600000000000001
+          },
+          "14": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 23.4,
+            "residual_capacity_window_hours": 27.0,
+            "residual_capacity_hours": 23.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -9.600000000000001
+          },
+          "15": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 20.4,
+            "residual_capacity_window_hours": 24.0,
+            "residual_capacity_hours": 20.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -12.600000000000001
+          },
+          "16": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.8,
+            "residual_capacity_window_hours": 48.0,
+            "residual_capacity_hours": 40.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8088235294117647,
+            "slack_hours": 7.799999999999997
+          },
+          "17": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 41.4,
+            "residual_capacity_window_hours": 45.0,
+            "residual_capacity_hours": 41.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7971014492753623,
+            "slack_hours": 8.399999999999999
+          },
+          "18": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.4,
+            "residual_capacity_window_hours": 44.0,
+            "residual_capacity_hours": 40.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8168316831683169,
+            "slack_hours": 7.399999999999999
+          },
+          "19": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 39.4,
+            "residual_capacity_window_hours": 43.0,
+            "residual_capacity_hours": 39.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8375634517766498,
+            "slack_hours": 6.399999999999999
+          },
+          "20": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 38.4,
+            "residual_capacity_window_hours": 42.0,
+            "residual_capacity_hours": 38.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.859375,
+            "slack_hours": 5.399999999999999
+          },
+          "21": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.8,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.20000000000000284
+          },
+          "22": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.8,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.20000000000000284
+          },
+          "23": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "24": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "25": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "26": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 34.4,
+            "residual_capacity_window_hours": 38.0,
+            "residual_capacity_hours": 34.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9593023255813954,
+            "slack_hours": 1.3999999999999986
+          },
+          "27": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 33.4,
+            "residual_capacity_window_hours": 37.0,
+            "residual_capacity_hours": 33.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9880239520958084,
+            "slack_hours": 0.3999999999999986
+          },
+          "28": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 28.72,
+            "residual_capacity_window_hours": 35.0,
+            "residual_capacity_hours": 28.72,
+            "residual_capacity_blocked_hours": 6.28,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.280000000000001
+          },
+          "29": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 30.4,
+            "residual_capacity_window_hours": 34.0,
+            "residual_capacity_hours": 30.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -2.6000000000000014
+          },
+          "30": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "31": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.8,
+            "residual_capacity_window_hours": 48.0,
+            "residual_capacity_hours": 40.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8088235294117647,
+            "slack_hours": 7.799999999999997
+          },
+          "32": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 43.4,
+            "residual_capacity_window_hours": 47.0,
+            "residual_capacity_hours": 43.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7603686635944701,
+            "slack_hours": 10.399999999999999
+          },
+          "33": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 33.8,
+            "residual_capacity_window_hours": 41.0,
+            "residual_capacity_hours": 33.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9763313609467457,
+            "slack_hours": 0.7999999999999972
+          },
+          "34": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "35": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "36": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "37": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "38": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "39": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "40": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "41": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.8,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.20000000000000284
+          },
+          "42": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.8,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.20000000000000284
+          },
+          "43": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 34.4,
+            "residual_capacity_window_hours": 38.0,
+            "residual_capacity_hours": 34.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9593023255813954,
+            "slack_hours": 1.3999999999999986
+          },
+          "44": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 33.4,
+            "residual_capacity_window_hours": 37.0,
+            "residual_capacity_hours": 33.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9880239520958084,
+            "slack_hours": 0.3999999999999986
+          },
+          "45": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.4,
+            "residual_capacity_window_hours": 36.0,
+            "residual_capacity_hours": 32.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.6000000000000014
+          },
+          "46": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "47": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 35.4,
+            "residual_capacity_window_hours": 39.0,
+            "residual_capacity_hours": 35.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9322033898305085,
+            "slack_hours": 2.3999999999999986
+          },
+          "48": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 34.4,
+            "residual_capacity_window_hours": 38.0,
+            "residual_capacity_hours": 34.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9593023255813954,
+            "slack_hours": 1.3999999999999986
+          },
+          "49": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 31.4,
+            "residual_capacity_window_hours": 35.0,
+            "residual_capacity_hours": 31.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.6000000000000014
+          },
+          "50": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 30.4,
+            "residual_capacity_window_hours": 34.0,
+            "residual_capacity_hours": 30.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -2.6000000000000014
+          },
+          "51": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "52": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "53": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "54": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "55": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "56": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "57": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "58": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "59": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 27.4,
+            "residual_capacity_window_hours": 31.0,
+            "residual_capacity_hours": 27.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -5.600000000000001
+          },
+          "60": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 21.4,
+            "residual_capacity_window_hours": 25.0,
+            "residual_capacity_hours": 21.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -11.600000000000001
+          },
+          "61": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.8,
+            "residual_capacity_window_hours": 48.0,
+            "residual_capacity_hours": 40.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8088235294117647,
+            "slack_hours": 7.799999999999997
+          },
+          "62": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 38.8,
+            "residual_capacity_window_hours": 46.0,
+            "residual_capacity_hours": 38.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8505154639175259,
+            "slack_hours": 5.799999999999997
+          },
+          "63": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 41.4,
+            "residual_capacity_window_hours": 45.0,
+            "residual_capacity_hours": 41.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7971014492753623,
+            "slack_hours": 8.399999999999999
+          },
+          "64": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.4,
+            "residual_capacity_window_hours": 44.0,
+            "residual_capacity_hours": 40.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8168316831683169,
+            "slack_hours": 7.399999999999999
+          },
+          "65": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 38.4,
+            "residual_capacity_window_hours": 42.0,
+            "residual_capacity_hours": 38.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.859375,
+            "slack_hours": 5.399999999999999
+          },
+          "66": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "67": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "68": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "69": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "70": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.8,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.20000000000000284
+          },
+          "71": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "72": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "73": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 33.4,
+            "residual_capacity_window_hours": 37.0,
+            "residual_capacity_hours": 33.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9880239520958084,
+            "slack_hours": 0.3999999999999986
+          },
+          "74": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 28.8,
+            "residual_capacity_window_hours": 36.0,
+            "residual_capacity_hours": 28.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.199999999999999
+          },
+          "75": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 29.4,
+            "residual_capacity_window_hours": 33.0,
+            "residual_capacity_hours": 29.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -3.6000000000000014
+          },
+          "76": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 44.4,
+            "residual_capacity_window_hours": 48.0,
+            "residual_capacity_hours": 44.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7432432432432433,
+            "slack_hours": 11.399999999999999
+          },
+          "77": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 35.8,
+            "residual_capacity_window_hours": 43.0,
+            "residual_capacity_hours": 35.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9217877094972068,
+            "slack_hours": 2.799999999999997
+          },
+          "78": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "79": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "80": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "81": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "82": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "83": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "84": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "85": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "86": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.8,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.20000000000000284
+          },
+          "87": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 35.4,
+            "residual_capacity_window_hours": 39.0,
+            "residual_capacity_hours": 35.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9322033898305085,
+            "slack_hours": 2.3999999999999986
+          },
+          "88": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 28.8,
+            "residual_capacity_window_hours": 36.0,
+            "residual_capacity_hours": 28.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.199999999999999
+          },
+          "89": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 30.4,
+            "residual_capacity_window_hours": 34.0,
+            "residual_capacity_hours": 30.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -2.6000000000000014
+          },
+          "90": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 25.8,
+            "residual_capacity_window_hours": 33.0,
+            "residual_capacity_hours": 25.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -7.199999999999999
+          },
+          "91": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "92": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 35.4,
+            "residual_capacity_window_hours": 39.0,
+            "residual_capacity_hours": 35.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9322033898305085,
+            "slack_hours": 2.3999999999999986
+          },
+          "93": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 33.4,
+            "residual_capacity_window_hours": 37.0,
+            "residual_capacity_hours": 33.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9880239520958084,
+            "slack_hours": 0.3999999999999986
+          },
+          "94": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "95": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "96": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "97": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "98": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "99": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "100": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "101": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "102": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "103": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "104": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 22.4,
+            "residual_capacity_window_hours": 26.0,
+            "residual_capacity_hours": 22.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -10.600000000000001
+          },
+          "105": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 20.4,
+            "residual_capacity_window_hours": 24.0,
+            "residual_capacity_hours": 20.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -12.600000000000001
+          },
+          "106": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 44.4,
+            "residual_capacity_window_hours": 48.0,
+            "residual_capacity_hours": 44.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7432432432432433,
+            "slack_hours": 11.399999999999999
+          },
+          "107": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 43.4,
+            "residual_capacity_window_hours": 47.0,
+            "residual_capacity_hours": 43.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7603686635944701,
+            "slack_hours": 10.399999999999999
+          },
+          "108": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 40.4,
+            "residual_capacity_window_hours": 44.0,
+            "residual_capacity_hours": 40.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.8168316831683169,
+            "slack_hours": 7.399999999999999
+          },
+          "109": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.8,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.20000000000000284
+          },
+          "110": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "111": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "112": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.8,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.20000000000000284
+          },
+          "113": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "114": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "115": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "116": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.8,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.20000000000000284
+          },
+          "117": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "118": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.8,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.20000000000000284
+          },
+          "119": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 34.4,
+            "residual_capacity_window_hours": 38.0,
+            "residual_capacity_hours": 34.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9593023255813954,
+            "slack_hours": 1.3999999999999986
+          },
+          "120": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 33.4,
+            "residual_capacity_window_hours": 37.0,
+            "residual_capacity_hours": 33.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9880239520958084,
+            "slack_hours": 0.3999999999999986
+          },
+          "121": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 44.4,
+            "residual_capacity_window_hours": 48.0,
+            "residual_capacity_hours": 44.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7432432432432433,
+            "slack_hours": 11.399999999999999
+          },
+          "122": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 42.4,
+            "residual_capacity_window_hours": 46.0,
+            "residual_capacity_hours": 42.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7783018867924528,
+            "slack_hours": 9.399999999999999
+          },
+          "123": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 41.4,
+            "residual_capacity_window_hours": 45.0,
+            "residual_capacity_hours": 41.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.7971014492753623,
+            "slack_hours": 8.399999999999999
+          },
+          "124": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "125": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "126": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "127": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "128": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.8,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.20000000000000284
+          },
+          "129": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.8,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.20000000000000284
+          },
+          "130": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 32.8,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 32.8,
+            "residual_capacity_blocked_hours": 7.2,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -0.20000000000000284
+          },
+          "131": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "132": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "133": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 35.4,
+            "residual_capacity_window_hours": 39.0,
+            "residual_capacity_hours": 35.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9322033898305085,
+            "slack_hours": 2.3999999999999986
+          },
+          "134": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 28.72,
+            "residual_capacity_window_hours": 33.0,
+            "residual_capacity_hours": 28.72,
+            "residual_capacity_blocked_hours": 4.28,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.280000000000001
+          },
+          "135": {
+            "due_deadline_hours": 136.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "136": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 36.4,
+            "residual_capacity_window_hours": 40.0,
+            "residual_capacity_hours": 36.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9065934065934066,
+            "slack_hours": 3.3999999999999986
+          },
+          "137": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 35.4,
+            "residual_capacity_window_hours": 39.0,
+            "residual_capacity_hours": 35.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9322033898305085,
+            "slack_hours": 2.3999999999999986
+          },
+          "138": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 33.4,
+            "residual_capacity_window_hours": 37.0,
+            "residual_capacity_hours": 33.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 0.9880239520958084,
+            "slack_hours": 0.3999999999999986
+          },
+          "139": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 31.4,
+            "residual_capacity_window_hours": 35.0,
+            "residual_capacity_hours": 31.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -1.6000000000000014
+          },
+          "140": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "141": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "142": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "143": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "144": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "145": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "146": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 28.4,
+            "residual_capacity_window_hours": 32.0,
+            "residual_capacity_hours": 28.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -4.600000000000001
+          },
+          "147": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 25.4,
+            "residual_capacity_window_hours": 29.0,
+            "residual_capacity_hours": 25.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -7.600000000000001
+          },
+          "148": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 24.4,
+            "residual_capacity_window_hours": 28.0,
+            "residual_capacity_hours": 24.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -8.600000000000001
+          },
+          "149": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 23.4,
+            "residual_capacity_window_hours": 27.0,
+            "residual_capacity_hours": 23.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -9.600000000000001
+          },
+          "150": {
+            "due_deadline_hours": 112.0,
+            "due_budget_hours": 21.4,
+            "residual_capacity_window_hours": 25.0,
+            "residual_capacity_hours": 21.4,
+            "residual_capacity_blocked_hours": 3.6,
+            "due_budget_basis": "calendar_capacity_hours",
+            "due_pressure": 1.0,
+            "slack_hours": -11.600000000000001
+          }
+        }
+      },
+      "diff": {
+        "1": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "2": {
+          "gross": 38.0,
+          "net": 34.4,
+          "net_minus_gross": -3.6
+        },
+        "3": {
+          "gross": 36.0,
+          "net": 32.4,
+          "net_minus_gross": -3.6
+        },
+        "4": {
+          "gross": 35.0,
+          "net": 31.4,
+          "net_minus_gross": -3.6
+        },
+        "5": {
+          "gross": 34.0,
+          "net": 30.4,
+          "net_minus_gross": -3.6
+        },
+        "6": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "7": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "8": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "9": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "10": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "11": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "12": {
+          "gross": 30.0,
+          "net": 26.4,
+          "net_minus_gross": -3.6
+        },
+        "13": {
+          "gross": 29.0,
+          "net": 25.4,
+          "net_minus_gross": -3.6
+        },
+        "14": {
+          "gross": 27.0,
+          "net": 23.4,
+          "net_minus_gross": -3.6
+        },
+        "15": {
+          "gross": 24.0,
+          "net": 20.4,
+          "net_minus_gross": -3.6
+        },
+        "16": {
+          "gross": 48.0,
+          "net": 40.8,
+          "net_minus_gross": -7.2
+        },
+        "17": {
+          "gross": 45.0,
+          "net": 41.4,
+          "net_minus_gross": -3.6
+        },
+        "18": {
+          "gross": 44.0,
+          "net": 40.4,
+          "net_minus_gross": -3.6
+        },
+        "19": {
+          "gross": 43.0,
+          "net": 39.4,
+          "net_minus_gross": -3.6
+        },
+        "20": {
+          "gross": 42.0,
+          "net": 38.4,
+          "net_minus_gross": -3.6
+        },
+        "21": {
+          "gross": 40.0,
+          "net": 32.8,
+          "net_minus_gross": -7.2
+        },
+        "22": {
+          "gross": 40.0,
+          "net": 32.8,
+          "net_minus_gross": -7.2
+        },
+        "23": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "24": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "25": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "26": {
+          "gross": 38.0,
+          "net": 34.4,
+          "net_minus_gross": -3.6
+        },
+        "27": {
+          "gross": 37.0,
+          "net": 33.4,
+          "net_minus_gross": -3.6
+        },
+        "28": {
+          "gross": 35.0,
+          "net": 28.72,
+          "net_minus_gross": -6.28
+        },
+        "29": {
+          "gross": 34.0,
+          "net": 30.4,
+          "net_minus_gross": -3.6
+        },
+        "30": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "31": {
+          "gross": 48.0,
+          "net": 40.8,
+          "net_minus_gross": -7.2
+        },
+        "32": {
+          "gross": 47.0,
+          "net": 43.4,
+          "net_minus_gross": -3.6
+        },
+        "33": {
+          "gross": 41.0,
+          "net": 33.8,
+          "net_minus_gross": -7.2
+        },
+        "34": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "35": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "36": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "37": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "38": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "39": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "40": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "41": {
+          "gross": 40.0,
+          "net": 32.8,
+          "net_minus_gross": -7.2
+        },
+        "42": {
+          "gross": 40.0,
+          "net": 32.8,
+          "net_minus_gross": -7.2
+        },
+        "43": {
+          "gross": 38.0,
+          "net": 34.4,
+          "net_minus_gross": -3.6
+        },
+        "44": {
+          "gross": 37.0,
+          "net": 33.4,
+          "net_minus_gross": -3.6
+        },
+        "45": {
+          "gross": 36.0,
+          "net": 32.4,
+          "net_minus_gross": -3.6
+        },
+        "46": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "47": {
+          "gross": 39.0,
+          "net": 35.4,
+          "net_minus_gross": -3.6
+        },
+        "48": {
+          "gross": 38.0,
+          "net": 34.4,
+          "net_minus_gross": -3.6
+        },
+        "49": {
+          "gross": 35.0,
+          "net": 31.4,
+          "net_minus_gross": -3.6
+        },
+        "50": {
+          "gross": 34.0,
+          "net": 30.4,
+          "net_minus_gross": -3.6
+        },
+        "51": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "52": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "53": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "54": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "55": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "56": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "57": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "58": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "59": {
+          "gross": 31.0,
+          "net": 27.4,
+          "net_minus_gross": -3.6
+        },
+        "60": {
+          "gross": 25.0,
+          "net": 21.4,
+          "net_minus_gross": -3.6
+        },
+        "61": {
+          "gross": 48.0,
+          "net": 40.8,
+          "net_minus_gross": -7.2
+        },
+        "62": {
+          "gross": 46.0,
+          "net": 38.8,
+          "net_minus_gross": -7.2
+        },
+        "63": {
+          "gross": 45.0,
+          "net": 41.4,
+          "net_minus_gross": -3.6
+        },
+        "64": {
+          "gross": 44.0,
+          "net": 40.4,
+          "net_minus_gross": -3.6
+        },
+        "65": {
+          "gross": 42.0,
+          "net": 38.4,
+          "net_minus_gross": -3.6
+        },
+        "66": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "67": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "68": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "69": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "70": {
+          "gross": 40.0,
+          "net": 32.8,
+          "net_minus_gross": -7.2
+        },
+        "71": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "72": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "73": {
+          "gross": 37.0,
+          "net": 33.4,
+          "net_minus_gross": -3.6
+        },
+        "74": {
+          "gross": 36.0,
+          "net": 28.8,
+          "net_minus_gross": -7.2
+        },
+        "75": {
+          "gross": 33.0,
+          "net": 29.4,
+          "net_minus_gross": -3.6
+        },
+        "76": {
+          "gross": 48.0,
+          "net": 44.4,
+          "net_minus_gross": -3.6
+        },
+        "77": {
+          "gross": 43.0,
+          "net": 35.8,
+          "net_minus_gross": -7.2
+        },
+        "78": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "79": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "80": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "81": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "82": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "83": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "84": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "85": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "86": {
+          "gross": 40.0,
+          "net": 32.8,
+          "net_minus_gross": -7.2
+        },
+        "87": {
+          "gross": 39.0,
+          "net": 35.4,
+          "net_minus_gross": -3.6
+        },
+        "88": {
+          "gross": 36.0,
+          "net": 28.8,
+          "net_minus_gross": -7.2
+        },
+        "89": {
+          "gross": 34.0,
+          "net": 30.4,
+          "net_minus_gross": -3.6
+        },
+        "90": {
+          "gross": 33.0,
+          "net": 25.8,
+          "net_minus_gross": -7.2
+        },
+        "91": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "92": {
+          "gross": 39.0,
+          "net": 35.4,
+          "net_minus_gross": -3.6
+        },
+        "93": {
+          "gross": 37.0,
+          "net": 33.4,
+          "net_minus_gross": -3.6
+        },
+        "94": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "95": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "96": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "97": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "98": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "99": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "100": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "101": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "102": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "103": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "104": {
+          "gross": 26.0,
+          "net": 22.4,
+          "net_minus_gross": -3.6
+        },
+        "105": {
+          "gross": 24.0,
+          "net": 20.4,
+          "net_minus_gross": -3.6
+        },
+        "106": {
+          "gross": 48.0,
+          "net": 44.4,
+          "net_minus_gross": -3.6
+        },
+        "107": {
+          "gross": 47.0,
+          "net": 43.4,
+          "net_minus_gross": -3.6
+        },
+        "108": {
+          "gross": 44.0,
+          "net": 40.4,
+          "net_minus_gross": -3.6
+        },
+        "109": {
+          "gross": 40.0,
+          "net": 32.8,
+          "net_minus_gross": -7.2
+        },
+        "110": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "111": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "112": {
+          "gross": 40.0,
+          "net": 32.8,
+          "net_minus_gross": -7.2
+        },
+        "113": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "114": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "115": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "116": {
+          "gross": 40.0,
+          "net": 32.8,
+          "net_minus_gross": -7.2
+        },
+        "117": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "118": {
+          "gross": 40.0,
+          "net": 32.8,
+          "net_minus_gross": -7.2
+        },
+        "119": {
+          "gross": 38.0,
+          "net": 34.4,
+          "net_minus_gross": -3.6
+        },
+        "120": {
+          "gross": 37.0,
+          "net": 33.4,
+          "net_minus_gross": -3.6
+        },
+        "121": {
+          "gross": 48.0,
+          "net": 44.4,
+          "net_minus_gross": -3.6
+        },
+        "122": {
+          "gross": 46.0,
+          "net": 42.4,
+          "net_minus_gross": -3.6
+        },
+        "123": {
+          "gross": 45.0,
+          "net": 41.4,
+          "net_minus_gross": -3.6
+        },
+        "124": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "125": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "126": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "127": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "128": {
+          "gross": 40.0,
+          "net": 32.8,
+          "net_minus_gross": -7.2
+        },
+        "129": {
+          "gross": 40.0,
+          "net": 32.8,
+          "net_minus_gross": -7.2
+        },
+        "130": {
+          "gross": 40.0,
+          "net": 32.8,
+          "net_minus_gross": -7.2
+        },
+        "131": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "132": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "133": {
+          "gross": 39.0,
+          "net": 35.4,
+          "net_minus_gross": -3.6
+        },
+        "134": {
+          "gross": 33.0,
+          "net": 28.72,
+          "net_minus_gross": -4.28
+        },
+        "135": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "136": {
+          "gross": 40.0,
+          "net": 36.4,
+          "net_minus_gross": -3.6
+        },
+        "137": {
+          "gross": 39.0,
+          "net": 35.4,
+          "net_minus_gross": -3.6
+        },
+        "138": {
+          "gross": 37.0,
+          "net": 33.4,
+          "net_minus_gross": -3.6
+        },
+        "139": {
+          "gross": 35.0,
+          "net": 31.4,
+          "net_minus_gross": -3.6
+        },
+        "140": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "141": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "142": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "143": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "144": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "145": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "146": {
+          "gross": 32.0,
+          "net": 28.4,
+          "net_minus_gross": -3.6
+        },
+        "147": {
+          "gross": 29.0,
+          "net": 25.4,
+          "net_minus_gross": -3.6
+        },
+        "148": {
+          "gross": 28.0,
+          "net": 24.4,
+          "net_minus_gross": -3.6
+        },
+        "149": {
+          "gross": 27.0,
+          "net": 23.4,
+          "net_minus_gross": -3.6
+        },
+        "150": {
+          "gross": 25.0,
+          "net": 21.4,
+          "net_minus_gross": -3.6
+        }
+      },
+      "any_differ": true
+    }
+  },
+  "runs": {
+    "fjsp:mk06": [
+      {
+        "basis": "gross",
+        "seed": 0,
+        "overdue_count": 6,
+        "total_tardiness_hours": 385.0,
+        "weighted_tardiness_hours": 385.0,
+        "failed_ops": 0,
+        "makespan_hours": 267.6,
+        "best_origin": "graph_ready_v2_generated",
+        "best_order": [
+          "B_SEED",
+          "B_SEED",
+          "B_SEED",
+          "J09",
+          "J09",
+          "J09",
+          "J09",
+          "J09",
+          "J09",
+          "J09",
+          "J09",
+          "J09",
+          "J09",
+          "J09",
+          "J09",
+          "J09",
+          "J09",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J09",
+          "J03",
+          "J00",
+          "J06",
+          "J02",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07"
+        ],
+        "evaluated_candidates": 20,
+        "distinct_candidates": 9,
+        "baseline_overdue_count": 6,
+        "baseline_total_tardiness_hours": 408.6,
+        "baseline_failed_ops": 0
+      },
+      {
+        "basis": "net",
+        "seed": 0,
+        "overdue_count": 5,
+        "total_tardiness_hours": 417.0,
+        "weighted_tardiness_hours": 417.0,
+        "failed_ops": 0,
+        "makespan_hours": 243.6,
+        "best_origin": "graph_ready_v2_generated",
+        "best_order": [
+          "B_SEED",
+          "B_SEED",
+          "B_SEED",
+          "J09",
+          "J09",
+          "J09",
+          "J00",
+          "J00",
+          "J03",
+          "J03",
+          "J03",
+          "J06",
+          "J06",
+          "J06",
+          "J01",
+          "J04",
+          "J04",
+          "J02",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J07",
+          "J07",
+          "J07",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J05",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J02",
+          "J02",
+          "J02",
+          "J02",
+          "J05",
+          "J05",
+          "J04",
+          "J04",
+          "J04",
+          "J04",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J08",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J07",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J01",
+          "J00",
+          "J02",
+          "J00",
+          "J09",
+          "J03",
+          "J03",
+          "J00",
+          "J05",
+          "J05",
+          "J04",
+          "J04",
+          "J01",
+          "J01",
+          "J08",
+          "J09",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J09",
+          "J09",
+          "J03",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J06",
+          "J08",
+          "J01",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J03",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J00",
+          "J09",
+          "J09",
+          "J09",
+          "J09",
+          "J03",
+          "J00",
+          "J05",
+          "J09",
+          "J00",
+          "J09",
+          "J00",
+          "J09",
+          "J06",
+          "J03",
+          "J09",
+          "J00",
+          "J06"
+        ],
+        "evaluated_candidates": 20,
+        "distinct_candidates": 9,
+        "baseline_overdue_count": 6,
+        "baseline_total_tardiness_hours": 408.6,
+        "baseline_failed_ops": 0
+      }
+    ]
+  }
+}

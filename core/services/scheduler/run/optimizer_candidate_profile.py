@@ -25,7 +25,7 @@ from typing import Any, Dict, Optional, Tuple
 from core.infrastructure.errors import ValidationError
 
 from .optimizer_acceptance import ALLOWED_ACCEPTANCES
-from .optimizer_graph_ready_profiles import graph_ready_weight_profile_summary
+from .optimizer_graph_ready_profiles import graph_ready_v2_profile_summary
 from .optimizer_neighborhood_moves import ALLOWED_NEIGHBORHOODS, BUSINESS_NEIGHBORHOODS
 
 CANDIDATE_PROFILE_SCHEMA_VERSION = 1
@@ -173,9 +173,9 @@ def _resolved_neighborhoods(
 def _candidate_strategy_contract(profile: str, *, configured_budget: int) -> Tuple[str, Tuple[str, ...], Dict[str, Any]]:
     if profile == PROFILE_GRAPH_READY:
         return (
-            "graph_ready_weight_grid",
-            ("graph_ready_base", "graph_ready_weight_grid"),
-            {"graph_ready_optimization": graph_ready_weight_profile_summary()},
+            "graph_ready_objective_aware_portfolio",
+            ("graph_ready_base", "graph_ready_weight_grid", "graph_ready_v2_no_repair"),
+            {"graph_ready_optimization": graph_ready_v2_profile_summary(max_candidate_profiles=60)},
         )
     return (
         "multi_start_grasp_ig",
@@ -199,7 +199,7 @@ def _build_message(
     if graph_ready:
         return (
             f"图 ready 候选模式：配置时间预算 {configured_budget} 秒，先使用 SGS 正式解码，"
-            "再按多组图权重生成候选并择优；随机种子由排产版本号自动派生（非手工指定）。"
+            "再按目标感知 v2 候选池生成候选并择优；随机种子由排产版本号自动派生（非手工指定）。"
         )
     parts = [
         f"多起点+GRASP/IG候选+VNS局部搜索模式：配置时间预算 {configured_budget} 秒，目标迭代上限 {configured_iters} 次。"
