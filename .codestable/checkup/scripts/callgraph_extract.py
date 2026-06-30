@@ -72,16 +72,33 @@ def _function_info(rel: str, node: ast.AST, name: str, cls: Optional[str]) -> Fu
     }
 
 
-def _import_aliases(tree: ast.Module) -> Dict[str, str]:
+def _module_name_from_rel(rel: str) -> str:
+    return rel[:-3].replace("/", ".") if rel.endswith(".py") else rel.replace("/", ".")
+
+
+def _relative_import_module(rel: str, level: int, module: str) -> str:
+    current = _module_name_from_rel(rel)
+    package_parts = current.split(".")[:-1]
+    if level > 1:
+        package_parts = package_parts[: -(level - 1)]
+    base = ".".join(package_parts)
+    if module:
+        return f"{base}.{module}" if base else module
+    return base
+
+
+def _import_aliases(tree: ast.Module, rel: str) -> Dict[str, str]:
     imports: Dict[str, str] = {}
     for node in tree.body:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 imports[alias.asname or alias.name.split(".")[0]] = alias.name
         elif isinstance(node, ast.ImportFrom):
-            module = node.module or ""
+            module = _relative_import_module(rel, int(node.level or 0), node.module or "") if node.level else (node.module or "")
             for alias in node.names:
-                imports[alias.asname or alias.name] = f"{module}.{alias.name}" if module else alias.name
+                imports[alias.asname or alias.name] = f"{module}.{alias.name}" if module and node.module else (
+                    f"{module}.{alias.name}" if module else alias.name
+                )
     return imports
 
 
@@ -115,7 +132,7 @@ def _class_functions(tree: ast.Module, rel: str) -> List[FuncInfo]:
 
 
 def _collect(tree: ast.Module, rel: str) -> Tuple[List[FuncInfo], Dict[str, str]]:
-    return _module_functions(tree, rel) + _class_functions(tree, rel), _import_aliases(tree)
+    return _module_functions(tree, rel) + _class_functions(tree, rel), _import_aliases(tree, rel)
 
 
 def _call_name(func: ast.AST) -> Tuple[str, str]:
@@ -141,6 +158,28 @@ def _calls(fnode: ast.AST) -> Tuple[Set[str], Set[str], Set[str]]:
         if name in ("getattr", "__import__", "import_module"):
             dyn.add(name)
     return bare, attr, dyn
+
+
+def _module_attr_calls(fnode: ast.AST) -> Set[Tuple[str, str]]:
+    out: Set[Tuple[str, str]] = set()
+    for node in ast.walk(fnode):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+            out.add((node.func.value.id, node.func.attr))
+    return out
+
+
+def _call_argument_references(fnode: ast.AST) -> Set[str]:
+    out: Set[str] = set()
+    for node in ast.walk(fnode):
+        if not isinstance(node, ast.Call):
+            continue
+        for arg in node.args:
+            if isinstance(arg, ast.Name):
+                out.add(arg.id)
+        for keyword in node.keywords:
+            if isinstance(keyword.value, ast.Name):
+                out.add(keyword.value.id)
+    return out
 
 
 def _remember_identifier(name: str, sensitive: Set[str], hardcoded: Set[str]) -> None:
@@ -255,6 +294,39 @@ def _add_attr_edges(edges: List[Dict[str, Any]], qual: str, info: FuncInfo, name
             edges.extend(_edge(qual, candidate, "attr", True) for candidate in candidates)
 
 
+def _module_attr_target(module: str, attr: str, all_funcs: Dict[str, FuncInfo]) -> Optional[str]:
+    candidates = [
+        f"{module.replace('.', '/')}.py::{attr}",
+        f"{module.replace('.', '/')}/__init__.py::{attr}",
+    ]
+    for candidate in candidates:
+        if candidate in all_funcs:
+            return candidate
+    return None
+
+
+def _add_imported_module_attr_edges(edges: List[Dict[str, Any]], qual: str, calls: Set[Tuple[str, str]],
+                                    imports: Dict[str, str], all_funcs: Dict[str, FuncInfo]) -> None:
+    for base, attr in sorted(calls):
+        module = imports.get(base)
+        if not module:
+            continue
+        target = _module_attr_target(module, attr, all_funcs)
+        if target:
+            edges.append(_edge(qual, target, "module_import_attr", False))
+
+
+def _add_function_reference_edges(edges: List[Dict[str, Any]], qual: str, info: FuncInfo, names: Set[str],
+                                  local: Set[str], name_to_quals: Dict[str, List[str]]) -> None:
+    for name in sorted(names):
+        if name in local:
+            edges.append(_edge(qual, f"{info['rel']}::{name}", "function_reference", True))
+            continue
+        candidates = sorted(name_to_quals.get(name, []))
+        if len(candidates) == 1:
+            edges.append(_edge(qual, candidates[0], "function_reference", True))
+
+
 def _resolve_edges(all_funcs: Dict[str, FuncInfo], name_to_quals: Dict[str, List[str]],
                    file_funcs: Dict[str, List[FuncInfo]], file_imports: Dict[str, Dict[str, str]]) -> EdgeResult:
     edges: List[Dict[str, Any]] = []
@@ -262,6 +334,8 @@ def _resolve_edges(all_funcs: Dict[str, FuncInfo], name_to_quals: Dict[str, List
     dataflow_nodes: Dict[str, Dict[str, List[str]]] = {}
     for qual, info in sorted(all_funcs.items()):
         bare, attr, dyn = _calls(info["node"])
+        module_attr = _module_attr_calls(info["node"])
+        references = _call_argument_references(info["node"]) - bare
         dataflow = _dataflow(info["node"])
         if any(dataflow.values()):
             dataflow_nodes[qual] = dataflow
@@ -269,6 +343,8 @@ def _resolve_edges(all_funcs: Dict[str, FuncInfo], name_to_quals: Dict[str, List
             dynamic_unresolved.append({"func": qual, "rel": info["rel"], "line": info["line"], "hints": sorted(dyn)})
         _add_bare_edges(edges, qual, info, bare, _local_function_names(file_funcs, info), name_to_quals,
                         file_imports.get(info["rel"], {}))
+        _add_function_reference_edges(edges, qual, info, references, _local_function_names(file_funcs, info), name_to_quals)
+        _add_imported_module_attr_edges(edges, qual, module_attr, file_imports.get(info["rel"], {}), all_funcs)
         _add_attr_edges(edges, qual, info, attr, _method_names(file_funcs, info), name_to_quals)
     return edges, dynamic_unresolved, dataflow_nodes
 
@@ -300,15 +376,19 @@ def _merge_typed(edges: List[Dict[str, Any]], typed: Set[Tuple[str, str]],
     return merged
 
 
-def _fan_counts(edges: List[Dict[str, Any]]) -> Tuple[Dict[str, int], Dict[str, int]]:
+def _fan_counts(edges: List[Dict[str, Any]]) -> Tuple[Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int]]:
     fan_out: Dict[str, int] = defaultdict(int)
     fan_in: Dict[str, int] = defaultdict(int)
+    ambiguous_fan_out: Dict[str, int] = defaultdict(int)
+    ambiguous_fan_in: Dict[str, int] = defaultdict(int)
     for edge in edges:
         if edge["ambiguous"]:
+            ambiguous_fan_out[edge["from"]] += 1
+            ambiguous_fan_in[edge["to"]] += 1
             continue
         fan_out[edge["from"]] += 1
         fan_in[edge["to"]] += 1
-    return fan_in, fan_out
+    return fan_in, fan_out, ambiguous_fan_in, ambiguous_fan_out
 
 
 def _write_json(name: str, obj: Any) -> None:
@@ -349,10 +429,13 @@ def _graph_metrics(all_funcs: Dict[str, FuncInfo], edges: List[Dict[str, Any]]) 
         raise RuntimeError("缺少 networkx，不能生成可信的调用图指标。") from exc
 
     graph = nx.DiGraph()
+    total_graph = nx.DiGraph()
     graph.add_nodes_from(all_funcs.keys())
+    total_graph.add_nodes_from(all_funcs.keys())
     graph.add_edges_from((edge["from"], edge["to"]) for edge in edges if not edge["ambiguous"])
+    total_graph.add_edges_from((edge["from"], edge["to"]) for edge in edges)
     cycles = _bounded_cycles(nx, graph)
-    islands = [node for node in graph.nodes if graph.in_degree(node) == 0 and graph.out_degree(node) == 0]
+    islands = [node for node in total_graph.nodes if total_graph.in_degree(node) == 0 and total_graph.out_degree(node) == 0]
     articulation = _articulation_points(nx, graph)
     _write_json("cycles.json", cycles)
     _write_json("islands.json", sorted(islands))
@@ -360,6 +443,8 @@ def _graph_metrics(all_funcs: Dict[str, FuncInfo], edges: List[Dict[str, Any]]) 
     return {
         "node_count": graph.number_of_nodes(),
         "edge_count": graph.number_of_edges(),
+        "edge_count_confident": graph.number_of_edges(),
+        "edge_count_total": total_graph.number_of_edges(),
         "cycle_count": len(cycles),
         "island_count": len(islands),
         "articulation_count": len(articulation),
@@ -400,11 +485,22 @@ def _high_fan_in(all_funcs: Dict[str, FuncInfo], fan_in: Dict[str, int]) -> List
     return sorted(rows, key=lambda item: (-item["fan_in"], item["rel"], item["line"], item["func"]))[:60]
 
 
-def _functions_payload(all_funcs: Dict[str, FuncInfo], fan_in: Dict[str, int],
-                       fan_out: Dict[str, int]) -> Dict[str, Dict[str, Any]]:
+def _functions_payload(
+    all_funcs: Dict[str, FuncInfo],
+    fan_in: Dict[str, int],
+    fan_out: Dict[str, int],
+    ambiguous_fan_in: Dict[str, int],
+    ambiguous_fan_out: Dict[str, int],
+) -> Dict[str, Dict[str, Any]]:
     return {
         qual: {"rel": info["rel"], "line": info["line"], "end": info["end"], "cls": info["cls"],
-               "name": info["name"], "fan_in": fan_in.get(qual, 0), "fan_out": fan_out.get(qual, 0)}
+               "name": info["name"],
+               "fan_in": fan_in.get(qual, 0) + ambiguous_fan_in.get(qual, 0),
+               "fan_out": fan_out.get(qual, 0) + ambiguous_fan_out.get(qual, 0),
+               "fan_in_confident": fan_in.get(qual, 0),
+               "fan_out_confident": fan_out.get(qual, 0),
+               "fan_in_ambiguous": ambiguous_fan_in.get(qual, 0),
+               "fan_out_ambiguous": ambiguous_fan_out.get(qual, 0)}
         for qual, info in all_funcs.items()
     }
 
@@ -430,14 +526,16 @@ def _summary(all_funcs: Dict[str, FuncInfo], edges: List[Dict[str, Any]],
 
 def _write_outputs(all_funcs: Dict[str, FuncInfo], edges: List[Dict[str, Any]],
                    dynamic_unresolved: List[Dict[str, Any]], dataflow_nodes: Dict[str, Dict[str, List[str]]],
-                   fan_in: Dict[str, int], fan_out: Dict[str, int], parse_errors: List[str]) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+                   fan_in: Dict[str, int], fan_out: Dict[str, int],
+                   ambiguous_fan_in: Dict[str, int], ambiguous_fan_out: Dict[str, int],
+                   parse_errors: List[str]) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     edges = sorted(edges, key=_edge_key)
     dynamic_unresolved = sorted(dynamic_unresolved, key=lambda item: (item["rel"], item["line"], item["func"]))
     graph_metrics = _graph_metrics(all_funcs, edges)
     risk = _risk_dataflow(dataflow_nodes, all_funcs, fan_in, fan_out)
     high_fan_in = _high_fan_in(all_funcs, fan_in)
     summary = _summary(all_funcs, edges, dynamic_unresolved, dataflow_nodes, risk, high_fan_in, graph_metrics, parse_errors)
-    _write_json("functions.json", _functions_payload(all_funcs, fan_in, fan_out))
+    _write_json("functions.json", _functions_payload(all_funcs, fan_in, fan_out, ambiguous_fan_in, ambiguous_fan_out))
     _write_json("edges.json", edges)
     _write_json("dynamic_unresolved.json", dynamic_unresolved)
     _write_json("dataflow_nodes.json", dataflow_nodes)
@@ -478,8 +576,18 @@ def main() -> None:
     edges, dynamic_unresolved, dataflow_nodes = _resolve_edges(all_funcs, name_to_quals, file_funcs, file_imports)
     typed, fully = _cti.resolve_all(all_funcs, class_bases)
     edges = _merge_typed(edges, typed, fully)
-    fan_in, fan_out = _fan_counts(edges)
-    summary, risk = _write_outputs(all_funcs, edges, dynamic_unresolved, dataflow_nodes, fan_in, fan_out, parse_errors)
+    fan_in, fan_out, ambiguous_fan_in, ambiguous_fan_out = _fan_counts(edges)
+    summary, risk = _write_outputs(
+        all_funcs,
+        edges,
+        dynamic_unresolved,
+        dataflow_nodes,
+        fan_in,
+        fan_out,
+        ambiguous_fan_in,
+        ambiguous_fan_out,
+        parse_errors,
+    )
     _print_summary(summary, risk)
 
 
