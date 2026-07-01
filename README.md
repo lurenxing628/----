@@ -105,7 +105,7 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 - 单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只会生成本次 full-test-debt 的 current/summary 证明，不会写 long gate success cache。也就是说，它能帮你定位 full-test-debt 本身是否通过，但不会让下一次完整门禁自动复用 long gate 缓存。
 - 长耗时门禁缓存需要显式传 `.venv\Scripts\python scripts/run_quality_gate.py --long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`startup_runtime_regressions` 和 `quickref_vs_routes`；当前仍 planned 的 long gate entry 只有 `architecture_fitness`。
 - 要预热最终完整门禁会用到的 long gate 缓存，请跑完整门禁链：`.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。这条命令成功后，才会留下 long gate success cache。
-- CI 里也会复用 long gate cache：GitHub Actions 在完整门禁前恢复缓存，完整门禁成功后再保存缓存。缓存 key 的前缀会带上系统、Python 3.8、`requirements.txt` / `requirements-dev.txt` / `requirements-optimizer-lite-win7.txt` 依赖 hash，以及 workflow、门禁脚本、`tools/**/*.py`、pyright 配置等 tooling hash；保存 key 还会带上本次 `github.sha`，避免不同提交写到同一个精确 key。保存范围只包含已被忽略、下次复用会用到的 `evidence/QualityGate/` 运行产物，例如 `evidence/QualityGate/long_gate/`、几份 long gate proof JSON 和 `evidence/QualityGate/quickref_vs_routes.md`，不覆盖历史已跟踪的 `evidence/Conformance/quickref_vs_routes.md`。pull request 只允许读取已有缓存，不会把自己的运行产物保存回主仓库缓存；只有 `push` 和手动 `workflow_dispatch` 在完整门禁成功后会保存。
+- CI 里也会复用 long gate cache：GitHub Actions 在完整门禁前恢复缓存，完整门禁成功后再保存缓存。缓存 key 的前缀会带上系统、Python 3.8、`requirements.txt` / `requirements-dev.txt` / `requirements-optimizer-lite-win7.txt` 依赖 hash，以及 workflow、门禁脚本、`tools/**/*.py`、pyright 配置等 tooling hash；保存 key 还会带上本次 `github.sha`，避免不同提交写到同一个精确 key。保存范围只包含已被忽略、下次复用会用到的 `evidence/QualityGate/` 运行产物，例如 `evidence/QualityGate/long_gate/`、几份 long gate proof JSON 和 `evidence/QualityGate/quickref_vs_routes.md`，不会把本机旧证据目录重新提交到仓库。pull request 只允许读取已有缓存，不会把自己的运行产物保存回主仓库缓存；只有 `push` 和手动 `workflow_dispatch` 在完整门禁成功后会保存。
 - long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；证据缺失、损坏或 hash 不一致都会自动重跑。未登记的新失败仍然必须失败，已登记测试债务仍然必须被台账管住。
 - `--long-gate-cache-explain` 只打印“会不会复用”的判断，不执行门禁，也不能当作通过证明。summary counts 只告诉你本轮执行、复用、失败、planned、disabled 各有多少条，也不是通过证明。CI 日志里看到 cache hit，也只能说明旧运行产物被拿回来参与校验，不能当成这次门禁已经通过。
 - CI 和最终 clean gate 的要求不降低。最终 clean proof 仍要在干净工作区跑 `.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，并且门禁结束后 `git status --short` 仍然没有输出。
@@ -134,11 +134,9 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 - `plugins/`：自研插件目录，当前插件默认关闭。
 - `tests/`：自动化测试；新增回归优先写成标准 `test_*.py` 用例，并按业务目录或 `tests/gate_meta/` 落点。
 - `开发文档/`：开发说明、系统速查表、页面与接口清单、设计资料。
-- `.codestable/`：CodeStable 工作流事实源，记录需求、架构、问题修复、规划、审计、开放脑暴和知识沉淀；启动必读见 `.codestable/attention.md`，默认入口见 `.codestable/reference/system-overview.md`。
 - `AGENTS.md`：AI 协作约定、CodeStable 分流规则和 APS 硬约束。
 - `installer/`：Win7 双包安装器说明与脚本。
-- `audit/`：审计与健康检查归档。
-- `evidence/`：门禁、验收和排查证据归档。
+- `.codestable/`、`.limcode/`、`audit/`、`evidence/`、`reports/`：本机 AI 工作流、旧审计、门禁证据和临时报告资料，默认保留在本机但不纳入版本控制。
 
 ## 文档导航
 
@@ -146,15 +144,12 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 | --- | --- |
 | `开发文档/README.md` | 开发文档总入口、开发基线、质量治理入口、测试命名契约 |
 | `AGENTS.md` | AI 协作约定、CodeStable 默认分流规则、Win7 / Python 3.8 硬约束 |
-| `.codestable/attention.md` | CodeStable 技能启动前必须先看的项目注意事项 |
-| `.codestable/reference/system-overview.md` | CodeStable 工作流总览和各类任务入口说明 |
 | `开发文档/系统速查表.md` | 术语、枚举、接口、数据库字段、Excel 模板、打包交付关键点 |
 | `开发文档/面板与接口清单.md` | 页面、路由、参数、按钮、提示文案与用户可见入口 |
 | `installer/README_WIN7_INSTALLER.md` | Win7 双包构建、安装、卸载、强制清理与启动排障 |
 | `DELIVERY_WIN7.md` | Win7 离线交付、直拷目录与 legacy 应急交付说明 |
 | `ORTOOLS_WIN7_SPIKE.md` | OR-Tools 在 Win7 / Python 3.8 离线环境下的可行性结论 |
 | `plugins/README.md` | 自研插件约定与当前插件清单 |
-| `audit/README.md` | 审计归档入口 |
 
 ## Win7 / Python 3.8 兼容边界
 

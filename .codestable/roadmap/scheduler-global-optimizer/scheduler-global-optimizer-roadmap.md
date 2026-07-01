@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: scheduler-global-optimizer
 status: active
 created: 2026-06-26
-last_reviewed: 2026-06-29
+last_reviewed: 2026-07-01
 tags: [scheduler, optimizer, global-search, graph-ready, alns, benchmark, python38, win7]
 related_requirements:
   - candidate-comparison-business-view
@@ -122,6 +122,35 @@ related_architecture:
 - 不把相同候选、相同排程结果、相同 fingerprint 的重复尝试包装成“探索到了很多不同方案”。
 - 不让候选方案、模拟方案、历史正式方案开放现场写入入口。
 
+### 剪枝策略包定位：不新增独立剪枝算法路线
+
+本路线不新增一条独立的“剪枝算法”主线。这里的剪枝只作为现有排产优化搜索里的候选过滤、邻域缩小、重复解拒绝、预算控制、trace 统计和证明门禁能力存在，统一称为“剪枝策略包”。
+
+大白话说：剪枝不是另起一个新算法来直接排产，而是在现有搜索里少试一些明显没用、重复、不可行、超预算或不可比较的候选，省时间、少误报。但只要某个候选最后要被采纳，它仍然必须回到正式排产链里重排一遍，由正式 objective score 和 CandidateFingerprint 来裁判。
+
+剪枝必须遵守以下边界：
+
+- 剪枝只能减少“要完整跑正式排产链的候选数量”，不能替代正式 `ScheduleService -> orchestrator -> optimize_schedule -> GreedyScheduler -> SGS/Greedy` 主链。
+- 剪枝不能直接写 `ScheduleResult`、`start_time`、`end_time`、正式计划表或持久化结果。
+- 候选被剪掉，只能说明“没有进入正式评估”或“按明确规则被拒绝”，不能说明“已证明不会更好”。
+- 因时间、top-K、邻居数或全局 deadline 不足而没生成 / 没评估的候选，必须记为 `skipped_by_budget`，不能记为证明型 `pruned_by_bound`。
+- 只有同目标、同指标、同模型口径下的安全下界，才允许进入 bound 类剪枝；不可比下界只能写 `not_comparable`。
+- `makespan` 下界不能证明 `min_overdue`、`min_tardiness`、`min_changeover` 等非同目标改进。
+- 同 decision、同 decoded output、同 fingerprint 的重复候选必须进入 duplicate / same_fingerprint 拒绝统计，不能包装成探索了多个不同方案。
+- 所有被采纳候选必须重新走正式 SGS / Greedy 解码、CandidateFingerprint、candidate_is_preferred、search_report 和 benchmark gate。
+- operator reward、邻域权重、剪枝命中率只能影响后续候选选择概率，不能直接覆盖正式 objective score。
+- 组合候选池的事后最优结果只能按组合池语义报告，不能偷归因给单个剪枝规则或单个算法。
+
+剪枝策略包分别承载在现有 item 中，不新增 `pruning-algorithm` item：
+
+- `graph-ready-v2-elite-local-repair`：先落生产级 GraphReady v2 前 K 精英候选轻量修补剪枝。
+- `graph-ready-v2-portfolio-integration`：把 `graph_ready_v2_repaired` 作为统一候选池来源接入，不把修补 / 剪枝包装成独立算法。
+- `graph-ready-v2-comparative-ratchet-gate`：只做证明门禁，防止不可比下界、dirty proof、预算未评估候选被包装成证明。
+- `alns-graph-ready-bridge-contract`、`alns-partial-repair-contract`、`alns-sgs-repair-adapter`：保证剪枝只影响候选范围，不绕过图桥接、局部 repair 合同和 SGS repair 适配。
+- `alns-state-operators-core`：定义通用 pruning report、candidate accounting、rule version、安全状态和算子接口。
+- `alns-domain-neighborhood-operators`、`alns-setup-aware-neighborhoods`：定义关键块、移动瓶颈、联合机器-排序、换型感知等领域邻域剪枝规则。
+- `alns-selection-acceptance-trace`：记录每条剪枝规则、每条候选拒绝原因、operator reward 和归因边界。
+
 ## 3. 模块拆分（概设）
 
 ```text
@@ -166,12 +195,14 @@ scheduler-global-optimizer
 ### 模块 E · 工序图就绪优化层
 
 - **职责**：在已有工序图 report/on 能力之上，优化“这一轮哪些工序已经具备排产资格、多个就绪工序之间先排谁”。本层只调就绪候选排序、图权重和候选选择，不重新引入图分析主链，也不提前写任何可变工序的开始/结束时间。
+- **剪枝补充职责**：GraphReady v2 elite repair 只对已经正式 SGS 解码并进入候选池的前 K 个精英候选生成有限邻居；邻居必须重新走正式 SGS 解码、CandidateFingerprint 和严格 score 比较。未生成、重复、超预算、不可行和 same_fingerprint 候选必须分别进入 repair / pruning 统计，不能写成已证明无改进。
 - **承载的子 feature**：`graph-ready-local-search-contract`、`graph-ready-priority-tuning`、`graph-ready-v2-objective-feature-contract`、`graph-ready-v2-bottleneck-resource-score`、`graph-ready-v2-candidate-portfolio`、`graph-ready-v2-elite-local-repair`
 - **触碰的现有代码 / 模块**：`schedule_graph_dispatch_context.py`、`core/algorithms/greedy/dispatch/sgs_graph.py`、`core/algorithms/greedy/dispatch/sgs.py`、`sgs_scoring.py`、`optimizer_local_search.py`、`optimizer_candidate_profile.py`、`optimizer_search_report.py`。
 
 ### 模块 F · 自适应大邻域拆修搜索层
 
 - **职责**：实现纯 Python 的自适应大邻域拆修搜索外壳：选择 destroy/repair 算子、记录算子权重、按 acceptance 接受或拒绝候选、持续维护 best/current。
+- **剪枝补充职责**：本层负责统一候选计数、剪枝规则版本、剪枝安全状态、预算跳过和 operator pruning trace；剪枝只影响 destroy / repair 候选生成与评估顺序，不能绕过 SGS repair，也不能直接改 objective score。
 - **承载的子 feature**：`alns-graph-ready-bridge-contract`、`alns-state-operators-core`、`alns-selection-acceptance-trace`
 - **2026-06-29 增补承载**：`alns-domain-neighborhood-operators`、`alns-setup-aware-neighborhoods`，只在 SGS repair 适配和基准量尺到位后补领域算子，不提前写可变工序时间。
 - **触碰的现有代码 / 模块**：新增 `core/services/scheduler/run/alns_*` 或同级窄职责模块；不直接放进 GreedyScheduler 内部。
@@ -256,6 +287,79 @@ OptimizationSearchReport = {
 | 达到迭代上限 | `iteration_limit` | 当前 best 来源 | 迭代上限触发 | configured/effective 迭代数 |
 | strict 模式候选校验失败 | `validation_error` 后 fail-loud | 无 | 失败而非成功 outcome | 校验类型和安全摘要 |
 | repair 失败 | `repair_failed` 或 `candidate_rejected` | 当前 best 来源 | repair 未采纳 | repair 失败分类，不能返回原方案假装成功 |
+
+### 4.1.1 `OptimizationPruningReport`
+
+**方向**：候选生成 / 邻域 / ALNS operator -> `OptimizationSearchReport` -> diagnostics / benchmark gate
+**形式**：纯 dict，作为 `OptimizationSearchReport["pruning_report"]` 或阶段级 `candidate_profile["..."]["pruning"]` 的结构化子对象。public 只展示安全聚合摘要，raw rule trace 只能进入 diagnostics。
+
+**契约**：
+
+```python
+OptimizationPruningReport = {
+    "schema_version": 1,
+    "phase": "graph_ready_v2_elite_repair|alns_destroy_repair|alns_domain_neighborhood|selection_acceptance",
+    "pruning_enabled": False,
+    "pruning_strategy": "none|elite_top_k|domain_scope_filter|duplicate_decision|bound|dominance|budget_guard|hybrid",
+    "pruning_rule_version": "none",
+    "candidate_space_total": None,
+    "candidate_space_total_status": "exact|upper_bound|estimated|unknown",
+    "generated_candidates": 0,
+    "evaluated_candidates": 0,
+    "pruned_candidates": 0,
+    "rejected_candidates": 0,
+    "skipped_by_budget": 0,
+    "pruned_by_rule": {},
+    "rejected_by_reason": {},
+    "duplicate_decision_pruned": 0,
+    "duplicate_output_rejected": 0,
+    "same_fingerprint_rejected": 0,
+    "pruned_by_bound": 0,
+    "pruned_by_dominance": 0,
+    "pruned_by_feasibility_guard": 0,
+    "pruned_by_scope_filter": 0,
+    "pruning_safety_status": "not_applicable|safe_exact|safe_duplicate|safe_feasibility|heuristic_scope_reduction|budget_only|not_comparable|unsafe_disallowed",
+    "objective_name": "min_overdue",
+    "objective_compatibility": "same_objective|not_comparable|not_applicable",
+    "bound_metric": None,
+    "bound_value": None,
+    "bound_reason": None,
+    "budget_ms": None,
+    "runtime_ms": 0,
+    "rule_trace": [],
+}
+```
+
+**字段语义**：
+
+- `candidate_space_total`：当前 phase 理论候选空间大小；算不清必须写 `None`，并把 `candidate_space_total_status` 写成 `unknown`，不能编造精确值。
+- `generated_candidates`：已经显式生成出来、可被评估或剪掉的候选数量。
+- `evaluated_candidates`：真正调用正式 Greedy / SGS 解码并产生 `results` / `summary` / `metrics` / `score` 的候选数量。
+- `pruned_candidates`：生成后、正式解码前，因为明确剪枝规则没有进入评估的候选数量。
+- `rejected_candidates`：已经评估或校验后被拒绝的候选数量。
+- `skipped_by_budget`：因为时间、邻居数、top-K 或迭代预算没有生成 / 没有评估的候选数量；这不是证明型剪枝。
+- `duplicate_decision_pruned`：同一 phase 内重复 decision key，尚未正式解码即可跳过。
+- `duplicate_output_rejected` / `same_fingerprint_rejected`：正式解码后发现 output fingerprint 重复，只能算 rejected，不能默认算 pre-evaluation pruning。
+- `pruned_by_bound`：只能在 bound 与当前 `objective_name` 同目标、同指标、同模型时使用；否则必须写 `objective_compatibility=not_comparable`。
+- `pruning_safety_status=heuristic_scope_reduction` 表示只是启发式缩小邻域，不能被 benchmark gate 当成数学证明。
+- `budget_only` 表示只是预算截断，不能写成“已证明没必要试”。
+
+**计数约束**：
+
+```python
+generated_candidates >= evaluated_candidates
+generated_candidates >= pruned_candidates
+generated_candidates >= evaluated_candidates + pruned_candidates
+skipped_by_budget >= 0
+```
+
+`evaluated_candidates` 必须等于本 phase 中真实调用正式排产解码的次数。`same_fingerprint_rejected` 只能来自 decoded output fingerprint，不得在未解码候选上伪造。
+
+**安全约束**：
+
+- 剪枝报告不得包含 raw `op_id`、`schedule_id`、`candidate_id`、`source_table` 或 fingerprint hash 进入 public 页面。
+- public 只展示计数、规则名、中文摘要和安全状态。
+- diagnostics 可保留 rule trace，但仍要遵守内部 id 边界。
 
 ### 4.2 `BenchmarkReference`
 
@@ -550,7 +654,10 @@ GraphReadyV2CandidateProfile = {
         "enabled": False,
         "top_k": 0,
         "max_neighbors_per_elite": 0,
+        "time_budget_ms": 0,
         "moves": ["adjacent_ready_swap", "single_insert", "tardy_boundary_move"],
+        "pruning_strategy": "elite_top_k|duplicate_decision|budget_guard",
+        "pruning_report": "OptimizationPruningReport",
     },
     "comparison_baseline_ref": "BenchmarkAlgorithmComparisonSnapshot",
 }
@@ -573,7 +680,7 @@ GraphReadyV2CandidateProfile = {
 - EDD、最小松弛时间、关键比率、ATC-like 不能只停留在名字：item 17 设计时必须写明每个规则的输入字段、计算公式、同分规则、缺字段时的 skipped / candidate_rejected 原因，并把公式版本写进 diagnostics，避免后续实现各自猜。
 - 不允许写死当前 4 工序样例的赢家顺序。v2 要抽象为“保护更多可准交批次、必要时牺牲长尾批次”，并用反例样例防过拟合。
 - 小规模扰动只能在分数接近的 ready 候选之间做，必须 seed 派生、可复现、进 diagnostics；扰动不能绕过前后置、资源资格、冻结、执行态保护。
-- v2 后接轻量局部修补时，只能对 top-K elite 候选做有限邻域，如相邻 ready swap、single insert、tardy boundary move；每个候选必须有硬 `max_neighbors_per_elite` 和 `time_budget_ms`，只接受真实 objective 严格改进。
+- v2 后接轻量局部修补时，只能对 top-K elite 候选做有限邻域，如相邻 ready swap、single insert、tardy boundary move；每个候选必须有硬 `max_neighbors_per_elite` 和 `time_budget_ms`，只接受真实 objective 严格改进。repair 过程必须输出 `OptimizationPruningReport`，分清 `generated_candidates`、`evaluated_candidates`、`pruned_candidates`、`rejected_candidates` 和 `skipped_by_budget`，不能把预算没跑写成 bound proof。
 
 **多算法同台比较要求**：
 
@@ -764,6 +871,10 @@ FJSP 的 `makespan_hours` 只作为技术参考和图关系收益证据，不得
 - `graph_ready_v2` 必须至少拆成 `graph_ready_v2_no_repair` 和 `graph_ready_v2_with_repair` 两列，避免局部修补收益被误写成纯候选生成收益。
 - `portfolio_all` 是所有候选来源统一入池后按真实 objective 择优的事后上界结果，它不是 GraphReady 独占收益，也不是同预算普通算法。报告里必须标 `posthoc_upper_bound`，普通胜平负必须标 `not_comparable`，并区分 `graph_ready_generated_best`、`graph_ready_repaired_best`、`graph_ready_seeded_other_best` 和 `graph_ready_not_in_best_path`。
 - 轻门禁可以只跑小样本和核心对比；中门禁必须跑 FJSP / SMTWT / 大资源池；长门禁至少 10 seed，并报告均值、最差值、标准差、重复候选率、候选拒绝率和每个算法族胜 / 平 / 负。
+- `pruning_enabled=true` 时，必须存在 `pruning_report` 或阶段级 pruning summary；`evaluated_candidates` 必须等于真实正式 SGS / Greedy 解码次数，不能把 pruned / skipped 候选算进去。
+- `skipped_by_budget` 必须单独报告，不能计入 `pruned_by_bound`；如果出现 `pruned_by_bound > 0`，必须同时报告 `objective_name`、`bound_metric`、`objective_compatibility=same_objective`，否则门禁失败或强制 `not_comparable`。
+- 如果 `bound_metric=makespan` 且 `objective_name` 属于 `min_overdue` / `min_tardiness` / `min_changeover`，必须标 `not_comparable`，不能进入 gap / improved 证明。
+- `duplicate_decision_pruned` 和 `same_fingerprint_rejected` 必须分开计数；后者只能来自正式 decoded output fingerprint，不能在未解码候选上伪造。
 
 ### 4.11 工序图到拆修搜索桥接合同
 
@@ -792,6 +903,9 @@ GraphReadyRepairBridge = {
 - 桥接项必须在 `alns-partial-repair-contract` 之前完成；否则拆修搜索不能消费图指标。
 - `critical_operation_ids`、`bottleneck_machine_ids`、`downstream_work_by_op_id`、`ready_rank_by_op_id` 只能来自第 9-13 项和 GraphReady v2 已校验过的图上下文、目标感知特征或 diagnostics，不能在 ALNS 内部重新跑另一套图分析主链。
 - 图桥接只能帮助选择 destroy scope 或 repair 优先级；不能直接写可变工序 `start_time` / `end_time`。
+- GraphReady v2 的 ready rank、elite repair 结果和 `pruning_report` 只能作为 ALNS destroy scope / repair priority 的输入摘要。
+- 桥接层不得重新解释 GraphReady 剪枝为数学证明，也不得把 `graph_ready_v2_repaired` 的胜出结果拆成单个剪枝规则的独立算法胜利。
+- 进入 ALNS 的只应是脱敏后的候选摘要、rank、scope 和统计字段，不传 raw graph 对象或 public 禁止 id。
 - 拆修搜索完成后必须以 `algorithm_profile=alns`、`best_origin=alns`、`candidate_origin=alns_*` 接回第 11 项和第 19 项同一套自动选择合同。
 - 拆修搜索接入后，item 21 的多算法基准矩阵必须原样复用，并新增 repair 失败、重复候选、同一张表、图不可用、图桥接缺字段五类异常样例。
 - 主候选的非法 score、非法 repair 输出、非法 seed_results 必须 fail-loud；只有 diagnostics 展示排序这类只读辅助面可以做容错展示，且必须明确“不参与采纳”。
@@ -929,70 +1043,70 @@ GraphReadyRepairBridge = {
     - 依赖：`graph-ready-v2-candidate-portfolio`
     - 状态：in_progress
     - 对应 feature：未完整落地
-    - 备注：benchmark 支撑里已有 adjacent swap 与 single insert 的确定性 repair 脚手架，并能区分 `graph_ready_v2_no_repair` / `graph_ready_v2_with_repair`；生产 core 仍未落地 top-K elite、邻域上限、时间预算、tardy boundary move 和正式 SGS 接受链，因此保持 in_progress。
+    - 备注：本项是剪枝策略包的第一个生产落点，不新增独立剪枝算法。benchmark 支撑里已有 adjacent swap 与 single insert 的确定性 repair 脚手架，并能区分 `graph_ready_v2_no_repair` / `graph_ready_v2_with_repair`；生产 core 仍未落地 top-K elite、邻域上限、时间预算、tardy boundary move、repair pruning report 和正式 SGS 接受链，因此保持 in_progress。后续完成标准是：只对已正式 SGS 解码的前 K 精英候选生成有限邻居，邻居重新走正式 SGS、CandidateFingerprint 和严格 score 比较；重复、超预算、不可行、same_fingerprint 必须分开统计。
 
 20. **graph-ready-v2-portfolio-integration** — 把 GraphReady v2 作为候选来源接入统一候选池，与贪心、局部搜索、GRASP/IG、GraphReady v1 共同择优。
     - 所属模块：接入与展示边界层
     - 依赖：`graph-ready-v2-elite-local-repair`
     - 状态：in_progress
     - 对应 feature：未完整落地
-    - 备注：GraphReady v2 no-repair 候选池已接入生产 GraphReady 正式 profile，不再依赖 benchmark 注入；生产路径经正式 SGS 和统一 candidate preference / output fingerprint 去重，胜出来源为 `graph_ready_v2_generated`。仍未完成“与 GRASP/IG、VNS/SA 同一生产候选池并行择优”和 `graph_ready_v2_repaired` 生产来源，因此保持 in_progress。
+    - 备注：GraphReady v2 no-repair 候选池已接入生产 GraphReady 正式 profile，不再依赖 benchmark 注入；生产路径经正式 SGS 和统一 candidate preference / output fingerprint 去重，胜出来源为 `graph_ready_v2_generated`。仍未完成“与 GRASP/IG、VNS/SA 同一生产候选池并行择优”和 `graph_ready_v2_repaired` 生产来源，因此保持 in_progress。`graph_ready_v2_repaired` 只能作为统一候选池里的一个 `candidate_origin`，不能包装成独立剪枝算法；`portfolio_all` 仍只能按事后上界 / `not_comparable` 口径报告。
 
 21. **graph-ready-v2-comparative-ratchet-gate** — 建立 GraphReady v2 修改后的轻 / 中 / 长对比门禁，和当前基准及其他算法做胜平负统计。
     - 所属模块：长跑调参与门禁层
     - 依赖：`graph-ready-v2-portfolio-integration`
     - 状态：in_progress
     - 对应 feature：未完整落地
-    - 备注：已能输出 v2 对 `local_search`、`grasp_ig`、`graph_ready_v1` 的胜 / 平 / 负；`portfolio_all` 只能作为事后上界报告差距、来源和 `not_comparable`，不能纳入同预算普通胜负。当前证据仍是 dirty worktree / `unbound_dirty_worktree`，且长跑脚本仍是旧 graph_ready 长跑，未建立最新 HEAD clean comparative ratchet baseline，因此保持 in_progress；缺算法、缺指标、目标不可比或 dirty proof 冒充 clean proof 时必须失败或标 `not_comparable`。
+    - 备注：本项只做比较门禁和反假证明，不实现剪枝算法本体。已能输出 v2 对 `local_search`、`grasp_ig`、`graph_ready_v1` 的胜 / 平 / 负；`portfolio_all` 只能作为事后上界报告差距、来源和 `not_comparable`，不能纳入同预算普通胜负。当前证据仍是 dirty worktree / `unbound_dirty_worktree`，且长跑脚本仍是旧 graph_ready 长跑，未建立最新 HEAD clean comparative ratchet baseline，因此保持 in_progress；缺算法、缺指标、目标不可比、dirty proof 冒充 clean proof、预算未评估冒充 bound proof、same_fingerprint 冒充 improvement 时必须失败或标 `not_comparable`。
 
 22. **alns-graph-ready-bridge-contract** — 定义工序图闭环产物如何喂给自适应大邻域拆修搜索。
    - 所属模块：自适应大邻域拆修搜索层
    - 依赖：`graph-ready-v2-comparative-ratchet-gate`
    - 状态：planned
    - 对应 feature：未启动
-   - 备注：桥接项只消费第 9-13 项和 GraphReady v2 已校验过的图摘要、目标感知 ready rank、瓶颈资源分和多算法 ratchet baseline，不重新跑另一套图主链；桥接结果只能影响 destroy scope / repair priority，不能直接写可变工序时间。
+   - 备注：桥接项只消费第 9-13 项和 GraphReady v2 已校验过的图摘要、目标感知 ready rank、瓶颈资源分、多算法 ratchet baseline 和脱敏 pruning summary，不重新跑另一套图主链；桥接结果只能影响 destroy scope / repair priority，不能直接写可变工序时间，也不能把 GraphReady 剪枝重新解释成数学证明。
 
 23. **alns-partial-repair-contract** — 定义自适应大邻域拆修搜索的局部拆修 allowed-op、payload validation 和执行态保护复用合同。
    - 所属模块：SGS repair 适配层
    - 依赖：`alns-graph-ready-bridge-contract`
    - 状态：planned
    - 对应 feature：未启动
-   - 备注：局部 repair 结果必须复用正式排产守门链，不能只靠拆修搜索内部校验。
+   - 备注：局部 repair 结果必须复用正式排产守门链，不能只靠拆修搜索内部校验。剪枝只允许减少 repair request 的候选数量，不能减少 allowed-op、payload validation、执行态保护检查；被剪掉、被评估、被拒绝、因预算跳过的候选都必须进入 `OptimizationPruningReport`。
 
 24. **alns-state-operators-core** — 建立自适应大邻域拆修搜索 state、destroy/repair operator 接口、operator reward 和权重更新。
     - 所属模块：自适应大邻域拆修搜索层
     - 依赖：`alns-partial-repair-contract`
     - 状态：planned
     - 对应 feature：未启动
-    - 备注：先做纯 Python 外壳，不引入 `alns` / `job-shop-lib` 包、NumPy/Matplotlib 或重依赖。`ALNSOperatorResult` 字段必须在本项启动时定稿，非法 score / repair 输出 / seed_results 必须 fail-loud。
+    - 备注：先做纯 Python 外壳，不引入 `alns` / `job-shop-lib` 包、NumPy/Matplotlib 或重依赖。`ALNSOperatorResult`、`ALNSPruningReport`、`PruningRuleDecision`、`PruningRuleTrace` 字段必须在本项启动时定稿，非法 score / repair 输出 / seed_results 必须 fail-loud。operator reward 只能影响后续选择概率，不能覆盖 objective score。
 
 25. **alns-sgs-repair-adapter** — 把拆修搜索 repair 接到现有 SGS，确保 repair 后完整校验并返回候选结果。
     - 所属模块：SGS repair 适配层
     - 依赖：`alns-state-operators-core`
     - 状态：planned
     - 对应 feature：未启动
-    - 备注：`seed_results` 只能放保护/执行态固定片段，mutable operations 必须由 SGS 重新落位。
+    - 备注：`seed_results` 只能放保护/执行态固定片段，mutable operations 必须由 SGS 重新落位。ALNS 剪枝后留下的候选必须通过本项 SGS repair adapter 执行正式排产；adapter 必须把 evaluated / rejected 计数回填到 pruning report 和 search report，不能让 ALNS 外壳自行宣称评估成功。
 
 26. **alns-domain-neighborhood-operators** — 定义 ALNS 领域邻域算子：联合机器-排序、关键块 N5 和移动瓶颈候选。
     - 所属模块：自适应大邻域拆修搜索层
     - 依赖：`alns-sgs-repair-adapter`
     - 状态：planned
     - 对应 feature：未启动
-    - 备注：只生成资源 override、batch_order 或 repair request，不直接写工序时间；机器选择必须先确认业务资源资格真实可选，缺资格数据一律 rejected / fail-loud；关键块 N5 和移动瓶颈只作为 destroy scope、repair priority 或 operator 候选，仍复用正式 SGS 解码和 CandidateFingerprint。
+    - 备注：本项承载领域剪枝规则，不新增独立剪枝算法。只生成资源 override、batch_order 或 repair request，不直接写工序时间；机器选择必须先确认业务资源资格真实可选，缺资格数据一律 rejected / fail-loud；关键块 N5、移动瓶颈、联合机器-排序、延期边界剪枝只作为 destroy scope、repair priority 或 operator 候选，仍复用正式 SGS 解码和 CandidateFingerprint。scope filter 只能标 `heuristic_scope_reduction`，不能标 `safe_exact` proof。
 
 27. **alns-setup-aware-neighborhoods** — 在换型基准量尺到位后定义 setup-aware 拆修邻域。
     - 所属模块：自适应大邻域拆修搜索层
     - 依赖：`alns-domain-neighborhood-operators`、`benchmark-reference-diagnostics-baseline`
     - 状态：planned
     - 对应 feature：未启动
-    - 备注：等换型基准、不可比诊断和 ALNS repair 链到位后再做；只优化换型相关候选作用域和排序/资源决策，不把 setup 收益写成缺证据的 objective improvement；无 SDST / WTSDS 等可比样例时只能跳过或标 `not_comparable`。
+    - 备注：等换型基准、不可比诊断和 ALNS repair 链到位后再做；只优化换型相关候选作用域和排序/资源决策，不把 setup 收益写成缺证据的 objective improvement；无 SDST / WTSDS 等可比样例时只能跳过或标 `not_comparable`。setup-aware pruning 只能在同目标评分口径到位后启用，否则只能标 `heuristic_scope_reduction` 或 `not_comparable`。
 
 28. **alns-selection-acceptance-trace** — 实现拆修搜索 operator 选择、threshold / Record-to-Record Travel / SA acceptance、segment 权重更新和 trace 输出。
     - 所属模块：自适应大邻域拆修搜索层
     - 依赖：`alns-sgs-repair-adapter`
     - 状态：planned
     - 对应 feature：未启动
-    - 备注：operator reward 只影响后续选择概率，不能直接覆盖 objective score。
+    - 备注：operator reward 只影响后续选择概率，不能直接覆盖 objective score。本项承载 pruning trace、candidate rejection trace、reward update trace 和归因边界；posthoc portfolio best 只能写 `portfolio_all` / `posthoc_upper_bound` / `not_comparable`，不能偷归因给单个 operator。
 
 **最小闭环**：第 1 条 `optimizer-proof-harness` 做完后，系统能在不改写 tracked evidence 的前提下，运行 tiny oracle / lower bound / 当前算法对比，并明确输出“是否证明最优、gap 绑定的是哪个目标和指标、是否只能参考”。
 
@@ -1029,9 +1143,9 @@ v1 已完成链路是：
 3. **目标感知特征（item 16,done）**：已加入交期压力、松弛时间、可救批次、剩余工时、工时密度和长尾牺牲等特征，让 `min_overdue` 先懂“能不能多救一个批次”。
 4. **瓶颈资源分 v2（item 17,done）**：已用残余容量、负荷分摊、最小候选负荷、灵活性降权和交期门控，替换“能跑瓶颈机就高分”的粗糙口径。
 5. **候选家族（item 18,done）**：已新增目标规则、图交期混合、瓶颈交期混合、长尾牺牲和小扰动候选，不再只调旧 9 组图权重。
-6. **轻量 elite 修补（item 19,in_progress）**：benchmark 支撑已有脚手架,生产 core 仍需补 top-K、邻域上限、时间预算、tardy boundary move 和正式 SGS 接受链,并单独报告有无修补的收益。
-7. **组合池接入（item 20,in_progress）**：v2 no-repair 已作为 GraphReady 正式 profile 接入;仍需完成与贪心、局部搜索、GRASP/IG、v1 的同一生产候选池择优,以及 repaired 生产来源。
-8. **修改后对比门禁（item 21,in_progress）**：已有 dirty worktree 对比证据,但还缺最新 HEAD clean comparative ratchet baseline;后续仍要和 item 15 的“修改前”基准比较,并输出 v2 对 `local_search`、GRASP/IG、v1 的胜 / 平 / 负；`portfolio_all` 只作为事后上界报告差距和来源，不能参与同预算普通胜负。
+6. **轻量 elite 修补（item 19,in_progress）**：benchmark 支撑已有脚手架,生产 core 仍需补 top-K、邻域上限、时间预算、tardy boundary move、repair pruning report 和正式 SGS 接受链,并单独报告有无修补的收益。
+7. **组合池接入（item 20,in_progress）**：v2 no-repair 已作为 GraphReady 正式 profile 接入;仍需完成与贪心、局部搜索、GRASP/IG、v1 的同一生产候选池择优,以及 repaired 生产来源。`graph_ready_v2_repaired` 只是统一候选池里的来源之一,不是独立剪枝算法。
+8. **修改后对比门禁（item 21,in_progress）**：已有 dirty worktree 对比证据,但还缺最新 HEAD clean comparative ratchet baseline;后续仍要和 item 15 的“修改前”基准比较,并输出 v2 对 `local_search`、GRASP/IG、v1 的胜 / 平 / 负；`portfolio_all` 只作为事后上界报告差距和来源，不能参与同预算普通胜负；剪枝报告缺失、不可比下界冒充证明、预算未评估冒充 bound proof、same_fingerprint 冒充 improvement 都必须失败或标 `not_comparable`。
 
 这一段的硬要求是“改完必须和现在的基准比，也必须和其他算法比”。不能只写“v2 赢 greedy”，不能拿 FJSP makespan 当 APS 业务目标最优证明，也不能把 dirty proof 包装成 clean proof。
 
@@ -1041,15 +1155,15 @@ v1 已完成链路是：
 
 1. **工序图桥接合同（item 22）**：先规定拆修搜索只能消费第 9-13 项和 v2 沉淀出的图摘要、目标感知 ready rank、瓶颈资源分和多算法基准，不能重建图主链。
 2. **局部拆修合同（item 23）**：锁住 allowed-op、payload 校验和执行态保护，防止拆修搜索绕开正式排产守门链。
-3. **搜索状态和算子外壳（item 24）**：纯 Python 实现 state、destroy/repair operator、operator reward 和权重更新，不引入重依赖。
-4. **SGS repair 适配（item 25）**：被拆掉的工序必须交回现有 SGS 正式落位，不能由新算法直接写开始结束时间。
-5. **领域邻域算子（item 26）**：定义联合机器-排序、关键块 N5 和移动瓶颈候选,但仍只生成资源 override、batch_order 或 repair request。
-6. **换型感知邻域（item 27）**：换型基准量尺到位后再定义 setup-aware 拆修邻域,不可把 setup 收益写成缺证据的 objective improvement。
-7. **选择、接受和 trace（item 28）**：把算子选择、接受准则、权重更新和 trace 归一到搜索报告里。
+3. **搜索状态和算子外壳（item 24）**：纯 Python 实现 state、destroy/repair operator、operator reward、权重更新和通用 pruning report，不引入重依赖。
+4. **SGS repair 适配（item 25）**：被拆掉的工序必须交回现有 SGS 正式落位，不能由新算法直接写开始结束时间；剪枝后留下的候选也必须经由这个 adapter 真正解码。
+5. **领域邻域算子（item 26）**：定义联合机器-排序、关键块 N5、移动瓶颈和延期边界候选,但仍只生成资源 override、batch_order 或 repair request；领域剪枝只能缩小候选范围，不能写成数学证明。
+6. **换型感知邻域（item 27）**：换型基准量尺到位后再定义 setup-aware 拆修邻域,不可把 setup 收益写成缺证据的 objective improvement；没有可比换型基准时只能 skip 或 `not_comparable`。
+7. **选择、接受和 trace（item 28）**：把算子选择、接受准则、权重更新、pruning trace、拒绝原因和归因边界归一到搜索报告里。
 
 本轮新增的 ALNS 领域算子不前移到 GraphReady v2：`alns-domain-neighborhood-operators` 等 SGS repair 适配完成后，再定义联合机器-排序、关键块 N5 和移动瓶颈这类 operator 候选；`alns-setup-aware-neighborhoods` 还要等换型基准量尺到位，避免把缺证据的 setup 收益写成真实 objective 改进。
 
-这七项仍然保留为 planned，并且排在 GraphReady v2 之后。这样路线图不会删除后续高级搜索，但实际推进顺序会先把图候选自身做强、量尺做准，再让拆修搜索复用同一套图摘要、自动选择和 benchmark 证据。
+这七项仍然保留为 planned，并且排在 GraphReady v2 之后。这样路线图不会删除后续高级搜索，也不会把“剪枝算法”单独变成一条新主线；实际推进顺序会先把图候选自身做强、量尺做准，再让拆修搜索复用同一套图摘要、自动选择、剪枝报告和 benchmark 证据。
 
 ## 7. 观察项
 
@@ -1059,6 +1173,7 @@ v1 已完成链路是：
 - `candidate-comparison-business-view` 已是 current，但 `VISION.md` 中状态可能需要刷新。
 - `diagnostic-public-id-boundary-fix` 更像 issue/安全边界修复；本路线把它列为新增 search report / diagnostics 的前置 feature，也可以单独走 `cs-issue` 先完成。
 - 当前工作区已有未提交改动和 benchmark evidence 修改，任何 clean proof 都必须在最新 HEAD 与干净工作区上重新跑。
+- 2026-07-01 审阅剪枝口径后确认：不新增独立“剪枝算法”路线，不引入分支定界生产主引擎或束搜索默认引擎。剪枝策略包作为现有 scheduler-global-optimizer 的补充合同存在，先服务 item 19 GraphReady v2 elite repair，再进入 item 24/26/28 的 ALNS state/operator、领域邻域和 trace，同时由 item 21 做反假证明门禁。核心边界是：剪枝只减少候选评估次数，不替代正式 SGS / Greedy 解码，不把预算未评估、不可比下界或重复 fingerprint 包装成改进证明。
 - 2026-06-29 基准复核确认：工序图就绪队列派工的收益集中在有工序前后关系的场景。FJSP 默认 5 个样例里，平均总完工时长从批次顺序派工 262.60h、普通串行派工 236.20h，降到工序图就绪队列派工 206.60h；平均参考差距从 62.67% / 46.37% 降到 33.79%。但在 SMTWT 这类单工序样例上，普通串行派工和工序图就绪队列派工都是平均 gap 16.16、达最优 39/250；大资源池和碎片时间线也基本持平。归属：item 9-13 先做工序图局部搜索、权重比较、自动选择和门禁。
 - 2026-06-29 Exa MCP 补强调研没有推翻当前主线，但补出三个路线图缺口：① FJSP/JSP 常见算法证据支持大邻域搜索、禁忌搜索、移动瓶颈法和图 / 优先级规则混合，但本仓库仍应先走纯 Python、SGS repair、无重依赖路线；② 拖期和换型目标必须有专门基准，不能用 FJSP makespan 参考结果替代；③ 启发式算法验收必须多样例、多 seed、报告均值和最差值，不能只展示单次最好结果。归属：item 12 / 13 的门禁矩阵和长跑证据格式。
 - 2026-06-29 对抗审查后确认：GP 超启发式只适合作为研究候选，不进入当前主线 items。原因是两份路线图文件里没有现成接口、基准或 Win7 / Python 3.8 / 纯 Python 落地边界支撑；若未来重新评估，必须先证明它只生成可解释的规则 / 候选决策，并继续回 SGS 解码。
@@ -1086,6 +1201,7 @@ v1 已完成链路是：
 
 ## 8. 变更日志
 
+- 2026-07-01：审阅并落档“剪枝策略包”路线图口径。明确不新增独立 `pruning-algorithm` item，不把分支定界 / 束搜索做成生产主线；新增 §2 剪枝策略包定位、§4.1.1 `OptimizationPruningReport` 合同，补模块 E/F 的剪枝职责、GraphReady v2 修补剪枝报告、多算法对比门禁、图桥接约束和 item 19-28 的剪枝 / repair / trace / 归因边界。items 状态不变：19-21 仍为 in_progress，22-28 仍为 planned。
 - 2026-06-26：创建 roadmap。基于本地调用链、9 个只读 Sub Agent、Exa 深研和现有 CodeStable 路线整理；本阶段明确不引入 OR-Tools，主线为 proof harness + public 边界修复 + GRASP/IG + VNS/SA + ALNS with SGS repair。
 - 2026-06-26：根据线上审阅补强 `APPROVE_WITH_CHANGES` 三项：optimizer 退出路径映射、SearchProfile configured/effective 报告、benchmark public/diagnostics 分层。
 - 2026-06-26：吸收非 OR-Tools 深研报告审阅意见：新增 `distinct-candidate-fingerprint-contract`，收紧全局最优口径、第三方库依赖边界、Record-to-Record Travel 全称命名和 same-fingerprint 不得伪成功合同。
