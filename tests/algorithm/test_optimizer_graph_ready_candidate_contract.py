@@ -299,6 +299,62 @@ def _same_schedule(*args: Any, **kwargs: Any):
     return results, _summary(results), kwargs["strategy"], dict(kwargs.get("strategy_params") or {})
 
 
+def _v2_ops() -> List[Any]:
+    return [
+        SimpleNamespace(id=1, batch_id="B1", source="internal", machine_id="MC-1", operator_id="OP-1", setup_hours=2.0, unit_hours=0.0),
+        SimpleNamespace(id=2, batch_id="B2", source="internal", machine_id="MC-1", operator_id="OP-1", setup_hours=1.0, unit_hours=0.0),
+    ]
+
+
+def _v2_batches() -> Dict[str, Any]:
+    return {
+        "B1": SimpleNamespace(batch_id="B1", priority="normal", due_date="2026-01-10", ready_status="yes", quantity=1),
+        "B2": SimpleNamespace(batch_id="B2", priority="normal", due_date="2026-01-10", ready_status="yes", quantity=1),
+    }
+
+
+def _run_graph_ready_v2_for_test(
+    *,
+    baseline: Dict[str, Any],
+    state: OptimizationSearchReportState,
+    strict_mode: bool,
+    profiles_override: List[GraphReadyWeightProfile],
+    attempts: List[Dict[str, Any]],
+    schedule_fn: Any = _same_schedule,
+) -> Dict[str, Any]:
+    return run_graph_ready_candidates(
+        algo_mode="improve",
+        best=baseline,
+        version=7,
+        scheduler=SimpleNamespace(_last_algo_stats={}),
+        algo_ops_to_schedule=_v2_ops(),
+        batches=_v2_batches(),
+        start_dt=_START,
+        end_date=None,
+        downtime_map={},
+        seed_sr_list=[],
+        base_strategy=SortStrategy.PRIORITY_FIRST,
+        base_params={},
+        build_order=lambda _strategy, _params: ["B1", "B2"],
+        dispatch_rule_cfg="slack",
+        resource_pool=None,
+        objective_name=_OBJECTIVE,
+        deadline=2000.0,
+        attempts=attempts,
+        improvement_trace=[],
+        optimizer_algo_stats={},
+        t_begin=1000.0,
+        readiness_gate_enabled=False,
+        strict_mode=bool(strict_mode),
+        graph_ready_context=_context(),
+        clock=_Clock(),
+        schedule_fn=schedule_fn,
+        search_report_state=state,
+        profiles_override=profiles_override,
+        profile_summary_override=graph_ready_v2_profile_summary(max_candidate_profiles=len(profiles_override)),
+    )
+
+
 def test_graph_ready_weight_profile_summary_lists_nine_profiles() -> None:
     summary = graph_ready_weight_profile_summary()
     assert summary["effective_weight_profile_count"] == 9
@@ -1298,6 +1354,44 @@ def test_graph_ready_v2_feature_error_fails_loud_even_when_not_strict() -> None:
             search_report_state=state,
             candidate_construction=candidate_profile.candidate_construction,
         )
+
+
+def test_graph_ready_v2_bad_formula_fails_loud_even_when_not_strict_with_profile_override() -> None:
+    baseline = _candidate([_result(1, "B1", 2), _result(2, "B2", 3)], failed_ops=1)
+    state = _state()
+    state.mark_candidate_accepted(baseline, origin="baseline")
+    attempts: List[Dict[str, Any]] = []
+
+    with pytest.raises(ValidationError) as exc_info:
+        _run_graph_ready_v2_for_test(
+            baseline=baseline,
+            state=state,
+            strict_mode=False,
+            profiles_override=[_v2_profile("unknown_formula")],
+            attempts=attempts,
+        )
+
+    assert exc_info.value.field == "graph_ready_v2_formula"
+    assert exc_info.value.details["reason"] == "graph_ready_bad_v2_formula"
+    assert attempts == []
+
+
+def test_graph_ready_v2_bad_formula_strict_fails_loud() -> None:
+    baseline = _candidate([_result(1, "B1", 2), _result(2, "B2", 3)], failed_ops=1)
+    state = _state()
+    state.mark_candidate_accepted(baseline, origin="baseline")
+
+    with pytest.raises(ValidationError) as exc_info:
+        _run_graph_ready_v2_for_test(
+            baseline=baseline,
+            state=state,
+            strict_mode=True,
+            profiles_override=[_v2_profile("unknown_formula")],
+            attempts=[],
+        )
+
+    assert exc_info.value.field == "graph_ready_v2_formula"
+    assert exc_info.value.details["reason"] == "graph_ready_bad_v2_formula"
 
 
 def test_graph_ready_v2_missing_due_date_keeps_v2_production_candidates_even_in_strict_mode() -> None:

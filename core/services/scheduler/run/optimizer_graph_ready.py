@@ -31,6 +31,7 @@ from .optimizer_graph_ready_reporting import (
     mark_phase_skipped,
     record_rejected_attempt,
 )
+from .optimizer_graph_ready_v2_contract import is_graph_ready_v2_contract_error
 
 if TYPE_CHECKING:
     from .optimizer_search_report import OptimizationSearchReportState
@@ -106,7 +107,7 @@ def run_graph_ready_candidates(
             strict_mode=bool(strict_mode),
         )
     except ValidationError as exc:
-        if strict_mode or _is_graph_ready_v2_feature_error(exc) or _is_graph_ready_candidate_policy_error(exc):
+        if strict_mode or is_graph_ready_v2_contract_error(exc):
             raise
         _record_invalid_context(
             exc,
@@ -157,21 +158,6 @@ def _phase_skip_reason(*, algo_mode: str, graph_ready_context: Optional[Any]) ->
     if str(algo_mode or "").strip().lower() != "improve":
         return "algo_mode_not_improve"
     return None
-
-
-def _is_graph_ready_v2_feature_error(exc: ValidationError) -> bool:
-    if str(getattr(exc, "field", "") or "") == "graph_ready_v2_features":
-        return True
-    details = getattr(exc, "details", None) or {}
-    reason = str(details.get("reason") or "")
-    return reason in {"graph_ready_bad_v2_feature", "graph_ready_missing_v2_feature"}
-
-
-def _is_graph_ready_candidate_policy_error(exc: ValidationError) -> bool:
-    if str(getattr(exc, "field", "") or "") == "graph_ready_candidate_policy":
-        return True
-    details = getattr(exc, "details", None) or {}
-    return str(details.get("reason") or "") == "graph_ready_bad_candidate_policy"
 
 
 def _validated_context_metrics(
@@ -376,7 +362,7 @@ def _evaluate_profile(
             v2_common_rank_cache=v2_common_rank_cache,
         )
     except ValidationError as exc:
-        if strict_mode or _is_graph_ready_v2_feature_error(exc):
+        if strict_mode or is_graph_ready_v2_contract_error(exc):
             raise
         _record_profile_rejection(
             exc,
