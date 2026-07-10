@@ -1,376 +1,502 @@
-# 下一轮 Agent 提示词：GraphReady v2 修补、组合池和对比门禁收口
+# 下一轮 Agent 执行提示词：GraphReady v2 生产级 repair、统一候选池与 clean comparative gate
 
-你是接手 `/Users/lurenxing/GitHub/----` 的下一轮实现 Agent。请默认使用简体中文，遵守仓库 `AGENTS.md` 和 CodeStable 工作流。你的任务是按 `.codestable/roadmap/scheduler-global-optimizer/` 里的最新路线图继续收口 GraphReady v2。当前 item 14-18 已完成, item 19-21 仍是 `in_progress`。接手时先核验这些状态和证据是否仍然成立,不要重复做已完成的前置量尺和修改前基准;真正要继续推进的是生产级 elite repair、与其它算法同一候选池择优、以及最新 HEAD 上的对比门禁证明。
+本文是 2026-07-10 收口后的下一轮执行入口。它只描述**当前已经落地的事实、仍未完成的 roadmap item 和后续验收边界**，不要重复实现已经完成的合同、报告和长跑 harness。
 
-## 0. 启动必读
+---
 
-先读：
+## 0. 当前交接水位线
 
-- `.codestable/attention.md`
-- `.codestable/reference/system-overview.md`
-- `.codestable/roadmap/scheduler-global-optimizer/scheduler-global-optimizer-roadmap.md`
-- `.codestable/roadmap/scheduler-global-optimizer/scheduler-global-optimizer-items.yaml`
-- `.codestable/roadmap/scheduler-global-optimizer/benchmark-ratchet-baseline.json`
-- `.codestable/roadmap/scheduler-global-optimizer/graph-ready-v2-comparison-baseline.json`
-- `.codestable/features/2026-06-29-scheduler-global-optimizer-items-9-13/scheduler-global-optimizer-items-9-13-acceptance.md`
-- `.codestable/issues/2026-06-29-graph-ready-ratchet-bottleneck/graph-ready-ratchet-bottleneck-fix-note.md`
+参考分支：
 
-再看当前现场：
+```text
+feat/default-light-improve-sgs
+```
+
+本轮 GraphReady 业务代码水位线：
+
+```text
+2a5b7bbc test(scheduler): 锁定 GraphReady repair 仍为 benchmark-only
+```
+
+已按原子提交落地：
+
+```text
+f2ae8056 fix(scheduler): 统一 GraphReady v2 合同错误的 fail-loud 边界
+9267bcdf fix(scheduler): 让 GraphReady 真正改进写入 acceptance 报告
+3b2fe163 test(benchmark): 新增 GraphReady v2 专属长跑对比入口
+2a5b7bbc test(scheduler): 锁定 GraphReady repair 仍为 benchmark-only
+```
+
+接手时必须重新运行：
 
 ```bash
-git status --short
+git status --short --branch
 git rev-parse HEAD
-git log -6 --oneline
+git log -10 --oneline
+git rev-list --left-right --count HEAD...@{upstream}
 ```
 
-不要相信本文件里任何历史 Git 现场描述。接手时必须自己运行 `git status --short` 和 `git rev-parse HEAD`。截至 2026-06-30 本轮复核，现场是 dirty，HEAD 是 `e3ed32c868b108d7d0198a334725ab7292bb4454`；但下一轮仍以自己实跑结果为准。若现场变脏，不要回退、清理或覆盖用户已有改动；若现场干净，也不要被旧基准文件里的 `dirty_worktree=true` 误导成“当前工作区是脏的”。
+不要假设上面的 hash 永远是最新 HEAD；它们是本轮已落地代码的可追溯锚点。
 
-路线图推进顺序以 `scheduler-global-optimizer-items.yaml` 的 `depends_on` 为准，不要只按旧编号记忆推进。当前 GraphReady v2 状态是:前置量尺、修改前多算法基准、目标感知特征、瓶颈资源分和候选家族已完成;item 19-21 的 elite repair、组合池接入和对比 ratchet 门禁仍在推进中。
+---
 
-门禁相关现状也要注意：最近一次收口已经修过 `collect-only` 缓存回执按命令识别、长门禁缓存清单顺序稳定这两类门禁问题。跑质量门禁时看当前命令、当前 HEAD 和当前工作区状态，不要手改缓存文件来制造绿灯。
+## 1. 解释器与交付边界
 
-## 1. 本轮目标
+两类 Python 不能混：
 
-把 `graph_ready` 从“9 组固定图结构权重排序器”继续收口为“目标函数感知候选来源”,但不要让它独立替代其他算法。最终目标是：
+1. **CodeStable / LimCode 本机维护、检索、体检工具**故意使用宿主 CPython 3.14，以获得更完整的工具/库支持和更好的本机执行效率。
+2. **APS 产品代码、项目测试、打包和最终质量门禁**仍须兼容 Python 3.8 与 Win7 x64。
 
-- 核验 item 14-18 的证据仍然有效,不要重复做已完成项。
-- 把 v2 的生产级 elite repair、统一候选池接入和对比门禁补完整。
-- v2 能和 greedy、local_search、GRASP/IG、graph_ready v1 同预算比较；`portfolio_all` 只能作为事后上界行报告差距、来源和 `not_comparable`，不能当成同预算普通算法。
-- 修改完成后，必须明确回答：
-  - 已完成前置量尺里哪些 reference 可比，哪些 reference 不可比，原因是什么？
-  - v2 比现在的基准提升多少？
-  - v2 比 local_search 强多少？
-  - v2 比 GRASP/IG 强多少？
-  - v2 是否真的贡献了 portfolio_all 这个事后上界的最终最优？
-  - 哪些 case 赢，哪些 case 输，哪些 case 只是持平？
+因此：
 
-## 1.1 执行纪律：追求更接近全局最优，不做最小演示
+- `.limcode/skills/` 与 CodeStable 本机工具不要为了 APS 运行时降级到 Python 3.8 语法。
+- `core/`、`web/`、`data/`、生产 scheduler、测试合同和打包入口不得使用 Python 3.9+ 专属语法。
+- 宿主 Python 3.14 工具不得进入 APS 离线运行包。
+- APS 验证继续使用 `.venv/bin/python`；跨平台子进程测试使用 `sys.executable`，不要写死 `.venv/bin/python`。
 
-本轮不是“让一个小样本看起来赢一次”的最小实现。目标是把 `graph_ready` 的候选空间、目标函数特征、真实 SGS 解码择优、多算法对比和门禁证据一起做扎实，让它在当前 APS 约束下更接近全局最优。
+---
 
-这里的“全局最优”必须诚实：
+## 2. 启动必读
 
-- tiny case：能枚举或有 exact/oracle 的样例，要用同目标证明是否达到最优。
-- 中大 case：不能承诺数学全局最优，只能在同一目标、同一数据、同一 seed、同一时间预算下报告 gap、胜 / 平 / 负、均值、最差退步和不劣化。
-- 实现取向：宁可把候选生成、目标特征、瓶颈分和 benchmark 比较做完整，也不要只写一个刚好通过当前 4 工序样本的特殊规则。
-- 不允许把 `portfolio_all`、local_search、GRASP/IG 的收益偷归因给 `graph_ready`；必须用 `best_origin` / `candidate_origin` 说清楚真正是谁赢。
+按顺序读取：
 
-## 1.2 执行纪律：不要过度防御、过度兜底、静默吞错
+1. `AGENTS.md`
+2. `.codestable/attention.md`
+3. `.codestable/reference/system-overview.md`
+4. `.codestable/roadmap/scheduler-global-optimizer/scheduler-global-optimizer-roadmap.md`
+5. `.codestable/roadmap/scheduler-global-optimizer/scheduler-global-optimizer-items.yaml`
+6. `.codestable/roadmap/scheduler-global-optimizer/graph-ready-v2-comparison-baseline.json`
+7. `.codestable/roadmap/scheduler-global-optimizer/benchmark-ratchet-baseline.json`
+8. 本文件列出的四个已落地 commit
 
-不要用“兜底成 0”“异常后继续当成功”“缺字段时退回旧逻辑”来制造假绿灯。合理做法是把问题暴露出来，让候选被拒绝、跳过或直接失败。
-
-硬要求：
-
-- 缺必要特征、非法权重、非法 score、非法候选、repair 失败：必须 `candidate_rejected`、`skipped` 或 fail-loud。
-- 不能用 `.get(..., 0.0)` 这类默认值把生产缺字段变成“看似正常但特征失效”。
-- 展示层、诊断层可以为了页面不崩做只读容错，但必须明确标注“不参与采纳 / 不参与证明 / 仅诊断”，不能混进正式择优链。
-- 如果某个异常理论上不该发生，要么用合同测试锁住，要么 fail-loud；不要写大范围 `except Exception` 继续返回旧方案。
-- 不要绕开正式 SGS，不要直接写 `ScheduleResult` 的开始 / 结束时间来伪造更优排程。
-
-## 1.3 执行纪律：接近门禁上限就拆，不要躲
-
-本仓库有文件长度和复杂度门禁。不要为了躲门禁把逻辑压成难读的一团，也不要靠合并语句、嵌套条件、超长函数来“刚好过线”。
-
-硬要求：
-
-- 文件接近 500 行时，按职责拆模块。
-- 函数复杂度接近 15 时，按判断分支拆小函数。
-- 拆分优先按真实职责来：候选生成、特征计算、瓶颈资源分、SGS 解码、择优报告、benchmark 对比分开。
-- 测试也跟着职责走，不要把所有 case 堆进一个巨型测试函数。
-- 拆分不是为了“看起来架构高级”，而是为了让下一轮能看懂、能测、能继续改。
-
-## 1.4 调研链要求：静态分析 + 动态验证闭环
-
-动手前必须先把调用链和真实运行路径查清楚。只看一两个文件不够，必须同时做静态分析和动态验证。
-
-静态分析至少跑：
+修改函数前使用项目定位工具：
 
 ```bash
-python3 -m tools.symbol_locator whereis run_graph_ready_candidates
-python3 -m tools.symbol_locator callers run_graph_ready_candidates --deep
-python3 -m tools.symbol_locator callees run_graph_ready_candidates --deep
-python3 -m tools.symbol_locator whereis graph_node_metrics_by_op_id
-python3 -m tools.symbol_locator callers graph_node_metrics_by_op_id --deep
-python3 -m tools.symbol_locator callees graph_node_metrics_by_op_id --deep
-rg -n "bottleneck_machine_score|due_pressure|saveability|objective_score|candidate_origin|distinct_candidates" core tests
+.venv/bin/python -m tools.symbol_locator whereis run_graph_ready_candidates
+.venv/bin/python -m tools.symbol_locator callers run_graph_ready_candidates --deep
+.venv/bin/python -m tools.symbol_locator callees run_graph_ready_candidates --deep
+.venv/bin/python -m tools.symbol_locator whereis candidate_is_preferred
+.venv/bin/python -m tools.symbol_locator callers candidate_is_preferred --deep
 ```
 
-动态验证至少做到：
+文本搜索可用 `rg`；本机没有 `rg` 时用 `grep -RIn`，不要把工具缺失包装成未发现引用。
 
-- 接手时先核验已完成的 `benchmark-reference-diagnostics-baseline` 和 `.codestable/roadmap/scheduler-global-optimizer/graph-ready-v2-comparison-baseline.json`;如果代码、基准或 HEAD 已变,必须按当前 HEAD 重跑对应证据。
-- 修改后用同一批 case、同一 seed、同一时间预算复跑,直接和已记录的修改前表格比;`portfolio_all` 只保存为事后上界,不纳入普通胜负。
-- 必须证明真实路径触发：可以用最小复现、计数、测试断言、benchmark 输出或诊断字段证明候选确实经过 `run_graph_ready_candidates -> 正式 SGS -> 统一择优`。
-- 如果某个脚本或门禁不存在，本轮要补齐；不能因为脚本不存在就跳过多算法比较。
-- 需要并行核查时可以调用 subagent，但子代理输出必须带 `file:line`；证据不足就写“证据不足”，不能把猜测写成结论。
+---
 
-## 2. 必须按路线图 item 顺序推进
+## 3. 已完成，不要重复做
 
-### 已完成 item 14：`benchmark-reference-diagnostics-baseline`
+### 3.1 GraphReady v2 合同错误 fail-loud
 
-这个前置量尺已经落地并被 item 15 消费。接手时要核验它的输出是否仍存在、是否仍和当前比较脚本兼容;除非证据失效,不要重复实现这个前置 item。
+已完成：
 
-已落地合同：
+- 新增 `core/services/scheduler/run/optimizer_graph_ready_v2_contract.py`。
+- 统一识别 v2 feature、formula、candidate policy 和已知 validation reason。
+- 上下文解析、逐 profile 评估两处都在非 strict 下对 v2 合同错误直接上抛。
+- 未知 formula 不再被吞成普通 candidate rejection。
+- strict / non-strict 合同测试已经锁住。
 
-- 已补同目标参考下界和诊断字段，让后续多算法比较能区分“真的没改进”和“拿了不可比 reference 硬比”。
-- Jackson 单机抢占参考下界只在同目标、同指标、同数据口径可声明时进入 gap 计算；否则必须标成 `not_comparable`，不能拿它证明 APS 的 `min_overdue` 最优。
-- 换型基准只做准备口径：定义 WTSDS / Cicirello / SDST 基准的装载、评分、脱敏、标准输出和 `ignored` 规则。不要在本轮下载、提交或伪造 tracked 数据。
-- 不重复 item 3 / item 5 / item 7 / item 8 已有的 `noop`、`no_improvement`、`same_fingerprint`、`improved` 合同；本 item 的重点是“reference 是否可比”和“换型基准如何进入比较矩阵”。
-- 输出必须能被 item 15 消费，至少包含：
-  - `reference_type`
-  - `bound_metric`
-  - `objective_metric_keys`
-  - `comparison_scope`
-  - `not_comparable_reason`
-  - `changeover_baseline_status`
-  - `diagnostics_ref`
+继续修改时不得恢复：
 
-### 已完成 item 15：`graph-ready-v2-comparison-baseline-contract`
+- 大范围 `except Exception` 返回 incumbent；
+- 非 strict 静默跳过非法 v2 formula；
+- 把合同失败包装成普通 candidate_rejected。
 
-修改前多算法同台比较基准已经落地。接手时先核验基准仍然可读、字段仍然满足合同、脏工作区证明没有被包装成 clean proof;除非当前 HEAD 或比较脚本改变导致基准失效,不要重复从零实现。
+### 3.2 accepted best 的 acceptance/report 口径
 
-接手核验点：
+已完成：
 
-- compare 脚本应继续支持以下形态：
+- 新增 `optimizer_graph_ready_acceptance.py`。
+- 只有 candidate score 严格优于 incumbent 才生成 `improve_only` acceptance event。
+- `candidate_is_preferred()` 仍是唯一择优裁判；acceptance event 只记录报告事实。
+- 同分 fingerprint/runtime/origin tie-break 可以替换 best，但不得标记 `report.improved=True`。
+- same fingerprint 不生成 acceptance event。
+- public 只展示 `acceptance_summary`；raw event、随机字段和 fingerprint 只进入 diagnostics。
 
-```bash
-.venv/bin/python tests/_scripts_e2e/benchmark_optimizer_compare_algorithms.py \
-  --profiles greedy,local_search,grasp_ig,graph_ready_v1,portfolio_all \
-  --seeds 10 \
-  --no-write
+后续 repair 必须复用这套口径，不得另造一套“repair accepted”裁判。
+
+### 3.3 GraphReady v2 专属 long-run harness
+
+已完成：
+
+- 新增 `benchmark_git_state.py`。
+- 新增 `optimizer_graph_ready_v2_long_run.py`。
+- 新增 `benchmark_optimizer_graph_ready_v2_long_run.py`。
+- 默认比较：greedy、local_search、GRASP/IG、GraphReady v1、GraphReady v2 no-repair、portfolio_all。
+- 至少 10 seeds。
+- 同 seed、同时间预算、有效同形 objective score 才进入普通胜平负。
+- `portfolio_all` 固定是 `posthoc_upper_bound / not_comparable`。
+- dirty evidence 固定是 `unbound_dirty_worktree`，不得冒充 clean proof。
+- 子进程合同使用 `sys.executable`，兼容 Windows CI。
+
+当前明确**没有**：
+
+```text
+.codestable/roadmap/scheduler-global-optimizer/graph-ready-v2-long-run-baseline.json
 ```
 
-- 同一 case、同一 seed、同一 time budget、同一 objective 下比较真实算法；`portfolio_all` 的 `time_budget_seconds` 必须等于来源算法预算总和，并标 `comparison_semantics=posthoc_upper_bound`。
-- compare 结果必须消费 `benchmark-reference-diagnostics-baseline` 的输出，明确哪些 reference 可比、哪些 `not_comparable`、换型基准当前是 `loaded`、`ignored` 还是 `not_available`。
-- ratchet key 至少包含：
-  - `case_group`
-  - `case_slug`
-  - `algorithm_profile`
-  - `algorithm_version`
-  - `seed`
-- 当前只用 `case_group + case_slug` 的比较键不能承载多算法比较，必须修。
-- 缺 `seed`、非法 `seed`、缺任一 ratchet key 字段、同一 ratchet key 出现重复行时,基准检查必须失败;不能把缺 `seed` 默认成 0,也不能让后面的重复行覆盖前面的行。
-- SMTWT `pairwise` 这类成对胜 / 平 / 负统计必须只在同 case、同 seed、同预算、唯一 subject 行、唯一 reference 行上计算;缺 key、重复 key、缺 reference、预算不一致都只能算 `not_comparable`,并且不能再把这些不可比行纳入平均差距。
-- 没有 exact/oracle 的 GraphReady 真实 SGS 样例只能写 `oracle_status=not_run` 和 `gap_to_oracle_pct=null`;不能把缺失 oracle 的 gap 写成 0。
-- 每行结果至少记录：
-  - `comparison_semantics`
-  - `objective_score`
-  - `failed_ops`
-  - `runtime_ms`
-  - `evaluated_candidates`
-  - `distinct_candidates`
-  - `accepted_candidates`
-  - `candidate_rejections`
-  - `best_origin`
-  - 安全的 `best_order` 或顺序摘要
-  - `comparison_to_current_baseline`
-  - `comparison_to_graph_ready_v1`
-  - `comparison_to_portfolio_best`
-- 普通算法对 `portfolio_all` 的比较必须是 `not_comparable`，原因是 `reference_is_posthoc_upper_bound`；`portfolio_all` 对普通算法的比较也必须是 `not_comparable`，原因是 `actual_is_posthoc_upper_bound`。
+所以当前只有 harness，不得写成“clean ratchet baseline 已建立”或“item 21 已完成”。
 
-注意：`.codestable/roadmap/scheduler-global-optimizer/benchmark-ratchet-baseline.json` 里当前直接记录的是 `dirty_worktree=true`;检查函数会据此把证明绑定状态计算为 `unbound_dirty_worktree`。它只能当 GraphReady v1 的脏工作区参考快照，不能说成当前 HEAD 的 clean proof；在 dirty actual / dirty baseline 下跑 `--check-baseline` 应失败。要拿它做最终证明，必须在当前 HEAD 和 clean worktree 上重新跑对应 benchmark 或生成新的对比证据。
+### 3.4 benchmark-only repair 边界
 
-### 已完成 item 16：`graph-ready-v2-objective-feature-contract`
+已完成测试锁定：
 
-目标感知特征已经落地。接手时应核验这些合同仍然成立:`min_overdue` 的第一优先级是减少超期批次数,所以特征必须能表达：
+- 生产 CandidateProfile 包含 `graph_ready_v2_no_repair`。
+- 生产 CandidateProfile 不包含 `graph_ready_v2_with_repair`。
+- 生产 CandidateProfile 不包含 `graph_ready_v2_repaired`。
+- benchmark no-repair / with-repair 行都标 `repair_scope=benchmark_support_only_not_core`。
+- item 19、20、21 继续保持 `in_progress`。
 
-- 这个批次是否还救得回来。
-- 提前它能不能少一个超期批次。
-- 剩余工时短的批次是否更值得先救。
-- 已经很难救的长尾批次是否应该后置。
+benchmark support 不是生产能力。不得因为 support helper 能跑 adjacent swap / single insert，就把 repair item 改成 done。
 
-正式比较必须使用完整 `objective_score` 字典序：
+---
 
-1. 超期批次数。
-2. 加权拖期。
-3. 总拖期。
-4. makespan。
-5. 换型。
+## 4. 当前 roadmap 状态
 
-GraphReady v2 的特征只能用于生成候选，不能绕过正式 SGS 解码，不能用 makespan 或单个启发式分数冒充 `min_overdue` 全目标。
+必须保持：
 
-至少应继续守住：
+```text
+graph-ready-v2-comparison-baseline-contract: done
+graph-ready-v2-objective-feature-contract: done
+graph-ready-v2-bottleneck-resource-score: done
+graph-ready-v2-candidate-portfolio: done
+graph-ready-v2-elite-local-repair: in_progress
+graph-ready-v2-portfolio-integration: in_progress
+graph-ready-v2-comparative-ratchet-gate: in_progress
+```
 
-- `due_pressure`
-- `slack_hours`
-- `remaining_work_hours`
-- `saveability`
-- `processing_time_rank`
-- `sacrifice_penalty`
+后续按依赖推进：
 
-缺必要特征时不能静默退回 v1 成功，必须 `skipped`、`candidate_rejected` 或 strict fail-loud。
+```text
+item 19 生产级 elite local repair
+  -> item 20 接入统一生产候选池
+    -> item 21 建立 clean comparative ratchet gate
+```
 
-### 已完成 item 17：`graph-ready-v2-bottleneck-resource-score`
+不要跳过 item 19，直接把 benchmark with-repair 塞进 item 20。
 
-重算瓶颈资源分，但不要重复实现 items 9-13 已经落地的基础图指标。上一轮已经把 `bottleneck_machine_score` 接到生产图指标里：多候选机器按工时分摊、取最小候选机器负荷、再按候选机器数做灵活性降权；缺该字段时要 fail-loud，不能默认 0。
+---
 
-本 item 已补残余容量和交期门控。接手时要守住现状,不要回退到“能跑瓶颈机就高分”的粗糙口径：
+## 5. 下一阶段 A：生产级 elite local repair
 
-- 残余容量：考虑日历、停机、冻结、已排片段。
-- 交期门控：结合 `due_pressure` / `saveability`，交期不紧或不可救时，瓶颈分只能作为 tie-break。
-- 回归保护：保留“分摊负荷 / 最小候选负荷 / 灵活性降权 / 缺字段 fail-loud”已有行为，防止 v2 重写时退回旧逻辑。
+### 5.1 目标
 
-### 已完成 item 18：`graph-ready-v2-candidate-portfolio`
+只对 GraphReady v2 已经经过正式 SGS 解码的前 K 个精英候选生成轻量 repair 邻居；每个邻居仍必须重新经过正式 SGS、统一目标评分、指纹去重和 acceptance/report 链。
 
-候选家族已经落地。接手时要守住它们,不要只把旧 9 组图权重扩成更多组。
+repair 只能改变候选决策输入，例如：
 
-候选家族至少覆盖：
+- batch order；
+- graph priority；
+- repair request；
+- 邻域动作描述。
 
-- 旧 9 组图权重，作为 v1 对照。
-- EDD。
-- SPT。
-- 最小松弛时间。
-- 关键比率。
-- ATC-like。
-- 可救批次优先。
-- 长尾牺牲。
-- 图 + 交期混合。
-- 瓶颈 + 交期门控。
-- 小扰动候选。
+repair 不得直接写：
 
-EDD、最小松弛时间、关键比率、ATC-like 不能只停留在名字。每个候选家族都必须写清楚：
+- `ScheduleResult`；
+- `start_time` / `end_time`；
+- 正式计划表；
+- mutable 工序执行态；
+- 绕过冻结、资格、前后置或资源约束的结果。
 
-- 输入字段。
-- 计算公式。
-- 同分规则。
-- 缺字段时的 `skipped` / `candidate_rejected` 原因。
-- 公式版本，并把版本写进 diagnostics，避免以后结果对不上。
+### 5.2 配置合同
 
-不要写死当前 4 工序样本的 `[2,3,4,1]`。本质是“保护更多可准交批次，必要时牺牲长尾”，不是“永远中工时优先”。
+以 roadmap 当前字段为准，不另造同义字段：
 
-### item 19：`graph-ready-v2-elite-local-repair`
+```text
+graph_ready_optimization.elite_repair.enabled
+graph_ready_optimization.elite_repair.top_k
+graph_ready_optimization.elite_repair.max_neighbors_per_elite
+graph_ready_optimization.elite_repair.time_budget_ms
+graph_ready_optimization.elite_repair.neighbor_generators
+graph_ready_optimization.elite_repair.pruning_strategy
+```
 
-只对前 K 个候选做轻量修补。
+候选生成器至少考虑：
 
-建议邻域：
+```text
+adjacent_swap
+single_insert
+tardy_boundary_move
+```
 
-- adjacent ready swap
-- single insert
-- tardy boundary move
+边界：
 
-硬限制：
+- `top_k`、邻居上限和 repair 时间预算必须有系统钳制和报告字段。
+- 超预算单独报告 `skipped_by_budget`，不能冒充 pruning。
+- decision fingerprint 与 output fingerprint 都要去重。
+- parent output、seen output 和同 fingerprint 邻居不得重复正式计为改进。
 
-- 只跑 top-K。
-- 每个候选限制 `max_neighbors_per_elite`。
-- 有 `time_budget_ms`。
-- 只接受真实 SGS 解码后 objective 严格更优。
-- 报告必须分清：
-  - `graph_ready_v2_no_repair`
-  - `graph_ready_v2_with_repair`
+### 5.3 建议模块边界
 
-### item 20：`graph-ready-v2-portfolio-integration`
+优先新增独立模块：
 
-v2 只作为候选来源之一，不独立替代 GRASP/IG 或 VNS/SA。
+```text
+core/services/scheduler/run/optimizer_graph_ready_repair.py
+```
 
-最终统一比较：
+职责建议：
+
+- 选择 top-K elites；
+- 生成确定性邻居描述；
+- 执行 budget guard；
+- 返回 repair candidate request 与 pruning/skip 统计；
+- 不负责正式 SGS 解码和最终择优。
+
+`optimizer_graph_ready.py` 只做阶段编排，不要继续膨胀成邻域实现仓库。
+
+### 5.4 正式采纳链
+
+每个 repair 邻居必须走：
+
+```text
+repair request
+  -> schedule_fn
+  -> GreedyScheduler.schedule
+  -> SGS
+  -> compute_metrics / objective_score
+  -> CandidateFingerprint
+  -> candidate_is_preferred
+  -> improve_only acceptance event
+  -> OptimizationSearchReportState
+```
+
+只有正式 objective score 严格更优、output fingerprint 非 parent/seen、acceptance 通过时，才能成为：
+
+```text
+graph_ready_v2_repaired
+```
+
+---
+
+## 6. 下一阶段 B：接入统一生产候选池
+
+item 20 只负责接入与统一择优，不负责实现 repair 本体。
+
+需要核对的候选来源：
 
 ```text
 greedy
 local_search
-GRASP/IG
+grasp_ig
 graph_ready_v1
-graph_ready_v2_no_repair
-graph_ready_v2_with_repair
-portfolio_all
+graph_ready_v2_generated
+graph_ready_v2_repaired
 ```
 
-其中 `portfolio_all` 是事后上界，不是和上面六个算法同预算竞争的普通算法。
+所有来源必须共享：
 
-报告要区分：
+- 同一 objective；
+- 同一 `candidate_is_preferred()`；
+- 同一 output fingerprint 去重；
+- 同一 SearchReport；
+- 同一 public/diagnostics 脱敏边界。
 
-- `graph_ready_generated_best`
-- `graph_ready_repaired_best`
-- `graph_ready_seeded_other_best`
-- `graph_ready_not_in_best_path`
+禁止：
 
-### item 21：`graph-ready-v2-comparative-ratchet-gate`
+- 为 repaired candidate 新增特殊胜出捷径；
+- 把 repair 命中率当成独立算法胜负；
+- 把 `portfolio_all` 变成生产候选或同预算普通算法；
+- 让 public 暴露 raw op/resource/node id、fingerprint 或完整 trace。
 
-修改完成后必须跑对比，不只跑单测。
+如果最终 best 来自 repaired candidate，public 可以说明“统一候选池采纳 GraphReady v2 修补候选”，但不能写“剪枝算法证明全局最优”。
 
-至少跑：
+---
+
+## 7. 下一阶段 C：clean comparative ratchet gate
+
+item 21 只能在 item 19、20 的生产链完成后收口。
+
+### 7.1 当前 harness 命令
 
 ```bash
-.venv/bin/python tests/_scripts_e2e/benchmark_optimizer_ratchet.py --check-baseline
-.venv/bin/python tests/_scripts_e2e/benchmark_optimizer_long_run.py --seeds 10 --no-write
-.venv/bin/python tests/_scripts_e2e/benchmark_optimizer_medium_gate.py --run
-.venv/bin/python tests/_scripts_e2e/benchmark_optimizer_compare_algorithms.py \
-  --profiles greedy,local_search,grasp_ig,graph_ready_v1,graph_ready_v2_no_repair,graph_ready_v2_with_repair,portfolio_all \
+.venv/bin/python tests/_scripts_e2e/benchmark_optimizer_graph_ready_v2_long_run.py \
   --seeds 10 \
-  --check-baseline
+  --workers 1 \
+  --no-write
 ```
 
-如果某脚本还不存在，要在本轮实现。
+当前没有版本化 baseline，`--check-baseline` 缺文件时失败是正确行为。
 
-报告必须给表格：
+### 7.2 建立 baseline 的前提
 
-| 算法 | case 数 | 赢 | 平 | 输 | 平均 objective 变化 | 最差退步 | runtime | 备注 |
-|---|---:|---:|---:|---:|---:|---:|---:|---|
+必须同时满足：
 
-尤其要单列：
+- 最终业务 HEAD；
+- clean worktree；
+- 真实 production repair 已接线；
+- 同 case、同 seed、同时间预算、同 objective；
+- 全部算法行 status passed；
+- proof_binding_status 为 `clean_worktree`；
+- `portfolio_all` 仍为 posthoc/not_comparable；
+- baseline 文件通过人工 review 后单独提交。
 
-- v2 vs 当前基准
-- v2 vs graph_ready_v1
-- v2 vs local_search
-- v2 vs GRASP/IG
-- v2 vs portfolio_all 事后上界差距和来源，不能写成普通胜 / 平 / 负
+建议 baseline 单独提交：
 
-## 3. 验收红线
+```text
+test(benchmark): 建立 GraphReady v2 clean long-run ratchet baseline
+```
 
-- 不能无视已完成的 item 14-18 证据,也不能在证据仍有效时重复做前置项来制造进度。
-- 不能把不可比下界或换型基准准备项说成“已经证明目标最优”。
-- 不能只说“赢 greedy”。
-- 不能拿 FJSP makespan 证明 APS 的 `min_overdue` 全目标最优。
-- 不能把 dirty worktree 结果说成 clean proof。
-- 不能把同一 output fingerprint 的重复候选算成多个 distinct。
-- 不能把 `portfolio_all` 的收益全部归功给 graph_ready。
-- 不能静默吞掉缺字段、非法特征、非法权重或 repair 失败。
-- 不能引入不兼容 Python 3.8 / Win7 离线交付的依赖。
-- 不能在本轮顺手实现自适应大邻域搜索（ALNS）、N5 关键块、移动瓶颈、setup-aware 邻域或 GP 超启发式；这些已经在路线图里后置或只列为观察项。
+不得在 dirty worktree 下用 `--allow-dirty-proof` 生成 baseline 后宣称 clean gate。
 
-## 4. 推荐先读的代码入口
+### 7.3 必须报告
 
-先用定位工具：
+至少包括：
+
+- wins / ties / losses / not_comparable；
+- mean duplicate candidate rate；
+- mean candidate rejection rate；
+- repair evaluated / accepted / rejected；
+- skipped_by_budget；
+- pruned_by_rule；
+- best origin；
+- Git commit 与 proof binding；
+- algorithm profile/version/seed ratchet key。
+
+---
+
+## 8. 下一阶段 D：反例夹具与防假证明
+
+不要只继续扩充当前单一真实 SGS 样例。建议新增：
+
+```text
+tests/_support/optimizer_graph_ready_v2_cases.py
+```
+
+至少覆盖：
+
+1. 内制日历产能与外协自然小时不能裸混。
+2. 瓶颈很忙但 due 不紧时，不得压过主交期目标。
+3. 可救短单与长尾牺牲边界。
+4. micro perturbation 只允许平局扰动，不跨主交期分数。
+5. repair 邻居必须重新走正式 SGS。
+6. duplicate decision / duplicate output / parent output 分别计数。
+7. budget skip 与 pruning 分开报告。
+8. public / OperationLogs / size guard 不泄漏内部 id、fingerprint 和 trace。
+9. production path 不依赖 benchmark override。
+10. score shape、非法数字和 missing reference 不得变成 improved/degraded。
+
+测试锁业务不变式，不要只锁某个 4 工序夹具的赢家顺序。
+
+---
+
+## 9. 推荐后续提交颗粒
+
+### Commit A：repair 配置与纯邻域生成合同
+
+```text
+feat(scheduler): 定义 GraphReady v2 elite repair 配置与邻域请求
+```
+
+包含：
+
+- 独立 repair 模块；
+- 配置解析/钳制；
+- 确定性邻居请求；
+- 不接生产采纳链。
+
+### Commit B：repair 正式 SGS 与 acceptance 接线
+
+```text
+feat(scheduler): 接入 GraphReady v2 repair 正式 SGS 采纳链
+```
+
+包含：
+
+- top-K elite；
+- 邻居正式解码；
+- fingerprint；
+- candidate_is_preferred；
+- acceptance/report；
+- repair origin。
+
+### Commit C：统一候选池接入
+
+```text
+feat(scheduler): 将 GraphReady v2 repaired 候选接入统一择优池
+```
+
+### Commit D：反例和 public 边界
+
+```text
+test(scheduler): 补强 GraphReady v2 repair 反例与脱敏合同
+```
+
+### Commit E：clean ratchet baseline
+
+```text
+test(benchmark): 建立 GraphReady v2 clean long-run ratchet baseline
+```
+
+每个提交都要能独立回滚，测试与实现同批；不要把生产 repair、baseline JSON 和交接文档塞成一个巨型提交。
+
+---
+
+## 10. 验收命令
+
+### 局部合同
 
 ```bash
-python3 -m tools.symbol_locator whereis run_graph_ready_candidates
-python3 -m tools.symbol_locator callers run_graph_ready_candidates --deep
-python3 -m tools.symbol_locator callees run_graph_ready_candidates --deep
-python3 -m tools.symbol_locator whereis graph_node_metrics_by_op_id
-python3 -m tools.symbol_locator callers graph_node_metrics_by_op_id --deep
-python3 -m tools.symbol_locator callees graph_node_metrics_by_op_id --deep
-rg -n "bottleneck_machine_score|due_pressure|saveability|objective_score|candidate_origin|distinct_candidates" core tests
-rg -n "BenchmarkReference|not_comparable|changeover|same_fingerprint|no_improvement|benchmark-reference-diagnostics-baseline" .codestable core tests
+.venv/bin/python -m pytest -p no:cacheprovider \
+  tests/algorithm/test_optimizer_graph_ready_candidate_contract.py \
+  tests/algorithm/test_optimizer_candidate_profile_contract.py \
+  tests/algorithm/test_optimizer_candidate_fingerprint_contract.py \
+  tests/algorithm/test_optimizer_compare_algorithms_contract.py \
+  tests/algorithm/test_optimizer_graph_ready_v2_long_run_contract.py \
+  -q
 ```
 
-再重点看：
+### long-run harness
 
-- `core/services/scheduler/run/optimizer_graph_ready.py`
-- `core/services/scheduler/run/optimizer_graph_ready_candidates.py`
-- `core/services/scheduler/run/optimizer_graph_ready_profiles.py`
-- `core/services/scheduler/run/optimizer_graph_ready_context.py`
-- `core/services/scheduler/run/schedule_graph_score_projection.py`
-- `core/services/scheduler/graph/metrics.py`
-- `core/services/scheduler/run/optimizer_grasp_ig_candidates.py`
-- `core/services/scheduler/run/optimizer_local_search.py`
-- `tests/_support/optimizer_graph_ready_benchmark.py`
-- `tests/_support/optimizer_benchmark_ratchet.py`
-- `tests/_scripts_e2e/benchmark_optimizer_ratchet.py`
-- `tests/_scripts_e2e/benchmark_optimizer_medium_gate.py`
-- `tests/_scripts_e2e/benchmark_optimizer_long_run.py`
+```bash
+.venv/bin/python tests/_scripts_e2e/benchmark_optimizer_graph_ready_v2_long_run.py \
+  --seeds 10 \
+  --workers 1 \
+  --no-write
+```
 
-## 5. 最终交付
+### 最终完整门禁
 
-最终答复要包含：
+```bash
+git status --porcelain
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONUTF8=1 \
+PYTHONIOENCODING=utf-8 \
+.venv/bin/python scripts/run_quality_gate.py \
+  --require-clean-worktree \
+  --long-gate-cache
+```
 
-- 改了哪些文件。
-- 已完成 `benchmark-reference-diagnostics-baseline` 的输出是什么,当前是否仍有效。
-- 哪些 reference 可比，哪些 reference 不可比，原因是什么。
-- 换型基准准备状态是什么，是否产生 tracked evidence；默认不应写 tracked 外部数据。
-- item 15 如何消费前置量尺输出,当前是否仍有效。
-- 新增了哪些候选特征和候选家族。
-- 已记录的修改前基准是什么。
-- 修改后和当前基准比提升多少。
-- 和 `local_search`、GRASP/IG、v1、`portfolio_all` 各自比强多少。
-- 哪些 case 退步，为什么可接受或需要继续修。
-- 跑了哪些测试和 benchmark。
-- 如果没法跑完整门禁，明确写原因，不要包装成已完成。
-- 当前 Git 现场和基准快照口径：当前 HEAD 是什么、工作区是否干净、是否复用了旧 `dirty_worktree=true` 快照、是否在当前 clean HEAD 上补跑了新证据。
+只有最终 HEAD、干净 worktree、完整门禁通过，才能称为 clean-worktree proof。任何文档 amend 都会改变 HEAD，改变后必须重跑门禁。
+
+---
+
+## 11. 严禁事项
+
+- 不要重复实现已经落地的 contract classifier、acceptance helper 或 v2 long-run harness。
+- 不要把 benchmark with-repair 当成生产 repair。
+- 不要把 `portfolio_all` 当成同预算算法胜利。
+- 不要把 dirty evidence 写成 clean proof。
+- 不要静默吞掉 v2 合同错误或非法 repair 配置。
+- 不要直接修改 ScheduleResult 时间来伪造 repair。
+- 不要把 skipped_by_budget 记成 pruned。
+- 不要在 objective 不同或预算不同的行之间统计胜负。
+- 不要在 public 投影泄漏 raw id、fingerprint 或 trace。
+- 不要引入云服务、外部前端资源或新的 APS 运行时依赖。
+- 不要用 Python 3.9+ 语法修改 APS 生产/测试代码。
+- 不要把是否调用 Sub Agent 当成完成条件；用户要求单线程时由主线程完成并如实报告。
+
+---
+
+## 12. 最终交付必须说明
+
+- 开始和结束时的分支、HEAD、工作区状态。
+- 实际完成了哪个 roadmap item，哪些仍为 in_progress。
+- 生产 repair 与 benchmark repair 的边界。
+- 正式 SGS、fingerprint、candidate comparison、acceptance/report 的证据路径。
+- 每类算法的可比/不可比原因。
+- `portfolio_all` 是否保持 posthoc upper bound。
+- 跑过的测试、benchmark 和质量门禁原命令。
+- 哪些证据是 dirty/unbound，哪些是 clean proof。
+- 是否生成或更新了版本化 baseline；没有就明确写“没有”。
+- 所有未提交或未覆盖范围。
+
+一句话目标：**在不破坏正式 SGS、统一择优、报告真实性和 Win7/Python 3.8 产品合同的前提下，把 GraphReady v2 从 no-repair 候选生成推进到可审计的生产级 elite repair、统一候选池和 clean comparative ratchet gate。**
