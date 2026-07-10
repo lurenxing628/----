@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 import random
-import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -16,6 +15,11 @@ from core.services.scheduler.run.optimizer_candidate_profile import derive_grasp
 from core.services.scheduler.run.optimizer_grasp_ig_candidates import run_grasp_ig_candidates
 from core.services.scheduler.run.optimizer_local_search import run_local_search
 from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from tests._support.benchmark_git_state import (
+    dirty_worktree,
+    git_commit,
+    proof_binding_status,
+)
 from tests._support.benchmark_parallel import (
     DEFAULT_BENCHMARK_WORKERS,
     parallel_map_ordered,
@@ -65,14 +69,14 @@ def build_algorithm_comparison(*, profiles: Sequence[str], seeds: int, workers: 
     seed_tasks = [(seed, normalized_profiles) for seed in range(int(seeds))]
     for seed_rows in parallel_map_ordered(_run_seed_profiles_task, seed_tasks, workers=worker_count):
         all_rows.extend(seed_rows)
-    dirty_worktree = _dirty_worktree(Path.cwd())
+    repo_dirty = dirty_worktree(Path.cwd())
     payload = {
         "schema_version": COMPARE_SCHEMA_VERSION,
         "status": "passed" if all_rows and all(row.get("status") == "passed" for row in all_rows) else "failed",
         "generated_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
-        "git_commit": _git_commit(Path.cwd()),
-        "dirty_worktree": dirty_worktree,
-        "proof_binding_status": "unbound_dirty_worktree" if dirty_worktree else "clean_worktree",
+        "git_commit": git_commit(Path.cwd()),
+        "dirty_worktree": repo_dirty,
+        "proof_binding_status": proof_binding_status(dirty_worktree=repo_dirty),
         "command": "build_algorithm_comparison",
         "command_args": {"profiles": list(normalized_profiles), "seeds": int(seeds), "workers": worker_count},
         "case_group": COMPARE_CASE_GROUP,
@@ -161,6 +165,7 @@ def _graph_ready_v1_row(*, seed: int) -> Dict[str, Any]:
             "schema_version": COMPARE_SCHEMA_VERSION,
             "algorithm_profile": "graph_ready_v1",
             "algorithm_version": "graph_ready_weight_grid_v1",
+            "comparison_semantics": SAME_BUDGET_SEMANTICS,
             "case_group": COMPARE_CASE_GROUP,
             "case_slug": COMPARE_CASE_SLUG,
             "accepted_candidates": int(row.get("accepted_distinct_candidates") or 0),
@@ -173,6 +178,7 @@ def _graph_ready_v1_row(*, seed: int) -> Dict[str, Any]:
 def _graph_ready_v2_row(*, seed: int, with_repair: bool) -> Dict[str, Any]:
     row = dict(run_graph_ready_v2_real_sgs_case(seed=seed, with_repair=with_repair))
     row["comparison_reference_status"] = "reference_diagnostics_attached"
+    row["comparison_semantics"] = SAME_BUDGET_SEMANTICS
     return row
 
 
@@ -653,21 +659,6 @@ def _first_changed_delta(actual: Tuple[float, ...], baseline: Tuple[float, ...])
         if abs(delta) > 1e-9:
             return delta
     return 0.0
-
-
-def _git_commit(repo_root: Path) -> str:
-    try:
-        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(repo_root), text=True).strip()
-    except (OSError, subprocess.CalledProcessError):
-        return "unknown"
-
-
-def _dirty_worktree(repo_root: Path) -> bool:
-    try:
-        out = subprocess.check_output(["git", "status", "--short"], cwd=str(repo_root), text=True)
-    except (OSError, subprocess.CalledProcessError):
-        return True
-    return bool(out.strip())
 
 
 def _candidate_output_fingerprint(candidate: Dict[str, Any]) -> str:
