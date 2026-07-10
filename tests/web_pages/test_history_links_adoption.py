@@ -148,8 +148,21 @@ class _AnalysisServices:
         self.schedule_plan_query_service = self._PlanQuery()
 
 
-def test_version_picker_scenario_preview_keeps_scenario_id():
+def test_version_picker_scenario_preview_keeps_scenario_id(monkeypatch):
     from web.routes.domains.scheduler.scheduler_analysis_links import build_version_picker_gantt_links
+    from web.routes.domains.scheduler.scheduler_plan_context_token import scenario_id_from_plan_context_token
+
+    issued_tokens = []
+
+    def _token_with_incidental_scenario_substring(_size):
+        token = f"opaque-S1-token-{len(issued_tokens)}"
+        issued_tokens.append(token)
+        return token
+
+    monkeypatch.setattr(
+        "web.public_token_registry.secrets.token_urlsafe",
+        _token_with_incidental_scenario_substring,
+    )
 
     app = Flask(__name__)
     with app.app_context():
@@ -162,8 +175,13 @@ def test_version_picker_scenario_preview_keeps_scenario_id():
         q = _query_values(link["url"])
         # roadmap 第 11 条点名缺陷的正向钉死：场景预览跳甘特不再掉回正式视角，但公开 URL 不能裸带内部 id
         assert "scenario_id" not in q
-        assert q["plan_context_token"]
-        assert "S1" not in q["plan_context_token"]
+        token = q["plan_context_token"]
+        assert token
+        # 随机 token 可能偶然含有短字符串 "S1"；不透明性要靠登记表语义验证，不能查子串。
+        assert "S1" in token
+        assert token != "S1"
+        with app.app_context():
+            assert scenario_id_from_plan_context_token(token) == "S1"
         assert q["version"] == "7"
 
 
