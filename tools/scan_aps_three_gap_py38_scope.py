@@ -7,7 +7,7 @@ import argparse
 import os
 import subprocess
 import sys
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
@@ -16,6 +16,21 @@ if REPO_ROOT not in sys.path:
 from tools import scan_py38plus_syntax  # noqa: E402
 
 DEFAULT_BASE_REF = "d4589d77"
+
+# CodeStable/LimCode 是开发机宿主工具，不进入 APS 的 Win7/Python 3.8 运行包。
+# 这些目录故意允许使用本机 Python 3.14；产品源码、项目测试和质量门禁脚本
+# 仍由本扫描器约束为 Python 3.8。
+HOST_TOOL_PYTHON_PREFIXES: Tuple[str, ...] = (
+    ".codestable/",
+    ".limcode/skills/",
+)
+
+
+def is_aps_py38_scope_path(path: str) -> bool:
+    rel_path = scan_py38plus_syntax.normalize_repo_path(path)
+    if not rel_path.endswith(".py"):
+        return False
+    return not any(rel_path.startswith(prefix) for prefix in HOST_TOOL_PYTHON_PREFIXES)
 
 
 def _git_changed_python_files(base_ref: str, root: str) -> List[str]:
@@ -31,14 +46,17 @@ def _git_changed_python_files(base_ref: str, root: str) -> List[str]:
     paths = []
     for line in proc.stdout.splitlines():
         rel_path = scan_py38plus_syntax.normalize_repo_path(line)
-        if rel_path.endswith(".py") and os.path.isfile(os.path.join(root, rel_path)):
+        if is_aps_py38_scope_path(rel_path) and os.path.isfile(os.path.join(root, rel_path)):
             paths.append(rel_path)
     return sorted(dict.fromkeys(paths))
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="扫描 APS 三个差距 roadmap 起点以来改过的 Python 文件，确保 Python 3.8 兼容。"
+        description=(
+            "扫描 APS 三个差距 roadmap 起点以来改过的产品/测试/门禁 Python 文件，"
+            "确保 Python 3.8 兼容；排除明确使用宿主 Python 3.14 的 CodeStable/LimCode 工具。"
+        )
     )
     parser.add_argument("--base-ref", default=DEFAULT_BASE_REF, help="roadmap 起点提交，默认 d4589d77。")
     parser.add_argument("--root", default=REPO_ROOT, help="仓库根目录。")
