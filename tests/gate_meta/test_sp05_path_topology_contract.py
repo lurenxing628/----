@@ -541,9 +541,6 @@ def test_sp05_scheduler_manual_path_requires_base_dir_without_root_fallback(tmp_
 def test_sp05_documentation_uses_migrated_scheduler_paths() -> None:
     dev_doc = (REPO_ROOT / "开发文档/开发文档.md").read_text(encoding="utf-8")
     stage_record = (REPO_ROOT / "开发文档/阶段留痕与验收记录.md").read_text(encoding="utf-8")
-    legacy_plan = (
-        REPO_ROOT / ".limcode/plans/core目录系统性修复/05_后续结构债治理与文档同步.plan.md"
-    ).read_text(encoding="utf-8")
 
     scheduler_start = dev_doc.index("│   │   ├── scheduler/")
     scheduler_end = dev_doc.index("│   │   ├── report/", scheduler_start)
@@ -572,5 +569,5 @@ def test_sp05_documentation_uses_migrated_scheduler_paths() -> None:
     assert "core/services/scheduler/run/schedule_input_collector.py" in stage_record
     assert "core/services/scheduler/schedule_input_collector.py" not in stage_record
 
-    assert "SP05 后已迁移路径口径覆盖" in legacy_plan
-    assert "历史执行前基线" in legacy_plan
+    # `.limcode/plans/` 是 ignored 历史归档，不存在于 clean clone，不能作为质量门禁事实源。
+    # 当前路径合同只读取上面的两份 tracked 文档。
