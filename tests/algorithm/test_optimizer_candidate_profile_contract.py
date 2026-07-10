@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
@@ -165,6 +166,31 @@ def test_graph_context_forces_sgs_and_ceiling_clamp() -> None:
     assert profile.candidate_construction["graph_ready_optimization"]["candidate_policy"] == "objective_aware_portfolio"
     assert profile.effective_max_iterations == 5000
     assert profile.ortools_warmstart_enabled is True
+
+
+def test_graph_ready_profile_keeps_repair_out_of_production_strategy_families() -> None:
+    profile = _build(time_budget_seconds=5, graph_sgs_required=True)
+
+    assert "graph_ready_v2_no_repair" in profile.candidate_strategy_families
+    assert "graph_ready_v2_with_repair" not in profile.candidate_strategy_families
+    assert "graph_ready_v2_repaired" not in profile.candidate_strategy_families
+    assert profile.candidate_construction["graph_ready_optimization"]["candidate_policy"] == "objective_aware_portfolio"
+
+
+def test_graph_ready_repair_roadmap_items_remain_in_progress_until_core_lands() -> None:
+    items_path = Path(__file__).resolve().parents[2] / ".codestable" / "roadmap" / "scheduler-global-optimizer" / "scheduler-global-optimizer-items.yaml"
+    text = items_path.read_text(encoding="utf-8")
+
+    for slug in (
+        "graph-ready-v2-elite-local-repair",
+        "graph-ready-v2-portfolio-integration",
+        "graph-ready-v2-comparative-ratchet-gate",
+    ):
+        start = text.index("slug: " + slug)
+        next_item = text.find("\n  - slug:", start + 1)
+        block = text[start : next_item if next_item != -1 else len(text)]
+        assert "status: in_progress" in block
+        assert "status: done" not in block
 
 
 def test_ortools_warmstart_enabled_tracks_config_and_mode() -> None:

@@ -1865,6 +1865,7 @@ def test_graph_ready_v2_runs_real_sgs_and_keeps_repair_attribution_separate() ->
     assert no_repair["oracle_status"] == "not_run"
     assert no_repair["gap_to_oracle_pct"] is None
     assert no_repair["accepted_distinct_candidates"] == len(no_repair["accepted_output_fingerprints"])
+    assert no_repair["repair_scope"] == "benchmark_support_only_not_core"
     assert with_repair["repair_scope"] == "benchmark_support_only_not_core"
     assert with_repair["accepted_distinct_candidates"] == len(with_repair["accepted_output_fingerprints"])
     assert "saveability" in no_repair["candidate_families"]
