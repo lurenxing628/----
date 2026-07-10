@@ -1962,6 +1962,98 @@ def test_graph_ready_candidates_deduplicate_same_output_fingerprint() -> None:
     assert state.rejection_summary["same_fingerprint"] >= 1
 
 
+def test_graph_ready_strict_score_improvement_marks_report_improved() -> None:
+    state = _state()
+    baseline = _candidate([_result(1, "B1", 2), _result(2, "B2", 3)], failed_ops=1)
+    state.mark_candidate_accepted(baseline, origin="baseline")
+    attempts: List[Dict[str, Any]] = []
+
+    best = _run_graph_ready_v2_for_test(
+        baseline=baseline,
+        state=state,
+        strict_mode=False,
+        profiles_override=[_v2_profile("edd")],
+        attempts=attempts,
+    )
+    report = state.finalize(runtime_ms=50, attempts=attempts, improvement_trace=[])
+
+    assert best["candidate_origin"] == GRAPH_READY_V2_GENERATED_ORIGIN
+    assert report["improvement_conditions"]["score_strictly_better"] is True
+    assert report["improvement_conditions"]["acceptance_passed"] is True
+    assert report["improved"] is True
+    assert report["acceptance_summary"]["improve_only"]["accepted"] == 1
+
+
+def test_graph_ready_same_score_fingerprint_tiebreak_does_not_mark_report_improved() -> None:
+    state = _state()
+    baseline = _candidate([_result(1, "B1", 2), _result(2, "B2", 3)], failed_ops=0)
+    state.mark_candidate_accepted(baseline, origin="baseline")
+    attempts: List[Dict[str, Any]] = []
+
+    best = _run_graph_ready_v2_for_test(
+        baseline=baseline,
+        state=state,
+        strict_mode=False,
+        profiles_override=[_v2_profile("edd")],
+        attempts=attempts,
+    )
+    report = state.finalize(runtime_ms=50, attempts=attempts, improvement_trace=[])
+
+    assert best["candidate_origin"] == GRAPH_READY_V2_GENERATED_ORIGIN
+    assert report["best_fingerprint_changed"] is True
+    assert report["improvement_conditions"]["score_strictly_better"] is False
+    assert report["improvement_conditions"]["acceptance_passed"] is False
+    assert report["improved"] is False
+    assert report["acceptance_summary"] == {}
+
+
+def test_graph_ready_same_fingerprint_does_not_add_acceptance_event() -> None:
+    state = _state()
+    baseline = _candidate([_result(1, "B1", 0), _result(2, "B2", 1)], failed_ops=0)
+    state.mark_candidate_accepted(baseline, origin="baseline")
+    attempts: List[Dict[str, Any]] = []
+
+    best = _run_graph_ready_v2_for_test(
+        baseline=baseline,
+        state=state,
+        strict_mode=False,
+        profiles_override=[_v2_profile("edd")],
+        attempts=attempts,
+    )
+    report = state.finalize(runtime_ms=50, attempts=attempts, improvement_trace=[])
+
+    assert best is baseline
+    assert state.rejection_summary["same_fingerprint"] == 1
+    assert report["acceptance_events"] == []
+    assert report["acceptance_summary"] == {}
+    assert report["improved"] is False
+
+
+def test_graph_ready_acceptance_event_stays_out_of_public_projection() -> None:
+    state = _state()
+    baseline = _candidate([_result(1, "B1", 2), _result(2, "B2", 3)], failed_ops=1)
+    state.mark_candidate_accepted(baseline, origin="baseline")
+    attempts: List[Dict[str, Any]] = []
+    _run_graph_ready_v2_for_test(
+        baseline=baseline,
+        state=state,
+        strict_mode=False,
+        profiles_override=[_v2_profile("edd")],
+        attempts=attempts,
+    )
+
+    report = state.finalize(runtime_ms=50, attempts=attempts, improvement_trace=[])
+    public, diagnostics = project_search_report(report)
+    public_text = json.dumps(public, ensure_ascii=False, sort_keys=True)
+
+    assert public["acceptance_summary"]["improve_only"]["accepted"] == 1
+    assert "acceptance_events" not in public_text
+    assert "deterministic_random_draw" not in public_text
+    assert "decision_fingerprint" not in public_text
+    assert "output_fingerprint" not in public_text
+    assert diagnostics["acceptance_events"][0]["acceptance_name"] == "improve_only"
+
+
 def test_graph_ready_candidate_payload_separates_decision_and_decoded_batch_order() -> None:
     def _reversed_result_schedule(*args: Any, **kwargs: Any):
         results = [_result(2, "B2", 0), _result(1, "B1", 1)]

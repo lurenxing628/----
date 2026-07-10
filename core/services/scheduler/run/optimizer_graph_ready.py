@@ -7,6 +7,7 @@ from core.algorithms import ScheduleResult, SortStrategy
 from core.infrastructure.errors import ValidationError
 
 from .optimizer_candidate_comparison import candidate_is_preferred
+from .optimizer_graph_ready_acceptance import build_graph_ready_improve_only_acceptance_event
 from .optimizer_graph_ready_candidates import build_v2_common_rank_cache, evaluate_graph_ready_candidate
 from .optimizer_graph_ready_context import (
     graph_node_metrics_by_op_id,
@@ -287,7 +288,14 @@ def _run_weight_profiles(
             continue
         if not _candidate_should_replace_best(candidate, profile=profile, best=best, attempts=attempts, search_report_state=search_report_state):
             continue
-        _accept_candidate(candidate, profile=profile, search_report_state=search_report_state)
+        incumbent = best
+        _accept_candidate(
+            candidate,
+            profile=profile,
+            incumbent=incumbent,
+            version=version,
+            search_report_state=search_report_state,
+        )
         append_graph_trace(improvement_trace=improvement_trace, candidate=candidate, profile=profile, clock=clock, t_begin=t_begin)
         best = candidate
     return best
@@ -438,10 +446,23 @@ def _accept_candidate(
     candidate: Dict[str, Any],
     *,
     profile: GraphReadyWeightProfile,
+    incumbent: Optional[Dict[str, Any]],
+    version: int,
     search_report_state: Optional[OptimizationSearchReportState],
 ) -> None:
     if search_report_state is not None:
-        search_report_state.mark_candidate_accepted(candidate, origin=profile.candidate_origin)
+        event = None
+        if incumbent is not None:
+            event = build_graph_ready_improve_only_acceptance_event(
+                candidate_score=candidate.get("score"),
+                incumbent_score=incumbent.get("score"),
+                seed=int(version),
+            )
+        search_report_state.mark_candidate_accepted(
+            candidate,
+            origin=profile.candidate_origin,
+            acceptance_event=event,
+        )
 
 
 def _candidate_order(
