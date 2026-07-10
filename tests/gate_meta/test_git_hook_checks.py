@@ -1,4 +1,4 @@
-"""回归测试：tools/git_hook_checks 与 git_hook_cache 的 git 钩子行为——_project_python_executable 必须用项目 .venv（缺失则报错不退回系统 Python）、run-quality-gate/run-final-quality-gate/run-fast-static-precheck 用项目 Python 与强制 UTF8 环境调对应脚本、按 pre-push stdin/PRE_COMMIT_* ref 计算范围与每日门禁缓存（命中跳过、成功才写、失败/脏工作区不写）、staged-only ruff 缓存、_blocked_paths 拦截本地启动日志与门禁运行产物（含 Windows 路径归一化），以及 .pre-commit-config.yaml 钩子接线契约。"""
+"""回归测试：tools/git_hook_checks 与 git_hook_cache 的 git 钩子行为——_project_python_executable 必须用项目 .venv（缺失则报错不退回系统 Python）、run-quality-gate/run-final-quality-gate/run-fast-static-precheck 用项目 Python 与强制 UTF8 环境调对应脚本且不向测试传递外层仓库 GIT_* 环境、按 pre-push stdin/PRE_COMMIT_* ref 计算范围与每日门禁缓存（命中跳过、成功才写、失败/脏工作区不写）、staged-only ruff 缓存、_blocked_paths 拦截本地启动日志与门禁运行产物（含 Windows 路径归一化），以及 .pre-commit-config.yaml 钩子接线契约。"""
 
 from __future__ import annotations
 
@@ -82,6 +82,9 @@ def test_run_quality_gate_command_uses_daily_gate_and_utf8_env(monkeypatch, tmp_
     monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "0")
     monkeypatch.setenv("PYTHONUTF8", "0")
     monkeypatch.setenv("PYTHONIOENCODING", "gbk")
+    monkeypatch.setenv("GIT_DIR", "/outer/repo/.git")
+    monkeypatch.setenv("GIT_WORK_TREE", "/outer/repo")
+    monkeypatch.setenv("GIT_INDEX_FILE", "/outer/repo/.git/index")
     monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
     monkeypatch.setattr(
@@ -116,6 +119,9 @@ def test_run_quality_gate_command_uses_daily_gate_and_utf8_env(monkeypatch, tmp_
     assert env["PYTHONDONTWRITEBYTECODE"] == "1"
     assert env["PYTHONUTF8"] == "1"
     assert env["PYTHONIOENCODING"] == "utf-8"
+    assert "GIT_DIR" not in env
+    assert "GIT_WORK_TREE" not in env
+    assert "GIT_INDEX_FILE" not in env
 
 
 def test_run_quality_gate_prefers_pre_commit_pre_push_env(monkeypatch, tmp_path: Path) -> None:

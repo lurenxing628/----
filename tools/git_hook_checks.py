@@ -19,6 +19,25 @@ except ImportError:  # pragma: no cover - direct script execution path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ZERO_SHA = "0" * 40
+_GIT_REPOSITORY_LOCAL_ENV_KEYS: Tuple[str, ...] = (
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_PREFIX",
+    "GIT_SHALLOW_FILE",
+    "GIT_COMMON_DIR",
+)
+
+
 def _run_git(args: Sequence[str]) -> str:
     result = subprocess.run(
         ["git", *args],
@@ -121,6 +140,11 @@ def _quality_gate_env() -> dict:
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     env.pop("APS_SKIP_QUALITY_GATE", None)
+    # Git 会把当前仓库的 GIT_DIR/GIT_WORK_TREE 等变量传给 hooks。若继续传给
+    # pytest，测试里创建的临时 Git 仓库会误操作外层真实仓库，linked worktree
+    # 尤其容易把 core.bare/user.* 等配置写回主仓库。
+    for key in _GIT_REPOSITORY_LOCAL_ENV_KEYS:
+        env.pop(key, None)
     return env
 
 
