@@ -1,0 +1,118 @@
+{
+ "key": "core-models",
+ "partition": "core/models",
+ "score": 4,
+ "design": "core/models 共 47 文件，定位是\"V1 不引 ORM、模型仅作数据载体、字段名对齐 DB 列\"（__init__.py:1-7 自述）。实际分两类：(1) 约 32 个纯 dataclass 实体（batch/machine/operator/schedule/part_operation 等），统一从 _helpers.py 拿 RowLike/get/parse_int/parse_float，提供 from_row(行→对象) 与 to_dict(对象→字典)，部分挂少量纯断言式 helper（如 BatchOperation.is_external/processing_hours），与 schema.sql 列严格对应（已逐表核对 OperationExecutionEvents 等）。(2) 一批\"名为 model 实为引擎/DTO 装配\"的逻辑文件：schedule_config_runtime_*（6 文件 994 行，配置校验+降级强转引擎）、scheduler_public_errors.py(351，对外错误脱敏)、scheduler_degradation_messages.py(215，降级文案目录)、scheduler_history_parser.py(119，摘要 JSON 解析)、operation_execution_labels.py(176，状态/动作中文标签)、schedule_plan_identity/resolution/role（计划身份 DTO+证据链校验）、schedule_delay_diagnosis.py(诊断 DTO 树)。分层红线成立：models 层零 sqlite3/cursor/execute；仅 config 引擎与 resource_filter 向下依赖 core.infrastructure.errors / core.shared（合规）。enums.py 用 str+Enum 并集中导出 *_VALUES 元组做防漂移。整体地基扎实，主要债务集中在\"配置引擎放错层且与 services 同名孪生\"这一处。",
+ "chains": [
+  "仓储装配链(26 repo)：data/repositories/*_repo.py → Model.from_row(row)，行内用 core/models/_helpers.py:19 get() + :30 parse_int() 安全取值（如 batch.py:26、schedule.py:38）",
+  "算法侧配置链：core/algorithms/greedy/config_adapter.py:6,17 + schedule_params.py:98-104 → core.models.schedule_config_runtime.ensure_schedule_config_snapshot → schedule_config_runtime_coercion.py:409 → _coerce_config_field:318 → 取 spec schedule_config_runtime_fields.py:167",
+  "服务侧孪生配置链(同名不同实现)：core/services/scheduler/config/config_snapshot.py:336 ensure_schedule_config_snapshot → config_field_coercion.py:315 coerce_config_field，被 run/optimizer_config.py:11、summary/schedule_summary.py:8 等消费",
+  "计划角色链：schedule_plan_resolution.py:7 → schedule_plan_role.py:51 plan_role_label / :34 is_comparison_plan；plan_role 被 19 个模块引用，覆盖 analysis/dispatch 在途前端 viewmodel",
+  "证据校验链：schedule_plan_identity.py:102 EvidenceLink.validate()→:172 to_dict()（链接一致性强校验），被 schedule_delay_diagnosis_service/clues/utils + report/delay_diagnosis_presentation.py 消费",
+  "执行标签链：operation_execution_labels.py:5 import 事件常量 → execution_status_label/public_execution_remark，被 7 个模块(含执行反馈 state builder + 在途 resource_dispatch_execution viewmodel)消费"
+ ],
+ "good": [
+  "纯 dataclass 群质量高：from_row 全程用 _helpers 防御式取值(parse_int 显式挡 bool/支持 Decimal/bytes，_helpers.py:30-71)，字段与 schema.sql 列严格对应(逐表核对 OperationExecutionEvents 等)，models 层零 SQL/cursor(红线成立)",
+  "scheduler_public_errors.py 是认真的对外安全边界：_SENSITIVE_ERROR_MARKERS + _PATH_LIKE_RE 双层敏感信息拦截(:20-60)，public_safe_identifier 白名单正则 + 路径前缀拒绝(:142-151)，legacy 文案靠 LEGACY_PUBLIC_PATTERNS 精确 fullmatch 提取——脱敏逻辑严谨",
+  "public_execution_remark(operation_execution_labels.py:129-146) 设计细致：只清除'本条记录自己的'结构化枚举码泄漏、用 casefold 归一防大小写绕过，且明确避免误杀恰好等于别条记录英文码的合法用户文本(注释:69-78 解释充分)",
+  "schedule_plan_identity.EvidenceLink.validate(:102-170) 强制证据链接 query 参数与 plan_identity(version/plan_role/scenario_id)一致，是防止诊断证据张冠李戴的高质量领域校验；schedule_plan_role 的标签映射集中且带历史别名兜底",
+  "normalize_schedule_resource_filter(schedule_resource_filter.py:43-71) 是被 service+report+repo SQL 三层共同复用的唯一规范化入口(已 grep 实证 3 方消费)，是 models 层做对了的去重样板；enums.py 用 *_VALUES 元组集中派生防漂移亦是好实践"
+ ],
+ "findings": [
+  {
+   "severity": "high",
+   "category": "重复",
+   "title": "schedule_config_runtime_*（994行）是 services 配置引擎的近乎完整孪生，双份独立维护、字段默认值全靠人肉同步",
+   "evidence": [
+    "core/models/schedule_config_runtime_snapshot.py:8-69 与 core/services/scheduler/config/config_snapshot.py:25-86：ScheduleConfigSnapshot dataclass 定义 + to_dict() 经 diff 确认逐字节相同",
+    "core/models/schedule_config_runtime_fields.py:25-159 与 core/services/scheduler/config/config_field_spec.py:90-389：两侧均定义同一组 27 个字段(键集合完全相同)、27 个 default 完全相同(脚本逐项比对零差异)",
+    "core/models/schedule_config_runtime_coercion.py:123-385（_choice_with_degradation/_yes_no_with_degradation/_coerce_float_field/_coerce_int_field/_coerce_config_field）与 core/services/scheduler/config/config_field_coercion.py:127-386 函数清单 13/15 同名同逻辑",
+    "core/models/schedule_config_runtime_read.py:10-30 read_runtime_cfg_raw_value 与 config_snapshot.py:95-115 _read_runtime_cfg_raw_value：diff 仅函数名加下划线，函数体相同",
+    "已验证两侧互不 import（grep core.services in models 引擎=空；grep schedule_config_runtime in services/config=空），是真·并行孪生而非委托"
+   ],
+   "problem": "整套'读配置→强转→降级收集→生成快照'引擎在 models 与 services/config 各存一份完整实现。两份 27 字段规格、默认值、校验/降级逻辑当前一致，但靠人工保持同步。",
+   "impact": "改任一处默认值/校验规则/新增字段，另一份不会报错地保持旧行为——算法侧(走 models 版)与服务/汇总/页面侧(走 services 版)会静默给出不同的配置快照，是排产结果级别的隐性分叉风险。994 行重复也直接拉高维护面。",
+   "fix_hint": "抽一个分层中立的单一规格+强转模块(放 core/shared 或新 core/config_runtime)，models 与 services/config 都 import 它；或让 services 版委托 models 版(注意 services 版多了 page_metadata/label，需把展示元数据留在 services、把规格+强转下沉为共享)。根因是算法层不能 import services(红线)才催生 models 副本，所以共享层必须在 models 可达的位置。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "跨层违规",
+   "title": "schedule_config_runtime_* 是配置校验/降级引擎却挂在 models 层（第一轮已点名，本轮坐实为'引擎'而非'结构化模型'）",
+   "evidence": [
+    "core/models/schedule_config_runtime_coercion.py:5-9 import ValidationError、DegradationCollector、degradation_events_to_dicts、parse_field_float/int——纯校验引擎依赖",
+    "core/models/schedule_config_runtime_coercion.py:61-80 _handle_missing_value 抛 ValidationError / 写降级事件，是业务策略而非数据建模",
+    "唯一消费者是 core/algorithms/greedy/（config_adapter.py、schedule_params.py），无任何其他 models 文件依赖它"
+   ],
+   "problem": "该家族做的是'运行期配置取值→类型/枚举/范围校验→strict 抛错或降级回退'，属配置服务职责，与 models 其余 32 个纯 dataclass 不同层。runtime/coercion 命名也含糊。",
+   "impact": "模糊了'models=纯数据载体'的边界，新人会误以为 models 可放业务校验；与 finding#1 的孪生问题同根，搬迁/合并需一起做。",
+   "fix_hint": "与 finding#1 合并处理：把规格+强转下沉到 models 可达的共享层后，这块自然不再'放错层'。若只想就地修，至少把它移出 models 顶层、归入一个明确的 core/config_runtime 包并改名(去掉 runtime/coercion 含糊词)。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "_text_or_none 在 3 个模型文件逐字节复制，而这 3 个文件本就都 import 了 ._helpers",
+   "evidence": [
+    "core/models/operation_execution_event.py:45-48",
+    "core/models/schedule_adjustment.py:59-62",
+    "core/models/schedule_candidate.py:10-13（三处函数体完全相同：value is None or =='' 返回 None 否则 str）",
+    "三文件首行均为 from ._helpers import RowLike, as_dict, get, parse_int —— 共享落点已在手边却没用",
+    "codemap dup_symbols 记录 _text_or_none 共 5 处(3 处在 models)"
+   ],
+   "problem": "一个 3 行的小工具被复制 3 份，复制点和它们已经依赖的 _helpers.py 就在同目录。",
+   "impact": "改其一(如想让纯空格也归 None)会与另两处静默不一致；属第一轮主旋律3(琐碎 helper 复制)在 models 内的实例。",
+   "fix_hint": "在 core/models/_helpers.py 新增 text_or_none()，三处改为 from ._helpers import text_or_none 并删本地定义；行为完全等价，零风险。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "命名混乱",
+   "title": "to_dict() 两种写法并存：3 文件用 as_dict(self.__dict__)（自动全字段、防漂移），21 文件用 as_dict({手列每个键})（既冗余又易漏字段）",
+   "evidence": [
+    "自动式：operation_execution_event.py:117-118、schedule_adjustment.py:95-96、schedule_candidate.py:78-79（return as_dict(self.__dict__)）",
+    "手列式：schedule.py:58-71、batch.py:47-63、machine.py:41-54、calendar.py:58-71 等 21 个文件（return as_dict({...逐键...})）",
+    "as_dict(_helpers.py:11) 对 dict 入参做的是 dict(row) 浅拷贝——手列式先 new 一个字典再被 as_dict 拷一遍，第二次拷贝纯冗余",
+    "脚本核对：手列式 to_dict 字典字面量与 dataclass 字段集合在所有文件当前一致(无遗漏)，但靠人工维护"
+   ],
+   "problem": "同一职责(dataclass→dict)用了两种范式；手列式既多一次无意义拷贝，又要求新增字段时记得同步字面量。",
+   "impact": "新增 dataclass 字段若忘了加进 to_dict 字面量，序列化会静默丢字段且不报错(自动式无此风险)；范式不统一也增加阅读成本。属低危但面广(21 处)的一致性债。",
+   "fix_hint": "统一为 return as_dict(self.__dict__)（或 dataclasses.asdict(self)）。注意带 prefix 参数或需排除 repr=False 字段的特例(如 ScheduleConfigSnapshot 故意不导出 degradation_*）要保留手写。逐文件替换、用现有 to_dict 回归断言护住。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "职责不清",
+   "title": "3 个状态枚举定义在 enums.py 却未进 __init__ __all__，消费方被迫绕开包门面直接 import core.models.enums",
+   "evidence": [
+    "core/models/enums.py:50 BatchOperationStatus、:81 PartOperationStatus、:86 MachineDowntimeStatus 三个枚举无 export",
+    "core/models/__init__.py:16-32 __all__ 导出了 BatchStatus/MachineStatus 等同类枚举，独缺这 3 个",
+    "10+ 生产文件(schedule_service.py、batch_template_ops.py、machine_downtime_service.py、process_parts.py 等)直接 from core.models.enums import 这 3 个，与其余枚举走 from core.models import 的约定不一致"
+   ],
+   "problem": "同为状态枚举，部分走包门面导出、这 3 个只能走子模块路径，import 约定分裂。",
+   "impact": "轻微——只是约定不统一、读代码时'为何这个从 enums 子模块拿'会困惑；无功能风险。",
+   "fix_hint": "把这 3 个枚举补进 __init__.py 的 import 与 __all__，消费方可逐步收敛到 from core.models import；或反向明确'枚举一律从 core.models.enums 拿'并把现有导出移除。二选一即可。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "重复",
+   "title": "ScheduleConfig 与 SystemConfig 字段形状完全相同的两个键值配置 dataclass",
+   "evidence": [
+    "core/models/config.py:9-37 ScheduleConfig 与 core/models/system_config.py:9-38 SystemConfig：字段(id/config_key/config_value/description/updated_at)与 from_row/to_dict 经 diff 形状一致",
+    "分别被 data/repositories/config_repo.py 与 system_config_repo.py 各自消费(对应两张不同的 DB 表 ScheduleConfig/SystemConfig)"
+   ],
+   "problem": "两个除名字外完全相同的 KV 配置载体。",
+   "impact": "很低——按 DB 表分域是可辩护的设计选择，不是 bug；仅属'可考虑抽一个通用 KeyValueConfig'的轻度冗余。",
+   "fix_hint": "可不动。若要收敛，抽 KeyValueConfigRow 基类两者继承，或保留现状(域分离更直观)。列此条仅为完整性，建议低优先或不处理。",
+   "in_flight_conflict": false
+  }
+ ],
+ "cleanup": [
+  "[高价值] 消除 config 引擎孪生：抽分层中立的单一'字段规格+强转+降级'共享模块(core/shared 或新 core/config_runtime)，models 与 services/config 同时 import；删除 schedule_config_runtime_coercion/fields/read/weights/snapshot 与 services 重复的部分(约 994 行可大幅压缩)。先做契约测试锁住两侧当前输出再合并",
+  "[低风险] 把 _text_or_none 提升到 core/models/_helpers.py，operation_execution_event.py:45 / schedule_adjustment.py:59 / schedule_candidate.py:10 三处改为 import(行为等价)",
+  "[低风险] 统一 to_dict 写法为 as_dict(self.__dict__)：批改 21 个手列式文件(batch/machine/operator/schedule/calendar/part_operation 等)，保留 ScheduleConfigSnapshot 等需排除 repr=False 字段的特例；用现有 to_dict 回归断言护航",
+  "[一致性] 把 BatchOperationStatus/PartOperationStatus/MachineDowntimeStatus 补进 core/models/__init__.py 的 __all__，或明确统一为'枚举从 core.models.enums 取'",
+  "[评估] SkillLevel.SKILLED(enums.py:106) 与 schema.sql:111 OperatorSkill 死表：SKILLED 仅 migration v5 + normalization_matrix 折叠用，OperatorSkill 表全仓零模型映射——可在确认无历史库依赖后随 schema 清理一并回收(跨分区，留给持久层专题)"
+ ]
+}

@@ -1,0 +1,914 @@
+[
+ {
+  "layer": "core.services.report",
+  "lines": 579,
+  "module": "core.services.report.report_engine",
+  "rel": "core/services/report/report_engine.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 493,
+  "module": "core.services.scheduler.resource_dispatch_actual_record_service",
+  "rel": "core/services/scheduler/resource_dispatch_actual_record_service.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 489,
+  "module": "web.routes.domains.scheduler.scheduler_week_plan",
+  "rel": "web/routes/domains/scheduler/scheduler_week_plan.py"
+ },
+ {
+  "layer": "core.services.other",
+  "lines": 487,
+  "module": "core.services.personnel.operator_machine_service",
+  "rel": "core/services/personnel/operator_machine_service.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 486,
+  "module": "web.routes.domains.scheduler.scheduler_config",
+  "rel": "web/routes/domains/scheduler/scheduler_config.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 478,
+  "module": "core.services.scheduler.gantt_service",
+  "rel": "core/services/scheduler/gantt_service.py"
+ },
+ {
+  "layer": "core.algorithms",
+  "lines": 473,
+  "module": "core.algorithms.greedy.scheduler",
+  "rel": "core/algorithms/greedy/scheduler.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 469,
+  "module": "web.routes.equipment_excel_machines",
+  "rel": "web/routes/equipment_excel_machines.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 464,
+  "module": "web.routes.process_excel_part_operation_hours",
+  "rel": "web/routes/process_excel_part_operation_hours.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 460,
+  "module": "core.services.scheduler.gantt_adjustment_publish_service",
+  "rel": "core/services/scheduler/gantt_adjustment_publish_service.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 454,
+  "module": "web.routes.domains.scheduler.scheduler_batch_detail",
+  "rel": "web/routes/domains/scheduler/scheduler_batch_detail.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 454,
+  "module": "web.routes.personnel_excel_operator_calendar",
+  "rel": "web/routes/personnel_excel_operator_calendar.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 446,
+  "module": "core.services.scheduler.batch_service",
+  "rel": "core/services/scheduler/batch_service.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 435,
+  "module": "web.routes.domains.scheduler.scheduler_excel_batches",
+  "rel": "web/routes/domains/scheduler/scheduler_excel_batches.py"
+ },
+ {
+  "layer": "core.algorithms",
+  "lines": 432,
+  "module": "core.algorithms.greedy.dispatch.sgs",
+  "rel": "core/algorithms/greedy/dispatch/sgs.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 430,
+  "module": "web.routes.domains.scheduler.scheduler_excel_calendar",
+  "rel": "web/routes/domains/scheduler/scheduler_excel_calendar.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 428,
+  "module": "web.routes.domains.scheduler.scheduler_batches",
+  "rel": "web/routes/domains/scheduler/scheduler_batches.py"
+ },
+ {
+  "layer": "core.services.report",
+  "lines": 419,
+  "module": "core.services.report.exporters.xlsx",
+  "rel": "core/services/report/exporters/xlsx.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 409,
+  "module": "web.routes.process_excel_suppliers",
+  "rel": "web/routes/process_excel_suppliers.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 395,
+  "module": "web.routes.equipment_pages",
+  "rel": "web/routes/equipment_pages.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 385,
+  "module": "core.services.scheduler.config.config_field_coercion",
+  "rel": "core/services/scheduler/config/config_field_coercion.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 378,
+  "module": "web.routes.process_excel_routes",
+  "rel": "web/routes/process_excel_routes.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 375,
+  "module": "web.routes.system_backup",
+  "rel": "web/routes/system_backup.py"
+ },
+ {
+  "layer": "core.services.other",
+  "lines": 374,
+  "module": "core.services.system.maintenance.cleanup_task",
+  "rel": "core/services/system/maintenance/cleanup_task.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 370,
+  "module": "web.routes.personnel_excel_operators",
+  "rel": "web/routes/personnel_excel_operators.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 368,
+  "module": "core.services.scheduler.graph.input_adapter",
+  "rel": "core/services/scheduler/graph/input_adapter.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 361,
+  "module": "web.routes.process_excel_op_types",
+  "rel": "web/routes/process_excel_op_types.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 358,
+  "module": "web.routes.domains.scheduler.scheduler_gantt",
+  "rel": "web/routes/domains/scheduler/scheduler_gantt.py"
+ },
+ {
+  "layer": "web.bootstrap",
+  "lines": 340,
+  "module": "web.bootstrap.entrypoint",
+  "rel": "web/bootstrap/entrypoint.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 323,
+  "module": "web.routes.domains.scheduler.scheduler_resource_dispatch",
+  "rel": "web/routes/domains/scheduler/scheduler_resource_dispatch.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 321,
+  "module": "web.routes.personnel_excel_links",
+  "rel": "web/routes/personnel_excel_links.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 315,
+  "module": "web.routes.equipment_excel_links",
+  "rel": "web/routes/equipment_excel_links.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 309,
+  "module": "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes",
+  "rel": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 300,
+  "module": "web.routes.process_parts",
+  "rel": "web/routes/process_parts.py"
+ },
+ {
+  "layer": "core.plugins",
+  "lines": 296,
+  "module": "core.plugins.manager",
+  "rel": "core/plugins/manager.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 296,
+  "module": "web.routes.personnel_pages",
+  "rel": "web/routes/personnel_pages.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 289,
+  "module": "core.services.scheduler.operation_edit_service",
+  "rel": "core/services/scheduler/operation_edit_service.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 274,
+  "module": "data.repositories.schedule_candidate_repo",
+  "rel": "data/repositories/schedule_candidate_repo.py"
+ },
+ {
+  "layer": "core.services.other",
+  "lines": 263,
+  "module": "core.services.equipment.machine_downtime_service",
+  "rel": "core/services/equipment/machine_downtime_service.py"
+ },
+ {
+  "layer": "core.services.scheduler.run",
+  "lines": 263,
+  "module": "core.services.scheduler.run.optimizer_proof_harness",
+  "rel": "core/services/scheduler/run/optimizer_proof_harness.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 260,
+  "module": "core.services.scheduler.graph.resource_matching",
+  "rel": "core/services/scheduler/graph/resource_matching.py"
+ },
+ {
+  "layer": "web.bootstrap",
+  "lines": 255,
+  "module": "web.bootstrap.runtime_probe",
+  "rel": "web/bootstrap/runtime_probe.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 237,
+  "module": "core.infrastructure.migrations.v1",
+  "rel": "core/infrastructure/migrations/v1.py"
+ },
+ {
+  "layer": "core.algorithms",
+  "lines": 232,
+  "module": "core.algorithms.ortools_bottleneck",
+  "rel": "core/algorithms/ortools_bottleneck.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 229,
+  "module": "core.services.scheduler.batch_template_ops",
+  "rel": "core/services/scheduler/batch_template_ops.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 215,
+  "module": "data.repositories.machine_downtime_repo",
+  "rel": "data/repositories/machine_downtime_repo.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 212,
+  "module": "web.routes.domains.scheduler.scheduler_gantt_adjustments",
+  "rel": "web/routes/domains/scheduler/scheduler_gantt_adjustments.py"
+ },
+ {
+  "layer": "core.services.other",
+  "lines": 211,
+  "module": "core.services.process.external_group_service",
+  "rel": "core/services/process/external_group_service.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 206,
+  "module": "core.services.scheduler.config.config_presets",
+  "rel": "core/services/scheduler/config/config_presets.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 198,
+  "module": "data.repositories.schedule_adjustment_scenario_repo",
+  "rel": "data/repositories/schedule_adjustment_scenario_repo.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 192,
+  "module": "core.services.scheduler.gantt_adjustment_draft_service",
+  "rel": "core/services/scheduler/gantt_adjustment_draft_service.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 191,
+  "module": "web.routes.system_runtime_logs",
+  "rel": "web/routes/system_runtime_logs.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 190,
+  "module": "data.repositories.batch_repo",
+  "rel": "data/repositories/batch_repo.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 187,
+  "module": "data.repositories.schedule_adjustment_repo",
+  "rel": "data/repositories/schedule_adjustment_repo.py"
+ },
+ {
+  "layer": "core.services.other",
+  "lines": 179,
+  "module": "core.services.system.maintenance.backup_task",
+  "rel": "core/services/system/maintenance/backup_task.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 172,
+  "module": "data.repositories.operator_machine_repo",
+  "rel": "data/repositories/operator_machine_repo.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 169,
+  "module": "web.routes.system_logs",
+  "rel": "web/routes/system_logs.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 165,
+  "module": "data.repositories.part_operation_repo",
+  "rel": "data/repositories/part_operation_repo.py"
+ },
+ {
+  "layer": "core.services.other",
+  "lines": 161,
+  "module": "core.services.common.pandas_backend",
+  "rel": "core/services/common/pandas_backend.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 159,
+  "module": "core.services.scheduler.batch_write_rules",
+  "rel": "core/services/scheduler/batch_write_rules.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 157,
+  "module": "core.services.scheduler.config.active_preset_provenance",
+  "rel": "core/services/scheduler/config/active_preset_provenance.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 156,
+  "module": "web.routes.domains.scheduler.scheduler_week_plan_print",
+  "rel": "web/routes/domains/scheduler/scheduler_week_plan_print.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 154,
+  "module": "data.repositories.supplier_repo",
+  "rel": "data/repositories/supplier_repo.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 151,
+  "module": "data.repositories.op_type_repo",
+  "rel": "data/repositories/op_type_repo.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 149,
+  "module": "data.repositories.schedule_history_repo",
+  "rel": "data/repositories/schedule_history_repo.py"
+ },
+ {
+  "layer": "core.services.other",
+  "lines": 141,
+  "module": "core.services.material.material_service",
+  "rel": "core/services/material/material_service.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 141,
+  "module": "web.routes.system_history",
+  "rel": "web/routes/system_history.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 139,
+  "module": "core.models.calendar",
+  "rel": "core/models/calendar.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 139,
+  "module": "data.repositories.batch_material_repo",
+  "rel": "data/repositories/batch_material_repo.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 136,
+  "module": "web.routes.domains.scheduler.scheduler_analysis",
+  "rel": "web/routes/domains/scheduler/scheduler_analysis.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 135,
+  "module": "core.services.scheduler.gantt_adjustment_scenario_service",
+  "rel": "core/services/scheduler/gantt_adjustment_scenario_service.py"
+ },
+ {
+  "layer": "core.services.scheduler.run",
+  "lines": 135,
+  "module": "core.services.scheduler.run.schedule_graph_resource_matching_context",
+  "rel": "core/services/scheduler/run/schedule_graph_resource_matching_context.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 127,
+  "module": "core.infrastructure.migrations.v8",
+  "rel": "core/infrastructure/migrations/v8.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 123,
+  "module": "data.repositories.resource_team_repo",
+  "rel": "data/repositories/resource_team_repo.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 122,
+  "module": "web.routes.process_suppliers",
+  "rel": "web/routes/process_suppliers.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 121,
+  "module": "core.models.batch_operation",
+  "rel": "core/models/batch_operation.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 116,
+  "module": "core.services.scheduler.graph.scoring",
+  "rel": "core/services/scheduler/graph/scoring.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 113,
+  "module": "web.routes.personnel_calendar_pages",
+  "rel": "web/routes/personnel_calendar_pages.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 108,
+  "module": "core.infrastructure.migrations.v9",
+  "rel": "core/infrastructure/migrations/v9.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 108,
+  "module": "core.services.scheduler.batch_excel_import",
+  "rel": "core/services/scheduler/batch_excel_import.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 104,
+  "module": "core.models.part_operation",
+  "rel": "core/models/part_operation.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 99,
+  "module": "data.repositories.material_repo",
+  "rel": "data/repositories/material_repo.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 94,
+  "module": "data.repositories.external_group_repo",
+  "rel": "data/repositories/external_group_repo.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 92,
+  "module": "core.infrastructure.migrations.v10",
+  "rel": "core/infrastructure/migrations/v10.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 92,
+  "module": "core.services.scheduler.graph.exporter",
+  "rel": "core/services/scheduler/graph/exporter.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 92,
+  "module": "web.routes.domains.scheduler.scheduler_excel_batches_baseline",
+  "rel": "web/routes/domains/scheduler/scheduler_excel_batches_baseline.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 92,
+  "module": "web.routes.equipment_downtimes",
+  "rel": "web/routes/equipment_downtimes.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 90,
+  "module": "core.services.scheduler.graph.analysis_service",
+  "rel": "core/services/scheduler/graph/analysis_service.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 87,
+  "module": "core.services.scheduler.analysis.schedule_diagnostic_contract",
+  "rel": "core/services/scheduler/analysis/schedule_diagnostic_contract.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 87,
+  "module": "data.repositories.operation_log_repo",
+  "rel": "data/repositories/operation_log_repo.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 86,
+  "module": "core.infrastructure.migrations.v4",
+  "rel": "core/infrastructure/migrations/v4.py"
+ },
+ {
+  "layer": "core.services.other",
+  "lines": 83,
+  "module": "core.services.personnel.operator_machine_normalizers",
+  "rel": "core/services/personnel/operator_machine_normalizers.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 83,
+  "module": "data.repositories.operator_calendar_repo",
+  "rel": "data/repositories/operator_calendar_repo.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 79,
+  "module": "core.infrastructure.migrations.v5",
+  "rel": "core/infrastructure/migrations/v5.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 79,
+  "module": "core.services.scheduler.batch_copy",
+  "rel": "core/services/scheduler/batch_copy.py"
+ },
+ {
+  "layer": "core.services.report",
+  "lines": 78,
+  "module": "core.services.report.calculations",
+  "rel": "core/services/report/calculations.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 78,
+  "module": "web.routes.domains.scheduler.scheduler_calendar_pages",
+  "rel": "web/routes/domains/scheduler/scheduler_calendar_pages.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 76,
+  "module": "web.routes.process_excel_part_operations",
+  "rel": "web/routes/process_excel_part_operations.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 74,
+  "module": "core.infrastructure.migrations.v19",
+  "rel": "core/infrastructure/migrations/v19.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 73,
+  "module": "core.models.machine_downtime",
+  "rel": "core/models/machine_downtime.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 72,
+  "module": "core.models.schedule",
+  "rel": "core/models/schedule.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 72,
+  "module": "web.routes.personnel_teams",
+  "rel": "web/routes/personnel_teams.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 70,
+  "module": "web.routes.domains.scheduler.scheduler_run",
+  "rel": "web/routes/domains/scheduler/scheduler_run.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 69,
+  "module": "core.infrastructure.migrations.v6",
+  "rel": "core/infrastructure/migrations/v6.py"
+ },
+ {
+  "layer": "core.services.other",
+  "lines": 69,
+  "module": "core.services.system.operation_log_service",
+  "rel": "core/services/system/operation_log_service.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 69,
+  "module": "data.repositories.calendar_repo",
+  "rel": "data/repositories/calendar_repo.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 68,
+  "module": "data.repositories.part_repo",
+  "rel": "data/repositories/part_repo.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 68,
+  "module": "web.routes.process_op_types",
+  "rel": "web/routes/process_op_types.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 67,
+  "module": "web.routes.system_health",
+  "rel": "web/routes/system_health.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 65,
+  "module": "core.infrastructure.migrations.v13",
+  "rel": "core/infrastructure/migrations/v13.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 64,
+  "module": "core.models.batch",
+  "rel": "core/models/batch.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 63,
+  "module": "core.models.external_group",
+  "rel": "core/models/external_group.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 60,
+  "module": "core.infrastructure.migrations.v12",
+  "rel": "core/infrastructure/migrations/v12.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 58,
+  "module": "data.repositories.system_config_repo",
+  "rel": "data/repositories/system_config_repo.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 57,
+  "module": "core.models.operation_log",
+  "rel": "core/models/operation_log.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 55,
+  "module": "core.models.machine",
+  "rel": "core/models/machine.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 55,
+  "module": "core.models.schedule_history",
+  "rel": "core/models/schedule_history.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 55,
+  "module": "web.routes.system_plugins",
+  "rel": "web/routes/system_plugins.py"
+ },
+ {
+  "layer": "plugins",
+  "lines": 51,
+  "module": "plugins.pandas_backend_plugin",
+  "rel": "plugins/pandas_backend_plugin.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 50,
+  "module": "core.models.material",
+  "rel": "core/models/material.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 48,
+  "module": "core.models.operator",
+  "rel": "core/models/operator.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 48,
+  "module": "core.models.supplier",
+  "rel": "core/models/supplier.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 45,
+  "module": "core.models.operator_machine",
+  "rel": "core/models/operator_machine.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 45,
+  "module": "core.models.part",
+  "rel": "core/models/part.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 44,
+  "module": "core.models.resource_team",
+  "rel": "core/models/resource_team.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 42,
+  "module": "core.models.batch_material",
+  "rel": "core/models/batch_material.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 42,
+  "module": "core.models.op_type",
+  "rel": "core/models/op_type.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 39,
+  "module": "core.infrastructure.migrations.v7",
+  "rel": "core/infrastructure/migrations/v7.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 39,
+  "module": "core.models.system_config",
+  "rel": "core/models/system_config.py"
+ },
+ {
+  "layer": "core.models",
+  "lines": 39,
+  "module": "core.models.system_job_state",
+  "rel": "core/models/system_job_state.py"
+ },
+ {
+  "layer": "core.services.other",
+  "lines": 39,
+  "module": "core.services.process.unit_excel_converter",
+  "rel": "core/services/process/unit_excel_converter.py"
+ },
+ {
+  "layer": "data.repositories",
+  "lines": 37,
+  "module": "data.repositories.system_job_state_repo",
+  "rel": "data/repositories/system_job_state_repo.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 30,
+  "module": "core.infrastructure.migrations.v3",
+  "rel": "core/infrastructure/migrations/v3.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 28,
+  "module": "core.infrastructure.migrations.v17",
+  "rel": "core/infrastructure/migrations/v17.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 27,
+  "module": "core.infrastructure.migrations.v2",
+  "rel": "core/infrastructure/migrations/v2.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 25,
+  "module": "core.infrastructure.migrations.v11",
+  "rel": "core/infrastructure/migrations/v11.py"
+ },
+ {
+  "layer": "core.services.other",
+  "lines": 25,
+  "module": "core.services.system.maintenance.throttle",
+  "rel": "core/services/system/maintenance/throttle.py"
+ },
+ {
+  "layer": "core.services.other",
+  "lines": 24,
+  "module": "core.services.system.system_job_state_query_service",
+  "rel": "core/services/system/system_job_state_query_service.py"
+ },
+ {
+  "layer": "core.infrastructure",
+  "lines": 23,
+  "module": "core.infrastructure.migrations.v14",
+  "rel": "core/infrastructure/migrations/v14.py"
+ },
+ {
+  "layer": "plugins",
+  "lines": 22,
+  "module": "plugins.ortools_probe_plugin",
+  "rel": "plugins/ortools_probe_plugin.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 19,
+  "module": "core.services.scheduler.schedule_orchestrator",
+  "rel": "core/services/scheduler/schedule_orchestrator.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 14,
+  "module": "core.services.scheduler.graph.ready_queue",
+  "rel": "core/services/scheduler/graph/ready_queue.py"
+ },
+ {
+  "layer": "web.routes.domains",
+  "lines": 9,
+  "module": "web.routes.domains.scheduler.scheduler_pages",
+  "rel": "web/routes/domains/scheduler/scheduler_pages.py"
+ },
+ {
+  "layer": "web.routes",
+  "lines": 9,
+  "module": "web.routes.scheduler",
+  "rel": "web/routes/scheduler.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 8,
+  "module": "core.services.scheduler.schedule_optimizer",
+  "rel": "core/services/scheduler/schedule_optimizer.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 8,
+  "module": "core.services.scheduler.schedule_optimizer_steps",
+  "rel": "core/services/scheduler/schedule_optimizer_steps.py"
+ },
+ {
+  "layer": "core.services.report",
+  "lines": 6,
+  "module": "core.services.report.execution_review_identity",
+  "rel": "core/services/report/execution_review_identity.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 6,
+  "module": "core.services.scheduler.freeze_window",
+  "rel": "core/services/scheduler/freeze_window.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 6,
+  "module": "core.services.scheduler.history_summary_parser",
+  "rel": "core/services/scheduler/history_summary_parser.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 6,
+  "module": "core.services.scheduler.schedule_input_builder",
+  "rel": "core/services/scheduler/schedule_input_builder.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 6,
+  "module": "core.services.scheduler.schedule_input_collector",
+  "rel": "core/services/scheduler/schedule_input_collector.py"
+ },
+ {
+  "layer": "core.services.scheduler",
+  "lines": 6,
+  "module": "core.services.scheduler.schedule_persistence",
+  "rel": "core/services/scheduler/schedule_persistence.py"
+ }
+]

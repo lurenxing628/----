@@ -1,0 +1,157 @@
+{
+ "dup_body_cluster_count": 14,
+ "dup_body_total_occurrences": 108,
+ "dup_symbol_count": 113,
+ "layering_violation_count_by_rule": {},
+ "lines_by_layer": {
+  "core": 2,
+  "core.algorithms": 5804,
+  "core.infrastructure": 5347,
+  "core.models": 5928,
+  "core.plugins": 407,
+  "core.services.other": 10886,
+  "core.services.report": 2699,
+  "core.services.scheduler": 26196,
+  "core.services.scheduler.run": 17643,
+  "core.shared": 1052,
+  "data": 2,
+  "data.repositories": 5350,
+  "desktop": 275,
+  "plugins": 73,
+  "scripts": 4747,
+  "tools": 18824,
+  "web.bootstrap": 4967,
+  "web.other": 1131,
+  "web.routes": 10011,
+  "web.routes.domains": 7042,
+  "web.viewmodels": 16808
+ },
+ "modules_by_layer": {
+  "core": 1,
+  "core.algorithms": 31,
+  "core.infrastructure": 35,
+  "core.models": 52,
+  "core.plugins": 4,
+  "core.services.other": 76,
+  "core.services.report": 16,
+  "core.services.scheduler": 135,
+  "core.services.scheduler.run": 71,
+  "core.shared": 9,
+  "data": 1,
+  "data.repositories": 36,
+  "desktop": 5,
+  "plugins": 2,
+  "scripts": 6,
+  "tools": 55,
+  "web.bootstrap": 27,
+  "web.other": 7,
+  "web.routes": 58,
+  "web.routes.domains": 41,
+  "web.viewmodels": 73
+ },
+ "parse_errors": [],
+ "top_dup_bodies": [
+  [
+   "_text",
+   43
+  ],
+  [
+   "_normalize_text",
+   13
+  ],
+  [
+   "to_dict",
+   8
+  ],
+  [
+   "delete_all",
+   8
+  ],
+  [
+   "_parse_mode",
+   5
+  ],
+  [
+   "get_name",
+   4
+  ],
+  [
+   "_ensure_unique_ids",
+   4
+  ],
+  [
+   "_read_uploaded_xlsx",
+   4
+  ],
+  [
+   "_has_value",
+   4
+  ],
+  [
+   "_create_current_event_table",
+   3
+  ],
+  [
+   "_text_or_none",
+   3
+  ],
+  [
+   "_positive_int",
+   3
+  ],
+  [
+   "_columns_sql",
+   3
+  ],
+  [
+   "_sha256_file",
+   3
+  ]
+ ],
+ "top_dup_symbols": {
+  "_get_or_raise": 7,
+  "_normalize_float": 4,
+  "_normalize_text": 14,
+  "_normalize_yesno": 4,
+  "_optional_text": 4,
+  "_parse_args": 7,
+  "_parse_mode": 5,
+  "_positive_int": 12,
+  "_required_text": 8,
+  "_safe_int": 4,
+  "_sha256_file": 5,
+  "_text": 50,
+  "_text_or_none": 5,
+  "apply_preview_rows": 5,
+  "build_existing_for_excel": 4,
+  "create": 25,
+  "delete": 28,
+  "delete_all": 9,
+  "delete_all_no_tx": 4,
+  "ensure_replace_allowed": 4,
+  "exists": 6,
+  "from_row": 30,
+  "get": 37,
+  "get_name": 5,
+  "get_optional": 5,
+  "index": 5,
+  "list": 16,
+  "list_all": 7,
+  "list_by_machine": 5,
+  "list_page": 5,
+  "main": 21,
+  "parse_finite_float": 6,
+  "parse_finite_int": 6,
+  "register": 4,
+  "run": 19,
+  "set_status": 4,
+  "sort": 5,
+  "to_dict": 64,
+  "update": 21,
+  "upsert": 4
+ },
+ "total_defs": 7370,
+ "total_import_edges": 2374,
+ "total_lines": 145194,
+ "total_modules": 741
+}

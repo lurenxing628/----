@@ -1,0 +1,324 @@
+{
+ "core": [
+  "tools/long_gate_manifest.py",
+  "tools/quality_gate_scan.py",
+  "tools/scan_import_cycles.py",
+  "tools/symbol_locator/freshness.py"
+ ],
+ "core.services.personnel.operator_machine_normalizers": [
+  "tools/test_debt_registry.py"
+ ],
+ "core.services.personnel.operator_machine_query_service": [
+  "tools/test_debt_registry.py"
+ ],
+ "core.services.personnel.operator_machine_service": [
+  "tools/test_debt_registry.py"
+ ],
+ "core.services.scheduler.run.schedule_orchestrator": [
+  "core/services/scheduler/schedule_orchestrator.py"
+ ],
+ "data": [
+  "core/services/equipment/machine_excel_import_service.py",
+  "core/services/personnel/operator_excel_import_service.py",
+  "core/services/process/op_type_excel_import_service.py",
+  "core/services/process/supplier_excel_import_service.py",
+  "core/services/scheduler/graph/resource_matching.py",
+  "core/services/scheduler/run/schedule_graph_projection_helpers.py",
+  "tools/long_gate_manifest.py",
+  "tools/quality_gate_scan.py",
+  "tools/scan_import_cycles.py",
+  "tools/symbol_locator/freshness.py",
+  "web/routes/domains/scheduler/scheduler_excel_calendar.py",
+  "web/routes/domains/scheduler/scheduler_gantt.py",
+  "web/routes/domains/scheduler/scheduler_gantt_adjustments.py",
+  "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
+  "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+  "web/routes/excel_utils.py"
+ ],
+ "desktop": [
+  "tools/quality_gate_scan.py",
+  "tools/scan_import_cycles.py",
+  "tools/symbol_locator/freshness.py"
+ ],
+ "scripts": [
+  "tools/scan_dead_code_islands.py",
+  "tools/scan_import_cycles.py",
+  "tools/symbol_locator/freshness.py"
+ ],
+ "tools": [
+  "scripts/run_quality_gate.py",
+  "scripts/sync_debt_ledger.py",
+  "tools/scan_import_cycles.py",
+  "tools/symbol_locator/freshness.py"
+ ],
+ "web": [
+  "tools/long_gate_manifest.py",
+  "tools/quality_gate_scan.py",
+  "tools/scan_import_cycles.py",
+  "tools/symbol_locator/freshness.py",
+  "web/routes/domains/scheduler/scheduler_utils.py"
+ ],
+ "web.bootstrap.launcher_cleanup_result": [
+  "web/bootstrap/launcher_contracts.py"
+ ],
+ "web.routes.dashboard": [
+  "web/routes/dashboard.py(stem)",
+  "web/viewmodels/dashboard_workbench_todos.py(stem)",
+  "web/viewmodels/scheduler_navigation_links.py(stem)",
+  "web/viewmodels/scheduler_workbench_link_query.py(stem)",
+  "web/viewmodels/scheduler_workbench_link_specs.py(stem)"
+ ],
+ "web.routes.domains.equipment": [
+  "core/infrastructure/migration_operation_execution_contract.py(stem)",
+  "core/infrastructure/migrations/v15.py(stem)",
+  "core/infrastructure/operation_execution_event_data_contract.py(stem)",
+  "core/models/operation_execution_labels.py(stem)",
+  "web/routes/equipment_bp.py(stem)",
+  "web/routes/equipment_excel_links.py(stem)",
+  "web/routes/equipment_excel_machines.py(stem)",
+  "web/viewmodels/system_logs_vm.py(stem)"
+ ],
+ "web.routes.domains.personnel": [
+  "web/routes/personnel_bp.py(stem)",
+  "web/routes/personnel_excel_links.py(stem)",
+  "web/routes/personnel_excel_operator_calendar.py(stem)",
+  "web/routes/personnel_excel_operators.py(stem)",
+  "web/viewmodels/system_logs_vm.py(stem)"
+ ],
+ "web.routes.domains.process": [
+  "core/infrastructure/migration_operation_execution_contract.py(stem)",
+  "core/infrastructure/migrations/v15.py(stem)",
+  "core/infrastructure/operation_execution_event_data_contract.py(stem)",
+  "core/models/operation_execution_labels.py(stem)",
+  "core/services/scheduler/gantt_critical_chain.py(stem)",
+  "core/services/scheduler/gantt_tasks.py(stem)",
+  "web/routes/process_bp.py(stem)",
+  "web/routes/process_excel_op_types.py(stem)",
+  "web/routes/process_excel_part_operation_hours.py(stem)",
+  "web/routes/process_excel_part_operations.py(stem)",
+  "web/routes/process_excel_routes.py(stem)",
+  "web/routes/process_excel_suppliers.py(stem)",
+  "web/viewmodels/system_logs_vm.py(stem)"
+ ],
+ "web.routes.domains.scheduler": [
+  "core/services/scheduler/gantt_adjustment_publish_service.py(stem)",
+  "core/services/scheduler/run/optimizer_candidate_phases.py(stem)",
+  "core/services/scheduler/run/optimizer_graph_ready_candidates.py(stem)",
+  "core/services/scheduler/run/schedule_persistence.py(stem)",
+  "tools/capture_networkx_phase0_baseline.py(stem)",
+  "web/routes/domains/scheduler/scheduler_bp.py(stem)",
+  "web/routes/domains/scheduler/scheduler_excel_batches.py(stem)",
+  "web/routes/domains/scheduler/scheduler_excel_calendar.py(stem)",
+  "web/routes/domains/scheduler/scheduler_resource_dispatch.py(stem)",
+  "web/routes/domains/scheduler/scheduler_week_plan.py(stem)",
+  "web/viewmodels/system_logs_vm.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_analysis": [
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)",
+  "web/viewmodels/page_manuals_registry.py(stem)",
+  "web/viewmodels/page_manuals_reports.py(stem)",
+  "web/viewmodels/page_manuals_scheduler.py(stem)",
+  "web/viewmodels/page_manuals_scheduler_admin.py(stem)",
+  "web/viewmodels/page_manuals_scheduler_outputs.py(stem)",
+  "web/viewmodels/page_manuals_scheduler_week_plan.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_batch_detail": [
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)",
+  "web/viewmodels/page_manuals_process.py(stem)",
+  "web/viewmodels/page_manuals_process_excel.py(stem)",
+  "web/viewmodels/page_manuals_registry.py(stem)",
+  "web/viewmodels/page_manuals_scheduler.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_batches": [
+  "tools/report_full_test_debt_durations.py(stem)",
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)",
+  "web/viewmodels/page_manuals_material.py(stem)",
+  "web/viewmodels/page_manuals_registry.py(stem)",
+  "web/viewmodels/page_manuals_scheduler.py(stem)",
+  "web/viewmodels/page_manuals_scheduler_admin.py(stem)",
+  "web/viewmodels/page_manuals_scheduler_outputs.py(stem)",
+  "web/viewmodels/page_manuals_system.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_calendar_pages": [
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_config": [
+  "tools/test_registry_groups_scheduler.py(stem)",
+  "web/routes/domains/scheduler/scheduler_config.py",
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)",
+  "web/viewmodels/page_manuals_registry.py(stem)",
+  "web/viewmodels/page_manuals_scheduler.py(stem)",
+  "web/viewmodels/page_manuals_scheduler_admin.py(stem)",
+  "web/viewmodels/page_manuals_scheduler_outputs.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_excel_batches": [
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_excel_calendar": [
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_gantt": [
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)",
+  "web/viewmodels/page_manuals_registry.py(stem)",
+  "web/viewmodels/page_manuals_reports.py(stem)",
+  "web/viewmodels/page_manuals_scheduler.py(stem)",
+  "web/viewmodels/page_manuals_scheduler_admin.py(stem)",
+  "web/viewmodels/page_manuals_scheduler_outputs.py(stem)",
+  "web/viewmodels/page_manuals_scheduler_week_plan.py(stem)",
+  "web/viewmodels/page_manuals_system_history.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_gantt_adjustments": [
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_ops": [
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_resource_dispatch": [
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes": [
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_run": [
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_week_plan": [
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)",
+  "web/viewmodels/page_manuals_registry.py(stem)",
+  "web/viewmodels/page_manuals_scheduler_outputs.py(stem)",
+  "web/viewmodels/page_manuals_scheduler_week_plan.py(stem)",
+  "web/viewmodels/page_manuals_system_history.py(stem)"
+ ],
+ "web.routes.domains.scheduler.scheduler_week_plan_print": [
+  "web/routes/domains/scheduler/scheduler_route_registrar.py(stem)"
+ ],
+ "web.routes.domains.system": [
+  "core/services/scheduler/gantt_adjustment_publish_service.py(stem)",
+  "core/services/scheduler/run/schedule_input_collector.py(stem)",
+  "core/services/scheduler/run/schedule_persistence.py(stem)",
+  "core/services/system/maintenance/backup_task.py(stem)",
+  "core/services/system/maintenance/cleanup_task.py(stem)",
+  "core/services/system/operation_log_service.py(stem)",
+  "web/routes/system_backup.py(stem)",
+  "web/routes/system_bp.py(stem)",
+  "web/routes/system_runtime_logs.py(stem)",
+  "web/viewmodels/system_logs_vm.py(stem)"
+ ],
+ "web.routes.equipment": [
+  "core/infrastructure/migration_operation_execution_contract.py(stem)",
+  "core/infrastructure/migrations/v15.py(stem)",
+  "core/infrastructure/operation_execution_event_data_contract.py(stem)",
+  "core/models/operation_execution_labels.py(stem)",
+  "web/routes/equipment_bp.py(stem)",
+  "web/routes/equipment_excel_links.py(stem)",
+  "web/routes/equipment_excel_machines.py(stem)",
+  "web/viewmodels/system_logs_vm.py(stem)"
+ ],
+ "web.routes.excel_demo": [
+  "web/routes/excel_demo.py(stem)",
+  "web/viewmodels/page_manuals_excel_demo.py(stem)",
+  "web/viewmodels/page_manuals_registry.py(stem)",
+  "web/viewmodels/system_logs_vm.py(stem)"
+ ],
+ "web.routes.material": [
+  "core/infrastructure/migration_operation_execution_contract.py(stem)",
+  "core/infrastructure/migrations/v15.py(stem)",
+  "core/infrastructure/operation_execution_event_data_contract.py(stem)",
+  "core/models/operation_execution_labels.py(stem)",
+  "core/services/material/batch_material_service.py(stem)",
+  "core/services/material/material_service.py(stem)",
+  "web/routes/material.py(stem)",
+  "web/viewmodels/system_logs_vm.py(stem)"
+ ],
+ "web.routes.personnel": [
+  "web/routes/personnel_bp.py(stem)",
+  "web/routes/personnel_excel_links.py(stem)",
+  "web/routes/personnel_excel_operator_calendar.py(stem)",
+  "web/routes/personnel_excel_operators.py(stem)",
+  "web/viewmodels/system_logs_vm.py(stem)"
+ ],
+ "web.routes.personnel_teams": [
+  "web/viewmodels/page_manuals_personnel.py(stem)",
+  "web/viewmodels/page_manuals_registry.py(stem)"
+ ],
+ "web.routes.process": [
+  "core/infrastructure/migration_operation_execution_contract.py(stem)",
+  "core/infrastructure/migrations/v15.py(stem)",
+  "core/infrastructure/operation_execution_event_data_contract.py(stem)",
+  "core/models/operation_execution_labels.py(stem)",
+  "core/services/scheduler/gantt_critical_chain.py(stem)",
+  "core/services/scheduler/gantt_tasks.py(stem)",
+  "web/routes/process_bp.py(stem)",
+  "web/routes/process_excel_op_types.py(stem)",
+  "web/routes/process_excel_part_operation_hours.py(stem)",
+  "web/routes/process_excel_part_operations.py(stem)",
+  "web/routes/process_excel_routes.py(stem)",
+  "web/routes/process_excel_suppliers.py(stem)",
+  "web/viewmodels/system_logs_vm.py(stem)"
+ ],
+ "web.routes.process_op_types": [
+  "web/viewmodels/page_manuals_process.py(stem)",
+  "web/viewmodels/page_manuals_registry.py(stem)"
+ ],
+ "web.routes.process_parts": [
+  "web/viewmodels/page_manuals_process.py(stem)",
+  "web/viewmodels/page_manuals_process_excel.py(stem)",
+  "web/viewmodels/page_manuals_registry.py(stem)",
+  "web/viewmodels/page_manuals_scheduler.py(stem)"
+ ],
+ "web.routes.process_suppliers": [
+  "web/viewmodels/page_manuals_process.py(stem)",
+  "web/viewmodels/page_manuals_process_excel.py(stem)",
+  "web/viewmodels/page_manuals_registry.py(stem)"
+ ],
+ "web.routes.reports": [
+  "tools/benchmark_full_test_debt_shards.py(stem)",
+  "tools/check_full_test_debt.py(stem)",
+  "tools/collect_full_test_debt.py(stem)",
+  "tools/report_full_test_debt_durations.py(stem)",
+  "tools/test_debt_registry.py(stem)",
+  "tools/verify_required_regressions_from_full_test_debt.py(stem)",
+  "web/routes/reports.py(stem)",
+  "web/routes/reports_export_support.py(stem)"
+ ],
+ "web.routes.scheduler": [
+  "core/services/scheduler/gantt_adjustment_publish_service.py(stem)",
+  "core/services/scheduler/run/optimizer_candidate_phases.py(stem)",
+  "core/services/scheduler/run/optimizer_graph_ready_candidates.py(stem)",
+  "core/services/scheduler/run/schedule_persistence.py(stem)",
+  "tools/capture_networkx_phase0_baseline.py(stem)",
+  "web/bootstrap/factory.py",
+  "web/routes/domains/scheduler/scheduler_bp.py(stem)",
+  "web/routes/domains/scheduler/scheduler_excel_batches.py(stem)",
+  "web/routes/domains/scheduler/scheduler_excel_calendar.py(stem)",
+  "web/routes/domains/scheduler/scheduler_resource_dispatch.py(stem)",
+  "web/routes/domains/scheduler/scheduler_week_plan.py(stem)",
+  "web/viewmodels/system_logs_vm.py(stem)"
+ ],
+ "web.routes.system": [
+  "core/services/scheduler/gantt_adjustment_publish_service.py(stem)",
+  "core/services/scheduler/run/schedule_input_collector.py(stem)",
+  "core/services/scheduler/run/schedule_persistence.py(stem)",
+  "core/services/system/maintenance/backup_task.py(stem)",
+  "core/services/system/maintenance/cleanup_task.py(stem)",
+  "core/services/system/operation_log_service.py(stem)",
+  "web/routes/system_backup.py(stem)",
+  "web/routes/system_bp.py(stem)",
+  "web/routes/system_runtime_logs.py(stem)",
+  "web/viewmodels/system_logs_vm.py(stem)"
+ ],
+ "web.routes.system_backup": [
+  "web/viewmodels/page_manuals_registry.py(stem)",
+  "web/viewmodels/page_manuals_system.py(stem)"
+ ],
+ "web.routes.system_history": [
+  "web/viewmodels/page_manuals_registry.py(stem)",
+  "web/viewmodels/page_manuals_system.py(stem)",
+  "web/viewmodels/page_manuals_system_history.py(stem)"
+ ],
+ "web.routes.system_logs": [
+  "web/viewmodels/page_manuals_registry.py(stem)",
+  "web/viewmodels/page_manuals_system.py(stem)",
+  "web/viewmodels/page_manuals_system_history.py(stem)"
+ ]
+}

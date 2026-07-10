@@ -1,0 +1,678 @@
+{
+ "0cd2cd09869988e1": [
+  {
+   "line": 43,
+   "lines": 2,
+   "name": "_columns_sql",
+   "rel": "data/repositories/schedule_adjustment_repo.py"
+  },
+  {
+   "line": 55,
+   "lines": 2,
+   "name": "_columns_sql",
+   "rel": "data/repositories/schedule_adjustment_scenario_repo.py"
+  },
+  {
+   "line": 62,
+   "lines": 2,
+   "name": "_columns_sql",
+   "rel": "data/repositories/schedule_candidate_repo.py"
+  }
+ ],
+ "2a3832fa9e511f18": [
+  {
+   "line": 61,
+   "lines": 4,
+   "name": "_create_current_event_table",
+   "rel": "core/infrastructure/migrations/v16.py"
+  },
+  {
+   "line": 42,
+   "lines": 4,
+   "name": "_create_current_event_table",
+   "rel": "core/infrastructure/migrations/v18.py"
+  },
+  {
+   "line": 52,
+   "lines": 4,
+   "name": "_create_current_event_table",
+   "rel": "core/infrastructure/migrations/v19.py"
+  }
+ ],
+ "3f5522fd2391d101": [
+  {
+   "line": 175,
+   "lines": 6,
+   "name": "_positive_int",
+   "rel": "core/models/scheduler_public_errors.py"
+  },
+  {
+   "line": 114,
+   "lines": 7,
+   "name": "_positive_int",
+   "rel": "core/services/scheduler/run/auto_assign_resource_errors.py"
+  },
+  {
+   "line": 36,
+   "lines": 6,
+   "name": "_positive_int",
+   "rel": "core/services/scheduler/run/schedule_operation_log_details.py"
+  }
+ ],
+ "4a1daaea986cd959": [
+  {
+   "line": 39,
+   "lines": 2,
+   "name": "_normalize_text",
+   "rel": "core/services/equipment/machine_downtime_service.py"
+  },
+  {
+   "line": 30,
+   "lines": 2,
+   "name": "_normalize_text",
+   "rel": "core/services/equipment/machine_service.py"
+  },
+  {
+   "line": 28,
+   "lines": 2,
+   "name": "_normalize_text",
+   "rel": "core/services/personnel/operator_service.py"
+  },
+  {
+   "line": 22,
+   "lines": 2,
+   "name": "_normalize_text",
+   "rel": "core/services/personnel/resource_team_service.py"
+  },
+  {
+   "line": 26,
+   "lines": 2,
+   "name": "_normalize_text",
+   "rel": "core/services/process/external_group_service.py"
+  },
+  {
+   "line": 25,
+   "lines": 2,
+   "name": "_normalize_text",
+   "rel": "core/services/process/op_type_service.py"
+  },
+  {
+   "line": 61,
+   "lines": 2,
+   "name": "_normalize_text",
+   "rel": "core/services/process/part_service.py"
+  },
+  {
+   "line": 27,
+   "lines": 2,
+   "name": "_normalize_text",
+   "rel": "core/services/process/supplier_service.py"
+  },
+  {
+   "line": 48,
+   "lines": 2,
+   "name": "_normalize_text",
+   "rel": "core/services/scheduler/batch_service.py"
+  },
+  {
+   "line": 53,
+   "lines": 2,
+   "name": "_normalize_text",
+   "rel": "core/services/scheduler/calendar_admin.py"
+  },
+  {
+   "line": 93,
+   "lines": 2,
+   "name": "_normalize_text",
+   "rel": "core/services/scheduler/calendar_engine.py"
+  },
+  {
+   "line": 177,
+   "lines": 2,
+   "name": "_normalize_text",
+   "rel": "core/services/scheduler/config/config_service.py"
+  },
+  {
+   "line": 77,
+   "lines": 2,
+   "name": "_normalize_text",
+   "rel": "core/services/scheduler/schedule_service.py"
+  }
+ ],
+ "50a6254bec520704": [
+  {
+   "line": 61,
+   "lines": 2,
+   "name": "get_name",
+   "rel": "core/algorithms/sort_strategies.py"
+  },
+  {
+   "line": 78,
+   "lines": 2,
+   "name": "get_name",
+   "rel": "core/algorithms/sort_strategies.py"
+  },
+  {
+   "line": 114,
+   "lines": 2,
+   "name": "get_name",
+   "rel": "core/algorithms/sort_strategies.py"
+  },
+  {
+   "line": 128,
+   "lines": 2,
+   "name": "get_name",
+   "rel": "core/algorithms/sort_strategies.py"
+  }
+ ],
+ "5aeb478df97ceef6": [
+  {
+   "line": 349,
+   "lines": 9,
+   "name": "_sha256_file",
+   "rel": "scripts/run_quality_gate.py"
+  },
+  {
+   "line": 35,
+   "lines": 9,
+   "name": "_sha256_file",
+   "rel": "tools/long_gate_schema.py"
+  },
+  {
+   "line": 915,
+   "lines": 9,
+   "name": "_sha256_file",
+   "rel": "tools/quality_gate_shared.py"
+  }
+ ],
+ "68139f51bfff08e2": [
+  {
+   "line": 35,
+   "lines": 2,
+   "name": "_ensure_unique_ids",
+   "rel": "web/routes/domains/scheduler/scheduler_utils.py"
+  },
+  {
+   "line": 31,
+   "lines": 2,
+   "name": "_ensure_unique_ids",
+   "rel": "web/routes/equipment_bp.py"
+  },
+  {
+   "line": 36,
+   "lines": 2,
+   "name": "_ensure_unique_ids",
+   "rel": "web/routes/personnel_bp.py"
+  },
+  {
+   "line": 34,
+   "lines": 2,
+   "name": "_ensure_unique_ids",
+   "rel": "web/routes/process_bp.py"
+  }
+ ],
+ "8ea142fdd6f36297": [
+  {
+   "line": 185,
+   "lines": 2,
+   "name": "delete_all",
+   "rel": "data/repositories/batch_repo.py"
+  },
+  {
+   "line": 66,
+   "lines": 2,
+   "name": "delete_all",
+   "rel": "data/repositories/calendar_repo.py"
+  },
+  {
+   "line": 94,
+   "lines": 2,
+   "name": "delete_all",
+   "rel": "data/repositories/machine_repo.py"
+  },
+  {
+   "line": 70,
+   "lines": 2,
+   "name": "delete_all",
+   "rel": "data/repositories/op_type_repo.py"
+  },
+  {
+   "line": 80,
+   "lines": 2,
+   "name": "delete_all",
+   "rel": "data/repositories/operator_calendar_repo.py"
+  },
+  {
+   "line": 104,
+   "lines": 2,
+   "name": "delete_all",
+   "rel": "data/repositories/operator_repo.py"
+  },
+  {
+   "line": 65,
+   "lines": 2,
+   "name": "delete_all",
+   "rel": "data/repositories/part_repo.py"
+  },
+  {
+   "line": 81,
+   "lines": 2,
+   "name": "delete_all",
+   "rel": "data/repositories/supplier_repo.py"
+  }
+ ],
+ "94f9d9f2a1d3e796": [
+  {
+   "line": 36,
+   "lines": 2,
+   "name": "_has_value",
+   "rel": "web/viewmodels/scheduler_navigation_links.py"
+  },
+  {
+   "line": 23,
+   "lines": 2,
+   "name": "_has_value",
+   "rel": "web/viewmodels/scheduler_reports_workbench.py"
+  },
+  {
+   "line": 131,
+   "lines": 2,
+   "name": "_has_value",
+   "rel": "web/viewmodels/scheduler_workbench_link_query.py"
+  },
+  {
+   "line": 45,
+   "lines": 2,
+   "name": "_has_value",
+   "rel": "web/viewmodels/scheduler_workbench_links.py"
+  }
+ ],
+ "9655497f91713fd5": [
+  {
+   "line": 32,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/infrastructure/operation_execution_event_data_contract.py"
+  },
+  {
+   "line": 9,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/models/resource_dispatch_execution_tokens.py"
+  },
+  {
+   "line": 7,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/models/resource_identity.py"
+  },
+  {
+   "line": 27,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/models/schedule_plan_role.py"
+  },
+  {
+   "line": 45,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/models/schedule_resource_filter.py"
+  },
+  {
+   "line": 10,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/report/report_degradation.py"
+  },
+  {
+   "line": 23,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/gantt_adjustment_draft_service.py"
+  },
+  {
+   "line": 174,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/gantt_adjustment_publish_service.py"
+  },
+  {
+   "line": 20,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/gantt_adjustment_scenario_service.py"
+  },
+  {
+   "line": 11,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/gantt_service_support.py"
+  },
+  {
+   "line": 109,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/operation_execution_feedback_support.py"
+  },
+  {
+   "line": 17,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/operation_execution_scope_read.py"
+  },
+  {
+   "line": 21,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/resource_dispatch_execution_service.py"
+  },
+  {
+   "line": 7,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/resource_dispatch_overdue.py"
+  },
+  {
+   "line": 41,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/resource_dispatch_rows.py"
+  },
+  {
+   "line": 22,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/resource_dispatch_support.py"
+  },
+  {
+   "line": 10,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/resource_dispatch_task_ids.py"
+  },
+  {
+   "line": 20,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/schedule_plan_identity_builder.py"
+  },
+  {
+   "line": 12,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/schedule_plan_option_display.py"
+  },
+  {
+   "line": 101,
+   "lines": 2,
+   "name": "_text",
+   "rel": "core/services/scheduler/week_plan_excel.py"
+  },
+  {
+   "line": 42,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/navigation_context.py"
+  },
+  {
+   "line": 33,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/public_token_registry.py"
+  },
+  {
+   "line": 53,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/routes/domains/scheduler/scheduler_resource_dispatch.py"
+  },
+  {
+   "line": 24,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_context.py"
+  },
+  {
+   "line": 13,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/routes/domains/scheduler/scheduler_week_plan_query.py"
+  },
+  {
+   "line": 14,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/routes/reports_plan_template_fields.py"
+  },
+  {
+   "line": 27,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/dashboard_cockpit_hero.py"
+  },
+  {
+   "line": 9,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/dashboard_workbench_context.py"
+  },
+  {
+   "line": 9,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/dashboard_workbench_data_gap.py"
+  },
+  {
+   "line": 14,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/dashboard_workbench_shared.py"
+  },
+  {
+   "line": 16,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/plan_context_capsule.py"
+  },
+  {
+   "line": 21,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/scheduler_analysis_action_hub.py"
+  },
+  {
+   "line": 24,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/scheduler_gantt_load_strip.py"
+  },
+  {
+   "line": 10,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/scheduler_gantt_task_detail.py"
+  },
+  {
+   "line": 32,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/scheduler_navigation_links.py"
+  },
+  {
+   "line": 22,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/scheduler_plan_guardrail_messages.py"
+  },
+  {
+   "line": 7,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/scheduler_report_values.py"
+  },
+  {
+   "line": 19,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/scheduler_reports_workbench.py"
+  },
+  {
+   "line": 86,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/scheduler_resource_dispatch.py"
+  },
+  {
+   "line": 30,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/scheduler_resource_dispatch_execution.py"
+  },
+  {
+   "line": 33,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/scheduler_workbench_link_labels.py"
+  },
+  {
+   "line": 127,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/scheduler_workbench_link_query.py"
+  },
+  {
+   "line": 41,
+   "lines": 2,
+   "name": "_text",
+   "rel": "web/viewmodels/scheduler_workbench_links.py"
+  }
+ ],
+ "99ac3bc2a6bbb896": [
+  {
+   "line": 65,
+   "lines": 4,
+   "name": "_text_or_none",
+   "rel": "core/models/operation_execution_event.py"
+  },
+  {
+   "line": 59,
+   "lines": 4,
+   "name": "_text_or_none",
+   "rel": "core/models/schedule_adjustment.py"
+  },
+  {
+   "line": 10,
+   "lines": 4,
+   "name": "_text_or_none",
+   "rel": "core/models/schedule_candidate.py"
+  }
+ ],
+ "a3213d4599970259": [
+  {
+   "line": 39,
+   "lines": 2,
+   "name": "_read_uploaded_xlsx",
+   "rel": "web/routes/domains/scheduler/scheduler_utils.py"
+  },
+  {
+   "line": 27,
+   "lines": 2,
+   "name": "_read_uploaded_xlsx",
+   "rel": "web/routes/equipment_bp.py"
+  },
+  {
+   "line": 32,
+   "lines": 2,
+   "name": "_read_uploaded_xlsx",
+   "rel": "web/routes/personnel_bp.py"
+  },
+  {
+   "line": 38,
+   "lines": 2,
+   "name": "_read_uploaded_xlsx",
+   "rel": "web/routes/process_bp.py"
+  }
+ ],
+ "d963f1f683edd273": [
+  {
+   "line": 335,
+   "lines": 2,
+   "name": "to_dict",
+   "rel": "core/models/operation_execution_event.py"
+  },
+  {
+   "line": 95,
+   "lines": 2,
+   "name": "to_dict",
+   "rel": "core/models/schedule_adjustment.py"
+  },
+  {
+   "line": 139,
+   "lines": 2,
+   "name": "to_dict",
+   "rel": "core/models/schedule_adjustment.py"
+  },
+  {
+   "line": 197,
+   "lines": 2,
+   "name": "to_dict",
+   "rel": "core/models/schedule_adjustment.py"
+  },
+  {
+   "line": 235,
+   "lines": 2,
+   "name": "to_dict",
+   "rel": "core/models/schedule_adjustment.py"
+  },
+  {
+   "line": 78,
+   "lines": 2,
+   "name": "to_dict",
+   "rel": "core/models/schedule_candidate.py"
+  },
+  {
+   "line": 110,
+   "lines": 2,
+   "name": "to_dict",
+   "rel": "core/models/schedule_candidate.py"
+  },
+  {
+   "line": 134,
+   "lines": 2,
+   "name": "to_dict",
+   "rel": "core/models/schedule_candidate.py"
+  }
+ ],
+ "eff1c0bc324f2728": [
+  {
+   "line": 31,
+   "lines": 2,
+   "name": "_parse_mode",
+   "rel": "web/routes/domains/scheduler/scheduler_utils.py"
+  },
+  {
+   "line": 23,
+   "lines": 2,
+   "name": "_parse_mode",
+   "rel": "web/routes/equipment_bp.py"
+  },
+  {
+   "line": 44,
+   "lines": 2,
+   "name": "_parse_mode",
+   "rel": "web/routes/excel_demo.py"
+  },
+  {
+   "line": 28,
+   "lines": 2,
+   "name": "_parse_mode",
+   "rel": "web/routes/personnel_bp.py"
+  },
+  {
+   "line": 30,
+   "lines": 2,
+   "name": "_parse_mode",
+   "rel": "web/routes/process_bp.py"
+  }
+ ]
+}

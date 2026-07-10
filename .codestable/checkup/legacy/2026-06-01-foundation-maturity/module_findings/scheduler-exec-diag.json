@@ -1,0 +1,173 @@
+{
+ "key": "scheduler-exec-diag",
+ "partition": "执行事实与诊断（operation_execution_*、execution_fact_provider、execution_snapshot、schedule_delay_diagnosis_*）",
+ "score": 4,
+ "design": "这块是\"现场执行事实\"的事件溯源读模型 + 只读延期诊断两条链。执行侧采用append-only事件流：OperationExecutionFeedbackService(feedback_service.py)做写入编排——归一context/action/payload、幂等键去重、乐观锁(state_revision)、状态机校验、时间序校验、按计划校验资源，再经event_repo.insert_event落库；当前状态不落表，全部由build_operation_execution_state(state_builder.py)把事件流折叠成OperationExecutionState(状态/起止/暂停时长/最新异常/资源标签/state_revision)。ExecutionFactProvider把状态扁平成轻量ExecutionFact投影，喂给甘特/看板/重排守卫；execution_snapshot对一组op的state_revision做sha256摘要，当作重排前后的乐观锁令牌。诊断侧ScheduleDelayDiagnosisService以PlanQuery为数据源，配合物料/停机线索构建器产出保守的、带证据链(EvidenceLink)的超期诊断报告，只给事实/线索/缺口不下唯一根因。职责分层清晰、写入路径严谨，是\"派工/执行/诊断\"大桶里较干净的子区。主要债是同概念helper多份且行为静默漂移、读模型核心错放在repositories层、以及若干已populated但无人消费的投影字段。",
+ "chains": [
+  "写入链(事件溯源): scheduler_resource_dispatch_execution_routes.py:290 → OperationExecutionFeedbackService.record_event feedback_service.py:79 →(幂等/乐观锁/状态机/时序/计划校验)→ event_repo.insert_event operation_execution_event_repo.py:167 → 重聚合状态 feedback_service.py:140",
+  "读模型链(事件流→状态): event_repo.aggregate_states_by_op_ids operation_execution_event_repo.py:267 → build_operation_execution_state operation_execution_state_builder.py:220 →(_current_status/_pause_duration_minutes/_latest_exception)→ OperationExecutionState",
+  "事实投影链: ExecutionFactProvider.list_by_op_ids execution_fact_provider.py:91 → _fact_from_state execution_fact_provider.py:32 → ExecutionFact；消费方 gantt_service.py:271 / gantt_tasks._execution_detail_meta:143 / dashboard.py:82",
+  "快照乐观锁链: collect_execution_snapshot execution_snapshot.py:60 → build_execution_snapshot(sha256 over state_revision) execution_snapshot.py:42；重排前置 schedule_execution_guardrails.py:187，落库前再校验 schedule_execution_persistence_guard.py:85(_validate_execution_revisions/_validate_execution_snapshot)",
+  "诊断链: report_engine.py:199 → ScheduleDelayDiagnosisService.diagnose_resolved_plan_overdue schedule_delay_diagnosis_service.py:56 → _diagnose_item:157 → ScheduleDelayDiagnosisClueBuilder.candidate_clues schedule_delay_diagnosis_clues.py:22(物料/停机/工序顺序线索)",
+  "重排执行约束链: _collect_execution_guardrails schedule_execution_guardrails.py:182 →(facts驱动)→ _raise_if_exception_facts:139 阻断异常工序 + _validate_processing_seed_row schedule_execution_persistence_guard.py:96 用fact.actual_start/machine/operator锁定已开工工序"
+ ],
+ "good": [
+  "事件溯源 + 乐观并发设计严谨：record_event(feedback_service.py:79) 用幂等键先查(:85)、事务内再查(:96)、唯一冲突再兜底(_handle_unique_insert_error:163) 三重幂等，配合 state_revision(op_id:事件数:最后事件id) 做乐观锁，并发写入路径考虑周到",
+  "状态读模型纯函数化：build_operation_execution_state(state_builder.py:220) 把事件流确定性折叠成只读状态，无副作用、易测；_pause_duration_minutes(:120) 正确处理 pause→resume/finish/exception 配对",
+  "诊断子系统克制且可追溯：ScheduleDelayDiagnosisService 显式只给事实/线索/缺口不下唯一根因(:34 docstring)，每条线索/事实都挂 EvidenceLink + plan_link 可回跳，置信度分 likely/missing_data/weak 三档(_leading_clue:299)，warnings 明确声明'没有现场反馈不判断现场做慢'",
+  "内部枚举码防泄漏处理细致：public_execution_remark(operation_execution_labels.py:129) 用 casefold 归一且只清掉'本条记录自己的'结构化码，注释明确解释为何不误杀恰好等于他记录英文码的合法说明",
+  "重排执行约束闭环完整：facts 驱动的 guardrails 在排程前阻断异常工序(:139)、锁定已开工工序的起止/机台/人员(persistence_guard:96)，并用 snapshot revision 在落库前再校验现场未变(:85)，event→fact→snapshot 数据流职责清晰"
+ ],
+ "findings": [
+  {
+   "severity": "high",
+   "category": "重复",
+   "title": "event_time 时间解析三套并行且解析规则不一致，写入校验与读模型口径分叉，可静默丢时长",
+   "evidence": [
+    "core/services/scheduler/operation_execution_feedback_support.py:226 (_parse_feedback_datetime: 先 replace('/','-')('T',' ')('：',':') 归一分隔符，再试 3 种 fmt 含纯日期，失败抛 ValidationError)",
+    "core/services/scheduler/execution_fact_provider.py:66 (_parse_execution_time: 同样归一分隔符 + 3 种 fmt 含纯日期，失败返回 None)",
+    "data/repositories/operation_execution_state_builder.py:42 (_parse_time: 先 datetime.fromisoformat，再只试 2 种 fmt，且 *不* 归一 '/'、'T'、'：'，也无纯日期 fmt)",
+    "core/services/scheduler/operation_execution_feedback_service.py:259 (_normalize_payload 只对 event_time 做 _required_text 仅 strip)",
+    "core/services/scheduler/operation_execution_feedback_service.py:456 (_build_event_payload 原样存 payload.get('event_time')，写库前不做分隔符归一)"
+   ],
+   "problem": "用户提交形如 '2026/06/01 10:00' 的时间：写入侧 _validate_event_time_sequence 用 _parse_feedback_datetime 归一后能比较通过，但 event_time 以带斜杠原文落库；读模型 build_operation_execution_state 计算 actual_duration_minutes 和 _pause_duration_minutes 时走 _parse_time，它不归一斜杠，fromisoformat 与两种 strptime 全部失败 → 返回 None → 实际工时/暂停时长被静默算成 None/0，且不报任何错。三处解析器对同一字符串给出不同结果。",
+   "impact": "现场反馈通过了校验却在状态读模型里算不出工时；同一时间串在'能否提交'和'算多长'两条路上口径不同，属静默正确性隐患，排查极难。",
+   "fix_hint": "抽单一 parse_execution_datetime(value, *, required: bool) 公共函数（归一分隔符 + 统一 fmt 列表，required 时抛 ValidationError 否则返回 None），让 support/_parse_feedback_datetime、fact_provider/_parse_execution_time、state_builder/_parse_time 全部改调它；并在 insert_event 前对 event_time 做一次规范化落库，保证存储口径唯一。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "分层违规",
+   "title": "读模型核心 build_operation_execution_state 放在 data/repositories 却零 SQL，是纯领域聚合错置",
+   "evidence": [
+    "data/repositories/operation_execution_state_builder.py:220 (build_operation_execution_state 277 行纯函数：事件流折叠、_pause_duration_minutes 累加、_latest_exception、_resource_fields 标签映射，无任何 sqlite3/execute)",
+    "data/repositories/operation_execution_event_repo.py:14 (repo 仅 import 它并在 _aggregate_single_state:370 调用)",
+    "data/repositories/operation_execution_event_repo.py:370 (_aggregate_single_state 仅做转发，真正聚合逻辑全在 builder)"
+   ],
+   "problem": "state_builder 是本分区'事件流→状态读模型'的领域核心，做的全是业务聚合（状态机推导、暂停时长、异常字段、资源标签），却挂在 data/repositories 下，违反'repo 只管数据访问'约定。与第一轮 §3.4 / P2#9 一致，此处给出函数级确权。",
+   "impact": "领域聚合逻辑藏在持久层，读 repo 的人看不到它其实承担了状态机语义；改聚合规则要去 repositories 翻，违背分层心智。",
+   "fix_hint": "将 operation_execution_state_builder.py 迁到 core/services/scheduler/（或 core/domain 执行子域），repo 改为 import 新位置；纯函数无连接依赖，迁移零行为风险，只需更新 operation_execution_event_repo.py:14 的 import。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "op-id 列表清洗 helper 三份，且排序行为静默分叉（一份排序两份不排序）",
+   "evidence": [
+    "core/services/scheduler/execution_fact_provider.py:51 (_positive_op_ids: 去重去非正、*保留输入顺序*，不排序)",
+    "core/services/scheduler/execution_snapshot.py:27 (positive_op_ids: 去重去非正、最后 return sorted(out) *强制排序*)",
+    "data/repositories/operation_execution_event_repo.py:63 (_positive_ids: 去重去非正、保留顺序)"
+   ],
+   "problem": "三个函数做同一件事（把 op_ids 清成去重正整数列表），但 execution_snapshot.positive_op_ids 末尾 sorted 而另两个保序。snapshot 摘要依赖排序保证稳定（合理），但三份并存且仅靠'是否 sorted'区分，命名几乎一样（_positive_op_ids / positive_op_ids / _positive_ids），极易改一处漏一处。",
+   "impact": "同名概念三实现，排序差异是隐式契约；新增调用方若误用保序版做摘要会得到不稳定 revision，改一处不报错。",
+   "fix_hint": "抽 normalize_op_ids(values, *, sort: bool=False) 单一函数置于公共 util，snapshot 传 sort=True，fact_provider/repo 传默认；删三份私有副本。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "suggest_reschedule 解析四份，三种真值规则并存（抛错/静默/枚举），同串结果可不一致",
+   "evidence": [
+    "core/services/scheduler/operation_execution_feedback_service.py:304 (_normalize_suggest_reschedule: yes/true/1→1, no/false/0→0, 其它抛 ValidationError)",
+    "data/repositories/operation_execution_event_repo.py:134 (_suggest_reschedule_value: ''/0/no/false→0, 1/yes/true→1, 其它先试 _optional_int 再抛 ValueError)",
+    "data/repositories/operation_execution_state_builder.py:72 (_suggest_reschedule_bool: 仅 1/yes/true→True, *其它一律 False 静默*)",
+    "core/models/operation_execution_labels.py:120 (suggest_reschedule_label: 1/yes/true→建议, 0/no/false/''→暂不建议, 其它→暂不清楚)"
+   ],
+   "problem": "同一个 suggest_reschedule 字段在写入归一、repo 落库、状态读模型、标签展示四处各写一份解析，且对'非法值'处理三种：service 抛校验错、repo 抛 ValueError、builder 静默归 False。",
+   "impact": "写入与读取对边界值（如 'Y'、'2'）的判定不一致，可能出现存进去是某值、读模型 bool 化成 False、标签却显示'暂不清楚'的三方不一致；维护时难判断哪份是权威。",
+   "fix_hint": "在 core/models/operation_execution_labels 旁集中一个 coerce_suggest_reschedule(value)->int 与 suggest_reschedule_bool(value)->bool，明确单一真值规则，四处全部改调；保留 label 仅做展示。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "_text/text 字符串清洗在本分区两份并存（main melody 3 的局部实例）",
+   "evidence": [
+    "core/services/scheduler/operation_execution_feedback_support.py:113 (_text)",
+    "core/services/scheduler/schedule_delay_diagnosis_utils.py:12 (text，公有，逻辑一字不差: str(value or '').strip())",
+    "data/repositories/operation_execution_event_repo.py:78 (_text_or_none，同语义 strip→空转 None)"
+   ],
+   "problem": "str(value or '').strip() 这一行在本分区就有 _text(私有)、text(公有，被 diagnosis_clues/service import)、_text_or_none 三个同义实现，是全仓 23 份 _text 的局部缩影。",
+   "impact": "零行为差异但分散，跟全仓主旋律 3 叠加；公共 util 落点未定前，新文件继续复制。",
+   "fix_hint": "等专题 C 的公共 util 落点确定后统一收口；本分区可先把 diagnosis_utils.text 与 support._text 指向同一实现。注意 viewmodel/resource_dispatch 等在途前端文件也复制了 _text，统一时会触及它们。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "ExecutionFact 多个字段已 populated 但全仓零消费（死投影字段）",
+   "evidence": [
+    "core/services/scheduler/execution_fact_provider.py:20 (last_event_schedule_version) 与 :21 (last_event_schedule_id)：仅在 _fact_from_state:42-43 赋值，grep 全仓无任何读取点",
+    "core/services/scheduler/execution_fact_provider.py:13 (batch_id)：赋值后无消费方（grep fact.batch_id 为空）",
+    "core/services/scheduler/execution_fact_provider.py:23-25 (latest_exception_impact_minutes/handling_status/suggest_reschedule)：从 state 拷入但下游 gantt/dashboard/guardrails 均不读，异常阻断走 actual_status==exception 而非这些字段(schedule_execution_guardrails.py:140)"
+   ],
+   "problem": "ExecutionFact 是给重排/甘特/看板用的轻量投影，实际被读的只有 op_id/actual_status/actual_start_time/actual_end_time/actual_machine_id/actual_operator_id/state_revision；其余 6 个字段属'建好没人用'的投影。",
+   "impact": "投影契约比实际需求宽，误导维护者以为下游依赖这些异常字段；扩大了 fact 与 state 的耦合面。",
+   "fix_hint": "逐字段确认后删除未消费字段，或在 dataclass 上注释'保留供 X 未来用'。注意该 dataclass 被 dashboard/gantt-detail/resource-dispatch-lane 等在途消费，删字段需同步回归这些页面，勿当纯债务直接砍。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "ExecutionSnapshot.to_summary() 零调用，summary_assembly 处又内联重建同一字典",
+   "evidence": [
+    "core/services/scheduler/execution_snapshot.py:17 (to_summary 定义，grep 全仓无 .to_summary() 调用点)",
+    "core/services/scheduler/summary/schedule_summary_assembly.py:476-481 (内联手写 execution_snapshot dict：revision/op_ids/op_count/op_ids_sample/op_ids_truncated，与 to_summary 输出逐键一致)"
+   ],
+   "problem": "to_summary 本应是生成 summary 字典的唯一出口，但汇总装配处没用它而是另写一份同结构字典，方法沦为死代码且与内联版存在分叉风险。",
+   "impact": "两处定义同一 summary 结构，加字段要改两地，漏一处则摘要与快照对象字段静默不一致。",
+   "fix_hint": "让 schedule_summary_assembly 改调 snapshot.to_summary()（或反之删 to_summary），二选一收口为单一来源。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "feedback_service 导入 EXECUTION_EVENT_EXCEPTION 但函数体从未使用",
+   "evidence": [
+    "core/services/scheduler/operation_execution_feedback_service.py:12 (import EXECUTION_EVENT_EXCEPTION)",
+    "grep 该常量在本文件出现次数=1，仅 import 行；body 用的是 EXECUTION_ACTION_REPORT_EXCEPTION(:278,:284)"
+   ],
+   "problem": "未使用的 import，ruff 类门禁应能扫到但当前留存。",
+   "impact": "噪音，轻微误导（让人以为 service 直接处理 exception 事件类型，实际只处理 report_exception 动作）。",
+   "fix_hint": "删除该 import 行。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "设计冲突",
+   "title": "诊断超期项的物料链接用裸 f-string，与线索构建器的 plan_link 两套约定指向同一页",
+   "evidence": [
+    "core/services/scheduler/schedule_delay_diagnosis_service.py:324 (_suggested_actions: link=f\"/material/batches?batch_id={batch_id}\"，不带 version/plan_role/scenario)",
+    "core/services/scheduler/schedule_delay_diagnosis_clues.py:189 (_material_evidence: link=plan_link(plan_identity, \"/material/batches\", scenario_id=...)，带计划身份参数)"
+   ],
+   "problem": "同一'物料明细'目标页，建议动作用裸查询串、证据链用 plan_link 携带计划身份，两套 URL 约定并存。",
+   "impact": "前端从建议动作点进去丢失 version/plan_role/scenario 上下文，与从证据点进去的行为不一致；reports-backlink 在途功能依赖这些链接回跳。",
+   "fix_hint": "_suggested_actions 的物料链接改用 plan_link(plan_identity, \"/material/batches\", scenario_id=...) 并附 batch_id 参数，统一为单一构链约定。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "low",
+   "category": "跨层违规",
+   "title": "services 层 operation_execution_labels 是 model 同名模块的纯 re-export 壳，且属在途消费的薄转发",
+   "evidence": [
+    "core/services/scheduler/operation_execution_labels.py:1-35 (整文件只 from core.models.operation_execution_labels import ... 再原样 __all__ 转发)",
+    "core/services/scheduler/operation_execution_labels.py 漏转发了 model 里的 EXECUTION_ACTION_FILL_ACTUAL/VIEW_RECORDS(core/models/operation_execution_labels.py:19-20)，是部分 re-export",
+    "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:16 与 feedback_service.py:48 / support.py:26 均从此壳 import"
+   ],
+   "problem": "这是 main melody 1 的 shim 模式实例，但与已死 shim 不同它有 3 个活引用；属'可直接 import model 却多绕一层'的薄转发，且转发不完整。",
+   "impact": "多一层间接、且与 model 的 __all__ 不同步（少两个常量），易让人误以为 services 版是独立逻辑。",
+   "fix_hint": "评估让三个消费方直接 import core.models.operation_execution_labels，删除 services 壳；若保留则补齐 __all__ 与 model 一致。注意消费方含刚落地的 resource-dispatch-execution 路由(commit 65870e47)，改 import 要同步回归该在途功能。",
+   "in_flight_conflict": true
+  }
+ ],
+ "cleanup": [
+  "抽单一 parse_execution_datetime 公共函数收口三处时间解析(support.py:226 / fact_provider.py:66 / state_builder.py:42)，并在 insert_event 前规范化 event_time 落库——本分区最该先做的正确性修复",
+  "将 operation_execution_state_builder.py 从 data/repositories 迁到 core/services/scheduler（或执行领域子域），仅需改 operation_execution_event_repo.py:14 import，零行为风险",
+  "抽 normalize_op_ids(values, *, sort=False) 收口三份 op-id 清洗(fact_provider._positive_op_ids / execution_snapshot.positive_op_ids / repo._positive_ids)，显式化排序契约",
+  "集中 coerce_suggest_reschedule / suggest_reschedule_bool 单一真值规则，替换 feedback_service:304 / repo:134 / state_builder:72 三份解析",
+  "删除 feedback_service.py:12 未使用的 EXECUTION_EVENT_EXCEPTION import",
+  "让 schedule_summary_assembly.py:476 改调 ExecutionSnapshot.to_summary() 或删除该死方法，收口 summary 结构为单一来源",
+  "逐字段确认后清理 ExecutionFact 的死投影字段(last_event_schedule_version/id、batch_id、三个 latest_exception_* )——需同步回归 dashboard/gantt-detail/resource-dispatch-lane 在途消费方",
+  "统一诊断物料链接约定：_suggested_actions(service.py:324) 改用 plan_link，与 clues 的证据链口径一致（reports-backlink 在途依赖）"
+ ]
+}

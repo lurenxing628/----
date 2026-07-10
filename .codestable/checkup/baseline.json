@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "status": "mechanical_ready_history_pending",
+  "verified_at": "2026-07-10",
+  "code_baseline": {
+    "commit": "606bcda1d369914875fe63a5d3657ff4cbc351ac",
+    "commit_date": "2026-07-01",
+    "source_mode": "git archive target commit, then inject hash-pinned read-only scanners outside FIRST_PARTY_ROOTS",
+    "scanner_runtime": "CPython 3.14.4 host toolchain",
+    "runtime_contract": "APS application/tests/package remain Python 3.8 and Win7 compatible",
+    "worktree_changes_included": false,
+    "worktree_was_dirty": true
+  },
+  "mechanical_checks": {
+    "codemap": {
+      "status": "pass",
+      "summary_path": ".codestable/checkup/latest/codemap/summary.json",
+      "total_modules": 741,
+      "total_lines": 145194,
+      "total_defs": 7370,
+      "total_import_edges": 2374,
+      "layering_violation_count": 0,
+      "parse_errors": [],
+      "refined_orphan_candidates": 109
+    },
+    "callgraph": {
+      "status": "pass_reproduced",
+      "summary_path": ".codestable/checkup/latest/callgraph/summary.json",
+      "total_functions": 6921,
+      "total_edges": 26763,
+      "confident_edges": 10440,
+      "ambiguous_edges": 16323,
+      "cycle_count": 20,
+      "island_count": 164,
+      "parse_errors": []
+    },
+    "import_cycles": {
+      "status": "pass_no_new_hard_cycles",
+      "baseline_path": ".codestable/checkup/import_cycles_baseline.json",
+      "hard_dir_cycle_count": 6,
+      "hard_file_cycle_count": 0,
+      "check_exit_code": 0
+    },
+    "dead_code_quick": {
+      "status": "pass_after_reviewed_refresh",
+      "baseline_path": ".codestable/checkup/dead_code_islands_baseline.json",
+      "candidate_count": 164,
+      "explained_count": 82,
+      "baseline_count": 82,
+      "new_candidates_before_refresh": 7,
+      "disappeared_old_baseline_entries": 103,
+      "validation": "git grep on clean HEAD confirmed explicit property/import/test uses and dataclass __post_init__ callback before quick refresh"
+    }
+  },
+  "history_baseline": {
+    "status": "pending_incremental_archaeology",
+    "decision_watermark_commit": "65870e4786f3fea1e45c259e9d209ee6e1598a31",
+    "decision_watermark_date": "2026-06-01",
+    "pending_commit_count_to_code_baseline": 332,
+    "legacy_source_kind": "git stash untracked snapshot",
+    "legacy_source_commit": "725cca792aedc8571d8210bdc5b4b41ac83e2800",
+    "legacy_archive": ".codestable/checkup/legacy/2026-06-01-foundation-maturity/",
+    "rule": "Do not advance this watermark until every pending commit is weighted and required diffs are reviewed."
+  },
+  "visualization": {
+    "status": "local_generated_not_versioned",
+    "paths": [
+      "docs/项目全景图.html",
+      "docs/项目全景图-大白话版.html",
+      "docs/项目演进时间线.html",
+      "docs/边界防线全景图.html"
+    ],
+    "note": "The current HTML and docs/_panorama_data are gitignored local artifacts; they are not clean-clone reproducibility proof."
+  },
+  "artifact_sha256": {
+    ".codestable/checkup/scripts/codemap_extract.py": "172e05d724527d8cddfa957c470f1b10894c0bba3fb68d5c8e677ad82ed26541",
+    ".codestable/checkup/scripts/dynamic_refs.py": "21becc664ffab8fa5f69e32a5345a45c7f586deafade97e8d44bdf17acd63a59",
+    ".codestable/checkup/scripts/callgraph_extract.py": "be1f96275cc52a576497881d3ce0f46d5eaebf8ed59cdd8f8758840318d7a440",
+    "tools/scan_import_cycles.py": "4984ce5edd4f41cc18710f846611076eff2fc189a6ac3c09f7fe1b0f103662bd",
+    "tools/scan_dead_code_islands.py": "2750edf0f5328eb78aeeb2a5bbc5c2757455cda0c4fcf269c24ec87179023189",
+    ".codestable/checkup/latest/codemap/summary.json": "3e257a04eb09bedabb5a604c49ac158e91358f70ce7e3d239ddd62ec6f7a00be",
+    ".codestable/checkup/latest/callgraph/summary.json": "b34aa51154ccc48fd138a52fcda6f490ab87f5d1c7bead19068c14848e87b92c",
+    ".codestable/checkup/dead_code_islands_baseline.json": "e04d3cef9620f45b637c0f867fd9849ccfd12b3396b3f187a1d272daf2eb717e",
+    ".codestable/checkup/import_cycles_baseline.json": "75824f11c92d942cae797788c639ad03f315809e1209790bfc9123d7f30c24fb"
+  }
+}

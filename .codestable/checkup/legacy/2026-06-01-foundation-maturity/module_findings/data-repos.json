@@ -1,0 +1,158 @@
+{
+ "key": "data-repos",
+ "partition": "data/repositories",
+ "score": 4,
+ "design": "数据访问层（33 文件 + schema.sql）职责边界非常干净：所有 repo 继承 BaseRepository，注入 conn、不自开连接、不 commit（事务交服务层），裸 SQL 只出现在本层，Row→dict 与 sqlite 异常→AppError 统一翻译并对敏感参数脱敏。主数据 repo（machine/operator/part/op_type/supplier 等）是标准 CRUD + 引用检查样板；排产侧分两条：写入/种子走 ScheduleRepository，明细只读已迁移到新的 SchedulePlanQueryRepository（按 adopted/候选/模拟方案三来源用 plan_rows CTE 输出同一行形状），report 层直接复用该 service 不另造查询。schedule_detail_query.py 把列/JOIN/CTE 抽成可组合 SQL 片段，是本层最好的去重设计。本分区的主病仍是\"迁移做了一半\"：ScheduleRepository 留下一整套零生产调用的明细查询方法（旧路），而其 scope 过滤代码恰好被新 repo 逐字复制；同时大量执行反馈/派工/延期诊断为在途新功能，正在反向\"复活\"ScheduleRepository.get 并把资源筛选归一化收敛到共享模型——这部分是计划内推进，不是债务。地基稳，扣分集中在死代码外壳、放错层的领域聚合器、半截落地的共享 helper。",
+ "chains": [
+  "读路径(LIVE)：route/service → SchedulePlanQueryService.list_plan_*(schedule_plan_query_service.py:267-407) → SchedulePlanQueryRepository.list_detail_rows_*/list_dispatch_rows(schedule_plan_query_repo.py:311-469) → build_schedule_detail_sql(schedule_detail_query.py:92)",
+  "报表复用：report_engine.py:65 持有 SchedulePlanQueryService，:146 调 list_plan_overdue_base_rows_for_resolution —— 报表层零自造排产查询，复用排产 service",
+  "misplaced 层：operation_execution_event_repo.py:14,370 → operation_execution_state_builder.build_operation_execution_state(operation_execution_state_builder.py:220) —— 277 行纯领域聚合被一个 sibling repo 调用",
+  "在途复活旧 repo：resource_dispatch_execution_service.py:8,45,131 / resource_dispatch_actual_record_service.py:211,215 / operation_execution_feedback_service.py:204,363 → ScheduleRepository.get(schedule_repo.py:22)",
+  "遗留在旧 repo 的 LIVE 明细读：gantt_critical_chain.py:97 → ScheduleRepository.list_by_version_with_details(schedule_repo.py:160)；run/freeze_window.py:177 → list_version_rows_by_op_ids_start_range(schedule_repo.py:71)",
+  "版本号分配：schedule_persistence → ScheduleHistoryRepository.allocate_next_version(schedule_history_repo.py:62) 用 ScheduleVersionSeq 自增表，绕过 self.execute 直接 conn.execute"
+ ],
+ "good": [
+  "BaseRepository 是全层标杆：execute/fetchone/fetchall/fetchvalue 统一收口，sqlite 异常按 UNIQUE/FK/NOT NULL 精确翻译为中文 AppError，且日志对 password/token 等敏感 key 脱敏、对 bytes/超长值截断（base_repo.py:78-167）",
+  "schedule_detail_query.py 把列/JOIN/CTE 抽成可组合 SQL 片段（build_schedule_detail_sql），普通明细与派工明细、Schedule 表与 plan_rows CTE 共用同一构造器，是真正消除重复的好设计",
+  "连接与事务纪律全层成立：33 个 repo 全部注入 conn、不自开连接、默认不 commit；裸 SQL 不外溢——这是地基最硬的红线之一",
+  "新 SchedulePlanQueryRepository 设计干净：用 _plan_rows_sql 把 adopted/候选/模拟方案三来源归一成 plan_rows CTE，对外输出同一 ScheduleDetailRow/DispatchRow 形状（schedule_rows.py TypedDict 契约），report 层直接复用其 service、不重复造查询"
+ ],
+ "findings": [
+  {
+   "severity": "high",
+   "category": "死代码",
+   "title": "ScheduleRepository 明细查询外壳整套已死，且其中一个死方法的代码被 LIVE 新 repo 逐字复制",
+   "evidence": [
+    "schedule_repo.py:61-69 list_between（PROD:0 TEST:0，完全无人调用）",
+    "schedule_repo.py:114-126 list_overlapping_with_details（PROD:0，仅 tests/test_schedule_repository_detail_queries.py:168）",
+    "schedule_repo.py:128-158 list_dispatch_rows_with_resource_context（PROD:0，仅该测试 9 处）",
+    "schedule_repo.py:36-59 get_version_time_span（PROD:0，仅 benchmark_fjsp.py:503）",
+    "schedule_repo.py:183-224 create/delete/delete_by_version/delete_by_op/list_by_machine（实例调用 PROD:0）",
+    "重复证据：schedule_repo.py:137-158 的 operator/machine/team scope 过滤分支与 schedule_plan_query_repo.py:447-463 字符级一致"
+   ],
+   "problem": "ScheduleRepository 是个半死类：get/bulk_create/list_by_version/list_by_version_with_details/list_version_rows_by_op_ids_start_range 仍 LIVE（写入+种子+少量明细读），但 list_between/list_overlapping_with_details/list_dispatch_rows_with_resource_context/get_version_time_span/create/delete/delete_by_version/delete_by_op/list_by_machine 共 9 个方法生产零调用，是明细查询迁移到 SchedulePlanQueryRepository 后没回收的旧路。更糟的是死方法 list_dispatch_rows_with_resource_context 的 scope 过滤块与新 repo 的 list_dispatch_rows 完全重复——改一处忘改另一处不会报错。",
+   "impact": "旧路靠 11 个测试续命，阻碍 ScheduleRepository 收敛为纯写入/种子 repo；重复 scope 过滤是静默分叉点；读者要花时间判断哪半边还活着。",
+   "fix_hint": "删除上述 9 个死方法及其专属测试 test_schedule_repository_detail_queries.py；保留 get/bulk_create/list_by_version/list_by_version_with_details/list_version_rows_by_op_ids_start_range，并把 ScheduleRepository docstring 改为'排程写入与种子读取'。注意：本文件被在途派工/反馈服务 import 并使用 .get，删类会炸——只删方法不删类。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "跨层违规",
+   "title": "operation_execution_state_builder.py 放在 repositories 却零 SQL，是纯领域聚合",
+   "evidence": [
+    "operation_execution_state_builder.py:1-277 全文无 sqlite3/execute/SELECT，只 import core.models.* 与 labels",
+    "operation_execution_state_builder.py:220 build_operation_execution_state 做事件流→状态推导、暂停时长累加、异常字段映射",
+    "唯一调用方 operation_execution_event_repo.py:14,370（同层 sibling）"
+   ],
+   "problem": "277 行业务逻辑（事件聚合为当前状态）挂在 data/repositories 下，违反'repo 只管数据访问'约定。它本质是领域服务，被 event_repo 在 aggregate_states_by_op_ids 里调用。",
+   "impact": "分层红线被这一个文件破坏；状态推导逻辑藏在持久层，未来想在非 DB 场景复用会被 repo 包袱拖累。",
+   "fix_hint": "搬到 core/services/scheduler/（或 core/models 的领域服务区）为 operation_execution_state_assembler，event_repo 改为 import 新位置；纯函数无状态，搬迁零行为变化。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "reference_checks.py 共享 helper 半截落地：op_type/supplier 仍手抄 14 处内联引用检查",
+   "evidence": [
+    "reference_checks.py:18-52 提供 exists_value_reference/exists_any_nonblank_reference",
+    "已采用：machine_repo.py:98-126、operator_repo.py:99-127",
+    "未采用、手抄同款 SELECT 1 ... TRIM <> '' ... = ?：op_type_repo.py 8 处(行 80-160)、supplier_repo.py 6 处(行 241-296)、resource_team_repo.py:1011-1029(count 变体)"
+   ],
+   "problem": "项目已抽出引用检查公共 helper，但只有 2/5 个需要它的 repo 用上；op_type/supplier 仍逐方法内联拼 SQL，逻辑与 helper 完全同形。",
+   "impact": "同一引用检查模式四份实现并存，未来加一种引用关系要在多处改；报错口径/SQL 细节易漂移。",
+   "fix_hint": "把 op_type_repo 的 8 个 has_*_reference / supplier_repo 的 6 个改写为调用 exists_value_reference/exists_any_nonblank_reference（两者对具名 value 行为等价，已核对 TRIM 守卫对非空 value 无影响），resource_team 的 count_*_refs 可保留（返回计数语义不同）。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "ScheduleHistory '每版本取最新一条' 关联子查询在两个 repo 各写一遍",
+   "evidence": [
+    "schedule_history_repo.py:107-126 list_versions：WHERE h.id=(SELECT h2.id ... ORDER BY schedule_time DESC,id DESC LIMIT 1)",
+    "schedule_plan_query_repo.py:75-117 list_history_identity_rows/get_history_identity_row：同款 correlated subquery 选每 version 最新行"
+   ],
+   "problem": "'按 version 去重取最新历史记录'这一非平凡 SQL 模式在 history_repo 和 plan_query_repo 各实现一份，且 plan_query 版还多带 schedule_row_count 子查询。",
+   "impact": "两处对'最新历史'的定义若一处改 ORDER BY 另一处忘改，版本列表与方案身份会静默不一致。",
+   "fix_hint": "在 schedule_detail_query.py 旁新增一个 latest_history_per_version 的 SQL 片段/函数，两 repo 共用；或让 plan_query_repo 通过注入的 history_repo 取身份行，避免第二份子查询。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "low",
+   "category": "临时拼凑",
+   "title": "资源筛选归一化'三处重复'正由在途未提交工作收敛——勿当债务清理",
+   "evidence": [
+    "新增未跟踪文件 schedule_resource_sql_filters.py:1-40（append_detail_filters/detail_resource_filter/overdue_resource_filter）",
+    "git diff schedule_plan_query_repo.py 已删除本地 _normalize_overdue_resource_filter，改 import 共享逻辑",
+    "单一真相 core/models/schedule_resource_filter.py:11-30 ScheduleResourceFilter(column_name/has_filter)，report_context_filters.py:6 与 schedule_plan_query_service.py:8 均消费它"
+   ],
+   "problem": "第一轮记的'资源筛选归一化三处近似重复'当前正被一笔在途改动主动收口：抽出 schedule_resource_sql_filters.py 把 repo 的 where 拼装与 model 的校验串起来。",
+   "impact": "若 SPEC 把它当债务回收，会与正在进行的 reports-backlink / resource-dispatch 在途工作冲突。",
+   "fix_hint": "不要动。待该笔提交落定后再核对是否还有残留第三份；当前状态是'修复进行中'而非'债务'。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "schema.sql 中 OperatorSkill 预留表全仓零引用",
+   "evidence": [
+    "schema.sql:110-121 CREATE TABLE OperatorSkill（注释'预留'）",
+    "全仓 grep（py/html/js/sql）零命中，无对应 model/repo"
+   ],
+   "problem": "预留工种能力表从未接线，无 model、无 repo、无任何读写。",
+   "impact": "schema 噪声，误导读者以为有人员-工种能力子系统。",
+   "fix_hint": "确认 V1 不需要后从 schema.sql 删除该表 + 其隐含意图，或在注释里明确标注'V2 预留，当前无代码'。低风险。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "命名混乱",
+   "title": "琐碎 helper 重复：_columns_sql×3 同形+1 变体、_strict_non_negative_int×2、delete_all 返回类型不一致",
+   "evidence": [
+    "_columns_sql 同形2行：schedule_adjustment_repo.py:43、schedule_candidate_repo.py:62、schedule_adjustment_scenario_repo.py:55；变体 operation_execution_event_repo.py:59(无参)",
+    "_strict_non_negative_int 完全相同：schedule_history_repo.py:11-17、config_repo.py:13-19",
+    "delete_all 多数 ->None，唯 operator_machine_repo.py:145 ->int"
+   ],
+   "problem": "两行级 helper 在多文件复制；delete_all 同一概念方法返回契约不统一（多数 None，一个返回 rowcount）。",
+   "impact": "轻微，属惯用样板范畴，但 delete_all 返回不一致会让调用方对'是否能拿到删除行数'产生错误预期。",
+   "fix_hint": "_strict_non_negative_int 提到 base_repo 或一个 repo_helpers 模块共用；_columns_sql 可不动（README 已认定 dataclass/repo 样板可接受）；统一 delete_all 返回 int（rowcount）或全 None，二选一并文档化。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "注释错误",
+   "title": "schema 版本'双真相'实为幂等迁移设计；Materials'预留'注释已过期",
+   "evidence": [
+    "schema.sql:23 INSERT version=0 vs migration_state.py:9 CURRENT_SCHEMA_VERSION=17",
+    "database.py:139-176 全新库 executescript 建 v17 全表后版本仍记 0，再跑 v1..v17（migrations/common.py:67 add_column_if_missing 幂等空跑）对齐到 17",
+    "schema.sql:596 'Material Module（预留）' 但 material_repo/batch_material_repo LIVE：batch_material_service→schedule_delay_diagnosis_clues.py:81"
+   ],
+   "problem": "version=0 看似与 17 矛盾，实为'新库与旧库都走同一迁移路径'的有意设计，非 bug；但 schema.sql 的'预留'注释已被在途延期诊断功能用活，注释滞后。",
+   "impact": "version=0 字面量易被误读为错误；Materials 预留注释误导维护者以为该模块未启用。",
+   "fix_hint": "在 schema.sql:23 加注释说明'刻意从 0 起、由迁移对齐到 CURRENT_SCHEMA_VERSION'；删除 Materials/BatchMaterials 的'预留'字样（现已被齐套/延期诊断消费）。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "low",
+   "category": "命名混乱",
+   "title": "OperationExecutionEventRepo 双名别名仅为测试存在；allocate_next_version 绕过 base_repo",
+   "evidence": [
+    "operation_execution_event_repo.py:380 OperationExecutionEventRepository=OperationExecutionEventRepo，__init__.py:56-57/87-88 双导出",
+    "生产只用短名 ...Repo（execution_fact_provider.py:8、feedback_service.py:23）；长名唯一用途是 regression_operation_execution_event_foundation.py:249 断言二者相同",
+    "schedule_history_repo.py:73-99 allocate_next_version 用 conn.execute 而非 self.execute，错误不经 AppError 翻译；并重复 CREATE TABLE IF NOT EXISTS ScheduleVersionSeq（schema.sql:361 已定义）"
+   ],
+   "problem": "33 个 repo 里唯一一个同时叫 Repo 和 Repository 的，别名纯为一条测试；allocate_next_version 出于'兜底旧库'用裸 conn.execute 并复刻 schema 里已有的建表。",
+   "impact": "双名增加导入路径歧义；裸 conn.execute 的异常不会被 base_repo 统一翻译为中文 AppError，与全层约定不一致。",
+   "fix_hint": "删除 ...Repository 别名与对应测试断言，统一用 ...Repo；allocate_next_version 内部改用 self.execute 以复用错误翻译（防御性 CREATE TABLE 可保留但加注释说明为兼容旧库）。",
+   "in_flight_conflict": true
+  }
+ ],
+ "cleanup": [
+  "删除 ScheduleRepository 的 9 个零生产调用方法（schedule_repo.py: list_between 61-69 / get_version_time_span 36-59 / list_overlapping_with_details 114-126 / list_dispatch_rows_with_resource_context 128-158 / create 183-194 / delete 217-218 / delete_by_version 220-221 / delete_by_op 223-224 / list_by_machine 170-181）并删除其专属测试 tests/test_schedule_repository_detail_queries.py；保留 get/bulk_create/list_by_version/list_by_version_with_details/list_version_rows_by_op_ids_start_range（在途派工/甘特/冻结窗口在用）",
+  "把 operation_execution_state_builder.py（277 行纯领域聚合，零 SQL）从 data/repositories 移到 core/services 或 models 领域层，更新 operation_execution_event_repo.py:14 的 import（与在途执行反馈协调后再动）",
+  "将 op_type_repo.py(8 处)、supplier_repo.py(6 处) 的内联 has_*_reference 改写为调用 reference_checks.exists_value_reference/exists_any_nonblank_reference，与 machine/operator_repo 看齐",
+  "抽 ScheduleHistory '每版本取最新一条' 子查询为共享 SQL 片段，供 schedule_history_repo.list_versions 与 schedule_plan_query_repo.list_history_identity_rows/get_history_identity_row 共用",
+  "_strict_non_negative_int 去重（schedule_history_repo.py:11 与 config_repo.py:13 完全相同）提到公共 helper；统一 delete_all 返回类型（operator_machine_repo.py:145 ->int 与其余 ->None 不一致）",
+  "schema.sql 清理：删除/标注 OperatorSkill 死表(110-121)、修正 Materials'预留'过期注释(596)、为 version=0(23) 加'由幂等迁移对齐'说明",
+  "删除 OperationExecutionEventRepository 别名（operation_execution_event_repo.py:380 + __init__.py 双导出）及测试里唯一的相等断言，生产统一用 OperationExecutionEventRepo"
+ ]
+}

@@ -1,0 +1,192 @@
+{
+ "key": "scheduler-dispatch",
+ "partition": "资源派工 (core/services/scheduler/resource_dispatch_*.py ×14 + dispatch/ 子目录)",
+ "score": 3,
+ "design": "这块负责\"按版本/方案/资源视角(人员·设备·班组)+时间区间，把排产明细组装成派工页的明细表/日历矩阵/甘特任务，并叠加现场执行状态、支持现场事实代录与Excel双向导入\"。职责切分清晰且有意图：range(区间解析)→service(只读查询编排)→rows(单行归一+任务/日历构建)→support(scope级payload装配+超期meta)→excel(只读导出)；执行侧另起一条 execution_service(带op_id/schedule_id的反馈卡上下文)+actual_record_service(写入编排器)+actual_records(共享dataclass/helper)+actual_import(预览校验)+actual_import_validation(跨字段规则)+actual_excel(模板读写)。贯穿全区的两条好范式：BuildOutcome+DegradationCollector 统一收集降级事件；_public_*/INTERNAL_TEMPLATE_TOKENS 统一脱敏。三个服务全部经 g.services registry 懒加载装配(request_services.py:204-228)，actual_record_service 用构造注入+自建兜底，可独立使用不反依赖web。问题集中在：执行侧与只读侧两条查询前半段并行复制、actual_*五文件单复数命名易混且全无模块docstring、_text/op_id/标题/资源标签等小helper多份复制且语义漂移。该区大量文件是刚落地的\"资源派工执行入口分层\"在途feature，需谨慎对待。",
+ "chains": [
+  "派工数据JSON: scheduler_resource_dispatch.py:189 resource_dispatch_data → resource_dispatch_service.py:350 get_dispatch_payload → schedule_plan_query_service.list_plan_dispatch_rows_for_resolution → resource_dispatch_service.py:93 _filter_rows_by_batch → :252 _enrich_rows_with_execution_state(→enrichment.apply_execution_state_to_row) → support.py:398 build_single_scope_payload/:325 build_team_scope_payload → support.py:236 build_scope_result → rows.py:238/331/454 build_dispatch_detail_rows·build_dispatch_tasks·build_dispatch_calendar_matrix",
+  "执行反馈卡: scheduler_resource_dispatch_execution_routes.py:213 → execution_service.py:47 get_execution_context(复用 dispatch_service 私有 _normalize_scope_type/_latest_version/_resolve_result_view_context/_resolve_scope_id) → list_plan_dispatch_rows_for_resolution → rows.py:112 prepare_dispatch_rows → execution_service.py:170 _op_ids → feedback_service.get_execution_state",
+  "现场事实代录: routes:258 resource_dispatch_execution_actual → actual_record_service.py:117 record_actual_situation → :256 _task_plan_from_actual_payload → import_validation.py:14 validate_task_plan → :314 _apply_task_plan(feedback_service.start/pause/resume/report_exception/finish + :458 _idempotency_key)",
+  "Excel导入: routes:392 resource_dispatch_actual_import → actual_record_service.py:66 import_workbook → actual_excel.py:104 read_actual_workbook_rows + :130 _preview_raw_rows(→actual_import.py:43 Previewer.preview→validator) → :91 _write_preview → _apply_task_plan",
+  "模板下载: routes:354 → actual_record_service.py:56 build_template_workbook → :156 _task_refs_from_context → actual_excel.py:66 build_actual_template_workbook",
+  "导出: scheduler_resource_dispatch.py:201 resource_dispatch_export → get_dispatch_payload → viewmodel decorate_resource_dispatch_payload → resource_dispatch_excel.py:428 build_resource_dispatch_workbook"
+ ],
+ "good": [
+  "依赖注入干净可测:ResourceDispatchActualRecordService 支持注入 execution_service/feedback_service(construct注入见 request_services.py:221-227)，不注入时自建兜底，明确注释'不反向依赖web装配层'(actual_record_service.py:44-51)。",
+  "BuildOutcome + DegradationCollector 贯穿全区:rows.py/support.py 每个行构建函数都返回并向上 extend 降级事件，bad_time_row 跳过有统一 empty_reason 兜底，错误累积范式高度一致。",
+  "脱敏边界明确且自洽:_public_row/_public_rows/_public_tasks(support.py:166-186) 与 public_raw_row + INTERNAL_TEMPLATE_TOKENS(actual_records.py:43-48,203) 统一剥离 schedule_id/op_id，执行卡服务用docstring显式说明为何要绕过脱敏(execution_service.py:32-36)。",
+  "幂等与重放安全设计用心:actual_record_service._plan_is_full_replay(:388-403)带详细docstring，专门防止客户端复用同一 idempotency_key 夹带新内容绕过跨字段校验;_revision_for_next_event(:374-386)处理事件重用时的revision回读重建;两步导入靠 preview_token(actual_import.py:341)+读取源头日期归一(actual_excel.py:30-42)保证token稳定。"
+ ],
+ "findings": [
+  {
+   "severity": "high",
+   "category": "重复",
+   "title": "执行侧 get_execution_context 与只读侧 get_dispatch_payload 的查询前半段并行复制，且跨对象反向调用私有方法",
+   "evidence": [
+    "core/services/scheduler/resource_dispatch_execution_service.py:65-110",
+    "core/services/scheduler/resource_dispatch_service.py:368-435",
+    "core/services/scheduler/resource_dispatch_execution_service.py:65 self.dispatch_service._normalize_scope_type",
+    "core/services/scheduler/resource_dispatch_execution_service.py:67-80 _text/_latest_version/_resolve_result_view_context/_resolve_scope_id"
+   ],
+   "problem": "两个服务各自实现了'归一scope/team_axis/plan_role → 解析view_context → 解析scope_id → team视角必须有scope_id → resolve_dispatch_range → list_plan_dispatch_rows_for_resolution(同参) → 按batch_id过滤'这一整套约8步前半段。execution_service 不是抽公共函数复用，而是直接 self.dispatch_service._normalize_scope_type / _text / _latest_version / _resolve_result_view_context / _resolve_scope_id 反向调用 ResourceDispatchService 的5个私有方法；batch过滤一处走 _filter_rows_by_batch(用返回Optional的self._text)，一处inline list comp(用返回''的模块_text)。",
+   "impact": "这是全项目主旋律2(同一概念两套并行实现)在分区内复现：改其中一条查询路径(如新增一个过滤维度或改scope解析)忘改另一条，派工明细页与现场反馈卡会基于不同的行集合静默分叉，且不报错。跨对象私有方法依赖让 ResourceDispatchService 无法安全重构其'私有'方法。",
+   "fix_hint": "把共享前半段抽成模块级函数 resolve_dispatch_query(conn-bound or 入参式)返回 (selected_version, selected_scope_id, plan_role_fields, dr, rows)，两个服务都调它；execution 侧停止反向调用 dispatch_service 私有方法。注意:本feature刚落地，建议待执行入口稳定后再合并，先加回归锁定两条路径行集合一致。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "命名混乱",
+   "title": "actual_* 五文件靠单复数+后缀区分职责，且全部缺模块 docstring",
+   "evidence": [
+    "core/services/scheduler/resource_dispatch_actual_records.py:1 (无docstring，实为dataclass+helper集合)",
+    "core/services/scheduler/resource_dispatch_actual_record_service.py:1 (无docstring，实为写入编排器)",
+    "core/services/scheduler/resource_dispatch_actual_import.py:1",
+    "core/services/scheduler/resource_dispatch_actual_import_validation.py:1",
+    "core/services/scheduler/resource_dispatch_actual_excel.py:1"
+   ],
+   "problem": "records(复数,实为 TaskRef/TaskPlan/PausePlan dataclass + text/parse helper，无任何'records管理'逻辑) vs record_service(单数+service,真正的导入/代录编排器 498行)；再叠 import / import_validation / excel 三个后缀。五个文件名几乎只差一两个词，新人靠文件名无法判断哪个是编排入口、哪个是纯数据契约。",
+   "impact": "第一轮已点名的命名混淆。增加定位成本，review时容易改错文件(把校验规则加进 records、把dataclass加进 service)。",
+   "fix_hint": "给5个文件各加一行模块docstring点明角色(records=共享数据契约与无状态helper / record_service=写入编排器 / import=预览校验 / import_validation=跨字段规则 / excel=模板IO)；可考虑把 actual_records 更名为 actual_models 或 actual_shared。注意这些是刚落地文件，改名要同步大量 import。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "_text/text 在分区内复制9+份且存在两套不兼容契约(返回 str vs Optional[str])",
+   "evidence": [
+    "core/services/scheduler/resource_dispatch_service.py:56-61 def _text → Optional[str](空返回None)",
+    "core/services/scheduler/resource_dispatch_rows.py:41 def _text → str(空返回'')",
+    "core/services/scheduler/resource_dispatch_execution_service.py:19 def _text → str",
+    "core/services/scheduler/resource_dispatch_actual_records.py:102 def text → str",
+    "core/services/scheduler/resource_dispatch_task_ids.py:10 def _text → str",
+    "core/services/scheduler/resource_dispatch_support.py:22 def _text → str"
+   ],
+   "problem": "同名 _text 在 ResourceDispatchService 里返回 Optional[str](空→None，被 _resolve_scope_id/_filter_rows_by_batch 当None判断用)，而 rows/execution/support/task_ids 里返回 ''(空→空串)。这正是主旋律3'同名函数静默漂移'里最危险的一类——名字相同契约不同。",
+   "impact": "若有人想'统一去重'把两种 _text 合并成一份，会静默改变 scope 解析的 None 语义(空scope_id 从'未选择'变成''参与查询)。当前未出bug是因为它们恰好分布在不同文件，但这是埋着的雷。",
+   "fix_hint": "建公共 util(如 core/services/common/text_utils)，明确分两个函数：clean_text()→str 与 clean_text_or_none()→Optional[str]；逐处替换并人工确认 dispatch_service 那处用的是 _or_none 版本。属全项目专题C范畴。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "提取行内唯一正整数 op_id 的逻辑有两份实现",
+   "evidence": [
+    "core/services/scheduler/resource_dispatch_execution_service.py:170 @staticmethod _op_ids",
+    "core/services/scheduler/resource_dispatch_execution_enrichment.py:8 def positive_row_op_ids",
+    "core/services/scheduler/resource_dispatch_execution_enrichment.py:23 def row_op_id"
+   ],
+   "problem": "_op_ids(execution_service用)与 positive_row_op_ids(enrichment,被dispatch_service用)做的是同一件事:遍历rows、取int(op_id)、>0且去重、保序返回List[int]。两份独立实现，只是一个用 _positive_int 一个用 try/int。",
+   "impact": "两条数据路径(执行卡 vs 派工明细enrich)各算一份op_id集合，行为目前一致但靠巧合；改正整数判定或去重策略需同步两处。",
+   "fix_hint": "统一到 enrichment.positive_row_op_ids，execution_service._op_ids 直接调它；row_op_id 作为单行版本一并保留在同一处。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "_positive_int 在执行链三处逐字复制(codemap dup 簇)",
+   "evidence": [
+    "core/services/scheduler/resource_dispatch_execution_service.py:23",
+    "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:37",
+    "web/viewmodels/scheduler_resource_dispatch_execution.py:32"
+   ],
+   "problem": "同一个 _positive_int(value)->Optional[int](int化、>0返回否则None)在 service/route/viewmodel 三层各一份，codemap dup_bodies 簇 1c82ac645a6b5466 已标记6行完全相同。",
+   "impact": "小函数但跨三层复制，是主旋律3的样本；任何边界调整(如接受字符串'0x')要改三处。",
+   "fix_hint": "抽到公共 util，三层 import；与 op_id 族一起在专题C统一。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "设计冲突",
+   "title": "工序标题(operation title)有4份实现且输出不同——屏幕日历与Excel日历明细同任务显示不一致",
+   "evidence": [
+    "core/services/scheduler/resource_dispatch_rows.py:45 _operation_title(批次+工序seq, 空seq→'工序')",
+    "core/services/scheduler/resource_dispatch_actual_records.py:161 task_display_name(无批次, 空seq→'工序')",
+    "core/services/scheduler/resource_dispatch_excel.py:201 _operation_text(无批次, 空seq→'')",
+    "core/services/scheduler/resource_dispatch_rows.py:357 _calendar_item_text 用 _operation_title",
+    "core/services/scheduler/resource_dispatch_excel.py:238 _calendar_detail_table_rows 用 _operation_text"
+   ],
+   "problem": "屏幕端日历单元格文本(rows._calendar_item_text)用 _operation_title——op_code为空时回退到'批次 工序seq'；而Excel导出的'日历明细'sheet(excel._operation_text)op_code为空时只输出'工序seq'、连seq都没有时输出空串，且从不含批次。同一道无op_code工序，页面日历显示'B001 工序3'，导出Excel却显示'工序3'或空。",
+   "impact": "与第一轮P0(gantt_tasks/gantt_critical_chain标签漂移)同型的'同概念多份标签函数行为漂移'静默不一致，影响用户对导出件与页面一致性的信任。",
+   "fix_hint": "抽单一 operation_title(row, *, with_batch: bool)，屏幕与Excel共用，显式参数控制是否带批次前缀，消除空值回退差异。task_display_name(用于任务码生成)需单独评估是否纳入。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "extract_overdue_batch_ids(无meta版)生产零调用，仅一个测试续命",
+   "evidence": [
+    "core/services/scheduler/resource_dispatch_support.py:90 def extract_overdue_batch_ids",
+    "tests/regression_resource_dispatch_overdue_summary_formats.py:6,25,31,37 (唯一引用者)"
+   ],
+   "problem": "已 grep 全仓实证:除定义处与该测试外，core/web/data 无任何调用;生产实际走的是 extract_overdue_batch_ids_with_meta(:26)。这是 with_meta 版出现后没回收的旧入口(它内部就是调 _with_meta 再丢掉meta)。",
+   "impact": "主旋律2的小型样本:旧函数靠测试续命删不掉。维护者会误以为它还在用。",
+   "fix_hint": "删除 extract_overdue_batch_ids，把该测试的3个断言改为对 extract_overdue_batch_ids_with_meta(...)['ids'] 取值;或直接删测试。需在专题B死代码确权清单登记。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "过度拆分",
+   "title": "rows.py 的 _task_id 是对 _public_task_id 的无谓一行包装",
+   "evidence": [
+    "core/services/scheduler/resource_dispatch_rows.py:288-289 def _task_id: return _public_task_id(normalized)",
+    "core/services/scheduler/resource_dispatch_rows.py:310 task_id = _task_id(normalized)"
+   ],
+   "problem": "_task_id 仅转发给已 import 的 _public_task_id，无任何额外逻辑，唯一调用点在 :310。",
+   "impact": "轻微间接层，读代码时多跳一次。",
+   "fix_hint": ":310 直接调 _public_task_id(normalized)，删除 _task_id。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "空 dispatch/ 子包占位，14个 resource_dispatch_*.py 全平铺在外层",
+   "evidence": [
+    "core/services/scheduler/dispatch/__init__.py (0字节)",
+    "find 确认该目录下仅一个空 __init__.py"
+   ],
+   "problem": "第一轮已点名的四个空子目录之一。注意:它与 core/algorithms/greedy/dispatch/(有实体文件,是排产算法的派工逻辑)同名但完全无关,本区这个是空的半截重组残骸。",
+   "impact": "目录树误导——看到 scheduler/dispatch/ 会以为派工代码在里面,实际全在外层平铺。",
+   "fix_hint": "删除空的 core/services/scheduler/dispatch/ 目录(确认无 importlib 字符串引用后);与第一轮P1第3条(清空占位目录)一起做。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "临时拼凑",
+   "title": "actual_import.py 在函数体内 import hashlib，而 json 在文件顶部",
+   "evidence": [
+    "core/services/scheduler/resource_dispatch_actual_import.py:345 import hashlib (在 preview_token 函数内)",
+    "core/services/scheduler/resource_dispatch_actual_import.py:3 import json (顶部)"
+   ],
+   "problem": "preview_token() 计算sha256时在函数内 import hashlib，同模块顶部已正常 import json。风格不一致，像增量补丁时随手加的。",
+   "impact": "无功能影响,纯一致性;离线Win7环境无延迟加载收益。",
+   "fix_hint": "把 import hashlib 移到文件顶部 import 区。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "重复",
+   "title": "_append_row 在两个 excel 文件逐字复制",
+   "evidence": [
+    "core/services/scheduler/resource_dispatch_excel.py:34 def _append_row",
+    "core/services/scheduler/resource_dispatch_actual_excel.py:45 def _append_row",
+    "core/services/report/exporters/xlsx.py:25 (第三份,codemap dup_symbols)"
+   ],
+   "problem": "_append_row(ws, values): ws.append([_sanitize_export_cell(v) for v in values]) 在派工导出与现场模板两个excel文件各一份(actual_excel 经 _excel_value 间接包一层),report/exporters 还有第三份。",
+   "impact": "openpyxl写表样板复制,属低危;但属可收口的公共excel util。",
+   "fix_hint": "提取到 core/services/common/excel_templates(已存在 _sanitize_export_cell),三处复用。",
+   "in_flight_conflict": false
+  }
+ ],
+ "cleanup": [
+  "删除死函数 resource_dispatch_support.py:90 extract_overdue_batch_ids，并把 tests/regression_resource_dispatch_overdue_summary_formats.py 改用 _with_meta(...)['ids']（专题B登记）",
+  "删除空占位目录 core/services/scheduler/dispatch/（确认无字符串/importlib引用后）",
+  "rows.py:310 直接调用 _public_task_id，删除 :288 _task_id 一行包装",
+  "把 _positive_int(execution_service:23 / 执行routes:37 / 执行viewmodel:32 三份) + _op_ids(execution_service:170) + positive_row_op_ids/row_op_id(enrichment) 收口到单一 op-id util（专题C，注意三份都在刚落地的执行lane文件里，需协调）",
+  "为 actual_* 五文件各加模块docstring点明角色（records=数据契约+helper / record_service=写入编排器 / import=预览 / import_validation=跨字段规则 / excel=模板IO）",
+  "统一工序标题:抽 operation_title(row,*,with_batch) 替换 rows._operation_title / actual_records.task_display_name / excel._operation_text，修掉屏幕日历与Excel日历明细的标题不一致",
+  "统一 _text 契约:建 clean_text()->str 与 clean_text_or_none()->Optional[str]，逐处替换并人工确认 dispatch_service._text 用的是 or_none 版（专题C）",
+  "把 actual_import.py:345 的 import hashlib 上移到文件顶部",
+  "提取 _append_row 到 core/services/common/excel_templates，消除 resource_dispatch_excel/resource_dispatch_actual_excel/report.exporters.xlsx 三份复制",
+  "中期(待执行lane稳定后):把 get_dispatch_payload 与 get_execution_context 的共享查询前半段抽成公共函数，execution_service 停止反向调用 ResourceDispatchService 私有方法"
+ ]
+}

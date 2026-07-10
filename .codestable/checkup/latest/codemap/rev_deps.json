@@ -1,0 +1,3365 @@
+{
+ "core.algorithms": [
+  "core.services.scheduler.run.optimizer_candidate_phases",
+  "core.services.scheduler.run.optimizer_config",
+  "core.services.scheduler.run.optimizer_graph_ready",
+  "core.services.scheduler.run.optimizer_graph_ready_candidates",
+  "core.services.scheduler.run.optimizer_graph_ready_profile_selection",
+  "core.services.scheduler.run.optimizer_graph_ready_reporting",
+  "core.services.scheduler.run.optimizer_grasp_ig_candidates",
+  "core.services.scheduler.run.optimizer_local_search",
+  "core.services.scheduler.run.optimizer_local_search_candidate_eval",
+  "core.services.scheduler.run.optimizer_local_search_round",
+  "core.services.scheduler.run.optimizer_proof_oracle",
+  "core.services.scheduler.run.optimizer_step_report_hooks",
+  "core.services.scheduler.run.schedule_optimizer",
+  "core.services.scheduler.run.schedule_optimizer_steps",
+  "core.services.scheduler.run.schedule_seed_contracts"
+ ],
+ "core.algorithms.dispatch_rules": [
+  "core.algorithms.greedy.dispatch.sgs",
+  "core.algorithms.greedy.dispatch.sgs_scoring",
+  "core.algorithms.greedy.schedule_params"
+ ],
+ "core.algorithms.evaluation": [
+  "core.services.scheduler.run.optimizer_graph_ready_candidates",
+  "core.services.scheduler.run.optimizer_grasp_ig_candidates",
+  "core.services.scheduler.run.optimizer_local_search_candidate_eval",
+  "core.services.scheduler.run.optimizer_proof_harness",
+  "core.services.scheduler.run.optimizer_proof_oracle",
+  "core.services.scheduler.run.schedule_optimizer",
+  "core.services.scheduler.run.schedule_optimizer_steps"
+ ],
+ "core.algorithms.greedy.algo_stats": [
+  "core.algorithms.greedy.auto_assign",
+  "core.algorithms.greedy.external_groups",
+  "core.algorithms.greedy.internal_operation",
+  "core.algorithms.greedy.run_context",
+  "core.algorithms.greedy.schedule_params",
+  "core.algorithms.greedy.scheduler",
+  "core.algorithms.greedy.seed",
+  "core.services.scheduler.run.optimizer_config",
+  "core.services.scheduler.run.optimizer_graph_ready_candidates",
+  "core.services.scheduler.run.optimizer_grasp_ig_candidates",
+  "core.services.scheduler.run.optimizer_local_search_candidate_eval",
+  "core.services.scheduler.run.optimizer_step_report_hooks",
+  "core.services.scheduler.run.schedule_optimizer",
+  "core.services.scheduler.run.schedule_optimizer_steps",
+  "core.services.scheduler.run.schedule_seed_contracts"
+ ],
+ "core.algorithms.greedy.auto_assign": [
+  "core.algorithms.greedy.dispatch.resource_validation",
+  "core.algorithms.greedy.dispatch.sgs_scoring",
+  "core.algorithms.greedy.internal_operation",
+  "core.algorithms.greedy.run_context",
+  "core.algorithms.greedy.scheduler"
+ ],
+ "core.algorithms.greedy.date_parsers": [
+  "core.algorithms.dispatch_rules",
+  "core.algorithms.evaluation",
+  "core.algorithms.greedy.dispatch.sgs_scoring",
+  "core.algorithms.greedy.schedule_params",
+  "core.algorithms.ordering",
+  "core.algorithms.ortools_bottleneck",
+  "core.services.scheduler.run.optimizer_graph_ready_v2_features",
+  "core.services.scheduler.run.optimizer_neighborhood_move_support"
+ ],
+ "core.algorithms.greedy.dispatch": [
+  "core.algorithms.greedy.scheduler"
+ ],
+ "core.algorithms.greedy.dispatch.batch_order": [
+  "core.algorithms.greedy.dispatch.sgs"
+ ],
+ "core.algorithms.greedy.dispatch.ready_queue": [
+  "core.services.scheduler.graph.ready_queue"
+ ],
+ "core.algorithms.greedy.dispatch.resource_validation": [
+  "core.algorithms.greedy.dispatch.sgs_scoring"
+ ],
+ "core.algorithms.greedy.dispatch.runtime_state": [
+  "core.algorithms.greedy.run_state"
+ ],
+ "core.algorithms.greedy.dispatch.sgs_graph": [
+  "core.algorithms.greedy.dispatch.sgs"
+ ],
+ "core.algorithms.greedy.dispatch.sgs_scoring": [
+  "core.algorithms.greedy.dispatch.sgs",
+  "core.algorithms.greedy.dispatch.sgs_graph"
+ ],
+ "core.algorithms.greedy.downtime": [
+  "core.algorithms.greedy.internal_operation",
+  "core.algorithms.greedy.internal_slot",
+  "core.algorithms.greedy.scheduler"
+ ],
+ "core.algorithms.greedy.external_groups": [
+  "core.algorithms.greedy.run_context",
+  "core.algorithms.greedy.scheduler"
+ ],
+ "core.algorithms.greedy.internal_operation": [
+  "core.algorithms.greedy.run_context",
+  "core.algorithms.greedy.scheduler"
+ ],
+ "core.algorithms.greedy.internal_slot": [
+  "core.algorithms.greedy.auto_assign",
+  "core.algorithms.greedy.dispatch.sgs",
+  "core.algorithms.greedy.dispatch.sgs_scoring",
+  "core.algorithms.greedy.internal_operation",
+  "core.algorithms.greedy.run_context",
+  "core.services.scheduler.run.schedule_input_runtime_support"
+ ],
+ "core.algorithms.greedy.run_context": [
+  "core.algorithms.greedy.dispatch.batch_order",
+  "core.algorithms.greedy.dispatch.sgs",
+  "core.algorithms.greedy.scheduler"
+ ],
+ "core.algorithms.greedy.run_state": [
+  "core.algorithms.greedy.dispatch.batch_order",
+  "core.algorithms.greedy.dispatch.sgs",
+  "core.algorithms.greedy.dispatch.sgs_scoring",
+  "core.algorithms.greedy.scheduler"
+ ],
+ "core.algorithms.greedy.schedule_params": [
+  "core.algorithms.greedy.scheduler"
+ ],
+ "core.algorithms.greedy.seed": [
+  "core.algorithms.greedy.scheduler",
+  "core.services.scheduler.run.schedule_seed_contracts"
+ ],
+ "core.algorithms.objective_specs": [
+  "core.algorithms.evaluation",
+  "core.services.scheduler.run.optimizer_candidate_fingerprint",
+  "core.services.scheduler.run.optimizer_proof_contracts",
+  "core.services.scheduler.run.optimizer_proof_harness",
+  "core.services.scheduler.summary.schedule_summary_assembly"
+ ],
+ "core.algorithms.ordering": [
+  "core.algorithms.greedy.dispatch.batch_order",
+  "core.algorithms.greedy.internal_operation",
+  "core.algorithms.greedy.run_state",
+  "core.algorithms.greedy.scheduler",
+  "core.services.scheduler.run.schedule_optimizer"
+ ],
+ "core.algorithms.priority_constants": [
+  "core.algorithms.dispatch_rules",
+  "core.algorithms.evaluation",
+  "core.algorithms.ortools_bottleneck",
+  "core.algorithms.sort_strategies"
+ ],
+ "core.algorithms.sort_strategies": [
+  "core.algorithms.greedy.schedule_params",
+  "core.algorithms.greedy.scheduler",
+  "core.algorithms.ordering",
+  "core.services.scheduler.run.optimizer_proof_oracle"
+ ],
+ "core.algorithms.types": [
+  "core.algorithms.evaluation",
+  "core.algorithms.greedy",
+  "core.algorithms.greedy.dispatch.batch_order",
+  "core.algorithms.greedy.dispatch.sgs",
+  "core.algorithms.greedy.external_groups",
+  "core.algorithms.greedy.internal_operation",
+  "core.algorithms.greedy.run_state",
+  "core.algorithms.greedy.scheduler",
+  "core.algorithms.greedy.seed"
+ ],
+ "core.algorithms.value_domains": [
+  "core.algorithms.evaluation",
+  "core.algorithms.greedy.dispatch.batch_order",
+  "core.algorithms.greedy.dispatch.sgs",
+  "core.algorithms.greedy.dispatch.sgs_scoring",
+  "core.algorithms.greedy.external_groups",
+  "core.algorithms.greedy.internal_operation",
+  "core.algorithms.greedy.run_state",
+  "core.algorithms.greedy.scheduler",
+  "core.algorithms.greedy.seed",
+  "core.algorithms.ortools_bottleneck",
+  "core.algorithms.types",
+  "core.services.scheduler.run.freeze_window",
+  "core.services.scheduler.run.optimizer_graph_ready_v2_capacity",
+  "core.services.scheduler.run.optimizer_graph_ready_v2_features",
+  "core.services.scheduler.run.optimizer_proof_oracle",
+  "core.services.scheduler.run.schedule_seed_contracts"
+ ],
+ "core.infrastructure.backup": [
+  "core.services.system.maintenance.backup_task",
+  "web.bootstrap.factory",
+  "web.routes.system_backup",
+  "web.routes.system_backup_actions",
+  "web.routes.system_utils"
+ ],
+ "core.infrastructure.database": [
+  "desktop.gantt.run_pyqt_poc",
+  "tools.capture_networkx_phase0_baseline",
+  "web.bootstrap.factory",
+  "web.bootstrap.plugins",
+  "web.routes.system_backup"
+ ],
+ "core.infrastructure.database_bootstrap": [
+  "core.infrastructure.database",
+  "core.infrastructure.migration_runner"
+ ],
+ "core.infrastructure.errors": [
+  "core.algorithms.greedy.auto_assign",
+  "core.algorithms.greedy.dispatch.batch_order",
+  "core.algorithms.greedy.dispatch.sgs",
+  "core.algorithms.greedy.dispatch.sgs_graph",
+  "core.algorithms.greedy.dispatch.sgs_scoring",
+  "core.algorithms.greedy.internal_slot",
+  "core.algorithms.greedy.schedule_params",
+  "core.algorithms.greedy.scheduler",
+  "core.algorithms.ordering",
+  "core.models.schedule_config_runtime_coercion",
+  "core.models.schedule_config_runtime_read",
+  "core.models.schedule_config_runtime_weights",
+  "core.models.schedule_resource_filter",
+  "core.services.common.datetime_normalize",
+  "core.services.common.excel_import_executor",
+  "core.services.common.excel_service",
+  "core.services.common.excel_validators",
+  "core.services.common.openpyxl_backend",
+  "core.services.common.pandas_backend",
+  "core.services.equipment.machine_downtime_service",
+  "core.services.equipment.machine_excel_import_service",
+  "core.services.equipment.machine_service",
+  "core.services.material.batch_material_service",
+  "core.services.material.material_service",
+  "core.services.personnel.operator_excel_import_service",
+  "core.services.personnel.operator_machine_normalizers",
+  "core.services.personnel.operator_machine_service",
+  "core.services.personnel.operator_service",
+  "core.services.personnel.resource_team_service",
+  "core.services.process.external_group_service",
+  "core.services.process.op_type_excel_import_service",
+  "core.services.process.op_type_service",
+  "core.services.process.part_delete_guard",
+  "core.services.process.part_operation_hours_excel_import_service",
+  "core.services.process.part_route_validation",
+  "core.services.process.part_service",
+  "core.services.process.supplier_excel_import_service",
+  "core.services.process.supplier_service",
+  "core.services.report.calculations",
+  "core.services.report.date_range_limits",
+  "core.services.report.execution_review",
+  "core.services.report.report_context_filters",
+  "core.services.report.report_engine",
+  "core.services.report.report_number_parsing",
+  "core.services.report.report_plan_helpers",
+  "core.services.scheduler.batch_copy",
+  "core.services.scheduler.batch_service",
+  "core.services.scheduler.batch_template_ops",
+  "core.services.scheduler.batch_write_rules",
+  "core.services.scheduler.calendar_admin",
+  "core.services.scheduler.calendar_engine",
+  "core.services.scheduler.config.config_field_coercion",
+  "core.services.scheduler.config.config_page_save_policy",
+  "core.services.scheduler.config.config_preset_service",
+  "core.services.scheduler.config.config_presets",
+  "core.services.scheduler.config.config_read_service",
+  "core.services.scheduler.config.config_snapshot",
+  "core.services.scheduler.config.config_validator",
+  "core.services.scheduler.config.config_weight_policy",
+  "core.services.scheduler.config.config_write_service",
+  "core.services.scheduler.gantt_adjustment_draft_service",
+  "core.services.scheduler.gantt_adjustment_projection",
+  "core.services.scheduler.gantt_adjustment_publish_service",
+  "core.services.scheduler.gantt_adjustment_scenario_service",
+  "core.services.scheduler.gantt_adjustment_validation_service",
+  "core.services.scheduler.gantt_plan_query",
+  "core.services.scheduler.gantt_range",
+  "core.services.scheduler.gantt_service",
+  "core.services.scheduler.operation_edit_service",
+  "core.services.scheduler.operation_execution_feedback_service",
+  "core.services.scheduler.operation_execution_feedback_support",
+  "core.services.scheduler.resource_dispatch_actual_excel",
+  "core.services.scheduler.resource_dispatch_actual_import",
+  "core.services.scheduler.resource_dispatch_actual_record_service",
+  "core.services.scheduler.resource_dispatch_actual_records",
+  "core.services.scheduler.resource_dispatch_execution_service",
+  "core.services.scheduler.resource_dispatch_range",
+  "core.services.scheduler.resource_dispatch_service",
+  "core.services.scheduler.resource_pool_builder",
+  "core.services.scheduler.run.freeze_window",
+  "core.services.scheduler.run.optimizer_acceptance",
+  "core.services.scheduler.run.optimizer_attempt_records",
+  "core.services.scheduler.run.optimizer_candidate_fingerprint",
+  "core.services.scheduler.run.optimizer_candidate_profile",
+  "core.services.scheduler.run.optimizer_config",
+  "core.services.scheduler.run.optimizer_graph_ready",
+  "core.services.scheduler.run.optimizer_graph_ready_candidates",
+  "core.services.scheduler.run.optimizer_graph_ready_context",
+  "core.services.scheduler.run.optimizer_graph_ready_profile_selection",
+  "core.services.scheduler.run.optimizer_graph_ready_profiles",
+  "core.services.scheduler.run.optimizer_graph_ready_v2_capacity",
+  "core.services.scheduler.run.optimizer_graph_ready_v2_features",
+  "core.services.scheduler.run.optimizer_grasp_ig_candidates",
+  "core.services.scheduler.run.optimizer_neighborhood_registry",
+  "core.services.scheduler.run.optimizer_proof_contracts",
+  "core.services.scheduler.run.optimizer_proof_harness",
+  "core.services.scheduler.run.optimizer_proof_oracle",
+  "core.services.scheduler.run.optimizer_search_report_helpers",
+  "core.services.scheduler.run.optimizer_vns",
+  "core.services.scheduler.run.schedule_candidate_persistence",
+  "core.services.scheduler.run.schedule_candidate_runtime_helpers",
+  "core.services.scheduler.run.schedule_candidate_selection",
+  "core.services.scheduler.run.schedule_candidate_specs",
+  "core.services.scheduler.run.schedule_execution_guardrails",
+  "core.services.scheduler.run.schedule_execution_persistence_guard",
+  "core.services.scheduler.run.schedule_graph_report",
+  "core.services.scheduler.run.schedule_input_builder",
+  "core.services.scheduler.run.schedule_input_collector",
+  "core.services.scheduler.run.schedule_input_runtime_support",
+  "core.services.scheduler.run.schedule_optimizer",
+  "core.services.scheduler.run.schedule_optimizer_steps",
+  "core.services.scheduler.run.schedule_payload_contract",
+  "core.services.scheduler.run.schedule_persistence_errors",
+  "core.services.scheduler.run.schedule_seed_contracts",
+  "core.services.scheduler.run.schedule_signature_support",
+  "core.services.scheduler.run.schedule_template_lookup",
+  "core.services.scheduler.schedule_plan_query_service",
+  "core.services.scheduler.schedule_result_view_context",
+  "core.services.scheduler.schedule_result_view_range",
+  "core.services.scheduler.schedule_service",
+  "core.services.scheduler.version_resolution",
+  "core.services.system.system_config_service",
+  "core.shared.compat_parse",
+  "core.shared.field_parse",
+  "core.shared.strict_parse",
+  "data.repositories.base_repo",
+  "data.repositories.config_repo",
+  "data.repositories.external_group_repo",
+  "data.repositories.schedule_history_repo",
+  "web.error_boundary",
+  "web.error_handlers",
+  "web.public_token_registry",
+  "web.routes.domains.scheduler.scheduler_analysis_links",
+  "web.routes.domains.scheduler.scheduler_batches",
+  "web.routes.domains.scheduler.scheduler_calendar_pages",
+  "web.routes.domains.scheduler.scheduler_config",
+  "web.routes.domains.scheduler.scheduler_excel_batches",
+  "web.routes.domains.scheduler.scheduler_excel_calendar",
+  "web.routes.domains.scheduler.scheduler_excel_calendar_rows",
+  "web.routes.domains.scheduler.scheduler_gantt",
+  "web.routes.domains.scheduler.scheduler_gantt_adjustments",
+  "web.routes.domains.scheduler.scheduler_gantt_redirect",
+  "web.routes.domains.scheduler.scheduler_navigation_publish",
+  "web.routes.domains.scheduler.scheduler_ops",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_context",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_query",
+  "web.routes.domains.scheduler.scheduler_run",
+  "web.routes.domains.scheduler.scheduler_user_messages",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.domains.scheduler.scheduler_week_plan_print",
+  "web.routes.equipment_downtimes",
+  "web.routes.equipment_excel_links",
+  "web.routes.equipment_excel_machines",
+  "web.routes.equipment_pages",
+  "web.routes.excel_demo",
+  "web.routes.excel_utils",
+  "web.routes.form_values",
+  "web.routes.material",
+  "web.routes.normalizers",
+  "web.routes.personnel_calendar_pages",
+  "web.routes.personnel_excel_links",
+  "web.routes.personnel_excel_operator_calendar",
+  "web.routes.personnel_excel_operators",
+  "web.routes.personnel_pages",
+  "web.routes.process_excel_op_types",
+  "web.routes.process_excel_part_operation_hours",
+  "web.routes.process_excel_route_apply",
+  "web.routes.process_excel_routes",
+  "web.routes.process_excel_suppliers",
+  "web.routes.process_parts",
+  "web.routes.report_plan_preview",
+  "web.routes.reports_execution_review_page",
+  "web.routes.reports_page_support",
+  "web.routes.reports_request_support",
+  "web.routes.system_backup",
+  "web.routes.system_logs",
+  "web.routes.system_plugins",
+  "web.routes.system_utils"
+ ],
+ "core.infrastructure.logging": [
+  "core.algorithms.ortools_bottleneck",
+  "core.services.system.maintenance.backup_task",
+  "core.services.system.maintenance.cleanup_task",
+  "data.repositories.external_group_repo",
+  "tools.capture_networkx_phase0_baseline",
+  "web.bootstrap.entrypoint",
+  "web.bootstrap.factory",
+  "web.bootstrap.launcher_contracts",
+  "web.bootstrap.plugins",
+  "web.bootstrap.security",
+  "web.manual_src_security",
+  "web.routes.navigation_utils",
+  "web.routes.system_backup"
+ ],
+ "core.infrastructure.migration_backup": [
+  "core.infrastructure.migration_runner"
+ ],
+ "core.infrastructure.migration_operation_execution_contract": [
+  "core.infrastructure.migration_state"
+ ],
+ "core.infrastructure.migration_runner": [
+  "core.infrastructure.database"
+ ],
+ "core.infrastructure.migration_state": [
+  "core.infrastructure.database",
+  "core.infrastructure.database_bootstrap",
+  "core.infrastructure.migration_runner",
+  "web.routes.system_runtime_logs"
+ ],
+ "core.infrastructure.migrations.common": [
+  "core.infrastructure.backup",
+  "core.infrastructure.database",
+  "core.infrastructure.database_bootstrap",
+  "core.infrastructure.migration_backup",
+  "core.infrastructure.migration_operation_execution_contract",
+  "core.infrastructure.migration_runner",
+  "core.infrastructure.migration_state",
+  "core.infrastructure.migrations.v1",
+  "core.infrastructure.migrations.v10",
+  "core.infrastructure.migrations.v11",
+  "core.infrastructure.migrations.v12",
+  "core.infrastructure.migrations.v13",
+  "core.infrastructure.migrations.v14",
+  "core.infrastructure.migrations.v15",
+  "core.infrastructure.migrations.v16",
+  "core.infrastructure.migrations.v17",
+  "core.infrastructure.migrations.v18",
+  "core.infrastructure.migrations.v19",
+  "core.infrastructure.migrations.v2",
+  "core.infrastructure.migrations.v3",
+  "core.infrastructure.migrations.v4",
+  "core.infrastructure.migrations.v4_sanitizers",
+  "core.infrastructure.migrations.v5",
+  "core.infrastructure.migrations.v6",
+  "core.infrastructure.migrations.v7",
+  "core.infrastructure.migrations.v8",
+  "core.infrastructure.migrations.v9",
+  "web.bootstrap.factory"
+ ],
+ "core.infrastructure.migrations.v15": [
+  "core.infrastructure.migrations.v16",
+  "core.infrastructure.migrations.v18"
+ ],
+ "core.infrastructure.migrations.v16": [
+  "core.infrastructure.migrations.v18",
+  "core.infrastructure.migrations.v19"
+ ],
+ "core.infrastructure.migrations.v18": [
+  "core.infrastructure.migrations.v19"
+ ],
+ "core.infrastructure.migrations.v4_sanitizers": [
+  "core.infrastructure.migrations.v4"
+ ],
+ "core.infrastructure.operation_execution_event_data_contract": [
+  "core.infrastructure.migration_operation_execution_contract",
+  "core.infrastructure.migrations.v16",
+  "core.infrastructure.migrations.v18",
+  "core.infrastructure.migrations.v19"
+ ],
+ "core.infrastructure.safe_files": [
+  "core.infrastructure.backup",
+  "core.infrastructure.database",
+  "core.infrastructure.migration_backup",
+  "core.services.common.excel_templates",
+  "core.services.common.openpyxl_backend",
+  "core.services.process.unit_excel.exporter",
+  "core.services.system.maintenance.cleanup_task",
+  "core.services.system.runtime_log_reader",
+  "web.bootstrap.launcher_cleanup_result",
+  "web.bootstrap.launcher_contract_result",
+  "web.bootstrap.launcher_contracts",
+  "web.bootstrap.launcher_endpoint_result",
+  "web.bootstrap.launcher_lock_result",
+  "web.bootstrap.launcher_observability",
+  "web.bootstrap.runtime_probe",
+  "web.bootstrap.security",
+  "web.routes.excel_utils",
+  "web.routes.system_backup"
+ ],
+ "core.infrastructure.transaction": [
+  "core.infrastructure.logging",
+  "core.services.common.excel_import_executor",
+  "core.services.equipment.machine_downtime_service",
+  "core.services.equipment.machine_service",
+  "core.services.material.batch_material_service",
+  "core.services.material.material_service",
+  "core.services.personnel.operator_machine_service",
+  "core.services.personnel.operator_service",
+  "core.services.personnel.resource_team_service",
+  "core.services.process.external_group_service",
+  "core.services.process.op_type_service",
+  "core.services.process.part_operation_hours_excel_import_service",
+  "core.services.process.part_service",
+  "core.services.process.supplier_service",
+  "core.services.scheduler.batch_service",
+  "core.services.scheduler.calendar_admin",
+  "core.services.scheduler.config.config_service",
+  "core.services.scheduler.operation_execution_feedback_service",
+  "core.services.scheduler.schedule_service",
+  "core.services.system.maintenance.backup_task",
+  "core.services.system.maintenance.cleanup_task",
+  "core.services.system.operation_log_service",
+  "core.services.system.system_config_service",
+  "web.routes.process_excel_route_apply"
+ ],
+ "core.models": [
+  "core.services.equipment.machine_downtime_service",
+  "core.services.equipment.machine_service",
+  "core.services.material.material_service",
+  "core.services.personnel.operator_machine_normalizers",
+  "core.services.personnel.operator_machine_service",
+  "core.services.personnel.operator_service",
+  "core.services.personnel.resource_team_service",
+  "core.services.process.external_group_service",
+  "core.services.process.op_type_service",
+  "core.services.process.part_service",
+  "core.services.process.supplier_service",
+  "core.services.scheduler.batch_copy",
+  "core.services.scheduler.batch_service",
+  "core.services.scheduler.calendar_admin",
+  "core.services.scheduler.calendar_engine",
+  "core.services.scheduler.calendar_service",
+  "core.services.scheduler.gantt_adjustment_publish_service",
+  "core.services.scheduler.operation_edit_service",
+  "core.services.scheduler.run.schedule_execution_guardrails",
+  "core.services.scheduler.run.schedule_input_collector",
+  "core.services.scheduler.run.schedule_input_runtime_support",
+  "core.services.scheduler.run.schedule_template_lookup",
+  "core.services.scheduler.schedule_delay_diagnosis_clues",
+  "core.services.scheduler.schedule_history_query_service",
+  "core.services.scheduler.schedule_service",
+  "core.services.system.operation_log_service",
+  "core.services.system.system_job_state_query_service",
+  "data.repositories.batch_material_repo",
+  "data.repositories.batch_operation_repo",
+  "data.repositories.batch_repo",
+  "data.repositories.calendar_repo",
+  "data.repositories.config_repo",
+  "data.repositories.external_group_repo",
+  "data.repositories.machine_downtime_repo",
+  "data.repositories.machine_repo",
+  "data.repositories.material_repo",
+  "data.repositories.op_type_repo",
+  "data.repositories.operation_log_repo",
+  "data.repositories.operator_calendar_repo",
+  "data.repositories.operator_machine_repo",
+  "data.repositories.operator_repo",
+  "data.repositories.part_operation_repo",
+  "data.repositories.part_repo",
+  "data.repositories.resource_team_repo",
+  "data.repositories.schedule_history_repo",
+  "data.repositories.schedule_repo",
+  "data.repositories.supplier_repo",
+  "data.repositories.system_config_repo",
+  "data.repositories.system_job_state_repo"
+ ],
+ "core.models._helpers": [
+  "core.infrastructure.operation_execution_event_data_contract",
+  "core.models.batch",
+  "core.models.batch_material",
+  "core.models.batch_operation",
+  "core.models.calendar",
+  "core.models.config",
+  "core.models.external_group",
+  "core.models.machine",
+  "core.models.machine_downtime",
+  "core.models.material",
+  "core.models.op_type",
+  "core.models.operation_execution_event",
+  "core.models.operation_log",
+  "core.models.operator",
+  "core.models.operator_machine",
+  "core.models.part",
+  "core.models.part_operation",
+  "core.models.resource_team",
+  "core.models.schedule",
+  "core.models.schedule_adjustment",
+  "core.models.schedule_candidate",
+  "core.models.schedule_history",
+  "core.models.supplier",
+  "core.models.system_config",
+  "core.models.system_job_state"
+ ],
+ "core.models.enums": [
+  "core.models.batch",
+  "core.models.batch_material",
+  "core.models.batch_operation",
+  "core.models.calendar",
+  "core.models.external_group",
+  "core.models.machine",
+  "core.models.machine_downtime",
+  "core.models.material",
+  "core.models.op_type",
+  "core.models.operator",
+  "core.models.operator_machine",
+  "core.models.part",
+  "core.models.part_operation",
+  "core.models.resource_team",
+  "core.models.schedule",
+  "core.models.schedule_candidate",
+  "core.models.supplier",
+  "core.plugins.manager",
+  "core.services.common.enum_normalizers",
+  "core.services.common.excel_validators",
+  "core.services.common.normalization_matrix",
+  "core.services.equipment.machine_downtime_service",
+  "core.services.equipment.machine_excel_import_service",
+  "core.services.equipment.machine_service",
+  "core.services.material.batch_material_service",
+  "core.services.material.material_service",
+  "core.services.personnel.operator_excel_import_service",
+  "core.services.personnel.operator_machine_import_helpers",
+  "core.services.personnel.operator_machine_normalizers",
+  "core.services.personnel.operator_machine_query_service",
+  "core.services.personnel.operator_machine_service",
+  "core.services.personnel.operator_service",
+  "core.services.personnel.resource_team_service",
+  "core.services.process.deletion_validator",
+  "core.services.process.external_group_service",
+  "core.services.process.op_type_excel_import_service",
+  "core.services.process.op_type_service",
+  "core.services.process.part_route_validation",
+  "core.services.process.part_service",
+  "core.services.process.route_parser",
+  "core.services.process.route_parser_constraints",
+  "core.services.process.route_parser_segments",
+  "core.services.process.supplier_excel_import_service",
+  "core.services.process.supplier_service",
+  "core.services.process.unit_excel.resource_sheet_builder",
+  "core.services.process.unit_excel.route_sheet_builder",
+  "core.services.process.unit_excel.template_builder",
+  "core.services.report.calculation_helpers",
+  "core.services.scheduler.batch_copy",
+  "core.services.scheduler.batch_excel_import",
+  "core.services.scheduler.batch_service",
+  "core.services.scheduler.batch_template_ops",
+  "core.services.scheduler.batch_write_rules",
+  "core.services.scheduler.calendar_admin",
+  "core.services.scheduler.calendar_engine",
+  "core.services.scheduler.gantt_adjustment_publish_service",
+  "core.services.scheduler.gantt_resource_load",
+  "core.services.scheduler.gantt_tasks",
+  "core.services.scheduler.operation_edit_service",
+  "core.services.scheduler.resource_pool_builder",
+  "core.services.scheduler.run.freeze_window",
+  "core.services.scheduler.run.optimizer_config",
+  "core.services.scheduler.run.schedule_candidate_persistence",
+  "core.services.scheduler.run.schedule_candidate_persistence_models",
+  "core.services.scheduler.run.schedule_execution_guardrails",
+  "core.services.scheduler.run.schedule_input_builder",
+  "core.services.scheduler.run.schedule_input_collector",
+  "core.services.scheduler.run.schedule_input_runtime_support",
+  "core.services.scheduler.run.schedule_payload_contract",
+  "core.services.scheduler.run.schedule_persistence",
+  "core.services.scheduler.run.schedule_template_lookup",
+  "core.services.scheduler.schedule_service",
+  "core.services.scheduler.summary.schedule_summary_assembly",
+  "core.services.scheduler.summary.schedule_summary_degradation",
+  "core.services.scheduler.summary.schedule_summary_downtime_degradation",
+  "core.services.scheduler.summary.schedule_summary_freeze",
+  "core.services.system.system_maintenance_service",
+  "web.bootstrap.factory",
+  "web.routes.domains.scheduler.scheduler_batch_detail",
+  "web.routes.domains.scheduler.scheduler_excel_calendar_rows",
+  "web.routes.domains.scheduler.scheduler_ops",
+  "web.routes.enum_display",
+  "web.routes.equipment_excel_machines",
+  "web.routes.equipment_pages",
+  "web.routes.excel_demo",
+  "web.routes.material",
+  "web.routes.normalizers",
+  "web.routes.personnel_detail_context",
+  "web.routes.personnel_excel_operators",
+  "web.routes.personnel_pages",
+  "web.routes.personnel_teams",
+  "web.routes.process_bp",
+  "web.routes.process_excel_op_types",
+  "web.routes.process_excel_part_operation_hours",
+  "web.routes.process_excel_part_operations",
+  "web.routes.process_excel_suppliers",
+  "web.routes.process_op_types",
+  "web.routes.process_parts",
+  "web.routes.process_suppliers"
+ ],
+ "core.models.execution_review_identity": [
+  "core.services.report.execution_review",
+  "core.services.report.execution_review_identity",
+  "web.routes.reports_execution_review_page",
+  "web.viewmodels.scheduler_workbench_links"
+ ],
+ "core.models.objective": [
+  "core.algorithms.objective_specs",
+  "core.models.schedule_config_runtime_fields",
+  "core.services.scheduler.config.config_field_spec",
+  "web.viewmodels.scheduler_analysis_labels"
+ ],
+ "core.models.operation_execution_event": [
+  "core.infrastructure.migrations.v16",
+  "core.infrastructure.operation_execution_event_data_contract",
+  "core.models.operation_execution_labels",
+  "core.models.operation_execution_state",
+  "core.services.scheduler.execution_fact_presentation",
+  "core.services.scheduler.execution_fact_provider",
+  "core.services.scheduler.gantt_adjustment_publish_service",
+  "core.services.scheduler.gantt_tasks",
+  "core.services.scheduler.gantt_week_plan",
+  "core.services.scheduler.operation_execution_feedback_actions",
+  "core.services.scheduler.operation_execution_feedback_service",
+  "core.services.scheduler.operation_execution_feedback_support",
+  "core.services.scheduler.run.schedule_execution_guardrails",
+  "data.repositories.operation_execution_event_repo",
+  "data.repositories.operation_execution_state_aggregation",
+  "data.repositories.operation_execution_state_builder",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes",
+  "web.viewmodels.dashboard_workbench",
+  "web.viewmodels.scheduler_resource_dispatch_execution"
+ ],
+ "core.models.operation_execution_labels": [
+  "core.services.scheduler.execution_fact_presentation",
+  "core.services.scheduler.gantt_week_plan",
+  "core.services.scheduler.operation_execution_feedback_service",
+  "core.services.scheduler.operation_execution_feedback_support",
+  "core.services.scheduler.resource_dispatch_actual_import",
+  "core.services.scheduler.resource_dispatch_actual_record_service",
+  "core.services.scheduler.resource_dispatch_execution_enrichment",
+  "data.repositories.operation_execution_state_builder",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_context",
+  "web.viewmodels.scheduler_resource_dispatch_execution"
+ ],
+ "core.models.operation_execution_scope": [
+  "core.models.operation_execution_event",
+  "core.models.resource_dispatch_execution_tokens",
+  "core.services.report.execution_review",
+  "core.services.scheduler.execution_fact_provider",
+  "core.services.scheduler.operation_execution_feedback_service",
+  "core.services.scheduler.operation_execution_feedback_support",
+  "core.services.scheduler.operation_execution_scope_read",
+  "core.services.scheduler.resource_dispatch_actual_record_service",
+  "core.services.scheduler.resource_dispatch_execution_service",
+  "core.services.scheduler.run.schedule_execution_persistence_guard",
+  "data.repositories.operation_execution_event_repo",
+  "data.repositories.operation_execution_state_aggregation",
+  "data.repositories.operation_execution_state_builder",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_context",
+  "web.viewmodels.scheduler_resource_dispatch_execution"
+ ],
+ "core.models.operation_execution_state": [
+  "core.services.scheduler.operation_execution_feedback_service",
+  "core.services.scheduler.operation_execution_feedback_support",
+  "core.services.scheduler.operation_execution_scope_read",
+  "core.services.scheduler.resource_dispatch_actual_record_service",
+  "core.services.scheduler.resource_dispatch_actual_records",
+  "core.services.scheduler.resource_dispatch_execution_service",
+  "data.repositories.operation_execution_event_repo",
+  "data.repositories.operation_execution_state_aggregation",
+  "data.repositories.operation_execution_state_builder",
+  "web.viewmodels.scheduler_resource_dispatch_execution"
+ ],
+ "core.models.operation_log_public_projection": [
+  "web.routes.system_runtime_logs",
+  "web.viewmodels.system_logs_vm"
+ ],
+ "core.models.public_identifier_redaction": [
+  "core.models.operation_log_public_projection",
+  "core.services.common.excel_audit",
+  "core.services.scheduler.summary.graph_public_summary",
+  "core.services.scheduler.summary.optimizer_public_safety",
+  "web.viewmodels.scheduler_analysis_trends"
+ ],
+ "core.models.resource_dispatch_execution_tokens": [
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_context",
+  "web.viewmodels.scheduler_resource_dispatch_execution"
+ ],
+ "core.models.resource_dispatch_public_labels": [
+  "core.services.scheduler.resource_dispatch_excel",
+  "web.viewmodels.scheduler_resource_dispatch"
+ ],
+ "core.models.resource_identity": [
+  "core.services.report.execution_review",
+  "core.services.scheduler.operation_execution_feedback_actions",
+  "data.repositories.operation_execution_state_aggregation",
+  "data.repositories.operation_execution_state_builder",
+  "web.viewmodels.scheduler_resource_dispatch",
+  "web.viewmodels.scheduler_resource_dispatch_execution"
+ ],
+ "core.models.schedule_adjustment": [
+  "core.services.scheduler.gantt_adjustment_draft_service",
+  "core.services.scheduler.gantt_adjustment_projection",
+  "core.services.scheduler.gantt_adjustment_publish_service",
+  "core.services.scheduler.gantt_adjustment_scenario_service",
+  "core.services.scheduler.gantt_adjustment_validation_service",
+  "data.repositories.schedule_adjustment_repo",
+  "data.repositories.schedule_adjustment_scenario_repo"
+ ],
+ "core.models.schedule_candidate": [
+  "core.services.scheduler.run.schedule_candidate_persistence",
+  "core.services.scheduler.run.schedule_candidate_persistence_models",
+  "data.repositories.schedule_candidate_repo"
+ ],
+ "core.models.schedule_config_runtime": [
+  "core.services.scheduler.run.optimizer_proof_oracle"
+ ],
+ "core.models.schedule_config_runtime_coercion": [
+  "core.models.schedule_config_runtime"
+ ],
+ "core.models.schedule_config_runtime_fields": [
+  "core.models.schedule_config_runtime",
+  "core.models.schedule_config_runtime_coercion"
+ ],
+ "core.models.schedule_config_runtime_read": [
+  "core.models.schedule_config_runtime_coercion"
+ ],
+ "core.models.schedule_config_runtime_snapshot": [
+  "core.models.schedule_config_runtime",
+  "core.models.schedule_config_runtime_coercion"
+ ],
+ "core.models.schedule_config_runtime_weights": [
+  "core.models.schedule_config_runtime",
+  "core.models.schedule_config_runtime_coercion"
+ ],
+ "core.models.schedule_delay_diagnosis": [
+  "core.services.report.delay_diagnosis_presentation",
+  "core.services.scheduler.schedule_delay_diagnosis_clues",
+  "core.services.scheduler.schedule_delay_diagnosis_service",
+  "core.services.scheduler.schedule_delay_diagnosis_utils"
+ ],
+ "core.models.schedule_plan_identity": [
+  "core.models.schedule_delay_diagnosis",
+  "core.models.schedule_plan_resolution",
+  "core.services.report.delay_diagnosis_presentation",
+  "core.services.scheduler.schedule_delay_diagnosis_clues",
+  "core.services.scheduler.schedule_delay_diagnosis_service",
+  "core.services.scheduler.schedule_delay_diagnosis_utils",
+  "core.services.scheduler.schedule_plan_identity_builder"
+ ],
+ "core.models.schedule_plan_resolution": [
+  "core.services.scheduler.schedule_plan_query_service"
+ ],
+ "core.models.schedule_plan_role": [
+  "core.models.execution_review_identity",
+  "core.models.operation_execution_scope",
+  "core.models.schedule_plan_resolution",
+  "core.services.report.execution_review",
+  "core.services.scheduler.gantt_adjustment_draft_service",
+  "core.services.scheduler.gantt_adjustment_publish_service",
+  "core.services.scheduler.gantt_critical_chain_provider",
+  "core.services.scheduler.operation_execution_feedback_service",
+  "core.services.scheduler.plan_overdue_markers",
+  "core.services.scheduler.resource_dispatch_actual_record_service",
+  "core.services.scheduler.resource_dispatch_execution_service",
+  "core.services.scheduler.run.schedule_candidate_persistence",
+  "core.services.scheduler.run.schedule_candidate_summary",
+  "core.services.scheduler.run.schedule_execution_guardrails",
+  "core.services.scheduler.schedule_plan_identity_builder",
+  "core.services.scheduler.schedule_plan_option_display",
+  "core.services.scheduler.schedule_plan_query_service",
+  "core.services.scheduler.schedule_result_view_context",
+  "data.repositories.schedule_plan_query_repo",
+  "web.manual_src_security",
+  "web.navigation_context",
+  "web.routes.dashboard",
+  "web.routes.domains.scheduler.scheduler_batch_detail",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.reports_execution_review_context",
+  "web.routes.reports_plan_template_fields",
+  "web.routes.reports_request_support",
+  "web.viewmodels.scheduler_analysis_candidate_helpers",
+  "web.viewmodels.scheduler_analysis_candidates",
+  "web.viewmodels.scheduler_resource_dispatch",
+  "web.viewmodels.scheduler_workbench_link_labels",
+  "web.viewmodels.scheduler_workbench_link_query",
+  "web.viewmodels.scheduler_workbench_links"
+ ],
+ "core.models.schedule_resource_filter": [
+  "core.services.report.report_context_filters",
+  "core.services.scheduler.resource_dispatch_service",
+  "core.services.scheduler.schedule_plan_query_service",
+  "data.repositories.schedule_plan_query_repo",
+  "data.repositories.schedule_resource_sql_filters",
+  "web.viewmodels.scheduler_workbench_links"
+ ],
+ "core.models.scheduler_degradation_messages": [
+  "core.algorithms.greedy.schedule_params",
+  "core.services.scheduler.config.config_page_outcome",
+  "core.services.scheduler.degradation_messages",
+  "core.services.scheduler.summary.optimizer_public_safety",
+  "web.routes.domains.scheduler.scheduler_bp",
+  "web.viewmodels.scheduler_degradation_presenter",
+  "web.viewmodels.scheduler_resource_dispatch_execution",
+  "web.viewmodels.scheduler_run_view_result",
+  "web.viewmodels.scheduler_summary_display"
+ ],
+ "core.models.scheduler_history_parser": [
+  "core.services.scheduler.history_summary_parser",
+  "core.services.scheduler.schedule_plan_identity_builder",
+  "web.viewmodels.scheduler_analysis_trends",
+  "web.viewmodels.scheduler_history_summary"
+ ],
+ "core.models.scheduler_public_errors": [
+  "core.algorithms.greedy.dispatch.resource_validation",
+  "core.services.scheduler.run.auto_assign_resource_errors",
+  "core.services.scheduler.run.schedule_persistence_errors",
+  "core.services.scheduler.summary.summary_size_guard_fields",
+  "core.services.scheduler.summary.summary_visible_degradation",
+  "web.viewmodels.scheduler_summary_display"
+ ],
+ "core.models.toggle_values": [
+  "web.routes.form_values",
+  "web.viewmodels.ui_presenters"
+ ],
+ "core.plugins": [
+  "core.services.common.excel_backend_factory",
+  "web.bootstrap.plugins"
+ ],
+ "core.plugins.registry": [
+  "core.plugins.manager",
+  "web.bootstrap.plugins"
+ ],
+ "core.plugins.runtime": [
+  "core.plugins.manager"
+ ],
+ "core.services.common.build_outcome": [
+  "core.services.scheduler.gantt_resource_load",
+  "core.services.scheduler.gantt_tasks",
+  "core.services.scheduler.gantt_week_plan",
+  "core.services.scheduler.resource_dispatch_rows",
+  "core.services.scheduler.resource_dispatch_support",
+  "core.services.scheduler.run.schedule_input_builder",
+  "core.services.scheduler.run.schedule_input_collector",
+  "core.services.scheduler.run.schedule_input_contracts",
+  "core.services.scheduler.summary.schedule_summary_degradation",
+  "core.services.scheduler.summary.schedule_summary_types"
+ ],
+ "core.services.common.datetime_normalize": [
+  "core.services.common.excel_validators",
+  "core.services.scheduler.calendar_admin",
+  "core.services.scheduler.calendar_engine"
+ ],
+ "core.services.common.degradation": [
+  "core.services.common.build_outcome",
+  "core.services.process.unit_excel.resource_sheet_builder",
+  "core.services.process.unit_excel.route_sheet_builder",
+  "core.services.process.unit_excel.template_builder",
+  "core.services.process.unit_excel.template_validation",
+  "core.services.report.downtime_impact",
+  "core.services.report.report_context_filters",
+  "core.services.report.report_degradation",
+  "core.services.report.report_engine",
+  "core.services.report.utilization",
+  "core.services.scheduler._sched_display_utils",
+  "core.services.scheduler.gantt_critical_chain",
+  "core.services.scheduler.gantt_resource_load",
+  "core.services.scheduler.gantt_service",
+  "core.services.scheduler.gantt_service_support",
+  "core.services.scheduler.gantt_tasks",
+  "core.services.scheduler.gantt_week_plan",
+  "core.services.scheduler.resource_dispatch_rows",
+  "core.services.scheduler.resource_dispatch_support",
+  "core.services.scheduler.summary.schedule_summary_degradation",
+  "web.bootstrap.plugins"
+ ],
+ "core.services.common.enum_normalizers": [
+  "core.plugins.manager",
+  "core.services.equipment.machine_excel_import_service",
+  "core.services.personnel.operator_excel_import_service",
+  "core.services.personnel.operator_machine_query_service",
+  "core.services.process.op_type_excel_import_service",
+  "core.services.process.op_type_service",
+  "core.services.process.route_parser_constraints",
+  "core.services.process.supplier_excel_import_service",
+  "core.services.process.supplier_service",
+  "core.services.process.unit_excel.route_sheet_builder",
+  "core.services.scheduler.resource_pool_builder",
+  "core.services.system.system_config_service",
+  "web.routes.domains.scheduler.scheduler_excel_batches",
+  "web.routes.domains.scheduler.scheduler_excel_calendar",
+  "web.routes.enum_display",
+  "web.routes.equipment_excel_links",
+  "web.routes.equipment_excel_machines",
+  "web.routes.excel_demo",
+  "web.routes.material",
+  "web.routes.personnel_excel_links",
+  "web.routes.personnel_excel_operator_calendar",
+  "web.routes.personnel_excel_operators",
+  "web.routes.process_bp",
+  "web.routes.process_excel_op_types",
+  "web.routes.process_excel_part_operation_hours",
+  "web.routes.process_excel_part_operations",
+  "web.routes.process_excel_suppliers"
+ ],
+ "core.services.common.excel_audit": [
+  "web.routes.domains.scheduler.scheduler_excel_batches",
+  "web.routes.domains.scheduler.scheduler_excel_calendar",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.equipment_excel_links",
+  "web.routes.equipment_excel_machines",
+  "web.routes.excel_demo",
+  "web.routes.personnel_excel_links",
+  "web.routes.personnel_excel_operator_calendar",
+  "web.routes.personnel_excel_operators",
+  "web.routes.process_excel_op_types",
+  "web.routes.process_excel_part_operation_hours",
+  "web.routes.process_excel_part_operations",
+  "web.routes.process_excel_routes",
+  "web.routes.process_excel_suppliers",
+  "web.routes.reports_export_support"
+ ],
+ "core.services.common.excel_backend_factory": [
+  "web.bootstrap.factory",
+  "web.routes.equipment_excel_machines",
+  "web.routes.excel_demo",
+  "web.routes.excel_utils",
+  "web.routes.personnel_excel_operator_calendar",
+  "web.routes.personnel_excel_operators",
+  "web.routes.process_excel_op_types",
+  "web.routes.process_excel_part_operation_hours",
+  "web.routes.process_excel_route_apply",
+  "web.routes.process_excel_suppliers"
+ ],
+ "core.services.common.excel_column_renames": [
+  "core.services.process.op_type_excel_import_service",
+  "core.services.process.supplier_excel_import_service",
+  "web.routes.excel_utils"
+ ],
+ "core.services.common.excel_import_executor": [
+  "core.services.equipment.machine_excel_import_service",
+  "core.services.personnel.operator_excel_import_service",
+  "core.services.process.op_type_excel_import_service",
+  "core.services.process.supplier_excel_import_service",
+  "core.services.scheduler.batch_excel_import",
+  "core.services.scheduler.calendar_service",
+  "web.bootstrap.request_services"
+ ],
+ "core.services.common.excel_service": [
+  "core.services.common.excel_audit",
+  "core.services.common.excel_import_executor",
+  "core.services.equipment.machine_excel_import_service",
+  "core.services.personnel.operator_excel_import_service",
+  "core.services.personnel.operator_machine_import_helpers",
+  "core.services.personnel.operator_machine_service",
+  "core.services.process.op_type_excel_import_service",
+  "core.services.process.part_operation_hours_excel_import_service",
+  "core.services.process.supplier_excel_import_service",
+  "core.services.scheduler.batch_excel_import",
+  "core.services.scheduler.batch_service",
+  "core.services.scheduler.calendar_service",
+  "web.bootstrap.request_services",
+  "web.routes.domains.scheduler.scheduler_excel_batches",
+  "web.routes.domains.scheduler.scheduler_excel_calendar",
+  "web.routes.domains.scheduler.scheduler_utils",
+  "web.routes.equipment_bp",
+  "web.routes.equipment_excel_links",
+  "web.routes.equipment_excel_machines",
+  "web.routes.excel_demo",
+  "web.routes.excel_utils",
+  "web.routes.personnel_bp",
+  "web.routes.personnel_excel_links",
+  "web.routes.personnel_excel_operator_calendar",
+  "web.routes.personnel_excel_operators",
+  "web.routes.process_bp",
+  "web.routes.process_excel_op_types",
+  "web.routes.process_excel_part_operation_hours",
+  "web.routes.process_excel_route_apply",
+  "web.routes.process_excel_routes",
+  "web.routes.process_excel_suppliers"
+ ],
+ "core.services.common.excel_template_defaults": [
+  "core.services.common.excel_templates"
+ ],
+ "core.services.common.excel_templates": [
+  "core.services.common.openpyxl_backend",
+  "core.services.process.unit_excel.exporter",
+  "core.services.process.unit_excel.template_builder",
+  "core.services.report.exporters.xlsx",
+  "core.services.scheduler.resource_dispatch_actual_excel",
+  "core.services.scheduler.resource_dispatch_excel",
+  "core.services.scheduler.week_plan_excel",
+  "web.bootstrap.factory",
+  "web.routes.domains.scheduler.scheduler_excel_batches",
+  "web.routes.domains.scheduler.scheduler_excel_calendar",
+  "web.routes.equipment_excel_links",
+  "web.routes.equipment_excel_machines",
+  "web.routes.excel_demo",
+  "web.routes.excel_utils",
+  "web.routes.personnel_excel_links",
+  "web.routes.personnel_excel_operator_calendar",
+  "web.routes.personnel_excel_operators",
+  "web.routes.process_excel_op_types",
+  "web.routes.process_excel_part_operation_hours",
+  "web.routes.process_excel_part_operations",
+  "web.routes.process_excel_routes",
+  "web.routes.process_excel_suppliers"
+ ],
+ "core.services.common.excel_validators": [
+  "web.routes.domains.scheduler.scheduler_excel_batches",
+  "web.routes.personnel_excel_operator_calendar"
+ ],
+ "core.services.common.normalization_matrix": [
+  "core.services.common.enum_normalizers",
+  "core.services.common.excel_validators",
+  "core.services.personnel.operator_machine_normalizers",
+  "core.services.scheduler.calendar_admin",
+  "web.routes.equipment_pages",
+  "web.routes.normalizers",
+  "web.routes.personnel_detail_context",
+  "web.routes.personnel_pages"
+ ],
+ "core.services.common.normalize": [
+  "core.services.common.excel_column_renames",
+  "core.services.common.excel_validators",
+  "core.services.equipment.machine_downtime_service",
+  "core.services.equipment.machine_excel_import_service",
+  "core.services.equipment.machine_service",
+  "core.services.personnel.operator_excel_import_service",
+  "core.services.personnel.operator_machine_import_helpers",
+  "core.services.personnel.operator_machine_normalizers",
+  "core.services.personnel.operator_machine_service",
+  "core.services.personnel.operator_service",
+  "core.services.personnel.resource_team_service",
+  "core.services.process.external_group_service",
+  "core.services.process.op_type_excel_import_service",
+  "core.services.process.op_type_service",
+  "core.services.process.part_operation_hours_excel_import_service",
+  "core.services.process.part_route_validation",
+  "core.services.process.part_service",
+  "core.services.process.supplier_excel_import_service",
+  "core.services.process.supplier_service",
+  "core.services.scheduler.batch_service",
+  "core.services.scheduler.batch_template_ops",
+  "core.services.scheduler.calendar_admin",
+  "core.services.scheduler.calendar_engine",
+  "core.services.scheduler.calendar_service",
+  "core.services.scheduler.config.config_preset_service",
+  "core.services.scheduler.config.config_service",
+  "core.services.scheduler.schedule_service",
+  "web.routes.domains.scheduler.scheduler_excel_calendar_rows",
+  "web.routes.equipment_excel_machines",
+  "web.routes.excel_demo",
+  "web.routes.personnel_excel_operator_calendar",
+  "web.routes.personnel_excel_operators",
+  "web.routes.process_excel_op_types",
+  "web.routes.process_excel_part_operation_hours",
+  "web.routes.process_excel_routes",
+  "web.routes.process_excel_suppliers"
+ ],
+ "core.services.common.number_utils": [
+  "core.services.common.excel_validators",
+  "web.routes.domains.scheduler.scheduler_excel_calendar_rows"
+ ],
+ "core.services.common.openpyxl_backend": [
+  "core.services.common.excel_backend_factory"
+ ],
+ "core.services.common.overdue_calculations": [
+  "core.services.report.calculations",
+  "core.services.scheduler.plan_overdue_markers",
+  "core.services.scheduler.schedule_delay_diagnosis_clues",
+  "core.services.scheduler.schedule_delay_diagnosis_service"
+ ],
+ "core.services.common.safe_logging": [
+  "core.services.process.external_group_service",
+  "core.services.process.part_route_validation",
+  "core.services.process.part_service",
+  "core.services.process.route_parser",
+  "core.services.process.route_parser_constraints",
+  "core.services.scheduler.config.config_bootstrap_service",
+  "core.services.scheduler.config.config_page_save_service",
+  "core.services.scheduler.config.config_read_service",
+  "core.services.scheduler.resource_pool_builder"
+ ],
+ "core.services.common.strict_parse": [
+  "core.services.process.supplier_excel_import_service",
+  "core.services.process.supplier_service",
+  "core.services.scheduler.operation_edit_service",
+  "web.routes.process_excel_suppliers"
+ ],
+ "core.services.common.tabular_backend": [
+  "core.services.common.excel_backend_factory",
+  "core.services.common.excel_service",
+  "core.services.common.openpyxl_backend",
+  "core.services.common.pandas_backend"
+ ],
+ "core.services.equipment": [
+  "web.bootstrap.request_services",
+  "web.routes.equipment_downtimes",
+  "web.routes.equipment_excel_links",
+  "web.routes.equipment_excel_machines",
+  "web.routes.equipment_pages",
+  "web.routes.personnel_detail_context",
+  "web.routes.personnel_excel_links",
+  "web.routes.personnel_pages"
+ ],
+ "core.services.equipment.machine_downtime_query_service": [
+  "web.routes.equipment_pages"
+ ],
+ "core.services.equipment.machine_excel_import_service": [
+  "web.routes.equipment_excel_machines"
+ ],
+ "core.services.equipment.machine_service": [
+  "core.services.equipment.machine_excel_import_service",
+  "core.services.scheduler.resource_dispatch_service"
+ ],
+ "core.services.material": [
+  "web.bootstrap.request_services"
+ ],
+ "core.services.material.batch_material_service": [
+  "core.services.scheduler.schedule_delay_diagnosis_clues"
+ ],
+ "core.services.personnel": [
+  "core.services.personnel.operator_machine_import_helpers",
+  "core.services.personnel.operator_machine_service",
+  "core.services.scheduler.resource_dispatch_service",
+  "web.bootstrap.request_services",
+  "web.routes.equipment_excel_links",
+  "web.routes.equipment_excel_machines",
+  "web.routes.equipment_pages",
+  "web.routes.excel_demo",
+  "web.routes.personnel_calendar_pages",
+  "web.routes.personnel_detail_context",
+  "web.routes.personnel_excel_links",
+  "web.routes.personnel_excel_operator_calendar",
+  "web.routes.personnel_excel_operators",
+  "web.routes.personnel_pages",
+  "web.routes.personnel_teams",
+  "web.routes.team_view_helpers"
+ ],
+ "core.services.personnel.operator_excel_import_service": [
+  "web.routes.excel_demo",
+  "web.routes.personnel_excel_operators"
+ ],
+ "core.services.personnel.operator_machine_import_helpers": [
+  "core.services.personnel.operator_machine_service"
+ ],
+ "core.services.personnel.operator_machine_query_service": [
+  "web.bootstrap.request_services",
+  "web.routes.equipment_excel_links",
+  "web.routes.equipment_pages",
+  "web.routes.personnel_detail_context",
+  "web.routes.personnel_excel_links",
+  "web.routes.personnel_pages"
+ ],
+ "core.services.personnel.operator_service": [
+  "core.services.personnel.operator_excel_import_service",
+  "core.services.scheduler.resource_dispatch_service"
+ ],
+ "core.services.personnel.resource_team_service": [
+  "core.services.equipment.machine_excel_import_service",
+  "core.services.personnel.operator_excel_import_service"
+ ],
+ "core.services.process": [
+  "web.bootstrap.request_services",
+  "web.routes.equipment_excel_machines",
+  "web.routes.equipment_pages",
+  "web.routes.process_excel_op_types",
+  "web.routes.process_excel_route_apply",
+  "web.routes.process_excel_routes",
+  "web.routes.process_excel_suppliers",
+  "web.routes.process_op_types",
+  "web.routes.process_parts",
+  "web.routes.process_suppliers"
+ ],
+ "core.services.process.deletion_validator": [
+  "core.services.process.part_delete_guard",
+  "core.services.process.part_service"
+ ],
+ "core.services.process.op_type_excel_import_service": [
+  "web.routes.process_excel_op_types"
+ ],
+ "core.services.process.op_type_service": [
+  "core.services.equipment.machine_excel_import_service",
+  "core.services.process.op_type_excel_import_service",
+  "core.services.process.supplier_excel_import_service"
+ ],
+ "core.services.process.part_delete_guard": [
+  "core.services.process.part_service"
+ ],
+ "core.services.process.part_excel_adapter": [
+  "core.services.process.part_service"
+ ],
+ "core.services.process.part_operation_hours_excel_import_service": [
+  "web.routes.process_excel_part_operation_hours"
+ ],
+ "core.services.process.part_operation_query_service": [
+  "web.bootstrap.request_services",
+  "web.routes.process_excel_part_operation_hours",
+  "web.routes.process_excel_part_operations"
+ ],
+ "core.services.process.part_route_validation": [
+  "core.services.process.part_service"
+ ],
+ "core.services.process.part_service": [
+  "core.services.process.part_operation_hours_excel_import_service"
+ ],
+ "core.services.process.route_parser": [
+  "core.services.process.part_route_validation",
+  "core.services.process.part_service"
+ ],
+ "core.services.process.route_parser_constraints": [
+  "core.services.process.route_parser"
+ ],
+ "core.services.process.route_parser_errors": [
+  "core.services.process.route_parser",
+  "core.services.process.route_parser_constraints",
+  "core.services.process.route_parser_tokens"
+ ],
+ "core.services.process.route_parser_segments": [
+  "core.services.process.route_parser"
+ ],
+ "core.services.process.route_parser_tokens": [
+  "core.services.process.route_parser"
+ ],
+ "core.services.process.supplier_excel_import_service": [
+  "web.routes.process_excel_suppliers"
+ ],
+ "core.services.process.supplier_service": [
+  "core.services.process.supplier_excel_import_service"
+ ],
+ "core.services.process.unit_excel.exporter": [
+  "core.services.process.unit_excel_converter"
+ ],
+ "core.services.process.unit_excel.parser": [
+  "core.services.process.unit_excel.template_builder",
+  "core.services.process.unit_excel_converter"
+ ],
+ "core.services.process.unit_excel.part_sheet_builder": [
+  "core.services.process.unit_excel.template_builder"
+ ],
+ "core.services.process.unit_excel.resource_sheet_builder": [
+  "core.services.process.unit_excel.template_builder"
+ ],
+ "core.services.process.unit_excel.route_sheet_builder": [
+  "core.services.process.unit_excel.template_builder"
+ ],
+ "core.services.process.unit_excel.template_builder": [
+  "core.services.process.unit_excel.exporter",
+  "core.services.process.unit_excel_converter"
+ ],
+ "core.services.process.unit_excel.template_validation": [
+  "core.services.process.unit_excel.resource_sheet_builder",
+  "core.services.process.unit_excel.route_sheet_builder",
+  "core.services.process.unit_excel.template_builder"
+ ],
+ "core.services.report": [
+  "core.services.report.execution_review",
+  "core.services.report.report_engine",
+  "core.services.report.report_plan_helpers",
+  "web.routes.report_plan_preview",
+  "web.routes.reports",
+  "web.routes.reports_execution_review_page",
+  "web.routes.reports_export_routes",
+  "web.routes.reports_export_support",
+  "web.routes.reports_page_support",
+  "web.routes.reports_request_support"
+ ],
+ "core.services.report.calculation_helpers": [
+  "core.services.report.calculations",
+  "core.services.report.downtime_impact",
+  "core.services.report.report_context_filters",
+  "core.services.report.utilization",
+  "web.routes.domains.scheduler.scheduler_batch_detail"
+ ],
+ "core.services.report.date_range_limits": [
+  "core.services.report.execution_review",
+  "core.services.report.report_engine",
+  "web.routes.report_plan_preview"
+ ],
+ "core.services.report.delay_diagnosis_presentation": [
+  "core.services.report.report_engine"
+ ],
+ "core.services.report.downtime_impact": [
+  "core.services.report.calculations"
+ ],
+ "core.services.report.execution_review": [
+  "core.services.report.report_engine"
+ ],
+ "core.services.report.exporters": [
+  "core.services.report.execution_review",
+  "core.services.report.report_engine"
+ ],
+ "core.services.report.report_context_filters": [
+  "core.services.report.report_engine",
+  "web.request_resource_context",
+  "web.routes.reports_request_support"
+ ],
+ "core.services.report.report_degradation": [
+  "core.services.report.downtime_impact",
+  "core.services.report.report_context_filters",
+  "core.services.report.report_engine",
+  "core.services.report.report_plan_helpers",
+  "core.services.report.utilization"
+ ],
+ "core.services.report.report_number_parsing": [
+  "core.services.report.delay_diagnosis_presentation",
+  "core.services.report.execution_review",
+  "core.services.report.exporters.xlsx",
+  "core.services.report.report_engine",
+  "web.routes.reports_export_support"
+ ],
+ "core.services.report.report_plan_helpers": [
+  "core.services.report.report_engine"
+ ],
+ "core.services.report.utilization": [
+  "core.services.report.calculations"
+ ],
+ "core.services.scheduler": [
+  "core.services.scheduler.batch_excel_import",
+  "core.services.scheduler.batch_service",
+  "core.services.scheduler.schedule_service",
+  "desktop.gantt.contract_client",
+  "desktop.gantt.run_pyqt_poc",
+  "web.bootstrap.request_services",
+  "web.routes.domains.scheduler.scheduler_config",
+  "web.routes.domains.scheduler.scheduler_excel_calendar_rows",
+  "web.routes.personnel_calendar_pages",
+  "web.routes.personnel_excel_operator_calendar"
+ ],
+ "core.services.scheduler._sched_display_utils": [
+  "core.services.scheduler.execution_fact_presentation",
+  "core.services.scheduler.gantt_critical_chain",
+  "core.services.scheduler.gantt_resource_load",
+  "core.services.scheduler.gantt_tasks",
+  "core.services.scheduler.gantt_week_plan",
+  "core.services.scheduler.resource_dispatch_rows",
+  "core.services.scheduler.resource_dispatch_support",
+  "core.services.scheduler.week_plan_daily_summary",
+  "web.routes.domains.scheduler.scheduler_batch_detail"
+ ],
+ "core.services.scheduler._sched_utils": [
+  "core.services.scheduler.gantt_critical_chain",
+  "core.services.scheduler.gantt_tasks"
+ ],
+ "core.services.scheduler.batch_query_service": [
+  "web.routes.process_excel_route_apply"
+ ],
+ "core.services.scheduler.calendar_admin": [
+  "core.services.scheduler.calendar_service"
+ ],
+ "core.services.scheduler.calendar_engine": [
+  "core.services.scheduler.calendar_service"
+ ],
+ "core.services.scheduler.calendar_service": [
+  "core.services.report.report_engine",
+  "core.services.scheduler.gantt_adjustment_validation_service",
+  "core.services.scheduler.gantt_service",
+  "core.services.scheduler.gantt_tasks"
+ ],
+ "core.services.scheduler.config": [
+  "core.services.scheduler.config.active_preset_service",
+  "core.services.scheduler.config.config_bootstrap_service",
+  "core.services.scheduler.config.config_preset_service",
+  "core.services.scheduler.config.config_read_service",
+  "core.services.scheduler.config.config_service",
+  "web.routes.domains.scheduler.scheduler_config_display_state",
+  "web.routes.domains.scheduler.scheduler_config_feedback"
+ ],
+ "core.services.scheduler.config.active_preset_service": [
+  "core.services.scheduler.config.config_bootstrap_service",
+  "core.services.scheduler.config.config_page_save_service",
+  "core.services.scheduler.config.config_preset_service",
+  "core.services.scheduler.config.config_read_service",
+  "core.services.scheduler.config.config_service",
+  "core.services.scheduler.config.config_write_service"
+ ],
+ "core.services.scheduler.config.active_preset_state": [
+  "core.services.scheduler.config.active_preset_service",
+  "core.services.scheduler.config.config_page_save_service",
+  "core.services.scheduler.config.config_read_service"
+ ],
+ "core.services.scheduler.config.config_bootstrap_service": [
+  "core.services.scheduler.config.config_page_save_service",
+  "core.services.scheduler.config.config_preset_service",
+  "core.services.scheduler.config.config_read_service",
+  "core.services.scheduler.config.config_service"
+ ],
+ "core.services.scheduler.config.config_constants": [
+  "core.services.scheduler.config.active_preset_service",
+  "core.services.scheduler.config.config_bootstrap_service",
+  "core.services.scheduler.config.config_page_save_policy",
+  "core.services.scheduler.config.config_page_save_service",
+  "core.services.scheduler.config.config_preset_service",
+  "core.services.scheduler.config.config_presets",
+  "core.services.scheduler.config.config_read_service",
+  "core.services.scheduler.config.config_service",
+  "core.services.scheduler.config.config_write_service"
+ ],
+ "core.services.scheduler.config.config_field_spec": [
+  "core.services.scheduler.config.config_bootstrap_service",
+  "core.services.scheduler.config.config_constants",
+  "core.services.scheduler.config.config_field_coercion",
+  "core.services.scheduler.config.config_page_outcome",
+  "core.services.scheduler.config.config_page_save_policy",
+  "core.services.scheduler.config.config_page_save_service",
+  "core.services.scheduler.config.config_presets",
+  "core.services.scheduler.config.config_read_service",
+  "core.services.scheduler.config.config_service",
+  "core.services.scheduler.config.config_snapshot",
+  "core.services.scheduler.config.config_validator",
+  "core.services.scheduler.config.config_write_service",
+  "core.services.scheduler.run.optimizer_config"
+ ],
+ "core.services.scheduler.config.config_page_outcome": [
+  "core.services.scheduler.config.config_page_save_service",
+  "core.services.scheduler.config.config_read_service",
+  "core.services.scheduler.config.config_service"
+ ],
+ "core.services.scheduler.config.config_page_save_policy": [
+  "core.services.scheduler.config.config_page_save_service"
+ ],
+ "core.services.scheduler.config.config_page_save_service": [
+  "core.services.scheduler.config.config_service"
+ ],
+ "core.services.scheduler.config.config_page_write_plan": [
+  "core.services.scheduler.config.config_page_save_policy",
+  "core.services.scheduler.config.config_page_save_service"
+ ],
+ "core.services.scheduler.config.config_preset_service": [
+  "core.services.scheduler.config.config_read_service",
+  "core.services.scheduler.config.config_service"
+ ],
+ "core.services.scheduler.config.config_read_service": [
+  "core.services.scheduler.config.config_page_save_policy",
+  "core.services.scheduler.config.config_page_save_service",
+  "core.services.scheduler.config.config_service"
+ ],
+ "core.services.scheduler.config.config_service": [
+  "core.services.scheduler.calendar_admin",
+  "tools.capture_networkx_phase0_baseline"
+ ],
+ "core.services.scheduler.config.config_snapshot": [
+  "core.services.scheduler.config.config_bootstrap_service",
+  "core.services.scheduler.config.config_page_outcome",
+  "core.services.scheduler.config.config_page_save_policy",
+  "core.services.scheduler.config.config_page_save_service",
+  "core.services.scheduler.config.config_preset_service",
+  "core.services.scheduler.config.config_presets",
+  "core.services.scheduler.config.config_read_service",
+  "core.services.scheduler.config.config_service",
+  "core.services.scheduler.config.config_validator",
+  "core.services.scheduler.run.optimizer_config",
+  "core.services.scheduler.run.schedule_candidate_runner",
+  "core.services.scheduler.summary.schedule_summary",
+  "core.services.scheduler.summary.schedule_summary_assembly",
+  "core.services.scheduler.summary.schedule_summary_degradation",
+  "core.services.scheduler.summary.schedule_summary_downtime_degradation",
+  "core.services.scheduler.summary.schedule_summary_freeze"
+ ],
+ "core.services.scheduler.config.config_uow": [
+  "core.services.scheduler.config.active_preset_service",
+  "core.services.scheduler.config.config_bootstrap_service",
+  "core.services.scheduler.config.config_page_save_service",
+  "core.services.scheduler.config.config_preset_service",
+  "core.services.scheduler.config.config_read_service",
+  "core.services.scheduler.config.config_service",
+  "core.services.scheduler.config.config_write_service"
+ ],
+ "core.services.scheduler.config.config_validator": [
+  "core.services.scheduler.config.config_presets"
+ ],
+ "core.services.scheduler.config.config_weight_policy": [
+  "core.services.scheduler.config.config_page_save_policy",
+  "core.services.scheduler.config.config_service",
+  "core.services.scheduler.config.config_snapshot",
+  "core.services.scheduler.config.config_validator",
+  "core.services.scheduler.config.config_write_service"
+ ],
+ "core.services.scheduler.config.config_write_service": [
+  "core.services.scheduler.config.config_page_save_service",
+  "core.services.scheduler.config.config_service"
+ ],
+ "core.services.scheduler.degradation_messages": [
+  "core.services.scheduler.gantt_contract",
+  "core.services.scheduler.resource_dispatch_support",
+  "core.services.scheduler.resource_pool_builder",
+  "core.services.scheduler.run.freeze_window",
+  "core.services.scheduler.summary.schedule_summary_degradation",
+  "core.services.scheduler.summary.schedule_summary_downtime_degradation",
+  "core.services.scheduler.summary.schedule_summary_freeze",
+  "web.bootstrap.plugins"
+ ],
+ "core.services.scheduler.execution_fact_presentation": [
+  "core.services.scheduler.gantt_tasks",
+  "web.routes.domains.scheduler.scheduler_batch_detail"
+ ],
+ "core.services.scheduler.execution_fact_provider": [
+  "core.services.scheduler.gantt_adjustment_publish_service",
+  "core.services.scheduler.gantt_service",
+  "core.services.scheduler.run.schedule_execution_guardrails",
+  "core.services.scheduler.run.schedule_execution_persistence_guard",
+  "core.services.scheduler.run.schedule_input_collector",
+  "core.services.scheduler.run.schedule_persistence",
+  "web.routes.dashboard",
+  "web.routes.domains.scheduler.scheduler_batch_detail"
+ ],
+ "core.services.scheduler.execution_snapshot": [
+  "core.services.scheduler.execution_fact_provider",
+  "core.services.scheduler.gantt_adjustment_publish_service",
+  "core.services.scheduler.gantt_adjustment_scenario_service",
+  "core.services.scheduler.run.schedule_execution_guardrails",
+  "core.services.scheduler.run.schedule_execution_persistence_guard"
+ ],
+ "core.services.scheduler.gantt_adjustment_projection": [
+  "core.services.scheduler.gantt_adjustment_validation_service"
+ ],
+ "core.services.scheduler.gantt_adjustment_validation_service": [
+  "core.services.scheduler.gantt_adjustment_publish_service",
+  "core.services.scheduler.gantt_adjustment_scenario_service"
+ ],
+ "core.services.scheduler.gantt_contract": [
+  "core.services.scheduler.gantt_service"
+ ],
+ "core.services.scheduler.gantt_critical_chain": [
+  "core.services.scheduler.gantt_critical_chain_provider",
+  "core.services.scheduler.gantt_service_support"
+ ],
+ "core.services.scheduler.gantt_critical_chain_provider": [
+  "core.services.scheduler.gantt_service"
+ ],
+ "core.services.scheduler.gantt_plan_query": [
+  "core.services.scheduler.gantt_service"
+ ],
+ "core.services.scheduler.gantt_range": [
+  "core.services.scheduler.gantt_plan_query",
+  "core.services.scheduler.gantt_resource_load",
+  "core.services.scheduler.gantt_service",
+  "core.services.scheduler.gantt_tasks",
+  "core.services.scheduler.gantt_week_plan",
+  "core.services.scheduler.schedule_result_view_range"
+ ],
+ "core.services.scheduler.gantt_resource_load": [
+  "core.services.scheduler.gantt_service"
+ ],
+ "core.services.scheduler.gantt_service_support": [
+  "core.services.scheduler.gantt_service"
+ ],
+ "core.services.scheduler.gantt_task_labels": [
+  "core.services.scheduler.gantt_critical_chain",
+  "core.services.scheduler.gantt_tasks",
+  "web.routes.domains.scheduler.scheduler_batch_detail"
+ ],
+ "core.services.scheduler.gantt_tasks": [
+  "core.services.scheduler.gantt_service",
+  "core.services.scheduler.resource_dispatch_rows"
+ ],
+ "core.services.scheduler.gantt_week_plan": [
+  "core.services.scheduler.gantt_service"
+ ],
+ "core.services.scheduler.graph.id_policy": [
+  "core.services.scheduler.graph.input_adapter",
+  "core.services.scheduler.graph.resource_matching"
+ ],
+ "core.services.scheduler.graph.metrics": [
+  "core.services.scheduler.graph.analysis_service"
+ ],
+ "core.services.scheduler.graph.nx_runtime": [
+  "core.services.scheduler.graph.metrics",
+  "core.services.scheduler.graph.precedence_builder",
+  "core.services.scheduler.graph.resource_matching",
+  "core.services.scheduler.graph.validators"
+ ],
+ "core.services.scheduler.graph.precedence_builder": [
+  "core.services.scheduler.graph.analysis_service"
+ ],
+ "core.services.scheduler.graph.types": [
+  "core.services.scheduler.graph.analysis_service",
+  "core.services.scheduler.graph.exporter",
+  "core.services.scheduler.graph.input_adapter",
+  "core.services.scheduler.graph.precedence_builder",
+  "core.services.scheduler.graph.resource_matching",
+  "core.services.scheduler.graph.validators"
+ ],
+ "core.services.scheduler.graph.validators": [
+  "core.services.scheduler.graph.analysis_service"
+ ],
+ "core.services.scheduler.number_utils": [
+  "core.services.scheduler.batch_service",
+  "core.services.scheduler.calendar_admin",
+  "core.services.scheduler.config.config_field_coercion",
+  "core.services.scheduler.config.config_presets",
+  "core.services.scheduler.config.config_weight_policy",
+  "core.services.scheduler.resource_pool_builder",
+  "core.services.scheduler.run.freeze_window",
+  "core.services.scheduler.run.optimizer_config",
+  "core.services.scheduler.run.schedule_input_collector",
+  "core.services.scheduler.schedule_service",
+  "web.routes.process_excel_part_operation_hours"
+ ],
+ "core.services.scheduler.operation_execution_feedback_actions": [
+  "core.services.scheduler.operation_execution_feedback_service"
+ ],
+ "core.services.scheduler.operation_execution_feedback_service": [
+  "core.services.report.report_engine",
+  "core.services.scheduler.resource_dispatch_actual_record_service",
+  "core.services.scheduler.resource_dispatch_execution_service",
+  "core.services.scheduler.resource_dispatch_service",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_context",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes"
+ ],
+ "core.services.scheduler.operation_execution_feedback_support": [
+  "core.services.scheduler.operation_execution_feedback_actions",
+  "core.services.scheduler.operation_execution_feedback_service",
+  "core.services.scheduler.resource_dispatch_actual_import",
+  "core.services.scheduler.resource_dispatch_actual_import_validation",
+  "core.services.scheduler.resource_dispatch_actual_records"
+ ],
+ "core.services.scheduler.operation_execution_scope_read": [
+  "core.services.scheduler.execution_fact_provider",
+  "core.services.scheduler.resource_dispatch_actual_import_validation",
+  "core.services.scheduler.resource_dispatch_actual_record_service",
+  "core.services.scheduler.resource_dispatch_execution_service",
+  "core.services.scheduler.resource_dispatch_service",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_context",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes"
+ ],
+ "core.services.scheduler.plan_overdue_markers": [
+  "core.services.scheduler.gantt_service",
+  "core.services.scheduler.resource_dispatch_service"
+ ],
+ "core.services.scheduler.repository_bundle": [
+  "core.services.scheduler.schedule_service"
+ ],
+ "core.services.scheduler.resource_dispatch_actual_excel": [
+  "core.services.scheduler.resource_dispatch_actual_record_service"
+ ],
+ "core.services.scheduler.resource_dispatch_actual_import": [
+  "core.services.scheduler.resource_dispatch_actual_record_service"
+ ],
+ "core.services.scheduler.resource_dispatch_actual_import_validation": [
+  "core.services.scheduler.resource_dispatch_actual_import"
+ ],
+ "core.services.scheduler.resource_dispatch_actual_records": [
+  "core.services.scheduler.resource_dispatch_actual_excel",
+  "core.services.scheduler.resource_dispatch_actual_import",
+  "core.services.scheduler.resource_dispatch_actual_import_validation",
+  "core.services.scheduler.resource_dispatch_actual_record_service",
+  "core.services.scheduler.resource_dispatch_actual_tokens"
+ ],
+ "core.services.scheduler.resource_dispatch_actual_tokens": [
+  "core.services.scheduler.resource_dispatch_actual_record_service"
+ ],
+ "core.services.scheduler.resource_dispatch_excel": [
+  "web.routes.domains.scheduler.scheduler_resource_dispatch"
+ ],
+ "core.services.scheduler.resource_dispatch_execution_enrichment": [
+  "core.services.scheduler.operation_execution_scope_read"
+ ],
+ "core.services.scheduler.resource_dispatch_execution_service": [
+  "core.services.scheduler.resource_dispatch_actual_record_service"
+ ],
+ "core.services.scheduler.resource_dispatch_overdue": [
+  "core.services.scheduler.resource_dispatch_support"
+ ],
+ "core.services.scheduler.resource_dispatch_page_context": [
+  "core.services.scheduler.resource_dispatch_service"
+ ],
+ "core.services.scheduler.resource_dispatch_range": [
+  "core.services.report.date_range_limits",
+  "core.services.scheduler.resource_dispatch_execution_service",
+  "core.services.scheduler.resource_dispatch_rows",
+  "core.services.scheduler.resource_dispatch_service",
+  "core.services.scheduler.resource_dispatch_support"
+ ],
+ "core.services.scheduler.resource_dispatch_rows": [
+  "core.services.scheduler.resource_dispatch_execution_service",
+  "core.services.scheduler.resource_dispatch_support"
+ ],
+ "core.services.scheduler.resource_dispatch_service": [
+  "core.services.scheduler.resource_dispatch_execution_service"
+ ],
+ "core.services.scheduler.resource_dispatch_support": [
+  "core.services.scheduler.gantt_service_support",
+  "core.services.scheduler.resource_dispatch_page_context",
+  "core.services.scheduler.resource_dispatch_service"
+ ],
+ "core.services.scheduler.resource_dispatch_task_ids": [
+  "core.services.scheduler.gantt_critical_chain",
+  "core.services.scheduler.gantt_tasks",
+  "core.services.scheduler.resource_dispatch_actual_record_service",
+  "core.services.scheduler.resource_dispatch_rows"
+ ],
+ "core.services.scheduler.resource_pool_builder": [
+  "core.services.scheduler.schedule_service"
+ ],
+ "core.services.scheduler.run.auto_assign_resource_errors": [
+  "core.services.scheduler.run.schedule_persistence_errors",
+  "core.services.scheduler.summary.schedule_summary_assembly"
+ ],
+ "core.services.scheduler.run.freeze_window": [
+  "core.services.scheduler.freeze_window",
+  "core.services.scheduler.schedule_service"
+ ],
+ "core.services.scheduler.run.freeze_window_prefixes": [
+  "core.services.scheduler.run.freeze_window"
+ ],
+ "core.services.scheduler.run.optimizer_acceptance": [
+  "core.services.scheduler.run.optimizer_candidate_profile",
+  "core.services.scheduler.run.optimizer_local_search",
+  "core.services.scheduler.run.optimizer_local_search_report_hooks",
+  "core.services.scheduler.run.optimizer_local_search_round",
+  "core.services.scheduler.run.optimizer_search_report_helpers"
+ ],
+ "core.services.scheduler.run.optimizer_attempt_records": [
+  "core.services.scheduler.run.optimizer_graph_ready_reporting",
+  "core.services.scheduler.run.optimizer_grasp_ig_candidates",
+  "core.services.scheduler.run.optimizer_local_search_round",
+  "core.services.scheduler.run.optimizer_step_report_hooks",
+  "core.services.scheduler.run.schedule_optimizer_steps"
+ ],
+ "core.services.scheduler.run.optimizer_candidate_comparison": [
+  "core.services.scheduler.run.optimizer_graph_ready",
+  "core.services.scheduler.run.optimizer_grasp_ig_candidates",
+  "core.services.scheduler.run.optimizer_local_search_state"
+ ],
+ "core.services.scheduler.run.optimizer_candidate_fingerprint": [
+  "core.services.scheduler.run.optimizer_acceptance",
+  "core.services.scheduler.run.optimizer_candidate_comparison",
+  "core.services.scheduler.run.optimizer_grasp_ig_candidates",
+  "core.services.scheduler.run.optimizer_local_search_fingerprints",
+  "core.services.scheduler.run.optimizer_local_search_state",
+  "core.services.scheduler.run.optimizer_search_report",
+  "core.services.scheduler.run.optimizer_search_report_helpers"
+ ],
+ "core.services.scheduler.run.optimizer_candidate_phases": [
+  "core.services.scheduler.run.schedule_optimizer"
+ ],
+ "core.services.scheduler.run.optimizer_candidate_profile": [
+  "core.services.scheduler.run.optimizer_local_search",
+  "core.services.scheduler.run.schedule_optimizer"
+ ],
+ "core.services.scheduler.run.optimizer_config": [
+  "core.services.scheduler.run.schedule_optimizer",
+  "core.services.scheduler.run.schedule_optimizer_steps"
+ ],
+ "core.services.scheduler.run.optimizer_graph_ready": [
+  "core.services.scheduler.run.schedule_optimizer"
+ ],
+ "core.services.scheduler.run.optimizer_graph_ready_candidates": [
+  "core.services.scheduler.run.optimizer_graph_ready"
+ ],
+ "core.services.scheduler.run.optimizer_graph_ready_context": [
+  "core.services.scheduler.run.optimizer_graph_ready",
+  "core.services.scheduler.run.optimizer_graph_ready_candidates"
+ ],
+ "core.services.scheduler.run.optimizer_graph_ready_profile_selection": [
+  "core.services.scheduler.run.optimizer_graph_ready"
+ ],
+ "core.services.scheduler.run.optimizer_graph_ready_profiles": [
+  "core.services.scheduler.run.optimizer_candidate_profile",
+  "core.services.scheduler.run.optimizer_graph_ready",
+  "core.services.scheduler.run.optimizer_graph_ready_candidates",
+  "core.services.scheduler.run.optimizer_graph_ready_context",
+  "core.services.scheduler.run.optimizer_graph_ready_profile_selection",
+  "core.services.scheduler.run.optimizer_graph_ready_reporting"
+ ],
+ "core.services.scheduler.run.optimizer_graph_ready_reporting": [
+  "core.services.scheduler.run.optimizer_graph_ready",
+  "core.services.scheduler.run.optimizer_graph_ready_candidates"
+ ],
+ "core.services.scheduler.run.optimizer_graph_ready_v2_capacity": [
+  "core.services.scheduler.run.optimizer_graph_ready_v2_features"
+ ],
+ "core.services.scheduler.run.optimizer_graph_ready_v2_features": [
+  "core.services.scheduler.run.optimizer_graph_ready_profile_selection"
+ ],
+ "core.services.scheduler.run.optimizer_grasp_ig_candidates": [
+  "core.services.scheduler.run.schedule_optimizer"
+ ],
+ "core.services.scheduler.run.optimizer_grasp_ig_specs": [
+  "core.services.scheduler.run.optimizer_grasp_ig_candidates"
+ ],
+ "core.services.scheduler.run.optimizer_local_search": [
+  "core.services.scheduler.run.schedule_optimizer"
+ ],
+ "core.services.scheduler.run.optimizer_local_search_candidate_eval": [
+  "core.services.scheduler.run.optimizer_local_search_round"
+ ],
+ "core.services.scheduler.run.optimizer_local_search_fingerprints": [
+  "core.services.scheduler.run.optimizer_local_search",
+  "core.services.scheduler.run.optimizer_local_search_round"
+ ],
+ "core.services.scheduler.run.optimizer_local_search_report_hooks": [
+  "core.services.scheduler.run.optimizer_local_search_round"
+ ],
+ "core.services.scheduler.run.optimizer_local_search_round": [
+  "core.services.scheduler.run.optimizer_local_search"
+ ],
+ "core.services.scheduler.run.optimizer_local_search_state": [
+  "core.services.scheduler.run.optimizer_local_search",
+  "core.services.scheduler.run.optimizer_local_search_round"
+ ],
+ "core.services.scheduler.run.optimizer_neighborhood_move_support": [
+  "core.services.scheduler.run.optimizer_neighborhood_moves"
+ ],
+ "core.services.scheduler.run.optimizer_neighborhood_moves": [
+  "core.services.scheduler.run.optimizer_candidate_profile",
+  "core.services.scheduler.run.optimizer_local_search",
+  "core.services.scheduler.run.optimizer_local_search_candidate_eval",
+  "core.services.scheduler.run.optimizer_local_search_fingerprints",
+  "core.services.scheduler.run.optimizer_local_search_round",
+  "core.services.scheduler.run.optimizer_neighborhood_registry",
+  "core.services.scheduler.run.optimizer_search_report_helpers"
+ ],
+ "core.services.scheduler.run.optimizer_neighborhood_registry": [
+  "core.services.scheduler.run.optimizer_local_search_round"
+ ],
+ "core.services.scheduler.run.optimizer_proof_cases": [
+  "core.services.scheduler.run.optimizer_proof_harness",
+  "core.services.scheduler.run.optimizer_proof_oracle"
+ ],
+ "core.services.scheduler.run.optimizer_proof_contracts": [
+  "core.services.scheduler.run.optimizer_proof_harness"
+ ],
+ "core.services.scheduler.run.optimizer_proof_oracle": [
+  "core.services.scheduler.run.optimizer_proof_harness"
+ ],
+ "core.services.scheduler.run.optimizer_runtime": [
+  "core.services.scheduler.run.optimizer_candidate_phases",
+  "core.services.scheduler.run.schedule_optimizer"
+ ],
+ "core.services.scheduler.run.optimizer_search_report": [
+  "core.services.scheduler.run.optimizer_candidate_phases",
+  "core.services.scheduler.run.schedule_optimizer"
+ ],
+ "core.services.scheduler.run.optimizer_search_report_helpers": [
+  "core.services.scheduler.run.optimizer_search_report"
+ ],
+ "core.services.scheduler.run.optimizer_search_state": [
+  "core.services.scheduler.run.optimizer_attempt_records",
+  "core.services.scheduler.run.optimizer_candidate_phases",
+  "core.services.scheduler.run.optimizer_grasp_ig_candidates",
+  "core.services.scheduler.run.optimizer_local_search",
+  "core.services.scheduler.run.schedule_optimizer",
+  "core.services.scheduler.summary.schedule_summary_assembly"
+ ],
+ "core.services.scheduler.run.optimizer_step_report_hooks": [
+  "core.services.scheduler.run.schedule_optimizer_steps"
+ ],
+ "core.services.scheduler.run.optimizer_vns": [
+  "core.services.scheduler.run.optimizer_local_search",
+  "core.services.scheduler.run.optimizer_local_search_round"
+ ],
+ "core.services.scheduler.run.schedule_candidate_health": [
+  "core.services.scheduler.run.schedule_candidate_runner",
+  "core.services.scheduler.run.schedule_candidate_runtime_helpers",
+  "core.services.scheduler.run.schedule_candidate_selection"
+ ],
+ "core.services.scheduler.run.schedule_candidate_persistence": [
+  "core.services.scheduler.run.schedule_candidate_persistence_helpers"
+ ],
+ "core.services.scheduler.run.schedule_candidate_persistence_helpers": [
+  "core.services.scheduler.run.schedule_persistence"
+ ],
+ "core.services.scheduler.run.schedule_candidate_persistence_models": [
+  "core.services.scheduler.run.schedule_candidate_persistence",
+  "core.services.scheduler.run.schedule_persistence"
+ ],
+ "core.services.scheduler.run.schedule_candidate_runner": [
+  "core.services.scheduler.run.schedule_orchestrator"
+ ],
+ "core.services.scheduler.run.schedule_candidate_runtime_helpers": [
+  "core.services.scheduler.run.schedule_candidate_runner"
+ ],
+ "core.services.scheduler.run.schedule_candidate_selection": [
+  "core.services.scheduler.run.schedule_candidate_runner"
+ ],
+ "core.services.scheduler.run.schedule_candidate_specs": [
+  "core.services.scheduler.run.schedule_candidate_persistence_models",
+  "core.services.scheduler.run.schedule_candidate_runner",
+  "core.services.scheduler.run.schedule_candidate_runtime_helpers",
+  "core.services.scheduler.run.schedule_candidate_selection",
+  "core.services.scheduler.run.schedule_candidate_summary"
+ ],
+ "core.services.scheduler.run.schedule_candidate_summary": [
+  "core.services.scheduler.run.schedule_candidate_persistence",
+  "core.services.scheduler.run.schedule_candidate_persistence_models",
+  "core.services.scheduler.run.schedule_orchestrator",
+  "core.services.scheduler.summary.summary_size_guard_fields"
+ ],
+ "core.services.scheduler.run.schedule_execution_guardrails": [
+  "core.services.scheduler.run.schedule_input_collector"
+ ],
+ "core.services.scheduler.run.schedule_execution_persistence_guard": [
+  "core.services.scheduler.run.schedule_persistence"
+ ],
+ "core.services.scheduler.run.schedule_graph_dispatch_context": [
+  "core.services.scheduler.run.schedule_graph_report",
+  "core.services.scheduler.run.schedule_graph_resource_matching_context",
+  "core.services.scheduler.run.schedule_graph_score_projection"
+ ],
+ "core.services.scheduler.run.schedule_graph_projection_helpers": [
+  "core.services.scheduler.run.schedule_graph_report"
+ ],
+ "core.services.scheduler.run.schedule_graph_report": [
+  "core.services.scheduler.run.schedule_candidate_runner",
+  "core.services.scheduler.run.schedule_orchestrator"
+ ],
+ "core.services.scheduler.run.schedule_graph_score_projection": [
+  "core.services.scheduler.run.schedule_graph_report"
+ ],
+ "core.services.scheduler.run.schedule_input_builder": [
+  "core.services.scheduler.schedule_input_builder",
+  "core.services.scheduler.schedule_service"
+ ],
+ "core.services.scheduler.run.schedule_input_collector": [
+  "core.services.scheduler.run.schedule_graph_dispatch_context",
+  "core.services.scheduler.run.schedule_graph_report",
+  "core.services.scheduler.run.schedule_graph_resource_matching_context",
+  "core.services.scheduler.run.schedule_graph_score_projection",
+  "core.services.scheduler.run.schedule_orchestrator",
+  "core.services.scheduler.schedule_input_collector",
+  "core.services.scheduler.schedule_service"
+ ],
+ "core.services.scheduler.run.schedule_input_contracts": [
+  "core.services.scheduler.run.schedule_execution_persistence_guard",
+  "core.services.scheduler.run.schedule_input_collector",
+  "core.services.scheduler.run.schedule_input_runtime_support"
+ ],
+ "core.services.scheduler.run.schedule_input_runtime_support": [
+  "core.services.scheduler.run.schedule_input_collector"
+ ],
+ "core.services.scheduler.run.schedule_operation_log_details": [
+  "core.services.scheduler.run.schedule_persistence"
+ ],
+ "core.services.scheduler.run.schedule_optimizer": [
+  "core.services.scheduler.run.schedule_candidate_runner",
+  "core.services.scheduler.schedule_service"
+ ],
+ "core.services.scheduler.run.schedule_optimizer_steps": [
+  "core.services.scheduler.run.schedule_optimizer"
+ ],
+ "core.services.scheduler.run.schedule_orchestrator": [
+  "core.services.scheduler.schedule_service"
+ ],
+ "core.services.scheduler.run.schedule_payload_contract": [
+  "core.services.scheduler.gantt_adjustment_publish_service",
+  "core.services.scheduler.run.schedule_execution_persistence_guard",
+  "core.services.scheduler.run.schedule_persistence"
+ ],
+ "core.services.scheduler.run.schedule_persistence": [
+  "core.services.scheduler.gantt_adjustment_publish_service",
+  "core.services.scheduler.run.schedule_orchestrator",
+  "core.services.scheduler.schedule_persistence",
+  "core.services.scheduler.schedule_service"
+ ],
+ "core.services.scheduler.run.schedule_persistence_errors": [
+  "core.services.scheduler.run.schedule_payload_contract",
+  "core.services.scheduler.run.schedule_persistence",
+  "core.services.scheduler.summary.schedule_summary_assembly"
+ ],
+ "core.services.scheduler.run.schedule_seed_contracts": [
+  "core.services.scheduler.run.schedule_optimizer"
+ ],
+ "core.services.scheduler.run.schedule_signature_support": [
+  "core.services.scheduler.run.schedule_optimizer_steps"
+ ],
+ "core.services.scheduler.run.schedule_summary_contract": [
+  "core.services.scheduler.run.schedule_orchestrator"
+ ],
+ "core.services.scheduler.run.schedule_template_lookup": [
+  "core.services.scheduler.run.schedule_input_builder",
+  "core.services.scheduler.schedule_service"
+ ],
+ "core.services.scheduler.schedule_delay_diagnosis_clues": [
+  "core.services.scheduler.schedule_delay_diagnosis_service"
+ ],
+ "core.services.scheduler.schedule_delay_diagnosis_service": [
+  "core.services.report.report_engine"
+ ],
+ "core.services.scheduler.schedule_delay_diagnosis_utils": [
+  "core.services.scheduler.schedule_delay_diagnosis_clues",
+  "core.services.scheduler.schedule_delay_diagnosis_service"
+ ],
+ "core.services.scheduler.schedule_history_query_service": [
+  "core.services.scheduler.resource_dispatch_service",
+  "web.bootstrap.request_services"
+ ],
+ "core.services.scheduler.schedule_plan_identity_builder": [
+  "core.services.scheduler.schedule_plan_query_service",
+  "core.services.scheduler.schedule_result_view_context"
+ ],
+ "core.services.scheduler.schedule_plan_option_display": [
+  "core.services.scheduler.resource_dispatch_page_context",
+  "core.services.scheduler.resource_dispatch_service",
+  "web.routes.domains.scheduler.scheduler_gantt",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.reports_plan_template_fields"
+ ],
+ "core.services.scheduler.schedule_plan_query_service": [
+  "core.services.report.execution_review",
+  "core.services.report.report_engine",
+  "core.services.report.report_plan_helpers",
+  "core.services.scheduler.gantt_adjustment_draft_service",
+  "core.services.scheduler.gantt_adjustment_validation_service",
+  "core.services.scheduler.gantt_critical_chain_provider",
+  "core.services.scheduler.gantt_service",
+  "core.services.scheduler.operation_execution_feedback_service",
+  "core.services.scheduler.resource_dispatch_execution_service",
+  "core.services.scheduler.resource_dispatch_page_context",
+  "core.services.scheduler.resource_dispatch_service",
+  "core.services.scheduler.schedule_delay_diagnosis_service",
+  "web.bootstrap.request_services",
+  "web.routes.domains.scheduler.scheduler_navigation_publish",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.domains.scheduler.scheduler_week_plan_response",
+  "web.routes.report_plan_preview"
+ ],
+ "core.services.scheduler.schedule_result_view_context": [
+  "core.services.scheduler.gantt_critical_chain_provider",
+  "core.services.scheduler.gantt_plan_query",
+  "core.services.scheduler.gantt_service",
+  "core.services.scheduler.resource_dispatch_execution_service",
+  "core.services.scheduler.resource_dispatch_page_context",
+  "core.services.scheduler.resource_dispatch_service",
+  "core.services.scheduler.schedule_plan_option_display",
+  "web.routes.dashboard",
+  "web.routes.domains.scheduler.scheduler_gantt",
+  "web.routes.domains.scheduler.scheduler_navigation_publish",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.report_plan_preview"
+ ],
+ "core.services.scheduler.schedule_result_view_range": [
+  "core.services.scheduler.gantt_plan_query",
+  "core.services.scheduler.gantt_service",
+  "web.routes.domains.scheduler.scheduler_analysis_links",
+  "web.routes.domains.scheduler.scheduler_gantt",
+  "web.routes.domains.scheduler.scheduler_week_plan_preview"
+ ],
+ "core.services.scheduler.schedule_service": [
+  "tools.capture_networkx_phase0_baseline"
+ ],
+ "core.services.scheduler.summary.due_risk_items": [
+  "core.services.scheduler.summary.schedule_summary_assembly",
+  "core.services.scheduler.summary.summary_runtime_state"
+ ],
+ "core.services.scheduler.summary.graph_public_summary": [
+  "core.services.scheduler.run.schedule_candidate_persistence_models",
+  "core.services.scheduler.summary.optimizer_public_summary",
+  "core.services.scheduler.summary.summary_visible_degradation"
+ ],
+ "core.services.scheduler.summary.optimizer_public_algo_fields": [
+  "core.services.scheduler.summary.optimizer_public_summary"
+ ],
+ "core.services.scheduler.summary.optimizer_public_attempts": [
+  "core.services.scheduler.summary.optimizer_public_summary"
+ ],
+ "core.services.scheduler.summary.optimizer_public_candidates": [
+  "core.services.scheduler.summary.optimizer_public_summary"
+ ],
+ "core.services.scheduler.summary.optimizer_public_safety": [
+  "core.services.scheduler.summary.optimizer_public_algo_fields",
+  "core.services.scheduler.summary.optimizer_public_attempts",
+  "core.services.scheduler.summary.optimizer_public_candidates",
+  "core.services.scheduler.summary.optimizer_public_search_report",
+  "core.services.scheduler.summary.optimizer_public_summary"
+ ],
+ "core.services.scheduler.summary.optimizer_public_search_report": [
+  "core.services.scheduler.run.schedule_candidate_persistence_models",
+  "core.services.scheduler.summary.optimizer_public_summary",
+  "core.services.scheduler.summary.summary_size_guard_fields"
+ ],
+ "core.services.scheduler.summary.optimizer_public_summary": [
+  "core.services.scheduler.summary.schedule_summary_assembly",
+  "web.routes.domains.scheduler.scheduler_analysis"
+ ],
+ "core.services.scheduler.summary.schedule_summary": [
+  "core.services.scheduler.schedule_service"
+ ],
+ "core.services.scheduler.summary.schedule_summary_assembly": [
+  "core.services.scheduler.summary.schedule_summary",
+  "core.services.scheduler.summary.summary_runtime_state"
+ ],
+ "core.services.scheduler.summary.schedule_summary_degradation": [
+  "core.services.scheduler.summary.schedule_summary",
+  "core.services.scheduler.summary.summary_runtime_state"
+ ],
+ "core.services.scheduler.summary.schedule_summary_downtime_degradation": [
+  "core.services.scheduler.summary.schedule_summary_degradation"
+ ],
+ "core.services.scheduler.summary.schedule_summary_freeze": [
+  "core.services.scheduler.summary.schedule_summary",
+  "core.services.scheduler.summary.summary_runtime_state"
+ ],
+ "core.services.scheduler.summary.schedule_summary_types": [
+  "core.services.scheduler.run.schedule_orchestrator",
+  "core.services.scheduler.summary.schedule_summary",
+  "core.services.scheduler.summary.schedule_summary_assembly",
+  "core.services.scheduler.summary.schedule_summary_freeze",
+  "core.services.scheduler.summary.summary_runtime_state",
+  "core.services.scheduler.summary.summary_size_guard",
+  "core.services.scheduler.summary.summary_visible_degradation",
+  "web.routes.domains.scheduler.scheduler_week_plan"
+ ],
+ "core.services.scheduler.summary.summary_count_parse": [
+  "core.services.scheduler.run.schedule_summary_contract",
+  "core.services.scheduler.summary.schedule_summary_degradation",
+  "core.services.scheduler.summary.schedule_summary_downtime_degradation",
+  "core.services.scheduler.summary.summary_visible_degradation"
+ ],
+ "core.services.scheduler.summary.summary_runtime_state": [
+  "core.services.scheduler.summary.schedule_summary"
+ ],
+ "core.services.scheduler.summary.summary_size_guard": [
+  "core.services.scheduler.summary.schedule_summary"
+ ],
+ "core.services.scheduler.summary.summary_size_guard_fields": [
+  "core.services.scheduler.summary.summary_size_guard"
+ ],
+ "core.services.scheduler.summary.summary_visible_degradation": [
+  "core.services.scheduler.summary.schedule_summary_assembly"
+ ],
+ "core.services.scheduler.version_resolution": [
+  "core.services.scheduler.gantt_plan_query",
+  "core.services.scheduler.gantt_service",
+  "core.services.scheduler.resource_dispatch_execution_service",
+  "core.services.scheduler.resource_dispatch_service",
+  "core.services.scheduler.schedule_result_view_context",
+  "web.routes.domains.scheduler.scheduler_analysis_read",
+  "web.routes.reports_request_support"
+ ],
+ "core.services.scheduler.week_plan_daily_summary": [
+  "web.routes.domains.scheduler.scheduler_week_plan"
+ ],
+ "core.services.scheduler.week_plan_excel": [
+  "web.routes.domains.scheduler.scheduler_week_plan"
+ ],
+ "core.services.scheduler.week_plan_print_sheet": [
+  "web.routes.domains.scheduler.scheduler_week_plan_print"
+ ],
+ "core.services.system": [
+  "web.bootstrap.request_services"
+ ],
+ "core.services.system.maintenance": [
+  "core.services.system.system_maintenance_service"
+ ],
+ "core.services.system.runtime_log_reader": [
+  "web.routes.system_runtime_logs"
+ ],
+ "core.services.system.system_config_service": [
+  "core.services.system.system_maintenance_service"
+ ],
+ "core.services.system.system_maintenance_service": [
+  "web.routes.system_utils"
+ ],
+ "core.shared.boolean_normalize": [
+  "core.models.schedule_config_runtime_coercion",
+  "core.services.scheduler.number_utils",
+  "core.services.scheduler.run.schedule_input_collector"
+ ],
+ "core.shared.compat_parse": [
+  "core.shared.field_parse"
+ ],
+ "core.shared.degradation": [
+  "core.algorithms.greedy.external_groups",
+  "core.algorithms.greedy.schedule_params",
+  "core.models.schedule_config_runtime_coercion",
+  "core.models.schedule_config_runtime_read",
+  "core.services.common.degradation",
+  "core.services.scheduler.config.config_field_coercion",
+  "core.services.scheduler.config.config_field_spec",
+  "core.services.scheduler.config.config_snapshot",
+  "core.services.scheduler.config.config_validator",
+  "core.services.scheduler.run.schedule_input_builder",
+  "core.services.scheduler.run.schedule_template_lookup",
+  "core.shared.compat_parse",
+  "core.shared.field_parse"
+ ],
+ "core.shared.field_labels": [
+  "core.algorithms.greedy.internal_slot",
+  "core.models.schedule_config_runtime_coercion",
+  "core.models.schedule_config_runtime_read",
+  "core.models.schedule_config_runtime_weights",
+  "core.services.scheduler.config.config_field_coercion",
+  "core.services.scheduler.config.config_snapshot",
+  "core.services.scheduler.config.config_validator",
+  "core.services.scheduler.config.config_weight_policy",
+  "core.services.scheduler.operation_execution_feedback_service",
+  "core.services.scheduler.operation_execution_feedback_support",
+  "core.services.scheduler.run.schedule_input_builder",
+  "core.shared.compat_parse",
+  "core.shared.field_parse",
+  "web.error_boundary",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_context"
+ ],
+ "core.shared.field_parse": [
+  "core.algorithms.greedy.external_groups",
+  "core.algorithms.greedy.schedule_params",
+  "core.models.schedule_config_runtime_coercion",
+  "core.services.scheduler.config.config_field_coercion",
+  "core.services.scheduler.run.schedule_input_builder"
+ ],
+ "core.shared.number_utils": [
+  "core.models.schedule_config_runtime_weights",
+  "core.services.scheduler.number_utils"
+ ],
+ "core.shared.strict_parse": [
+  "core.algorithms.greedy.auto_assign",
+  "core.algorithms.greedy.dispatch.sgs",
+  "core.algorithms.greedy.dispatch.sgs_graph",
+  "core.algorithms.greedy.dispatch.sgs_scoring",
+  "core.algorithms.greedy.schedule_params",
+  "core.algorithms.ordering",
+  "core.services.common.number_utils",
+  "core.services.common.strict_parse",
+  "core.services.report.report_number_parsing",
+  "core.services.scheduler.gantt_adjustment_projection",
+  "core.services.scheduler.run.optimizer_config",
+  "core.services.scheduler.run.optimizer_graph_ready_context",
+  "core.services.scheduler.run.schedule_input_builder",
+  "core.services.scheduler.run.schedule_payload_contract",
+  "core.shared.compat_parse",
+  "core.shared.field_parse",
+  "core.shared.number_utils",
+  "web.routes.domains.scheduler.scheduler_gantt_redirect",
+  "web.routes.domains.scheduler.scheduler_week_plan"
+ ],
+ "core.shared.value_policies": [
+  "core.shared.compat_parse"
+ ],
+ "data.repositories": [
+  "core.services.common.excel_validators",
+  "core.services.equipment.machine_downtime_query_service",
+  "core.services.equipment.machine_downtime_service",
+  "core.services.equipment.machine_excel_import_service",
+  "core.services.equipment.machine_service",
+  "core.services.material.batch_material_service",
+  "core.services.material.material_service",
+  "core.services.personnel.operator_excel_import_service",
+  "core.services.personnel.operator_machine_query_service",
+  "core.services.personnel.operator_machine_service",
+  "core.services.personnel.operator_service",
+  "core.services.personnel.resource_team_service",
+  "core.services.process.external_group_service",
+  "core.services.process.op_type_excel_import_service",
+  "core.services.process.op_type_service",
+  "core.services.process.part_operation_query_service",
+  "core.services.process.part_service",
+  "core.services.process.supplier_excel_import_service",
+  "core.services.process.supplier_service",
+  "core.services.report.report_engine",
+  "core.services.scheduler.batch_query_service",
+  "core.services.scheduler.batch_service",
+  "core.services.scheduler.calendar_admin",
+  "core.services.scheduler.calendar_engine",
+  "core.services.scheduler.gantt_adjustment_draft_service",
+  "core.services.scheduler.gantt_adjustment_publish_service",
+  "core.services.scheduler.gantt_adjustment_scenario_service",
+  "core.services.scheduler.gantt_adjustment_validation_service",
+  "core.services.scheduler.gantt_service",
+  "core.services.scheduler.repository_bundle",
+  "core.services.scheduler.resource_pool_builder",
+  "core.services.scheduler.schedule_delay_diagnosis_clues",
+  "core.services.scheduler.schedule_history_query_service",
+  "core.services.system.operation_log_service",
+  "core.services.system.system_config_service",
+  "core.services.system.system_job_state_query_service",
+  "core.services.system.system_maintenance_service",
+  "web.bootstrap.plugins"
+ ],
+ "data.repositories.base_repo": [
+  "data.repositories.batch_material_repo",
+  "data.repositories.batch_operation_repo",
+  "data.repositories.batch_repo",
+  "data.repositories.calendar_repo",
+  "data.repositories.config_repo",
+  "data.repositories.external_group_repo",
+  "data.repositories.machine_downtime_repo",
+  "data.repositories.machine_repo",
+  "data.repositories.material_repo",
+  "data.repositories.op_type_repo",
+  "data.repositories.operation_execution_event_repo",
+  "data.repositories.operation_log_repo",
+  "data.repositories.operator_calendar_repo",
+  "data.repositories.operator_machine_repo",
+  "data.repositories.operator_repo",
+  "data.repositories.part_operation_repo",
+  "data.repositories.part_repo",
+  "data.repositories.reference_checks",
+  "data.repositories.resource_team_repo",
+  "data.repositories.schedule_adjustment_repo",
+  "data.repositories.schedule_adjustment_scenario_repo",
+  "data.repositories.schedule_candidate_repo",
+  "data.repositories.schedule_history_repo",
+  "data.repositories.schedule_plan_query_repo",
+  "data.repositories.schedule_repo",
+  "data.repositories.supplier_repo",
+  "data.repositories.system_config_repo",
+  "data.repositories.system_job_state_repo"
+ ],
+ "data.repositories.batch_operation_repo": [
+  "core.services.scheduler.operation_execution_feedback_service",
+  "core.services.scheduler.resource_dispatch_actual_record_service"
+ ],
+ "data.repositories.config_repo": [
+  "core.services.scheduler.config.config_service"
+ ],
+ "data.repositories.machine_repo": [
+  "core.services.scheduler.operation_execution_feedback_service"
+ ],
+ "data.repositories.operation_execution_event_repo": [
+  "core.services.scheduler.execution_fact_provider",
+  "core.services.scheduler.operation_execution_feedback_service"
+ ],
+ "data.repositories.operation_execution_state_aggregation": [
+  "data.repositories.operation_execution_event_repo"
+ ],
+ "data.repositories.operation_execution_state_builder": [
+  "data.repositories.operation_execution_state_aggregation"
+ ],
+ "data.repositories.operator_repo": [
+  "core.services.scheduler.operation_execution_feedback_service"
+ ],
+ "data.repositories.reference_checks": [
+  "data.repositories.machine_repo",
+  "data.repositories.operator_repo"
+ ],
+ "data.repositories.schedule_detail_query": [
+  "data.repositories.schedule_plan_query_repo",
+  "data.repositories.schedule_repo"
+ ],
+ "data.repositories.schedule_plan_query_repo": [
+  "core.services.scheduler.schedule_plan_query_service",
+  "core.services.scheduler.schedule_result_view_context"
+ ],
+ "data.repositories.schedule_repo": [
+  "core.services.scheduler.operation_execution_feedback_service",
+  "core.services.scheduler.resource_dispatch_actual_record_service",
+  "core.services.scheduler.resource_dispatch_execution_service"
+ ],
+ "data.repositories.schedule_resource_sql_filters": [
+  "data.repositories.schedule_plan_query_repo"
+ ],
+ "data.repositories.schedule_rows": [
+  "core.services.scheduler.gantt_adjustment_projection",
+  "core.services.scheduler.schedule_plan_query_service",
+  "data.repositories.schedule_plan_query_repo",
+  "data.repositories.schedule_repo"
+ ],
+ "data.repositories.schedule_time_sql": [
+  "data.repositories.machine_downtime_repo",
+  "data.repositories.schedule_plan_query_repo",
+  "data.repositories.schedule_repo"
+ ],
+ "desktop.gantt.contract_client": [
+  "desktop.gantt.pyqt_poc",
+  "desktop.gantt.run_pyqt_poc"
+ ],
+ "desktop.gantt.pyqt_poc": [
+  "desktop.gantt.run_pyqt_poc"
+ ],
+ "tools": [
+  "scripts.run_quality_gate",
+  "tools.long_gate_fingerprint",
+  "tools.long_gate_manifest",
+  "tools.scan_aps_three_gap_py38_scope",
+  "tools.verify_required_regressions_from_full_test_debt"
+ ],
+ "tools.architecture_scan_cache": [
+  "scripts.run_quality_gate",
+  "tools.quality_gate_operations"
+ ],
+ "tools.dead_code_usage.ast_nodes": [
+  "tools.dead_code_usage.ast_usage",
+  "tools.dead_code_usage.imports",
+  "tools.dead_code_usage.scope"
+ ],
+ "tools.dead_code_usage.ast_usage": [
+  "tools.scan_dead_code_islands"
+ ],
+ "tools.dead_code_usage.imports": [
+  "tools.dead_code_usage.ast_usage"
+ ],
+ "tools.dead_code_usage.model": [
+  "tools.dead_code_usage.ast_nodes",
+  "tools.dead_code_usage.ast_usage",
+  "tools.dead_code_usage.scip_usage",
+  "tools.scan_dead_code_islands"
+ ],
+ "tools.dead_code_usage.scope": [
+  "tools.dead_code_usage.ast_usage",
+  "tools.dead_code_usage.imports"
+ ],
+ "tools.dead_code_usage.type_hints": [
+  "tools.dead_code_usage.ast_usage"
+ ],
+ "tools.full_test_debt_shards": [
+  "tools.benchmark_full_test_debt_shards",
+  "tools.collect_full_test_debt"
+ ],
+ "tools.import_cycle_analysis": [
+  "tools.scan_import_cycles"
+ ],
+ "tools.import_cycle_baseline": [
+  "tools.scan_import_cycles"
+ ],
+ "tools.long_gate_cache": [
+  "scripts.run_quality_gate"
+ ],
+ "tools.long_gate_collect": [
+  "scripts.run_quality_gate"
+ ],
+ "tools.long_gate_fingerprint": [
+  "scripts.run_quality_gate",
+  "tools.long_gate_cache",
+  "tools.long_gate_collect"
+ ],
+ "tools.long_gate_manifest": [
+  "scripts.run_quality_gate",
+  "tools.scan_anti_regression_gate"
+ ],
+ "tools.long_gate_paths": [
+  "tools.long_gate_cache",
+  "tools.long_gate_schema",
+  "tools.long_gate_summary"
+ ],
+ "tools.long_gate_schema": [
+  "scripts.run_quality_gate",
+  "tools.architecture_scan_cache",
+  "tools.long_gate_cache",
+  "tools.long_gate_fingerprint",
+  "tools.long_gate_manifest",
+  "tools.long_gate_summary",
+  "tools.verify_required_regressions_from_full_test_debt"
+ ],
+ "tools.long_gate_summary": [
+  "scripts.run_quality_gate"
+ ],
+ "tools.quality_gate_entries": [
+  "tools.quality_gate_operations",
+  "tools.quality_gate_support"
+ ],
+ "tools.quality_gate_ledger": [
+  "tools.architecture_scan_cache",
+  "tools.check_full_test_debt",
+  "tools.quality_gate_operations",
+  "tools.quality_gate_scan",
+  "tools.quality_gate_support",
+  "tools.test_debt_registry"
+ ],
+ "tools.quality_gate_operations": [
+  "tools.quality_gate_support"
+ ],
+ "tools.quality_gate_scan": [
+  "tools.architecture_scan_cache",
+  "tools.quality_gate_operations",
+  "tools.quality_gate_support"
+ ],
+ "tools.quality_gate_shared": [
+  "tools.architecture_scan_cache",
+  "tools.check_full_test_debt",
+  "tools.collect_full_test_debt",
+  "tools.long_gate_cache",
+  "tools.long_gate_collect",
+  "tools.long_gate_full_test_debt",
+  "tools.long_gate_schema",
+  "tools.quality_gate_entries",
+  "tools.quality_gate_ledger",
+  "tools.quality_gate_operations",
+  "tools.quality_gate_scan",
+  "tools.quality_gate_support",
+  "tools.test_debt_registry"
+ ],
+ "tools.quality_gate_support": [
+  "scripts.run_quality_gate",
+  "scripts.sync_debt_ledger"
+ ],
+ "tools.symbol_locator": [
+  "tools.symbol_locator.cli"
+ ],
+ "tools.symbol_locator.cli": [
+  "tools.symbol_locator.__main__"
+ ],
+ "tools.symbol_locator.static_index": [
+  "tools.symbol_locator.freshness",
+  "tools.symbol_locator.jedi_resolver",
+  "tools.symbol_locator.scip_deep"
+ ],
+ "tools.test_debt_registry": [
+  "scripts.sync_debt_ledger",
+  "tools.check_full_test_debt",
+  "tools.quality_gate_support"
+ ],
+ "tools.test_registry": [
+  "scripts.run_daily_quality_gate",
+  "tools.full_test_debt_shards",
+  "tools.long_gate_manifest",
+  "tools.quality_gate_shared",
+  "tools.quality_gate_support",
+  "tools.scan_anti_regression_gate",
+  "tools.test_debt_registry"
+ ],
+ "tools.test_registry_data": [
+  "tools.test_registry"
+ ],
+ "tools.test_registry_groups_misc": [
+  "tools.test_registry"
+ ],
+ "tools.test_registry_groups_scheduler": [
+  "tools.test_registry"
+ ],
+ "web.bootstrap": [
+  "scripts.run_quality_gate",
+  "web.bootstrap.launcher",
+  "web.bootstrap.launcher_stop"
+ ],
+ "web.bootstrap.factory": [
+  "web.bootstrap.entrypoint"
+ ],
+ "web.bootstrap.launcher": [
+  "web.bootstrap.entrypoint",
+  "web.bootstrap.factory"
+ ],
+ "web.bootstrap.launcher_chrome": [
+  "web.bootstrap.launcher_stop"
+ ],
+ "web.bootstrap.launcher_cleanup_result": [
+  "web.bootstrap.launcher_contracts",
+  "web.bootstrap.launcher_stop_cleanup"
+ ],
+ "web.bootstrap.launcher_contract_result": [
+  "web.bootstrap.launcher_cleanup_result",
+  "web.bootstrap.launcher_contracts"
+ ],
+ "web.bootstrap.launcher_contracts": [
+  "web.bootstrap.launcher",
+  "web.bootstrap.launcher_stop",
+  "web.bootstrap.launcher_stop_state"
+ ],
+ "web.bootstrap.launcher_endpoint_result": [
+  "web.bootstrap.launcher",
+  "web.bootstrap.launcher_stop"
+ ],
+ "web.bootstrap.launcher_health": [
+  "web.bootstrap.launcher_stop"
+ ],
+ "web.bootstrap.launcher_lock_result": [
+  "web.bootstrap.launcher_contracts",
+  "web.bootstrap.launcher_stop"
+ ],
+ "web.bootstrap.launcher_network": [
+  "web.bootstrap.launcher"
+ ],
+ "web.bootstrap.launcher_observability": [
+  "web.bootstrap.entrypoint",
+  "web.bootstrap.launcher_chrome",
+  "web.bootstrap.launcher_cleanup_result",
+  "web.bootstrap.launcher_contract_result",
+  "web.bootstrap.launcher_contracts",
+  "web.bootstrap.launcher_endpoint_result",
+  "web.bootstrap.launcher_health",
+  "web.bootstrap.launcher_lock_result",
+  "web.bootstrap.launcher_network",
+  "web.bootstrap.launcher_paths",
+  "web.bootstrap.launcher_processes",
+  "web.bootstrap.launcher_stop",
+  "web.bootstrap.launcher_stop_cleanup",
+  "web.bootstrap.paths",
+  "web.bootstrap.runtime_probe"
+ ],
+ "web.bootstrap.launcher_paths": [
+  "web.bootstrap.launcher",
+  "web.bootstrap.launcher_cleanup_result",
+  "web.bootstrap.launcher_contract_result",
+  "web.bootstrap.launcher_contracts",
+  "web.bootstrap.launcher_endpoint_result",
+  "web.bootstrap.launcher_lock_result",
+  "web.bootstrap.launcher_stop"
+ ],
+ "web.bootstrap.launcher_processes": [
+  "web.bootstrap.launcher",
+  "web.bootstrap.launcher_contracts",
+  "web.bootstrap.launcher_stop"
+ ],
+ "web.bootstrap.launcher_stop": [
+  "web.bootstrap.launcher"
+ ],
+ "web.bootstrap.launcher_stop_cleanup": [
+  "web.bootstrap.launcher_stop"
+ ],
+ "web.bootstrap.launcher_stop_process": [
+  "web.bootstrap.launcher_stop"
+ ],
+ "web.bootstrap.launcher_stop_state": [
+  "web.bootstrap.launcher_stop"
+ ],
+ "web.bootstrap.paths": [
+  "web.bootstrap.entrypoint",
+  "web.bootstrap.factory"
+ ],
+ "web.bootstrap.plugins": [
+  "web.bootstrap.factory"
+ ],
+ "web.bootstrap.request_services": [
+  "web.bootstrap.factory"
+ ],
+ "web.bootstrap.runtime_capabilities": [
+  "web.bootstrap.launcher_contract_result",
+  "web.bootstrap.runtime_probe"
+ ],
+ "web.bootstrap.security": [
+  "web.bootstrap.factory"
+ ],
+ "web.bootstrap.static_versioning": [
+  "web.bootstrap.factory"
+ ],
+ "web.bootstrap.template_globals": [
+  "web.bootstrap.factory"
+ ],
+ "web.error_boundary": [
+  "web.bootstrap.factory",
+  "web.error_handlers",
+  "web.routes.domains.scheduler.scheduler_batches",
+  "web.routes.domains.scheduler.scheduler_calendar_pages",
+  "web.routes.domains.scheduler.scheduler_config",
+  "web.routes.domains.scheduler.scheduler_gantt",
+  "web.routes.domains.scheduler.scheduler_gantt_adjustments",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_query",
+  "web.routes.domains.scheduler.scheduler_user_messages",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.personnel_calendar_pages"
+ ],
+ "web.error_handlers": [
+  "web.bootstrap.factory"
+ ],
+ "web.manual_src_security": [
+  "web.bootstrap.template_globals",
+  "web.routes.domains.scheduler.scheduler_config"
+ ],
+ "web.navigation_context": [
+  "web.bootstrap.template_globals",
+  "web.routes.dashboard",
+  "web.routes.domains.scheduler.scheduler_navigation_publish",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch",
+  "web.routes.reports_page_support"
+ ],
+ "web.public_token_registry": [
+  "web.routes.domains.scheduler.scheduler_ops",
+  "web.routes.domains.scheduler.scheduler_plan_context_token"
+ ],
+ "web.request_resource_context": [
+  "web.navigation_context",
+  "web.routes.dashboard",
+  "web.routes.domains.scheduler.scheduler_analysis",
+  "web.routes.domains.scheduler.scheduler_navigation_publish",
+  "web.routes.domains.scheduler.scheduler_week_plan_query"
+ ],
+ "web.routes": [
+  "web.bootstrap.factory",
+  "web.routes.equipment",
+  "web.routes.personnel",
+  "web.routes.process",
+  "web.routes.system",
+  "web.routes.system_utils"
+ ],
+ "web.routes.dashboard": [
+  "web.bootstrap.factory"
+ ],
+ "web.routes.domains.scheduler": [
+  "web.routes.domains.scheduler.scheduler_excel_batches",
+  "web.routes.domains.scheduler.scheduler_pages"
+ ],
+ "web.routes.domains.scheduler.scheduler_analysis_links": [
+  "web.routes.domains.scheduler.scheduler_analysis"
+ ],
+ "web.routes.domains.scheduler.scheduler_analysis_read": [
+  "web.routes.domains.scheduler.scheduler_analysis"
+ ],
+ "web.routes.domains.scheduler.scheduler_bp": [
+  "web.routes.domains.scheduler.scheduler_analysis",
+  "web.routes.domains.scheduler.scheduler_batch_detail",
+  "web.routes.domains.scheduler.scheduler_batches",
+  "web.routes.domains.scheduler.scheduler_calendar_pages",
+  "web.routes.domains.scheduler.scheduler_config",
+  "web.routes.domains.scheduler.scheduler_excel_batches",
+  "web.routes.domains.scheduler.scheduler_excel_calendar",
+  "web.routes.domains.scheduler.scheduler_gantt",
+  "web.routes.domains.scheduler.scheduler_gantt_adjustments",
+  "web.routes.domains.scheduler.scheduler_ops",
+  "web.routes.domains.scheduler.scheduler_pages",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes",
+  "web.routes.domains.scheduler.scheduler_run",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.domains.scheduler.scheduler_week_plan_print",
+  "web.routes.scheduler"
+ ],
+ "web.routes.domains.scheduler.scheduler_config_display_state": [
+  "web.routes.domains.scheduler.scheduler_batches",
+  "web.routes.domains.scheduler.scheduler_config",
+  "web.routes.domains.scheduler.scheduler_config_feedback"
+ ],
+ "web.routes.domains.scheduler.scheduler_config_feedback": [
+  "web.routes.domains.scheduler.scheduler_config"
+ ],
+ "web.routes.domains.scheduler.scheduler_excel_calendar_rows": [
+  "web.routes.domains.scheduler.scheduler_excel_calendar"
+ ],
+ "web.routes.domains.scheduler.scheduler_gantt_redirect": [
+  "web.routes.domains.scheduler.scheduler_run",
+  "web.routes.domains.scheduler.scheduler_week_plan"
+ ],
+ "web.routes.domains.scheduler.scheduler_history_resolution": [
+  "web.routes.domains.scheduler.scheduler_analysis_read",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.system_history"
+ ],
+ "web.routes.domains.scheduler.scheduler_navigation_publish": [
+  "web.routes.domains.scheduler.scheduler_analysis",
+  "web.routes.domains.scheduler.scheduler_gantt",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.domains.scheduler.scheduler_week_plan_print",
+  "web.routes.domains.scheduler.scheduler_week_plan_query"
+ ],
+ "web.routes.domains.scheduler.scheduler_ops": [
+  "web.routes.domains.scheduler.scheduler_batch_detail"
+ ],
+ "web.routes.domains.scheduler.scheduler_plan_context_token": [
+  "web.routes.dashboard",
+  "web.routes.domains.scheduler.scheduler_analysis",
+  "web.routes.domains.scheduler.scheduler_analysis_links",
+  "web.routes.domains.scheduler.scheduler_gantt",
+  "web.routes.domains.scheduler.scheduler_navigation_publish",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_query",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.domains.scheduler.scheduler_week_plan_preview",
+  "web.routes.domains.scheduler.scheduler_week_plan_print",
+  "web.routes.domains.scheduler.scheduler_week_plan_query",
+  "web.routes.report_plan_preview",
+  "web.routes.reports_export_support",
+  "web.routes.reports_page_support"
+ ],
+ "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_context": [
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes"
+ ],
+ "web.routes.domains.scheduler.scheduler_resource_dispatch_query": [
+  "web.routes.domains.scheduler.scheduler_resource_dispatch",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_context"
+ ],
+ "web.routes.domains.scheduler.scheduler_route_registrar": [
+  "web.routes.scheduler"
+ ],
+ "web.routes.domains.scheduler.scheduler_user_messages": [
+  "web.routes.domains.scheduler.scheduler_ops",
+  "web.routes.domains.scheduler.scheduler_run",
+  "web.routes.domains.scheduler.scheduler_week_plan"
+ ],
+ "web.routes.domains.scheduler.scheduler_utils": [
+  "web.routes.domains.scheduler.scheduler_calendar_pages",
+  "web.routes.domains.scheduler.scheduler_excel_batches",
+  "web.routes.domains.scheduler.scheduler_excel_calendar",
+  "web.routes.domains.scheduler.scheduler_excel_calendar_rows",
+  "web.routes.domains.scheduler.scheduler_gantt",
+  "web.routes.domains.scheduler.scheduler_gantt_adjustments",
+  "web.routes.domains.scheduler.scheduler_run",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.domains.scheduler.scheduler_week_plan_print"
+ ],
+ "web.routes.domains.scheduler.scheduler_week_plan_preview": [
+  "web.routes.domains.scheduler.scheduler_week_plan"
+ ],
+ "web.routes.domains.scheduler.scheduler_week_plan_query": [
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.domains.scheduler.scheduler_week_plan_print"
+ ],
+ "web.routes.domains.scheduler.scheduler_week_plan_response": [
+  "web.routes.domains.scheduler.scheduler_week_plan"
+ ],
+ "web.routes.enum_display": [
+  "web.routes.domains.scheduler.scheduler_bp",
+  "web.routes.equipment_bp",
+  "web.routes.personnel_bp"
+ ],
+ "web.routes.equipment": [
+  "web.bootstrap.factory"
+ ],
+ "web.routes.equipment_bp": [
+  "web.routes.equipment",
+  "web.routes.equipment_downtimes",
+  "web.routes.equipment_excel_links",
+  "web.routes.equipment_excel_machines",
+  "web.routes.equipment_pages"
+ ],
+ "web.routes.excel_demo": [
+  "web.bootstrap.factory"
+ ],
+ "web.routes.excel_utils": [
+  "web.routes.domains.scheduler.scheduler_excel_batches",
+  "web.routes.domains.scheduler.scheduler_excel_calendar",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes",
+  "web.routes.domains.scheduler.scheduler_utils",
+  "web.routes.equipment_bp",
+  "web.routes.equipment_excel_links",
+  "web.routes.equipment_excel_machines",
+  "web.routes.excel_demo",
+  "web.routes.personnel_bp",
+  "web.routes.personnel_excel_links",
+  "web.routes.personnel_excel_operator_calendar",
+  "web.routes.personnel_excel_operators",
+  "web.routes.process_bp",
+  "web.routes.process_excel_op_types",
+  "web.routes.process_excel_part_operation_hours",
+  "web.routes.process_excel_route_apply",
+  "web.routes.process_excel_routes",
+  "web.routes.process_excel_suppliers"
+ ],
+ "web.routes.form_values": [
+  "web.routes.domains.scheduler.scheduler_batches",
+  "web.routes.domains.scheduler.scheduler_config",
+  "web.routes.domains.scheduler.scheduler_excel_batches",
+  "web.routes.domains.scheduler.scheduler_run",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.process_excel_routes",
+  "web.routes.process_parts",
+  "web.routes.system_backup",
+  "web.routes.system_logs",
+  "web.routes.system_plugins"
+ ],
+ "web.routes.history_summary_logging": [
+  "web.routes.dashboard",
+  "web.routes.domains.scheduler.scheduler_analysis_read",
+  "web.routes.domains.scheduler.scheduler_batches",
+  "web.routes.domains.scheduler.scheduler_gantt",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.reports_page_support",
+  "web.routes.system_history"
+ ],
+ "web.routes.material": [
+  "web.bootstrap.factory"
+ ],
+ "web.routes.navigation_utils": [
+  "web.routes.domains.scheduler.scheduler_batch_detail",
+  "web.routes.domains.scheduler.scheduler_batches",
+  "web.routes.domains.scheduler.scheduler_config",
+  "web.routes.domains.scheduler.scheduler_ops",
+  "web.routes.personnel_calendar_pages",
+  "web.routes.personnel_pages"
+ ],
+ "web.routes.normalizers": [
+  "web.routes.domains.scheduler.scheduler_utils",
+  "web.routes.personnel_bp",
+  "web.routes.personnel_calendar_pages",
+  "web.routes.system_history"
+ ],
+ "web.routes.pagination": [
+  "web.routes.domains.scheduler.scheduler_batches",
+  "web.routes.equipment_pages",
+  "web.routes.material",
+  "web.routes.personnel_pages",
+  "web.routes.personnel_teams",
+  "web.routes.process_op_types",
+  "web.routes.process_parts",
+  "web.routes.process_suppliers",
+  "web.routes.system_history",
+  "web.routes.system_logs"
+ ],
+ "web.routes.personnel": [
+  "web.bootstrap.factory"
+ ],
+ "web.routes.personnel_bp": [
+  "web.routes.personnel",
+  "web.routes.personnel_calendar_pages",
+  "web.routes.personnel_detail_context",
+  "web.routes.personnel_excel_links",
+  "web.routes.personnel_excel_operator_calendar",
+  "web.routes.personnel_excel_operators",
+  "web.routes.personnel_pages",
+  "web.routes.personnel_teams"
+ ],
+ "web.routes.personnel_detail_context": [
+  "web.routes.personnel_pages"
+ ],
+ "web.routes.process": [
+  "web.bootstrap.factory"
+ ],
+ "web.routes.process_bp": [
+  "web.routes.process",
+  "web.routes.process_excel_op_types",
+  "web.routes.process_excel_part_operation_hours",
+  "web.routes.process_excel_part_operations",
+  "web.routes.process_excel_routes",
+  "web.routes.process_excel_suppliers",
+  "web.routes.process_op_types",
+  "web.routes.process_parts",
+  "web.routes.process_suppliers"
+ ],
+ "web.routes.process_excel_route_apply": [
+  "web.routes.process_excel_routes"
+ ],
+ "web.routes.report_plan_preview": [
+  "web.routes.reports_execution_review_page",
+  "web.routes.reports_export_routes",
+  "web.routes.reports_export_support",
+  "web.routes.reports_page_support",
+  "web.routes.reports_request_support"
+ ],
+ "web.routes.reports": [
+  "web.bootstrap.factory"
+ ],
+ "web.routes.reports_execution_review_context": [
+  "web.routes.reports_execution_review_page"
+ ],
+ "web.routes.reports_execution_review_page": [
+  "web.routes.reports"
+ ],
+ "web.routes.reports_export_routes": [
+  "web.routes.reports"
+ ],
+ "web.routes.reports_export_support": [
+  "web.routes.reports_execution_review_page",
+  "web.routes.reports_export_routes",
+  "web.routes.reports_page_support"
+ ],
+ "web.routes.reports_page_support": [
+  "web.routes.reports",
+  "web.routes.reports_execution_review_page"
+ ],
+ "web.routes.reports_plan_template_fields": [
+  "web.routes.reports_execution_review_page",
+  "web.routes.reports_page_support"
+ ],
+ "web.routes.reports_request_support": [
+  "web.routes.reports_execution_review_page",
+  "web.routes.reports_export_routes",
+  "web.routes.reports_page_support"
+ ],
+ "web.routes.system": [
+  "web.bootstrap.factory"
+ ],
+ "web.routes.system_backup_actions": [
+  "web.routes.system_backup"
+ ],
+ "web.routes.system_bp": [
+  "web.routes.system",
+  "web.routes.system_backup",
+  "web.routes.system_health",
+  "web.routes.system_history",
+  "web.routes.system_logs",
+  "web.routes.system_plugins",
+  "web.routes.system_runtime_logs"
+ ],
+ "web.routes.system_utils": [
+  "web.routes.system_backup",
+  "web.routes.system_history",
+  "web.routes.system_logs",
+  "web.routes.system_plugins",
+  "web.routes.system_runtime_logs"
+ ],
+ "web.routes.team_view_helpers": [
+  "web.routes.equipment_pages",
+  "web.routes.personnel_detail_context",
+  "web.routes.personnel_pages"
+ ],
+ "web.viewmodels.dashboard_backup_health": [
+  "web.routes.dashboard"
+ ],
+ "web.viewmodels.dashboard_cockpit_hero": [
+  "web.viewmodels.dashboard_workbench"
+ ],
+ "web.viewmodels.dashboard_workbench": [
+  "web.routes.dashboard"
+ ],
+ "web.viewmodels.dashboard_workbench_cards": [
+  "web.viewmodels.dashboard_workbench",
+  "web.viewmodels.dashboard_workbench_todos",
+  "web.viewmodels.scheduler_gantt_load_strip"
+ ],
+ "web.viewmodels.dashboard_workbench_context": [
+  "web.viewmodels.dashboard_workbench"
+ ],
+ "web.viewmodels.dashboard_workbench_data_gap": [
+  "web.viewmodels.dashboard_workbench",
+  "web.viewmodels.dashboard_workbench_todos"
+ ],
+ "web.viewmodels.dashboard_workbench_shared": [
+  "web.viewmodels.dashboard_workbench",
+  "web.viewmodels.dashboard_workbench_todos"
+ ],
+ "web.viewmodels.dashboard_workbench_todos": [
+  "web.viewmodels.dashboard_workbench"
+ ],
+ "web.viewmodels.excel_entry_cards": [
+  "web.routes.domains.scheduler.scheduler_batches",
+  "web.routes.equipment_pages",
+  "web.routes.personnel_pages",
+  "web.routes.process_op_types",
+  "web.routes.process_parts",
+  "web.routes.process_suppliers"
+ ],
+ "web.viewmodels.page_manuals": [
+  "web.manual_src_security",
+  "web.routes.domains.scheduler.scheduler_config"
+ ],
+ "web.viewmodels.page_manuals_common": [
+  "web.viewmodels.page_manuals",
+  "web.viewmodels.page_manuals_equipment",
+  "web.viewmodels.page_manuals_equipment_excel",
+  "web.viewmodels.page_manuals_excel_demo",
+  "web.viewmodels.page_manuals_material",
+  "web.viewmodels.page_manuals_personnel",
+  "web.viewmodels.page_manuals_personnel_excel",
+  "web.viewmodels.page_manuals_process",
+  "web.viewmodels.page_manuals_process_excel",
+  "web.viewmodels.page_manuals_reports",
+  "web.viewmodels.page_manuals_scheduler",
+  "web.viewmodels.page_manuals_scheduler_admin",
+  "web.viewmodels.page_manuals_scheduler_outputs",
+  "web.viewmodels.page_manuals_scheduler_week_plan",
+  "web.viewmodels.page_manuals_system",
+  "web.viewmodels.page_manuals_system_history"
+ ],
+ "web.viewmodels.page_manuals_equipment": [
+  "web.viewmodels.page_manuals"
+ ],
+ "web.viewmodels.page_manuals_equipment_excel": [
+  "web.viewmodels.page_manuals_equipment"
+ ],
+ "web.viewmodels.page_manuals_excel_demo": [
+  "web.viewmodels.page_manuals"
+ ],
+ "web.viewmodels.page_manuals_material": [
+  "web.viewmodels.page_manuals"
+ ],
+ "web.viewmodels.page_manuals_personnel": [
+  "web.viewmodels.page_manuals"
+ ],
+ "web.viewmodels.page_manuals_personnel_excel": [
+  "web.viewmodels.page_manuals_personnel"
+ ],
+ "web.viewmodels.page_manuals_process": [
+  "web.viewmodels.page_manuals"
+ ],
+ "web.viewmodels.page_manuals_process_excel": [
+  "web.viewmodels.page_manuals_process"
+ ],
+ "web.viewmodels.page_manuals_registry": [
+  "web.viewmodels.page_manuals"
+ ],
+ "web.viewmodels.page_manuals_reports": [
+  "web.viewmodels.page_manuals"
+ ],
+ "web.viewmodels.page_manuals_scheduler": [
+  "web.viewmodels.page_manuals"
+ ],
+ "web.viewmodels.page_manuals_scheduler_admin": [
+  "web.viewmodels.page_manuals_scheduler"
+ ],
+ "web.viewmodels.page_manuals_scheduler_outputs": [
+  "web.viewmodels.page_manuals_scheduler"
+ ],
+ "web.viewmodels.page_manuals_scheduler_week_plan": [
+  "web.viewmodels.page_manuals_scheduler_outputs"
+ ],
+ "web.viewmodels.page_manuals_system": [
+  "web.viewmodels.page_manuals"
+ ],
+ "web.viewmodels.page_manuals_system_history": [
+  "web.viewmodels.page_manuals_system"
+ ],
+ "web.viewmodels.plan_context_capsule": [
+  "web.navigation_context",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch",
+  "web.routes.reports_page_support"
+ ],
+ "web.viewmodels.scheduler_analysis_action_hub": [
+  "web.routes.domains.scheduler.scheduler_analysis"
+ ],
+ "web.viewmodels.scheduler_analysis_candidate_helpers": [
+  "web.viewmodels.scheduler_analysis_candidates"
+ ],
+ "web.viewmodels.scheduler_analysis_candidates": [
+  "web.viewmodels.scheduler_analysis_vm"
+ ],
+ "web.viewmodels.scheduler_analysis_compat": [
+  "web.viewmodels.scheduler_analysis_vm"
+ ],
+ "web.viewmodels.scheduler_analysis_diagnostic_delay_impact": [
+  "web.viewmodels.scheduler_analysis_diagnostics"
+ ],
+ "web.viewmodels.scheduler_analysis_diagnostic_health": [
+  "web.viewmodels.scheduler_analysis_diagnostics"
+ ],
+ "web.viewmodels.scheduler_analysis_diagnostic_helpers": [
+  "web.viewmodels.scheduler_analysis_diagnostic_delay_impact",
+  "web.viewmodels.scheduler_analysis_diagnostic_health",
+  "web.viewmodels.scheduler_analysis_diagnostics"
+ ],
+ "web.viewmodels.scheduler_analysis_diagnostics": [
+  "web.viewmodels.scheduler_analysis_vm"
+ ],
+ "web.viewmodels.scheduler_analysis_freeze": [
+  "web.viewmodels.scheduler_analysis_vm"
+ ],
+ "web.viewmodels.scheduler_analysis_labels": [
+  "web.viewmodels.scheduler_analysis_compat",
+  "web.viewmodels.scheduler_analysis_vm",
+  "web.viewmodels.scheduler_batches_page"
+ ],
+ "web.viewmodels.scheduler_analysis_metrics": [
+  "web.routes.domains.scheduler.scheduler_analysis_read",
+  "web.viewmodels.scheduler_analysis_vm"
+ ],
+ "web.viewmodels.scheduler_analysis_overview": [
+  "web.viewmodels.scheduler_analysis_trends",
+  "web.viewmodels.scheduler_analysis_vm"
+ ],
+ "web.viewmodels.scheduler_analysis_trends": [
+  "web.routes.domains.scheduler.scheduler_analysis_read",
+  "web.viewmodels.scheduler_analysis_metrics",
+  "web.viewmodels.scheduler_analysis_vm"
+ ],
+ "web.viewmodels.scheduler_analysis_vm": [
+  "web.routes.domains.scheduler.scheduler_analysis"
+ ],
+ "web.viewmodels.scheduler_batch_schedule_placement": [
+  "web.routes.domains.scheduler.scheduler_batch_detail"
+ ],
+ "web.viewmodels.scheduler_batches_notices": [
+  "web.viewmodels.scheduler_batches_page",
+  "web.viewmodels.scheduler_config_panel"
+ ],
+ "web.viewmodels.scheduler_batches_page": [
+  "web.routes.domains.scheduler.scheduler_batches"
+ ],
+ "web.viewmodels.scheduler_config_panel": [
+  "web.routes.domains.scheduler.scheduler_config_display_state",
+  "web.viewmodels.scheduler_batches_page"
+ ],
+ "web.viewmodels.scheduler_degradation_presenter": [
+  "web.viewmodels.scheduler_analysis_vm",
+  "web.viewmodels.scheduler_summary_display"
+ ],
+ "web.viewmodels.scheduler_gantt_load_strip": [
+  "web.routes.domains.scheduler.scheduler_gantt"
+ ],
+ "web.viewmodels.scheduler_gantt_public_payload": [
+  "web.routes.domains.scheduler.scheduler_gantt"
+ ],
+ "web.viewmodels.scheduler_gantt_task_detail": [
+  "web.routes.domains.scheduler.scheduler_gantt"
+ ],
+ "web.viewmodels.scheduler_history_summary": [
+  "web.routes.dashboard",
+  "web.routes.domains.scheduler.scheduler_analysis_read",
+  "web.routes.domains.scheduler.scheduler_batch_detail",
+  "web.routes.domains.scheduler.scheduler_batches",
+  "web.routes.domains.scheduler.scheduler_gantt",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.domains.scheduler.scheduler_week_plan_print",
+  "web.routes.history_summary_logging",
+  "web.routes.reports_page_support",
+  "web.routes.system_history",
+  "web.viewmodels.scheduler_analysis_overview",
+  "web.viewmodels.scheduler_analysis_trends",
+  "web.viewmodels.scheduler_analysis_vm",
+  "web.viewmodels.scheduler_batches_page",
+  "web.viewmodels.scheduler_workbench_links"
+ ],
+ "web.viewmodels.scheduler_navigation_links": [
+  "web.navigation_context"
+ ],
+ "web.viewmodels.scheduler_plan_guardrail_messages": [
+  "web.routes.reports_plan_template_fields",
+  "web.viewmodels.scheduler_reports_workbench",
+  "web.viewmodels.scheduler_resource_dispatch",
+  "web.viewmodels.scheduler_workbench_links"
+ ],
+ "web.viewmodels.scheduler_report_limitations": [
+  "web.viewmodels.scheduler_reports_workbench"
+ ],
+ "web.viewmodels.scheduler_report_values": [
+  "web.viewmodels.scheduler_reports_workbench"
+ ],
+ "web.viewmodels.scheduler_reports_workbench": [
+  "web.routes.reports_execution_review_page",
+  "web.routes.reports_page_support"
+ ],
+ "web.viewmodels.scheduler_resource_dispatch": [
+  "web.routes.domains.scheduler.scheduler_resource_dispatch"
+ ],
+ "web.viewmodels.scheduler_resource_dispatch_execution": [
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_context",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes"
+ ],
+ "web.viewmodels.scheduler_run_options": [
+  "web.viewmodels.scheduler_batches_page"
+ ],
+ "web.viewmodels.scheduler_run_view_result": [
+  "web.routes.domains.scheduler.scheduler_run"
+ ],
+ "web.viewmodels.scheduler_summary_display": [
+  "web.routes.domains.scheduler.scheduler_analysis",
+  "web.routes.domains.scheduler.scheduler_week_plan",
+  "web.routes.system_history",
+  "web.viewmodels.scheduler_analysis_vm",
+  "web.viewmodels.scheduler_batches_page",
+  "web.viewmodels.scheduler_history_summary",
+  "web.viewmodels.scheduler_run_view_result"
+ ],
+ "web.viewmodels.scheduler_summary_result_state": [
+  "web.viewmodels.dashboard_cockpit_hero",
+  "web.viewmodels.scheduler_analysis_overview",
+  "web.viewmodels.scheduler_plan_guardrail_messages",
+  "web.viewmodels.scheduler_summary_display"
+ ],
+ "web.viewmodels.scheduler_summary_status": [
+  "web.viewmodels.scheduler_summary_result_state"
+ ],
+ "web.viewmodels.scheduler_workbench_link_labels": [
+  "web.viewmodels.scheduler_workbench_links"
+ ],
+ "web.viewmodels.scheduler_workbench_link_query": [
+  "web.viewmodels.scheduler_workbench_links"
+ ],
+ "web.viewmodels.scheduler_workbench_link_specs": [
+  "web.viewmodels.scheduler_workbench_link_query"
+ ],
+ "web.viewmodels.scheduler_workbench_links": [
+  "web.navigation_context",
+  "web.routes.domains.scheduler.scheduler_analysis_links",
+  "web.routes.domains.scheduler.scheduler_navigation_publish",
+  "web.routes.domains.scheduler.scheduler_resource_dispatch",
+  "web.routes.domains.scheduler.scheduler_week_plan_preview",
+  "web.viewmodels.dashboard_cockpit_hero",
+  "web.viewmodels.dashboard_workbench_cards",
+  "web.viewmodels.dashboard_workbench_context",
+  "web.viewmodels.dashboard_workbench_todos",
+  "web.viewmodels.scheduler_batch_schedule_placement",
+  "web.viewmodels.scheduler_gantt_load_strip",
+  "web.viewmodels.scheduler_gantt_task_detail",
+  "web.viewmodels.scheduler_navigation_links",
+  "web.viewmodels.scheduler_reports_workbench",
+  "web.viewmodels.system_history_links"
+ ],
+ "web.viewmodels.strict_mode_toggles": [
+  "web.routes.domains.scheduler.scheduler_batch_detail",
+  "web.routes.domains.scheduler.scheduler_batches",
+  "web.routes.process_parts"
+ ],
+ "web.viewmodels.system_backup_page": [
+  "web.routes.system_backup"
+ ],
+ "web.viewmodels.system_history_links": [
+  "web.routes.system_history"
+ ],
+ "web.viewmodels.system_logs_vm": [
+  "web.routes.system_logs"
+ ],
+ "web.viewmodels.ui_presenters": [
+  "web.routes.domains.scheduler.scheduler_config_display_state",
+  "web.routes.domains.scheduler.scheduler_excel_batches",
+  "web.routes.process_excel_routes",
+  "web.viewmodels.scheduler_batches_notices",
+  "web.viewmodels.scheduler_batches_page",
+  "web.viewmodels.scheduler_config_panel",
+  "web.viewmodels.scheduler_run_options",
+  "web.viewmodels.strict_mode_toggles",
+  "web.viewmodels.system_backup_page",
+  "web.viewmodels.system_logs_vm"
+ ]
+}

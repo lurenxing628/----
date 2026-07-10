@@ -1,0 +1,938 @@
+{
+ "_append_row": [
+  "core/services/report/exporters/xlsx.py:29",
+  "core/services/scheduler/resource_dispatch_actual_excel.py:45",
+  "core/services/scheduler/resource_dispatch_excel.py:34"
+ ],
+ "_auto_width": [
+  "core/services/common/excel_templates.py:79",
+  "core/services/report/exporters/xlsx.py:19",
+  "core/services/scheduler/resource_dispatch_excel.py:16"
+ ],
+ "_close_workbook_best_effort": [
+  "core/services/common/openpyxl_backend.py:68",
+  "core/services/process/unit_excel/parser.py:15",
+  "core/services/report/exporters/xlsx.py:63"
+ ],
+ "_coerce_int": [
+  "core/services/process/part_operation_hours_excel_import_service.py:111",
+  "scripts/run_quality_gate.py:1485",
+  "tools/long_gate_manifest.py:1042"
+ ],
+ "_columns_sql": [
+  "data/repositories/operation_execution_event_repo.py:63",
+  "data/repositories/schedule_adjustment_repo.py:43",
+  "data/repositories/schedule_adjustment_scenario_repo.py:55",
+  "data/repositories/schedule_candidate_repo.py:62"
+ ],
+ "_create_current_event_table": [
+  "core/infrastructure/migrations/v16.py:61",
+  "core/infrastructure/migrations/v18.py:42",
+  "core/infrastructure/migrations/v19.py:52"
+ ],
+ "_elapsed_ms": [
+  "core/services/scheduler/run/optimizer_proof_oracle.py:335",
+  "core/services/scheduler/run/schedule_candidate_persistence_models.py:63",
+  "core/services/scheduler/run/schedule_graph_report.py:70"
+ ],
+ "_ensure_unique_ids": [
+  "web/routes/domains/scheduler/scheduler_utils.py:35",
+  "web/routes/equipment_bp.py:31",
+  "web/routes/personnel_bp.py:36",
+  "web/routes/process_bp.py:34"
+ ],
+ "_event_scope": [
+  "core/models/operation_execution_event.py:144",
+  "data/repositories/operation_execution_event_repo.py:169",
+  "data/repositories/operation_execution_state_aggregation.py:13"
+ ],
+ "_get_or_raise": [
+  "core/services/equipment/machine_service.py:96",
+  "core/services/personnel/operator_service.py:61",
+  "core/services/personnel/resource_team_service.py:51",
+  "core/services/process/op_type_service.py:54",
+  "core/services/process/part_service.py:78",
+  "core/services/process/supplier_service.py:83",
+  "core/services/scheduler/batch_service.py:111"
+ ],
+ "_git_head_sha": [
+  "scripts/run_quality_gate.py:1625",
+  "tools/collect_full_test_debt.py:52",
+  "tools/long_gate_manifest.py:868"
+ ],
+ "_has_value": [
+  "web/viewmodels/scheduler_navigation_links.py:36",
+  "web/viewmodels/scheduler_reports_workbench.py:23",
+  "web/viewmodels/scheduler_workbench_link_query.py:131",
+  "web/viewmodels/scheduler_workbench_links.py:45"
+ ],
+ "_incumbent_origin": [
+  "core/services/scheduler/run/optimizer_graph_ready.py:442",
+  "core/services/scheduler/run/optimizer_grasp_ig_candidates.py:217",
+  "core/services/scheduler/run/optimizer_local_search_round.py:318"
+ ],
+ "_link": [
+  "web/viewmodels/dashboard_cockpit_hero.py:31",
+  "web/viewmodels/dashboard_workbench_cards.py:18",
+  "web/viewmodels/dashboard_workbench_todos.py:25"
+ ],
+ "_list_filters": [
+  "data/repositories/batch_repo.py:83",
+  "data/repositories/material_repo.py:24",
+  "data/repositories/operator_repo.py:22"
+ ],
+ "_load_preset_payload": [
+  "core/infrastructure/migrations/v8.py:57",
+  "core/infrastructure/migrations/v9.py:36",
+  "core/services/scheduler/config/config_preset_service.py:129"
+ ],
+ "_machines_for_fixed_operator": [
+  "core/algorithms/greedy/auto_assign.py:220",
+  "core/services/scheduler/graph/input_adapter.py:276",
+  "core/services/scheduler/run/optimizer_graph_ready_v2_capacity.py:257"
+ ],
+ "_node_sort_key": [
+  "core/services/scheduler/graph/exporter.py:13",
+  "core/services/scheduler/graph/metrics.py:11",
+  "core/services/scheduler/graph/validators.py:9"
+ ],
+ "_nodeid_path": [
+  "tools/collect_full_test_debt.py:261",
+  "tools/report_full_test_debt_durations.py:28",
+  "tools/verify_required_regressions_from_full_test_debt.py:74"
+ ],
+ "_normalize_batch_priority": [
+  "core/services/common/excel_validators.py:30",
+  "web/routes/domains/scheduler/scheduler_utils.py:43",
+  "web/routes/normalizers.py:15"
+ ],
+ "_normalize_cell_value": [
+  "core/services/common/openpyxl_backend.py:25",
+  "core/services/common/pandas_backend.py:18",
+  "core/services/scheduler/resource_dispatch_actual_excel.py:30"
+ ],
+ "_normalize_date": [
+  "core/services/scheduler/batch_service.py:60",
+  "core/services/scheduler/calendar_admin.py:65",
+  "core/services/scheduler/calendar_service.py:35"
+ ],
+ "_normalize_float": [
+  "core/services/process/external_group_service.py:30",
+  "core/services/process/part_service.py:65",
+  "core/services/scheduler/calendar_admin.py:57",
+  "core/services/scheduler/schedule_service.py:86"
+ ],
+ "_normalize_path": [
+  "scripts/run_daily_quality_gate.py:97",
+  "tools/architecture_scan_cache.py:63",
+  "tools/git_hook_checks.py:42"
+ ],
+ "_normalize_ready_status": [
+  "core/services/common/excel_validators.py:38",
+  "web/routes/domains/scheduler/scheduler_utils.py:47",
+  "web/routes/normalizers.py:26"
+ ],
+ "_normalize_text": [
+  "core/services/equipment/machine_downtime_service.py:39",
+  "core/services/equipment/machine_service.py:30",
+  "core/services/personnel/operator_machine_service.py:43",
+  "core/services/personnel/operator_service.py:28",
+  "core/services/personnel/resource_team_service.py:22",
+  "core/services/process/external_group_service.py:26",
+  "core/services/process/op_type_service.py:25",
+  "core/services/process/part_service.py:61",
+  "core/services/process/supplier_service.py:27",
+  "core/services/scheduler/batch_service.py:48",
+  "core/services/scheduler/calendar_admin.py:53",
+  "core/services/scheduler/calendar_engine.py:93",
+  "core/services/scheduler/config/config_service.py:177",
+  "core/services/scheduler/schedule_service.py:77"
+ ],
+ "_normalize_yesno": [
+  "core/services/common/excel_validators.py:54",
+  "core/services/scheduler/calendar_admin.py:83",
+  "web/routes/domains/scheduler/scheduler_utils.py:55",
+  "web/routes/normalizers.py:61"
+ ],
+ "_normalized_status_text": [
+  "core/services/scheduler/run/schedule_input_collector.py:70",
+  "core/services/scheduler/run/schedule_persistence.py:25",
+  "core/services/scheduler/schedule_service.py:38"
+ ],
+ "_op_id": [
+  "core/algorithms/greedy/dispatch/sgs_graph.py:12",
+  "core/services/scheduler/gantt_adjustment_draft_service.py:55",
+  "core/services/scheduler/run/schedule_execution_guardrails.py:20"
+ ],
+ "_op_id_set": [
+  "core/algorithms/greedy/dispatch/ready_queue.py:26",
+  "core/services/scheduler/run/optimizer_graph_ready_context.py:193",
+  "core/services/scheduler/run/schedule_candidate_health.py:173"
+ ],
+ "_optional_text": [
+  "core/models/operation_execution_scope.py:31",
+  "core/services/scheduler/graph/input_adapter.py:167",
+  "core/services/scheduler/operation_execution_feedback_support.py:113",
+  "core/services/scheduler/summary/schedule_summary_degradation.py:153"
+ ],
+ "_parse_args": [
+  "scripts/run_daily_quality_gate.py:697",
+  "scripts/run_quality_gate.py:2355",
+  "tools/check_full_test_debt.py:590",
+  "tools/collect_full_test_debt.py:424",
+  "tools/fast_static_precheck.py:258",
+  "tools/long_gate_manifest.py:1167",
+  "tools/scan_import_cycles.py:280"
+ ],
+ "_parse_datetime": [
+  "core/services/equipment/machine_downtime_service.py:43",
+  "web/viewmodels/dashboard_workbench_shared.py:39",
+  "web/viewmodels/scheduler_resource_dispatch_execution.py:180"
+ ],
+ "_parse_dt": [
+  "core/services/scheduler/gantt_critical_chain.py:14",
+  "web/routes/system_utils.py:22",
+  "web/viewmodels/dashboard_cockpit_hero.py:35"
+ ],
+ "_parse_mode": [
+  "web/routes/domains/scheduler/scheduler_utils.py:31",
+  "web/routes/equipment_bp.py:23",
+  "web/routes/excel_demo.py:44",
+  "web/routes/personnel_bp.py:28",
+  "web/routes/process_bp.py:30"
+ ],
+ "_positive_int": [
+  "core/infrastructure/operation_execution_event_data_contract.py:48",
+  "core/models/scheduler_public_errors.py:175",
+  "core/services/scheduler/operation_execution_feedback_support.py:158",
+  "core/services/scheduler/operation_execution_scope_read.py:21",
+  "core/services/scheduler/resource_dispatch_execution_service.py:25",
+  "core/services/scheduler/run/auto_assign_resource_errors.py:114",
+  "core/services/scheduler/run/optimizer_graph_ready_v2_features.py:365",
+  "core/services/scheduler/run/optimizer_grasp_ig_specs.py:14",
+  "core/services/scheduler/run/schedule_operation_log_details.py:36",
+  "core/services/scheduler/run/schedule_persistence_errors.py:13",
+  "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_context.py:28",
+  "web/viewmodels/scheduler_resource_dispatch_execution.py:34"
+ ],
+ "_progress": [
+  "core/services/scheduler/run/optimizer_acceptance.py:324",
+  "tools/check_full_test_debt.py:62",
+  "tools/collect_full_test_debt.py:44"
+ ],
+ "_read_uploaded_xlsx": [
+  "web/routes/domains/scheduler/scheduler_utils.py:39",
+  "web/routes/equipment_bp.py:27",
+  "web/routes/personnel_bp.py:32",
+  "web/routes/process_bp.py:38"
+ ],
+ "_report_has_xfail_signal": [
+  "tools/collect_full_test_debt.py:708",
+  "tools/test_debt_registry.py:363",
+  "tools/verify_required_regressions_from_full_test_debt.py:89"
+ ],
+ "_request_arg": [
+  "web/navigation_context.py:46",
+  "web/request_resource_context.py:17",
+  "web/routes/dashboard.py:187"
+ ],
+ "_require_bool": [
+  "core/services/scheduler/graph/scoring.py:24",
+  "tools/check_full_test_debt.py:98",
+  "tools/test_debt_registry.py:144"
+ ],
+ "_require_int": [
+  "core/services/scheduler/graph/input_adapter.py:181",
+  "tools/check_full_test_debt.py:104",
+  "tools/quality_gate_ledger.py:210"
+ ],
+ "_require_text": [
+  "core/services/scheduler/graph/input_adapter.py:160",
+  "data/repositories/schedule_candidate_repo.py:78",
+  "tools/check_full_test_debt.py:92",
+  "tools/test_debt_registry.py:116"
+ ],
+ "_required_text": [
+  "core/infrastructure/operation_execution_event_data_contract.py:60",
+  "core/models/operation_execution_scope.py:24",
+  "core/models/resource_dispatch_execution_tokens.py:21",
+  "core/services/scheduler/gantt_adjustment_publish_service.py:178",
+  "core/services/scheduler/gantt_adjustment_scenario_service.py:24",
+  "core/services/scheduler/gantt_adjustment_validation_service.py:167",
+  "core/services/scheduler/operation_execution_feedback_support.py:118",
+  "data/repositories/operation_execution_event_repo.py:94"
+ ],
+ "_resource_identity": [
+  "core/services/scheduler/operation_execution_feedback_actions.py:27",
+  "data/repositories/operation_execution_state_aggregation.py:25",
+  "data/repositories/operation_execution_state_builder.py:143",
+  "web/viewmodels/scheduler_resource_dispatch_execution.py:43"
+ ],
+ "_safe_int": [
+  "core/services/scheduler/_sched_utils.py:6",
+  "web/bootstrap/launcher_stop.py:199",
+  "web/routes/system_utils.py:83",
+  "web/viewmodels/dashboard_workbench_shared.py:18"
+ ],
+ "_sha256_file": [
+  "scripts/run_quality_gate.py:349",
+  "tools/git_hook_cache.py:141",
+  "tools/long_gate_fingerprint.py:42",
+  "tools/long_gate_schema.py:35",
+  "tools/quality_gate_shared.py:915"
+ ],
+ "_text": [
+  "core/infrastructure/operation_execution_event_data_contract.py:32",
+  "core/models/resource_dispatch_execution_tokens.py:9",
+  "core/models/resource_identity.py:7",
+  "core/models/schedule_plan_role.py:27",
+  "core/models/schedule_resource_filter.py:45",
+  "core/services/common/enum_normalizers.py:26",
+  "core/services/common/normalization_matrix.py:72",
+  "core/services/report/report_degradation.py:10",
+  "core/services/scheduler/gantt_adjustment_draft_service.py:23",
+  "core/services/scheduler/gantt_adjustment_publish_service.py:174",
+  "core/services/scheduler/gantt_adjustment_scenario_service.py:20",
+  "core/services/scheduler/gantt_service_support.py:11",
+  "core/services/scheduler/gantt_task_labels.py:6",
+  "core/services/scheduler/operation_execution_feedback_support.py:109",
+  "core/services/scheduler/operation_execution_scope_read.py:17",
+  "core/services/scheduler/resource_dispatch_execution_service.py:21",
+  "core/services/scheduler/resource_dispatch_overdue.py:7",
+  "core/services/scheduler/resource_dispatch_rows.py:41",
+  "core/services/scheduler/resource_dispatch_service.py:54",
+  "core/services/scheduler/resource_dispatch_support.py:22",
+  "core/services/scheduler/resource_dispatch_task_ids.py:10",
+  "core/services/scheduler/run/optimizer_graph_ready_v2_capacity.py:413",
+  "core/services/scheduler/schedule_plan_identity_builder.py:20",
+  "core/services/scheduler/schedule_plan_option_display.py:12",
+  "core/services/scheduler/week_plan_excel.py:101",
+  "core/shared/boolean_normalize.py:11",
+  "web/navigation_context.py:42",
+  "web/public_token_registry.py:33",
+  "web/request_resource_context.py:13",
+  "web/routes/domains/scheduler/scheduler_resource_dispatch.py:53",
+  "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_context.py:24",
+  "web/routes/domains/scheduler/scheduler_week_plan_query.py:13",
+  "web/routes/reports_plan_template_fields.py:14",
+  "web/viewmodels/dashboard_cockpit_hero.py:27",
+  "web/viewmodels/dashboard_workbench_context.py:9",
+  "web/viewmodels/dashboard_workbench_data_gap.py:9",
+  "web/viewmodels/dashboard_workbench_shared.py:14",
+  "web/viewmodels/plan_context_capsule.py:16",
+  "web/viewmodels/scheduler_analysis_action_hub.py:21",
+  "web/viewmodels/scheduler_gantt_load_strip.py:24",
+  "web/viewmodels/scheduler_gantt_task_detail.py:10",
+  "web/viewmodels/scheduler_navigation_links.py:32",
+  "web/viewmodels/scheduler_plan_guardrail_messages.py:22",
+  "web/viewmodels/scheduler_report_values.py:7",
+  "web/viewmodels/scheduler_reports_workbench.py:19",
+  "web/viewmodels/scheduler_resource_dispatch.py:86",
+  "web/viewmodels/scheduler_resource_dispatch_execution.py:30",
+  "web/viewmodels/scheduler_workbench_link_labels.py:33",
+  "web/viewmodels/scheduler_workbench_link_query.py:127",
+  "web/viewmodels/scheduler_workbench_links.py:41"
+ ],
+ "_text_or_none": [
+  "core/models/operation_execution_event.py:65",
+  "core/models/schedule_adjustment.py:59",
+  "core/models/schedule_candidate.py:10",
+  "core/services/scheduler/gantt_adjustment_projection.py:197",
+  "data/repositories/operation_execution_event_repo.py:87"
+ ],
+ "_truncated": [
+  "core/services/scheduler/graph/resource_matching.py:220",
+  "core/services/scheduler/run/schedule_graph_projection_helpers.py:10",
+  "core/services/scheduler/run/schedule_graph_report.py:369"
+ ],
+ "_validate_fields": [
+  "core/services/personnel/resource_team_service.py:25",
+  "core/services/process/op_type_service.py:28",
+  "core/services/process/supplier_service.py:55"
+ ],
+ "add": [
+  "core/shared/degradation.py:63",
+  "data/repositories/batch_material_repo.py:83",
+  "data/repositories/operator_machine_repo.py:125"
+ ],
+ "add_calendar_days": [
+  "core/services/scheduler/calendar_engine.py:339",
+  "core/services/scheduler/calendar_service.py:240",
+  "core/services/scheduler/run/optimizer_proof_oracle.py:45"
+ ],
+ "add_link": [
+  "core/services/personnel/operator_machine_service.py:296",
+  "web/routes/equipment_pages.py:364",
+  "web/routes/personnel_pages.py:264"
+ ],
+ "add_working_hours": [
+  "core/services/scheduler/calendar_engine.py:271",
+  "core/services/scheduler/calendar_service.py:230",
+  "core/services/scheduler/run/optimizer_proof_oracle.py:39"
+ ],
+ "adjust_to_working_time": [
+  "core/services/scheduler/calendar_engine.py:238",
+  "core/services/scheduler/calendar_service.py:221",
+  "core/services/scheduler/run/optimizer_proof_oracle.py:36"
+ ],
+ "apply_preview_rows": [
+  "core/services/equipment/machine_excel_import_service.py:49",
+  "core/services/personnel/operator_excel_import_service.py:33",
+  "core/services/process/op_type_excel_import_service.py:40",
+  "core/services/process/part_operation_hours_excel_import_service.py:60",
+  "core/services/process/supplier_excel_import_service.py:56"
+ ],
+ "available": [
+  "tools/symbol_locator/jedi_resolver.py:17",
+  "web/bootstrap/runtime_capabilities.py:22",
+  "web/bootstrap/runtime_capabilities.py:34"
+ ],
+ "build_algo_operations": [
+  "core/services/scheduler/run/schedule_input_builder.py:301",
+  "core/services/scheduler/run/schedule_input_builder.py:312",
+  "core/services/scheduler/run/schedule_input_builder.py:322"
+ ],
+ "build_arg_parser": [
+  "tools/scan_anti_regression_gate.py:145",
+  "tools/scan_aps_three_gap_py38_scope.py:39",
+  "tools/scan_py38plus_syntax.py:624"
+ ],
+ "build_existing_for_excel": [
+  "core/services/equipment/machine_service.py:261",
+  "core/services/personnel/operator_service.py:246",
+  "core/services/process/op_type_service.py:161",
+  "core/services/process/supplier_service.py:204"
+ ],
+ "builtin_presets": [
+  "core/services/scheduler/config/config_bootstrap_service.py:36",
+  "core/services/scheduler/config/config_preset_service.py:44",
+  "core/services/scheduler/config/config_presets.py:56"
+ ],
+ "count": [
+  "data/repositories/batch_repo.py:69",
+  "data/repositories/material_repo.py:43",
+  "data/repositories/operator_repo.py:54"
+ ],
+ "create": [
+  "core/algorithms/sort_strategies.py:143",
+  "core/services/equipment/machine_downtime_service.py:91",
+  "core/services/equipment/machine_service.py:148",
+  "core/services/material/material_service.py:63",
+  "core/services/personnel/operator_service.py:137",
+  "core/services/personnel/resource_team_service.py:121",
+  "core/services/process/op_type_service.py:98",
+  "core/services/process/part_service.py:138",
+  "core/services/process/supplier_service.py:116",
+  "core/services/scheduler/batch_service.py:207",
+  "data/repositories/batch_operation_repo.py:38",
+  "data/repositories/batch_repo.py:109",
+  "data/repositories/external_group_repo.py:29",
+  "data/repositories/machine_downtime_repo.py:170",
+  "data/repositories/machine_repo.py:52",
+  "data/repositories/material_repo.py:48",
+  "data/repositories/op_type_repo.py:39",
+  "data/repositories/operation_log_repo.py:54",
+  "data/repositories/operator_repo.py:62",
+  "data/repositories/part_operation_repo.py:76",
+  "data/repositories/part_repo.py:32",
+  "data/repositories/resource_team_repo.py:72",
+  "data/repositories/schedule_history_repo.py:132",
+  "data/repositories/schedule_repo.py:107",
+  "data/repositories/supplier_repo.py:36"
+ ],
+ "delete": [
+  "core/services/equipment/machine_service.py:243",
+  "core/services/material/material_service.py:131",
+  "core/services/personnel/operator_service.py:208",
+  "core/services/personnel/resource_team_service.py:181",
+  "core/services/process/op_type_service.py:139",
+  "core/services/process/part_service.py:215",
+  "core/services/process/supplier_service.py:184",
+  "core/services/scheduler/batch_service.py:308",
+  "core/services/scheduler/calendar_admin.py:320",
+  "core/services/scheduler/calendar_service.py:96",
+  "data/repositories/batch_material_repo.py:132",
+  "data/repositories/batch_operation_repo.py:123",
+  "data/repositories/batch_repo.py:182",
+  "data/repositories/calendar_repo.py:63",
+  "data/repositories/config_repo.py:83",
+  "data/repositories/external_group_repo.py:89",
+  "data/repositories/machine_repo.py:91",
+  "data/repositories/material_repo.py:97",
+  "data/repositories/op_type_repo.py:67",
+  "data/repositories/operator_calendar_repo.py:77",
+  "data/repositories/operator_machine_repo.py:155",
+  "data/repositories/operator_repo.py:101",
+  "data/repositories/part_operation_repo.py:158",
+  "data/repositories/part_repo.py:62",
+  "data/repositories/resource_team_repo.py:101",
+  "data/repositories/schedule_repo.py:141",
+  "data/repositories/supplier_repo.py:78",
+  "data/repositories/system_config_repo.py:55"
+ ],
+ "delete_all": [
+  "data/repositories/batch_repo.py:185",
+  "data/repositories/calendar_repo.py:66",
+  "data/repositories/machine_repo.py:94",
+  "data/repositories/op_type_repo.py:70",
+  "data/repositories/operator_calendar_repo.py:80",
+  "data/repositories/operator_machine_repo.py:150",
+  "data/repositories/operator_repo.py:104",
+  "data/repositories/part_repo.py:65",
+  "data/repositories/supplier_repo.py:81"
+ ],
+ "delete_all_no_tx": [
+  "core/services/process/part_service.py:229",
+  "core/services/scheduler/batch_service.py:316",
+  "core/services/scheduler/calendar_admin.py:325",
+  "core/services/scheduler/calendar_service.py:100"
+ ],
+ "due_exclusive": [
+  "core/algorithms/greedy/date_parsers.py:46",
+  "core/services/common/overdue_calculations.py:21",
+  "core/services/scheduler/summary/summary_runtime_state.py:18"
+ ],
+ "ensure_defaults": [
+  "core/services/scheduler/config/config_bootstrap_service.py:103",
+  "core/services/scheduler/config/config_service.py:214",
+  "core/services/system/system_config_service.py:169"
+ ],
+ "ensure_replace_allowed": [
+  "core/services/equipment/machine_service.py:287",
+  "core/services/personnel/operator_service.py:264",
+  "core/services/process/op_type_service.py:172",
+  "core/services/process/supplier_service.py:229"
+ ],
+ "execute_preview_rows_transactional": [
+  "core/services/common/excel_import_executor.py:121",
+  "web/bootstrap/request_services.py:283",
+  "web/routes/domains/scheduler/scheduler_excel_calendar.py:70"
+ ],
+ "exists": [
+  "data/repositories/batch_material_repo.py:27",
+  "data/repositories/machine_repo.py:49",
+  "data/repositories/material_repo.py:20",
+  "data/repositories/operator_machine_repo.py:20",
+  "data/repositories/operator_repo.py:59",
+  "data/repositories/resource_team_repo.py:69"
+ ],
+ "from_row": [
+  "core/models/batch.py:26",
+  "core/models/batch_material.py:20",
+  "core/models/batch_operation.py:79",
+  "core/models/calendar.py:31",
+  "core/models/calendar.py:96",
+  "core/models/config.py:18",
+  "core/models/external_group.py:23",
+  "core/models/machine.py:23",
+  "core/models/machine_downtime.py:33",
+  "core/models/material.py:22",
+  "core/models/op_type.py:20",
+  "core/models/operation_execution_event.py:283",
+  "core/models/operation_log.py:24",
+  "core/models/operator.py:21",
+  "core/models/operator_machine.py:20",
+  "core/models/part.py:21",
+  "core/models/part_operation.py:56",
+  "core/models/resource_team.py:20",
+  "core/models/schedule.py:38",
+  "core/models/schedule_adjustment.py:80",
+  "core/models/schedule_adjustment.py:119",
+  "core/models/schedule_adjustment.py:170",
+  "core/models/schedule_adjustment.py:218",
+  "core/models/schedule_candidate.py:47",
+  "core/models/schedule_candidate.py:96",
+  "core/models/schedule_candidate.py:124",
+  "core/models/schedule_history.py:22",
+  "core/models/supplier.py:21",
+  "core/models/system_config.py:18",
+  "core/models/system_job_state.py:18"
+ ],
+ "get": [
+  "core/models/_helpers.py:19",
+  "core/plugins/registry.py:53",
+  "core/services/equipment/machine_downtime_service.py:78",
+  "core/services/equipment/machine_service.py:133",
+  "core/services/material/material_service.py:54",
+  "core/services/personnel/operator_service.py:112",
+  "core/services/personnel/resource_team_service.py:76",
+  "core/services/process/op_type_service.py:68",
+  "core/services/process/part_service.py:132",
+  "core/services/process/supplier_service.py:101",
+  "core/services/scheduler/batch_service.py:201",
+  "core/services/scheduler/calendar_service.py:54",
+  "core/services/scheduler/config/config_read_service.py:69",
+  "core/services/scheduler/config/config_service.py:269",
+  "core/services/system/system_job_state_query_service.py:18",
+  "data/repositories/batch_material_repo.py:20",
+  "data/repositories/batch_operation_repo.py:13",
+  "data/repositories/batch_repo.py:13",
+  "data/repositories/calendar_repo.py:13",
+  "data/repositories/config_repo.py:23",
+  "data/repositories/external_group_repo.py:15",
+  "data/repositories/machine_downtime_repo.py:14",
+  "data/repositories/machine_repo.py:14",
+  "data/repositories/material_repo.py:13",
+  "data/repositories/op_type_repo.py:13",
+  "data/repositories/operation_log_repo.py:13",
+  "data/repositories/operator_calendar_repo.py:13",
+  "data/repositories/operator_machine_repo.py:13",
+  "data/repositories/operator_repo.py:14",
+  "data/repositories/part_operation_repo.py:13",
+  "data/repositories/part_repo.py:13",
+  "data/repositories/resource_team_repo.py:11",
+  "data/repositories/schedule_history_repo.py:25",
+  "data/repositories/schedule_repo.py:23",
+  "data/repositories/supplier_repo.py:13",
+  "data/repositories/system_config_repo.py:13",
+  "data/repositories/system_job_state_repo.py:13"
+ ],
+ "get_available_strategies": [
+  "core/algorithms/sort_strategies.py:157",
+  "core/services/scheduler/config/config_read_service.py:119",
+  "core/services/scheduler/config/config_service.py:283"
+ ],
+ "get_efficiency": [
+  "core/services/scheduler/calendar_engine.py:235",
+  "core/services/scheduler/calendar_service.py:218",
+  "core/services/scheduler/run/optimizer_proof_oracle.py:42"
+ ],
+ "get_external_merge_hint": [
+  "core/services/scheduler/operation_edit_service.py:47",
+  "core/services/scheduler/schedule_service.py:148",
+  "web/routes/domains/scheduler/scheduler_batch_detail.py:31"
+ ],
+ "get_name": [
+  "core/algorithms/sort_strategies.py:45",
+  "core/algorithms/sort_strategies.py:61",
+  "core/algorithms/sort_strategies.py:78",
+  "core/algorithms/sort_strategies.py:114",
+  "core/algorithms/sort_strategies.py:128"
+ ],
+ "get_optional": [
+  "core/services/equipment/machine_service.py:139",
+  "core/services/personnel/operator_service.py:123",
+  "core/services/personnel/resource_team_service.py:82",
+  "core/services/process/op_type_service.py:74",
+  "core/services/process/supplier_service.py:107"
+ ],
+ "get_snapshot": [
+  "core/services/scheduler/config/config_read_service.py:72",
+  "core/services/scheduler/config/config_service.py:286",
+  "core/services/system/system_config_service.py:194"
+ ],
+ "get_value": [
+  "core/services/system/system_config_service.py:201",
+  "data/repositories/config_repo.py:30",
+  "data/repositories/system_config_repo.py:20"
+ ],
+ "index": [
+  "web/routes/dashboard.py:342",
+  "web/routes/excel_demo.py:89",
+  "web/routes/material.py:17",
+  "web/routes/reports.py:20",
+  "web/routes/system_backup.py:75"
+ ],
+ "list": [
+  "core/services/equipment/machine_service.py:105",
+  "core/services/material/material_service.py:43",
+  "core/services/personnel/operator_service.py:70",
+  "core/services/personnel/resource_team_service.py:57",
+  "core/services/process/op_type_service.py:60",
+  "core/services/process/part_service.py:102",
+  "core/services/process/supplier_service.py:89",
+  "core/services/scheduler/batch_service.py:120",
+  "data/repositories/batch_repo.py:46",
+  "data/repositories/machine_repo.py:21",
+  "data/repositories/material_repo.py:30",
+  "data/repositories/op_type_repo.py:27",
+  "data/repositories/operator_repo.py:35",
+  "data/repositories/part_repo.py:20",
+  "data/repositories/resource_team_repo.py:25",
+  "data/repositories/supplier_repo.py:20"
+ ],
+ "list_all": [
+  "core/services/scheduler/calendar_admin.py:274",
+  "core/services/scheduler/calendar_service.py:59",
+  "data/repositories/calendar_repo.py:20",
+  "data/repositories/config_repo.py:38",
+  "data/repositories/operator_calendar_repo.py:36",
+  "data/repositories/system_config_repo.py:38",
+  "data/repositories/system_job_state_repo.py:20"
+ ],
+ "list_by_machine": [
+  "core/services/equipment/machine_downtime_service.py:71",
+  "core/services/personnel/operator_machine_service.py:290",
+  "data/repositories/machine_downtime_repo.py:26",
+  "data/repositories/operator_machine_repo.py:35",
+  "data/repositories/schedule_repo.py:94"
+ ],
+ "list_by_operator": [
+  "core/services/personnel/operator_machine_service.py:284",
+  "data/repositories/operator_calendar_repo.py:24",
+  "data/repositories/operator_machine_repo.py:28"
+ ],
+ "list_by_part": [
+  "core/services/process/external_group_service.py:44",
+  "data/repositories/external_group_repo.py:22",
+  "data/repositories/part_operation_repo.py:20"
+ ],
+ "list_for_export": [
+  "core/services/equipment/machine_service.py:281",
+  "data/repositories/machine_repo.py:127",
+  "data/repositories/supplier_repo.py:84"
+ ],
+ "list_page": [
+  "core/services/material/material_service.py:46",
+  "core/services/personnel/operator_service.py:85",
+  "core/services/scheduler/batch_service.py:139",
+  "web/routes/equipment_pages.py:120",
+  "web/routes/personnel_pages.py:90"
+ ],
+ "list_presets": [
+  "core/services/scheduler/config/config_preset_service.py:60",
+  "core/services/scheduler/config/config_read_service.py:473",
+  "core/services/scheduler/config/config_service.py:257"
+ ],
+ "list_range": [
+  "core/services/scheduler/calendar_admin.py:277",
+  "core/services/scheduler/calendar_service.py:62",
+  "data/repositories/calendar_repo.py:26"
+ ],
+ "list_recent": [
+  "core/services/scheduler/schedule_history_query_service.py:18",
+  "core/services/system/operation_log_service.py:20",
+  "data/repositories/operation_log_repo.py:20",
+  "data/repositories/schedule_history_repo.py:32"
+ ],
+ "list_versions": [
+  "core/services/report/report_plan_helpers.py:22",
+  "core/services/scheduler/schedule_history_query_service.py:21",
+  "data/repositories/schedule_history_repo.py:109"
+ ],
+ "main": [
+  "desktop/gantt/run_pyqt_poc.py:12",
+  "scripts/convert_rotary_shell_unit_excel.py:64",
+  "scripts/run_daily_quality_gate.py:708",
+  "scripts/run_quality_gate.py:2964",
+  "scripts/sync_debt_ledger.py:392",
+  "tools/benchmark_full_test_debt_shards.py:114",
+  "tools/capture_networkx_phase0_baseline.py:144",
+  "tools/check_full_test_debt.py:613",
+  "tools/collect_full_test_debt.py:806",
+  "tools/fast_static_precheck.py:268",
+  "tools/git_hook_checks.py:491",
+  "tools/long_gate_manifest.py:1179",
+  "tools/quality_gate_scan.py:1041",
+  "tools/report_full_test_debt_durations.py:116",
+  "tools/scan_anti_regression_gate.py:152",
+  "tools/scan_aps_three_gap_py38_scope.py:48",
+  "tools/scan_dead_code_islands.py:139",
+  "tools/scan_import_cycles.py:341",
+  "tools/scan_py38plus_syntax.py:641",
+  "tools/symbol_locator/cli.py:72",
+  "tools/verify_required_regressions_from_full_test_debt.py:265"
+ ],
+ "normalize_preset_snapshot": [
+  "core/services/scheduler/config/config_preset_service.py:202",
+  "core/services/scheduler/config/config_presets.py:182",
+  "core/services/scheduler/config/config_validator.py:77"
+ ],
+ "normalize_repo_path": [
+  "tools/fast_static_precheck.py:63",
+  "tools/git_hook_cache.py:87",
+  "tools/scan_py38plus_syntax.py:148"
+ ],
+ "ok": [
+  "web/bootstrap/launcher_cleanup_result.py:49",
+  "web/bootstrap/launcher_contract_result.py:29",
+  "web/bootstrap/launcher_lock_result.py:29"
+ ],
+ "parse": [
+  "core/services/process/part_service.py:259",
+  "core/services/process/route_parser.py:134",
+  "core/services/process/unit_excel/parser.py:58"
+ ],
+ "parse_dt": [
+  "core/services/common/overdue_calculations.py:7",
+  "core/services/report/calculation_helpers.py:9",
+  "core/services/scheduler/_sched_display_utils.py:11"
+ ],
+ "parse_finite_float": [
+  "core/services/common/number_utils.py:17",
+  "core/services/common/number_utils.py:22",
+  "core/services/common/number_utils.py:26",
+  "core/shared/number_utils.py:14",
+  "core/shared/number_utils.py:19",
+  "core/shared/number_utils.py:23"
+ ],
+ "parse_finite_int": [
+  "core/services/common/number_utils.py:34",
+  "core/services/common/number_utils.py:39",
+  "core/services/common/number_utils.py:43",
+  "core/shared/number_utils.py:30",
+  "core/shared/number_utils.py:35",
+  "core/shared/number_utils.py:39"
+ ],
+ "read": [
+  "core/services/common/openpyxl_backend.py:121",
+  "core/services/common/pandas_backend.py:99",
+  "core/services/common/tabular_backend.py:20"
+ ],
+ "register": [
+  "core/plugins/registry.py:33",
+  "plugins/ortools_probe_plugin.py:18",
+  "plugins/pandas_backend_plugin.py:33",
+  "web/routes/domains/scheduler/scheduler_bp.py:13"
+ ],
+ "remove_link": [
+  "core/services/personnel/operator_machine_service.py:326",
+  "web/routes/equipment_pages.py:389",
+  "web/routes/personnel_pages.py:290"
+ ],
+ "run": [
+  "core/infrastructure/migrations/v1.py:9",
+  "core/infrastructure/migrations/v10.py:86",
+  "core/infrastructure/migrations/v11.py:19",
+  "core/infrastructure/migrations/v12.py:54",
+  "core/infrastructure/migrations/v13.py:59",
+  "core/infrastructure/migrations/v14.py:15",
+  "core/infrastructure/migrations/v15.py:72",
+  "core/infrastructure/migrations/v16.py:45",
+  "core/infrastructure/migrations/v17.py:14",
+  "core/infrastructure/migrations/v18.py:26",
+  "core/infrastructure/migrations/v19.py:36",
+  "core/infrastructure/migrations/v2.py:8",
+  "core/infrastructure/migrations/v3.py:8",
+  "core/infrastructure/migrations/v4.py:22",
+  "core/infrastructure/migrations/v5.py:24",
+  "core/infrastructure/migrations/v6.py:21",
+  "core/infrastructure/migrations/v7.py:21",
+  "core/infrastructure/migrations/v8.py:111",
+  "core/infrastructure/migrations/v9.py:99"
+ ],
+ "safe_float": [
+  "web/viewmodels/scheduler_analysis_diagnostic_helpers.py:144",
+  "web/viewmodels/scheduler_analysis_metrics.py:13",
+  "web/viewmodels/scheduler_analysis_trends.py:21"
+ ],
+ "set_status": [
+  "core/services/equipment/machine_service.py:240",
+  "core/services/personnel/operator_service.py:205",
+  "web/routes/equipment_pages.py:269",
+  "web/routes/personnel_pages.py:166"
+ ],
+ "sort": [
+  "core/algorithms/sort_strategies.py:41",
+  "core/algorithms/sort_strategies.py:52",
+  "core/algorithms/sort_strategies.py:68",
+  "core/algorithms/sort_strategies.py:96",
+  "core/algorithms/sort_strategies.py:121"
+ ],
+ "to_dict": [
+  "core/algorithms/evaluation.py:65",
+  "core/infrastructure/errors.py:84",
+  "core/models/batch.py:47",
+  "core/models/batch_material.py:31",
+  "core/models/batch_operation.py:100",
+  "core/models/calendar.py:58",
+  "core/models/calendar.py:124",
+  "core/models/config.py:28",
+  "core/models/external_group.py:48",
+  "core/models/machine.py:41",
+  "core/models/machine_downtime.py:56",
+  "core/models/material.py:37",
+  "core/models/op_type.py:31",
+  "core/models/operation_execution_event.py:335",
+  "core/models/operation_execution_state.py:60",
+  "core/models/operation_log.py:40",
+  "core/models/operator.py:36",
+  "core/models/operator_machine.py:33",
+  "core/models/part.py:32",
+  "core/models/part_operation.py:86",
+  "core/models/resource_identity.py:28",
+  "core/models/resource_team.py:33",
+  "core/models/schedule.py:58",
+  "core/models/schedule_adjustment.py:95",
+  "core/models/schedule_adjustment.py:139",
+  "core/models/schedule_adjustment.py:197",
+  "core/models/schedule_adjustment.py:235",
+  "core/models/schedule_candidate.py:78",
+  "core/models/schedule_candidate.py:110",
+  "core/models/schedule_candidate.py:134",
+  "core/models/schedule_config_runtime_snapshot.py:41",
+  "core/models/schedule_delay_diagnosis.py:14",
+  "core/models/schedule_delay_diagnosis.py:27",
+  "core/models/schedule_delay_diagnosis.py:46",
+  "core/models/schedule_delay_diagnosis.py:70",
+  "core/models/schedule_delay_diagnosis.py:98",
+  "core/models/schedule_delay_diagnosis.py:136",
+  "core/models/schedule_delay_diagnosis.py:176",
+  "core/models/schedule_history.py:40",
+  "core/models/schedule_plan_identity.py:46",
+  "core/models/schedule_plan_identity.py:176",
+  "core/models/schedule_plan_resolution.py:24",
+  "core/models/schedule_plan_resolution.py:64",
+  "core/models/supplier.py:36",
+  "core/models/system_config.py:28",
+  "core/models/system_job_state.py:28",
+  "core/plugins/manager.py:35",
+  "core/plugins/registry.py:56",
+  "core/services/common/excel_import_executor.py:20",
+  "core/services/process/part_operation_hours_excel_import_service.py:39",
+  "core/services/process/route_parser.py:53",
+  "core/services/process/route_parser.py:79",
+  "core/services/process/route_parser_segments.py:18",
+  "core/services/scheduler/config/config_page_outcome.py:189",
+  "core/services/scheduler/config/config_snapshot.py:58",
+  "core/services/scheduler/gantt_adjustment_projection.py:21",
+  "core/services/scheduler/gantt_adjustment_publish_service.py:54",
+  "core/services/scheduler/gantt_contract.py:95",
+  "core/services/scheduler/run/schedule_candidate_health.py:30",
+  "core/services/scheduler/run/schedule_candidate_selection.py:30",
+  "core/services/scheduler/run/schedule_summary_contract.py:13",
+  "core/services/scheduler/schedule_result_view_context.py:43",
+  "core/services/scheduler/version_resolution.py:19",
+  "core/services/system/system_config_service.py:64"
+ ],
+ "to_report_dict": [
+  "core/services/scheduler/run/optimizer_acceptance.py:43",
+  "core/services/scheduler/run/optimizer_candidate_fingerprint.py:32",
+  "core/services/scheduler/run/optimizer_candidate_profile.py:246",
+  "core/services/scheduler/run/optimizer_neighborhood_moves.py:68"
+ ],
+ "update": [
+  "core/services/equipment/machine_service.py:189",
+  "core/services/material/material_service.py:93",
+  "core/services/personnel/operator_service.py:172",
+  "core/services/personnel/resource_team_service.py:152",
+  "core/services/process/op_type_service.py:115",
+  "core/services/process/part_service.py:193",
+  "core/services/process/supplier_service.py:149",
+  "core/services/scheduler/batch_service.py:254",
+  "core/services/scheduler/graph/types.py:31",
+  "data/repositories/batch_operation_repo.py:67",
+  "data/repositories/batch_repo.py:132",
+  "data/repositories/external_group_repo.py:50",
+  "data/repositories/machine_downtime_repo.py:193",
+  "data/repositories/machine_repo.py:60",
+  "data/repositories/material_repo.py:64",
+  "data/repositories/op_type_repo.py:47",
+  "data/repositories/operator_repo.py:70",
+  "data/repositories/part_operation_repo.py:101",
+  "data/repositories/part_repo.py:40",
+  "data/repositories/resource_team_repo.py:80",
+  "data/repositories/supplier_repo.py:44"
+ ],
+ "upsert": [
+  "core/services/scheduler/calendar_admin.py:282",
+  "core/services/scheduler/calendar_service.py:65",
+  "data/repositories/calendar_repo.py:33",
+  "data/repositories/operator_calendar_repo.py:46"
+ ],
+ "write": [
+  "core/services/common/openpyxl_backend.py:144",
+  "core/services/common/pandas_backend.py:133",
+  "core/services/common/tabular_backend.py:24"
+ ]
+}

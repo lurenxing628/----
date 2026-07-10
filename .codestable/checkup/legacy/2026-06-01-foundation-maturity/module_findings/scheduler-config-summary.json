@@ -1,0 +1,148 @@
+{
+ "key": "scheduler-config-summary",
+ "partition": "配置与汇总子包 (core/services/scheduler/config/ + summary/ + 顶层 config_*/schedule_summary* 壳)",
+ "score": 4,
+ "design": "本分区是排产系统的\"配置读写校验快照\"与\"二级输出汇总装配\"两条骨架，内部工程质量是全系统标杆。config/ 子包以 ConfigService 为稳定 facade（config_service.py:80），构造期显式注入 7 个单一职责协作者（uow/active_preset/bootstrap/preset/read/mutation/page_save），每个协作者 docstring 明确声明\"不回调 facade\"，依赖单向。全部配置字段元数据收口于唯一真值表 _FIELD_SPECS（config_field_spec.py:88），defaults/choices/labels/coercion/page_metadata 及 config_constants 的所有 DEFAULT_*/VALID_* 都从该表派生——新增一个配置项=加一条 ConfigFieldSpec。校验/降级引擎（config_field_coercion.py）按 enum/yes_no/float/int 分派，strict_mode 抛错、非严格走 DegradationCollector 收集，职责清晰；config_field_spec↔config_field_coercion 的循环依赖用函数体内惰性 import 干净化解。summary/ 子包是一条纪律严明的装配流水线：build_result_summary（schedule_summary.py:101）编排约 12 个单一用途 state builder（runtime/warning/freeze/fallback/downtime/degradation），各自产出冻结 dataclass，最后过 summary_size_guard 分级裁剪，并严格区分 public 与 diagnostic 投影（optimizer_public_summary.py）。真正的债不在子包内部，而在边界：整个 ScheduleConfigSnapshot+coercion 栈被在 core/models/ 平行复制了一份（算法层用 models 版、run/summary/web 用 config 版，两栈零交叉引用，已在静默漂移）；config_snapshot.py 内部还存在两个近 110 行的孪生构建器，以及若干死函数/死分支/死 re-export。注意 summary_assembly.py/summary_types.py 正被在途\"资源派工执行事实\"特性改动（execution_snapshot 字段），结构性重构需避让。",
+ "chains": [
+  "配置读快照: ConfigService.get_snapshot (config_service.py:373) -> ConfigReadService.get_snapshot (config_read_service.py:72) -> ConfigPresetService.get_snapshot_from_repo (config_preset_service.py:51) -> config_presets.get_snapshot_from_repo (config_presets.py:159) -> build_schedule_config_snapshot (config_snapshot.py:349) -> coerce_config_field 循环 (config_field_coercion.py:315)",
+  "配置页保存: ConfigService.save_page_config (config_service.py:396) -> ConfigPageSaveService.save_page_config (config_page_save_service.py:279) -> normalize_payload+ensure_schedule_config_snapshot (config_snapshot.py:336) + build_write_plan (config_page_save_service.py:204) -> uow.repo.set_batch",
+  "算法层运行期快照(平行孪生): greedy/config_adapter.py:17 -> core.models.schedule_config_runtime.ensure_schedule_config_snapshot -> schedule_config_runtime_coercion.py:409 (与 config_snapshot.py:336 完全平行的第二实现)",
+  "汇总装配: schedule_service.py:333 build_result_summary_fn -> summary/schedule_summary.py:101 build_result_summary -> ensure_schedule_config_snapshot(config_snapshot.py:336) + _build_runtime_state/_build_freeze_state/_summary_degradation_state -> _build_result_summary_obj (schedule_summary_assembly.py:397) -> apply_summary_size_guard (summary_size_guard.py:262)",
+  "方案应用: ConfigService.apply_preset (config_service.py:350) -> ConfigPresetService.apply_preset (config_preset_service.py:218) -> normalize_preset_snapshot (config_validator.py:77) + snapshot_diff_fields (config_presets.py:101) + active_preset_updates -> tx set_batch",
+  "来源溯源: ConfigReadService.get_preset_display_state (config_read_service.py:381) -> ActivePresetService.provenance_state_from_rows (active_preset_service.py:137) -> active_preset_provenance.parse_active_preset_meta (active_preset_provenance.py:102)"
+ ],
+ "good": [
+  "ConfigService 是全系统依赖注入的范本：facade 在 __init__ 显式装配 7 个单一职责协作者(uow/active/bootstrap/preset/read/mutation/page_save)，每个协作者 docstring 声明'不回调 facade'，依赖严格单向、可独立测试 (config_service.py:141-174)",
+  "配置字段单一真值源：_FIELD_SPECS 表 (config_field_spec.py:88) 驱动 default/choices/label/coercion/page_metadata，config_constants 的全部 DEFAULT_*/VALID_* 也从 default_for/choices_for 派生——新增字段只动一处",
+  "circular import 处理干净专业：config_field_spec 对 config_field_coercion 的反向依赖用函数体内惰性 import 化解 (config_field_spec.py:462-490)，而非靠模块拆分硬拗",
+  "summary 装配是纪律严明的流水线：build_result_summary 编排约12个单一用途 state builder，各自产出冻结 dataclass(RuntimeState/WarningState/FreezeState/FallbackState)，public 与 diagnostic 投影严格分离(optimizer_public_summary.project_public_algo_summary)；summary_size_guard 的分级截断引擎(9档 tier+诊断丢弃序列)考虑周到、可读性高"
+ ],
+ "findings": [
+  {
+   "severity": "high",
+   "category": "重复",
+   "title": "整个 ScheduleConfigSnapshot+coercion+validation 栈在 core/models/ 被平行复制一份，两栈零共享、已在静默漂移",
+   "evidence": [
+    "core/services/scheduler/config/config_snapshot.py:24 (ScheduleConfigSnapshot, 27字段)",
+    "core/models/schedule_config_runtime_snapshot.py:8 (字段完全一致的第二份 ScheduleConfigSnapshot)",
+    "core/services/scheduler/config/config_snapshot.py:336 ensure_schedule_config_snapshot vs core/models/schedule_config_runtime_coercion.py:409 同名同构第二实现",
+    "core/services/scheduler/config/config_field_coercion.py:103 _handle_missing_value 返回 Tuple[bool,Any] vs core/models/schedule_config_runtime_coercion.py:61 同名函数返回 Any（签名已漂移）",
+    "算法层只 import models 版: core/algorithms/greedy/config_adapter.py:6；run/summary/web 只 import config 版: core/services/scheduler/run/optimizer_config.py:11、summary/schedule_summary.py:8",
+    "grep 实证: 两栈互不 import（config 子包不引 models twin，models twin 不引 scheduler.config）"
+   ],
+   "problem": "同一个27字段配置快照及其字段表、权重归一、降级校验引擎存在两份独立实现。算法层因分层红线(algorithms↛services)无法引用 config 子包，于是 models/ 下复制了一份；但复制是整栈全量复制而非抽公共核心。两份 to_dict 对 graph_downstream_weight 的处理写法已不同(config 用 helper 函数、models 行内三元)，_handle_missing_value 签名已不同——证明两栈在各自演化。",
+   "impact": "改一处忘改另一处不报错：新增/修改配置字段、调整校验规则、改降级文案，必须同步改两(实为三，含 config_snapshot 内孪生)处27字段构建块，否则算法层与汇总层对同一份 cfg 解读出不同快照，静默串数据。这是地基级正确性隐患。",
+   "fix_hint": "把纯计算的字段表+coercion+weights 抽到 core/models 或 core/shared 的单一纯函数模块(算法层可依赖)，让 config 子包的快照构建薄薄地复用它，删除 config_snapshot.py 内的重复 coercion/字段读取实现。先写一个对拍测试断言两栈对同一输入产出 byte 级一致的快照，再合并。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "high",
+   "category": "重复",
+   "title": "config_snapshot.py 内 build_schedule_config_snapshot 与 _build_..._from_runtime_cfg 是近110行孪生构建器",
+   "evidence": [
+    "core/services/scheduler/config/config_snapshot.py:232 _build_schedule_config_snapshot_from_runtime_cfg",
+    "core/services/scheduler/config/config_snapshot.py:349 build_schedule_config_snapshot",
+    "两者 272-309 与 427-461 的 27字段 ScheduleConfigSnapshot(...) 构建块逐字段一致",
+    "两者 strict 预校验循环(241-244 vs 387-401)、coerce 循环(249-260 vs 404-415)、权重三元归一(261-270 vs 416-425)结构相同"
+   ],
+   "problem": "两个函数唯一实质差异是原始值来源不同：一个从 runtime cfg 的属性/dict 读(_read_runtime_cfg_raw_value)，一个从 repo.get/get_value 读(_read_repo_raw_value)。其余约90行(预校验、coerce、权重归一、27字段构造)完全复制粘贴。",
+   "impact": "新增配置字段要在同文件改两处一模一样的27字段构造块（叠加 finding#1 的 models twin 共三处）；任一处漏改，repo 路径与 runtime 路径产出的快照字段不一致，且不报错。",
+   "fix_hint": "抽 _build_snapshot_from_values(values, collector, cfg_for_counters) 收口27字段构造与权重归一；再抽 raw_value_reader 为参数(callable)，两个公开函数只负责提供各自的 reader 后调用同一核心。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "死代码",
+   "title": "config/config_snapshot.py 的 coerce_runtime_config_field 是无人调用的孤儿副本",
+   "evidence": [
+    "core/services/scheduler/config/config_snapshot.py:312 def coerce_runtime_config_field",
+    "grep 全仓(prod+tests)：该 config 路径副本零调用",
+    "真正被调用的是 models 孪生 core/models/schedule_config_runtime_coercion.py:484，消费方 core/algorithms/greedy/schedule_params.py:108,128"
+   ],
+   "problem": "config 子包里这份 coerce_runtime_config_field 从未被任何生产代码或测试 import；它与 models twin 同名同义，是整栈复制(finding#1)时一起复制进来、但消费方全部指向 models 版而被遗落的死副本。",
+   "impact": "占行、误导维护者以为 config 子包负责 runtime 字段强制；与 models 版并存进一步放大'同名函数静默漂移'风险。",
+   "fix_hint": "确认 grep 无调用后直接删除 config_snapshot.py:312-333；ensure_schedule_config_snapshot(同文件)仍被 run/summary 大量使用，保留。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "ConfigPresetService.list_presets 及其内联预案行收集逻辑是死代码，与 ConfigReadService 重复",
+   "evidence": [
+    "core/services/scheduler/config/config_preset_service.py:60 list_presets(含61-92内联 builtin+custom 合并)",
+    "core/services/scheduler/config/config_read_service.py:141 collect_preset_rows + :153 build_preset_entries(同语义)",
+    "facade 实际路由: config_service.py:339 -> read_service.list_presets()",
+    "grep 实证: preset_service.list_presets 零调用"
+   ],
+   "problem": "'合并内置方案行+自定义方案行→列表'的逻辑在 ConfigPresetService 和 ConfigReadService 各实现一遍；facade 的 list_presets 只走 read_service，ConfigPresetService.list_presets 无任何调用方。",
+   "impact": "两份预案列表逻辑可独立漂移(updated_at/description 兜底规则若改只改一处)；死方法增加阅读成本。",
+   "fix_hint": "删除 config_preset_service.py:60-93 的 list_presets；若要保留 ConfigPresetService 的内聚，可让 read_service 复用 preset_service 的行收集，二选一收口到单处。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "死代码",
+   "title": "5 个顶层转发壳生产零引用，仅 tools/ 脚本与测试旧路径在养",
+   "evidence": [
+    "core/services/scheduler/config_service.py / config_snapshot.py / config_validator.py / schedule_summary.py / schedule_summary_types.py 均为纯 re-export 壳",
+    "唯一非测试 import: tools/capture_networkx_phase0_baseline.py:17(tools 层，审计已定性非业务)",
+    "其余引用全在 tests/(旧扁平路径) 且被 tests/test_sp05_path_topology_contract.py:21-71 钉成契约"
+   ],
+   "problem": "这些壳把 config/、summary/ 子包符号以旧扁平路径重新导出。生产代码已全部改用 .config./.summary. 子包路径，壳的唯一现役消费者是测试和一个 tools 脚本。属主旋律1(shim 泛滥、测试钉死旧路径)。",
+   "impact": "测试旧 import 路径让壳删不掉，壳又让'迁移到子包'看起来没收尾；轻度拖累但不影响正确性。",
+   "fix_hint": "与专题A(shim退役)统一：先把 tests/ 里的旧扁平 import 批量改到 .config./.summary. 子包路径，更新 test_sp05 契约的映射表，再删 5 个壳。转发写法本身是干净的 from-import re-export(不同于排产主链的3机制混用)，无需重构只需退役。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "summary/schedule_summary.py 的 __all__ 泄漏 4 个零生产消费的内部 helper",
+   "evidence": [
+    "core/services/scheduler/summary/schedule_summary.py:56 __all__ 含 config_snapshot_dict/finish_time_by_batch/serialize_end_date/cfg_value",
+    "grep 实证: 这4个符号在 summary 包外零生产引用，仅 tests/test_sp05_path_topology_contract.py 因契约而引"
+   ],
+   "problem": "这4个是装配内部 helper(config_snapshot_dict/finish_time_by_batch 来自 assembly，cfg_value/serialize_end_date 本文件定义)，通过 __all__ 暴露为公共面但无外部消费者。",
+   "impact": "公共 API 面虚胖，给后续维护者'这些是对外契约'的错觉，间接阻止内部 helper 自由重构。",
+   "fix_hint": "从 __all__ 移除这4个(以及顶层 schedule_summary.py 壳里对应的 re-export)；build_result_summary/build_overdue_items/SUMMARY_SIZE_LIMIT_BYTES 等真公共项保留。需同步放宽 test_sp05 契约。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "_extract_freeze_warnings 存在不可达分支",
+   "evidence": [
+    "core/services/scheduler/summary/schedule_summary_freeze.py:104 if text.startswith('[freeze_window]') or text.startswith('【冻结窗口】'): ... continue",
+    "core/services/scheduler/summary/schedule_summary_freeze.py:107-108 再次 if text.startswith('【冻结窗口】') 追加——因 104 已 continue 故永不可达"
+   ],
+   "problem": "104 行的 or 条件已覆盖 '【冻结窗口】' 且命中即 continue，107-108 的第二次同条件判断永远执行不到。",
+   "impact": "无功能影响，但是明显的复制残留，误导阅读(让人以为两种前缀有不同处理)。",
+   "fix_hint": "删除 107-108 两行死分支。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "注释错误",
+   "title": "ScheduleConfigSnapshot.to_dict 静默漏掉 graph_downstream_weight 字段，无注释说明",
+   "evidence": [
+    "core/services/scheduler/config/config_snapshot.py:47 graph_downstream_weight 是真实字段(default 1)",
+    "core/services/scheduler/config/config_snapshot.py:57-86 to_dict 未输出该字段",
+    "core/services/scheduler/config/config_snapshot.py:89 _graph_downstream_weight_for_visible_weights 计算它并在构建时赋值",
+    "设计意图佐证: core/services/scheduler/run/schedule_candidate_specs.py:75 注释说明它是候选内部参数、不进配置页/保存链"
+   ],
+   "problem": "graph_downstream_weight 在 dataclass 上存在且被构建器计算赋值，但 to_dict 故意不序列化它(因 builtin_presets/snapshot_diff/preset payload 都过 to_dict，不希望它进持久化与对比)。这是有意设计，但 to_dict 处无任何注释解释这处不对称。",
+   "impact": "维护者若假设 to_dict 字段完整(例如做快照全字段对拍、或新增依赖该字段的持久化)会踩坑；与 models twin 的同名 to_dict 同样省略，但两处省略写法相关逻辑(downstream 计算)已不同。",
+   "fix_hint": "在 to_dict 上方加一行注释说明 graph_downstream_weight 为候选内部派生参数、刻意不纳入序列化/对比；或集中到一个常量列出'非序列化字段'。无需改行为。",
+   "in_flight_conflict": false
+  }
+ ],
+ "cleanup": [
+  "[需对拍后做] 抽取 config/ 与 core/models/ 共享的纯计算 coercion+字段表+权重核心到算法层可依赖的单一模块，消除整栈三处复制(ScheduleConfigSnapshot/ensure_schedule_config_snapshot/coerce_runtime_config_field/_handle_missing_value)",
+  "[低风险] 合并 config_snapshot.py:232 与 :349 两个孪生构建器：抽 _build_snapshot_from_values + 注入 raw_value_reader",
+  "[低风险] 删除死函数 config_snapshot.py:312-333 coerce_runtime_config_field(config 子包副本，零调用)",
+  "[低风险] 删除死方法 config_preset_service.py:60-93 ConfigPresetService.list_presets(零调用，read_service 版才是现役)",
+  "[低风险] 删除 schedule_summary_freeze.py:107-108 不可达分支",
+  "[文档] config_snapshot.py:57 to_dict 上方加注释说明 graph_downstream_weight 刻意不序列化",
+  "[与专题A合并] 迁移 tests 旧扁平 import 到 .config./.summary. 子包路径后，退役5个顶层壳并更新 test_sp05 契约",
+  "[低风险] 从 summary/schedule_summary.py:56 __all__ 移除 config_snapshot_dict/finish_time_by_batch/serialize_end_date/cfg_value 等内部 helper"
+ ]
+}

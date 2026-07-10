@@ -1,0 +1,135 @@
+{
+ "key": "scheduler-gantt",
+ "partition": "甘特（core/services/scheduler/gantt_*.py 13文件 + gantt/ 子目录 + desktop/gantt PoC 链路）",
+ "score": 4,
+ "design": "甘特分区是一条分层清晰的\"读侧渲染 + 写侧模拟调整\"双链路。读侧以 GanttService 为对外 façade（DI 注入 conn/logger/plan_query），把活拆给一组单一职责模块：gantt_range 算周/区间范围、gantt_plan_query 收口版本与方案解析、gantt_tasks 把明细行装配成 Frappe Gantt tasks（含工艺依赖连线、超期标记、执行事实 tooltip）、gantt_week_plan 出周计划导出行、gantt_critical_chain 是纯函数关键链引擎、gantt_critical_chain_provider 给它套进程级 LRU 缓存+线程锁+按方案分发、gantt_contract 用 DTO 固定字段顺序产出 Web/PyQt 共用契约。写侧是 5 文件调整流水线：draft（写草稿变更）→ projection（纯内存重算+冲突/工艺/交期/日历/停机/物料校验）→ validation（只读试算）→ scenario（存快照含现场状态 revision）→ publish（事务内分配新版本、复用主排产链的 execution-guard 落库）。整体地基硬：纯引擎与缓存分层干净、调整流水线职责不混、降级用 DegradationCollector/BuildOutcome 显式上抛不吞。主要债是\"迁移做一半\"的签名——gantt_tasks 与 gantt_critical_chain 各存一份同名标签函数（行为漂移），gantt_plan_query 留了一批死转发壳，关键链对 adopted 走老 ScheduleRepository、对 candidate 走新 plan_query 的双取数路径，以及 adjustment 五文件内 _text/_required_text 等小 helper 多份复制。",
+ "chains": [
+  "读侧主链：web/routes/domains/scheduler/scheduler_gantt.py:214 g.services.gantt_service → request_services.py:169 GanttService → gantt_service.py:295 get_gantt_tasks → gantt_tasks.py:352 build_tasks + gantt_critical_chain_provider.py:134 get_critical_chain → gantt_contract.py:103 build_gantt_contract",
+  "关键链 adopted 路径（老取数）：gantt_critical_chain_provider.py:154 → gantt_critical_chain.py:373 compute_critical_chain → schedule_repo.py:160 list_by_version_with_details → gantt_critical_chain.py:341 _compute_critical_chain_from_loaded_rows",
+  "关键链 candidate/scenario 路径（新取数）：gantt_critical_chain_provider.py:166 → schedule_plan_query_service.py:312 list_plan_detail_rows_all_for_resolution → gantt_critical_chain.py:366 compute_critical_chain_from_rows",
+  "调整发布链：scheduler_gantt_adjustments.py:18/104/122/155 → draft_service.create_draft/validation_service.evaluate_draft(gantt_adjustment_validation_service.py:75) → gantt_adjustment_projection.py:47 build_adjusted_plan_rows → scenario_service.save_scenario → gantt_adjustment_publish_service.py:71 publish_scenario → run/schedule_execution_persistence_guard.py:193 validate_execution_guard_before_persist",
+  "P0 标签双面孔：gantt_tasks.py:193 _public_task_label → meta.task_label → static/js/gantt_popup.js:67 detailTitle（甘特条+详情区）；对比 gantt_critical_chain.py:48 _public_task_label → node label(:127) → 边 from_label/to_label(:204-235) → static/js/gantt_contract.js:86 关键链 tooltip",
+  "周计划链：scheduler_week_plan.py:315 → gantt_service.py:427 get_week_plan_rows → gantt_week_plan.py:32 build_week_plan_rows（复用 _sched_display_utils 的 split_by_day/fmt_day_segment）"
+ ],
+ "good": [
+  "gantt_critical_chain.py 是干净的纯函数关键链引擎（全部函数吃 rows/nodes、无任何 I/O），gantt_critical_chain_provider 在外层叠加 LRU 缓存+线程锁+按方案分发+copy-on-read，是清晰分层而非职责重叠（第一轮已肯定，函数级复核确认）。",
+  "调整五文件流水线 draft→projection→validation→scenario→publish 职责切分到位：projection 全纯内存重算、publish 通过 duck-typed svc 复用主排产链的 validate_execution_guard_before_persist（schedule_execution_persistence_guard.py 只用 svc.conn/svc.logger），是真复用不是拷贝。",
+  "publish 的现场状态护栏严谨：发布前校验 execution_snapshot revision 未变、对异常/生产中/已完工工序分别阻断（gantt_adjustment_publish_service.py:273-374），事务内 BEGIN IMMEDIATE + 重校最新版本，正确性纪律强。",
+  "GanttService façade DI 干净、把范围/取数/装配/契约分派给单一职责模块；build_gantt_contract 用 DTO 固定字段顺序供 Web/PyQt 共用与快照测试；全链路一致用 DegradationCollector/BuildOutcome 把降级显式上抛而非吞掉。"
+ ],
+ "findings": [
+  {
+   "severity": "high",
+   "category": "设计冲突",
+   "title": "gantt_tasks 与 gantt_critical_chain 三个同名标签函数行为漂移，且分别喂两个不同前端面孔（P0）",
+   "evidence": [
+    "core/services/scheduler/gantt_tasks.py:171 _detail_part_label / :179 _detail_operation_label / :193 _public_task_label",
+    "core/services/scheduler/gantt_critical_chain.py:42 _detail_part_label / :34 _detail_operation_label / :48 _public_task_label / :64 _public_node_label",
+    "gantt_tasks.py:176 返回 `label or piece_id or \"-\"`（有 piece_id 兜底+\"-\"）；gantt_critical_chain.py:45 仅 `\" \".join(...)`（可返回空串，无 piece_id、无 \"-\"）",
+    "gantt_tasks.py:182 用原始 row.get(\"seq\") 判 `seq is not None and str(seq).strip()` 且末尾 `str(seq or \"\").strip() or \"-\"`；gantt_critical_chain.py:35 先 _clean_text(seq) 再 `seq or op_type`（无 \"-\"）",
+    "gantt_tasks.py:198 _public_task_label 需判 `operation_label != \"-\"` 哨兵；gantt_critical_chain.py:53 仅判 `if operation_label:`",
+    "消费面分叉：static/js/gantt_popup.js:67-69,110 用 task_label/operation_label/part_label 渲详情区；static/js/gantt_contract.js:86-87 用关键链 from_label/to_label 渲 tooltip"
+   ],
+   "problem": "同一道工序的名字在'甘特条+任务详情区'与'关键链 tooltip'里由两份不同实现各算一遍，空值/seq/piece_id 兜底策略不一致。schema 里 op_code 为 NOT NULL UNIQUE，_public_task_label 几乎总命中 op_code 分支，故用户可见漂移当前大多潜伏；但 op_code 缺失或 operation_label/part_label 直接渲染时即显式分叉，且这是'改一处忘改另一处不报错'的维护地雷。附带同源问题：gantt_critical_chain.py:9/26 自带 _parse_dt/_fmt_dt，与 _sched_display_utils.parse_dt/fmt_dt 逻辑当前一致但各存一份，决定两条链路各自的'行有效性(st<et)'判定，同样有静默漂移风险。",
+   "impact": "两条展示链路对同一工序可能显示不同名字；时间解析若一处先改也会让两边对哪些行有效产生分歧。属第一轮已点名的 P0 静默正确性+可维护性隐患。",
+   "fix_hint": "抽单一共享标签模块（如并入 _sched_display_utils 或新建 gantt_labels.py），统一 public_task_label/detail_part_label/detail_operation_label，先对齐'-' vs '' 与 piece_id/raw-seq 兜底（建议以 gantt_tasks 语义为准供条+详情，另导出 node-label 变体供关键链），再删两处副本；同时把 gantt_critical_chain 的 _parse_dt/_fmt_dt 换成 import _sched_display_utils。改前补回归：断言同一行在 build_tasks 的 task_label 与 critical_chain 节点 label 一致。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "死代码",
+   "title": "gantt_plan_query.py 残留一批零引用/仅测试续命的转发壳",
+   "evidence": [
+    "core/services/scheduler/gantt_plan_query.py:42 resolve_plan —— 全仓零引用（真身 schedule_result_view_context.py:192，各处都直接用它）",
+    "core/services/scheduler/gantt_plan_query.py:59 _has_explicit_gantt_range —— 全仓零引用",
+    "core/services/scheduler/gantt_plan_query.py:46 selected_plan_role —— gantt_service.py:29 是从 schedule_result_view_context 导入的，无人从 gantt_plan_query 取此名",
+    "core/services/scheduler/gantt_plan_query.py:32 default_plan_resolution_dict —— 生产同样走 schedule_result_view_context（gantt_service.py:27），唯一引用是 tests/regression_schedule_result_view_context.py:298 测这个壳的旧报错文案"
+   ],
+   "problem": "gantt_plan_query 真正被生产用到的只有 get_version_time_span_dates / resolve_gantt_range_for_version / attach_gantt_range_metadata / build_empty_week_plan_payload；resolve_plan、_has_explicit_gantt_range、selected_plan_role 三个纯死壳，default_plan_resolution_dict 只被一个测试钉住（主旋律1的'测试续命 shim'）。",
+   "impact": "读这文件的人以为有四套独立入口，实际半数是无意义转发；default_plan_resolution_dict 这份还把报错文案分叉成第二真相。",
+   "fix_hint": "删 resolve_plan:42、_has_explicit_gantt_range:59、selected_plan_role:46；default_plan_resolution_dict:32 二选一——把那个测试改去直接测 schedule_result_view_context 后删壳，或保留并加注释说明仅为旧文案兼容。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "跨层违规",
+   "title": "resource_dispatch_rows 跨模块 import 了 gantt_tasks 的两个下划线私有函数",
+   "evidence": [
+    "core/services/scheduler/resource_dispatch_rows.py:33 `from .gantt_tasks import _attach_process_dependencies, _sort_tasks`",
+    "被引用方为私有：gantt_tasks.py:313 _attach_process_dependencies / :343 _sort_tasks"
+   ],
+   "problem": "派工行装配复用了甘特的工艺依赖连线与排序逻辑，但走的是 import 私有函数的方式——把'_'私有约定打穿，且让 resource-dispatch（在途已 done 的 resource-dispatch-execution-lane 特性）与甘特内部实现强耦合。",
+   "impact": "未来重构 gantt_tasks 内部（如配合 P0 抽标签）时，改私有函数会静默波及派工链路，无接口契约保护。",
+   "fix_hint": "把 _attach_process_dependencies/_sort_tasks 提升为公有（去下划线）并视为 gantt_tasks 的对外能力，或将这两个'依赖连线+排序'纯函数下沉到中性模块（如 _sched_display_utils 或新建 schedule_task_graph helper）供两边 import，消除 resource_dispatch_rows.py:33 的私有跨模块引用。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "关键链对 adopted 走老 ScheduleRepository、对 candidate 走新 plan_query 的双取数路径",
+   "evidence": [
+    "core/services/scheduler/gantt_critical_chain_provider.py:154-155 adopted+schedule → compute_critical_chain(self.schedule_repo, version)",
+    "core/services/scheduler/gantt_critical_chain_provider.py:166-170 其余 → plan_query.list_plan_detail_rows_all_for_resolution → compute_critical_chain_from_rows",
+    "gantt_critical_chain.py:96 _load_rows → schedule_repo.list_by_version_with_details；该方法（schedule_repo.py:160）的唯一生产调用方就是这里",
+    "gantt_service.py:50 GanttService 专为此在 __init__ 建 self.schedule_repo=ScheduleRepository(conn)"
+   ],
+   "problem": "同一关键链计算有两个入口函数（compute_critical_chain / compute_critical_chain_from_rows）和两套取数器；adopted 路径吊着老 ScheduleRepository.list_by_version_with_details，正是第一轮主旋律2'ScheduleRepository vs SchedulePlanQueryRepository 双轨'在甘特的落点。两套列集（_COMMON_DETAIL_COLUMNS vs list_detail_rows_all）目前都覆盖关键链所需字段，功能等价，故安全但冗余。",
+   "impact": "取数列集若一处演进会让 adopted 与 candidate 关键链静默分叉；并使老 repo 明细查询无法退役。",
+   "fix_hint": "评估让 adopted+schedule 也走 plan_query.list_plan_detail_rows_all_for_resolution（role=adopted），统一为单一 compute_critical_chain_from_rows 入口；若成立则删 gantt_critical_chain.py:96 _load_rows + :373 compute_critical_chain 分支、gantt_service.py:50 的 self.schedule_repo 与 provider:154 特判，并与第一轮专题B（ScheduleRepository 死代码确权）联动退役 list_by_version_with_details。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "adjustment 五文件内 _text/_required_text/_text_or_none 多份复制 + 同义异名 + 校验函数文案漂移",
+   "evidence": [
+    "_text 三份：gantt_adjustment_draft_service.py:23 / gantt_adjustment_scenario_service.py:20 / gantt_adjustment_publish_service.py:174",
+    "_required_text 三份：gantt_adjustment_validation_service.py:167 / gantt_adjustment_scenario_service.py:24 / gantt_adjustment_publish_service.py:178",
+    "gantt_adjustment_publish_service.py:434 _none_to_text 与同文件 :174 _text 做完全相同的 str(v or '').strip()，仅名字不同",
+    "gantt_adjustment_projection.py:195 _text_or_none 又是一份近义",
+    "_check_expected_base 近重复且文案漂移：gantt_adjustment_validation_service.py:174（'草稿'）vs gantt_adjustment_publish_service.py:194（'方案'），逻辑相同"
+   ],
+   "problem": "主旋律3的 helper 复制在调整流水线内复现：同一个'清洗成 str.strip'被写成 _text/_required_text/_text_or_none/_none_to_text 四个名字、十余处；_check_expected_base 两份逻辑同、报错名词不同。",
+   "impact": "行为微调要改多处易漏；_check_expected_base 文案分叉让同一类错误对用户呈现不一致措辞。",
+   "fix_hint": "在分区内（或复用 core/shared 既有 text 归一）落一个 _text/_required_text/_text_or_none 单点，删 publish 的 _none_to_text:434 及各 _text/_required_text 副本；把 _check_expected_base 合一并用参数化名词（草稿/方案）区分文案。属专题C公共util落点，注意行为零变更。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "GanttCriticalChainProvider.clear_cache 生产零调用（仅测试），进程级缓存从不在生产失效",
+   "evidence": [
+    "core/services/scheduler/gantt_critical_chain_provider.py:38 clear_cache —— 生产零调用方，唯一引用 tests/regression_gantt_critical_chain_provider.py:503",
+    "_CRITICAL_CHAIN_CACHE 为类级进程全局，键含 version（provider.py:84-92）"
+   ],
+   "problem": "缓存按 version 等不可变维度作键，版本一经发布即 append-only 不改，故无失效需求；clear_cache 因此是被测试续命的死生产方法。",
+   "impact": "无功能风险，属未收尾的能力残留；读代码者会误以为存在需要主动失效的场景。",
+   "fix_hint": "要么删 clear_cache（测试相应调整），要么若未来需在 publish 新版本后失效则显式接到 gantt_adjustment_publish_service 发布点；当前以版本不可变为由保留亦可，但应加注释说明无需失效的依据。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "其他",
+   "title": "空 gantt/ 子目录是半截重组残骸；desktop/gantt PoC 为无测试的并行客户端",
+   "evidence": [
+    "core/services/scheduler/gantt/__init__.py 为 0 字节空占位，13 个 gantt_*.py 全平铺在 scheduler/ 外层",
+    "desktop/gantt/contract_client.py:34 调 GanttService.get_gantt_tasks；desktop/gantt/pyqt_poc.py:8 PyQt5 守卫导入（PYQT_AVAILABLE）",
+    "desktop/gantt 无任何 tests/ 覆盖，但在 quality_gate_scan.py:988 与 long_gate_manifest.py 的 desktop/**/*.py 扫描范围内"
+   ],
+   "problem": "空 gantt/ 子目录与平铺文件并存造成目录树误导（第一轮已点名 scheduler/{gantt,dispatch,calendar,batch}/ 皆空）；desktop/gantt 是复用 GanttService 契约的 PyQt PoC，依赖 PyQt5（Win7+py3.8 离线目标上可用性存疑），且零测试。",
+   "impact": "目录误导新读者；PoC 客户端若被当真实交付会在目标机缺 PyQt5 时仅靠运行期守卫降级，无测试兜底。",
+   "fix_hint": "删空的 core/services/scheduler/gantt/ 目录（与第一轮P1#3空目录清理合并）；明确 desktop/gantt 的 PoC 定性（README 或从门禁扫描范围排除），或为 contract_client 补一条不依赖 PyQt 的契约回归。",
+   "in_flight_conflict": false
+  }
+ ],
+ "cleanup": [
+  "抽单一共享标签模块统一 public_task_label/detail_part_label/detail_operation_label，删 gantt_tasks.py:171-206 与 gantt_critical_chain.py:34-61 两份副本（先对齐 '-'/''/piece_id/raw-seq 兜底，补两面孔一致性回归）——P0，触碰在途 gantt-task-detail-panel 需保详情区契约",
+  "把 gantt_critical_chain.py:9/26 的 _parse_dt/_fmt_dt 换成 import _sched_display_utils.parse_dt/fmt_dt",
+  "删 gantt_plan_query.py 死壳：resolve_plan:42、_has_explicit_gantt_range:59、selected_plan_role:46；default_plan_resolution_dict:32 改测试后删或保留加注释",
+  "把 gantt_tasks 的 _attach_process_dependencies:313/_sort_tasks:343 提升为公有或下沉中性模块，消除 resource_dispatch_rows.py:33 的私有跨模块 import（触碰在途 resource-dispatch-execution-lane）",
+  "评估关键链 adopted 路径并入 plan_query，删 gantt_critical_chain.py:96 _load_rows + compute_critical_chain 分支、gantt_service.py:50 self.schedule_repo、provider:154 特判，联动退役 schedule_repo.py:160 list_by_version_with_details",
+  "调整流水线 helper 收口：删 publish 的 _none_to_text:434、合并各 _text(draft:23/scenario:20/publish:174)/_required_text(validation:167/scenario:24/publish:178) 到单点，合一 _check_expected_base(validation:174 vs publish:194) 并参数化文案",
+  "删 GanttCriticalChainProvider.clear_cache:38（或接到 publish 失效点）",
+  "删空目录 core/services/scheduler/gantt/，明确 desktop/gantt PoC 定性或排除出门禁扫描"
+ ]
+}
