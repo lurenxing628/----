@@ -76,13 +76,15 @@ def _load_baseline() -> Optional[Set[str]]:
     return {str(item) for item in (data.get("islands") or [])}
 
 
-def _write_baseline(islands: Sequence[str]) -> None:
+def _write_baseline(islands: Sequence[str], mode: str) -> None:
     payload = {
         "note": (
             "死代码疑似项基线。候选来自调用图孤岛,再经过真实使用图过滤。"
-            "受控更新：python tools/scan_dead_code_islands.py --refresh --mode precise。"
+            f"本基线按 {mode} 口径生成；受控更新："
+            f"python tools/scan_dead_code_islands.py --mode {mode} --refresh。"
         ),
         "schema_version": 2,
+        "mode": mode,
         "count": len(islands),
         "islands": sorted(islands),
     }
@@ -168,7 +170,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.refresh:
         _print_summary(result)
-        _write_baseline(current)
+        _write_baseline(current, args.mode)
         print(f"[dead-code-islands] 基线已刷新：{len(current)} 个疑似死代码 -> {BASELINE_REL}", flush=True)
         return 0
 
@@ -198,7 +200,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"    + {qual}", flush=True)
         print(
             "  处理：确认是真死代码就删；若是当前设计接受的未用入口，"
-            "跑 `python tools/scan_dead_code_islands.py --mode precise --refresh` 受控刷新基线。",
+            f"跑 `python tools/scan_dead_code_islands.py --mode {args.mode} --refresh` 受控刷新基线。",
             flush=True,
         )
     else:
@@ -206,7 +208,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if gone_islands:
         print(
-            f"[dead-code-islands] {len(gone_islands)} 个基线疑似项已消失（已清理/已接线）；可 --mode precise --refresh 收敛基线。",
+            f"[dead-code-islands] {len(gone_islands)} 个基线疑似项已消失（已清理/已接线）；"
+            f"可 --mode {args.mode} --refresh 收敛基线。",
             flush=True,
         )
 

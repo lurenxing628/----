@@ -437,6 +437,30 @@ def test_warn_only_only_changes_new_suspect_exit_code(tmp_path, monkeypatch):
     assert scan_dead_code_islands.main(["--warn-only"]) == 0
 
 
+def test_refresh_records_selected_mode_and_matching_command(tmp_path, monkeypatch):
+    baseline = tmp_path / "baseline.json"
+    monkeypatch.setattr(scan_dead_code_islands, "BASELINE_PATH", str(baseline))
+    monkeypatch.setattr(scan_dead_code_islands, "BASELINE_REL", "baseline.json")
+    monkeypatch.setattr(
+        scan_dead_code_islands,
+        "_analyze",
+        lambda mode, _index_path: {
+            "mode": mode,
+            "candidate_count": 1,
+            "live_count": 0,
+            "suspect_dead": ["x.py::unused"],
+            "evidence": {},
+        },
+    )
+
+    assert scan_dead_code_islands.main(["--mode", "quick", "--refresh"]) == 0
+    payload = json.loads(baseline.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 2
+    assert payload["mode"] == "quick"
+    assert "--mode quick --refresh" in payload["note"]
+    assert "--mode precise --refresh" not in payload["note"]
+
+
 def test_precise_mode_failure_is_loud_and_not_downgraded(monkeypatch, capsys):
     monkeypatch.setattr(scan_dead_code_islands, "_compute_callgraph_snapshot", lambda: {"functions": {}, "edges": [], "islands": []})
 
