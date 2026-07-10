@@ -33,7 +33,7 @@
 在任何回复、澄清问题、搜索、改文件、跑命令之前，先确认本仓库是否已有 `.codestable/`：
 
 - 如果已有 `.codestable/`，先读取 `.codestable/attention.md`，再读取 `.codestable/reference/system-overview.md`，然后按用户诉求选择对应的 `cs-*` 技能。
-- 如果当前宿主没有自动注册 `cs-*` 技能入口，就直接读取已安装技能文件：`~/.codex/skills/<技能名>/SKILL.md`；如果这里没有，再查 `~/.agents/skills/<技能名>/SKILL.md`。
+- 如果当前宿主没有自动注册 `cs-*` 技能入口，先读取项目内 `.limcode/skills/<技能名>/SKILL.md`；项目副本不存在时，再依次查 `~/.codex/skills/<技能名>/SKILL.md`、`~/.agents/skills/<技能名>/SKILL.md`。
 - 如果没有 `.codestable/`，先走 `cs-onboard`。
 
 不要再默认读取 `.limcode/skills/using-superpowers/SKILL.md`。只有下面这些情况才回看它：
