@@ -1,8 +1,9 @@
 ---
 doc_type: issue-fix-note
 issue: 2026-07-11-dependency-proof-rebuild-and-closure
-status: fixed_locally_clean_proof_pending
+status: fixed
 fixed_at: 2026-07-11
+clean_worktree_proof: true
 root_cause: 第 7、8 项冻结工具后，正式调用图快照、双循环基线、总哈希和事实文档仍分属旧工具阶段
 related: [dependency-proof-rebuild-and-closure-report.md, dependency-proof-rebuild-and-closure-analysis.md]
 roadmap: dependency-cycle-governance
@@ -22,7 +23,7 @@ tags: [callgraph, import-cycle, baseline, hashes, reproducibility]
 - 差异解释通过后，才刷新正式调用图快照和双基线。
 - 最后重建 `.codestable/checkup/baseline.json` 数字与 artifact SHA，并同步事实文档。
 - 起点 HEAD 为 `cd6cdf43798e3c6321370e4fceb7150bbe4cef3c`，起点已有 45 条工作区状态记录。
-- 全程未调用 subagent，未提交、未推送、未创建 PR。
+- 全程未调用 subagent；提交前未擅自修改 Git index，取得用户明确授权后才提交；未推送、未创建 PR。
 
 ## 2. 调用图确定性与差异核对
 
@@ -202,11 +203,22 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py \
 - `.venv/bin/pyright` 的 shebang 仍指向仓库搬迁前路径，直接启动失败；使用当前 `.venv/bin/python -m pyright -p pyrightconfig.tools.json` 后正式配置通过。这是本机 wrapper 路径问题，不是类型错误。
 - CodeStable YAML 第一次误用位置参数，工具明确返回参数错误；按 `--file` / `--yaml-only` 真实接口重跑后通过。
 
-## 6. 尚未闭环的唯一硬条件
+第三次候选 clean HEAD `d1b43cefa665822f6cae8f7ebe95d61ebd84829a` 使用下列命令完整通过 19/19 步：
 
-当前仍是脏工作区，且用户尚未授权提交。因此本项只能标记为 `fixed_locally_clean_proof_pending`：
+```text
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py \
+  --require-clean-worktree --no-long-gate-cache --no-resume
+```
 
-- 不能声称 clean-worktree proof；
-- roadmap 第 9 项保持 `in_progress`；
-- `scheduler-a1-decoupling` 继续保持 `planned`，不得启动；
-- 只有用户明确授权提交本批治理改动，并在提交后的干净最终 HEAD 上运行完整 `scripts/run_quality_gate.py --require-clean-worktree` 成功，才能把本 issue 和 roadmap 第 9 项改为 completed。
+关键结果：收集 4712 项；architecture 21 passed；startup required 108 passed；full-test-debt 收集 4712、fixed 5、unexpected failure 0；最终 required proof 覆盖 253 个目标 / 2467 nodeids。没有复用 long-gate 成功缓存，也没有续跑失败前缀。
+
+## 6. 闭环结论
+
+用户已明确授权提交本批治理改动。最终闭环状态：
+
+- 本 issue 标记 `fixed`，roadmap 第 9 项标记 `completed`；
+- `baseline.json` 记录 `clean_worktree_proof=true`，25 项 artifact SHA 仍全部匹配；
+- 正式调用图、双循环基线和事实文档与确定性候选一致；
+- 当前真实 6/7 个 hard 目录 SCC 和 A1 的 49 条起点边仍存在，本项没有把“门禁通过”包装成“结构无环”；
+- `scheduler-a1-decoupling` 仍保持 `planned`，只是前置已解除，本轮不继续实施；
+- 已提交但未推送、未创建 PR；闭环文档提交后再次在最终干净 HEAD 上执行同一完整门禁，最终汇报只引用该次结果。

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "mechanical_ready_history_pending_with_deterministic_worktree_rebuild",
+  "status": "mechanical_ready_history_pending_with_clean_worktree_proof",
   "verified_at": "2026-07-11",
   "code_baseline": {
     "commit": "606bcda1d369914875fe63a5d3657ff4cbc351ac",
@@ -14,10 +14,16 @@
   "worktree_tooling_refresh": {
     "starting_head": "cd6cdf43798e3c6321370e4fceb7150bbe4cef3c",
     "refreshed_at": "2026-07-11",
-    "worktree_dirty": true,
-    "clean_worktree_proof": false,
+    "worktree_dirty": false,
+    "clean_worktree_proof": true,
     "scope": "final callgraph/import-cycle tooling, deterministic callgraph snapshot, dual v2 baselines, formal gate wiring and synchronized current facts",
-    "note": "The final tooling/evidence rebuild is byte-reproducible on the current dirty worktree but is not bound to a committed clean HEAD. code_baseline remains the historical clean-source watermark."
+    "note": "The final tooling/evidence rebuild was committed unchanged from the deterministic candidates and passed the complete 19-step quality gate on a clean HEAD. code_baseline remains the historical clean-source watermark; history_baseline is still pending.",
+    "generation_started_from_dirty_worktree": true,
+    "proof_command": "python scripts/run_quality_gate.py --require-clean-worktree --no-long-gate-cache --no-resume",
+    "proof_step_count": 19,
+    "proof_collected_test_count": 4712,
+    "proof_required_target_count": 253,
+    "proof_required_nodeid_count": 2467
   },
   "mechanical_checks": {
     "codemap": {
@@ -32,7 +38,7 @@
       "refined_orphan_candidates": 109
     },
     "callgraph": {
-      "status": "pass_deterministic_worktree_rebuild_not_clean_proof",
+      "status": "pass_deterministic_clean_head_rebuild",
       "summary_path": ".codestable/checkup/latest/callgraph/summary.json",
       "total_functions": 7329,
       "nested_callable_count": 316,
@@ -46,7 +52,7 @@
       "parse_errors": []
     },
     "import_cycles": {
-      "status": "pass_dual_scope_rebuild_not_clean_proof",
+      "status": "pass_dual_scope_clean_head_rebuild",
       "production_baseline_path": ".codestable/checkup/import_cycles_production_baseline.json",
       "with_tests_baseline_path": ".codestable/checkup/import_cycles_with_tests_baseline.json",
       "production_module_count": 750,

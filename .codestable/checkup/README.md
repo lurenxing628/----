@@ -8,7 +8,7 @@
 
 机器可读总入口：[`baseline.json`](baseline.json)。
 
-## 2026-07-11 终态工具证据重建（dirty worktree）
+## 2026-07-11 终态工具证据重建与 clean HEAD 证明
 
 `baseline.json.code_baseline` 仍保留已提交的历史 clean-source 投影：
 
@@ -17,7 +17,7 @@
 - 生成方式：`git archive HEAD` 解到 `/tmp` 后扫描
 - 历史工作树状态：有未提交改动，但**没有纳入该 clean-source 投影**
 
-2026-07-11 又在起点 HEAD `cd6cdf43798e3c6321370e4fceb7150bbe4cef3c` 的脏工作区完成调用图 KISS 收敛、动态 import alias 重绑定修正和终态证据重建。该结果可重复，但尚未绑定提交后的干净最终 HEAD，因此仍只属于 **dirty-worktree 局部证明**：
+2026-07-11 在起点 HEAD `cd6cdf43798e3c6321370e4fceb7150bbe4cef3c` 的脏工作区完成调用图 KISS 收敛、动态 import alias 重绑定修正和终态证据重建；两个临时候选确定性一致后才写正式证据。随后经用户明确授权提交，提交后的干净 HEAD 又无缓存、无续跑执行完整 19 步质量门禁，因此下面结果已从局部验证升级为 **clean-worktree proof**：
 
 | 检查 | 当前结果 | 口径 |
 |---|---|---|
@@ -25,10 +25,11 @@
 | import cycles（生产非测试） | 750 模块、6 hard 目录 SCC、9 父包感知 hard 文件加载 SCC、0 纯显式 hard 文件 SCC、14/5 个父包感知/纯显式 runtime 文件 SCC | `hard=8809 / cond=4 / lazy=257 / typeonly=135`；父包初始化边 6654 条；unresolved 6 个 |
 | import cycles（含测试） | 1443 模块、7 hard 目录 SCC、9 父包感知 hard 文件加载 SCC、0 纯显式 hard 文件 SCC、unresolved 44 个 | 独立 `production-and-tests` v2 基线；比生产多 1 个测试目录 SCC 和 38 个测试动态加载站点 |
 | 确定性 | 调用图两个独立临时目录均为同一组 10 个 JSON，逐文件 SHA256 完全一致 | 双 scope 候选基线与正式基线逐字节一致；SCC、圈内边和 unresolved 均无增删 |
+| 完整质量门禁 | 19/19 步通过；收集 4712 项；full-test-debt unexpected failure 0；required 253 个目标 / 2467 nodeids | 命令使用 `--require-clean-worktree --no-long-gate-cache --no-resume`，没有复用旧成功缓存 |
 
-`.codestable/checkup/latest/callgraph/` 已由核对通过的临时候选受控覆盖，两份 import-cycle v2 基线也已通过正式 CLI 刷新。`baseline.json.artifact_sha256` 绑定最终四个调用图脚本、四个循环扫描工具、完整 10 个调用图 JSON 和两份循环基线；它仍明确记录 `clean_worktree_proof=false`，不得与历史 clean-source commit 混写成 clean-worktree proof。
+`.codestable/checkup/latest/callgraph/` 已由核对通过的临时候选受控覆盖，两份 import-cycle v2 基线也已通过正式 CLI 刷新。`baseline.json.artifact_sha256` 绑定最终四个调用图脚本、四个循环扫描工具、完整 10 个调用图 JSON 和两份循环基线，并记录 `clean_worktree_proof=true`。
 
-完整验证命令与结果见 `.codestable/issues/2026-07-11-dependency-proof-rebuild-and-closure/`；只有用户授权提交后，在干净最终 HEAD 上跑完整质量门禁成功，才能升级为 clean-worktree proof。
+完整命令、两次门禁暴露的测试合同缺口及根因修复见 `.codestable/issues/2026-07-11-dependency-proof-rebuild-and-closure/`。本次 clean proof 只证明当前机械证据与质量门禁；`history_baseline` 的决定考古仍是 pending，不能顺带写成已完成。
 
 ### 历史 clean-source 机器检查（606bcda1）
 

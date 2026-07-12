@@ -134,9 +134,9 @@ A1-A6/tests 尚未结构清零；这里完成的是可信测量与防回潮合�
 
 ## 7. 2026-07-11 终态证据重建补记
 
-后续 issue `2026-07-11-import-cycle-alias-rebinding-hardening`、`2026-07-11-callgraph-confidence-kiss-hardening` 和 `2026-07-11-dependency-proof-rebuild-and-closure` 已完成提交前证据重建：
+后续 issue `2026-07-11-import-cycle-alias-rebinding-hardening`、`2026-07-11-callgraph-confidence-kiss-hardening` 和 `2026-07-11-dependency-proof-rebuild-and-closure` 已完成终态证据重建与 clean HEAD 证明：
 
 - 删除 `callgraph_type_index.py` 和 typed 确信提升；正式调用图快照为 7329 callable、25772 输出边、10152 确信边、15620 模糊边、typed 0、8 条受限简单循环。
 - 两个独立临时调用图目录各 10 个 JSON，逐文件 SHA256 完全一致后才覆盖正式快照。
 - 生产/含测试当前为 750/1443 模块、6/7 个 hard 目录 SCC；候选双基线与正式文件逐字节一致，SCC、圈内边和 unresolved 均无增删。
-- `baseline.json` 已移除被删除的 type-index 哈希并绑定完整 10 个调用图 JSON；仍明确是 dirty-worktree 局部证明，不是 clean-worktree proof。
+- `baseline.json` 已移除被删除的 type-index 哈希并绑定完整 10 个调用图 JSON；用户授权提交后，最终 19 步门禁在 clean HEAD 上无缓存、无续跑通过。上方第 6 节仍保留本 issue 当时尚未提交的历史边界。

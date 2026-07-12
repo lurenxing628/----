@@ -102,4 +102,4 @@ unproven loader binding: loader.import_module('pkg.b')
 
 ## 7. 后续证据状态
 
-2026-07-11 第 9 项 `dependency-proof-rebuild-and-closure` 已用最终 scanner 生成生产和含测试候选 v2 基线；两份候选文件分别与正式基线逐字节一致，证明现有 SCC、圈内边和 unresolved 身份没有被本修复偷偷改变。正式 CLI 已受控重写双基线并纳入最终 artifact SHA；当前仍是 dirty-worktree 局部证明。
+2026-07-11 第 9 项 `dependency-proof-rebuild-and-closure` 已用最终 scanner 生成生产和含测试候选 v2 基线；两份候选文件分别与正式基线逐字节一致，证明现有 SCC、圈内边和 unresolved 身份没有被本修复偷偷改变。正式 CLI 已受控重写双基线并纳入最终 artifact SHA；重建起初只是 dirty-worktree 局部证明，用户授权提交后已由 clean HEAD 19 步完整门禁升级为正式证明。

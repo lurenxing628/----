@@ -130,4 +130,4 @@ tags: [callgraph, confidence, utf-8, quality-gate]
 
 ## 5. 后续证据状态
 
-2026-07-11 第 9 项 `dependency-proof-rebuild-and-closure` 已按本 issue 产出的最终工具双跑：两个独立临时目录的 10 个 JSON 逐文件 SHA256 完全一致，并已受控覆盖正式调用图快照；`baseline.json` 已移除 `callgraph_type_index.py`，当前机器数字与上文临时结果一致。该后续动作仍发生在脏工作区，尚不构成 clean-worktree proof。
+2026-07-11 第 9 项 `dependency-proof-rebuild-and-closure` 已按本 issue 产出的最终工具双跑：两个独立临时目录的 10 个 JSON 逐文件 SHA256 完全一致，并已受控覆盖正式调用图快照；`baseline.json` 已移除 `callgraph_type_index.py`，当前机器数字与上文临时结果一致。重建动作最初发生在脏工作区，但用户随后授权提交，最终 19 步门禁已在 clean HEAD 上无缓存、无续跑通过；上方遗留事项保留本 issue 独立完成时的历史状态。

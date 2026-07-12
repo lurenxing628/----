@@ -74,10 +74,10 @@ items:
       - dependency-architecture-facts-refresh
       - import-cycle-alias-rebinding-hardening
       - callgraph-confidence-kiss-hardening
-    status: in_progress
+    status: completed
     feature: null
     minimal_loop: true
-    notes: 由 issue 2026-07-11-dependency-proof-rebuild-and-closure 承接；dirty-worktree 证据重建进行中，取得提交后 clean HEAD 完整门禁证明前不得启动 A1
+    notes: issue 2026-07-11-dependency-proof-rebuild-and-closure 已完成；调用图双跑、双基线逐项核差异、25 项哈希和事实文档已闭环，用户授权提交后 clean HEAD 19 步门禁无缓存无续跑通过；A1 可单独启动但本轮不实施
 
   - slug: scheduler-a1-decoupling
     description: 消除 scheduler 根目录、config、run、summary 四方硬目录依赖圈

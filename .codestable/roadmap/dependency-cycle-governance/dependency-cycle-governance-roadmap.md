@@ -256,7 +256,7 @@ python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-w
 9. **dependency-proof-rebuild-and-closure** — 冻结工具后双跑重建调用图、双基线、哈希和事实文档，形成可复现终态证明。
    - 所属模块：T1/T2/T3/D1
    - 依赖：`import-cycle-edge-baseline-v2`、`dependency-architecture-facts-refresh`、`import-cycle-alias-rebinding-hardening`、`callgraph-confidence-kiss-hardening`
-   - 状态：in_progress
+   - 状态：completed
    - 对应 issue：`2026-07-11-dependency-proof-rebuild-and-closure`
 
 10. **scheduler-a1-decoupling** — 消除 scheduler 根/config/run/summary 四方硬目录圈。
@@ -277,7 +277,7 @@ python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-w
    - 状态：planned
    - 对应 feature：未启动（每批走独立 refactor）
 
-**最小闭环**：第 1-6 条保留为首次工具接线历史，但 2026-07-11 复审证明其不足以支撑可信收口。当前最小闭环改为第 9 条：第 7、8 条语义反例通过，随后完成临时双跑、正式证据重建、哈希自检和 clean HEAD 门禁；闭环完成后才能进入 A1。
+**最小闭环**：第 1-6 条保留为首次工具接线历史，但 2026-07-11 复审证明其不足以支撑可信收口。第 7、8 条语义反例通过后，第 9 条已完成临时双跑、正式证据重建、哈希自检和 clean HEAD 19 步门禁，当前最小闭环已经成立。A1 前置因此解除，但 A1 仍是独立 planned refactor，本轮不继续实施。
 
 ## 6. 排期思路
 
@@ -288,11 +288,12 @@ python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-w
 - 当前 `rg` 在本机 PATH 中不可用，本轮搜索使用 `git grep`/`grep`；这不改变代码或交付环境。
 - 本轮按用户要求不调用 subagent；规划与后续执行均由主代理单线推进。
 - `.codestable/checkup/scripts/` 不在当前 symbol-locator 的常规源码索引根中；调用图工具自身的影响面以 AST 合同测试、直接 grep 和临时目录全量提取补足，不把索引未命中当“无人调用”。
-- 当前工作区仍是未提交脏状态；第 9 条完成前只能报告局部验证，不能声称 clean-worktree proof。
-- 现有 A1 refactor design/checklist 保留，但五步均保持 pending，直到第 9 条完成后再重新核对起点边集。
+- 依赖治理批次已在用户明确授权后提交；完整 19 步质量门禁在 clean HEAD 上无缓存、无续跑通过，可声称本批机械证据的 clean-worktree proof。历史决定考古水位线仍未推进。
+- 现有 A1 refactor design/checklist 保留，五步继续保持 pending；启动 A1 时先以当前正式生产基线重新核对 49 条起点边，不把前置解除等同自动开工。
 
 ## 8. 变更日志
 
+- 2026-07-11：完成 `dependency-proof-rebuild-and-closure`；调用图双临时目录 10 JSON 逐文件 SHA 一致，双 scope 候选基线与正式文件逐字节一致，25 项 artifact 哈希全匹配；用户授权提交后，clean HEAD 完整 19 步门禁无缓存、无续跑通过，收集 4712 项且 full-test-debt unexpected failure 为 0。A1 仍保持 planned。
 - 2026-07-11：完成 `callgraph-confidence-kiss-hardening` 独立 issue；删除 typed 属性接收者推断，调用点保留行号，源码严格 UTF-8 fail-closed；临时双跑稳定但未提前刷新快照和哈希。
 - 2026-07-11：完成 `import-cycle-alias-rebinding-hardening` 独立 issue；动态加载器只在词法来源可证明且未重绑定时生成边，不确定调用进入 unresolved，双 scope 正式命令在未刷新基线时通过。
 - 2026-07-11：根据工作区复审新增动态导入别名重绑定、调用图 KISS 收敛和终态证据重建三项；接口契约改为非直接 `self` 属性调用保持 ambiguous、严格 UTF-8 fail-closed，并把 A1 前置改为终态证明闭环。既有 completed 条目保留历史状态，不回退终态。
