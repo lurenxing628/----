@@ -34,6 +34,8 @@ from tools.long_gate_fingerprint import fingerprint_entry
 from tools.long_gate_manifest import (
     ENTRY_DEBT_LEDGER_SYNC,
     ENTRY_FULL_TEST_DEBT,
+    ENTRY_IMPORT_CYCLES_PRODUCTION,
+    ENTRY_IMPORT_CYCLES_WITH_TESTS,
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
 )
@@ -84,6 +86,8 @@ def test_required_entry_comes_from_real_command_plan_and_enables_only_current_ca
     assert "required_regression_group_scope_policy" not in required_entry
     assert enabled == [
         "ruff_check_full",
+        ENTRY_IMPORT_CYCLES_PRODUCTION,
+        ENTRY_IMPORT_CYCLES_WITH_TESTS,
         "pytest_collect_all",
         "quickref_vs_routes",
         "pyright_gate_full",

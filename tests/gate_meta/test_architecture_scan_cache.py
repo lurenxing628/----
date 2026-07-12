@@ -289,6 +289,8 @@ def test_architecture_fitness_stays_planned_and_artifact_is_blocked() -> None:
     enabled = [entry["entry_id"] for entry in manifest["entries"] if entry["reuse_allowed"]]
     assert enabled == [
         "ruff_check_full",
+        long_gate_manifest.ENTRY_IMPORT_CYCLES_PRODUCTION,
+        long_gate_manifest.ENTRY_IMPORT_CYCLES_WITH_TESTS,
         "pytest_collect_all",
         "quickref_vs_routes",
         "pyright_gate_full",

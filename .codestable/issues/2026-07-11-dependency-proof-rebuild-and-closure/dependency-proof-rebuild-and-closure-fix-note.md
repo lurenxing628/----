@@ -183,6 +183,10 @@ A1 的 49 条起点边没有漂移，结构债没有清零；本项不把“相�
 - 双 scope 正式循环门禁通过；
 - 重新生成的双候选基线与正式文件仍逐字节一致，SHA 仍为 `9bced6...` / `c92c2b...`。
 
+第二次候选 clean HEAD `f8f59b9f88a7cd42e605672536686364bd1dd438` 完整门禁的前 17 步全部通过；第 18 步 full-test-debt 在全量分片中发现 2 个 required/self 失败和 7 个 candidate 失败。9 个失败同属一条根因：双循环长门禁成为正式 enabled entry 后，三个 long-gate 合成计划测试仍被新“正式计划必须同时含双循环命令”断言约束，另外三处真实 manifest 期望清单还少了 `import_cycles_production` / `import_cycles_with_tests`。
+
+修复保持生产合同不变：只在专门测试其它缓存/summary 行为的合成环境中显式隔离该无关计划前置；正式双命令合同仍由 `test_run_quality_gate.py`、`test_long_gate_manifest.py` 和 registry 合同锁住。同时把 architecture/required/startup 三处真实 enabled 清单补齐双循环 entry。修后原 9 项全部通过，6 个受影响测试文件全量 `218 passed in 48.36s`，Ruff 与 Python 3.8.10 扫描通过。
+
 完整脏工作区门禁另行尝试：
 
 ```text

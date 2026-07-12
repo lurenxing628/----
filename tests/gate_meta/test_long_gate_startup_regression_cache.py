@@ -31,6 +31,8 @@ from tools import long_gate_fingerprint as fingerprint_mod
 from tools import quality_gate_shared
 from tools.long_gate_manifest import (
     ENTRY_FULL_TEST_DEBT,
+    ENTRY_IMPORT_CYCLES_PRODUCTION,
+    ENTRY_IMPORT_CYCLES_WITH_TESTS,
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
 )
@@ -74,6 +76,8 @@ def test_startup_entry_comes_from_real_command_plan_and_enables_only_current_cac
     assert startup_entry["args"][4:] == iter_startup_regressions()
     assert enabled == [
         "ruff_check_full",
+        ENTRY_IMPORT_CYCLES_PRODUCTION,
+        ENTRY_IMPORT_CYCLES_WITH_TESTS,
         "pytest_collect_all",
         "quickref_vs_routes",
         "pyright_gate_full",

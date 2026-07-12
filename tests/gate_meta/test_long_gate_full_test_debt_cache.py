@@ -115,6 +115,7 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
     monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
+    monkeypatch.setattr(module, "_assert_import_cycle_command_plan_contract", lambda _plan: False)
     monkeypatch.setattr(fingerprint_mod, "_git_executable_realpath", lambda environment=None: "/stable/git")
     monkeypatch.setattr(fingerprint_mod, "_git_version", lambda strict=False, environment=None: "git version 2.50.0")
     monkeypatch.setattr(fingerprint_mod, "_node_executable_realpath", lambda environment=None: "/stable/node")
