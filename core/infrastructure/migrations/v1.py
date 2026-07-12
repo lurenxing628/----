@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Optional
 
-from .common import MigrationOutcome, add_column_if_missing, fallback_log, merge_outcomes
+from ..migration_common import MigrationOutcome, add_column_if_missing, fallback_log, merge_outcomes
 
 
 def run(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:

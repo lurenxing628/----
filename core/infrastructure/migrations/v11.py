@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from .common import MigrationOutcome
+from ..migration_common import MigrationOutcome
 
 _PERFORMANCE_INDEXES_SQL = """
 CREATE INDEX IF NOT EXISTS idx_schedule_version_time

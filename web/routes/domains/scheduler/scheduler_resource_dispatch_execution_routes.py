@@ -4,7 +4,7 @@ from typing import Any, Mapping
 
 from flask import current_app, jsonify, request, send_file
 
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError, error_response
+from core.errors import AppError, ErrorCode, ValidationError, error_response
 from core.models.operation_execution_event import (
     EXECUTION_ACTION_REPORT_EXCEPTION,
     EXECUTION_EVENT_FINISH,

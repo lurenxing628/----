@@ -4,7 +4,7 @@ import json
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
-from .common import MigrationOutcome, merge_outcomes, table_exists
+from ..migration_common import MigrationOutcome, merge_outcomes, table_exists
 
 
 def _update_if_table_exists(conn: sqlite3.Connection, table: str, sql: str, params: Tuple[Any, ...] = ()) -> MigrationOutcome:

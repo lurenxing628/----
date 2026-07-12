@@ -5,7 +5,7 @@ from typing import Any
 
 from flask import current_app, flash, g, jsonify, redirect, render_template, request, send_file
 
-from core.infrastructure.errors import AppError, BusinessError, ErrorCode, error_response
+from core.errors import AppError, BusinessError, ErrorCode, error_response
 from core.services.common.excel_audit import log_excel_export
 from core.services.scheduler.resource_dispatch_excel import build_resource_dispatch_workbook
 from web.error_boundary import json_error_response, user_visible_app_error_message

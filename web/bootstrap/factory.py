@@ -17,7 +17,7 @@ from config import config as config_map
 from core.infrastructure.backup import BackupManager, MaintenanceWindowError, is_maintenance_window_active
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
-from core.infrastructure.migrations.common import fallback_log
+from core.infrastructure.migration_common import fallback_log
 from core.models.enums import YesNo
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_templates import ExcelTemplateError, ensure_excel_templates

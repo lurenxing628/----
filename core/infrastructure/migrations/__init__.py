@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Callable, Dict
 
-from .common import MigrationOutcome
+from ..migration_common import MigrationOutcome
 from .v1 import run as run_v1
 from .v2 import run as run_v2
 from .v3 import run as run_v3

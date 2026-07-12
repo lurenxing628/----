@@ -6,7 +6,7 @@ from typing import List
 from core.infrastructure.operation_execution_event_data_contract import operation_execution_event_sequence_issues
 from core.models.operation_execution_event import parse_operation_event_time
 
-from .common import MigrationOutcome
+from ..migration_common import MigrationOutcome
 from .v15 import _EVENT_INDEX_SQL, _EVENT_TABLE_SQL
 
 _EVENT_COLUMNS: List[str] = [

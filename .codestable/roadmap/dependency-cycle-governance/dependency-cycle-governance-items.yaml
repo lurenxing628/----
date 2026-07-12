@@ -1,6 +1,6 @@
 roadmap: dependency-cycle-governance
 created: 2026-07-10
-last_reviewed: 2026-07-11
+last_reviewed: 2026-07-12
 
 items:
   - slug: callgraph-receiver-resolution
@@ -90,10 +90,10 @@ items:
   - slug: foundation-a2-decoupling
     description: 先设计和双轨复审，再解耦 infrastructure、migrations、models、shared
     depends_on: [scheduler-a1-decoupling]
-    status: planned
+    status: in-progress
     feature: null
     minimal_loop: false
-    notes: 不改变数据库格式、迁移语义、公开模型合同和错误表现
+    notes: refactor 2026-07-12-foundation-a2-dependency-decoupling 已完成代码/确定性证据和无缓存无续跑 dirty-worktree 19 步门禁；A2 已从双 scope 消失且迁移语义不变，用户已授权实现提交与提交后 clean-HEAD proof，成功前保持 in-progress
 
   - slug: remaining-cycles-decoupling
     description: 按 A3、A4、A5、A6 和 tests 五个独立批次清零剩余硬目录圈

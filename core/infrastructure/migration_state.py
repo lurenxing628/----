@@ -3,8 +3,8 @@ from __future__ import annotations
 import sqlite3
 from typing import List, Optional
 
+from .migration_common import MigrationOutcome, column_exists, fallback_log, table_exists
 from .migration_operation_execution_contract import operation_execution_event_contract_issues
-from .migrations.common import MigrationOutcome, column_exists, fallback_log, table_exists
 
 CURRENT_SCHEMA_VERSION = 19
 

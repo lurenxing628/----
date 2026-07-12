@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import sqlite3
 
-from .common import MigrationOutcome, add_column_if_missing, column_exists, fallback_log, merge_outcomes, table_exists
+from ..migration_common import (
+    MigrationOutcome,
+    add_column_if_missing,
+    column_exists,
+    fallback_log,
+    merge_outcomes,
+    table_exists,
+)
 
 
 def _create_index_if_possible(conn: sqlite3.Connection, table: str, column: str, sql: str, logger=None) -> MigrationOutcome:

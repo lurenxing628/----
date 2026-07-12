@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from .common import MigrationOutcome
+from ..migration_common import MigrationOutcome
 
 _ADJUSTMENT_SCENARIO_SQL = """
 CREATE TABLE IF NOT EXISTS ScheduleAdjustmentScenario (

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Dict, List, Optional, Tuple
 
-from .migrations.common import table_exists
+from .migration_common import table_exists
 from .operation_execution_event_data_contract import operation_execution_event_data_issues
 
 

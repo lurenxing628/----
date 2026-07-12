@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 from flask import current_app, g, jsonify, render_template, request, url_for
 
-from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError, error_response
+from core.errors import AppError, BusinessError, ErrorCode, ValidationError, error_response
 from core.services.scheduler.schedule_plan_option_display import public_plan_role_options
 from core.services.scheduler.schedule_result_view_context import selected_plan_role
 from core.services.scheduler.schedule_result_view_range import normalize_week_offset_for_explicit_range

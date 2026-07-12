@@ -4,7 +4,7 @@ import re
 import sqlite3
 from typing import List, Optional, Tuple
 
-from .common import MigrationOutcome, fallback_log
+from ..migration_common import MigrationOutcome, fallback_log
 
 _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _PK_IDENT = r"[A-Za-z_][A-Za-z0-9_]*"

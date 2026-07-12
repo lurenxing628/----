@@ -157,7 +157,7 @@ core/services/scheduler/
 
 ## 7. 跨层与依赖方向现状
 
-- **主要跨层方向仍清楚，但并非全仓零反向依赖**:scheduler 不反依赖 web，`core.algorithms` 不依赖 service；web 主要经 `ScheduleService` 等门面消费 scheduler。基础层另有 A2：models/shared 因错误合同依赖 infrastructure，migrations 又复用运行时事件合同，不能再把 infrastructure/shared 写成纯叶子。
+- **主要跨层方向仍清楚，但并非全仓零反向依赖**:scheduler 不反依赖 web，`core.algorithms` 不依赖 service；web 主要经 `ScheduleService` 等门面消费 scheduler。基础层 A2 已改成 `migrations → infrastructure → models → shared → core.errors` 单向结构：models/shared 不再反借 infrastructure，migrations 复用父层事件合同但 infrastructure 不再反借 child common。
 - **服务主链大体单向，但目录商图并非全 DAG**:`report → scheduler → {equipment → process/personnel, process, personnel, material}` 是主要方向；同时现存 A5 `plugins⇄services/common`、A6 `report⇄report/exporters` 等目录 SCC，须与“主要调用方向”分开表述。
 - **config 自带持久化通道**:config/ 是唯一直连 `data` 仓储的子包,抽象层比其它纯计算/投影子包"厚"。
 - **graph 接入靠延迟 import**:静态调用图(symbol_locator / checkup)对 run→graph 这些边标"动态/盲区",外人难从包结构看出 graph 何时被触发。

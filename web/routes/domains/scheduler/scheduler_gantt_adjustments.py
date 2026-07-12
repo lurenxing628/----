@@ -4,7 +4,7 @@ from typing import Any, Dict
 
 from flask import current_app, g, jsonify, request, url_for
 
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError, error_response
+from core.errors import AppError, ErrorCode, ValidationError, error_response
 from web.error_boundary import json_error_response
 
 from .scheduler_bp import bp

@@ -4,7 +4,7 @@ import sqlite3
 
 from core.infrastructure.operation_execution_event_data_contract import operation_execution_event_sequence_issues
 
-from .common import MigrationOutcome, table_exists
+from ..migration_common import MigrationOutcome, table_exists
 from .v15 import _EVENT_INDEX_SQL as _V15_EVENT_INDEX_SQL
 from .v15 import _EVENT_TABLE_SQL as _V15_EVENT_TABLE_SQL
 from .v16 import _EVENT_COLUMNS, _drop_event_indexes

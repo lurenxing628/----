@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Optional
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.shared.degradation import DegradationCollector
 from core.shared.field_labels import display_field_label
 from core.shared.strict_parse import (

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from .common import MigrationOutcome, add_column_if_missing
+from ..migration_common import MigrationOutcome, add_column_if_missing
 
 _SCENARIO_SNAPSHOT_COLUMNS = (
     ("execution_snapshot_revision", "execution_snapshot_revision TEXT"),

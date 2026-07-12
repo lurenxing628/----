@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Tuple, Union
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 SUPPORTED_SCHEDULE_RESOURCE_TYPES = {"machine", "operator"}
 # 往本集合加第四类资源时必须同步扩 normalize_dispatch_resource_filter 的分支——

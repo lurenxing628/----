@@ -6,8 +6,8 @@ import re
 import sqlite3
 from typing import List
 
+from .migration_common import fallback_log
 from .migration_state import list_user_tables
-from .migrations.common import fallback_log
 
 _CREATE_TABLE_RE = re.compile(
     r"(?ims)^\s*(CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(.*?\);)"

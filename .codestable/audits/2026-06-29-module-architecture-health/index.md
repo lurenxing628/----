@@ -2,25 +2,26 @@
 doc_type: audit
 slug: module-architecture-health
 scope: scheduler 之外的全仓模块架构合理性体检——algorithms / 基础层(models+infrastructure+shared)/ 业务服务族 / common+plugins+data / web 三层;聚焦职责划分、依赖方向、结构债
-summary: 历史模块体检 + 2026-07-11 依赖事实终态校正；A2-A6 仍在，基础层并非纯叶子，A4 scope 已扩到入口/bootstrap，正式循环门禁已接入
+summary: 历史模块体检 + 2026-07-12 依赖事实校正；A2 已解除，基础层改为单向依赖，A3-A6 与 tests 圈仍待治理
 status: open
 created: 2026-06-29
-last_reviewed: 2026-07-11
-verified_by: 2026-06-29 五路历史体检 + 2026-07-10 首次工具复扫 + 2026-07-11 主代理单线程确定性证据重建
+last_reviewed: 2026-07-12
+verified_by: 2026-06-29 五路历史体检 + 2026-07-10 首次工具复扫 + 2026-07-11 确定性证据重建 + 2026-07-12 A1/A2 主代理单线程治理
 tags: [architecture, module-health, dependency-direction, responsibility, audit]
 ---
 
-# 模块架构体检（scheduler 之外，含 2026-07-11 校正）
+# 模块架构体检（scheduler 之外，含 2026-07-12 校正）
 
-## 2026-07-11 当前依赖事实校正
+## 2026-07-12 当前依赖事实校正
 
 - 下方主体保留 2026-06-29 的历史人工判断；与本节冲突时，以本节和双 v2 基线为准。
-- “基础层是真叶子”表述过强：当前 A2 确认有 `models/shared → infrastructure.errors`、`migrations → infrastructure.operation_execution_event_data_contract`、`infrastructure → migrations/models` 等 hard 边。错误合同下沉和迁移语义冻结仍是 A2 的设计前提。
-- A4 当前生产目录 SCC 已扩为 `. ⇄ web/bootstrap ⇄ web/routes ⇄ web/routes/domains/scheduler`。这是把顶层入口/config 与 bootstrap 纳入非测试 scope 后得到的目录商图结构；纯显式 hard 文件 SCC 仍为 0，不能把目录圈直接叫文件死循环。
-- 父包 `__init__.py` 初始化链另形成 9 个 hard 文件加载 SCC；它们与“纯显式 import 文件 SCC=0”是两种不同口径，不得互相替代。
-- 正式质量门禁现已包含生产与含测试两条 `tools.scan_import_cycles --fail-on-new-cycle` 命令，使用独立 v2 基线并参与哈希、收据、重放和 long-gate；下方“可挂/待挂”说法已经过期。
-- 2026-07-11 最终工具口径仍是生产 6 个、含测试 7 个 hard 目录 SCC；两份候选 v2 基线与正式文件逐字节一致，所有成员、圈内边和 unresolved 均无增删。调用图 typed 确信提升已删除，最终快照 typed 边为 0。
-- A2-A6 仍未治理，本次只修工具、门禁和事实描述；不把当前可导入写成“永远无初始化风险”。
+- A2 已通过两个最小归位点解除：零依赖错误合同在 `core.errors`，旧 infrastructure 路径只做同对象兼容转出；migration outcome/SQLite helper 在父层 `core.infrastructure.migration_common`，child 旧路径同样只兼容转出。当前基础方向为 `migrations → infrastructure → models → shared → core.errors`。
+- 事件数据合同保留在 infrastructure，v16/v18/v19 继续单向消费；历史迁移只改 common import，SQL、版本和阻断语义未改。
+- A4 当前生产目录 SCC 仍为 `. ⇄ web/bootstrap ⇄ web/routes ⇄ web/routes/domains/scheduler`。这是把顶层入口/config 与 bootstrap 纳入非测试 scope 后得到的目录商图结构；纯显式 hard 文件 SCC 仍为 0，不能把目录圈直接叫文件死循环。
+- 父包 `__init__.py` 初始化链仍形成 9 个 hard 文件加载 SCC，但 migration 圈已从 21 成员 / 45 边缩为 5 成员 / 11 边；它与“纯显式 import 文件 SCC=0”是不同口径。
+- 正式质量门禁包含生产与含测试两条 `tools.scan_import_cycles --fail-on-new-cycle` 命令，使用独立 v2 基线并参与哈希、收据、重放和 long-gate。
+- 当前工作树口径为生产 4 个、含测试 5 个 hard 目录 SCC；A1/A2 已消失，其他目录 SCC 与 unresolved 逐项未变。调用图仍为 7329 callable / 25786 edges / typed 0，按移动路径映射零增删。
+- A3-A6 与 tests 辅助代码圈仍未治理；A2 当前未提交，只有 dirty-worktree 机械证明，不能提前称 clean closure。
 
 > 性质:**发现清单**,不代表已治理。治理(改代码)归 roadmap / refactor。
 > 配套:循环依赖细节见 [[2026-06-28-circular-imports]];scheduler 模块见 [[service-scheduler]]。本报告补各模块"职责划分 / 依赖方向 / 结构债"的全景视角,并给出 A2–A6 环的**模块视角根因**。

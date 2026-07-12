@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from .common import MigrationOutcome, fallback_log, table_exists
+from ..migration_common import MigrationOutcome, fallback_log, table_exists
 
 
 def _duplicate_schedule_rows(conn: sqlite3.Connection):

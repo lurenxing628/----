@@ -7,6 +7,7 @@ from typing import Callable, Optional
 
 from .database_bootstrap import cleanup_probe_db, missing_schema_tables
 from .migration_backup import release_sqlite_connection_reference, restore_db_file_from_backup
+from .migration_common import MigrationOutcome, fallback_log, table_exists
 from .migration_state import (
     CURRENT_SCHEMA_VERSION,
     MigrationContractError,
@@ -17,7 +18,6 @@ from .migration_state import (
     get_schema_version,
     set_schema_version,
 )
-from .migrations.common import MigrationOutcome, fallback_log, table_exists
 
 ConnectionFactory = Callable[[str], sqlite3.Connection]
 

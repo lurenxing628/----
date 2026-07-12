@@ -4,7 +4,7 @@ import json
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
-from .common import MigrationOutcome, merge_outcomes, table_exists
+from ..migration_common import MigrationOutcome, merge_outcomes, table_exists
 
 _DEFAULT_GRAPH_CONFIG: Tuple[Tuple[str, str, str], ...] = (
     ("graph_analysis_mode", "on", "工序图分析模式：关闭/只生成报告/参与排产"),

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import List, Optional, Tuple
 
-from .common import MigrationOutcome, merge_outcomes
+from ..migration_common import MigrationOutcome, merge_outcomes
 from .v4_sanitizers import _sanitize_field as _sanitize_field_impl
 
 

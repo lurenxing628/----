@@ -16,6 +16,7 @@ from .database_bootstrap import (
 from .database_bootstrap import (
     load_schema_sql as _load_schema_sql,
 )
+from .migration_common import fallback_log
 from .migration_runner import migrate_with_backup as _migrate_with_backup_impl
 from .migration_runner import preflight_migration_contract as _preflight_migration_contract_impl
 from .migration_state import (
@@ -37,7 +38,6 @@ from .migration_state import (
 from .migration_state import (
     has_no_user_tables as _has_no_user_tables,
 )
-from .migrations.common import fallback_log
 from .safe_files import (
     UnsafeFixedFileError,
     create_fixed_file_exclusive,

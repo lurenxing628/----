@@ -4,7 +4,7 @@ import math
 from datetime import date, datetime
 from typing import Any, Optional
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 _DATETIME_FORMAT_HINT = "YYYY-MM-DD / YYYY-MM-DD HH:MM / YYYY-MM-DD HH:MM:SS"
 

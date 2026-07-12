@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "mechanical_ready_history_pending_with_clean_worktree_proof",
+  "status": "mechanical_ready_history_pending_a2_dirty_worktree",
   "verified_at": "2026-07-12",
   "code_baseline": {
     "commit": "606bcda1d369914875fe63a5d3657ff4cbc351ac",
@@ -12,21 +12,21 @@
     "worktree_was_dirty": true
   },
   "worktree_tooling_refresh": {
-    "starting_head": "964d74d9d665353a043a1cf00e6736cfc0764d82",
+    "starting_head": "a53172e77671d722594aeb81c06b72d1cc6b1b22",
     "refreshed_at": "2026-07-12",
-    "worktree_dirty": false,
-    "clean_worktree_proof": true,
-    "scope": "scheduler A1 one-way dependency refactor, deterministic callgraph refresh, dual v2 baseline shrink and synchronized current facts",
-    "note": "Scheduler A1 implementation and deterministic evidence were committed as c2243cd0. On that clean HEAD, the complete 19-step gate passed with cache/resume disabled, 4716 collected tests, zero unexpected failures, and required proof 253 targets / 2467 nodeids. history_baseline remains pending.",
+    "worktree_dirty": true,
+    "clean_worktree_proof": false,
+    "scope": "foundation A2 one-way errors/migration-common refactor, deterministic callgraph rebuild, dual v2 baseline shrink and synchronized current facts",
+    "note": "A2 implementation and deterministic evidence passed targeted checks plus the uncached, non-resumed 19-step dirty-worktree gate (4724 collected, zero unexpected failures). The user authorized the implementation commit and its post-commit clean-HEAD proof; this pre-proof snapshot must remain clean_worktree_proof=false until that run succeeds. history_baseline remains pending.",
     "generation_started_from_dirty_worktree": true,
     "proof_command": "python scripts/run_quality_gate.py --require-clean-worktree --no-long-gate-cache --no-resume",
     "proof_step_count": 19,
-    "proof_collected_test_count": 4716,
-    "proof_required_target_count": 253,
-    "proof_required_nodeid_count": 2467,
-    "proof_manifest_status": "passed",
-    "proof_process_exit_code": 0,
-    "proof_head": "c2243cd0d937d27436c5a513f210e5683b180483"
+    "proof_collected_test_count": 0,
+    "proof_required_target_count": 0,
+    "proof_required_nodeid_count": 0,
+    "proof_manifest_status": "pending",
+    "proof_process_exit_code": null,
+    "proof_head": null
   },
   "mechanical_checks": {
     "codemap": {
@@ -41,7 +41,7 @@
       "refined_orphan_candidates": 109
     },
     "callgraph": {
-      "status": "pass_deterministic_clean_head_rebuild",
+      "status": "pass_deterministic_dirty_worktree_rebuild",
       "summary_path": ".codestable/checkup/latest/callgraph/summary.json",
       "total_functions": 7329,
       "nested_callable_count": 316,
@@ -55,13 +55,13 @@
       "parse_errors": []
     },
     "import_cycles": {
-      "status": "pass_dual_scope_clean_head_rebuild",
+      "status": "pass_dual_scope_dirty_worktree_rebuild",
       "production_baseline_path": ".codestable/checkup/import_cycles_production_baseline.json",
       "with_tests_baseline_path": ".codestable/checkup/import_cycles_with_tests_baseline.json",
-      "production_module_count": 761,
-      "with_tests_module_count": 1455,
-      "production_hard_dir_cycle_count": 5,
-      "with_tests_hard_dir_cycle_count": 6,
+      "production_module_count": 763,
+      "with_tests_module_count": 1458,
+      "production_hard_dir_cycle_count": 4,
+      "with_tests_hard_dir_cycle_count": 5,
       "parent_aware_hard_file_cycle_count": 9,
       "explicit_hard_file_cycle_count": 0,
       "parent_aware_runtime_file_cycle_count": 13,
@@ -69,22 +69,25 @@
       "production_unresolved_dynamic_import_count": 6,
       "production_check_exit_code": 0,
       "with_tests_check_exit_code": 0,
-      "production_parent_package_init_edge_count": 6687,
-      "with_tests_parent_package_init_edge_count": 13251,
-      "with_tests_unresolved_dynamic_import_count": 44
+      "production_parent_package_init_edge_count": 6647,
+      "with_tests_parent_package_init_edge_count": 13224,
+      "with_tests_unresolved_dynamic_import_count": 44,
+      "migration_parent_aware_file_cycle_member_count": 5,
+      "migration_parent_aware_file_cycle_edge_count": 11
     },
     "dead_code_quick": {
-      "status": "a1_paths_migrated_preexisting_clean_head_drift_not_refreshed",
+      "status": "a2_paths_migrated_preexisting_clean_head_drift_not_refreshed",
       "baseline_path": ".codestable/checkup/dead_code_islands_baseline.json",
       "candidate_count": 193,
       "explained_count": 86,
       "baseline_count": 82,
       "new_candidates_before_refresh": 7,
       "disappeared_old_baseline_entries": 103,
-      "validation": "Only the two ExecutionFactProvider baseline identities were moved to the execution package. The independent quick scan also reports 32 unrelated new candidates on archived HEAD 964d74d9 itself, so A1 did not accept or refresh that preexisting drift.",
+      "validation": "Only the three AppError baseline identities moved to core/errors.py. A quick scan of archived start HEAD a53172e7 and the A2 worktree both report the same 32 new candidates after path mapping, so A2 introduced zero new quick candidates and did not refresh preexisting drift.",
       "current_suspect_count": 107,
       "a1_new_candidate_count_after_path_migration": 0,
-      "preexisting_clean_head_new_candidate_count": 32
+      "preexisting_clean_head_new_candidate_count": 32,
+      "a2_new_candidate_count_after_path_migration": 0
     }
   },
   "history_baseline": {
@@ -120,18 +123,18 @@
     "tools/scan_import_cycles.py": "752ce052eacfb301dc68e68a42130b902d1f784e7ce2a6b835fd89575105b081",
     "tools/scan_dead_code_islands.py": "2750edf0f5328eb78aeeb2a5bbc5c2757455cda0c4fcf269c24ec87179023189",
     ".codestable/checkup/latest/codemap/summary.json": "3e257a04eb09bedabb5a604c49ac158e91358f70ce7e3d239ddd62ec6f7a00be",
-    ".codestable/checkup/latest/callgraph/articulation_points.json": "603818d17011b00eee52b28a82115bdbfc16c3ae50d665775bb1b56b892ed75b",
+    ".codestable/checkup/latest/callgraph/articulation_points.json": "1b4cb39181197df5c35de44886c01278c4e9c72e8641440ae60ee2f02703205f",
     ".codestable/checkup/latest/callgraph/cycles.json": "36a49f0192fd6eb26995eea555c2092bc0a09328272a9c9d736a1fc737a4617d",
-    ".codestable/checkup/latest/callgraph/dataflow_nodes.json": "335e0549c4947d90c0856145d7b7e37d1b678194f21b73bd264915435a2a5a32",
+    ".codestable/checkup/latest/callgraph/dataflow_nodes.json": "c094551fdc63b7a34afd1c42c7432d4778bf4bc0b46565643dfe4d3173e747f5",
     ".codestable/checkup/latest/callgraph/dynamic_unresolved.json": "f52973db231c9584232749ed07024d8b2a019661988a52ed88fe32d0376750e7",
-    ".codestable/checkup/latest/callgraph/edges.json": "b74c5e5f99263564f2e4a82b18fc47839dc9c1f910a98d11525debffe6f4ad96",
-    ".codestable/checkup/latest/callgraph/functions.json": "9029555a6a88264e691587c231a34438983fd3d4015a18abfee0b5a125a7475e",
-    ".codestable/checkup/latest/callgraph/high_fan_in.json": "f4822cff63fbd14f2201485b686c20a9d09a8ee022974288aa2b92a5bf2bd5cd",
-    ".codestable/checkup/latest/callgraph/islands.json": "bd840e51816d965e47f97f41d8bb9dfe7d2462651783017703c989dfa5a1793b",
+    ".codestable/checkup/latest/callgraph/edges.json": "fbf3a9bc83936cb4a4ee3c707840c9141b4f12e535f931945fa770ce79e3474f",
+    ".codestable/checkup/latest/callgraph/functions.json": "2dd73fe563cd0ff97350c61c7431e9f9b3ba521f1b4e7fc787e198e83b3b573a",
+    ".codestable/checkup/latest/callgraph/high_fan_in.json": "aa68525c764d5fa11e5b057b6b399b67eab339429da20db629f55598045bf81d",
+    ".codestable/checkup/latest/callgraph/islands.json": "5a8afaba3fd3f9df09f47fc089c17f26de5b5bd9b7046e1ffe83033bd8932e47",
     ".codestable/checkup/latest/callgraph/risk_dataflow.json": "d650f709d2b7749df13155e5e8705cca8bcdb7f112648dad42ab8167318d2a44",
     ".codestable/checkup/latest/callgraph/summary.json": "dc7884787fb968188e31c6198a0229781028796fb57d3ac91e6876e2e6f17d71",
-    ".codestable/checkup/dead_code_islands_baseline.json": "12bb3a9a6baa2ae26e961f3b26f8964436e02e9476b06e599378e3a241afd251",
-    ".codestable/checkup/import_cycles_production_baseline.json": "5563be47437ad11fc79d54bfcfd60e942b0b0e5365caac39161028884aa3c5f5",
-    ".codestable/checkup/import_cycles_with_tests_baseline.json": "7fc86735c0c41888d8930ff82b0c13613de3b8983e7595c2e892535292b9b5ad"
+    ".codestable/checkup/dead_code_islands_baseline.json": "9b6aaa164605c4b20144bdfd78e138ade967cb841d09a2e2f27bbdf94816c584",
+    ".codestable/checkup/import_cycles_production_baseline.json": "7f96f5cb8ffe6f971140ac18923b237db8c86ecbe3a68011320eb794bae919c3",
+    ".codestable/checkup/import_cycles_with_tests_baseline.json": "4aeeb249d6954bba1406ac01fe255b6da1fb41b94035281ba8e75801aadee2d6"
   }
 }

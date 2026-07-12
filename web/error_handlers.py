@@ -5,7 +5,7 @@ from typing import Any, List, Optional, Tuple
 
 from werkzeug.exceptions import RequestEntityTooLarge
 
-from core.infrastructure.errors import AppError, ErrorCode, app_error_http_status, error_response
+from core.errors import AppError, ErrorCode, app_error_http_status, error_response
 from web.error_boundary import (
     build_user_visible_app_error_payload,
     get_user_visible_field_label,

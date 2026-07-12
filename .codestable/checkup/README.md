@@ -8,7 +8,23 @@
 
 机器可读总入口：[`baseline.json`](baseline.json)。
 
-## 2026-07-12 scheduler A1 终态机械证据与 clean HEAD 证明
+## 2026-07-12 foundation A2 当前机械证据（待 clean HEAD proof）
+
+A2 从干净 HEAD `a53172e77671d722594aeb81c06b72d1cc6b1b22` 启动，按 approved refactor 将错误合同归到 `core.errors`、migration common 归到 `core.infrastructure.migration_common`。实现与证据已完成提交前 dirty-worktree 证明并获实现提交授权，但提交后的 clean-worktree proof 尚未执行：
+
+| 检查 | A2 当前结果 | 差异口径 |
+|---|---|---|
+| callgraph | 7329 callable、25786 输出边、10166 确信边、15620 模糊边、typed 0、8 条受限简单循环、island 193 | 两个独立临时目录 10 JSON 逐文件 SHA 相同；13 个 callable 按两条移动路径映射后函数/边集零增删 |
+| import cycles（生产） | 763 模块、4 hard 目录 SCC、9/0 父包感知/纯显式 hard 文件 SCC、13/4 runtime 文件 SCC、unresolved 6 | A2 四目录 SCC 消失；其余目录 SCC 记录逐项不变；父包初始化边 6647 |
+| import cycles（含测试） | 1458 模块、5 hard 目录 SCC、unresolved 44 | 同样删除 A2；新增 1 个 A2 边界测试模块；父包初始化边 13224 |
+| migration 文件加载圈 | 父包感知 SCC 数仍为 9，其中 migration 圈从 21 成员 / 45 边缩为 5 成员 / 11 边 | 新成员和边均为旧记录严格子集；纯显式 hard 文件 SCC 仍为 0 |
+| 双 v2 基线 | 每份 606→518 / 666→578 行，各减少 88 行 | 删除 A2 目录块并用严格子集替换 migration 文件 SCC；其余记录与 unresolved 不变；刷新前后双正式命令均通过 |
+| dead-code quick | 只迁移 3 个 AppError 基线路径 | 起点 HEAD 与 A2 工作树均报告 32 个既有候选；按 errors 路径映射后集合完全相同，A2 新增 0，未全量 refresh |
+| 当前验证 | 步骤 5 专项 365 passed；Ruff、Pyright、48 文件增量 Python 3.8、1184 文件正式 Python 3.8 与双 scope 门禁通过；完整门禁 19/19、4724 collected、unexpected failure 0 | manifest=`passed_but_unbound` 且无 tracked drift；用户已授权实现提交和 clean-HEAD 门禁，尚待提交后执行 |
+
+`baseline.json.worktree_tooling_refresh.clean_worktree_proof=false`，准确表示当前只完成了确定性机械证据重建。历史决定考古水位线仍未推进。
+
+## 2026-07-12 scheduler A1 终态机械证据与 clean HEAD 证明（A2 起点）
 
 A1 从干净 HEAD `964d74d9d665353a043a1cf00e6736cfc0764d82` 启动。用户授权本地提交后，实现与证据落在 `c2243cd0d937d27436c5a513f210e5683b180483`；该提交在工作区前后均干净的条件下完成无缓存、无续跑的 19 步门禁：
 
@@ -21,7 +37,7 @@ A1 从干净 HEAD `964d74d9d665353a043a1cf00e6736cfc0764d82` 启动。用户授�
 | dead-code quick | 只迁移 2 个 `ExecutionFactProvider` 基线路径 | archived HEAD `964d74d9` 自身也会报告 32 个无关新增候选，因此没有借 A1 全量 refresh 接受这些既有漂移 |
 | 完整质量门禁 | 19/19 命令通过；收集 4716 项；unexpected failure 0；required 253 targets / 2467 nodeids | 使用 `--require-clean-worktree --no-long-gate-cache --no-resume`；manifest=`passed`，`is_dirty_before=false`、`is_dirty_after=false` |
 
-`baseline.json.worktree_tooling_refresh.clean_worktree_proof=true`。历史决定考古水位线仍未推进，不能把 A1 的机械 clean proof 外推成历史治理已完成。
+A1 当时的 `baseline.json.worktree_tooling_refresh.clean_worktree_proof=true`；A2 启动后当前总入口已按上节诚实回到 `false`，等待新的提交与 clean-HEAD 证明。历史决定考古水位线仍未推进，不能把 A1 的机械 clean proof 外推成历史治理已完成。
 
 ## 2026-07-11 前一终态工具证据重建与 clean HEAD 证明
 
@@ -42,7 +58,7 @@ A1 从干净 HEAD `964d74d9d665353a043a1cf00e6736cfc0764d82` 启动。用户授�
 | 确定性 | 调用图两个独立临时目录均为同一组 10 个 JSON，逐文件 SHA256 完全一致 | 双 scope 候选基线与正式基线逐字节一致；SCC、圈内边和 unresolved 均无增删 |
 | 完整质量门禁 | 19/19 步通过；收集 4712 项；full-test-debt unexpected failure 0；required 253 个目标 / 2467 nodeids | 命令使用 `--require-clean-worktree --no-long-gate-cache --no-resume`，没有复用旧成功缓存 |
 
-当时 `.codestable/checkup/latest/callgraph/` 已由核对通过的临时候选受控覆盖，两份 import-cycle v2 基线也已通过正式 CLI 刷新。该证明是 A1 的可信起点；当前终态以 2026-07-12 上节为准。
+当时 `.codestable/checkup/latest/callgraph/` 已由核对通过的临时候选受控覆盖，两份 import-cycle v2 基线也已通过正式 CLI 刷新。该证明是 A1 的可信起点；当前工作树事实以最上方 A2 节为准。
 
 完整命令、两次门禁暴露的测试合同缺口及根因修复见 `.codestable/issues/2026-07-11-dependency-proof-rebuild-and-closure/`。本次 clean proof 只证明当前机械证据与质量门禁；`history_baseline` 的决定考古仍是 pending，不能顺带写成已完成。
 

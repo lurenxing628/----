@@ -5,7 +5,7 @@ from typing import Any, Dict, Mapping, Optional, cast
 
 from flask import g, request
 
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError, app_error_http_status, error_response
+from core.errors import AppError, ErrorCode, ValidationError, app_error_http_status, error_response
 from core.models.operation_execution_labels import execution_action_label
 from core.models.operation_execution_scope import parse_positive_execution_int
 from core.models.resource_dispatch_execution_tokens import execution_state_key, execution_task_key

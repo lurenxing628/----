@@ -5,7 +5,7 @@ import logging
 import os
 import time
 
-from .migrations.common import fallback_log
+from .migration_common import fallback_log
 from .safe_files import read_fixed_bytes, remove_fixed_file, stat_regular_file, write_fixed_bytes
 
 _LOGGER = logging.getLogger(__name__)

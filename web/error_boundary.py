@@ -8,7 +8,7 @@ from typing import Any, List, Optional
 
 from flask import current_app, jsonify, render_template, request
 
-from core.infrastructure.errors import AppError, ErrorCode, app_error_http_status, error_response
+from core.errors import AppError, ErrorCode, app_error_http_status, error_response
 from core.shared.field_labels import user_field_label
 
 _INTERNAL_ASCII_RE = re.compile(r"[A-Za-z]")

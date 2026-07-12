@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from .common import MigrationOutcome, fallback_log, merge_outcomes
+from ..migration_common import MigrationOutcome, fallback_log, merge_outcomes
 
 
 def _run_update(conn: sqlite3.Connection, sql: str, *, label: str, logger=None) -> MigrationOutcome:

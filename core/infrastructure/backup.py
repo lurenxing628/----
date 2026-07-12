@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Iterator, Optional
 from urllib.parse import quote
 
-from core.infrastructure.migrations.common import fallback_log
+from core.infrastructure.migration_common import fallback_log
 from core.infrastructure.safe_files import (
     UnsafeFixedFileError,
     assert_same_regular_file,

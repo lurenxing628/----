@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.shared.compat_parse import parse_compat_float, parse_compat_int
 from core.shared.degradation import DegradationCollector
 from core.shared.field_labels import display_field_label

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from .common import MigrationOutcome, column_exists
+from ..migration_common import MigrationOutcome, column_exists
 
 _PUBLISH_COLUMNS = (
     ("published_version", "INTEGER"),

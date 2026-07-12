@@ -1,0 +1,135 @@
+doc_type: refactor-checklist
+refactor: 2026-07-12-foundation-a2-dependency-decoupling
+status: approved
+source_plan: .codestable/refactors/2026-07-12-foundation-a2-dependency-decoupling/foundation-a2-dependency-decoupling-refactor-design.md
+scope: foundation A2 errors/migration common one-way dependency refactor
+excluded_scope:
+  - operation execution event data contract relocation
+  - database schema, SQL, migration versions, defaults, transactions, backup and rollback semantics
+  - full replacement of 182 production class-only core.infrastructure.errors imports
+  - A3-A6 and tests directory cycles
+guardrails:
+  - no function-local imports, TYPE_CHECKING, dynamic __getattr__ or swallowed errors used to hide cycles
+  - old import paths remain available through one-way explicit re-exports with object identity
+  - historical migration files may change import lines only; function bodies and SQL must remain identical
+  - error codes, signatures, messages, details, HTTP statuses and JSON structure remain unchanged
+  - one step is validated before the next starts
+  - git commit, push and PR creation require separate explicit authorization
+steps:
+  - id: step-01-characterization-contract
+    title: Lock A2 public identities, signatures, behavior and import-order boundaries
+    status: completed
+    type: characterization_test
+    touch_files:
+      - tests/models_domain/test_foundation_a2_dependency_boundary.py
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/models_domain/test_foundation_a2_dependency_boundary.py
+    exit_signal: Existing contracts pass and only assertions requiring not-yet-created canonical modules or A2 removal fail for the expected reason.
+
+  - id: step-02-error-contract-leaf
+    title: Move the application error contract to zero-dependency core.errors
+    status: completed
+    type: parallel_move
+    touch_files:
+      - core/errors.py
+      - core/infrastructure/errors.py
+      - core/models/schedule_config_runtime_coercion.py
+      - core/models/schedule_config_runtime_read.py
+      - core/models/schedule_config_runtime_weights.py
+      - core/models/schedule_resource_filter.py
+      - core/shared/compat_parse.py
+      - core/shared/field_parse.py
+      - core/shared/strict_parse.py
+      - web/error_boundary.py
+      - web/error_handlers.py
+      - web/routes/domains/scheduler/scheduler_gantt.py
+      - web/routes/domains/scheduler/scheduler_gantt_adjustments.py
+      - web/routes/domains/scheduler/scheduler_resource_dispatch.py
+      - web/routes/domains/scheduler/scheduler_resource_dispatch_execution_context.py
+      - web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/models_domain/test_foundation_a2_dependency_boundary.py tests/web_pages/test_infra_silent_fallback_contract.py tests/web_pages/test_error_boundary_contract.py tests/app_runtime/test_app_error_route_contract.py tests/excel_data_io/test_field_parse_contract.py tests/models_domain/test_schedule_resource_filter.py tests/models_domain/test_strict_parse_blank_required.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/errors.py core/infrastructure/errors.py core/models core/shared web/error_boundary.py web/error_handlers.py web/routes/domains/scheduler
+    exit_signal: Error objects are identity-compatible, public behavior is unchanged, models/shared no longer point to infrastructure, and no new SCC or mapped callgraph loss appears.
+
+  - id: step-03-migration-common-parent
+    title: Move migration common implementation to the infrastructure parent layer
+    status: completed
+    type: parallel_move
+    touch_files:
+      - core/infrastructure/migration_common.py
+      - core/infrastructure/migrations/common.py
+      - core/infrastructure/backup.py
+      - core/infrastructure/database.py
+      - core/infrastructure/database_bootstrap.py
+      - core/infrastructure/migration_backup.py
+      - core/infrastructure/migration_operation_execution_contract.py
+      - core/infrastructure/migration_runner.py
+      - core/infrastructure/migration_state.py
+      - core/infrastructure/migrations/__init__.py
+      - core/infrastructure/migrations/v1.py
+      - core/infrastructure/migrations/v2.py
+      - core/infrastructure/migrations/v3.py
+      - core/infrastructure/migrations/v4.py
+      - core/infrastructure/migrations/v4_sanitizers.py
+      - core/infrastructure/migrations/v5.py
+      - core/infrastructure/migrations/v6.py
+      - core/infrastructure/migrations/v7.py
+      - core/infrastructure/migrations/v8.py
+      - core/infrastructure/migrations/v9.py
+      - core/infrastructure/migrations/v10.py
+      - core/infrastructure/migrations/v11.py
+      - core/infrastructure/migrations/v12.py
+      - core/infrastructure/migrations/v13.py
+      - core/infrastructure/migrations/v14.py
+      - core/infrastructure/migrations/v15.py
+      - core/infrastructure/migrations/v16.py
+      - core/infrastructure/migrations/v17.py
+      - core/infrastructure/migrations/v18.py
+      - core/infrastructure/migrations/v19.py
+      - web/bootstrap/factory.py
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/models_domain/test_foundation_a2_dependency_boundary.py tests/migration_db tests/operation_execution/test_operation_execution_event_foundation.py tests/operation_execution/test_operation_execution_event_sequence_contract.py tests/operation_execution/test_operation_execution_migration_v16_contract.py tests/operation_execution/test_operation_execution_migration_v18_contract.py tests/operation_execution/test_operation_execution_migration_v19_contract.py tests/config/test_plugin_bootstrap_config_failure_visible.py tests/config/test_plugin_bootstrap_injects_config_reader.py tests/app_runtime/test_app_factory_runtime_env_refresh.py
+      - git diff --check
+    exit_signal: A2 is absent, old/new migration objects are identical, historical migration diffs contain import changes only, and all database/bootstrap contracts pass.
+
+  - id: step-04-a2-evidence-closure
+    title: Shrink dual baselines and rebuild deterministic dependency evidence
+    status: completed
+    type: evidence_refresh
+    touch_files:
+      - .codestable/checkup/import_cycles_production_baseline.json
+      - .codestable/checkup/import_cycles_with_tests_baseline.json
+      - .codestable/checkup/latest/callgraph/
+      - .codestable/checkup/dead_code_islands_baseline.json
+      - .codestable/checkup/baseline.json
+      - .codestable/checkup/README.md
+      - .codestable/architecture/ARCHITECTURE.md
+      - .codestable/architecture/service-scheduler.md
+      - .codestable/audits/2026-06-28-circular-imports/index.md
+      - .codestable/audits/2026-06-29-module-architecture-health/index.md
+      - .codestable/roadmap/dependency-cycle-governance/dependency-cycle-governance-roadmap.md
+      - .codestable/roadmap/dependency-cycle-governance/dependency-cycle-governance-items.yaml
+      - .codestable/refactors/2026-07-12-foundation-a2-dependency-decoupling/foundation-a2-dependency-decoupling-apply-notes.md
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-when-clean
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_dead_code_islands.py --mode quick
+      - python3 .codestable/tools/validate-yaml.py --file .codestable/roadmap/dependency-cycle-governance/dependency-cycle-governance-items.yaml --yaml-only
+    exit_signal: Each import baseline loses A2 and shrinks the migration parent-aware file SCC from 21 members/45 edges to its 5-member/11-edge strict subset; all other SCCs and unresolved sites are unchanged, callgraph runs are byte-deterministic with zero mapped callable/edge loss, and every artifact hash/fact document matches.
+
+  - id: step-05-final-proof
+    title: Run targeted, static, full and authorized clean-HEAD proof
+    status: in_progress
+    type: final_proof
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/models_domain/test_foundation_a2_dependency_boundary.py tests/migration_db tests/operation_execution/test_operation_execution_event_foundation.py tests/operation_execution/test_operation_execution_event_sequence_contract.py tests/operation_execution/test_operation_execution_migration_v16_contract.py tests/operation_execution/test_operation_execution_migration_v18_contract.py tests/operation_execution/test_operation_execution_migration_v19_contract.py tests/web_pages/test_infra_silent_fallback_contract.py tests/web_pages/test_error_boundary_contract.py tests/app_runtime/test_app_error_route_contract.py tests/excel_data_io/test_field_parse_contract.py tests/models_domain/test_schedule_resource_filter.py tests/models_domain/test_strict_parse_blank_required.py tests/config
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core web tests/models_domain/test_foundation_a2_dependency_boundary.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.tools.json
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --allow-dirty-worktree --no-long-gate-cache --no-resume
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --no-long-gate-cache --no-resume
+    precommit_result: passed_but_unbound
+    clean_head_result: pending_authorized_commit_and_clean_gate
+    exit_signal: All local checks pass; after separate commit authorization, the final committed HEAD passes the uncached non-resumed 19-step gate with a clean worktree before and after.
