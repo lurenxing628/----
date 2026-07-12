@@ -9,11 +9,12 @@
 from __future__ import annotations
 
 import ast
+import glob
 import json
 import os
 import sys
 from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
@@ -21,21 +22,22 @@ OUT_DIR = os.path.abspath(os.environ.get("CHECKUP_CALLGRAPH") or os.path.join(HE
 
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
-import callgraph_type_index as _cti  # 类型感知 attr 消解 leaf helper(拆出以免本文件触 500 行门禁)
+import callgraph_call_sites as _callsites  # 保留完整接收者的调用点提取 leaf helper
+import callgraph_dataflow as _flow  # 敏感值共现与风险数据流 leaf helper
+import callgraph_function_index as _findex  # callable/import alias AST 索引 leaf helper
 
 FIRST_PARTY_ROOTS = ("core", "web", "data", "tools", "scripts", "plugins", "desktop")
 EXCLUDE = {".git", "__pycache__", ".venv", "venv", "node_modules", "vendor",
            "backups", "evidence", ".ruff_cache", ".pytest_cache", "dist", "build"}
 
-HARDCODED_HINT = ("RESOLUTION", "DEFAULT", "ADOPTED", "FALLBACK", "PLACEHOLDER", "DUMMY", "STUB")
-SENSITIVE = ("scenario_id", "plan_role", "requested_role", "is_preview", "is_simulation",
-             "version", "plan_resolution", "is_superseded_by_newer_version")
-SINK_WRITE = ("execute", "executemany", "insert", "update", "delete", "commit", "save", "write", "create")
-SINK_RENDER = ("render", "to_dict", "jsonify", "make_response")
-SINK_RESOLVE = ("resolve_plan", "resolve_version", "resolve_plan_view", "build_plan_identity")
-
 FuncInfo = Dict[str, Any]
-IndexResult = Tuple[Dict[str, FuncInfo], Dict[str, List[str]], Dict[str, List[FuncInfo]], Dict[str, Dict[str, str]], List[Tuple[str, str, List[str]]], List[str]]
+IndexResult = Tuple[
+    Dict[str, FuncInfo],
+    Dict[str, List[str]],
+    Dict[str, List[FuncInfo]],
+    Dict[str, Dict[str, str]],
+    List[str],
+]
 EdgeResult = Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Dict[str, List[str]]]]
 
 
@@ -44,7 +46,7 @@ def _rel(p: str) -> str:
 
 
 def _iter_py() -> List[str]:
-    out: List[str] = []
+    out: List[str] = list(glob.glob(os.path.join(REPO_ROOT, "*.py")))
     for root in FIRST_PARTY_ROOTS:
         base = os.path.join(REPO_ROOT, root)
         if not os.path.isdir(base):
@@ -55,174 +57,14 @@ def _iter_py() -> List[str]:
     return sorted(out)
 
 
-def _end_lineno(node: ast.AST, fallback: int) -> int:
-    return int(getattr(node, "end_lineno", fallback) or fallback)
-
-
-def _function_info(rel: str, node: ast.AST, name: str, cls: Optional[str]) -> FuncInfo:
-    qual_name = f"{cls}.{name}" if cls else name
-    return {
-        "qual": f"{rel}::{qual_name}",
-        "rel": rel,
-        "line": int(getattr(node, "lineno", 0) or 0),
-        "end": _end_lineno(node, int(getattr(node, "lineno", 0) or 0)),
-        "cls": cls,
-        "name": name,
-        "node": node,
-    }
-
-
-def _module_name_from_rel(rel: str) -> str:
-    return rel[:-3].replace("/", ".") if rel.endswith(".py") else rel.replace("/", ".")
-
-
-def _relative_import_module(rel: str, level: int, module: str) -> str:
-    current = _module_name_from_rel(rel)
-    package_parts = current.split(".")[:-1]
-    if level > 1:
-        package_parts = package_parts[: -(level - 1)]
-    base = ".".join(package_parts)
-    if module:
-        return f"{base}.{module}" if base else module
-    return base
-
-
-def _import_aliases(tree: ast.Module, rel: str) -> Dict[str, str]:
-    imports: Dict[str, str] = {}
-    for node in tree.body:
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                imports[alias.asname or alias.name.split(".")[0]] = alias.name
-        elif isinstance(node, ast.ImportFrom):
-            module = _relative_import_module(rel, int(node.level or 0), node.module or "") if node.level else (node.module or "")
-            for alias in node.names:
-                imports[alias.asname or alias.name] = f"{module}.{alias.name}" if module and node.module else (
-                    f"{module}.{alias.name}" if module else alias.name
-                )
-    return imports
-
-
-def _class_bases(tree: ast.Module) -> List[Tuple[str, List[str]]]:
-    out: List[Tuple[str, List[str]]] = []
-    for node in tree.body:
-        if isinstance(node, ast.ClassDef):
-            bases = [b.id for b in node.bases if isinstance(b, ast.Name)] + \
-                    [b.attr for b in node.bases if isinstance(b, ast.Attribute)]
-            out.append((node.name, bases))
-    return out
-
-
-def _module_functions(tree: ast.Module, rel: str) -> List[FuncInfo]:
-    funcs: List[FuncInfo] = []
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            funcs.append(_function_info(rel, node, node.name, None))
-    return funcs
-
-
-def _class_functions(tree: ast.Module, rel: str) -> List[FuncInfo]:
-    funcs: List[FuncInfo] = []
-    for node in tree.body:
-        if not isinstance(node, ast.ClassDef):
-            continue
-        for sub in node.body:
-            if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                funcs.append(_function_info(rel, sub, sub.name, node.name))
-    return funcs
-
-
-def _collect(tree: ast.Module, rel: str) -> Tuple[List[FuncInfo], Dict[str, str]]:
-    return _module_functions(tree, rel) + _class_functions(tree, rel), _import_aliases(tree, rel)
-
-
-def _call_name(func: ast.AST) -> Tuple[str, str]:
-    if isinstance(func, ast.Name):
-        return func.id, "bare"
-    if isinstance(func, ast.Attribute):
-        return func.attr, "attr"
-    return "", ""
-
-
-def _calls(fnode: ast.AST) -> Tuple[Set[str], Set[str], Set[str]]:
-    bare, attr, dyn = set(), set(), set()
-    for node in ast.walk(fnode):
-        if not isinstance(node, ast.Call):
-            continue
-        name, kind = _call_name(node.func)
-        if not name:
-            continue
-        if kind == "bare":
-            bare.add(name)
-        else:
-            attr.add(name)
-        if name in ("getattr", "__import__", "import_module"):
-            dyn.add(name)
-    return bare, attr, dyn
-
-
-def _module_attr_calls(fnode: ast.AST) -> Set[Tuple[str, str]]:
-    out: Set[Tuple[str, str]] = set()
-    for node in ast.walk(fnode):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
-            out.add((node.func.value.id, node.func.attr))
-    return out
-
-
-def _call_argument_references(fnode: ast.AST) -> Set[str]:
-    out: Set[str] = set()
-    for node in ast.walk(fnode):
-        if not isinstance(node, ast.Call):
-            continue
-        for arg in node.args:
-            if isinstance(arg, ast.Name):
-                out.add(arg.id)
-        for keyword in node.keywords:
-            if isinstance(keyword.value, ast.Name):
-                out.add(keyword.value.id)
-    return out
-
-
-def _remember_identifier(name: str, sensitive: Set[str], hardcoded: Set[str]) -> None:
-    if name in SENSITIVE:
-        sensitive.add(name)
-    if name.isupper() and any(hint in name for hint in HARDCODED_HINT):
-        hardcoded.add(name)
-
-
-def _call_flow(name: str, writes: Set[str], renders: Set[str], resolves: Set[str]) -> None:
-    lowered = name.lower()
-    if any(hint in lowered for hint in SINK_WRITE):
-        writes.add(name)
-    if any(hint in lowered for hint in SINK_RENDER):
-        renders.add(name)
-    if any(hint in name for hint in SINK_RESOLVE):
-        resolves.add(name)
-
-
-def _dataflow(fnode: ast.AST) -> Dict[str, List[str]]:
-    sensitive, hardcoded, writes, renders, resolves = set(), set(), set(), set(), set()
-    for node in ast.walk(fnode):
-        if isinstance(node, ast.Name):
-            _remember_identifier(node.id, sensitive, hardcoded)
-        elif isinstance(node, ast.Attribute):
-            _remember_identifier(node.attr, sensitive, hardcoded)
-        elif isinstance(node, ast.Call):
-            name, _kind = _call_name(node.func)
-            _call_flow(name, writes, renders, resolves)
-    return {
-        "src_sensitive": sorted(sensitive),
-        "src_hardcoded": sorted(hardcoded),
-        "sinks_write": sorted(writes),
-        "sinks_render": sorted(renders),
-        "sinks_resolve": sorted(resolves),
-    }
+_collect = _findex.collect
 
 
 def _parse_file(fp: str, rel: str) -> Tuple[Optional[ast.Module], str]:
     try:
-        with open(fp, encoding="utf-8", errors="replace") as fh:
+        with open(fp, encoding="utf-8") as fh:
             return ast.parse(fh.read(), filename=rel), ""
-    except (OSError, SyntaxError) as exc:
+    except (OSError, UnicodeError, SyntaxError) as exc:
         return None, f"{rel}: {exc}"
 
 
@@ -231,7 +73,6 @@ def _index_codebase() -> IndexResult:
     name_to_quals: Dict[str, List[str]] = defaultdict(list)
     file_funcs: Dict[str, List[FuncInfo]] = defaultdict(list)
     file_imports: Dict[str, Dict[str, str]] = {}
-    class_bases: List[Tuple[str, str, List[str]]] = []
     parse_errors: List[str] = []
 
     for fp in _iter_py():
@@ -246,19 +87,46 @@ def _index_codebase() -> IndexResult:
             all_funcs[info["qual"]] = info
             name_to_quals[info["name"]].append(info["qual"])
             file_funcs[rel].append(info)
-        if tree is not None:
-            class_bases.extend((rel, clsname, bases) for clsname, bases in _class_bases(tree))
-    return all_funcs, name_to_quals, file_funcs, file_imports, class_bases, parse_errors
+    return all_funcs, name_to_quals, file_funcs, file_imports, parse_errors
 
 
-def _local_function_names(file_funcs: Dict[str, List[FuncInfo]], info: FuncInfo) -> Set[str]:
-    return {f["name"] for f in file_funcs[info["rel"]] if f["cls"] is None}
+def _local_function_targets(
+    file_funcs: Dict[str, List[FuncInfo]],
+    info: FuncInfo,
+) -> Dict[str, List[str]]:
+    functions = file_funcs[info["rel"]]
+    tiers: List[List[FuncInfo]] = [
+        [function for function in functions if function.get("parent") == info["qual"]],
+    ]
+    if info.get("parent"):
+        tiers.append(
+            [function for function in functions if function.get("parent") == info.get("parent")]
+        )
+    tiers.append(
+        [
+            function
+            for function in functions
+            if function["cls"] is None and not function.get("nested")
+        ]
+    )
+    targets: Dict[str, List[str]] = {}
+    for tier in tiers:
+        grouped: Dict[str, List[str]] = defaultdict(list)
+        for function in tier:
+            grouped[str(function["name"])].append(str(function["qual"]))
+        for name, rows in grouped.items():
+            targets.setdefault(name, sorted(set(rows)))
+    return targets
 
 
 def _method_names(file_funcs: Dict[str, List[FuncInfo]], info: FuncInfo) -> Set[str]:
     if not info["cls"]:
         return set()
-    return {f["name"] for f in file_funcs[info["rel"]] if f["cls"] == info["cls"]}
+    return {
+        f["name"]
+        for f in file_funcs[info["rel"]]
+        if f["cls"] == info["cls"] and not f.get("nested")
+    }
 
 
 def _edge(source: str, target: str, kind: str, ambiguous: bool) -> Dict[str, Any]:
@@ -269,26 +137,50 @@ def _edge_key(edge: Dict[str, Any]) -> Tuple[str, str, str, bool]:
     return (str(edge["from"]), str(edge["to"]), str(edge["kind"]), bool(edge["ambiguous"]))
 
 
-def _add_bare_edges(edges: List[Dict[str, Any]], qual: str, info: FuncInfo, names: Set[str],
-                    local: Set[str], name_to_quals: Dict[str, List[str]], imports: Dict[str, str]) -> None:
+def _add_bare_edges(
+    edges: List[Dict[str, Any]],
+    qual: str,
+    names: Set[str],
+    local: Dict[str, List[str]],
+    name_to_quals: Dict[str, List[str]],
+    imports: Dict[str, str],
+    all_funcs: Dict[str, FuncInfo],
+) -> None:
     for name in sorted(names):
-        if name in local:
-            edges.append(_edge(qual, f"{info['rel']}::{name}", "local", False))
+        imported = imports.get(name)
+        if imported:
+            module, separator, attr = imported.rpartition(".")
+            target = _module_attr_target(module, attr, all_funcs) if separator else None
+            if target:
+                edges.append(_edge(qual, target, "import", False))
+            continue
+        local_candidates = local.get(name, [])
+        if len(local_candidates) == 1:
+            edges.append(_edge(qual, local_candidates[0], "local", False))
+            continue
+        if len(local_candidates) > 1:
+            edges.extend(_edge(qual, candidate, "local", True) for candidate in local_candidates)
             continue
         candidates = sorted(name_to_quals.get(name, []))
-        kind = "import" if name in imports else "name"
         if len(candidates) == 1:
-            edges.append(_edge(qual, candidates[0], kind, False))
+            edges.append(_edge(qual, candidates[0], "name", False))
         elif len(candidates) > 1:
-            edges.extend(_edge(qual, candidate, kind, True) for candidate in candidates)
+            edges.extend(_edge(qual, candidate, "name", True) for candidate in candidates)
 
 
-def _add_attr_edges(edges: List[Dict[str, Any]], qual: str, info: FuncInfo, names: Set[str],
-                    methods: Set[str], name_to_quals: Dict[str, List[str]]) -> None:
-    for name in sorted(names):
-        if name in methods:
-            edges.append(_edge(qual, f"{info['rel']}::{info['cls']}.{name}", "self", False))
-            continue
+def _add_attr_edges(edges: List[Dict[str, Any]], qual: str, info: FuncInfo,
+                    calls: Set[Tuple[str, str, int]], methods: Set[str],
+                    name_to_quals: Dict[str, List[str]]) -> None:
+    self_methods: Set[str] = set()
+    unresolved_names: Set[str] = set()
+    for receiver, name, _line in sorted(calls):
+        if receiver == "self" and name in methods:
+            self_methods.add(name)
+        else:
+            unresolved_names.add(name)
+    for name in sorted(self_methods):
+        edges.append(_edge(qual, f"{info['rel']}::{info['cls']}.{name}", "self", False))
+    for name in sorted(unresolved_names):
         candidates = sorted(candidate for candidate in name_to_quals.get(name, []) if candidate != qual)
         if 1 <= len(candidates) <= 6:
             edges.extend(_edge(qual, candidate, "attr", True) for candidate in candidates)
@@ -305,9 +197,10 @@ def _module_attr_target(module: str, attr: str, all_funcs: Dict[str, FuncInfo]) 
     return None
 
 
-def _add_imported_module_attr_edges(edges: List[Dict[str, Any]], qual: str, calls: Set[Tuple[str, str]],
-                                    imports: Dict[str, str], all_funcs: Dict[str, FuncInfo]) -> None:
-    for base, attr in sorted(calls):
+def _add_imported_module_attr_edges(edges: List[Dict[str, Any]], qual: str,
+                                    calls: Set[Tuple[str, str, int]], imports: Dict[str, str],
+                                    all_funcs: Dict[str, FuncInfo]) -> None:
+    for base, attr in sorted({(base, attr) for base, attr, _line in calls}):
         module = imports.get(base)
         if not module:
             continue
@@ -316,11 +209,11 @@ def _add_imported_module_attr_edges(edges: List[Dict[str, Any]], qual: str, call
             edges.append(_edge(qual, target, "module_import_attr", False))
 
 
-def _add_function_reference_edges(edges: List[Dict[str, Any]], qual: str, info: FuncInfo, names: Set[str],
-                                  local: Set[str], name_to_quals: Dict[str, List[str]]) -> None:
+def _add_function_reference_edges(edges: List[Dict[str, Any]], qual: str, names: Set[str],
+                                  local: Dict[str, List[str]], name_to_quals: Dict[str, List[str]]) -> None:
     for name in sorted(names):
         if name in local:
-            edges.append(_edge(qual, f"{info['rel']}::{name}", "function_reference", True))
+            edges.extend(_edge(qual, target, "function_reference", True) for target in local[name])
             continue
         candidates = sorted(name_to_quals.get(name, []))
         if len(candidates) == 1:
@@ -333,47 +226,31 @@ def _resolve_edges(all_funcs: Dict[str, FuncInfo], name_to_quals: Dict[str, List
     dynamic_unresolved: List[Dict[str, Any]] = []
     dataflow_nodes: Dict[str, Dict[str, List[str]]] = {}
     for qual, info in sorted(all_funcs.items()):
-        bare, attr, dyn = _calls(info["node"])
-        module_attr = _module_attr_calls(info["node"])
-        references = _call_argument_references(info["node"]) - bare
-        dataflow = _dataflow(info["node"])
+        if info.get("nested") and isinstance(info["node"], ast.Lambda) and info.get("parent") in all_funcs:
+            edges.append(_edge(str(info["parent"]), qual, "lambda_definition", True))
+        bare, attr, dyn, module_attr = _callsites.collect_calls(info["node"])
+        references = _callsites.call_argument_references(info["node"]) - bare
+        dataflow = _flow.collect(info["node"])
         if any(dataflow.values()):
             dataflow_nodes[qual] = dataflow
         if dyn:
             dynamic_unresolved.append({"func": qual, "rel": info["rel"], "line": info["line"], "hints": sorted(dyn)})
-        _add_bare_edges(edges, qual, info, bare, _local_function_names(file_funcs, info), name_to_quals,
-                        file_imports.get(info["rel"], {}))
-        _add_function_reference_edges(edges, qual, info, references, _local_function_names(file_funcs, info), name_to_quals)
-        _add_imported_module_attr_edges(edges, qual, module_attr, file_imports.get(info["rel"], {}), all_funcs)
+        local_targets = _local_function_targets(file_funcs, info)
+        imports = dict(file_imports.get(info["rel"], {}))
+        imports.update(_findex.function_import_aliases(info["node"], info["rel"]))
+        _add_bare_edges(
+            edges,
+            qual,
+            bare,
+            local_targets,
+            name_to_quals,
+            imports,
+            all_funcs,
+        )
+        _add_function_reference_edges(edges, qual, references, local_targets, name_to_quals)
+        _add_imported_module_attr_edges(edges, qual, module_attr, imports, all_funcs)
         _add_attr_edges(edges, qual, info, attr, _method_names(file_funcs, info), name_to_quals)
     return edges, dynamic_unresolved, dataflow_nodes
-
-
-def _attr_method(to_qual: str) -> str:
-    return to_qual.split("::", 1)[-1].split(".")[-1]
-
-
-def _merge_typed(edges: List[Dict[str, Any]], typed: Set[Tuple[str, str]],
-                 fully: Dict[Tuple[str, str], Set[str]]) -> List[Dict[str, Any]]:
-    """用类型消解结果改写边:命中 typed 的 attr 模糊边升为 typed 实线;整组已定位的删假候选。
-
-    typed/fully 由 callgraph_type_index.resolve_all 给出（self/参数注解/局部注解/构造/带返回注解
-    的赋值 -> 唯一真实方法）。typed 边只在该 (from,to) 尚非确信边时补回，避免与现有边重复计数。
-    """
-    merged: List[Dict[str, Any]] = []
-    for edge in edges:
-        if edge["ambiguous"] and edge["kind"] == "attr":
-            if (edge["from"], edge["to"]) in typed:
-                continue  # 升级为 typed，稍后统一补回
-            if (edge["from"], _attr_method(edge["to"])) in fully:
-                continue  # 整组已类型定位，此候选为假，删除
-        merged.append(edge)
-    confident = {(edge["from"], edge["to"]) for edge in merged if not edge["ambiguous"]}
-    for source, target in sorted(typed):
-        if (source, target) not in confident:
-            merged.append(_edge(source, target, "typed", False))
-            confident.add((source, target))
-    return merged
 
 
 def _fan_counts(edges: List[Dict[str, Any]]) -> Tuple[Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int]]:
@@ -446,35 +323,10 @@ def _graph_metrics(all_funcs: Dict[str, FuncInfo], edges: List[Dict[str, Any]]) 
         "edge_count_confident": graph.number_of_edges(),
         "edge_count_total": total_graph.number_of_edges(),
         "cycle_count": len(cycles),
+        "cycle_count_semantics": "confident-edge simple cycles of length 2..8, capped at 200",
         "island_count": len(islands),
         "articulation_count": len(articulation),
     }
-
-
-def _risk_reasons(dataflow: Dict[str, List[str]]) -> List[str]:
-    reasons: List[str] = []
-    if dataflow["src_hardcoded"] and (dataflow["sinks_render"] or dataflow["sinks_resolve"]):
-        reasons.append("hardcoded->render/resolve(P1假冒嫌疑)")
-    if dataflow["src_sensitive"] and dataflow["sinks_write"]:
-        reasons.append("sensitive-identity->write(越权写入嫌疑)")
-    preview_sources = ("scenario_id", "is_preview", "is_simulation")
-    if any(source in dataflow["src_sensitive"] for source in preview_sources) and dataflow["sinks_render"]:
-        reasons.append("preview->render(预览泄漏嫌疑)")
-    return reasons
-
-
-def _risk_dataflow(dataflow_nodes: Dict[str, Dict[str, List[str]]], all_funcs: Dict[str, FuncInfo],
-                   fan_in: Dict[str, int], fan_out: Dict[str, int]) -> List[Dict[str, Any]]:
-    risk: List[Dict[str, Any]] = []
-    for qual, dataflow in dataflow_nodes.items():
-        reasons = _risk_reasons(dataflow)
-        if not reasons:
-            continue
-        info = all_funcs[qual]
-        risk.append({"func": qual, "rel": info["rel"], "line": info["line"],
-                     "fan_in": fan_in.get(qual, 0), "fan_out": fan_out.get(qual, 0),
-                     "co_occurrence": reasons, **dataflow})
-    return sorted(risk, key=lambda item: (-len(item["co_occurrence"]), -item["fan_in"], item["rel"], item["line"], item["func"]))
 
 
 def _high_fan_in(all_funcs: Dict[str, FuncInfo], fan_in: Dict[str, int]) -> List[Dict[str, Any]]:
@@ -532,7 +384,7 @@ def _write_outputs(all_funcs: Dict[str, FuncInfo], edges: List[Dict[str, Any]],
     edges = sorted(edges, key=_edge_key)
     dynamic_unresolved = sorted(dynamic_unresolved, key=lambda item: (item["rel"], item["line"], item["func"]))
     graph_metrics = _graph_metrics(all_funcs, edges)
-    risk = _risk_dataflow(dataflow_nodes, all_funcs, fan_in, fan_out)
+    risk = _flow.risk_rows(dataflow_nodes, all_funcs, fan_in, fan_out)
     high_fan_in = _high_fan_in(all_funcs, fan_in)
     summary = _summary(all_funcs, edges, dynamic_unresolved, dataflow_nodes, risk, high_fan_in, graph_metrics, parse_errors)
     _write_json("functions.json", _functions_payload(all_funcs, fan_in, fan_out, ambiguous_fan_in, ambiguous_fan_out))
@@ -562,6 +414,7 @@ def _print_summary(summary: Dict[str, Any], risk: List[Dict[str, Any]]) -> None:
     )
     print(f"动态未消解: {summary['dynamic_unresolved_sites']}  数据流命中: {summary['dataflow_flagged_funcs']}")
     print(f"图指标: {summary['graph_metrics']}")
+    print("cycle_count 口径: 确信边上的长度 2..8 简单循环记录数，最多 200 条；不是强连通组数量。")
     print(f"高风险数据流路径: {summary['risk_dataflow_count']}  高扇入咽喉: {summary['high_fan_in_count']}")
     print("\n--- 高风险数据流路径 Top 15 ---")
     for row in risk[:15]:
@@ -571,11 +424,9 @@ def _print_summary(summary: Dict[str, Any], risk: List[Dict[str, Any]]) -> None:
 
 def main() -> None:
     os.makedirs(OUT_DIR, exist_ok=True)
-    all_funcs, name_to_quals, file_funcs, file_imports, class_bases, parse_errors = _index_codebase()
+    all_funcs, name_to_quals, file_funcs, file_imports, parse_errors = _index_codebase()
     _raise_parse_errors(parse_errors)
     edges, dynamic_unresolved, dataflow_nodes = _resolve_edges(all_funcs, name_to_quals, file_funcs, file_imports)
-    typed, fully = _cti.resolve_all(all_funcs, class_bases)
-    edges = _merge_typed(edges, typed, fully)
     fan_in, fan_out, ambiguous_fan_in, ambiguous_fan_out = _fan_counts(edges)
     summary, risk = _write_outputs(
         all_funcs,

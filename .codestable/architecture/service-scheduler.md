@@ -2,10 +2,10 @@
 doc_type: architecture
 slug: service-scheduler
 scope: core/services/scheduler 排产调度模块的内部结构现状——对外接口面、已分包子系统、根目录业务族、排产主链数据流、内部依赖方向与已知结构张力
-summary: 占 core/services 约 70% 的排产巨型模块的系统地图,记录其子包划分、业务族、枢纽文件和 run↔summary 包级循环依赖等现状
+summary: 排产巨型模块系统地图，记录子包/业务族/主链与 scheduler 根-config-run-summary hard 目录 SCC；明确目录圈不等于文件加载死循环
 status: current
 created: 2026-06-28
-last_reviewed: 2026-06-30
+last_reviewed: 2026-07-11
 tags: [scheduler, core, service, 排产, architecture]
 depends_on: []
 implements: []
@@ -143,8 +143,8 @@ core/services/scheduler/
 
 ## 7. 跨层与依赖方向现状
 
-- **跨层单向、零反向依赖**:scheduler 不反依赖 web;`core.models` 干净(只依赖 dataclasses + ValidationError);`core.algorithms` 不依赖 service(算法层纯计算);`core.infrastructure`/`core.shared` 是纯叶子。web 层经 `ScheduleService` 等门面消费 scheduler,不绕过它直接动子包内部(`web→core.services` 214 次 vs `web→data` 仅 1 次)。
-- **服务间无环 DAG**:`report → scheduler → {equipment → process/personnel, process, personnel, material} → common(叶子)`。
+- **主要跨层方向仍清楚，但并非全仓零反向依赖**:scheduler 不反依赖 web，`core.algorithms` 不依赖 service；web 主要经 `ScheduleService` 等门面消费 scheduler。基础层另有 A2：models/shared 因错误合同依赖 infrastructure，migrations 又复用运行时事件合同，不能再把 infrastructure/shared 写成纯叶子。
+- **服务主链大体单向，但目录商图并非全 DAG**:`report → scheduler → {equipment → process/personnel, process, personnel, material}` 是主要方向；同时现存 A5 `plugins⇄services/common`、A6 `report⇄report/exporters` 等目录 SCC，须与“主要调用方向”分开表述。
 - **config 自带持久化通道**:config/ 是唯一直连 `data` 仓储的子包,抽象层比其它纯计算/投影子包"厚"。
 - **graph 接入靠延迟 import**:静态调用图(symbol_locator / checkup)对 run→graph 这些边标"动态/盲区",外人难从包结构看出 graph 何时被触发。
 
@@ -152,14 +152,14 @@ core/services/scheduler/
 
 > 本节只陈述现状事实与客观影响,**不含改进方案**。治理路径(断环 / 分包 / 搬迁)归后续 roadmap / refactor。
 
-### 8.1 run ⇄ summary 包级循环依赖
-- **现状**:run 与 summary 两个子包**互相顶层 import**,各 4 处:
+### 8.1 run ⇄ summary 目录商图循环依赖
+- **现状**:run 与 summary 两个子目录**互相顶层 import**,各 4 处:
   - run→summary:`run/schedule_orchestrator.py:7`(`SummaryBuildContext`)、`run/schedule_summary_contract.py:6`(`parse_summary_count`)、`run/schedule_candidate_persistence_models.py:8-9`(`project_public_graph_analysis`/`project_search_report`)。
   - summary→run:`summary/schedule_summary_assembly.py:9-11`(`auto_assign_failed_op_ids_from_errors`/`compact_attempts`/`missing_internal_resource_samples`)、`summary/summary_size_guard_fields.py:11`(`candidate_comparison_minimal_summary`)。
-- **性质(静态)**:8 处全是模块顶层 import、相关文件均无 `TYPE_CHECKING`,故**加载期是真环**,当前不报 ImportError 仅因环切在双方的"叶子纯函数模块"上;任一叶子模块新增一条回指对面顶层的 import 即会触发"半初始化模块" ImportError。checkup 的 `cycle_count`(`callgraph/summary.json`)是**函数级 SCC**,看不到此**包级**环——这是它长期潜伏的原因。
+- **性质(静态，2026-07-10 校正)**:8 处都是模块顶层 import，因此在按目录聚合的有向商图中构成 run⇄summary SCC；但目录 SCC 不等于某组具体文件已经首尾闭合。修正后的扫描同时给出两层文件口径：全仓纯显式 hard 文件 SCC 为 0，父包初始化感知 hard 文件加载 SCC 为 9；A1 当前不在这 9 组文件 SCC 中。因此这里应称**硬目录结构圈**，不能再写成已证实的“半初始化文件真环”。checkup 的 `cycle_count` 是确信调用边上长度 2-8、最多 200 条的简单循环记录数，也不是函数 SCC 数。
 - **性质(动态实测)**:8 条跨包边运行时**全部真实触发(函数体执行),无死边**。拓扑是**嵌套回调**——run 编排时调注入的 `build_result_summary`(summary 组装),summary 组装内部再回调 run 的 4 个纯函数;stub 掉 summary 时反向边一条不触发,证明反向边只从 summary 内部发起,不是两包对穿。被反借的 4 个 run 符号**均为无副作用纯函数**(算缺资源 op / 压缩 attempts / 取样本 / 最小化候选对比),summary 当工具借用。
-- **客观影响**:运行时无死锁/正确性风险;张力集中在**分层与可维护性**——summary(数据流下游)反向依赖 run(上游)的内部模块,且加载期真环随时可被一次普通改动引爆。
-- **全景定位(2026-06-28 全仓普查)**:本环在循环依赖普查中编号 **A1**——实为 `scheduler 根 ⇄ run ⇄ summary ⇄ config` 的**四方**硬加载期目录环的一段(不是孤立的 run⇄summary 两方环),与 infrastructure/models(A2)等共 **6 个硬加载期目录环**并列。完整三类口径 + Codex 对抗核验见 `.codestable/audits/2026-06-28-circular-imports/`;复扫工具 `python3 -m tools.scan_import_cycles`。
+- **客观影响**:当前正逆序新进程导入和行为测试没有发现运行故障；张力集中在**分层与可维护性**——summary(数据流下游)反向依赖 run(上游)内部模块，同一目录 SCC 内继续加边会扩大未来初始化顺序风险。v2 基线现会阻断同成员圈内新增边，但结构债仍需 A1 重构消除。
+- **全景定位(2026-07-11 终态复扫)**:本环在循环依赖治理中编号 **A1**——实为 `scheduler 根 ⇄ run ⇄ summary ⇄ config` 的四方 hard 目录 SCC 一段，不是孤立两方环。最终生产基线中该 SCC 仍有 49 条圈内规范化模块边；生产非测试 scope 共 6 个 hard 目录 SCC，含测试为 7 个。候选双基线与正式文件逐字节一致，说明工具语义收敛没有偷偷改变 A1 起点边集；正式复扫命令为 `python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean`，含测试另有独立基线与命令。
 
 ### 8.2 分包标准不统一,79 文件平铺根目录
 - 已按"计算流程"切出 run/summary/graph/config,但 resource / schedule / gantt 等多组**业务族**仍平铺根目录,每族体量都不小。一半按流程分包、一半按业务族平铺,目录可读性与心智负担偏高。

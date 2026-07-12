@@ -70,9 +70,23 @@ GATE_INFRASTRUCTURE_TOOLS = {
     "tools/report_full_test_debt_durations.py",
     "tools/scan_aps_three_gap_py38_scope.py",
     "tools/scan_dead_code_islands.py",
+    "tools/import_cycle_*.py",
+    "tools/scan_import_cycles.py",
+    ".codestable/checkup/scripts/callgraph_*.py",
     "tools/dead_code_usage/**/*.py",
     "tools/scan_py38plus_syntax.py",
     "scripts/build_test_inventory.py",
+}
+
+IMPORT_CYCLE_TOOL_PROOF_FILES = {
+    "tools/import_cycle_analysis.py",
+    "tools/import_cycle_baseline.py",
+    "tools/import_cycle_graph.py",
+    "tools/scan_import_cycles.py",
+    ".codestable/checkup/scripts/callgraph_call_sites.py",
+    ".codestable/checkup/scripts/callgraph_dataflow.py",
+    ".codestable/checkup/scripts/callgraph_extract.py",
+    ".codestable/checkup/scripts/callgraph_function_index.py",
 }
 
 DEAD_CODE_TOOL_PROOF_FILES = {
@@ -93,6 +107,25 @@ def test_gate_infrastructure_tools_are_common_scope() -> None:
     "不命中任何 group → 漏网 fallback"。删除任一条目会让该工具退回未登记空洞，此测试届时报红。"""
     common_tools = set(REQUIRED_REGRESSION_COMMON_SCOPES["tool_file_scopes"])
     assert GATE_INFRASTRUCTURE_TOOLS <= common_tools
+
+
+def test_import_cycle_tools_and_regressions_are_bound_to_quality_gate_proof() -> None:
+    pyright_config = json.loads(Path("pyrightconfig.tools.json").read_text(encoding="utf-8"))
+    quality_group = _group("quality_gate")
+    regressions = {
+        "tests/gate_meta/test_callgraph_receiver_resolution.py",
+        "tests/gate_meta/test_import_cycle_scanner.py",
+        "tests/gate_meta/test_import_cycle_baseline.py",
+    }
+
+    assert IMPORT_CYCLE_TOOL_PROOF_FILES <= set(quality_gate_shared.QUALITY_GATE_TOOL_PATHS)
+    assert IMPORT_CYCLE_TOOL_PROOF_FILES <= set(pyright_config["include"])
+    assert regressions <= set(quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS)
+    assert regressions <= set(quality_group["target_paths"])
+    assert {
+        ".codestable/checkup/import_cycles_production_baseline.json",
+        ".codestable/checkup/import_cycles_with_tests_baseline.json",
+    } <= set(quality_gate_shared.QUALITY_GATE_SOURCE_FILES)
 
 
 def test_dead_code_tools_are_in_quality_gate_source_proof() -> None:

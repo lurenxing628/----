@@ -8,19 +8,29 @@
 
 机器可读总入口：[`baseline.json`](baseline.json)。
 
-## 2026-07-10 重验结论
+## 2026-07-11 终态工具证据重建（dirty worktree）
 
-本次基线只覆盖已提交的 `HEAD`：
+`baseline.json.code_baseline` 仍保留已提交的历史 clean-source 投影：
 
 - 基线 commit：`606bcda1d369914875fe63a5d3657ff4cbc351ac`
 - commit 日期：`2026-07-01`
 - 生成方式：`git archive HEAD` 解到 `/tmp` 后扫描
-- 工作树状态：有未提交改动，但**没有纳入基线**
-- 总状态：`mechanical_ready_history_pending`
+- 历史工作树状态：有未提交改动，但**没有纳入该 clean-source 投影**
 
-这样做是为了避免把正在开发中的改动混进“已提交基线”，也避免在脏工作树上声称 clean-worktree proof。
+2026-07-11 又在起点 HEAD `cd6cdf43798e3c6321370e4fceb7150bbe4cef3c` 的脏工作区完成调用图 KISS 收敛、动态 import alias 重绑定修正和终态证据重建。该结果可重复，但尚未绑定提交后的干净最终 HEAD，因此仍只属于 **dirty-worktree 局部证明**：
 
-### 机器检查
+| 检查 | 当前结果 | 口径 |
+|---|---|---|
+| callgraph | 7329 callable、25772 输出边、10152 确信边、15620 模糊边、typed 边 0、8 条受限真实简单循环、解析错误 0 | callable 含 316 个嵌套 def/lambda；simple cycle 长度 2-8、最多 200，不是 SCC；island 193 |
+| import cycles（生产非测试） | 750 模块、6 hard 目录 SCC、9 父包感知 hard 文件加载 SCC、0 纯显式 hard 文件 SCC、14/5 个父包感知/纯显式 runtime 文件 SCC | `hard=8809 / cond=4 / lazy=257 / typeonly=135`；父包初始化边 6654 条；unresolved 6 个 |
+| import cycles（含测试） | 1443 模块、7 hard 目录 SCC、9 父包感知 hard 文件加载 SCC、0 纯显式 hard 文件 SCC、unresolved 44 个 | 独立 `production-and-tests` v2 基线；比生产多 1 个测试目录 SCC 和 38 个测试动态加载站点 |
+| 确定性 | 调用图两个独立临时目录均为同一组 10 个 JSON，逐文件 SHA256 完全一致 | 双 scope 候选基线与正式基线逐字节一致；SCC、圈内边和 unresolved 均无增删 |
+
+`.codestable/checkup/latest/callgraph/` 已由核对通过的临时候选受控覆盖，两份 import-cycle v2 基线也已通过正式 CLI 刷新。`baseline.json.artifact_sha256` 绑定最终四个调用图脚本、四个循环扫描工具、完整 10 个调用图 JSON 和两份循环基线；它仍明确记录 `clean_worktree_proof=false`，不得与历史 clean-source commit 混写成 clean-worktree proof。
+
+完整验证命令与结果见 `.codestable/issues/2026-07-11-dependency-proof-rebuild-and-closure/`；只有用户授权提交后，在干净最终 HEAD 上跑完整质量门禁成功，才能升级为 clean-worktree proof。
+
+### 历史 clean-source 机器检查（606bcda1）
 
 | 检查 | 结果 | 关键数据 |
 |---|---|---|
@@ -80,17 +90,18 @@
 python3.14 .codestable/checkup/scripts/codemap_extract.py
 python3.14 .codestable/checkup/scripts/dynamic_refs.py
 
-# 函数级调用图
-python3.14 .codestable/checkup/scripts/callgraph_extract.py
+# 函数级调用图（支持 CHECKUP_CALLGRAPH=/tmp/... 临时输出）
+.venv/bin/python .codestable/checkup/scripts/callgraph_extract.py
 
-# APS 门禁口径
-.venv/bin/python -m tools.scan_import_cycles --json --fail-on-new-cycle
+# APS 正式循环门禁双 scope
+.venv/bin/python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean
+.venv/bin/python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-when-clean
 .venv/bin/python tools/scan_dead_code_islands.py --mode quick
 ```
 
-### 复现正式 clean-source 基线
+### 复现历史 clean-source 源码投影
 
-本次代码投影对应 `606bcda1...`，而两个 codemap 脚本是在本轮才恢复的，旧 commit 本身不包含它们。真实重放方法是：先解出只含目标 commit 的源码，再把当前 manifest 已记录 SHA256 的扫描器复制进去。扫描器位于 `.codestable/`，不属于脚本的 `FIRST_PARTY_ROOTS`，不会进入模块、行数或依赖统计。
+历史代码投影对应 `606bcda1...`。下述 archive 流程仍可复现该源码树，但当前调用图/import 扫描器语义已在 2026-07-10 升级（接收者/alias/嵌套 callable、父包初始化、入口/插件 scope），因此用新扫描器重跑旧源码得到的是“新口径投影”，不会也不应复现旧的 20 条函数循环或 0 个父包感知文件 SCC。历史数字只作当时证据。
 
 ```bash
 ROOT=$(pwd)

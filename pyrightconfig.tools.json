@@ -30,6 +30,14 @@
     "tools/scan_anti_regression_gate.py",
     "tools/scan_aps_three_gap_py38_scope.py",
     "tools/scan_dead_code_islands.py",
+    "tools/import_cycle_analysis.py",
+    "tools/import_cycle_baseline.py",
+    "tools/import_cycle_graph.py",
+    "tools/scan_import_cycles.py",
+    ".codestable/checkup/scripts/callgraph_call_sites.py",
+    ".codestable/checkup/scripts/callgraph_dataflow.py",
+    ".codestable/checkup/scripts/callgraph_extract.py",
+    ".codestable/checkup/scripts/callgraph_function_index.py",
     "tools/dead_code_usage/__init__.py",
     "tools/dead_code_usage/ast_nodes.py",
     "tools/dead_code_usage/ast_usage.py",
@@ -76,7 +84,8 @@
     {
       "root": ".",
       "extraPaths": [
-        "."
+        ".",
+        ".codestable/checkup/scripts"
       ]
     }
   ]

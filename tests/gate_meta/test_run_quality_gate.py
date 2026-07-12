@@ -346,13 +346,21 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     assert "tools/long_gate_schema.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/long_gate_summary.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "scripts/sync_debt_ledger.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/import_cycle_analysis.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/import_cycle_baseline.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/scan_import_cycles.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert ".codestable/checkup/scripts/callgraph_extract.py" in module.QUALITY_GATE_TOOL_PATHS
     required_display = "python tools/verify_required_regressions_from_full_test_debt.py"
     assert required_display in displays
     assert "python scripts/sync_debt_ledger.py check" in displays
     assert displays.index("guard_preflight") < displays.index("python -m ruff --version")
     assert displays.index("python -m ruff --version") < displays.index("python -m pyright --version")
     assert displays.index("python -m pyright --version") < displays.index('python -c "import radon"')
-    assert displays.index("python -m ruff check") < displays.index("python -m pytest --collect-only -q tests")
+    assert displays.index("python -m ruff check") < displays.index(module.IMPORT_CYCLE_PRODUCTION_DISPLAY)
+    assert displays.index(module.IMPORT_CYCLE_PRODUCTION_DISPLAY) < displays.index(module.IMPORT_CYCLE_WITH_TESTS_DISPLAY)
+    assert displays.index(module.IMPORT_CYCLE_WITH_TESTS_DISPLAY) < displays.index(
+        "python -m pytest --collect-only -q tests"
+    )
     assert displays.index("python -m pytest --collect-only -q tests") < displays.index(
         "python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items"
     )
@@ -431,6 +439,11 @@ def test_main_executes_every_shared_command_when_plan_inserts_preflight(monkeypa
     manifest = module.json.loads(manifest_path.read_text(encoding="utf-8"))
     assert [str(command["display"]) for command in manifest["commands"]] == expected_displays
     assert len(manifest["command_receipts"]) == len(patched_plan)
+    for display in (module.IMPORT_CYCLE_PRODUCTION_DISPLAY, module.IMPORT_CYCLE_WITH_TESTS_DISPLAY):
+        receipt = _load_receipt_payload(module, repo_root, manifest, expected_displays.index(display))
+        assert receipt["display"] == display
+        assert receipt["command_hash"]
+        assert receipt["returncode"] == 0
 
 
 def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
@@ -581,6 +594,8 @@ def test_quality_gate_receipt_proof_requires_execution_mode_fields() -> None:
         "python -m pytest --collect-only -q tests",
         "python -m ruff --version",
         "python -m pyright --version",
+        "python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean",
+        "python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-when-clean",
     ],
 )
 def test_main_fails_when_required_command_proof_is_missing(monkeypatch, tmp_path, removed_display: str):
@@ -623,6 +638,31 @@ def test_main_fails_when_required_command_proof_is_missing(monkeypatch, tmp_path
     manifest = module.json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["status"] == "failed"
     assert removed_display in manifest["failure_message"]
+
+
+def test_import_cycle_plan_contract_rejects_double_delete_and_weakened_args() -> None:
+    module = _import_run_quality_gate()
+    plan = module.build_quality_gate_command_plan()
+    cycle_displays = {
+        module.IMPORT_CYCLE_PRODUCTION_DISPLAY,
+        module.IMPORT_CYCLE_WITH_TESTS_DISPLAY,
+    }
+    without_both = [command for command in plan if command["display"] not in cycle_displays]
+
+    with pytest.raises(module.QualityGateError, match="必须且只能包含"):
+        module._assert_import_cycle_command_plan_contract(without_both)
+
+    weakened = [dict(command) for command in plan]
+    production = next(
+        command
+        for command in weakened
+        if command["display"] == module.IMPORT_CYCLE_PRODUCTION_DISPLAY
+    )
+    production["args"] = [
+        arg for arg in list(production["args"]) if arg != "--fail-on-new-cycle"
+    ]
+    with pytest.raises(module.QualityGateError, match="args 与正式合同不一致"):
+        module._assert_import_cycle_command_plan_contract(weakened)
 
 
 def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressions():
@@ -677,6 +717,9 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/app_runtime/test_ui_geometry_html_contract.py",
         "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
         "tests/gate_meta/test_run_full_selftest_report_metadata.py",
+        "tests/gate_meta/test_callgraph_receiver_resolution.py",
+        "tests/gate_meta/test_import_cycle_scanner.py",
+        "tests/gate_meta/test_import_cycle_baseline.py",
         "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py",
         "tests/excel_data_io/test_excel_import_hardening.py",
         "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",

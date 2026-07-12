@@ -110,6 +110,25 @@ QUALITY_GATE_PROOF_SCOPE = {
     "does_not_claim": "risk_coverage_complete",
 }
 QUALITY_GATE_PROOF_SCHEMA_VERSION = 2
+IMPORT_CYCLE_PRODUCTION_DISPLAY = (
+    "python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean"
+)
+IMPORT_CYCLE_WITH_TESTS_DISPLAY = (
+    "python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-when-clean"
+)
+IMPORT_CYCLE_PRODUCTION_ARGS = (
+    "-m",
+    "tools.scan_import_cycles",
+    "--fail-on-new-cycle",
+    "--quiet-when-clean",
+)
+IMPORT_CYCLE_WITH_TESTS_ARGS = (
+    "-m",
+    "tools.scan_import_cycles",
+    "--include-tests",
+    "--fail-on-new-cycle",
+    "--quiet-when-clean",
+)
 QUALITY_GATE_TOOL_PATHS = [
     "scripts/run_daily_quality_gate.py",
     "scripts/run_quality_gate.py",
@@ -141,6 +160,14 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/scan_anti_regression_gate.py",
     "tools/scan_aps_three_gap_py38_scope.py",
     "tools/scan_dead_code_islands.py",
+    "tools/import_cycle_analysis.py",
+    "tools/import_cycle_baseline.py",
+    "tools/import_cycle_graph.py",
+    "tools/scan_import_cycles.py",
+    ".codestable/checkup/scripts/callgraph_call_sites.py",
+    ".codestable/checkup/scripts/callgraph_dataflow.py",
+    ".codestable/checkup/scripts/callgraph_extract.py",
+    ".codestable/checkup/scripts/callgraph_function_index.py",
     "tools/dead_code_usage/__init__.py",
     "tools/dead_code_usage/ast_nodes.py",
     "tools/dead_code_usage/ast_usage.py",
@@ -175,6 +202,8 @@ QUALITY_GATE_SOURCE_FILES = tuple(
             "开发文档/技术债务治理台账.md",
             QUALITY_GATE_PYRIGHT_GATE_CONFIG,
             QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
+            ".codestable/checkup/import_cycles_production_baseline.json",
+            ".codestable/checkup/import_cycles_with_tests_baseline.json",
             *QUALITY_GATE_TOOL_PATHS,
             "tests/web_pages/test_frontend_ui_language_polish.py",
             "tests/gate_meta/test_architecture_fitness.py",
@@ -728,6 +757,18 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "display": "python -m ruff check",
             "args": ["python", "-m", "ruff", "check"],
             "capture_output": False,
+            "output_policy": "normalized",
+        },
+        {
+            "display": IMPORT_CYCLE_PRODUCTION_DISPLAY,
+            "args": ["python", *IMPORT_CYCLE_PRODUCTION_ARGS],
+            "capture_output": True,
+            "output_policy": "normalized",
+        },
+        {
+            "display": IMPORT_CYCLE_WITH_TESTS_DISPLAY,
+            "args": ["python", *IMPORT_CYCLE_WITH_TESTS_ARGS],
+            "capture_output": True,
             "output_policy": "normalized",
         },
         {

@@ -2,15 +2,25 @@
 doc_type: audit
 slug: module-architecture-health
 scope: scheduler 之外的全仓模块架构合理性体检——algorithms / 基础层(models+infrastructure+shared)/ 业务服务族 / common+plugins+data / web 三层;聚焦职责划分、依赖方向、结构债
-summary: 5 个 OPUS 子代理并行体检 scheduler 之外的全部模块,结论是分层底盘整体健康,问题集中在"底层/公共包混入业务飞地""web domains 目录化半成品""一批近/超门禁大文件"三类;循环依赖 A2–A6 的根因已逐个落到具体的误放工具/契约文件
+summary: 历史模块体检 + 2026-07-11 依赖事实终态校正；A2-A6 仍在，基础层并非纯叶子，A4 scope 已扩到入口/bootstrap，正式循环门禁已接入
 status: open
 created: 2026-06-29
-last_reviewed: 2026-06-29
-verified_by: 5 个 OPUS 子代理并行体检(algorithms / 基础层 / 业务服务族 / common+plugins+data / web),各带 file:line;主代理核实关键数字
+last_reviewed: 2026-07-11
+verified_by: 2026-06-29 五路历史体检 + 2026-07-10 首次工具复扫 + 2026-07-11 主代理单线程确定性证据重建
 tags: [architecture, module-health, dependency-direction, responsibility, audit]
 ---
 
-# 模块架构体检(scheduler 之外)
+# 模块架构体检（scheduler 之外，含 2026-07-11 校正）
+
+## 2026-07-11 当前依赖事实校正
+
+- 下方主体保留 2026-06-29 的历史人工判断；与本节冲突时，以本节和双 v2 基线为准。
+- “基础层是真叶子”表述过强：当前 A2 确认有 `models/shared → infrastructure.errors`、`migrations → infrastructure.operation_execution_event_data_contract`、`infrastructure → migrations/models` 等 hard 边。错误合同下沉和迁移语义冻结仍是 A2 的设计前提。
+- A4 当前生产目录 SCC 已扩为 `. ⇄ web/bootstrap ⇄ web/routes ⇄ web/routes/domains/scheduler`。这是把顶层入口/config 与 bootstrap 纳入非测试 scope 后得到的目录商图结构；纯显式 hard 文件 SCC 仍为 0，不能把目录圈直接叫文件死循环。
+- 父包 `__init__.py` 初始化链另形成 9 个 hard 文件加载 SCC；它们与“纯显式 import 文件 SCC=0”是两种不同口径，不得互相替代。
+- 正式质量门禁现已包含生产与含测试两条 `tools.scan_import_cycles --fail-on-new-cycle` 命令，使用独立 v2 基线并参与哈希、收据、重放和 long-gate；下方“可挂/待挂”说法已经过期。
+- 2026-07-11 最终工具口径仍是生产 6 个、含测试 7 个 hard 目录 SCC；两份候选 v2 基线与正式文件逐字节一致，所有成员、圈内边和 unresolved 均无增删。调用图 typed 确信提升已删除，最终快照 typed 边为 0。
+- A2-A6 仍未治理，本次只修工具、门禁和事实描述；不把当前可导入写成“永远无初始化风险”。
 
 > 性质:**发现清单**,不代表已治理。治理(改代码)归 roadmap / refactor。
 > 配套:循环依赖细节见 [[2026-06-28-circular-imports]];scheduler 模块见 [[service-scheduler]]。本报告补各模块"职责划分 / 依赖方向 / 结构债"的全景视角,并给出 A2–A6 环的**模块视角根因**。
@@ -59,7 +69,7 @@ scheduler 之外的模块**分层底盘整体健康**——算法层是真"纯�
 | **A5** plugins⇄common | 插件框架借 common 纯工具、common 后端工厂借 plugins 能力发现机制,互供能力 | by-design 浅**活**边(web 13+ 处经 `get_excel_backend()` 在用) | `plugins/manager.py:11`↔`common/excel_backend_factory.py:6` |
 | **A6** report⇄exporters | `report_number_parsing` 被回借(§3.1) | 局部、可正常加载 | `exporters/xlsx.py:14` |
 
-**统一判断**:A2–A6 全部 file:line 已定位,**治本都是低风险下沉/上移**,严重度普遍低-中,均不阻断运行。门禁可挂 `python3 -m tools.scan_import_cycles --fail-on-new-cycle`(现存 6 环已入基线,只挡回潮)。
+**历史判断（2026-07-10 校正）**:A2–A6 的 file:line 已定位，但 A2 涉及错误合同和旧迁移语义，不能笼统称全部低风险。当前双 scope 门禁已正式接入；它阻断新 SCC、同成员新增边和新增未解析动态加载，不再只是成员级“可挂”检查。
 
 ### 3.3 web `domains/` 目录化半成品(web 最大结构债)
 
@@ -97,7 +107,7 @@ scheduler 之外的模块**分层底盘整体健康**——算法层是真"纯�
 ## 5. 治理建议(待办,按节奏;本报告不改代码)
 
 - **可合并成几个小重构**:(a)"叶子下沉"批次——`errors` 下沉断 A2、`date_parsers` 上移断 A3、`report_number_parsing` 下沉断 A6、`overdue_calculations` 归 scheduler,这些都是低风险移动 + 改 import 路径,适合一并走 cs-refactor;(b)web `domains/` 收口——把 13 个 Excel 路由按域归进 `domains/{...}`,填实空壳;(c)`web/bootstrap/plugins.py` 改走 `SystemConfigService` 门面。
-- **门禁**:`scan_import_cycles --fail-on-new-cycle` 已具备(基线 `.codestable/checkup/import_cycles_baseline.json` 已建),可在治理推进时挂进 hook,防新增环回潮。
+- **门禁（已落地）**：生产与含测试两条 `scan_import_cycles --fail-on-new-cycle --quiet-when-clean` 已进入正式共享计划；基线分别为 `.codestable/checkup/import_cycles_production_baseline.json` 与 `import_cycles_with_tests_baseline.json`。
 - 与并行进行的其它改动(optimizer 等)错峰,避免同区域冲突。
 
 ## 6. 复核工具

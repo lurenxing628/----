@@ -98,6 +98,8 @@ PYRIGHT_GATE_CONFIG = QUALITY_GATE_PYRIGHT_GATE_CONFIG
 PYRIGHT_TOOLS_CONFIG = QUALITY_GATE_PYRIGHT_TOOLS_CONFIG
 QUALITY_GATE_SELFTEST = QUALITY_GATE_SELFTEST_PATH
 PYTEST_COLLECT_ALL_DISPLAY = "python -m pytest --collect-only -q tests"
+IMPORT_CYCLE_PRODUCTION_DISPLAY = quality_gate_shared.IMPORT_CYCLE_PRODUCTION_DISPLAY
+IMPORT_CYCLE_WITH_TESTS_DISPLAY = quality_gate_shared.IMPORT_CYCLE_WITH_TESTS_DISPLAY
 STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION = 1
 REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 4
 STATIC_CHECK_PROOF_SCHEMA_VERSION = 1
@@ -1102,6 +1104,16 @@ def _handle_pyright_tools_quality_gate_command(display: str, result: Dict[str, A
     return {}
 
 
+def _handle_import_cycle_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    _assert_command_succeeded(display, result)
+    proof_key = (
+        "import_cycle_with_tests_proof"
+        if display == IMPORT_CYCLE_WITH_TESTS_DISPLAY
+        else "import_cycle_production_proof"
+    )
+    return {proof_key: True}
+
+
 def _should_prepare_long_gate_output_files(entry: Mapping[str, Any]) -> bool:
     entry_id = str(entry.get("entry_id") or "")
     return bool(entry.get("reuse_allowed")) or entry_id == ENTRY_DEBT_LEDGER_SYNC
@@ -1131,6 +1143,8 @@ def _run_quality_gate_command_plan(
             "python -m ruff --version": _handle_ruff_version_quality_gate_command,
             "python -m pyright --version": _handle_pyright_version_quality_gate_command,
             f"python -m pyright -p {PYRIGHT_TOOLS_CONFIG}": _handle_pyright_tools_quality_gate_command,
+            IMPORT_CYCLE_PRODUCTION_DISPLAY: _handle_import_cycle_quality_gate_command,
+            IMPORT_CYCLE_WITH_TESTS_DISPLAY: _handle_import_cycle_quality_gate_command,
         }
     )
     total = len(command_plan)
@@ -1454,12 +1468,44 @@ def _run_quality_gate_command_plan(
         print(f"==> 第 {command_index}/{total} 步结束：通过，耗时 {elapsed:.1f}s，receipt={receipt_entry['path']}", flush=True)
 
 
-def _require_quality_gate_command_proofs(parsed_command_results: Dict[str, Any]) -> None:
+def _assert_import_cycle_command_plan_contract(command_plan: Sequence[Dict[str, Any]]) -> bool:
+    displays = [str(command.get("display") or "") for command in command_plan]
+    cycle_displays = {IMPORT_CYCLE_PRODUCTION_DISPLAY, IMPORT_CYCLE_WITH_TESTS_DISPLAY}
+    is_formal_plan = "python -m ruff check" in displays or bool(cycle_displays & set(displays))
+    if not is_formal_plan:
+        return False
+    expected = {
+        IMPORT_CYCLE_PRODUCTION_DISPLAY: ["python", *quality_gate_shared.IMPORT_CYCLE_PRODUCTION_ARGS],
+        IMPORT_CYCLE_WITH_TESTS_DISPLAY: ["python", *quality_gate_shared.IMPORT_CYCLE_WITH_TESTS_ARGS],
+    }
+    for display, expected_args in expected.items():
+        rows = [command for command in command_plan if str(command.get("display") or "") == display]
+        if len(rows) != 1:
+            raise QualityGateError(f"shared command plan 必须且只能包含一条循环门禁命令：{display}")
+        row = rows[0]
+        if [str(arg) for arg in list(row.get("args") or [])] != expected_args:
+            raise QualityGateError(f"循环门禁命令 args 与正式合同不一致：{display}")
+        if not bool(row.get("capture_output")) or str(row.get("output_policy") or "") != "normalized":
+            raise QualityGateError(f"循环门禁命令输出证明合同不一致：{display}")
+    return True
+
+
+def _require_quality_gate_command_proofs(
+    parsed_command_results: Dict[str, Any],
+    *,
+    require_import_cycle_proofs: bool,
+) -> None:
     required_proofs = {
         PYTEST_COLLECT_ALL_DISPLAY: parsed_command_results.get("collection_proof"),
         "python -m ruff --version": parsed_command_results.get("ruff_version_output"),
         "python -m pyright --version": parsed_command_results.get("pyright_version_output"),
     }
+    cycle_proofs = {
+        IMPORT_CYCLE_PRODUCTION_DISPLAY: parsed_command_results.get("import_cycle_production_proof"),
+        IMPORT_CYCLE_WITH_TESTS_DISPLAY: parsed_command_results.get("import_cycle_with_tests_proof"),
+    }
+    if require_import_cycle_proofs:
+        required_proofs.update(cycle_proofs)
     missing_display = next((display for display, value in required_proofs.items() if not value), "")
     if missing_display:
         raise QualityGateError(f"shared command plan 缺少必需证明命令或解析结果：{missing_display}")
@@ -2971,6 +3017,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         build_quality_gate_command_plan(),
         allow_dirty_worktree=bool(args.allow_dirty_worktree),
     )
+    require_import_cycle_proofs = False
     if bool(args.long_gate_impact_explain):
         impact_paths = (
             _dedupe_impact_paths(list(args.long_gate_impact_path or []))
@@ -3070,6 +3117,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     try:
         try:
+            require_import_cycle_proofs = _assert_import_cycle_command_plan_contract(command_plan)
             if resume_decision.enabled:
                 _clear_quality_gate_run_outputs(
                     remove_manifest=False,
@@ -3129,7 +3177,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         collection_proof = cast(Optional[Dict[str, Any]], parsed_command_results.get("collection_proof"))
         ruff_version_output = cast(Optional[str], parsed_command_results.get("ruff_version_output"))
         pyright_version_output = cast(Optional[str], parsed_command_results.get("pyright_version_output"))
-        _require_quality_gate_command_proofs(parsed_command_results)
+        _require_quality_gate_command_proofs(
+            parsed_command_results,
+            require_import_cycle_proofs=require_import_cycle_proofs,
+        )
 
         git_status_short_after = _git_status_lines()
         _apply_worktree_proof(

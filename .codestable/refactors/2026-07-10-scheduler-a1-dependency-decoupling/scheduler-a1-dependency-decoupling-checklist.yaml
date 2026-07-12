@@ -1,0 +1,90 @@
+doc_type: refactor-checklist
+refactor: 2026-07-10-scheduler-a1-dependency-decoupling
+status: approved
+source_plan: .codestable/refactors/2026-07-10-scheduler-a1-dependency-decoupling/scheduler-a1-dependency-decoupling-refactor-design.md
+scope: scheduler root/config/run/summary A1 hard directory SCC
+excluded_scope:
+  - A2-A6 and tests directory cycles
+  - database schema and migration semantics
+  - scheduling results, public payloads, routes and exports
+guardrails:
+  - no function-local imports used to hide hard cycles
+  - old import paths remain available through one-way explicit re-exports
+  - no dataclass field/default, enum value, hash input, error text or public projection change
+  - one step is validated before the next starts
+steps:
+  - id: step-01-characterization-contract
+    title: Lock old/new module identity and clean-interpreter import-order contracts
+    status: pending
+    type: characterization_test
+    touch_files:
+      - tests/schedule/service/test_scheduler_a1_dependency_boundary.py
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/schedule/service/test_scheduler_a1_dependency_boundary.py
+    exit_signal: Compatibility paths, object identity, signatures and forward/reverse imports are mechanically locked.
+
+  - id: step-02-root-leaf-imports
+    title: Redirect number and degradation contracts to existing shared/model leaves
+    status: pending
+    type: layer_rectification
+    touch_files:
+      - core/shared/boolean_normalize.py
+      - core/services/scheduler/config/config_field_coercion.py
+      - core/services/scheduler/config/config_presets.py
+      - core/services/scheduler/config/config_weight_policy.py
+      - core/services/scheduler/run/freeze_window.py
+      - core/services/scheduler/run/optimizer_config.py
+      - core/services/scheduler/run/schedule_input_collector.py
+      - core/services/scheduler/summary/schedule_summary_degradation.py
+      - core/services/scheduler/summary/schedule_summary_downtime_degradation.py
+      - core/services/scheduler/summary/schedule_summary_freeze.py
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/config tests/schedule/summary
+    exit_signal: Number/yes-no and public degradation behavior is unchanged and reverse root imports are removed.
+
+  - id: step-03-execution-leaf-package
+    title: Move execution fact/snapshot/scope/enrichment implementation under scheduler.execution
+    status: pending
+    type: parallel_move
+    touch_files:
+      - core/services/scheduler/execution/
+      - core/services/scheduler/execution_fact_provider.py
+      - core/services/scheduler/execution_snapshot.py
+      - core/services/scheduler/operation_execution_scope_read.py
+      - core/services/scheduler/resource_dispatch_execution_enrichment.py
+      - core/services/scheduler/run/schedule_execution_guardrails.py
+      - core/services/scheduler/run/schedule_execution_persistence_guard.py
+      - core/services/scheduler/run/schedule_input_collector.py
+      - core/services/scheduler/run/schedule_persistence.py
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/operation_execution/test_operation_execution_scope_read_contract.py tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/gantt/test_gantt_adjustment_publish_execution_revision.py
+    exit_signal: Execution snapshot identity/hash and plan-scoped reads are unchanged; run no longer imports root execution modules.
+
+  - id: step-04-summary-contract-package
+    title: Move run-consumed summary DTO/projection/parsing implementation under scheduler.contracts
+    status: pending
+    type: parallel_move
+    touch_files:
+      - core/services/scheduler/contracts/
+      - core/services/scheduler/summary/graph_public_summary.py
+      - core/services/scheduler/summary/optimizer_public_safety.py
+      - core/services/scheduler/summary/optimizer_public_search_report.py
+      - core/services/scheduler/summary/schedule_summary_types.py
+      - core/services/scheduler/summary/summary_count_parse.py
+      - core/services/scheduler/run/schedule_candidate_persistence_models.py
+      - core/services/scheduler/run/schedule_orchestrator.py
+      - core/services/scheduler/run/schedule_summary_contract.py
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/schedule/service/test_schedule_orchestrator_contract.py tests/schedule/summary tests/algorithm/test_optimizer_public_summary_projection_contract.py tests/scheduler_graph/test_scheduler_graph_summary_contract.py
+    exit_signal: Public projection and DTO behavior is unchanged; run has no hard import to summary.
+
+  - id: step-05-a1-verification
+    title: Prove A1 is absent without expanding other cycles or changing behavior
+    status: pending
+    type: final_proof
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-when-clean
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler core/shared/boolean_normalize.py tests/schedule/service/test_scheduler_a1_dependency_boundary.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json
+    exit_signal: A1 hard directory SCC is gone, no new debt is accepted, and targeted behavior contracts pass.

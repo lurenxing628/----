@@ -41,6 +41,8 @@ ENTRY_REQUIRED_REGRESSIONS = "required_regressions"
 ENTRY_DEBT_LEDGER_SYNC = "debt_ledger_sync"
 ENTRY_STARTUP_RUNTIME_REGRESSIONS = "startup_runtime_regressions"
 ENTRY_QUICKREF_VS_ROUTES = "quickref_vs_routes"
+ENTRY_IMPORT_CYCLES_PRODUCTION = "import_cycles_production"
+ENTRY_IMPORT_CYCLES_WITH_TESTS = "import_cycles_with_tests"
 ENTRY_VERSION_OR_ENV_PROBE = "version_or_env_probe"
 ENTRY_UNKNOWN = "unknown"
 
@@ -61,6 +63,8 @@ _LONG_ENTRY_TYPES = {
     ENTRY_DEBT_LEDGER_SYNC,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
     ENTRY_QUICKREF_VS_ROUTES,
+    ENTRY_IMPORT_CYCLES_PRODUCTION,
+    ENTRY_IMPORT_CYCLES_WITH_TESTS,
 }
 
 _CACHE_ENABLED_ENTRY_TYPES = {
@@ -73,6 +77,8 @@ _CACHE_ENABLED_ENTRY_TYPES = {
     ENTRY_DEBT_LEDGER_SYNC,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
     ENTRY_QUICKREF_VS_ROUTES,
+    ENTRY_IMPORT_CYCLES_PRODUCTION,
+    ENTRY_IMPORT_CYCLES_WITH_TESTS,
 }
 
 
@@ -128,6 +134,10 @@ def classify_quality_gate_command(command: Mapping[str, Any]) -> str:
         return ENTRY_REQUIRED_REGRESSIONS
     if display in _VERSION_PROBE_ENTRY_IDS:
         return ENTRY_VERSION_OR_ENV_PROBE
+    if display == quality_gate_shared.IMPORT_CYCLE_PRODUCTION_DISPLAY:
+        return ENTRY_IMPORT_CYCLES_PRODUCTION
+    if display == quality_gate_shared.IMPORT_CYCLE_WITH_TESTS_DISPLAY:
+        return ENTRY_IMPORT_CYCLES_WITH_TESTS
     if display == "python -m ruff check":
         return ENTRY_RUFF_CHECK_FULL
     if _list_equal(args[:5], ["python", "-m", "pyright", "-p", quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG]):
@@ -249,7 +259,45 @@ def _scopes_for_entry(
     env_keys: List[str] = []
     output_files: List[str] = []
 
-    if entry_type == ENTRY_RUFF_CHECK_FULL:
+    if entry_type in {ENTRY_IMPORT_CYCLES_PRODUCTION, ENTRY_IMPORT_CYCLES_WITH_TESTS}:
+        input_scopes.extend(
+            [
+                "*.py",
+                "core/**/*.py",
+                "data/**/*.py",
+                "desktop/**/*.py",
+                "plugins/**/*.py",
+                "scripts/**/*.py",
+                "tools/**/*.py",
+                "web/**/*.py",
+            ]
+        )
+        if entry_type == ENTRY_IMPORT_CYCLES_WITH_TESTS:
+            input_scopes.append("tests/**/*.py")
+            baseline_path = ".codestable/checkup/import_cycles_with_tests_baseline.json"
+        else:
+            baseline_path = ".codestable/checkup/import_cycles_production_baseline.json"
+        input_scopes.append(baseline_path)
+        config_scopes.append(baseline_path)
+        tool_scopes.extend(
+            [
+                "tools/import_cycle_analysis.py",
+                "tools/import_cycle_baseline.py",
+                "tools/import_cycle_graph.py",
+                "tools/scan_import_cycles.py",
+            ]
+        )
+        env_keys.extend(
+            [
+                "python_executable_realpath",
+                "python_version",
+                "platform",
+                "PYTHONPATH",
+                "PYTHONUTF8",
+                "PYTHONIOENCODING",
+            ]
+        )
+    elif entry_type == ENTRY_RUFF_CHECK_FULL:
         input_scopes.extend(
             [
                 "*.py",

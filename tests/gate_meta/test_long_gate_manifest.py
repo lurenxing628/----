@@ -63,6 +63,8 @@ def test_manifest_contains_current_quality_gate_long_entries():
     assert "debt_ledger_sync" in entry_ids
     assert "startup_runtime_regressions" in entry_ids
     assert "quickref_vs_routes" in entry_ids
+    assert "import_cycles_production" in entry_ids
+    assert "import_cycles_with_tests" in entry_ids
 
 
 def test_manifest_entry_keeps_current_and_previous_fingerprint_slots():
@@ -245,6 +247,36 @@ def test_required_groups_do_not_enter_formal_manifest_contract():
     assert "required_regression_group_scope_policy" not in required
 
 
+
+
+def test_import_cycle_entries_have_stable_ids_hash_and_scope(tmp_path):
+    command_plan = quality_gate_shared.build_quality_gate_command_plan()
+    manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=str(tmp_path))
+    production = _entry_by_id(manifest, "import_cycles_production")
+    with_tests = _entry_by_id(manifest, "import_cycles_with_tests")
+
+    assert production["display"] == quality_gate_shared.IMPORT_CYCLE_PRODUCTION_DISPLAY
+    assert with_tests["display"] == quality_gate_shared.IMPORT_CYCLE_WITH_TESTS_DISPLAY
+    assert production["reuse_allowed"] is True
+    assert with_tests["reuse_allowed"] is True
+    assert "core/**/*.py" in production["input_file_scopes"]
+    assert "tests/**/*.py" not in production["input_file_scopes"]
+    assert "tests/**/*.py" in with_tests["input_file_scopes"]
+    assert ".codestable/checkup/import_cycles_production_baseline.json" in production["config_file_scopes"]
+    assert ".codestable/checkup/import_cycles_with_tests_baseline.json" in with_tests["config_file_scopes"]
+    for entry in (production, with_tests):
+        assert "tools/scan_import_cycles.py" in entry["tool_file_scopes"]
+        assert "tools/import_cycle_analysis.py" in entry["tool_file_scopes"]
+        assert "tools/import_cycle_graph.py" in entry["tool_file_scopes"]
+        assert "python_version" in entry["env_keys"]
+
+    full_hash = quality_gate_shared.hash_quality_gate_commands(command_plan)
+    for display in (
+        quality_gate_shared.IMPORT_CYCLE_PRODUCTION_DISPLAY,
+        quality_gate_shared.IMPORT_CYCLE_WITH_TESTS_DISPLAY,
+    ):
+        without_command = [command for command in command_plan if command["display"] != display]
+        assert quality_gate_shared.hash_quality_gate_commands(without_command) != full_hash
 
 
 def test_pyright_tools_entry_tracks_quality_gate_tool_paths():

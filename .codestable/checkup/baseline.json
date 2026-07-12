@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "status": "mechanical_ready_history_pending",
-  "verified_at": "2026-07-10",
+  "status": "mechanical_ready_history_pending_with_deterministic_worktree_rebuild",
+  "verified_at": "2026-07-11",
   "code_baseline": {
     "commit": "606bcda1d369914875fe63a5d3657ff4cbc351ac",
     "commit_date": "2026-07-01",
@@ -10,6 +10,14 @@
     "runtime_contract": "APS application/tests/package remain Python 3.8 and Win7 compatible",
     "worktree_changes_included": false,
     "worktree_was_dirty": true
+  },
+  "worktree_tooling_refresh": {
+    "starting_head": "cd6cdf43798e3c6321370e4fceb7150bbe4cef3c",
+    "refreshed_at": "2026-07-11",
+    "worktree_dirty": true,
+    "clean_worktree_proof": false,
+    "scope": "final callgraph/import-cycle tooling, deterministic callgraph snapshot, dual v2 baselines, formal gate wiring and synchronized current facts",
+    "note": "The final tooling/evidence rebuild is byte-reproducible on the current dirty worktree but is not bound to a committed clean HEAD. code_baseline remains the historical clean-source watermark."
   },
   "mechanical_checks": {
     "codemap": {
@@ -24,22 +32,37 @@
       "refined_orphan_candidates": 109
     },
     "callgraph": {
-      "status": "pass_reproduced",
+      "status": "pass_deterministic_worktree_rebuild_not_clean_proof",
       "summary_path": ".codestable/checkup/latest/callgraph/summary.json",
-      "total_functions": 6921,
-      "total_edges": 26763,
-      "confident_edges": 10440,
-      "ambiguous_edges": 16323,
-      "cycle_count": 20,
-      "island_count": 164,
+      "total_functions": 7329,
+      "nested_callable_count": 316,
+      "total_edges": 25772,
+      "confident_edges": 10152,
+      "ambiguous_edges": 15620,
+      "typed_edges": 0,
+      "cycle_count": 8,
+      "cycle_count_semantics": "confident-edge simple cycles of length 2..8, capped at 200; not SCC count",
+      "island_count": 193,
       "parse_errors": []
     },
     "import_cycles": {
-      "status": "pass_no_new_hard_cycles",
-      "baseline_path": ".codestable/checkup/import_cycles_baseline.json",
-      "hard_dir_cycle_count": 6,
-      "hard_file_cycle_count": 0,
-      "check_exit_code": 0
+      "status": "pass_dual_scope_rebuild_not_clean_proof",
+      "production_baseline_path": ".codestable/checkup/import_cycles_production_baseline.json",
+      "with_tests_baseline_path": ".codestable/checkup/import_cycles_with_tests_baseline.json",
+      "production_module_count": 750,
+      "with_tests_module_count": 1443,
+      "production_hard_dir_cycle_count": 6,
+      "with_tests_hard_dir_cycle_count": 7,
+      "parent_aware_hard_file_cycle_count": 9,
+      "explicit_hard_file_cycle_count": 0,
+      "parent_aware_runtime_file_cycle_count": 14,
+      "explicit_runtime_file_cycle_count": 5,
+      "production_unresolved_dynamic_import_count": 6,
+      "production_check_exit_code": 0,
+      "with_tests_check_exit_code": 0,
+      "production_parent_package_init_edge_count": 6654,
+      "with_tests_parent_package_init_edge_count": 13138,
+      "with_tests_unresolved_dynamic_import_count": 44
     },
     "dead_code_quick": {
       "status": "pass_after_reviewed_refresh",
@@ -75,12 +98,28 @@
   "artifact_sha256": {
     ".codestable/checkup/scripts/codemap_extract.py": "172e05d724527d8cddfa957c470f1b10894c0bba3fb68d5c8e677ad82ed26541",
     ".codestable/checkup/scripts/dynamic_refs.py": "21becc664ffab8fa5f69e32a5345a45c7f586deafade97e8d44bdf17acd63a59",
-    ".codestable/checkup/scripts/callgraph_extract.py": "be1f96275cc52a576497881d3ce0f46d5eaebf8ed59cdd8f8758840318d7a440",
-    "tools/scan_import_cycles.py": "4984ce5edd4f41cc18710f846611076eff2fc189a6ac3c09f7fe1b0f103662bd",
+    ".codestable/checkup/scripts/callgraph_call_sites.py": "9ecd16ef929a759812bd4cf195df005445dc3f6291fe6607f6610b2465545d8a",
+    ".codestable/checkup/scripts/callgraph_dataflow.py": "361f824717c235dd3f7b4634f247f6841328d6181ab02e890b3a207768aa762e",
+    ".codestable/checkup/scripts/callgraph_extract.py": "fc38a6b9e857eb58b8c05c0550c9b21833ba1fad541a2cdab820ea7722509d3d",
+    ".codestable/checkup/scripts/callgraph_function_index.py": "6dfebb3447f6ddcc989a5a7130be8862c5311c695b94c7d8b2a7e7b38b3b2954",
+    "tools/import_cycle_analysis.py": "0988d52fd9e031e963fafa031eebd348ea3dc6eca65aae1df078bc8514b17453",
+    "tools/import_cycle_baseline.py": "2b44172b3767cb0d4ffbabe0e86e83ae923c58bb31ef33c9fc096c1c1e27a641",
+    "tools/import_cycle_graph.py": "3e739bde0b2fb556ad9a17387a0674fa23dee6ddc96fd276c5c4fe1fa8f64e80",
+    "tools/scan_import_cycles.py": "752ce052eacfb301dc68e68a42130b902d1f784e7ce2a6b835fd89575105b081",
     "tools/scan_dead_code_islands.py": "2750edf0f5328eb78aeeb2a5bbc5c2757455cda0c4fcf269c24ec87179023189",
     ".codestable/checkup/latest/codemap/summary.json": "3e257a04eb09bedabb5a604c49ac158e91358f70ce7e3d239ddd62ec6f7a00be",
-    ".codestable/checkup/latest/callgraph/summary.json": "b34aa51154ccc48fd138a52fcda6f490ab87f5d1c7bead19068c14848e87b92c",
+    ".codestable/checkup/latest/callgraph/articulation_points.json": "d0a73950942d53bcb2dfce256b89abde9e4c57378b3eb55a74db52f2b5a7663d",
+    ".codestable/checkup/latest/callgraph/cycles.json": "d666d885059e5feda385910af99471a4cbb9cac481f220a0d311683567c5b16b",
+    ".codestable/checkup/latest/callgraph/dataflow_nodes.json": "31c6e48a48096db05c777ed38b6883b858a3b913e91398797882acc6304f2084",
+    ".codestable/checkup/latest/callgraph/dynamic_unresolved.json": "7cc51f7b35257c8dbe54734f9b8dd234cc5fd52933c35c926d7a52d348ac21b0",
+    ".codestable/checkup/latest/callgraph/edges.json": "ba3b403f85ddecd59e29a990bc99f3501fdcdaf0e0d26aa1e38ba09b8424a1cf",
+    ".codestable/checkup/latest/callgraph/functions.json": "aa0433ff222201968b550ec58164f23ea67b8fef478a9a09be04205f59e0025f",
+    ".codestable/checkup/latest/callgraph/high_fan_in.json": "848810e47b88f75903c22582d6bc281fd3b1f214b683125bd2ec0c9d5ad26de8",
+    ".codestable/checkup/latest/callgraph/islands.json": "30fca84abdd73a0d78bc924aa9c7f8483b7572f145f0479c65cab5dccb16b6e2",
+    ".codestable/checkup/latest/callgraph/risk_dataflow.json": "c7be5b6365f4590d453c51606874ba034b24b39d2f60e64ead97e6830f53d023",
+    ".codestable/checkup/latest/callgraph/summary.json": "c3ebef9a0654405f7a1b53e3eb1984cba8254c257b5b12d4fd62c70cd26f851c",
     ".codestable/checkup/dead_code_islands_baseline.json": "e04d3cef9620f45b637c0f867fd9849ccfd12b3396b3f187a1d272daf2eb717e",
-    ".codestable/checkup/import_cycles_baseline.json": "75824f11c92d942cae797788c639ad03f315809e1209790bfc9123d7f30c24fb"
+    ".codestable/checkup/import_cycles_production_baseline.json": "9bced631cba0f75bfaba6255ca057cea141b3d77a6adbac50d98a85ec3e66016",
+    ".codestable/checkup/import_cycles_with_tests_baseline.json": "c92c2bb6ca785e31dfd8f6a222234217f5b26520f8aab97c3691a4a1632b4a41"
   }
 }

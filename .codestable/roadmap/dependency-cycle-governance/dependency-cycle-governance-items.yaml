@@ -1,0 +1,104 @@
+roadmap: dependency-cycle-governance
+created: 2026-07-10
+last_reviewed: 2026-07-11
+
+items:
+  - slug: callgraph-receiver-resolution
+    description: 修正复杂接收者误连，保留真实递归并校正简单循环记录口径
+    depends_on: []
+    status: completed
+    feature: null
+    minimal_loop: false
+    notes: 由 .codestable/issues/2026-07-10-dependency-governance-tooling-trust 承接
+
+  - slug: import-cycle-scan-completeness
+    description: 补全语句体、动态导入、父包初始化、顶层入口与插件扫描，并显式报告未解析目标
+    depends_on: [callgraph-receiver-resolution]
+    status: completed
+    feature: null
+    minimal_loop: false
+    notes: 由同一工具可信度 issue 分阶段承接
+
+  - slug: import-cycle-quality-gate-integration
+    description: 将生产与含测试循环扫描接入正式命令计划、收据、重放和长门禁
+    depends_on: [import-cycle-scan-completeness]
+    status: completed
+    feature: null
+    minimal_loop: false
+    notes: null
+
+  - slug: import-cycle-fail-closed
+    description: 正式模式严格阻断基线缺失损坏版本错误、scope/roots 漂移、源码解析失败和扫描异常
+    depends_on: [import-cycle-quality-gate-integration]
+    status: completed
+    feature: null
+    minimal_loop: false
+    notes: null
+
+  - slug: import-cycle-edge-baseline-v2
+    description: 拆分双基线并按圈成员、圈内规范化有向模块边和未解析动态导入共同判定新增债务
+    depends_on: [import-cycle-fail-closed]
+    status: completed
+    feature: null
+    minimal_loop: false
+    notes: 首次基线接线已完成；2026-07-11 复审后由 dependency-proof-rebuild-and-closure 承接当前最小可信闭环
+
+  - slug: dependency-architecture-facts-refresh
+    description: 按修正后的工具结果更新 scheduler 架构和循环依赖审计事实口径
+    depends_on: [import-cycle-edge-baseline-v2]
+    status: completed
+    feature: null
+    minimal_loop: false
+    notes: 首次事实刷新保留为历史；最终数字由 dependency-proof-rebuild-and-closure 在工具冻结后校正
+
+  - slug: import-cycle-alias-rebinding-hardening
+    description: 消除 importlib 别名遮蔽或重绑定产生的假 hard import 边，不确定目标统一进入 unresolved 清单
+    depends_on: [import-cycle-scan-completeness]
+    status: completed
+    feature: null
+    minimal_loop: false
+    notes: 已由 issue 2026-07-11-import-cycle-alias-rebinding-hardening 完成；只做词法可证明的保守消解，未新增通用数据流或完整符号执行，未刷新正式基线
+
+  - slug: callgraph-confidence-kiss-hardening
+    description: 取消非直接 self 属性调用的 typed 确信提升，补调用点行号，并让源码解码或解析失败明确阻断
+    depends_on: [callgraph-receiver-resolution]
+    status: completed
+    feature: null
+    minimal_loop: false
+    notes: 已由 issue 2026-07-11-callgraph-confidence-kiss-hardening 完成；删除半套类型推断，非直接 self 属性调用保持 ambiguous，未刷新调用图快照或 artifact 哈希
+
+  - slug: dependency-proof-rebuild-and-closure
+    description: 冻结工具后双跑重建调用图、双基线、哈希和事实文档，形成可复现终态证明
+    depends_on:
+      - import-cycle-edge-baseline-v2
+      - dependency-architecture-facts-refresh
+      - import-cycle-alias-rebinding-hardening
+      - callgraph-confidence-kiss-hardening
+    status: in_progress
+    feature: null
+    minimal_loop: true
+    notes: 由 issue 2026-07-11-dependency-proof-rebuild-and-closure 承接；dirty-worktree 证据重建进行中，取得提交后 clean HEAD 完整门禁证明前不得启动 A1
+
+  - slug: scheduler-a1-decoupling
+    description: 消除 scheduler 根目录、config、run、summary 四方硬目录依赖圈
+    depends_on: [dependency-proof-rebuild-and-closure]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 独立 refactor；现有 checklist 保持 pending，终态证明完成后重新核对 49 条起点边再实施
+
+  - slug: foundation-a2-decoupling
+    description: 先设计和双轨复审，再解耦 infrastructure、migrations、models、shared
+    depends_on: [scheduler-a1-decoupling]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 不改变数据库格式、迁移语义、公开模型合同和错误表现
+
+  - slug: remaining-cycles-decoupling
+    description: 按 A3、A4、A5、A6 和 tests 五个独立批次清零剩余硬目录圈
+    depends_on: [foundation-a2-decoupling]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 每批独立核查、实现、验证，不合并成无法审查的大改动

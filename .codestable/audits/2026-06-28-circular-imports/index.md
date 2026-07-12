@@ -1,16 +1,32 @@
 ---
 doc_type: audit
 slug: circular-imports
-scope: 全仓(core/web/data/desktop/tools/scripts,排除 tests)循环依赖普查
-summary: 全仓循环依赖普查——6 个硬加载期包级目录环,0 个硬加载期文件环;经 Codex 对抗核验 + 脚本口径修正后的最终结论
+scope: 历史普查 + 2026-07-11 当前生产非测试/含测试双 scope 终态复核
+summary: 6/7 个 hard 目录 SCC；纯显式 hard 文件 SCC 为 0，父包初始化感知 hard 文件加载 SCC 为 9；正式双基线门禁已接入
 status: open
 created: 2026-06-28
-last_reviewed: 2026-06-28
-verified_by: Codex 对抗审核(session 019f0e4c-cb3c-79b1-98db-39d415563483,5 子代理 fan-out)
+last_reviewed: 2026-07-11
+verified_by: 2026-06-28 Codex 历史审核 + 2026-07-10 首次工具复扫 + 2026-07-11 主代理单线程确定性重建与逐项核差异
 tags: [architecture, circular-dependency, import-cycle, audit]
 ---
 
-# 循环依赖普查(经 Codex 对抗核验)
+# 循环依赖普查（历史报告 + 2026-07-11 当前口径校正）
+
+## 2026-07-11 当前事实（覆盖下方冲突的历史数字）
+
+> 下方“2026-06-28 历史正文”保留当时证据，不再代表当前扫描能力。当前事实以本节、双 v2 基线和正式门禁为准。
+
+- **scope**：生产非测试扫描为 `core/web/data/desktop/plugins/tools/scripts/*.py`，包含顶层 `app.py`、`app_new_ui.py`、`config.py` 等入口；含测试命令再加 `tests`。生产 750 模块，含测试 1443 模块，解析失败均为 0。
+- **目录商图**：生产仍是 6 个 hard 目录 SCC，含测试为 7 个。A1/A2/A3/A5/A6 成员不变；A4 因补入真实入口与 config/bootstrap，现为 `. ⇄ web/bootstrap ⇄ web/routes ⇄ web/routes/domains/scheduler`。目录 SCC 是结构耦合，不等同具体文件已互相咬死。
+- **文件图双口径**：纯显式 import 的 hard 文件 SCC 仍为 0；补入 Python 会先执行父包 `__init__.py` 的真实加载链后，父包感知 hard 文件加载 SCC 为 9。后者表示部分初始化风险面，不等于 9 组都已复现 ImportError；两种口径必须同时写明。
+- **运行时图双口径**：父包感知 runtime 文件 SCC 为 14；纯显式 `hard+cond+lazy` 文件 SCC 为 5，且现已输出成员和圈内边，不再只有计数。
+- **动态加载盲区**：生产已有 6 个无法静态定目标的站点（scheduler/config/repository 重导出、路由 f-string、orchestrator 常量和插件文件加载器）；含测试共 44 个，其中额外 38 个全部位于测试脚本，均为显式动态测试装载或变量目标。它们完整进入 JSON/文本清单；v2 基线允许既有项删除，但阻断新增未解析动态导入。
+- **基线/门禁**：`.codestable/checkup/import_cycles_production_baseline.json` 与 `import_cycles_with_tests_baseline.json` 同时锁定 schema、scope、scan roots、文件加载语义、SCC 成员、圈内规范化模块边和未解析动态导入。缺失/损坏/版本或 scope 不符/源码解析失败/扫描异常均返回工具错误码 2；两条命令已进入正式 19 步质量门禁、计划哈希、逐步收据、重放和 long-gate 稳定 entry。2026-07-11 候选双基线与正式文件逐字节一致，证明 alias 重绑定修复没有改变现有生产/测试 SCC、圈内边或 unresolved 身份。
+- **调用图区分**：当前快照为 7329 个 callable（含 316 个嵌套 def/lambda）、25772 条输出边、10152 条确信边、15620 条模糊边、0 条 typed 边和 8 条真实受限简单循环记录。`cycle_count` 是“确信边上长度 2-8、最多 200 条的 simple cycles”，**不是函数 SCC 数**；两个独立临时输出目录的 10 个 JSON 逐文件 SHA256 完全一致。
+
+当前生产边计数 `hard=8809 / cond=4 / lazy=257 / typeonly=135` 包含 6654 条父包初始化隐式文件边。相对首次 749 模块口径新增的 `tools/import_cycle_graph.py` 使 scanner 的 `from tools import import_cycle_graph` 解析为 `tools` 与 `tools.import_cycle_graph` 两个目标，因此模块数 +1、hard 边 +2、父包初始化边 +1；这不是新增 SCC。A1-A6 尚未拆除，本节是工具/事实口径修复，不是结构债清零证明。
+
+## 2026-06-28 历史正文（仅作当时证据）
 
 > 性质:**发现清单**,不代表已修复。治理(改代码)按节奏待办。
 > 口径已经过 Codex 独立对抗审核 + 扫描脚本修正,可信度:**中偏高**(6 个硬加载期目录环可信;根因/严重度按保守口径写)。
@@ -22,7 +38,7 @@ tags: [architecture, circular-dependency, import-cycle, audit]
 ## 1. 方法与口径
 
 - 自写 AST 脚本(`/tmp/find_cycles.py`,v2)扫 **723 个生产模块**(core/web/data/desktop/tools/scripts,**排除 tests**),解析失败 0;Tarjan 求强连通分量(SCC>1=环)。
-- **import 三分类**(这是和 checkup `cycle_count` 的关键区别——它是函数级 SCC,看不到包级环):
+- **import 三分类**（与 checkup 函数调用图口径不同：后者是 capped simple-cycle 记录，不是 import SCC，也看不到包级环）：
   - **hard**:无条件顶层 import(会在模块加载期执行)→ 真正可能 `ImportError` 的环
   - **cond**:顶层 `try` / 非 `TYPE_CHECKING` 的 `if` 块内(条件加载)
   - **lazy**:函数体内(延迟加载)
@@ -88,14 +104,17 @@ tags: [architecture, circular-dependency, import-cycle, audit]
 - 通用解法:把被子包/同级反依赖的公共工具下沉成**无反向依赖的叶子包**;基础层(A2)互借的 errors/_helpers 可评估微调或接受。
 - 改代码动作等当前并行任务(optimizer 改动)完成后再启动。
 
-## 9. 附:扫描脚本与修正清单
+## 9. 附：当前扫描与正式门禁入口
 
-- 脚本:**已固化为 `tools/scan_import_cycles.py`**(v2 口径)。入口 `python3 -m tools.scan_import_cycles`;`--json` 机器可读、`--fail-on-hard-cycle` 检出硬加载期环退出码 1(供门禁)、`--include-tests` 纳入 tests。实际挂进 `run_quality_gate.py` / git hook 待按节奏决定。
-- v1→v2 修正(对应 Codex 指出的 6 个 bug):
-  1. `from . import 兄弟模块` 不再误连"包根"假边(消除 §4 伪报)。
-  2. import 三分类 hard/cond/lazy/typeonly。
-  3. `TYPE_CHECKING` 的 `else` 归运行时(此前整块跳过会漏 else 边)。
-  4. 纳入动态 `importlib.import_module("字面量")`。
-  5. 运行时图排除 typeonly(运行时不执行)。
-  6. 硬加载期环与延迟/条件环分开报。
-- 复跑:`python3 -m tools.scan_import_cycles`(2026-06-28 固化后实测:**724** 模块=723 生产模块+本扫描脚本自身、6 硬目录环、0 硬文件环、2 延迟条件环,与本报告 §2/§3 一致)。
+- 分析/图记录/比较：`tools/import_cycle_analysis.py`、`tools/import_cycle_graph.py`、`tools/scan_import_cycles.py`、`tools/import_cycle_baseline.py`。
+- 生产基线：`.codestable/checkup/import_cycles_production_baseline.json`。
+- 含测试基线：`.codestable/checkup/import_cycles_with_tests_baseline.json`。
+- 审计输出：`python -m tools.scan_import_cycles --json`；文本模式会列出 parse error、父包初始化边摘要、未解析动态导入和 runtime 文件 SCC 证据。
+- 正式门禁：
+
+```text
+python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean
+python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-when-clean
+```
+
+- 2026-07-11 回归覆盖：语句体上下文、相对字面量动态 import、`__name__` 包重导出、父包初始化真实复现、顶层 glob/plugins、动态加载器词法遮蔽/重绑定、缺失/损坏/版本/scope/roots 基线、同成员新增边、删边/消圈、parse error 与扫描异常 fail-closed、正式计划删除命令失败、收据/哈希/重放和 long-gate scope。
