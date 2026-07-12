@@ -1,7 +1,7 @@
 ---
 doc_type: refactor-apply-notes
 refactor: 2026-07-12-foundation-a2-dependency-decoupling
-status: in-progress
+status: completed
 ---
 
 # foundation A2 dependency decoupling apply notes
@@ -49,12 +49,14 @@ status: in-progress
 
 ## 步骤 5：提交前局部与完整证明
 
-- 完成阶段：2026-07-12 已完成提交前证明并取得一个实现提交及其 clean-HEAD proof 的授权；clean proof 尚待提交后执行。
+- 完成时间：2026-07-12；提交前证明与获授权后的 clean-HEAD proof 均已完成。
 - 专项回归：A2 边界、`tests/migration_db`、事件基础/序列/v16/v18/v19、错误响应、字段解析、资源过滤、严格解析和 `tests/config` 合计 `365 passed in 12.03s`。
 - 静态检查：Ruff 全绿；Pyright gate 为 `0 errors, 15 warnings`（既有 scheduler `__all__` 警告），Pyright tools 为 `0 errors, 0 warnings`。
 - Python 3.8 增量证明：从 tracked diff 与 untracked 文件合并、去重得到恰好 48 个本轮改动 Python 文件；逐项作为位置参数传给 `scan_py38plus_syntax.py --json --fail-on-hit`，报告并二次硬断言 `scanned_files=48`、`skipped_files=0`、`total_findings=0`。不接受此前因错误传参得到的 0 文件空扫描。
 - Python 3.8 正式证明：完整门禁实际使用的 `scan_aps_three_gap_py38_scope.py --base-ref d4589d77` 扫描 1184 个 Python 文件，读取失败 0、发现 0。原 checklist 的 `core web` 绝对零扫描会在 8 个与起点 HEAD blob 完全相同的范围外文件中报告 11 条存量 future-annotations 风险，因此该命令不能证明 A2 回归；已改为仓库正式的变更范围门禁，没有顺手修改这 8 个范围外文件。
 - 循环证明：production 与 production-and-tests 两条正式 `--fail-on-new-cycle` 门禁均通过。
 - 完整门禁：`scripts/run_quality_gate.py --allow-dirty-worktree --no-long-gate-cache --no-resume` 从头执行 19/19 步，19 个 receipt 均 `returncode=0`；收集 4724 项测试，`unexpected_failure_count=0`，required regressions 为 253 targets / 2467 nodeids。manifest 状态为预期的 `passed_but_unbound`，proof scope 仅声明 dirty-worktree diagnostic；门禁前后 dirty fingerprint 与 `git status --short` 相同，`tracked_drift_detected=false`。
-- 其他检查：`git diff --check` 通过；完整门禁前后均保持同一未提交改动集合。
+- clean proof：用户授权后创建实现提交 `d6d41e1ae5459b96f198eed4e70679df4f479f9f`；在该固定 HEAD 且启动前工作树为空的条件下运行 `scripts/run_quality_gate.py --require-clean-worktree --no-long-gate-cache --no-resume`。19/19 步全部执行且退出 0，4724 collected、collection error 0、unexpected failure 0、required 253 targets / 2467 nodeids；提交后正式 Python 3.8 扫描覆盖 1187 文件并发现 0，补入提交前 base-ref 扫描看不到的 3 个新 Python 文件。manifest=`passed`、proof head 与提交完整 SHA 相同、`is_dirty_before=false`、`is_dirty_after=false`、`tracked_drift_detected=false`；进程退出码 0，门禁后 `git status` 仍为空。
+- 其他检查：`git diff --check` 通过；提交前完整门禁保持同一未提交改动集合，提交后 clean proof 保持工作树前后均干净。
 - 偏离：只修正了一个无法在起点 HEAD 成立的 Python 3.8 全仓绝对零检查口径，并保留失败事实；实现范围、数据库合同、证据生成物和 clean-proof 授权边界均未改变。
+- 阻塞项：无。A2 实现与 clean-HEAD 机械证明已闭环；本段闭环文档属于后续 docs-only 变更，尚未获得第二个提交授权，也未 push 或创建 PR。

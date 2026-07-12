@@ -8,9 +8,9 @@
 
 机器可读总入口：[`baseline.json`](baseline.json)。
 
-## 2026-07-12 foundation A2 当前机械证据（待 clean HEAD proof）
+## 2026-07-12 foundation A2 终态机械证据与 clean HEAD 证明
 
-A2 从干净 HEAD `a53172e77671d722594aeb81c06b72d1cc6b1b22` 启动，按 approved refactor 将错误合同归到 `core.errors`、migration common 归到 `core.infrastructure.migration_common`。实现与证据已完成提交前 dirty-worktree 证明并获实现提交授权，但提交后的 clean-worktree proof 尚未执行：
+A2 从干净 HEAD `a53172e77671d722594aeb81c06b72d1cc6b1b22` 启动，按 approved refactor 将错误合同归到 `core.errors`、migration common 归到 `core.infrastructure.migration_common`。用户授权后，实现与证据提交为 `d6d41e1ae5459b96f198eed4e70679df4f479f9f`；该提交在工作区前后均干净的条件下完成无缓存、无续跑的 19 步门禁：
 
 | 检查 | A2 当前结果 | 差异口径 |
 |---|---|---|
@@ -20,9 +20,9 @@ A2 从干净 HEAD `a53172e77671d722594aeb81c06b72d1cc6b1b22` 启动，按 approv
 | migration 文件加载圈 | 父包感知 SCC 数仍为 9，其中 migration 圈从 21 成员 / 45 边缩为 5 成员 / 11 边 | 新成员和边均为旧记录严格子集；纯显式 hard 文件 SCC 仍为 0 |
 | 双 v2 基线 | 每份 606→518 / 666→578 行，各减少 88 行 | 删除 A2 目录块并用严格子集替换 migration 文件 SCC；其余记录与 unresolved 不变；刷新前后双正式命令均通过 |
 | dead-code quick | 只迁移 3 个 AppError 基线路径 | 起点 HEAD 与 A2 工作树均报告 32 个既有候选；按 errors 路径映射后集合完全相同，A2 新增 0，未全量 refresh |
-| 当前验证 | 步骤 5 专项 365 passed；Ruff、Pyright、48 文件增量 Python 3.8、1184 文件正式 Python 3.8 与双 scope 门禁通过；完整门禁 19/19、4724 collected、unexpected failure 0 | manifest=`passed_but_unbound` 且无 tracked drift；用户已授权实现提交和 clean-HEAD 门禁，尚待提交后执行 |
+| 当前验证 | 步骤 5 专项 365 passed；Ruff、Pyright、提交前 48 文件增量 Python 3.8 与双 scope 门禁通过；clean HEAD 完整门禁 19/19、4724 collected、unexpected failure 0、required 253 targets / 2467 nodeids | 提交后正式 Python 3.8 扫描 1187 文件、发现 0；manifest=`passed`，`is_dirty_before=false`、`is_dirty_after=false`、无 tracked drift |
 
-`baseline.json.worktree_tooling_refresh.clean_worktree_proof=false`，准确表示当前只完成了确定性机械证据重建。历史决定考古水位线仍未推进。
+`baseline.json.worktree_tooling_refresh.clean_worktree_proof=true`，准确绑定实现提交 `d6d41e1a` 的机械证据与完整门禁。该证明不代表历史决定考古已完成；历史水位线仍未推进。
 
 ## 2026-07-12 scheduler A1 终态机械证据与 clean HEAD 证明（A2 起点）
 
@@ -37,7 +37,7 @@ A1 从干净 HEAD `964d74d9d665353a043a1cf00e6736cfc0764d82` 启动。用户授�
 | dead-code quick | 只迁移 2 个 `ExecutionFactProvider` 基线路径 | archived HEAD `964d74d9` 自身也会报告 32 个无关新增候选，因此没有借 A1 全量 refresh 接受这些既有漂移 |
 | 完整质量门禁 | 19/19 命令通过；收集 4716 项；unexpected failure 0；required 253 targets / 2467 nodeids | 使用 `--require-clean-worktree --no-long-gate-cache --no-resume`；manifest=`passed`，`is_dirty_before=false`、`is_dirty_after=false` |
 
-A1 当时的 `baseline.json.worktree_tooling_refresh.clean_worktree_proof=true`；A2 启动后当前总入口已按上节诚实回到 `false`，等待新的提交与 clean-HEAD 证明。历史决定考古水位线仍未推进，不能把 A1 的机械 clean proof 外推成历史治理已完成。
+A1 的 clean proof 只绑定 `c2243cd0`；当前总入口已经由上节 A2 自己的实现提交与 clean proof 接棒，不能把任一批机械证明外推成历史治理已完成。历史决定考古水位线仍未推进。
 
 ## 2026-07-11 前一终态工具证据重建与 clean HEAD 证明
 

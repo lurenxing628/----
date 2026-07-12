@@ -268,8 +268,8 @@ python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-w
 11. **foundation-a2-decoupling** — 设计、双轨复审并实施 infrastructure/migrations/models/shared 解耦。
    - 所属模块：R2
    - 依赖：`scheduler-a1-decoupling`
-   - 状态：in-progress
-   - 对应 refactor：`2026-07-12-foundation-a2-dependency-decoupling`（代码、确定性证据和 dirty-worktree 完整门禁已完成；用户已授权实现提交与提交后 clean-HEAD proof，成功前保持 in-progress）
+   - 状态：completed
+   - 对应 refactor：`2026-07-12-foundation-a2-dependency-decoupling`（实现提交 `d6d41e1a` 的 clean HEAD 19 步门禁无缓存、无续跑通过）
 
 12. **remaining-cycles-decoupling** — 按 A3、A4、A5、A6、tests 五个批次清零剩余硬目录圈。
    - 所属模块：R3
@@ -277,23 +277,23 @@ python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-w
    - 状态：planned
    - 对应 feature：未启动（每批走独立 refactor）
 
-**最小闭环**：第 1-6 条保留为首次工具接线历史，但 2026-07-11 复审证明其不足以支撑可信收口。第 7、8 条语义反例通过后，第 9 条完成终态证据闭环；2026-07-12 用户另行授权并完成 A1，R1 最小闭环成立。A2 当前已从 dirty-worktree 双 scope 消失，双基线和调用图已确定性收紧，提交前完整门禁也已通过并取得实现提交授权；只剩在该实现提交的干净 HEAD 上复跑成功后，才能把 R2 标为 completed。
+**最小闭环**：第 1-6 条保留为首次工具接线历史，但 2026-07-11 复审证明其不足以支撑可信收口。第 7、8 条语义反例通过后，第 9 条完成终态证据闭环；2026-07-12 A1 与 A2 均在用户另行授权后完成实现提交及各自 clean-HEAD 证明，R1/R2 最小闭环成立。剩余 R3 继续按 A3、A4、A5、A6、tests 五个独立批次推进。
 
 ## 6. 排期思路
 
-按“先语义、后证据、再业务结构”推进：工具语义和终态证据已先冻结，A1 已完成 clean closure；A2 随后完成设计和双轨复审，用 `core.errors` 与父层 `migration_common` 两个切点解耦，当前提交前证明已完成并等待获授权的实现提交与 clean closure。剩余 A3-A6 和 tests 各组仍不并成一次大搬迁。
+按“先语义、后证据、再业务结构”推进：工具语义和终态证据已先冻结，A1/A2 已完成 clean closure；A2 用 `core.errors` 与父层 `migration_common` 两个切点完成基础层解耦。下一阶段是 A3-A6 和 tests，各组仍不并成一次大搬迁。
 
 ## 7. 观察项
 
 - 当前 `rg` 在本机 PATH 中不可用，本轮搜索使用 `git grep`/`grep`；这不改变代码或交付环境。
 - 本轮按用户要求不调用 subagent；规划与后续执行均由主代理单线推进。
 - `.codestable/checkup/scripts/` 不在当前 symbol-locator 的常规源码索引根中；调用图工具自身的影响面以 AST 合同测试、直接 grep 和临时目录全量提取补足，不把索引未命中当“无人调用”。
-- 工具闭环与 A1 已在用户明确授权后提交，并各自在 clean HEAD 完成无缓存、无续跑 19 步门禁；A2 本实现提交获单独授权，仍必须在提交后取得自己的 clean-worktree proof，不能沿用前两批证明。历史决定考古水位线仍未推进。
+- 工具闭环、A1 与 A2 均在用户明确授权后提交，并各自在 clean HEAD 完成无缓存、无续跑 19 步门禁；三批证明只绑定各自提交，不能相互外推。历史决定考古水位线仍未推进。
 - A1 启动前在 clean HEAD `964d74d9` 重新核对同一四目录 49 条起点边；五步 checklist、确定性调用图、双基线差异核对和实现提交 `c2243cd0` 的 clean proof 均已完成。
 
 ## 8. 变更日志
 
-- 2026-07-12：A2 design 经用户批准后完成代码、dirty-worktree 确定性证据与无缓存无续跑 19 步完整门禁：双 scope A2 消失，其他目录 SCC 不变，migration 父包感知文件 SCC 从 21 成员 / 45 边缩为 5 / 11，调用图按路径映射零增删，4724 collected 且 unexpected failure 0；用户已另行授权实现提交与提交后 clean-HEAD proof，成功前状态保持 in-progress。
+- 2026-07-12：完成 A2 代码迁移、双 scope 消圈、双基线/调用图确定性收紧和行为等价验证；实现提交 `d6d41e1a` 的 clean HEAD 完整 19 步门禁无缓存、无续跑通过，4724 collected、unexpected failure 0、required 253 targets / 2467 nodeids，A2 标为 completed，R3 前置解除。
 - 2026-07-12：完成 A1 代码迁移、双 scope 消圈、双基线收紧和调用图确定性重建；实现提交 `c2243cd0` 的 clean HEAD 完整 19 步门禁无缓存、无续跑通过，4716 collected、unexpected failure 0，A1 标为 completed，A2 前置解除。
 - 2026-07-11：完成 `dependency-proof-rebuild-and-closure`；调用图双临时目录 10 JSON 逐文件 SHA 一致，双 scope 候选基线与正式文件逐字节一致，25 项 artifact 哈希全匹配；用户授权提交后，clean HEAD 完整 19 步门禁无缓存、无续跑通过，收集 4712 项且 full-test-debt unexpected failure 为 0。A1 仍保持 planned。
 - 2026-07-11：完成 `callgraph-confidence-kiss-hardening` 独立 issue；删除 typed 属性接收者推断，调用点保留行号，源码严格 UTF-8 fail-closed；临时双跑稳定但未提前刷新快照和哈希。

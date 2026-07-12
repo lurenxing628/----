@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "mechanical_ready_history_pending_a2_dirty_worktree",
+  "status": "mechanical_ready_history_pending_with_clean_worktree_proof",
   "verified_at": "2026-07-12",
   "code_baseline": {
     "commit": "606bcda1d369914875fe63a5d3657ff4cbc351ac",
@@ -14,19 +14,19 @@
   "worktree_tooling_refresh": {
     "starting_head": "a53172e77671d722594aeb81c06b72d1cc6b1b22",
     "refreshed_at": "2026-07-12",
-    "worktree_dirty": true,
-    "clean_worktree_proof": false,
+    "worktree_dirty": false,
+    "clean_worktree_proof": true,
     "scope": "foundation A2 one-way errors/migration-common refactor, deterministic callgraph rebuild, dual v2 baseline shrink and synchronized current facts",
-    "note": "A2 implementation and deterministic evidence passed targeted checks plus the uncached, non-resumed 19-step dirty-worktree gate (4724 collected, zero unexpected failures). The user authorized the implementation commit and its post-commit clean-HEAD proof; this pre-proof snapshot must remain clean_worktree_proof=false until that run succeeds. history_baseline remains pending.",
+    "note": "Foundation A2 implementation and deterministic evidence were committed as d6d41e1ae5459b96f198eed4e70679df4f479f9f. On that clean HEAD, the complete 19-step gate passed with cache/resume disabled, 4724 collected tests, zero unexpected failures, required proof 253 targets / 2467 nodeids, and a 1187-file Python 3.8 scan with zero findings. history_baseline remains pending.",
     "generation_started_from_dirty_worktree": true,
     "proof_command": "python scripts/run_quality_gate.py --require-clean-worktree --no-long-gate-cache --no-resume",
     "proof_step_count": 19,
-    "proof_collected_test_count": 0,
-    "proof_required_target_count": 0,
-    "proof_required_nodeid_count": 0,
-    "proof_manifest_status": "pending",
-    "proof_process_exit_code": null,
-    "proof_head": null
+    "proof_collected_test_count": 4724,
+    "proof_required_target_count": 253,
+    "proof_required_nodeid_count": 2467,
+    "proof_manifest_status": "passed",
+    "proof_process_exit_code": 0,
+    "proof_head": "d6d41e1ae5459b96f198eed4e70679df4f479f9f"
   },
   "mechanical_checks": {
     "codemap": {

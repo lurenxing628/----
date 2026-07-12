@@ -120,7 +120,7 @@ steps:
 
   - id: step-05-final-proof
     title: Run targeted, static, full and authorized clean-HEAD proof
-    status: in_progress
+    status: completed
     type: final_proof
     checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/models_domain/test_foundation_a2_dependency_boundary.py tests/migration_db tests/operation_execution/test_operation_execution_event_foundation.py tests/operation_execution/test_operation_execution_event_sequence_contract.py tests/operation_execution/test_operation_execution_migration_v16_contract.py tests/operation_execution/test_operation_execution_migration_v18_contract.py tests/operation_execution/test_operation_execution_migration_v19_contract.py tests/web_pages/test_infra_silent_fallback_contract.py tests/web_pages/test_error_boundary_contract.py tests/app_runtime/test_app_error_route_contract.py tests/excel_data_io/test_field_parse_contract.py tests/models_domain/test_schedule_resource_filter.py tests/models_domain/test_strict_parse_blank_required.py tests/config
@@ -131,5 +131,10 @@ steps:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --allow-dirty-worktree --no-long-gate-cache --no-resume
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --no-long-gate-cache --no-resume
     precommit_result: passed_but_unbound
-    clean_head_result: pending_authorized_commit_and_clean_gate
+    clean_head_result: passed
+    proof_head: d6d41e1ae5459b96f198eed4e70679df4f479f9f
+    proof_manifest_status: passed
+    proof_collected_test_count: 4724
+    proof_required_target_count: 253
+    proof_required_nodeid_count: 2467
     exit_signal: All local checks pass; after separate commit authorization, the final committed HEAD passes the uncached non-resumed 19-step gate with a clean worktree before and after.

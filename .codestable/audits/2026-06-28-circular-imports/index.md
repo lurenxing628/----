@@ -22,7 +22,7 @@ tags: [architecture, circular-dependency, import-cycle, audit]
 - **动态加载盲区**：生产 unresolved 仍为 6，含测试仍为 44；与 A2 起点逐项相同。
 - **基线**：A2 候选双基线各删除 28 边目录块，并用 5 成员 / 11 边严格子集替换旧 migration 文件 SCC；其余记录不变。刷新前、刷新后双正式命令均通过；A1/A2 回潮都会被阻断。
 - **调用图**：7329 callable、25786 输出边、10166 确信边、15620 模糊边、typed 0、8 条受限简单循环、island 193。A/B 十份 JSON 逐文件 SHA 相同；13 个迁移 callable 按新路径映射后函数和调用边均零增删。
-- **证明边界**：A1 提交 `c2243cd0` 已有 clean-worktree 19 步证明；A2 当前仍是获批但未提交的工作树实现，只有局部机械证明，`clean_worktree_proof=false`。未获提交授权前不得把 A1 的 clean proof 外推到 A2；历史决定考古也仍为 pending。
+- **证明边界**：A1 提交 `c2243cd0` 与 A2 提交 `d6d41e1a` 各自在前后工作区均干净时完成无缓存、无续跑 19 步门禁；A2 为 4724 collected、unexpected failure 0、required 253 targets / 2467 nodeids，`clean_worktree_proof=true`。两批证明只绑定各自提交，历史决定考古仍为 pending。
 
 ## 2026-07-11 前一终态事实（历史）
 

@@ -20,8 +20,8 @@ tags: [architecture, module-health, dependency-direction, responsibility, audit]
 - A4 当前生产目录 SCC 仍为 `. ⇄ web/bootstrap ⇄ web/routes ⇄ web/routes/domains/scheduler`。这是把顶层入口/config 与 bootstrap 纳入非测试 scope 后得到的目录商图结构；纯显式 hard 文件 SCC 仍为 0，不能把目录圈直接叫文件死循环。
 - 父包 `__init__.py` 初始化链仍形成 9 个 hard 文件加载 SCC，但 migration 圈已从 21 成员 / 45 边缩为 5 成员 / 11 边；它与“纯显式 import 文件 SCC=0”是不同口径。
 - 正式质量门禁包含生产与含测试两条 `tools.scan_import_cycles --fail-on-new-cycle` 命令，使用独立 v2 基线并参与哈希、收据、重放和 long-gate。
-- 当前工作树口径为生产 4 个、含测试 5 个 hard 目录 SCC；A1/A2 已消失，其他目录 SCC 与 unresolved 逐项未变。调用图仍为 7329 callable / 25786 edges / typed 0，按移动路径映射零增删。
-- A3-A6 与 tests 辅助代码圈仍未治理；A2 当前未提交，只有 dirty-worktree 机械证明，不能提前称 clean closure。
+- A2 实现提交口径为生产 4 个、含测试 5 个 hard 目录 SCC；A1/A2 已消失，其他目录 SCC 与 unresolved 逐项未变。调用图仍为 7329 callable / 25786 edges / typed 0，按移动路径映射零增删。
+- A3-A6 与 tests 辅助代码圈仍未治理；A2 实现提交 `d6d41e1a` 已完成前后工作区均干净的无缓存、无续跑 19 步门禁，基础层 clean closure 已成立。
 
 > 性质:**发现清单**,不代表已治理。治理(改代码)归 roadmap / refactor。
 > 配套:循环依赖细节见 [[2026-06-28-circular-imports]];scheduler 模块见 [[service-scheduler]]。本报告补各模块"职责划分 / 依赖方向 / 结构债"的全景视角,并给出 A2–A6 环的**模块视角根因**。
