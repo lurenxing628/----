@@ -1,7 +1,7 @@
 ---
 doc_type: refactor-apply-notes
 refactor: 2026-07-10-scheduler-a1-dependency-decoupling
-status: implemented-awaiting-clean-proof
+status: completed
 ---
 
 # scheduler A1 dependency decoupling apply notes
@@ -40,13 +40,13 @@ status: implemented-awaiting-clean-proof
 
 ## 步骤 5：A1 静态与动态验收
 
-- 本地实施完成时间：2026-07-12
+- 完成时间：2026-07-12
 - 改动文件：双 scope import-cycle v2 基线、10 份正式调用图快照、checkup 总入口/README、scheduler 架构、循环审计、roadmap 与调用图路径合同测试。
 - 循环证据：production 761 模块 / 5 hard 目录 SCC，production-and-tests 1455 模块 / 6 SCC；A1 四目录均不在任何 SCC，其他 SCC 成员和圈内边逐项不变，unresolved 仍为 6 / 44。双基线各只删除 A1 一个 59 行块，刷新前后正式门禁都通过。
 - 调用图证据：两个独立临时目录的 10 份 JSON 逐文件 SHA 相同；7329 callable、25786 输出边、10166 confident、15620 ambiguous、typed 0、8 个受限简单循环、193 islands。旧函数按移动路径映射后零增删，旧调用边零丢失，生产直连新叶子后新增 14 条原先被 wrapper 遮挡的确信边。
 - 动态验证：A1 广覆盖专项 1543 passed；完整门禁 19/19 命令通过，4716 collected、collection error 0、unexpected failure 0、required 253 targets / 2467 nodeids。Ruff、Pyright gate/tools、1153 文件 Python 3.8 扫描均通过。
-- 证明边界：完整门禁使用 `--allow-dirty-worktree --no-long-gate-cache --no-resume`，manifest=`passed_but_unbound`，运行器按合同退出 2；当前未获提交授权，不能声称 clean-worktree proof。
+- clean proof：实现提交 `c2243cd0d937d27436c5a513f210e5683b180483` 使用 `--require-clean-worktree --no-long-gate-cache --no-resume` 再跑完整门禁，19/19 通过；manifest=`passed`，`is_dirty_before=false`、`is_dirty_after=false`。
 - dead-code 说明：仅把 2 个 `ExecutionFactProvider` 基线身份迁到新路径；archived 起点 HEAD 自身也报告 32 个无关新增 quick 候选，因此没有借 A1 全量 refresh 接受既有漂移。
 - 行为等价自检：排产算法、数据库、事务、路由、公开字段、错误码/文案和公开签名均未改；旧路径 identity 与正逆序独立进程 import 通过。
 - 偏离：为避免兼容 wrapper 遮掉静态调用边，除设计要求的 run 调用方外，其余生产调用方也直连新叶子；旧路径仍完整保留给兼容消费。该调整让调用图多看见 14 条真实边，没有新增抽象或兜底。
-- 阻塞项：需用户明确授权提交后，在最终 clean HEAD 上无缓存、无续跑再跑完整门禁；完成后才能把 refactor/roadmap 标为 completed。
+- 阻塞项：无。A1 实现与 clean-HEAD 机械证明已闭环；A2 仍需独立启动，不在本 refactor 内继续。

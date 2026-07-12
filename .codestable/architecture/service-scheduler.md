@@ -172,6 +172,7 @@ core/services/scheduler/
 - **兼容边界**:旧 root/summary 路径仍通过显式 re-export 可用，旧新符号为同一对象；`execution/__init__.py`、`contracts/__init__.py` 不做聚合导出。没有用函数内 import、`TYPE_CHECKING` 或动态 `__getattr__` 隐藏结构边。
 - **静态终态(2026-07-12)**:生产 761 模块、5 个 hard 目录 SCC；含测试 1455 模块、6 个 hard 目录 SCC。A1 四目录均不在任何 hard SCC；其他 SCC 的成员和圈内边逐项未变，production / with-tests unresolved 分别仍为 6 / 44。父包感知 hard 文件 SCC 仍为 9，纯显式 hard 文件 SCC 仍为 0。
 - **基线终态**:双 v2 基线只删除各自 1 个 A1 块(每份 59 行)，未新增或改写其他 SCC；因此旧 A1 若回潮会被 `--fail-on-new-cycle` 重新阻断。行为等价由 identity、签名、正逆序新解释器 import 和 scheduler 专项测试锁定。
+- **clean proof**:实现提交 `c2243cd0` 在前后工作区均干净的条件下完成 19/19 步门禁；4716 collected、unexpected failure 0，required proof 为 253 targets / 2467 nodeids。
 
 ### 8.2 分包标准不统一,79 文件平铺根目录
 - 已按"计算流程"切出 run/summary/graph/config,但 resource / schedule / gantt 等多组**业务族**仍平铺根目录,每族体量都不小。一半按流程分包、一半按业务族平铺,目录可读性与心智负担偏高。
@@ -180,7 +181,7 @@ core/services/scheduler/
 - `batch` 族 6 文件(批次主数据 CRUD/模板/导入/复制)通过 `batch_service.py` 串起多个同目录 helper,不是静态调用图里的全孤岛。它本质仍是"批次主数据服务":主要依赖 `data.repositories`+`core.models`,没有被 run/summary/graph 这些排产执行族反向调用,归在 scheduler 内属历史归类。
 
 ### 8.4 兼容 shim 双入口
-- 根目录 7 个 `schedule_*`/`freeze_window` 与 4 个 execution wrapper 保留旧 import 路径；新生产代码应直接依赖 `scheduler.run.*` / `scheduler.execution.*`，旧根路径只服务兼容。外部 web/tests 暂可继续旧入口，wrapper 不得承载业务实现或反向被新叶子依赖。
+- 根目录 7 个 `schedule_*`/`freeze_window` 与 4 个 execution wrapper 保留旧 import 路径；仓内生产代码直接依赖 `scheduler.run.*` / `scheduler.execution.*`，旧根路径只服务 tests/外部兼容消费。wrapper 不得承载业务实现或反向被新叶子依赖。
 
 ### 8.5 config_snapshot 是隐性跨包公共依赖
 - `config/config_snapshot.py` `ensure_schedule_config_snapshot` 被 run(2 处)和 summary(5 处)直接钻进 config 子包取用,共 8 处。它已成事实上的"公共契约层"却物理埋在 config/ 内,config 内部重构会同时震动 run + summary。

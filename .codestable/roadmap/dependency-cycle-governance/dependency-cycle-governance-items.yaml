@@ -82,10 +82,10 @@ items:
   - slug: scheduler-a1-decoupling
     description: 消除 scheduler 根目录、config、run、summary 四方硬目录依赖圈
     depends_on: [dependency-proof-rebuild-and-closure]
-    status: in_progress
+    status: completed
     feature: null
-    minimal_loop: false
-    notes: 独立 refactor；A1 已从双 scope SCC 消失，双基线/调用图/事实文档已受控更新，19 步 dirty gate 全通过但 manifest=passed_but_unbound；待用户授权提交并完成最终 clean-HEAD proof 后再标 completed
+    minimal_loop: true
+    notes: refactor 2026-07-10-scheduler-a1-dependency-decoupling 已完成；A1 从双 scope SCC 消失，双基线/调用图/事实文档受控更新，实现提交 c2243cd0 的 clean HEAD 19 步门禁无缓存无续跑通过
 
   - slug: foundation-a2-decoupling
     description: 先设计和双轨复审，再解耦 infrastructure、migrations、models、shared

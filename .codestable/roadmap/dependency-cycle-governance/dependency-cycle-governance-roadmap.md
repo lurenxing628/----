@@ -262,8 +262,8 @@ python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-w
 10. **scheduler-a1-decoupling** — 消除 scheduler 根/config/run/summary 四方硬目录圈。
    - 所属模块：R1
    - 依赖：`dependency-proof-rebuild-and-closure`
-   - 状态：in_progress
-   - 对应 refactor：`2026-07-10-scheduler-a1-dependency-decoupling`（结构迁移和双基线收紧已完成；19 步 dirty gate 全通过但未绑定，clean-HEAD proof 待提交授权）
+   - 状态：completed
+   - 对应 refactor：`2026-07-10-scheduler-a1-dependency-decoupling`（实现提交 `c2243cd0` 的 clean HEAD 19 步门禁无缓存、无续跑通过）
 
 11. **foundation-a2-decoupling** — 设计、双轨复审并实施 infrastructure/migrations/models/shared 解耦。
    - 所属模块：R2
@@ -277,7 +277,7 @@ python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-w
    - 状态：planned
    - 对应 feature：未启动（每批走独立 refactor）
 
-**最小闭环**：第 1-6 条保留为首次工具接线历史，但 2026-07-11 复审证明其不足以支撑可信收口。第 7、8 条语义反例通过后，第 9 条完成终态证据闭环；2026-07-12 用户另行授权启动 A1。A1 已从双 scope hard 目录 SCC 中消失并收紧双基线，19 步 dirty gate 全通过但未绑定；待提交授权和最终 clean-HEAD proof 后再标 completed。
+**最小闭环**：第 1-6 条保留为首次工具接线历史，但 2026-07-11 复审证明其不足以支撑可信收口。第 7、8 条语义反例通过后，第 9 条完成终态证据闭环；2026-07-12 用户另行授权并完成 A1。A1 已从双 scope hard 目录 SCC 中消失，双基线受控收紧，实现提交的 clean HEAD 19 步门禁通过；R1 最小闭环成立，A2 前置解除。
 
 ## 6. 排期思路
 
@@ -289,11 +289,11 @@ python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-w
 - 本轮按用户要求不调用 subagent；规划与后续执行均由主代理单线推进。
 - `.codestable/checkup/scripts/` 不在当前 symbol-locator 的常规源码索引根中；调用图工具自身的影响面以 AST 合同测试、直接 grep 和临时目录全量提取补足，不把索引未命中当“无人调用”。
 - 依赖治理批次已在用户明确授权后提交；完整 19 步质量门禁在 clean HEAD 上无缓存、无续跑通过，可声称本批机械证据的 clean-worktree proof。历史决定考古水位线仍未推进。
-- A1 启动前已在 clean HEAD `964d74d9` 重新核对同一四目录 49 条起点边；当前五步实现和 dirty gate 已完成，但 checklist 最终 clean proof 明确 blocked，不把 `passed_but_unbound` 包装成完整验收。
+- A1 启动前在 clean HEAD `964d74d9` 重新核对同一四目录 49 条起点边；五步 checklist、确定性调用图、双基线差异核对和实现提交 `c2243cd0` 的 clean proof 均已完成。
 
 ## 8. 变更日志
 
-- 2026-07-12：完成 A1 代码迁移、本地双 scope 消圈、双基线收紧和调用图确定性重建；完整 19 步 allow-dirty 门禁每步通过，但 manifest=`passed_but_unbound`，待明确提交授权后补 final clean-HEAD proof，roadmap 暂保持 in_progress。
+- 2026-07-12：完成 A1 代码迁移、双 scope 消圈、双基线收紧和调用图确定性重建；实现提交 `c2243cd0` 的 clean HEAD 完整 19 步门禁无缓存、无续跑通过，4716 collected、unexpected failure 0，A1 标为 completed，A2 前置解除。
 - 2026-07-11：完成 `dependency-proof-rebuild-and-closure`；调用图双临时目录 10 JSON 逐文件 SHA 一致，双 scope 候选基线与正式文件逐字节一致，25 项 artifact 哈希全匹配；用户授权提交后，clean HEAD 完整 19 步门禁无缓存、无续跑通过，收集 4712 项且 full-test-debt unexpected failure 为 0。A1 仍保持 planned。
 - 2026-07-11：完成 `callgraph-confidence-kiss-hardening` 独立 issue；删除 typed 属性接收者推断，调用点保留行号，源码严格 UTF-8 fail-closed；临时双跑稳定但未提前刷新快照和哈希。
 - 2026-07-11：完成 `import-cycle-alias-rebinding-hardening` 独立 issue；动态加载器只在词法来源可证明且未重绑定时生成边，不确定调用进入 unresolved，双 scope 正式命令在未刷新基线时通过。

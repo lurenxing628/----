@@ -80,8 +80,7 @@ steps:
 
   - id: step-05-a1-verification
     title: Prove A1 is absent without expanding other cycles or changing behavior
-    status: blocked
-    blocker: Implementation and the 19-step dirty-worktree gate are complete; final clean-HEAD proof requires explicit commit authorization.
+    status: completed
     type: final_proof
     checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean
