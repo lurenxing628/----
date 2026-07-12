@@ -1,4 +1,4 @@
-from __future__ import annotations
+"""回归测试：循环扫描必须完整识别加载语义并保守处理动态导入。"""
 
 import ast
 from collections import defaultdict

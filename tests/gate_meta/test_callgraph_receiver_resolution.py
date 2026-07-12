@@ -1,4 +1,4 @@
-from __future__ import annotations
+"""回归测试：调用图接收者消解必须保守、可定位且解析失败时明确阻断。"""
 
 import ast
 import importlib.util

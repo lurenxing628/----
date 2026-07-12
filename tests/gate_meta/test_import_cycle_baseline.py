@@ -1,4 +1,4 @@
-from __future__ import annotations
+"""回归测试：双 scope v2 基线必须锁定 SCC、圈内边和 unresolved 身份。"""
 
 import json
 from pathlib import Path

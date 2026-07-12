@@ -173,6 +173,16 @@ A1 的 49 条起点边没有漂移，结构债没有清零；本项不把“相�
 - CodeStable roadmap YAML 和已更新 frontmatter：通过；
 - baseline 25 项 artifact SHA 与机器计数自检：通过。
 
+第一次候选 clean HEAD `9417bde3506d9eb3fc82e3f93337078880e2b41d` 完整门禁运行到第 11/19 步时，防回潮门禁发现三份新测试缺模块 docstring。前 10 步（工具版本、全仓 Ruff、双 scope 循环门禁、4712 项收集、YAML、Python 3.8 扫描和 quickref）均通过，但整次结果仍按失败处理，没有包装成 clean proof。
+
+根因修复只替换三份测试第 1 行无必要的 `from __future__ import annotations` 为模块 docstring；三文件均使用 Python 3.8 可直接求值的 `typing.Dict/List/Tuple` 注解，不依赖 postponed annotations。这个写法不增加或删除物理行，因此既有 `test_callgraph_receiver_resolution.py:24` unresolved 身份不漂移。修后：
+
+- 失败的 anti-regression gate 单独重跑通过；
+- 194 项定向回归再次 `194 passed in 9.73s`；
+- 三文件 Ruff 与 Python 3.8.10 扫描通过；
+- 双 scope 正式循环门禁通过；
+- 重新生成的双候选基线与正式文件仍逐字节一致，SHA 仍为 `9bced6...` / `c92c2b...`。
+
 完整脏工作区门禁另行尝试：
 
 ```text
