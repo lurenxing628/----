@@ -11,9 +11,12 @@ from core.models.schedule_adjustment import (
     ScheduleAdjustmentScenario,
     ScheduleAdjustmentScenarioRow,
 )
+from core.services.scheduler.execution.execution_snapshot import (
+    ExecutionSnapshot,
+    collect_execution_snapshot_for_plan_rows,
+)
 from data.repositories import ScheduleAdjustmentRepository, ScheduleAdjustmentScenarioRepository
 
-from .execution_snapshot import ExecutionSnapshot, collect_execution_snapshot_for_plan_rows
 from .gantt_adjustment_validation_service import GanttAdjustmentEvaluation, GanttAdjustmentValidationService
 
 

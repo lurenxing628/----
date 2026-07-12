@@ -9,9 +9,8 @@ from core.infrastructure.errors import ValidationError
 from core.models.enums import YesNo
 from core.services.scheduler.config.config_field_spec import choices_for
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+from core.shared.boolean_normalize import to_yes_no
 from core.shared.strict_parse import parse_required_float, parse_required_int
-
-from ..number_utils import to_yes_no
 
 _FIELD_LABELS = {
     "sort_strategy": "排序策略",

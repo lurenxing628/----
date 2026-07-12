@@ -4,8 +4,7 @@ from typing import Any, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.shared.field_labels import display_field_label
-
-from ..number_utils import parse_finite_float
+from core.shared.number_utils import parse_finite_float
 
 
 def _weight_label(field: str) -> str:

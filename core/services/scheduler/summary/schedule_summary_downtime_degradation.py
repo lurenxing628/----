@@ -3,13 +3,12 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.enums import YesNo
-from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
-from core.services.scheduler.degradation_messages import (
+from core.models.scheduler_degradation_messages import (
     DOWNTIME_EXTEND_FAILED_MESSAGE,
     DOWNTIME_LOAD_FAILED_MESSAGE,
 )
-
-from .summary_count_parse import _meta_bool_state
+from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+from core.services.scheduler.contracts.summary_count_parse import _meta_bool_state
 
 _DOWNTIME_META_KEYS = {
     "load_ok": "downtime_load_ok",

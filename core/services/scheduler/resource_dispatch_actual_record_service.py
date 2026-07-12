@@ -9,11 +9,14 @@ from core.models.operation_execution_labels import REASON_LABELS, SEVERITY_LABEL
 from core.models.operation_execution_scope import operation_execution_scope_from_event
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
+from core.services.scheduler.execution.operation_execution_scope_read import (
+    state_for_feedback_context,
+    state_for_task_ref,
+)
 from data.repositories.batch_operation_repo import BatchOperationRepository
 from data.repositories.schedule_repo import ScheduleRepository
 
 from .operation_execution_feedback_service import ExecutionFeedbackContext, OperationExecutionFeedbackService
-from .operation_execution_scope_read import state_for_feedback_context, state_for_task_ref
 from .resource_dispatch_actual_excel import build_actual_template_workbook, read_actual_workbook_rows
 from .resource_dispatch_actual_import import ResourceDispatchActualImportPreviewer, preview_payload, preview_token
 from .resource_dispatch_actual_records import (

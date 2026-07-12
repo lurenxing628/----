@@ -10,12 +10,12 @@ summary: 用已有低层叶子、execution 内聚子包和 neutral contracts 单
 
 ## 1. 本次范围
 
-执行 scan 中 A1-01/A1-02/A1-03。用户已在本轮任务中明确要求九步连续实施，故本 design 视为对既有 roadmap 的实施细化，不额外暂停等待阶段确认。总风险为中：只移动实现和 import 方向，但触及排产主链 DTO、执行快照和公开投影；必须靠 identity/行为合同与独立进程导入证明等价。
+执行 scan 中 A1-01/A1-02/A1-03。用户于 2026-07-12 明确授权启动 A1，并要求遵循 KISS 与全局复杂度下降原则。总风险为中：只移动实现和 import 方向，但触及排产主链 DTO、执行快照和公开投影；必须靠 identity/行为合同与独立进程导入证明等价。提交、推送和创建 PR 不包含在本次实施授权中。
 
 ## 2. 前置依赖
 
-- 已用 `symbol_locator whereis/callers --deep/callees --deep` 核查 summary→run 四个 helper；完整结果在 `/tmp/aps-symbol-a1-summary-run-20260710`。
-- 起点生产 A1 圈内边已导出 `/tmp/a1-current-scan.json`，共 49 条。
+- 已在当前 HEAD `964d74d9d665353a043a1cf00e6736cfc0764d82` 重建 SCIP 索引，并用 `symbol_locator whereis/callers --deep/callees --deep` 复核 12 个待迁移边界符号；结果在 `/tmp/aps-symbol-a1-20260711`。
+- 已用正式 scanner 重跑起点生产图，A1 仍为同一四目录、49 条圈内模块边；结果在 `/tmp/a1-current-scan-20260712.json`。
 - 工具阶段已完成双 v2 基线、父包感知/纯显式双文件图、正式门禁与调用图修准。
 - 新增刻画测试先锁旧路径/新路径对象 identity、关键函数签名和 import 顺序，再迁移调用点。
 

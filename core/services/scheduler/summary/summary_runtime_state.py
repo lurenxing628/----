@@ -4,6 +4,13 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from core.services.scheduler.contracts.schedule_summary_types import (
+    FallbackState,
+    FreezeState,
+    RuntimeState,
+    WarningState,
+)
+
 from .due_risk_items import (
     _build_overdue_items as _build_overdue_items_impl,
 )
@@ -12,7 +19,6 @@ from .schedule_summary_assembly import (
 )
 from .schedule_summary_degradation import _metric_int, _metric_sample
 from .schedule_summary_freeze import _extract_freeze_warnings, _freeze_meta_dict
-from .schedule_summary_types import FallbackState, FreezeState, RuntimeState, WarningState
 
 
 def due_exclusive(due_date) -> datetime:

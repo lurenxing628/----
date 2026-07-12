@@ -9,8 +9,8 @@ from core.models.enums import MachineStatus, OperatorStatus, SourceType, Supplie
 from core.models.schedule_plan_role import ROLE_ADOPTED
 from core.services.report.calculation_helpers import is_valid_interval
 from core.services.scheduler._sched_display_utils import display_machine, display_operator, parse_dt
+from core.services.scheduler.execution.execution_fact_provider import ExecutionFactProvider
 from core.services.scheduler.execution_fact_presentation import execution_detail_meta
-from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
 from core.services.scheduler.gantt_task_labels import public_task_label
 from web.viewmodels.scheduler_batch_schedule_placement import build_schedule_placement
 from web.viewmodels.scheduler_history_summary import format_public_datetime

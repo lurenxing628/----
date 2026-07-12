@@ -429,14 +429,14 @@ def test_full_callgraph_removes_known_false_cycles_and_keeps_real_recursive_mech
         ),
         frozenset(
             {
-                "core/services/scheduler/summary/graph_public_summary.py::_project_public_graph_dict",
-                "core/services/scheduler/summary/graph_public_summary.py::_project_public_graph_value",
+                "core/services/scheduler/contracts/graph_public_summary.py::_project_public_graph_dict",
+                "core/services/scheduler/contracts/graph_public_summary.py::_project_public_graph_value",
             }
         ),
         frozenset(
             {
-                "core/services/scheduler/summary/graph_public_summary.py::_project_public_graph_sequence",
-                "core/services/scheduler/summary/graph_public_summary.py::_project_public_graph_value",
+                "core/services/scheduler/contracts/graph_public_summary.py::_project_public_graph_sequence",
+                "core/services/scheduler/contracts/graph_public_summary.py::_project_public_graph_value",
             }
         ),
         frozenset(

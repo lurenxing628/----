@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Any, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
+from core.shared.boolean_normalize import to_yes_no
 from core.shared.degradation import DegradationCollector
 from core.shared.field_labels import display_field_label
 from core.shared.field_parse import parse_field_float, parse_field_int
 
-from ..number_utils import to_yes_no
 from .config_field_spec import (
     MISSING_POLICY_ERROR,
     MISSING_POLICY_FALLBACK_WITH_DEGRADATION,

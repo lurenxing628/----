@@ -4,7 +4,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..summary.schedule_summary_types import SummaryBuildContext
+from core.services.scheduler.contracts.schedule_summary_types import SummaryBuildContext
+
 from .schedule_candidate_runner import run_candidate_comparison
 from .schedule_candidate_summary import candidate_comparison_public_summary
 from .schedule_graph_report import prepare_schedule_graph_for_dispatch

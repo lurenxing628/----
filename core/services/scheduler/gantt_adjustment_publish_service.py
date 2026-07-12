@@ -21,7 +21,8 @@ from core.models.schedule_adjustment import (
     SCENARIO_STATUS_ACTIVE,
 )
 from core.models.schedule_plan_role import ROLE_ADOPTED
-from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
+from core.services.scheduler.execution.execution_fact_provider import ExecutionFactProvider
+from core.services.scheduler.execution.execution_snapshot import collect_execution_snapshot_for_plan_rows
 from core.services.scheduler.run.schedule_payload_contract import ValidatedSchedulePayload, ValidatedScheduleRow
 from core.services.scheduler.run.schedule_persistence import validate_execution_guard_before_persist
 from data.repositories import (
@@ -31,7 +32,6 @@ from data.repositories import (
     ScheduleRepository,
 )
 
-from .execution_snapshot import collect_execution_snapshot_for_plan_rows
 from .gantt_adjustment_validation_service import GanttAdjustmentEvaluation, GanttAdjustmentValidationService
 
 PUBLISH_CONFIRM_TEXT = "正式采用"

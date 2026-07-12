@@ -6,10 +6,10 @@ from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.models.operation_execution_scope import parse_positive_execution_int
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
+from core.services.scheduler.execution.operation_execution_scope_read import states_by_op_id_for_plan_rows
 from data.repositories.schedule_repo import ScheduleRepository
 
 from .operation_execution_feedback_service import ExecutionFeedbackContext, OperationExecutionFeedbackService
-from .operation_execution_scope_read import states_by_op_id_for_plan_rows
 from .resource_dispatch_range import resolve_dispatch_range
 from .resource_dispatch_rows import prepare_dispatch_rows
 from .resource_dispatch_service import ResourceDispatchService

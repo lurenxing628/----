@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set
 
 from core.models.enums import BatchOperationStatus, BatchStatus, YesNo
-from core.services.scheduler.execution_fact_provider import ExecutionFact
+from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
 
 from .schedule_candidate_persistence_helpers import persist_schedule_run_with_candidates as _persist_with_candidates
 from .schedule_candidate_persistence_models import operation_log_algo_summary as _operation_log_algo_summary

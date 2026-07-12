@@ -3,7 +3,7 @@ doc_type: refactor-scan
 refactor: 2026-07-10-scheduler-a1-dependency-decoupling
 status: selected
 scope: core/services/scheduler 根目录、config、run、summary 的 A1 hard 目录 SCC 与直接合同测试
-summary: 三组行为等价分层纠偏；用户已在本轮九步任务中明确授权连续实施
+summary: 三组行为等价分层纠偏；用户于 2026-07-12 明确授权启动 A1 实施
 ---
 
 # scheduler A1 依赖解耦 scan
@@ -18,7 +18,7 @@ summary: 三组行为等价分层纠偏；用户已在本轮九步任务中明�
 
 ### A1-01 · 根目录叶子能力归位
 
-- 选择：✓（用户九步连续授权）
+- 选择：✓（用户于 2026-07-12 明确授权启动 A1）
 - 分类：L3 分层纠偏
 - 现象：config/run 反借根 `number_utils`；run/summary 反借根 `degradation_messages`，形成 config/run/summary→root。
 - 方案：调用方直接依赖已有 `core.shared` 数字/布尔函数和 `core.models.scheduler_degradation_messages`；根模块保留兼容入口。
@@ -27,7 +27,7 @@ summary: 三组行为等价分层纠偏；用户已在本轮九步任务中明�
 
 ### A1-02 · execution 读取/快照族下沉为单向叶子
 
-- 选择：✓（用户九步连续授权）
+- 选择：✓（用户于 2026-07-12 明确授权启动 A1）
 - 分类：L2 Move Function + L3 Layer Rectification
 - 现象：run 顶层依赖 scheduler 根的 `execution_fact_provider`/`execution_snapshot`；这两者还与 scope read/enrichment 组成内聚执行事实族。
 - 方案：实现迁到 `scheduler/execution/`，旧根模块只做显式 re-export；run 改依赖新叶子，旧 import 路径继续可用。
@@ -36,7 +36,7 @@ summary: 三组行为等价分层纠偏；用户已在本轮九步任务中明�
 
 ### A1-03 · summary 被 run 消费的合同/公开投影下沉
 
-- 选择：✓（用户九步连续授权）
+- 选择：✓（用户于 2026-07-12 明确授权启动 A1）
 - 分类：L1 Parallel Change + L2 Move Function
 - 现象：run 顶层依赖 summary 的 graph/public search 投影、SummaryBuildContext 和 parse_summary_count；summary 同时依赖 run 的纯 helper，构成 run⇄summary 目录圈。
 - 方案：把 run 需要的纯合同/公开投影实现迁到 `scheduler/contracts/`，summary 旧模块保留 re-export，run 改走 neutral contracts；summary→run 的现有 helper 依赖本批不改业务实现。

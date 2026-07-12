@@ -7,12 +7,12 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from core.algorithms.value_domains import INTERNAL
 from core.infrastructure.errors import ValidationError
 from core.models.enums import YesNo
-from core.services.scheduler.degradation_messages import (
+from core.models.scheduler_degradation_messages import (
     FREEZE_WINDOW_DEGRADED_MESSAGE,
     FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE,
 )
+from core.shared.boolean_normalize import to_yes_no
 
-from ..number_utils import to_yes_no
 from .freeze_window_prefixes import (
     group_seed_operations_by_batch,
     max_seq_by_batch,

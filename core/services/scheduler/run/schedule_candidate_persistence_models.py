@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Optional
 
 from core.models.enums import YesNo
 from core.models.schedule_candidate import ScheduleCandidate
-from core.services.scheduler.summary.graph_public_summary import project_public_graph_analysis
-from core.services.scheduler.summary.optimizer_public_search_report import project_search_report
+from core.services.scheduler.contracts.graph_public_summary import project_public_graph_analysis
+from core.services.scheduler.contracts.optimizer_public_search_report import project_search_report
 
 from .schedule_candidate_specs import CANDIDATE_KIND_CRITICAL_CHAIN
 from .schedule_candidate_summary import (

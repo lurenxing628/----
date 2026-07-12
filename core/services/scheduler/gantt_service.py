@@ -4,10 +4,10 @@ from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.services.common.degradation import degradation_events_to_dicts
+from core.services.scheduler.execution.execution_fact_provider import ExecutionFactProvider
 from data.repositories import ScheduleHistoryRepository, ScheduleRepository
 
 from .calendar_service import CalendarService
-from .execution_fact_provider import ExecutionFactProvider
 from .gantt_contract import build_gantt_contract
 from .gantt_critical_chain_provider import GanttCriticalChainProvider
 from .gantt_plan_query import (

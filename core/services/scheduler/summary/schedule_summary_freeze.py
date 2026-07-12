@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.models.enums import YesNo
-from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
-from core.services.scheduler.degradation_messages import (
+from core.models.scheduler_degradation_messages import (
     FREEZE_WINDOW_DEGRADED_MESSAGE,
     FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE,
 )
-from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
+from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+from core.services.scheduler.contracts.schedule_summary_types import ScheduleResultStatus
 
 
 def _freeze_window_config_state(cfg: Any) -> Tuple[bool, int]:

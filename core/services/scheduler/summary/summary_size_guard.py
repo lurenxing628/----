@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from .schedule_summary_types import DEFAULT_TRUNCATION_TIERS
+from core.services.scheduler.contracts.schedule_summary_types import DEFAULT_TRUNCATION_TIERS
+
 from .summary_size_guard_fields import (
     SUMMARY_SIZE_LIMIT_BYTES,
     guarded_items,

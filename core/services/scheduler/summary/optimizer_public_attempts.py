@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
-from .optimizer_public_safety import (
+from core.services.scheduler.contracts.optimizer_public_safety import (
     project_attempt_failed_ops,
     project_attempt_metrics,
     project_attempt_score,

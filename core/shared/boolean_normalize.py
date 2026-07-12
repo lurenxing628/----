@@ -63,3 +63,8 @@ def normalize_yes_no_wide(
     if policy == "raise":
         raise ValueError(text)
     return _NO
+
+
+def to_yes_no(value: Any, *, default: str = "no") -> str:
+    """归一化 yes/no 开关值，未知值按 ``no`` 处理。"""
+    return normalize_yes_no_wide(value, default=default, unknown_policy="no")

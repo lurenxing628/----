@@ -7,6 +7,7 @@ from core.infrastructure.errors import ValidationError
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, YesNo
 from core.services.common.enum_normalizers import skill_rank as _skill_rank_common
 from core.services.common.safe_logging import safe_warning
+from core.shared.boolean_normalize import to_yes_no
 from data.repositories import MachineDowntimeRepository
 
 from .degradation_messages import (
@@ -14,7 +15,6 @@ from .degradation_messages import (
     DOWNTIME_LOAD_ABORTED_MESSAGE,
     RESOURCE_POOL_BUILD_FAILED_MESSAGE,
 )
-from .number_utils import to_yes_no
 
 
 def _skill_rank(v: Any) -> int:

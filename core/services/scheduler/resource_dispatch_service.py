@@ -7,9 +7,9 @@ from core.models.schedule_resource_filter import SUPPORTED_DISPATCH_RESOURCE_TYP
 from core.services.equipment.machine_service import MachineService
 from core.services.personnel import ResourceTeamService
 from core.services.personnel.operator_service import OperatorService
+from core.services.scheduler.execution.operation_execution_scope_read import apply_scoped_execution_state_to_rows
 
 from .operation_execution_feedback_service import OperationExecutionFeedbackService
-from .operation_execution_scope_read import apply_scoped_execution_state_to_rows
 from .plan_overdue_markers import build_overdue_meta_for_plan
 from .resource_dispatch_page_context import (
     build_page_filters,

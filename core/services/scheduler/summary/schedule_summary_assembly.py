@@ -6,19 +6,19 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from core.algorithms.objective_specs import best_score_schema, comparison_metric_key
 from core.models.enums import YesNo
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
-from core.services.scheduler.run.auto_assign_resource_errors import auto_assign_failed_op_ids_from_errors
-from core.services.scheduler.run.optimizer_search_state import compact_attempts
-from core.services.scheduler.run.schedule_persistence_errors import missing_internal_resource_samples
-
-from .due_risk_items import NEAR_DUE_WINDOW_DAYS
-from .optimizer_public_summary import project_public_algo_summary
-from .schedule_summary_types import (
+from core.services.scheduler.contracts.schedule_summary_types import (
     AlgorithmSummaryState,
     FallbackState,
     FreezeState,
     RuntimeState,
     SummaryBuildContext,
 )
+from core.services.scheduler.run.auto_assign_resource_errors import auto_assign_failed_op_ids_from_errors
+from core.services.scheduler.run.optimizer_search_state import compact_attempts
+from core.services.scheduler.run.schedule_persistence_errors import missing_internal_resource_samples
+
+from .due_risk_items import NEAR_DUE_WINDOW_DAYS
+from .optimizer_public_summary import project_public_algo_summary
 from .summary_visible_degradation import (
     apply_fallback_count_degradation,
     apply_metrics_degradation,

@@ -1,20 +1,32 @@
 ---
 doc_type: audit
 slug: circular-imports
-scope: 历史普查 + 2026-07-11 当前生产非测试/含测试双 scope 终态复核
-summary: 6/7 个 hard 目录 SCC；纯显式 hard 文件 SCC 为 0，父包初始化感知 hard 文件加载 SCC 为 9；正式双基线门禁已接入
+scope: 历史普查 + 2026-07-12 当前生产非测试/含测试双 scope 终态复核
+summary: A1 已解除，当前 5/6 个 hard 目录 SCC；纯显式 hard 文件 SCC 为 0，父包初始化感知 hard 文件加载 SCC 为 9
 status: open
 created: 2026-06-28
-last_reviewed: 2026-07-11
-verified_by: 2026-06-28 Codex 历史审核 + 2026-07-10 首次工具复扫 + 2026-07-11 主代理单线程确定性重建与逐项核差异
+last_reviewed: 2026-07-12
+verified_by: 2026-06-28 Codex 历史审核 + 2026-07-10 首次工具复扫 + 2026-07-11 确定性重建 + 2026-07-12 A1 双 scope 差异核对
 tags: [architecture, circular-dependency, import-cycle, audit]
 ---
 
-# 循环依赖普查（历史报告 + 2026-07-11 当前口径校正）
+# 循环依赖普查（历史报告 + 2026-07-12 当前口径校正）
 
-## 2026-07-11 当前事实（覆盖下方冲突的历史数字）
+## 2026-07-12 当前事实（覆盖下方冲突的历史数字）
 
-> 下方“2026-06-28 历史正文”保留当时证据，不再代表当前扫描能力。当前事实以本节、双 v2 基线和正式门禁为准。
+> 下方 2026-07-11 与 2026-06-28 内容保留当时证据，不再代表当前结构终态。当前事实以本节、双 v2 基线和 A1 refactor 为准。
+
+- **scope**：生产扫描 761 模块，含测试 1455 模块，解析失败均为 0。
+- **目录商图**：生产为 5 个 hard 目录 SCC，含测试为 6 个。A1 `scheduler 根/config/run/summary` 已解除；双 scope 逐项比较确认其余 SCC 成员和圈内规范化模块边没有变化，tests 既有四目录 SCC 仍在。
+- **文件图双口径**：父包初始化感知 hard 文件 SCC 仍为 9，纯显式 hard 文件 SCC 仍为 0；runtime 文件 SCC 从 14/5 降为 13/4，原因是 execution provider/snapshot 不再使用 `TYPE_CHECKING` 和函数内 import 维持内部环。
+- **动态加载盲区**：生产 unresolved 仍为 6，含测试仍为 44；与 A1 前基线逐项相同。
+- **基线**：两份 v2 基线各只删除一个 A1 块（59 行），未新增或改写其他 SCC。刷新前、刷新后双命令均通过；旧 A1 回潮将重新被阻断。
+- **调用图**：7329 callable、25786 输出边、10166 确信边、15620 模糊边、typed 0、8 条受限简单循环、island 193。A/B 十份 JSON 逐文件 SHA 相同；按移动路径映射后旧函数和旧调用边零丢失，生产直连叶子新增 14 条原先被兼容 wrapper 遮挡的确信边。
+- **证明边界**：完整 19 步门禁在显式 allow-dirty、禁缓存、禁续跑模式下每步均通过（4716 collected，unexpected failure 0，required 253 targets / 2467 nodeids），但 manifest=`passed_but_unbound`、运行器按合同退出 2。当前工作树尚未提交，因此这不是新的 clean-worktree proof。
+
+## 2026-07-11 前一终态事实（历史）
+
+> 本节是 A1 启动前的可信起点；其中 6/7 个 SCC 与 A1 仍存在的描述已被上节更新。
 
 - **scope**：生产非测试扫描为 `core/web/data/desktop/plugins/tools/scripts/*.py`，包含顶层 `app.py`、`app_new_ui.py`、`config.py` 等入口；含测试命令再加 `tests`。生产 750 模块，含测试 1443 模块，解析失败均为 0。
 - **目录商图**：生产仍是 6 个 hard 目录 SCC，含测试为 7 个。A1/A2/A3/A5/A6 成员不变；A4 因补入真实入口与 config/bootstrap，现为 `. ⇄ web/bootstrap ⇄ web/routes ⇄ web/routes/domains/scheduler`。目录 SCC 是结构耦合，不等同具体文件已互相咬死。
@@ -24,7 +36,7 @@ tags: [architecture, circular-dependency, import-cycle, audit]
 - **基线/门禁**：`.codestable/checkup/import_cycles_production_baseline.json` 与 `import_cycles_with_tests_baseline.json` 同时锁定 schema、scope、scan roots、文件加载语义、SCC 成员、圈内规范化模块边和未解析动态导入。缺失/损坏/版本或 scope 不符/源码解析失败/扫描异常均返回工具错误码 2；两条命令已进入正式 19 步质量门禁、计划哈希、逐步收据、重放和 long-gate 稳定 entry。2026-07-11 候选双基线与正式文件逐字节一致，证明 alias 重绑定修复没有改变现有生产/测试 SCC、圈内边或 unresolved 身份。
 - **调用图区分**：当前快照为 7329 个 callable（含 316 个嵌套 def/lambda）、25772 条输出边、10152 条确信边、15620 条模糊边、0 条 typed 边和 8 条真实受限简单循环记录。`cycle_count` 是“确信边上长度 2-8、最多 200 条的 simple cycles”，**不是函数 SCC 数**；两个独立临时输出目录的 10 个 JSON 逐文件 SHA256 完全一致。
 
-当前生产边计数 `hard=8809 / cond=4 / lazy=257 / typeonly=135` 包含 6654 条父包初始化隐式文件边。相对首次 749 模块口径新增的 `tools/import_cycle_graph.py` 使 scanner 的 `from tools import import_cycle_graph` 解析为 `tools` 与 `tools.import_cycle_graph` 两个目标，因此模块数 +1、hard 边 +2、父包初始化边 +1；这不是新增 SCC。A1-A6 尚未拆除，本节是工具/事实口径修复，不是结构债清零证明。
+当时生产边计数 `hard=8809 / cond=4 / lazy=257 / typeonly=135` 包含 6654 条父包初始化隐式文件边。相对首次 749 模块口径新增的 `tools/import_cycle_graph.py` 使 scanner 的 `from tools import import_cycle_graph` 解析为 `tools` 与 `tools.import_cycle_graph` 两个目标，因此模块数 +1、hard 边 +2、父包初始化边 +1；这不是新增 SCC。当时 A1-A6 均未拆除；当前 A1 状态以上一节为准。
 
 ## 2026-06-28 历史正文（仅作当时证据）
 

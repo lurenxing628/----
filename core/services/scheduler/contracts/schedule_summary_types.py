@@ -1,0 +1,139 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+from core.services.common.build_outcome import BuildOutcome
+
+
+class ScheduleResultStatus(str, Enum):
+    SUCCESS = "success"
+    PARTIAL = "partial"
+    FAILED = "failed"
+    SIMULATED = "simulated"
+
+
+@dataclass(frozen=True)
+class SummaryBuildContext:
+    cfg: Any
+    version: int
+    normalized_batch_ids: List[str]
+    start_dt: datetime
+    end_date: Optional[Any]
+    batches: Dict[str, Any]
+    operations: List[Any]
+    results: List[Any]
+    summary: Any
+    used_strategy: Any
+    used_params: Dict[str, Any]
+    algo_mode: str
+    objective_name: str
+    time_budget_seconds: int
+    best_score: Optional[Tuple[float, ...]]
+    best_metrics: Optional[Any]
+    best_order: List[str]
+    attempts: List[Dict[str, Any]]
+    improvement_trace: List[Dict[str, Any]]
+    frozen_op_ids: Set[int]
+    search_report: Dict[str, Any] = field(default_factory=dict)
+    missing_internal_resource_op_ids: Optional[Set[int]] = None
+    scheduled_op_ids: Optional[Set[int]] = None
+    freeze_meta: Optional[Dict[str, Any]] = None
+    input_build_outcome: Optional[BuildOutcome[Any]] = None
+    downtime_meta: Optional[Dict[str, Any]] = None
+    resource_pool_meta: Optional[Dict[str, Any]] = None
+    readiness_gate_enabled: bool = False
+    algo_stats: Optional[Dict[str, Any]] = None
+    algo_warnings: Optional[List[str]] = None
+    warning_merge_status: Optional[Dict[str, Any]] = None
+    graph_analysis_public: Optional[Dict[str, Any]] = None
+    graph_analysis_diagnostics: Optional[Dict[str, Any]] = None
+    candidate_comparison_public: Optional[Dict[str, Any]] = None
+    execution_snapshot_revision: Optional[str] = None
+    execution_snapshot_op_ids: Optional[List[int]] = None
+    execution_snapshot_op_count: int = 0
+    simulate: bool = False
+    t0: float = 0.0
+
+
+@dataclass(frozen=True)
+class RuntimeState:
+    finish_by_batch: Dict[str, datetime]
+    overdue_items: List[Dict[str, Any]]
+    near_due_items: List[Dict[str, Any]]
+    invalid_due_count: int
+    invalid_due_batch_ids_sample: List[str]
+    unscheduled_batch_count: int
+    unscheduled_batch_ids_sample: List[str]
+
+
+@dataclass(frozen=True)
+class WarningState:
+    summary_warnings: List[str]
+    algo_warning_list: List[str]
+    all_warnings: List[str]
+    merge_context_degraded: bool
+    merge_context_events: List[Dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class FreezeState:
+    data: Dict[str, Any]
+    all_warnings: List[str]
+
+
+@dataclass(frozen=True)
+class FallbackState:
+    raw_stats: Dict[str, Any]
+    fallback_counts: Dict[str, int]
+    fallback_samples: Dict[str, List[Dict[str, Any]]]
+    param_fallbacks: Dict[str, int]
+    legacy_external_days_defaulted_count: int
+    ortools_warmstart_failed_count: int
+    fallback_count_parse_errors: List[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class AlgorithmSummaryState:
+    ctx: SummaryBuildContext
+    input_state: Dict[str, Any]
+    downtime_state: Dict[str, Any]
+    hard_constraints: List[str]
+    warning_state: WarningState
+    freeze_state: FreezeState
+    frozen_batch_ids: List[str]
+    resource_pool_meta: Optional[Dict[str, Any]]
+    resource_pool_enabled: bool
+    resource_pool_degraded: bool
+    resource_pool_degradation_reason: Optional[str]
+    resource_pool_attempted: bool
+    warning_pipeline: Dict[str, Any]
+    fallback_state: FallbackState
+
+
+@dataclass(frozen=True)
+class TruncationTier:
+    trace_limit: int
+    warning_limit: int
+    attempt_limit: int
+    best_order_limit: Optional[int] = None
+    selected_ids_limit: Optional[int] = None
+    overdue_items_limit: Optional[int] = None
+    near_due_items_limit: Optional[int] = None
+    errors_limit: Optional[int] = None
+    missing_resource_limit: Optional[int] = None
+
+
+DEFAULT_TRUNCATION_TIERS: Tuple[TruncationTier, ...] = (
+    TruncationTier(80, 50, 12, errors_limit=500, missing_resource_limit=500),
+    TruncationTier(20, 20, 12, errors_limit=200, missing_resource_limit=200),
+    TruncationTier(0, 20, 12, errors_limit=100, missing_resource_limit=100),
+    TruncationTier(0, 10, 6, errors_limit=50, missing_resource_limit=50),
+    TruncationTier(0, 0, 6, 2000, 2000, 500, near_due_items_limit=500, errors_limit=50, missing_resource_limit=50),
+    TruncationTier(0, 0, 6, 500, 1000, 200, near_due_items_limit=200, errors_limit=30, missing_resource_limit=30),
+    TruncationTier(0, 0, 6, 100, 200, 50, near_due_items_limit=50, errors_limit=20, missing_resource_limit=20),
+    TruncationTier(0, 0, 6, 0, 50, 20, near_due_items_limit=20, errors_limit=10, missing_resource_limit=10),
+    TruncationTier(0, 0, 0, 0, 0, 0, near_due_items_limit=0, errors_limit=10, missing_resource_limit=10),
+)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..summary.summary_count_parse import parse_summary_count
+from core.services.scheduler.contracts.summary_count_parse import parse_summary_count
 
 
 @dataclass(frozen=True)

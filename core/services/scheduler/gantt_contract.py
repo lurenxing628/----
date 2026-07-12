@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from core.services.scheduler.degradation_messages import public_degradation_events
+from core.models.scheduler_degradation_messages import public_degradation_events
 
 _CRITICAL_REASON_LABELS = {
     "calc_exception": "关键工序关系计算异常",

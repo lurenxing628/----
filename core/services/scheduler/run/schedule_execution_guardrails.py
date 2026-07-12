@@ -13,8 +13,8 @@ from core.models.operation_execution_event import (
     EXECUTION_STATUS_PROCESSING,
 )
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
-from core.services.scheduler.execution_fact_provider import ExecutionFact, ExecutionFactProvider
-from core.services.scheduler.execution_snapshot import ExecutionSnapshot, build_execution_snapshot
+from core.services.scheduler.execution.execution_fact_provider import ExecutionFact, ExecutionFactProvider
+from core.services.scheduler.execution.execution_snapshot import ExecutionSnapshot, build_execution_snapshot
 
 
 def _op_id(op: Any) -> int:

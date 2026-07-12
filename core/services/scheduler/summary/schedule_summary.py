@@ -7,6 +7,10 @@ from dataclasses import replace
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+from core.services.scheduler.contracts.schedule_summary_types import (
+    AlgorithmSummaryState,
+    SummaryBuildContext,
+)
 
 from .schedule_summary_assembly import (
     _best_score_schema as best_score_schema,
@@ -34,10 +38,6 @@ from .schedule_summary_freeze import (
     _compute_completion_status,
     _compute_result_status,
     _frozen_batch_ids,
-)
-from .schedule_summary_types import (
-    AlgorithmSummaryState,
-    SummaryBuildContext,
 )
 from .summary_runtime_state import (
     _build_fallback_state,

@@ -3,16 +3,16 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.enums import YesNo
-from core.services.common.build_outcome import BuildOutcome
-from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
-from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
-from core.services.scheduler.degradation_messages import (
+from core.models.scheduler_degradation_messages import (
     RESOURCE_POOL_BUILD_FAILED_MESSAGE,
     public_degradation_event_message,
 )
+from core.services.common.build_outcome import BuildOutcome
+from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
+from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+from core.services.scheduler.contracts.summary_count_parse import _meta_bool_state
 
 from .schedule_summary_downtime_degradation import compute_downtime_degradation as _compute_downtime_degradation
-from .summary_count_parse import _meta_bool_state
 
 _LEGACY_MERGE_CONTEXT_CODES = {"template_missing", "external_group_missing"}
 

@@ -18,7 +18,7 @@ from core.services.common.excel_templates import build_xlsx_bytes, get_template_
 from core.services.common.normalize import to_str_or_blank
 from core.services.process.part_operation_hours_excel_import_service import PartOperationHoursExcelImportService
 from core.services.process.part_operation_query_service import PartOperationQueryService
-from core.services.scheduler.number_utils import parse_finite_float
+from core.shared.number_utils import parse_finite_float
 
 from .excel_utils import (
     build_error_rows_message,

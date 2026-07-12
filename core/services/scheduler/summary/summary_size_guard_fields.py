@@ -8,8 +8,8 @@ from core.models.scheduler_public_errors import (
     public_safe_identifier,
     public_safe_label,
 )
+from core.services.scheduler.contracts.optimizer_public_search_report import project_search_report
 from core.services.scheduler.run.schedule_candidate_summary import candidate_comparison_minimal_summary
-from core.services.scheduler.summary.optimizer_public_search_report import project_search_report
 
 SUMMARY_SIZE_LIMIT_BYTES = 512 * 1024
 _ALLOWED_MISSING_FIELDS = {"设备", "人员"}

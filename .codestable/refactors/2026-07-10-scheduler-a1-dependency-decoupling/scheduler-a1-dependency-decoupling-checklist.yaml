@@ -15,7 +15,7 @@ guardrails:
 steps:
   - id: step-01-characterization-contract
     title: Lock old/new module identity and clean-interpreter import-order contracts
-    status: pending
+    status: completed
     type: characterization_test
     touch_files:
       - tests/schedule/service/test_scheduler_a1_dependency_boundary.py
@@ -25,7 +25,7 @@ steps:
 
   - id: step-02-root-leaf-imports
     title: Redirect number and degradation contracts to existing shared/model leaves
-    status: pending
+    status: completed
     type: layer_rectification
     touch_files:
       - core/shared/boolean_normalize.py
@@ -44,7 +44,7 @@ steps:
 
   - id: step-03-execution-leaf-package
     title: Move execution fact/snapshot/scope/enrichment implementation under scheduler.execution
-    status: pending
+    status: completed
     type: parallel_move
     touch_files:
       - core/services/scheduler/execution/
@@ -62,7 +62,7 @@ steps:
 
   - id: step-04-summary-contract-package
     title: Move run-consumed summary DTO/projection/parsing implementation under scheduler.contracts
-    status: pending
+    status: completed
     type: parallel_move
     touch_files:
       - core/services/scheduler/contracts/
@@ -80,7 +80,8 @@ steps:
 
   - id: step-05-a1-verification
     title: Prove A1 is absent without expanding other cycles or changing behavior
-    status: pending
+    status: blocked
+    blocker: Implementation and the 19-step dirty-worktree gate are complete; final clean-HEAD proof requires explicit commit authorization.
     type: final_proof
     checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean

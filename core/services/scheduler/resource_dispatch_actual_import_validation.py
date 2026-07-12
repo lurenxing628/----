@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, List, Optional, Sequence, Tuple
 
+from core.services.scheduler.execution.operation_execution_scope_read import events_for_task_ref, state_for_task_ref
+
 from .operation_execution_feedback_support import _parse_feedback_datetime
-from .operation_execution_scope_read import events_for_task_ref, state_for_task_ref
 from .resource_dispatch_actual_records import PausePlan, TaskPlan, parse_int_or_error, text
 
 

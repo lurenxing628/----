@@ -12,8 +12,8 @@ from core.models.operation_execution_event import (
     EXECUTION_EVENT_RESUME,
     EXECUTION_EVENT_START,
 )
+from core.services.scheduler.execution.operation_execution_scope_read import events_for_scope
 from core.services.scheduler.operation_execution_feedback_service import ExecutionFeedbackContext
-from core.services.scheduler.operation_execution_scope_read import events_for_scope
 from web.viewmodels.scheduler_resource_dispatch_execution import (
     build_execution_payload,
     event_payload,

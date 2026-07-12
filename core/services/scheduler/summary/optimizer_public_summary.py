@@ -2,7 +2,19 @@ from __future__ import annotations
 
 from typing import Any, Dict, Tuple
 
-from .graph_public_summary import project_public_graph_analysis
+from core.services.scheduler.contracts.graph_public_summary import project_public_graph_analysis
+from core.services.scheduler.contracts.optimizer_public_safety import (
+    project_attempt_score,
+    project_degradation_event_list,
+    project_public_metrics,
+    safe_attempt_text,
+    safe_counter_dict,
+    safe_metric_key,
+    safe_non_negative_int,
+    safe_public_text_list,
+)
+from core.services.scheduler.contracts.optimizer_public_search_report import project_search_report
+
 from .optimizer_public_algo_fields import (
     project_config_snapshot,
     project_downtime_avoid,
@@ -15,17 +27,6 @@ from .optimizer_public_algo_fields import (
 )
 from .optimizer_public_attempts import project_attempts
 from .optimizer_public_candidates import project_best_score_schema, project_candidate_comparison
-from .optimizer_public_safety import (
-    project_attempt_score,
-    project_degradation_event_list,
-    project_public_metrics,
-    safe_attempt_text,
-    safe_counter_dict,
-    safe_metric_key,
-    safe_non_negative_int,
-    safe_public_text_list,
-)
-from .optimizer_public_search_report import project_search_report
 
 _PUBLIC_ALGO_KEYS = {
     "mode",

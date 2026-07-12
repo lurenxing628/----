@@ -6,10 +6,10 @@ from typing import Any, Dict, List, Optional
 
 from core.infrastructure.database import get_connection
 from core.infrastructure.logging import OperationLogger, safe_log
+from core.models.scheduler_degradation_messages import public_degradation_events
 from core.plugins import PluginManager, reset_plugin_state
 from core.plugins.registry import PluginRegistry
 from core.services.common.degradation import DegradationCollector
-from core.services.scheduler.degradation_messages import public_degradation_events
 from data.repositories import SystemConfigRepository
 
 

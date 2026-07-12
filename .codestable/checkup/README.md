@@ -8,7 +8,22 @@
 
 机器可读总入口：[`baseline.json`](baseline.json)。
 
-## 2026-07-11 终态工具证据重建与 clean HEAD 证明
+## 2026-07-12 scheduler A1 本地机械证据
+
+A1 从干净 HEAD `964d74d9d665353a043a1cf00e6736cfc0764d82` 启动，但当前改动尚未获提交授权，因此本节只记录 **dirty-worktree local verification**，不声称新的 clean-worktree proof：
+
+| 检查 | A1 后结果 | 差异口径 |
+|---|---|---|
+| callgraph | 7329 callable、25786 输出边、10166 确信边、15620 模糊边、typed 0、8 条受限简单循环、island 193 | 两个独立临时目录 10 JSON 逐文件 SHA 相同；旧函数按移动路径映射后无增删，旧调用边 0 丢失，生产直连新叶子后新增 14 条原先被 wrapper 遮挡的确信边 |
+| import cycles（生产） | 761 模块、5 hard 目录 SCC、9/0 父包感知/纯显式 hard 文件 SCC、13/4 runtime 文件 SCC、unresolved 6 | A1 四目录 SCC 消失；其余 SCC 成员和圈内边不变 |
+| import cycles（含测试） | 1455 模块、6 hard 目录 SCC、unresolved 44 | 同样只删除 A1；既有 tests 四目录 SCC 不变 |
+| 双 v2 基线 | 每份只删除 A1 一个 59 行块 | 更新前旧基线的两条 `--fail-on-new-cycle` 命令均通过；更新后再次通过，防止 A1 回潮 |
+| dead-code quick | 只迁移 2 个 `ExecutionFactProvider` 基线路径 | archived HEAD `964d74d9` 自身也会报告 32 个无关新增候选，因此没有借 A1 全量 refresh 接受这些既有漂移 |
+| 完整质量门禁 | 19/19 命令通过；收集 4716 项；unexpected failure 0；required 253 targets / 2467 nodeids | 使用 `--allow-dirty-worktree --no-long-gate-cache --no-resume`；manifest=`passed_but_unbound`，运行器按合同退出 2，只是诊断运行，不是绑定证明 |
+
+`baseline.json.worktree_tooling_refresh.clean_worktree_proof=false`。待用户授权提交并在最终 HEAD 上完成无缓存、无续跑的 clean gate 后，才能升级这一状态。下面 2026-07-11 的 clean proof 只证明 A1 开工前的旧 HEAD，不能外推到当前工作树。
+
+## 2026-07-11 前一终态工具证据重建与 clean HEAD 证明
 
 `baseline.json.code_baseline` 仍保留已提交的历史 clean-source 投影：
 
@@ -27,7 +42,7 @@
 | 确定性 | 调用图两个独立临时目录均为同一组 10 个 JSON，逐文件 SHA256 完全一致 | 双 scope 候选基线与正式基线逐字节一致；SCC、圈内边和 unresolved 均无增删 |
 | 完整质量门禁 | 19/19 步通过；收集 4712 项；full-test-debt unexpected failure 0；required 253 个目标 / 2467 nodeids | 命令使用 `--require-clean-worktree --no-long-gate-cache --no-resume`，没有复用旧成功缓存 |
 
-`.codestable/checkup/latest/callgraph/` 已由核对通过的临时候选受控覆盖，两份 import-cycle v2 基线也已通过正式 CLI 刷新。`baseline.json.artifact_sha256` 绑定最终四个调用图脚本、四个循环扫描工具、完整 10 个调用图 JSON 和两份循环基线，并记录 `clean_worktree_proof=true`。
+当时 `.codestable/checkup/latest/callgraph/` 已由核对通过的临时候选受控覆盖，两份 import-cycle v2 基线也已通过正式 CLI 刷新；当时的 clean HEAD 记录为 `clean_worktree_proof=true`。A1 启动后，总入口已按上节降级为 `false`，不能继续引用这段历史证明当前工作树。
 
 完整命令、两次门禁暴露的测试合同缺口及根因修复见 `.codestable/issues/2026-07-11-dependency-proof-rebuild-and-closure/`。本次 clean proof 只证明当前机械证据与质量门禁；`history_baseline` 的决定考古仍是 pending，不能顺带写成已完成。
 

@@ -13,10 +13,10 @@ from core.services.common.normalization_matrix import (
     normalize_yes_no_narrow_value,
 )
 from core.services.common.normalize import normalize_text
+from core.shared.number_utils import parse_finite_float
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
 from .config.config_service import ConfigService
-from .number_utils import parse_finite_float
 
 
 class CalendarAdmin:

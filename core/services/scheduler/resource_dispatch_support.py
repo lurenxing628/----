@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set
 
+from core.models.scheduler_degradation_messages import public_degradation_events
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import (
     DegradationCollector,
 )
-from core.services.scheduler.degradation_messages import public_degradation_events
 
 from ._sched_display_utils import BAD_TIME_EMPTY_REASON as _BAD_TIME_EMPTY_REASON
 from .resource_dispatch_overdue import extract_overdue_batch_ids, extract_overdue_batch_ids_with_meta

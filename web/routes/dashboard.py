@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from flask import Blueprint, current_app, g, render_template, request
 
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
-from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
+from core.services.scheduler.execution.execution_fact_provider import ExecutionFactProvider
 from core.services.scheduler.schedule_result_view_context import plan_role_filter_fields
 from web.navigation_context import set_current_workbench_navigation_context
 from web.request_resource_context import request_report_resource_context

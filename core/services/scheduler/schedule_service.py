@@ -9,9 +9,9 @@ from core.infrastructure.transaction import TransactionManager
 from core.models import Batch, BatchOperation, ExternalGroup, PartOperation
 from core.models.enums import BatchOperationStatus, BatchStatus
 from core.services.common.normalize import normalize_text
+from core.shared.number_utils import parse_finite_float
 
 from . import operation_edit_service as op_edit
-from .number_utils import parse_finite_float
 from .repository_bundle import build_schedule_repository_bundle
 from .resource_pool_builder import build_resource_pool, extend_downtime_map_for_resource_pool, load_machine_downtimes
 from .run.freeze_window import build_freeze_window_seed
