@@ -4,6 +4,11 @@ from typing import Any
 
 from core.algorithm_runtime.algo_stats import ensure_algo_stats, increment_counter
 from core.algorithm_runtime.auto_assign_contract import auto_assign_attempt_from_result
+from core.algorithm_runtime.internal_slot import validate_internal_hours_for_mode
+
+
+class DispatchContextContractError(TypeError):
+    """Legacy dispatch 对象缺少当前执行路径所需的 callback。"""
 
 
 class _LegacyDispatchContext:
@@ -27,15 +32,17 @@ class _LegacyDispatchContext:
     def schedule_external(self, *args: Any, **kwargs: Any):
         callback = getattr(self._candidate, "_schedule_external", None)
         if not callable(callback):
-            raise TypeError("legacy dispatch context does not provide _schedule_external")
+            raise DispatchContextContractError("legacy dispatch context does not provide _schedule_external")
         return callback(*args, **kwargs)
 
     def schedule_internal(self, *args: Any, **kwargs: Any):
         callback = getattr(self._candidate, "_schedule_internal", None)
         if not callable(callback):
-            raise TypeError("legacy dispatch context does not provide _schedule_internal")
+            raise DispatchContextContractError("legacy dispatch context does not provide _schedule_internal")
         call_kwargs = dict(kwargs)
-        call_kwargs.pop("strict_mode", None)
+        strict_mode = bool(call_kwargs.pop("strict_mode", False))
+        if strict_mode:
+            validate_internal_hours_for_mode(call_kwargs["op"], call_kwargs["batch"], strict_mode=True)
         return callback(*args, **call_kwargs)
 
     def auto_assign_internal_resources_attempt(self, *args: Any, **kwargs: Any):
@@ -45,7 +52,7 @@ class _LegacyDispatchContext:
         callback = getattr(self._candidate, "_auto_assign_internal_resources", None)
         if callable(callback):
             return auto_assign_attempt_from_result(callback(*args, **kwargs))
-        raise TypeError("legacy dispatch context does not provide auto-assign callback")
+        raise DispatchContextContractError("legacy dispatch context does not provide auto-assign callback")
 
     def auto_assign_internal_resources(self, *args: Any, **kwargs: Any):
         attempt = self.auto_assign_internal_resources_attempt(*args, **kwargs)

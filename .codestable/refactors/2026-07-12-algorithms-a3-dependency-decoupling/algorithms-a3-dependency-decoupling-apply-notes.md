@@ -93,3 +93,12 @@ base_head: 582a588c8adda314584052b870ace00628a722c7
 - clean proof：提交后先确认工作区为空，再在固定 `f422b88c` 上执行 `scripts/run_quality_gate.py --require-clean-worktree --no-long-gate-cache --no-resume`。19/19 步全部执行且退出 0；4731 collected、collection error 0、unexpected failure 0、required 253 targets / 2467 nodeids；正式 Python 3.8 扫描 1220 文件、findings 0。manifest=`passed`、`proof_head=f422b88c...`、`is_dirty_before=false`、`is_dirty_after=false`、`tracked_drift_detected=false`，进程退出码 0，门禁后 `git status` 仍为空。
 - 收尾边界：本段及 baseline/checkup/audit/roadmap 的 clean-proof 回写属于证明后的 docs-only 变更，尚未获得第二个提交授权；未 push、未创建 PR。
 - 偏离：原 checklist 的 Python 3.8 检查暴露一条起点存量注解；按项目硬约束在已触碰文件内最小修正，并在源码变化后完整重封调用图/循环证据。提交前第一次 `git diff --cached --check` 还发现两个新合同文件尾部多空行，删除后再提交；两项均不改变运行行为。无其它偏离。
+
+## 复审后修正：legacy adapter 与调用图 callsite 互斥
+
+- 2026-07-13 未推送提交审计复现：`_LegacyDispatchContext.schedule_internal()` 删除了 `strict_mode`，direct batch-order 非法工时会进入 callback；缺少实际使用 callback 的普通 `TypeError` 又会被 dispatch 主循环折算。
+- 修复采用能力按需合同：legacy adapter 在 callback 前恢复 strict 工时校验；缺少当前路径真正使用的 callback 时抛 `DispatchContextContractError(TypeError)`，batch-order/SGS 明确透传。扩大测试证明不能在 adapter 构造时强制要求全部 callback，否则会破坏 missing-batch 与 auto-assign-disabled 的既有 direct 行为。
+- 调用图工具让 `_add_imported_module_attr_edges()` 返回已精确解析的 callsite，通用 attr resolver 只处理剩余调用。新测试先复现一条确信边加一条模糊副本，再锁定最终只保留 `module_import_attr` 确信记录。
+- 最终临时双跑的 10 JSON 逐文件 SHA 相同；相对本 apply 步骤 5 的历史快照删除 111 条可解释的 `attr` 模糊记录、新增 1 条 `schedule_internal → validate_internal_hours_for_mode` 确信边。当前总量为 `7337 callable / 25688 edge records / 10172 confident / 15516 ambiguous / typed 0 / 685 dynamic unresolved / 8 cycles / 195 islands`。
+- 双 scope import-cycle 正式门禁继续通过，A3 SCC 没有回潮。完整 `--allow-dirty-worktree --no-long-gate-cache --no-resume` 门禁 19/19 receipts 均 returncode 0，4734 collected、unexpected failure 0、required 253 targets / 2467 nodeids；manifest=`passed_but_unbound`、tracked drift=false，wrapper 按合同退出 2。
+- 当前修正未提交，`clean_worktree_proof=false`；上文 `f422b88c` 的 clean proof 和 25798/10171/15627 数字只代表复审前历史状态。

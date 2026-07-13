@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.algorithm_contracts.ordering import normalize_text_id
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
-from core.algorithm_runtime.dispatch_context import ensure_dispatch_context
+from core.algorithm_runtime.dispatch_context import DispatchContextContractError, ensure_dispatch_context
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.infrastructure.errors import ValidationError
 
@@ -143,7 +143,7 @@ def _dispatch_one(
             state.record_dispatch_success(result)
         else:
             state.record_dispatch_failure(batch_id, block=True, failed_op=op)
-    except ValidationError:
+    except (ValidationError, DispatchContextContractError):
         raise
     except Exception:
         _record_dispatch_exception(ctx, op=op, batch_id=batch_id, state=state)

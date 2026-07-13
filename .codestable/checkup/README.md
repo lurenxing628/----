@@ -8,7 +8,21 @@
 
 机器可读总入口：[`baseline.json`](baseline.json)。
 
-## 2026-07-13 algorithms A3 终态机械证据与 clean HEAD 证明
+## 2026-07-13 未推送提交复审修正（当前工作树事实）
+
+未推送提交审计发现并修复两条证据/行为缺口：legacy dispatch adapter 重新执行 strict 工时校验，缺少当前路径所需 callback 时以专用合同错误 fail-loud；调用图对 imported-module 属性调用改为“精确 callsite 已命中则不再进入通用 attr 模糊分支”。
+
+| 检查 | 当前结果 | 差异口径 |
+|---|---|---|
+| callgraph | 7337 callable、25688 输出记录、10172 确信边、15516 模糊边、typed 0、8 条受限简单循环、island 195、dynamic unresolved 685 | 两个独立临时目录的 10 JSON 逐文件 SHA 相同；相对 A3 快照只移除 111 条均可由同 source/方法名的 `module_import_attr` 确信边解释的 `attr` 模糊记录，并新增 1 条 `schedule_internal → validate_internal_hours_for_mode` 确信边 |
+| 端点记录口径 | `graph_metrics.edge_count_total=25679`，与 25688 条 edge records 相差 9 | 旧快照 88 组 `module_import_attr` 确信边与同端点 `attr` 模糊边已清零；剩余 9 组是 import/self/attr 与 function-reference 等不同证据类型，不属于本 issue 的同 callsite 双消解 |
+| import cycles | production / production-and-tests 两条正式 `--fail-on-new-cycle` 门禁均通过 | 新增的 runtime sibling import 没有重新引入 A3 SCC；双 v2 基线无需刷新 |
+| 定向验证 | 完整 `tests/algorithm` + receiver-resolution 共 574 passed；Ruff check 通过 | 新测试先红后绿；扩大回归还阻止了“构造时要求全部 callback”的过度收窄，最终按能力使用点 fail-loud |
+| 完整质量门禁 | 19/19 receipts 全部 returncode 0；4734 collected、collection error 0、unexpected failure 0、required 253 targets / 2467 nodeids | 使用 `--allow-dirty-worktree --no-long-gate-cache --no-resume`；manifest=`passed_but_unbound`、前后均 dirty、tracked drift=false；wrapper 退出码 2 是拒绝冒充 clean proof 的预期结果 |
+
+`baseline.json.worktree_tooling_refresh.clean_worktree_proof=false`。本节绑定当前未提交工作区及确定性候选，不借用下节 `f422b88c` 的历史 clean proof；只有用户授权提交后在固定干净 HEAD 重跑，才能升级为 clean-worktree proof。
+
+## 2026-07-13 algorithms A3 原始收口机械证据与历史 clean HEAD 证明
 
 A3 从固定 HEAD `582a588c8adda314584052b870ace00628a722c7` 启动，把纯日期/排序/派工/类型合同归到 `core.algorithm_contracts`，把 greedy/dispatch 共享状态与 helper 归到 `core.algorithm_runtime`。旧路径继续显式同对象转出，`core.algorithms.GreedyScheduler` 和 `core/algorithms/__init__.py` 字节保持不变，dispatch 仍是 canonical 执行模块。
 
@@ -22,7 +36,7 @@ A3 从固定 HEAD `582a588c8adda314584052b870ace00628a722c7` 启动，把纯日�
 | dead-code quick | 只迁移 `WeightedStrategy.__init__` 与 `ScheduleSummary.__post_init__` 两个基线路径 | 仍有 32 个 A2 起点已记录的既有新增候选；其中没有 A3 路径，未全量 refresh |
 | 当前验证 | 最终组合 643 passed；Ruff、Pyright gate/tools、A3 起点增量 Python 3.8、双 scope 门禁均通过；clean HEAD 完整门禁 19/19、4731 collected、unexpected failure 0、required 253 targets / 2467 nodeids | 固定实现提交 `f422b88c`；manifest=`passed`，`is_dirty_before=false`、`is_dirty_after=false`、`tracked_drift_detected=false`；正式 Python 3.8 扫描 1220 文件、findings 0 |
 
-`baseline.json.worktree_tooling_refresh.clean_worktree_proof=true`，准确绑定实现提交 `f422b88cab39093b56fdade06ace3be96d6c6652`。提交前 dirty gate 的 `passed_but_unbound` 只作诊断，clean proof 以提交后的 manifest 为准。历史决定考古仍为 pending。
+A3 原始收口时，`baseline.json.worktree_tooling_refresh.clean_worktree_proof=true`，准确绑定实现提交 `f422b88cab39093b56fdade06ace3be96d6c6652`。该证明仍是历史证据，但不覆盖上节尚未提交的复审修正；当前 `baseline.json` 已按真实边界改回 `clean_worktree_proof=false`。历史决定考古仍为 pending。
 
 ## 2026-07-12 foundation A2 终态机械证据与 clean HEAD 证明
 
@@ -38,7 +52,7 @@ A2 从干净 HEAD `a53172e77671d722594aeb81c06b72d1cc6b1b22` 启动，按 approv
 | dead-code quick | 只迁移 3 个 AppError 基线路径 | 起点 HEAD 与 A2 工作树均报告 32 个既有候选；按 errors 路径映射后集合完全相同，A2 新增 0，未全量 refresh |
 | 当前验证 | 步骤 5 专项 365 passed；Ruff、Pyright、提交前 48 文件增量 Python 3.8 与双 scope 门禁通过；clean HEAD 完整门禁 19/19、4724 collected、unexpected failure 0、required 253 targets / 2467 nodeids | 提交后正式 Python 3.8 扫描 1187 文件、发现 0；manifest=`passed`，`is_dirty_before=false`、`is_dirty_after=false`、无 tracked drift |
 
-`baseline.json.worktree_tooling_refresh.clean_worktree_proof=true`，准确绑定实现提交 `d6d41e1a` 的机械证据与完整门禁。该证明不代表历史决定考古已完成；历史水位线仍未推进。
+A2 收口时，`baseline.json.worktree_tooling_refresh.clean_worktree_proof=true`，准确绑定实现提交 `d6d41e1a` 的机械证据与完整门禁。该历史证明不代表当前复审修正已有 clean proof，也不代表历史决定考古已完成；历史水位线仍未推进。
 
 ## 2026-07-12 scheduler A1 终态机械证据与 clean HEAD 证明（A2 起点）
 

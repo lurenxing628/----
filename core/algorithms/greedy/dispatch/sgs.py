@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.algorithm_contracts.dispatch_rules import DispatchRule, build_dispatch_key
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
-from core.algorithm_runtime.dispatch_context import ensure_dispatch_context
+from core.algorithm_runtime.dispatch_context import DispatchContextContractError, ensure_dispatch_context
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours_for_mode
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.infrastructure.errors import ValidationError
@@ -401,7 +401,7 @@ def _dispatch_selected(
                 failed_op=op,
                 skipped_ops=skipped_ops,
             )
-    except ValidationError:
+    except (ValidationError, DispatchContextContractError):
         raise
     except Exception:
         extra_failed_count = 0

@@ -21,8 +21,8 @@ tags: [architecture, circular-dependency, import-cycle, audit]
 - **文件图双口径**：父包初始化感知 hard 文件 SCC 数仍为 9，纯显式 hard 文件 SCC 仍为 0；migration 圈保持 5 成员 / 11 边，A3 相关 algorithms 父包加载圈从 21 成员 / 94 边严格缩为 8 成员 / 24 边。父包感知/纯显式 runtime 文件 SCC 仍为 13/4。
 - **动态加载盲区**：import-cycle production / with-tests unresolved 仍为 6 / 44，逐记录与 A3 起点相同。
 - **基线**：A3 双基线只删除 3 成员 / 42 边目录块，并用 8/24 严格子集替换旧 algorithms 文件 SCC；其余目录/文件圈与 unresolved 不变。刷新后双正式命令通过，A1/A2/A3 回潮都会被阻断。
-- **调用图**：7337 callable、25798 输出边、10171 确信边、15627 模糊边、typed 0、8 条受限简单循环、island 193、dynamic unresolved 685。A/B 十份 JSON 逐文件 SHA 相同；7329 个旧 callable 全映射，新增仅 8 个 dispatch context adapter callable；6 条旧边差异和 14 个 adapter 新端点均已解释，无旧 callable/调用端点无故丢失。
-- **证明边界**：A1/A2 的既有 clean proof 继续只绑定 `c2243cd0` / `d6d41e1a`。A3 实现提交 `f422b88c` 已在前后工作区均干净的固定 HEAD 上完成无缓存、无续跑 19/19 门禁（4731 collected、unexpected failure 0、manifest=`passed`），`clean_worktree_proof=true`；该证明只绑定此实现提交，历史决定考古仍为 pending。
+- **调用图**：复审修正后的当前快照为 7337 callable、25688 输出记录、10172 确信边、15516 模糊边、typed 0、8 条受限简单循环、island 195、dynamic unresolved 685。A/B 十份 JSON 逐文件 SHA 相同；相对 A3 快照只删除 111 条已由同 source/方法名 `module_import_attr` 精确边解释的 `attr` 模糊记录，并新增 1 条 strict 校验确信边；旧快照 88 组 imported-module 同端点双记录已清零。
+- **证明边界**：A1/A2 的既有 clean proof 继续只绑定 `c2243cd0` / `d6d41e1a`。A3 实现提交 `f422b88c` 的 19/19 clean proof 仍是历史证据，但不覆盖当前尚未提交的 legacy dispatch / callgraph 复审修正；本轮 dirty 门禁 19/19 receipts 均通过、4734 collected、manifest=`passed_but_unbound`、tracked drift=false，当前仍必须记录 `clean_worktree_proof=false`。历史决定考古仍为 pending。
 
 ## 2026-07-11 前一终态事实（历史）
 

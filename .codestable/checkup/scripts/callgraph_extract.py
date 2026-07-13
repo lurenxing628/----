@@ -199,7 +199,8 @@ def _module_attr_target(module: str, attr: str, all_funcs: Dict[str, FuncInfo]) 
 
 def _add_imported_module_attr_edges(edges: List[Dict[str, Any]], qual: str,
                                     calls: Set[Tuple[str, str, int]], imports: Dict[str, str],
-                                    all_funcs: Dict[str, FuncInfo]) -> None:
+                                    all_funcs: Dict[str, FuncInfo]) -> Set[Tuple[str, str, int]]:
+    resolved_pairs: Set[Tuple[str, str]] = set()
     for base, attr in sorted({(base, attr) for base, attr, _line in calls}):
         module = imports.get(base)
         if not module:
@@ -207,6 +208,8 @@ def _add_imported_module_attr_edges(edges: List[Dict[str, Any]], qual: str,
         target = _module_attr_target(module, attr, all_funcs)
         if target:
             edges.append(_edge(qual, target, "module_import_attr", False))
+            resolved_pairs.add((base, attr))
+    return {call for call in calls if (call[0], call[1]) in resolved_pairs}
 
 
 def _add_function_reference_edges(edges: List[Dict[str, Any]], qual: str, names: Set[str],
@@ -248,8 +251,15 @@ def _resolve_edges(all_funcs: Dict[str, FuncInfo], name_to_quals: Dict[str, List
             all_funcs,
         )
         _add_function_reference_edges(edges, qual, references, local_targets, name_to_quals)
-        _add_imported_module_attr_edges(edges, qual, module_attr, imports, all_funcs)
-        _add_attr_edges(edges, qual, info, attr, _method_names(file_funcs, info), name_to_quals)
+        resolved_module_attr = _add_imported_module_attr_edges(edges, qual, module_attr, imports, all_funcs)
+        _add_attr_edges(
+            edges,
+            qual,
+            info,
+            attr - resolved_module_attr,
+            _method_names(file_funcs, info),
+            name_to_quals,
+        )
     return edges, dynamic_unresolved, dataflow_nodes
 
 

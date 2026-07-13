@@ -107,6 +107,19 @@ def test_imported_module_attribute_remains_confident_direct_syntax() -> None:
     })
 
     assert _confident_targets(edges, "main.py::run")["helpers.py::actual"] == "module_import_attr"
+    resolved_rows = [
+        edge
+        for edge in edges
+        if edge["from"] == "main.py::run" and edge["to"] == "helpers.py::actual"
+    ]
+    assert resolved_rows == [
+        {
+            "from": "main.py::run",
+            "to": "helpers.py::actual",
+            "kind": "module_import_attr",
+            "ambiguous": False,
+        }
+    ]
 
 
 def test_nested_callable_has_own_node_and_calls_are_not_charged_to_outer() -> None:

@@ -8,7 +8,11 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ROOT_INIT = _REPO_ROOT / "core" / "algorithms" / "__init__.py"
@@ -273,6 +277,110 @@ def test_old_algo_stats_deepcopy_patch_still_controls_snapshot(monkeypatch) -> N
 
     assert stats_module.snapshot_algo_stats(target) == {"patched": True}
     assert calls == [target]
+
+
+class _LegacyDispatchCandidate:
+    calendar = None
+    logger = None
+
+    def __init__(self) -> None:
+        self.internal_calls = 0
+
+    def _schedule_external(self, *args, **kwargs):
+        raise AssertionError("本测试不应调度外协工序")
+
+    def _schedule_internal(self, *args, **kwargs):
+        self.internal_calls += 1
+        return None, False
+
+    def _auto_assign_internal_resources(self, *args, **kwargs):
+        return None
+
+
+def test_legacy_dispatch_context_keeps_strict_hours_fail_loud() -> None:
+    from core.algorithms.greedy.dispatch.batch_order import dispatch_batch_order
+    from core.errors import ValidationError
+
+    candidate = _LegacyDispatchCandidate()
+    op = SimpleNamespace(
+        id=1,
+        op_id=1,
+        op_code="OP-1",
+        batch_id="B1",
+        source="internal",
+        setup_hours="not-a-number",
+        unit_hours=1,
+    )
+    batch = SimpleNamespace(batch_id="B1", quantity=1, priority="normal")
+
+    with pytest.raises(ValidationError, match="换型时间") as exc_info:
+        dispatch_batch_order(
+            candidate,
+            sorted_ops=[op],
+            batches={"B1": batch},
+            base_time=datetime(2026, 1, 1),
+            end_dt_exclusive=None,
+            machine_downtimes=None,
+            auto_assign_enabled=False,
+            resource_pool=None,
+            strict_mode=True,
+        )
+
+    assert exc_info.value.field == "setup_hours"
+    assert candidate.internal_calls == 0
+
+
+def test_incomplete_legacy_dispatch_context_fails_loud_when_capability_is_used() -> None:
+    from core.algorithm_runtime.dispatch_context import DispatchContextContractError
+    from core.algorithms.greedy.dispatch.batch_order import dispatch_batch_order
+
+    candidate = SimpleNamespace(
+        _schedule_internal=lambda *args, **kwargs: (None, False),
+        _auto_assign_internal_resources=lambda *args, **kwargs: None,
+    )
+    op = SimpleNamespace(id=1, op_code="EXT-1", batch_id="B1", source="external")
+    batch = SimpleNamespace(batch_id="B1", quantity=1, priority="normal")
+
+    with pytest.raises(DispatchContextContractError, match="_schedule_external"):
+        dispatch_batch_order(
+            candidate,
+            sorted_ops=[op],
+            batches={"B1": batch},
+            base_time=datetime(2026, 1, 1),
+            end_dt_exclusive=None,
+            machine_downtimes=None,
+            auto_assign_enabled=False,
+            resource_pool=None,
+        )
+
+
+def test_incomplete_legacy_dispatch_context_also_fails_loud_in_sgs() -> None:
+    from core.algorithm_contracts.dispatch_rules import DispatchRule
+    from core.algorithm_runtime.dispatch_context import DispatchContextContractError
+    from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
+
+    calendar = SimpleNamespace(add_calendar_days=lambda start, days: start + timedelta(days=days))
+    candidate = SimpleNamespace(
+        calendar=calendar,
+        _schedule_internal=lambda *args, **kwargs: (None, False),
+        _auto_assign_internal_resources=lambda *args, **kwargs: None,
+    )
+    op = SimpleNamespace(id=1, seq=1, op_code="EXT-1", batch_id="B1", source="external", ext_days=1)
+    batch = SimpleNamespace(batch_id="B1", quantity=1, priority="normal", due_date=None)
+
+    with pytest.raises(DispatchContextContractError, match="_schedule_external"):
+        dispatch_sgs(
+            candidate,
+            sorted_ops=[op],
+            batches={"B1": batch},
+            batch_order={"B1": 0},
+            dispatch_rule=DispatchRule.CR,
+            base_time=datetime(2026, 1, 1),
+            end_dt_exclusive=None,
+            machine_downtimes=None,
+            auto_assign_enabled=False,
+            resource_pool=None,
+        )
 
 
 def test_a3_is_removed_without_changing_other_directory_cycles() -> None:
