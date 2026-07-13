@@ -178,7 +178,7 @@ core/services/scheduler/
 - **当前方向**：`core.algorithms → core.algorithms.greedy → core.algorithms.greedy.dispatch` 保留 façade/执行主链；纯合同归 `core.algorithm_contracts`，共享运行时归 `core.algorithm_runtime`，后者只单向依赖前者。两个 leaf 的 `__init__.py` 都不聚合导出，也不反向依赖 algorithms/services。
 - **兼容边界**：根 `GreedyScheduler` identity、签名、`__module__` 和根 `__all__` 不变，`core/algorithms/__init__.py` 字节不变；旧日期/排序/类型/runtime 路径显式同对象 re-export。dispatch 和旧 `greedy.algo_stats` 继续保留真实执行模块 globals，既有 monkeypatch 路径仍有效。
 - **静态终态（2026-07-13）**：生产 779 模块 / 3 hard 目录 SCC，含测试 1475 模块 / 4 SCC；A3 消失，A4/A5/A6/tests 记录不变，unresolved 仍为 6/44。A3 相关父包感知文件圈从 21/94 严格缩为 8/24；hard/runtime 文件 SCC 总数仍为 9/13，纯显式口径仍为 0/4。
-- **证明边界**：调用图两个独立候选逐文件确定；7329 个旧 callable 全映射，新增仅 8 个 context adapter callable。当前仍是未提交工作区机械证据；dirty-worktree 19/19 命令已通过但 manifest 明确为 `passed_but_unbound`，commit 与 clean-HEAD 完整门禁需单独授权，不能提前写成 clean proof。
+- **证明边界**：调用图两个独立候选逐文件确定；7329 个旧 callable 全映射，新增仅 8 个 context adapter callable。实现已提交为 `f422b88c`，并在该固定 HEAD 的干净工作区前后完成无缓存、无续跑 19/19 步门禁；4731 collected、unexpected failure 0，manifest=`passed`。该 clean proof 只绑定此实现提交。
 
 ### 8.3 分包标准不统一,79 文件平铺根目录
 - 已按"计算流程"切出 run/summary/graph/config,但 resource / schedule / gantt 等多组**业务族**仍平铺根目录,每族体量都不小。一半按流程分包、一半按业务族平铺,目录可读性与心智负担偏高。

@@ -21,7 +21,7 @@ tags: [architecture, module-health, dependency-direction, responsibility, audit]
 - 父包 `__init__.py` 初始化链仍形成 9 个 hard 文件加载 SCC；migration 圈保持 5/11，A3 相关 algorithms 圈已从 21/94 严格缩为 8/24。父包感知/纯显式 runtime 文件 SCC 为 13/4。
 - 正式质量门禁继续包含生产与含测试两条独立 v2 基线。A3 终态为 production 779 模块 / 3 SCC、with-tests 1475 模块 / 4 SCC，unresolved 仍为 6/44；A4/A5/A6/tests 记录不变。
 - 当前调用图为 7337 callable / 25798 edges / 10171 confident / 15627 ambiguous / typed 0；7329 个旧 callable 全映射，新增仅 8 个 context adapter callable，旧边差异全部落入批准白名单。
-- A4-A6 与 tests 辅助代码圈仍待治理。A2 clean closure 继续绑定 `d6d41e1a`；A3 当前已有 19/19 dirty-worktree 门禁在内的未提交工作区机械证据（manifest=`passed_but_unbound`），commit/clean-HEAD proof 尚未授权。
+- A4-A6 与 tests 辅助代码圈仍待治理。A2 clean closure 继续绑定 `d6d41e1a`；A3 实现提交 `f422b88c` 已完成前后工作区均干净的 19/19 clean-HEAD 门禁（4731 collected、manifest=`passed`）；A3 clean closure 已成立。
 
 > 性质:**发现清单**,不代表已治理。治理(改代码)归 roadmap / refactor。
 > 配套:循环依赖细节见 [[2026-06-28-circular-imports]];scheduler 模块见 [[service-scheduler]]。本报告补各模块"职责划分 / 依赖方向 / 结构债"的全景视角,并给出 A2–A6 环的**模块视角根因**。

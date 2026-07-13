@@ -101,4 +101,4 @@ items:
     status: in-progress
     feature: null
     minimal_loop: false
-    notes: A3 refactor 2026-07-12-algorithms-a3-dependency-decoupling 已完成 apply 机械证据，commit/clean-HEAD proof 待单独授权；A4/A5/A6/tests 未启动，仍须每批独立核查、实现、验证
+    notes: A3 refactor 2026-07-12-algorithms-a3-dependency-decoupling 已完成，实现提交 f422b88c 的 clean-HEAD 19/19 proof 通过；A4/A5/A6/tests 未启动，仍须每批独立核查、实现、验证

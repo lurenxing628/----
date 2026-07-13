@@ -22,7 +22,7 @@ tags: [architecture, circular-dependency, import-cycle, audit]
 - **动态加载盲区**：import-cycle production / with-tests unresolved 仍为 6 / 44，逐记录与 A3 起点相同。
 - **基线**：A3 双基线只删除 3 成员 / 42 边目录块，并用 8/24 严格子集替换旧 algorithms 文件 SCC；其余目录/文件圈与 unresolved 不变。刷新后双正式命令通过，A1/A2/A3 回潮都会被阻断。
 - **调用图**：7337 callable、25798 输出边、10171 确信边、15627 模糊边、typed 0、8 条受限简单循环、island 193、dynamic unresolved 685。A/B 十份 JSON 逐文件 SHA 相同；7329 个旧 callable 全映射，新增仅 8 个 dispatch context adapter callable；6 条旧边差异和 14 个 adapter 新端点均已解释，无旧 callable/调用端点无故丢失。
-- **证明边界**：A1/A2 的既有 clean proof 继续只绑定 `c2243cd0` / `d6d41e1a`。A3 当前完成未提交工作区的专项、完整算法、双 scope、调用图与 19/19 dirty-worktree 门禁（4731 collected、manifest=`passed_but_unbound`），`clean_worktree_proof=false`；提交与 clean-HEAD 19 步门禁仍需另行授权，历史决定考古仍为 pending。
+- **证明边界**：A1/A2 的既有 clean proof 继续只绑定 `c2243cd0` / `d6d41e1a`。A3 实现提交 `f422b88c` 已在前后工作区均干净的固定 HEAD 上完成无缓存、无续跑 19/19 门禁（4731 collected、unexpected failure 0、manifest=`passed`），`clean_worktree_proof=true`；该证明只绑定此实现提交，历史决定考古仍为 pending。
 
 ## 2026-07-11 前一终态事实（历史）
 

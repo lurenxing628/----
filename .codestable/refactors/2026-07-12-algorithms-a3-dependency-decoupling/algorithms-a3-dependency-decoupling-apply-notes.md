@@ -1,7 +1,7 @@
 ---
 doc_type: refactor-apply-notes
 refactor: 2026-07-12-algorithms-a3-dependency-decoupling
-status: apply-completed-commit-proof-pending
+status: completed
 base_head: 582a588c8adda314584052b870ace00628a722c7
 ---
 
@@ -89,5 +89,7 @@ base_head: 582a588c8adda314584052b870ace00628a722c7
 - 完整门禁：执行 `scripts/run_quality_gate.py --allow-dirty-worktree --no-long-gate-cache --no-resume`；19 份 receipt 的 `returncode` 全为 0，4731 collected、collection error 0、unexpected failure 0、required 253 targets / 2467 nodeids。manifest=`passed_but_unbound`、`is_dirty_before=true`、`is_dirty_after=true`、`tracked_drift_detected=false`。
 - 进程退出说明：wrapper 退出码为 2，且明确提示 dirty proof 未绑定；这是 `--allow-dirty-worktree` 防止被冒充 clean proof 的预期策略，不是 19 个子步骤失败。当前只声明 dirty-worktree diagnostic 完成。
 - 行为等价自检：最终代码、专项、全算法、完整质量门禁、双 scope 和调用图证据全部闭合；唯一源码验证修正是动态属性类型标注和私有注解的 Python 3.8 兼容写法，不改变运行逻辑。
-- 授权边界：尚未执行 `git commit`，未运行 `--require-clean-worktree`，未 push/PR。下一步必须先取得单独 commit 授权；提交后才能在固定最终 HEAD 上补 clean proof。
-- 偏离：原 checklist 的 Python 3.8 检查暴露一条起点存量注解；按项目硬约束在已触碰文件内最小修正，并在源码变化后完整重封调用图/循环证据。无其它偏离。
+- 用户授权与实现提交：用户随后明确选择“授权提交并跑 clean proof”；创建单个本地实现提交 `f422b88cab39093b56fdade06ace3be96d6c6652`（message：`refactor: decouple algorithms a3 dependencies`，73 files，2911 insertions / 1763 deletions）。commit hooks 的 Ruff、运行时产物阻断和 commit message 检查均通过；未 push、未建 PR。
+- clean proof：提交后先确认工作区为空，再在固定 `f422b88c` 上执行 `scripts/run_quality_gate.py --require-clean-worktree --no-long-gate-cache --no-resume`。19/19 步全部执行且退出 0；4731 collected、collection error 0、unexpected failure 0、required 253 targets / 2467 nodeids；正式 Python 3.8 扫描 1220 文件、findings 0。manifest=`passed`、`proof_head=f422b88c...`、`is_dirty_before=false`、`is_dirty_after=false`、`tracked_drift_detected=false`，进程退出码 0，门禁后 `git status` 仍为空。
+- 收尾边界：本段及 baseline/checkup/audit/roadmap 的 clean-proof 回写属于证明后的 docs-only 变更，尚未获得第二个提交授权；未 push、未创建 PR。
+- 偏离：原 checklist 的 Python 3.8 检查暴露一条起点存量注解；按项目硬约束在已触碰文件内最小修正，并在源码变化后完整重封调用图/循环证据。提交前第一次 `git diff --cached --check` 还发现两个新合同文件尾部多空行，删除后再提交；两项均不改变运行行为。无其它偏离。

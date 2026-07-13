@@ -220,6 +220,10 @@ steps:
     precommit_collected_test_count: 4731
     precommit_required_target_count: 253
     precommit_required_nodeid_count: 2467
-    clean_head_result: pending_separate_commit_authorization
-    proof_head: null
+    clean_head_result: passed
+    proof_head: f422b88cab39093b56fdade06ace3be96d6c6652
+    proof_manifest_status: passed
+    proof_collected_test_count: 4731
+    proof_required_target_count: 253
+    proof_required_nodeid_count: 2467
     exit_signal: All local checks pass; after separate commit authorization, the fixed final HEAD passes the uncached non-resumed 19-step gate with a clean worktree before and after.

@@ -8,7 +8,7 @@
 
 机器可读总入口：[`baseline.json`](baseline.json)。
 
-## 2026-07-13 algorithms A3 终态机械证据（commit / clean HEAD 证明待完成）
+## 2026-07-13 algorithms A3 终态机械证据与 clean HEAD 证明
 
 A3 从固定 HEAD `582a588c8adda314584052b870ace00628a722c7` 启动，把纯日期/排序/派工/类型合同归到 `core.algorithm_contracts`，把 greedy/dispatch 共享状态与 helper 归到 `core.algorithm_runtime`。旧路径继续显式同对象转出，`core.algorithms.GreedyScheduler` 和 `core/algorithms/__init__.py` 字节保持不变，dispatch 仍是 canonical 执行模块。
 
@@ -20,9 +20,9 @@ A3 从固定 HEAD `582a588c8adda314584052b870ace00628a722c7` 启动，把纯日�
 | algorithms 文件加载圈 | A3 相关父包感知文件 SCC 从 21 成员 / 94 边严格缩为 8 成员 / 24 边 | 新成员/边都是旧记录严格子集；两个新 sibling leaves 不进入任何 hard 目录 SCC |
 | 双 v2 基线 | production 518→384 行，with-tests 578→444 行，各减少 134 行 | 仅删除 A3 目录块并用 8/24 严格子集替换旧 algorithms 文件 SCC；unresolved 与其它记录不变；刷新后双正式命令通过 |
 | dead-code quick | 只迁移 `WeightedStrategy.__init__` 与 `ScheduleSummary.__post_init__` 两个基线路径 | 仍有 32 个 A2 起点已记录的既有新增候选；其中没有 A3 路径，未全量 refresh |
-| 当前验证 | 最终组合 643 passed；Ruff、Pyright gate/tools、A3 起点增量 Python 3.8、双 scope 门禁均通过；dirty-worktree 完整门禁 19/19 命令通过、4731 collected、unexpected failure 0、required 253 targets / 2467 nodeids | manifest=`passed_but_unbound`，门禁前后均 dirty 且 `tracked_drift_detected=false`；wrapper 退出码 2 是未绑定 proof 的强制策略，不是子步骤失败 |
+| 当前验证 | 最终组合 643 passed；Ruff、Pyright gate/tools、A3 起点增量 Python 3.8、双 scope 门禁均通过；clean HEAD 完整门禁 19/19、4731 collected、unexpected failure 0、required 253 targets / 2467 nodeids | 固定实现提交 `f422b88c`；manifest=`passed`，`is_dirty_before=false`、`is_dirty_after=false`、`tracked_drift_detected=false`；正式 Python 3.8 扫描 1220 文件、findings 0 |
 
-`baseline.json.worktree_tooling_refresh.clean_worktree_proof=false`。当前机械证据来自未提交工作区；19 个命令 receipt 均为 0，但 dirty manifest 明确不声明 clean proof。只有用户另行授权提交后，在固定最终 HEAD 前后工作区均干净地执行无缓存、无续跑 19 步门禁，才能把本节升级为 clean-HEAD 证明。历史决定考古仍为 pending。
+`baseline.json.worktree_tooling_refresh.clean_worktree_proof=true`，准确绑定实现提交 `f422b88cab39093b56fdade06ace3be96d6c6652`。提交前 dirty gate 的 `passed_but_unbound` 只作诊断，clean proof 以提交后的 manifest 为准。历史决定考古仍为 pending。
 
 ## 2026-07-12 foundation A2 终态机械证据与 clean HEAD 证明
 
