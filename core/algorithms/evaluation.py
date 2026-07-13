@@ -6,9 +6,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithms.greedy.date_parsers import due_exclusive, parse_date
+from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
+from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
 from core.algorithms.objective_specs import objective_metric_keys
-from core.algorithms.priority_constants import PRIORITY_WEIGHT, normalize_priority
 from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import INTERNAL
 

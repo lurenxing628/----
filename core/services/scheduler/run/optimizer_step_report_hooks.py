@@ -3,8 +3,8 @@ from __future__ import annotations
 import traceback
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
+from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithms import SortStrategy
-from core.algorithms.greedy.algo_stats import increment_counter
 
 from .optimizer_attempt_records import append_rejected_reason_attempt, candidate_tag
 

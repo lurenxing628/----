@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Set, Tuple
 
-from core.algorithms.greedy.internal_slot import validate_internal_hours
+from core.algorithm_runtime.internal_slot import validate_internal_hours
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.models import BatchOperation
 from core.models.enums import SourceType

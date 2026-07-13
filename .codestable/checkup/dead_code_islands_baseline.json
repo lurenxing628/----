@@ -4,8 +4,8 @@
  "mode": "quick",
  "count": 82,
  "islands": [
-  "core/algorithms/sort_strategies.py::WeightedStrategy.__init__",
-  "core/algorithms/types.py::ScheduleSummary.__post_init__",
+  "core/algorithm_contracts/sort_strategies.py::WeightedStrategy.__init__",
+  "core/algorithm_contracts/types.py::ScheduleSummary.__post_init__",
   "core/errors.py::AppError.__post_init__",
   "core/errors.py::AppError.__str__",
   "core/errors.py::AppError.to_dict",

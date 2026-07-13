@@ -1,0 +1,225 @@
+doc_type: refactor-checklist
+refactor: 2026-07-12-algorithms-a3-dependency-decoupling
+status: approved
+source_plan: .codestable/refactors/2026-07-12-algorithms-a3-dependency-decoupling/algorithms-a3-dependency-decoupling-refactor-design.md
+scope: algorithms A3 static dependency decoupling with root GreedyScheduler and old import compatibility preserved
+excluded_scope:
+  - retirement, lazy loading or dynamic replacement of core.algorithms.GreedyScheduler
+  - algorithm behavior, ordering, date semantics, resource selection, slot estimation, graph mode or statistics changes
+  - core.services.scheduler.graph.ready_queue relocation
+  - A4, A5, A6 and tests directory SCC remediation
+  - algorithm pluginization, new solvers, database, configuration or UI changes
+  - git commit, push, PR creation and clean-HEAD proof without separate authorization
+guardrails:
+  - core/algorithms/__init__.py remains byte-identical and GreedyScheduler keeps its identity, signatures and __module__
+  - core.algorithm_contracts and core.algorithm_runtime never import core.algorithms or core.services and their __init__.py files do not aggregate exports
+  - old paths remain available through explicit same-object re-exports; no import star, function-local import, TYPE_CHECKING, dynamic __getattr__ or swallowed error hides a cycle
+  - dispatch modules remain canonical execution modules and existing monkeypatch targets must still affect real execution
+  - greedy.algo_stats keeps snapshot_algo_stats, merge_algo_stats and deepcopy in the old module while sharing only the approved counter helpers
+  - production function callers use canonical leaves where required for callgraph visibility
+  - each step is validated before the next starts; unexplained SCC, callable, edge or unresolved drift returns the work to design
+  - this checklist approval does not authorize apply, production changes, formal evidence refresh or git history changes
+steps:
+  - id: step-01-characterization-boundary
+    title: Lock A3 public identities, import orders, module state and dependency boundaries
+    status: done
+    type: characterization_test
+    touch_files:
+      - tests/algorithm/test_algorithms_a3_dependency_boundary.py
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/algorithm/test_algorithms_a3_dependency_boundary.py
+    exit_signal: Existing root API and module-state contracts pass; only assertions requiring not-yet-created leaves or A3 removal fail for the expected reason.
+
+  - id: step-02-pure-contract-leaf
+    title: Move pure algorithm contracts to core.algorithm_contracts
+    status: done
+    type: parallel_move
+    touch_files:
+      - core/algorithm_contracts/__init__.py
+      - core/algorithm_contracts/date_parsers.py
+      - core/algorithm_contracts/dispatch_rules.py
+      - core/algorithm_contracts/ordering.py
+      - core/algorithm_contracts/priority_constants.py
+      - core/algorithm_contracts/sort_strategies.py
+      - core/algorithm_contracts/types.py
+      - core/algorithm_contracts/value_domains.py
+      - core/algorithms/dispatch_rules.py
+      - core/algorithms/evaluation.py
+      - core/algorithms/ordering.py
+      - core/algorithms/ortools_bottleneck.py
+      - core/algorithms/priority_constants.py
+      - core/algorithms/sort_strategies.py
+      - core/algorithms/types.py
+      - core/algorithms/value_domains.py
+      - core/algorithms/greedy/__init__.py
+      - core/algorithms/greedy/date_parsers.py
+      - core/algorithms/greedy/dispatch/batch_order.py
+      - core/algorithms/greedy/dispatch/sgs.py
+      - core/algorithms/greedy/dispatch/sgs_scoring.py
+      - core/algorithms/greedy/external_groups.py
+      - core/algorithms/greedy/internal_operation.py
+      - core/algorithms/greedy/run_state.py
+      - core/algorithms/greedy/schedule_params.py
+      - core/algorithms/greedy/scheduler.py
+      - core/algorithms/greedy/seed.py
+      - core/services/scheduler/run/optimizer_graph_ready_v2_features.py
+      - core/services/scheduler/run/optimizer_neighborhood_move_support.py
+      - core/services/scheduler/run/schedule_optimizer.py
+    checks:
+      - >-
+        PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider
+        tests/algorithm/test_algorithm_date_boundary_split.py
+        tests/algorithm/test_greedy_date_parsers.py
+        tests/algorithm/test_due_exclusive_consistency.py
+        tests/algorithm/test_due_exclusive_guard_contract.py
+        tests/algorithm/test_greedy_ordering_contract.py
+        tests/algorithm/test_sort_strategies_priority_case_insensitive.py
+        tests/algorithm/test_priority_weight_case_insensitive.py
+        tests/algorithm/test_greedy_refactor_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/algorithm_contracts core/algorithms
+    exit_signal: Old and canonical contract objects are identical, root exports remain unchanged, production function callers are visible to the callgraph and no new SCC appears.
+
+  - id: step-03-runtime-leaf
+    title: Move shared algorithm runtime state and helpers to core.algorithm_runtime
+    status: done
+    type: parallel_move
+    touch_files:
+      - core/algorithm_runtime/__init__.py
+      - core/algorithm_runtime/algo_stats.py
+      - core/algorithm_runtime/auto_assign_contract.py
+      - core/algorithm_runtime/downtime.py
+      - core/algorithm_runtime/internal_slot.py
+      - core/algorithm_runtime/run_state.py
+      - core/algorithm_runtime/runtime_state.py
+      - core/algorithms/greedy/algo_stats.py
+      - core/algorithms/greedy/auto_assign.py
+      - core/algorithms/greedy/dispatch/resource_validation.py
+      - core/algorithms/greedy/dispatch/runtime_state.py
+      - core/algorithms/greedy/downtime.py
+      - core/algorithms/greedy/external_groups.py
+      - core/algorithms/greedy/internal_operation.py
+      - core/algorithms/greedy/internal_slot.py
+      - core/algorithms/greedy/run_context.py
+      - core/algorithms/greedy/run_state.py
+      - core/algorithms/greedy/schedule_params.py
+      - core/algorithms/greedy/scheduler.py
+      - core/algorithms/greedy/seed.py
+      - core/services/scheduler/run/optimizer_config.py
+      - core/services/scheduler/run/optimizer_step_report_hooks.py
+      - core/services/scheduler/run/schedule_input_runtime_support.py
+      - core/services/scheduler/run/schedule_seed_contracts.py
+    checks:
+      - >-
+        PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider
+        tests/algorithm/test_greedy_algo_stats_contract.py
+        tests/algorithm/test_greedy_run_state_contract.py
+        tests/algorithm/test_internal_slot_estimator_consistency.py
+        tests/algorithm/test_dispatch_blocking_consistency.py
+        tests/algorithm/test_auto_assign_empty_resource_pool.py
+        tests/algorithm/test_auto_assign_fixed_operator_respects_op_type.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/algorithm_runtime core/algorithms/greedy core/services/scheduler/run
+    exit_signal: Runtime identities and behavior remain compatible, the old algo_stats deepcopy patch still controls real execution, new leaves have no algorithms/services reverse import and no unexplained callgraph loss appears.
+
+  - id: step-04-dispatch-context-boundary
+    title: Switch dispatch to the minimal runtime context without changing canonical module state
+    status: done
+    type: layer_rectification
+    touch_files:
+      - core/algorithm_runtime/dispatch_context.py
+      - core/algorithms/greedy/dispatch/batch_order.py
+      - core/algorithms/greedy/dispatch/resource_validation.py
+      - core/algorithms/greedy/dispatch/sgs.py
+      - core/algorithms/greedy/dispatch/sgs_scoring.py
+      - core/algorithms/greedy/run_context.py
+      - core/algorithms/greedy/scheduler.py
+    checks:
+      - >-
+        PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider
+        tests/algorithm/test_algorithm_date_boundary_split.py
+        tests/algorithm/test_greedy_date_parsers.py
+        tests/algorithm/test_due_exclusive_consistency.py
+        tests/algorithm/test_due_exclusive_guard_contract.py
+        tests/algorithm/test_greedy_ordering_contract.py
+        tests/algorithm/test_sort_strategies_priority_case_insensitive.py
+        tests/algorithm/test_priority_weight_case_insensitive.py
+        tests/algorithm/test_greedy_refactor_contract.py
+        tests/algorithm/test_greedy_run_state_contract.py
+        tests/algorithm/test_internal_slot_estimator_consistency.py
+        tests/algorithm/test_dispatch_blocking_consistency.py
+        tests/algorithm/test_sgs_internal_scoring_matches_execution.py
+        tests/algorithm/test_sgs_scoring_fallback_unscorable.py
+        tests/algorithm/test_sgs_total_hours_cache.py
+        tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py
+    exit_signal: All known patch targets still affect real dispatch execution, A3 is absent from both scopes, other SCCs are unchanged and only the approved context adapter edges replace the two old ensure_run_context edges.
+
+  - id: step-05-compatibility-callgraph-closure
+    title: Prove full compatibility, dual-scope identity and mapped callgraph closure
+    status: done
+    type: evidence_validation
+    checks:
+      - >-
+        PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider
+        tests/algorithm/test_algorithms_a3_dependency_boundary.py
+        tests/algorithm
+        tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m tools.scan_import_cycles --json > /tmp/a3-apply-production.json
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m tools.scan_import_cycles --json --include-tests > /tmp/a3-apply-with-tests.json
+      - CHECKUP_CALLGRAPH=/tmp/a3-callgraph-run-1 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/checkup/scripts/callgraph_extract.py
+      - CHECKUP_CALLGRAPH=/tmp/a3-callgraph-run-2 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/checkup/scripts/callgraph_extract.py
+    exit_signal: Dual scopes remove only A3; the two callgraph runs are byte-identical; all 7329 old callables map, the six approved old-edge differences and fourteen adapter endpoints are fully explained, and no other drift remains.
+
+  - id: step-06-formal-evidence-closure
+    title: Shrink formal baselines and refresh deterministic dependency facts
+    status: done
+    type: evidence_refresh
+    touch_files:
+      - .codestable/checkup/import_cycles_production_baseline.json
+      - .codestable/checkup/import_cycles_with_tests_baseline.json
+      - .codestable/checkup/latest/callgraph/
+      - .codestable/checkup/dead_code_islands_baseline.json
+      - .codestable/checkup/baseline.json
+      - .codestable/checkup/README.md
+      - .codestable/architecture/ARCHITECTURE.md
+      - .codestable/architecture/service-scheduler.md
+      - .codestable/audits/2026-06-28-circular-imports/index.md
+      - .codestable/audits/2026-06-29-module-architecture-health/index.md
+      - .codestable/roadmap/dependency-cycle-governance/dependency-cycle-governance-roadmap.md
+      - .codestable/roadmap/dependency-cycle-governance/dependency-cycle-governance-items.yaml
+      - .codestable/refactors/2026-07-12-algorithms-a3-dependency-decoupling/algorithms-a3-dependency-decoupling-apply-notes.md
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-when-clean
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_dead_code_islands.py --mode quick
+      - python3 .codestable/tools/validate-yaml.py --file .codestable/roadmap/dependency-cycle-governance/dependency-cycle-governance-items.yaml --yaml-only
+      - git diff --check
+    exit_signal: Formal dual baselines remove only A3 and shrink its parent-aware file SCC to 8 members and 24 edges; callgraph, dead-code identities, artifact hashes, architecture, audits, roadmap and apply notes all match the final source.
+
+  - id: step-07-final-proof
+    title: Run targeted, static, full and separately authorized clean-HEAD proof
+    status: done
+    type: final_proof
+    checks:
+      - >-
+        PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider
+        tests/algorithm/test_algorithms_a3_dependency_boundary.py
+        tests/algorithm
+        tests/scheduler_graph/test_ready_queue.py
+        tests/scheduler_graph/test_graph_performance.py
+        tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py
+        tests/calendar_maintenance/test_downtime_timeline_ordered_insert.py
+        tests/calendar_maintenance/test_operator_calendar_override_allows_work_on_global_holiday.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core tests/algorithm/test_algorithms_a3_dependency_boundary.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.tools.json
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref 582a588c8adda314584052b870ace00628a722c7
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --allow-dirty-worktree --no-long-gate-cache --no-resume
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --no-long-gate-cache --no-resume
+    precommit_result: passed_but_unbound
+    precommit_process_exit_code: 2
+    precommit_receipt_count: 19
+    precommit_collected_test_count: 4731
+    precommit_required_target_count: 253
+    precommit_required_nodeid_count: 2467
+    clean_head_result: pending_separate_commit_authorization
+    proof_head: null
+    exit_signal: All local checks pass; after separate commit authorization, the fixed final HEAD passes the uncached non-resumed 19-step gate with a clean worktree before and after.

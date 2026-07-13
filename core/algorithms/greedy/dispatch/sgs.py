@@ -3,15 +3,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithms.dispatch_rules import DispatchRule, build_dispatch_key
-from core.algorithms.types import ScheduleResult
-from core.algorithms.value_domains import EXTERNAL, INTERNAL
+from core.algorithm_contracts.dispatch_rules import DispatchRule, build_dispatch_key
+from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
+from core.algorithm_runtime.dispatch_context import ensure_dispatch_context
+from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours_for_mode
+from core.algorithm_runtime.run_state import ScheduleRunState
 from core.infrastructure.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
 
-from ..internal_slot import estimate_internal_slot, validate_internal_hours_for_mode
-from ..run_context import ensure_run_context
-from ..run_state import ScheduleRunState
 from .batch_order import _coerce_state, _schedule_op
 from .sgs_graph import (
     _batch_failed_op_ids,
@@ -77,7 +77,7 @@ def dispatch_sgs(
     failed_count: int = 0,
     strict_mode: bool = False,
 ) -> Tuple[int, int]:
-    ctx = ensure_run_context(context)
+    ctx = ensure_dispatch_context(context)
     run_state = _coerce_state(
         state=state,
         base_time=base_time,

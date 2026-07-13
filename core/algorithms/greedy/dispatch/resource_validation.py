@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
-from core.models.scheduler_public_errors import public_safe_identifier, public_safe_label
-
-from ..auto_assign import (
+from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
     AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
     AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID,
 )
+from core.models.scheduler_public_errors import public_safe_identifier, public_safe_label
 
 RESOURCE_REASON_FIXED = "fixed"
 RESOURCE_REASON_MANUAL_MISSING = "manual_missing"

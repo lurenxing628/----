@@ -1,0 +1,95 @@
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Optional, Tuple
+
+from .date_parsers import due_exclusive
+from .priority_constants import PRIORITY_RANK, PRIORITY_WEIGHT, normalize_priority
+
+
+class DispatchRule(Enum):
+    """
+    就绪集合（eligible set）派工规则（Serial SGS）。
+
+    约定：返回的 key 为“越小越好”（可直接用于 min()）。
+    """
+
+    SLACK = "slack"  # 余量（越小越紧急）
+    CR = "cr"  # critical ratio（越小越紧急）
+    ATC = "atc"  # apparent tardiness cost（越大越紧急；这里用 -ATC 变成越小越好）
+
+
+@dataclass(frozen=True)
+class DispatchInputs:
+    rule: DispatchRule
+    priority: str
+    due_date: Optional[Any]
+    est_start: Any
+    est_end: Any
+    proc_hours: float
+    avg_proc_hours: float
+    # tie-break
+    changeover_penalty: int  # 0=同族/不换型，1=换型（更差）
+    batch_order: int
+    batch_id: str
+    seq: int
+    op_id: int
+
+
+def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
+    """
+    生成可排序 key（越小越优先）。
+
+    说明：
+    - primary：由 rule 决定
+    - tie-break：优先避免换型 -> 更高优先级 -> 更早交期 -> 更早开始 -> 更稳定批次顺序
+    """
+    pr = normalize_priority(inp.priority, default="normal")
+    pr_rank = float(PRIORITY_RANK.get(pr, 99))
+    w = float(PRIORITY_WEIGHT.get(pr, 1.0))
+
+    due_dt_exclusive = due_exclusive(inp.due_date)
+    slack_h = (due_dt_exclusive - inp.est_end).total_seconds() / 3600.0
+    time_left_h = (due_dt_exclusive - inp.est_start).total_seconds() / 3600.0
+
+    # proc_hours <=0（或无法解析）时不能使用极小值兜底，否则 ATC 会出现极端值（错误地把不可估算候选排到最前）。
+    # 同时过滤非有限值（NaN/Inf），避免出现 -0.0 / inf 传播导致的错误优先级。
+    def _safe_positive(v: Any) -> float:
+        try:
+            fv = float(v)
+        except (TypeError, ValueError, OverflowError):
+            return 0.0
+        if (not math.isfinite(fv)) or fv <= 0:
+            return 0.0
+        return fv
+
+    p = _safe_positive(inp.proc_hours)
+    if not p or p <= 0:
+        # 回退到平均处理时间尺度（若也不可用，再回退到 1h）
+        p = _safe_positive(inp.avg_proc_hours) or 1.0
+
+    avg_p = _safe_positive(inp.avg_proc_hours) or p
+
+    if inp.rule == DispatchRule.CR:
+        cr = time_left_h / p
+        primary = float(cr)
+    elif inp.rule == DispatchRule.ATC:
+        # ATC 越大越优；这里用 -ATC 使其“越小越好”
+        k = 2.0
+        atc = (w / p) * math.exp((-max(slack_h, 0.0)) / (k * avg_p))
+        primary = float(-atc)
+    else:
+        # SLACK
+        primary = float(slack_h)
+
+    return (
+        primary,
+        float(inp.changeover_penalty),
+        pr_rank,
+        float(time_left_h),  # 越小越紧急
+        float(inp.batch_order),
+        float(inp.seq),
+        float(inp.op_id),
+    )

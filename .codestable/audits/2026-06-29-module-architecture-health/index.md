@@ -2,26 +2,26 @@
 doc_type: audit
 slug: module-architecture-health
 scope: scheduler 之外的全仓模块架构合理性体检——algorithms / 基础层(models+infrastructure+shared)/ 业务服务族 / common+plugins+data / web 三层;聚焦职责划分、依赖方向、结构债
-summary: 历史模块体检 + 2026-07-12 依赖事实校正；A2 已解除，基础层改为单向依赖，A3-A6 与 tests 圈仍待治理
+summary: 历史模块体检 + 2026-07-13 依赖事实校正；A2/A3 已解除，基础层和算法主链改为单向依赖，A4-A6 与 tests 圈仍待治理
 status: open
 created: 2026-06-29
-last_reviewed: 2026-07-12
-verified_by: 2026-06-29 五路历史体检 + 2026-07-10 首次工具复扫 + 2026-07-11 确定性证据重建 + 2026-07-12 A1/A2 主代理单线程治理
+last_reviewed: 2026-07-13
+verified_by: 2026-06-29 五路历史体检 + 2026-07-10 首次工具复扫 + 2026-07-11 确定性证据重建 + 2026-07-12 A1/A2 治理 + 2026-07-13 A3 双 scope/调用图核对
 tags: [architecture, module-health, dependency-direction, responsibility, audit]
 ---
 
-# 模块架构体检（scheduler 之外，含 2026-07-12 校正）
+# 模块架构体检（scheduler 之外，含 2026-07-13 校正）
 
-## 2026-07-12 当前依赖事实校正
+## 2026-07-13 当前依赖事实校正
 
 - 下方主体保留 2026-06-29 的历史人工判断；与本节冲突时，以本节和双 v2 基线为准。
-- A2 已通过两个最小归位点解除：零依赖错误合同在 `core.errors`，旧 infrastructure 路径只做同对象兼容转出；migration outcome/SQLite helper 在父层 `core.infrastructure.migration_common`，child 旧路径同样只兼容转出。当前基础方向为 `migrations → infrastructure → models → shared → core.errors`。
-- 事件数据合同保留在 infrastructure，v16/v18/v19 继续单向消费；历史迁移只改 common import，SQL、版本和阻断语义未改。
-- A4 当前生产目录 SCC 仍为 `. ⇄ web/bootstrap ⇄ web/routes ⇄ web/routes/domains/scheduler`。这是把顶层入口/config 与 bootstrap 纳入非测试 scope 后得到的目录商图结构；纯显式 hard 文件 SCC 仍为 0，不能把目录圈直接叫文件死循环。
-- 父包 `__init__.py` 初始化链仍形成 9 个 hard 文件加载 SCC，但 migration 圈已从 21 成员 / 45 边缩为 5 成员 / 11 边；它与“纯显式 import 文件 SCC=0”是不同口径。
-- 正式质量门禁包含生产与含测试两条 `tools.scan_import_cycles --fail-on-new-cycle` 命令，使用独立 v2 基线并参与哈希、收据、重放和 long-gate。
-- A2 实现提交口径为生产 4 个、含测试 5 个 hard 目录 SCC；A1/A2 已消失，其他目录 SCC 与 unresolved 逐项未变。调用图仍为 7329 callable / 25786 edges / typed 0，按移动路径映射零增删。
-- A3-A6 与 tests 辅助代码圈仍未治理；A2 实现提交 `d6d41e1a` 已完成前后工作区均干净的无缓存、无续跑 19 步门禁，基础层 clean closure 已成立。
+- A2 已通过两个最小归位点解除：零依赖错误合同在 `core.errors`，migration outcome/SQLite helper 在 `core.infrastructure.migration_common`。当前基础方向为 `migrations → infrastructure → models → shared → core.errors`。
+- A3 已通过两个 sibling leaves 解除：纯日期/排序/派工/类型合同在 `core.algorithm_contracts`，共享统计/自动派工合同/时隙/run-state/dispatch context 在 `core.algorithm_runtime`；当前算法方向为 `algorithms → greedy → dispatch → runtime/contracts`，runtime 只单向依赖 contracts。旧路径保持同对象兼容，根 `GreedyScheduler` 与 dispatch/algo-stats 真实 patch 模块状态不变。
+- A4 当前生产目录 SCC 仍为 `. ⇄ web/bootstrap ⇄ web/routes ⇄ web/routes/domains/scheduler`；A5 plugins/common 与 A6 report/exporters 也仍在。纯显式 hard 文件 SCC 仍为 0，不能把目录圈直接叫文件死循环。
+- 父包 `__init__.py` 初始化链仍形成 9 个 hard 文件加载 SCC；migration 圈保持 5/11，A3 相关 algorithms 圈已从 21/94 严格缩为 8/24。父包感知/纯显式 runtime 文件 SCC 为 13/4。
+- 正式质量门禁继续包含生产与含测试两条独立 v2 基线。A3 终态为 production 779 模块 / 3 SCC、with-tests 1475 模块 / 4 SCC，unresolved 仍为 6/44；A4/A5/A6/tests 记录不变。
+- 当前调用图为 7337 callable / 25798 edges / 10171 confident / 15627 ambiguous / typed 0；7329 个旧 callable 全映射，新增仅 8 个 context adapter callable，旧边差异全部落入批准白名单。
+- A4-A6 与 tests 辅助代码圈仍待治理。A2 clean closure 继续绑定 `d6d41e1a`；A3 当前已有 19/19 dirty-worktree 门禁在内的未提交工作区机械证据（manifest=`passed_but_unbound`），commit/clean-HEAD proof 尚未授权。
 
 > 性质:**发现清单**,不代表已治理。治理(改代码)归 roadmap / refactor。
 > 配套:循环依赖细节见 [[2026-06-28-circular-imports]];scheduler 模块见 [[service-scheduler]]。本报告补各模块"职责划分 / 依赖方向 / 结构债"的全景视角,并给出 A2–A6 环的**模块视角根因**。
@@ -40,7 +40,7 @@ scheduler 之外的模块**分层底盘整体健康**——算法层是真"纯�
 
 | 维度 | 结论 | 证据 |
 |---|---|---|
-| 算法层纯计算 | ✅ 零 `core.services`/`data`/`web` 依赖、零 I/O、ortools 惰性 import、日历/配置靠**注入** | `core/algorithms/greedy/scheduler.py:64` 注入构造;`ortools_bottleneck.py:94` 函数内 import;全 31 文件无 service/data import |
+| 算法层纯计算 | ✅ `core.algorithms`、`core.algorithm_contracts`、`core.algorithm_runtime` 零 `core.services`/`data`/`web` 依赖、零 I/O；日历/配置靠**注入**，dispatch 经最小上下文合同调用 | `core/algorithms/greedy/scheduler.py` 注入构造；两个 sibling leaf AST 边界测试锁定禁止反向依赖 |
 | 基础层真叶子 | ✅ models/infrastructure/shared **不反依赖任何上层**(services/web/data/algorithms) | 反向依赖核查为空 |
 | data 收口 | ✅ web **业务路由 0 处**直连 data;repositories 之间零横向、对 service 零反向 | 全 web 仅 `web/bootstrap/plugins.py:13` 一处直连(装配期,见 §3.5) |
 | viewmodel 纪律 | ✅ `web/viewmodels` 对 `core.services`/`flask`/`data`/`routes` 的 import **零违规** | 仅 2 处注释提及,属纪律声明非依赖 |

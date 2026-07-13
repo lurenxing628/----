@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.algorithm_contracts.ordering import build_batch_sort_inputs, build_normalized_batches_map
 from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy, StrategyFactory
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
-from core.algorithms.ordering import build_batch_sort_inputs, build_normalized_batches_map
 from core.infrastructure.errors import ValidationError
 
 from .optimizer_candidate_phases import run_heuristic_candidate_phases

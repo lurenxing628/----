@@ -3,19 +3,18 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithms.ordering import normalize_text_id
-from core.algorithms.types import ScheduleResult
-from core.algorithms.value_domains import INTERNAL
-
-from .algo_stats import increment_counter
-from .auto_assign import (
+from core.algorithm_contracts.ordering import normalize_text_id
+from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.value_domains import INTERNAL
+from core.algorithm_runtime.algo_stats import increment_counter
+from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
     AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
     AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID,
     auto_assign_attempt_from_result,
 )
-from .downtime import occupy_resource
-from .internal_slot import estimate_internal_slot, raise_strict_internal_hours_validation
+from core.algorithm_runtime.downtime import occupy_resource
+from core.algorithm_runtime.internal_slot import estimate_internal_slot, raise_strict_internal_hours_validation
 
 
 def schedule_internal_operation(

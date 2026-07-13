@@ -1,28 +1,28 @@
 ---
 doc_type: audit
 slug: circular-imports
-scope: 历史普查 + 2026-07-12 当前生产非测试/含测试双 scope 终态复核
-summary: A1/A2 已解除，当前 4/5 个 hard 目录 SCC；纯显式 hard 文件 SCC 为 0，父包初始化感知 hard 文件 SCC 仍为 9 且 migration 圈已严格缩小
+scope: 历史普查 + 2026-07-13 当前生产非测试/含测试双 scope 终态复核
+summary: A1/A2/A3 已解除，当前 3/4 个 hard 目录 SCC；纯显式 hard 文件 SCC 为 0，父包初始化感知 hard 文件 SCC 仍为 9 且 algorithms A3 圈已严格缩小
 status: open
 created: 2026-06-28
-last_reviewed: 2026-07-12
-verified_by: 2026-06-28 Codex 历史审核 + 2026-07-10 首次工具复扫 + 2026-07-11 确定性重建 + 2026-07-12 A1/A2 双 scope 差异核对
+last_reviewed: 2026-07-13
+verified_by: 2026-06-28 Codex 历史审核 + 2026-07-10 首次工具复扫 + 2026-07-11 确定性重建 + 2026-07-12 A1/A2 差异核对 + 2026-07-13 A3 双 scope/调用图全映射
 tags: [architecture, circular-dependency, import-cycle, audit]
 ---
 
-# 循环依赖普查（历史报告 + 2026-07-12 当前口径校正）
+# 循环依赖普查（历史报告 + 2026-07-13 当前口径校正）
 
-## 2026-07-12 当前事实（覆盖下方冲突的历史数字）
+## 2026-07-13 当前事实（覆盖下方冲突的历史数字）
 
-> 下方 2026-07-11 与 2026-06-28 内容保留当时证据，不再代表当前结构。当前事实以本节、双 v2 基线和 A1/A2 refactor 为准。
+> 下方 2026-07-12、2026-07-11 与 2026-06-28 内容保留当时证据，不再代表当前结构。当前事实以本节、双 v2 基线和 A1/A2/A3 refactor 为准。
 
-- **scope**：生产扫描 763 模块，含测试 1458 模块，解析失败均为 0。
-- **目录商图**：生产为 4 个 hard 目录 SCC，含测试为 5 个。A1 `scheduler 根/config/run/summary` 与 A2 `infrastructure/migrations/models/shared` 均已解除；其余目录 SCC 成员和圈内规范化模块边逐项未变，tests 既有四目录 SCC 仍在。
-- **文件图双口径**：父包初始化感知 hard 文件 SCC 数仍为 9，纯显式 hard 文件 SCC 仍为 0；migration 父包加载圈从 21 成员 / 45 边严格缩为 5 成员 / 11 边。父包感知/纯显式 runtime 文件 SCC 仍为 13/4。
-- **动态加载盲区**：生产 unresolved 仍为 6，含测试仍为 44；与 A2 起点逐项相同。
-- **基线**：A2 候选双基线各删除 28 边目录块，并用 5 成员 / 11 边严格子集替换旧 migration 文件 SCC；其余记录不变。刷新前、刷新后双正式命令均通过；A1/A2 回潮都会被阻断。
-- **调用图**：7329 callable、25786 输出边、10166 确信边、15620 模糊边、typed 0、8 条受限简单循环、island 193。A/B 十份 JSON 逐文件 SHA 相同；13 个迁移 callable 按新路径映射后函数和调用边均零增删。
-- **证明边界**：A1 提交 `c2243cd0` 与 A2 提交 `d6d41e1a` 各自在前后工作区均干净时完成无缓存、无续跑 19 步门禁；A2 为 4724 collected、unexpected failure 0、required 253 targets / 2467 nodeids，`clean_worktree_proof=true`。两批证明只绑定各自提交，历史决定考古仍为 pending。
+- **scope**：生产扫描 779 模块，含测试 1475 模块，解析失败均为 0。
+- **目录商图**：生产为 3 个 hard 目录 SCC，含测试为 4 个。A1、A2 与 A3 `algorithms/greedy/dispatch` 均已解除；A4/A5/A6 和 tests 既有 SCC 的成员、圈内规范化模块边逐项未变。
+- **文件图双口径**：父包初始化感知 hard 文件 SCC 数仍为 9，纯显式 hard 文件 SCC 仍为 0；migration 圈保持 5 成员 / 11 边，A3 相关 algorithms 父包加载圈从 21 成员 / 94 边严格缩为 8 成员 / 24 边。父包感知/纯显式 runtime 文件 SCC 仍为 13/4。
+- **动态加载盲区**：import-cycle production / with-tests unresolved 仍为 6 / 44，逐记录与 A3 起点相同。
+- **基线**：A3 双基线只删除 3 成员 / 42 边目录块，并用 8/24 严格子集替换旧 algorithms 文件 SCC；其余目录/文件圈与 unresolved 不变。刷新后双正式命令通过，A1/A2/A3 回潮都会被阻断。
+- **调用图**：7337 callable、25798 输出边、10171 确信边、15627 模糊边、typed 0、8 条受限简单循环、island 193、dynamic unresolved 685。A/B 十份 JSON 逐文件 SHA 相同；7329 个旧 callable 全映射，新增仅 8 个 dispatch context adapter callable；6 条旧边差异和 14 个 adapter 新端点均已解释，无旧 callable/调用端点无故丢失。
+- **证明边界**：A1/A2 的既有 clean proof 继续只绑定 `c2243cd0` / `d6d41e1a`。A3 当前完成未提交工作区的专项、完整算法、双 scope、调用图与 19/19 dirty-worktree 门禁（4731 collected、manifest=`passed_but_unbound`），`clean_worktree_proof=false`；提交与 clean-HEAD 19 步门禁仍需另行授权，历史决定考古仍为 pending。
 
 ## 2026-07-11 前一终态事实（历史）
 

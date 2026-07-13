@@ -12,7 +12,7 @@ from __future__ import annotations
 - downtime.py：资源时间线/区间重叠等工具函数
 """
 
-from core.algorithms.types import ScheduleResult, ScheduleSummary
+from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 
 from .scheduler import GreedyScheduler
 

@@ -4,7 +4,7 @@ import math
 from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithms.greedy.date_parsers import parse_date
+from core.algorithm_contracts.date_parsers import parse_date
 from core.algorithms.value_domains import EXTERNAL, MERGED
 from core.infrastructure.errors import ValidationError
 

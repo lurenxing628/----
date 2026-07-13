@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithms.greedy.date_parsers import due_exclusive, parse_date
+from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 
 
 def batch_id(result: Any) -> str:

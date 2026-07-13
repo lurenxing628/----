@@ -3,10 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.algorithms.types import ScheduleResult
-from core.algorithms.value_domains import INTERNAL
-
-from .algo_stats import increment_counter
+from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.value_domains import INTERNAL
+from core.algorithm_runtime.algo_stats import increment_counter
 
 
 def normalize_seed_results(

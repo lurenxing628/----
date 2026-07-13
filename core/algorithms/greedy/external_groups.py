@@ -3,12 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithms.types import ScheduleResult
-from core.algorithms.value_domains import EXTERNAL, MERGED
+from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
+from core.algorithm_runtime.algo_stats import increment_counter
 from core.shared.degradation import DegradationCollector
 from core.shared.field_parse import parse_field_float
-
-from .algo_stats import increment_counter
 
 
 def schedule_external(

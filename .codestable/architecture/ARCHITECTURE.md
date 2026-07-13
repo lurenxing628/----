@@ -5,7 +5,7 @@ scope: 项目架构总入口，覆盖 APS 整体结构、核心模块索引、�
 summary: APS 在 Win7 x64、Python 3.8、离线交付约束下的系统地图入口
 status: current
 created: 2026-04-27
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-13
 tags: [aps, codestable, architecture, win7]
 depends_on: []
 implements: []
@@ -32,6 +32,7 @@ implements: []
 
 - `core/`：核心领域、算法、基础设施、服务与插件运行框架。
 - 基础层当前依赖方向为 `migrations → infrastructure → models → shared → core.errors`（允许跳层指向更低层）：零依赖应用错误合同在 `core/errors.py`，旧 `core/infrastructure/errors.py` 只做同对象兼容转出；迁移公共 outcome/SQLite helper 在父层 `core/infrastructure/migration_common.py`，旧 child 路径同样只做兼容转出。历史迁移只改 import，不改 SQL、版本或事务语义。
+- 算法层 A3 解耦后的当前依赖方向为 `core.algorithms → core.algorithms.greedy → core.algorithms.greedy.dispatch → {core.algorithm_contracts, core.algorithm_runtime}`，且 `core.algorithm_runtime → core.algorithm_contracts` 单向成立。`algorithm_contracts` 放纯日期、排序、派工规则、类型和值域；`algorithm_runtime` 放统计计数、自动派工合同、时隙、run-state 与 dispatch context。两个 sibling leaf 都不反向依赖 algorithms/services，根 `GreedyScheduler` 和旧 import 路径继续同对象兼容，dispatch 仍是实际执行模块。
 - `data/`：数据访问层。
 - `web/`：Flask 启动、路由、页面装配、界面模式与 viewmodel。
 - `templates/`、`static/`：页面模板与本地静态资源。

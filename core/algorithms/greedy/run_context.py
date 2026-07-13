@@ -3,11 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from .algo_stats import ensure_algo_stats, increment_counter
-from .auto_assign import auto_assign_attempt_from_result, auto_assign_internal_resources_attempt
+from core.algorithm_runtime.algo_stats import ensure_algo_stats, increment_counter
+from core.algorithm_runtime.auto_assign_contract import auto_assign_attempt_from_result
+from core.algorithm_runtime.internal_slot import validate_internal_hours_for_mode
+
+from .auto_assign import auto_assign_internal_resources_attempt
 from .external_groups import schedule_external
 from .internal_operation import schedule_internal_operation
-from .internal_slot import validate_internal_hours_for_mode
 
 
 @dataclass

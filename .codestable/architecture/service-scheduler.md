@@ -2,10 +2,10 @@
 doc_type: architecture
 slug: service-scheduler
 scope: core/services/scheduler 排产调度模块的内部结构现状——对外接口面、已分包子系统、根目录业务族、排产主链数据流、内部依赖方向与已知结构张力
-summary: 排产巨型模块系统地图，记录子包/业务族/主链与 A1 解耦后的单向依赖；区分目录 SCC、父包感知文件 SCC 与纯显式文件 SCC
+summary: 排产巨型模块系统地图，记录子包/业务族/主链及 A1/A3 解耦后的单向依赖；区分目录 SCC、父包感知文件 SCC 与纯显式文件 SCC
 status: current
 created: 2026-06-28
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-13
 tags: [scheduler, core, service, 排产, architecture]
 depends_on: []
 implements: []
@@ -77,7 +77,7 @@ core/services/scheduler/
 - **核心文件**:`run/schedule_orchestrator.py:279` `orchestrate_schedule_run`(总编排,把算法和摘要函数作为参数**注入**)、`run/schedule_input_collector.py` `collect_schedule_run_input`(输入收集)、`run/schedule_optimizer.py` `optimize_schedule`(算法入口)、`run/schedule_persistence.py`(持久化)。内部成簇:`optimizer_*`(36)、`schedule_candidate_*`(9)、`schedule_graph_*`(5,graph 子包消费者)。
 - **optimizer 现状**:`run/schedule_optimizer.py` 的 improve 主链包含多起点、GRASP/IG 批次顺序候选、VNS/acceptance 局搜和 search report。GRASP/IG 生产候选只走 `batch_order` 解码，不保留不可达的 `sgs` 候选入口。局搜的 profile 默认配置六个业务邻域，但当当前 best 是 `dispatch_mode=sgs` 时，实际 effective 邻域只使用 SGS 专用 `sgs_dispatch_rule`，报告中必须分开 configured/effective，不能让页面或 diagnostics 误以为 SGS 跑了 critical_chain/tardy_window 等业务邻域。
 - **graph ready 现状**:工序图分析仍是可选基础设施。生产链遇到 `graph_ready_context` 时,会先走 GraphReady 专用候选池:保留 v1 九组图权重,并可按 `objective_aware_portfolio` 生成 v2 目标感知候选。v2 候选只改 ready 工序排序键,仍交给正式 SGS 解码,不直接写排程结果。批次交期允许为空,空交期生成 no-due 特征并后置,非空非法交期一律 fail-loud。GRASP/IG 与局搜仍不会复用批次顺序邻域处理 graph ready;需要图邻域时记录 `graph_ready_uses_graph_candidate_phase` 并跳过。
-- **对外依赖**:`core.infrastructure.errors`、`core.models.enums`、`core.algorithms.*`、`core.shared.strict_parse`、`core.services.common.build_outcome`;不直接 import `data`(经 svc 句柄)。
+- **对外依赖**:`core.errors`/既有 infrastructure 兼容错误入口、`core.models.enums`、`core.algorithms` 根 façade，以及 `core.algorithm_contracts.*` / `core.algorithm_runtime.*` 中立叶子、`core.shared.strict_parse`、`core.services.common.build_outcome`;不直接 import `data`(经 svc 句柄)。
 - **对其它子包**:→ graph(13 处,**全是函数内延迟 import**)、→ execution(6 处)、→ contracts(4 处)、→ config(3 处)；→ summary 已为 0。
 
 ### summary/ —— 排产结果摘要投影
@@ -157,7 +157,7 @@ core/services/scheduler/
 
 ## 7. 跨层与依赖方向现状
 
-- **主要跨层方向仍清楚，但并非全仓零反向依赖**:scheduler 不反依赖 web，`core.algorithms` 不依赖 service；web 主要经 `ScheduleService` 等门面消费 scheduler。基础层 A2 已改成 `migrations → infrastructure → models → shared → core.errors` 单向结构：models/shared 不再反借 infrastructure，migrations 复用父层事件合同但 infrastructure 不再反借 child common；实现提交 `d6d41e1a` 已完成前后工作区均干净的 19 步完整门禁。
+- **主要跨层方向仍清楚，但并非全仓零反向依赖**:scheduler 不反依赖 web；算法层不依赖 service，并已形成 `algorithms → greedy → dispatch → algorithm_contracts/algorithm_runtime` 主方向，runtime 只单向依赖 contracts；web 主要经 `ScheduleService` 等门面消费 scheduler。基础层 A2 已改成 `migrations → infrastructure → models → shared → core.errors` 单向结构：models/shared 不再反借 infrastructure，migrations 复用父层事件合同但 infrastructure 不再反借 child common；实现提交 `d6d41e1a` 已完成前后工作区均干净的 19 步完整门禁。
 - **服务主链大体单向，但目录商图并非全 DAG**:`report → scheduler → {equipment → process/personnel, process, personnel, material}` 是主要方向；同时现存 A5 `plugins⇄services/common`、A6 `report⇄report/exporters` 等目录 SCC，须与“主要调用方向”分开表述。
 - **config 自带持久化通道**:config/ 是唯一直连 `data` 仓储的子包,抽象层比其它纯计算/投影子包"厚"。
 - **graph 接入靠延迟 import**:静态调用图(symbol_locator / checkup)对 run→graph 这些边标"动态/盲区",外人难从包结构看出 graph 何时被触发。
@@ -174,22 +174,28 @@ core/services/scheduler/
 - **基线终态**:双 v2 基线只删除各自 1 个 A1 块(每份 59 行)，未新增或改写其他 SCC；因此旧 A1 若回潮会被 `--fail-on-new-cycle` 重新阻断。行为等价由 identity、签名、正逆序新解释器 import 和 scheduler 专项测试锁定。
 - **clean proof**:实现提交 `c2243cd0` 在前后工作区均干净的条件下完成 19/19 步门禁；4716 collected、unexpected failure 0，required proof 为 253 targets / 2467 nodeids。
 
-### 8.2 分包标准不统一,79 文件平铺根目录
+### 8.2 A3 已解除：algorithms / greedy / dispatch 改为主链 + sibling leaves
+- **当前方向**：`core.algorithms → core.algorithms.greedy → core.algorithms.greedy.dispatch` 保留 façade/执行主链；纯合同归 `core.algorithm_contracts`，共享运行时归 `core.algorithm_runtime`，后者只单向依赖前者。两个 leaf 的 `__init__.py` 都不聚合导出，也不反向依赖 algorithms/services。
+- **兼容边界**：根 `GreedyScheduler` identity、签名、`__module__` 和根 `__all__` 不变，`core/algorithms/__init__.py` 字节不变；旧日期/排序/类型/runtime 路径显式同对象 re-export。dispatch 和旧 `greedy.algo_stats` 继续保留真实执行模块 globals，既有 monkeypatch 路径仍有效。
+- **静态终态（2026-07-13）**：生产 779 模块 / 3 hard 目录 SCC，含测试 1475 模块 / 4 SCC；A3 消失，A4/A5/A6/tests 记录不变，unresolved 仍为 6/44。A3 相关父包感知文件圈从 21/94 严格缩为 8/24；hard/runtime 文件 SCC 总数仍为 9/13，纯显式口径仍为 0/4。
+- **证明边界**：调用图两个独立候选逐文件确定；7329 个旧 callable 全映射，新增仅 8 个 context adapter callable。当前仍是未提交工作区机械证据；dirty-worktree 19/19 命令已通过但 manifest 明确为 `passed_but_unbound`，commit 与 clean-HEAD 完整门禁需单独授权，不能提前写成 clean proof。
+
+### 8.3 分包标准不统一,79 文件平铺根目录
 - 已按"计算流程"切出 run/summary/graph/config,但 resource / schedule / gantt 等多组**业务族**仍平铺根目录,每族体量都不小。一半按流程分包、一半按业务族平铺,目录可读性与心智负担偏高。
 
-### 8.3 batch 族与排产执行主链基本分离
+### 8.4 batch 族与排产执行主链基本分离
 - `batch` 族 6 文件(批次主数据 CRUD/模板/导入/复制)通过 `batch_service.py` 串起多个同目录 helper,不是静态调用图里的全孤岛。它本质仍是"批次主数据服务":主要依赖 `data.repositories`+`core.models`,没有被 run/summary/graph 这些排产执行族反向调用,归在 scheduler 内属历史归类。
 
-### 8.4 兼容 shim 双入口
+### 8.5 兼容 shim 双入口
 - 根目录 7 个 `schedule_*`/`freeze_window` 与 4 个 execution wrapper 保留旧 import 路径；仓内生产代码直接依赖 `scheduler.run.*` / `scheduler.execution.*`，旧根路径只服务 tests/外部兼容消费。wrapper 不得承载业务实现或反向被新叶子依赖。
 
-### 8.5 config_snapshot 是隐性跨包公共依赖
+### 8.6 config_snapshot 是隐性跨包公共依赖
 - `config/config_snapshot.py` `ensure_schedule_config_snapshot` 被 run(2 处)和 summary(5 处)直接钻进 config 子包取用,共 8 处。它已成事实上的"公共契约层"却物理埋在 config/ 内,config 内部重构会同时震动 run + summary。
 
 ## 9. 相关文档
 
 - `.codestable/architecture/ARCHITECTURE.md` —— 项目架构总入口。
-- `.codestable/audits/2026-06-28-circular-imports/` —— 全仓循环依赖普查；其中 A1 已由 scheduler dependency decoupling refactor 解除，其余 SCC 继续按 roadmap 治理。
+- `.codestable/audits/2026-06-28-circular-imports/` —— 全仓循环依赖普查；其中 A1/A2/A3 已由独立 refactor 解除，A4/A5/A6/tests 继续按 roadmap 治理。
 - `.codestable/refactors/2026-07-10-scheduler-a1-dependency-decoupling/` —— A1 scan/design/checklist/apply 证据。
 - `.codestable/architecture/ui-gantt.md` —— 甘特图结果查看页面(前端职责/缩放/只读边界),与本文档的后端 service 视角互补。
 - `core/services/scheduler/__init__.py` —— 本模块对外 13 个 Service 的惰性门面。

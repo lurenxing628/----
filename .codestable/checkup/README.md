@@ -8,6 +8,22 @@
 
 机器可读总入口：[`baseline.json`](baseline.json)。
 
+## 2026-07-13 algorithms A3 终态机械证据（commit / clean HEAD 证明待完成）
+
+A3 从固定 HEAD `582a588c8adda314584052b870ace00628a722c7` 启动，把纯日期/排序/派工/类型合同归到 `core.algorithm_contracts`，把 greedy/dispatch 共享状态与 helper 归到 `core.algorithm_runtime`。旧路径继续显式同对象转出，`core.algorithms.GreedyScheduler` 和 `core/algorithms/__init__.py` 字节保持不变，dispatch 仍是 canonical 执行模块。
+
+| 检查 | A3 当前结果 | 差异口径 |
+|---|---|---|
+| callgraph | 7337 callable、25798 输出边、10171 确信边、15627 模糊边、typed 0、8 条受限简单循环、island 193、dynamic unresolved 685 | 两个独立临时目录的 10 JSON 逐文件 SHA 相同；7329 个旧 callable 全部映射，新增仅 8 个 adapter callable；4 条 algo-stats 边仅 `local→import`，2 条 context 端点替换，14 个新 adapter 端点全部解释 |
+| import cycles（生产） | 779 模块、3 hard 目录 SCC、9/0 父包感知/纯显式 hard 文件 SCC、13/4 runtime 文件 SCC、unresolved 6 | 只删除 A3 目录 SCC；其余 3 个目录 SCC 成员与圈内边逐项不变；父包初始化边 6639 |
+| import cycles（含测试） | 1475 模块、4 hard 目录 SCC、unresolved 44 | 新增 1 个 A3 边界测试模块；tests 既有 SCC 和 A4/A5/A6 记录不变；父包初始化边 13296 |
+| algorithms 文件加载圈 | A3 相关父包感知文件 SCC 从 21 成员 / 94 边严格缩为 8 成员 / 24 边 | 新成员/边都是旧记录严格子集；两个新 sibling leaves 不进入任何 hard 目录 SCC |
+| 双 v2 基线 | production 518→384 行，with-tests 578→444 行，各减少 134 行 | 仅删除 A3 目录块并用 8/24 严格子集替换旧 algorithms 文件 SCC；unresolved 与其它记录不变；刷新后双正式命令通过 |
+| dead-code quick | 只迁移 `WeightedStrategy.__init__` 与 `ScheduleSummary.__post_init__` 两个基线路径 | 仍有 32 个 A2 起点已记录的既有新增候选；其中没有 A3 路径，未全量 refresh |
+| 当前验证 | 最终组合 643 passed；Ruff、Pyright gate/tools、A3 起点增量 Python 3.8、双 scope 门禁均通过；dirty-worktree 完整门禁 19/19 命令通过、4731 collected、unexpected failure 0、required 253 targets / 2467 nodeids | manifest=`passed_but_unbound`，门禁前后均 dirty 且 `tracked_drift_detected=false`；wrapper 退出码 2 是未绑定 proof 的强制策略，不是子步骤失败 |
+
+`baseline.json.worktree_tooling_refresh.clean_worktree_proof=false`。当前机械证据来自未提交工作区；19 个命令 receipt 均为 0，但 dirty manifest 明确不声明 clean proof。只有用户另行授权提交后，在固定最终 HEAD 前后工作区均干净地执行无缓存、无续跑 19 步门禁，才能把本节升级为 clean-HEAD 证明。历史决定考古仍为 pending。
+
 ## 2026-07-12 foundation A2 终态机械证据与 clean HEAD 证明
 
 A2 从干净 HEAD `a53172e77671d722594aeb81c06b72d1cc6b1b22` 启动，按 approved refactor 将错误合同归到 `core.errors`、migration common 归到 `core.infrastructure.migration_common`。用户授权后，实现与证据提交为 `d6d41e1ae5459b96f198eed4e70679df4f479f9f`；该提交在工作区前后均干净的条件下完成无缓存、无续跑的 19 步门禁：

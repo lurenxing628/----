@@ -1,11 +1,6 @@
+"""Compatibility exports for core.algorithm_contracts.value_domains."""
 from __future__ import annotations
 
-# 算法层值域常量：
-# - 目标：消除散落裸字符串，同时保持算法层不依赖 core.models.enums
+from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL, MERGED, SEPARATE
 
-INTERNAL = "internal"
-EXTERNAL = "external"
-
-MERGED = "merged"
-SEPARATE = "separate"
-
+__all__ = ['INTERNAL', 'EXTERNAL', 'MERGED', 'SEPARATE']

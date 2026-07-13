@@ -3,19 +3,19 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
-from core.algorithms.dispatch_rules import DispatchInputs, DispatchRule, build_dispatch_key
-from core.algorithms.value_domains import MERGED
-from core.infrastructure.errors import ValidationError
-from core.shared.strict_parse import is_blank_input, parse_optional_date, parse_required_float, parse_required_int
-
-from ..auto_assign import auto_assign_attempt_from_result
-from ..date_parsers import parse_date
-from ..internal_slot import (
+from core.algorithm_contracts.date_parsers import parse_date
+from core.algorithm_contracts.dispatch_rules import DispatchInputs, DispatchRule, build_dispatch_key
+from core.algorithm_contracts.value_domains import MERGED
+from core.algorithm_runtime.auto_assign_contract import auto_assign_attempt_from_result
+from core.algorithm_runtime.internal_slot import (
     estimate_internal_slot,
     raise_strict_internal_hours_validation,
     validate_internal_hours_for_mode,
 )
-from ..run_state import ScheduleRunState
+from core.algorithm_runtime.run_state import ScheduleRunState
+from core.infrastructure.errors import ValidationError
+from core.shared.strict_parse import is_blank_input, parse_optional_date, parse_required_float, parse_required_int
+
 from .resource_validation import (
     RESOURCE_REASON_AUTO_ASSIGN_UNAVAILABLE,
     RESOURCE_REASON_FIXED,

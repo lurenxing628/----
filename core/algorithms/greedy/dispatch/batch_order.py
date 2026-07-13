@@ -3,13 +3,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithms.ordering import normalize_text_id
-from core.algorithms.types import ScheduleResult
-from core.algorithms.value_domains import EXTERNAL, INTERNAL
+from core.algorithm_contracts.ordering import normalize_text_id
+from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
+from core.algorithm_runtime.dispatch_context import ensure_dispatch_context
+from core.algorithm_runtime.run_state import ScheduleRunState
 from core.infrastructure.errors import ValidationError
-
-from ..run_context import ensure_run_context
-from ..run_state import ScheduleRunState
 
 
 def dispatch_batch_order(
@@ -38,7 +37,7 @@ def dispatch_batch_order(
     failed_count: int = 0,
     strict_mode: bool = False,
 ) -> Tuple[int, int]:
-    ctx = ensure_run_context(context)
+    ctx = ensure_dispatch_context(context)
     run_state = _coerce_state(
         state=state,
         base_time=base_time,

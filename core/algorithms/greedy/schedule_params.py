@@ -2,18 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from core.algorithm_contracts.date_parsers import parse_date, parse_datetime
+from core.algorithm_contracts.dispatch_rules import DispatchRule
+from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_runtime.algo_stats import increment_counter
 from core.infrastructure.errors import ValidationError
 from core.models.scheduler_degradation_messages import public_degradation_event_message
 from core.shared.degradation import DegradationCollector
 from core.shared.field_parse import parse_field_float
 from core.shared.strict_parse import parse_required_float
-
-from ..dispatch_rules import DispatchRule
-from ..sort_strategies import SortStrategy
-from .algo_stats import increment_counter
-from .date_parsers import parse_date, parse_datetime
 
 _FIELD_LABELS = {
     "config_snapshot": "运行期配置快照",
@@ -68,7 +67,7 @@ def _snapshot_attr(snapshot: Any, key: str) -> Any:
         raise ValidationError(f"读取运行期配置中的“{label}”失败。", field=key) from exc
 
 
-def _require_choice(raw_value: Any, *, field: str, valid_values: set[str]) -> str:
+def _require_choice(raw_value: Any, *, field: str, valid_values: Set[str]) -> str:
     label = _field_label(field)
     text = str("" if raw_value is None else raw_value).strip().lower()
     if not text:

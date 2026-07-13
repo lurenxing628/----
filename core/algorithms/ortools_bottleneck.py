@@ -16,8 +16,8 @@ import math
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithms.greedy.date_parsers import due_exclusive, parse_date
-from core.algorithms.priority_constants import priority_weight_scaled
+from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
+from core.algorithm_contracts.priority_constants import priority_weight_scaled
 from core.algorithms.value_domains import INTERNAL
 from core.infrastructure.logging import safe_log
 

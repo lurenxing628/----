@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
+from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithms import ScheduleResult
-from core.algorithms.greedy.algo_stats import increment_counter
 from core.algorithms.greedy.seed import _identity_int, _invalid_identity_supplied
 from core.algorithms.value_domains import INTERNAL
 from core.infrastructure.errors import ValidationError

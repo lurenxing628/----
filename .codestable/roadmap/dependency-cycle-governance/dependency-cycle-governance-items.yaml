@@ -1,6 +1,6 @@
 roadmap: dependency-cycle-governance
 created: 2026-07-10
-last_reviewed: 2026-07-12
+last_reviewed: 2026-07-13
 
 items:
   - slug: callgraph-receiver-resolution
@@ -98,7 +98,7 @@ items:
   - slug: remaining-cycles-decoupling
     description: 按 A3、A4、A5、A6 和 tests 五个独立批次清零剩余硬目录圈
     depends_on: [foundation-a2-decoupling]
-    status: planned
+    status: in-progress
     feature: null
     minimal_loop: false
-    notes: 每批独立核查、实现、验证，不合并成无法审查的大改动
+    notes: A3 refactor 2026-07-12-algorithms-a3-dependency-decoupling 已完成 apply 机械证据，commit/clean-HEAD proof 待单独授权；A4/A5/A6/tests 未启动，仍须每批独立核查、实现、验证
