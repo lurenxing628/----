@@ -1,0 +1,85 @@
+(function () {
+  'use strict';
+  const U = window.TrialControls, wall = value => Date.parse(value + 'Z');
+  const pieceLabel = t => t.piece_id === null ? '共同工序' : '分件 ' + t.piece_id;
+  const taskLabel = t => t.batch_id + ' · ' + t.sequence + ' ' + t.process_label + ' · ' + pieceLabel(t);
+  function resourceNames(data) {
+    const names = new Map(); ['machines', 'operators'].forEach(k => data.resources[k].forEach(r => names.set(r.ref, r.business_code + ' · ' + (r.label || '名称未记录'))));
+    return ref => ref === null ? '无内部资源' : names.get(ref) || '原资源名称不可读';
+  }
+  function matching(data, scope, query, changed) {
+    const name = resourceNames(data), needle = query.trim().toLowerCase();
+    return data.tasks.filter(t => (!changed || t.changed) && (!scope.range_start || window.PointContract.overlaps(t, scope.range_start, scope.range_end))
+      && (!scope.batch_refs || scope.batch_refs.includes(t.batch_ref))
+      && (!scope.resource_ref || (scope.resource_type === 'batch' ? t.batch_ref : t[scope.resource_type + '_ref']) === scope.resource_ref)
+      && (!needle || [t.batch_id, t.part_no, t.part_name, t.process_label, t.piece_id, name(t.machine_ref), name(t.operator_ref)].join(' ').toLowerCase().includes(needle)));
+  }
+  function Gantt({ data, selected, onSelect }) {
+    const [view, setView] = React.useState(data.scope.resource_type || 'machine'), [baseline, setBaseline] = React.useState(true);
+    const [changed, setChanged] = React.useState(false), [query, setQuery] = React.useState(data.scope.query || ''), [limit, setLimit] = React.useState(true);
+    const [page, setPage] = React.useState(1), [zoom, setZoom] = React.useState(1), [expanded, setExpanded] = React.useState(false);
+    const [hover, setHover] = React.useState(null);
+    const scope = limit ? data.scope : {}, filtered = React.useMemo(() => matching(data, scope, query, changed), [data, scope, query, changed]);
+    const name = resourceNames(data), key = view === 'batch' ? 'batch_ref' : view + '_ref', board = React.useRef(null);
+    const rows = React.useMemo(() => {
+      const entries = [];
+      filtered.forEach(t => {
+        entries.push({ t, group: t[key], ghost: false });
+        if (baseline && view !== 'batch' && t.original[key] !== t[key]) entries.push({ t, group: t.original[key], ghost: true });
+      });
+      return entries.sort((a, b) => String(a.group).localeCompare(String(b.group)) || a.t.start.localeCompare(b.t.start) || a.t.task_ref.localeCompare(b.t.task_ref));
+    }, [filtered, view, baseline]);
+    const current = Math.min(page, Math.max(1, Math.ceil(rows.length / 30))), visible = rows.slice((current - 1) * 30, current * 30);
+    const bounds = React.useMemo(() => {
+      let start = Infinity, end = -Infinity;
+      data.tasks.forEach(t => { start = Math.min(start, wall(t.start), wall(t.original.start)); end = Math.max(end, wall(t.end), wall(t.original.end)); });
+      const pad = Math.max(60000, (end - start) * .025); return { start: start - pad, end: end + pad };
+    }, [data]);
+    const position = t => ({ left: (wall(t.start) - bounds.start) / (bounds.end - bounds.start) * 100 + '%', width: (wall(t.end) - wall(t.start)) / (bounds.end - bounds.start) * 100 + '%' });
+    const pointTitle = (t, original) => (original ? '原安排 · ' : '') + taskLabel(t) + '\n'
+      + U.timeLabel((original ? t.original : t).start) + '\n时间点 · 0 h · 不占用资源';
+    function pointMarker(t, original) {
+      const value = original ? t.original : t, title = pointTitle(t, original);
+      return <window.PointGantt.Marker task={original ? { ...t, start: value.start, end: value.end } : t} data-task-ref={original ? undefined : t.task_ref} data-baseline-ref={original ? t.task_ref : undefined}
+        title={title} x={position(value).left} top={original ? 36 : 10} tone={original ? 'before' : t.issues.length ? 'critical' : t.locked ? 'success' : ''}
+        selected={selected === t.task_ref} onSelect={() => { setHover(null); onSelect(t.task_ref); }}
+        onHover={event => setHover(event ? { title, x: event.clientX, y: event.clientY } : null)} />;
+    }
+    React.useEffect(() => {
+      if (!selected) return; const index = rows.findIndex(r => !r.ghost && r.t.task_ref === selected);
+      if (index >= 0) setPage(Math.floor(index / 30) + 1);
+    }, [selected]);
+    React.useEffect(() => {
+      if (expanded) { const handler = e => { if (e.key === 'Escape') setExpanded(false); }; document.addEventListener('keydown', handler); return () => document.removeEventListener('keydown', handler); }
+    }, [expanded]);
+    return <section className={'tt-gantt' + (expanded ? ' tt-expanded' : '')} aria-label="试调甘特"><window.PointGantt.Styles /><div className="tt-heading"><h3>排程预览</h3>
+      <span className="tt-muted">工厂本地时间 · 含夜间</span></div><div className="tt-tools tt-gantt-tools"><U.Tabs value={view} label="甘特分组"
+      options={[["machine", '设备'], ['operator', '人员'], ['batch', '批次']]} onChange={v => { setView(v); setPage(1); }} />
+      <label className="tt-check"><input type="checkbox" checked={baseline} onChange={e => setBaseline(e.target.checked)} />原安排</label>
+      <label className="tt-check"><input type="checkbox" checked={changed} onChange={e => { setChanged(e.target.checked); setPage(1); }} />仅变更</label>
+      {!!Object.keys(data.scope).length && <label className="tt-check"><input type="checkbox" checked={limit} onChange={e => { setLimit(e.target.checked); setPage(1); }} />原显示范围</label>}
+      <input type="search" aria-label="搜索试调工序" placeholder="批次 / 工序 / 资源" maxLength={200} value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} />
+      <U.Button icon="minus" aria-label="缩小甘特" disabled={zoom <= 1} onClick={() => setZoom(z => z / 2)} />
+      <U.Button icon="plus" aria-label="放大甘特" disabled={zoom >= 8} onClick={() => setZoom(z => z * 2)} />
+      <U.Button icon="chart-gantt" aria-label={expanded ? '收起甘特' : '展开甘特'} onClick={() => setExpanded(!expanded)} /></div>
+      <div className="tt-board" ref={board} onScroll={() => setHover(null)}><div className="tt-timeline" style={{ width: zoom === 1 ? '100%' : zoom * 100 + '%' }}>
+        <div className="tt-axis"><div className="tt-corner">工序 / 资源</div><div className="tt-ticks">{[0, 1, 2, 3].map(i => <span key={i}>{new Date(bounds.start + (bounds.end - bounds.start) * i / 3).toISOString().slice(5, 16).replace('T', ' ')}</span>)}</div></div>
+        {visible.map((r, i) => <React.Fragment key={r.t.task_ref + ':' + r.ghost}>{(i === 0 || visible[i - 1].group !== r.group) && <div className="tt-group">{view === 'batch' ? r.t.batch_id + ' · ' + (r.t.part_name || '零件名称未记录') : name(r.group)}</div>}
+          <div className={'tt-gantt-row' + (selected === r.t.task_ref ? ' selected' : '')} data-trial-task={r.t.task_ref}>
+            <button type="button" className="tt-task-label" onClick={() => onSelect(r.t.task_ref)} aria-pressed={selected === r.t.task_ref}
+              aria-label={'选择工序 ' + taskLabel(r.t)} title={taskLabel(r.t) + '\n本工序目标量 ' + U.number(r.t.quantity) + ' · 整批量 ' + U.number(r.t.batch_quantity)}>
+              <strong>{pieceLabel(r.t)} · {r.t.sequence}</strong><small>{r.t.batch_id} · {r.t.process_label} · {r.ghost ? '原资源' : U.number(r.t.quantity) + ' 件'}</small></button>
+            <div className="tt-track">{!r.ghost && (window.PointContract.isPoint(r.t) ? pointMarker(r.t, false) : <button type="button" className={'tt-bar' + (r.t.issues.length ? ' conflict' : '') + (r.t.locked ? ' locked' : '')}
+              data-task-ref={r.t.task_ref} aria-label={'安排时段 ' + taskLabel(r.t)} aria-pressed={selected === r.t.task_ref}
+              title={taskLabel(r.t) + '\n本工序目标量 ' + U.number(r.t.quantity) + ' · 整批量 ' + U.number(r.t.batch_quantity) + '\n' + U.timeLabel(r.t.start) + ' 至 ' + U.timeLabel(r.t.end)} style={position(r.t)} onClick={() => onSelect(r.t.task_ref)} />)}
+              {baseline && (view === 'batch' || r.ghost || r.t.original[key] === r.group) && (window.PointContract.isPoint(r.t) ? pointMarker(r.t, true) : <span className="tt-baseline" data-baseline-ref={r.t.task_ref}
+                style={position(r.t.original)} title={'原安排 ' + taskLabel(r.t) + '\n' + U.timeLabel(r.t.original.start) + ' 至 ' + U.timeLabel(r.t.original.end)} />)}</div></div></React.Fragment>)}
+        {!visible.length && <div className="tt-empty">当前显示范围没有匹配工序</div>}</div></div>
+      <div className="tt-heading"><div className="tt-legend"><span><i />试调安排</span><span><i className="baseline" />原试调基础</span><span><i className="conflict" />约束问题</span></div>
+        <span className="tt-muted">匹配 {filtered.length} / 完整 {data.task_count} 道 · {zoom}×</span></div>
+      <U.Pager page={{ number: current, size: 30, total: rows.length }} label="甘特" onPage={setPage} />
+      {hover && <div role="tooltip" className="tt-point-tooltip" style={{ left: Math.max(8, Math.min(innerWidth - 335, hover.x + 12)), top: Math.max(8, Math.min(innerHeight - 160, hover.y + 14)) }}>{hover.title}</div>}
+    </section>;
+  }
+  window.TrialGantt = Gantt; window.TrialGantt.resourceNames = resourceNames;
+})();

@@ -8,7 +8,7 @@ import pytest
 
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 from core.infrastructure.errors import ValidationError
-from core.infrastructure.migration_state import detect_schema_is_current
+from core.infrastructure.migration_state import MigrationContractError, detect_schema_is_current
 from core.models.schedule_adjustment import DRAFT_STATUS_SAVED_SCENARIO
 from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjustmentScenarioService
 from core.services.scheduler.gantt_service import GanttService
@@ -31,6 +31,14 @@ from tests._support.gantt_scenario import (
 )
 from tests._support.gantt_scenario import (
     _seed_base as _seed_base,
+)
+from tests.gantt.gantt_legacy_schema_support import (
+    assert_frozen_catalog,
+    assert_legacy_business_data_preserved,
+    load_frozen_schema,
+    schema_catalog,
+    snapshot_legacy_business_data,
+    strip_later_schema,
 )
 
 _PUBLIC_GANTT_JSON_FORBIDDEN_KEYS = {
@@ -83,6 +91,56 @@ def _snapshot(conn) -> dict:
     }
 
 
+def _create_v12_schema(conn) -> None:
+    """Load b83407fe's exact v12 catalog without inheriting current-schema objects."""
+    load_frozen_schema(conn, version=12)
+    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+    assert not {"ScheduleAdjustmentScenario", "ScheduleAdjustmentScenarioRow", "OperationExecutionEvents"} & names
+    assert not {"idx_batch_operations_identity_unique", "idx_schedule_identity_unique"} & names
+    assert conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'").fetchall() == []
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == 12
+    assert not detect_schema_is_current(conn)
+
+
+@pytest.mark.parametrize("version,tables,indexes", [(12, 31, 66), (13, 33, 72), (16, 34, 80)])
+def test_frozen_legacy_catalog_matches_history_before_seeding(tmp_path, version, tables, indexes):
+    conn = get_connection(str(tmp_path / "frozen.db"))
+    try:
+        load_frozen_schema(conn, version=version)
+        assert_frozen_catalog(conn, version=version)
+        objects = schema_catalog(conn)["objects"]
+        assert sum(row[0] == "table" for row in objects) == tables
+        assert sum(row[0] == "index" for row in objects) == indexes
+        assert not any(row[0] == "trigger" for row in objects)
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("version", [13, 16])
+@pytest.mark.parametrize("damage", ["business_rows", "dangling_trigger", "foreign_keys_off"])
+def test_legacy_fixture_replacement_rejects_non_pristine_database(tmp_path, version, damage):
+    conn = get_connection(str(tmp_path / "not_pristine.db"))
+    try:
+        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        if damage == "business_rows":
+            conn.execute("INSERT INTO Parts(part_no, part_name) VALUES ('RETAIN', 'retained business row')")
+            conn.commit()
+        elif damage == "dangling_trigger":
+            conn.execute("CREATE TRIGGER broken_fixture AFTER UPDATE ON Parts BEGIN SELECT * FROM AbsentTable; END")
+        else:
+            conn.execute("PRAGMA foreign_keys = OFF")
+        before = tuple(conn.iterdump())
+        foreign_keys = conn.execute("PRAGMA foreign_keys").fetchone()[0]
+        with pytest.raises(AssertionError):
+            strip_later_schema(conn, version=version)
+        assert tuple(conn.iterdump()) == before
+        assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == foreign_keys
+    finally:
+        conn.close()
+
+
 def test_scenario_schema_exists_and_detection_requires_it(tmp_path: Path) -> None:
     conn = _connect(tmp_path)
     try:
@@ -98,6 +156,14 @@ def test_scenario_schema_exists_and_detection_requires_it(tmp_path: Path) -> Non
         assert detect_schema_is_current(conn)
         conn.execute("DROP TABLE ScheduleAdjustmentScenarioRow")
         assert not detect_schema_is_current(conn)
+        conn.commit()
+        with pytest.raises(MigrationContractError):
+            ensure_schema(
+                str(tmp_path / "aps.db"), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "backups")
+            )
+        assert "ScheduleAdjustmentScenarioRow" not in _table_names(conn)
+        assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
+        assert not detect_schema_is_current(conn)
     finally:
         conn.close()
 
@@ -106,13 +172,13 @@ def test_scenario_migration_preserves_existing_v12_data(tmp_path: Path) -> None:
     db_path = tmp_path / "legacy_v12.db"
     conn = get_connection(str(db_path))
     try:
-        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        _create_v12_schema(conn)
+        _seed_base(conn)
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        before = _snapshot(conn)
+        all_old_rows = snapshot_legacy_business_data(conn)
         conn.executescript(
             """
-            DELETE FROM SchemaVersion;
-            INSERT INTO SchemaVersion (id, version) VALUES (1, 12);
-            DROP TABLE ScheduleAdjustmentScenarioRow;
-            DROP TABLE ScheduleAdjustmentScenario;
             CREATE TABLE LegacyRows (id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO LegacyRows (id, name) VALUES (1, 'keep-me');
             """
@@ -134,6 +200,9 @@ def test_scenario_migration_preserves_existing_v12_data(tmp_path: Path) -> None:
             "idx_schedule_adjustment_scenario_row_time",
         } <= _index_names(conn)
         assert detect_schema_is_current(conn)
+        assert _snapshot(conn) == before
+        assert_legacy_business_data_preserved(conn, all_old_rows)
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
         assert conn.execute("SELECT name FROM LegacyRows WHERE id=1").fetchone()["name"] == "keep-me"
     finally:
         conn.close()

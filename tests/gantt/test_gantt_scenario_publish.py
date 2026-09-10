@@ -18,6 +18,12 @@ from core.services.scheduler.gantt_adjustment_draft_service import GanttAdjustme
 from core.services.scheduler.gantt_adjustment_publish_service import GanttAdjustmentPublishService
 from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjustmentScenarioService
 from tests._support.paths import REPO_ROOT
+from tests.gantt.gantt_legacy_schema_support import (
+    assert_legacy_business_data_preserved,
+    seed_legacy_scenario,
+    snapshot_legacy_business_data,
+    strip_later_schema,
+)
 from tests.gantt.test_gantt_draft_save_and_preview import _build_app
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -193,6 +199,7 @@ def test_publish_schema_columns_exist_and_v13_migrates(tmp_path: Path) -> None:
     conn = get_connection(str(db_path))
     try:
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        strip_later_schema(conn, version=13)
         conn.executescript(
             """
             DELETE FROM SchemaVersion;
@@ -202,8 +209,14 @@ def test_publish_schema_columns_exist_and_v13_migrates(tmp_path: Path) -> None:
             """
         )
         conn.executescript(_ADJUSTMENT_SCENARIO_SQL)
-        conn.commit()
+        _seed_base(conn)
+        _seed_baseline_best_selection(conn)
+        seed_legacy_scenario(conn, version=13)
+        before = snapshot_legacy_business_data(conn)
+        assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == 13
+        assert not detect_schema_is_current(conn)
         assert "published_version" not in _table_columns(conn, "ScheduleAdjustmentScenario")
+        assert not set(PUBLISH_COLUMNS) & _table_columns(conn, "ScheduleAdjustmentScenario")
     finally:
         conn.close()
 
@@ -215,6 +228,11 @@ def test_publish_schema_columns_exist_and_v13_migrates(tmp_path: Path) -> None:
             conn, "ScheduleAdjustmentScenario"
         )
         assert detect_schema_is_current(conn)
+        assert_legacy_business_data_preserved(conn, before)
+        assert tuple(conn.execute(
+            "SELECT published_version, published_by, published_reason, published_at "
+            "FROM ScheduleAdjustmentScenario WHERE scenario_id = 'legacy-scenario'"
+        ).fetchone()) == (None, None, None, None)
     finally:
         conn.close()
 

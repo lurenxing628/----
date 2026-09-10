@@ -1,0 +1,53 @@
+(function () {
+  'use strict';
+  function ResourceHours({ data, onDrill, view, onChange }) {
+    const { Button } = window.ResourceControls, { kind, page } = view;
+    const rows = data.resources[kind === 'machine' ? 'machines' : 'people'], pages = Math.max(1, Math.ceil(rows.length / 6));
+    const current = Math.min(page, pages), maximum = Math.max(1, ...rows.map(row => row.known_effective_processing_hours || 0));
+    const visible = rows.slice((current - 1) * 6, current * 6);
+    const open = row => onDrill('records', { resource_type: kind, resource_ref: row.resource_ref || 'unassigned' });
+    return <section className="er-section er-resource-hours" aria-label="实际资源工时">
+      <style>{`
+        .er-resource-hours .er-resource-row { display:grid; grid-template-columns:minmax(120px,1fr) minmax(100px,2fr) minmax(160px,1fr); align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--ui-border); }
+        .er-resource-hours .er-resource-name { white-space:normal; overflow-wrap:anywhere; text-align:left; }
+        .er-resource-hours .er-resource-bar { width:100%; height:26px; position:relative; background:var(--ui-surface-muted); border:0; padding:0; border-radius:0; }
+        .er-resource-hours .er-resource-bar i { position:absolute; top:0; bottom:0; left:0; background:var(--ui-info-text); }
+        .er-resource-hours .er-resource-value { font-size:12px; overflow-wrap:anywhere; }
+        @media(max-width:700px) { .er-resource-hours .er-resource-row { grid-template-columns:minmax(100px,1fr) minmax(90px,1fr); }.er-resource-hours .er-resource-value { grid-column:1/-1; } }
+      `}</style>
+      <div className="rw-section-heading"><h3>实际资源工时</h3><div className="seg" role="tablist" aria-label="资源工时类型">
+        {[['machine', '设备'], ['operator', '人员']].map(([key, label]) => <Button key={key} role="tab" aria-selected={kind === key} className={'seg-btn' + (kind === key ? ' on' : '')}
+          onClick={() => onChange({ kind: key, page: 1 })}>{label}</Button>)}</div></div>
+      <div role="tabpanel" aria-label={kind === 'machine' ? '实际设备工时' : '实际人员工时'}>{visible.map(row => <div className="er-resource-row" key={row.resource_ref || 'unassigned'} data-resource-ref={row.resource_ref || 'unassigned'}>
+        <Button className="lnk er-resource-name" disabled={!onDrill} onClick={() => open(row)}>{row.resource_label}</Button>
+        <Button className="er-resource-bar" aria-label={'查看 ' + row.resource_label + ' 关联记录'} disabled={!onDrill} onClick={() => open(row)}
+          title={'已知工时 ' + window.ReportTable.text(row.known_effective_processing_hours) + ' h；未知 ' + row.unknown_hour_events + ' 条'}>
+          {row.known_effective_processing_hours !== null && <i aria-hidden="true" style={{ width: row.known_effective_processing_hours / maximum * 100 + '%' }} />}</Button>
+        <span className="er-resource-value">{row.effective_processing_hours === null ? '总工时未知' : row.effective_processing_hours + ' h'} · 已知 {window.ReportTable.text(row.known_effective_processing_hours)} h · 待补 {row.unknown_hour_events} 条</span>
+      </div>)}{!rows.length && <p role="status">当前范围没有资源工时记录。</p>}</div>
+      <div className="rw-pagination"><span>共 {rows.length} 组 · {current} / {pages}</span><Button icon="chevron-left" aria-label="资源工时上一页" disabled={current <= 1} onClick={() => onChange({ kind, page: current - 1 })} />
+        <Button icon="chevron-right" aria-label="资源工时下一页" disabled={current >= pages} onClick={() => onChange({ kind, page: current + 1 })} /></div>
+      <p className="er-method">实际加工工时，不代表利用率；下钻保留关联工序的全部记录。</p>
+      <window.ReportTable.Table data={{ topic: kind === 'machine' ? 'machines' : 'people', rows: visible, columns: window.ReviewChartViews.resourceColumns }} />
+    </section>;
+  }
+  function Charts({ data, open, onChange, onDrill, resourceView, onResourceView }) {
+    const { DistributionChart, TrendChart } = window.ReviewChartViews;
+    const points = data.charts.trend.map(row => ({ time: new Date(row.date + 'T00:00:00').getTime(), label: row.date,
+      planned: row.planned, actual: row.actual, unclosed: row.actual == null ? null : Math.max(0, row.planned - row.actual) }));
+    const items = (rows, tone) => rows.map(row => ({ ...row, id: row.label, tone }));
+    return <details className="er-chart-disclosure" open={open} onToggle={event => onChange(event.currentTarget.open)}><summary>趋势、偏差与资源分析</summary>
+      <div className="er-overview-grid"><section className="er-section er-trend"><h3>计划与实际累计完工</h3><TrendChart points={points} label="范围内工序累计完工" /></section>
+        <section className="er-section er-insights"><h3>事实重点</h3><p>已确认晚完 {data.summary.finish_late} 道；到期未确认 {data.summary.unclosed_due} 道。</p>
+          <p>旧现场事件 {data.summary.events} 条；逐次报工 {data.summary.production_reports} 条；全部记录 {data.summary.records} 条。</p>
+          <p>有效加工工时 {window.ReportTable.text(data.summary.effective_processing_hours)} 小时；已知小计 {window.ReportTable.text(data.summary.known_effective_processing_hours)} 小时；工时未知 {data.summary.unknown_hour_events} 条。</p>
+          <div className="rw-actions">{[['finish_late', '晚完明细'], ['unclosed', '未确认明细'], [data.scope.focus, '工序明细']].map(([focus, label]) =>
+            <window.ResourceControls.Button key={label} icon="arrow-right" disabled={!onDrill} onClick={() => onDrill('delivery', { focus })}>{label}</window.ResourceControls.Button>)}</div></section></div>
+      <div className="er-distribution-grid"><DistributionChart items={items(data.charts.finish, 'info')} label="已确认整道完工偏差" />
+        <DistributionChart items={items(data.charts.aging, 'warning')} label="到期未确认已过时长" /></div>
+      <p className="er-method">实际曲线按已记录的整道完工事实回算，不是历史时点快照；到期未确认已过时长不是实际晚完偏差。</p>
+      <ResourceHours data={data} onDrill={onDrill} view={resourceView} onChange={onResourceView} />
+    </details>;
+  }
+  window.ReviewCharts = Charts;
+})();
