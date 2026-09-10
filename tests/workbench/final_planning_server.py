@@ -1,5 +1,6 @@
 """Actual entrypoint, factory, SQLite and managed worker with explicit restart."""
 
+import os
 import sys
 from pathlib import Path
 
@@ -19,7 +20,15 @@ if __name__ == "__main__":
     reuse = len(sys.argv) > 2 and sys.argv[2] == "reuse"
     root, identity = prepare_root(Path(sys.argv[1]), reuse=reuse)
     host.freeze_built_assets = private_build
-    host.seed_run_data = seed
+    required_case = os.environ.get("FINAL_PLANNING_REQUIRED_CASE")
+    if required_case:
+        from functools import partial
+
+        from tests.workbench.final_planning_required_seed import seed as required_seed
+
+        host.seed_run_data = partial(required_seed, required_case=required_case)
+    else:
+        host.seed_run_data = seed
     host.FORBIDDEN_PORTS = host.FORBIDDEN_PORTS | {53144}
     attach = host.attach_journal
 

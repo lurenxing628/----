@@ -10,6 +10,7 @@ from tests.workbench.test_run_jobs_support import JobCase
 
 
 def seed(app, **options):
+    conflict = options.pop("required_conflict", False)
     result = piece_seed(app, **options)
     with closing(sqlite3.connect(app.config["DATABASE_PATH"])) as conn:
         conn.row_factory = sqlite3.Row
@@ -23,9 +24,10 @@ def seed(app, **options):
                 "sequence": sequence, "target_quantity": 3 if piece is None else 1,
                 "batch_quantity": 3, "total_hours": 0})
         rival = conn.execute("SELECT id FROM BatchOperations WHERE batch_id='B2'").fetchone()[0]
+        start, end = (("08:30:00", "09:00:00") if conflict else ("09:00:00", "09:30:00"))
         conn.execute("INSERT INTO Schedule(version,op_id,machine_id,operator_id,"
                      "start_time,end_time,lock_status) VALUES (4,?,'M1','O1',"
-                     "'2026-09-09 09:00:00','2026-09-09 09:30:00','locked')", (rival,))
+                     "?,?,'locked')", (rival, "2026-09-09 " + start, "2026-09-09 " + end))
         for index in range(1, 22):
             batch = f"Z-D-{index:02d}"
             case.batch(batch, ready_status="partial" if index % 3 == 0 else "no")

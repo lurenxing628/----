@@ -8,6 +8,8 @@ const { trialActions } = require('./final_planning_trial_actions.cjs');
 const { preflightReturn } = require('./final_planning_preflight_actions.cjs');
 const { readonlyActions } = require('./final_planning_readonly_actions.cjs');
 const { restartCandidateAnalysis } = require('./final_planning_analysis_actions.cjs');
+const { requiredReadonly } = require('./final_planning_required_actions.cjs');
+const { requiredStale } = require('./final_planning_required_stale.cjs');
 const ready = JSON.parse(fs.readFileSync(process.argv[2])), width = Number(process.argv[3]), theme = process.argv[4], mode = process.argv[5];
 const entryScript = JSON.parse(fs.readFileSync(path.join(ready.assets.static, 'workbench/asset-manifest.json'))).scripts.at(-1);
 assert(/^workbench\/app\/main(?:\.jsx)?\.js$/.test(entryScript));
@@ -132,6 +134,8 @@ async function main() {
   try {
     if (mode === 'restart') await restart(page, h, flush);
     else if (mode === 'readonly') await readonlyActions(page, ready, report, h, flush);
+    else if (mode === 'required-readonly') await requiredReadonly(page, ready, report, h, flush);
+    else if (mode === 'required-stale') await requiredStale(page, ready, report, h, flush);
     else if (mode === 'preflight') {
       await page.goto(ready.run_url); await page.getByRole('heading', { name: '排产前检查', exact: true }).waitFor();
       if (await page.locator('html').getAttribute('data-theme') !== report.theme) await page.getByRole('button', { name: /^深色：/ }).click();
