@@ -29,6 +29,9 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "web/routes/scheduler_excel_batches.py",
             "web/routes/scheduler.py",
             "core/services/scheduler/**/*.py",
+            "core/services/common/plan_identity.py",
+            "core/services/common/plan_query.py",
+            "core/services/common/bounded_plan_query.py",
             # P0.3 收窄：data/templates_excel 由 owner 组（run_core / excel）覆盖故移除；
             # templates/static 收窄到 batches/material/resource 前端域。
             "templates/scheduler/batch*.html",
@@ -73,6 +76,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/app_runtime/test_fixed_file_security.py",
             "tests/app_runtime/test_validate_dist_runtime_identity.py",
             "tests/gate_meta/test_win7_networkx_package_contract.py",
+            "tests/gate_meta/test_frozen_bundle_contract.py",
             "tests/web_pages/test_system_runtime_log_reader.py",
             "tests/web_pages/test_error_boundary_contract.py",
             # 诊断包安全红线守卫（fusion-runtime-log-viewer）：本组是 web/routes/**、
@@ -85,6 +89,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/migration_db/test_restore_pre_snapshot_failure_contract.py",
             "tests/app_runtime/test_backup_create_integrity_error_message.py",
             "tests/material/test_material_repo_stock_qty_loud_contract.py",
+            "tests/material/test_material_finite_quantity_contract.py",
         ),
         "input_file_scopes": (
             "web/bootstrap/**/*.py",
@@ -224,6 +229,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             # （上方保留宽 glob），不再被无关 core/其他 viewmodel 逻辑改动拖入慢浏览器几何测试。
             "web/viewmodels/system_*.py",
             "web/viewmodels/ui_presenters.py",
+            "core/services/system/backup_restore.py",
             "web/routes/system_*.py",
             "web/routes/system_backup.py",
             "web/routes/system_history.py",

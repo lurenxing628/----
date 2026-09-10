@@ -23,6 +23,14 @@ from tools.long_gate_schema import LONG_GATE_FINGERPRINT_SCHEMA_VERSION, stable_
 _EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION = 1
 _CURRENT_FULL_TEST_DEBT_REL = "evidence/QualityGate/current_full_test_debt.json"
 _RUNTIME_FINGERPRINT_CACHE: Dict[str, str] = {}
+ENVIRONMENT_FINGERPRINT_SCHEMA_VERSION = 2
+RUNTIME_FINGERPRINT_KEYS = frozenset({
+    "python_executable_realpath", "python_version", "pytest_version",
+    "pytest_plugin_distribution_versions", "ruff_version", "pyright_version", "platform",
+    "node_executable_realpath", "git_executable_realpath", "git_version", "node_version",
+    "node_browser_runtime_capability", "chrome_executable_resolution", "chrome_version",
+    "chrome_executable_identity", "chrome_headless_preflight", "architecture_scan_cache_metadata",
+})
 
 
 class LongGateFingerprintError(RuntimeError):
@@ -645,7 +653,10 @@ def _runtime_fingerprint_value(
     if key == "architecture_scan_cache_metadata":
         return "sha256:" + stable_json_hash(architecture_scan_cache.architecture_scan_cache_metadata(repo_root))
     source = environment if environment is not None else os.environ
-    return source.get(str(key))
+    value = source.get(str(key))
+    if key == "SECRET_KEY" and value is not None:
+        return "sha256:" + stable_json_hash(value)
+    return value
 
 
 def fingerprint_environment(
@@ -665,9 +676,10 @@ def fingerprint_environment(
         for key in list(keys or [])
     }
     return {
+        "schema_version": ENVIRONMENT_FINGERPRINT_SCHEMA_VERSION,
         "keys": [str(key) for key in list(keys or [])],
         "values": values,
-        "hash": stable_json_hash(values),
+        "hash": stable_json_hash({"schema_version": ENVIRONMENT_FINGERPRINT_SCHEMA_VERSION, "values": values}),
     }
 
 

@@ -352,24 +352,32 @@ def test_unrelated_markdown_change_does_not_invalidate_startup(monkeypatch, tmp_
     )
 
 
-def test_startup_invalidation_keeps_full_test_debt_success_cache_reuse(monkeypatch, tmp_path):
+@pytest.mark.parametrize("env_key,shared_with_full_debt", (("APS_ENV", True), ("APS_HOST", False)))
+def test_startup_environment_invalidation_respects_shared_full_debt_inputs(
+    monkeypatch, tmp_path, env_key, shared_with_full_debt,
+):
     ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
     module = ctx.module
     repo_root = ctx.repo_root
     command_plan = ctx.command_plan
-    monkeypatch.delenv("APS_ENV", raising=False)
+    monkeypatch.delenv(env_key, raising=False)
+    manifest = _manifest_for(command_plan, repo_root)
+    assert env_key in _entry_by_id(manifest, ENTRY_STARTUP_RUNTIME_REGRESSIONS)["env_keys"]
+    assert (env_key in _entry_by_id(manifest, ENTRY_FULL_TEST_DEBT)["env_keys"]) is shared_with_full_debt
     full_debt_display = _entry_display(command_plan, repo_root, ENTRY_FULL_TEST_DEBT)
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
     _seed_startup_success(module, monkeypatch, repo_root, command_plan)
 
-    monkeypatch.setenv("APS_ENV", "next6-startup-only")
+    monkeypatch.setenv(env_key, "next6-changed-input")
     calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
     summary = _load_summary(repo_root)
 
     displays = [str(call["display"]) for call in calls]
-    assert full_debt_display not in displays
+    assert (full_debt_display in displays) is shared_with_full_debt
     assert startup_display in displays
-    assert _summary_entry(summary, "full_test_debt")["execution_mode"] == "reused_success_cache"
+    assert _summary_entry(summary, "full_test_debt")["execution_mode"] == (
+        "executed" if shared_with_full_debt else "reused_success_cache"
+    )
     assert _summary_entry(summary, ENTRY_STARTUP_RUNTIME_REGRESSIONS)["execution_mode"] == "executed"
     assert _success_path(repo_root, "full_test_debt").exists()
     assert (repo_root / "evidence" / "QualityGate" / "current_full_test_debt.json").exists()

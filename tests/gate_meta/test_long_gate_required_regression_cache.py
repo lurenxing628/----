@@ -39,6 +39,7 @@ from tools.long_gate_manifest import (
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
 )
+from tools.long_gate_schema import stable_json_hash
 from tools.test_registry import iter_required_tests
 
 
@@ -450,7 +451,11 @@ def test_required_environment_changes_update_fingerprint(monkeypatch, tmp_path, 
         return
 
     assert before["hash"] != after["hash"]
-    assert after["components"]["environment"]["values"][env_key] == os.environ.get(env_key)
+    expected = os.environ.get(env_key)
+    if env_key == "SECRET_KEY":
+        assert expected not in json.dumps(after)
+        expected = "sha256:" + stable_json_hash(expected)
+    assert after["components"]["environment"]["values"][env_key] == expected
 
 
 def test_required_fingerprint_ignores_irrelevant_path_append(monkeypatch, tmp_path):

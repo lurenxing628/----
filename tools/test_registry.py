@@ -17,10 +17,12 @@ from tools.test_registry_data import (
 )
 from tools.test_registry_groups_misc import MISC_REQUIRED_REGRESSION_GROUPS
 from tools.test_registry_groups_scheduler import SCHEDULER_REQUIRED_REGRESSION_GROUPS
+from tools.test_registry_groups_workbench import WORKBENCH_REQUIRED_REGRESSION_GROUPS
 
 REQUIRED_REGRESSION_GROUPS = (
     *SCHEDULER_REQUIRED_REGRESSION_GROUPS,
     *MISC_REQUIRED_REGRESSION_GROUPS,
+    *WORKBENCH_REQUIRED_REGRESSION_GROUPS,
 )
 
 def _normalize_registry_path(path: str) -> str:

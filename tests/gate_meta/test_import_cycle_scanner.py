@@ -132,14 +132,13 @@ def load_later():
         ("core.type_only", None, "typeonly", 8),
         ("core.runtime_else", None, "hard", 10),
         ("core.lazy", None, "lazy", 16),
+        ("core.variable", None, "hard", 12),
+        ("core.variable", None, "lazy", 17),
     }
     assert {(context, line) for context, line, _expression in unresolved} == {
-        ("hard", 12),
         ("hard", 13),
-        ("lazy", 17),
     }
     expressions = [expression for _context, _line, expression in unresolved]
-    assert any("module_name" in expression for expression in expressions)
     assert any("suffix" in expression for expression in expressions)
     assert all("core.variable" not in expression for expression in expressions)
 
@@ -334,14 +333,8 @@ def later():
     result = scan_import_cycles.scan(["pkg"], repo_root=str(tmp_path))
 
     assert result["parse_errors"] == []
-    assert result["edge_counts"]["hard"] == 2
+    assert result["edge_counts"]["hard"] == 4
     assert result["unresolved_dynamic_imports"] == [
-        {
-            "file": "pkg/source.py",
-            "line": 5,
-            "context": "hard",
-            "expression": "name",
-        },
         {
             "file": "pkg/source.py",
             "line": 7,
@@ -350,7 +343,7 @@ def later():
         },
     ]
     text = scan_import_cycles.render_text(result)
-    assert "pkg/source.py:5 [hard] name" in text
+    assert "pkg/source.py:5 [hard] name" not in text
     assert "pkg/source.py:7 [lazy] 'pkg.' Add 'target'" in text
 
 

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Set, Tuple
+
+from tools import import_cycle_graph as _graph
+
+tarjan = _graph.tarjan
 
 
 def classify(tree: ast.AST) -> List[Tuple[ast.AST, str]]:
@@ -73,105 +76,6 @@ def _classify_try(statement: ast.Try, context: str, out: List[Tuple[ast.AST, str
 ResolvedDynamicImport = Tuple[str, Optional[str], str, int]
 UnresolvedDynamicImport = Tuple[str, int, str]
 LoaderCandidates = Dict[str, Set[str]]
-LoaderScope = Tuple[Set[str], LoaderCandidates, Dict[str, str]]
-
-
-def _bound_names(target: ast.AST) -> Set[str]:
-    if isinstance(target, ast.Name):
-        return {target.id}
-    if isinstance(target, ast.Starred):
-        return _bound_names(target.value)
-    if isinstance(target, (ast.Tuple, ast.List)):
-        return set().union(*(_bound_names(item) for item in target.elts)) if target.elts else set()
-    return set()
-
-
-def _loader_import_bindings(node: ast.AST) -> List[Tuple[str, Optional[str]]]:
-    rows: List[Tuple[str, Optional[str]]] = []
-    if isinstance(node, ast.Import):
-        for alias in node.names:
-            bound = alias.asname or alias.name.split(".")[0]
-            kind = None
-            if alias.name == "importlib":
-                kind = "importlib"
-            elif alias.name == "importlib.util":
-                kind = "importlib.util" if alias.asname else "importlib"
-            elif alias.name.startswith("importlib.") and alias.asname is None:
-                kind = "importlib"
-            rows.append((bound, kind))
-    elif isinstance(node, ast.ImportFrom):
-        module = str(node.module or "")
-        kinds = {
-            ("importlib", "import_module"): "import_module",
-            ("importlib", "util"): "importlib.util",
-            ("importlib.util", "spec_from_file_location"): "spec_from_file_location",
-        }
-        for alias in node.names:
-            if alias.name != "*":
-                rows.append((alias.asname or alias.name, kinds.get((module, alias.name))))
-    return rows
-
-
-def _scope_nodes(scope: ast.AST) -> List[ast.AST]:
-    roots = [scope.body] if isinstance(scope, ast.Lambda) else list(getattr(scope, "body", []))
-    pending = list(reversed(roots))
-    nodes: List[ast.AST] = []
-    while pending:
-        node = pending.pop()
-        nodes.append(node)
-        children = list(ast.iter_child_nodes(node))
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            body_ids = {id(child) for child in node.body}
-            children = [child for child in children if id(child) not in body_ids]
-        elif isinstance(node, ast.Lambda):
-            children = [child for child in children if child is not node.body]
-        pending.extend(reversed(children))
-    return nodes
-
-
-def _dynamic_loader_aliases(scope: ast.AST) -> LoaderScope:
-    trusted: Dict[str, List[str]] = {}
-    rebound: Set[str] = set()
-    bound: Set[str] = set()
-    args = getattr(scope, "args", None)
-    if args is not None:
-        parameters = list(getattr(args, "posonlyargs", [])) + list(args.args) + list(args.kwonlyargs)
-        parameters += [arg for arg in (args.vararg, args.kwarg) if arg is not None]
-        rebound.update(arg.arg for arg in parameters)
-        bound.update(rebound)
-    for node in _scope_nodes(scope):
-        import_rows = _loader_import_bindings(node)
-        if import_rows:
-            for name, kind in import_rows:
-                bound.add(name)
-                if kind is None:
-                    rebound.add(name)
-                else:
-                    trusted.setdefault(name, []).append(kind)
-            continue
-        names: Set[str] = set()
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            names.add(node.name)
-        elif isinstance(node, ast.Assign):
-            names.update(*(_bound_names(target) for target in node.targets))
-        elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
-            names.update(_bound_names(node.target))
-        elif isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)):
-            names.update(_bound_names(node.target))
-        elif isinstance(node, (ast.With, ast.AsyncWith)):
-            for item in node.items:
-                if item.optional_vars is not None:
-                    names.update(_bound_names(item.optional_vars))
-        elif isinstance(node, ast.ExceptHandler) and node.name:
-            names.add(node.name)
-        elif isinstance(node, ast.Delete):
-            for target in node.targets:
-                names.update(_bound_names(target))
-        rebound.update(names)
-        bound.update(names)
-    candidates = {name: set(kinds) for name, kinds in trusted.items()}
-    safe = {name: kinds[0] for name, kinds in trusted.items() if len(set(kinds)) == 1 and name not in rebound}
-    return bound, candidates, safe
 
 
 def _dynamic_loader_kind(func: ast.AST, aliases: Dict[str, str]) -> Optional[str]:
@@ -233,7 +137,7 @@ def _dynamic_argument_text(node: ast.AST) -> str:
 
 
 class _DynamicImportVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
+    def __init__(self, source_path: Optional[str], file_to_mod: Optional[Dict[str, str]]) -> None:
         self.context = "hard"
         self.aliases = {"__import__": "__import__"}
         self.candidates: LoaderCandidates = {"__import__": {"__import__"}}
@@ -241,12 +145,19 @@ class _DynamicImportVisitor(ast.NodeVisitor):
         self.scope_kind = "root"
         self.class_outer_aliases: Dict[str, str] = {}
         self.class_outer_candidates: LoaderCandidates = {}
+        self.values: Dict[str, _graph.StaticValue] = {"__package__": "__package__", "__name__": "__name__"}
+        if source_path is not None:
+            self.values["__file__"] = source_path
+        self.file_to_mod = file_to_mod or {}
+        self.scope_assignments: Dict[str, ast.AST] = {}
+        self.class_outer_values: Dict[str, _graph.StaticValue] = {}
         self.resolved: List[ResolvedDynamicImport] = []
         self.unresolved: List[UnresolvedDynamicImport] = []
 
     def _visit_in_context(self, nodes: Sequence[ast.AST], context: str, *, isolate: bool = False) -> None:
         previous_context = self.context
         previous_aliases = dict(self.aliases) if isolate else None
+        previous_values = dict(self.values) if isolate else None
         self.context = context
         try:
             for node in nodes:
@@ -255,6 +166,8 @@ class _DynamicImportVisitor(ast.NodeVisitor):
             self.context = previous_context
             if previous_aliases is not None:
                 self.aliases = previous_aliases
+            if previous_values is not None:
+                self.values = previous_values
 
     def _visit_scope(
         self,
@@ -264,6 +177,7 @@ class _DynamicImportVisitor(ast.NodeVisitor):
         kind: str,
         inherited_aliases: Dict[str, str],
         inherited_candidates: LoaderCandidates,
+        inherited_values: Dict[str, _graph.StaticValue],
     ) -> None:
         previous = (
             self.aliases,
@@ -272,20 +186,27 @@ class _DynamicImportVisitor(ast.NodeVisitor):
             self.scope_kind,
             self.class_outer_aliases,
             self.class_outer_candidates,
+            self.values,
+            self.scope_assignments,
+            self.class_outer_values,
         )
-        bound, local_candidates, safe = _dynamic_loader_aliases(scope)
-        aliases = dict(inherited_aliases)
-        for name in bound:
+        bindings = _graph.import_scope(scope)
+        aliases = {} if bindings.wildcard else dict(inherited_aliases)
+        values = {} if bindings.wildcard else dict(inherited_values)
+        for name in bindings.bound:
             aliases.pop(name, None)
+            values.pop(name, None)
         candidates = {name: set(kinds) for name, kinds in inherited_candidates.items()}
-        for name, kinds in local_candidates.items():
+        for name, kinds in bindings.candidates.items():
             candidates.setdefault(name, set()).update(kinds)
-        self.aliases, self.candidates, self.scope_safe, self.scope_kind = aliases, candidates, safe, kind
+        self.aliases, self.candidates, self.scope_safe, self.scope_kind = aliases, candidates, bindings.aliases, kind
+        self.values, self.scope_assignments = values, bindings.assignments
         if kind == "class":
             self.class_outer_aliases = dict(inherited_aliases)
             self.class_outer_candidates = {
                 name: set(kinds) for name, kinds in inherited_candidates.items()
             }
+            self.class_outer_values = dict(inherited_values)
         try:
             self._visit_in_context(nodes, context)
         finally:
@@ -296,20 +217,39 @@ class _DynamicImportVisitor(ast.NodeVisitor):
                 self.scope_kind,
                 self.class_outer_aliases,
                 self.class_outer_candidates,
+                self.values,
+                self.scope_assignments,
+                self.class_outer_values,
             ) = previous
 
-    def _nested_scope_sources(self) -> Tuple[Dict[str, str], LoaderCandidates]:
+    def _nested_scope_sources(self) -> Tuple[Dict[str, str], LoaderCandidates, Dict[str, _graph.StaticValue]]:
         if self.scope_kind == "class":
-            return self.class_outer_aliases, self.class_outer_candidates
-        return self.aliases, self.candidates
+            return self.class_outer_aliases, self.class_outer_candidates, self.class_outer_values
+        return self.aliases, self.candidates, self.values
 
     def _activate_loader_imports(self, node: ast.AST) -> None:
-        for name, kind in _loader_import_bindings(node):
+        for name, kind in _graph.loader_import_bindings(node):
             if kind is not None and self.scope_safe.get(name) == kind:
                 self.aliases[name] = kind
 
     def visit_Module(self, node: ast.Module) -> None:
-        self._visit_scope(node, node.body, "hard", "module", self.aliases, self.candidates)
+        self._visit_scope(node, node.body, "hard", "module", self.aliases, self.candidates, self.values)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self.generic_visit(node)
+        for target in node.targets:
+            self._activate_value(target, node.value)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        self.generic_visit(node)
+        if node.value is not None:
+            self._activate_value(node.target, node.value)
+
+    def _activate_value(self, target: ast.AST, expression: ast.AST) -> None:
+        if isinstance(target, ast.Name) and self.scope_assignments.get(target.id) is expression:
+            value = _graph.static_import_value(expression, self.values, self.aliases)
+            if value is not None:
+                self.values[target.id] = value
 
     def _visit_function_header(self, node: ast.AST) -> None:
         args = node.args  # type: ignore[attr-defined]
@@ -327,8 +267,7 @@ class _DynamicImportVisitor(ast.NodeVisitor):
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._visit_function_header(node)
         body_context = "typeonly" if self.context == "typeonly" else "lazy"
-        aliases, candidates = self._nested_scope_sources()
-        self._visit_scope(node, node.body, body_context, "function", aliases, candidates)
+        self._visit_scope(node, node.body, body_context, "function", *self._nested_scope_sources())
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self.visit_FunctionDef(node)  # type: ignore[arg-type]
@@ -337,16 +276,14 @@ class _DynamicImportVisitor(ast.NodeVisitor):
         for default in list(node.args.defaults) + [value for value in node.args.kw_defaults if value is not None]:
             self.visit(default)
         body_context = "typeonly" if self.context == "typeonly" else "lazy"
-        aliases, candidates = self._nested_scope_sources()
-        self._visit_scope(node, [node.body], body_context, "function", aliases, candidates)
+        self._visit_scope(node, [node.body], body_context, "function", *self._nested_scope_sources())
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         for expression in list(node.decorator_list) + list(node.bases):
             self.visit(expression)
         for keyword in node.keywords:
             self.visit(keyword.value)
-        aliases, candidates = self._nested_scope_sources()
-        self._visit_scope(node, node.body, self.context, "class", aliases, candidates)
+        self._visit_scope(node, node.body, self.context, "class", *self._nested_scope_sources())
 
     def visit_Import(self, node: ast.Import) -> None:
         self._activate_loader_imports(node)
@@ -405,25 +342,41 @@ class _DynamicImportVisitor(ast.NodeVisitor):
             if first_arg is None:
                 self.unresolved.append((self.context, node.lineno, f"{loader_kind}(<missing name>)"))
             elif loader_kind == "spec_from_file_location":
-                expression = f"spec_from_file_location({_dynamic_argument_text(first_arg)})"
-                self.unresolved.append((self.context, node.lineno, expression))
-            elif isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
-                target = first_arg.value
-                package = _dynamic_package_argument(node) if target.startswith(".") else None
-                if not target.startswith(".") or package is not None:
-                    self.resolved.append((target, package, self.context, node.lineno))
-                else:
-                    expression = f"relative target {target!r} with unresolved package"
-                    self.unresolved.append((self.context, node.lineno, expression))
+                self._record_file_import(node, first_arg)
             else:
-                argument = _dynamic_argument_text(first_arg)
-                expression = argument if loader_kind == "import_module" else f"{loader_kind}({argument})"
-                self.unresolved.append((self.context, node.lineno, expression))
+                self._record_name_import(node, first_arg, loader_kind)
         elif _is_unproven_dynamic_loader(node.func, self.candidates):
             argument = "<missing name>" if first_arg is None else _dynamic_argument_text(first_arg)
             expression = f"unproven loader binding: {_dynamic_argument_text(node.func)}({argument})"
             self.unresolved.append((self.context, node.lineno, expression))
         self.generic_visit(node)
+
+    def _record_name_import(self, node: ast.Call, first_arg: ast.AST, loader_kind: str) -> None:
+        target = _graph.static_import_value(first_arg, self.values, self.aliases)
+        if isinstance(target, str):
+            package_arg = _call_argument(node, 1, "package")
+            package = _graph.static_import_value(package_arg, self.values, self.aliases) if package_arg else None
+            package = package if target.startswith(".") and isinstance(package, str) else None
+            if not target.startswith(".") or package is not None:
+                self.resolved.append((target, package, self.context, node.lineno))
+                return
+            expression = f"relative target {target!r} with unresolved package"
+        else:
+            argument = _dynamic_argument_text(first_arg)
+            expression = argument if loader_kind == "import_module" else f"{loader_kind}({argument})"
+        self.unresolved.append((self.context, node.lineno, expression))
+
+    def _record_file_import(self, node: ast.Call, first_arg: ast.AST) -> None:
+        location = _call_argument(node, 1, "location")
+        value = _graph.static_import_value(location, self.values, self.aliases) if location else None
+        target = _graph.source_file_target(value, self.file_to_mod)
+        name = _graph.static_import_value(first_arg, self.values, self.aliases)
+        standard_args = len(node.args) <= 2 and all(k.arg in {"name", "location"} for k in node.keywords)
+        if target is not None and isinstance(name, str) and standard_args:
+            self.resolved.append(_graph.ResolvedFileImport(target, None, self.context, node.lineno))
+        else:
+            expression = f"spec_from_file_location({_dynamic_argument_text(first_arg)})"
+            self.unresolved.append((self.context, node.lineno, expression))
 
 
 def _call_argument(call: ast.Call, position: int, *keyword_names: str) -> Optional[ast.AST]:
@@ -436,19 +389,10 @@ def _call_argument(call: ast.Call, position: int, *keyword_names: str) -> Option
     return None
 
 
-def _dynamic_package_argument(call: ast.Call) -> Optional[str]:
-    package = _call_argument(call, 1, "package")
-    if package is None:
-        return None
-    if isinstance(package, ast.Name) and package.id in {"__package__", "__name__"}:
-        return package.id
-    if isinstance(package, ast.Constant) and isinstance(package.value, str):
-        return package.value
-    return None
-
-
-def dyn_imports(tree: ast.AST) -> Tuple[List[ResolvedDynamicImport], List[UnresolvedDynamicImport]]:
-    visitor = _DynamicImportVisitor()
+def dyn_imports(
+    tree: ast.AST, *, source_path: Optional[str] = None, file_to_mod: Optional[Dict[str, str]] = None,
+) -> Tuple[List[ResolvedDynamicImport], List[UnresolvedDynamicImport]]:
+    visitor = _DynamicImportVisitor(source_path, file_to_mod)
     visitor.visit(tree)
     return visitor.resolved, visitor.unresolved
 
@@ -508,78 +452,3 @@ def _direct_import_targets(node: ast.AST, mod_to_file: Dict[str, str]) -> List[s
     if not isinstance(node, ast.Import):
         return []
     return [alias.name for alias in node.names if alias.name in mod_to_file]
-
-
-@dataclass
-class _TarjanState:
-    graph: Dict[str, List[str]]
-    index: Dict[str, int] = field(default_factory=dict)
-    low: Dict[str, int] = field(default_factory=dict)
-    on_stack: Dict[str, bool] = field(default_factory=dict)
-    stack: List[str] = field(default_factory=list)
-    components: List[List[str]] = field(default_factory=list)
-    counter: int = 0
-
-    def nodes(self) -> List[str]:
-        all_nodes = set(self.graph) | {target for targets in self.graph.values() for target in targets}
-        return list(all_nodes)
-
-
-def tarjan(graph: Dict[str, List[str]]) -> List[List[str]]:
-    state = _TarjanState(graph=graph)
-    for node in state.nodes():
-        if node not in state.index:
-            _strongconnect_iterative(state, node)
-    return state.components
-
-
-def _strongconnect_iterative(state: _TarjanState, root: str) -> None:
-    work: List[Tuple[str, int]] = [(root, 0)]
-    while work:
-        node, next_index = work[-1]
-        if node not in state.index:
-            _visit_node(state, node)
-        child, updated_index = _next_unvisited_child(state, node, next_index)
-        if child is not None:
-            work[-1] = (node, updated_index)
-            work.append((child, 0))
-            continue
-        _finish_node(state, node)
-        work.pop()
-        if work:
-            parent = work[-1][0]
-            state.low[parent] = min(state.low[parent], state.low[node])
-
-
-def _visit_node(state: _TarjanState, node: str) -> None:
-    state.index[node] = state.low[node] = state.counter
-    state.counter += 1
-    state.stack.append(node)
-    state.on_stack[node] = True
-
-
-def _next_unvisited_child(state: _TarjanState, node: str, start_index: int) -> Tuple[Optional[str], int]:
-    neighbors = state.graph.get(node, ())
-    index = start_index
-    while index < len(neighbors):
-        child = neighbors[index]
-        if child not in state.index:
-            return child, index + 1
-        if state.on_stack.get(child):
-            state.low[node] = min(state.low[node], state.index[child])
-        index += 1
-    return None, index
-
-
-def _finish_node(state: _TarjanState, node: str) -> None:
-    if state.low[node] != state.index[node]:
-        return
-    component: List[str] = []
-    while state.stack:
-        member = state.stack.pop()
-        state.on_stack[member] = False
-        component.append(member)
-        if member == node:
-            break
-    if len(component) > 1:
-        state.components.append(component)

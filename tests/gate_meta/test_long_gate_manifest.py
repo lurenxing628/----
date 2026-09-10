@@ -7,6 +7,9 @@ import os
 import subprocess
 import sys
 
+import pytest
+
+from tools import long_gate_fingerprint as fingerprint_mod
 from tools import long_gate_manifest as manifest_mod
 from tools import quality_gate_shared
 from tools.long_gate_fingerprint import fingerprint_entry
@@ -16,10 +19,12 @@ from tools.long_gate_schema import (
     LONG_GATE_MANIFEST_SCHEMA_VERSION,
 )
 from tools.test_registry import (
+    iter_required_regression_groups,
     iter_required_tests,
     iter_startup_regressions,
     validate_required_regression_group_coverage,
 )
+from tools.test_registry_groups_workbench import WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS
 
 
 def _entry_by_id(manifest, entry_id):
@@ -106,6 +111,11 @@ def test_required_and_startup_regression_args_come_from_dynamic_plan():
     for required_path in quality_gate_shared.iter_quality_gate_required_tests():
         assert required_path in required_entry["input_file_scopes"]
     assert startup_entry["args"][4:] == iter_startup_regressions()
+    assert startup_entry["args"][-2:] == [
+        "tests/app_runtime/test_runtime_stop_cli.py", "tests/app_runtime/test_runtime_stop_draining.py",
+    ]
+    assert "tests/app_runtime/test_runtime_stop_draining.py" in startup_entry["input_file_scopes"]
+    assert "tests/app_runtime/test_runtime_stop_draining.py" not in iter_required_tests()
 
 
 def test_full_test_debt_manifest_tracks_runtime_and_shard_inputs():
@@ -134,7 +144,14 @@ def test_required_groups_cover_required_registry():
     assert coverage["unknown"] == []
     assert coverage["required_target_count"] == len(iter_required_tests())
     assert coverage["group_target_count"] == len(iter_required_tests())
-    assert coverage["group_count"] == 8
+    # Final delivered piece and predecessor targets; registration is not execution proof.
+    assert coverage["group_count"] == 33
+    assert coverage["required_target_count"] == 582
+    assert [group["group_id"] for group in iter_required_regression_groups()][-9:] == [
+        "workbench_trial", "workbench_template_lineage", "workbench_request_lifecycle",
+        "workbench_calibration_adoption", "workbench_trial_adoption", "workbench_dashboard",
+        "workbench_outsourcing", "workbench_zero_duration", "workbench_piece_adoption",
+    ]
     assert coverage["required_registry_hash"]
     assert coverage["group_registry_hash"]
 
@@ -231,6 +248,161 @@ def test_required_parent_fingerprint_tracks_group_specific_scope_union(tmp_path)
     after_parent = fingerprint_entry(required_entry, str(tmp_path))
 
     assert before_parent["hash"] != after_parent["hash"]
+
+
+@pytest.mark.parametrize("source", (
+    "schema.sql", "core/infrastructure/migrations/v31.py",
+    "web/bootstrap/__init__.py", "web/bootstrap/factory.py", "web/routes/workbench/registration.py",
+    "web/routes/workbench/pages.py", "tests/workbench/fe03_route_manifest.json",
+    "core/services/process/quota_protection.py", "core/services/scheduler/template_lineage.py",
+    "core/services/scheduler/template_lineage_query.py", "tests/_support/dependency_boundaries.py",
+    "tests/workbench/test_fe04_shared_service_dependency_contract.py",
+    "tools/long_gate_manifest_environment.py", "tools/long_gate_fingerprint.py",
+    "tests/gate_meta/workbench_cache_environment_support.py", "tests/gate_meta/test_workbench_cache_environment.py",
+    "core/algorithm_contracts/schedule_point_evidence.py",
+    "core/services/workbench/zero_duration_evidence.py", "core/services/workbench/plan_point_evidence.py",
+    "core/services/workbench/piece_adoption_scope.py", "core/models/workbench_piece_adoption.py",
+    "core/algorithms/greedy/piece_input.py", "core/algorithm_runtime/busy_block_skip.py",
+    "core/services/scheduler/calendar_engine.py", "core/services/scheduler/calendar_service.py",
+    "tests/_support/busy_block_case.py", "tests/workbench/ea_zero_duration_support.py",
+    "tests/workbench/test_piece_adoption_support.py",
+    "tests/workbench/test_eu_process_fixture_contracts.py", "tests/workbench/process_detail_files_probe.cjs",
+    "tests/workbench/process_stage_widgets_probe.cjs", "tests/workbench/process_widgets_probe.cjs",
+    "tests/workbench/test_point_adoption_host.py", "tests/workbench/test_run_adoption_host.py",
+    "tests/workbench/run_entrypoint_support.py",
+    "tests/workbench/test_piece_presentation.py", "tests/workbench/test_piece_production_connection.py",
+    "tests/workbench/test_preflight_run_status.py", "tests/workbench/test_preflight_support.py",
+    "tests/workbench/test_request_lifecycle_support.py", "core/services/workbench/preflight_result.py",
+    "core/services/workbench/run_jobs.py", "web/routes/workbench/scheduling_jobs.py",
+    "web/bootstrap/factory.py", "web/bootstrap/launcher_runtime_lock.py",
+    "web/bootstrap/workbench_request_lifecycle.py", "web/bootstrap/workbench_run_runtime.py",
+    "tests/workbench/test_trial_predecessor_labels.py", "tests/workbench/test_piece_chain_end_to_end.py",
+    "tests/workbench/piece_production_connection_support.py", "tests/workbench/trial_predecessor_labels_probe.cjs",
+    "core/infrastructure/database.py", "core/services/workbench/plan_projection.py",
+    "core/services/workbench/run_candidate_tasks.py", "core/services/workbench/trial_adoption_validation.py",
+    "frontend/workbench/app/PointContract.js", "frontend/workbench/app/ResourceControls.jsx",
+    "frontend/workbench/app/TrialControls.jsx", "frontend/workbench/app/TrialGantt.jsx",
+    "frontend/workbench/app/TrialDetails.jsx", "scripts/workbench/compile.cjs",
+    "frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js",
+    "frontend/workbench/prototype/ui_kits/workbench/assets/vendor/react-18.3.1.js",
+))
+def test_completed_ea_ec_eg_source_edit_invalidates_required_parent_fingerprint(tmp_path, source):
+    manifest = manifest_mod.build_manifest_from_quality_gate_plan(
+        quality_gate_shared.build_quality_gate_command_plan(), repo_root=str(tmp_path))
+    required = _entry_by_id(manifest, "required_regressions")
+    path = tmp_path / source
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("# before\n", encoding="utf-8")
+    before = fingerprint_entry(required, str(tmp_path))
+    path.write_text("# after\n", encoding="utf-8")
+    assert fingerprint_entry(required, str(tmp_path))["hash"] != before["hash"]
+
+
+@pytest.mark.parametrize("source", (
+    "tests/workbench/piece_main_build.cjs", "tests/workbench/piece_main_seed.py",
+    "tests/workbench/piece_main_oracle.py", "tests/workbench/piece_main_dependencies.cjs",
+    "tests/workbench/piece_presentation_build.cjs", "tests/workbench/piece_presentation_host.jsx",
+    "tests/workbench/piece_presentation_contract.cjs", "tests/workbench/test_piece_presentation.py",
+    "tests/workbench/plan_ui_fixtures.cjs", "frontend/workbench/app/main.jsx",
+    "scripts/workbench/build-order.json", "static/workbench/asset-manifest.json",
+    "tests/workbench/plan_scope_caption_probe.cjs", "tests/workbench/ea_zero_duration_support.py",
+    "tests/workbench/piece_downstream_contract.cjs", "tests/workbench/piece_downstream_browser.cjs",
+    "tests/workbench/piece_downstream_browser_support.cjs", "tests/workbench/test_piece_main_browser.py",
+    "frontend/workbench/app/FieldContract.js", "frontend/workbench/app/FieldTable.jsx",
+    "frontend/workbench/app/FieldDetail.jsx", "frontend/workbench/app/ActualGanttContract.js",
+    "frontend/workbench/app/ActualGanttModel.js", "frontend/workbench/app/ActualGanttRows.jsx",
+    "core/services/workbench/field_workspace.py", "core/services/workbench/field_workspace_scope.py",
+    "core/services/workbench/actual_gantt_scope.py", "core/services/workbench/actual_gantt_export.py",
+    "tests/workbench/fg_plan_workspace_actions_probe.cjs", "tests/workbench/test_plan_adoption_baseline_support.py",
+    "tests/workbench/plan_ui_browser_probe.cjs", "tests/workbench/plan_ui_browser_harness.cjs",
+    "tests/workbench/point_downstream_browser_build_support.cjs", "tests/workbench/point_downstream_support.py",
+    "tests/workbench/test_run_candidate_support.py", "tests/workbench/trial_support.py",
+    "web/routes/workbench/plan_reads.py", "core/services/workbench/plan_projection.py",
+    "frontend/workbench/app/PlanWorkspace.jsx", "frontend/workbench/app/PlanLayout.jsx",
+    "frontend/workbench/app/PlanContract.js", "frontend/workbench/app/PlanAPI.js",
+    "frontend/workbench/app/PointContract.js", "scripts/workbench/compile.cjs",
+    "frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js",
+))
+def test_final_piece_browser_inventory_fingerprint_tracks_actual_source_inputs(tmp_path, source):
+    browser = next(group for group in WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS
+                   if group["group_id"] == "workbench_browser")
+    assert source in browser["input_file_scopes"]
+    path = tmp_path / source
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("before\n", encoding="utf-8")
+    before = fingerprint_entry(browser, str(tmp_path))
+    path.write_text("after\n", encoding="utf-8")
+    assert fingerprint_entry(browser, str(tmp_path))["hash"] != before["hash"]
+
+
+@pytest.mark.parametrize("env_key", (
+    "APS_ET_EVIDENCE_ROOT", "PIECE_MAIN_ALL_THEMES", "PIECE_MAIN_LONG_IDS", "WORKBENCH_EV_SOURCE_ROOT",
+))
+def test_final_piece_environment_fingerprints_keep_required_and_browser_separate(tmp_path, monkeypatch, env_key):
+    manifest = manifest_mod.build_manifest_from_quality_gate_plan(
+        quality_gate_shared.build_quality_gate_command_plan(), repo_root=str(tmp_path))
+    required = _entry_by_id(manifest, "required_regressions")
+    browser = next(group for group in WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS
+                   if group["group_id"] == "workbench_browser")
+    entry = required if env_key == "APS_ET_EVIDENCE_ROOT" else browser
+    assert env_key in entry["env_keys"]
+    monkeypatch.setenv(env_key, "before")
+    before = fingerprint_entry(entry, str(tmp_path))
+    monkeypatch.setenv(env_key, "after")
+    assert fingerprint_entry(entry, str(tmp_path))["hash"] != before["hash"]
+    if env_key != "APS_ET_EVIDENCE_ROOT":
+        assert env_key not in required["env_keys"]
+
+
+@pytest.fixture
+def stable_registry_runtime(monkeypatch):
+    original = fingerprint_mod._runtime_fingerprint_value
+
+    def stable_value(key, **kwargs):
+        if key in fingerprint_mod.RUNTIME_FINGERPRINT_KEYS:
+            return "stable-runtime"
+        return original(key, **kwargs)
+
+    monkeypatch.setattr(fingerprint_mod, "_runtime_fingerprint_value", stable_value)
+
+
+@pytest.mark.parametrize("env_key", (
+    "AN_SCOPE", "AY_REACT_DEV", "WORKBENCH_EXPECT_BUILD", "SYSTEM_CONFIG_SAVED_REPLAY_OLD_EFFECT",
+    "TRIAL_WIDGET_TARGET_ONLY", "OUTSOURCING_UI_SCHEMA",
+))
+def test_browser_behavior_inputs_invalidate_full_consumers_but_not_required_or_startup(
+    tmp_path, monkeypatch, stable_registry_runtime, env_key,
+):
+    manifest = manifest_mod.build_manifest_from_quality_gate_plan(
+        quality_gate_shared.build_quality_gate_command_plan(), repo_root=str(tmp_path))
+    for entry_id in ("pytest_collect_all", "full_test_debt", "required_regressions", "startup_runtime_regressions"):
+        entry = _entry_by_id(manifest, entry_id)
+        observes_browser = entry_id in ("pytest_collect_all", "full_test_debt")
+        assert (env_key in entry["env_keys"]) is observes_browser
+        monkeypatch.setenv(env_key, "fd-before")
+        before = fingerprint_entry(entry, str(tmp_path))
+        monkeypatch.setenv(env_key, "fd-after")
+        after = fingerprint_entry(entry, str(tmp_path))
+        assert (after["hash"] != before["hash"]) is observes_browser
+        if observes_browser:
+            assert after["components"]["environment"]["values"][env_key] == "fd-after"
+
+
+@pytest.mark.parametrize("env_key", ("AY_SMOKE", "AY_BASELINE", "AY_UNSUSPENDED", "FD_UNDECLARED_SECRET"))
+def test_cleared_or_undeclared_environment_is_not_captured_by_any_test_consumer(
+    tmp_path, monkeypatch, stable_registry_runtime, env_key,
+):
+    manifest = manifest_mod.build_manifest_from_quality_gate_plan(
+        quality_gate_shared.build_quality_gate_command_plan(), repo_root=str(tmp_path))
+    for entry_id in ("pytest_collect_all", "full_test_debt", "required_regressions", "startup_runtime_regressions"):
+        entry = _entry_by_id(manifest, entry_id)
+        assert env_key not in entry["env_keys"]
+        monkeypatch.setenv(env_key, "fd-private-before")
+        before = fingerprint_entry(entry, str(tmp_path))
+        monkeypatch.setenv(env_key, "fd-private-after")
+        after = fingerprint_entry(entry, str(tmp_path))
+        assert after["hash"] == before["hash"]
+        assert "fd-private" not in json.dumps(after)
 
 
 def test_required_groups_do_not_enter_formal_manifest_contract():

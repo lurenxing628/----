@@ -16,6 +16,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools import quality_gate_shared
+from tools.long_gate_manifest_environment import full_debt_environment_keys, registry_test_environment_keys
 from tools.long_gate_schema import (
     LONG_GATE_CACHE_SCHEMA_VERSION,
     LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
@@ -753,6 +754,7 @@ def _scopes_for_entry(
         input_scopes.extend(
             [
                 "tests/**/*.py",
+                "tests/migration_db/fixtures/schema-v9.sql",
                 "tests/**/conftest.py",
                 "conftest.py",
                 "core/**/*.py",
@@ -854,6 +856,14 @@ def _scopes_for_entry(
             quality_gate_shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"),
             quality_gate_shared.QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL.replace("\\", "/"),
         ]
+
+    if entry_type in {ENTRY_PYTEST_COLLECT_ALL, ENTRY_FULL_TEST_DEBT, ENTRY_STARTUP_RUNTIME_REGRESSIONS}:
+        tool_scopes.extend(["tools/long_gate_manifest_environment.py", "tools/test_registry*.py"])
+        if entry_type == ENTRY_FULL_TEST_DEBT:
+            env_keys.extend(full_debt_environment_keys(_normalize_command(command or {})["args"]))
+        else:
+            targets = iter_startup_regressions() if entry_type == ENTRY_STARTUP_RUNTIME_REGRESSIONS else None
+            env_keys.extend(registry_test_environment_keys(targets))
 
     return (
         _dedupe(input_scopes),

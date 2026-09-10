@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 
+from tools.test_registry_groups_workbench import WORKBENCH_REQUIRED_TESTS
+
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 QUALITY_GATE_SELFTEST_PATH = "tests/gate_meta/test_run_quality_gate.py"
@@ -23,12 +25,14 @@ QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
     "tests/app_runtime/test_app_new_ui_security_hardening_enabled.py",
     "tests/app_runtime/test_app_factory_runtime_env_refresh.py",
     "tests/app_runtime/test_runtime_stop_cli.py",
+    "tests/app_runtime/test_runtime_stop_draining.py",
 )
 
 QUALITY_GATE_GUARD_TESTS = (
     "tests/gate_meta/test_no_residual_main_style_regression.py",
     "tests/gate_meta/test_sp05_path_topology_contract.py",
     "tests/gate_meta/test_win7_networkx_package_contract.py",
+    "tests/gate_meta/test_frozen_bundle_contract.py",
     "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
     "tests/schedule/route_view/test_scheduler_route_registration_contract.py",
     "tests/web_pages/test_history_summary_parser.py",
@@ -165,6 +169,28 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py",
     "tests/algorithm/test_optimizer_graph_ready_candidate_contract.py",
     "tests/algorithm/test_optimizer_benchmark_ratchet_gate.py",
+    "tests/algorithm/test_optimizer_ratchet_baseline_lifecycle.py",
+    "tests/algorithm/test_optimizer_quality_matrix_contract.py",
+    "tests/algorithm/test_optimizer_profile_predecode_dedup.py",
+    "tests/algorithm/test_optimizer_profile_budget.py",
+    "tests/algorithm/test_incomplete_batch_metrics_contract.py",
+    "tests/algorithm/test_incomplete_batch_optimizer_contract.py",
+    "tests/algorithm/test_incomplete_metrics_public_projection.py",
+    "tests/algorithm/test_ready_date_resource_calendar_lower_bound.py",
+    "tests/algorithm/test_sgs_slot_reuse_contract.py",
+    "tests/algorithm/test_sgs_slot_reuse_equivalence.py",
+    "tests/algorithm/test_busy_block_native_equivalence.py",
+    "tests/algorithm/test_busy_block_boundaries.py",
+    "tests/algorithm/test_sgs_explicit_piece_scope.py",
+    "tests/schedule/service/test_unselected_execution_resource_guardrails.py",
+    "tests/schedule/service/test_unselected_execution_resource_fail_closed.py",
+    "tests/schedule/service/test_unselected_execution_resource_snapshot.py",
+    "tests/schedule/service/test_unselected_execution_feedback_continuity.py",
+    "tests/schedule/service/test_schedule_seed_metadata_helper_contract.py",
+    "tests/gantt/test_gantt_critical_chain_cache_snapshot.py",
+    "tests/gantt/test_gantt_critical_chain_cache_transactions.py",
+    "tests/scheduler_analysis/test_report_calendar_capacity_intersections.py",
+    "tests/material/test_material_finite_quantity_contract.py",
     "tests/algorithm/test_localsearch_batch_order_actuator.py",
     "tests/schedule/service/test_schedule_input_collector_contract.py",
     "tests/schedule/service/test_schedule_input_collector_legacy_compat.py",
@@ -234,6 +260,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/gate_meta/test_callgraph_receiver_resolution.py",
     "tests/gate_meta/test_import_cycle_scanner.py",
     "tests/gate_meta/test_import_cycle_baseline.py",
+    "tests/gate_meta/test_round1_import_resolver.py",
     "tests/gate_meta/test_check_full_test_debt.py",
     "tests/gate_meta/test_full_test_debt_registry_contract.py",
     "tests/app_runtime/test_fast_static_precheck.py",
@@ -289,8 +316,11 @@ QUALITY_GATE_GUARD_TESTS = (
     # R55（2026-06-10）：关键链 scope 标记契约（归 scheduler_analysis_gantt_reports_week_plan 组，
     # scope 覆盖 gantt_service_support.py / gantt_contract.py）。
     "tests/gantt/test_gantt_critical_chain_scope_contract.py",
+    "tests/candidate/test_scheduler_candidate_schema_contract.py",
+    "tests/gate_meta/test_scheduler_lazy_exports_final.py",
 )
 
+QUALITY_GATE_GUARD_TESTS = (*QUALITY_GATE_GUARD_TESTS, *WORKBENCH_REQUIRED_TESTS)
 QUALITY_GATE_REQUIRED_TESTS = (QUALITY_GATE_SELFTEST_PATH, *QUALITY_GATE_GUARD_TESTS)
 
 TEST_ONLY_HELPER_IMPACT = {
@@ -324,6 +354,7 @@ REQUIRED_REGRESSION_COMMON_SCOPES = {
         "tools/test_registry_data.py",
         "tools/test_registry_groups_misc.py",
         "tools/test_registry_groups_scheduler.py",
+        "tools/test_registry_groups_workbench.py",
         "tools/quality_gate_shared.py",
         "tools/quality_gate_support.py",
         "scripts/run_quality_gate.py",
@@ -346,6 +377,7 @@ REQUIRED_REGRESSION_COMMON_SCOPES = {
         "tools/test_registry_data.py",
         "tools/test_registry_groups_misc.py",
         "tools/test_registry_groups_scheduler.py",
+        "tools/test_registry_groups_workbench.py",
         "tools/quality_gate_shared.py",
         "tools/quality_gate_support.py",
         # scope 空洞审计(2026-06-23)补登：tools/scripts 下服务门禁运行/测试地基的工具脚本——

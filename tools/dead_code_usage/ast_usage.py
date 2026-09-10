@@ -364,6 +364,7 @@ def _collect_evidence(context):
     context["local_type_cache"] = {}
     context["cache_local_types"] = True
     for rel, module in context["modules"].items():
+        evidence.extend(_framework_registration_evidence(context, rel, module))
         for node, hidden_names in _iter_usage_nodes(module.tree):
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                 if node.id in hidden_names:
@@ -462,6 +463,51 @@ def _evidence_for_node(context, target, rel, node, kind):
     if source_qual == target:
         return []
     return [UsageEvidence(target=target, source_rel=rel, line=_line(node), kind=kind, detail=source_qual or "<module>")]
+
+
+# Flask/Jinja 框架注册装饰器:被这些装饰的函数在装饰器求值时就被框架注册,
+# 调用方是框架本身,AST 使用图里看不到调用边,不算死代码。
+_FRAMEWORK_REGISTRATION_DECORATORS = frozenset({
+    "route", "get", "post", "put", "patch", "delete", "add_url_rule",
+    "context_processor", "template_filter", "template_global", "template_test",
+})
+
+
+def _framework_registration_evidence(context, rel, module):
+    # type: (dict, str, _ModuleInfo) -> List[UsageEvidence]
+    """为被框架注册装饰器装饰的函数补"已注册"证据,消路由/模板钩子误报。
+
+    只豁免紧邻装饰器的函数本体,不按目录一刀切——同文件里的普通业务函数
+    没有装饰器、拿不到证据,真死代码时仍会被报出。
+    """
+    found = []
+    tree = module.tree
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for deco in node.decorator_list:
+            if not _is_framework_registration_decorator(deco):
+                continue
+            target = context["by_module_name"].get(module.module, {}).get(node.name)
+            if target:
+                found.append(UsageEvidence(
+                    target=target, source_rel=rel, line=_line(node),
+                    kind="framework_registration", detail="<decorator>",
+                ))
+    return found
+
+
+def _is_framework_registration_decorator(deco):
+    # type: (ast.expr) -> bool
+    """判断装饰器是否为框架注册型,如 @bp.post("/x")、@app.context_processor。
+
+    形态限定为「对象属性调用」或「裸属性」,即 @xxx.<name>(...) 或 @xxx.<name>;
+    装饰器工厂的返回对象再注册(如 @bp.route(...)(other))不在此列。
+    """
+    target = deco.func if isinstance(deco, ast.Call) else deco
+    if isinstance(target, ast.Attribute):
+        return target.attr in _FRAMEWORK_REGISTRATION_DECORATORS
+    return False
 
 
 def _enclosing_function_qual(context, rel, line):

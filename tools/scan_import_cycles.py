@@ -204,10 +204,11 @@ def _collect_module_edges(
                         "context": kind,
                     }
                 )
-    resolved_dynamic, unresolved_dynamic = dyn_imports(tree)
-    for raw_target, package, kind, line in resolved_dynamic:
+    resolved_dynamic, unresolved_dynamic = dyn_imports(tree, source_path=ab, file_to_mod=file_to_mod)
+    for dynamic_import in resolved_dynamic:
+        raw_target, package, kind, line = dynamic_import
         target_mod = _resolved_dynamic_target(raw_target, package, pkg, mod)
-        dynamic_targets = expand_parent_packages([target_mod], mod_to_file) if target_mod else []
+        dynamic_targets = _dynamic_targets(dynamic_import, target_mod, mod_to_file)
         for dynamic_target in dynamic_targets:
             if dynamic_target not in mod_to_file:
                 continue
@@ -250,6 +251,13 @@ def _collect_module_edges(
         unresolved_dynamic_imports.append(
             {"file": rel, "line": line, "context": kind, "expression": expression}
         )
+
+
+def _dynamic_targets(dynamic_import: tuple, target_mod: Optional[str], mod_to_file: Dict[str, str]) -> List[str]:
+    # A file spec loads its source directly, not the source's package initializers.
+    if isinstance(dynamic_import, _graph.ResolvedFileImport):
+        return [dynamic_import.target]
+    return expand_parent_packages([target_mod], mod_to_file) if target_mod else []
 
 
 def scan(roots: Sequence[str], repo_root: str = REPO_ROOT) -> dict:
