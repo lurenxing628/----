@@ -117,7 +117,7 @@ def test_runtime_stop_cli() -> None:
     assert_repo_runtime_stopped(repo_root)
     _clear_stale_contract(log_dir)
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_runtime_stop_")
+    tmpdir = os.path.realpath(tempfile.mkdtemp(prefix="aps_regression_runtime_stop_"))
     env: Dict[str, str] = dict(os.environ)
     env["APS_ENV"] = "production"
     env["APS_HOST"] = "127.0.0.1"

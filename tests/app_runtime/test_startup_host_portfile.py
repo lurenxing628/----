@@ -188,7 +188,7 @@ def _assert_health(host: str, port: int, p: subprocess.Popen, timeout_s: float =
 def _run_case(repo_root: str, aps_host: str) -> None:
     from web.bootstrap.launcher import default_chrome_profile_dir
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_startup_")
+    tmpdir = os.path.realpath(tempfile.mkdtemp(prefix="aps_regression_startup_"))
     test_db = os.path.join(tmpdir, "aps.db")
     test_logs = os.path.join(tmpdir, "logs")
     test_backups = os.path.join(tmpdir, "backups")
