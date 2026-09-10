@@ -21,7 +21,7 @@ from core.services.personnel import ResourceTeamService
 from core.services.process import OpTypeService
 
 from .equipment_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
-from .excel_utils import (
+from .helpers.excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,

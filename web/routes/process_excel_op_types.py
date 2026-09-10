@@ -18,7 +18,7 @@ from core.services.common.normalize import normalize_text
 from core.services.process import OpTypeService
 from core.services.process.op_type_excel_import_service import OpTypeExcelImportService
 
-from .excel_utils import (
+from .helpers.excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,

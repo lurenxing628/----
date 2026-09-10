@@ -8,7 +8,7 @@ from core.models.enums import MergeMode
 from core.services.common.enum_normalizers import source_type_label
 from core.services.common.excel_service import ImportMode
 
-from .excel_utils import ensure_unique_ids, parse_import_mode, read_uploaded_xlsx
+from .helpers.excel_utils import ensure_unique_ids, parse_import_mode, read_uploaded_xlsx
 
 bp = Blueprint("process", __name__)
 

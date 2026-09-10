@@ -19,7 +19,7 @@ from core.services.common.strict_parse import parse_required_float
 from core.services.process import OpTypeService, SupplierService
 from core.services.process.supplier_excel_import_service import SupplierExcelImportService
 
-from .excel_utils import (
+from .helpers.excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,

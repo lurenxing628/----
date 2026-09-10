@@ -6,7 +6,7 @@ from core.models.enums import SupplierStatus
 from core.services.process import OpTypeService, SupplierService
 from web.viewmodels.excel_entry_cards import process_supplier_excel_cards
 
-from .pagination import paginate_rows, parse_page_args
+from .helpers.pagination import paginate_rows, parse_page_args
 from .process_bp import bp
 
 # ============================================================

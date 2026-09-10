@@ -5,7 +5,7 @@ from flask import flash, g, redirect, render_template, request, url_for
 from core.models.enums import ResourceTeamStatus
 from core.services.personnel import ResourceTeamService
 
-from .pagination import paginate_rows, parse_page_args
+from .helpers.pagination import paginate_rows, parse_page_args
 from .personnel_bp import bp
 
 

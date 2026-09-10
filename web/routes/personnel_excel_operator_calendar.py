@@ -19,7 +19,7 @@ from core.services.common.normalize import to_str_or_blank
 from core.services.personnel import OperatorService
 from core.services.scheduler import CalendarService, ConfigService
 
-from .excel_utils import (
+from .helpers.excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,

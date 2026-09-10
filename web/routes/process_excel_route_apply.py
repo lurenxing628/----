@@ -12,7 +12,7 @@ from core.services.common.excel_service import ExcelService, ImportMode, ImportP
 from core.services.process import PartService
 from core.services.scheduler.batch_query_service import BatchQueryService
 
-from .excel_utils import extract_import_stats, flash_import_result
+from .helpers.excel_utils import extract_import_stats, flash_import_result
 
 RouteRowValidator = Callable[[Dict[str, Any]], Optional[str]]
 

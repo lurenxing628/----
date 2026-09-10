@@ -9,6 +9,12 @@ from core.models.enums import SourceType
 from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
 from core.services.common.excel_templates import get_template_definition
 
+from .builder_diagnostics import (
+    record_compatible_row_diagnostic,
+    record_parse_diagnostics,
+    record_route_diagnostics,
+    record_step_record_diagnostics,
+)
 from .parser import PartContext, StationMeta, StepRecord
 from .part_sheet_builder import build_part_operation_hours_rows, build_route_rows
 from .resource_sheet_builder import (
@@ -47,9 +53,15 @@ class ConvertedTemplates:
 
 
 class UnitTemplateBuilder:
-    def build(self, parts: Dict[str, PartContext], stations: List[StationMeta]) -> ConvertedTemplates:
+    def build(
+        self,
+        parts: Dict[str, PartContext],
+        stations: List[StationMeta],
+        parse_diagnostics: Optional[List[Dict[str, Any]]] = None,
+    ) -> ConvertedTemplates:
         collector = DegradationCollector()
         samples: Dict[str, List[Any]] = {}
+        record_parse_diagnostics(parse_diagnostics=parse_diagnostics, collector=collector, samples=samples)
         machine_label_map = {s.machine_id: s.machine_label for s in stations}
         machine_op_hint = self._build_machine_op_hint(parts)
 
@@ -164,60 +176,6 @@ class UnitTemplateBuilder:
     def _all_seqs(ctx: PartContext, internal_seq_set: Set[int]) -> List[int]:
         return sorted(set(ctx.route_map.keys()) | set(internal_seq_set))
 
-    def _record_step_record_diagnostics(
-        self,
-        *,
-        ctx: PartContext,
-        rec: StepRecord,
-        collector: DegradationCollector,
-        samples: Dict[str, List[Any]],
-    ) -> None:
-        for issue in list(getattr(rec, "diagnostics", None) or []):
-            if not isinstance(issue, dict):
-                continue
-            self._record_diagnostic(
-                collector,
-                samples,
-                code=str(issue.get("code") or "invalid_unit_excel_cell"),
-                scope="unit_excel.step_record",
-                field=str(issue.get("field") or ""),
-                message=str(issue.get("message") or "单元 Excel 中有无法识别的单元格，系统已按可确认内容继续转换。"),
-                sample={
-                    "part_no": ctx.part_no,
-                    "machine_id": rec.machine_id,
-                    "step_text": rec.step_text,
-                    "row_num": int(issue.get("row_num") or getattr(rec, "row_num", 0) or 0),
-                    "field": issue.get("field"),
-                    "raw_value": issue.get("raw_value"),
-                },
-            )
-
-    def _record_compatible_row_diagnostic(
-        self,
-        *,
-        ctx: PartContext,
-        rec: StepRecord,
-        collector: DegradationCollector,
-        samples: Dict[str, List[Any]],
-    ) -> None:
-        if not rec.step_text or (rec.has_step_code and rec.operators):
-            return
-        self._record_diagnostic(
-            collector,
-            samples,
-            code="compatible_row",
-            scope="unit_excel.step_record",
-            field="step_text",
-            message="发现旧格式行，系统已按旧文件的写法识别并继续转换。",
-            sample={
-                "part_no": ctx.part_no,
-                "machine_id": rec.machine_id,
-                "step_text": rec.step_text,
-                "has_step_code": bool(rec.has_step_code),
-                "operator_count": int(len(rec.operators or [])),
-            },
-        )
-
     def _collect_op_records(
         self,
         parts: Dict[str, PartContext],
@@ -235,14 +193,15 @@ class UnitTemplateBuilder:
         for part_no in sorted(parts.keys()):
             ctx = parts[part_no]
             seq_to_records, internal_seq_set = self._build_seq_maps(ctx)
+            record_route_diagnostics(ctx=ctx, collector=collector, samples=samples)
             for rec in ctx.step_records:
-                self._record_step_record_diagnostics(
+                record_step_record_diagnostics(
                     ctx=ctx,
                     rec=rec,
                     collector=collector,
                     samples=samples,
                 )
-                self._record_compatible_row_diagnostic(
+                record_compatible_row_diagnostic(
                     ctx=ctx,
                     rec=rec,
                     collector=collector,

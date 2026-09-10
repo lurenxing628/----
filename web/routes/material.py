@@ -8,7 +8,7 @@ from core.infrastructure.errors import AppError, ValidationError
 from core.models.enums import MaterialStatus
 from core.services.common.enum_normalizers import ready_status_label
 
-from .pagination import build_pager, parse_page_args
+from .helpers.pagination import build_pager, parse_page_args
 
 bp = Blueprint("material", __name__)
 

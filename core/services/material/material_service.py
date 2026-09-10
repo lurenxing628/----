@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
@@ -36,6 +37,8 @@ class MaterialService:
             x = float(v)
         except Exception as e:
             raise ValidationError(f"“{field}”必须是数字", field=field) from e
+        if not math.isfinite(x):
+            raise ValidationError(f"“{field}”必须是有限数字，不能为 NaN 或无穷大", field=field)
         if x < min_v:
             raise ValidationError(f"“{field}”不能小于 {min_v}", field=field)
         return float(x)

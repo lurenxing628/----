@@ -1,10 +1,39 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Optional, Union
 
+from core.infrastructure.errors import AppError, ErrorCode
 from core.models import Material
 
 from .base_repo import BaseRepository
+
+
+def _finite_stock_qty(value: Any, material_id: str) -> float:
+    message = f"物料“{material_id}”的 Materials.stock_qty 必须是有限数字，当前值：{value!r}"
+    try:
+        quantity = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(message) from exc
+    if not math.isfinite(quantity):
+        raise ValueError(message)
+    return quantity
+
+
+def _material_from_row(row: Dict[str, Any]) -> Material:
+    try:
+        return Material.from_row(row)
+    except ValueError as exc:
+        material_id = str(row.get("material_id") or "")
+        value = repr(row.get("stock_qty"))
+        details = {"table": "Materials", "material_id": material_id, "field": "stock_qty", "value": value}
+        raise AppError(
+            ErrorCode.DB_INTEGRITY_ERROR,
+            f"物料“{material_id}”库存数量不是有效的有限数字，无法读取，请核对原始数据。",
+            details=details,
+            internal_details=details,
+            cause=exc,
+        ) from exc
 
 
 class MaterialRepository(BaseRepository):
@@ -15,7 +44,7 @@ class MaterialRepository(BaseRepository):
             "SELECT material_id, name, spec, unit, stock_qty, status, remark, created_at FROM Materials WHERE material_id = ?",
             (str(material_id),),
         )
-        return Material.from_row(row) if row else None
+        return _material_from_row(row) if row else None
 
     def exists(self, material_id: str) -> bool:
         return bool(self.fetchvalue("SELECT 1 FROM Materials WHERE material_id = ? LIMIT 1", (str(material_id),)))
@@ -38,7 +67,7 @@ class MaterialRepository(BaseRepository):
             sql += " LIMIT ? OFFSET ?"
             params.extend([int(limit), int(offset or 0)])
         rows = self.fetchall(sql, tuple(params) if params else None)
-        return [Material.from_row(r) for r in rows]
+        return [_material_from_row(r) for r in rows]
 
     def count(self, status: Optional[str] = None) -> int:
         where_sql, params = self._list_filters(status)
@@ -47,6 +76,7 @@ class MaterialRepository(BaseRepository):
 
     def create(self, material: Union[Material, Dict[str, Any]]) -> Material:
         m = material if isinstance(material, Material) else Material.from_row(material)
+        quantity = _finite_stock_qty(m.stock_qty or 0.0, m.material_id)
         self.execute(
             "INSERT INTO Materials (material_id, name, spec, unit, stock_qty, status, remark) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
@@ -54,7 +84,7 @@ class MaterialRepository(BaseRepository):
                 m.name,
                 m.spec,
                 m.unit,
-                float(m.stock_qty or 0.0),
+                quantity,
                 m.status or "active",
                 m.remark,
             ),
@@ -78,11 +108,8 @@ class MaterialRepository(BaseRepository):
                 # stock_qty 允许传空/None 表示“不改”
                 if val is None or (isinstance(val, str) and val.strip() == ""):
                     continue
-                # 我是故意的（R40/O28）：service 层 _norm_float（material_service.update 路径）是第一道
-                # 强校验（库存数量必须数字、>=0），本层绝不静默保留坏值；若未来有旁路绕过 service 直调
-                # repo，这里让 float() 自然抛 ValueError 即 loud 暴露，而不是把坏值悄悄写进
-                # Materials.stock_qty（REAL 列）——灵魂线，禁止改回 except 吞错保原值。
-                val = float(val)
+                # R40/O28：旁路也须在执行 SQL 前拒绝坏数量，不能仅依赖 float()。
+                val = _finite_stock_qty(val, str(material_id))
 
             set_parts.append(f"{key} = ?")
             params.append(val)

@@ -12,8 +12,8 @@ from core.services.personnel import OperatorMachineService, OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 from web.viewmodels.excel_entry_cards import personnel_excel_cards
 
-from .navigation_utils import _safe_next_url
-from .pagination import build_pager, parse_page_args
+from .helpers.navigation_utils import _safe_next_url
+from .helpers.pagination import build_pager, parse_page_args
 from .personnel_bp import _machine_status_zh, _operator_status_zh, bp
 from .personnel_detail_context import build_personnel_detail_context
 from .team_view_helpers import build_team_name_map, load_team_options

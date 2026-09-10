@@ -18,7 +18,7 @@ from core.services.common.normalize import is_blank_value
 from core.services.personnel import OperatorService, ResourceTeamService
 from core.services.personnel.operator_excel_import_service import OperatorExcelImportService
 
-from .excel_utils import (
+from .helpers.excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,

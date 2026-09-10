@@ -17,7 +17,7 @@ from core.services.personnel import OperatorMachineService, OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 
 from .equipment_bp import _parse_mode, _read_uploaded_xlsx, bp
-from .excel_utils import (
+from .helpers.excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,

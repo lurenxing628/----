@@ -70,6 +70,7 @@ def main() -> int:
         sys.path.insert(0, repo_root)
 
     from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import SheetNotFoundError
 
     parser = argparse.ArgumentParser(
         description="把产线单元实际运行数据转换为 APS 标准导入模板（工步并工序，去掉技能等级/主操）。"
@@ -102,7 +103,12 @@ def main() -> int:
         return 2
 
     converter = UnitExcelConverter()
-    converted = converter.convert(input_path=input_path, sheet_name=args.sheet_name)
+    try:
+        converted = converter.convert(input_path=input_path, sheet_name=args.sheet_name)
+    except SheetNotFoundError as exc:
+        print(f"错误：找不到指定的 Sheet：{exc.sheet_name}")
+        print(f"可用 Sheet：{'、'.join(exc.available_sheets) or '（无）'}")
+        return 2
     paths = converter.write_templates(converted=converted, output_dir=output_dir)
 
     diagnostics = dict(getattr(converted, "diagnostics", {}) or {})

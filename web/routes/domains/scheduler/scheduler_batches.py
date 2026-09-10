@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, g, redirect, render_template, request, url_for
 
-from core.infrastructure.errors import AppError
+from core.infrastructure.errors import AppError, ValidationError
 from web.error_boundary import user_visible_app_error_message
-from web.routes.form_values import form_toggle_bool
-from web.routes.history_summary_logging import log_history_summary_parse_warning
+from web.routes.helpers.form_values import form_toggle_bool
+from web.routes.helpers.history_summary_logging import log_history_summary_parse_warning
 from web.viewmodels.excel_entry_cards import scheduler_batch_excel_cards
 from web.viewmodels.scheduler_batches_page import (
     ScheduleHistoryDisplayValueError,
@@ -22,8 +22,8 @@ from web.viewmodels.scheduler_batches_page import (
 from web.viewmodels.scheduler_history_summary import parse_history_summary_state
 from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 
-from ...navigation_utils import _safe_next_url
-from ...pagination import build_pager, parse_page_args
+from ...helpers.navigation_utils import _safe_next_url
+from ...helpers.pagination import build_pager, parse_page_args
 from .scheduler_bp import (
     _batch_status_zh,
     _priority_zh,
@@ -288,7 +288,9 @@ def _next_batch_id_like(src: str, exists_fn) -> str:
     s = (src or "").strip()
     m = re.match(r"^(.*?)(\d+)$", s)
     if not m:
-        raise ValueError("批次号末尾必须包含数字，才能自动 +1（如：B001）")
+        # 用户可触发的输入问题：抛 ValidationError 走路由的 AppError 分支给出可读原因，
+        # 而不是裸 ValueError 落进 except Exception 被包装成“系统错误”+ ERROR 堆栈。
+        raise ValidationError("批次号末尾必须包含数字，才能自动 +1（如：B001）")
     prefix, num_text = m.group(1), m.group(2)
     width = len(num_text)
     n = int(num_text)
@@ -296,7 +298,7 @@ def _next_batch_id_like(src: str, exists_fn) -> str:
     while True:
         guard += 1
         if guard > 10000:
-            raise ValueError("无法生成新批次号：尝试次数过多")
+            raise ValidationError("无法生成新批次号：尝试次数过多，请手工指定新批次号")
         n += 1
         cand = f"{prefix}{n:0{width}d}"
         if not exists_fn(cand):

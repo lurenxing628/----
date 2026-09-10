@@ -7,8 +7,8 @@ from core.services.personnel import OperatorService
 from core.services.scheduler import CalendarService, ConfigService
 from web.error_boundary import user_visible_app_error_message
 
-from .navigation_utils import _safe_next_url
-from .normalizers import _normalize_operator_calendar_day_type, _normalize_yesno
+from .helpers.navigation_utils import _safe_next_url
+from .helpers.normalizers import _normalize_operator_calendar_day_type, _normalize_yesno
 from .personnel_bp import _day_type_zh, bp
 
 

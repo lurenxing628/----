@@ -20,7 +20,7 @@ from core.services.process.part_operation_hours_excel_import_service import Part
 from core.services.process.part_operation_query_service import PartOperationQueryService
 from core.shared.number_utils import parse_finite_float
 
-from .excel_utils import (
+from .helpers.excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,

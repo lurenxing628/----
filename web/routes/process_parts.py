@@ -8,11 +8,11 @@ from flask import current_app, flash, g, redirect, render_template, request, url
 from core.infrastructure.errors import AppError
 from core.models.enums import MergeMode, PartOperationStatus, SourceType, YesNo
 from core.services.process import ExternalGroupService, PartService, SupplierService
-from web.routes.form_values import form_toggle_bool
+from web.routes.helpers.form_values import form_toggle_bool
 from web.viewmodels.excel_entry_cards import process_parts_excel_cards
 from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 
-from .pagination import paginate_rows, parse_page_args
+from .helpers.pagination import paginate_rows, parse_page_args
 from .process_bp import _merge_mode_zh, _source_zh, bp
 
 

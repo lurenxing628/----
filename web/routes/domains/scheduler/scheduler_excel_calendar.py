@@ -13,7 +13,7 @@ from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 
-from ...excel_utils import (
+from ...helpers.excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,

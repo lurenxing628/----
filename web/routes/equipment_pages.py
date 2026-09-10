@@ -16,7 +16,7 @@ from core.services.process import OpTypeService
 from web.viewmodels.excel_entry_cards import equipment_excel_cards
 
 from .equipment_bp import _machine_status_zh, _operator_status_zh, bp
-from .pagination import paginate_rows, parse_page_args
+from .helpers.pagination import paginate_rows, parse_page_args
 from .team_view_helpers import build_team_name_map, load_team_options
 
 

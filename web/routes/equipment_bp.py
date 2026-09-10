@@ -6,8 +6,8 @@ from flask import Blueprint
 
 from core.services.common.excel_service import ImportMode
 
-from .enum_display import machine_status_zh, operator_status_zh
-from .excel_utils import ensure_unique_ids, parse_import_mode, read_uploaded_xlsx
+from .helpers.enum_display import machine_status_zh, operator_status_zh
+from .helpers.excel_utils import ensure_unique_ids, parse_import_mode, read_uploaded_xlsx
 
 bp = Blueprint("equipment", __name__)
 
@@ -30,4 +30,3 @@ def _read_uploaded_xlsx(file_storage) -> List[Dict[str, Any]]:
 
 def _ensure_unique_ids(rows: List[Dict[str, Any]], id_column: str) -> None:
     ensure_unique_ids(rows, id_column=id_column)
-

@@ -16,7 +16,7 @@ from web.viewmodels.scheduler_batch_schedule_placement import build_schedule_pla
 from web.viewmodels.scheduler_history_summary import format_public_datetime
 from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 
-from ...navigation_utils import _safe_next_url
+from ...helpers.navigation_utils import _safe_next_url
 from .scheduler_bp import _batch_status_zh, _priority_zh, _ready_zh, bp
 from .scheduler_ops import operation_update_token
 
