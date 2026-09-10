@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from flask import flash, redirect, render_template, request, url_for
 
 from core.infrastructure.errors import AppError
-from web.routes.form_values import form_yes_no_value
+from web.routes.helpers.form_values import form_yes_no_value
 from web.viewmodels.system_logs_vm import (
     build_operation_log_view_rows,
     build_system_logs_page_view_model,
@@ -13,7 +13,7 @@ from web.viewmodels.system_logs_vm import (
     resolve_operation_log_module_filter,
 )
 
-from .pagination import paginate_rows, parse_page_args
+from .helpers.pagination import paginate_rows, parse_page_args
 from .system_bp import bp
 from .system_utils import (
     _get_job_state_map,

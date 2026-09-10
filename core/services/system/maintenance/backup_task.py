@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import traceback
 from datetime import datetime
 from typing import Any, Callable, Dict, Tuple, Union
 
@@ -147,7 +148,14 @@ def maybe_run_auto_backup(
             "job_state_persisted": bool(job_state_written),
         }
     except Exception as e:
-        safe_log(logger, "error", f"自动备份失败：{e}")
+        # B01(3)：失败留全量上下文与堆栈（不再只留一行 message），错误仍进 oplog/job_state 审计链，
+        # 返回 False 供调度方（system_maintenance_service）据此跳过本轮自动清理。
+        safe_log(
+            logger,
+            "error",
+            f"自动备份失败（job_key={job_key} db_path={db_path} backup_dir={backup_dir} "
+            f"keep_days={int(keep_days)}）：{e}\n{traceback.format_exc()}",
+        )
         time_cost_ms = int((time.time() - t0) * 1000)
         oplog_written = _write_oplog(
             conn,

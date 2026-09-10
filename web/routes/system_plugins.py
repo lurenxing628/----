@@ -5,7 +5,7 @@ import re
 from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
-from web.routes.form_values import form_yes_no_value
+from web.routes.helpers.form_values import form_yes_no_value
 
 from .system_bp import bp
 from .system_utils import _get_system_config_service

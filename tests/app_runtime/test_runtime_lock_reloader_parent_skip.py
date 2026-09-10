@@ -204,6 +204,8 @@ def _make_deps(fake_app: _FakeApp, state: Dict[str, List]):
         should_own_runtime_resources=_fake_should_own_runtime_resources,
         should_register_runtime_lifecycle_handlers=_fake_should_register_runtime_lifecycle_handlers,
         atexit_register=_fake_atexit_register,
+        # 锁已前移到 create_app 之前，归属判定改用启动期 debug 解析；与本用例的 fake app DEBUG 对齐。
+        resolve_startup_debug_flag=lambda: bool(fake_app.config.get("DEBUG", False)),
     )
 
 

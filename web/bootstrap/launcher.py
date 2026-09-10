@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-from . import launcher_contracts as _contracts
 from . import launcher_paths as _paths
 from . import launcher_processes as _processes
+from . import launcher_runtime_lock as _runtime_lock
 from . import launcher_stop as _stop
 from .launcher_contracts import (
     RuntimeCleanupFailure,
@@ -134,8 +134,10 @@ def _sync_launcher_hooks(*, include_chrome_hook: bool) -> None:
     _processes._pid_matches_contract = _pid_matches_contract
     _processes._kill_runtime_pid = _kill_runtime_pid
     _processes._run_powershell_text = _run_powershell_text
-    _contracts._pid_matches_contract = _pid_matches_contract
-    _contracts._pid_state = _pid_state
+    # 锁生命周期已拆到 launcher_runtime_lock：pid 钩子必须同步到锁实现真正读取的模块，
+    # 否则 facade 层 monkeypatch 对 _is_runtime_lock_active 失效（launcher_contracts 只剩再导出）。
+    _runtime_lock._pid_matches_contract = _pid_matches_contract
+    _runtime_lock._pid_state = _pid_state
     _stop._pid_exists = _pid_exists
     _stop._pid_matches_contract = _pid_matches_contract
     _stop._pid_state = _pid_state

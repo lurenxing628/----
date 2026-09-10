@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 from core.models.enums import YesNo
-from core.services.common.enum_normalizers import normalize_yes_no_wide
+from core.shared.boolean_normalize import normalize_yes_no_wide
 
 from .registry import PluginRegistry
 from .runtime import bootstrap_vendor_paths
@@ -72,7 +72,7 @@ def get_plugin_status() -> Dict[str, Any]:
     }
 
 
-def reset_plugin_state(base_dir: str | None = None) -> Dict[str, Any]:
+def reset_plugin_state(base_dir: Optional[str] = None) -> Dict[str, Any]:
     """清空进程内插件能力状态，并返回同形状的空状态快照。"""
 
     registry = PluginRegistry()
@@ -206,11 +206,23 @@ class PluginManager:
                 if enabled == YesNo.YES.value:
                     try:
                         if hasattr(mod, "register"):
-                            before = set(registry.capabilities.keys())
-                            before_conflicts = len(registry.conflicted_capabilities)
+                            # register 前对 registry 三个可变面做快照：register() 中途失败时
+                            # 必须整体回滚本次增量——loaded=no 的插件不得以半初始化 provider
+                            # 残留 registry 接管能力路由（如 excel_backend.pandas），也不得以
+                            # first_loaded_wins 残留 key 挡住后续同名健康插件。
+                            before_capabilities = dict(registry.capabilities)
+                            before_owners = dict(registry.capability_owners)
+                            before_conflict_records = list(registry.conflicted_capabilities)
+                            before = set(before_capabilities.keys())
+                            before_conflicts = len(before_conflict_records)
                             registry.bind_plugin(plugin_id)
                             try:
                                 mod.register(registry)  # type: ignore[misc]
+                            except Exception:
+                                registry.capabilities = before_capabilities
+                                registry.capability_owners = before_owners
+                                registry.conflicted_capabilities = before_conflict_records
+                                raise
                             finally:
                                 registry.clear_bound_plugin()
                             after = set(registry.capabilities.keys())

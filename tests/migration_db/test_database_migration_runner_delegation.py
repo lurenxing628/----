@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from contextlib import closing
 from typing import List
 
 import pytest
@@ -268,6 +269,12 @@ def test_migrate_with_backup_preserves_migration_error_when_restore_succeeds(mon
     assert restored
 
 
+def _create_rollback_test_backup(backup_path):
+    with closing(sqlite3.connect(str(backup_path))) as conn:
+        conn.execute("CREATE TABLE Demo (id INTEGER PRIMARY KEY)")
+        conn.commit()
+
+
 def test_restore_db_file_refuses_broken_symlink_rollback_tmp(tmp_path):
     from core.infrastructure.migration_backup import restore_db_file_from_backup
     from core.infrastructure.safe_files import UnsafeFixedFileError
@@ -277,7 +284,7 @@ def test_restore_db_file_refuses_broken_symlink_rollback_tmp(tmp_path):
     rollback_tmp = tmp_path / "app.db.rollback_tmp"
     outside_target = tmp_path / "outside.db"
     db_path.write_text("current-db", encoding="utf-8")
-    backup_path.write_text("backup-db", encoding="utf-8")
+    _create_rollback_test_backup(backup_path)
     try:
         os.symlink(outside_target, rollback_tmp)
     except (OSError, NotImplementedError):
@@ -300,7 +307,7 @@ def test_restore_db_file_refuses_symlink_sqlite_sidecar_before_replace(tmp_path)
     sidecar_path = tmp_path / "app.db-wal"
     outside_target = tmp_path / "outside.wal"
     db_path.write_text("current-db", encoding="utf-8")
-    backup_path.write_text("backup-db", encoding="utf-8")
+    _create_rollback_test_backup(backup_path)
     outside_target.write_text("outside", encoding="utf-8")
     try:
         os.symlink(outside_target, sidecar_path)
@@ -324,7 +331,7 @@ def test_restore_db_file_refuses_hardlinked_sqlite_sidecar_before_replace(tmp_pa
     sidecar_path = tmp_path / "app.db-shm"
     outside_target = tmp_path / "outside.shm"
     db_path.write_text("current-db", encoding="utf-8")
-    backup_path.write_text("backup-db", encoding="utf-8")
+    _create_rollback_test_backup(backup_path)
     outside_target.write_text("sidecar", encoding="utf-8")
     try:
         os.link(outside_target, sidecar_path)

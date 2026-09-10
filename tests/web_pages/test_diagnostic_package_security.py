@@ -126,6 +126,10 @@ def test_runtime_logs_page_refuses_symlink(app_client):
 
 
 def test_operation_logs_failure_yields_explanation_file(app_client, monkeypatch):
+    """失败兜底文件的 arcname 从中文改为纯 ASCII（operation_logs_READ_FAILED.txt，
+    audit 2026-07-19 D06）：Win7 资源管理器（zipfldr）不识别 zip EFS UTF-8 标志、
+    按本地 cp936 解码条目名，中文 arcname 会显示成乱码，"包内明示缺失"的信号失效；
+    中文说明保留在文件内容里。脱敏与不中断导出的兜底断言不变。"""
     log_dir = app_client.application.config["LOG_DIR"]
     _seed(log_dir, "aps.log")
 
@@ -138,10 +142,13 @@ def test_operation_logs_failure_yields_explanation_file(app_client, monkeypatch)
 
     monkeypatch.setattr(mod, "_get_operation_log_service", boom)
     names, data = _download_zip_names(app_client)
-    assert "operation_logs_读取失败.txt" in names
+    assert "operation_logs_READ_FAILED.txt" in names
     assert "operation_logs.txt" not in names
+    assert all(name.isascii() for name in names), (
+        "诊断包条目名必须纯 ASCII（Win7 zipfldr 不识别 EFS UTF-8 标志，非 ASCII 名会乱码）"
+    )
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
-        note = zf.read("operation_logs_读取失败.txt").decode("utf-8")
+        note = zf.read("operation_logs_READ_FAILED.txt").decode("utf-8")
     assert "操作日志读取失败" in note
     assert "内部标识已省略" in note
     for forbidden in ("source_table", "candidate_rows", "candidate_id", "node_id", "op:", "op_code", "OP010"):

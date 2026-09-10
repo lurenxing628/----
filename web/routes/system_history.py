@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from flask import render_template, request
 
-from web.routes.history_summary_logging import (
+from web.routes.helpers.history_summary_logging import (
     log_history_summary_parse_warning,
     log_history_version_option_parse_warnings,
 )
@@ -11,10 +11,10 @@ from web.viewmodels.scheduler_summary_display import build_summary_display_state
 from web.viewmodels.system_history_links import build_history_version_links
 
 from .domains.scheduler.scheduler_history_resolution import build_requested_history_resolution
-from .normalizers import (
+from .helpers.normalizers import (
     parse_optional_version_int,
 )
-from .pagination import paginate_rows, parse_page_args
+from .helpers.pagination import paginate_rows, parse_page_args
 from .system_bp import bp
 from .system_utils import _get_request_service, _get_schedule_history_query_service, _safe_int
 

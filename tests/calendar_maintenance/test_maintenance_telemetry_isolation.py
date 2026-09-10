@@ -113,6 +113,8 @@ def test_maintenance_telemetry_isolation(db_path, tmp_path) -> None:
             op_logger=op_logger,
             is_due_fn=_due,
             fmt_db_dt_fn=_fmt_db_dt,
+            # 本用例聚焦 telemetry 隔离；min_keep_backups=0 关闭数量保底，让过期备份可被删除。
+            min_keep_backups=0,
         )
         if not ran_cleanup:
             raise RuntimeError(f"自动清理备份成功路径不应因 telemetry 失败而返回 False：{detail_cleanup}")

@@ -11,7 +11,7 @@ from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.logging import OperationLogger
 from core.infrastructure.safe_files import UnsafeFixedFileError, remove_fixed_file
-from web.routes.form_values import form_yes_no_value
+from web.routes.helpers.form_values import form_yes_no_value
 from web.viewmodels.system_backup_page import build_system_backup_page_view_model
 
 from .system_backup_actions import run_backup_restore
@@ -282,14 +282,26 @@ def backup_delete_batch():
     return redirect(url_for("system.backup_page"))
 
 
+def _flash_cleanup_issues(cleanup_result: dict, mgr) -> None:
+    kept_recent_count = int(cleanup_result.get("kept_recent_count") or 0)
+    unsafe_count = int(cleanup_result.get("unsafe_count") or 0)
+    error_count = int(cleanup_result.get("error_count") or 0)
+    if kept_recent_count:
+        flash(f"有 {kept_recent_count} 个已过期备份因『至少保留最新 {mgr.min_keep_backups} 份』保底被保留。", "info")
+    if unsafe_count:
+        sample = "；".join(str(item.get("filename") or "") for item in list(cleanup_result.get("unsafe_sample") or [])[:10])
+        flash(f"有 {unsafe_count} 个备份文件不是安全的普通文件，已跳过：{sample}", "warning")
+    if error_count:
+        sample = "；".join(str(item.get("filename") or "") for item in list(cleanup_result.get("error_sample") or [])[:10])
+        flash(f"有 {error_count} 个备份文件清理失败，请检查日志：{sample}", "warning")
+
+
 @bp.post("/backup/cleanup")
 def backup_cleanup():
     cfg = _get_system_cfg_snapshot()
     mgr = _get_backup_manager(keep_days=int(cfg.auto_backup_keep_days))
     cleanup_result = mgr.cleanup_old_backups() or {}
     removed = int(cleanup_result.get("removed_count") or 0)
-    unsafe_count = int(cleanup_result.get("unsafe_count") or 0)
-    error_count = int(cleanup_result.get("error_count") or 0)
 
     if getattr(g, "op_logger", None) is not None:
         g.op_logger.info(
@@ -300,19 +312,19 @@ def backup_cleanup():
             detail={
                 "keep_days": int(mgr.keep_days),
                 "removed_count": int(removed),
-                "unsafe_count": unsafe_count,
-                "error_count": error_count,
+                "min_keep": int(mgr.min_keep_backups),
+                "kept_recent_count": int(cleanup_result.get("kept_recent_count") or 0),
+                "unsafe_count": int(cleanup_result.get("unsafe_count") or 0),
+                "error_count": int(cleanup_result.get("error_count") or 0),
                 "mode": "manual",
             },
         )
 
-    flash(f"已清理过期备份：删除 {removed} 个（保留 {mgr.keep_days} 天内的备份）。", "success")
-    if unsafe_count:
-        sample = "；".join(str(item.get("filename") or "") for item in list(cleanup_result.get("unsafe_sample") or [])[:10])
-        flash(f"有 {unsafe_count} 个备份文件不是安全的普通文件，已跳过：{sample}", "warning")
-    if error_count:
-        sample = "；".join(str(item.get("filename") or "") for item in list(cleanup_result.get("error_sample") or [])[:10])
-        flash(f"有 {error_count} 个备份文件清理失败，请检查日志：{sample}", "warning")
+    flash(
+        f"已清理过期备份：删除 {removed} 个（保留 {mgr.keep_days} 天内的备份，且至少保留最新 {mgr.min_keep_backups} 份）。",
+        "success",
+    )
+    _flash_cleanup_issues(cleanup_result, mgr)
     return redirect(url_for("system.backup_page"))
 
 

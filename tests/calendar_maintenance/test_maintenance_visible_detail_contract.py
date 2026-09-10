@@ -129,11 +129,13 @@ def test_backup_cleanup_reports_mtime_and_delete_failures(monkeypatch, tmp_path:
     monkeypatch.setattr(cleanup_task, "stat_regular_file", _stat_regular_file)
     monkeypatch.setattr(cleanup_task, "remove_fixed_file", _remove_fixed_file)
 
+    # 本用例聚焦 mtime/delete 失败可见性；min_keep=0 关闭数量保底，让 3 个过期文件都进入删除候选。
     removed, meta = cleanup_task.cleanup_backups_with_limit(
         str(tmp_path),
         keep_days=7,
         max_delete=10,
         fmt_db_dt_fn=_fmt_db_dt,
+        min_keep=0,
     )
 
     assert removed == 1
@@ -188,6 +190,8 @@ def test_auto_backup_cleanup_persists_mtime_and_delete_failures(monkeypatch, tmp
         op_logger=op_logger,
         is_due_fn=_due,
         fmt_db_dt_fn=_fmt_db_dt,
+        # 本用例聚焦 telemetry 可见性；min_keep_backups=0 关闭数量保底，让过期文件进入删除候选。
+        min_keep_backups=0,
     )
     conn.close()
 

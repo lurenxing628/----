@@ -1,37 +1,68 @@
+"""数据库备份/恢复/轮换修剪（BackupManager）。
+
+维护窗互斥锁逻辑已按职责拆到 core/infrastructure/maintenance_lock.py（2026-07-19 B04 批次），
+本模块原样再导出锁公共 API（MaintenanceWindowError / maintenance_window /
+is_maintenance_window_active / ensure_backup_allowed 等），既有 import 路径全部兼容。
+
+备份完整性合同（B01/B05，2026-07-19 盲区扫描）：
+- 备份创建后必须通过 PRAGMA integrity_check 才能升正式备份（既有 R32/O27 合同）；
+- 恢复（含自动回滚）把任何源文件盖到主库前必须通过 PRAGMA integrity_check，
+  失败抛 BackupIntegrityError，fail-loud 拒绝落地损坏库；
+- 备份轮换修剪按天龄删除，但必须至少保留最新 MIN_KEEP_BACKUPS 份（防长期停机后
+  唯一好备份被 keep_days 全部剪光；before_restore/pre_migration/exit 快照同前缀，
+  同受数量保底保护）。
+"""
+
 from __future__ import annotations
 
 import logging
 import os
 import sqlite3
-import threading
 import time
 import traceback
-from contextlib import closing, contextmanager
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Iterator, Optional
+from typing import Iterable, List, Optional, Set, Tuple
 from urllib.parse import quote
 
+from core.infrastructure.maintenance_lock import (
+    MaintenanceWindowError,
+    current_thread_holds_maintenance_window,
+    ensure_backup_allowed,
+    is_maintenance_window_active,
+    maintenance_window,
+    read_maintenance_lock_state,
+)
 from core.infrastructure.migration_common import fallback_log
 from core.infrastructure.safe_files import (
     UnsafeFixedFileError,
     assert_same_regular_file,
     create_fixed_file_exclusive,
     guard_fixed_file_replace_target,
-    read_fixed_bytes,
     remove_fixed_file,
     stat_regular_file,
 )
+from core.infrastructure.sqlite_integrity import BackupIntegrityError
+from core.infrastructure.sqlite_integrity import run_sqlite_integrity_check as _run_sqlite_integrity_check
 
-_MAINT_MUTEX = threading.RLock()
-_MAINT_CONTEXT = threading.local()
-_MAINT_LOCK_STALE_SECONDS = 300
+__all__ = [
+    "BackupIntegrityError",
+    "BackupManager",
+    "MIN_KEEP_BACKUPS",
+    "MaintenanceWindowError",
+    "RestoreResult",
+    "current_thread_holds_maintenance_window",
+    "ensure_backup_allowed",
+    "is_maintenance_window_active",
+    "maintenance_window",
+    "protected_recent_backup_paths",
+    "read_maintenance_lock_state",
+]
 
-class MaintenanceWindowError(RuntimeError):
-    def __init__(self, code: str, message: str):
-        self.code = str(code or "").strip() or "maintenance_error"
-        self.message = str(message or "数据库正在维护/恢复中，请稍后重试。")
-        super().__init__(self.message)
+# 备份轮换修剪的数量保底：无论 keep_days 多短、停机多久，至少保留最新 N 份备份
+#（对称于日志清理的 MIN_KEEP_LOGS 保底）。
+MIN_KEEP_BACKUPS = 3
 
 
 @dataclass(frozen=True)
@@ -40,9 +71,6 @@ class RestoreResult:
     code: str
     message: str
     before_restore_path: Optional[str] = None
-
-def _maintenance_lock_path(db_path: str) -> str:
-    return os.path.abspath(db_path) + ".maintenance.lock"
 
 
 def _prepare_exclusive_sqlite_target(path: str):
@@ -63,260 +91,10 @@ def _connect_existing_sqlite_file(path: str, **kwargs):
     return sqlite3.connect(_sqlite_existing_file_uri(path), uri=True, **kwargs)
 
 
-def _current_maintenance_state() -> Optional[dict]:
-    state = getattr(_MAINT_CONTEXT, "state", None)
-    if isinstance(state, dict):
-        return state
-    return None
-
-def current_thread_holds_maintenance_window(db_path: str) -> bool:
-    state = _current_maintenance_state()
-    return bool(state and state.get("db_path") == os.path.abspath(db_path) and int(state.get("depth") or 0) > 0)
-
-
-def _pid_exists(pid: Optional[int]) -> bool:
-    try:
-        pid_int = int(pid or 0)
-    except Exception:
-        return True
-    if pid_int <= 0:
-        return True
-    if os.name == "nt":
-        try:
-            import ctypes
-
-            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-            handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid_int)
-            if handle:
-                ctypes.windll.kernel32.CloseHandle(handle)
-                return True
-            err = int(ctypes.windll.kernel32.GetLastError() or 0)
-            if err == 5:
-                return True
-            return False
-        except Exception:
-            return True
-    try:
-        os.kill(pid_int, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except Exception:
-        return True
-    return True
-
-
-def _empty_maintenance_lock_state(lock_path: str) -> dict:
-    state = {"path": lock_path, "pid": None, "action": None, "ts": None, "age_seconds": None, "raw": ""}
-    return state
-
-
-def _read_lock_file_text(lock_path: str, state: dict) -> Optional[str]:
-    if not os.path.lexists(lock_path):
-        raise FileNotFoundError(lock_path)
-    try:
-        raw = read_fixed_bytes(lock_path).decode("utf-8").strip()
-    except FileNotFoundError:
-        raise
-    except Exception as e:
-        state["read_error"] = e
-        return None
-    return raw
-
-
-def _apply_maintenance_lock_token(state: dict, token: str) -> None:
-    if "=" not in token:
-        return
-    key, value = token.split("=", 1)
-    key = str(key or "").strip().lower()
-    value = str(value or "").strip()
-    if key == "pid":
-        try:
-            state["pid"] = int(value)
-        except Exception:
-            state["pid"] = None
-    elif key == "action":
-        state["action"] = value or None
-    elif key == "ts":
-        state["ts_text"] = value or None
-        try:
-            state["ts"] = datetime.fromisoformat(value)
-        except Exception:
-            state["ts"] = None
-
-
-def _apply_maintenance_lock_age(state: dict) -> None:
-    ts = state.get("ts")
-    if not isinstance(ts, datetime):
-        return
-    try:
-        state["age_seconds"] = max(0.0, (datetime.now() - ts).total_seconds())
-    except Exception:
-        state["age_seconds"] = None
-
-
-def read_maintenance_lock_state(db_path: str) -> Optional[dict]:
-    lock_path = _maintenance_lock_path(db_path)
-    state = _empty_maintenance_lock_state(lock_path)
-    try:
-        raw = _read_lock_file_text(lock_path, state)
-    except FileNotFoundError:
-        return None
-    if raw is None:
-        return state
-    state["raw"] = raw
-    for token in raw.split():
-        _apply_maintenance_lock_token(state, token)
-    _apply_maintenance_lock_age(state)
-    return state
-
-
-def _should_auto_heal_lock(state: Optional[dict]) -> bool:
-    if not isinstance(state, dict):
-        return False
-    age_seconds = state.get("age_seconds")
-    if age_seconds is None:
-        return False
-    try:
-        age_value = float(age_seconds)
-    except Exception:
-        return False
-    if age_value < float(_MAINT_LOCK_STALE_SECONDS):
-        return False
-    return not _pid_exists(state.get("pid"))
-
-
-def is_maintenance_window_active(db_path: str, *, logger=None) -> bool:
-    if current_thread_holds_maintenance_window(db_path):
-        return True
-    try:
-        state = read_maintenance_lock_state(db_path)
-        if state is None:
-            return False
-        if _should_auto_heal_lock(state):
-            lock_path = str(state.get("path") or _maintenance_lock_path(db_path))
-            try:
-                remove_fixed_file(lock_path)
-                fallback_log(
-                    logger,
-                    "warning",
-                    f"检测到陈旧维护锁，已自动清理：{lock_path}（pid={state.get('pid')} age_s={int(state.get('age_seconds') or 0)}）",
-                )
-                return False
-            except Exception as e:
-                fallback_log(logger, "warning", f"陈旧维护锁自动清理失败：{e}（path={lock_path}）")
-        return True
-    except Exception as exc:
-        fallback_log(logger, "warning", f"维护锁状态检测失败，已按不可确认处理并阻止继续：{exc}")
-        raise MaintenanceWindowError("lock_state_unavailable", "系统维护锁状态检测失败，请稍后重试。") from exc
-
-
-def ensure_backup_allowed(db_path: str, *, logger=None) -> None:
-    if current_thread_holds_maintenance_window(db_path):
-        return
-    if is_maintenance_window_active(db_path, logger=logger):
-        raise MaintenanceWindowError("busy", "数据库正在维护/恢复中，请稍后重试。")
-
-
-def _enter_nested_maintenance_window(state: dict, db_abs: str) -> None:
-    if state.get("db_path") != db_abs:
-        raise MaintenanceWindowError("busy", "当前线程已有其他维护任务在执行，暂不支持跨数据库嵌套维护。")
-    state["depth"] = int(state.get("depth") or 0) + 1
-
-
-def _exit_nested_maintenance_window(state: dict) -> None:
-    state["depth"] = max(0, int(state.get("depth") or 1) - 1)
-
-
-def _acquire_maintenance_mutex() -> None:
-    if not _MAINT_MUTEX.acquire(blocking=False):
-        raise MaintenanceWindowError("busy", "数据库正在维护/恢复中，请稍后重试。")
-
-
-def _write_maintenance_lock_metadata(lock_fd: int, payload: str) -> None:
-    data = str(payload or "").encode("utf-8")
-    written_total = 0
-    while written_total < len(data):
-        written = os.write(lock_fd, data[written_total:])
-        if int(written or 0) <= 0:
-            raise OSError("维护锁文件 metadata 写入不完整。")
-        written_total += int(written)
-
-
-def _cleanup_failed_maintenance_lock(lock_fd: Optional[int], lock_path: str, *, logger=None) -> None:
-    if lock_fd is not None:
-        try:
-            os.close(lock_fd)
-        except Exception as e:
-            fallback_log(logger, "warning", f"维护锁创建失败后的句柄关闭失败：{e}")
-    try:
-        remove_fixed_file(lock_path)
-    except Exception as e:
-        fallback_log(logger, "warning", f"维护锁创建失败后的锁文件清理失败：{e}")
-
-
-@contextmanager
-def maintenance_window(db_path: str, *, logger=None, action: str = "maintenance") -> Iterator[None]:
-    db_abs = os.path.abspath(db_path)
-    state = _current_maintenance_state()
-    if state is not None:
-        _enter_nested_maintenance_window(state, db_abs)
-        try:
-            yield
-        finally:
-            _exit_nested_maintenance_window(state)
-        return
-
-    _acquire_maintenance_mutex()
-
-    lock_path = _maintenance_lock_path(db_abs)
-    lock_fd = None
-    entered_root = False
-    try:
-        if is_maintenance_window_active(db_abs, logger=logger):
-            raise MaintenanceWindowError("busy", "数据库正在维护/恢复中，请稍后重试。")
-        try:
-            lock_fd = create_fixed_file_exclusive(lock_path)
-            try:
-                _write_maintenance_lock_metadata(lock_fd, f"pid={os.getpid()} action={action} ts={datetime.now().isoformat()}")
-            except Exception as e:
-                _cleanup_failed_maintenance_lock(lock_fd, lock_path, logger=logger)
-                lock_fd = None
-                raise MaintenanceWindowError("lock_metadata_write_failed", f"维护锁文件写入失败：{e}") from e
-        except FileExistsError as e:
-            raise MaintenanceWindowError("busy", "数据库正在维护/恢复中，请稍后重试。") from e
-        except MaintenanceWindowError:
-            raise
-        except Exception as e:
-            raise MaintenanceWindowError("lock_failed", f"维护锁文件创建失败：{e}") from e
-
-        _MAINT_CONTEXT.state = {"db_path": db_abs, "depth": 1, "lock_path": lock_path, "lock_fd": lock_fd}
-        entered_root = True
-        yield
-    finally:
-        if entered_root:
-            try:
-                delattr(_MAINT_CONTEXT, "state")
-            except Exception as e:
-                fallback_log(logger, "warning", f"维护线程上下文清理失败：{e}")
-                try:
-                    _MAINT_CONTEXT.state = None
-                except Exception as cleanup_exc:
-                    fallback_log(logger, "warning", f"维护线程上下文重置失败：{cleanup_exc}")
-            if lock_fd is not None:
-                try:
-                    os.close(lock_fd)
-                except Exception as e:
-                    fallback_log(logger, "warning", f"维护锁文件句柄关闭失败：{e}")
-            try:
-                remove_fixed_file(lock_path)
-            except Exception as e:
-                fallback_log(logger, "warning", f"维护锁文件删除失败：{e}")
-        try:
-            _MAINT_MUTEX.release()
-        except Exception as e:
-            fallback_log(logger, "warning", f"维护互斥锁释放失败：{e}")
+def protected_recent_backup_paths(survey: Iterable[Tuple[datetime, str, str]], min_keep: int) -> Set[str]:
+    """按 mtime 倒序取最新 min_keep 份的文件路径集合（备份修剪的数量保底，B01）。"""
+    ordered = sorted(survey, key=lambda item: (item[0], item[1]), reverse=True)
+    return {item[2] for item in ordered[: max(0, int(min_keep))]}
 
 
 class BackupManager:
@@ -326,10 +104,12 @@ class BackupManager:
         backup_dir: str = "backups",
         keep_days: int = 7,
         logger: Optional[logging.Logger] = None,
+        min_keep_backups: Optional[int] = None,
     ):
         self.db_path = db_path
         self.backup_dir = backup_dir
         self.keep_days = keep_days
+        self.min_keep_backups = MIN_KEEP_BACKUPS if min_keep_backups is None else max(0, int(min_keep_backups))
         self.logger = logger or logging.getLogger(__name__)
         self.last_list_unsafe_count = 0
         self.last_list_unsafe_sample = []
@@ -366,16 +146,12 @@ class BackupManager:
                         source.backup(dest)
                         assert_same_regular_file(self.db_path, source_stat)
                         assert_same_regular_file(tmp_path, tmp_stat)
-                        try:
-                            rows = dest.execute("PRAGMA integrity_check").fetchall() or []
-                        except Exception as e:
-                            fallback_log(self.logger, "error", f"备份后的数据库完整性检查执行失败：{e}")
-                            raise RuntimeError(f"备份后的数据库完整性检查执行失败（视为不可信备份，不落地）：{e}") from e
-                        else:
-                            msg0 = str((rows[0][0] if rows else "") or "").strip().lower()
-                            if msg0 != "ok":
-                                fallback_log(self.logger, "error", f"备份后的数据库完整性检查未通过：{rows}")
-                                raise RuntimeError(f"备份后的数据库完整性检查失败：{rows}")
+                        _run_sqlite_integrity_check(
+                            dest,
+                            logger=self.logger,
+                            check_label="备份后的数据库完整性检查",
+                            execute_failed_hint="视为不可信备份，不落地",
+                        )
                 assert_same_regular_file(tmp_path, tmp_stat)
                 guard_fixed_file_replace_target(backup_path)
                 os.replace(tmp_path, backup_path)
@@ -397,6 +173,14 @@ class BackupManager:
                 target_stat = stat_regular_file(self.db_path)
                 with closing(_connect_existing_sqlite_file(source_path)) as source:
                     assert_same_regular_file(source_path, source_stat)
+                    # B05：任何源文件（用户选定的备份 / 自动回滚的 before_restore 快照）
+                    # 盖到主库前先过 integrity_check；失败 fail-loud，绝不落地损坏库。
+                    _run_sqlite_integrity_check(
+                        source,
+                        logger=self.logger,
+                        check_label=f"恢复源文件完整性检查（{os.path.basename(source_path)}）",
+                        execute_failed_hint="视为不可信备份，拒绝恢复",
+                    )
                     with closing(_connect_existing_sqlite_file(self.db_path, timeout=30)) as dest:
                         dest.execute("PRAGMA busy_timeout = 30000")
                         assert_same_regular_file(source_path, source_stat)
@@ -405,7 +189,7 @@ class BackupManager:
                         assert_same_regular_file(source_path, source_stat)
                         assert_same_regular_file(self.db_path, target_stat)
                 return
-            except UnsafeFixedFileError:
+            except (UnsafeFixedFileError, BackupIntegrityError):
                 raise
             except sqlite3.OperationalError as exc:
                 message = str(exc).lower()
@@ -492,6 +276,16 @@ class BackupManager:
         except MaintenanceWindowError as e:
             fallback_log(self.logger, "warning" if e.code == "busy" else "error", e.message)
             return RestoreResult(ok=False, code=e.code, message=e.message)
+        except BackupIntegrityError as e:
+            # B05：备份文件未通过完整性检查——主库尚未被改动（校验在 source.backup(dest) 之前），
+            # fail-loud 拒绝恢复并把可查原因给到用户，绝不落地损坏库。
+            fallback_log(self.logger, "error", f"备份文件完整性检查未通过，已拒绝恢复（原数据库未修改）：{backup_path}：{e}")
+            return RestoreResult(
+                ok=False,
+                code="backup_integrity_failed",
+                message=f"备份文件完整性检查未通过，已拒绝恢复，原数据库未被修改：{os.path.basename(backup_path)}。请查看日志。",
+                before_restore_path=before_restore_path,
+            )
         except Exception:
             fallback_log(self.logger, "error", f"数据库恢复失败\n{traceback.format_exc()}")
             rollback_result = self._auto_rollback(
@@ -509,33 +303,66 @@ class BackupManager:
                 before_restore_path=before_restore_path,
             )
 
-    def cleanup_old_backups(self):
-        cutoff = datetime.now() - timedelta(days=self.keep_days)
-        result = {"removed_count": 0, "unsafe_count": 0, "unsafe_sample": [], "error_count": 0, "error_sample": []}
-        if not os.path.exists(self.backup_dir):
-            return result
+    def _record_cleanup_issue(self, result: dict, kind: str, filename: str, error: Exception, log_message: str) -> None:
+        result[kind + "_count"] = int(result[kind + "_count"]) + 1
+        sample = result[kind + "_sample"]
+        if len(sample) < 10:
+            sample.append({"filename": filename, "error": str(error)})
+        fallback_log(self.logger, "warning", log_message)
+
+    def _survey_backup_files(self, result: dict) -> List[Tuple[datetime, str, str]]:
+        survey: List[Tuple[datetime, str, str]] = []
         for filename in os.listdir(self.backup_dir):
             if not filename.startswith("aps_backup_") or not filename.endswith(".db"):
                 continue
-
             filepath = os.path.join(self.backup_dir, filename)
             try:
                 st = stat_regular_file(filepath)
-                file_time = datetime.fromtimestamp(st.st_mtime)
-                if file_time < cutoff:
-                    remove_fixed_file(filepath, allow_symlink=False)
-                    result["removed_count"] = int(result["removed_count"]) + 1
-                    fallback_log(self.logger, "info", f"已清理过期备份：{filename}")
+                survey.append((datetime.fromtimestamp(st.st_mtime), filename, filepath))
             except UnsafeFixedFileError as e:
-                result["unsafe_count"] = int(result["unsafe_count"]) + 1
-                if len(result["unsafe_sample"]) < 10:
-                    result["unsafe_sample"].append({"filename": filename, "error": str(e)})
-                fallback_log(self.logger, "warning", f"跳过非普通备份文件（{filename}）：{e}")
+                self._record_cleanup_issue(result, "unsafe", filename, e, f"跳过非普通备份文件（{filename}）：{e}")
             except Exception as e:
-                result["error_count"] = int(result["error_count"]) + 1
-                if len(result["error_sample"]) < 10:
-                    result["error_sample"].append({"filename": filename, "error": str(e)})
-                fallback_log(self.logger, "warning", f"清理备份失败（{filename}）：{e}")
+                self._record_cleanup_issue(result, "error", filename, e, f"清理备份失败（{filename}）：{e}")
+        return survey
+
+    def cleanup_old_backups(self):
+        cutoff = datetime.now() - timedelta(days=self.keep_days)
+        result = {
+            "removed_count": 0,
+            "kept_recent_count": 0,
+            "min_keep": int(self.min_keep_backups),
+            "unsafe_count": 0,
+            "unsafe_sample": [],
+            "error_count": 0,
+            "error_sample": [],
+        }
+        if not os.path.exists(self.backup_dir):
+            return result
+        survey = self._survey_backup_files(result)
+        # B01：数量保底——无论天龄，最新 min_keep_backups 份一律不删，
+        # 防长期停机后所有备份都过期时把唯一好备份剪光。
+        protected = protected_recent_backup_paths(survey, self.min_keep_backups)
+        for file_time, filename, filepath in survey:
+            if file_time >= cutoff:
+                continue
+            if filepath in protected:
+                result["kept_recent_count"] = int(result["kept_recent_count"]) + 1
+                continue
+            try:
+                remove_fixed_file(filepath, allow_symlink=False)
+                result["removed_count"] = int(result["removed_count"]) + 1
+                fallback_log(self.logger, "info", f"已清理过期备份：{filename}")
+            except UnsafeFixedFileError as e:
+                self._record_cleanup_issue(result, "unsafe", filename, e, f"跳过非普通备份文件（{filename}）：{e}")
+            except Exception as e:
+                self._record_cleanup_issue(result, "error", filename, e, f"清理备份失败（{filename}）：{e}")
+        if result["kept_recent_count"]:
+            fallback_log(
+                self.logger,
+                "info",
+                f"备份清理保底生效：{result['kept_recent_count']} 份已过期备份因『至少保留最新 "
+                f"{self.min_keep_backups} 份』被保留（keep_days={self.keep_days}）。",
+            )
         return result
 
     def list_backups(self) -> list:

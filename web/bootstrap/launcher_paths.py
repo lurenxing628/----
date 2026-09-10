@@ -12,6 +12,7 @@ RUNTIME_CONTRACT_VERSION = 1
 RUNTIME_SHUTDOWN_PATH = "/system/runtime/shutdown"
 RUNTIME_LOCK_FILE = "aps_runtime.lock"
 RUNTIME_ERROR_FILE = "aps_launch_error.txt"
+RUNTIME_DB_LOCK_SUFFIX = ".lock"
 
 
 def _normalize_db_path_for_runtime(db_path: Optional[str]) -> str:
@@ -108,6 +109,32 @@ def resolve_prelaunch_log_dir(runtime_dir: str, *, frozen: Optional[bool] = None
     if explicit_log_dir:
         return explicit_log_dir
     return os.path.join(resolve_shared_data_root(runtime_dir, frozen=frozen), "logs")
+
+
+def resolve_runtime_db_path(base_dir: str, *, frozen: Optional[bool] = None) -> str:
+    """解析本次启动将要使用的数据库路径（APS_DB_PATH 优先，否则 shared-data root 下 db/aps.db）。
+
+    合同：必须与 web/bootstrap/factory.py `_apply_runtime_config` 的 DATABASE_PATH 解析逐字同源——
+    运行时锁的 db-scope 命名空间（B03）依赖这里的结果与 create_app 实际打开的库一致；
+    两处一旦分叉就回到"锁锚定 A、库锚定 B"的同库双开缺口
+    （tests/app_runtime/test_runtime_db_scope_lock.py 以合同测试锁定同源性）。
+    """
+    return os.environ.get("APS_DB_PATH") or os.path.join(
+        resolve_shared_data_root(base_dir, frozen=frozen), "db", "aps.db"
+    )
+
+
+def db_scope_lock_path(db_path: str) -> str:
+    """db-scope 排他锁路径：锚定被保护的 DB 文件本身（<db>.lock，如 aps.db.lock）。
+
+    B03：壳锁（aps_runtime.lock）锚定日志目录，是 bat/stop 读取端的协商信号，
+    APS_LOG_DIR 等 env 分叉时互不可见；同库双开的真互斥锁必须与 DB 绑定——
+    同一 db 文件唯一锁路径，不同 db 的实例各自独立互不干扰。
+    """
+    raw = str(db_path or "").strip()
+    if not raw:
+        raise ValueError("db_scope_lock_path 需要非空 db_path，拒绝为未知资源生成锁路径")
+    return os.path.abspath(raw) + RUNTIME_DB_LOCK_SUFFIX
 
 
 def runtime_log_dir(runtime_dir: str) -> str:

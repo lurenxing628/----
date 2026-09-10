@@ -483,7 +483,8 @@ def test_backup_list_and_cleanup_skip_symlink_backups(tmp_path: Path) -> None:
     link = backup_dir / "aps_backup_20000101_000001_auto.db"
     os.symlink(str(victim), str(link))
 
-    manager = BackupManager(db_path=str(db_path), backup_dir=str(backup_dir), keep_days=7, logger=None)
+    # 本用例聚焦 symlink 安全语义；min_keep_backups=0 关闭数量保底，让唯一过期普通备份可被删除。
+    manager = BackupManager(db_path=str(db_path), backup_dir=str(backup_dir), keep_days=7, logger=None, min_keep_backups=0)
 
     listed = manager.list_backups()
     cleanup_result = manager.cleanup_old_backups()
@@ -1028,11 +1029,13 @@ def test_maintenance_cleanup_skips_symlink_backups(tmp_path: Path) -> None:
     link = tmp_path / "aps_backup_20000101_000001_auto.db"
     os.symlink(str(victim), str(link))
 
+    # 本用例聚焦 symlink 安全语义；min_keep=0 关闭数量保底，让唯一过期普通备份可被删除。
     removed, meta = cleanup_backups_with_limit(
         str(tmp_path),
         keep_days=7,
         max_delete=10,
         fmt_db_dt_fn=lambda dt: dt.strftime("%Y-%m-%d %H:%M:%S"),
+        min_keep=0,
     )
 
     assert removed == 1

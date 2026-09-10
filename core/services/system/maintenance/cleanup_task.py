@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, Tuple, Union
 
+from core.infrastructure.backup import MIN_KEEP_BACKUPS, protected_recent_backup_paths
 from core.infrastructure.logging import safe_log
 from core.infrastructure.safe_files import UnsafeFixedFileError, remove_fixed_file, stat_regular_file
 from core.infrastructure.transaction import TransactionManager
@@ -63,18 +64,9 @@ def _unpack_due_info(result) -> Tuple[bool, Any, str, Any]:
     return due, last_run, last_run_state, last_run_raw
 
 
-def cleanup_backups_with_limit(
-    backup_dir: str,
-    *,
-    keep_days: int,
-    max_delete: int,
-    fmt_db_dt_fn: Callable[[datetime], str],
-) -> Tuple[int, Dict[str, Any]]:
-    cutoff = datetime.now() - timedelta(days=int(keep_days))
-    if not os.path.exists(backup_dir):
-        return 0, {"cutoff": fmt_db_dt_fn(cutoff), "reason": "backup_dir_not_exists"}
-
-    candidates = []
+def _survey_backup_files(backup_dir: str) -> Tuple[list, Dict[str, Any]]:
+    """扫描备份目录，返回 (survey=[(mtime, 文件名, 路径)], 扫描错误账目)。"""
+    survey = []
     mtime_error_count = 0
     mtime_error_sample = []
     unsafe_backup_count = 0
@@ -96,8 +88,35 @@ def cleanup_backups_with_limit(
             if len(mtime_error_sample) < 10:
                 mtime_error_sample.append({"filename": fn, "error": str(exc)})
             continue
-        if mtime < cutoff:
-            candidates.append((mtime, fn, fp))
+        survey.append((mtime, fn, fp))
+    return survey, {
+        "mtime_error_count": int(mtime_error_count),
+        "mtime_error_sample": mtime_error_sample,
+        "unsafe_backup_count": int(unsafe_backup_count),
+        "unsafe_backup_sample": unsafe_backup_sample,
+    }
+
+
+def cleanup_backups_with_limit(
+    backup_dir: str,
+    *,
+    keep_days: int,
+    max_delete: int,
+    fmt_db_dt_fn: Callable[[datetime], str],
+    min_keep: int = MIN_KEEP_BACKUPS,
+) -> Tuple[int, Dict[str, Any]]:
+    cutoff = datetime.now() - timedelta(days=int(keep_days))
+    min_keep = max(0, int(min_keep))
+    if not os.path.exists(backup_dir):
+        return 0, {"cutoff": fmt_db_dt_fn(cutoff), "reason": "backup_dir_not_exists"}
+
+    survey, scan_meta = _survey_backup_files(backup_dir)
+
+    # B01：数量保底——无论天龄，最新 min_keep 份一律不删，
+    # 防长期停机后所有备份都过期时把唯一好备份剪光（对称于日志清理 min_keep_logs）。
+    protected = protected_recent_backup_paths(survey, min_keep)
+    candidates = [item for item in survey if item[0] < cutoff and item[2] not in protected]
+    kept_recent_count = sum(1 for item in survey if item[0] < cutoff and item[2] in protected)
 
     candidates.sort(key=lambda x: x[0])
     removed = 0
@@ -119,11 +138,10 @@ def cleanup_backups_with_limit(
     return removed, {
         "cutoff": fmt_db_dt_fn(cutoff),
         "candidates": len(candidates),
+        "min_keep": int(min_keep),
+        "kept_recent_count": int(kept_recent_count),
         "removed_sample": removed_sample,
-        "mtime_error_count": int(mtime_error_count),
-        "mtime_error_sample": mtime_error_sample,
-        "unsafe_backup_count": int(unsafe_backup_count),
-        "unsafe_backup_sample": unsafe_backup_sample,
+        **scan_meta,
         "delete_error_count": int(delete_error_count),
         "delete_error_sample": delete_error_sample,
     }
@@ -183,6 +201,7 @@ def maybe_run_auto_backup_cleanup(
     op_logger=None,
     is_due_fn: Callable[..., IsDueResult],
     fmt_db_dt_fn: Callable[[datetime], str],
+    min_keep_backups: int = MIN_KEEP_BACKUPS,
 ) -> Tuple[bool, Dict[str, Any]]:
     due, last_run, last_run_state, last_run_raw = _unpack_due_info(is_due_fn(job_repo, job_key, now, interval_minutes))
     if not due:
@@ -200,6 +219,7 @@ def maybe_run_auto_backup_cleanup(
             keep_days=int(keep_days),
             max_delete=int(max_backup_delete_per_run),
             fmt_db_dt_fn=fmt_db_dt_fn,
+            min_keep=int(min_keep_backups),
         )
         time_cost_ms = int((time.time() - t0) * 1000)
         detail = {

@@ -74,6 +74,8 @@ if not defined APP_EXE (
   exit /b 1
 )
 call :log app_exe="%APP_EXE%"
+for %%I in ("%APP_EXE%") do set "APP_EXE_NAME=%%~nxI"
+call :log app_exe_name="%APP_EXE_NAME%"
 
 if defined APS_CHROME_DIR set "ENV_CHROME_DIR=%APS_CHROME_DIR:"=%"
 if defined ENV_CHROME_DIR (
@@ -165,6 +167,11 @@ call :try_reuse_existing
 if defined BLOCKED_BY_OTHER goto :BLOCKED
 if defined BLOCKED_BY_UNCERTAIN goto :BLOCKED_UNCERTAIN
 if defined CAN_REUSE_EXISTING goto :OPEN_CHROME
+if defined WAIT_EXISTING_STARTUP (
+  call :log app_wait_existing_startup=%WAIT_EXISTING_REASON%
+  echo [launcher] 检测到本账户的应用实例正在启动，等待其就绪...
+  goto :WAIT_APP_READY
+)
 
 call :log app_start_required=1
 echo [launcher] Starting app...
@@ -189,6 +196,7 @@ if defined LAUNCH_ERROR (
 )
 call :log app_spawn_probe=wait_ready
 
+:WAIT_APP_READY
 echo [launcher] Waiting for app readiness (up to %MAX_WAIT%s)...
 for /l %%i in (1,1,%MAX_WAIT%) do (
   if exist "%LAUNCH_ERROR_FILE%" (
@@ -211,9 +219,16 @@ for /l %%i in (1,1,%MAX_WAIT%) do (
   timeout /t 1 /nobreak >nul
 )
 
-call :log app_start_timeout
-echo [launcher] App did not become ready in time.
-echo [launcher] Check shared logs: %LAUNCHER_LOG%
+if defined WAIT_EXISTING_STARTUP (
+  call :log app_wait_existing_timeout=%WAIT_EXISTING_REASON%
+  echo [launcher] 等待现有实例就绪超时。
+  echo [launcher] 请稍候片刻后重试；若长时间无法启动，请重启电脑后再试。
+  echo [launcher] 仍无法启动时请联系维护人员，并附上启动日志: %LAUNCHER_LOG%
+) else (
+  call :log app_start_timeout
+  echo [launcher] App did not become ready in time.
+  echo [launcher] Check shared logs: %LAUNCHER_LOG%
+)
 pause
 exit /b 3
 
@@ -243,7 +258,8 @@ exit /b 8
 :BLOCKED_UNCERTAIN
 if defined BLOCK_REASON call :log blocked_by_uncertain=%BLOCK_REASON%
 echo [launcher] 无法确认现有实例归属，已阻止新实例启动。
-echo [launcher] 请先关闭现有实例或清理运行时信号后重试。
+echo [launcher] 请稍候片刻后重试；若长时间无法启动，请重启电脑后再试。
+echo [launcher] 仍无法启动时请联系维护人员，并附上启动日志: %LAUNCHER_LOG%
 pause
 exit /b 9
 
@@ -308,6 +324,8 @@ set "BLOCKED_BY_OTHER="
 set "BLOCKED_BY_UNCERTAIN="
 set "BLOCK_REASON="
 set "LOCK_QUERY_ERROR="
+set "WAIT_EXISTING_STARTUP="
+set "WAIT_EXISTING_REASON="
 call :read_lock_file
 call :lock_is_active
 call :read_runtime_contract
@@ -327,12 +345,19 @@ if /I "%LOCK_ACTIVE%"=="1" (
     exit /b 0
   )
 
+  REM B11: same owner + verified-active lock + endpoint not published yet means
+  REM the app is still starting - the lock is written before host/port files.
+  REM Wait for the endpoint instead of blocking as uncertain.
   if not defined ENDPOINT_HOST (
-    call :block_uncertain lock_active_missing_host
+    set "WAIT_EXISTING_STARTUP=1"
+    set "WAIT_EXISTING_REASON=lock_active_missing_host"
+    call :log existing_reuse_wait=lock_active_missing_host
     exit /b 0
   )
   if not defined ENDPOINT_PORT (
-    call :block_uncertain lock_active_missing_port
+    set "WAIT_EXISTING_STARTUP=1"
+    set "WAIT_EXISTING_REASON=lock_active_missing_port"
+    call :log existing_reuse_wait=lock_active_missing_port
     exit /b 0
   )
 
@@ -557,15 +582,33 @@ if not "!LOCK_QUERY_RC!"=="0" (
   exit /b 0
 )
 set "LOCK_ACTIVE=0"
+set "LOCK_PID_IMAGE_MISMATCH="
+set "LOCK_ROW_IMAGE="
+REM B06: PID existing is not enough. A crash-leftover lock PID can be reused by
+REM an unrelated process, so the CSV image-name column must match APP_EXE_NAME.
+REM PID found but image mismatch => treat as stale lock (LOCK_ACTIVE stays 0).
 for /f "usebackq delims=" %%L in ("%LOCK_QUERY_TMP%") do (
   set "LOCK_QUERY_ROW=%%L"
   if not "!LOCK_QUERY_ROW!"=="" (
     echo !LOCK_QUERY_ROW! | findstr /R /C:"^\"" >nul
     if !errorlevel!==0 (
       echo !LOCK_QUERY_ROW! | findstr /C:",\"!LOCK_PID!\"," >nul
-      if !errorlevel!==0 set "LOCK_ACTIVE=1"
+      if !errorlevel!==0 (
+        echo !LOCK_QUERY_ROW! | findstr /I /C:"\"!APP_EXE_NAME!\",\"!LOCK_PID!\"," >nul
+        if !errorlevel!==0 (
+          set "LOCK_ACTIVE=1"
+        ) else (
+          set "LOCK_PID_IMAGE_MISMATCH=1"
+        )
+      )
     )
   )
+)
+if defined LOCK_PID_IMAGE_MISMATCH if not "!LOCK_ACTIVE!"=="1" (
+  for /f "usebackq tokens=1 delims=," %%N in ("%LOCK_QUERY_TMP%") do (
+    if not defined LOCK_ROW_IMAGE set "LOCK_ROW_IMAGE=%%~N"
+  )
+  call :log lock_pid_image_mismatch=stale pid=!LOCK_PID! image="!LOCK_ROW_IMAGE!" expected="!APP_EXE_NAME!"
 )
 del /f /q "%LOCK_QUERY_TMP%" >nul 2>&1
 exit /b 0

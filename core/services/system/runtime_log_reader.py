@@ -229,7 +229,8 @@ def build_diagnostic_zip(
     不返回 bytes：launcher.log 无轮转上限、分卷最坏数十 MB，全内存构包不可接受。
     zip_path 的生命周期由调用方负责（mkstemp + 响应关闭回调清理，见路由层）。
     operation_logs_arcname 由调用方按读取成败决定（成功 operation_logs.txt /
-    失败 operation_logs_读取失败.txt，包内明示缺失而不中断导出）。
+    失败 operation_logs_READ_FAILED.txt——纯 ASCII 条目名，Win7 压缩文件夹不识别
+    zip EFS UTF-8 标志，中文条目名会显示乱码；包内明示缺失而不中断导出）。
     """
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for name in list_diagnostic_log_names(log_dir):

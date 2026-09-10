@@ -34,7 +34,9 @@ from .launcher import (
     write_runtime_host_port_files,
 )
 from .launcher_observability import launcher_log_warning
+from .launcher_paths import resolve_runtime_db_path
 from .paths import runtime_base_dir
+from .startup_config import resolve_startup_debug_flag
 
 PUBLIC_LAUNCH_ERROR_MESSAGE = "应用启动失败：程序没有正常启动，请把 launcher.log 发给维护人员排查。"
 
@@ -60,6 +62,11 @@ class EntryPointDeps:
     should_own_runtime_resources: Callable[[bool], bool]
     should_register_runtime_lifecycle_handlers: Callable[[bool], bool]
     atexit_register: Callable[..., Any]
+    # 锁先于 create_app 的归属判定所需（app 尚不存在时解析 DEBUG）；带默认值以兼容既有直接构造。
+    resolve_startup_debug_flag: Callable[[], bool] = resolve_startup_debug_flag
+    # B03 锁命名空间与 DB 绑定：db-scope 锁所需的 DB 路径解析（与 factory._apply_runtime_config
+    # 同源，合同测试锁定）；带默认值以兼容既有直接构造。
+    resolve_runtime_db_path: Callable[[str], str] = resolve_runtime_db_path
 
 
 def create_app_with_mode(ui_mode: str = "default") -> Flask:
@@ -99,6 +106,8 @@ def _default_deps(ui_mode: str) -> EntryPointDeps:
         should_own_runtime_resources=should_own_runtime_resources,
         should_register_runtime_lifecycle_handlers=should_register_runtime_lifecycle_handlers,
         atexit_register=__import__("atexit").register,
+        resolve_startup_debug_flag=resolve_startup_debug_flag,
+        resolve_runtime_db_path=resolve_runtime_db_path,
     )
 
 
@@ -215,6 +224,23 @@ def app_main(
             state_dir=prelaunch_log_dir,
         )
 
+    # 双开防线：运行时锁必须先于 create_app 的一切共享库副作用（ensure_schema 迁移、atexit 退出备份注册）。
+    # 锁被占的第二实例在触库前即退出（rc=13）——不会在运行实例底下迁移 schema，也不会挂上退出备份。
+    # 锁归属判定所需的 DEBUG 此刻无 app 可读，由 resolve_startup_debug_flag 从同一 config 源头解析。
+    startup_debug = bool(deps.resolve_startup_debug_flag())
+    owns_runtime_resources = deps.should_own_runtime_resources(startup_debug)
+    if owns_runtime_resources:
+        rc = _acquire_runtime_lock_before_app(
+            deps,
+            runtime_dir=runtime_dir,
+            lock_scope_target=lock_scope_target,
+            lock_scope_log_dir=lock_scope_log_dir,
+            runtime_owner=runtime_owner,
+            prelaunch_log_dir=prelaunch_log_dir,
+        )
+        if rc is not None:
+            return rc
+
     try:
         app = deps.create_app()
     except Exception as e:
@@ -224,7 +250,6 @@ def app_main(
         return 14
     debug = bool(app.config.get("DEBUG", False))
     use_reloader = deps.should_use_runtime_reloader(debug)
-    owns_runtime_resources = deps.should_own_runtime_resources(debug)
 
     raw_host = os.environ.get("APS_HOST")
     host = deps.pick_bind_host(raw_host, logger=app.logger)
@@ -232,7 +257,7 @@ def app_main(
     _writeback_listen_env(host, port, logger=app.logger)
 
     if owns_runtime_resources:
-        rc = _own_runtime_resources(
+        rc = _publish_runtime_contract(
             deps,
             app,
             runtime_dir=runtime_dir,
@@ -241,9 +266,6 @@ def app_main(
             runtime_owner=runtime_owner,
             ui_mode=ui_mode,
             debug=debug,
-            lock_scope_target=lock_scope_target,
-            lock_scope_log_dir=lock_scope_log_dir,
-            prelaunch_log_dir=prelaunch_log_dir,
         )
         if rc is not None:
             return rc
@@ -288,7 +310,40 @@ def _writeback_listen_env(host, port, *, logger) -> None:
         safe_log(logger, "warning", "回写 APS_HOST/APS_PORT 环境变量失败，开发重载子进程可能拿不到固定监听地址：%s", exc)
 
 
-def _own_runtime_resources(
+def _acquire_runtime_lock_before_app(
+    deps,
+    *,
+    runtime_dir,
+    lock_scope_target,
+    lock_scope_log_dir,
+    runtime_owner,
+    prelaunch_log_dir,
+) -> Optional[int]:
+    # 副作用时序红线：acquire_lock → atexit(release) → create_app（迁移/退出备份注册）→ configure_contract → atexit(delete)
+    # 精确保序，任何重排破坏启动语义与崩溃后清理；锁必须是第一个共享资源副作用（双开防线）。
+    # 返回 None=成功继续；13=锁失败。此时 app 尚未创建，观测通道只有启动错误文件与 launcher.log（logger=None）。
+    # B03：壳锁命名空间锚定日志目录（bat/stop 读取端合同），与 DB 的 env 锚点（APS_DB_PATH/shared-data root）
+    # 可被分叉——同库双开的真互斥由 acquire_runtime_lock(db_path=...) 在 DB 同路径追加的 db-scope 锁承担；
+    # db 路径解析必须与 factory._apply_runtime_config 同源（resolve_runtime_db_path，合同测试锁定）。
+    try:
+        runtime_db_path = deps.resolve_runtime_db_path(runtime_dir)
+        deps.acquire_runtime_lock(
+            lock_scope_target,
+            lock_scope_log_dir,
+            owner=runtime_owner,
+            exe_path=sys.executable,
+            db_path=runtime_db_path,
+        )
+    except Exception as e:
+        _write_launch_error_with_observability(
+            deps, runtime_dir, str(e), prelaunch_log_dir, logger=None, context="获取运行时锁失败"
+        )
+        return 13
+    deps.atexit_register(deps.release_runtime_lock, lock_scope_target, os.getpid(), runtime_db_path)
+    return None
+
+
+def _publish_runtime_contract(
     deps,
     app,
     *,
@@ -298,27 +353,8 @@ def _own_runtime_resources(
     runtime_owner,
     ui_mode,
     debug,
-    lock_scope_target,
-    lock_scope_log_dir,
-    prelaunch_log_dir,
 ) -> Optional[int]:
-    # 副作用时序红线：acquire_lock → atexit(release) → configure_contract → atexit(delete) 精确保序，
-    # 任何重排破坏启动语义与崩溃后清理。返回 None=成功继续；13=锁失败；15=契约失败（主函数 if rc is not None: return rc）。
-    # logger 参数语义：锁/契约失败用 app.logger（区别于 create_app 失败用 None），文案不统一化。
-    try:
-        deps.acquire_runtime_lock(
-            lock_scope_target,
-            lock_scope_log_dir,
-            owner=runtime_owner,
-            exe_path=sys.executable,
-        )
-    except Exception as e:
-        _write_launch_error_with_observability(
-            deps, runtime_dir, str(e), prelaunch_log_dir, logger=app.logger, context="获取运行时锁失败"
-        )
-        return 13
-    deps.atexit_register(deps.release_runtime_lock, lock_scope_target, os.getpid())
-
+    # 契约失败用 app.logger（区别于锁/create_app 失败用 None），文案不统一化。返回 None=成功继续；15=契约失败。
     try:
         configure_runtime_contract(
             app,

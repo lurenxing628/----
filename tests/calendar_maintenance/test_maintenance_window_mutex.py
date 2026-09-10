@@ -29,6 +29,7 @@ def test_maintenance_window_mutex(tmp_path, schema_path) -> None:
 
     from core.infrastructure import backup as backup_mod
     from core.infrastructure import database as database_mod
+    from core.infrastructure import maintenance_lock as maintenance_lock_mod
     from core.infrastructure.backup import (
         BackupManager,
         MaintenanceWindowError,
@@ -99,7 +100,9 @@ def test_maintenance_window_mutex(tmp_path, schema_path) -> None:
         def warning(self, message):
             lock_warnings.append(str(message))
 
-    with mock.patch.object(backup_mod, "read_maintenance_lock_state", side_effect=RuntimeError("lock read boom")):
+    # 维护窗锁逻辑已拆到 core/infrastructure/maintenance_lock.py（backup.py 原样再导出），
+    # 锁状态读取的注入点跟随实现模块。
+    with mock.patch.object(maintenance_lock_mod, "read_maintenance_lock_state", side_effect=RuntimeError("lock read boom")):
         try:
             is_maintenance_window_active(db_path, logger=_ListLogger())
         except MaintenanceWindowError as e:

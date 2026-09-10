@@ -3,6 +3,7 @@ from __future__ import annotations
 import traceback
 from typing import Any, List, Optional, Tuple
 
+from flask import has_request_context, request
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from core.errors import AppError, ErrorCode, app_error_http_status, error_response
@@ -23,6 +24,18 @@ def _resolve_field_label(details: Any) -> Optional[str]:
     if not field:
         return None
     return get_user_visible_field_label(field) or field
+
+
+def _request_log_context() -> str:
+    """
+    AppError 日志的请求上下文（method/path/endpoint），用于区分同文案业务错误来自哪个接口。
+
+    handler 理论上可能在无请求上下文时被手动调用（如测试/后台脚本），
+    此时降级为占位符，不影响日志写入本身。
+    """
+    if not has_request_context():
+        return "method=- path=- endpoint=-"
+    return "method={} path={} endpoint={}".format(request.method, request.path, request.endpoint or "-")
 
 
 def _html_error_details(details: Any) -> Tuple[Any, Optional[str]]:
@@ -46,10 +59,11 @@ def register_error_handlers(app):
 
     @app.errorhandler(AppError)
     def handle_app_error(e: AppError):
+        request_context = _request_log_context()
         if e.internal_details:
-            app.logger.warning("业务错误：%s internal_details=%s", e, e.internal_details)
+            app.logger.warning("业务错误：%s %s internal_details=%s", e, request_context, e.internal_details)
         else:
-            app.logger.warning(f"业务错误：{e}")
+            app.logger.warning("业务错误：%s %s", e, request_context)
         status_code = app_error_http_status(e.code)
         user_message = user_visible_app_error_message(e)
         user_details = user_visible_app_error_details(e)

@@ -364,14 +364,16 @@ def test_release_runtime_lock_remove_failure_uses_launcher_log(monkeypatch, tmp_
         "pid=12345\nowner=tester\nexe_path=/tmp/aps.exe\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr("web.bootstrap.launcher_contracts.os.getpid", lambda: 12345)
+    # 锁生命周期实现已按职责拆到 launcher_runtime_lock（launcher_contracts 只剩兼容再导出），
+    # monkeypatch 必须打在实现真正读取的模块命名空间上。
+    monkeypatch.setattr("web.bootstrap.launcher_runtime_lock.os.getpid", lambda: 12345)
 
     def _boom_remove(path: str, **_kwargs) -> bool:
         if str(path) == str(lock_path):
             raise PermissionError("locked")
         return True
 
-    monkeypatch.setattr("web.bootstrap.launcher_contracts.remove_fixed_file", _boom_remove)
+    monkeypatch.setattr("web.bootstrap.launcher_runtime_lock.remove_fixed_file", _boom_remove)
 
     release_runtime_lock(str(state_dir))
 

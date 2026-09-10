@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, cast
 import pytest
 from flask import Flask, Response, g, request
 
-import core.infrastructure.backup as backup_mod
+import core.infrastructure.maintenance_lock as maintenance_lock_mod
 import web.bootstrap.factory as factory_mod
 import web.error_boundary as error_boundary_mod
 from tests._support.excel_templates import point_env_at_shared
@@ -362,8 +362,10 @@ def test_open_db_returns_500_when_maintenance_lock_read_fails(tmp_path: Path, mo
     errors = _capture_errors(monkeypatch, app)
     captured, backend_calls = _patch_request_services_probe(monkeypatch)
 
+    # 维护窗锁逻辑已拆到 core/infrastructure/maintenance_lock.py（backup.py 原样再导出），
+    # 锁状态读取的注入点跟随实现模块。
     monkeypatch.setattr(
-        backup_mod,
+        maintenance_lock_mod,
         "read_maintenance_lock_state",
         lambda _db_path: (_ for _ in ()).throw(RuntimeError("lock read boom")),
     )

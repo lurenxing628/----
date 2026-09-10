@@ -9,7 +9,6 @@ from typing import Any, Dict, Optional
 
 from core.infrastructure.logging import safe_log
 from core.infrastructure.safe_files import (
-    create_fixed_file_exclusive,
     remove_fixed_file,
     write_fixed_json,
     write_fixed_text,
@@ -44,14 +43,10 @@ from .launcher_contract_result import (
     read_runtime_contract_result as read_runtime_contract_result,
 )
 from .launcher_lock_result import (
-    LOCK_STATUS_EMPTY,
-    LOCK_STATUS_INVALID,
-    LOCK_STATUS_MISSING,
-    LOCK_STATUS_UNREADABLE,
-    LOCK_STATUS_VALID,
-    RuntimeLockReadResult,
     read_key_value_file,
-    read_runtime_lock_result,
+)
+from .launcher_lock_result import (
+    read_runtime_lock_result as read_runtime_lock_result,
 )
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import (
@@ -63,12 +58,28 @@ from .launcher_paths import (
     resolve_runtime_state_dir,
     resolve_runtime_state_dir_for_read,
     runtime_dir_from_state_dir,
-    runtime_lock_path,
     runtime_log_dir,
     runtime_log_mirror_dir,
     state_contract_paths,
 )
-from .launcher_processes import _pid_matches_contract, _pid_state, set_process_log_context
+
+# 运行时互斥锁生命周期已按职责拆到 launcher_runtime_lock；这里保留兼容再导出
+#（launcher facade、launcher_stop、既有测试均从本模块导入锁 API）。
+from .launcher_runtime_lock import (
+    RuntimeLockError as RuntimeLockError,
+)
+from .launcher_runtime_lock import (
+    _is_runtime_lock_active as _is_runtime_lock_active,
+)
+from .launcher_runtime_lock import (
+    acquire_runtime_lock as acquire_runtime_lock,
+)
+from .launcher_runtime_lock import (
+    read_runtime_lock as read_runtime_lock,
+)
+from .launcher_runtime_lock import (
+    release_runtime_lock as release_runtime_lock,
+)
 
 _LAUNCHER_CLEANUP_API = (RuntimeCleanupFailure, RuntimeCleanupResult)
 
@@ -76,17 +87,6 @@ _LAUNCHER_CLEANUP_API = (RuntimeCleanupFailure, RuntimeCleanupResult)
 def delete_runtime_contract_files_result(runtime_dir: str) -> RuntimeCleanupResult:
     cleanup_result_mod = importlib.import_module("web.bootstrap.launcher_cleanup_result")
     return cleanup_result_mod.delete_runtime_contract_files_result(runtime_dir)
-
-
-class RuntimeLockError(RuntimeError):
-    def __init__(self, message: str, *, owner: str = "", pid: int = 0):
-        super().__init__(message)
-        self.owner = str(owner or "").strip()
-        try:
-            self.pid = int(pid or 0)
-        except (TypeError, ValueError) as exc:
-            launcher_log_warning(None, "解析运行时锁 pid 失败，已按 0 处理：pid=%r error=%s", pid, exc)
-            self.pid = 0
 
 
 def _write_runtime_state_triplet(state_dir: str, host: str, port: int, db_for_runtime: str) -> None:
@@ -112,192 +112,6 @@ def _write_key_value_file(path: str, data: Dict[str, Any]) -> None:
 
 def _read_key_value_file(path: str) -> Dict[str, str]:
     return read_key_value_file(path)
-
-
-def read_runtime_lock(runtime_dir_or_state_dir: str) -> Optional[Dict[str, Any]]:
-    result = read_runtime_lock_result(runtime_dir_or_state_dir)
-    return result.payload if result.ok else None
-
-
-def _raise_uncertain_runtime_lock(result: RuntimeLockReadResult) -> None:
-    launcher_log_warning(
-        None,
-        "检测到运行时锁但无法确认归属，跳过自动清理：path=%s status=%s reason=%s error=%s",
-        result.path,
-        result.status,
-        result.reason,
-        result.error,
-        state_dir=result.state_dir,
-    )
-    raise RuntimeLockError("检测到运行时锁但无法确认归属，为避免重复启动或误删他人锁，请稍后重试。") from None
-
-
-def _is_runtime_lock_active(lock_payload: Dict[str, Any], expected_exe_path: str = "") -> bool:
-    if not isinstance(lock_payload, dict):
-        return False
-    state_dir = str(lock_payload.get("state_dir") or "")
-    set_process_log_context(state_dir=state_dir)
-    try:
-        pid = int(lock_payload.get("pid") or 0)
-    except (TypeError, ValueError) as exc:
-        launcher_log_warning(None, "运行时锁 pid 非法，已按非活跃处理：%s", exc, state_dir=str(lock_payload.get("state_dir") or ""))
-        pid = 0
-    if pid <= 0:
-        return False
-    pid_state = _pid_state(pid)
-    if pid_state is False:
-        return False
-    if pid_state is None:
-        launcher_log_warning(None, "运行时锁 pid 状态无法确认，按仍可能活跃处理：pid=%s", pid, state_dir=str(lock_payload.get("state_dir") or ""))
-        return True
-    exe_path = str(lock_payload.get("exe_path") or expected_exe_path or "").strip()
-    if exe_path:
-        pid_match = _pid_matches_contract(pid, exe_path)
-        if pid_match is False:
-            return False
-    return True
-
-
-def _runtime_lock_payload(owner: Optional[str], exe_path: Optional[str]) -> Dict[str, Any]:
-    owner_s = str(owner or current_runtime_owner()).strip() or "unknown"
-    exe_path_s = os.path.abspath(str(exe_path or sys.executable or "")).strip()
-    return {
-        "pid": int(os.getpid()),
-        "owner": owner_s,
-        "exe_path": exe_path_s,
-        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    }
-
-
-def _create_new_runtime_lock(lock_path: str, payload: Dict[str, Any]) -> bool:
-    try:
-        fd = create_fixed_file_exclusive(lock_path)
-    except FileExistsError:
-        return False
-    except Exception as e:
-        raise RuntimeLockError(f"创建运行时锁失败：{e}") from e
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            for key, value in payload.items():
-                value_s = str(value if value is not None else "").replace("\r", " ").replace("\n", " ").strip()
-                f.write(f"{key}={value_s}\n")
-    except Exception:
-        try:
-            remove_fixed_file(lock_path)
-        except Exception as cleanup_exc:
-            launcher_log_warning(
-                None,
-                "创建运行时锁失败后清理锁文件失败，已继续抛出原错误：path=%s error=%s",
-                lock_path,
-                cleanup_exc,
-                state_dir=os.path.dirname(lock_path),
-            )
-        raise
-    return True
-
-
-def _raise_if_runtime_lock_active(existing: Dict[str, Any], owner_s: str, exe_path_s: str) -> None:
-    if not _is_runtime_lock_active(existing, expected_exe_path=exe_path_s):
-        return
-    existing_owner = str(existing.get("owner") or "").strip()
-    existing_pid = int(existing.get("pid") or 0)
-    if existing_owner and existing_owner != owner_s:
-        raise RuntimeLockError(
-            f"系统当前正由 {existing_owner} 使用，请等待其退出后再试。",
-            owner=existing_owner,
-            pid=existing_pid,
-        ) from None
-    raise RuntimeLockError(
-        "系统已在当前账户运行，请直接使用现有窗口，不要重复启动。",
-        owner=existing_owner or owner_s,
-        pid=existing_pid,
-    ) from None
-
-
-def _remove_stale_runtime_lock(lock_path: str) -> None:
-    try:
-        remove_fixed_file(lock_path)
-    except FileNotFoundError:
-        pass
-    except Exception as e:
-        raise RuntimeLockError(f"检测到失效运行时锁，但无法清理：{e}") from e
-
-
-def acquire_runtime_lock(
-    runtime_dir: str,
-    cfg_log_dir: Optional[str] = None,
-    *,
-    owner: Optional[str] = None,
-    exe_path: Optional[str] = None,
-) -> Dict[str, Any]:
-    state_dir = resolve_runtime_state_dir(runtime_dir, cfg_log_dir)
-    os.makedirs(state_dir, exist_ok=True)
-    lock_path = runtime_lock_path(state_dir)
-    payload = _runtime_lock_payload(owner, exe_path)
-    owner_s = str(payload.get("owner") or "unknown")
-    exe_path_s = str(payload.get("exe_path") or "")
-    for _ in range(2):
-        if _create_new_runtime_lock(lock_path, payload):
-            payload["state_dir"] = state_dir
-            payload["path"] = lock_path
-            return payload
-        existing_result = read_runtime_lock_result(state_dir)
-        if existing_result.status == LOCK_STATUS_MISSING:
-            continue
-        if existing_result.status in {LOCK_STATUS_EMPTY, LOCK_STATUS_UNREADABLE, LOCK_STATUS_INVALID}:
-            time.sleep(0.15)
-            existing_result = read_runtime_lock_result(state_dir)
-        if not existing_result.ok:
-            _raise_uncertain_runtime_lock(existing_result)
-        existing = existing_result.payload or {}
-        _raise_if_runtime_lock_active(existing, owner_s, exe_path_s)
-        _remove_stale_runtime_lock(lock_path)
-    raise RuntimeLockError("创建运行时锁失败，请稍后重试。")
-
-
-def release_runtime_lock(runtime_dir_or_state_dir: str, expected_pid: Optional[int] = None) -> None:
-    result = read_runtime_lock_result(runtime_dir_or_state_dir)
-    if result.status == LOCK_STATUS_MISSING:
-        return
-    if not result.ok:
-        launcher_log_warning(
-            None,
-            "释放运行时锁时无法确认锁归属，跳过释放：path=%s status=%s reason=%s error=%s",
-            result.path,
-            result.status,
-            result.reason,
-            result.error,
-            state_dir=result.state_dir,
-        )
-        return
-    existing = result.payload or {}
-    pid0 = int(existing.get("pid") or 0)
-    state_dir = str(existing.get("state_dir") or resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir))
-    if expected_pid is None:
-        pid_expected = int(os.getpid())
-    else:
-        try:
-            pid_expected = int(expected_pid)
-        except (TypeError, ValueError) as exc:
-            launcher_log_warning(
-                None,
-                "释放运行时锁时 expected_pid 非法，跳过释放以避免误删他人锁：expected_pid=%r error=%s",
-                expected_pid,
-                exc,
-                state_dir=state_dir,
-            )
-            return
-    if pid_expected <= 0:
-        launcher_log_warning(None, "释放运行时锁时 expected_pid 非正，跳过释放：expected_pid=%s", pid_expected, state_dir=state_dir)
-        return
-    if pid0 > 0 and pid0 != pid_expected:
-        return
-    try:
-        remove_fixed_file(str(existing.get("path") or ""))
-    except FileNotFoundError:
-        pass
-    except (OSError, TypeError, ValueError) as exc:
-        launcher_log_warning(None, "释放运行时锁失败，已继续：path=%s error=%s", existing.get("path"), exc, state_dir=state_dir)
 
 
 def write_launch_error(runtime_dir: str, message: str, cfg_log_dir: Optional[str] = None) -> str:

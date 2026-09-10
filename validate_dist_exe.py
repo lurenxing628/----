@@ -9,6 +9,8 @@
   - 运行时 host/port 文件可生成并可解析
   - 健康检查接口可访问（GET /system/health）
   - 可访问关键页面（/personnel/ /equipment/ /process/ /scheduler/ /system/backup）
+  - static 关键载荷已打进包且可通过 HTTP 取到非空内容
+    （static 缺失时运行时只降级警告、页面照常 200，必须在验收层直接断言）
 
 注意：
   - 该脚本会启动 exe 并在验证后结束进程
@@ -32,6 +34,14 @@ from core.infrastructure.safe_files import read_fixed_text, remove_fixed_file
 
 _EXPECTED_CONTRACT_VERSION = 1
 
+# static 验收锚点：templates/base.html 每个页面都引用的核心样式与脚本（B14）。
+# tests/app_runtime/test_validate_dist_static_payload.py 对账：锚点必须真实存在于
+# 仓库 static/ 且被 base.html 引用，防止锚点随重构漂移成永真检查。
+_STATIC_BUNDLE_ANCHORS = (
+    "static/css/style.css",
+    "static/js/common.js",
+)
+
 
 def _is_port_open(host: str, port: int) -> bool:
     try:
@@ -54,6 +64,13 @@ def _http_get_text(url: str, timeout: float = 2.5) -> str:
     req = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8")
+
+
+def _http_get_bytes(url: str, timeout: float = 2.5) -> bytes:
+    """GET 原始字节（css/js 载荷检查用，避免按 utf-8 解码引入无关失败）。"""
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
 
 
 def _normalize_db_path(path: str) -> str:
@@ -190,6 +207,32 @@ def _assert_networkx_bundled(exe_dir: str) -> None:
     )
 
 
+def _assert_static_bundled(exe_dir: str) -> None:
+    """确认离线包内含 static 关键载荷（B14）。
+
+    static 缺失/半缺失时，static_versioning 只会 _warn_once 后回退原始 URL，
+    页面照常 200，冷启动/健康检查/页面冒烟全部通过——所以必须在文件层直接断言。
+    onedir 打包会把 static 收进 exe 同级目录(PyInstaller 4.10)或 _internal 子目录(6+)。
+    """
+    root = Path(exe_dir)
+    missing = []
+    for rel in _STATIC_BUNDLE_ANCHORS:
+        rel_parts = rel.split("/")
+        found = False
+        for base in (root, root / "_internal"):
+            candidate = base.joinpath(*rel_parts)
+            if candidate.is_file() and candidate.stat().st_size > 0:
+                found = True
+                break
+        if not found:
+            missing.append(rel)
+    if missing:
+        raise RuntimeError(
+            f"离线包内 static 关键载荷缺失或为空文件：{missing}；"
+            "static 缺失时页面仍会返回 200（静态版本号仅降级警告），必须在验收阶段拦截。"
+        )
+
+
 def _assert_runtime_db_path(db_path: str) -> None:
     normalized = _normalize_db_path(db_path)
     if not normalized:
@@ -216,6 +259,7 @@ def main() -> int:
 
     try:
         _assert_networkx_bundled(cwd)
+        _assert_static_bundled(cwd)
     except Exception as e:
         print(f"[validate] 验收失败：{e}")
         return 7
@@ -264,8 +308,22 @@ def main() -> int:
                 print("[validate] 验收失败：页面不可访问。")
                 return 6
 
+        for rel in _STATIC_BUNDLE_ANCHORS:
+            static_url = "/" + rel
+            try:
+                payload = _http_get_bytes(base + static_url, timeout=3.0)
+            except urllib.error.HTTPError as e:
+                print(f"[validate] GET {static_url} -> {int(getattr(e, 'code', 500))}")
+                print("[validate] 验收失败：静态关键载荷不可访问。")
+                return 6
+            if not payload:
+                print(f"[validate] GET {static_url} -> 200 (0 bytes)")
+                print("[validate] 验收失败：静态关键载荷返回空内容。")
+                return 6
+            print(f"[validate] GET {static_url} -> 200 ({len(payload)} bytes)")
+
         _assert_process_running(p, "页面检查通过后进程已退出。")
-        print("[validate] 验收通过：exe 冷启动、运行时 host/port/db 契约与健康检查均正常。")
+        print("[validate] 验收通过：exe 冷启动、运行时 host/port/db 契约、健康检查与 static 关键载荷均正常。")
         return 0
     except Exception as e:
         print(f"[validate] 验收失败：{e}")

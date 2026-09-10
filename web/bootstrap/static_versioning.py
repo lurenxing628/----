@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Callable, Dict, Set
+from typing import Any, Callable, Dict, Set, Tuple
 
 from flask import Flask
 from flask import url_for as flask_url_for
@@ -54,8 +54,11 @@ def _pick_fixed_version(app: Flask) -> str:
 def build_versioned_url_for(app: Flask, static_dir: str) -> Callable[..., str]:
     fixed_version = _pick_fixed_version(app)
     versioned_endpoints = _parse_versioned_endpoints(app)
-    mtime_cache: Dict[str, int] = {}
-    version_cache: Dict[str, str] = {}
+    # 版本缓存：一个 key 一次性写入 (mtime, version) 元组。threaded=True 下所有请求
+    # 线程无锁共享本缓存；拆成两个 dict「先写 mtime 再写 version」存在 check-then-act
+    # 竞态窗口（读侧命中新 mtime 却读到空/旧 version，audit 2026-07-19 D05）。
+    # 单 dict 单次赋值在 GIL 下原子：读侧要么命中完整旧对，要么命中完整新对。
+    version_cache: Dict[str, Tuple[int, str]] = {}
 
     def _resolve_static_root(endpoint: str) -> str:
         if endpoint == "static":
@@ -80,11 +83,11 @@ def build_versioned_url_for(app: Flask, static_dir: str) -> Callable[..., str]:
         except OSError as exc:
             _warn_once(app, f"mtime:{cache_key}", f"静态资源版本号读取失败，已使用原始 URL：{rel}（{exc}）")
             return ""
-        if mtime_cache.get(cache_key) == mtime:
-            return version_cache.get(cache_key, "")
+        cached = version_cache.get(cache_key)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
         ver = str(mtime)
-        mtime_cache[cache_key] = mtime
-        version_cache[cache_key] = ver
+        version_cache[cache_key] = (mtime, ver)
         return ver
 
     def _versioned_url_for(endpoint: str, **values: Any) -> str:

@@ -141,7 +141,10 @@ def runtime_logs_diagnostic_package():
 
 def _collect_operation_logs_text():
     """最近 200 条操作日志纯文本。读取失败时返回说明文本+失败命名的 arcname——
-    诊断包是排障工具，部分缺失好过整体失败，但缺失必须在包内明示。"""
+    诊断包是排障工具，部分缺失好过整体失败，但缺失必须在包内明示。
+    失败 arcname 必须纯 ASCII（audit 2026-07-19 D06）：Win7 资源管理器（zipfldr）
+    不识别 zip EFS UTF-8 标志、按本地 cp936 解码条目名，中文 arcname 会显示成
+    乱码，"明示缺失"的信号在目标平台失效；中文说明放在文件内容里（UTF-8 文本）。"""
     try:
         items = _get_operation_log_service().list_recent(limit=_OPERATION_LOG_EXPORT_LIMIT)
     except Exception as e:
@@ -149,7 +152,7 @@ def _collect_operation_logs_text():
         return (
             "操作日志读取失败，本文件代替说明。\n失败原因："
             f"{public_operation_log_error_message(e) or '读取失败'}\n",
-            "operation_logs_读取失败.txt",
+            "operation_logs_READ_FAILED.txt",
         )
     lines = [f"最近 {len(items)} 条操作日志（新→旧）：", ""]
     for log in items:

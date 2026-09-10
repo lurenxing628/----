@@ -5,7 +5,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from flask import g, has_request_context, request
 
-from core.models.schedule_plan_role import VALID_PLAN_ROLES
+from core.models.schedule_plan_role import ROLE_ADOPTED, VALID_PLAN_ROLES
 from web.request_resource_context import request_report_resource_context
 from web.viewmodels.plan_context_capsule import build_plan_context_capsule
 from web.viewmodels.scheduler_navigation_links import (
@@ -22,7 +22,6 @@ from web.viewmodels.scheduler_navigation_links import (
 )
 from web.viewmodels.scheduler_workbench_links import build_workbench_plan_context
 
-ROLE_ADOPTED = "adopted"
 _NAVIGATION_CONTEXT_ATTR = "_workbench_navigation_context"
 _PUBLIC_RETURN_DROP_QUERY_KEYS = {
     "scenario_id",
