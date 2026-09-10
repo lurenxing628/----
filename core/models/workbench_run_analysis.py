@@ -33,13 +33,18 @@ def _operation_change(row):
     return changed, machine, []
 
 
-def operation_metrics(baseline, batch_refs):
+def _admission_operation_rows(baseline, batch_refs):
     rows = [row for row in baseline["comparisons"] if row["selected_at_admission"]]
     refs = [row["operation_ref"] for row in rows]
     if (len(set(refs)) != len(refs) or not baseline["rows_complete"]
             or baseline["operation_count"] != baseline["full_operation_count"]
             or any(row["batch_ref"] not in batch_refs for row in rows)):
         reject("candidate_analysis_incomplete", "整份候选工序身份不完整，未从可见安排估算调整数量。", 500)
+    return rows, refs
+
+
+def operation_metrics(baseline, batch_refs):
+    rows, refs = _admission_operation_rows(baseline, batch_refs)
     changed, machines, unknown, machine_unknown, issues = [], [], [], [], []
     for row in rows:
         change, machine, reasons = _operation_change(row)

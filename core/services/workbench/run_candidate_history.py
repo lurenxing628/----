@@ -17,16 +17,7 @@ def _invalid():
     reject("candidate_adoption_history_invalid", "原候选的采用回执与来源或正式版本不一致，未改查其他采用记录。", 500)
 
 
-def _entry(conn, row, candidate_ref, run_ref):
-    receipt = WorkbenchCommandRepository.public_result(row, replayed=True)
-    data = receipt["data"]
-    if (receipt["result"] != "committed" or data["candidate_ref"] != candidate_ref or data["run_ref"] != run_ref
-            or data["official_plan"]["source_run_ref"] != run_ref):
-        _invalid()
-    plan = data["official_plan"]
-    reference(plan["plan_ref"], stored=True)
-    if type(plan["version"]) is not int or plan["version"] < 1 or plan["kind"] != "official":
-        _invalid()
+def _adoption_evidence(conn, row, plan, candidate_ref, run_ref):
     histories = list(conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (plan["version"],)))
     issues, facts, audit = [], {}, None
     try:
@@ -46,6 +37,20 @@ def _entry(conn, row, candidate_ref, run_ref):
             _invalid()
     elif not issues:
         _invalid()
+    return audit, issues
+
+
+def _entry(conn, row, candidate_ref, run_ref):
+    receipt = WorkbenchCommandRepository.public_result(row, replayed=True)
+    data = receipt["data"]
+    if (receipt["result"] != "committed" or data["candidate_ref"] != candidate_ref or data["run_ref"] != run_ref
+            or data["official_plan"]["source_run_ref"] != run_ref):
+        _invalid()
+    plan = data["official_plan"]
+    reference(plan["plan_ref"], stored=True)
+    if type(plan["version"]) is not int or plan["version"] < 1 or plan["kind"] != "official":
+        _invalid()
+    audit, issues = _adoption_evidence(conn, row, plan, candidate_ref, run_ref)
     try:
         if WorkbenchPlanIdentityRepository(conn).resolve_plan(plan["plan_ref"]) != WorkbenchPlanLocator(plan["version"], "adopted"):
             _invalid()
