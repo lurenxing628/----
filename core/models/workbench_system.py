@@ -86,8 +86,8 @@ def query_input(value, kind) -> SystemQuery:
         raise WorkbenchCommandRejected("invalid_input", "筛选值必须是长度不超过200的文本。", 400)
     _query_dates(result)
     choices = {"type": ("", "runtime", "operation") if kind == "logs" else
-               ("", "manual", "auto", "before_restore", "unknown"),
-               "status": ("", "recorded") if kind == "logs" else ("", "unverified"),
+               ("", "manual", "auto", "before_restore", "unknown", "restore", "cleanup"),
+               "status": ("", "recorded") if kind == "logs" else ("", "unverified", "unknown") + tuple(sorted(JOB_STATES)),
                "level": ("", "INFO", "WARNING", "WARN", "ERROR", "DEBUG", "CRITICAL", "UNKNOWN"),
                "file": ("", "aps.log", "aps_error.log", "launcher.log", "OperationLogs")}
     if any(result[key] not in items for key, items in choices.items()):
