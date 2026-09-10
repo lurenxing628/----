@@ -16,8 +16,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core.services.common.excel_templates import get_template_definition
-from core.services.process import UnitExcelConverter
 from core.services.process.unit_excel.exporter import UnitTemplateExporter
+from core.services.process.unit_excel_converter import UnitExcelConverter
 
 
 def _nonempty_rows(ws: Any, width: int) -> List[List[Any]]:

@@ -7,7 +7,9 @@ from flask import current_app, flash, g, redirect, render_template, request, url
 
 from core.infrastructure.errors import AppError
 from core.models.enums import MergeMode, PartOperationStatus, SourceType, YesNo
-from core.services.process import ExternalGroupService, PartService, SupplierService
+from core.services.process.external_group_service import ExternalGroupService
+from core.services.process.part_service import PartService
+from core.services.process.supplier_service import SupplierService
 from web.routes.helpers.form_values import form_toggle_bool
 from web.viewmodels.excel_entry_cards import process_parts_excel_cards
 from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle

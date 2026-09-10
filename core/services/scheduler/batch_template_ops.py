@@ -4,8 +4,11 @@ import inspect
 from typing import Any, Callable, Dict, Optional
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
-from core.models.enums import BatchOperationStatus, BatchPriority, BatchStatus, ReadyStatus, SourceType
+from core.models.enums import BatchPriority, BatchStatus, ReadyStatus
 from core.services.common.normalize import append_unique_text_messages
+from core.services.process.workflow_state import require_template_ready
+
+from .template_lineage import TemplateLineageWriter
 
 
 def default_template_resolver_factory(svc) -> Callable[..., Any]:
@@ -54,15 +57,6 @@ def invoke_template_resolver(svc, part_no: str, part_name: str, route_raw: str, 
     return resolver(part_no, part_name, route_raw, no_tx)
 
 
-def _normalize_source(value: Any) -> str:
-    source = ("" if value is None else str(value)).strip().lower()
-    if not source:
-        return SourceType.INTERNAL.value
-    if source in (SourceType.INTERNAL.value, SourceType.EXTERNAL.value):
-        return source
-    return SourceType.INTERNAL.value
-
-
 def probe_template_ops_readonly(svc, part_no: str, part) -> Dict[str, Any]:
     template_ops = svc.part_op_repo.list_by_part(part_no, include_deleted=False)
     route_raw = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
@@ -81,6 +75,7 @@ def ensure_template_ops_in_tx(
     strict_mode: bool = False,
     probe: Optional[Dict[str, Any]] = None,
 ):
+    require_template_ready(svc.conn, part_no)
     template_ops = svc.part_op_repo.list_by_part(part_no, include_deleted=False)
     if template_ops:
         return template_ops
@@ -154,26 +149,6 @@ def _ensure_batch_exists_for_template_ops(
     )
 
 
-def _build_batch_op_payload(svc, *, batch_id: str, seq: int, tmpl: Any, source: str) -> Dict[str, Any]:
-    supplier_id = tmpl.supplier_id if source == SourceType.EXTERNAL.value else None
-    return {
-        "op_code": f"{batch_id}_{int(seq):02d}",
-        "batch_id": batch_id,
-        "piece_id": None,
-        "seq": int(seq),
-        "op_type_id": tmpl.op_type_id,
-        "op_type_name": tmpl.op_type_name,
-        "source": source,
-        "machine_id": None,
-        "operator_id": None,
-        "supplier_id": supplier_id,
-        "setup_hours": float(tmpl.setup_hours or 0.0),
-        "unit_hours": float(tmpl.unit_hours or 0.0),
-        "ext_days": svc._safe_float(tmpl.ext_days),
-        "status": BatchOperationStatus.PENDING.value,
-    }
-
-
 def create_batch_from_template_no_tx(
     svc,
     *,
@@ -208,6 +183,8 @@ def create_batch_from_template_no_tx(
         raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{part_no_text}”不存在，请先在工艺管理中维护零件。")
 
     template_ops = ensure_template_ops_in_tx(svc, part_no_text, part, strict_mode=bool(strict_mode), probe=template_probe)
+    lineage = TemplateLineageWriter(svc.conn)
+    lineage.require_ready()
     _ensure_batch_exists_for_template_ops(
         svc,
         batch_id=bid,
@@ -223,6 +200,4 @@ def create_batch_from_template_no_tx(
     )
 
     for template in template_ops:
-        seq = int(template.seq)
-        source = _normalize_source(getattr(template, "source", None))
-        svc.batch_op_repo.create(_build_batch_op_payload(svc, batch_id=bid, seq=seq, tmpl=template, source=source))
+        lineage.copy_template(bid, template.id)

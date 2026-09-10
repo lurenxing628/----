@@ -92,7 +92,7 @@ def _build_source_xlsx(path: str) -> None:
 
 def test_unit_excel_converter_diagnostics_visible() -> None:
 
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
     from scripts import convert_rotary_shell_unit_excel as convert_script
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_unit_converter_diag_")

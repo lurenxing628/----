@@ -1,0 +1,34 @@
+'use strict';
+const assert = require('node:assert/strict');
+async function unknownWorkflow({p, page, processArea, openProcess, closeProcess, saved}) {
+  const b = (scope, name) => name === '关闭' ? scope.locator('.modal-f').getByRole('button', {name, exact: true}) : scope.getByRole('button', {name, exact: true});
+  await p.click(b(processArea(), '新增零件')); let d = page.getByRole('dialog', {name: '新增零件', exact: true});
+  await p.type(d.getByLabel('图号', {exact: true}), 'AN-UNKNOWN');
+  await p.type(d.getByLabel('零件名称', {exact: true}), '待建工种端到端');
+  await p.type(d.getByLabel('路线文字（选填）', {exact: true}), '10AN待建工种');
+  await saved('create', b(d, '保存零件')); await p.click(b(d, '完成'));
+  await openProcess('AN-UNKNOWN'); await p.click(b(page, '录入路线'));
+  d = page.getByRole('dialog', {name: /^录入工艺路线 · /});
+  await p.type(d.getByRole('textbox', {name: '路线文字', exact: true}), '10AN待建工种');
+  await p.response('/route-preview', () => p.click(b(d, '预检路线')));
+  await saved('route_confirm', b(d, '确认保存路线'));
+  const source = page.locator('[data-process-source-editor]:visible'); await source.waitFor();
+  assert((await source.innerText()).includes('未绑定工种')); await p.shot('unknown-unbound-before-create');
+  await p.click(b(source, '待建工种'));
+  d = page.getByRole('dialog').filter({has: page.locator('input[name="business_code"]')});
+  await p.type(d.locator('input[name="business_code"]'), 'AN-OP-NEW');
+  await p.type(d.locator('input[name="label"]'), 'AN待建工种');
+  await p.select(d.locator('select[name="category"]'), '自制');
+  await p.shot('unknown-create-op-type'); await saved('create', b(d, '保存')); await p.click(b(d, '关闭'));
+  await p.click(b(source, '已核对，采用最新范围并保留可匹配草稿'));
+  await p.click(source.getByRole('group', {name: '工序 10 归属', exact: true}).getByRole('button', {name: '自制', exact: true}));
+  await p.click(b(source, '选择工序 10 工种')); d = page.getByRole('dialog', {name: '选择自制工种 · 工序 10', exact: true});
+  await p.type(d.getByRole('searchbox'), 'AN待建工种');
+  await p.response('/entities/op_type', () => p.click(b(d, '搜索'))); await p.click(b(d, '选用 AN待建工种'));
+  await p.click(source.getByRole('checkbox', {name: '确认本页已核对工序', exact: true}));
+  await p.response('/stage-preview', () => p.click(b(source, '检查归属')));
+  await saved('source_confirm', b(source, '完成归属 · 解锁工时'));
+  await page.locator('[data-process-hours-editor]:visible').waitFor(); await p.shot('unknown-bound-to-real-op-type');
+  await closeProcess();
+}
+module.exports = {unknownWorkflow};

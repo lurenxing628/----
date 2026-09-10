@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import inspect
 import math
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.enums import SupplierStatus
@@ -31,21 +33,23 @@ class SupplierConstraintResolver:
     def build_supplier_map(self) -> Tuple[Dict[str, Tuple[str, float]], Dict[str, List[str]]]:
         """
         构建 工种名 -> (supplier_id, default_days) 映射。
-        规则：仅使用 Suppliers.op_type_id 有值且能映射到 OpTypes 的记录；
+        规则：使用旧单工种与显式补充关系的有效能力并集；
         若同一工种存在多条供应商记录，则按 supplier_id 字典序取最后一条
         （即 supplier_id 最大者）作为有效供应商，与预览基线保持一致。
         """
         supplier_map: Dict[str, Tuple[str, float]] = {}
         issues: Dict[str, List[str]] = {}
-        try:
-            suppliers = self.suppliers_repo.list(status=SupplierStatus.ACTIVE.value) or []
-        except TypeError:
-            suppliers = self.suppliers_repo.list() or []
+        suppliers = self._list_capabilities()
         for supplier in suppliers:
+            if getattr(supplier, "missing_supplier", False):
+                self.global_issues.append(SupplierGlobalIssue(
+                    op_type_id=supplier.op_type_id,
+                    message=f"供应商“{supplier.supplier_id}”工种映射加载失败，显式关系引用了不存在的供应商。"))
+                continue
             supplier_status = normalize_supplier_status(getattr(supplier, "status", SupplierStatus.ACTIVE.value))
             if supplier_status != SupplierStatus.ACTIVE.value:
                 continue
-            if not getattr(supplier, "op_type_id", None):
+            if not getattr(supplier, "op_type_id", None) and not getattr(supplier, "explicit", False):
                 continue
             supplier_id = str(getattr(supplier, "supplier_id", "") or "").strip() or "?"
             op_type_name = self._resolve_supplier_op_type_name(supplier, supplier_id)
@@ -71,6 +75,19 @@ class SupplierConstraintResolver:
 
         return supplier_map, issues
 
+    def _list_capabilities(self):
+        projection = getattr(self.suppliers_repo, "list_capabilities", None)
+        if projection is not None:
+            return [SimpleNamespace(**row) for row in projection(status=SupplierStatus.ACTIVE.value)]
+        # Legacy injected repositories can have list() without a status keyword.
+        # Inspect binding only: a TypeError raised inside the query must propagate.
+        method = self.suppliers_repo.list
+        try:
+            inspect.signature(method).bind(status=SupplierStatus.ACTIVE.value)
+        except TypeError:
+            return method() or []
+        return method(status=SupplierStatus.ACTIVE.value) or []
+
     def _resolve_supplier_op_type_name(self, supplier: Any, supplier_id: str) -> Optional[str]:
         op_type_id = str(getattr(supplier, "op_type_id", "") or "").strip()
         try:
@@ -86,6 +103,11 @@ class SupplierConstraintResolver:
                 f"供应商“{supplier_id}”工种映射加载失败（op_type_id={supplier.op_type_id!r}），"
                 "没有找到对应工种，请检查供应商对应工种。"
             )
+            self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id, message=message))
+            safe_warning(self.logger, message)
+            return None
+        if getattr(supplier, "explicit", False) and getattr(op_type, "category", None) != "external":
+            message = f"供应商“{supplier_id}”工种映射加载失败（op_type_id={supplier.op_type_id!r}），显式关系不是外协工种。"
             self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id, message=message))
             safe_warning(self.logger, message)
             return None

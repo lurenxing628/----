@@ -95,7 +95,7 @@ def _extract_hours(converted) -> Tuple[float, float]:
 
 def test_unit_excel_converter_duplicate_part_rows_no_override() -> None:
 
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = tempfile.mkdtemp(prefix="aps_regression_unit_duplicate_part_")
     single_path = os.path.join(tmpdir, "single.xlsx")

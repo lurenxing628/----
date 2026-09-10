@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
+from core.infrastructure.transaction import TransactionManager
 from core.models.enums import SourceType
 from core.services.common.enum_normalizers import source_type_label
 from core.services.common.excel_audit import log_excel_export, log_excel_import
@@ -18,6 +19,7 @@ from core.services.common.excel_templates import build_xlsx_bytes, get_template_
 from core.services.common.normalize import to_str_or_blank
 from core.services.process.part_operation_hours_excel_import_service import PartOperationHoursExcelImportService
 from core.services.process.part_operation_query_service import PartOperationQueryService
+from core.services.workbench.process_quota_protection import ProcessQuotaProtection
 from core.shared.number_utils import parse_finite_float
 
 from .helpers.excel_utils import (
@@ -76,7 +78,9 @@ def _parse_seq(value: Any) -> Optional[int]:
 
 def _build_existing_internal() -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
     q = PartOperationQueryService(g.db, op_logger=getattr(g, "op_logger", None))
-    rows = q.list_active_hours()
+    with TransactionManager(g.db).transaction():
+        rows = q.list_active_hours()
+        protection = ProcessQuotaProtection(g.db).legacy_metadata()
 
     existing_internal: Dict[str, Dict[str, Any]] = {}
     meta_all: Dict[str, Dict[str, Any]] = {}
@@ -95,6 +99,7 @@ def _build_existing_internal() -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dic
             "归属显示": source_type_label(source),
             "换型时间(h)": float(r["setup_hours"] or 0.0),
             "单件工时(h)": float(r["unit_hours"] or 0.0),
+            **protection[row_id],
         }
         meta_all[row_id] = item
         existing_list.append(item)
@@ -155,6 +160,9 @@ def _build_validator(meta_all: Dict[str, Dict[str, Any]]):
             return f"工序不存在：图号={part_no} 工序={seq}"
         if to_str_or_blank(meta.get("归属")).lower() != SourceType.INTERNAL.value:
             return f"仅支持内部工序导入工时：图号={part_no} 工序={seq}"
+        if "template_operation_ref" in row and row["template_operation_ref"] != meta["template_operation_ref"]:
+            return "原模板永久引用已失效，请重新预检；不能写入同号新模板。"
+        row["template_operation_ref"] = meta["template_operation_ref"]
         return None
 
     return _validate_row
@@ -166,6 +174,8 @@ def _build_part_op_hours_extra_state(meta_all: Dict[str, Dict[str, Any]]) -> Dic
             {
                 "row_id": str(row_id),
                 "source": to_str_or_blank((meta or {}).get("归属")).lower(),
+                "template_operation_ref": meta["template_operation_ref"],
+                "quota_lock": meta["quota_lock"],
             }
             for row_id, meta in sorted((meta_all or {}).items(), key=lambda item: str(item[0]))
         ]
@@ -271,6 +281,7 @@ def excel_part_op_hours_preview():
         mode=mode,
     )
     _rewrite_append_preview_rows(preview_rows, mode)
+    PartOperationHoursExcelImportService.protect_preview_rows(preview_rows, meta_all)
     preview_baseline = build_preview_baseline_token(
         existing_data=existing_for_preview,
         mode=mode,
@@ -342,6 +353,7 @@ def excel_part_op_hours_confirm():
         mode=mode,
     )
     _rewrite_append_preview_rows(preview_rows, mode)
+    PartOperationHoursExcelImportService.protect_preview_rows(preview_rows, meta_all)
 
     error_rows = collect_error_rows(preview_rows)
     if error_rows:

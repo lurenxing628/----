@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from core.services.equipment import MachineService
     from core.services.personnel import OperatorService
     from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
-    from core.services.process import SupplierService
+    from core.services.process.supplier_service import SupplierService
 
 
 class _MergeHintService(Protocol):

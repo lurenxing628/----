@@ -16,8 +16,9 @@ from core.services.common.excel_service import ExcelService, ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.normalize import is_blank_value
 from core.services.common.strict_parse import parse_required_float
-from core.services.process import OpTypeService, SupplierService
+from core.services.process.op_type_service import OpTypeService
 from core.services.process.supplier_excel_import_service import SupplierExcelImportService
+from core.services.process.supplier_service import SupplierService
 
 from .helpers.excel_utils import (
     build_error_rows_message,

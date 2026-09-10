@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import math
+import sqlite3
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import AppError
 from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.common.excel_service import ImportPreviewRow, RowStatus
 from core.services.common.normalize import to_str_or_blank
 
 from .part_service import PartService
+from .quota_protection import ProcessQuotaProtection, quota_skip
 
 
 @dataclass
@@ -19,6 +22,7 @@ class _ImportStats:
     skip_count: int = 0
     error_count: int = 0
     errors_sample: List[Dict[str, Any]] = field(default_factory=list)
+    skipped_rows: List[Dict[str, Any]] = field(default_factory=list)
 
     @staticmethod
     def _row_error_reference(pr: ImportPreviewRow) -> Dict[str, Any]:
@@ -44,6 +48,9 @@ class _ImportStats:
             "skip_count": self.skip_count,
             "error_count": self.error_count,
             "errors_sample": list(self.errors_sample),
+            "skipped_count": len(self.skipped_rows),
+            "skipped_refs": [row["template_operation_ref"] for row in self.skipped_rows],
+            "skipped_rows": list(self.skipped_rows),
         }
 
 
@@ -63,13 +70,52 @@ class PartOperationHoursExcelImportService:
         # 导入级事务壳：
         # - 业务错误（AppError）按行统计并继续
         # - 非预期异常直接抛出，由 TransactionManager 触发整体回滚，避免半提交
-        with self.tx_manager.transaction():
+        with self.tx_manager.transaction(begin_immediate=True):
+            locks = self._check_bound_rows(preview_rows)
             for pr in preview_rows or []:
-                self._apply_one(pr, stats)
+                self._apply_one(pr, stats, locks)
 
         return stats.to_dict(total_rows=len(preview_rows))
 
-    def _apply_one(self, pr: ImportPreviewRow, stats: _ImportStats) -> None:
+    @staticmethod
+    def protect_preview_rows(preview_rows, metadata):
+        for pr in preview_rows:
+            if pr.status == RowStatus.ERROR:
+                continue
+            meta = metadata[pr.data["__row_id__"]]
+            pr.data["template_operation_ref"] = meta["template_operation_ref"]
+            lock = meta["quota_lock"]
+            if lock is not None and pr.data["单件工时(h)"] != lock["locked_unit_hours"]:
+                pr.status, pr.changes = RowStatus.SKIP, {}
+                pr.data["quota_skip"] = quota_skip(meta["template_operation_ref"], lock)
+                pr.message = pr.data["quota_skip"]["message"]
+
+    def _check_bound_rows(self, rows):
+        candidates = [pr for pr in rows if pr.status != RowStatus.ERROR and
+                      (pr.status in (RowStatus.NEW, RowStatus.UPDATE) or "template_operation_ref" in pr.data)]
+        valid = [pr for pr in candidates if self._parse_write_row(pr)[1] is None]
+        if not valid:
+            return {}
+        if any(not pr.data.get("template_operation_ref") for pr in valid):
+            raise WorkbenchCommandRejected("stale_write", "工时导入缺少原模板永久引用，请重新预检；未按业务编号补配。")
+        current, locks = ProcessQuotaProtection(self.conn).current([pr.data["template_operation_ref"] for pr in valid])
+        for pr in valid:
+            row = current[pr.data["template_operation_ref"]]
+            parsed, _ = self._parse_write_row(pr)
+            if parsed is None or (row["part_no"], row["seq"], row["source"]) != (parsed[0], parsed[1], "internal"):
+                raise WorkbenchCommandRejected("stale_write", "原模板归属或序号已变化，未重新绑定。")
+        return locks
+
+    def _apply_one(self, pr: ImportPreviewRow, stats: _ImportStats, locks) -> None:
+        ref = pr.data.get("template_operation_ref")
+        if pr.status != RowStatus.ERROR and ref:
+            parsed, _ = self._parse_write_row(pr)
+            if ref in locks and parsed is not None and parsed[3] != locks[ref]["locked_unit_hours"]:
+                stats.skip_count += 1
+                stats.skipped_rows.append({**stats._row_error_reference(pr), **quota_skip(ref, locks[ref])})
+                return
+            if "quota_skip" in pr.data:
+                raise WorkbenchCommandRejected("stale_write", "原锁跳过原因已变化，请重新预检。")
         if pr.status in (RowStatus.ERROR, RowStatus.SKIP, RowStatus.UNCHANGED):
             self._apply_non_write_row(pr, stats)
             return
@@ -86,6 +132,8 @@ class PartOperationHoursExcelImportService:
         try:
             self.part_svc.update_internal_hours(part_no=part_no, seq=seq, setup_hours=sh, unit_hours=uh)
         except AppError as e:
+            if isinstance(e.cause, sqlite3.Error):
+                raise
             stats.add_error(pr, e.message)
             return
 
@@ -169,4 +217,3 @@ class PartOperationHoursExcelImportService:
         if float(sh) < 0 or float(uh) < 0:
             return None, "“换型时间(h)”和“单件工时(h)”不能为负数"
         return (part_no, int(seq_int), float(sh), float(uh)), None
-

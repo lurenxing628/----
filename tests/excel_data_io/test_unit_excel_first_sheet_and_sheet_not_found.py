@@ -69,7 +69,7 @@ def _build_single_sheet_xlsx(path: str) -> None:
 
 
 def test_default_parses_first_sheet_even_when_active_sheet_is_notes_page() -> None:
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_unit_first_sheet_")
     src_xlsx = os.path.join(tmpdir, "source.xlsx")
@@ -98,7 +98,7 @@ def test_default_parses_first_sheet_even_when_active_sheet_is_notes_page() -> No
 
 
 def test_explicit_sheet_on_multi_sheet_workbook_still_records_notice() -> None:
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_unit_explicit_sheet_")
     src_xlsx = os.path.join(tmpdir, "source.xlsx")
@@ -112,7 +112,7 @@ def test_explicit_sheet_on_multi_sheet_workbook_still_records_notice() -> None:
 
 
 def test_single_sheet_workbook_has_no_multiple_sheets_notice() -> None:
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_unit_single_sheet_")
     src_xlsx = os.path.join(tmpdir, "source.xlsx")

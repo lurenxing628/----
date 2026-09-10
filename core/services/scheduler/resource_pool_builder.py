@@ -7,6 +7,7 @@ from core.infrastructure.errors import ValidationError
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, YesNo
 from core.services.common.enum_normalizers import skill_rank as _skill_rank_common
 from core.services.common.safe_logging import safe_warning
+from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from core.shared.boolean_normalize import to_yes_no
 from data.repositories import MachineDowntimeRepository
 
@@ -312,11 +313,15 @@ def build_resource_pool(
         # 仅对本次排产涉及的 op_type_id 构建映射（缺省/为空则退化为全量）
         op_type_ids = _op_type_ids_for_ops(algo_ops)
         machines_by_op_type = _machines_by_op_type(machines, active_machines=active_machines, op_type_ids=op_type_ids)
+        # A known work type with no matching equipment is not an absent type constraint.
+        for op_type_id in sorted(op_type_ids):
+            machines_by_op_type.setdefault(op_type_id, [])
 
         active_ops = _active_operator_ids(svc)
 
         # OperatorMachine：一次性取出，按设备聚合（并按“主操/技能”做轻量排序）
         rows = svc.operator_machine_repo.list_simple_rows()
+        rows = OperatorQualificationService(svc.conn, logger=svc.logger).eligible_links(rows, machines, active_ops, algo_ops)
         operators_by_machine, machines_by_operator, pair_rank = _build_operator_machine_maps(
             rows,
             active_machines=active_machines,
@@ -332,6 +337,11 @@ def build_resource_pool(
         }
         if meta is not None:
             meta["resource_pool_build_ok"] = True
+    except OperatorQualificationError as exc:
+        if meta is not None:
+            meta["resource_pool_build_ok"] = False
+            meta["resource_pool_build_error"] = exc.message
+        raise
     except Exception as e:
         resource_pool = None
         if meta is not None:

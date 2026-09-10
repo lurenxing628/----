@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import flash, g, redirect, render_template, request, url_for
 
 from core.models.enums import SourceType
-from core.services.process import OpTypeService
+from core.services.process.op_type_service import OpTypeService
 from web.viewmodels.excel_entry_cards import process_op_type_excel_cards
 
 from .helpers.pagination import paginate_rows, parse_page_args

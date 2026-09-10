@@ -1,0 +1,72 @@
+"""Batch requirements are explicit cross-page facts, never stock reservations."""
+
+from .master_overview_graph import number, text
+
+
+def batch_relations(graph):
+    facts = graph.facts
+    if not facts.available("Batches", "BatchMaterials"):
+        for entity in graph.entities:
+            if entity["domain"] in ("part", "material"):
+                graph.unknown(entity, "批次物料关系", "Batches / BatchMaterials", relation=True)
+        return
+    batches = {}
+    for row in facts.rows("Batches"):
+        ref = facts.ref("batch", row["batch_id"])
+        batches[row["batch_id"]] = {"key": "batch:" + ref, "ref": ref, "domain": "batch",
+            "business_code": row["batch_id"], "label": row["part_name"] or "名称未填", "relations": [],
+            "target": {"view": "batches", "context": {"entity_ref": ref}}}
+        part = graph.by_key.get(("part", row["part_no"]))
+        if part:
+            graph.link(part, batches[row["batch_id"]], "引用批次", "Batches.part_no")
+    raw_batches = facts.index("Batches", "batch_id")
+    for row in facts.rows("BatchMaterials"):
+        material = graph.by_key.get(("material", row["material_id"]))
+        batch = batches.get(row["batch_id"])
+        if material is None or batch is None:
+            if material:
+                graph.issue(material, "batch_material.orphan", "物料需求批次不存在", "BatchMaterials关系指向缺失批次，未按同号重建。")
+                material["relations_complete"] = False
+            else:
+                facts.gaps.append({"code": "material_requirement_orphan", "source": "BatchMaterials.material_id",
+                                   "message": "有批次物料需求指向未加载或缺失的物料，未伪造物料实体。"})
+            continue
+        graph.link(material, batch, "需求批次", "BatchMaterials.batch_id")
+        part = graph.by_key.get(("part", raw_batches[row["batch_id"]]["part_no"]))
+        graph.link(material, part, "需求批次对应零件", "BatchMaterials -> Batches.part_no", "批次需求物料")
+        _requirement_fields(graph, material, row, batch)
+
+
+def _requirement_fields(graph, entity, row, batch):
+    code = batch["business_code"]
+    evidence_key = batch["ref"] + ":" + str(row["id"])
+    for key, label, positive in (("required_qty", "需求数量", True), ("available_qty", "到料数量", False)):
+        value = row[key]
+        graph.field(entity, code + " " + label, value, "BatchMaterials." + key, valid=number(value, positive))
+        if not number(value, positive):
+            item = graph.issue(entity, "batch_material." + key, "批次" + label + "待核对",
+                               "批次：" + code + "；" + label + "：" + text(value), action="核对批次物料需求", related_ref=evidence_key)
+            item["target"] = batch["target"]
+    graph.field(entity, code + " 齐套显示", row["ready_status"], "BatchMaterials.ready_status", required=False)
+    if number(row["required_qty"], True) and number(row["available_qty"]) and row["available_qty"] < row["required_qty"]:
+        item = graph.issue(entity, "batch_material.pending", "批次到料记录不足",
+                           "批次：" + code + "；需求 " + text(row["required_qty"]) + "，到料 " + text(row["available_qty"]) + "。库存未当作预留或到料。",
+                           action="核对批次物料需求", related_ref=evidence_key)
+        item["target"] = batch["target"]
+
+
+def resource_profile_fields(graph):
+    facts = graph.facts
+    groups = facts.index("WorkbenchMachineGroups", "group_id")
+    members = facts.index("WorkbenchMachineGroupMembers", "machine_id")
+    for row in facts.rows("Machines"):
+        entity = graph.by_key[("equipment", row["machine_id"])]
+        if not facts.available("WorkbenchMachineGroups", "WorkbenchMachineGroupMembers"):
+            graph.unknown(entity, "设备组", "WorkbenchMachineGroups / WorkbenchMachineGroupMembers")
+            continue
+        member = members.get(row["machine_id"])
+        group = groups.get(member["group_id"]) if member else None
+        graph.field(entity, "设备组", group["name"] if group else None,
+                    "WorkbenchMachineGroupMembers -> WorkbenchMachineGroups.name", required=False)
+        if member and group is None:
+            graph.issue(entity, "machine.group_missing", "设备组记录缺失", "显式设备组绑定指向缺失记录；未使用ResourceTeams代替。")

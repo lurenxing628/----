@@ -3,7 +3,8 @@ from __future__ import annotations
 from flask import flash, g, redirect, render_template, request, url_for
 
 from core.models.enums import SupplierStatus
-from core.services.process import OpTypeService, SupplierService
+from core.services.process.op_type_service import OpTypeService
+from core.services.process.supplier_service import SupplierService
 from web.viewmodels.excel_entry_cards import process_supplier_excel_cards
 
 from .helpers.pagination import paginate_rows, parse_page_args

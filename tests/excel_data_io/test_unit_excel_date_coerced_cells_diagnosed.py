@@ -48,7 +48,7 @@ def _write_xlsx(path: str, rows) -> None:
 
 
 def test_step_cell_stored_as_date_is_not_guessed_and_diagnosed() -> None:
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_unit_step_date_")
     src_xlsx = os.path.join(tmpdir, "source.xlsx")
@@ -81,7 +81,7 @@ def test_step_cell_stored_as_date_is_not_guessed_and_diagnosed() -> None:
 
 
 def test_part_no_cell_stored_as_date_keeps_row_but_diagnosed() -> None:
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_unit_partno_date_")
     src_xlsx = os.path.join(tmpdir, "source.xlsx")
@@ -106,7 +106,7 @@ def test_part_no_cell_stored_as_date_keeps_row_but_diagnosed() -> None:
 
 
 def test_part_no_cell_stored_as_float_diagnosed_and_int_part_no_untouched() -> None:
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_unit_partno_float_")
     src_xlsx = os.path.join(tmpdir, "source.xlsx")

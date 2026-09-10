@@ -1,7 +1,14 @@
 """回归测试：BatchService.create_batch_from_template 自动补建零件工艺模板与批次工序时，若因 BatchOperations.op_code 唯一约束冲突失败，必须整体回滚——不残留批次头、批次工序、自动补建的 PartOperations 模板，且 Parts.route_parsed 不被提前写成 yes。"""
 
+import sqlite3
 
-def test_batch_template_autobuild_same_tx(schema_conn) -> None:
+import pytest
+
+from tests._support.sqlite_snapshot import stored_state
+
+
+@pytest.mark.parametrize("conflicting_seq", (5, 10))
+def test_batch_template_autobuild_same_tx(schema_conn, conflicting_seq) -> None:
 
     from core.infrastructure.errors import AppError, ErrorCode
     from core.services.scheduler.batch_service import BatchService
@@ -29,9 +36,11 @@ def test_batch_template_autobuild_same_tx(schema_conn) -> None:
             (op_code, batch_id, piece_id, seq, op_type_id, op_type_name, source, machine_id, operator_id, supplier_id, setup_hours, unit_hours, ext_days, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("B_AUTO_TX_05", "DUMMY_TX", None, 5, "OT_IN", "数铣", "internal", None, None, None, 0, 0, None, "pending"),
+            ("B_AUTO_TX_" + str(conflicting_seq).zfill(2), "DUMMY_TX", None, conflicting_seq,
+             "OT_IN", "数铣", "internal", None, None, None, 0, 0, None, "pending"),
         )
         conn.commit()
+        before = stored_state(conn)
 
         svc = BatchService(conn, logger=None, op_logger=None)
         try:
@@ -44,6 +53,9 @@ def test_batch_template_autobuild_same_tx(schema_conn) -> None:
             )
         except AppError as e:
             assert e.code == ErrorCode.DUPLICATE_ENTRY, f"期望触发 BatchOperations.op_code 唯一约束：{e.code!r}"
+            assert e.details == {"db_message": "UNIQUE constraint failed: BatchOperations.op_code"}
+            assert isinstance(e.__cause__, sqlite3.IntegrityError)
+            assert str(e.__cause__) == "UNIQUE constraint failed: BatchOperations.op_code"
         else:
             raise AssertionError("期望通过工序编码冲突触发整体回滚，但实际未失败")
 
@@ -65,6 +77,8 @@ def test_batch_template_autobuild_same_tx(schema_conn) -> None:
         part_row = conn.execute("SELECT route_parsed FROM Parts WHERE part_no=?", ("P_AUTO_TX",)).fetchone()
         if part_row is None or str(part_row["route_parsed"] or "").strip() != "no":
             raise RuntimeError(f"失败后 route_parsed 不应被提前写成 yes：{dict(part_row) if part_row else None!r}")
+        assert stored_state(conn) == before
+        assert not conn.in_transaction
 
     finally:
         conn.close()

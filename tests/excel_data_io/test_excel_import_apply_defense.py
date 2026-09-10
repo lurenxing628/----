@@ -8,6 +8,7 @@ from typing import Any, Dict, Tuple
 import pytest
 
 from core.infrastructure.errors import ValidationError
+from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
 from core.services.equipment.machine_excel_import_service import MachineExcelImportService
 from core.services.personnel.operator_excel_import_service import OperatorExcelImportService
@@ -634,15 +635,22 @@ def test_part_op_hours_apply_preview_rows_turns_nan_inf_into_row_errors(mem_conn
 def test_part_op_hours_apply_preview_rows_mixed_rows_commits_valid_and_keeps_row_errors(
     schema_conn,
 ) -> None:
+    from core.infrastructure.workbench_calibration_adoption_schema import install
+    from core.services.workbench.process_quota_protection import ProcessQuotaProtection
+
     conn = schema_conn
     _seed_part_and_internal_op(conn)
+    with TransactionManager(conn).transaction():
+        install(conn)
+    ref = ProcessQuotaProtection(conn).bind("P001", 1)
 
     svc = PartOperationHoursExcelImportService(conn)
     preview_rows = [
         # 合法写库
-        _pr({"图号": "P001", "工序": 1, "换型时间(h)": 2.0, "单件工时(h)": 1.0}, status=RowStatus.UPDATE, row_num=2),
-        # 可解析，但业务错误（工序不存在）→ AppError → 行级错误，不应回滚合法行
-        _pr({"图号": "P001", "工序": 999, "换型时间(h)": 0.2, "单件工时(h)": 0.1}, status=RowStatus.UPDATE, row_num=3),
+        _pr({"图号": "P001", "工序": 1, "换型时间(h)": 2.0, "单件工时(h)": 1.0,
+             "template_operation_ref": ref}, status=RowStatus.UPDATE, row_num=2),
+        # 不存在的工序由预览标错；应用不得给缺失引用的写入行重新绑定同号模板。
+        _pr({"图号": "P001", "工序": 999, "换型时间(h)": 0.2, "单件工时(h)": 0.1}, status=RowStatus.ERROR, row_num=3),
         # 解析期错误
         _pr({"图号": "P001", "工序": 2, "换型时间(h)": float("nan"), "单件工时(h)": 0.1}, status=RowStatus.UPDATE, row_num=4),
     ]
@@ -663,8 +671,14 @@ def test_part_op_hours_apply_preview_rows_mixed_rows_commits_valid_and_keeps_row
 def test_part_op_hours_apply_preview_rows_unexpected_exception_rolls_back_all_changes(
     schema_conn, monkeypatch
 ) -> None:
+    from core.infrastructure.workbench_calibration_adoption_schema import install
+    from core.services.workbench.process_quota_protection import ProcessQuotaProtection
+
     conn = schema_conn
     _seed_part_and_internal_op(conn)
+    with TransactionManager(conn).transaction():
+        install(conn)
+    ref = ProcessQuotaProtection(conn).bind("P001", 1)
 
     svc = PartOperationHoursExcelImportService(conn)
     sh0, uh0 = _get_hours(conn, part_no="P001", seq=1)
@@ -681,8 +695,10 @@ def test_part_op_hours_apply_preview_rows_unexpected_exception_rolls_back_all_ch
     monkeypatch.setattr(svc.part_svc, "update_internal_hours", _wrapped)
 
     preview_rows = [
-        _pr({"图号": "P001", "工序": 1, "换型时间(h)": 2.0, "单件工时(h)": 1.0}, status=RowStatus.UPDATE, row_num=2),
-        _pr({"图号": "P001", "工序": 1, "换型时间(h)": 3.0, "单件工时(h)": 1.0}, status=RowStatus.UPDATE, row_num=3),
+        _pr({"图号": "P001", "工序": 1, "换型时间(h)": 2.0, "单件工时(h)": 1.0,
+             "template_operation_ref": ref}, status=RowStatus.UPDATE, row_num=2),
+        _pr({"图号": "P001", "工序": 1, "换型时间(h)": 3.0, "单件工时(h)": 1.0,
+             "template_operation_ref": ref}, status=RowStatus.UPDATE, row_num=3),
     ]
 
     with pytest.raises(RuntimeError):

@@ -47,7 +47,7 @@ def _build_source_xlsx(path: str) -> None:
 
 
 def test_route_map_degradations_are_visible_in_diagnostics() -> None:
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_unit_route_diag_")
     src_xlsx = os.path.join(tmpdir, "source.xlsx")
@@ -83,7 +83,7 @@ def test_route_map_degradations_are_visible_in_diagnostics() -> None:
 
 
 def test_clean_route_produces_no_route_degradation() -> None:
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_unit_route_clean_")
     src_xlsx = os.path.join(tmpdir, "source.xlsx")

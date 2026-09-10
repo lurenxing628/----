@@ -50,7 +50,7 @@ def _diagnostics(converted):
 
 
 def test_blank_anchor_station_block_dropped_with_header_and_data_diagnostics() -> None:
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_unit_station_blank_anchor_")
     src_xlsx = os.path.join(tmpdir, "source.xlsx")
@@ -84,7 +84,7 @@ def test_blank_anchor_station_block_dropped_with_header_and_data_diagnostics() -
 
 
 def test_station_header_without_machine_id_dropped_visible() -> None:
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_unit_station_no_machine_id_")
     src_xlsx = os.path.join(tmpdir, "source.xlsx")
@@ -105,7 +105,7 @@ def test_station_header_without_machine_id_dropped_visible() -> None:
 
 
 def test_trailing_incomplete_station_block_dropped_visible() -> None:
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_unit_station_tail_")
     src_xlsx = os.path.join(tmpdir, "source.xlsx")
@@ -125,7 +125,7 @@ def test_trailing_incomplete_station_block_dropped_visible() -> None:
 
 
 def test_clean_station_layout_produces_no_drop_diagnostics() -> None:
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_unit_station_clean_")
     src_xlsx = os.path.join(tmpdir, "source.xlsx")

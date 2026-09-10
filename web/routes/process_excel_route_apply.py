@@ -9,7 +9,7 @@ from core.infrastructure.errors import AppError, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, ImportPreviewRow, RowStatus
-from core.services.process import PartService
+from core.services.process.part_service import PartService
 from core.services.scheduler.batch_query_service import BatchQueryService
 
 from .helpers.excel_utils import extract_import_stats, flash_import_result

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.models import Batch
-from core.models.enums import BatchOperationStatus, BatchStatus
+from core.models.enums import BatchStatus
+
+from .template_lineage import TemplateLineageWriter
 
 
 def copy_batch(svc, source_batch_id: Any, new_batch_id: Any) -> Batch:
@@ -29,8 +31,12 @@ def copy_batch(svc, source_batch_id: Any, new_batch_id: Any) -> Batch:
     if svc.batch_repo.get(dst):
         raise BusinessError(ErrorCode.BATCH_ALREADY_EXISTS, f"批次号“{dst}”已存在，不能复制。")
 
-    ops = svc.batch_op_repo.list_by_batch(src)
     with svc.tx_manager.transaction():
+        # 只读原始 ID，避免 model 把未知值、NULL 或 BLOB 转成默认值。
+        ops = svc.batch_op_repo.fetchall(
+            "SELECT id FROM BatchOperations WHERE batch_id = ? ORDER BY seq, piece_id",
+            (src,),
+        )
         # 创建新批次
         svc.batch_repo.create(
             {
@@ -47,32 +53,9 @@ def copy_batch(svc, source_batch_id: Any, new_batch_id: Any) -> Batch:
             }
         )
 
-        # 复制工序（重新生成 op_code，保持 seq/piece_id，其它字段尽量拷贝）
+        # 与批次共用事务，保留原始工序及复制时的来源版本。
+        writer = TemplateLineageWriter(svc.conn)
         for op in ops:
-            seq = int(op.seq or 0)
-            piece = op.piece_id
-            if piece:
-                op_code = f"{dst}_{seq:02d}_{piece}"
-            else:
-                op_code = f"{dst}_{seq:02d}"
-            svc.batch_op_repo.create(
-                {
-                    "op_code": op_code,
-                    "batch_id": dst,
-                    "piece_id": piece,
-                    "seq": seq,
-                    "op_type_id": op.op_type_id,
-                    "op_type_name": op.op_type_name,
-                    "source": op.source,
-                    "machine_id": op.machine_id,
-                    "operator_id": op.operator_id,
-                    "supplier_id": op.supplier_id,
-                    "setup_hours": float(op.setup_hours or 0.0),
-                    "unit_hours": float(op.unit_hours or 0.0),
-                    "ext_days": svc._safe_float(op.ext_days),
-                    "status": BatchOperationStatus.PENDING.value,
-                }
-            )
+            writer.copy_instance(dst, op["id"])
 
     return svc._get_or_raise(dst)
-

@@ -3,10 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import replace
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 from core.infrastructure.errors import AppError, ErrorCode
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
+from core.models.workbench_execution import ExecutionProjection
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact, ExecutionFactProvider
 from core.services.scheduler.execution.execution_snapshot import ExecutionSnapshot, build_execution_snapshot
 
@@ -84,6 +85,7 @@ def resource_execution_snapshot(
 
 def collect_resource_execution_facts(
     svc: Any, *, prev_version: int,
+    execution_projections: Optional[Sequence[ExecutionProjection]] = None,
 ) -> Tuple[Dict[int, ExecutionFact], Dict[int, Dict[str, Any]], ExecutionSnapshot]:
     try:
         _validate_event_plan_identities(svc)
@@ -92,6 +94,7 @@ def collect_resource_execution_facts(
             list(plan_rows.values()),
             {"source_table": SOURCE_SCHEDULE, "effective_plan_role": ROLE_ADOPTED, "scenario_id": None},
             include_op_ids=sorted(plan_rows),
+            execution_projections=execution_projections,
         )
         snapshot = resource_execution_snapshot(facts, plan_rows)
     except (ValueError, TypeError, OverflowError) as exc:

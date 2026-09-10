@@ -240,3 +240,31 @@ class CalendarService:
     def add_calendar_days(self, start: datetime, days: float, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> datetime:
         return self._engine.add_calendar_days(start, days, machine_id=machine_id, operator_id=operator_id)
 
+    def certified_slot_window(self, dt: datetime, *, priority=None, operator_id=None):
+        """Constant native policy span; adapted or instrumented timing stays legacy."""
+        if type(self) is not CalendarService or type(self._engine) is not CalendarEngine:
+            return None
+        for name, original in _NATIVE_SERVICE_TIMING.items():
+            if getattr(getattr(self, name), "__func__", None) is not original:
+                return None
+        for name, original in _NATIVE_ENGINE_TIMING.items():
+            if getattr(getattr(self._engine, name), "__func__", None) is not original:
+                return None
+        policy = self._engine.policy_for_datetime(dt, operator_id=operator_id)
+        if policy.date_str != dt.date().isoformat() or not policy.is_priority_allowed(priority):
+            return None
+        start, end = policy.work_window()
+        if not start <= dt < end:
+            return None
+        if end.date() != dt.date():
+            end = datetime.combine(end.date(), datetime.min.time())
+            if (end - dt).days:
+                return None
+        return start, end
+
+
+_NATIVE_SERVICE_TIMING = {name: getattr(CalendarService, name) for name in
+                          ("get_efficiency", "adjust_to_working_time", "add_working_hours")}
+_NATIVE_ENGINE_TIMING = {name: getattr(CalendarEngine, name) for name in
+                         ("get_efficiency", "adjust_to_working_time", "add_working_hours",
+                          "policy_for_datetime", "_policy_for_datetime", "_policy_for_date")}

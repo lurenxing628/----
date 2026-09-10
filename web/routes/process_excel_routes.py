@@ -12,7 +12,7 @@ from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ImportMode, ImportPreviewRow
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.normalize import is_blank_value
-from core.services.process import PartService
+from core.services.process.part_service import PartService
 from web.routes.helpers.form_values import form_toggle_bool
 from web.viewmodels.ui_presenters import UiToggleRow, checked_attr
 

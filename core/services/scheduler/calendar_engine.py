@@ -6,11 +6,13 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
-from core.models import WorkCalendar
+from core.models import OperatorCalendar, WorkCalendar
 from core.models.enums import BATCH_PRIORITY_VALUES, BatchPriority, CalendarDayType, YesNo
 from core.services.common.datetime_normalize import normalize_hhmm
 from core.services.common.normalize import normalize_text
 from data.repositories import CalendarRepository, OperatorCalendarRepository
+
+from .operator_shift_calendar import OperatorShiftCalendar
 
 # add_calendar_days 的业务量级上界：100 年（365 天 × 100）。
 # 依据：外协周期按自然日计，业务上不可能超过百年量级；而 datetime + timedelta 在
@@ -83,6 +85,7 @@ class CalendarEngine:
         self.op_logger = op_logger
         self.repo = CalendarRepository(conn, logger=logger)
         self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
+        self.operator_shift_calendar = OperatorShiftCalendar(conn, logger=logger)
         # 每次排产会对同一日期重复查询多次；按 (operator_id, date_str) 做轻量缓存可显著减少 DB 访问
         self._policy_cache: Dict[Tuple[str, str], DayPolicy] = {}
 
@@ -204,6 +207,8 @@ class CalendarEngine:
             allow_urgent=cal.allow_urgent,
             shift_start=ss_t,
         )
+        if op_id and not isinstance(cal, OperatorCalendar):
+            p = self.operator_shift_calendar.apply_policy(p, op_id)
         self._policy_cache[cache_key] = p
         return p
 
@@ -222,8 +227,8 @@ class CalendarEngine:
         if start_today <= dt < end_today:
             return p_today
 
-        # 跨午夜：凌晨可能仍属于前一天的工作窗
-        if dt < start_today:
+        # Today's empty/rest window may start at 00:00 while yesterday's night shift is still running.
+        if dt.date() > date.min:
             prev_str = (dt.date() + timedelta(days=-1)).isoformat()
             p_prev = self._policy_for_date(prev_str, operator_id=operator_id)
             start_prev, end_prev = p_prev.work_window()

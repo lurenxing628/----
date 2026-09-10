@@ -15,8 +15,8 @@ from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.normalize import normalize_text
-from core.services.process import OpTypeService
 from core.services.process.op_type_excel_import_service import OpTypeExcelImportService
+from core.services.process.op_type_service import OpTypeService
 
 from .helpers.excel_utils import (
     build_error_rows_message,

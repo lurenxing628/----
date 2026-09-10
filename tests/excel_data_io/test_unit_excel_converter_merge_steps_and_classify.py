@@ -119,7 +119,7 @@ def test_unit_excel_converter_merge_steps_and_classify(db_path, tmp_path) -> Non
     from core.infrastructure.database import get_connection
     from core.services.common.excel_service import ImportMode, RowStatus
     from core.services.personnel import OperatorMachineService
-    from core.services.process import UnitExcelConverter
+    from core.services.process.unit_excel_converter import UnitExcelConverter
 
     tmpdir = str(tmp_path)
     src_xlsx = os.path.join(tmpdir, "source.xlsx")

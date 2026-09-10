@@ -27,6 +27,7 @@ from .part_route_validation import (
     operation_source_or_raise,
     save_template_no_tx,
 )
+from .quota_protection import ProcessQuotaProtection
 from .route_parser import ParseResult, ParseStatus, RouteParseContext, RouteParser
 
 
@@ -376,6 +377,17 @@ class PartService:
             "group_map": group_map,
         }
 
+    def _normalize_internal_hours(self, setup_hours: object, unit_hours: object) -> Tuple[float, float]:
+        sh = self._normalize_float(setup_hours, "换型时间(小时)", allow_none=False)
+        uh = self._normalize_float(unit_hours, "单件工时(小时)", allow_none=False)
+        if sh is None:
+            sh = 0.0
+        if uh is None:
+            uh = 0.0
+        if sh < 0 or uh < 0:
+            raise ValidationError("工时不能为负数", field="工时")
+        return sh, uh
+
     def update_internal_hours(self, part_no: str, seq: Any, setup_hours: Any, unit_hours: Any) -> None:
         pn = self._normalize_text(part_no)
         if not pn:
@@ -387,14 +399,7 @@ class PartService:
         except Exception as e:
             raise ValidationError("工序号不合法", field="工序") from e
 
-        sh = self._normalize_float(setup_hours, "换型时间(小时)", allow_none=False)
-        uh = self._normalize_float(unit_hours, "单件工时(小时)", allow_none=False)
-        if sh is None:
-            sh = 0.0
-        if uh is None:
-            uh = 0.0
-        if sh < 0 or uh < 0:
-            raise ValidationError("工时不能为负数", field="工时")
+        sh, uh = self._normalize_internal_hours(setup_hours, unit_hours)
 
         op = self.op_repo.get(pn, s)
         if not op or not op.is_active():
@@ -402,8 +407,17 @@ class PartService:
         if not op.is_internal():
             raise ValidationError("只能编辑内部工序工时", field="工序")
 
-        with self.tx_manager.transaction():
-            self.op_repo.update(pn, s, {"setup_hours": float(sh), "unit_hours": float(uh)})
+        protection = ProcessQuotaProtection(self.conn)
+        ref = protection.bind(pn, s)
+        with self.tx_manager.transaction(begin_immediate=True):
+            current = protection.require_changes({ref: float(uh)})[ref]
+            if current["source"] != "internal":
+                raise ValidationError("只能编辑内部工序工时", field="工序")
+            if current["part_no"] != pn or current["seq"] != s or current["id"] != op.id:
+                raise BusinessError(ErrorCode.NOT_FOUND, "原模板工序已变化，未更新同号新对象")
+            fields = {key: value for key, value in {"setup_hours": float(sh), "unit_hours": float(uh)}.items()
+                      if current[key] != value}
+            self.op_repo.update(pn, s, fields)
 
     def delete_external_group(self, part_no: str, group_id: str) -> Dict[str, Any]:
         pn = self._normalize_text(part_no)
