@@ -1,0 +1,2452 @@
+[
+  {
+    "file": "core/models/workbench_batch.py",
+    "line": 86,
+    "column": 37,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"str | None\" cannot be assigned to parameter \"business_code\" of type \"dict[Unknown, Unknown]\" in function \"update\"\n  Type \"str | None\" is not assignable to type \"dict[Unknown, Unknown]\"\n    \"str\" is not assignable to \"dict[Unknown, Unknown]\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_batch.py",
+    "line": 87,
+    "column": 32,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"str\" cannot be assigned to parameter \"part_ref\" of type \"dict[Unknown, Unknown]\" in function \"update\"\n  \"str\" is not assignable to \"dict[Unknown, Unknown]\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_execution_input.py",
+    "line": 111,
+    "column": 12,
+    "severity": "error",
+    "rule": "reportOptionalOperand",
+    "message": "Operator \">\" not supported for \"None\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_execution_input.py",
+    "line": 114,
+    "column": 16,
+    "severity": "error",
+    "rule": "reportOperatorIssue",
+    "message": "Operator \"-\" not supported for types \"datetime | None\" and \"datetime | None\"\n  Operator \"-\" not supported for types \"datetime\" and \"None\"\n  Operator \"-\" not supported for types \"None\" and \"datetime\"\n  Operator \"-\" not supported for types \"None\" and \"None\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_outsourcing_input.py",
+    "line": 74,
+    "column": 8,
+    "severity": "error",
+    "rule": "reportOperatorIssue",
+    "message": "Operator \"<\" not supported for types \"datetime | None\" and \"datetime | None\"\n  Operator \"<\" not supported for types \"datetime\" and \"None\"\n  Operator \"<\" not supported for types \"None\" and \"datetime\"\n  Operator \"<\" not supported for types \"None\" and \"None\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_outsourcing_input.py",
+    "line": 74,
+    "column": 51,
+    "severity": "error",
+    "rule": "reportOperatorIssue",
+    "message": "Operator \"<\" not supported for types \"datetime\" and \"datetime | None\"\n  Operator \"<\" not supported for types \"datetime\" and \"None\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_outsourcing_input.py",
+    "line": 76,
+    "column": 8,
+    "severity": "error",
+    "rule": "reportOptionalOperand",
+    "message": "Operator \">\" not supported for \"None\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_process_commands.py",
+    "line": 81,
+    "column": 13,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"float | None\" cannot be assigned to parameter \"value\" of type \"str\" in function \"__setitem__\"\n  Type \"float | None\" is not assignable to type \"str\"\n    \"float\" is not assignable to \"str\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_report.py",
+    "line": 59,
+    "column": 72,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"str | None\" cannot be assigned to parameter \"date_string\" of type \"str\" in function \"fromisoformat\"\n  Type \"str | None\" is not assignable to type \"str\"\n    \"None\" is not assignable to \"str\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_resource_table_query.py",
+    "line": 21,
+    "column": 24,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"get\" match the provided arguments",
+    "owner": "FE-01",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_resource_table_query.py",
+    "line": 21,
+    "column": 34,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Unknown | None\" cannot be assigned to parameter \"key\" of type \"str\" in function \"get\"\n  Type \"Unknown | None\" is not assignable to type \"str\"\n    \"None\" is not assignable to \"str\"",
+    "owner": "FE-01",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_run_adoption.py",
+    "line": 36,
+    "column": 9,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"str\" cannot be assigned to parameter \"value\" of type \"bool\" in function \"__setitem__\"\n  \"str\" is not assignable to \"bool\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/__init__.py",
+    "line": 44,
+    "column": 5,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"BatchService\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/__init__.py",
+    "line": 45,
+    "column": 5,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"CalendarService\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/__init__.py",
+    "line": 46,
+    "column": 5,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"ConfigService\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/__init__.py",
+    "line": 47,
+    "column": 5,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"GanttAdjustmentDraftService\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/__init__.py",
+    "line": 48,
+    "column": 5,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"GanttAdjustmentScenarioService\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/__init__.py",
+    "line": 49,
+    "column": 5,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"GanttAdjustmentPublishService\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/__init__.py",
+    "line": 50,
+    "column": 5,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"GanttAdjustmentValidationService\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/__init__.py",
+    "line": 51,
+    "column": 5,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"GanttService\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/__init__.py",
+    "line": 52,
+    "column": 5,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"OperationExecutionFeedbackService\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/__init__.py",
+    "line": 53,
+    "column": 5,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"ResourceDispatchActualRecordService\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/__init__.py",
+    "line": 54,
+    "column": 5,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"ResourceDispatchExecutionService\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/__init__.py",
+    "line": 55,
+    "column": 5,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"ResourceDispatchService\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/__init__.py",
+    "line": 56,
+    "column": 5,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"ScheduleService\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/schedule_orchestrator.py",
+    "line": 6,
+    "column": 12,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"ScheduleOrchestrationOutcome\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/scheduler/schedule_orchestrator.py",
+    "line": 6,
+    "column": 44,
+    "severity": "warning",
+    "rule": "reportUnsupportedDunderAll",
+    "message": "\"orchestrate_schedule_run\" is specified in __all__ but is not present in module",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/actual_gantt_scope.py",
+    "line": 31,
+    "column": 24,
+    "severity": "error",
+    "rule": "reportAssignmentType",
+    "message": "Type \"None\" is not assignable to declared type \"str\"\n  \"None\" is not assignable to \"str\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/actual_gantt_scope.py",
+    "line": 32,
+    "column": 22,
+    "severity": "error",
+    "rule": "reportAssignmentType",
+    "message": "Type \"None\" is not assignable to declared type \"str\"\n  \"None\" is not assignable to \"str\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/actual_gantt_scope.py",
+    "line": 33,
+    "column": 34,
+    "severity": "error",
+    "rule": "reportAssignmentType",
+    "message": "Type \"None\" is not assignable to declared type \"str\"\n  \"None\" is not assignable to \"str\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/actual_gantt_scope.py",
+    "line": 34,
+    "column": 32,
+    "severity": "error",
+    "rule": "reportAssignmentType",
+    "message": "Type \"None\" is not assignable to declared type \"str\"\n  \"None\" is not assignable to \"str\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/actual_gantt_scope.py",
+    "line": 35,
+    "column": 26,
+    "severity": "error",
+    "rule": "reportAssignmentType",
+    "message": "Type \"None\" is not assignable to declared type \"str\"\n  \"None\" is not assignable to \"str\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/actual_gantt_scope.py",
+    "line": 36,
+    "column": 25,
+    "severity": "error",
+    "rule": "reportAssignmentType",
+    "message": "Type \"None\" is not assignable to declared type \"str\"\n  \"None\" is not assignable to \"str\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_execution.py",
+    "line": 46,
+    "column": 14,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"get\" match the provided arguments",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_execution.py",
+    "line": 47,
+    "column": 65,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Unknown | Literal['complete'] | None\" cannot be assigned to parameter \"key\" of type \"str\" in function \"get\"\n  Type \"Unknown | Literal['complete'] | None\" is not assignable to type \"str\"\n    \"None\" is not assignable to \"str\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_facts.py",
+    "line": 32,
+    "column": 13,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"dict[Unknown, Unknown]\" cannot be assigned to parameter \"value\" of type \"list[dict[Unknown, Unknown]]\" in function \"__setitem__\"\n  \"dict[Unknown, Unknown]\" is not assignable to \"list[dict[Unknown, Unknown]]\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_facts.py",
+    "line": 33,
+    "column": 13,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Dict[int, str]\" cannot be assigned to parameter \"value\" of type \"list[dict[Unknown, Unknown]]\" in function \"__setitem__\"\n  \"Dict[int, str]\" is not assignable to \"list[dict[Unknown, Unknown]]\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_file_codec.py",
+    "line": 69,
+    "column": 11,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"title\" is not a known attribute of \"None\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_file_codec.py",
+    "line": 70,
+    "column": 11,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"freeze_panes\" is not a known attribute of \"None\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_file_codec.py",
+    "line": 72,
+    "column": 11,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"append\" is not a known attribute of \"None\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_file_codec.py",
+    "line": 74,
+    "column": 22,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"cell\" is not a known attribute of \"None\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_file_codec.py",
+    "line": 79,
+    "column": 15,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"column_dimensions\" is not a known attribute of \"None\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_file_codec.py",
+    "line": 84,
+    "column": 26,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"cell\" is not a known attribute of \"None\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_file_codec.py",
+    "line": 88,
+    "column": 11,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"auto_filter\" is not a known attribute of \"None\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_files.py",
+    "line": 68,
+    "column": 44,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_files.py",
+    "line": 71,
+    "column": 51,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_files.py",
+    "line": 71,
+    "column": 73,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/execution_ledger.py",
+    "line": 130,
+    "column": 24,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/execution_ledger.py",
+    "line": 130,
+    "column": 49,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/execution_ledger.py",
+    "line": 132,
+    "column": 16,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/execution_ledger.py",
+    "line": 132,
+    "column": 47,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/execution_ledger.py",
+    "line": 134,
+    "column": 51,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/execution_ledger.py",
+    "line": 134,
+    "column": 95,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/execution_ledger.py",
+    "line": 135,
+    "column": 50,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/execution_ledger.py",
+    "line": 144,
+    "column": 52,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files.py",
+    "line": 148,
+    "column": 31,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"list[Unknown | str | None]\" cannot be assigned to parameter \"object\" of type \"list[str]\" in function \"append\"\n  Type \"str | None\" is not assignable to type \"str\"\n    \"None\" is not assignable to \"str\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files.py",
+    "line": 152,
+    "column": 128,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"list[Unknown | str | int]\" cannot be assigned to parameter \"object\" of type \"list[str]\" in function \"append\"\n  \"int\" is not assignable to \"str\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 43,
+    "column": 47,
+    "severity": "error",
+    "rule": "reportAttributeAccessIssue",
+    "message": "Cannot access attribute \"strip\" for class \"date\"\n  Attribute \"strip\" is unknown",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 61,
+    "column": 12,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Unknown | bool | str\" cannot be assigned to parameter \"obj\" of type \"Sized\" in function \"len\"\n  Type \"Unknown | bool | str\" is not assignable to type \"Sized\"\n    \"bool\" is incompatible with protocol \"Sized\"\n      \"__len__\" is not present",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 63,
+    "column": 18,
+    "severity": "error",
+    "rule": "reportAttributeAccessIssue",
+    "message": "Cannot access attribute \"strip\" for class \"bool\"\n  Attribute \"strip\" is unknown",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 157,
+    "column": 11,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"title\" is not a known attribute of \"None\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 158,
+    "column": 11,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"append\" is not a known attribute of \"None\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 162,
+    "column": 15,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"append\" is not a known attribute of \"None\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 182,
+    "column": 11,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"title\" is not a known attribute of \"None\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 183,
+    "column": 11,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"append\" is not a known attribute of \"None\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 186,
+    "column": 19,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"append\" is not a known attribute of \"None\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 187,
+    "column": 19,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"cell\" is not a known attribute of \"None\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 187,
+    "column": 30,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"max_row\" is not a known attribute of \"None\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 188,
+    "column": 11,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"column_dimensions\" is not a known attribute of \"None\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 189,
+    "column": 11,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"column_dimensions\" is not a known attribute of \"None\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 190,
+    "column": 11,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"freeze_panes\" is not a known attribute of \"None\"",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "line": 191,
+    "column": 18,
+    "severity": "error",
+    "rule": "reportOptionalIterable",
+    "message": "Object of type \"None\" cannot be used as iterable value",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_xml.py",
+    "line": 24,
+    "column": 17,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_xml.py",
+    "line": 69,
+    "column": 22,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/outsourcing_commands.py",
+    "line": 55,
+    "column": 56,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['batch_ref']\" cannot be assigned to parameter \"key\" of type \"SupportsIndex | slice[Any, Any, Any]\" in function \"__getitem__\"\n  Type \"Literal['batch_ref']\" is not assignable to type \"SupportsIndex | slice[Any, Any, Any]\"\n    \"Literal['batch_ref']\" is incompatible with protocol \"SupportsIndex\"\n      \"__index__\" is not present\n    \"Literal['batch_ref']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_adoption_baseline.py",
+    "line": 56,
+    "column": 21,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_adoption_baseline.py",
+    "line": 62,
+    "column": 14,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_adoption_baseline.py",
+    "line": 62,
+    "column": 33,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_adoption_baseline.py",
+    "line": 64,
+    "column": 13,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_adoption_baseline_identity.py",
+    "line": 111,
+    "column": 69,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_adoption_baseline_identity.py",
+    "line": 112,
+    "column": 31,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_adoption_baseline_identity.py",
+    "line": 112,
+    "column": 54,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_adoption_baseline_identity.py",
+    "line": 112,
+    "column": 86,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_adoption_baseline_identity.py",
+    "line": 132,
+    "column": 87,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_delivery_projection.py",
+    "line": 26,
+    "column": 61,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "Expected 4 positional arguments",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_delivery_projection.py",
+    "line": 26,
+    "column": 68,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "Expected 4 positional arguments",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_queries.py",
+    "line": 185,
+    "column": 13,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal[True]\" cannot be assigned to parameter \"value\" of type \"str\" in function \"__setitem__\"\n  \"Literal[True]\" is not assignable to \"str\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/point_plan_query.py",
+    "line": 33,
+    "column": 19,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Generator[str | None, None, None]\" cannot be assigned to parameter \"iterable\" of type \"Iterable[SupportsRichComparisonT@max]\" in function \"max\"\n  \"Generator[str | None, None, None]\" is not assignable to \"Iterable[SupportsRichComparisonT@max]\"\n    Type parameter \"_T_co@Iterable\" is covariant, but \"str | None\" is not a subtype of \"SupportsRichComparisonT@max\"\n      Type \"str | None\" is not assignable to type \"SupportsRichComparison\"\n        Type \"str | None\" is not assignable to type \"SupportsRichComparison\"\n          Type \"None\" is not assignable to type \"SupportsRichComparison\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/point_plan_query.py",
+    "line": 34,
+    "column": 55,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Generator[str | None, None, None]\" cannot be assigned to parameter \"iterable\" of type \"Iterable[SupportsRichComparisonT@min]\" in function \"min\"\n  \"Generator[str | None, None, None]\" is not assignable to \"Iterable[SupportsRichComparisonT@min]\"\n    Type parameter \"_T_co@Iterable\" is covariant, but \"str | None\" is not a subtype of \"SupportsRichComparisonT@min\"\n      Type \"str | None\" is not assignable to type \"SupportsRichComparison\"\n        Type \"str | None\" is not assignable to type \"SupportsRichComparison\"\n          Type \"None\" is not assignable to type \"SupportsRichComparison\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/production_report_prepare.py",
+    "line": 35,
+    "column": 17,
+    "severity": "error",
+    "rule": "reportAttributeAccessIssue",
+    "message": "Cannot assign to attribute \"row_number\" for class \"WorkbenchCommandRejected\"\n  Attribute \"row_number\" is unknown",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/production_report_prepare.py",
+    "line": 80,
+    "column": 21,
+    "severity": "error",
+    "rule": "reportAttributeAccessIssue",
+    "message": "Cannot assign to attribute \"row_number\" for class \"WorkbenchCommandRejected\"\n  Attribute \"row_number\" is unknown",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/production_report_prepare.py",
+    "line": 115,
+    "column": 21,
+    "severity": "error",
+    "rule": "reportAttributeAccessIssue",
+    "message": "Cannot assign to attribute \"row_number\" for class \"WorkbenchCommandRejected\"\n  Attribute \"row_number\" is unknown",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/production_report_prepare.py",
+    "line": 129,
+    "column": 25,
+    "severity": "error",
+    "rule": "reportAttributeAccessIssue",
+    "message": "Cannot assign to attribute \"conflicts\" for class \"WorkbenchCommandRejected\"\n  Attribute \"conflicts\" is unknown",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/production_report_prepare.py",
+    "line": 132,
+    "column": 21,
+    "severity": "error",
+    "rule": "reportAttributeAccessIssue",
+    "message": "Cannot assign to attribute \"row_number\" for class \"WorkbenchCommandRejected\"\n  Attribute \"row_number\" is unknown",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/production_report_validation.py",
+    "line": 79,
+    "column": 28,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/production_report_validation.py",
+    "line": 79,
+    "column": 87,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/report_catalog.py",
+    "line": 47,
+    "column": 88,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"get\" is not a known attribute of \"None\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/report_catalog.py",
+    "line": 47,
+    "column": 130,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"get\" is not a known attribute of \"None\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/resource_table_facts.py",
+    "line": 83,
+    "column": 49,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-01",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/resource_table_facts.py",
+    "line": 97,
+    "column": 54,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"get\" match the provided arguments",
+    "owner": "FE-01",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/resource_table_facts.py",
+    "line": 97,
+    "column": 97,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Unknown | None\" cannot be assigned to parameter \"key\" of type \"str\" in function \"get\"\n  Type \"Unknown | None\" is not assignable to type \"str\"\n    \"None\" is not assignable to \"str\"",
+    "owner": "FE-01",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/review_legacy.py",
+    "line": 34,
+    "column": 17,
+    "severity": "error",
+    "rule": "reportOperatorIssue",
+    "message": "Operator \"+=\" not supported for types \"float | Literal[0]\" and \"float | None\"\n  Operator \"+\" not supported for types \"float\" and \"None\"\n  Operator \"+\" not supported for types \"Literal[0]\" and \"None\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/review_legacy.py",
+    "line": 37,
+    "column": 5,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"float | None\" cannot be assigned to parameter \"value\" of type \"None\" in function \"__setitem__\"\n  Type \"float | None\" is not assignable to type \"None\"\n    \"float\" is not assignable to \"None\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/review_legacy.py",
+    "line": 40,
+    "column": 15,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"max\" match the provided arguments",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/review_legacy.py",
+    "line": 40,
+    "column": 35,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"(row: Unknown) -> (str | None)\" cannot be assigned to parameter \"key\" of type \"(_T@max) -> SupportsRichComparison\" in function \"max\"\n  Type \"(row: Unknown) -> (str | None)\" is not assignable to type \"(Unknown) -> SupportsRichComparison\"\n    Function return type \"str | None\" is incompatible with type \"SupportsRichComparison\"\n      Type \"str | None\" is not assignable to type \"SupportsRichComparison\"\n        Type \"None\" is not assignable to type \"SupportsRichComparison\"\n          \"None\" is incompatible with protocol \"SupportsDunderLT[Any]\"\n          \"None\" is incompatible with protocol \"SupportsDunderGT[Any]\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/review_legacy.py",
+    "line": 41,
+    "column": 9,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"update\" match the provided arguments",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/review_legacy.py",
+    "line": 41,
+    "column": 23,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"dict[str, str | Unknown]\" cannot be assigned to parameter \"m\" of type \"Iterable[tuple[str, None]]\" in function \"update\"\n  \"Literal['exception_reason']\" is not assignable to \"tuple[str, None]\"\n  \"Literal['exception_severity']\" is not assignable to \"tuple[str, None]\"\n  \"Literal['exception_impact_minutes']\" is not assignable to \"tuple[str, None]\"\n  \"Literal['exception_handling_status']\" is not assignable to \"tuple[str, None]\"\n  \"Literal['exception_suggest_reschedule']\" is not assignable to \"tuple[str, None]\"\n  \"Literal['exception_machine_ref']\" is not assignable to \"tuple[str, None]\"\n  \"Literal['exception_operator_ref']\" is not assignable to \"tuple[str, None]\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/run_candidate_adoption.py",
+    "line": 58,
+    "column": 19,
+    "severity": "error",
+    "rule": "reportOptionalCall",
+    "message": "Object of type \"None\" cannot be called",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/run_candidate_adoption.py",
+    "line": 77,
+    "column": 13,
+    "severity": "error",
+    "rule": "reportOptionalCall",
+    "message": "Object of type \"None\" cannot be called",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial.py",
+    "line": 120,
+    "column": 22,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial.py",
+    "line": 121,
+    "column": 13,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial.py",
+    "line": 123,
+    "column": 26,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption.py",
+    "line": 60,
+    "column": 34,
+    "severity": "error",
+    "rule": "reportOptionalCall",
+    "message": "Object of type \"None\" cannot be called",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption.py",
+    "line": 74,
+    "column": 13,
+    "severity": "error",
+    "rule": "reportOptionalCall",
+    "message": "Object of type \"None\" cannot be called",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 60,
+    "column": 33,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 60,
+    "column": 33,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['scenario_ref']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['scenario_ref']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 60,
+    "column": 33,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 60,
+    "column": 33,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['scenario_ref']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['scenario_ref']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 60,
+    "column": 33,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 60,
+    "column": 69,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 60,
+    "column": 69,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['draft_ref']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['draft_ref']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 60,
+    "column": 69,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 60,
+    "column": 69,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['draft_ref']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['draft_ref']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 60,
+    "column": 69,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 27,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 27,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['base']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['base']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 27,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 27,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['base']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['base']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 27,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 59,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 59,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['base_identity']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['base_identity']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 59,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 59,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['base_identity']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['base_identity']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 59,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 95,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 95,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['baseline']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['baseline']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 95,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 95,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['baseline']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['baseline']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 70,
+    "column": 95,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 71,
+    "column": 27,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 71,
+    "column": 27,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['name']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['name']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 71,
+    "column": 27,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 71,
+    "column": 27,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['name']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['name']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 71,
+    "column": 27,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 72,
+    "column": 75,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 72,
+    "column": 75,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['draft_ref']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['draft_ref']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 72,
+    "column": 75,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 72,
+    "column": 75,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['draft_ref']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['draft_ref']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 72,
+    "column": 75,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 72,
+    "column": 111,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 72,
+    "column": 111,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['scenario_ref']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['scenario_ref']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 72,
+    "column": 111,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 72,
+    "column": 111,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['scenario_ref']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['scenario_ref']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "line": 72,
+    "column": 111,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 48,
+    "column": 81,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 48,
+    "column": 81,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['input']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['input']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 48,
+    "column": 81,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 48,
+    "column": 81,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['input']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['input']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 48,
+    "column": 81,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 48,
+    "column": 81,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 48,
+    "column": 81,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['base']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['base']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 48,
+    "column": 81,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 48,
+    "column": 81,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['base']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['base']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 49,
+    "column": 35,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 49,
+    "column": 35,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['baseline']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['baseline']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 49,
+    "column": 35,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 49,
+    "column": 35,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['baseline']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['baseline']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 49,
+    "column": 35,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 49,
+    "column": 35,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 49,
+    "column": 35,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['plan_ref', 'version']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  Type \"Literal['plan_ref', 'version']\" is not assignable to type \"slice[Any, Any, Any]\"\n    \"Literal['plan_ref']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 49,
+    "column": 35,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 49,
+    "column": 35,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['plan_ref', 'version']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  Type \"Literal['plan_ref', 'version']\" is not assignable to type \"slice[Any, Any, Any]\"\n    \"Literal['plan_ref']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 50,
+    "column": 34,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 50,
+    "column": 34,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['source']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['source']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 50,
+    "column": 34,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 50,
+    "column": 34,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['source']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['source']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 50,
+    "column": 34,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 50,
+    "column": 34,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 50,
+    "column": 34,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['identity']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['identity']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 50,
+    "column": 34,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 50,
+    "column": 34,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['identity']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['identity']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 53,
+    "column": 16,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 53,
+    "column": 16,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['base']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['base']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 53,
+    "column": 16,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 53,
+    "column": 16,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['base']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['base']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "line": 53,
+    "column": 16,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "line": 28,
+    "column": 17,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "line": 28,
+    "column": 17,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['tasks']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['tasks']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "line": 28,
+    "column": 17,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "line": 28,
+    "column": 17,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['tasks']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['tasks']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "line": 28,
+    "column": 17,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "line": 28,
+    "column": 17,
+    "severity": "error",
+    "rule": "reportGeneralTypeIssues",
+    "message": "\"float\" is not iterable\n  \"__iter__\" method not defined",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "line": 32,
+    "column": 18,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "line": 36,
+    "column": 20,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "line": 36,
+    "column": 20,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['tasks']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['tasks']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "line": 36,
+    "column": 20,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "line": 36,
+    "column": 20,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['tasks']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['tasks']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "line": 36,
+    "column": 20,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "line": 69,
+    "column": 33,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Dict[str, Any] | None\" cannot be assigned to parameter \"row\" of type \"Dict[str, Any]\" in function \"public_result\"\n  Type \"Dict[str, Any] | None\" is not assignable to type \"Dict[str, Any]\"\n    \"None\" is not assignable to \"Dict[str, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_base.py",
+    "line": 63,
+    "column": 86,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"source_table\" is not a known attribute of \"None\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_base.py",
+    "line": 64,
+    "column": 55,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"candidate_id\" is not a known attribute of \"None\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_base.py",
+    "line": 68,
+    "column": 63,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"source_table\" is not a known attribute of \"None\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_base.py",
+    "line": 75,
+    "column": 32,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_base.py",
+    "line": 79,
+    "column": 29,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"source_table\" is not a known attribute of \"None\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_base.py",
+    "line": 142,
+    "column": 72,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_base.py",
+    "line": 172,
+    "column": 73,
+    "severity": "error",
+    "rule": "reportOptionalIterable",
+    "message": "Object of type \"None\" cannot be used as iterable value",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_base.py",
+    "line": 173,
+    "column": 56,
+    "severity": "error",
+    "rule": "reportOptionalIterable",
+    "message": "Object of type \"None\" cannot be used as iterable value",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_capacity.py",
+    "line": 77,
+    "column": 28,
+    "severity": "error",
+    "rule": "reportOptionalOperand",
+    "message": "Operator \"/\" not supported for \"None\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_execution_repo.py",
+    "line": 26,
+    "column": 36,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_execution_repo.py",
+    "line": 26,
+    "column": 70,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_outsourcing_source_repo.py",
+    "line": 46,
+    "column": 47,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_trial_raw_repo.py",
+    "line": 35,
+    "column": 78,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Params | None\" cannot be assigned to parameter \"parameters\" of type \"_Parameters\" in function \"execute\"\n  Type \"Params | None\" is not assignable to type \"_Parameters\"\n    Type \"None\" is not assignable to type \"_Parameters\"\n      \"None\" is incompatible with protocol \"SupportsLenAndGetItem[_AdaptedInputData]\"\n        \"__len__\" is not present\n        \"__getitem__\" is not present\n      \"None\" is not assignable to \"Mapping[str, _AdaptedInputData]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_trial_repo.py",
+    "line": 40,
+    "column": 20,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"bytes | float | dict[Unknown, bytes | float | dict[Unknown, Unknown] | list[bytes | float | dict[Unknown, Unknown] | list[Unknown] | Any] | Any] | list[bytes | float | dict[Unknown, bytes | float | dict[Unknown, Unknown] | list[Unknown] | Any] | list[Unknown] | Any] | Any | None\" cannot be assigned to parameter \"iterable\" of type \"Iterable[_T@set]\" in function \"__init__\"\n  Type \"bytes | float | dict[Unknown, bytes | float | dict[Unknown, Unknown] | list[bytes | float | dict[Unknown, Unknown] | list[Unknown] | Any] | Any] | list[bytes | float | dict[Unknown, bytes | float | dict[Unknown, Unknown] | list[Unknown] | Any] | list[Unknown] | Any] | Any | None\" is not assignable to type \"Iterable[int]\"\n    \"float\" is incompatible with protocol \"Iterable[int]\"\n      \"__iter__\" is not present",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_trial_repo.py",
+    "line": 103,
+    "column": 54,
+    "severity": "error",
+    "rule": "reportCallIssue",
+    "message": "No overloads for \"__getitem__\" match the provided arguments",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_trial_repo.py",
+    "line": 103,
+    "column": 54,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['tasks']\" cannot be assigned to parameter \"key\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['tasks']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_trial_repo.py",
+    "line": 103,
+    "column": 54,
+    "severity": "error",
+    "rule": "reportIndexIssue",
+    "message": "\"__getitem__\" method not defined on type \"float\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_trial_repo.py",
+    "line": 103,
+    "column": 54,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Literal['tasks']\" cannot be assigned to parameter \"s\" of type \"slice[Any, Any, Any]\" in function \"__getitem__\"\n  \"Literal['tasks']\" is not assignable to \"slice[Any, Any, Any]\"",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_trial_repo.py",
+    "line": 103,
+    "column": 54,
+    "severity": "error",
+    "rule": "reportOptionalSubscript",
+    "message": "Object of type \"None\" is not subscriptable",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_trial_repo.py",
+    "line": 103,
+    "column": 54,
+    "severity": "error",
+    "rule": "reportGeneralTypeIssues",
+    "message": "\"float\" is not iterable\n  \"__iter__\" method not defined",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/bootstrap/workbench_request_lifecycle_state.py",
+    "line": 113,
+    "column": 53,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"thread\" is not a known attribute of \"None\"",
+    "owner": "FE-03",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/bootstrap/workbench_request_lifecycle_state.py",
+    "line": 138,
+    "column": 60,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"ticket\" is not a known attribute of \"None\"",
+    "owner": "FE-03",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/bootstrap/workbench_request_lifecycle_state.py",
+    "line": 166,
+    "column": 59,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"ticket\" is not a known attribute of \"None\"",
+    "owner": "FE-03",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/bootstrap/workbench_request_lifecycle_wsgi.py",
+    "line": 41,
+    "column": 48,
+    "severity": "error",
+    "rule": "reportGeneralTypeIssues",
+    "message": "\"Never\" is not iterable",
+    "owner": "FE-03",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/bootstrap/workbench_request_lifecycle_wsgi.py",
+    "line": 46,
+    "column": 52,
+    "severity": "error",
+    "rule": "reportAttributeAccessIssue",
+    "message": "Cannot access attribute \"connections\" for class \"None\"\n  Attribute \"connections\" is unknown",
+    "owner": "FE-03",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/bootstrap/workbench_request_lifecycle_wsgi.py",
+    "line": 48,
+    "column": 25,
+    "severity": "error",
+    "rule": "reportAttributeAccessIssue",
+    "message": "Cannot access attribute \"failures\" for class \"None\"\n  Attribute \"failures\" is unknown",
+    "owner": "FE-03",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/bootstrap/workbench_request_lifecycle_wsgi.py",
+    "line": 50,
+    "column": 33,
+    "severity": "error",
+    "rule": "reportAttributeAccessIssue",
+    "message": "Cannot access attribute \"connections\" for class \"None\"\n  Attribute \"connections\" is unknown",
+    "owner": "FE-03",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/bootstrap/workbench_request_lifecycle_wsgi.py",
+    "line": 55,
+    "column": 29,
+    "severity": "error",
+    "rule": "reportAttributeAccessIssue",
+    "message": "Cannot access attribute \"failures\" for class \"None\"\n  Attribute \"failures\" is unknown",
+    "owner": "FE-03",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/bootstrap/workbench_request_lifecycle_wsgi.py",
+    "line": 64,
+    "column": 33,
+    "severity": "error",
+    "rule": "reportGeneralTypeIssues",
+    "message": "\"Never\" is not iterable",
+    "owner": "FE-03",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/batch_context.py",
+    "line": 25,
+    "column": 13,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"int\" cannot be assigned to parameter \"value\" of type \"str\" in function \"__setitem__\"\n  \"int\" is not assignable to \"str\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/batches.py",
+    "line": 105,
+    "column": 53,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Unknown | Literal['batch:create'] | None\" cannot be assigned to parameter \"subject_ref\" of type \"str\" in function \"validate_write_context\"\n  Type \"Unknown | Literal['batch:create'] | None\" is not assignable to type \"str\"\n    \"None\" is not assignable to \"str\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/batches.py",
+    "line": 113,
+    "column": 47,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"Unknown | Literal['batch:create'] | None\" cannot be assigned to parameter \"context_ref\" of type \"str\" in function \"execute\"\n  Type \"Unknown | Literal['batch:create'] | None\" is not assignable to type \"str\"\n    \"None\" is not assignable to \"str\"",
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/outsourcing.py",
+    "line": 43,
+    "column": 9,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"int\" cannot be assigned to parameter \"value\" of type \"str\" in function \"__setitem__\"\n  \"int\" is not assignable to \"str\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/outsourcing.py",
+    "line": 44,
+    "column": 8,
+    "severity": "error",
+    "rule": "reportOperatorIssue",
+    "message": "Operator \">\" not supported for types \"str\" and \"Literal[1]\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/outsourcing.py",
+    "line": 70,
+    "column": 42,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"str\" cannot be assigned to parameter \"number\" of type \"int\" in function \"targets\"\n  \"str\" is not assignable to \"int\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/outsourcing.py",
+    "line": 70,
+    "column": 55,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"str\" cannot be assigned to parameter \"size\" of type \"int\" in function \"targets\"\n  \"str\" is not assignable to \"int\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/outsourcing.py",
+    "line": 72,
+    "column": 43,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"str\" cannot be assigned to parameter \"number\" of type \"int\" in function \"receipts\"\n  \"str\" is not assignable to \"int\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/outsourcing.py",
+    "line": 72,
+    "column": 56,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"str\" cannot be assigned to parameter \"size\" of type \"int\" in function \"receipts\"\n  \"str\" is not assignable to \"int\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/outsourcing.py",
+    "line": 74,
+    "column": 47,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"str\" cannot be assigned to parameter \"number\" of type \"int\" in function \"history\"\n  \"str\" is not assignable to \"int\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/outsourcing.py",
+    "line": 74,
+    "column": 60,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"str\" cannot be assigned to parameter \"size\" of type \"int\" in function \"history\"\n  \"str\" is not assignable to \"int\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/outsourcing.py",
+    "line": 84,
+    "column": 53,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"isoformat\" is not a known attribute of \"None\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/outsourcing.py",
+    "line": 85,
+    "column": 82,
+    "severity": "error",
+    "rule": "reportOptionalMemberAccess",
+    "message": "\"isoformat\" is not a known attribute of \"None\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/reports.py",
+    "line": 54,
+    "column": 57,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"str | None\" cannot be assigned to parameter \"sort\" of type \"str\" in function \"__init__\"\n  Type \"str | None\" is not assignable to type \"str\"\n    \"None\" is not assignable to \"str\"",
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/resource_table_queries.py",
+    "line": 102,
+    "column": 37,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"MaterialPageRequest | ResourcePageRequest\" cannot be assigned to parameter \"query\" of type \"MaterialPageRequest\" in function \"page\"\n  Type \"MaterialPageRequest | ResourcePageRequest\" is not assignable to type \"MaterialPageRequest\"\n    \"ResourcePageRequest\" is not assignable to \"MaterialPageRequest\"",
+    "owner": "FE-01",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/resource_table_queries.py",
+    "line": 108,
+    "column": 38,
+    "severity": "error",
+    "rule": "reportArgumentType",
+    "message": "Argument of type \"MaterialPageRequest | ResourcePageRequest\" cannot be assigned to parameter \"query\" of type \"MaterialPageRequest\" in function \"metrics\"\n  Type \"MaterialPageRequest | ResourcePageRequest\" is not assignable to type \"MaterialPageRequest\"\n    \"ResourcePageRequest\" is not assignable to \"MaterialPageRequest\"",
+    "owner": "FE-01",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/trial_adoption_history.py",
+    "line": 29,
+    "column": 20,
+    "severity": "error",
+    "rule": "reportGeneralTypeIssues",
+    "message": "\"None\" is not iterable\n  \"__iter__\" method not defined",
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  }
+]

@@ -1,0 +1,102 @@
+[
+  {
+    "path": "frontend/workbench/app/RunCandidateGantt.jsx",
+    "sha256": "71560b81199cafeea96992027373f504635752e2f9fffaa03373d96a95609175",
+    "lines": 127
+  },
+  {
+    "path": "frontend/workbench/app/RunCandidateModel.js",
+    "sha256": "0ed647e61bdf41985b3e904422b1c9de23ef251a9bee81f885a012a8b8bed449",
+    "lines": 70
+  },
+  {
+    "path": "frontend/workbench/app/PlanGantt.jsx",
+    "sha256": "c9097280e01da5793fad9468967624790c50c0eccbab1a2d1c228bf1553121db",
+    "lines": 129
+  },
+  {
+    "path": "frontend/workbench/app/PlanGanttCanvas.jsx",
+    "sha256": "70b8246310482871bd1dcd726f642f5a7162ec805359c2deb19fdb44d3d82722",
+    "lines": 93
+  },
+  {
+    "path": "frontend/workbench/app/PlanGanttModel.js",
+    "sha256": "536fc47bcf5315a86a0b52ed59d26b17d6dde28372604c07d36be8d1f46e8b9b",
+    "lines": 144
+  },
+  {
+    "path": "frontend/workbench/app/PlanContract.js",
+    "sha256": "e0697c91408314b1294ab75978c57a6cc5c4019dfb334bea7dcb80e403eaa0de",
+    "lines": 335
+  },
+  {
+    "path": "frontend/workbench/app/PlanDetailsUI.jsx",
+    "sha256": "dc898a4f83ade8d60f98751bb1d842889d1ea6962f39256777c5f7171a276d31",
+    "lines": 106
+  },
+  {
+    "path": "frontend/workbench/app/TrialGantt.jsx",
+    "sha256": "1a1e4b13f57bea401deb65d83043656bcd9944a061c0707c96b0184ff8479f2d",
+    "lines": 83
+  },
+  {
+    "path": "frontend/workbench/app/TrialContract.js",
+    "sha256": "1cce21733c3a6778bb764b7f115eda88fd42f8de03fa43b8f42f65955939acd1",
+    "lines": 126
+  },
+  {
+    "path": "frontend/workbench/app/TrialDetails.jsx",
+    "sha256": "3540665529a121be978e4248c1b7048c66c89ec5716c23a388bb840295c64200",
+    "lines": 71
+  },
+  {
+    "path": "frontend/workbench/app/TrialStyles.jsx",
+    "sha256": "d2b3df063e626b79f85c8b19e1471870d76219c44a828c22eb8228b94ef7b258",
+    "lines": 67
+  },
+  {
+    "path": "frontend/workbench/app/PointContract.js",
+    "sha256": "3db5b43bee4d65226b1ab0f4efc77bb3f21319f6a940c4fea6d8069ed0f589e2",
+    "lines": 17
+  },
+  {
+    "path": "frontend/workbench/app/PointGanttModel.js",
+    "sha256": "4498fed1a7100756489f8e0b9c52c7b62405bfd5178187222d8de8c6f60f927f",
+    "lines": 71
+  },
+  {
+    "path": "frontend/workbench/app/PointGantt.jsx",
+    "sha256": "c9b380f5a057d092273ecc037d20e38fe182f2d6ecb4c43622f49b8bc53c132b",
+    "lines": 18
+  },
+  {
+    "path": "tests/workbench/test_point_frontend.py",
+    "sha256": "21e5ace62fb23e517feb8c051915b0c8ae845db309f952ad0f924fc9d2069f67",
+    "lines": 69
+  },
+  {
+    "path": "tests/workbench/point_frontend_support.py",
+    "sha256": "c9b504d7a702a1c16ed05d4dfff650e01ebda1b958a7965fa02994e991b1a132",
+    "lines": 94
+  },
+  {
+    "path": "tests/workbench/point_frontend_probe.cjs",
+    "sha256": "e73655098b7c2876a162235fe21532cf81472ad1676a0db9700ff9d24a57e0cc",
+    "lines": 72
+  },
+  {
+    "path": "tests/workbench/point_browser_build.cjs",
+    "sha256": "73bbd8967251dbea91f52f0e04bd7649fedcb1080ad200195abca3a3c6179a43",
+    "lines": 33
+  },
+  {
+    "path": "tests/workbench/point_browser_host.jsx",
+    "sha256": "9e829b9d45379311ff0b0bb2c2a289d904bedadc1ebafcf91ffd8c6def164a03",
+    "lines": 46
+  },
+  {
+    "path": "tests/workbench/point_browser_probe.cjs",
+    "sha256": "4ba9767101a8a8e38c88a4ce56259949293883a42b7e27d41a860be682834d04",
+    "lines": 138
+  }
+]

@@ -1,0 +1,786 @@
+{
+  "errors": [],
+  "external": [],
+  "screenshots": [
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo1/ee-point-browser/1920-light-plan.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo1/ee-point-browser/1920-light-candidate.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo1/ee-point-browser/1920-light-trial.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo1/ee-point-browser/1920-dark-plan.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo1/ee-point-browser/1920-dark-candidate.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo1/ee-point-browser/1920-dark-trial.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo1/ee-point-browser/1392-light-plan.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo1/ee-point-browser/1392-light-candidate.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo1/ee-point-browser/1392-light-trial.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo1/ee-point-browser/1392-dark-plan.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo1/ee-point-browser/1392-dark-candidate.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo1/ee-point-browser/1392-dark-trial.png"
+  ],
+  "requests": [
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/plans/1e2eb6bf95fc6bdf374ce676c1c9d4358c707d363c79e1e9/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/scheduling/candidates/2a6265bfe9c72ae6873f2d47fd3a191020a7fc2958cbde8e/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/trial/drafts/ec88dcb9d2e9acd510b7cb19b4157b47311a09a8ff942205",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/trial/drafts/ec88dcb9d2e9acd510b7cb19b4157b47311a09a8ff942205/change",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/plans/1e2eb6bf95fc6bdf374ce676c1c9d4358c707d363c79e1e9/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/scheduling/candidates/2a6265bfe9c72ae6873f2d47fd3a191020a7fc2958cbde8e/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/trial/drafts/ec88dcb9d2e9acd510b7cb19b4157b47311a09a8ff942205",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/trial/drafts/ec88dcb9d2e9acd510b7cb19b4157b47311a09a8ff942205/change",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/plans/1e2eb6bf95fc6bdf374ce676c1c9d4358c707d363c79e1e9/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/scheduling/candidates/2a6265bfe9c72ae6873f2d47fd3a191020a7fc2958cbde8e/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/trial/drafts/ec88dcb9d2e9acd510b7cb19b4157b47311a09a8ff942205",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/trial/drafts/ec88dcb9d2e9acd510b7cb19b4157b47311a09a8ff942205/change",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/plans/1e2eb6bf95fc6bdf374ce676c1c9d4358c707d363c79e1e9/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/scheduling/candidates/2a6265bfe9c72ae6873f2d47fd3a191020a7fc2958cbde8e/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/trial/drafts/ec88dcb9d2e9acd510b7cb19b4157b47311a09a8ff942205",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59960/api/workbench/v1/trial/drafts/ec88dcb9d2e9acd510b7cb19b4157b47311a09a8ff942205/change",
+      "status": 200,
+      "method": "POST"
+    }
+  ],
+  "actions": [
+    {
+      "kind": "plan",
+      "type": "normal-canvas-pixel-and-click",
+      "painted_pixels": 30400
+    },
+    {
+      "kind": "plan",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "5ba469152434a6793b37cdd74dc5c1dcec16e9bcd39f5c5d",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 587.5703125,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "45b6c31fcf2bcafcef7ed2d34d80c051227933b64bf29a18",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 587.5703125,
+        "y": 337.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "5ba469152434a6793b37cdd74dc5c1dcec16e9bcd39f5c5d",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 999.28125,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "candidate",
+      "type": "normal-canvas-pixel-and-click",
+      "painted_pixels": 27852
+    },
+    {
+      "kind": "candidate",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "0ce558c9cd8b338c22219a523bbaa97197aa8a760c0b5bc8",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 576.5703125,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "0ce558c9cd8b338c22219a523bbaa97197aa8a760c0b5bc8",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 1082.28125,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "b495fd772836d6968b8b78afb85b0d7da386d0203e3ad132",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 638.7109375,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "b495fd772836d6968b8b78afb85b0d7da386d0203e3ad132",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 1204.421875,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "real-trial-change-command",
+      "start": "2026-09-09T08:00:03",
+      "end": "2026-09-09T08:00:03",
+      "operation_ref": "a0b3e55a35d9320b541e215f35b65dae5374b08f6fff0ccb"
+    },
+    {
+      "kind": "plan",
+      "type": "normal-canvas-pixel-and-click",
+      "painted_pixels": 30400
+    },
+    {
+      "kind": "plan",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "5ba469152434a6793b37cdd74dc5c1dcec16e9bcd39f5c5d",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 587.5703125,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "45b6c31fcf2bcafcef7ed2d34d80c051227933b64bf29a18",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 587.5703125,
+        "y": 337.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "5ba469152434a6793b37cdd74dc5c1dcec16e9bcd39f5c5d",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 999.28125,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "candidate",
+      "type": "normal-canvas-pixel-and-click",
+      "painted_pixels": 27852
+    },
+    {
+      "kind": "candidate",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "0ce558c9cd8b338c22219a523bbaa97197aa8a760c0b5bc8",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 576.5703125,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "0ce558c9cd8b338c22219a523bbaa97197aa8a760c0b5bc8",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 1082.28125,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "b495fd772836d6968b8b78afb85b0d7da386d0203e3ad132",
+      "at": "2026-09-09T08:00:03",
+      "hitbox": {
+        "x": 646.5,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "b495fd772836d6968b8b78afb85b0d7da386d0203e3ad132",
+      "at": "2026-09-09T08:00:03",
+      "hitbox": {
+        "x": 1240.5,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "real-trial-change-command",
+      "start": "2026-09-09T08:00:04",
+      "end": "2026-09-09T08:00:04",
+      "operation_ref": "a0b3e55a35d9320b541e215f35b65dae5374b08f6fff0ccb"
+    },
+    {
+      "kind": "plan",
+      "type": "normal-canvas-pixel-and-click",
+      "painted_pixels": 19120
+    },
+    {
+      "kind": "plan",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "5ba469152434a6793b37cdd74dc5c1dcec16e9bcd39f5c5d",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 518.421875,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "45b6c31fcf2bcafcef7ed2d34d80c051227933b64bf29a18",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 518.421875,
+        "y": 337.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "5ba469152434a6793b37cdd74dc5c1dcec16e9bcd39f5c5d",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 757.2109375,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "candidate",
+      "type": "normal-canvas-pixel-and-click",
+      "painted_pixels": 15378
+    },
+    {
+      "kind": "candidate",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "0ce558c9cd8b338c22219a523bbaa97197aa8a760c0b5bc8",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 501.140625,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "0ce558c9cd8b338c22219a523bbaa97197aa8a760c0b5bc8",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 780.5703125,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "b495fd772836d6968b8b78afb85b0d7da386d0203e3ad132",
+      "at": "2026-09-09T08:00:04",
+      "hitbox": {
+        "x": 555.9453125,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "b495fd772836d6968b8b78afb85b0d7da386d0203e3ad132",
+      "at": "2026-09-09T08:00:04",
+      "hitbox": {
+        "x": 930.8046875,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "real-trial-change-command",
+      "start": "2026-09-09T08:00:05",
+      "end": "2026-09-09T08:00:05",
+      "operation_ref": "a0b3e55a35d9320b541e215f35b65dae5374b08f6fff0ccb"
+    },
+    {
+      "kind": "plan",
+      "type": "normal-canvas-pixel-and-click",
+      "painted_pixels": 19120
+    },
+    {
+      "kind": "plan",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "5ba469152434a6793b37cdd74dc5c1dcec16e9bcd39f5c5d",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 518.421875,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "45b6c31fcf2bcafcef7ed2d34d80c051227933b64bf29a18",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 518.421875,
+        "y": 337.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "5ba469152434a6793b37cdd74dc5c1dcec16e9bcd39f5c5d",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 757.2109375,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "candidate",
+      "type": "normal-canvas-pixel-and-click",
+      "painted_pixels": 15378
+    },
+    {
+      "kind": "candidate",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "0ce558c9cd8b338c22219a523bbaa97197aa8a760c0b5bc8",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 501.140625,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "0ce558c9cd8b338c22219a523bbaa97197aa8a760c0b5bc8",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 780.5703125,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "b495fd772836d6968b8b78afb85b0d7da386d0203e3ad132",
+      "at": "2026-09-09T08:00:05",
+      "hitbox": {
+        "x": 557.3984375,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "b495fd772836d6968b8b78afb85b0d7da386d0203e3ad132",
+      "at": "2026-09-09T08:00:05",
+      "hitbox": {
+        "x": 938.1171875,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "real-trial-change-command",
+      "start": "2026-09-09T08:00:06",
+      "end": "2026-09-09T08:00:06",
+      "operation_ref": "a0b3e55a35d9320b541e215f35b65dae5374b08f6fff0ccb"
+    }
+  ],
+  "geometry": [
+    {
+      "kind": "plan",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 9,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 9,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 7,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 7,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 9,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 9,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 7,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 7,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 8,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 8,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 7,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 7,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 8,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 8,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 7,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 7,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 24,
+      "overlap": []
+    }
+  ],
+  "production_database": false,
+  "browser": "109.0.5414.46"
+}

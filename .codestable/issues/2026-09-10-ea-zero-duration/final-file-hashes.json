@@ -1,0 +1,186 @@
+{
+  "date": "2026-09-10",
+  "proof_scope": "dirty_worktree_final_file_inventory_not_clean_HEAD_proof",
+  "files": [
+    {
+      "path": "core/algorithm_contracts/schedule_point_evidence.py",
+      "sha256": "27a54235e9e8365f17e556c6daac23790c3bc4b0950e6cad8e5c3128c9f6b8dc"
+    },
+    {
+      "path": "core/algorithms/greedy/scheduler.py",
+      "sha256": "475dc637a3701fc481ac8113c66ba36b1114b94743c3d9141f83a82f0558dffb"
+    },
+    {
+      "path": "core/algorithms/greedy/seed.py",
+      "sha256": "718ca3ba2cc46166a45b49163237919e1da514265ea4836b4d95b40f7a42940e"
+    },
+    {
+      "path": "core/services/scheduler/run/freeze_window.py",
+      "sha256": "ddd3d49ca68e2721cc78bbd5782c6c1a3ef0b13045b3645ec105c6d8f8f4c258"
+    },
+    {
+      "path": "core/services/scheduler/run/freeze_window_seed_rows.py",
+      "sha256": "ab869e4abf1f15e1d6d582ac6c1942100dbab54ff78e556765239e5efe3d07f5"
+    },
+    {
+      "path": "core/services/scheduler/run/schedule_orchestrator.py",
+      "sha256": "f7a331b5496da3a21df57d0a45ee8f64785dc8392f547ac4f339c387203b2ff2"
+    },
+    {
+      "path": "core/services/scheduler/run/schedule_payload_contract.py",
+      "sha256": "9b7da04995d3c0b1e892c182194797d398f98426553169feb39f2a25eb8dad17"
+    },
+    {
+      "path": "core/services/scheduler/run/schedule_seed_contracts.py",
+      "sha256": "d6997d8ccfeda695cdc34f9e5072fbbc52becd2ad510548a8b77aaecdaacaf68"
+    },
+    {
+      "path": "core/services/scheduler/workbench_plan_catalog.py",
+      "sha256": "41e79e68e004f408716de022dbe2b326246de200a00437174bac1fa422459fae"
+    },
+    {
+      "path": "core/services/workbench/zero_duration.py",
+      "sha256": "9bb51e19d6c44479a0bc9e923cea7645ae39939f1e6d26cd065ecc835b839463"
+    },
+    {
+      "path": "core/services/workbench/zero_duration_evidence.py",
+      "sha256": "6e295aa1780529e953f4ab4472759414506b92d8461d7e06e7a55b9ef626cee0"
+    },
+    {
+      "path": "core/services/workbench/plan_point_evidence.py",
+      "sha256": "ffc69227880791b201231b478a8235d0f4469c113c557852f96504b7cbe2c520"
+    },
+    {
+      "path": "core/services/workbench/point_plan_query.py",
+      "sha256": "4959dbdfdc078957476ceaf2f9e433a32a541ffaf0c9e596fb737fcfec02f835"
+    },
+    {
+      "path": "core/services/workbench/run_compute.py",
+      "sha256": "90d50c2d014c1989831ee4f25365b58d164d4a11c4344467f0fc09cbbf5b0d21"
+    },
+    {
+      "path": "core/services/workbench/run_compute_validation.py",
+      "sha256": "5e6d98bd2dee3858ee062141afa2232bd44c45d598b1e66d7e7bf9188a9982ec"
+    },
+    {
+      "path": "core/services/workbench/run_input_rows.py",
+      "sha256": "e1364930ec5e0d2d5f141c0ddd7427dc260c346d48eff96fa6c612c239b31e7e"
+    },
+    {
+      "path": "core/services/workbench/run_input_runtime.py",
+      "sha256": "b6f69fd9188f64c9752daf3b81a31c6b583b73488354f143c6144573d798a6e2"
+    },
+    {
+      "path": "core/services/workbench/run_input_points.py",
+      "sha256": "30f44d975dcccfa6786a6fc5de908486115d876ffde79b95d43cdfca1b348979"
+    },
+    {
+      "path": "core/services/workbench/preflight.py",
+      "sha256": "7539c655dadd0ad3bb61f761969276277ef97da8eb56bebe51a683b60afc3246"
+    },
+    {
+      "path": "core/services/workbench/run_candidate_tasks.py",
+      "sha256": "7bb0c2ef47190808db1dea54ee6cdbf2b2c6db67e2bdb9e02a73b5c29ad414f6"
+    },
+    {
+      "path": "core/services/workbench/run_candidate_adoption.py",
+      "sha256": "31e283d9ac071f074178c6eaeb79e2477cc7f17573b5a2e9b7a4eb07a41f2253"
+    },
+    {
+      "path": "core/services/workbench/run_candidate_adoption_constraints.py",
+      "sha256": "95dfa848bc14d1a1d0b91a7b08383cffb2c51059c0f94c03f013d71a31f03abf"
+    },
+    {
+      "path": "core/services/workbench/run_candidate_baseline.py",
+      "sha256": "1f12175a06905b08f4d11f1223b20e6b8c22303619365bf67923547b5777fcdf"
+    },
+    {
+      "path": "core/services/workbench/plan_queries.py",
+      "sha256": "fbf6982ecdc6e808ef5a1013285873225121fe3f28901d533568cbe0710aa44b"
+    },
+    {
+      "path": "core/services/workbench/plan_projection.py",
+      "sha256": "769c7bcbc13cdea0c98c4a72989c2ee143a7e09e6e92726391d281aa20b68c7e"
+    },
+    {
+      "path": "core/services/workbench/plan_calendar_context.py",
+      "sha256": "74d944fccac81f190bf8f940c1099b8ce5bf4c15ba8066fceadf16540fc288f5"
+    },
+    {
+      "path": "core/services/workbench/plan_calendar.py",
+      "sha256": "f74a8e59f56835f5044dbef12cc4706c460e9d8ea2f0b54f7f51fbb449ba4428"
+    },
+    {
+      "path": "core/services/workbench/plan_occupancy.py",
+      "sha256": "cb1641087ddc3210ff060f2b5467f5af1a62614628ca08d8da0634fe3bf53e71"
+    },
+    {
+      "path": "core/services/workbench/plan_occupancy_constraints.py",
+      "sha256": "8e61a65f48ac40ba92dccee3d0ea9cc5bcdcec9e0f0552aeccbe77ef43c8d3e2"
+    },
+    {
+      "path": "core/services/workbench/plan_delivery.py",
+      "sha256": "fbd175e6fd44331cb56b80e0795dc205ea141cc751816e770b47f93238cac80c"
+    },
+    {
+      "path": "core/services/workbench/plan_delivery_repository.py",
+      "sha256": "f731faa56205a1371299bba13abe56f96486ddbb88f2888669e6c8a2fb194a49"
+    },
+    {
+      "path": "core/services/workbench/plan_delivery_projection.py",
+      "sha256": "3a31bbaeb54dfbac115081cf6b9096c3c3998c89c028e842b32ed1342bae42b6"
+    },
+    {
+      "path": "core/services/workbench/plan_adoption_baseline_identity.py",
+      "sha256": "376bf08019139c6d8d5e339608d986e5a8196f1dfc96aa695b59ec1f40b0ccca"
+    },
+    {
+      "path": "core/services/workbench/plan_adoption_baseline.py",
+      "sha256": "7c4b79d36cd00b4a3dfe4309dad8004d0d7bb7b268df015b005d88901aed9547"
+    },
+    {
+      "path": "core/services/workbench/plan_baseline.py",
+      "sha256": "2a2262a5066af9435de0ecd6e9629ea971fa5e7bab5cdf56aa07c3dadf56bc53"
+    },
+    {
+      "path": "core/services/workbench/trial_base.py",
+      "sha256": "ecf2f230a08871dffb6828252380ed3accf79a985fdb1773d5da4d55223bbcfd"
+    },
+    {
+      "path": "core/services/workbench/trial_calendar.py",
+      "sha256": "95deaaf24430572a56b1dac7ade3ccf3a2e6f941410fb53491c2dd368538e1b1"
+    },
+    {
+      "path": "core/services/workbench/trial_validation.py",
+      "sha256": "3f60c9ecb25a90c70b9c3d8945b5fb6fbc73b8290327117d76b6e3488217acb3"
+    },
+    {
+      "path": "core/services/workbench/trial_constraints.py",
+      "sha256": "bd3f69f5bfd0cc989ab530ab8fb0f47da789cf82a19bc68cda1a1255712dd68a"
+    },
+    {
+      "path": "core/services/workbench/trial_projection.py",
+      "sha256": "04e49e62e3111dffff11893b274bfd7c37aa9eb9bba9e5c48e2ddcec04c619fa"
+    },
+    {
+      "path": "core/services/workbench/trial_adoption.py",
+      "sha256": "2390bcfbf05aee444ff94ddab22aa98f6ebf1d238b639a093355fdbf036a64de"
+    },
+    {
+      "path": "tests/workbench/ea_zero_duration_support.py",
+      "sha256": "07c617452a22ad35b6f7d20e230d4975f11dd843800d50de9d6c7b192f232e6a"
+    },
+    {
+      "path": "tests/workbench/test_ea_zero_duration_chain.py",
+      "sha256": "dde29b5228a204aa4a95d84bb9782a2fa47306d0a3866e38b92e750b0be729c2"
+    },
+    {
+      "path": "tests/workbench/test_ea_zero_duration_boundaries.py",
+      "sha256": "c93fdd56be8320220879ad79835992e3676e51012512badb5afdedfdfeaed647"
+    },
+    {
+      "path": "tests/workbench/test_ea_zero_duration_constraints.py",
+      "sha256": "0a383a450368383cda03cd1afcd3ad032f1fb43879ec4f2c3607c70d42ab95a7"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+feature: wb-process-template-workflow
+steps:
+  - id: identities-read-preview
+    action: 模板永久身份、真实列表详情和只读路线预检
+    exit_signal: 升级不改业务行，查询与预检零业务写入，真实页面可查看和取消预检
+    status: done
+  - id: stage-transactions
+    action: 持久三阶段与逐序人工确认、未知工种转建、原子工时保存
+    exit_signal: 同一事实源，回执幂等，旧模板与外协规则保留，待确认不能被批次自动补建绕过
+    status: done
+  - id: process-files-and-crosspage
+    action: 路线工时文件、批删、逐列表头和资源关联导航
+    exit_signal: 全范围与明确选择不丢行，事务与文件字节正确，跨页对象准确
+    status: in-progress
+  - id: process-verification
+    action: 完整工艺能力真实浏览器与复杂规模验证
+    exit_signal: 全操作适用B/K/V/P证据齐全，存量与隐藏字段无丢失
+    status: pending
+checks:
+  - id: identity-preservation
+    description: 模板身份升级与读写生命周期
+    status: passed
+  - id: readonly-preview
+    description: 真实解析与未知诊断、零业务写入
+    status: passed
+  - id: stage-contract
+    description: 归属工时显式确认、并发和批次使用边界
+    status: passed
+  - id: file-contract
+    description: 路线和工时完整导入导出及原子确认
+    status: pending
+  - id: browser-stress-preservation
+    description: 双尺寸双主题、高复杂度规模及原有数据保留
+    status: pending

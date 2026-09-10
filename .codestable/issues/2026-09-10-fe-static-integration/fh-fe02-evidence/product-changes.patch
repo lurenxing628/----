@@ -1,0 +1,322 @@
+--- /tmp/fh-fe02-1m0e1l/before/core/models/workbench_trial.py	2026-09-10 16:12:42
++++ /Users/lurenxing/GitHub/----/core/models/workbench_trial.py	2026-09-10 16:14:12
+@@ -2,7 +2,7 @@
+ 
+ import re
+ from dataclasses import asdict, dataclass, field
+-from typing import Any, Dict, List
++from typing import Any, Dict, List, NoReturn
+ 
+ from core.models.workbench_command import WorkbenchCommandRejected
+ from core.models.workbench_plan_scope import local_time
+@@ -16,7 +16,7 @@
+ ACTIONS = (CHANGE, SAVE, DISCARD)
+ 
+ 
+-def reject(code, message, status=409):
++def reject(code, message, status=409) -> NoReturn:
+     raise WorkbenchCommandRejected(code, message, status)
+ 
+ 
+--- /tmp/fh-fe02-1m0e1l/before/core/models/workbench_trial_codec.py	2026-09-10 16:12:42
++++ /Users/lurenxing/GitHub/----/core/models/workbench_trial_codec.py	2026-09-10 16:16:02
+@@ -3,6 +3,7 @@
+ import base64
+ import json
+ import math
++from typing import Optional
+ 
+ from core.models.workbench_command import canonical_json, input_fingerprint
+ from core.models.workbench_trial import MAX_TRIAL_BYTES, reject
+@@ -39,7 +40,7 @@
+     return text
+ 
+ 
+-def load(text, fingerprint=None):
++def load(text: object, fingerprint: Optional[str] = None):
+     if type(text) is not str or len(text.encode("utf-8")) > MAX_TRIAL_BYTES:
+         reject("trial_snapshot_invalid", "持久试调快照缺失或超过上限。")
+     try:
+@@ -54,5 +55,15 @@
+         reject("trial_snapshot_invalid", "持久试调快照无法读取，未重建最新计划。")
+ 
+ 
++def load_object(text: object, fingerprint: Optional[str] = None):
++    return require_object(load(text, fingerprint))
++
++
++def require_object(value: object):
++    if type(value) is not dict:
++        reject("trial_snapshot_invalid", "持久试调快照必须为对象，未推测或替换原数据。")
++    return value
++
++
+ def fingerprint(value):
+     return input_fingerprint(packed(value))
+--- /tmp/fh-fe02-1m0e1l/before/core/services/workbench/trial_adoption.py	2026-09-10 16:12:42
++++ /Users/lurenxing/GitHub/----/core/services/workbench/trial_adoption.py	2026-09-10 16:18:32
+@@ -34,14 +34,16 @@
+     def _enabled(self):
+         if not self.integration_enabled:
+             raise TrialAdoptionBlocked("scenario_adoption_not_connected", "正式采用尚未完成运行锁与HTTP生命周期接入，保持关闭。")
+-        if not callable(self.context_factory) or not callable(self.context_validator):
++        factory, validator = self.context_factory, self.context_validator
++        if not callable(factory) or not callable(validator):
+             raise RuntimeError("Scenario adoption authorization callbacks are not connected")
++        return factory, validator
+ 
+     def preview(self, scenario_ref):
+         self._outer()
+         reference(scenario_ref)
+         try:
+-            self._enabled()
++            context_factory, _ = self._enabled()
+             evidence = validate_trial_adoption(self.conn, scenario_ref)
+             self._point_surface(evidence)
+         except TrialAdoptionBlocked as exc:
+@@ -57,7 +59,7 @@
+                 "baseline": {key: evidence.baseline[key] for key in ("plan_ref", "version")},
+                 "task_count": len(evidence.payload.schedule_rows), "scope_complete": True,
+                 "validation": {"status": "valid", "can_adopt": True, "issues": []},
+-                "write_context": self.context_factory(scenario_ref, [ADOPT_ACTION], evidence.snapshot)}
++                "write_context": context_factory(scenario_ref, [ADOPT_ACTION], evidence.snapshot)}
+ 
+     def adopt(self, scenario_ref, write_token, request_key, value):
+         self._outer()
+@@ -66,12 +68,12 @@
+         intent = adoption_input(value)
+ 
+         def guard():
+-            self._enabled()
++            _, context_validator = self._enabled()
+             if type(write_token) is not str or not write_token:
+                 raise WorkbenchCommandRejected("stale_write", "请先预览并复核场景正式采用。")
+             evidence = validate_trial_adoption(self.conn, scenario_ref)
+             self._point_surface(evidence)
+-            self.context_validator(write_token, scenario_ref, ADOPT_ACTION, evidence.snapshot)
++            context_validator(write_token, scenario_ref, ADOPT_ACTION, evidence.snapshot)
+             return evidence
+ 
+         def mutate(evidence):
+--- /tmp/fh-fe02-1m0e1l/before/core/services/workbench/trial_adoption_history_evidence.py	2026-09-10 16:12:42
++++ /Users/lurenxing/GitHub/----/core/services/workbench/trial_adoption_history_evidence.py	2026-09-10 16:16:02
+@@ -3,15 +3,16 @@
+ import json
+ import re
+ from datetime import datetime
++from typing import NoReturn
+ 
+ from core.models.workbench_command import input_fingerprint, validate_request_key
+ from core.models.workbench_trial import reference, reject
+-from core.models.workbench_trial_codec import fingerprint, load
++from core.models.workbench_trial_codec import fingerprint, load_object, require_object
+ from data.repositories.workbench_trial_adoption_history import MAX_SCENARIO_BYTES, TrialAdoptionHistoryRepository
+ from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
+ 
+ 
+-def invalid():
++def invalid() -> NoReturn:
+     reject("adoption_history_invalid", "采用历史的永久场景、草稿或正式回执关联不一致，未替换原记录。")
+ 
+ 
+@@ -43,11 +44,16 @@
+         reject("query_too_large", "场景明细超过10000条上限，未截断。", 413)
+     saved = WorkbenchTrialRepository(conn).scenario(scenario_ref)
+     admission_row = conn.execute("SELECT admission_json FROM WorkbenchTrialDrafts WHERE draft_ref=?", (draft["draft_ref"],)).fetchone()
+-    admission = load(admission_row[0], draft["admission_hash"])
++    if admission_row is None:
++        invalid()
++    admission = load_object(admission_row[0], draft["admission_hash"])
++    intent = require_object(admission.get("input"))
++    baseline = require_object(admission.get("baseline"))
++    source = require_object(admission.get("source"))
+     expected = {"scenario_ref": scenario_ref, "draft_ref": draft["draft_ref"], "status": "saved",
+-                "name": header["name"], "saved_at": header["saved_at"], "base": admission["input"]["base"],
+-                "baseline": {key: admission["baseline"][key] for key in ("plan_ref", "version")},
+-                "base_identity": admission["source"]["identity"]}
++                "name": header["name"], "saved_at": header["saved_at"], "base": intent["base"],
++                "baseline": {key: baseline[key] for key in ("plan_ref", "version")},
++                "base_identity": source["identity"]}
+     if (not matches(saved, expected) or draft["status"] != "saved"
+             or draft["revision"] != header["revision"] + 1
+             or saved["base"] != {draft["base_kind"]: draft["base_ref"]}):
+--- /tmp/fh-fe02-1m0e1l/before/core/services/workbench/trial_adoption_storage.py	2026-09-10 16:12:42
++++ /Users/lurenxing/GitHub/----/core/services/workbench/trial_adoption_storage.py	2026-09-10 16:14:12
+@@ -3,6 +3,7 @@
+ from copy import deepcopy
+ from datetime import datetime
+ from types import SimpleNamespace
++from typing import NoReturn
+ 
+ from core.models.workbench_trial import MAX_TRIAL_TASKS, reference
+ from core.models.workbench_trial_adoption import TrialAdoptionBlocked
+@@ -11,7 +12,7 @@
+ from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
+ 
+ 
+-def _invalid(message):
++def _invalid(message) -> NoReturn:
+     raise TrialAdoptionBlocked("trial_snapshot_invalid", message)
+ 
+ 
+--- /tmp/fh-fe02-1m0e1l/before/core/services/workbench/trial_base.py	2026-09-10 16:12:42
++++ /Users/lurenxing/GitHub/----/core/services/workbench/trial_base.py	2026-09-10 16:21:29
+@@ -58,6 +58,8 @@
+         _, entry, _ = service._selected(ref)
+         repo = WorkbenchTrialRawPlanRepository(conn)
+         identity = entry.plan_identity
++        if identity is None:
++            reject("plan_unavailable", "所选计划缺少可用的永久身份，未切换到其他计划。")
+         tables = {name: {row[key]: row for row in read_raw_table(conn, name)[1]}
+                   for name, key in (("BatchOperations", "id"), ("Batches", "batch_id"))}
+         detail = _complete_rows(repo, version=entry.locator.version, source=identity.source_table,
+@@ -163,12 +165,19 @@
+     live = live_context(conn, [row["operation_ref"] for row in rows])
+     admission = {"input": intent, "source": source, "facts": live["facts"], "facts_hash": live["facts_hash"],
+                  "baseline": live["baseline"], "execution": live["execution"], "base_issues": issues}
++    _attach_original_context(rows, source, key, live)
++    return admission, rows, live
++
++
++def _attach_original_context(rows, source, key, live):
+     original_execution = ({row["operation_ref"]: row for row in source["capture"]["execution"]}
+                           if key == "candidate_ref" else live["execution"])
+     original_tables = (stored_json(source["capture"]["facts_text"])
+                        if key == "candidate_ref" else None)
+     templates = _table(original_tables, "PartOperations") if original_tables is not None else live["facts"]["tables"]["PartOperations"]
+     groups = _table(original_tables, "ExternalGroups") if original_tables is not None else live["facts"]["tables"]["ExternalGroups"]
++    if templates is None or groups is None:
++        reject("trial_base_incomplete", "候选生成时的工艺或外协组快照表缺失，未改用当前数据。")
+     template_by_key = {(item["part_no"], item["seq"]): item for item in templates if item["status"] == "active"}
+     group_by_key = {item["group_id"]: item for item in groups}
+     for row in rows:
+@@ -177,7 +186,6 @@
+         template = template_by_key.get((original["batch"]["part_no"], original["operation"]["seq"]))
+         original["template"] = template
+         original["external_group"] = group_by_key.get(template["ext_group_id"]) if template else None
+-    return admission, rows, live
+ 
+ 
+ def _attach_point_work(row, work):
+@@ -187,8 +195,6 @@
+ 
+ 
+ def _predecessors(rows, all_ops, operation_refs, issues):
+-    from collections import defaultdict
+-
+     from core.models.workbench_piece_adoption import PieceAdoptionBlocked
+ 
+     if any(row["original"]["operation"]["piece_id"] is not None for row in rows):
+@@ -201,6 +207,19 @@
+             row["original"]["predecessor_operation_refs"] = predecessors[row["original"]["operation"]["id"]]
+         return
+ 
++    previous = _batch_predecessors(rows, all_ops, operation_refs, issues)
++    for row in rows:
++        key = row["original"]["operation"]["id"]
++        if key in previous:
++            if previous[key] is None:
++                issues.append(issue("dependency_identity_missing", "前序永久身份缺失，不能按序号猜替代任务。", row["task_ref"]))
++            else:
++                row["original"]["predecessor_operation_refs"] = [previous[key]]
++
++
++def _batch_predecessors(rows, all_ops, operation_refs, issues):
++    from collections import defaultdict
++
+     batches = {row["original"]["operation"]["batch_id"] for row in rows}
+     chains = defaultdict(list)
+     for op in all_ops.values():
+@@ -214,10 +233,4 @@
+         ordered = sorted(chain, key=lambda op: op["seq"])
+         for left, right in zip(ordered, ordered[1:]):
+             previous[right["id"]] = operation_refs.get(left["id"])
+-    for row in rows:
+-        key = row["original"]["operation"]["id"]
+-        if key in previous:
+-            if previous[key] is None:
+-                issues.append(issue("dependency_identity_missing", "前序永久身份缺失，不能按序号猜替代任务。", row["task_ref"]))
+-            else:
+-                row["original"]["predecessor_operation_refs"] = [previous[key]]
++    return previous
+--- /tmp/fh-fe02-1m0e1l/before/core/services/workbench/trial_capacity.py	2026-09-10 16:12:42
++++ /Users/lurenxing/GitHub/----/core/services/workbench/trial_capacity.py	2026-09-10 16:18:32
+@@ -74,6 +74,6 @@
+             "overlap_hours": hours([(start, end) for start, end, count in swept if count > 1]),
+             "available_hours": capacity, "available_occupied_hours": in_calendar,
+             "outside_available_hours": hours(occupied) - in_calendar if in_calendar is not None else None,
+-            "utilization": in_calendar / capacity if capacity is not None and capacity > 0 else None,
++            "utilization": in_calendar / capacity if in_calendar is not None and capacity is not None and capacity > 0 else None,
+             "segments": [{"start": start.isoformat(), "end": end.isoformat(), "concurrent_operations": count}
+                          for start, end, count in swept]}
+--- /tmp/fh-fe02-1m0e1l/before/data/repositories/workbench_trial_raw_repo.py	2026-09-10 16:12:42
++++ /Users/lurenxing/GitHub/----/data/repositories/workbench_trial_raw_repo.py	2026-09-10 16:18:32
+@@ -31,6 +31,7 @@
+     """Keep the existing complete-plan SQL/limits, suppress only Python converters."""
+ 
+     def fetchall(self, sql, params=()):
++        params = () if params is None else params
+         source = "(" + sql + ")"
+         metadata = self.conn.execute("SELECT * FROM " + source + " LIMIT 0", params)
+         names = [column[0] for column in metadata.description]
+--- /tmp/fh-fe02-1m0e1l/before/data/repositories/workbench_trial_repo.py	2026-09-10 16:12:42
++++ /Users/lurenxing/GitHub/----/data/repositories/workbench_trial_repo.py	2026-09-10 16:14:12
+@@ -4,7 +4,7 @@
+ 
+ from core.infrastructure.workbench_trial_schema import workbench_trial_contract_issues
+ from core.models.workbench_trial import MAX_TRIAL_TASKS, reject
+-from core.models.workbench_trial_codec import dump, fingerprint, load
++from core.models.workbench_trial_codec import dump, fingerprint, load_object
+ 
+ 
+ def new_ref():
+@@ -25,8 +25,8 @@
+         if row is None:
+             reject("entity_not_found", "未找到指定草稿，未改查其他草稿或最新计划。", 404)
+         head = dict(row)
+-        head["admission"] = load(head.pop("admission_json"), head["admission_hash"])
+-        head["validation"] = load(head.pop("validation_json"))
++        head["admission"] = load_object(head.pop("admission_json"), head["admission_hash"])
++        head["validation"] = load_object(head.pop("validation_json"))
+         count = self.conn.execute("SELECT COUNT(*) FROM WorkbenchTrialRows WHERE draft_ref=?", (draft_ref,)).fetchone()[0]
+         if count != head["row_count"] or not 0 < count <= MAX_TRIAL_TASKS:
+             reject("trial_snapshot_invalid", "草稿原范围行数不一致，未截断或重建。")
+@@ -35,8 +35,8 @@
+             item = dict(raw)
+             if item["ordinal"] != len(rows):
+                 reject("trial_snapshot_invalid", "草稿原始行顺序缺失。")
+-            item["original"] = load(item.pop("original_json"), item.pop("original_hash"))
+-            item["current"] = load(item.pop("current_json"))
++            item["original"] = load_object(item.pop("original_json"), item.pop("original_hash"))
++            item["current"] = load_object(item.pop("current_json"))
+             if set(item["current"]) != {"machine_ref", "operator_ref", "machine_id", "operator_id", "start", "end"}:
+                 reject("trial_snapshot_invalid", "草稿安排字段不完整。")
+             rows.append(item)
+@@ -97,10 +97,13 @@
+         row = self.conn.execute("SELECT snapshot_json,snapshot_hash FROM WorkbenchTrialScenarios WHERE scenario_ref=?", (ref,)).fetchone()
+         if row is None:
+             reject("entity_not_found", "未找到指定试调场景。", 404)
+-        result = load(row[0], row[1])
+-        stored = {row[0]: load(row[1]) for row in self.conn.execute(
++        result = load_object(row[0], row[1])
++        tasks = result.get("tasks")
++        if type(tasks) is not list or any(type(task) is not dict or type(task.get("row_ref")) is not str for task in tasks):
++            reject("trial_snapshot_invalid", "场景任务明细必须为带永久行引用的对象列表。")
++        stored = {row[0]: load_object(row[1]) for row in self.conn.execute(
+             "SELECT row_ref,payload_json FROM WorkbenchTrialScenarioRows WHERE scenario_ref=?", (ref,))}
+-        if stored != {row["row_ref"]: row for row in result["tasks"]}:
++        if len(stored) != len(tasks) or stored != {row["row_ref"]: row for row in tasks}:
+             reject("trial_snapshot_invalid", "场景快照与永久明细不一致。")
+         return result
+ 
+@@ -108,8 +111,8 @@
+         result = []
+         for row in self.conn.execute("""SELECT change_ref,task_ref,before_json,after_json,validation_json,
+             recorded_at,local_operator FROM WorkbenchTrialChanges WHERE draft_ref=? ORDER BY revision""", (draft_ref,)):
+-            result.append({"change_ref": row[0], "task_ref": row[1], "before": load(row[2]), "after": load(row[3]),
+-                           "validation": load(row[4]), "recorded_at": row[5], "local_operator": row[6]})
++            result.append({"change_ref": row[0], "task_ref": row[1], "before": load_object(row[2]), "after": load_object(row[3]),
++                           "validation": load_object(row[4]), "recorded_at": row[5], "local_operator": row[6]})
+         return result
+ 
+     def _transaction(self):

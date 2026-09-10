@@ -1,0 +1,260 @@
+{
+  "reviewer": "Main",
+  "reviewed_at": "2026-09-10 16:54:14 UTC",
+  "status": "passed_visible_layout_only",
+  "scope": "26 exact representative screenshots from 55 delta screenshots; this is not all 228 action V coverage",
+  "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+  "manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+  "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+  "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+  "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+  "observations": [
+    "Reviewed Dashboard history after process restart in both desktop viewports and themes; selected object and current formal caption remain legible.",
+    "Reviewed System backup and log second-page details after restart in all four viewport/theme combinations. Tables, details, close and file action controls fit their containers.",
+    "Reviewed the two 1392-light warnings for replaced backup content and legacy selection without stable identity. The explicit warnings do not silently show a different record as the original.",
+    "Reviewed four combinations of unlocatable navigation confirmation, a Gantt overview with no chosen plan, and return to the original unresolved handling entry. Dialogs, original references and actions remain legible.",
+    "No visible incoherent overlap, toolbar button spill or page horizontal overflow in these exact screenshots."
+  ],
+  "limits": [
+    "These are scrolled viewport captures, not full-page screenshots. Content above or below the viewport is not visually reviewed by these images.",
+    "Main did not rerun the behavioral operations; F's source-bound B/K/P receipts are separate.",
+    "The 29 other delta screenshots were not visually reviewed in this record; repeated-state screenshots are not silently marked passed.",
+    "Remaining historical validation errors, reopen reason dialogs and field destination views require separate applicable V evidence."
+  ],
+  "screenshots": [
+    {
+      "i": 1,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_dashboar0/dashboard-new-process/probe-dashboard-restart-1392-light/dashboard-history-second-page-after-new-process.png",
+      "sha256": "c566587dbe604d308b417eccaeba02902009fa98ad9d6c5bb5ef2beb2ef8341d",
+      "width": 1392,
+      "height": 924,
+      "bytes": 245411,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 4,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_dashboar1/dashboard-new-process/probe-dashboard-restart-1392-dark/dashboard-history-second-page-after-new-process.png",
+      "sha256": "0e3eb7256d18e67095f6a5c701804b1a93501efcc8f17ecd6d81f7878b44063c",
+      "width": 1392,
+      "height": 924,
+      "bytes": 248283,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 7,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_dashboar2/dashboard-new-process/probe-dashboard-restart-1920-light/dashboard-history-second-page-after-new-process.png",
+      "sha256": "b8c687820aaa2cfcd2406f0762d4431a6bc91cdc42b583fa5e98453a5852f110",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 264633,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 10,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_dashboar3/dashboard-new-process/probe-dashboard-restart-1920-dark/dashboard-history-second-page-after-new-process.png",
+      "sha256": "e196a8359d786e21d2e8fc3c417fb1f46a8706b34f6c03e02d25a68b5de8b67e",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 268144,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 13,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r0/system-recovery-edges/probe-system-restart-1392-light/system-replaced_file-not-substituted-after-restart.png",
+      "sha256": "7381f1ff92db3d945c41ad09ec55f6e675c50d3a9c1fbaf405f8e3c67425158e",
+      "width": 1392,
+      "height": 924,
+      "bytes": 196993,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 15,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r1/system-recovery-edges/probe-system-restart-1392-light/system-legacy_selection-not-substituted-after-restart.png",
+      "sha256": "e40fcbbba1ab827da200766bd05f5e231843f96353574485ebd34605f6347994",
+      "width": 1392,
+      "height": 924,
+      "bytes": 196949,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 17,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r10/system-new-process/probe-system-restart-1920-dark/system-logs-page-two-after-process-restart.png",
+      "sha256": "717315ae843070ab4d67934827c54157c71705bb861dc780bae7be9e00b4db8f",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 219035,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 20,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r2/system-recovery-edges/probe-system-restart-1392-light/system-backups-page-two-after-process-restart.png",
+      "sha256": "76dbbfde25ce5b5725c9b618348b485c4dcecbed02ee697019547f6cd655f2d1",
+      "width": 1392,
+      "height": 924,
+      "bytes": 206917,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 26,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r4/system-new-process/probe-system-restart-1392-light/system-logs-page-two-after-process-restart.png",
+      "sha256": "2298494d241ff02063c1368248588b152328587e762c609fe9dccc264bc238b3",
+      "width": 1392,
+      "height": 924,
+      "bytes": 176203,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 29,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r5/system-new-process/probe-system-restart-1392-dark/system-backups-page-two-after-process-restart.png",
+      "sha256": "8bfd928abfa48012d36422b71b18aed806b4107b6fe30e5aa8bc31f189c21653",
+      "width": 1392,
+      "height": 924,
+      "bytes": 207934,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 32,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r6/system-new-process/probe-system-restart-1392-dark/system-logs-page-two-after-process-restart.png",
+      "sha256": "fe6a69886ae885843b9a26afb16486e2251d08c77d814fd6c0f0f4ed974ef62b",
+      "width": 1392,
+      "height": 924,
+      "bytes": 177565,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 35,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r7/system-new-process/probe-system-restart-1920-light/system-backups-page-two-after-process-restart.png",
+      "sha256": "0fda1f2567f996678bd86c7a46c45326539da22e504f333ac5ef1dce0b0b47af",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 237806,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 38,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r8/system-new-process/probe-system-restart-1920-light/system-logs-page-two-after-process-restart.png",
+      "sha256": "2185bd528822978d154daea5170a142b4d61a5ef5700433a290e1774082d828d",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 216733,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 41,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r9/system-new-process/probe-system-restart-1920-dark/system-backups-page-two-after-process-restart.png",
+      "sha256": "a963d265424109fd178c45d6a43bc635810140008a311a41e92cdb1a5b96ecd6",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 238127,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 43,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata0/dashboard-original-object/probe-dashboard-unlocatable-1392-light/unlocatable-confirmation-original-source.png",
+      "sha256": "789293d2ccf9e1c3b96004827f91c7bc854cdd575dedc49555d2a894af3acf70",
+      "width": 1392,
+      "height": 924,
+      "bytes": 195854,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 44,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata0/dashboard-original-object/probe-dashboard-unlocatable-1392-light/safe-gantt-overview-without-any-object-reference.png",
+      "sha256": "ff4b605dd57aabaaef8d220fd1fe75888ea8f5f4ce0c324618f8961c41e3896f",
+      "width": 1392,
+      "height": 924,
+      "bytes": 124213,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 45,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata0/dashboard-original-object/probe-dashboard-unlocatable-1392-light/navigation-return-to-original-unlocatable-item.png",
+      "sha256": "2f7e1202b2e425e9237b31e074d820facfcdc56794765717b706abdd031a588d",
+      "width": 1392,
+      "height": 924,
+      "bytes": 224182,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 46,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata1/dashboard-original-object/probe-dashboard-unlocatable-1392-dark/unlocatable-confirmation-original-source.png",
+      "sha256": "b7f1afdcf4a51c696de6d36c63ea00370f043a47c7fdf52f02a954559dbb3151",
+      "width": 1392,
+      "height": 924,
+      "bytes": 199301,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 47,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata1/dashboard-original-object/probe-dashboard-unlocatable-1392-dark/safe-gantt-overview-without-any-object-reference.png",
+      "sha256": "95b159caf035b972ed75061e2faf5ec79b8413e96bc63216c11d3604cecccb00",
+      "width": 1392,
+      "height": 924,
+      "bytes": 125108,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 48,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata1/dashboard-original-object/probe-dashboard-unlocatable-1392-dark/navigation-return-to-original-unlocatable-item.png",
+      "sha256": "afbfdfff3fa77ef0edf432d6c20a0c6e47b511347a5ce2f1b6313304a47044b0",
+      "width": 1392,
+      "height": 924,
+      "bytes": 227298,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 49,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata2/dashboard-original-object/probe-dashboard-unlocatable-1920-light/unlocatable-confirmation-original-source.png",
+      "sha256": "3284c4281264bb218365f0d461898941b6d27bcb66d6b4f0a9390ec7b8a2a633",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 267022,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 50,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata2/dashboard-original-object/probe-dashboard-unlocatable-1920-light/safe-gantt-overview-without-any-object-reference.png",
+      "sha256": "6d033c448bf76b5cb3211db5cffd5b7a2811c86d0b508a1a89596b121ba65342",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 129299,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 51,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata2/dashboard-original-object/probe-dashboard-unlocatable-1920-light/navigation-return-to-original-unlocatable-item.png",
+      "sha256": "061f355c600f99e6e5d6d87e2062f603330188be9f445f9c8655ef3a232427b3",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 257353,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 52,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata3/dashboard-original-object/probe-dashboard-unlocatable-1920-dark/unlocatable-confirmation-original-source.png",
+      "sha256": "4f978c66c12362ac4ca068a8fec00ab9d8f8d547ed142021fc6abae607ce187b",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 272192,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 53,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata3/dashboard-original-object/probe-dashboard-unlocatable-1920-dark/safe-gantt-overview-without-any-object-reference.png",
+      "sha256": "08994392e199d592be7d4a7778e7a3f70c35390bab5b0e533930c62466c6d2af",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 130436,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "i": 54,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata3/dashboard-original-object/probe-dashboard-unlocatable-1920-dark/navigation-return-to-original-unlocatable-item.png",
+      "sha256": "e9fe760d95742bdcb405438e27174a68c579facfa5cce3f473654bef9fce3308",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 260022,
+      "visual_review": "passed_visible_layout_only"
+    }
+  ]
+}

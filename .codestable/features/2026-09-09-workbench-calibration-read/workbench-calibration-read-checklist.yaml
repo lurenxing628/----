@@ -1,0 +1,19 @@
+doc_type: feature-checklist
+feature: workbench-calibration-read
+steps:
+  - id: source-contract
+    status: done
+    action: 核对批准D05与真实模板来源缺口
+  - id: read-backend
+    status: done
+    action: 实现DTO、样本算法、只读查询和导出入口
+  - id: verification
+    status: done
+    action: 专属真实SQLite/Flask和边界验证
+checks:
+  - id: read-only-contracts
+    status: passed
+  - id: capacity-and-integrity
+    status: passed
+  - id: adoption-closed
+    status: passed

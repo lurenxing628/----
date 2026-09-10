@@ -1,0 +1,452 @@
+{
+  "pyright": {
+    "filesAnalyzed": 1143,
+    "errorCount": 230,
+    "warningCount": 15,
+    "informationCount": 0,
+    "timeInSec": 7.831
+  },
+  "error_file_count": 47,
+  "pyright_tools": {
+    "errors": 0,
+    "warnings": 0,
+    "receipt": "runs/20260910T155833-pyright-tools/receipt.json"
+  },
+  "error_ownership": {
+    "FE-05": 19,
+    "queued-unassigned": 62,
+    "FE-01": 7,
+    "FB-related-reserved": 25,
+    "FE-02": 108,
+    "FE-03": 9
+  },
+  "complexity_count": 54,
+  "complexity_ownership": {
+    "FE-05": 6,
+    "queued-unassigned": 43,
+    "FE-04": 1,
+    "FB-related-reserved": 3,
+    "FE-02": 1
+  },
+  "architecture_tests": {
+    "failed": 5,
+    "passed": 16
+  },
+  "cycles": {
+    "imports-product-json": {
+      "module_count": 1223,
+      "parse_errors": [],
+      "hard_dir_count": 2,
+      "hard_file_count": 10,
+      "explicit_hard_file_count": 0,
+      "comparison": {
+        "baseline_missing": false,
+        "new_dir": [
+          ".|web/bootstrap|web/routes|web/routes/workbench",
+          "core/services/equipment|core/services/process|core/services/report|core/services/scheduler|core/services/workbench"
+        ],
+        "new_file": [
+          "core.services.process|core.services.process.part_delete_guard|core.services.process.part_route_validation|core.services.process.part_service|core.services.process.route_parser|core.services.process.route_parser_constraints|core.services.process.route_parser_tokens|core.services.process.unit_excel|core.services.process.unit_excel.builder_diagnostics|core.services.process.unit_excel.exporter|core.services.process.unit_excel.parser|core.services.process.unit_excel.resource_sheet_builder|core.services.process.unit_excel.route_sheet_builder|core.services.process.unit_excel.template_builder|core.services.process.unit_excel_converter",
+          "web.routes.workbench|web.routes.workbench.actual_gantt|web.routes.workbench.batches|web.routes.workbench.calendars|web.routes.workbench.calibration|web.routes.workbench.calibration_adoption|web.routes.workbench.dashboard|web.routes.workbench.execution|web.routes.workbench.master_overview|web.routes.workbench.material_actions|web.routes.workbench.material_actions_context|web.routes.workbench.materials|web.routes.workbench.outsourcing|web.routes.workbench.pages|web.routes.workbench.plan_reads|web.routes.workbench.preflight|web.routes.workbench.process_action_context|web.routes.workbench.process_collections|web.routes.workbench.process_files|web.routes.workbench.process_reads|web.routes.workbench.process_table_reads|web.routes.workbench.process_writes|web.routes.workbench.reports|web.routes.workbench.resource_action_context|web.routes.workbench.resource_actions|web.routes.workbench.resource_relations|web.routes.workbench.resource_table_queries|web.routes.workbench.resources|web.routes.workbench.run_candidate_adoption|web.routes.workbench.run_candidate_baseline|web.routes.workbench.run_candidates|web.routes.workbench.run_history|web.routes.workbench.scheduling_jobs|web.routes.workbench.trial|web.routes.workbench.trial_adoption|web.routes.workbench.trial_adoption_history"
+        ],
+        "new_dir_edges": [],
+        "new_file_edges": [],
+        "new_unresolved_dynamic_imports": []
+      },
+      "baseline": ".codestable/checkup/import_cycles_production_baseline.json",
+      "baseline_sha256": "78d0ae16c6a11543d56b94e4e1a20bd1406731e0dd9a2728d164f5ed25fd799d"
+    },
+    "imports-tests-source": {
+      "module_count": 2512,
+      "parse_errors": [],
+      "hard_dir_count": 2,
+      "hard_file_count": 10,
+      "explicit_hard_file_count": 0,
+      "comparison": {
+        "baseline_missing": false,
+        "new_dir": [
+          ".|web/bootstrap|web/routes|web/routes/workbench",
+          "core/services/equipment|core/services/process|core/services/report|core/services/scheduler|core/services/workbench"
+        ],
+        "new_file": [
+          "core.services.process|core.services.process.part_delete_guard|core.services.process.part_route_validation|core.services.process.part_service|core.services.process.route_parser|core.services.process.route_parser_constraints|core.services.process.route_parser_tokens|core.services.process.unit_excel|core.services.process.unit_excel.builder_diagnostics|core.services.process.unit_excel.exporter|core.services.process.unit_excel.parser|core.services.process.unit_excel.resource_sheet_builder|core.services.process.unit_excel.route_sheet_builder|core.services.process.unit_excel.template_builder|core.services.process.unit_excel_converter",
+          "web.routes.workbench|web.routes.workbench.actual_gantt|web.routes.workbench.batches|web.routes.workbench.calendars|web.routes.workbench.calibration|web.routes.workbench.calibration_adoption|web.routes.workbench.dashboard|web.routes.workbench.execution|web.routes.workbench.master_overview|web.routes.workbench.material_actions|web.routes.workbench.material_actions_context|web.routes.workbench.materials|web.routes.workbench.outsourcing|web.routes.workbench.pages|web.routes.workbench.plan_reads|web.routes.workbench.preflight|web.routes.workbench.process_action_context|web.routes.workbench.process_collections|web.routes.workbench.process_files|web.routes.workbench.process_reads|web.routes.workbench.process_table_reads|web.routes.workbench.process_writes|web.routes.workbench.reports|web.routes.workbench.resource_action_context|web.routes.workbench.resource_actions|web.routes.workbench.resource_relations|web.routes.workbench.resource_table_queries|web.routes.workbench.resources|web.routes.workbench.run_candidate_adoption|web.routes.workbench.run_candidate_baseline|web.routes.workbench.run_candidates|web.routes.workbench.run_history|web.routes.workbench.scheduling_jobs|web.routes.workbench.trial|web.routes.workbench.trial_adoption|web.routes.workbench.trial_adoption_history"
+        ],
+        "new_dir_edges": [],
+        "new_file_edges": [],
+        "new_unresolved_dynamic_imports": [
+          "tests/gate_meta/test_frozen_bundle_contract.py|198|lazy|_ANCHOR_MODULE",
+          "tests/workbench/test_pending_build_sources.py|22|lazy|spec_from_file_location('workbench_pending_build')",
+          "tests/workbench/test_process_readiness.py|133|lazy|MODULE"
+        ]
+      },
+      "baseline": ".codestable/checkup/import_cycles_with_tests_baseline.json",
+      "baseline_sha256": "2878a55393510e524f2259f918142199d187d3097e6a3292e521cf8090571d19"
+    }
+  },
+  "disjoint_write_sets": true,
+  "receipts": [
+    {
+      "name": "pyright-product",
+      "cwd": "/Users/lurenxing/GitHub/----",
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pyright",
+        "-p",
+        "pyrightconfig.gate.json"
+      ],
+      "execution_prefix": [
+        "nice",
+        "-n",
+        "10"
+      ],
+      "environment_overlay": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
+      },
+      "started_at": "2026-09-10T15:57:56+08:00",
+      "finished_at": "2026-09-10T15:58:05+08:00",
+      "duration_seconds": 9.218782874999999,
+      "returncode": 1,
+      "source_changes_during_run": [],
+      "staged_diff_unchanged": true,
+      "does_not_claim": [
+        "full_gate",
+        "clean_worktree_proof",
+        "atomic_snapshot"
+      ],
+      "stdout_sha256": "dd31c3b934441d22165982241c859f44ffb94d851ab97c5bbdcebba01b7c7613",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "pyright-tools",
+      "cwd": "/Users/lurenxing/GitHub/----",
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pyright",
+        "-p",
+        "pyrightconfig.tools.json"
+      ],
+      "execution_prefix": [
+        "nice",
+        "-n",
+        "10"
+      ],
+      "environment_overlay": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
+      },
+      "started_at": "2026-09-10T15:58:33+08:00",
+      "finished_at": "2026-09-10T15:58:37+08:00",
+      "duration_seconds": 3.0910987500000005,
+      "returncode": 0,
+      "source_changes_during_run": [],
+      "staged_diff_unchanged": true,
+      "does_not_claim": [
+        "full_gate",
+        "clean_worktree_proof",
+        "atomic_snapshot"
+      ],
+      "stdout_sha256": "b01e17b03ce1a90596dffd9b14e59abeebe446626d844da28d29347faa80f2af",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "imports-product",
+      "cwd": "/Users/lurenxing/GitHub/----",
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "tools.scan_import_cycles",
+        "--fail-on-new-cycle",
+        "--quiet-when-clean"
+      ],
+      "execution_prefix": [
+        "nice",
+        "-n",
+        "10"
+      ],
+      "environment_overlay": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
+      },
+      "started_at": "2026-09-10T15:59:03+08:00",
+      "finished_at": "2026-09-10T15:59:06+08:00",
+      "duration_seconds": 3.0374993750000003,
+      "returncode": 1,
+      "source_changes_during_run": [],
+      "staged_diff_unchanged": true,
+      "does_not_claim": [
+        "full_gate",
+        "clean_worktree_proof",
+        "atomic_snapshot"
+      ],
+      "stdout_sha256": "f7d3149c2b94932bd5fb9e49cadc4e7e945fe2b5910e49a8f88fe3f16250e592",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "architecture-fitness",
+      "cwd": "/Users/lurenxing/GitHub/----",
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/gate_meta/test_architecture_fitness.py",
+        "-p",
+        "no:cacheprovider",
+        "--basetemp=.codestable/issues/2026-09-10-fe-static-integration/pytest-tmp",
+        "--junitxml=.codestable/issues/2026-09-10-fe-static-integration/architecture-fitness.xml"
+      ],
+      "execution_prefix": [
+        "nice",
+        "-n",
+        "10"
+      ],
+      "environment_overlay": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
+      },
+      "started_at": "2026-09-10T16:00:04+08:00",
+      "finished_at": "2026-09-10T16:00:15+08:00",
+      "duration_seconds": 10.532613542,
+      "returncode": 1,
+      "source_changes_during_run": [
+        "tests/workbench/test_piece_downstream_api.py"
+      ],
+      "staged_diff_unchanged": true,
+      "does_not_claim": [
+        "full_gate",
+        "clean_worktree_proof",
+        "atomic_snapshot"
+      ],
+      "stdout_sha256": "7c43486c737742b3c1f2ba47526ccb6d9b04dd9075ed2fa8cefbeeff125d6753",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "imports-with-tests",
+      "cwd": "/Users/lurenxing/GitHub/----",
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "tools.scan_import_cycles",
+        "--include-tests",
+        "--fail-on-new-cycle",
+        "--quiet-when-clean"
+      ],
+      "execution_prefix": [
+        "nice",
+        "-n",
+        "10"
+      ],
+      "environment_overlay": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
+      },
+      "started_at": "2026-09-10T16:00:04+08:00",
+      "finished_at": "2026-09-10T16:00:12+08:00",
+      "duration_seconds": 7.3930165,
+      "returncode": 1,
+      "source_changes_during_run": [
+        "tests/workbench/test_piece_downstream_api.py"
+      ],
+      "staged_diff_unchanged": true,
+      "does_not_claim": [
+        "full_gate",
+        "clean_worktree_proof",
+        "atomic_snapshot"
+      ],
+      "stdout_sha256": "27fd257ec8bfcf4d24ccf2d894481a47235d75643404511b1f4f5e3a0cb19b44",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "architecture-source",
+      "cwd": "/Users/lurenxing/GitHub/----",
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/gate_meta/test_architecture_fitness.py",
+        "-p",
+        "no:cacheprovider",
+        "--basetemp=.codestable/issues/2026-09-10-fe-static-integration/pytest-source-tmp",
+        "--junitxml=.codestable/issues/2026-09-10-fe-static-integration/architecture-source.xml"
+      ],
+      "execution_prefix": [
+        "nice",
+        "-n",
+        "10"
+      ],
+      "environment_overlay": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONPYCACHEPREFIX": "/Users/lurenxing/GitHub/----/.codestable/issues/2026-09-10-fe-static-integration/runs/20260910T160135-architecture-source/unused-pycache"
+      },
+      "started_at": "2026-09-10T16:01:35+08:00",
+      "finished_at": "2026-09-10T16:01:47+08:00",
+      "duration_seconds": 11.918634542,
+      "returncode": 1,
+      "source_changes_during_run": [],
+      "staged_diff_unchanged": true,
+      "does_not_claim": [
+        "full_gate",
+        "clean_worktree_proof",
+        "atomic_snapshot"
+      ],
+      "stdout_sha256": "e11666ae11355360d091e460a38d5981a40aef328d7e16029761d2d81ccf853f",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "imports-product-json",
+      "cwd": "/Users/lurenxing/GitHub/----",
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "tools.scan_import_cycles",
+        "--fail-on-new-cycle",
+        "--quiet-when-clean",
+        "--json"
+      ],
+      "execution_prefix": [
+        "nice",
+        "-n",
+        "10"
+      ],
+      "environment_overlay": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONPYCACHEPREFIX": "/Users/lurenxing/GitHub/----/.codestable/issues/2026-09-10-fe-static-integration/runs/20260910T160135-imports-product-json/unused-pycache"
+      },
+      "started_at": "2026-09-10T16:01:35+08:00",
+      "finished_at": "2026-09-10T16:01:38+08:00",
+      "duration_seconds": 3.282491459,
+      "returncode": 1,
+      "source_changes_during_run": [],
+      "staged_diff_unchanged": true,
+      "does_not_claim": [
+        "full_gate",
+        "clean_worktree_proof",
+        "atomic_snapshot"
+      ],
+      "stdout_sha256": "b71a11dbec8ae30e092be8a414700744fea8d0d57e627a8987789f0a6080f7f8",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "imports-tests-source",
+      "cwd": "/Users/lurenxing/GitHub/----",
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "tools.scan_import_cycles",
+        "--include-tests",
+        "--fail-on-new-cycle",
+        "--quiet-when-clean",
+        "--json"
+      ],
+      "execution_prefix": [
+        "nice",
+        "-n",
+        "10"
+      ],
+      "environment_overlay": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONPYCACHEPREFIX": "/Users/lurenxing/GitHub/----/.codestable/issues/2026-09-10-fe-static-integration/runs/20260910T160441-imports-tests-source/unused-pycache"
+      },
+      "started_at": "2026-09-10T16:04:41+08:00",
+      "finished_at": "2026-09-10T16:04:50+08:00",
+      "duration_seconds": 8.716811542,
+      "returncode": 1,
+      "source_changes_during_run": [],
+      "staged_diff_unchanged": true,
+      "does_not_claim": [
+        "full_gate",
+        "clean_worktree_proof",
+        "atomic_snapshot"
+      ],
+      "stdout_sha256": "11500bc836be10b66585e647e16abca95bd003ecc6c46e6d694b7de3fa6bf910",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "py38-scope",
+      "cwd": "/Users/lurenxing/GitHub/----",
+      "command": [
+        ".venv/bin/python",
+        "tools/scan_aps_three_gap_py38_scope.py",
+        "--base-ref",
+        "d4589d77"
+      ],
+      "execution_prefix": [
+        "nice",
+        "-n",
+        "10"
+      ],
+      "environment_overlay": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONPYCACHEPREFIX": "/Users/lurenxing/GitHub/----/.codestable/issues/2026-09-10-fe-static-integration/runs/20260910T160441-py38-scope/unused-pycache"
+      },
+      "started_at": "2026-09-10T16:04:41+08:00",
+      "finished_at": "2026-09-10T16:04:47+08:00",
+      "duration_seconds": 6.134314582999999,
+      "returncode": 0,
+      "source_changes_during_run": [],
+      "staged_diff_unchanged": true,
+      "does_not_claim": [
+        "full_gate",
+        "clean_worktree_proof",
+        "atomic_snapshot"
+      ],
+      "stdout_sha256": "e0b88cca89489b713e35e49d55f198fab04e425e771f038587ad4be52017f7e0",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "pyright-product-json",
+      "cwd": "/Users/lurenxing/GitHub/----",
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pyright",
+        "-p",
+        "pyrightconfig.gate.json",
+        "--outputjson"
+      ],
+      "execution_prefix": [
+        "nice",
+        "-n",
+        "10"
+      ],
+      "environment_overlay": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONPYCACHEPREFIX": "/Users/lurenxing/GitHub/----/.codestable/issues/2026-09-10-fe-static-integration/runs/20260910T160441-pyright-product-json/unused-pycache"
+      },
+      "started_at": "2026-09-10T16:04:41+08:00",
+      "finished_at": "2026-09-10T16:04:49+08:00",
+      "duration_seconds": 8.125197,
+      "returncode": 1,
+      "source_changes_during_run": [],
+      "staged_diff_unchanged": true,
+      "does_not_claim": [
+        "full_gate",
+        "clean_worktree_proof",
+        "atomic_snapshot"
+      ],
+      "stdout_sha256": "9c532361ff675cd7822ad935b1083d89e203b0800e4df60373723d953f9eabb4",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "proof_boundary": "dirty source-sampled static triage; not full gate, not clean proof"
+}

@@ -1,0 +1,20 @@
+{
+  "product": {
+    "baseline_missing": false,
+    "new_dir": [],
+    "new_file": [],
+    "new_dir_edges": [],
+    "new_file_edges": [],
+    "new_unresolved_dynamic_imports": []
+  },
+  "tests": {
+    "baseline_missing": false,
+    "new_dir": [
+      "tests/gantt|tests/operation_execution|tests/web_pages|tests/workbench"
+    ],
+    "new_file": [],
+    "new_dir_edges": [],
+    "new_file_edges": [],
+    "new_unresolved_dynamic_imports": []
+  }
+}

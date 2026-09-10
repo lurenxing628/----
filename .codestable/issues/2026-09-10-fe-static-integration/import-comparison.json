@@ -1,0 +1,52 @@
+{
+  "imports-product-json": {
+    "module_count": 1223,
+    "parse_errors": [],
+    "hard_dir_count": 2,
+    "hard_file_count": 10,
+    "explicit_hard_file_count": 0,
+    "comparison": {
+      "baseline_missing": false,
+      "new_dir": [
+        ".|web/bootstrap|web/routes|web/routes/workbench",
+        "core/services/equipment|core/services/process|core/services/report|core/services/scheduler|core/services/workbench"
+      ],
+      "new_file": [
+        "core.services.process|core.services.process.part_delete_guard|core.services.process.part_route_validation|core.services.process.part_service|core.services.process.route_parser|core.services.process.route_parser_constraints|core.services.process.route_parser_tokens|core.services.process.unit_excel|core.services.process.unit_excel.builder_diagnostics|core.services.process.unit_excel.exporter|core.services.process.unit_excel.parser|core.services.process.unit_excel.resource_sheet_builder|core.services.process.unit_excel.route_sheet_builder|core.services.process.unit_excel.template_builder|core.services.process.unit_excel_converter",
+        "web.routes.workbench|web.routes.workbench.actual_gantt|web.routes.workbench.batches|web.routes.workbench.calendars|web.routes.workbench.calibration|web.routes.workbench.calibration_adoption|web.routes.workbench.dashboard|web.routes.workbench.execution|web.routes.workbench.master_overview|web.routes.workbench.material_actions|web.routes.workbench.material_actions_context|web.routes.workbench.materials|web.routes.workbench.outsourcing|web.routes.workbench.pages|web.routes.workbench.plan_reads|web.routes.workbench.preflight|web.routes.workbench.process_action_context|web.routes.workbench.process_collections|web.routes.workbench.process_files|web.routes.workbench.process_reads|web.routes.workbench.process_table_reads|web.routes.workbench.process_writes|web.routes.workbench.reports|web.routes.workbench.resource_action_context|web.routes.workbench.resource_actions|web.routes.workbench.resource_relations|web.routes.workbench.resource_table_queries|web.routes.workbench.resources|web.routes.workbench.run_candidate_adoption|web.routes.workbench.run_candidate_baseline|web.routes.workbench.run_candidates|web.routes.workbench.run_history|web.routes.workbench.scheduling_jobs|web.routes.workbench.trial|web.routes.workbench.trial_adoption|web.routes.workbench.trial_adoption_history"
+      ],
+      "new_dir_edges": [],
+      "new_file_edges": [],
+      "new_unresolved_dynamic_imports": []
+    },
+    "baseline": ".codestable/checkup/import_cycles_production_baseline.json",
+    "baseline_sha256": "78d0ae16c6a11543d56b94e4e1a20bd1406731e0dd9a2728d164f5ed25fd799d"
+  },
+  "imports-tests-source": {
+    "module_count": 2512,
+    "parse_errors": [],
+    "hard_dir_count": 2,
+    "hard_file_count": 10,
+    "explicit_hard_file_count": 0,
+    "comparison": {
+      "baseline_missing": false,
+      "new_dir": [
+        ".|web/bootstrap|web/routes|web/routes/workbench",
+        "core/services/equipment|core/services/process|core/services/report|core/services/scheduler|core/services/workbench"
+      ],
+      "new_file": [
+        "core.services.process|core.services.process.part_delete_guard|core.services.process.part_route_validation|core.services.process.part_service|core.services.process.route_parser|core.services.process.route_parser_constraints|core.services.process.route_parser_tokens|core.services.process.unit_excel|core.services.process.unit_excel.builder_diagnostics|core.services.process.unit_excel.exporter|core.services.process.unit_excel.parser|core.services.process.unit_excel.resource_sheet_builder|core.services.process.unit_excel.route_sheet_builder|core.services.process.unit_excel.template_builder|core.services.process.unit_excel_converter",
+        "web.routes.workbench|web.routes.workbench.actual_gantt|web.routes.workbench.batches|web.routes.workbench.calendars|web.routes.workbench.calibration|web.routes.workbench.calibration_adoption|web.routes.workbench.dashboard|web.routes.workbench.execution|web.routes.workbench.master_overview|web.routes.workbench.material_actions|web.routes.workbench.material_actions_context|web.routes.workbench.materials|web.routes.workbench.outsourcing|web.routes.workbench.pages|web.routes.workbench.plan_reads|web.routes.workbench.preflight|web.routes.workbench.process_action_context|web.routes.workbench.process_collections|web.routes.workbench.process_files|web.routes.workbench.process_reads|web.routes.workbench.process_table_reads|web.routes.workbench.process_writes|web.routes.workbench.reports|web.routes.workbench.resource_action_context|web.routes.workbench.resource_actions|web.routes.workbench.resource_relations|web.routes.workbench.resource_table_queries|web.routes.workbench.resources|web.routes.workbench.run_candidate_adoption|web.routes.workbench.run_candidate_baseline|web.routes.workbench.run_candidates|web.routes.workbench.run_history|web.routes.workbench.scheduling_jobs|web.routes.workbench.trial|web.routes.workbench.trial_adoption|web.routes.workbench.trial_adoption_history"
+      ],
+      "new_dir_edges": [],
+      "new_file_edges": [],
+      "new_unresolved_dynamic_imports": [
+        "tests/gate_meta/test_frozen_bundle_contract.py|198|lazy|_ANCHOR_MODULE",
+        "tests/workbench/test_pending_build_sources.py|22|lazy|spec_from_file_location('workbench_pending_build')",
+        "tests/workbench/test_process_readiness.py|133|lazy|MODULE"
+      ]
+    },
+    "baseline": ".codestable/checkup/import_cycles_with_tests_baseline.json",
+    "baseline_sha256": "2878a55393510e524f2259f918142199d187d3097e6a3292e521cf8090571d19"
+  }
+}

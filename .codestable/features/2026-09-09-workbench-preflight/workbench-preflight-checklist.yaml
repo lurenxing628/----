@@ -1,0 +1,23 @@
+feature: workbench-preflight
+steps:
+  - id: input-readonly-service
+    status: done
+  - id: aj-execution-projection
+    status: done
+  - id: scoped-frontend-controls
+    status: done
+  - id: isolated-api-tests
+    status: done
+  - id: isolated-browser-tests
+    status: done
+checks:
+  - id: no-business-or-audit-writes
+    status: done
+  - id: zero-unknown-and-actuals
+    status: done
+  - id: window-and-predecessor-exclusion
+    status: done
+  - id: scope-context-pagination-theme
+    status: done
+  - id: host-mount-handoff
+    status: done

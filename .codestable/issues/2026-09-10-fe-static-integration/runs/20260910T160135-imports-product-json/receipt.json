@@ -1,0 +1,36 @@
+{
+  "name": "imports-product-json",
+  "cwd": "/Users/lurenxing/GitHub/----",
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "tools.scan_import_cycles",
+    "--fail-on-new-cycle",
+    "--quiet-when-clean",
+    "--json"
+  ],
+  "execution_prefix": [
+    "nice",
+    "-n",
+    "10"
+  ],
+  "environment_overlay": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONUTF8": "1",
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONPYCACHEPREFIX": "/Users/lurenxing/GitHub/----/.codestable/issues/2026-09-10-fe-static-integration/runs/20260910T160135-imports-product-json/unused-pycache"
+  },
+  "started_at": "2026-09-10T16:01:35+08:00",
+  "finished_at": "2026-09-10T16:01:38+08:00",
+  "duration_seconds": 3.282491459,
+  "returncode": 1,
+  "source_changes_during_run": [],
+  "staged_diff_unchanged": true,
+  "does_not_claim": [
+    "full_gate",
+    "clean_worktree_proof",
+    "atomic_snapshot"
+  ],
+  "stdout_sha256": "b71a11dbec8ae30e092be8a414700744fea8d0d57e627a8987789f0a6080f7f8",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

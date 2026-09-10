@@ -1,0 +1,22 @@
+feature: workbench-candidate-adoption
+status: integration-pending
+steps:
+  - name: inspect-approved-contract-and-existing-transactions
+    status: done
+  - name: implement-readonly-preview-and-real-constraints
+    status: done
+  - name: implement-atomic-official-identity-receipt-and-audit
+    status: done
+  - name: verify-real-candidates-retention-drift-rollback-and-concurrency
+    status: done
+  - name: coordinator-registration-ui-runtime-and-full-gate
+    status: pending
+checks:
+  - name: real-5000-operation-adoption
+    status: done
+  - name: old-shared-surface-regression
+    status: done
+  - name: python38-ast-and-scoped-static-gates
+    status: done
+  - name: clean-worktree-proof
+    status: pending

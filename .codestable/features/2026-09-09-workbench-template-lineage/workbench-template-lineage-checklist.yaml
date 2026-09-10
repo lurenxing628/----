@@ -1,0 +1,31 @@
+doc_type: feature-checklist
+feature: workbench-template-lineage
+steps:
+  - id: real-chain
+    status: done
+    action: 读取批准合同并定位真实创建复制同步导入与永久身份链
+  - id: evidence-storage
+    status: done
+    action: 实现caller事务schema和只追加来源及原始实例变更
+  - id: writer-integration
+    status: done
+    action: 在授权的真实batch接点原子保存来源并阻止未安装schema的复制
+  - id: calibration-integration
+    status: done
+    action: 用真实lineage替换恒None，按同模板修订识别合格样本
+  - id: verification
+    status: done
+    action: 专属真实库测试及局部静态回归验证
+checks:
+  - id: real-five-sample-suggestion
+    status: passed
+  - id: legacy-no-backfill
+    status: passed
+  - id: immutable-history-and-rollback
+    status: passed
+  - id: source-copy-corruption-boundaries
+    status: passed
+  - id: scoped-static-regression
+    status: passed
+  - id: shared-batch-delete-oracle-integration
+    status: pending

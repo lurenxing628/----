@@ -1,0 +1,37 @@
+{
+  "name": "imports-with-tests",
+  "cwd": "/Users/lurenxing/GitHub/----",
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "tools.scan_import_cycles",
+    "--include-tests",
+    "--fail-on-new-cycle",
+    "--quiet-when-clean"
+  ],
+  "execution_prefix": [
+    "nice",
+    "-n",
+    "10"
+  ],
+  "environment_overlay": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONUTF8": "1",
+    "PYTHONIOENCODING": "utf-8"
+  },
+  "started_at": "2026-09-10T16:00:04+08:00",
+  "finished_at": "2026-09-10T16:00:12+08:00",
+  "duration_seconds": 7.3930165,
+  "returncode": 1,
+  "source_changes_during_run": [
+    "tests/workbench/test_piece_downstream_api.py"
+  ],
+  "staged_diff_unchanged": true,
+  "does_not_claim": [
+    "full_gate",
+    "clean_worktree_proof",
+    "atomic_snapshot"
+  ],
+  "stdout_sha256": "27fd257ec8bfcf4d24ccf2d894481a47235d75643404511b1f4f5e3a0cb19b44",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

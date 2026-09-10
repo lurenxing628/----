@@ -1,0 +1,40 @@
+{
+  "name": "architecture-fitness",
+  "cwd": "/Users/lurenxing/GitHub/----",
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/gate_meta/test_architecture_fitness.py",
+    "-p",
+    "no:cacheprovider",
+    "--basetemp=.codestable/issues/2026-09-10-fe-static-integration/pytest-tmp",
+    "--junitxml=.codestable/issues/2026-09-10-fe-static-integration/architecture-fitness.xml"
+  ],
+  "execution_prefix": [
+    "nice",
+    "-n",
+    "10"
+  ],
+  "environment_overlay": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONUTF8": "1",
+    "PYTHONIOENCODING": "utf-8"
+  },
+  "started_at": "2026-09-10T16:00:04+08:00",
+  "finished_at": "2026-09-10T16:00:15+08:00",
+  "duration_seconds": 10.532613542,
+  "returncode": 1,
+  "source_changes_during_run": [
+    "tests/workbench/test_piece_downstream_api.py"
+  ],
+  "staged_diff_unchanged": true,
+  "does_not_claim": [
+    "full_gate",
+    "clean_worktree_proof",
+    "atomic_snapshot"
+  ],
+  "stdout_sha256": "7c43486c737742b3c1f2ba47526ccb6d9b04dd9075ed2fa8cefbeeff125d6753",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

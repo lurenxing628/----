@@ -1,0 +1,37 @@
+feature: wb-batch-workflow
+approval_basis: 既有总体授权及本轮代理J整页实施授权
+status: in-progress
+steps:
+  - id: batch-core
+    action: 真实列表详情与CRUD、永久引用及原子回执
+    exit_signal: SQLite原字段保留、回执回滚与重启、stale和能力约束已测试
+    status: done
+  - id: batch-actions
+    action: 批量修改复制删除、同步预览确认、工序编辑和齐套事实
+    exit_signal: 已引用项拒绝删除重建、managed ready闸门、null和0不混用、部分工序不代表整批完成
+    status: done
+  - id: batch-files
+    action: 三种XLSX导入、模板、选中及筛选范围导出
+    exit_signal: 三模式真实SQLite、实际XLSX字节与文本单元格、预览不写业务表、原子确认及stale拒绝
+    status: done
+  - id: batch-ui
+    action: 独立批次组件、共享transport接入合同和Chrome109组件测试
+    exit_signal: 9文件独立编译、七动作共享namespace、双尺寸双主题32交互及40截图
+    status: done
+  - id: batch-integration
+    action: 主代理全局挂载及最终整页浏览器持久化验收
+    exit_signal: 真实应用写入刷新重启、跨域导航、复杂规模、最终包和Win7验收齐全
+    status: pending
+checks:
+  - id: sqlite-contracts
+    description: 批次和相关共享合同组合回归90项通过
+    status: passed
+  - id: chrome109-mock
+    description: 双尺寸双主题组件mock32组交互通过，不是生产持久化证明
+    status: passed
+  - id: static-compatibility
+    description: 本轮文件Ruff通过，20个Python文件3.8.10兼容扫描无发现
+    status: passed
+  - id: integrated-page
+    description: 主线构建和全局挂载后的真实浏览器持久化与规模验收
+    status: pending

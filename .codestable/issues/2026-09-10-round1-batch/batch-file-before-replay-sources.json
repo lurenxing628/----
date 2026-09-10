@@ -1,0 +1,24 @@
+{
+  "arguments": [
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "--basetemp=/tmp/aps-r1c-ow1OHI/pytest-file-replay",
+    "tests/workbench/test_batch_files.py::test_modes_preserve_existing_empty_columns_and_no_automatic_operations",
+    "--junitxml=/Users/lurenxing/GitHub/----/.codestable/issues/2026-09-10-round1-batch/batch-file-before-replay.xml"
+  ],
+  "exit_code": 1,
+  "loaded_sha256": {
+    "core/services/workbench/batch_file_codec.py": "d740bf0b8dec420dd442523ad533abf92662d2fbb837d488fc7755e30ebd876d",
+    "core/services/scheduler/template_lineage.py": "8a13cbe6a71f8c827f945c6760ecae695f631408ae6ada9079d7963d9112f2cc",
+    "data/repositories/workbench_template_lineage_repo.py": "0b816dd9241b193c1c082a8c72f564f24f8544f6876298a304525c4f0b77fd6a",
+    "web/routes/workbench/batches.py": "242f2437987be58a42c0dc614d8a710286d4617aaf1465d177d86f2a72fa3d1e",
+    "core/models/workbench_batch.py": "d39a77e306022a5f63ff422cea7e6598634e8c6df574172cdd59da733c0df01b",
+    "core/models/workbench_batch_query.py": "c6dc81faf0c6c96b882365e3a8929315c6c0416e6045174676faf011a4913944",
+    "core/services/workbench/batch_facts.py": "ead67731f85c98ea83cb4c7f30a7fccb967a231093800c55845dd8962704a064",
+    "core/services/workbench/batch_execution.py": "e6be1ea10c0a8e8b619437c1cc22be578ae6546449fd3595178ad42f480342c8",
+    "core/services/workbench/batch_operations.py": "0de6fe24cf8ae3ad474688fe4bb8d0f106439a325b1553a51180445c6013c10c",
+    "web/routes/workbench/batch_context.py": "563406f40eb07446fa441f144460f44230273228980351406c4b98e14cdcc4dd",
+    "core/services/workbench/batch_files.py": "14b7faf083bd5d90a6572c3bbc99b65b4398198acfc34a33279de7280bee1a8e"
+  }
+}

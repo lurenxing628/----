@@ -1,0 +1,133 @@
+{
+  "target": {
+    "chrome": "109"
+  },
+  "global_build": false,
+  "shared_build": "5b58a5a2100f95b93d58da0c7a6870fcc452ac2928f4921f38364ea23c6e4c19",
+  "sources": [
+    {
+      "path": "app/resource-contract.js",
+      "sha256": "d5cd56fe306d2a074ebdd555b389d67dfee0c6a776b6710487199f2bbd9e984b"
+    },
+    {
+      "path": "app/PointContract.js",
+      "sha256": "3db5b43bee4d65226b1ab0f4efc77bb3f21319f6a940c4fea6d8069ed0f589e2"
+    },
+    {
+      "path": "app/PlanContract.js",
+      "sha256": "e0697c91408314b1294ab75978c57a6cc5c4019dfb334bea7dcb80e403eaa0de"
+    },
+    {
+      "path": "app/resource-session.js",
+      "sha256": "a8a236f50d0eacc77c354f1c9994e85aa8cc2ae70736cc0716546d6fcab1b38d"
+    },
+    {
+      "path": "app/ResourceControls.jsx",
+      "sha256": "1718e2bdd9ebc3b71e729ae3173a1307c2120f24bded48a0f54ad034c87484dd"
+    },
+    {
+      "path": "app/PointGanttModel.js",
+      "sha256": "4498fed1a7100756489f8e0b9c52c7b62405bfd5178187222d8de8c6f60f927f"
+    },
+    {
+      "path": "app/PointGantt.jsx",
+      "sha256": "c9b380f5a057d092273ecc037d20e38fe182f2d6ecb4c43622f49b8bc53c132b"
+    },
+    {
+      "path": "app/PlanGanttModel.js",
+      "sha256": "536fc47bcf5315a86a0b52ed59d26b17d6dde28372604c07d36be8d1f46e8b9b"
+    },
+    {
+      "path": "app/PlanLayout.jsx",
+      "sha256": "3b6442dd9f091be9897d6e418a6f62d84b5c20d114cf308bf3e344adc7990108"
+    },
+    {
+      "path": "app/PlanGanttCanvas.jsx",
+      "sha256": "70b8246310482871bd1dcd726f642f5a7162ec805359c2deb19fdb44d3d82722"
+    },
+    {
+      "path": "app/PlanGantt.jsx",
+      "sha256": "c9097280e01da5793fad9468967624790c50c0eccbab1a2d1c228bf1553121db"
+    },
+    {
+      "path": "app/PlanDetailsUI.jsx",
+      "sha256": "dc898a4f83ade8d60f98751bb1d842889d1ea6962f39256777c5f7171a276d31"
+    },
+    {
+      "path": "app/RunCandidateModel.js",
+      "sha256": "0ed647e61bdf41985b3e904422b1c9de23ef251a9bee81f885a012a8b8bed449"
+    },
+    {
+      "path": "app/RunCandidateControls.jsx",
+      "sha256": "0ef212363d97e1cff48241229bdd92b845030501d7a633b829a0c83c1e3e2576"
+    },
+    {
+      "path": "app/RunBaselineModel.js",
+      "sha256": "73af6101ecf86a90075be87a9d416af447b023b547215a1a008ba624c5c25bb9"
+    },
+    {
+      "path": "app/RunBaselineControls.jsx",
+      "sha256": "cb1e407bd82c260f48f55413bae03f506b45edd749376a5b48f44deda75be01c"
+    },
+    {
+      "path": "app/RunCandidateGantt.jsx",
+      "sha256": "71560b81199cafeea96992027373f504635752e2f9fffaa03373d96a95609175"
+    },
+    {
+      "path": "app/TrialContract.js",
+      "sha256": "1cce21733c3a6778bb764b7f115eda88fd42f8de03fa43b8f42f65955939acd1"
+    },
+    {
+      "path": "app/TrialAPI.js",
+      "sha256": "f8713cc4d87cdbed2ec93a1fce22ff6650cb475b70c784dc02cfa0b01e994444"
+    },
+    {
+      "path": "app/TrialControls.jsx",
+      "sha256": "74fc9132df6e032267b965ab027c006ae8bddf5a4ef5b75be1d9a7576bc4a505"
+    },
+    {
+      "path": "app/TrialGantt.jsx",
+      "sha256": "1a1e4b13f57bea401deb65d83043656bcd9944a061c0707c96b0184ff8479f2d"
+    },
+    {
+      "path": "app/TrialDetails.jsx",
+      "sha256": "3540665529a121be978e4248c1b7048c66c89ec5716c23a388bb840295c64200"
+    },
+    {
+      "path": "app/TrialStyles.jsx",
+      "sha256": "d2b3df063e626b79f85c8b19e1471870d76219c44a828c22eb8228b94ef7b258"
+    },
+    {
+      "path": "app/WorkbenchControlBridge.js",
+      "sha256": "9edf7d1d5f2b5c7abbf292875981b89c93a87274cc7f1667b185d4a107311d82"
+    },
+    {
+      "path": "app/WorkbenchControlStyles.jsx",
+      "sha256": "34fcfd1e1cd2fab2026cf9c561e64b1135cbbd4c0de7e06aa096869aa9272587"
+    },
+    {
+      "path": "app/WorkbenchSelectMenu.jsx",
+      "sha256": "a9b20519ab50c9c57136279ddf160d1ae3fe9f44a31d91f7b92fb93f4fe4c5ce"
+    },
+    {
+      "path": "app/WorkbenchDatePickerModel.js",
+      "sha256": "a96c0421bc3abd071aafe71d4fdb4dd840087628165747e62ffa2a1b4b0d79b3"
+    },
+    {
+      "path": "app/WorkbenchDatePicker.jsx",
+      "sha256": "12bb85cc144d64dad68dfcf683351b3a1d9b64d23d2a5159e375530f56f0ebfc"
+    },
+    {
+      "path": "app/WorkbenchControls.jsx",
+      "sha256": "a70fc9833615c07660d1820673c86729c455153396ade525d49d8e961822a3f9"
+    },
+    {
+      "path": "app/WorkbenchNumberControls.jsx",
+      "sha256": "a9986aa0ec54201fd488bac77588d72052b478a2bc64c8530af3c6fd14e0bac6"
+    },
+    {
+      "path": "point_browser_host.jsx",
+      "sha256": "9e829b9d45379311ff0b0bb2c2a289d904bedadc1ebafcf91ffd8c6def164a03"
+    }
+  ]
+}

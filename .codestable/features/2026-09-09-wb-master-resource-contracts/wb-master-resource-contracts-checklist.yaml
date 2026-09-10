@@ -1,0 +1,49 @@
+feature: wb-master-resource-contracts
+steps:
+  - id: persistent-identity-commands
+    action: 建立永久引用、原子命令与升级合同
+    exit_signal: 迁移保留数据且引用/并发/回执/回滚验证通过
+    status: done
+  - id: resource-models-services
+    action: 接入全部资源字段和关系，复用领域保护
+    exit_signal: 真实读取及批量/文件动作合同完成
+    status: done
+  - id: native-resource-workspace
+    action: 按原型接入资源列表表单与跨页上下文
+    exit_signal: 正式页面不再使用固定资源样例
+    status: in-progress
+  - id: resource-verification
+    action: 真实持久化及双主题双尺寸复杂浏览器验收
+    exit_signal: 本项能力逐项有证据，隐藏字段保留
+    status: in-progress
+checks:
+  - id: persistence-and-conflicts
+    description: 升级、永久身份、原子回执、并发和重启
+    status: passed
+  - id: full-resource-contract
+    description: 完整资源字段关系与原型操作
+    status: pending
+  - id: browser-and-preservation
+    description: 手输目视、真实读回、隐藏字段无丢失
+    status: pending
+  - id: nonmaterial-files-and-bulk
+    description: 五个资源视图跨页选择、真实CSV/XLSX导入导出、原子批删与旧字段保留
+    status: passed
+  - id: readonly-calendar-summary
+    description: 真实本周日历、显式与默认配置、工艺未接入不虚构就绪率
+    status: passed
+  - id: view-first-related-details
+    description: 查看不受写权限阻塞，真实关联分页与逐级返回，子对象编辑不改变原列表范围
+    status: passed
+  - id: control-increments-and-months
+    description: 工时0.5和效率5微调保留精度，普通日期选月只导航，预检单位与紧凑行按钮一致
+    status: passed
+  - id: resource-table-controls
+    description: 六个资源视图逐列真实筛选三态排序和列宽调整，搜索全选不漏页，筛选导出不退化成当前页或全量
+    status: passed
+  - id: stock-and-rebased-drafts
+    description: 库存快捷修改仅写库存，重读保留已编辑草稿并刷新未编辑字段，自制外协变更不用旧列范围
+    status: passed
+  - id: popup-event-boundaries
+    description: 预排队滚动不误关列菜单，真实滚动关闭，遮罩拖出不关闭，未核实命令锁定及子弹层Escape独立
+    status: passed

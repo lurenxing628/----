@@ -1,0 +1,33 @@
+feature: wb-master-overview-u
+steps:
+  - id: contracts
+    status: done
+    action: 核对样板与现有事实，固定独占路径和导航接口
+  - id: read_model
+    status: done
+    action: 八域原始读取、规则证据、关系、快照、全范围CSV
+  - id: workspace
+    status: done
+    action: 主数据完整UI与只读API协议
+  - id: verification
+    status: done
+    action: 临时SQLite、独立Chrome109双尺寸双主题、源码清单和交接证据
+checks:
+  - GET不写业务或身份，不补配置
+  - scope和snapshot贯穿分页详情关系定位导出
+  - public refs不暴露内部行号，失效引用不按同号寻找
+  - 缺数据不伪装0或健康，0不当未知
+  - 不改共享文件或staged，不commit/build/spawn
+verification:
+  backend_tests: 32
+  chrome109_cases: 35
+  screenshots: 16
+  ruff: passed
+  pyright_python38: passed
+  artifacts: /tmp/aps-master-overview-u-delivery/
+  proof: scoped_dirty_worktree_only
+handoff:
+  main_and_routes: main_agent
+  resource_exact_navigation: agent_Z
+  global_build_and_gate: main_agent
+  win7_hardware_tested: false

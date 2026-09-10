@@ -1,0 +1,24 @@
+feature: wb-analysis-reports
+status: implementing
+items:
+  - id: core-read-dto
+    status: done
+    description: 当前正式计划真实复盘与五专题公开投影
+  - id: scope-export
+    status: done
+    description: 同快照分页排序筛选及全范围 CSV/XLSX
+  - id: report-catalog
+    status: done
+    description: 四种既有报表的真实目录与明确范围
+  - id: frontend-workspaces
+    status: done
+    description: 保持原型视觉的可操作报表与复盘页面
+  - id: verification
+    status: done
+    description: SQLite边界零写与mock交互浅深截图
+  - id: main-integration
+    status: pending
+    description: 主代理注册路由、加载源码并挂接工作区；K未修改入口或build
+  - id: production-report-ledger
+    status: pending
+    description: 等逐次报工领域投影后接入数量与有效工时；当前真实旧事件标partial，不计完整五专题最终验收

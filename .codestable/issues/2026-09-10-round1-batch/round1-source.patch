@@ -1,0 +1,964 @@
+--- before/core/models/workbench_batch.py
++++ after/core/models/workbench_batch.py
+@@ -70,7 +70,7 @@
+     fields = object_fields(payload["fields"], FIELDS, FIELDS if action == "create" else ())
+     if not fields:
+         raise ValidationError("至少填写一个要修改的字段。", field="fields")
+-    result = {"fields": {}}
++    normalized_fields = {}
+     for key, value in fields.items():
+         path = "fields." + key
+         if key == "quantity":
+@@ -81,11 +81,12 @@
+             value = text(value, path, nullable=True)
+         elif value not in (PRIORITIES if key == "priority" else READY) or not isinstance(value, str):
+             raise ValidationError("请选择有效选项。", field=path)
+-        result["fields"][key] = value
++        normalized_fields[key] = value
+     if action == "create":
+-        result.update(business_code=text(payload["business_code"], "business_code", limit=200),
+-                      part_ref=public_ref(payload["part_ref"]))
+-    return result
++        return {"fields": normalized_fields,
++                "business_code": text(payload["business_code"], "business_code", limit=200),
++                "part_ref": public_ref(payload["part_ref"])}
++    return {"fields": normalized_fields}
+ 
+ 
+ def normalize_operation_input(payload):
+--- before/core/models/workbench_batch_query.py
++++ after/core/models/workbench_batch_query.py
+@@ -11,25 +11,40 @@
+     object_fields(values, allowed)
+     scope = {"query": "", "status": None, "ready_status": None, "sort": "business_code", "direction": "asc",
+              "page": 1, "size": 20, "column_filters": {}, "focus": None, "batch_ids": None, **values}
++    _validate_pagination(scope)
++    _validate_selection(scope)
++    filters = object_fields(scope["column_filters"], SORTS)
++    for items in filters.values():
++        _validate_filter_values(items)
++    _validate_batch_ids(scope["batch_ids"])
++    scope["query"] = scope["query"].strip()
++    return scope
++
++
++def _validate_pagination(scope):
+     for key in ("page", "size"):
+         if type(scope[key]) is not int or not 1 <= scope[key] <= (100 if key == "size" else 1000000):
+             raise WorkbenchCommandRejected("invalid_input", "页码或每页条数不正确。", 400)
++
++
++def _validate_selection(scope):
+     if (not isinstance(scope["query"], str) or len(scope["query"]) > 200
+             or scope["status"] not in (None, "") + STATUSES or scope["ready_status"] not in (None, "") + READY
+             or scope["sort"] not in SORTS or scope["direction"] not in ("asc", "desc")
+             or scope["focus"] not in (None, "", "gaps", "unready")):
+         raise WorkbenchCommandRejected("invalid_input", "列表筛选或排序不正确。", 400)
+-    filters = object_fields(scope["column_filters"], SORTS)
+-    for items in filters.values():
+-        if (not isinstance(items, list) or len(items) > 5000
+-                or any(value is not None and type(value) not in (str, int, float) for value in items)
+-                or any(type(value) in (int, float) and (abs(value) > MAX_INTEGER or not math.isfinite(value)) for value in items)):
+-            raise WorkbenchCommandRejected("invalid_input", "列筛选必须为明确的值集合。", 400)
+-    ids = scope["batch_ids"]
++
++
++def _validate_filter_values(items):
++    if (not isinstance(items, list) or len(items) > 5000
++            or any(value is not None and type(value) not in (str, int, float) for value in items)
++            or any(type(value) in (int, float) and (abs(value) > MAX_INTEGER or not math.isfinite(value)) for value in items)):
++        raise WorkbenchCommandRejected("invalid_input", "列筛选必须为明确的值集合。", 400)
++
++
++def _validate_batch_ids(ids):
+     if ids is not None and (not isinstance(ids, list) or len(ids) > 5000 or any(not isinstance(key, str) or not key for key in ids)):
+         raise WorkbenchCommandRejected("invalid_input", "批次定位范围不正确。", 400)
+-    scope["query"] = scope["query"].strip()
+-    return scope
+ 
+ 
+ def snapshot_scope(scope):
+--- before/core/services/workbench/batch_execution.py
++++ after/core/services/workbench/batch_execution.py
+@@ -44,7 +44,7 @@
+         gaps.append({"code": "completion_inconsistent", "message": "原工序完成标记与台账证据尚未一致，保留原完成事实及保护，请核对。"})
+         quality = "invalid" if quality == "invalid" or execution["reports"] or execution["legacy_facts"] else "legacy_incomplete"
+     status = {"complete": "completed", "started": "processing", "partial": "processing",
+-              "paused": "paused", "exception": "exception"}.get(state, row["status"])
++              "paused": "paused", "exception": "exception"}.get(state, row["status"]) if state is not None else row["status"]
+     return {"status": "completed" if row["status"] == "completed" else status,
+             "stored_status": row["status"], "execution": execution, "execution_state": state,
+             "data_quality": quality, "data_gaps": gaps, "completed": state == "complete" or row["status"] == "completed"}
+--- before/core/services/workbench/batch_facts.py
++++ after/core/services/workbench/batch_facts.py
+@@ -28,11 +28,11 @@
+         if self._facts is not None:
+             return self._facts
+         with TransactionManager(self.conn).transaction():
+-            facts = {table: [dict(row) for row in self.conn.execute('SELECT * FROM "' + table + '" ORDER BY rowid')] for table in TABLES}
+-            facts["workflow"] = workflow_snapshot(self.conn)
+-            facts["operation_refs"] = self.plan_refs.get_operation_refs(row["id"] for row in facts["BatchOperations"])
+-            facts["execution"] = read_execution(self.conn, facts["operation_refs"].values())
+-            return facts
++            tables = {table: [dict(row) for row in self.conn.execute('SELECT * FROM "' + table + '" ORDER BY rowid')] for table in TABLES}
++            workflow = workflow_snapshot(self.conn)
++            operation_refs = self.plan_refs.get_operation_refs(row["id"] for row in tables["BatchOperations"])
++            return {**tables, "workflow": workflow, "operation_refs": operation_refs,
++                    "execution": read_execution(self.conn, operation_refs.values())}
+ 
+     def fingerprint(self):
+         return input_fingerprint(_plain(self.load()))
+--- before/core/services/workbench/batch_file_codec.py
++++ after/core/services/workbench/batch_file_codec.py
+@@ -27,29 +27,7 @@
+             if sum(item.file_size for item in archive.infolist()) > 64 * 1024 * 1024:
+                 raise ValidationError("Excel展开后超过64MB，请拆分文件。", field="file")
+         workbook = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
+-        if not workbook.worksheets:
+-            raise ValidationError("Excel没有数据工作表。", field="file")
+-        sheet = workbook.worksheets[0]
+-        sheet.reset_dimensions()
+-        iterator = sheet.iter_rows()
+-        cells = next(iterator, ())
+-        headers = [cell.value for cell in cells]
+-        while headers and headers[-1] is None:
+-            headers.pop()
+-        if len(headers) != len(HEADERS) or set(headers) != set(HEADERS):
+-            raise ValidationError("请使用批次信息模板的八列表头；不接受多余列或缺列。", field="headers")
+-        rows = []
+-        for line, cells in enumerate(iterator, 2):
+-            if not any(cell.value is not None for cell in cells):
+-                continue
+-            if len(rows) == MAX_ROWS:
+-                raise ValidationError("单次最多导入5000行；未截断或写入前半部分。", field="file")
+-            errors = []
+-            if any(cell.data_type in ("f", "e") for cell in cells):
+-                errors.append("不能导入公式或错误单元格，请提供实际值。")
+-            if any(cell.value is not None for cell in cells[len(headers):]):
+-                errors.append("数据行包含未声明的多余列。")
+-            rows.append({"row": line, "values": {key: cells[index].value if index < len(cells) else None for index, key in enumerate(headers)}, "errors": errors})
++        rows = _read_first_sheet(workbook)
+         warnings = ([{"code": "first_sheet_only", "message": "仅读取第一个工作表；其余工作表未导入。"}] if len(workbook.worksheets) > 1 else [])
+         return rows, warnings
+     except ValidationError:
+@@ -61,11 +39,42 @@
+             workbook.close()
+ 
+ 
++def _read_first_sheet(workbook):
++    if not workbook.worksheets:
++        raise ValidationError("Excel没有数据工作表。", field="file")
++    sheet = workbook.worksheets[0]
++    sheet.reset_dimensions()
++    iterator = sheet.iter_rows()
++    headers = [cell.value for cell in next(iterator, ())]
++    while headers and headers[-1] is None:
++        headers.pop()
++    if len(headers) != len(HEADERS) or set(headers) != set(HEADERS):
++        raise ValidationError("请使用批次信息模板的八列表头；不接受多余列或缺列。", field="headers")
++    rows = []
++    for line, cells in enumerate(iterator, 2):
++        if not any(cell.value is not None for cell in cells):
++            continue
++        if len(rows) == MAX_ROWS:
++            raise ValidationError("单次最多导入5000行；未截断或写入前半部分。", field="file")
++        rows.append(_read_data_row(line, cells, headers))
++    return rows
++
++
++def _read_data_row(line, cells, headers):
++    errors = []
++    if any(cell.data_type in ("f", "e") for cell in cells):
++        errors.append("不能导入公式或错误单元格，请提供实际值。")
++    if any(cell.value is not None for cell in cells[len(headers):]):
++        errors.append("数据行包含未声明的多余列。")
++    values = {key: cells[index].value if index < len(cells) else None for index, key in enumerate(headers)}
++    return {"row": line, "values": values, "errors": errors}
++
++
+ def write_batch_file(rows, *, template=False):
+     if len(rows) > MAX_ROWS:
+         raise ValidationError("单次导出超过5000行，请缩小范围。", field="scope")
+     workbook = openpyxl.Workbook()
+-    sheet = workbook.active
++    sheet = workbook.worksheets[0]
+     sheet.title = "批次信息"
+     sheet.freeze_panes = "A2"
+     headers = HEADERS if template else HEADERS + ("状态",)
+--- before/core/services/workbench/batch_files.py
++++ after/core/services/workbench/batch_files.py
+@@ -3,13 +3,11 @@
+ import hashlib
+ 
+ from core.errors import ValidationError
+-from core.models.workbench_batch import FIELDS, normalize_batch_input
+-from core.models.workbench_batch_file import COLUMNS, HEADER_FIELDS
++from core.models.workbench_batch_file import COLUMNS
+ from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
+-from core.services.common.excel_validators import get_batch_row_validate_and_normalize
+-from core.services.workbench.batch_facts import BatchFacts, related, require_unreferenced
++from core.services.workbench.batch_facts import BatchFacts
+ from core.services.workbench.batch_file_codec import read_batch_file, write_batch_file
+-from core.services.workbench.batch_projection import BatchProjection
++from core.services.workbench.batch_file_preview import BatchImportPreview
+ from core.services.workbench.batches import WorkbenchBatchService
+ 
+ 
+@@ -25,66 +23,9 @@
+         parsed, warnings = read_batch_file(content)
+         if not parsed:
+             raise ValidationError("文件没有批次数据行，不能用空文件清空资料。", field="file")
+-        facts = self.reader.load()
+-        projection = BatchProjection(facts)
+-        existing = {row["batch_id"]: row for row in facts["Batches"]}
+-        validator = get_batch_row_validate_and_normalize(parts_cache={row["part_no"]: row for row in facts["Parts"]})
+-        rows, seen = [], set()
+-        for parsed_row in parsed:
+-            row = {"row": parsed_row["row"], "business_code": parsed_row["values"].get("批次号"), "errors": list(parsed_row["errors"]),
+-                   "action": "rejected", "input": None, "entity_ref": None, "before": None}
+-            source = parsed_row["values"]
+-            try:
+-                if row["errors"]:
+-                    raise ValidationError(row["errors"][0])
+-                if any(type(source[key]) is not str or not source[key].strip() for key in ("批次号", "图号")):
+-                    raise ValidationError("批次号和图号必须为文本，不能猜测丢失的前导零。")
+-                if type(source["数量"]) is bool:
+-                    raise ValidationError("数量不能使用布尔值。")
+-                source = dict(source)
+-                source["批次号"], source["图号"] = source["批次号"].strip(), source["图号"].strip()
+-                code = source["批次号"]
+-                row["business_code"] = code
+-                if code in seen:
+-                    raise ValidationError("文件内有重复批次号。")
+-                seen.add(code)
+-                error = validator(source)
+-                if error:
+-                    raise ValidationError(error)
+-                batch = existing.get(code)
+-                if batch:
+-                    row.update(entity_ref=projection.ref("batch", code), before=projection.entity(batch))
+-                if batch and mode == "append":
+-                    row["action"] = "skipped"
+-                else:
+-                    create = batch is None or mode == "replace"
+-                    fields = {HEADER_FIELDS[key]: value for key, value in source.items() if HEADER_FIELDS[key] in FIELDS
+-                              and (create or parsed_row["values"][key] not in (None, ""))}
+-                    if create:
+-                        for key in ("due_date", "ready_date", "remark"):
+-                            fields.setdefault(key, None)
+-                        payload = {"business_code": code, "part_ref": projection.ref("part", source["图号"]), "fields": fields}
+-                    else:
+-                        if source["图号"] != batch["part_no"]:
+-                            raise ValidationError("已有批次不能在普通导入中切换图号。")
+-                        payload = {"fields": fields}
+-                        if fields.get("quantity", batch["quantity"]) != batch["quantity"]:
+-                            require_unreferenced(facts, batch)
+-                    row.update(action="create" if create else "update", input=normalize_batch_input("create" if create else "update", payload))
+-            except (ValidationError, WorkbenchCommandRejected) as exc:
+-                row.update(action="rejected", input=None, errors=list(dict.fromkeys(row["errors"] + [str(exc)])))
+-            rows.append(row)
+-        deleted = []
+-        if mode == "replace":
+-            for batch in facts["Batches"]:
+-                item = {"entity_ref": projection.ref("batch", batch["batch_id"]), "before": projection.entity(batch), "errors": []}
+-                try:
+-                    require_unreferenced(facts, batch)
+-                    if related(facts, batch)["materials"]:
+-                        raise WorkbenchCommandRejected("constraint_conflict", "批次有物料需求，不允许清空。")
+-                except WorkbenchCommandRejected as exc:
+-                    item["errors"].append(str(exc))
+-                deleted.append(item)
++        preview = BatchImportPreview(self.reader.load(), mode)
++        rows = [preview.row(row) for row in parsed]
++        deleted = preview.deleted()
+         can_confirm = not any(row["errors"] for row in rows + deleted)
+         return {"operation": "batch.import_confirm", "mode": mode, "file_sha256": hashlib.sha256(content).hexdigest(),
+                 "rows": rows, "deleted": deleted, "count": len(rows), "commit_policy": "atomic", "can_confirm": can_confirm,
+--- before/core/services/workbench/batch_file_preview.py
++++ after/core/services/workbench/batch_file_preview.py
+@@ -0,0 +1,89 @@
++"""Per-row batch import validation and the complete replacement deletion set."""
++
++from core.errors import ValidationError
++from core.models.workbench_batch import FIELDS, normalize_batch_input
++from core.models.workbench_batch_file import HEADER_FIELDS
++from core.models.workbench_command import WorkbenchCommandRejected
++from core.services.common.excel_validators import get_batch_row_validate_and_normalize
++from core.services.workbench.batch_facts import related, require_unreferenced
++from core.services.workbench.batch_projection import BatchProjection
++
++
++class BatchImportPreview:
++    def __init__(self, facts, mode):
++        self.facts = facts
++        self.mode = mode
++        self.projection = BatchProjection(facts)
++        self.existing = {row["batch_id"]: row for row in facts["Batches"]}
++        self.validator = get_batch_row_validate_and_normalize(
++            parts_cache={row["part_no"]: row for row in facts["Parts"]})
++        self.seen = set()
++
++    def row(self, parsed):
++        row = {"row": parsed["row"], "business_code": parsed["values"].get("批次号"),
++               "errors": list(parsed["errors"]), "action": "rejected", "input": None,
++               "entity_ref": None, "before": None}
++        try:
++            if row["errors"]:
++                raise ValidationError(row["errors"][0])
++            source = self._source(parsed["values"])
++            code = source["批次号"]
++            row["business_code"] = code
++            if code in self.seen:
++                raise ValidationError("文件内有重复批次号。")
++            self.seen.add(code)
++            error = self.validator(source)
++            if error:
++                raise ValidationError(error)
++            batch = self.existing.get(code)
++            if batch is not None:
++                row.update(entity_ref=self.projection.ref("batch", code), before=self.projection.entity(batch))
++            if batch is not None and self.mode == "append":
++                row["action"] = "skipped"
++            else:
++                action, payload = self._input(source, parsed["values"], batch)
++                row.update(action=action, input=normalize_batch_input(action, payload))
++        except (ValidationError, WorkbenchCommandRejected) as exc:
++            row.update(action="rejected", input=None, errors=list(dict.fromkeys(row["errors"] + [str(exc)])))
++        return row
++
++    @staticmethod
++    def _source(values):
++        if any(type(values[key]) is not str or not values[key].strip() for key in ("批次号", "图号")):
++            raise ValidationError("批次号和图号必须为文本，不能猜测丢失的前导零。")
++        if type(values["数量"]) is bool:
++            raise ValidationError("数量不能使用布尔值。")
++        source = dict(values)
++        source["批次号"], source["图号"] = source["批次号"].strip(), source["图号"].strip()
++        return source
++
++    def _input(self, source, original, batch):
++        create = batch is None or self.mode == "replace"
++        fields = {HEADER_FIELDS[key]: value for key, value in source.items() if HEADER_FIELDS[key] in FIELDS
++                  and (create or original[key] not in (None, ""))}
++        if batch is None or self.mode == "replace":
++            for key in ("due_date", "ready_date", "remark"):
++                fields.setdefault(key, None)
++            return "create", {"business_code": source["批次号"],
++                              "part_ref": self.projection.ref("part", source["图号"]), "fields": fields}
++        if source["图号"] != batch["part_no"]:
++            raise ValidationError("已有批次不能在普通导入中切换图号。")
++        if fields.get("quantity", batch["quantity"]) != batch["quantity"]:
++            require_unreferenced(self.facts, batch)
++        return "update", {"fields": fields}
++
++    def deleted(self):
++        if self.mode != "replace":
++            return []
++        return [self._deletion(batch) for batch in self.facts["Batches"]]
++
++    def _deletion(self, batch):
++        item = {"entity_ref": self.projection.ref("batch", batch["batch_id"]),
++                "before": self.projection.entity(batch), "errors": []}
++        try:
++            require_unreferenced(self.facts, batch)
++            if related(self.facts, batch)["materials"]:
++                raise WorkbenchCommandRejected("constraint_conflict", "批次有物料需求，不允许清空。")
++        except WorkbenchCommandRejected as exc:
++            item["errors"].append(str(exc))
++        return item
+--- before/core/services/workbench/batch_operations.py
++++ after/core/services/workbench/batch_operations.py
+@@ -1,12 +1,12 @@
+ """Explicit raw template copies and guarded resource edits, without default hours."""
+ 
+-from core.errors import ValidationError
+-from core.models.workbench_batch import normalize_operation_input, number, object_fields
++from core.models.workbench_batch import normalize_operation_input, object_fields
+ from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
+ from core.services.personnel.operator_qualification import OperatorQualificationService
+ from core.services.process.workflow_state import require_template_ready
+ from core.services.workbench.batch_facts import BatchFacts, require_unreferenced
+-from core.services.workbench.batch_projection import BatchProjection, issue
++from core.services.workbench.batch_projection import BatchProjection
++from core.services.workbench.batch_template_validation import template_diagnostics
+ from core.services.workbench.template_lineage import TemplateLineageWriter
+ from data.repositories.batch_operation_repo import BatchOperationRepository
+ from data.repositories.supplier_repo import SupplierRepository
+@@ -44,28 +44,7 @@
+         rows = [row for row in facts["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
+         if not rows:
+             raise WorkbenchCommandRejected("constraint_conflict", "当前零件没有有效模板工序；未自动解析路线或覆盖原工序。")
+-        diagnostics = []
+-        for row in rows:
+-            if type(row["seq"]) is not int or row["seq"] <= 0:
+-                raise WorkbenchCommandRejected("constraint_conflict", "模板工序号不合法，不能自动改号。")
+-            if row["source"] not in ("internal", "external"):
+-                raise WorkbenchCommandRejected("constraint_conflict", "模板工序归属不明确，不能让旧运行时将其默认成自制。")
+-            if row["op_type_id"] is None:
+-                diagnostics.append(issue("工序 " + str(row["seq"]) + " 缺少明确工种。"))
+-            for key in ("setup_hours", "unit_hours") if row["source"] == "internal" else ():
+-                number(row[key], key, nullable=True)
+-                if row[key] is None:
+-                    diagnostics.append(issue("工序 " + str(row["seq"]) + " 的工时待补齐，保留原值。"))
+-            if row["source"] == "external":
+-                group = next((g for g in facts["ExternalGroups"] if g["group_id"] == row["ext_group_id"]), None)
+-                days = group["total_days"] if group and group["merge_mode"] == "merged" else row["ext_days"]
+-                if row["ext_group_id"] is not None and (not group or group["part_no"] != batch["part_no"] or group["merge_mode"] not in ("merged", "separate")):
+-                    raise WorkbenchCommandRejected("constraint_conflict", "模板外协组关系不完整，不能按单工序周期猜测。")
+-                number(days, "external_days", positive=True, nullable=True)
+-                if days is None:
+-                    diagnostics.append(issue("工序 " + str(row["seq"]) + " 的外协周期待补齐。"))
+-                if row["supplier_id"] is None:
+-                    diagnostics.append(issue("工序 " + str(row["seq"]) + " 的供应商未填写。"))
++        diagnostics = template_diagnostics(rows, facts, batch)
+         if payload["strict_mode"] and diagnostics:
+             raise WorkbenchCommandRejected("constraint_conflict", "模板资料不完整，已按严格选项停止刷新。")
+         projection = BatchProjection(facts)
+@@ -99,16 +78,7 @@
+         if row is None:
+             raise WorkbenchCommandRejected("entity_not_found", "工序已失效或不属于该批次，不能按序号猜测替换。", 404)
+         internal = row["source"] == "internal"
+-        allowed = ("machine_ref", "operator_ref", "setup_hours", "unit_hours") if internal else ("supplier_ref", "external_days")
+-        if row["source"] not in ("internal", "external") or set(payload["fields"]) - set(allowed):
+-            raise WorkbenchCommandRejected("invalid_input", "工序字段与实际归属不匹配。", 422)
+-        changes = {}
+-        for key, value in payload["fields"].items():
+-            if key.endswith("_ref"):
+-                kind = key[:-4]
+-                changes[kind + "_id"] = self.reader.resolve(value, kind).entity_key if value is not None else None
+-            else:
+-                changes["ext_days" if key == "external_days" else key] = value
++        changes = self._changes(row, payload["fields"], internal)
+         desired = {**row, **changes}
+         self._validate(batch, desired, internal, changes)
+         changes = {key: value for key, value in changes.items() if row[key] != value}
+@@ -116,6 +86,19 @@
+             BatchOperationRepository(self.conn).update(row["id"], changes)
+         return WorkbenchCommandOutcome("committed" if changes else "unchanged", {"entity_ref": ref,
+                                        "business_code": batch["batch_id"], "operation_ref": payload["operation_ref"]})
++
++    def _changes(self, row, fields, internal):
++        allowed = ("machine_ref", "operator_ref", "setup_hours", "unit_hours") if internal else ("supplier_ref", "external_days")
++        if row["source"] not in ("internal", "external") or set(fields) - set(allowed):
++            raise WorkbenchCommandRejected("invalid_input", "工序字段与实际归属不匹配。", 422)
++        changes = {}
++        for key, value in fields.items():
++            if key.endswith("_ref"):
++                kind = key[:-4]
++                changes[kind + "_id"] = self.reader.resolve(value, kind).entity_key if value is not None else None
++            else:
++                changes["ext_days" if key == "external_days" else key] = value
++        return changes
+ 
+     def _validate(self, batch, row, internal, changes):
+         projection = BatchProjection(self.reader.load())
+@@ -126,17 +109,23 @@
+                 if resource is None or resource["status"] != "active":
+                     raise WorkbenchCommandRejected("constraint_conflict", "所选设备、人员或供应商当前不可用。")
+         if internal:
+-            machine = projection.catalogs["machine"].get(row["machine_id"])
+-            if machine and machine["op_type_id"] != row["op_type_id"]:
+-                raise WorkbenchCommandRejected("constraint_conflict", "设备与工序工种不匹配。")
+-            if row["operator_id"]:
+-                OperatorQualificationService(self.conn, self.logger).require(operator_id=row["operator_id"],
+-                    op_type_id=row["op_type_id"], machine_id=row["machine_id"])
++            self._validate_internal(projection, row)
+         else:
+-            group = projection.group(batch, row)
+-            if group and group["merge_mode"] == "merged" and "ext_days" in changes:
+-                raise WorkbenchCommandRejected("constraint_conflict", "合并外协组不能逐道改周期；请保留整组周期规则。")
+-            if row["supplier_id"]:
+-                capable = {(r["supplier_id"], r["op_type_id"]) for r in SupplierRepository(self.conn).list_capabilities(status="active") if not r["missing_supplier"]}
+-                if (row["supplier_id"], row["op_type_id"]) not in capable:
+-                    raise WorkbenchCommandRejected("constraint_conflict", "供应商未登记本外协工种能力。")
++            self._validate_external(projection, batch, row, changes)
++
++    def _validate_internal(self, projection, row):
++        machine = projection.catalogs["machine"].get(row["machine_id"])
++        if machine and machine["op_type_id"] != row["op_type_id"]:
++            raise WorkbenchCommandRejected("constraint_conflict", "设备与工序工种不匹配。")
++        if row["operator_id"]:
++            OperatorQualificationService(self.conn, self.logger).require(operator_id=row["operator_id"],
++                op_type_id=row["op_type_id"], machine_id=row["machine_id"])
++
++    def _validate_external(self, projection, batch, row, changes):
++        group = projection.group(batch, row)
++        if group and group["merge_mode"] == "merged" and "ext_days" in changes:
++            raise WorkbenchCommandRejected("constraint_conflict", "合并外协组不能逐道改周期；请保留整组周期规则。")
++        if row["supplier_id"]:
++            capable = {(r["supplier_id"], r["op_type_id"]) for r in SupplierRepository(self.conn).list_capabilities(status="active") if not r["missing_supplier"]}
++            if (row["supplier_id"], row["op_type_id"]) not in capable:
++                raise WorkbenchCommandRejected("constraint_conflict", "供应商未登记本外协工种能力。")
+--- before/core/services/workbench/batch_template_validation.py
++++ after/core/services/workbench/batch_template_validation.py
+@@ -0,0 +1,45 @@
++"""Validate raw template facts for an explicit batch operation refresh."""
++
++from core.models.workbench_batch import number
++from core.models.workbench_command import WorkbenchCommandRejected
++from core.services.workbench.batch_projection import issue
++
++
++def template_diagnostics(rows, facts, batch):
++    diagnostics = []
++    for row in rows:
++        if type(row["seq"]) is not int or row["seq"] <= 0:
++            raise WorkbenchCommandRejected("constraint_conflict", "模板工序号不合法，不能自动改号。")
++        if row["source"] not in ("internal", "external"):
++            raise WorkbenchCommandRejected("constraint_conflict", "模板工序归属不明确，不能让旧运行时将其默认成自制。")
++        if row["op_type_id"] is None:
++            diagnostics.append(issue("工序 " + str(row["seq"]) + " 缺少明确工种。"))
++        if row["source"] == "internal":
++            diagnostics.extend(_internal_diagnostics(row))
++        else:
++            diagnostics.extend(_external_diagnostics(row, facts, batch))
++    return diagnostics
++
++
++def _internal_diagnostics(row):
++    diagnostics = []
++    for key in ("setup_hours", "unit_hours"):
++        number(row[key], key, nullable=True)
++        if row[key] is None:
++            diagnostics.append(issue("工序 " + str(row["seq"]) + " 的工时待补齐，保留原值。"))
++    return diagnostics
++
++
++def _external_diagnostics(row, facts, batch):
++    diagnostics = []
++    group = next((g for g in facts["ExternalGroups"] if g["group_id"] == row["ext_group_id"]), None)
++    days = group["total_days"] if group and group["merge_mode"] == "merged" else row["ext_days"]
++    if row["ext_group_id"] is not None and (not group or group["part_no"] != batch["part_no"]
++                                          or group["merge_mode"] not in ("merged", "separate")):
++        raise WorkbenchCommandRejected("constraint_conflict", "模板外协组关系不完整，不能按单工序周期猜测。")
++    number(days, "external_days", positive=True, nullable=True)
++    if days is None:
++        diagnostics.append(issue("工序 " + str(row["seq"]) + " 的外协周期待补齐。"))
++    if row["supplier_id"] is None:
++        diagnostics.append(issue("工序 " + str(row["seq"]) + " 的供应商未填写。"))
++    return diagnostics
+--- before/web/routes/workbench/batch_context.py
++++ after/web/routes/workbench/batch_context.py
+@@ -2,6 +2,7 @@
+ 
+ import json
+ import re
++from typing import Dict, Union
+ 
+ from flask import g, request
+ 
+@@ -15,14 +16,15 @@
+ 
+ 
+ def read_scope():
+-    values = dict(request.args)
++    values: Dict[str, Union[str, int]] = dict(request.args)
+     if any(len(request.args.getlist(key)) != 1 for key in request.args):
+         raise WorkbenchCommandRejected("invalid_input", "筛选参数不能重复。", 400)
+     for key in ("page", "size"):
+         if key in values:
+-            if re.fullmatch(r"[1-9][0-9]{0,6}", values[key]) is None:
++            raw = request.args[key]
++            if re.fullmatch(r"[1-9][0-9]{0,6}", raw) is None:
+                 raise WorkbenchCommandRejected("invalid_input", "页码或每页条数不正确。", 400)
+-            values[key] = int(values[key])
++            values[key] = int(raw)
+     return batch_scope(values)
+ 
+ 
+--- before/web/routes/workbench/batches.py
++++ after/web/routes/workbench/batches.py
+@@ -2,7 +2,7 @@
+ 
+ from flask import current_app, g, jsonify, request
+ 
+-from core.models.workbench_batch import normalize_operation_input, object_fields
++from core.models.workbench_batch import normalize_operation_input, object_fields, public_ref
+ from core.models.workbench_batch_query import batch_scope, snapshot_scope
+ from core.models.workbench_command import WorkbenchCommandRejected
+ from core.services.workbench.batch_bulk import WorkbenchBatchBulkService, normalize_bulk
+@@ -96,7 +96,7 @@
+     body = command_body()
+     domain = WorkbenchBatchService(g.db, current_app.logger)
+     normalized = normalize_operation_input(body["input"]) if action == "operation_update" else domain.normalize(action, body["input"])
+-    subject = COLLECTION if action == "create" else ref
++    subject = COLLECTION if action == "create" else public_ref(ref)
+     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
+ 
+     def guard():
+--- before/data/repositories/workbench_template_lineage_repo.py
++++ after/data/repositories/workbench_template_lineage_repo.py
+@@ -85,8 +85,8 @@
+         return result
+ 
+     def insert_instance(self, payload):
+-        cursor = self.conn.execute("INSERT INTO BatchOperations (" + ",".join(COPY_COLUMNS) + ") VALUES (" +
+-                                   ",".join("?" for _ in COPY_COLUMNS) + ")", tuple(payload[key] for key in COPY_COLUMNS))
++        cursor = self.execute("INSERT INTO BatchOperations (" + ",".join(COPY_COLUMNS) + ") VALUES (" +
++                              ",".join("?" for _ in COPY_COLUMNS) + ")", tuple(payload[key] for key in COPY_COLUMNS))
+         return self.instance(cursor.lastrowid)
+ 
+     def origins(self, refs):
+--- before/tests/workbench/legacy_batch_lineage_copy_support.py
++++ after/tests/workbench/legacy_batch_lineage_copy_support.py
+@@ -1,4 +1,7 @@
+ """Current-schema temporary SQLite evidence for the legacy batch copy entry."""
++
++import re
++from collections import Counter
+ 
+ import pytest
+ 
+@@ -101,17 +104,50 @@
+     assert before.keys() == after.keys()
+     appended = {"Batches": batch_count, "BatchOperations": operation_count,
+                 "WorkbenchEntityRefs": batch_count, "WorkbenchPlanSourceRefs": operation_count,
+-                "WorkbenchTemplateLineageOrigins": operation_count, "WorkbenchTemplateLineageEvents": operation_count}
++                "WorkbenchTemplateLineageOrigins": operation_count, "WorkbenchTemplateLineageEvents": operation_count,
++                "WorkbenchDashboardItems": batch_count * 2, "WorkbenchOutsourcingOperationOrigins": operation_count}
+     for table, rows in before.items():
+         if table in appended:
+             assert after[table][:len(rows)] == rows, table
+             assert len(after[table]) == len(rows) + appended[table], table
+         elif table == "WorkbenchPlanIdentityClock":
+             assert after[table] == [(1, rows[0][1] + operation_count)]
+-        elif table == "sqlite_sequence":
++        elif table == "sqlite_sequence" and operation_count:
+             expected = dict(rows)
+             expected["BatchOperations"] += operation_count
+             expected["WorkbenchTemplateLineageEvents"] += operation_count
+             assert dict(after[table]) == expected
+         else:
+             assert after[table] == rows, table
++    assert_dashboard_copy_items(before, after, batch_count)
++    assert_operation_birth_items(before, after)
++
++
++def assert_dashboard_copy_items(before, after, batch_count):
++    new_batches = after["Batches"][len(before["Batches"]):]
++    new_refs = after["WorkbenchEntityRefs"][len(before["WorkbenchEntityRefs"]):]
++    assert len(new_batches) == len(new_refs) == batch_count
++    assert {row[2] for row in new_refs} == {row[0] for row in new_batches}
++    assert all(row[1] == "batch" and row[4:6] == (1, 1) for row in new_refs)
++    old_items = before["WorkbenchDashboardItems"]
++    items = after["WorkbenchDashboardItems"]
++    assert items[:len(old_items)] == old_items
++    additions = items[len(old_items):]
++    assert len(additions) == batch_count * 2
++    expected = Counter((category, row[0], None) for row in new_refs for category in ("delivery", "material"))
++    assert Counter(row[1:] for row in additions) == expected
++    assert len({row[0] for row in items}) == len(items)
++    assert all(re.fullmatch(r"[0-9a-f]{48}", row[0]) for row in additions)
++
++
++def assert_operation_birth_items(before, after):
++    operations = after["BatchOperations"][len(before["BatchOperations"]):]
++    refs = after["WorkbenchPlanSourceRefs"][len(before["WorkbenchPlanSourceRefs"]):]
++    batches = after["WorkbenchEntityRefs"][len(before["WorkbenchEntityRefs"]):]
++    batch_refs = {row[2]: row[0] for row in batches}
++    owners = {str(row[0]): batch_refs[row[2]] for row in operations}
++    assert len(refs) == len(operations) == len(owners)
++    assert all(row[1] == "operation" and row[-1] == 1 for row in refs)
++    assert {row[2] for row in refs} == set(owners)
++    additions = after["WorkbenchOutsourcingOperationOrigins"][len(before["WorkbenchOutsourcingOperationOrigins"]):]
++    assert Counter(additions) == Counter((row[0], owners[row[2]]) for row in refs)
+--- before/tests/workbench/test_legacy_batch_lineage_copy.py
++++ after/tests/workbench/test_legacy_batch_lineage_copy.py
+@@ -4,7 +4,7 @@
+ 
+ import pytest
+ 
+-from core.infrastructure.errors import BusinessError, ValidationError
++from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
+ from core.infrastructure.transaction import TransactionManager
+ from core.models.workbench_command import WorkbenchCommandRejected
+ from core.models.workbench_template_lineage import restore_snapshot, state_snapshot
+@@ -85,6 +85,23 @@
+     before = stored_state(case.conn)
+     with pytest.raises(sqlite3.IntegrityError, match="legacy last operation failure"):
+         case.batch_service.copy_batch("SRC-000", "SINGLE")
++    assert stored_state(case.conn) == before
++    assert not case.conn.in_transaction
++
++
++def test_duplicate_copied_operation_code_rolls_back_every_table(legacy_case):
++    case = legacy_case
++    create(case, "SOURCE")
++    create(case, "COLLIDER")
++    with TransactionManager(case.conn).transaction():
++        case.conn.execute("UPDATE BatchOperations SET op_code='CHILD_02' WHERE batch_id='COLLIDER' AND seq=2")
++    before = stored_state(case.conn)
++    with pytest.raises(AppError) as error:
++        case.batch_service.copy_batch("SOURCE", "CHILD")
++    assert error.value.code == ErrorCode.DUPLICATE_ENTRY
++    assert error.value.details == {"db_message": "UNIQUE constraint failed: BatchOperations.op_code"}
++    assert isinstance(error.value.__cause__, sqlite3.IntegrityError)
++    assert str(error.value.__cause__) == "UNIQUE constraint failed: BatchOperations.op_code"
+     assert stored_state(case.conn) == before
+     assert not case.conn.in_transaction
+ 
+@@ -254,11 +271,7 @@
+     assert result.batch_id == "EMPTY-COPY" and result.quantity == 7 and result.remark == "no operations"
+     assert result.status == "pending" and operations(case, "EMPTY-COPY") == []
+     after = all_rows(case.conn)
+-    for table, rows in before.items():
+-        if table in ("Batches", "WorkbenchEntityRefs"):
+-            assert after[table][:-1] == rows
+-        else:
+-            assert after[table] == rows, table
++    assert_only_copy_appends(before, after, 1, 0)
+ 
+ 
+ def test_damaged_lineage_schema_does_not_fall_back_to_model_copy(legacy_case):
+--- before/tests/web_pages/test_batch_template_autobuild_same_tx.py
++++ after/tests/web_pages/test_batch_template_autobuild_same_tx.py
+@@ -1,7 +1,14 @@
+ """回归测试：BatchService.create_batch_from_template 自动补建零件工艺模板与批次工序时，若因 BatchOperations.op_code 唯一约束冲突失败，必须整体回滚——不残留批次头、批次工序、自动补建的 PartOperations 模板，且 Parts.route_parsed 不被提前写成 yes。"""
+ 
++import sqlite3
+ 
+-def test_batch_template_autobuild_same_tx(schema_conn) -> None:
++import pytest
++
++from tests.workbench.process_workflow_support import stored_state
++
++
++@pytest.mark.parametrize("conflicting_seq", (5, 10))
++def test_batch_template_autobuild_same_tx(schema_conn, conflicting_seq) -> None:
+ 
+     from core.infrastructure.errors import AppError, ErrorCode
+     from core.services.scheduler.batch_service import BatchService
+@@ -29,9 +36,11 @@
+             (op_code, batch_id, piece_id, seq, op_type_id, op_type_name, source, machine_id, operator_id, supplier_id, setup_hours, unit_hours, ext_days, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             """,
+-            ("B_AUTO_TX_05", "DUMMY_TX", None, 5, "OT_IN", "数铣", "internal", None, None, None, 0, 0, None, "pending"),
++            ("B_AUTO_TX_" + str(conflicting_seq).zfill(2), "DUMMY_TX", None, conflicting_seq,
++             "OT_IN", "数铣", "internal", None, None, None, 0, 0, None, "pending"),
+         )
+         conn.commit()
++        before = stored_state(conn)
+ 
+         svc = BatchService(conn, logger=None, op_logger=None)
+         try:
+@@ -44,6 +53,9 @@
+             )
+         except AppError as e:
+             assert e.code == ErrorCode.DUPLICATE_ENTRY, f"期望触发 BatchOperations.op_code 唯一约束：{e.code!r}"
++            assert e.details == {"db_message": "UNIQUE constraint failed: BatchOperations.op_code"}
++            assert isinstance(e.__cause__, sqlite3.IntegrityError)
++            assert str(e.__cause__) == "UNIQUE constraint failed: BatchOperations.op_code"
+         else:
+             raise AssertionError("期望通过工序编码冲突触发整体回滚，但实际未失败")
+ 
+@@ -65,6 +77,8 @@
+         part_row = conn.execute("SELECT route_parsed FROM Parts WHERE part_no=?", ("P_AUTO_TX",)).fetchone()
+         if part_row is None or str(part_row["route_parsed"] or "").strip() != "no":
+             raise RuntimeError(f"失败后 route_parsed 不应被提前写成 yes：{dict(part_row) if part_row else None!r}")
++        assert stored_state(conn) == before
++        assert not conn.in_transaction
+ 
+     finally:
+         conn.close()
+--- before/tests/workbench/test_batch_files.py
++++ after/tests/workbench/test_batch_files.py
+@@ -10,6 +10,7 @@
+ from core.models.workbench_batch_file import HEADERS
+ from core.services.workbench.batch_file_codec import write_batch_file
+ from tests.workbench.batch_support import BASE, assert_error, batch_database, body, detail, list_data, ref_for, state
++from tests.workbench.legacy_batch_lineage_copy_support import assert_dashboard_copy_items
+ 
+ _batch_fixture = batch_database
+ 
+@@ -49,9 +50,12 @@
+     assert record["fields"]["ready_status"] == "no" and record["fields"]["priority"] == "normal"
+     new = detail(client, ref_for(client, key="NEW-XLSX"))["data"]
+     assert new["operations"] == [] and new["fields"]["due_date"] == "2028-02-29"
++    after = state(client)
++    assert after[0] == before[0]
++    assert_dashboard_copy_items(before[1], after[1], 1)
+     for table in before[1]:
+-        if table not in ("Batches", "WorkbenchEntityRefs", "WorkbenchCommandReceipts"):
+-            assert state(client)[1][table] == before[1][table], table
++        if table not in ("Batches", "WorkbenchEntityRefs", "WorkbenchCommandReceipts", "WorkbenchDashboardItems"):
++            assert after[1][table] == before[1][table], table
+     saved = state(client)
+     replay = confirm(client, document)
+     assert replay.get_json()["replayed"] and state(client) == saved
+@@ -108,7 +112,9 @@
+     rows = data_rows(export)
+     assert len(rows) == 2 and rows[1][0] == "FREE-001" and rows[1][7] == "=FORMULA_NOT_EXECUTED"
+     workbook = openpyxl.load_workbook(BytesIO(export.data), data_only=False)
+-    assert workbook.active["H2"].data_type == "s"
++    sheet = workbook.active
++    assert sheet is not None
++    assert sheet["H2"].data_type == "s"
+     workbook.close()
+     assert export.headers["Cache-Control"] == "no-store" and export.headers["X-Workbench-Row-Count"] == "1"
+ 
+@@ -129,8 +135,10 @@
+ def test_first_sheet_only_formulas_and_bool_quantities(batch_client):
+     client = batch_client
+     workbook = openpyxl.Workbook()
+-    workbook.active.append(HEADERS)
+-    workbook.active.append(["FIRST", "P1", 3, None, None, None, None, None])
++    sheet = workbook.active
++    assert sheet is not None
++    sheet.append(HEADERS)
++    sheet.append(["FIRST", "P1", 3, None, None, None, None, None])
+     second = workbook.create_sheet("ignored")
+     second.append(["not a batch sheet"])
+     content = BytesIO()
+@@ -139,7 +147,7 @@
+     assert document["can_confirm"] and document["count"] == 1
+     assert document["warnings"][0]["code"] == "first_sheet_only"
+     for value in (True, "=1+1"):
+-        workbook.active["C2"] = value
++        sheet["C2"] = value
+         content = BytesIO()
+         workbook.save(content)
+         before = state(client)
+--- before/tests/workbench/test_batch_round1_boundaries.py
++++ after/tests/workbench/test_batch_round1_boundaries.py
+@@ -0,0 +1,141 @@
++"""Batch validation and atomic import boundaries after responsibility splits."""
++
++import pytest
++from flask import Flask
++
++from core.errors import ValidationError
++from core.models.workbench_batch_query import batch_scope
++from core.models.workbench_command import WorkbenchCommandRejected
++from core.services.workbench.batch_template_validation import template_diagnostics
++from tests.workbench.batch_support import batch_database, ref_for, state
++from tests.workbench.test_batch_files import confirm, uploaded
++from web.routes.workbench.batch_context import read_scope
++
++_batch_fixture = batch_database
++
++
++@pytest.mark.parametrize("values", [
++    {"page": True}, {"page": 0}, {"page": 1000001}, {"size": 101}, {"size": 1.5},
++    {"query": None}, {"query": "x" * 201}, {"status": "unknown"}, {"ready_status": False},
++    {"sort": "hidden"}, {"direction": None}, {"focus": "unknown"},
++    {"column_filters": {"hidden": []}}, {"column_filters": {"quantity": "1"}},
++    {"column_filters": {"quantity": [True]}}, {"column_filters": {"quantity": [float("nan")]}},
++    {"column_filters": {"quantity": [float("inf")]}}, {"column_filters": {"quantity": [9007199254740992]}},
++    {"batch_ids": "B1"}, {"batch_ids": [None]}, {"batch_ids": [""]},
++])
++def test_scope_rejects_invalid_values_without_coercion(values):
++    with pytest.raises(WorkbenchCommandRejected) as error:
++        batch_scope(values)
++    assert error.value.code == "invalid_input"
++    assert error.value.status == 400
++    assert error.value.committed is False
++
++
++def test_scope_keeps_null_zero_empty_filter_and_exact_numeric_boundaries():
++    values = {"page": 1000000, "size": 100, "query": "  exact  ", "focus": "gaps", "batch_ids": [],
++              "column_filters": {"quantity": [None, 0, 1.5, -9007199254740991], "ready_status": []}}
++    result = batch_scope(values)
++    assert result == {"status": None, "ready_status": None, "sort": "business_code", "direction": "asc",
++                      **values, "query": "exact"}
++    assert values["query"] == "  exact  "
++
++
++def test_query_string_numbers_are_parsed_before_domain_validation():
++    with Flask(__name__).test_request_context("/?page=2&size=100&query=part"):
++        result = read_scope()
++    assert type(result["page"]) is int and result["page"] == 2
++    assert type(result["size"]) is int and result["size"] == 100
++    assert result["query"] == "part"
++
++
++@pytest.mark.parametrize("query", ("page=1&page=2", "page=01", "page=-1", "size=true", "size=101"))
++def test_query_string_rejects_duplicates_and_invalid_numbers(query):
++    with Flask(__name__).test_request_context("/?" + query):
++        with pytest.raises(WorkbenchCommandRejected) as error:
++            read_scope()
++    assert error.value.code == "invalid_input" and error.value.status == 400
++
++
++@pytest.mark.parametrize("mode", ("overwrite", "append", "replace"))
++def test_invalid_first_row_still_reserves_its_duplicate_code(batch_client, mode):
++    before = state(batch_client)
++    response = uploaded(batch_client, [["NEW", "P1", 0, None, None, None, None, None],
++                                       ["NEW", "P1", 2, None, None, None, None, None]], mode)
++    assert response.status_code == 200
++    document = response.get_json()["data"]
++    assert document["count"] == 2 and not document["can_confirm"]
++    assert document["write_context"] is None
++    assert all(row["action"] == "rejected" and row["input"] is None for row in document["rows"])
++    assert document["rows"][0]["errors"] and document["rows"][1]["errors"]
++    assert document["rows"][0]["errors"] != document["rows"][1]["errors"]
++    assert state(batch_client) == before
++
++
++def test_append_does_not_skip_validation_of_an_existing_row(batch_client):
++    before = state(batch_client)
++    response = uploaded(batch_client, [["FREE-001", "P1", True, None, None, None, None, None]], "append")
++    document = response.get_json()["data"]
++    assert document["rows"][0]["action"] == "rejected"
++    assert document["rows"][0]["errors"]
++    assert not document["can_confirm"] and state(batch_client) == before
++
++
++@pytest.mark.parametrize("mode", ("overwrite", "append", "replace"))
++def test_later_file_insert_failure_restores_all_rows_and_receipts(batch_client, mode):
++    client, conn = batch_client, batch_client.batch_conn
++    if mode == "replace":
++        conn.execute("DELETE FROM Schedule")
++        conn.execute("DELETE FROM BatchMaterials")
++    conn.execute("""CREATE TRIGGER fail_second_batch BEFORE INSERT ON Batches WHEN NEW.batch_id='NEW-SECOND'
++        BEGIN SELECT RAISE(ABORT,'round1 second batch failure'); END""")
++    conn.commit()
++    original_ref = ref_for(client)
++    response = uploaded(client, [["NEW-FIRST", "P1", 2, None, None, None, None, None],
++                                 ["NEW-SECOND", "P1", 3, None, None, None, None, None]], mode)
++    document = response.get_json()["data"]
++    assert document["can_confirm"]
++    before = state(client)
++    result = confirm(client, document)
++    assert result.status_code == 500
++    assert result.get_json()["error"]["code"] == "storage_failure"
++    assert result.get_json()["committed"] == "unknown"
++    assert state(client) == before
++    assert ref_for(client) == original_ref and not conn.in_transaction
++
++
++def test_template_missing_hours_remain_missing_and_hidden_external_values_are_not_normalized():
++    rows = [dict(seq=1, source="internal", op_type_id="T", setup_hours=None, unit_hours=0),
++            dict(seq=2, source="external", op_type_id="T", ext_group_id=None, ext_days=None,
++                 supplier_id=None, setup_hours=b"raw", unit_hours="unknown")]
++    assert len(template_diagnostics(rows, {"ExternalGroups": []}, {"part_no": "P"})) == 3
++    assert rows[0]["setup_hours"] is None and rows[0]["unit_hours"] == 0
++    assert rows[1]["setup_hours"] == b"raw" and rows[1]["unit_hours"] == "unknown"
++
++
++@pytest.mark.parametrize("changes", ({"seq": 0}, {"seq": True}, {"source": " EXTERNAL "}))
++def test_template_identity_and_source_are_not_guessed(changes):
++    row = dict(seq=1, source="internal", op_type_id="T", setup_hours=0, unit_hours=0)
++    row.update(changes)
++    with pytest.raises(WorkbenchCommandRejected) as error:
++        template_diagnostics([row], {"ExternalGroups": []}, {"part_no": "P"})
++    assert error.value.code == "constraint_conflict"
++
++
++@pytest.mark.parametrize("group", (None, {"group_id": "G", "part_no": "OTHER", "merge_mode": "merged", "total_days": 3},
++                                   {"group_id": "G", "part_no": "P", "merge_mode": "unknown", "total_days": 3}))
++def test_external_group_link_must_be_complete(group):
++    row = dict(seq=1, source="external", op_type_id="T", ext_group_id="G", ext_days=2, supplier_id="S")
++    facts = {"ExternalGroups": [] if group is None else [group]}
++    with pytest.raises(WorkbenchCommandRejected) as error:
++        template_diagnostics([row], facts, {"part_no": "P"})
++    assert error.value.code == "constraint_conflict"
++
++
++def test_merged_external_period_is_validated_instead_of_hidden_per_operation_value():
++    row = dict(seq=1, source="external", op_type_id="T", ext_group_id="G", ext_days="legacy", supplier_id="S")
++    group = dict(group_id="G", part_no="P", merge_mode="merged", total_days=3)
++    assert template_diagnostics([row], {"ExternalGroups": [group]}, {"part_no": "P"}) == []
++    group["total_days"] = -1
++    with pytest.raises(ValidationError) as error:
++        template_diagnostics([row], {"ExternalGroups": [group]}, {"part_no": "P"})
++    assert error.value.field == "external_days"

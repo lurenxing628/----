@@ -1,0 +1,34 @@
+{
+  "name": "py38-scope",
+  "cwd": "/Users/lurenxing/GitHub/----",
+  "command": [
+    ".venv/bin/python",
+    "tools/scan_aps_three_gap_py38_scope.py",
+    "--base-ref",
+    "d4589d77"
+  ],
+  "execution_prefix": [
+    "nice",
+    "-n",
+    "10"
+  ],
+  "environment_overlay": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONUTF8": "1",
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONPYCACHEPREFIX": "/Users/lurenxing/GitHub/----/.codestable/issues/2026-09-10-fe-static-integration/runs/20260910T160441-py38-scope/unused-pycache"
+  },
+  "started_at": "2026-09-10T16:04:41+08:00",
+  "finished_at": "2026-09-10T16:04:47+08:00",
+  "duration_seconds": 6.134314582999999,
+  "returncode": 0,
+  "source_changes_during_run": [],
+  "staged_diff_unchanged": true,
+  "does_not_claim": [
+    "full_gate",
+    "clean_worktree_proof",
+    "atomic_snapshot"
+  ],
+  "stdout_sha256": "e0b88cca89489b713e35e49d55f198fab04e425e771f038587ad4be52017f7e0",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

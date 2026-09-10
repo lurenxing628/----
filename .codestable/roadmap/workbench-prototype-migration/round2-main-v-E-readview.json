@@ -1,0 +1,429 @@
+{
+  "schema_version": 1,
+  "reviewer": "Main",
+  "reviewed_at": "2026-09-11",
+  "status": "PASS_FOR_EXPLICIT_VISIBLE_SCOPES",
+  "image_count": 27,
+  "source_binding": {
+    "source03_manifest": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/source-manifest.json",
+    "source03_manifest_sha256": "12678da458090561791361f3925467550aa1cf45166005e2bdb06b50a97899df",
+    "source06_manifest": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/source-manifest.json",
+    "source06_manifest_sha256": "ba451495b7edf2382794236913f3ab3b58574b75a5734e5af7218c957e390ce4",
+    "files_rehashed_per_source": 6532,
+    "all_file_bytes_modes_match": true,
+    "only_two_source_differences": [
+      "tests/workbench/final_execution_analytics.cjs",
+      "tests/workbench/final_execution_read_reentry.cjs"
+    ],
+    "all_product_files_equal": true,
+    "build_id": "86bae55877b7574a7dbccad0a61c2f4b714a3105500908d614b531ae31f90a2e",
+    "asset_manifest": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/full-build/static/workbench/asset-manifest.json",
+    "asset_manifest_sha256": "09f624979b2d9db12fa527ad4c62f610d61a7709d2da9df34732ab4840848b66",
+    "asset_payloads_rehashed": 223,
+    "build_input_count": 315
+  },
+  "original_reentry_images": [
+    {
+      "id": "E-REENTRY-01",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-ob8_k949/screenshots/1920-light-field-same-port-new-pid-original-read-view.png",
+      "sha256": "907266dc076715058f793360b101103faf3ab218d0836c72d69a5e3cedd12e39",
+      "bytes": 298050,
+      "width": 1920,
+      "height": 1080,
+      "visible_scope": "New PID, original field read view and selected task",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-02",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-ob8_k949/screenshots/1392-dark-field-read-reentry-final.png",
+      "sha256": "7e7aeb1f5a4fbc8befbffe608a1266b6c4c8452185b6cb4beadf7d38f13050ba",
+      "bytes": 111623,
+      "width": 1392,
+      "height": 924,
+      "visible_scope": "Field unknown original reference visible error, not a normal read view",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-03",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-ds0d4zps/screenshots/1920-light-calib-same-port-new-pid-original-read-view.png",
+      "sha256": "f2703a39380a91c78f1fe3e46c9f9108d97f4597170cbf801669d0a829215a74",
+      "bytes": 228076,
+      "width": 1920,
+      "height": 1080,
+      "visible_scope": "New PID, original calibration read view",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-04",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-ds0d4zps/screenshots/1392-dark-calib-read-reentry-final.png",
+      "sha256": "77f1358e1eb2edeed7a48345d64460c7aaa2ebd566041cf71146166e86c52358",
+      "bytes": 205317,
+      "width": 1392,
+      "height": 924,
+      "visible_scope": "Calibration dark filtered table; horizontal scroll leaves later columns outside this view",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-05",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-_6wn_7sj/screenshots/1920-light-reports-new-pid-original-read-view.png",
+      "sha256": "e850c81457792559f0da3f7c37d4b2c9b7abb5bbf12c29c840d7e2e45c1f5f6f",
+      "bytes": 326970,
+      "width": 1920,
+      "height": 1080,
+      "visible_scope": "New PID, original report read view",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-06",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-_6wn_7sj/screenshots/1392-dark-reports-report-reentry-final.png",
+      "sha256": "5f78dcb7d9bd5460f1e5b2e066b766b3ecdbeadd2f48923040c3ce41779e77e2",
+      "bytes": 267798,
+      "width": 1392,
+      "height": 924,
+      "visible_scope": "Report dark page three and original filters",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-07",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-se395bjz/screenshots/1920-light-review-new-pid-original-read-view.png",
+      "sha256": "88db6d0b548db943dab69b4aa5162f48ec5070f3513f02e8b2b8da052df7f279",
+      "bytes": 341089,
+      "width": 1920,
+      "height": 1080,
+      "visible_scope": "New PID, original review read view",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-08",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-se395bjz/screenshots/1392-dark-review-report-reentry-final.png",
+      "sha256": "2abb1d55b958bc3fc4c8e81309f53a4ac8651d8f8c40c8834a2598d12272f478",
+      "bytes": 278209,
+      "width": 1392,
+      "height": 924,
+      "visible_scope": "Review dark page three and original filters; median and P90 are visible",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-09",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-ob8_k949/screenshots/1920-light-field-active-stale-visible-error.png",
+      "sha256": "7361c2c81d63daf64c797542c989cf12ec39fbd757e0e6f884302f8f105581dc",
+      "bytes": 115923,
+      "width": 1920,
+      "height": 1080,
+      "visible_scope": "Field active expired read token visible error",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-10",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-ob8_k949/screenshots/1920-light-field-unknown-original-ref.png",
+      "sha256": "090e579cd87f32b6b6f2d4614ea61411c75f80d37bac8ab729ccdbfe505e5b28",
+      "bytes": 115703,
+      "width": 1920,
+      "height": 1080,
+      "visible_scope": "Field unknown original reference visible error",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-11",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-ds0d4zps/screenshots/1920-light-calib-active-stale-visible-error.png",
+      "sha256": "1ad7ed1b6a850457104d6171f7764bf687e23722f761d943c2a2e90af940f6f4",
+      "bytes": 159739,
+      "width": 1920,
+      "height": 1080,
+      "visible_scope": "Calibration active expired read token visible error",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-12",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-ds0d4zps/screenshots/1920-light-calib-unknown-original-ref.png",
+      "sha256": "a5ad1b2162de4d76903f3a92c73206dba11a4f540115b28039f7c4e03cbc3934",
+      "bytes": 248425,
+      "width": 1920,
+      "height": 1080,
+      "visible_scope": "Calibration visible table only; unknown reference error was below the viewport",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-13",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-_6wn_7sj/screenshots/1920-light-reports-live-stale-explicit-error.png",
+      "sha256": "f2790a9fd6ca994cb625a43098683c7ec3d77556f99159c72a2143d021e4a3e2",
+      "bytes": 121505,
+      "width": 1920,
+      "height": 1080,
+      "visible_scope": "Reports active expired read token visible error",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-14",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-_6wn_7sj/screenshots/1920-light-reports-unknown-original-ref.png",
+      "sha256": "4a684045b3c501614f1a305263d57dc0694086020d72578f50b6d5bfd31a198e",
+      "bytes": 310694,
+      "width": 1920,
+      "height": 1080,
+      "visible_scope": "Reports visible table only; unknown reference error was below the viewport",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-15",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-se395bjz/screenshots/1920-light-review-live-stale-explicit-error.png",
+      "sha256": "9cad4e5bcc480b874dd0bdc224c7476fce4432eb9159b45c7214236f7a96bef1",
+      "bytes": 114119,
+      "width": 1920,
+      "height": 1080,
+      "visible_scope": "Review active expired read token visible error",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-REENTRY-16",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-se395bjz/screenshots/1920-light-review-unknown-original-ref.png",
+      "sha256": "adcb2deddfdbe3ab8640dbc426a5f83a37f1b1d3821af15b97f739a90f6b7fea",
+      "bytes": 345753,
+      "width": 1920,
+      "height": 1080,
+      "visible_scope": "Review visible table only; unknown reference error was below the viewport",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    }
+  ],
+  "supplement_and_representative_images": [
+    {
+      "id": "E-V-001",
+      "path": "/private/tmp/aps-final-e-visual-supplement-20260911-01/run/aps-workbench-live-qle7x75c/screenshots/1920-light-reports-unknown-original-ref-error-visible.png",
+      "action_ids": [
+        "E-READVIEW-REPORTS-UNKNOWN",
+        "WBP-REPORT-012.A003"
+      ],
+      "visible_claim": "未知工序真实404，红色错误框已滚入视口",
+      "source": "06",
+      "priority": "required_supplement",
+      "sha256": "e5b4fd324224c18a924911994a65d540c785a179ba65b638be2917f0828641ed",
+      "bytes": 284648,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-V-002",
+      "path": "/private/tmp/aps-final-e-visual-supplement-20260911-01/run/aps-workbench-live-qle7x75c/screenshots/1920-light-review-unknown-original-ref-error-visible.png",
+      "action_ids": [
+        "E-READVIEW-REVIEW-UNKNOWN",
+        "WBP-REVIEW-001.A005"
+      ],
+      "visible_claim": "复盘未知工序真实404，红色错误框已滚入视口",
+      "source": "06",
+      "priority": "required_supplement",
+      "sha256": "6865a40a3f0a07dbe805415e689964c5110c8cefa2a41d0e4a538668660aaccb",
+      "bytes": 298993,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-V-003",
+      "path": "/private/tmp/aps-final-e-visual-supplement-20260911-01/run/aps-workbench-live-zsvphbqs/screenshots/1920-light-calib-unknown-original-ref-error-visible.png",
+      "action_ids": [
+        "E-READVIEW-CALIB-UNKNOWN"
+      ],
+      "visible_claim": "未知模板真实404，原样本编号保留，错误框在视口",
+      "source": "06",
+      "priority": "required_supplement",
+      "sha256": "ce7a4a5137efe027480632877950adde5e32c3cf0ec287881bc339e4c0fcf423",
+      "bytes": 242183,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-V-004",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-fnjp23dl/screenshots/1920-light-initial-field-main.png",
+      "action_ids": [
+        "WBP-FIELD-001.A001",
+        "WBP-FIELD-001.A003",
+        "WBP-FIELD-001.A004"
+      ],
+      "visible_claim": "正常五指标、状态计数、未知工时与已知小计",
+      "source": "03",
+      "priority": "fixed_gap_representative",
+      "sha256": "eeeb12c970e21236e41c5b88db3dddc750dcc9cb542e77d0c8f08eea0e675c44",
+      "bytes": 311052,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-V-005",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-fnjp23dl/screenshots/1920-light-initial-draft-before-navigation.png",
+      "action_ids": [
+        "WBP-FIELD-007.A001",
+        "WBP-FIELD-007.A005",
+        "WBP-FIELD-009.A002",
+        "WBP-FIELD-013.A001"
+      ],
+      "visible_claim": "原任务编辑草稿；这张是切换前，不是切换后恢复过程的图证",
+      "source": "03",
+      "priority": "fixed_gap_representative",
+      "sha256": "6570f48ec89bb396f4f85252a10847384fa5df4b99e5a378eb9bc32d64824504",
+      "bytes": 254241,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-V-006",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-fnjp23dl/screenshots/1920-light-initial-actual-keyboard-pan.png",
+      "action_ids": [
+        "WBP-FG-010.A002",
+        "WBP-FG-010.A003",
+        "WBP-FG-010.A004",
+        "WBP-FG-010.A006"
+      ],
+      "visible_claim": "手动缩放、实际刻度和水平视口结果；A004按刻度显示解释，不虚构独立开关",
+      "source": "03",
+      "priority": "fixed_gap_representative",
+      "sha256": "5fae83b4d0eab7a724a485924a71595e56d12af926f485e955e2f66ddf75a826",
+      "bytes": 274641,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-V-007",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-pjdnlczw/screenshots/1392-dark-initial-chain-final.png",
+      "action_ids": [
+        "WBP-FG-011.A001",
+        "WBP-FG-011.A003",
+        "WBP-FG-011.A004",
+        "WBP-FG-011.A005",
+        "WBP-FG-012.A006"
+      ],
+      "visible_claim": "目视确认为整版全局链：四节点、工艺/设备/人员三类边理由、已选任务和筛选内4/4计数。不是对象关联模式截图。",
+      "source": "03",
+      "priority": "four_state_representative",
+      "sha256": "9ff607d7b9a49e6321ed5f1891b68c366d499323e218975cdabfab599eaed059",
+      "bytes": 236098,
+      "viewport": [
+        1392,
+        924
+      ],
+      "theme": "dark",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-V-008",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-jxowptso/screenshots/1920-light-initial-calibration-summary.png",
+      "action_ids": [
+        "WBP-CALIB-001.A001",
+        "WBP-CALIB-001.A002",
+        "WBP-CALIB-002.A003",
+        "WBP-CALIB-002.A004"
+      ],
+      "visible_claim": "表头排序和列宽变化后结果；列筛选弹层已关闭，不算弹层展开V",
+      "source": "03",
+      "priority": "fixed_gap_representative",
+      "sha256": "c3b8cdc6e99bcce674bee17c8be912ee07e497e058ab06cfdc959d9696e507af",
+      "bytes": 178191,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-V-009",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-jxowptso/screenshots/1920-light-initial-calibration-original-part-readonly.png",
+      "action_ids": [
+        "WBP-CALIB-003.A001",
+        "WBP-CALIB-003.A002"
+      ],
+      "visible_claim": "从校准P1进入的统一零件详情，原模板定位、只读维护保护",
+      "source": "03",
+      "priority": "fixed_gap_representative",
+      "sha256": "d4d3d44b55dde3d1c734e55a84d45de4ffce0e38ba83b9212a422a93579522d0",
+      "bytes": 221179,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-V-010",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-jxowptso/screenshots/1920-dark-initial-adoption-receipt-viewport.png",
+      "action_ids": [
+        "WBP-CALIB-004.A004",
+        "WBP-CALIB-006.A003",
+        "WBP-CALIB-006.A004"
+      ],
+      "visible_claim": "已提交的原采用锁定回执；不证明未展示的导入保护流程",
+      "source": "03",
+      "priority": "four_state_representative",
+      "sha256": "84ca19e291ab8d30e63d5d55e00477058b365b8560b3093c2aefc4458318e118",
+      "bytes": 275193,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "dark",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    },
+    {
+      "id": "E-V-011",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-e_qv_gk0/screenshots/1392-light-review-charts.png",
+      "action_ids": [
+        "WBP-REVIEW-006.A001",
+        "WBP-REVIEW-006.A002",
+        "WBP-REVIEW-006.A003",
+        "WBP-REVIEW-006.A004",
+        "WBP-SCOPE-006.A002",
+        "WBP-SCOPE-006.A003"
+      ],
+      "visible_claim": "可见累计趋势点/图表数据、完工偏差分布、未确认老化、资源工时；本帧未显示中位数/P90数值或悬停tooltip，不扩成整个复合动作V。",
+      "source": "03",
+      "priority": "four_state_representative",
+      "sha256": "7f99eb8534fc22f33b067d933576da37cfe5f8df5559d11be40da401bd09c260",
+      "bytes": 171324,
+      "viewport": [
+        1392,
+        924
+      ],
+      "theme": "light",
+      "main_v": "PASS_VISIBLE_SCOPE_ONLY"
+    }
+  ],
+  "findings": [
+    "No incoherent overlap or clipped text within the inspected visible subjects.",
+    "The three additional unknown-reference error panels are now visible; no substitute object is displayed.",
+    "Unknown work hours, known subtotals, reported operation completion, original template identity, and adoption receipt boundaries are visibly retained."
+  ],
+  "limits": [
+    "Only the exact visible surfaces are signed, not 69 full capability families or all atomic actions.",
+    "E-REENTRY-12/14/16 do not independently prove error visibility; use E-V-003/001/002 respectively.",
+    "E-V-005 is a pre-navigation draft image, not proof of its restoration or a save.",
+    "E-V-006 shows a manual scale and horizontal viewport; it does not prove a separate tick-mode control.",
+    "E-V-007 is the global four-node chain, not the separate object-related mode.",
+    "E-V-008 has the column menu closed; it does not prove an open filter menu.",
+    "E-V-010 shows an adopted/locked receipt, not an import-protection workflow.",
+    "E-V-011 does not show hover tooltips or median/P90. E-REENTRY-08 separately shows median/P90 values, not their calculations.",
+    "The four viewport/theme examples are representative states, not four variants of every scene.",
+    "Source equivalence excludes only two test probes; no final HEAD, legacy-retirement, persistence, business-write, or complete gate claim is made by this visual record."
+  ]
+}

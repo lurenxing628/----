@@ -1,0 +1,78 @@
+{
+    "version": "1.1.406",
+    "time": "1789033627577",
+    "generalDiagnostics": [
+        {
+            "file": "/Users/lurenxing/GitHub/----/tests/workbench/test_batch_files.py",
+            "severity": "error",
+            "message": "Object of type \"None\" is not subscriptable",
+            "range": {
+                "start": {
+                    "line": 114,
+                    "character": 11
+                },
+                "end": {
+                    "line": 114,
+                    "character": 26
+                }
+            },
+            "rule": "reportOptionalSubscript"
+        },
+        {
+            "file": "/Users/lurenxing/GitHub/----/tests/workbench/test_batch_files.py",
+            "severity": "error",
+            "message": "\"append\" is not a known attribute of \"None\"",
+            "range": {
+                "start": {
+                    "line": 135,
+                    "character": 20
+                },
+                "end": {
+                    "line": 135,
+                    "character": 26
+                }
+            },
+            "rule": "reportOptionalMemberAccess"
+        },
+        {
+            "file": "/Users/lurenxing/GitHub/----/tests/workbench/test_batch_files.py",
+            "severity": "error",
+            "message": "\"append\" is not a known attribute of \"None\"",
+            "range": {
+                "start": {
+                    "line": 136,
+                    "character": 20
+                },
+                "end": {
+                    "line": 136,
+                    "character": 26
+                }
+            },
+            "rule": "reportOptionalMemberAccess"
+        },
+        {
+            "file": "/Users/lurenxing/GitHub/----/tests/workbench/test_batch_files.py",
+            "severity": "error",
+            "message": "Object of type \"None\" is not subscriptable",
+            "range": {
+                "start": {
+                    "line": 145,
+                    "character": 8
+                },
+                "end": {
+                    "line": 145,
+                    "character": 23
+                }
+            },
+            "rule": "reportOptionalSubscript"
+        }
+    ],
+    "summary": {
+        "filesAnalyzed": 17,
+        "errorCount": 4,
+        "warningCount": 0,
+        "informationCount": 0,
+        "timeInSec": 2.502
+    }
+}
+

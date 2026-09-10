@@ -1,0 +1,442 @@
+{
+  "scope": "R1-C",
+  "status": "completed-scoped-dirty-unbound",
+  "source_sha256": {
+    "core/models/workbench_batch.py": "13ff31148aecefd7a783f3dd4acd79107e0e2e05084980c9afced105b5690688",
+    "core/models/workbench_batch_query.py": "4ec9fd5d34477e56fd7e6c437869cdc367cafb130e1799f3667584381e83e0ef",
+    "core/services/workbench/batch_execution.py": "a2acf3d8769efe16397c6aaeeaafb4f9847530aaa71a8fd93c689c8f62190f4c",
+    "core/services/workbench/batch_facts.py": "7b6ea8eaa00781935496d3e72a8efd3135e882c6fc514d22edfdf6ba399a02e3",
+    "core/services/workbench/batch_file_codec.py": "4e00b1843f45ca556d27a19b4b50c3410ea073ecfba95f49e56e92b08b668fb4",
+    "core/services/workbench/batch_files.py": "526a6e13e47943465d0907e77353f814de36dce368b8c459f4632ae53b794784",
+    "core/services/workbench/batch_file_preview.py": "21b30b1db080b12164b77bb5a970d6b50457feed2c7f510047d616d9ef6848ba",
+    "core/services/workbench/batch_operations.py": "9cc416daa8af16150641ef727aff130ba843b02e293d0b13a725f8fb8bbe0be2",
+    "core/services/workbench/batch_template_validation.py": "bc24e2ff151191932f9e343f5ee4293e3ca3f9b701790c9bbee0c204cc50aa15",
+    "web/routes/workbench/batch_context.py": "0deabad054d11e91b9c24fb4c4e6fa9006ade58590a0078b3788fa6ce3891ad3",
+    "web/routes/workbench/batches.py": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+    "data/repositories/workbench_template_lineage_repo.py": "41f7d0b965e10b31a82d2443d9593ee1b06e232d96b5a758b3115893d462a85f",
+    "tests/workbench/legacy_batch_lineage_copy_support.py": "083cdfbc1758c33267b7d55547b3528df026904b5086e972293d750fd3067f70",
+    "tests/workbench/test_legacy_batch_lineage_copy.py": "8d184c9ef354526491585a8fc9b8816da615564e9c186605a6b7e9ad11bc8037",
+    "tests/web_pages/test_batch_template_autobuild_same_tx.py": "bb6b2a51257b91798ceed08f6fcf87a1f08cf763dc32bbb8fcc11fbfbc818ad6",
+    "tests/workbench/test_batch_files.py": "c32e140a06d12339dce92e6f34122673a204b471a17a97ad9961c3d0c859befa",
+    "tests/workbench/test_batch_round1_boundaries.py": "ac849eb90271f0128f66b8f82ec533b13783278b0d7cd00e81b99f4fb5480de3"
+  },
+  "before_sha256": {
+    "core/models/._workbench_batch.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "core/models/workbench_batch.py": "d39a77e306022a5f63ff422cea7e6598634e8c6df574172cdd59da733c0df01b",
+    "core/models/._workbench_batch_query.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "core/models/workbench_batch_query.py": "c6dc81faf0c6c96b882365e3a8929315c6c0416e6045174676faf011a4913944",
+    "core/services/workbench/._batch_execution.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "core/services/workbench/batch_execution.py": "e6be1ea10c0a8e8b619437c1cc22be578ae6546449fd3595178ad42f480342c8",
+    "core/services/workbench/._batch_facts.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "core/services/workbench/batch_facts.py": "ead67731f85c98ea83cb4c7f30a7fccb967a231093800c55845dd8962704a064",
+    "core/services/workbench/._batch_file_codec.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "core/services/workbench/batch_file_codec.py": "d740bf0b8dec420dd442523ad533abf92662d2fbb837d488fc7755e30ebd876d",
+    "core/services/workbench/._batch_files.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "core/services/workbench/batch_files.py": "14b7faf083bd5d90a6572c3bbc99b65b4398198acfc34a33279de7280bee1a8e",
+    "core/services/workbench/._batch_operations.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "core/services/workbench/batch_operations.py": "0de6fe24cf8ae3ad474688fe4bb8d0f106439a325b1553a51180445c6013c10c",
+    "web/routes/workbench/._batch_context.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "web/routes/workbench/batch_context.py": "563406f40eb07446fa441f144460f44230273228980351406c4b98e14cdcc4dd",
+    "web/routes/workbench/._batches.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "web/routes/workbench/batches.py": "242f2437987be58a42c0dc614d8a710286d4617aaf1465d177d86f2a72fa3d1e",
+    "core/services/scheduler/._template_lineage.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "core/services/scheduler/template_lineage.py": "8a13cbe6a71f8c827f945c6760ecae695f631408ae6ada9079d7963d9112f2cc",
+    "data/repositories/._workbench_template_lineage_repo.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "data/repositories/workbench_template_lineage_repo.py": "0b816dd9241b193c1c082a8c72f564f24f8544f6876298a304525c4f0b77fd6a",
+    "tests/workbench/._legacy_batch_lineage_copy_support.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "tests/workbench/legacy_batch_lineage_copy_support.py": "c3773cf834f69944f3135a2c665ad90095295bcd256b4117b5248cf441a06e3a",
+    "tests/workbench/._test_legacy_batch_lineage_copy.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "tests/workbench/test_legacy_batch_lineage_copy.py": "259bdb4c8169f72d42eaae5e9a17156e63b9cb7b2dac695312d711b2916292a9",
+    "tests/web_pages/._test_batch_template_autobuild_same_tx.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "tests/web_pages/test_batch_template_autobuild_same_tx.py": "8945a4a774bffd3a14ba30ee4cce698ecb078bbeb4f15f6a6d5db4e065913ba6",
+    "tests/workbench/._test_batch_files.py": "2b206048e25084b23a8281c06fe87a6b585d7b0ad0a76ed52f7ac45d6e3403fc",
+    "tests/workbench/test_batch_files.py": "24b36eba8371629d270fb3022097c5b4968c24df64062e4cb510493484a38f7a"
+  },
+  "unmodified_writer_sha256": "8a13cbe6a71f8c827f945c6760ecae695f631408ae6ada9079d7963d9112f2cc",
+  "staged_patch_sha256": "952a9e734f0c0d73d6c780090ac53a2854134b3523f0a552d3fe362f4f908b7d",
+  "staged_paths": [
+    "tests/gate_meta/test_frozen_bundle_contract.py"
+  ],
+  "baseline_type_report_sha256": "28d369da0fec3db24f1c8159dc1ae008ed5e1786ed26be8359991a53783ededd",
+  "baseline_type_diagnostics": [
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/models/workbench_batch.py",
+      "severity": "error",
+      "message": "Argument of type \"str | None\" cannot be assigned to parameter \"business_code\" of type \"dict[Unknown, Unknown]\" in function \"update\"\n  Type \"str | None\" is not assignable to type \"dict[Unknown, Unknown]\"\n    \"str\" is not assignable to \"dict[Unknown, Unknown]\"",
+      "range": {
+        "start": {
+          "line": 85,
+          "character": 36
+        },
+        "end": {
+          "line": 85,
+          "character": 94
+        }
+      },
+      "rule": "reportArgumentType"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/models/workbench_batch.py",
+      "severity": "error",
+      "message": "Argument of type \"str\" cannot be assigned to parameter \"part_ref\" of type \"dict[Unknown, Unknown]\" in function \"update\"\n  \"str\" is not assignable to \"dict[Unknown, Unknown]\"",
+      "range": {
+        "start": {
+          "line": 86,
+          "character": 31
+        },
+        "end": {
+          "line": 86,
+          "character": 62
+        }
+      },
+      "rule": "reportArgumentType"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_execution.py",
+      "severity": "error",
+      "message": "No overloads for \"get\" match the provided arguments",
+      "range": {
+        "start": {
+          "line": 45,
+          "character": 13
+        },
+        "end": {
+          "line": 46,
+          "character": 85
+        }
+      },
+      "rule": "reportCallIssue"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_execution.py",
+      "severity": "error",
+      "message": "Argument of type \"Unknown | Literal['complete'] | None\" cannot be assigned to parameter \"key\" of type \"str\" in function \"get\"\n  Type \"Unknown | Literal['complete'] | None\" is not assignable to type \"str\"\n    \"None\" is not assignable to \"str\"",
+      "range": {
+        "start": {
+          "line": 46,
+          "character": 64
+        },
+        "end": {
+          "line": 46,
+          "character": 69
+        }
+      },
+      "rule": "reportArgumentType"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_facts.py",
+      "severity": "error",
+      "message": "Argument of type \"dict[Unknown, Unknown]\" cannot be assigned to parameter \"value\" of type \"list[dict[Unknown, Unknown]]\" in function \"__setitem__\"\n  \"dict[Unknown, Unknown]\" is not assignable to \"list[dict[Unknown, Unknown]]\"",
+      "range": {
+        "start": {
+          "line": 31,
+          "character": 12
+        },
+        "end": {
+          "line": 31,
+          "character": 29
+        }
+      },
+      "rule": "reportArgumentType"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_facts.py",
+      "severity": "error",
+      "message": "Argument of type \"Dict[int, str]\" cannot be assigned to parameter \"value\" of type \"list[dict[Unknown, Unknown]]\" in function \"__setitem__\"\n  \"Dict[int, str]\" is not assignable to \"list[dict[Unknown, Unknown]]\"",
+      "range": {
+        "start": {
+          "line": 32,
+          "character": 12
+        },
+        "end": {
+          "line": 32,
+          "character": 35
+        }
+      },
+      "rule": "reportArgumentType"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_file_codec.py",
+      "severity": "error",
+      "message": "\"title\" is not a known attribute of \"None\"",
+      "range": {
+        "start": {
+          "line": 68,
+          "character": 10
+        },
+        "end": {
+          "line": 68,
+          "character": 15
+        }
+      },
+      "rule": "reportOptionalMemberAccess"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_file_codec.py",
+      "severity": "error",
+      "message": "\"freeze_panes\" is not a known attribute of \"None\"",
+      "range": {
+        "start": {
+          "line": 69,
+          "character": 10
+        },
+        "end": {
+          "line": 69,
+          "character": 22
+        }
+      },
+      "rule": "reportOptionalMemberAccess"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_file_codec.py",
+      "severity": "error",
+      "message": "\"append\" is not a known attribute of \"None\"",
+      "range": {
+        "start": {
+          "line": 71,
+          "character": 10
+        },
+        "end": {
+          "line": 71,
+          "character": 16
+        }
+      },
+      "rule": "reportOptionalMemberAccess"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_file_codec.py",
+      "severity": "error",
+      "message": "\"cell\" is not a known attribute of \"None\"",
+      "range": {
+        "start": {
+          "line": 73,
+          "character": 21
+        },
+        "end": {
+          "line": 73,
+          "character": 25
+        }
+      },
+      "rule": "reportOptionalMemberAccess"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_file_codec.py",
+      "severity": "error",
+      "message": "\"column_dimensions\" is not a known attribute of \"None\"",
+      "range": {
+        "start": {
+          "line": 78,
+          "character": 14
+        },
+        "end": {
+          "line": 78,
+          "character": 31
+        }
+      },
+      "rule": "reportOptionalMemberAccess"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_file_codec.py",
+      "severity": "error",
+      "message": "\"cell\" is not a known attribute of \"None\"",
+      "range": {
+        "start": {
+          "line": 83,
+          "character": 25
+        },
+        "end": {
+          "line": 83,
+          "character": 29
+        }
+      },
+      "rule": "reportOptionalMemberAccess"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_file_codec.py",
+      "severity": "error",
+      "message": "\"auto_filter\" is not a known attribute of \"None\"",
+      "range": {
+        "start": {
+          "line": 87,
+          "character": 10
+        },
+        "end": {
+          "line": 87,
+          "character": 21
+        }
+      },
+      "rule": "reportOptionalMemberAccess"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_files.py",
+      "severity": "error",
+      "message": "Object of type \"None\" is not subscriptable",
+      "range": {
+        "start": {
+          "line": 67,
+          "character": 43
+        },
+        "end": {
+          "line": 67,
+          "character": 48
+        }
+      },
+      "rule": "reportOptionalSubscript"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_files.py",
+      "severity": "error",
+      "message": "Object of type \"None\" is not subscriptable",
+      "range": {
+        "start": {
+          "line": 70,
+          "character": 50
+        },
+        "end": {
+          "line": 70,
+          "character": 55
+        }
+      },
+      "rule": "reportOptionalSubscript"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/core/services/workbench/batch_files.py",
+      "severity": "error",
+      "message": "Object of type \"None\" is not subscriptable",
+      "range": {
+        "start": {
+          "line": 70,
+          "character": 72
+        },
+        "end": {
+          "line": 70,
+          "character": 77
+        }
+      },
+      "rule": "reportOptionalSubscript"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/web/routes/workbench/batch_context.py",
+      "severity": "error",
+      "message": "Argument of type \"int\" cannot be assigned to parameter \"value\" of type \"str\" in function \"__setitem__\"\n  \"int\" is not assignable to \"str\"",
+      "range": {
+        "start": {
+          "line": 24,
+          "character": 12
+        },
+        "end": {
+          "line": 24,
+          "character": 23
+        }
+      },
+      "rule": "reportArgumentType"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/web/routes/workbench/batches.py",
+      "severity": "error",
+      "message": "Argument of type \"Unknown | Literal['batch:create'] | None\" cannot be assigned to parameter \"subject_ref\" of type \"str\" in function \"validate_write_context\"\n  Type \"Unknown | Literal['batch:create'] | None\" is not assignable to type \"str\"\n    \"None\" is not assignable to \"str\"",
+      "range": {
+        "start": {
+          "line": 104,
+          "character": 52
+        },
+        "end": {
+          "line": 104,
+          "character": 59
+        }
+      },
+      "rule": "reportArgumentType"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/web/routes/workbench/batches.py",
+      "severity": "error",
+      "message": "Argument of type \"Unknown | Literal['batch:create'] | None\" cannot be assigned to parameter \"context_ref\" of type \"str\" in function \"execute\"\n  Type \"Unknown | Literal['batch:create'] | None\" is not assignable to type \"str\"\n    \"None\" is not assignable to \"str\"",
+      "range": {
+        "start": {
+          "line": 112,
+          "character": 46
+        },
+        "end": {
+          "line": 112,
+          "character": 53
+        }
+      },
+      "rule": "reportArgumentType"
+    }
+  ],
+  "final_type_summary": {
+    "filesAnalyzed": 17,
+    "errorCount": 0,
+    "warningCount": 0,
+    "informationCount": 0,
+    "timeInSec": 2.265
+  },
+  "tests": {
+    "legacy-final": {
+      "tests": 60,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "batch-final": {
+      "tests": 147,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "unique_passed_cases": 207,
+  "scoped_source_unchanged_during_all_final_runs": true,
+  "no_whitespace_errors_including_untracked_sources": true,
+  "complexity_threshold": 15,
+  "scoped_product_complexity_violations": [],
+  "scoped_product_oversize_violations": [],
+  "new_registry_dependencies_for_mainline": [
+    "core/services/workbench/batch_file_preview.py",
+    "core/services/workbench/batch_template_validation.py",
+    "tests/workbench/test_batch_round1_boundaries.py",
+    "tests/workbench/legacy_batch_lineage_copy_support.py"
+  ],
+  "not_performed": [
+    "full quality gate",
+    "whole-site acceptance",
+    "5000 load test",
+    "Win7 release",
+    "old UI retirement",
+    "preview service operation",
+    "production DB access",
+    "stage",
+    "commit",
+    "dependency upgrade"
+  ],
+  "verification_receipts": {
+    "legacy-final": "legacy-final-receipt.json",
+    "batch-final": "batch-final-receipt.json",
+    "pyright": "pyright-receipt.json",
+    "ruff": "ruff-receipt.json",
+    "python38": "python38-receipt.json"
+  },
+  "evidence_sha256": {
+    "ruff-receipt.json": "47ff1b597b6d6e1add81fe0c902ddd6808332645535cab7470515814ea5734a4",
+    "batch-file-before-replay.xml": "e518ce36cc4f7239c398f894a9418ba1fe32a7440f20dd77271f4452b348c9d4",
+    "batch-functional.xml": "f7b2cbbb82d819c25ee8c964df317ee81ce35e62afb722655de115282019ce89",
+    "legacy-final.log": "7a8648de5abd20228c39c9a4b6cc5926f606f44177976d9fc82eb00229666ee9",
+    "batch-final.xml": "55d539add02b53f0b426dc90559016a8c6f70c3039c047c6e524adba0572360b",
+    "source-complexity.json": "7fbc5ed5f902ed0cb6b92dd2a5e7c8c6671057cef1a2730fd42e25daa800733f",
+    "batch-file-before-replay-sources.json": "1199ef0219ed1008ab56ffdb07c938a3ba40d05c1d6d4d2bed209e4c8816354d",
+    "round1-source.patch": "06ddc7ecc661a02096525945fd069d57eb3b0e0c308674ffdada1529fe0777c0",
+    "pyright-tests-before.json": "82cd14e43bb2968bd206f128794e7e4b9d8d6cca317ea12c7aa064b06fdd6d8c",
+    "legacy-final-receipt.json": "ca6f5279f53b1c2d23e8484023e0bb5a246f948b9f08f9308b834d69e59968ba",
+    "python38-receipt.json": "428630fd5f992ee1efaf96d9ff8a4c275f9b79d8ce8feb847d6df0ff99faca7e",
+    "pyright.json": "479e1018a729ebac3038dd48bdb3ff9f3926660e48a89f6cc39577bd949cb85d",
+    "pyright-receipt.json": "a34323939e76bfc19d8221979067e34edc8ed629ca1b53b87256d879c79ff930",
+    "legacy-before.xml": "2896626433d86b636dca841be276f64a1670dd8d58360ae3b952acddd55672ac",
+    "batch-final-receipt.json": "aa5f63c12f8788f797c2b546a4a7d7fe8f35bc2d941a08044eb4cd5b3c520a8e",
+    "ruff.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "python38.log": "fda3e1dd20e726b9fb8860b8e3df01be43da9b2a75add5797dfe0324261770af",
+    "pyright-tests-before-receipt.json": "bf439ef2c2eaa4825863976eb365c79446be59d62c254fd9a561c624adcadbed",
+    "legacy-closed.xml": "f78055331fe3b63f9a678fdac076f2dfac0b64cffb79bb27025e0cdaf960f478",
+    "legacy-final.xml": "7a520ff87bb045f77c0a84de2b444f359860055a851f0fa9d31083f94f14c428",
+    "batch-final.log": "ff4d71b40d7ecc1fdc2be086eab1d817540462d25222927e6df9e5c097fe6535"
+  }
+}

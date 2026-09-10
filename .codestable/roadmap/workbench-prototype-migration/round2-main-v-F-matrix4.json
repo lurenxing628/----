@@ -1,0 +1,251 @@
+{
+  "reviewer": "Main",
+  "reviewed_at": "2026-09-10T15:47:22.558Z",
+  "status": "passed_visible_layout_only",
+  "scope": "28 exact screenshots, seven scenes across two desktop viewports and light/dark; not all 228 actions and not newer navigation/restoration overlays",
+  "build_id": "1417717b6ecfdc897da2af9b5d0302a13f3617ab1ad37b696343df8c9d758c46",
+  "manifest_sha256": "2bc9704cab900f87760f1d9168597a7b566ef1cf8c77e5cf0a83263e6b336439",
+  "source_binding": {
+    "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-source-proof.json",
+    "sha256": "555d406f87a131a7f0de0044564fca06a55b4ca6615b21839c34df5535d4c1cd",
+    "aggregate_sha256": "1f9acb1bbdebd53696be4f696b1da3e14f0051515f2927139bae46a5b5906d0f",
+    "files": 3634
+  },
+  "observations": [
+    "No visible incoherent overlap, toolbar button spill or page horizontal overflow in these exact images.",
+    "Timeline task and maintenance layers remain distinguishable; tables align and text wraps inside the shown containers.",
+    "Candidate summary and restore confirmation dialogs fit both viewports and themes.",
+    "Maintenance-only page clearly requires software restart; visible actions do not imply business workspace is open."
+  ],
+  "limits": [
+    "Screenshots are scrolled viewport captures, not complete full-page coverage.",
+    "Behavior, persistence and source guards are separately executed F evidence; Main did not replay the operations.",
+    "New Dashboard navigation confirmation and read-context repairs remain pending separate verification."
+  ],
+  "screenshots": [
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/resource-timeline-and-batch-link.png",
+      "sha256": "daa0bf0ee83bcbd3946a10100d2dfba7ede9b068885eb81a827d1f3c45586bf9",
+      "bytes": 240528,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/resource-timeline-and-batch-link.png",
+      "sha256": "6b77a925256263d5d8f824cc8327e14393a6b1fe92b36f5fa42a6741bbfeb40a",
+      "bytes": 242270,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/resource-timeline-and-batch-link.png",
+      "sha256": "f8e1821903b89cf574a21ba15d775057a498b866d415ba0292c8e0c3d2d75814",
+      "bytes": 218158,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/resource-timeline-and-batch-link.png",
+      "sha256": "963cc0f01731febb026acd4892378a369b0fea9fbb8600b8cc7bd30b769fac1a",
+      "bytes": 220044,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/three-real-candidates-and-comparison.png",
+      "sha256": "36a854ba4cbda4cfad26cf338c21a804276421962647bfb0dbde43fbb6e61007",
+      "bytes": 221220,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/three-real-candidates-and-comparison.png",
+      "sha256": "49cb9817047d73c0f57e8befe968d636a163853127ed0ed9516d8252971610ac",
+      "bytes": 223482,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/three-real-candidates-and-comparison.png",
+      "sha256": "498e01d4725d54ef41feeb96ac2a59ad8d18d3f7e147ea12acb2ff07e0cab7d5",
+      "bytes": 192254,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/three-real-candidates-and-comparison.png",
+      "sha256": "9701cd0f475657307fe31058e98552b935c30151d31e29dd076228f306b442f2",
+      "bytes": 194350,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/candidate-summary-dialog.png",
+      "sha256": "39990806703e2263438601a7dcba56b8ce649bbc7a8e2501e454508aff0835d1",
+      "bytes": 211893,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/candidate-summary-dialog.png",
+      "sha256": "b6e2767ca14f7d3dbb59957a9289ffc75931679c76e038d385d43e4c3617b74a",
+      "bytes": 214700,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/candidate-summary-dialog.png",
+      "sha256": "be52797b274994c601c65730bc4f2ea8d90ef8ef5a46d5d150d818d961bc35ad",
+      "bytes": 157516,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/candidate-summary-dialog.png",
+      "sha256": "acc5cf15456de1b76e53bc6e7dd7745ba85d538d6d2f83aed2aa88e626efe85b",
+      "bytes": 158616,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/maintenance-and-original-plan-bars.png",
+      "sha256": "aadb037616ffafb8803867facb01635d88dc19e8e7ffdea8ae087021a83c202d",
+      "bytes": 231818,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/maintenance-and-original-plan-bars.png",
+      "sha256": "180812d33faa384f107d8fb5e057d45844a407831ecc70f9788f852eb89f29cd",
+      "bytes": 233057,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/maintenance-and-original-plan-bars.png",
+      "sha256": "949b64c7dea8ef2b1c85c2724fa87b2c37b832d5b064bfae6a470922d4b1c6ac",
+      "bytes": 212788,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/maintenance-and-original-plan-bars.png",
+      "sha256": "18db17fab55a102367152e90c063e3fe8861e46ebf64740c4bf7f229e52a2963",
+      "bytes": 214792,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/system-eight-fields.png",
+      "sha256": "c20196cb77d4912fc34b5e3804af5221036399b7347ba54d512d49dab4bad8db",
+      "bytes": 210584,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/system-eight-fields.png",
+      "sha256": "7d99c2b6e726adec8f9327c2bad888656b67b86a8bc13dba6297a1d6f027ba50",
+      "bytes": 211598,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/system-eight-fields.png",
+      "sha256": "6c12f851dddcd8cc3cbee9822dcb764e67d202593030f981d1ea2731eea598ef",
+      "bytes": 150810,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/system-eight-fields.png",
+      "sha256": "661d82719b7911d0387a908ea363755ac08b6803052b91dc40bcf0b36fbd16f5",
+      "bytes": 151968,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_restore_0/restore-host/probe-restore-1920-light/restore-confirm.png",
+      "sha256": "0485cd416d111d0c6160eb8c517adba97045ea264288686c5481372b725f61d4",
+      "bytes": 273105,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_restore_1/restore-host/probe-restore-1920-dark/restore-confirm.png",
+      "sha256": "2aadf27916b9cdce8f5db7af37acc854a888bd9279ba1376655b13c8983d519b",
+      "bytes": 277317,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_restore_2/restore-host/probe-restore-1392-light/restore-confirm.png",
+      "sha256": "51b8e52066a416ceeee43ff62ca90621823f1dd861ee3563f3c63837d96f4be1",
+      "bytes": 211393,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_restore_3/restore-host/probe-restore-1392-dark/restore-confirm.png",
+      "sha256": "964ca7d1df1e754c0aa1e7d35fbb36f942df684e574cb74f64a4fea3dd1a039f",
+      "bytes": 214895,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_restore_0/restore-host/probe-restore-1920-light/restore-refresh-still-readonly.png",
+      "sha256": "80f63b805b6a71c130d472a517013bcc10b9970d4f3488561cc2170a76dcf5d1",
+      "bytes": 196413,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_restore_1/restore-host/probe-restore-1920-dark/restore-refresh-still-readonly.png",
+      "sha256": "6ade8e88cb801d7d19c556873e87711d032f8ece5f5fa877c9f0d79aaf434a4f",
+      "bytes": 198639,
+      "width": 1920,
+      "height": 1080,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_restore_2/restore-host/probe-restore-1392-light/restore-refresh-still-readonly.png",
+      "sha256": "4d76d7ff8bb184d6a4c1e22885d35b2c7bd6e42c0ce2d487e81d18b0b0a20647",
+      "bytes": 169489,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_restore_3/restore-host/probe-restore-1392-dark/restore-refresh-still-readonly.png",
+      "sha256": "d454bf3bf8cf0572812d1222e09022fa748127cc505a70cf101d5ac146712dcf",
+      "bytes": 172684,
+      "width": 1392,
+      "height": 924,
+      "visual_review": "passed_visible_layout_only"
+    }
+  ]
+}

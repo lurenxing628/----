@@ -1,0 +1,28 @@
+{
+  "owner": "EE",
+  "sources": [
+    "frontend/workbench/app/RunCandidateGantt.jsx",
+    "frontend/workbench/app/RunCandidateModel.js",
+    "frontend/workbench/app/PlanGantt.jsx",
+    "frontend/workbench/app/PlanGanttCanvas.jsx",
+    "frontend/workbench/app/PlanGanttModel.js",
+    "frontend/workbench/app/PlanContract.js",
+    "frontend/workbench/app/PlanDetailsUI.jsx",
+    "frontend/workbench/app/TrialGantt.jsx",
+    "frontend/workbench/app/TrialContract.js",
+    "frontend/workbench/app/TrialDetails.jsx",
+    "frontend/workbench/app/TrialStyles.jsx",
+    "frontend/workbench/app/PointContract.js",
+    "frontend/workbench/app/PointGanttModel.js",
+    "frontend/workbench/app/PointGantt.jsx",
+    "tests/workbench/test_point_frontend.py",
+    "tests/workbench/point_frontend_support.py",
+    "tests/workbench/point_frontend_probe.cjs",
+    "tests/workbench/point_browser_build.cjs",
+    "tests/workbench/point_browser_host.jsx",
+    "tests/workbench/point_browser_probe.cjs"
+  ],
+  "public_point_flag_changed": false,
+  "global_build": false,
+  "committed": false
+}

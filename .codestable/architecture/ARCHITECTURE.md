@@ -5,7 +5,7 @@ scope: 项目架构总入口，覆盖 APS 整体结构、核心模块索引、�
 summary: APS 在 Win7 x64、Python 3.8、离线交付约束下的系统地图入口
 status: current
 created: 2026-04-27
-last_reviewed: 2026-07-13
+last_reviewed: 2026-09-10
 tags: [aps, codestable, architecture, win7]
 depends_on: []
 implements: []
@@ -25,7 +25,7 @@ implements: []
 ## 2. 核心概念 / 术语表
 
 - APS：围绕批次、工序、设备、人员、日历、齐套约束和排产策略组织的智能排产系统。
-- 界面：`templates/` 与 `static/` 下的统一侧栏布局页面体系（2026-06 双轨退役后唯一界面；历史上的经典/现代双轨与 `web_new_test/` 覆盖层已删除，决策见 compound ADR v2-sidebar-shell-promotion）。
+- 界面：`/workbench` 与 `/workbench/trial` 已挂载主数据、工艺、批次、排产候选、正式计划、试调、执行、报表、校准、值班台和系统维护的真实服务。旧默认入口与旧静态资产仍在退役前保留；新入口接入不等于全站终验或 Win7 发布完成。当前边界和证据见 `workbench-shell.md`。
 - Win7 交付边界：目标机不要求安装 Python，页面和静态资源随应用本地交付，依赖升级必须考虑 Python 3.8 与 Win7。
 
 ## 3. 子系统 / 模块索引
@@ -43,6 +43,7 @@ implements: []
 - `开发文档/`、`audit/`、`evidence/`：开发说明、审计记录和验证证据。
 - `.codestable/architecture/service-scheduler.md`：排产调度模块内部结构现状——13 个 Service 惰性门面、run/summary/analysis/graph/config 子包、根目录业务族、排产主链数据流，以及 scheduler 根/config/run/summary hard 目录 SCC（不等同具体文件加载死循环）等结构张力。
 - `.codestable/architecture/ui-gantt.md`：甘特图结果查看页面、缩放协议、只读边界、模拟预览身份传递和本地 Frappe 补丁治理现状。
+- `.codestable/architecture/workbench-shell.md`：经批准的样板迁移，复用 Flask/Python3.8/SQLite，开发机预编译 React18 资产，目标 Chrome109 离线加载；记录永久引用、命令回执、受管排产、恢复宿主与全站外壳职责。下文旧模板段落描述退役前保留的旧入口，不作为新工作台的实现清单。
 - 车间执行事件基础：`OperationExecutionEvents`、执行事件仓储、执行反馈服务和执行状态读模型记录现场开工、暂停、继续、完工、报异常这些事实。
 - 资源派工现场记录：资源派工页用户入口叫“现场记录”，支持单条填写实际情况、下载填写模板、导入实际情况 Excel；普通页面是一键导入，后台先整批检查，有错不写库并返回错误明细，无错才事务写入；route 拆在 `scheduler_resource_dispatch_execution_routes.py`，业务编排拆在 `resource_dispatch_actual_*` service 文件。页面把计划员查看排班和计划员代录现场事实分成两个区域；执行区 JS 按 context、cards、actual、import 和 coordinator 拆分，任务卡公开图号/物料、计划/实际时间偏差，执行流水把 `created_at/source_table` 转成中文记录时间和来源。
 - 重排执行事实快照：普通重排和甘特模拟方案发布在写新正式计划前，都会按同一批工序复算现场状态，现场状态变化时拒绝写入。

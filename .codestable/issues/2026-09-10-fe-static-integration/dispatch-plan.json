@@ -1,0 +1,119 @@
+{
+  "scope": "next repair batch only; not full-gate closure",
+  "history_status": "Cannot distinguish pre-existing versus newly introduced migration diagnostics without an accurate comparable historical snapshot.",
+  "reserved": {
+    "FB": "Field*/ActualGantt*; related Python files conservatively withheld until the main task confirms ownership",
+    "FC": "long_gate_manifest/cache tools",
+    "FD": "test_registry and gate_meta"
+  },
+  "tasks": [
+    {
+      "id": "FE-01",
+      "title": "Resource query type pairing and export service boundary",
+      "write_set": [
+        "web/routes/workbench/resource_table_queries.py",
+        "core/models/workbench_resource_table_query.py",
+        "core/services/workbench/resource_table_facts.py",
+        "web/routes/workbench/resource_file_exports.py",
+        "core/services/workbench/resource_files.py"
+      ],
+      "new_test": "tests/workbench/test_fe01_resource_static_contract.py",
+      "regression_tests": [
+        "tests/workbench/test_resource_table_queries.py",
+        "tests/workbench/test_resource_table_api.py",
+        "tests/workbench/test_resource_files.py",
+        "tests/workbench/test_resource_file_api.py"
+      ]
+    },
+    {
+      "id": "FE-02",
+      "title": "Trial snapshot decoding, rejecting control flow and adoption consumers",
+      "write_set": [
+        "core/models/workbench_trial.py",
+        "core/models/workbench_trial_codec.py",
+        "core/services/workbench/trial.py",
+        "core/services/workbench/trial_adoption.py",
+        "core/services/workbench/trial_adoption_history.py",
+        "core/services/workbench/trial_adoption_history_evidence.py",
+        "core/services/workbench/trial_adoption_storage.py",
+        "core/services/workbench/trial_base.py",
+        "core/services/workbench/trial_capacity.py",
+        "data/repositories/workbench_trial_raw_repo.py",
+        "data/repositories/workbench_trial_repo.py",
+        "web/routes/workbench/trial_adoption_history.py"
+      ],
+      "new_test": "tests/workbench/test_fe02_trial_static_contract.py",
+      "regression_tests": [
+        "tests/workbench/test_trial_adoption_raw.py",
+        "tests/workbench/test_trial_adoption_validation.py",
+        "tests/workbench/test_trial_adoption_history.py",
+        "tests/workbench/test_trial_adoption_history_boundaries.py",
+        "tests/workbench/test_trial_adoption_history_api.py",
+        "tests/workbench/test_trial_adoption_atomic.py"
+      ]
+    },
+    {
+      "id": "FE-03",
+      "title": "Request lifecycle state typing and workbench route package loading",
+      "write_set": [
+        "web/bootstrap/workbench_request_lifecycle_state.py",
+        "web/bootstrap/workbench_request_lifecycle_wsgi.py",
+        "web/routes/workbench/__init__.py",
+        "web/routes/workbench/system_actions.py"
+      ],
+      "new_test": "tests/workbench/test_fe03_request_package_contract.py",
+      "regression_tests": [
+        "tests/workbench/test_request_lifecycle_runtime.py",
+        "tests/workbench/test_request_lifecycle_errors.py",
+        "tests/workbench/test_request_lifecycle_maintenance.py",
+        "tests/workbench/test_request_lifecycle_registration.py"
+      ]
+    },
+    {
+      "id": "FE-04",
+      "title": "Move shared process quota and template lineage responsibilities out of the workbench facade",
+      "write_set": [
+        "core/services/process/__init__.py",
+        "core/services/process/part_service.py",
+        "core/services/process/part_operation_hours_excel_import_service.py",
+        "core/services/scheduler/batch_copy.py",
+        "core/services/scheduler/batch_template_ops.py",
+        "core/services/workbench/process_quota_protection.py",
+        "core/services/workbench/template_lineage.py",
+        "core/services/workbench/template_lineage_query.py"
+      ],
+      "proposed_new_product_files": [
+        "core/services/process/quota_protection.py",
+        "core/services/scheduler/template_lineage.py",
+        "core/services/scheduler/template_lineage_query.py"
+      ],
+      "new_test": "tests/workbench/test_fe04_shared_service_dependency_contract.py",
+      "regression_tests": [
+        "tests/workbench/test_process_quota_protection.py",
+        "tests/workbench/test_process_quota_protection_transactions.py",
+        "tests/workbench/test_process_quota_protection_excel.py",
+        "tests/workbench/test_template_lineage_writes.py",
+        "tests/workbench/test_template_lineage_integrity.py"
+      ]
+    },
+    {
+      "id": "FE-05",
+      "title": "Batch DTO types and import responsibilities",
+      "write_set": [
+        "core/models/workbench_batch.py",
+        "core/models/workbench_batch_query.py",
+        "core/services/workbench/batch_execution.py",
+        "core/services/workbench/batch_facts.py",
+        "core/services/workbench/batch_file_codec.py",
+        "core/services/workbench/batch_files.py",
+        "core/services/workbench/batch_operations.py",
+        "web/routes/workbench/batch_context.py",
+        "web/routes/workbench/batches.py"
+      ],
+      "new_test": "tests/workbench/test_fe05_batch_static_contract.py",
+      "regression_tests": [
+        "tests/workbench/test_batch_files.py"
+      ]
+    }
+  ]
+}

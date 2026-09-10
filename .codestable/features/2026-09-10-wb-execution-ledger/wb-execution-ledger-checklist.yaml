@@ -1,0 +1,38 @@
+feature: wb-execution-ledger
+status: completed
+steps:
+  - id: dto
+    title: 完整DTO与领域接口
+    status: done
+  - id: schema
+    title: 显式安装及旧事件无损映射
+    status: done
+  - id: domain
+    title: 统一投影与事务命令
+    status: done
+  - id: validation
+    title: 真临时SQLite边界与规模验证
+    status: done
+checks:
+  - 跨计划关联与同号重建不重指
+  - 分件目标、未知与0、超报拒绝
+  - 完整记录完成与旧finish独立保护
+  - 只追加更正、sparse补齐、来源去重
+  - 下游与已采用安排冲突拒绝
+  - 原始旧表逐行保持
+  - 事务rollback及原请求receipt重放
+  - query_only读取与大规模有界SQL
+  - 旧源UPDATE或DELETE仅提示差异并改变快照，不撤销归档完成事实
+verification:
+  domain_tests: 72 passed
+  runner: normal project pytest fixtures
+  python: 3.8.10
+  sqlite: 3.35.5
+  ruff: passed
+  maximum_function_complexity: 13
+  quality_gate_complexity_threshold: 15
+  full_quality_gate: not_run_concurrent_dirty_integration
+  win7_machine: not_run
+  production_database: not_accessed
+  build: not_run
+  commit: not_created

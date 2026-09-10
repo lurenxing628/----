@@ -1,0 +1,102 @@
+{
+  "complexity": [],
+  "oversize": [],
+  "trial_base": {
+    "core/services/workbench/trial_base.py:_arrangement": {
+      "path": "core/services/workbench/trial_base.py",
+      "symbol": "_arrangement",
+      "current_value": 9,
+      "threshold": 15,
+      "line": 22,
+      "rank": "F"
+    },
+    "core/services/workbench/trial_base.py:_row": {
+      "path": "core/services/workbench/trial_base.py",
+      "symbol": "_row",
+      "current_value": 2,
+      "threshold": 15,
+      "line": 44,
+      "rank": "F"
+    },
+    "core/services/workbench/trial_base.py:_plan": {
+      "path": "core/services/workbench/trial_base.py",
+      "symbol": "_plan",
+      "current_value": 14,
+      "threshold": 15,
+      "line": 55,
+      "rank": "F"
+    },
+    "core/services/workbench/trial_base.py:_date_issues": {
+      "path": "core/services/workbench/trial_base.py",
+      "symbol": "_date_issues",
+      "current_value": 6,
+      "threshold": 15,
+      "line": 93,
+      "rank": "F"
+    },
+    "core/services/workbench/trial_base.py:_attach_parts": {
+      "path": "core/services/workbench/trial_base.py",
+      "symbol": "_attach_parts",
+      "current_value": 3,
+      "threshold": 15,
+      "line": 103,
+      "rank": "F"
+    },
+    "core/services/workbench/trial_base.py:_source_rows": {
+      "path": "core/services/workbench/trial_base.py",
+      "symbol": "_source_rows",
+      "current_value": 5,
+      "threshold": 15,
+      "line": 109,
+      "rank": "F"
+    },
+    "core/services/workbench/trial_base.py:_candidate": {
+      "path": "core/services/workbench/trial_base.py",
+      "symbol": "_candidate",
+      "current_value": 13,
+      "threshold": 15,
+      "line": 120,
+      "rank": "F"
+    },
+    "core/services/workbench/trial_base.py:prepare_base": {
+      "path": "core/services/workbench/trial_base.py",
+      "symbol": "prepare_base",
+      "current_value": 5,
+      "threshold": 15,
+      "line": 156,
+      "rank": "F"
+    },
+    "core/services/workbench/trial_base.py:_attach_original_context": {
+      "path": "core/services/workbench/trial_base.py",
+      "symbol": "_attach_original_context",
+      "current_value": 13,
+      "threshold": 15,
+      "line": 172,
+      "rank": "F"
+    },
+    "core/services/workbench/trial_base.py:_attach_point_work": {
+      "path": "core/services/workbench/trial_base.py",
+      "symbol": "_attach_point_work",
+      "current_value": 2,
+      "threshold": 15,
+      "line": 191,
+      "rank": "F"
+    },
+    "core/services/workbench/trial_base.py:_predecessors": {
+      "path": "core/services/workbench/trial_base.py",
+      "symbol": "_predecessors",
+      "current_value": 8,
+      "threshold": 15,
+      "line": 197,
+      "rank": "F"
+    },
+    "core/services/workbench/trial_base.py:_batch_predecessors": {
+      "path": "core/services/workbench/trial_base.py",
+      "symbol": "_batch_predecessors",
+      "current_value": 10,
+      "threshold": 15,
+      "line": 220,
+      "rank": "F"
+    }
+  }
+}

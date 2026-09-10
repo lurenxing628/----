@@ -1,0 +1,746 @@
+{
+  "errors": [],
+  "external": [],
+  "screenshots": [
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo0/ee-point-browser/1920-light-plan.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo0/ee-point-browser/1920-light-candidate.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo0/ee-point-browser/1920-light-trial.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo0/ee-point-browser/1920-dark-plan.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo0/ee-point-browser/1920-dark-candidate.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo0/ee-point-browser/1920-dark-trial.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo0/ee-point-browser/1392-light-plan.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo0/ee-point-browser/1392-light-candidate.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo0/ee-point-browser/1392-light-trial.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo0/ee-point-browser/1392-dark-plan.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo0/ee-point-browser/1392-dark-candidate.png",
+    "/private/tmp/ee-point-frontend-20260910-final/test_real_point_contracts_layo0/ee-point-browser/1392-dark-trial.png"
+  ],
+  "requests": [
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/plans/f02c9d0eac295080c655c3236eb59a55b4b3713240c3d40c/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/scheduling/candidates/566c53d2aff5719772753a87b62aa222cfe4951ecf05ea3c/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/trial/drafts/28e4a2f4ddef59b0d756d1baf891e01230f6116be9395a1e",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/trial/drafts/28e4a2f4ddef59b0d756d1baf891e01230f6116be9395a1e/change",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/plans/f02c9d0eac295080c655c3236eb59a55b4b3713240c3d40c/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/scheduling/candidates/566c53d2aff5719772753a87b62aa222cfe4951ecf05ea3c/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/trial/drafts/28e4a2f4ddef59b0d756d1baf891e01230f6116be9395a1e",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/trial/drafts/28e4a2f4ddef59b0d756d1baf891e01230f6116be9395a1e/change",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/plans/f02c9d0eac295080c655c3236eb59a55b4b3713240c3d40c/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/scheduling/candidates/566c53d2aff5719772753a87b62aa222cfe4951ecf05ea3c/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/trial/drafts/28e4a2f4ddef59b0d756d1baf891e01230f6116be9395a1e",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/trial/drafts/28e4a2f4ddef59b0d756d1baf891e01230f6116be9395a1e/change",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/plans/f02c9d0eac295080c655c3236eb59a55b4b3713240c3d40c/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/scheduling/candidates/566c53d2aff5719772753a87b62aa222cfe4951ecf05ea3c/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/trial/drafts/28e4a2f4ddef59b0d756d1baf891e01230f6116be9395a1e",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:59679/api/workbench/v1/trial/drafts/28e4a2f4ddef59b0d756d1baf891e01230f6116be9395a1e/change",
+      "status": 200,
+      "method": "POST"
+    }
+  ],
+  "actions": [
+    {
+      "kind": "plan",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "2c12d45d01fb9710cef5948e283b101637e48c4ea443728f",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 989.5546875,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "993788d621467b96bc2342a52b87c72c9b62121a1cb61925",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 989.5546875,
+        "y": 337.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "2c12d45d01fb9710cef5948e283b101637e48c4ea443728f",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 999.2265625,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "candidate",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "e6ac3be279de8f9a68c8d6e760fc245ea21571c03d85929b",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 998,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "e6ac3be279de8f9a68c8d6e760fc245ea21571c03d85929b",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 801.5,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "81bd7bf697682556fbd5865265e650b50c544f00e0dfd3f7",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 1019.0625,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "81bd7bf697682556fbd5865265e650b50c544f00e0dfd3f7",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 913.1015625,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "real-trial-change-command",
+      "start": "2026-09-09T08:00:03",
+      "end": "2026-09-09T08:00:03",
+      "operation_ref": "cfe82f9c03a34d0766038b7718fab283425f14e66a72fc43"
+    },
+    {
+      "kind": "plan",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "2c12d45d01fb9710cef5948e283b101637e48c4ea443728f",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 989.5546875,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "993788d621467b96bc2342a52b87c72c9b62121a1cb61925",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 989.5546875,
+        "y": 337.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "2c12d45d01fb9710cef5948e283b101637e48c4ea443728f",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 999.2265625,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "candidate",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "e6ac3be279de8f9a68c8d6e760fc245ea21571c03d85929b",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 998,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "e6ac3be279de8f9a68c8d6e760fc245ea21571c03d85929b",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 801.5,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "81bd7bf697682556fbd5865265e650b50c544f00e0dfd3f7",
+      "at": "2026-09-09T08:00:03",
+      "hitbox": {
+        "x": 1041.2890625,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "81bd7bf697682556fbd5865265e650b50c544f00e0dfd3f7",
+      "at": "2026-09-09T08:00:03",
+      "hitbox": {
+        "x": 913.078125,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "real-trial-change-command",
+      "start": "2026-09-09T08:00:04",
+      "end": "2026-09-09T08:00:04",
+      "operation_ref": "cfe82f9c03a34d0766038b7718fab283425f14e66a72fc43"
+    },
+    {
+      "kind": "plan",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "2c12d45d01fb9710cef5948e283b101637e48c4ea443728f",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 751.5234375,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "993788d621467b96bc2342a52b87c72c9b62121a1cb61925",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 751.5234375,
+        "y": 337.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "2c12d45d01fb9710cef5948e283b101637e48c4ea443728f",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 757.09375,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "candidate",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "e6ac3be279de8f9a68c8d6e760fc245ea21571c03d85929b",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 734,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "e6ac3be279de8f9a68c8d6e760fc245ea21571c03d85929b",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 625.5,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "81bd7bf697682556fbd5865265e650b50c544f00e0dfd3f7",
+      "at": "2026-09-09T08:00:04",
+      "hitbox": {
+        "x": 777.8359375,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "81bd7bf697682556fbd5865265e650b50c544f00e0dfd3f7",
+      "at": "2026-09-09T08:00:04",
+      "hitbox": {
+        "x": 663.015625,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "real-trial-change-command",
+      "start": "2026-09-09T08:00:05",
+      "end": "2026-09-09T08:00:05",
+      "operation_ref": "cfe82f9c03a34d0766038b7718fab283425f14e66a72fc43"
+    },
+    {
+      "kind": "plan",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "2c12d45d01fb9710cef5948e283b101637e48c4ea443728f",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 751.5234375,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "993788d621467b96bc2342a52b87c72c9b62121a1cb61925",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 751.5234375,
+        "y": 337.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "2c12d45d01fb9710cef5948e283b101637e48c4ea443728f",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 757.09375,
+        "y": 295.046875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "plan",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "candidate",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "e6ac3be279de8f9a68c8d6e760fc245ea21571c03d85929b",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 734,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "e6ac3be279de8f9a68c8d6e760fc245ea21571c03d85929b",
+      "at": "2026-09-09T08:00:00",
+      "hitbox": {
+        "x": 625.5,
+        "y": 282.796875,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "candidate",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "keyboard-type-search",
+      "value": "Point 00"
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "81bd7bf697682556fbd5865265e650b50c544f00e0dfd3f7",
+      "at": "2026-09-09T08:00:05",
+      "hitbox": {
+        "x": 780.1953125,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "mouse-hover-and-offset-click",
+      "ref": "81bd7bf697682556fbd5865265e650b50c544f00e0dfd3f7",
+      "at": "2026-09-09T08:00:05",
+      "hitbox": {
+        "x": 662.8984375,
+        "y": 253.3984375,
+        "width": 24,
+        "height": 24
+      }
+    },
+    {
+      "kind": "trial",
+      "type": "zoom-pan-point-click-and-keyboard"
+    },
+    {
+      "kind": "trial",
+      "type": "real-trial-change-command",
+      "start": "2026-09-09T08:00:06",
+      "end": "2026-09-09T08:00:06",
+      "operation_ref": "cfe82f9c03a34d0766038b7718fab283425f14e66a72fc43"
+    }
+  ],
+  "geometry": [
+    {
+      "kind": "plan",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 10,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 10,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 8,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 8,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 10,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 10,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 8,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 8,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1920,
+      "document": 1920,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 9,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 9,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 8,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 8,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 9,
+      "overlap": []
+    },
+    {
+      "kind": "plan",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 9,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 8,
+      "overlap": []
+    },
+    {
+      "kind": "candidate",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 8,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 24,
+      "overlap": []
+    },
+    {
+      "kind": "trial",
+      "width": 1392,
+      "document": 1392,
+      "nodes": 24,
+      "overlap": []
+    }
+  ],
+  "production_database": false,
+  "browser": "109.0.5414.46"
+}

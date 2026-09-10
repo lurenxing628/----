@@ -1,0 +1,1 @@
+50043 90731   2.2       00:00 /Library/Frameworks/Python.framework/Versions/3.8/Resources/Python.app/Contents/MacOS/Python -B .codestable/issues/2026-09-10-fe-static-integration/capture_check.py pyright-product-json .venv/bin/python -m pyright -p pyrightconfig.gate.json --outputjson

@@ -1,0 +1,4 @@
+40415 90731  59.3       00:32 /Library/Frameworks/Python.framework/Versions/3.8/Resources/Python.app/Contents/MacOS/Python -m pytest -q -ra tests/gate_meta/test_workbench_registry_contract.py tests/gate_meta/test_long_gate_manifest.py tests/gate_meta/test_quality_gate_registry_split_scope_contract.py tests/gate_meta/test_long_gate_required_regression_cache.py
+40777 90731   0.0       00:00 /Library/Frameworks/Python.framework/Versions/3.8/Resources/Python.app/Contents/MacOS/Python -B .codestable/issues/2026-09-10-fe-static-integration/capture_check.py pyright-tools .venv/bin/python -m pyright -p pyrightconfig.tools.json
+40780 90731   0.0       00:00 /bin/zsh -c ps -axo pid,ppid,%cpu,etime,command | rg '[s]can_import_cycles|[t]est_architecture_fitness|[r]un_quality_gate'
+40784 40780   0.0       00:00 rg [s]can_import_cycles|[t]est_architecture_fitness|[r]un_quality_gate

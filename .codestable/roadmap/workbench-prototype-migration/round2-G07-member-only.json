@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "artifact": "round2-G07-member-only",
+  "state": "MEMBER_ONLY",
+  "owner": "A",
+  "based_on_source_scope_revision": 21,
+  "authority": "Exact path union of existing G07, its current later_queue entries and the earlier small29. This does not refresh moving-source hashes, stage files, change gates, rewrite old evidence or claim G05/G07 test completion.",
+  "counts": {
+    "original_G07": 29,
+    "later_queue_G07": 12,
+    "previous_small_G07": 29,
+    "union_members": 30,
+    "later_overlapping_original": 11,
+    "later_new_paths": 1,
+    "original_source_override": 1,
+    "current_members_requiring_Main_exact_capture": 29,
+    "product_or_tool": 14,
+    "test": 13,
+    "test_support": 2,
+    "independently_preserved_ledger": 1
+  },
+  "members": [
+    "pyrightconfig.tools.json",
+    "tests/gate_meta/test_import_cycle_scanner.py",
+    "tests/gate_meta/test_long_gate_manifest.py",
+    "tests/gate_meta/test_long_gate_required_regression_cache.py",
+    "tests/gate_meta/test_long_gate_startup_regression_cache.py",
+    "tests/gate_meta/test_round1_import_resolver.py",
+    "tests/gate_meta/test_scheduler_lazy_exports_final.py",
+    "tests/gate_meta/test_test_support_dependency_boundary.py",
+    "tests/gate_meta/test_workbench_cache_environment.py",
+    "tests/gate_meta/test_workbench_registry_contract.py",
+    "tests/gate_meta/test_workbench_round1_registry_contract.py",
+    "tests/gate_meta/workbench_cache_environment_support.py",
+    "tests/gate_meta/workbench_round1_registry_support.py",
+    "tests/workbench/test_fe04_shared_service_dependency_contract.py",
+    "tests/workbench/test_round1_execution_dependency_contract.py",
+    "tests/workbench/test_round1_plan_query_dependency_contract.py",
+    "tools/dead_code_usage/ast_usage.py",
+    "tools/import_cycle_analysis.py",
+    "tools/import_cycle_graph.py",
+    "tools/long_gate_fingerprint.py",
+    "tools/long_gate_manifest.py",
+    "tools/long_gate_manifest_environment.py",
+    "tools/quality_gate_shared.py",
+    "tools/scan_import_cycles.py",
+    "tools/test_registry.py",
+    "tools/test_registry_data.py",
+    "tools/test_registry_groups_misc.py",
+    "tools/test_registry_groups_scheduler.py",
+    "tools/test_registry_groups_workbench.py",
+    "开发文档/技术债务治理台账.md"
+  ],
+  "members_by_role": {
+    "product_or_tool": [
+      "pyrightconfig.tools.json",
+      "tools/dead_code_usage/ast_usage.py",
+      "tools/import_cycle_analysis.py",
+      "tools/import_cycle_graph.py",
+      "tools/long_gate_fingerprint.py",
+      "tools/long_gate_manifest.py",
+      "tools/long_gate_manifest_environment.py",
+      "tools/quality_gate_shared.py",
+      "tools/scan_import_cycles.py",
+      "tools/test_registry.py",
+      "tools/test_registry_data.py",
+      "tools/test_registry_groups_misc.py",
+      "tools/test_registry_groups_scheduler.py",
+      "tools/test_registry_groups_workbench.py"
+    ],
+    "test": [
+      "tests/gate_meta/test_import_cycle_scanner.py",
+      "tests/gate_meta/test_long_gate_manifest.py",
+      "tests/gate_meta/test_long_gate_required_regression_cache.py",
+      "tests/gate_meta/test_long_gate_startup_regression_cache.py",
+      "tests/gate_meta/test_round1_import_resolver.py",
+      "tests/gate_meta/test_scheduler_lazy_exports_final.py",
+      "tests/gate_meta/test_test_support_dependency_boundary.py",
+      "tests/gate_meta/test_workbench_cache_environment.py",
+      "tests/gate_meta/test_workbench_registry_contract.py",
+      "tests/gate_meta/test_workbench_round1_registry_contract.py",
+      "tests/workbench/test_fe04_shared_service_dependency_contract.py",
+      "tests/workbench/test_round1_execution_dependency_contract.py",
+      "tests/workbench/test_round1_plan_query_dependency_contract.py"
+    ],
+    "test_support": [
+      "tests/gate_meta/workbench_cache_environment_support.py",
+      "tests/gate_meta/workbench_round1_registry_support.py"
+    ],
+    "gate_ledger": [
+      "开发文档/技术债务治理台账.md"
+    ]
+  },
+  "reconciliation": {
+    "new_paths_relative_to_original_G07": [
+      "tests/gate_meta/test_scheduler_lazy_exports_final.py"
+    ],
+    "original_paths_missing_from_previous_small29": [
+      "开发文档/技术债务治理台账.md"
+    ],
+    "small29_paths_not_in_original_G07": [
+      "tests/gate_meta/test_scheduler_lazy_exports_final.py"
+    ],
+    "later_paths_not_in_original_G07": [
+      "tests/gate_meta/test_scheduler_lazy_exports_final.py"
+    ],
+    "no_original_owner_dropped": true
+  },
+  "source_priority": [
+    {
+      "priority": 1,
+      "policy": "Preserve the existing exact single-path source override before any default source selection.",
+      "source_overrides": {
+        "tests/gate_meta/test_test_support_dependency_boundary.py": "source-RauBC6"
+      },
+      "source_root_overrides": {
+        "tests/gate_meta/test_test_support_dependency_boundary.py": "/Users/lurenxing/GitHub/----/output/workbench-migration/baselines/source-RauBC6/restore-check"
+      }
+    },
+    {
+      "priority": 2,
+      "policy": "For all remaining29 members, Main captures the final exact original source after the relevant H/gate changes are ready, into its own fixed source receipt. Do not take old scope/later_queue SHA observations as current authority or silently use older E06 copies.",
+      "source_root": "/Users/lurenxing/GitHub/----",
+      "source_key": "current_snapshot",
+      "Main_frozen_source_receipt_required": true
+    },
+    {
+      "priority": 3,
+      "policy": "The ledger remains G07-owned. Preserve both independent historical byte backups and their proof even when taking the current ledger for the final gate. Do not use an old embedded backup to silently overwrite the current original ledger.",
+      "path": "开发文档/技术债务治理台账.md"
+    }
+  ],
+  "source_overrides": {
+    "tests/gate_meta/test_test_support_dependency_boundary.py": "source-RauBC6"
+  },
+  "source_root_overrides": {
+    "tests/gate_meta/test_test_support_dependency_boundary.py": "/Users/lurenxing/GitHub/----/output/workbench-migration/baselines/source-RauBC6/restore-check"
+  },
+  "preserved_original_source_entries": [
+    {
+      "path": "tests/gate_meta/test_test_support_dependency_boundary.py",
+      "source": "original_restore_check",
+      "sha256": "ad046b901c76b9b051601230db3f0d10140c43c2f64ac052c30ece549caf7f60",
+      "bytes": 2773,
+      "mode": 420,
+      "role": "test",
+      "overlay_after_this_group": null,
+      "scope_reason": "全域支持模块身份及导入顺序合同，依赖后续gantt_scenario与resource_dispatch helpers"
+    }
+  ],
+  "independent_ledger_preservation": {
+    "member": "开发文档/技术债务治理台账.md",
+    "delivery_group": "G07",
+    "pointer": ".codestable/roadmap/workbench-prototype-migration/round2-source-scope.json#/independent_ledger_preservation",
+    "backups": [
+      {
+        "pointer": "independent_ledger_preservation.copies[0]",
+        "path": "开发文档/技术债务治理台账.md",
+        "sha256": "417cc9a398fc0ab847511471434ce5864138f252774683c5336b6088787625cd",
+        "bytes": 89128,
+        "embedded_payload_checked": true,
+        "read_original_ledger": false
+      },
+      {
+        "pointer": "independent_ledger_preservation.copies[1]",
+        "path": "output/workbench-migration/verification/round1-20260910/ledger-before.md",
+        "sha256": "ff48b185d7a9cc45e3d0092405c4b7ca4d10f48d4ff6c70135f655f4135634db",
+        "bytes": 72871,
+        "embedded_payload_checked": true,
+        "read_original_ledger": false
+      }
+    ],
+    "preservation_proof_pointer": "independent_ledger_preservation.copies[2]",
+    "bytes_decoded_and_verified_in_memory_only": true,
+    "original_ledger_read_or_rehashed": false,
+    "backup_files_rewritten": false,
+    "rule": "只从payload_base64解码到Main新私有位置，核对bytes/SHA-256；不得覆盖生产/原dirty台账。本任务未执行文件还原。",
+    "historical_boundary": "copies[1]是已有Round1修改前原始台账，不冒称原迁移前source-RauBC6时点。原迁移前差异还保存在source-RauBC6/unstaged.patch；未在此重新构造当时整份内容。",
+    "source_RauBC6_and_pre_retirement_archives_include_ledger": false
+  },
+  "G05_exact_test_fixture_candidates": {
+    "state": "VERIFIED_E06_RAW_FIXTURE_CANDIDATES_NOT_STAGED_BY_A",
+    "recommendation": "Move only these two exact test fact JSON files forward from G08 to the G05 delivery needed by test_final_master_manifest. Main records any copy as an explicit addition; do not rewrite the original959 plan or edit the tests/gates to avoid the missing facts.",
+    "required_paths": [
+      ".codestable/roadmap/workbench-prototype-migration/acceptance-master/actions.json",
+      ".codestable/roadmap/workbench-prototype-migration/workbench-capabilities.json"
+    ],
+    "source_entries": [
+      {
+        "path": ".codestable/roadmap/workbench-prototype-migration/acceptance-master/actions.json",
+        "source_root": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/source",
+        "source_file": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/source/.codestable/roadmap/workbench-prototype-migration/acceptance-master/actions.json",
+        "sha256": "34ddb9c3616987f11fcbc5799504530043fc03bca52d5022047b99b175fd1c10",
+        "bytes": 184288,
+        "mode": 420,
+        "E06_manifest_match": true,
+        "existing_recipe_owners": [
+          "G08"
+        ],
+        "source": "current_snapshot",
+        "role": "test_fixture_fact",
+        "proposed_delivery_group": "G05",
+        "previous_delivery_group": "G08"
+      },
+      {
+        "path": ".codestable/roadmap/workbench-prototype-migration/workbench-capabilities.json",
+        "source_root": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/source",
+        "source_file": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/source/.codestable/roadmap/workbench-prototype-migration/workbench-capabilities.json",
+        "sha256": "0cad8e05a5adbadacf0c2ecef1e56f38bb4c97e6948c1dc5a2fc847bcec1ffb2",
+        "bytes": 845275,
+        "mode": 420,
+        "E06_manifest_match": true,
+        "existing_recipe_owners": [
+          "G08"
+        ],
+        "source": "current_snapshot",
+        "role": "test_fixture_fact",
+        "proposed_delivery_group": "G05",
+        "previous_delivery_group": "G08"
+      }
+    ],
+    "direct_consumer": {
+      "path": "/private/tmp/aps-r2-G05-frozen-1Ebhk8/tests/workbench/test_final_master_manifest.py",
+      "root_line": 7,
+      "actions_read_line": 12,
+      "planning_read_line": 13,
+      "planning_hash_check_line": 14,
+      "family_count_line": 17,
+      "atomic_action_count_line": 38
+    },
+    "static_data_checks": {
+      "planning_path": ".codestable/roadmap/workbench-prototype-migration/workbench-capabilities.json",
+      "planning_sha_matches": true,
+      "families": 58,
+      "master_data": 41,
+      "batches": 17,
+      "atomic_actions": 599,
+      "unique_action_ids": 599,
+      "violations": [],
+      "method": "Pure JSON value and fixed-byte checks; did not invoke pytest or import the test/app"
+    },
+    "external_evidence_files_required_by_this_test": false,
+    "other_G08_documents_required_by_this_test": false,
+    "product_changes_required": false,
+    "test_or_gate_changes_required": false,
+    "actual_pytest_run_by_A": false,
+    "limitation": "Only the inspected frozen G05 test and raw E06 fixture contract were checked. This is not a rerun result or proof that other in-flight G05 failures are fixed."
+  },
+  "operations": {
+    "moving_H_source_hashes_read": false,
+    "product_or_gate_writes": false,
+    "source_scope_or_ownership_or_audit_updates": false,
+    "Git_or_pytest_or_build_or_host_or_database_commands": false
+  }
+}

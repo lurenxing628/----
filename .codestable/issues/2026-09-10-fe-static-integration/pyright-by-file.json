@@ -1,0 +1,510 @@
+[
+  {
+    "file": "core/models/workbench_batch.py",
+    "count": 2,
+    "lines": [
+      86,
+      87
+    ],
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_execution_input.py",
+    "count": 2,
+    "lines": [
+      111,
+      114
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_outsourcing_input.py",
+    "count": 3,
+    "lines": [
+      74,
+      76
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_process_commands.py",
+    "count": 1,
+    "lines": [
+      81
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_report.py",
+    "count": 1,
+    "lines": [
+      59
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_resource_table_query.py",
+    "count": 2,
+    "lines": [
+      21
+    ],
+    "owner": "FE-01",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/models/workbench_run_adoption.py",
+    "count": 1,
+    "lines": [
+      36
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/actual_gantt_scope.py",
+    "count": 6,
+    "lines": [
+      31,
+      32,
+      33,
+      34,
+      35,
+      36
+    ],
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_execution.py",
+    "count": 2,
+    "lines": [
+      46,
+      47
+    ],
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_facts.py",
+    "count": 2,
+    "lines": [
+      32,
+      33
+    ],
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_file_codec.py",
+    "count": 7,
+    "lines": [
+      69,
+      70,
+      72,
+      74,
+      79,
+      84,
+      88
+    ],
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/batch_files.py",
+    "count": 3,
+    "lines": [
+      68,
+      71
+    ],
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/execution_ledger.py",
+    "count": 8,
+    "lines": [
+      130,
+      132,
+      134,
+      135,
+      144
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files.py",
+    "count": 2,
+    "lines": [
+      148,
+      152
+    ],
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_codec.py",
+    "count": 15,
+    "lines": [
+      43,
+      61,
+      63,
+      157,
+      158,
+      162,
+      182,
+      183,
+      186,
+      187,
+      188,
+      189,
+      190,
+      191
+    ],
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/field_report_files_xml.py",
+    "count": 2,
+    "lines": [
+      24,
+      69
+    ],
+    "owner": "FB-related-reserved",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/outsourcing_commands.py",
+    "count": 1,
+    "lines": [
+      55
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_adoption_baseline.py",
+    "count": 4,
+    "lines": [
+      56,
+      62,
+      64
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_adoption_baseline_identity.py",
+    "count": 5,
+    "lines": [
+      111,
+      112,
+      132
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_delivery_projection.py",
+    "count": 2,
+    "lines": [
+      26
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/plan_queries.py",
+    "count": 1,
+    "lines": [
+      185
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/point_plan_query.py",
+    "count": 2,
+    "lines": [
+      33,
+      34
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/production_report_prepare.py",
+    "count": 5,
+    "lines": [
+      35,
+      80,
+      115,
+      129,
+      132
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/production_report_validation.py",
+    "count": 2,
+    "lines": [
+      79
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/report_catalog.py",
+    "count": 2,
+    "lines": [
+      47
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/resource_table_facts.py",
+    "count": 3,
+    "lines": [
+      83,
+      97
+    ],
+    "owner": "FE-01",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/review_legacy.py",
+    "count": 6,
+    "lines": [
+      34,
+      37,
+      40,
+      41
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/run_candidate_adoption.py",
+    "count": 2,
+    "lines": [
+      58,
+      77
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial.py",
+    "count": 3,
+    "lines": [
+      120,
+      121,
+      123
+    ],
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption.py",
+    "count": 2,
+    "lines": [
+      60,
+      74
+    ],
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history.py",
+    "count": 40,
+    "lines": [
+      60,
+      70,
+      71,
+      72
+    ],
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_history_evidence.py",
+    "count": 32,
+    "lines": [
+      48,
+      49,
+      50,
+      53
+    ],
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_adoption_storage.py",
+    "count": 13,
+    "lines": [
+      28,
+      32,
+      36,
+      69
+    ],
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_base.py",
+    "count": 8,
+    "lines": [
+      63,
+      64,
+      68,
+      75,
+      79,
+      142,
+      172,
+      173
+    ],
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "core/services/workbench/trial_capacity.py",
+    "count": 1,
+    "lines": [
+      77
+    ],
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_execution_repo.py",
+    "count": 2,
+    "lines": [
+      26
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_outsourcing_source_repo.py",
+    "count": 1,
+    "lines": [
+      46
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_trial_raw_repo.py",
+    "count": 1,
+    "lines": [
+      35
+    ],
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "data/repositories/workbench_trial_repo.py",
+    "count": 7,
+    "lines": [
+      40,
+      103
+    ],
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/bootstrap/workbench_request_lifecycle_state.py",
+    "count": 3,
+    "lines": [
+      113,
+      138,
+      166
+    ],
+    "owner": "FE-03",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/bootstrap/workbench_request_lifecycle_wsgi.py",
+    "count": 6,
+    "lines": [
+      41,
+      46,
+      48,
+      50,
+      55,
+      64
+    ],
+    "owner": "FE-03",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/batch_context.py",
+    "count": 1,
+    "lines": [
+      25
+    ],
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/batches.py",
+    "count": 2,
+    "lines": [
+      105,
+      113
+    ],
+    "owner": "FE-05",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/outsourcing.py",
+    "count": 10,
+    "lines": [
+      43,
+      44,
+      70,
+      72,
+      74,
+      84,
+      85
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/reports.py",
+    "count": 1,
+    "lines": [
+      54
+    ],
+    "owner": "queued-unassigned",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/resource_table_queries.py",
+    "count": 2,
+    "lines": [
+      102,
+      108
+    ],
+    "owner": "FE-01",
+    "history_status": "cannot_distinguish"
+  },
+  {
+    "file": "web/routes/workbench/trial_adoption_history.py",
+    "count": 1,
+    "lines": [
+      29
+    ],
+    "owner": "FE-02",
+    "history_status": "cannot_distinguish"
+  }
+]

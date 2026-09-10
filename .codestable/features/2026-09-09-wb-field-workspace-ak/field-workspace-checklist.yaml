@@ -1,0 +1,25 @@
+doc_type: feature-checklist
+feature: wb-field-workspace-ak
+status: completed
+steps:
+  - id: contracts
+    status: done
+    description: 已同 AJ 和主线确定 DTO、方法、外层事务、32 opaque preview 和 pending namespace
+  - id: query_and_commands
+    status: done
+    description: 原计划查询、完整范围分页、只读预检、领域命令与原请求回放
+  - id: xlsx
+    status: done
+    description: 逐次十列、5000 上限、日期/空值/零、原 bytes 绑定、冲突拒绝、问题与全范围下载
+  - id: field_ui
+    status: done
+    description: 行内录入、补齐/更正、旧完工补齐、历史/时间线、文件、导航和待核实锁
+  - id: verification
+    status: done
+    description: 90 pytest通过；Chrome109四组合44场景/60截图通过；40源码指纹无漂移；Ruff/复杂度/大小/Python3.8语法通过
+checks:
+  - GET 和 preview 的 query_only 真临时库验证
+  - 不运行生产 DB、全量 build 或 commit
+  - 唯一 AJ 累计和状态逻辑，保留旧事实和原 plan/task/report 身份
+  - 原 request_key 回放，不因令牌/bytes 过期重复累计
+  - 本包只提供 dirty-worktree 局部证据，不宣称 clean proof 或 Win7 真机通过

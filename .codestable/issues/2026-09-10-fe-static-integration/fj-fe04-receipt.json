@@ -1,0 +1,519 @@
+{
+  "agent": "FJ",
+  "scope": "FE-04 only, plus approved 21 mechanical import consumers",
+  "frozenAt": "2026-09-10T08:27:48.607Z",
+  "runtime": "Python 3.8.10",
+  "beforeSnapshot": "/tmp/aps-fj-fe04-before-MLFhKa",
+  "beforeHashes": {
+    "core/services/process/__init__.py": "eeddbf49e18386947e7b3d63cfbaf6568341f421b795b8951bdb51c14646cfbe",
+    "core/services/process/part_service.py": "087e142c20ec404303520e272ceb744ae81e430a71307896befa33636b9a3c66",
+    "core/services/process/part_operation_hours_excel_import_service.py": "ef70cd4d817d61addcab539662883bf138feb0cf6f2769dc900a6b8c06aed111",
+    "core/services/scheduler/batch_copy.py": "c8d627bb1c6a35ab6193a0f366c0a048ffbcbd960fecc0110ac087f6e7489a0b",
+    "core/services/scheduler/batch_template_ops.py": "6a8f4a846cda9d6cb94363b0458f8f61a5f0f037c6b0867dcd6a304e62e996b0",
+    "core/services/workbench/process_quota_protection.py": "42b183032af54f04cb93f8535cb758be4b44d02b564f3a3012ec1d2cb689b4df",
+    "core/services/workbench/template_lineage.py": "20bd9ca19eb5de7f09f97f5744f86b20257eff8cbd735a8b4c21c8157f3d765c",
+    "core/services/workbench/template_lineage_query.py": "80853272b8c4b99efa24953426e643419599972f76c3dbae6400c33becbde152",
+    "web/routes/process_parts.py": "755b719563d78f6255aad1647380278d1e791910b9da1980bc55dce4cdf507e5",
+    "web/routes/equipment_pages.py": "c378ad26ab5f30be516a3a860beacdf407521fd6b837eed83f4b1970c72d7a02",
+    "web/routes/process_suppliers.py": "6bb08a967c6b22368f501b1b182adcfa1b938b0113b8a96e99fd266908620a78",
+    "web/routes/process_excel_suppliers.py": "029422b370cfcf28d9a7e83aef49f670d48fcf3352ad2c544a7d10f742139de3",
+    "web/routes/process_excel_routes.py": "18e24a7609fbbfefae33ea7aa96efa13e0e123084208883ad3550e0eb5558060",
+    "web/routes/domains/scheduler/scheduler_batch_detail.py": "7742cdbc778c45af518841d9d092881a86f6c0422042a2f7606b13daa5c1953e",
+    "web/bootstrap/request_services.py": "494708f61f9e3c3436f8ec36b80d784ba6681d47e75671c484172f9e15322a7a",
+    "web/routes/equipment_excel_machines.py": "34d86cb56428b303907f1a1e3fc534c2c0bab896c4633b758698cf7dc7f74840",
+    "web/routes/process_op_types.py": "0fcdbc941f9e9b78a0ea185b9c9f51a85722a60f84ffeb4bcccb505202c1839c",
+    "web/routes/process_excel_route_apply.py": "2acc0f49e397b1aba82295d51b74a2ada394a50d4c0a228cc345b896151768d5",
+    "web/routes/process_excel_op_types.py": "552f06c6f733f9d141b959ef676238d6af3cf5ee0e96516651a0f6c4821826b2",
+    "scripts/convert_rotary_shell_unit_excel.py": "3ed43e240a70fedd592074d800903f50e6955d4eb40657596a1b2a0b0ba32672",
+    "tests/_scripts_e2e/smoke_phase5.py": "fcac5d093300260a81d378d5c792cf4622c56034197765d0a21adaa3e0b4aa23",
+    "tests/excel_data_io/test_unit_excel_converter_diagnostics_visible.py": "5fe5301c7672cb501f251cb1f9f909e3116ee6e69c7b2d5e21b0f5a883026e69",
+    "tests/excel_data_io/test_unit_excel_station_block_dropped_visible.py": "08c188e7191be369517f771443a8c32396a907475c992b518e3a89652672d2eb",
+    "tests/excel_data_io/test_unit_excel_first_sheet_and_sheet_not_found.py": "96c197c1932f77f8dec87375646461cc503651915651260bd369b3d609611e63",
+    "tests/excel_data_io/test_unit_excel_converter_duplicate_part_rows_no_override.py": "9915c6bcfc30caa0b4e58f80dc8a38b9cc0abb38bd7b4682fce2025f8dd1e182",
+    "tests/excel_data_io/test_unit_excel_date_coerced_cells_diagnosed.py": "8577b018d59454dba2f0a1a4f5c1cd9561ddbdb656dffd868b07971ecf53ac97",
+    "tests/excel_data_io/test_unit_excel_converter_merge_steps_and_classify.py": "7f093c55408a646a09fc50faabd4c202b7c2f850d8dddb708cd890ddde329475",
+    "tests/excel_data_io/test_excel_conversion_output_contract.py": "0c4329fc99c09ebe0d55a96163c98992d5f538dd89824c7c3e9cdf49d9370585",
+    "tests/excel_data_io/test_unit_excel_route_map_degradations_visible.py": "9681bd60f05c48bfe124df001f16d551a029283e1466cdfa432f8cd2bb6c5494"
+  },
+  "afterHashes": {
+    "core/services/process/__init__.py": "ae27e76bde4b6b27bde542fa06a97177515a6cfa201d84d3c44d59088fad004b",
+    "core/services/process/part_service.py": "606755c37e90196a3e59672385b81881101d53569460b7ac0f8e5b86b10cba17",
+    "core/services/process/part_operation_hours_excel_import_service.py": "b40062f3993343250808bf11b432d5e98d67d27a96b37171bc213e95ab33247f",
+    "core/services/scheduler/batch_copy.py": "63e64a5b2da12dbc3a7b66296ae3197ee69908135aa7455a36f6d006fca61827",
+    "core/services/scheduler/batch_template_ops.py": "8f6374a47aa114b9be21b4cd207ffcaad0eafa5f2bda31df9b39b8a9144a77ce",
+    "core/services/workbench/process_quota_protection.py": "264b82b1a3084436bdc3c085621e8ec1b09c4370adf79d257d1824418f82d4dd",
+    "core/services/workbench/template_lineage.py": "bd7c321e41410ed44f1d061f34d8f03fd92d20ccb7ac3b693c1652c4ad673bcb",
+    "core/services/workbench/template_lineage_query.py": "191ee38da8920c5400394e814fe802564e47cb0f17a9660fe85ea8b2fd99b05c",
+    "core/services/process/quota_protection.py": "31dd75d24e2c6e5ae0c961f6ae5a6ca313a916f13a232f7886f74fb7f32ff0ef",
+    "core/services/scheduler/template_lineage.py": "8a13cbe6a71f8c827f945c6760ecae695f631408ae6ada9079d7963d9112f2cc",
+    "core/services/scheduler/template_lineage_query.py": "3432a7b68b638c015806350f3bb898675ed3fd70d35be81b7aa229bd94431389",
+    "web/routes/process_parts.py": "7b15d70dca71b09cf0c140914aef1da9c048aad97ffb592415d6ce8cd1d7ee05",
+    "web/routes/equipment_pages.py": "8f8ac235a6e2d8164ee926b8a46fa95715275a635c3bf1d9b84d7270b5f317f4",
+    "web/routes/process_suppliers.py": "7cfe1cbac59fa6f929c6ebd0313977d9b114a112f4b8a75548689adf0c7109d9",
+    "web/routes/process_excel_suppliers.py": "4c8497fb138741a11b5d69d41bdca654d35a75ae548acb2fba72109e107ab74d",
+    "web/routes/process_excel_routes.py": "fb269c8ca9e0ec962e144859fae7f305ffb16212585dd7c16deb531947fe46d3",
+    "web/routes/domains/scheduler/scheduler_batch_detail.py": "e0e71a82c21667918cde1bcf1d9b13894141cc5cd9a4488dcdfb1a8931a37a94",
+    "web/bootstrap/request_services.py": "3329122aa7cd3b523014235cd9fa0d6e5129895a0a86d05053acdcc3d229ecbf",
+    "web/routes/equipment_excel_machines.py": "183121af2cd65e33e493bea6cedd853b2be3dec600fa4b828ac0921298619e96",
+    "web/routes/process_op_types.py": "9b4e3c6b92751c54f22e907a9dd1d9505c6c999acdddd4aa2de1e8c34dfe1a5f",
+    "web/routes/process_excel_route_apply.py": "d2d4d6fb420efe2f1900396f5be8a265b41e6922013c7a53a61d7513a70791ae",
+    "web/routes/process_excel_op_types.py": "bf625e474eb5d8703d0c1318603bbab5538e6e2259498f8521e970cf97824565",
+    "scripts/convert_rotary_shell_unit_excel.py": "812d2106d224c648d7c6dc58c664452e3c3c743147397a618546cd5a8c5c3ee6",
+    "tests/_scripts_e2e/smoke_phase5.py": "7938e77f8216ae73c8d449b1bbfb255eac2a9763c8029c76de176342d23179e9",
+    "tests/excel_data_io/test_unit_excel_converter_diagnostics_visible.py": "802154e79b2d294f83c285cb2c61ea4ae72e65b8a363d754edfbfe9e4cd8e616",
+    "tests/excel_data_io/test_unit_excel_station_block_dropped_visible.py": "4007c3371862ba5dac650cd071be5da58233f8741e477c9dad0d9108ed4ea53e",
+    "tests/excel_data_io/test_unit_excel_first_sheet_and_sheet_not_found.py": "1250b96289d8c65aef0d42270a16dcff227c045da043dccbd6287fdd66642dd6",
+    "tests/excel_data_io/test_unit_excel_converter_duplicate_part_rows_no_override.py": "30430dad68edf892add15539068b10bb92bc1df3c30416bcdda336d4c33c8a8f",
+    "tests/excel_data_io/test_unit_excel_date_coerced_cells_diagnosed.py": "d8e0927f95b8ba3518be687ab1932a4f044bd08d764fbad3ce6cf7e9f8cf476b",
+    "tests/excel_data_io/test_unit_excel_converter_merge_steps_and_classify.py": "a9fae0b5071a13cc851f0c134767cf1e5dd418649a9e6e09eb14e3152c26ecf3",
+    "tests/excel_data_io/test_excel_conversion_output_contract.py": "363752f25dd90438cedf4772d1941cd0bd7aa57df7a2f2c134d974666bf7b3bd",
+    "tests/excel_data_io/test_unit_excel_route_map_degradations_visible.py": "bef1e28f50c6240b5f859a10ae59ecab01f23332249a5a9a3a50a2117e2c7b8e",
+    "tests/workbench/test_fe04_shared_service_dependency_contract.py": "32f6333638a7765b9739ee5cd528c26192d92cbf14dbf965e21066c6cdad8cc6"
+  },
+  "protectedBefore": {
+    "schema.sql": "b939a2d6516925863e6f7f0fb3db32ea83a94e4204a8df8c1f6574953bb17b47",
+    "core/infrastructure/migrations/v24.py": "473424ab94f1a0e67efaa3f08ed743c1becf4cbd49781952debe6d2c5ee00606",
+    "core/infrastructure/migrations/v25.py": "e12d9484532c2bd3f397f720c3c44f48cafe7301ce115aa67bad1fd4bea0aa93",
+    "core/infrastructure/migrations/v26.py": "e141928ae58b09f7a3924210fcfe22269e3f4e7fb4814bdb0dc18f327dfd0f4b",
+    "core/infrastructure/migrations/v27.py": "5249da0140aa6618a6890508c0f44d48db3b8d74fdb8a0286d732093929a3d9a",
+    "core/infrastructure/migrations/v28.py": "9c00bce2a6f14cd7d8b8699e45d77b4fa4534a6468bb971a59f34056f3204c44",
+    "core/infrastructure/migrations/v29.py": "a60f467f7193f8d9b9e398052960933d2add68ea661ebe70c88fd639189386b7",
+    "core/infrastructure/migrations/v30.py": "cc71ead04deb39c7cf778ea1e971690d7ea040e05232069501907eee27a3c9a5",
+    "core/infrastructure/migrations/v31.py": "da0a9435582a6fc975638461e9d2824a539dc95bd02b23a8f68eef17f50c1223",
+    ".codestable/checkup/import_cycles_production_baseline.json": "78d0ae16c6a11543d56b94e4e1a20bd1406731e0dd9a2728d164f5ed25fd799d",
+    ".codestable/checkup/import_cycles_with_tests_baseline.json": "2878a55393510e524f2259f918142199d187d3097e6a3292e521cf8090571d19"
+  },
+  "protectedAfter": {
+    "schema.sql": "b939a2d6516925863e6f7f0fb3db32ea83a94e4204a8df8c1f6574953bb17b47",
+    "core/infrastructure/migrations/v24.py": "473424ab94f1a0e67efaa3f08ed743c1becf4cbd49781952debe6d2c5ee00606",
+    "core/infrastructure/migrations/v25.py": "e12d9484532c2bd3f397f720c3c44f48cafe7301ce115aa67bad1fd4bea0aa93",
+    "core/infrastructure/migrations/v26.py": "e141928ae58b09f7a3924210fcfe22269e3f4e7fb4814bdb0dc18f327dfd0f4b",
+    "core/infrastructure/migrations/v27.py": "5249da0140aa6618a6890508c0f44d48db3b8d74fdb8a0286d732093929a3d9a",
+    "core/infrastructure/migrations/v28.py": "9c00bce2a6f14cd7d8b8699e45d77b4fa4534a6468bb971a59f34056f3204c44",
+    "core/infrastructure/migrations/v29.py": "a60f467f7193f8d9b9e398052960933d2add68ea661ebe70c88fd639189386b7",
+    "core/infrastructure/migrations/v30.py": "cc71ead04deb39c7cf778ea1e971690d7ea040e05232069501907eee27a3c9a5",
+    "core/infrastructure/migrations/v31.py": "da0a9435582a6fc975638461e9d2824a539dc95bd02b23a8f68eef17f50c1223",
+    ".codestable/checkup/import_cycles_production_baseline.json": "78d0ae16c6a11543d56b94e4e1a20bd1406731e0dd9a2728d164f5ed25fd799d",
+    ".codestable/checkup/import_cycles_with_tests_baseline.json": "2878a55393510e524f2259f918142199d187d3097e6a3292e521cf8090571d19"
+  },
+  "protectedUnchanged": true,
+  "stagedBefore": "952a9e734f0c0d73d6c780090ac53a2854134b3523f0a552d3fe362f4f908b7d",
+  "stagedAfter": "952a9e734f0c0d73d6c780090ac53a2854134b3523f0a552d3fe362f4f908b7d",
+  "stagedUnchanged": true,
+  "astProof": {
+    "unchanged_non_import_ast": [
+      {
+        "before": "core/services/process/part_operation_hours_excel_import_service.py",
+        "after": "core/services/process/part_operation_hours_excel_import_service.py",
+        "non_import_ast_sha256": "f486ac687563232d40fc242d4db721a5a5d94d2e543a496264fe67c045580532"
+      },
+      {
+        "before": "core/services/process/part_service.py",
+        "after": "core/services/process/part_service.py",
+        "non_import_ast_sha256": "12b8a8fb1e34664205f865ecc09f94c36c33199a58baa71cd2ca7955ba1b94af"
+      },
+      {
+        "before": "core/services/scheduler/batch_copy.py",
+        "after": "core/services/scheduler/batch_copy.py",
+        "non_import_ast_sha256": "f61e63459425c7948a2ab06ad133a02440fc335476762089c35d0dcc41676a0d"
+      },
+      {
+        "before": "core/services/scheduler/batch_template_ops.py",
+        "after": "core/services/scheduler/batch_template_ops.py",
+        "non_import_ast_sha256": "fc4b4bed31ef8e547aab82b3cfdb1399b59c41454224b71a09afec7bfd632ef9"
+      },
+      {
+        "before": "core/services/workbench/process_quota_protection.py",
+        "after": "core/services/process/quota_protection.py",
+        "non_import_ast_sha256": "9e19e5527ca3594847453c56a5ecb59393a2d45e6951f828e1d26d4bfe29e5ea"
+      },
+      {
+        "before": "core/services/workbench/template_lineage.py",
+        "after": "core/services/scheduler/template_lineage.py",
+        "non_import_ast_sha256": "c4a5b2ac4e7a4b39c105d2c9b0d3ef30f9505ada41e8e12ab09af00a95f350c8"
+      },
+      {
+        "before": "core/services/workbench/template_lineage_query.py",
+        "after": "core/services/scheduler/template_lineage_query.py",
+        "non_import_ast_sha256": "92dc33fe6bb807a85d7056b406e030c97e0a62a65fbf928d7c41050695280b0d"
+      },
+      {
+        "before": "scripts/convert_rotary_shell_unit_excel.py",
+        "after": "scripts/convert_rotary_shell_unit_excel.py",
+        "non_import_ast_sha256": "64dc1a4e84711fa1d479f7fc91fbb2bf4152c4f2e63998af9302cb6da5e443df"
+      },
+      {
+        "before": "tests/_scripts_e2e/smoke_phase5.py",
+        "after": "tests/_scripts_e2e/smoke_phase5.py",
+        "non_import_ast_sha256": "9f81e06cdc9f51b72791f2f3cd9c22632a39ab0ec9b5fa2e110fa555c526879e"
+      },
+      {
+        "before": "tests/excel_data_io/test_excel_conversion_output_contract.py",
+        "after": "tests/excel_data_io/test_excel_conversion_output_contract.py",
+        "non_import_ast_sha256": "3a9aee873d0a13ba5e7b8fa7ddd79d19031460c4f485c76558e864c70fd80286"
+      },
+      {
+        "before": "tests/excel_data_io/test_unit_excel_converter_diagnostics_visible.py",
+        "after": "tests/excel_data_io/test_unit_excel_converter_diagnostics_visible.py",
+        "non_import_ast_sha256": "b0069c05aa7e29e9a9ffac8f52532759231e0c127f2005e0ea1417f2afdf09f1"
+      },
+      {
+        "before": "tests/excel_data_io/test_unit_excel_converter_duplicate_part_rows_no_override.py",
+        "after": "tests/excel_data_io/test_unit_excel_converter_duplicate_part_rows_no_override.py",
+        "non_import_ast_sha256": "34b5ff6eb50fbb147d2ddae64ac4767088be204b08721c2b69116890ed39698f"
+      },
+      {
+        "before": "tests/excel_data_io/test_unit_excel_converter_merge_steps_and_classify.py",
+        "after": "tests/excel_data_io/test_unit_excel_converter_merge_steps_and_classify.py",
+        "non_import_ast_sha256": "cc57b5d5fb05a33f981dea9f4902ce6eb81423be32ee067bbab3c10d6c03b7cb"
+      },
+      {
+        "before": "tests/excel_data_io/test_unit_excel_date_coerced_cells_diagnosed.py",
+        "after": "tests/excel_data_io/test_unit_excel_date_coerced_cells_diagnosed.py",
+        "non_import_ast_sha256": "9edd65e0f0bdf7ab25fcc341be39ce543caeb3116f7c93e5e1df9aeeb4160a44"
+      },
+      {
+        "before": "tests/excel_data_io/test_unit_excel_first_sheet_and_sheet_not_found.py",
+        "after": "tests/excel_data_io/test_unit_excel_first_sheet_and_sheet_not_found.py",
+        "non_import_ast_sha256": "78b23c6c867c3b0a9276dd7a1c9825667d6ac708718bc06fac966480a4b5ea90"
+      },
+      {
+        "before": "tests/excel_data_io/test_unit_excel_route_map_degradations_visible.py",
+        "after": "tests/excel_data_io/test_unit_excel_route_map_degradations_visible.py",
+        "non_import_ast_sha256": "3d1427da81d31e61645d3e3b3a417d1a63bea4fcbcb04127835b29275713dbaa"
+      },
+      {
+        "before": "tests/excel_data_io/test_unit_excel_station_block_dropped_visible.py",
+        "after": "tests/excel_data_io/test_unit_excel_station_block_dropped_visible.py",
+        "non_import_ast_sha256": "236ee053edfd5215b735b55382f69f3285aa02340f2024cc9719e4cf6ef45da9"
+      },
+      {
+        "before": "web/bootstrap/request_services.py",
+        "after": "web/bootstrap/request_services.py",
+        "non_import_ast_sha256": "c8f970ac7c20702820cb26285988498dc1a7072b3e87da274d5209cc5b26d365"
+      },
+      {
+        "before": "web/routes/domains/scheduler/scheduler_batch_detail.py",
+        "after": "web/routes/domains/scheduler/scheduler_batch_detail.py",
+        "non_import_ast_sha256": "cf9b2192602e221a867b40fe32203618bc4a20c7a777208674c475b86db60dff"
+      },
+      {
+        "before": "web/routes/equipment_excel_machines.py",
+        "after": "web/routes/equipment_excel_machines.py",
+        "non_import_ast_sha256": "0459255a093d37c41b7dd79a3a775b836b57b742ca319f7426f671812e856238"
+      },
+      {
+        "before": "web/routes/equipment_pages.py",
+        "after": "web/routes/equipment_pages.py",
+        "non_import_ast_sha256": "99a5b1968f2ef0db205ca95c113b2a380f82bc3ee04f3f31cbb9d7c5e2a07c5d"
+      },
+      {
+        "before": "web/routes/process_excel_op_types.py",
+        "after": "web/routes/process_excel_op_types.py",
+        "non_import_ast_sha256": "78bd205e97a55a3694a2ab87b6a26a30c531258b3c42130c1f2bfd2228d91dcd"
+      },
+      {
+        "before": "web/routes/process_excel_route_apply.py",
+        "after": "web/routes/process_excel_route_apply.py",
+        "non_import_ast_sha256": "cdfaf071590a178d4a239934aa29db87cc40cd1aefd4fc6d4cc963ed7c444545"
+      },
+      {
+        "before": "web/routes/process_excel_routes.py",
+        "after": "web/routes/process_excel_routes.py",
+        "non_import_ast_sha256": "6677071446c4d2807be7bf9791ed052720968d2b04549b082dc1c5c78accf1c3"
+      },
+      {
+        "before": "web/routes/process_excel_suppliers.py",
+        "after": "web/routes/process_excel_suppliers.py",
+        "non_import_ast_sha256": "ae9e957fc8368a0ca54693a824791ad2bfbc318d8c5caef3c9e0dc7bf18fedda"
+      },
+      {
+        "before": "web/routes/process_op_types.py",
+        "after": "web/routes/process_op_types.py",
+        "non_import_ast_sha256": "56df16b48cc3243a1c42abaf51d01700a117fe6ab9116b723ad5ccf3693ae153"
+      },
+      {
+        "before": "web/routes/process_parts.py",
+        "after": "web/routes/process_parts.py",
+        "non_import_ast_sha256": "4260abe750790490644e3be009d65df3393f498a27634ec35a404ebbba3de5e9"
+      },
+      {
+        "before": "web/routes/process_suppliers.py",
+        "after": "web/routes/process_suppliers.py",
+        "non_import_ast_sha256": "6426d30ffee1cb9f159d426ea78151dfeff628718eb61f2ae88b92366ed6b8c3"
+      }
+    ],
+    "import_baseline_comparisons": {
+      "product": {
+        "baseline_missing": false,
+        "new_dir": [
+          ".|web/bootstrap|web/routes|web/routes/workbench"
+        ],
+        "new_file": [
+          "core.services.process.unit_excel|core.services.process.unit_excel.builder_diagnostics|core.services.process.unit_excel.exporter|core.services.process.unit_excel.parser|core.services.process.unit_excel.resource_sheet_builder|core.services.process.unit_excel.route_sheet_builder|core.services.process.unit_excel.template_builder"
+        ],
+        "new_dir_edges": [],
+        "new_file_edges": [],
+        "new_unresolved_dynamic_imports": []
+      },
+      "tests": {
+        "baseline_missing": false,
+        "new_dir": [
+          ".|web/bootstrap|web/routes|web/routes/workbench"
+        ],
+        "new_file": [
+          "core.services.process.unit_excel|core.services.process.unit_excel.builder_diagnostics|core.services.process.unit_excel.exporter|core.services.process.unit_excel.parser|core.services.process.unit_excel.resource_sheet_builder|core.services.process.unit_excel.route_sheet_builder|core.services.process.unit_excel.template_builder"
+        ],
+        "new_dir_edges": [],
+        "new_file_edges": [],
+        "new_unresolved_dynamic_imports": [
+          "tests/gate_meta/test_frozen_bundle_contract.py|198|lazy|_ANCHOR_MODULE",
+          "tests/workbench/test_pending_build_sources.py|22|lazy|spec_from_file_location('workbench_pending_build')",
+          "tests/workbench/test_process_readiness.py|133|lazy|MODULE"
+        ]
+      }
+    }
+  },
+  "staticReceipts": [
+    {
+      "kind": "imports-product",
+      "startedAt": "2026-09-10T08:24:16.082Z",
+      "finishedAt": "2026-09-10T08:24:19.199Z",
+      "command": [
+        "env",
+        "PYTHONDONTWRITEBYTECODE=1",
+        "PYTHONPYCACHEPREFIX=/tmp/aps-fj-fe04-pycache-unused",
+        ".venv/bin/python",
+        "-m",
+        "tools.scan_import_cycles",
+        "--json",
+        "--fail-on-new-cycle"
+      ],
+      "returncode": 1,
+      "output": "fj-fe04-imports-product.json",
+      "sha256": "194bca8a162f268ab43f10888ebcb17aad056068f8cd613933d7bb9afbf95f09",
+      "moduleCount": 1227,
+      "hardDirCycles": [
+        [
+          ".",
+          "web/bootstrap",
+          "web/routes",
+          "web/routes/workbench"
+        ]
+      ],
+      "hardFileCount": 9,
+      "parseErrors": [],
+      "processPackageCycles": []
+    },
+    {
+      "kind": "imports-tests",
+      "startedAt": "2026-09-10T08:24:19.200Z",
+      "finishedAt": "2026-09-10T08:24:27.083Z",
+      "command": [
+        "env",
+        "PYTHONDONTWRITEBYTECODE=1",
+        "PYTHONPYCACHEPREFIX=/tmp/aps-fj-fe04-pycache-unused",
+        ".venv/bin/python",
+        "-m",
+        "tools.scan_import_cycles",
+        "--include-tests",
+        "--json",
+        "--fail-on-new-cycle"
+      ],
+      "returncode": 1,
+      "output": "fj-fe04-imports-tests.json",
+      "sha256": "40749e9fad7b73267a86764328aa27e5c8f64e18ac84e4f7be023490ae868aca",
+      "moduleCount": 2523,
+      "hardDirCycles": [
+        [
+          ".",
+          "web/bootstrap",
+          "web/routes",
+          "web/routes/workbench"
+        ]
+      ],
+      "hardFileCount": 9,
+      "parseErrors": [],
+      "processPackageCycles": []
+    }
+  ],
+  "checkReceipts": [
+    {
+      "kind": "ruff",
+      "startedAt": "2026-09-10T08:26:09.255Z",
+      "finishedAt": "2026-09-10T08:26:09.329Z",
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "ruff",
+        "check",
+        "core/services/process/__init__.py",
+        "core/services/process/part_service.py",
+        "core/services/process/part_operation_hours_excel_import_service.py",
+        "core/services/scheduler/batch_copy.py",
+        "core/services/scheduler/batch_template_ops.py",
+        "core/services/workbench/process_quota_protection.py",
+        "core/services/workbench/template_lineage.py",
+        "core/services/workbench/template_lineage_query.py",
+        "core/services/process/quota_protection.py",
+        "core/services/scheduler/template_lineage.py",
+        "core/services/scheduler/template_lineage_query.py",
+        "web/routes/process_parts.py",
+        "web/routes/equipment_pages.py",
+        "web/routes/process_suppliers.py",
+        "web/routes/process_excel_suppliers.py",
+        "web/routes/process_excel_routes.py",
+        "web/routes/domains/scheduler/scheduler_batch_detail.py",
+        "web/bootstrap/request_services.py",
+        "web/routes/equipment_excel_machines.py",
+        "web/routes/process_op_types.py",
+        "web/routes/process_excel_route_apply.py",
+        "web/routes/process_excel_op_types.py",
+        "scripts/convert_rotary_shell_unit_excel.py",
+        "tests/_scripts_e2e/smoke_phase5.py",
+        "tests/excel_data_io/test_unit_excel_converter_diagnostics_visible.py",
+        "tests/excel_data_io/test_unit_excel_station_block_dropped_visible.py",
+        "tests/excel_data_io/test_unit_excel_first_sheet_and_sheet_not_found.py",
+        "tests/excel_data_io/test_unit_excel_converter_duplicate_part_rows_no_override.py",
+        "tests/excel_data_io/test_unit_excel_date_coerced_cells_diagnosed.py",
+        "tests/excel_data_io/test_unit_excel_converter_merge_steps_and_classify.py",
+        "tests/excel_data_io/test_excel_conversion_output_contract.py",
+        "tests/excel_data_io/test_unit_excel_route_map_degradations_visible.py",
+        "tests/workbench/test_fe04_shared_service_dependency_contract.py"
+      ],
+      "returncode": 0,
+      "output": "fj-fe04-ruff.log",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "kind": "py38",
+      "startedAt": "2026-09-10T08:26:09.329Z",
+      "finishedAt": "2026-09-10T08:26:09.515Z",
+      "command": [
+        ".venv/bin/python",
+        "tools/scan_py38plus_syntax.py",
+        "--fail-on-hit",
+        "core/services/process/__init__.py",
+        "core/services/process/part_service.py",
+        "core/services/process/part_operation_hours_excel_import_service.py",
+        "core/services/scheduler/batch_copy.py",
+        "core/services/scheduler/batch_template_ops.py",
+        "core/services/workbench/process_quota_protection.py",
+        "core/services/workbench/template_lineage.py",
+        "core/services/workbench/template_lineage_query.py",
+        "core/services/process/quota_protection.py",
+        "core/services/scheduler/template_lineage.py",
+        "core/services/scheduler/template_lineage_query.py",
+        "web/routes/process_parts.py",
+        "web/routes/equipment_pages.py",
+        "web/routes/process_suppliers.py",
+        "web/routes/process_excel_suppliers.py",
+        "web/routes/process_excel_routes.py",
+        "web/routes/domains/scheduler/scheduler_batch_detail.py",
+        "web/bootstrap/request_services.py",
+        "web/routes/equipment_excel_machines.py",
+        "web/routes/process_op_types.py",
+        "web/routes/process_excel_route_apply.py",
+        "web/routes/process_excel_op_types.py",
+        "scripts/convert_rotary_shell_unit_excel.py",
+        "tests/_scripts_e2e/smoke_phase5.py",
+        "tests/excel_data_io/test_unit_excel_converter_diagnostics_visible.py",
+        "tests/excel_data_io/test_unit_excel_station_block_dropped_visible.py",
+        "tests/excel_data_io/test_unit_excel_first_sheet_and_sheet_not_found.py",
+        "tests/excel_data_io/test_unit_excel_converter_duplicate_part_rows_no_override.py",
+        "tests/excel_data_io/test_unit_excel_date_coerced_cells_diagnosed.py",
+        "tests/excel_data_io/test_unit_excel_converter_merge_steps_and_classify.py",
+        "tests/excel_data_io/test_excel_conversion_output_contract.py",
+        "tests/excel_data_io/test_unit_excel_route_map_degradations_visible.py",
+        "tests/workbench/test_fe04_shared_service_dependency_contract.py"
+      ],
+      "returncode": 0,
+      "output": "fj-fe04-py38.log",
+      "sha256": "612243771c58a2fe8c1961acd2581d1996c185d6896e6ac2d85a71fc7cdc313f"
+    },
+    {
+      "kind": "pyright",
+      "startedAt": "2026-09-10T08:26:09.515Z",
+      "finishedAt": "2026-09-10T08:26:10.523Z",
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pyright",
+        "--outputjson",
+        "core/services/process/__init__.py",
+        "core/services/process/part_service.py",
+        "core/services/process/part_operation_hours_excel_import_service.py",
+        "core/services/scheduler/batch_copy.py",
+        "core/services/scheduler/batch_template_ops.py",
+        "core/services/workbench/process_quota_protection.py",
+        "core/services/workbench/template_lineage.py",
+        "core/services/workbench/template_lineage_query.py",
+        "core/services/process/quota_protection.py",
+        "core/services/scheduler/template_lineage.py",
+        "core/services/scheduler/template_lineage_query.py",
+        "web/routes/process_parts.py",
+        "web/routes/equipment_pages.py",
+        "web/routes/process_suppliers.py",
+        "web/routes/process_excel_suppliers.py",
+        "web/routes/process_excel_routes.py",
+        "web/routes/domains/scheduler/scheduler_batch_detail.py",
+        "web/bootstrap/request_services.py",
+        "web/routes/equipment_excel_machines.py",
+        "web/routes/process_op_types.py",
+        "web/routes/process_excel_route_apply.py",
+        "web/routes/process_excel_op_types.py",
+        "scripts/convert_rotary_shell_unit_excel.py",
+        "tests/workbench/test_fe04_shared_service_dependency_contract.py"
+      ],
+      "returncode": 0,
+      "output": "fj-fe04-pyright.json",
+      "sha256": "8bfd69dbefbeb1fda5f743208c127e70aaef1efa8cebc187af7e648444813587"
+    }
+  ],
+  "regressions": [
+    {
+      "output": "fj-fe04-focused-final.xml",
+      "passed": 94,
+      "failed": 0,
+      "sha256": "17c34bea9422ef4b07416ce27cfb4e9bae45859c00bc1ae265f8e26c604a6dc1"
+    },
+    {
+      "output": "fj-fe04-legacy-protection.xml",
+      "passed": 198,
+      "failed": 3,
+      "sha256": "225aef33e85c0864acc37124802744e57cf8396dd5c765433f182edfc6da9175"
+    },
+    {
+      "output": "fj-fe04-zero-piece.xml",
+      "passed": 228,
+      "failed": 0,
+      "sha256": "f6165f1545c0ed1196c23cf9977b70907234267a20fe64d3c111bad021a27744"
+    },
+    {
+      "output": "fj-fe04-import-consumers.xml",
+      "passed": 63,
+      "failed": 0,
+      "sha256": "25731abda0443b7b4a06b53e3337ced2f76ebe55639cef788b7ebcc898fdc5c5"
+    },
+    {
+      "output": "fj-fe04-architecture.xml",
+      "passed": 17,
+      "failed": 4,
+      "sha256": "d1df3db7efb0736771325cf770ec0a983eb77d3eb27e5c629b95d6e9695961c2"
+    },
+    {
+      "output": "fj-fe04-before-replay.xml",
+      "passed": 0,
+      "failed": 3,
+      "scope": "Original eight source modules replayed from pre-FJ snapshot; all other current sources unchanged by this experiment",
+      "sha256": "246aa37381c7ba94ee2db102c24a9c0b48112c685b410f1b8ca5d17b8ececf7e"
+    }
+  ],
+  "doesNotClaim": [
+    "full_gate",
+    "clean_worktree_proof",
+    "atomic_repository_snapshot",
+    "preview_loaded_current_source"
+  ],
+  "preview": "untouched; main task owns final reload"
+}

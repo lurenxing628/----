@@ -1,0 +1,482 @@
+{
+  "threshold": 15,
+  "before": {
+    "core/models/workbench_batch.py": {
+      "sha256": "d39a77e306022a5f63ff422cea7e6598634e8c6df574172cdd59da733c0df01b",
+      "complexity": {
+        "object_fields": 4,
+        "public_ref": 3,
+        "number": 11,
+        "date_value": 5,
+        "text": 9,
+        "normalize_batch_input": 14,
+        "normalize_operation_input": 5
+      }
+    },
+    "core/models/workbench_batch_query.py": {
+      "sha256": "c6dc81faf0c6c96b882365e3a8929315c6c0416e6045174676faf011a4913944",
+      "complexity": {
+        "batch_scope": 28,
+        "snapshot_scope": 3
+      }
+    },
+    "core/services/workbench/batch_execution.py": {
+      "sha256": "e6be1ea10c0a8e8b619437c1cc22be578ae6546449fd3595178ad42f480342c8",
+      "complexity": {
+        "read_execution": 10,
+        "protects_execution": 4,
+        "operation_execution_fields": 12,
+        "old_event_bindings": 7,
+        "batch_progress": 6
+      }
+    },
+    "core/services/workbench/batch_facts.py": {
+      "sha256": "ead67731f85c98ea83cb4c7f30a7fccb967a231093800c55845dd8962704a064",
+      "complexity": {
+        "related": 1,
+        "require_unreferenced": 2,
+        "group_protected": 6,
+        "index_relations": 11,
+        "BatchFacts.__init__": 1,
+        "BatchFacts.load": 5,
+        "BatchFacts.fingerprint": 1,
+        "BatchFacts.read_snapshot": 1,
+        "BatchFacts.resolve": 4,
+        "BatchFacts.batch": 7,
+        "__init__": 1,
+        "load": 5,
+        "fingerprint": 1,
+        "read_snapshot": 1,
+        "resolve": 4,
+        "batch": 7
+      }
+    },
+    "core/services/workbench/batch_file_codec.py": {
+      "sha256": "d740bf0b8dec420dd442523ad533abf92662d2fbb837d488fc7755e30ebd876d",
+      "complexity": {
+        "read_batch_file": 26,
+        "write_batch_file": 14
+      }
+    },
+    "core/services/workbench/batch_files.py": {
+      "sha256": "14b7faf083bd5d90a6572c3bbc99b65b4398198acfc34a33279de7280bee1a8e",
+      "complexity": {
+        "WorkbenchBatchFileService.__init__": 1,
+        "WorkbenchBatchFileService.preview": 33,
+        "WorkbenchBatchFileService.apply": 12,
+        "WorkbenchBatchFileService.export": 5,
+        "__init__": 1,
+        "preview": 33,
+        "apply": 12,
+        "export": 5
+      }
+    },
+    "core/services/workbench/batch_operations.py": {
+      "sha256": "0de6fe24cf8ae3ad474688fe4bb8d0f106439a325b1553a51180445c6013c10c",
+      "complexity": {
+        "operation_code": 2,
+        "insert_operation": 2,
+        "WorkbenchBatchOperationService.__init__": 1,
+        "WorkbenchBatchOperationService.normalize_sync": 2,
+        "WorkbenchBatchOperationService.sync_preview": 27,
+        "WorkbenchBatchOperationService.sync": 6,
+        "WorkbenchBatchOperationService.update": 17,
+        "WorkbenchBatchOperationService._validate": 17,
+        "__init__": 1,
+        "normalize_sync": 2,
+        "sync_preview": 27,
+        "sync": 6,
+        "update": 17,
+        "_validate": 17
+      }
+    },
+    "web/routes/workbench/batch_context.py": {
+      "sha256": "563406f40eb07446fa441f144460f44230273228980351406c4b98e14cdcc4dd",
+      "complexity": {
+        "read_scope": 6,
+        "json_body": 3,
+        "command_body": 3,
+        "save_preview": 1,
+        "load_preview": 5
+      }
+    },
+    "web/routes/workbench/batches.py": {
+      "sha256": "242f2437987be58a42c0dc614d8a710286d4617aaf1465d177d86f2a72fa3d1e",
+      "complexity": {
+        "entity_context": 4,
+        "_list": 2,
+        "batch_list": 1,
+        "batch_query": 1,
+        "batch_selection": 2,
+        "batch_detail": 1,
+        "batch_choices": 2,
+        "batch_command": 3,
+        "batch_preview": 9,
+        "batch_facets": 7,
+        "batch_confirm": 4,
+        "register_batch_routes": 5
+      }
+    },
+    "data/repositories/workbench_template_lineage_repo.py": {
+      "sha256": "0b816dd9241b193c1c082a8c72f564f24f8544f6876298a304525c4f0b77fd6a",
+      "complexity": {
+        "WorkbenchTemplateLineageRepository.available": 4,
+        "WorkbenchTemplateLineageRepository.require_write": 6,
+        "WorkbenchTemplateLineageRepository.template": 4,
+        "WorkbenchTemplateLineageRepository.current_templates": 4,
+        "WorkbenchTemplateLineageRepository.instance": 4,
+        "WorkbenchTemplateLineageRepository.current_instances": 4,
+        "WorkbenchTemplateLineageRepository.insert_instance": 3,
+        "WorkbenchTemplateLineageRepository.origins": 4,
+        "WorkbenchTemplateLineageRepository.events": 6,
+        "WorkbenchTemplateLineageRepository._evidence_size": 4,
+        "WorkbenchTemplateLineageRepository._check_size": 2,
+        "WorkbenchTemplateLineageRepository.append_origin": 7,
+        "WorkbenchTemplateLineageRepository._require_unexecuted": 7,
+        "WorkbenchTemplateLineageRepository.withdraw": 9,
+        "available": 4,
+        "require_write": 6,
+        "template": 4,
+        "current_templates": 4,
+        "instance": 4,
+        "current_instances": 4,
+        "insert_instance": 3,
+        "origins": 4,
+        "events": 6,
+        "_evidence_size": 4,
+        "_check_size": 2,
+        "append_origin": 7,
+        "_require_unexecuted": 7,
+        "withdraw": 9
+      }
+    },
+    "tests/workbench/legacy_batch_lineage_copy_support.py": {
+      "sha256": "c3773cf834f69944f3135a2c665ad90095295bcd256b4117b5248cf441a06e3a",
+      "complexity": {
+        "legacy_case": 3,
+        "operations": 2,
+        "seed_scale": 9,
+        "fail_last_origin": 2,
+        "assert_raw_copy": 7,
+        "assert_only_copy_appends": 11,
+        "LegacyBatchLineageCase.__init__": 1,
+        "__init__": 1
+      }
+    },
+    "tests/workbench/test_legacy_batch_lineage_copy.py": {
+      "sha256": "259bdb4c8169f72d42eaae5e9a17156e63b9cb7b2dac695312d711b2916292a9",
+      "complexity": {
+        "test_real_fifty_batches_three_operations_keep_lineage_plans_and_execution": 20,
+        "test_fifty_batch_outer_rollback_restores_every_original_row_and_sequence": 8,
+        "test_last_operation_failure_rolls_back_legacy_owned_transaction": 3,
+        "test_raw_unknown_null_zero_and_blob_values_are_not_model_normalized": 13,
+        "test_exact_parent_event_version_survives_template_change_and_later_source_edit": 13,
+        "test_five_completed_copies_of_polluted_or_withdrawn_source_are_not_samples": 13,
+        "test_unbound_identical_instances_remain_unbound_after_five_complete_legacy_copies": 9,
+        "test_mixed_bound_and_unbound_pieces_do_not_share_origin": 8,
+        "test_empty_batch_copy_keeps_legacy_signature_and_business_fields": 7,
+        "test_damaged_lineage_schema_does_not_fall_back_to_model_copy": 3,
+        "test_legacy_input_validation_has_no_side_effect": 2
+      }
+    },
+    "tests/web_pages/test_batch_template_autobuild_same_tx.py": {
+      "sha256": "8945a4a774bffd3a14ba30ee4cce698ecb078bbeb4f15f6a6d5db4e065913ba6",
+      "complexity": {
+        "test_batch_template_autobuild_same_tx": 11
+      }
+    },
+    "tests/workbench/test_batch_files.py": {
+      "sha256": "24b36eba8371629d270fb3022097c5b4968c24df64062e4cb510493484a38f7a",
+      "complexity": {
+        "uploaded": 2,
+        "confirm": 1,
+        "data_rows": 2,
+        "test_modes_preserve_existing_empty_columns_and_no_automatic_operations": 11,
+        "test_replace_shows_entire_deletion_set_and_blocks_planned_fact": 4,
+        "test_replace_unreferenced_is_atomic_and_new_identity": 5,
+        "test_invalid_file_rows_never_write": 4,
+        "test_template_bytes_and_selected_export_preserve_text_and_scope": 7,
+        "test_file_confirm_stale_rolls_back_and_duplicate_rejected": 3,
+        "test_first_sheet_only_formulas_and_bool_quantities": 5,
+        "test_corrupt_xlsx_is_known_rejection_not_unknown_commit": 3
+      }
+    }
+  },
+  "after": {
+    "core/models/workbench_batch.py": {
+      "sha256": "13ff31148aecefd7a783f3dd4acd79107e0e2e05084980c9afced105b5690688",
+      "complexity": {
+        "object_fields": 4,
+        "public_ref": 3,
+        "number": 11,
+        "date_value": 5,
+        "text": 9,
+        "normalize_batch_input": 14,
+        "normalize_operation_input": 5
+      },
+      "lines": 101
+    },
+    "core/models/workbench_batch_query.py": {
+      "sha256": "4ec9fd5d34477e56fd7e6c437869cdc367cafb130e1799f3667584381e83e0ef",
+      "complexity": {
+        "batch_scope": 2,
+        "_validate_pagination": 5,
+        "_validate_selection": 8,
+        "_validate_filter_values": 10,
+        "_validate_batch_ids": 7,
+        "snapshot_scope": 3
+      },
+      "lines": 51
+    },
+    "core/services/workbench/batch_execution.py": {
+      "sha256": "a2acf3d8769efe16397c6aaeeaafb4f9847530aaa71a8fd93c689c8f62190f4c",
+      "complexity": {
+        "read_execution": 10,
+        "protects_execution": 4,
+        "operation_execution_fields": 13,
+        "old_event_bindings": 7,
+        "batch_progress": 6
+      },
+      "lines": 77
+    },
+    "core/services/workbench/batch_facts.py": {
+      "sha256": "7b6ea8eaa00781935496d3e72a8efd3135e882c6fc514d22edfdf6ba399a02e3",
+      "complexity": {
+        "related": 1,
+        "require_unreferenced": 2,
+        "group_protected": 6,
+        "index_relations": 11,
+        "BatchFacts.__init__": 1,
+        "BatchFacts.load": 5,
+        "BatchFacts.fingerprint": 1,
+        "BatchFacts.read_snapshot": 1,
+        "BatchFacts.resolve": 4,
+        "BatchFacts.batch": 7,
+        "__init__": 1,
+        "load": 5,
+        "fingerprint": 1,
+        "read_snapshot": 1,
+        "resolve": 4,
+        "batch": 7
+      },
+      "lines": 117
+    },
+    "core/services/workbench/batch_file_codec.py": {
+      "sha256": "4e00b1843f45ca556d27a19b4b50c3410ea073ecfba95f49e56e92b08b668fb4",
+      "complexity": {
+        "read_batch_file": 10,
+        "_read_first_sheet": 11,
+        "_read_data_row": 7,
+        "write_batch_file": 14
+      },
+      "lines": 103
+    },
+    "core/services/workbench/batch_files.py": {
+      "sha256": "526a6e13e47943465d0907e77353f814de36dce368b8c459f4632ae53b794784",
+      "complexity": {
+        "WorkbenchBatchFileService.__init__": 1,
+        "WorkbenchBatchFileService.preview": 5,
+        "WorkbenchBatchFileService.apply": 12,
+        "WorkbenchBatchFileService.export": 5,
+        "__init__": 1,
+        "preview": 5,
+        "apply": 12,
+        "export": 5
+      },
+      "lines": 66
+    },
+    "core/services/workbench/batch_file_preview.py": {
+      "sha256": "21b30b1db080b12164b77bb5a970d6b50457feed2c7f510047d616d9ef6848ba",
+      "complexity": {
+        "BatchImportPreview.__init__": 3,
+        "BatchImportPreview.row": 8,
+        "BatchImportPreview._source": 5,
+        "BatchImportPreview._input": 11,
+        "BatchImportPreview.deleted": 3,
+        "BatchImportPreview._deletion": 3,
+        "__init__": 3,
+        "row": 8,
+        "_source": 5,
+        "_input": 11,
+        "deleted": 3,
+        "_deletion": 3
+      },
+      "lines": 89
+    },
+    "core/services/workbench/batch_operations.py": {
+      "sha256": "9cc416daa8af16150641ef727aff130ba843b02e293d0b13a725f8fb8bbe0be2",
+      "complexity": {
+        "operation_code": 2,
+        "insert_operation": 2,
+        "WorkbenchBatchOperationService.__init__": 1,
+        "WorkbenchBatchOperationService.normalize_sync": 2,
+        "WorkbenchBatchOperationService.sync_preview": 8,
+        "WorkbenchBatchOperationService.sync": 6,
+        "WorkbenchBatchOperationService.update": 10,
+        "WorkbenchBatchOperationService._changes": 8,
+        "WorkbenchBatchOperationService._validate": 7,
+        "WorkbenchBatchOperationService._validate_internal": 4,
+        "WorkbenchBatchOperationService._validate_external": 8,
+        "__init__": 1,
+        "normalize_sync": 2,
+        "sync_preview": 8,
+        "sync": 6,
+        "update": 10,
+        "_changes": 8,
+        "_validate": 7,
+        "_validate_internal": 4,
+        "_validate_external": 8
+      },
+      "lines": 131
+    },
+    "core/services/workbench/batch_template_validation.py": {
+      "sha256": "bc24e2ff151191932f9e343f5ee4293e3ca3f9b701790c9bbee0c204cc50aa15",
+      "complexity": {
+        "template_diagnostics": 7,
+        "_internal_diagnostics": 3,
+        "_external_diagnostics": 11
+      },
+      "lines": 45
+    },
+    "web/routes/workbench/batch_context.py": {
+      "sha256": "0deabad054d11e91b9c24fb4c4e6fa9006ade58590a0078b3788fa6ce3891ad3",
+      "complexity": {
+        "read_scope": 6,
+        "json_body": 3,
+        "command_body": 3,
+        "save_preview": 1,
+        "load_preview": 5
+      },
+      "lines": 57
+    },
+    "web/routes/workbench/batches.py": {
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "complexity": {
+        "entity_context": 4,
+        "_list": 2,
+        "batch_list": 1,
+        "batch_query": 1,
+        "batch_selection": 2,
+        "batch_detail": 1,
+        "batch_choices": 2,
+        "batch_command": 3,
+        "batch_preview": 9,
+        "batch_facets": 7,
+        "batch_confirm": 4,
+        "register_batch_routes": 5
+      },
+      "lines": 202
+    },
+    "data/repositories/workbench_template_lineage_repo.py": {
+      "sha256": "41f7d0b965e10b31a82d2443d9593ee1b06e232d96b5a758b3115893d462a85f",
+      "complexity": {
+        "WorkbenchTemplateLineageRepository.available": 4,
+        "WorkbenchTemplateLineageRepository.require_write": 6,
+        "WorkbenchTemplateLineageRepository.template": 4,
+        "WorkbenchTemplateLineageRepository.current_templates": 4,
+        "WorkbenchTemplateLineageRepository.instance": 4,
+        "WorkbenchTemplateLineageRepository.current_instances": 4,
+        "WorkbenchTemplateLineageRepository.insert_instance": 3,
+        "WorkbenchTemplateLineageRepository.origins": 4,
+        "WorkbenchTemplateLineageRepository.events": 6,
+        "WorkbenchTemplateLineageRepository._evidence_size": 4,
+        "WorkbenchTemplateLineageRepository._check_size": 2,
+        "WorkbenchTemplateLineageRepository.append_origin": 7,
+        "WorkbenchTemplateLineageRepository._require_unexecuted": 7,
+        "WorkbenchTemplateLineageRepository.withdraw": 9,
+        "available": 4,
+        "require_write": 6,
+        "template": 4,
+        "current_templates": 4,
+        "instance": 4,
+        "current_instances": 4,
+        "insert_instance": 3,
+        "origins": 4,
+        "events": 6,
+        "_evidence_size": 4,
+        "_check_size": 2,
+        "append_origin": 7,
+        "_require_unexecuted": 7,
+        "withdraw": 9
+      },
+      "lines": 173
+    },
+    "tests/workbench/legacy_batch_lineage_copy_support.py": {
+      "sha256": "083cdfbc1758c33267b7d55547b3528df026904b5086e972293d750fd3067f70",
+      "complexity": {
+        "legacy_case": 3,
+        "operations": 2,
+        "seed_scale": 9,
+        "fail_last_origin": 2,
+        "assert_raw_copy": 7,
+        "assert_only_copy_appends": 12,
+        "assert_dashboard_copy_items": 11,
+        "assert_operation_birth_items": 7,
+        "LegacyBatchLineageCase.__init__": 1,
+        "__init__": 1
+      },
+      "lines": 153
+    },
+    "tests/workbench/test_legacy_batch_lineage_copy.py": {
+      "sha256": "8d184c9ef354526491585a8fc9b8816da615564e9c186605a6b7e9ad11bc8037",
+      "complexity": {
+        "test_real_fifty_batches_three_operations_keep_lineage_plans_and_execution": 20,
+        "test_fifty_batch_outer_rollback_restores_every_original_row_and_sequence": 8,
+        "test_last_operation_failure_rolls_back_legacy_owned_transaction": 3,
+        "test_duplicate_copied_operation_code_rolls_back_every_table": 7,
+        "test_raw_unknown_null_zero_and_blob_values_are_not_model_normalized": 13,
+        "test_exact_parent_event_version_survives_template_change_and_later_source_edit": 13,
+        "test_five_completed_copies_of_polluted_or_withdrawn_source_are_not_samples": 13,
+        "test_unbound_identical_instances_remain_unbound_after_five_complete_legacy_copies": 9,
+        "test_mixed_bound_and_unbound_pieces_do_not_share_origin": 8,
+        "test_empty_batch_copy_keeps_legacy_signature_and_business_fields": 3,
+        "test_damaged_lineage_schema_does_not_fall_back_to_model_copy": 3,
+        "test_legacy_input_validation_has_no_side_effect": 2
+      },
+      "lines": 300
+    },
+    "tests/web_pages/test_batch_template_autobuild_same_tx.py": {
+      "sha256": "bb6b2a51257b91798ceed08f6fcf87a1f08cf763dc32bbb8fcc11fbfbc818ad6",
+      "complexity": {
+        "test_batch_template_autobuild_same_tx": 16
+      },
+      "lines": 84
+    },
+    "tests/workbench/test_batch_files.py": {
+      "sha256": "c32e140a06d12339dce92e6f34122673a204b471a17a97ad9961c3d0c859befa",
+      "complexity": {
+        "uploaded": 2,
+        "confirm": 1,
+        "data_rows": 2,
+        "test_modes_preserve_existing_empty_columns_and_no_automatic_operations": 12,
+        "test_replace_shows_entire_deletion_set_and_blocks_planned_fact": 4,
+        "test_replace_unreferenced_is_atomic_and_new_identity": 5,
+        "test_invalid_file_rows_never_write": 4,
+        "test_template_bytes_and_selected_export_preserve_text_and_scope": 8,
+        "test_file_confirm_stale_rolls_back_and_duplicate_rejected": 3,
+        "test_first_sheet_only_formulas_and_bool_quantities": 6,
+        "test_corrupt_xlsx_is_known_rejection_not_unknown_commit": 3
+      },
+      "lines": 167
+    },
+    "tests/workbench/test_batch_round1_boundaries.py": {
+      "sha256": "ac849eb90271f0128f66b8f82ec533b13783278b0d7cd00e81b99f4fb5480de3",
+      "complexity": {
+        "test_scope_rejects_invalid_values_without_coercion": 4,
+        "test_scope_keeps_null_zero_empty_filter_and_exact_numeric_boundaries": 3,
+        "test_query_string_numbers_are_parsed_before_domain_validation": 4,
+        "test_query_string_rejects_duplicates_and_invalid_numbers": 2,
+        "test_invalid_first_row_still_reserves_its_duplicate_code": 8,
+        "test_append_does_not_skip_validation_of_an_existing_row": 4,
+        "test_later_file_insert_failure_restores_all_rows_and_receipts": 8,
+        "test_template_missing_hours_remain_missing_and_hidden_external_values_are_not_normalized": 4,
+        "test_template_identity_and_source_are_not_guessed": 2,
+        "test_external_group_link_must_be_complete": 3,
+        "test_merged_external_period_is_validated_instead_of_hidden_per_operation_value": 3
+      },
+      "lines": 141
+    }
+  },
+  "complexity_violations": [],
+  "oversize_violations": []
+}

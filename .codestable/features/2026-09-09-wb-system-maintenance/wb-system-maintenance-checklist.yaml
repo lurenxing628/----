@@ -1,0 +1,26 @@
+feature: wb-system-maintenance
+created: 2026-09-09
+steps:
+  - id: evidence
+    title: 核查现有系统样板与真实维护服务并报告整合边界
+    status: done
+  - id: backend
+    title: 系统独立查询配置备份日志导出与外置维护结果
+    status: done
+  - id: ui
+    title: 经主代理落盘同步后实现独立新UI并同步SystemLive替换
+    status: pending
+  - id: verification
+    title: 临时库故障注入与独立浏览器截图验证
+    status: in_progress
+checks:
+  - id: root_isolation
+    result: 44项新增维护测试加5项既有恢复合同回归全部通过，fixture拒绝目录外SQLite连接
+  - id: writes_owned
+    result: 未改全局注册构建核心恢复及SystemLive；新UI等待落盘同步
+  - id: restore_global_boundary
+    result: 主代理待接启动与请求恢复隔离，恢复默认禁用
+  - id: local_static_checks
+    result: 专属Ruff通过，Pyright零错误，17个Python文件的Python3.8语法扫描零发现
+  - id: browser_evidence
+    result: 尚未执行，UI文件等待主代理构建清单落盘同步；没有将既有页面截图充当新功能证据

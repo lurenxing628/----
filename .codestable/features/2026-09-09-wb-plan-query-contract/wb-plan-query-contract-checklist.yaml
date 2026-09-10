@@ -1,0 +1,36 @@
+feature: wb-plan-query-contract
+steps:
+  - id: private-plan-catalog
+    action: 复用既有身份模型实现真实目录读取
+    exit_signal: 冻结私有shape及坏摘要坏关系无明细只读测试通过
+    status: done
+  - id: bounded-private-pages
+    action: 将历史版本与场景分别接为有界只读目录页
+    exit_signal: SQL游标分页及页外隔离通过，万版本五十万明细规模有实测
+    status: done
+  - id: persistent-plan-task-refs
+    action: 建立永久计划和任务身份及范围化查询
+    exit_signal: 重启稳定且计划与任务不会串源
+    status: done
+  - id: public-read-api
+    action: 公开目录与限定范围任务读取、前端适配器和协议校验
+    exit_signal: 角色与永久引用不串源，坏条目不拖垮目录，长整数和夜班时间精确保留
+    status: done
+  - id: shared-plan-projections
+    action: 统一甘特基线日历交付风险及快照和导出
+    exit_signal: 各投影共享真实范围与同一快照
+    status: in-progress
+  - id: query-ui-verification
+    action: 接入相关工作台并完成规模和浏览器验收
+    exit_signal: 复杂跨夜场景可用，公开字段及样式边界正确
+    status: in-progress
+checks:
+  - id: identity-scope
+    description: 永久身份与一致快照，不回退到错误目标
+    status: passed
+  - id: complete-projections
+    description: 全部真实计划相关投影与导出
+    status: pending
+  - id: browser-and-scale
+    description: 双主题双尺寸、手动输入点击及复杂规模
+    status: pending

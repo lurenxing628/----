@@ -1,0 +1,640 @@
+ M .codestable/architecture/ARCHITECTURE.md
+ M .codestable/attention.md
+ M .codestable/checkup/dead_code_islands_baseline.json
+ M .codestable/checkup/latest/callgraph/articulation_points.json
+ M .codestable/checkup/latest/callgraph/cycles.json
+ M .codestable/checkup/latest/callgraph/dataflow_nodes.json
+ M .codestable/checkup/latest/callgraph/dynamic_unresolved.json
+ M .codestable/checkup/latest/callgraph/edges.json
+ M .codestable/checkup/latest/callgraph/functions.json
+ M .codestable/checkup/latest/callgraph/high_fan_in.json
+ M .codestable/checkup/latest/callgraph/islands.json
+ M .codestable/checkup/latest/callgraph/risk_dataflow.json
+ M .codestable/checkup/latest/callgraph/summary.json
+ M .codestable/reference/shared-conventions.md
+ M .codestable/reference/system-overview.md
+ M .gitignore
+ M .limcode/agents/independent-auditor.md
+ M .limcode/skills/_shared/subagent-compat.md
+ M .limcode/skills/aps-deep-review/SKILL.md
+ M .limcode/skills/brainstorming/SKILL.md
+ M .limcode/skills/cs-arch/SKILL.md
+ M .limcode/skills/cs-audit/SKILL.md
+ M .limcode/skills/cs-checkup/SKILL.md
+ M .limcode/skills/cs-decide/SKILL.md
+ M .limcode/skills/cs-explore/SKILL.md
+ M .limcode/skills/cs-feat-accept/SKILL.md
+ M .limcode/skills/cs-feat-design/SKILL.md
+ M .limcode/skills/cs-feat-ff/SKILL.md
+ M .limcode/skills/cs-feat-impl/SKILL.md
+ M .limcode/skills/cs-feat/SKILL.md
+ M .limcode/skills/cs-guide/SKILL.md
+ M .limcode/skills/cs-issue-analyze/SKILL.md
+ M .limcode/skills/cs-issue-fix/SKILL.md
+ M .limcode/skills/cs-issue-report/SKILL.md
+ M .limcode/skills/cs-issue/SKILL.md
+ M .limcode/skills/cs-learn/SKILL.md
+ M .limcode/skills/cs-libdoc/SKILL.md
+ M .limcode/skills/cs-onboard/SKILL.md
+ M .limcode/skills/cs-onboard/reference/shared-conventions.md
+ M .limcode/skills/cs-onboard/reference/system-overview.md
+ M .limcode/skills/cs-refactor-ff/SKILL.md
+ M .limcode/skills/cs-refactor/SKILL.md
+ M .limcode/skills/cs-req/SKILL.md
+ M .limcode/skills/cs-roadmap/SKILL.md
+ M .limcode/skills/cs-semantic-radar/SKILL.md
+ M .limcode/skills/cs-trick/SKILL.md
+ M .limcode/skills/cs/SKILL.md
+ M .limcode/skills/deep-investigate/SKILL.md
+ M .limcode/skills/feature-design/SKILL.md
+ M .limcode/skills/subagent-driven-development/SKILL.md
+ M .limcode/skills/using-superpowers/SKILL.md
+ M "assets/\345\220\257\345\212\250_\346\216\222\344\272\247\347\263\273\347\273\237_Chrome.bat"
+ M build_win7_onedir.bat
+ M core/algorithm_contracts/date_parsers.py
+ M core/algorithm_runtime/auto_assign_contract.py
+ M core/algorithm_runtime/dispatch_context.py
+ M core/algorithm_runtime/downtime.py
+ M core/algorithm_runtime/internal_slot.py
+ M core/algorithm_runtime/run_state.py
+ M core/algorithm_runtime/runtime_state.py
+ M core/algorithms/evaluation.py
+ M core/algorithms/greedy/auto_assign.py
+ M core/algorithms/greedy/dispatch/batch_order.py
+ M core/algorithms/greedy/dispatch/resource_validation.py
+ M core/algorithms/greedy/dispatch/sgs.py
+ M core/algorithms/greedy/dispatch/sgs_graph.py
+ M core/algorithms/greedy/dispatch/sgs_scoring.py
+ M core/algorithms/greedy/external_groups.py
+ M core/algorithms/greedy/internal_operation.py
+ M core/algorithms/greedy/run_context.py
+ M core/algorithms/greedy/schedule_params.py
+ M core/algorithms/greedy/scheduler.py
+ M core/algorithms/greedy/seed.py
+ M core/infrastructure/backup.py
+ M core/infrastructure/migration_backup.py
+ M core/infrastructure/migration_state.py
+ M core/infrastructure/migrations/__init__.py
+ M core/models/scheduler_public_errors.py
+ M core/plugins/manager.py
+ M core/services/common/overdue_calculations.py
+ M core/services/equipment/machine_downtime_service.py
+ M core/services/material/material_service.py
+ M core/services/process/part_operation_hours_excel_import_service.py
+ M core/services/process/part_service.py
+ M core/services/process/route_parser_constraints.py
+ M core/services/process/unit_excel/parser.py
+ M core/services/process/unit_excel/template_builder.py
+ M core/services/process/unit_excel_converter.py
+ M core/services/report/calculations.py
+ M core/services/report/delay_diagnosis_presentation.py
+ M core/services/report/downtime_impact.py
+ M core/services/report/execution_review.py
+ M core/services/report/exporters/xlsx.py
+ M core/services/report/report_degradation.py
+ M core/services/report/report_engine.py
+ M core/services/report/report_number_parsing.py
+ M core/services/report/utilization.py
+ M core/services/scheduler/batch_copy.py
+ M core/services/scheduler/batch_template_ops.py
+ M core/services/scheduler/calendar_engine.py
+ M core/services/scheduler/calendar_service.py
+ M core/services/scheduler/config/config_constants.py
+ M core/services/scheduler/contracts/optimizer_public_safety.py
+ M core/services/scheduler/contracts/schedule_summary_types.py
+ M core/services/scheduler/execution/execution_fact_provider.py
+ M core/services/scheduler/gantt_critical_chain.py
+ M core/services/scheduler/gantt_critical_chain_provider.py
+ M core/services/scheduler/gantt_range.py
+ M core/services/scheduler/operation_edit_service.py
+ M core/services/scheduler/resource_pool_builder.py
+ M core/services/scheduler/run/freeze_window.py
+ M core/services/scheduler/run/optimizer_graph_ready.py
+ M core/services/scheduler/run/optimizer_graph_ready_candidates.py
+ M core/services/scheduler/run/optimizer_graph_ready_context.py
+ M core/services/scheduler/run/optimizer_graph_ready_profiles.py
+ M core/services/scheduler/run/optimizer_graph_ready_reporting.py
+ M core/services/scheduler/run/optimizer_graph_ready_v2_features.py
+ M core/services/scheduler/run/optimizer_grasp_ig_candidates.py
+ M core/services/scheduler/run/optimizer_local_search.py
+ M core/services/scheduler/run/optimizer_local_search_candidate_eval.py
+ M core/services/scheduler/run/optimizer_local_search_state.py
+ M core/services/scheduler/run/optimizer_proof_harness.py
+ M core/services/scheduler/run/optimizer_proof_oracle.py
+ M core/services/scheduler/run/schedule_execution_guardrails.py
+ M core/services/scheduler/run/schedule_execution_persistence_guard.py
+ M core/services/scheduler/run/schedule_input_collector.py
+ M core/services/scheduler/run/schedule_input_runtime_support.py
+ M core/services/scheduler/run/schedule_operation_log_details.py
+ M core/services/scheduler/run/schedule_optimizer.py
+ M core/services/scheduler/run/schedule_optimizer_steps.py
+ M core/services/scheduler/run/schedule_orchestrator.py
+ M core/services/scheduler/run/schedule_payload_contract.py
+ M core/services/scheduler/run/schedule_seed_contracts.py
+ M core/services/scheduler/schedule_plan_query_service.py
+ M core/services/scheduler/schedule_service.py
+ M core/services/scheduler/summary/due_risk_items.py
+ M core/services/scheduler/summary/schedule_summary_assembly.py
+ M core/services/scheduler/summary/summary_runtime_state.py
+ M core/services/system/maintenance/backup_task.py
+ M core/services/system/maintenance/cleanup_task.py
+ M core/services/system/runtime_log_reader.py
+ M core/services/system/system_maintenance_service.py
+ M core/shared/degradation.py
+ M data/repositories/material_repo.py
+ M data/repositories/supplier_repo.py
+ M pyrightconfig.tools.json
+ M schema.sql
+ M scripts/convert_rotary_shell_unit_excel.py
+ M tests/_scripts_e2e/benchmark_optimizer_ratchet.py
+ M tests/_scripts_e2e/smoke_phase9.py
+ M tests/_support/optimizer_benchmark_ratchet.py
+ M tests/_support/optimizer_graph_ready_benchmark.py
+ M tests/_support/optimizer_graph_ready_v2_benchmark.py
+ M tests/algorithm/test_algorithm_date_boundary_split.py
+ M tests/algorithm/test_algorithms_a3_dependency_boundary.py
+ M tests/algorithm/test_due_exclusive_consistency.py
+ M tests/algorithm/test_due_exclusive_guard_contract.py
+ A tests/algorithm/test_incomplete_batch_metrics_contract.py
+ A tests/algorithm/test_incomplete_batch_optimizer_contract.py
+ A tests/algorithm/test_incomplete_metrics_public_projection.py
+ M tests/algorithm/test_optimizer_benchmark_ratchet_gate.py
+ M tests/algorithm/test_optimizer_build_order_once_per_strategy.py
+ M tests/algorithm/test_optimizer_graph_ready_candidate_contract.py
+ M tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py
+ A tests/algorithm/test_optimizer_profile_budget.py
+ A tests/algorithm/test_optimizer_profile_predecode_dedup.py
+ A tests/algorithm/test_optimizer_quality_matrix_contract.py
+ A tests/algorithm/test_optimizer_ratchet_baseline_lifecycle.py
+ M tests/algorithm/test_optimizer_vns_sa_local_search_contract.py
+ A tests/algorithm/test_ready_date_resource_calendar_lower_bound.py
+ M tests/algorithm/test_resource_pool_builder_contract.py
+ A tests/algorithm/test_sgs_slot_reuse_contract.py
+ A tests/algorithm/test_sgs_slot_reuse_equivalence.py
+ M tests/app_runtime/test_fixed_file_security.py
+ M tests/app_runtime/test_launcher_observability.py
+ M tests/app_runtime/test_runtime_lock_reloader_parent_skip.py
+ M tests/app_runtime/test_win7_launcher_runtime_paths.py
+ M tests/calendar_maintenance/test_downtime_timeline_ordered_insert.py
+ M tests/calendar_maintenance/test_maintenance_telemetry_isolation.py
+ M tests/calendar_maintenance/test_maintenance_visible_detail_contract.py
+ M tests/calendar_maintenance/test_maintenance_window_mutex.py
+ M tests/calendar_maintenance/test_schedule_input_collector_downtime_resource_pool_contract.py
+ M tests/excel_data_io/test_excel_import_apply_defense.py
+ M tests/gantt/test_gantt_adjustment_publish_execution_revision.py
+ A tests/gantt/test_gantt_critical_chain_cache_snapshot.py
+ M tests/gantt/test_gantt_critical_chain_cache_thread_safe.py
+ A tests/gantt/test_gantt_critical_chain_cache_transactions.py
+ M tests/gantt/test_gantt_critical_chain_provider.py
+ M tests/gantt/test_gantt_critical_chain_unavailable.py
+ M tests/gantt/test_gantt_draft_save_and_preview.py
+ M tests/gantt/test_gantt_scenario_publish.py
+A  tests/gate_meta/test_frozen_bundle_contract.py
+ M tests/gate_meta/test_long_gate_manifest.py
+ A tests/material/test_material_finite_quantity_contract.py
+ M tests/migration_db/test_database_migration_runner_delegation.py
+ M tests/migration_db/test_ensure_schema_fastforward_empty_only.py
+ M tests/migration_db/test_migrate_backup_dir_none_creates_backup.py
+ M tests/migration_db/test_migrate_v4_sanitize_enum_text_fields.py
+ M tests/migration_db/test_migrate_v5_normalize_operator_machine_legacy_values.py
+ M tests/migration_db/test_migration_logging_fallback.py
+ M tests/migration_db/test_migrations.py
+ M tests/operation_execution/operation_execution_feedback_test_support.py
+ M tests/operation_execution/test_operation_execution_event_foundation.py
+ M tests/operation_execution/test_operation_execution_migration_v19_contract.py
+ M tests/resource_dispatch/resource_dispatch_frontend_support.py
+ A tests/schedule/service/test_schedule_seed_metadata_helper_contract.py
+ M tests/schedule/service/test_schedule_service_passes_algo_stats_to_summary.py
+ A tests/schedule/service/test_unselected_execution_feedback_continuity.py
+ A tests/schedule/service/test_unselected_execution_resource_fail_closed.py
+ A tests/schedule/service/test_unselected_execution_resource_guardrails.py
+ A tests/schedule/service/test_unselected_execution_resource_snapshot.py
+ A tests/scheduler_analysis/test_report_calendar_capacity_intersections.py
+ M tests/scheduler_analysis/test_report_source_case_insensitive.py
+ M tests/scheduler_graph/test_ready_queue.py
+ M tests/web_pages/test_diagnostic_package_security.py
+ M tests/web_pages/test_factory_request_lifecycle_observability.py
+ M tests/web_pages/test_frontend_ui_language_polish.py
+ M tests/web_pages/test_request_service_test_factory_invariant.py
+ M tests/web_pages/test_scenario_preview_secondary_outputs.py
+ M tests/web_pages/test_static_versioning.py
+ M tools/dead_code_usage/ast_usage.py
+ M tools/quality_gate_shared.py
+ M tools/test_registry.py
+ M tools/test_registry_data.py
+ M tools/test_registry_groups_misc.py
+ M tools/test_registry_groups_scheduler.py
+ M validate_dist_exe.py
+ M web/bootstrap/entrypoint.py
+ M web/bootstrap/factory.py
+ M web/bootstrap/launcher.py
+ M web/bootstrap/launcher_contracts.py
+ M web/bootstrap/launcher_paths.py
+ M web/bootstrap/launcher_processes.py
+ M web/bootstrap/launcher_stop.py
+ M web/bootstrap/static_versioning.py
+ M web/error_handlers.py
+ M web/navigation_context.py
+ M web/public_token_registry.py
+ M web/routes/dashboard.py
+ M web/routes/domains/scheduler/scheduler_analysis_read.py
+ M web/routes/domains/scheduler/scheduler_batch_detail.py
+ M web/routes/domains/scheduler/scheduler_batches.py
+ M web/routes/domains/scheduler/scheduler_bp.py
+ M web/routes/domains/scheduler/scheduler_config.py
+ M web/routes/domains/scheduler/scheduler_excel_batches.py
+ M web/routes/domains/scheduler/scheduler_excel_calendar.py
+ M web/routes/domains/scheduler/scheduler_gantt.py
+ M web/routes/domains/scheduler/scheduler_ops.py
+ M web/routes/domains/scheduler/scheduler_resource_dispatch.py
+ M web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py
+ M web/routes/domains/scheduler/scheduler_run.py
+ M web/routes/domains/scheduler/scheduler_utils.py
+ M web/routes/domains/scheduler/scheduler_week_plan.py
+ M web/routes/enum_display.py
+ M web/routes/equipment_bp.py
+ M web/routes/equipment_excel_links.py
+ M web/routes/equipment_excel_machines.py
+ M web/routes/equipment_pages.py
+ M web/routes/excel_demo.py
+ M web/routes/excel_utils.py
+ M web/routes/form_values.py
+ M web/routes/history_summary_logging.py
+ M web/routes/material.py
+ M web/routes/navigation_utils.py
+ M web/routes/normalizers.py
+ M web/routes/pagination.py
+ M web/routes/personnel_bp.py
+ M web/routes/personnel_calendar_pages.py
+ M web/routes/personnel_excel_links.py
+ M web/routes/personnel_excel_operator_calendar.py
+ M web/routes/personnel_excel_operators.py
+ M web/routes/personnel_pages.py
+ M web/routes/personnel_teams.py
+ M web/routes/process_bp.py
+ M web/routes/process_excel_op_types.py
+ M web/routes/process_excel_part_operation_hours.py
+ M web/routes/process_excel_route_apply.py
+ M web/routes/process_excel_routes.py
+ M web/routes/process_excel_suppliers.py
+ M web/routes/process_op_types.py
+ M web/routes/process_parts.py
+ M web/routes/process_suppliers.py
+ M web/routes/reports_export_support.py
+ M web/routes/reports_page_support.py
+ M web/routes/reports_plan_template_fields.py
+ M web/routes/system_backup.py
+ M web/routes/system_history.py
+ M web/routes/system_logs.py
+ M web/routes/system_plugins.py
+ M web/routes/system_runtime_logs.py
+ M web/viewmodels/scheduler_navigation_links.py
+ M web/viewmodels/scheduler_reports_workbench.py
+ M "\345\274\200\345\217\221\346\226\207\346\241\243/\345\274\200\345\217\221\346\226\207\346\241\243.md"
+ M "\345\274\200\345\217\221\346\226\207\346\241\243/\346\212\200\346\234\257\345\200\272\345\212\241\346\262\273\347\220\206\345\217\260\350\264\246.md"
+?? .codestable/architecture/workbench-shell.md
+?? .codestable/audits/2026-07-19-blindspot-sweep/
+?? .codestable/audits/2026-07-19-debt-recheck-ultra/
+?? .codestable/audits/2026-07-19-full-defect-sweep/
+?? .codestable/audits/2026-07-20-algo-core-sweep/
+?? .codestable/brainstorms/2026-09-08-workbench-visual-language/
+?? .codestable/features/2026-09-07-dashboard-prototype-integration/
+?? .codestable/features/2026-09-07-inline-report-corrections/
+?? .codestable/features/2026-09-07-inline-report-quantity/
+?? .codestable/features/2026-09-07-report-auto-completion/
+?? .codestable/features/2026-09-07-workbench-gantt-soft/
+?? .codestable/features/2026-09-07-workbench-radius-system/
+?? .codestable/features/2026-09-07-workbench-shared-style/
+?? .codestable/features/2026-09-07-workbench-workspace-surfaces/
+?? .codestable/features/2026-09-08-execution-analytics-split/
+?? .codestable/features/2026-09-08-field-gantt-actual-remaining/
+?? .codestable/features/2026-09-08-field-gantt-plan-a-hover/
+?? .codestable/features/2026-09-08-frontend-complex-scenes/
+?? .codestable/features/2026-09-08-graph-ready-elite-repair/
+?? .codestable/features/2026-09-08-operations-workspaces/
+?? .codestable/features/2026-09-08-plan-trial-sample/
+?? .codestable/features/2026-09-08-workbench-workflow-polish/
+?? .codestable/features/2026-09-09-wb-analysis-reports/
+?? .codestable/features/2026-09-09-wb-batch-workflow/
+?? .codestable/features/2026-09-09-wb-field-workspace-ak/
+?? .codestable/features/2026-09-09-wb-foundation-read-loop/
+?? .codestable/features/2026-09-09-wb-master-overview-u/
+?? .codestable/features/2026-09-09-wb-master-resource-contracts/
+?? .codestable/features/2026-09-09-wb-plan-query-contract/
+?? .codestable/features/2026-09-09-wb-process-template-workflow/
+?? .codestable/features/2026-09-09-wb-system-maintenance/
+?? .codestable/features/2026-09-09-workbench-calibration-adoption/
+?? .codestable/features/2026-09-09-workbench-calibration-read/
+?? .codestable/features/2026-09-09-workbench-candidate-adoption/
+?? .codestable/features/2026-09-09-workbench-dashboard/
+?? .codestable/features/2026-09-09-workbench-preflight/
+?? .codestable/features/2026-09-09-workbench-run-jobs/
+?? .codestable/features/2026-09-09-workbench-template-lineage/
+?? .codestable/features/2026-09-09-workbench-trial-adoption/
+?? .codestable/features/2026-09-09-workbench-trial/
+?? .codestable/features/2026-09-10-dashboard-external-migration/
+?? .codestable/features/2026-09-10-system-restore-ui/
+?? .codestable/features/2026-09-10-wb-actual-gantt/
+?? .codestable/features/2026-09-10-wb-execution-ledger/
+?? .codestable/features/2026-09-10-wb-report-execution-ledger/
+?? .codestable/features/2026-09-10-workbench-run-compute/
+?? .codestable/issues/2026-07-19-dispatch-callback-binding-contract/
+?? .codestable/issues/2026-07-20-algo-semantics-decisions/
+?? .codestable/issues/2026-07-22-field-gantt-dark-badge-contrast/
+?? .codestable/issues/2026-09-07-inline-report-layout/
+?? .codestable/issues/2026-09-07-report-record-context/
+?? .codestable/issues/2026-09-08-analysis-surface-continuity/
+?? .codestable/issues/2026-09-08-backend-correctness-and-efficiency/
+?? .codestable/issues/2026-09-08-calendar-capacity-readiness/
+?? .codestable/issues/2026-09-08-critical-chain-cache-content/
+?? .codestable/issues/2026-09-08-field-gantt-surfaces/
+?? .codestable/issues/2026-09-08-field-gantt-toolbar-deadline/
+?? .codestable/issues/2026-09-08-field-gantt-view-groups/
+?? .codestable/issues/2026-09-08-frozen-external-seed-metadata/
+?? .codestable/issues/2026-09-08-gantt-boundary-theme/
+?? .codestable/issues/2026-09-08-incomplete-batch-objective/
+?? .codestable/issues/2026-09-08-material-finite-quantities/
+?? .codestable/issues/2026-09-08-migration-restore-integrity/
+?? .codestable/issues/2026-09-08-optimizer-quality-baseline/
+?? .codestable/issues/2026-09-08-trial-gantt-text/
+?? .codestable/issues/2026-09-08-trial-sidebar-footer/
+?? .codestable/issues/2026-09-08-unselected-execution-resource-guardrails/
+?? .codestable/issues/2026-09-08-workbench-control-alignment/
+?? .codestable/issues/2026-09-08-workbench-visual-language/
+?? .codestable/issues/2026-09-09-resource-detail-layout/
+?? .codestable/issues/2026-09-09-system-maintenance-navigation/
+?? .codestable/issues/2026-09-10-dense-busy-skip/
+?? .codestable/issues/2026-09-10-dj-workbench-registry/
+?? .codestable/issues/2026-09-10-dk-plan-identity-insert-replace/
+?? .codestable/issues/2026-09-10-dq-schema30-regressions/
+?? .codestable/issues/2026-09-10-dv-outsourcing-fixture-registry/
+?? .codestable/issues/2026-09-10-dz-current-labels-dx-registry/
+?? .codestable/issues/2026-09-10-ea-zero-duration/
+?? .codestable/issues/2026-09-10-ee-zero-duration/
+?? .codestable/issues/2026-09-10-ep-widget-fixtures-registry/
+?? .codestable/issues/2026-09-10-eu-process-fixtures-registry/
+?? .codestable/issues/2026-09-10-ey-preflight-run-status/
+?? .codestable/issues/2026-09-10-fe-static-integration/
+?? .codestable/issues/2026-09-10-plan-adoption-baseline/
+?? .codestable/refactors/2026-07-19-summary-build-context-typing/
+?? .codestable/refactors/2026-09-08-optimizer-candidate-efficiency/
+?? .codestable/refactors/2026-09-08-remaining-dependency-cycles/
+?? .codestable/refactors/2026-09-08-sgs-probe-reuse/
+?? .codestable/requirements/workbench-foundation-read-loop.md
+?? .codestable/research/
+?? .codestable/roadmap/workbench-prototype-migration/
+?? core/algorithm_contracts/schedule_point_evidence.py
+?? core/algorithm_runtime/busy_block_skip.py
+?? core/algorithm_runtime/dispatch_callback_types.py
+?? core/algorithm_runtime/graph_cycle.py
+?? core/algorithm_runtime/piece_input.py
+?? core/algorithm_runtime/slot_overlap_reuse.py
+?? core/algorithms/evaluation_completion.py
+?? core/infrastructure/maintenance_lock.py
+?? core/infrastructure/migrations/v20.py
+?? core/infrastructure/migrations/v21.py
+?? core/infrastructure/migrations/v22.py
+?? core/infrastructure/migrations/v23.py
+?? core/infrastructure/migrations/v24.py
+?? core/infrastructure/migrations/v25.py
+?? core/infrastructure/migrations/v26.py
+?? core/infrastructure/migrations/v27.py
+?? core/infrastructure/migrations/v28.py
+?? core/infrastructure/migrations/v29.py
+?? core/infrastructure/migrations/v30.py
+?? core/infrastructure/migrations/v31.py
+?? core/infrastructure/sqlite_integrity.py
+?? core/infrastructure/workbench_calibration_adoption_schema.py
+?? core/infrastructure/workbench_dashboard_external_schema.py
+?? core/infrastructure/workbench_dashboard_schema.py
+?? core/infrastructure/workbench_execution_ledger_schema.py
+?? core/infrastructure/workbench_lineage_lookup_schema.py
+?? core/infrastructure/workbench_metadata_schema.py
+?? core/infrastructure/workbench_outsourcing_schema.py
+?? core/infrastructure/workbench_plan_identity_schema.py
+?? core/infrastructure/workbench_plan_identity_write_guard.py
+?? core/infrastructure/workbench_process_schema.py
+?? core/infrastructure/workbench_process_workflow_schema.py
+?? core/infrastructure/workbench_resource_schema.py
+?? core/infrastructure/workbench_run_schema.py
+?? core/infrastructure/workbench_template_lineage_schema.py
+?? core/infrastructure/workbench_trial_schema.py
+?? core/models/workbench_batch.py
+?? core/models/workbench_batch_file.py
+?? core/models/workbench_batch_query.py
+?? core/models/workbench_calendar.py
+?? core/models/workbench_calibration.py
+?? core/models/workbench_calibration_adoption.py
+?? core/models/workbench_command.py
+?? core/models/workbench_dashboard.py
+?? core/models/workbench_dashboard_input.py
+?? core/models/workbench_execution.py
+?? core/models/workbench_execution_input.py
+?? core/models/workbench_identity.py
+?? core/models/workbench_master_overview.py
+?? core/models/workbench_material.py
+?? core/models/workbench_material_file.py
+?? core/models/workbench_material_query.py
+?? core/models/workbench_outsourcing.py
+?? core/models/workbench_outsourcing_input.py
+?? core/models/workbench_piece_adoption.py
+?? core/models/workbench_plan_reference.py
+?? core/models/workbench_plan_scope.py
+?? core/models/workbench_preflight.py
+?? core/models/workbench_process_actions.py
+?? core/models/workbench_process_commands.py
+?? core/models/workbench_process_file.py
+?? core/models/workbench_process_query.py
+?? core/models/workbench_process_route.py
+?? core/models/workbench_process_table_query.py
+?? core/models/workbench_report.py
+?? core/models/workbench_report_catalog.py
+?? core/models/workbench_resource_action.py
+?? core/models/workbench_resource_file.py
+?? core/models/workbench_resource_input.py
+?? core/models/workbench_resource_query.py
+?? core/models/workbench_resource_table_query.py
+?? core/models/workbench_run_adoption.py
+?? core/models/workbench_run_baseline.py
+?? core/models/workbench_run_candidate.py
+?? core/models/workbench_run_compute.py
+?? core/models/workbench_run_history.py
+?? core/models/workbench_run_job.py
+?? core/models/workbench_supplier.py
+?? core/models/workbench_system.py
+?? core/models/workbench_template_lineage.py
+?? core/models/workbench_trial.py
+?? core/models/workbench_trial_adoption.py
+?? core/models/workbench_trial_catalog.py
+?? core/models/workbench_trial_codec.py
+?? core/services/personnel/operator_qualification.py
+?? core/services/process/unit_excel/builder_diagnostics.py
+?? core/services/process/unit_excel/cell_parsing.py
+?? core/services/process/workflow_state.py
+?? core/services/report/values/
+?? core/services/scheduler/_frozen_import_anchor.py
+?? core/services/scheduler/execution/execution_ledger_adapter.py
+?? core/services/scheduler/execution/execution_ledger_guard.py
+?? core/services/scheduler/gantt_critical_chain_snapshot.py
+?? core/services/scheduler/operator_shift_calendar.py
+?? core/services/scheduler/run/freeze_window_seed_rows.py
+?? core/services/scheduler/run/optimizer_graph_ready_budget.py
+?? core/services/scheduler/run/optimizer_graph_ready_predecode.py
+?? core/services/scheduler/run/optimizer_graph_ready_repair.py
+?? core/services/scheduler/run/optimizer_graph_ready_repair_contract.py
+?? core/services/scheduler/run/optimizer_graph_ready_repair_neighbors.py
+?? core/services/scheduler/run/schedule_execution_feedback_guard.py
+?? core/services/scheduler/run/schedule_execution_reservations.py
+?? core/services/scheduler/run/schedule_execution_resource_facts.py
+?? core/services/scheduler/run/schedule_input_seed_metadata.py
+?? core/services/scheduler/workbench_plan_catalog.py
+?? core/services/scheduler/workbench_plan_page.py
+?? core/services/system/workbench_overview.py
+?? core/services/workbench/
+?? data/repositories/operator_qualification_repo.py
+?? data/repositories/operator_shift_repo.py
+?? data/repositories/workbench_calendar_query_repo.py
+?? data/repositories/workbench_calibration_adoption_repo.py
+?? data/repositories/workbench_calibration_query_repo.py
+?? data/repositories/workbench_command_repo.py
+?? data/repositories/workbench_dashboard_external_repo.py
+?? data/repositories/workbench_dashboard_repo.py
+?? data/repositories/workbench_dashboard_source_repo.py
+?? data/repositories/workbench_execution_repo.py
+?? data/repositories/workbench_execution_report_repo.py
+?? data/repositories/workbench_execution_source_repo.py
+?? data/repositories/workbench_identity_repo.py
+?? data/repositories/workbench_material_file_repo.py
+?? data/repositories/workbench_material_query_repo.py
+?? data/repositories/workbench_outsourcing_repo.py
+?? data/repositories/workbench_outsourcing_source_repo.py
+?? data/repositories/workbench_plan_catalog_repo.py
+?? data/repositories/workbench_plan_identity_repo.py
+?? data/repositories/workbench_process_query_repo.py
+?? data/repositories/workbench_resource_file_repo.py
+?? data/repositories/workbench_resource_metrics_repo.py
+?? data/repositories/workbench_resource_query_repo.py
+?? data/repositories/workbench_resource_relation_repo.py
+?? data/repositories/workbench_resource_state_repo.py
+?? data/repositories/workbench_resource_summary_repo.py
+?? data/repositories/workbench_resource_table_repo.py
+?? data/repositories/workbench_run_repo.py
+?? data/repositories/workbench_run_result_repo.py
+?? data/repositories/workbench_supplier_state_repo.py
+?? data/repositories/workbench_template_lineage_repo.py
+?? data/repositories/workbench_trial_adoption_history.py
+?? data/repositories/workbench_trial_catalog_repo.py
+?? data/repositories/workbench_trial_raw_repo.py
+?? data/repositories/workbench_trial_repo.py
+?? frontend/
+?? scripts/workbench/
+?? static/workbench/
+?? templates/workbench/
+?? tests/_scripts_e2e/benchmark_optimizer_quality_matrix.py
+?? tests/_support/busy_block_case.py
+?? tests/_support/dependency_boundaries.py
+?? tests/_support/gantt_scenario.py
+?? tests/_support/optimizer_graph_ready_repair_benchmark.py
+?? tests/_support/optimizer_quality_matrix.py
+?? tests/_support/optimizer_quality_matrix_cases.py
+?? tests/_support/optimizer_quality_matrix_compare.py
+?? tests/_support/optimizer_quality_matrix_io.py
+?? tests/_support/optimizer_quality_matrix_provenance.py
+?? tests/_support/optimizer_quality_matrix_schedule.py
+?? tests/_support/resource_dispatch_frontend_support.py
+?? tests/_support/sgs_slot_reuse_case.py
+?? tests/algorithm/test_auto_assign_window_blocked_attribution.py
+?? tests/algorithm/test_busy_block_boundaries.py
+?? tests/algorithm/test_busy_block_native_equivalence.py
+?? tests/algorithm/test_dispatch_callback_binding_contract.py
+?? tests/algorithm/test_dispatch_callback_signature_cache.py
+?? tests/algorithm/test_dispatch_callback_types_contract.py
+?? tests/algorithm/test_downtime_overlap_index_equivalence.py
+?? tests/algorithm/test_graph_ready_v2_zero_quantity_features.py
+?? tests/algorithm/test_machine_last_state_gap_backfill_contract.py
+?? tests/algorithm/test_optimizer_graph_cycle_shared_kahn.py
+?? tests/algorithm/test_optimizer_graph_ready_runtime_tiebreak_contract.py
+?? tests/algorithm/test_optimizer_graph_ready_v2_elite_repair_contract.py
+?? tests/algorithm/test_optimizer_graph_ready_v2_elite_repair_neighbors.py
+?? tests/algorithm/test_optimizer_local_search_restart_alignment.py
+?? tests/algorithm/test_seed_external_group_cache_rebuild.py
+?? tests/algorithm/test_sgs_graph_cycle_detect_equivalence.py
+?? tests/algorithm/test_sgs_graph_failure_bookkeeping_contract.py
+?? tests/algorithm/test_sgs_proc_sample_skip_counter.py
+?? tests/app_runtime/test_launcher_bat_contract.py
+?? tests/app_runtime/test_launcher_process_path_encoding.py
+?? tests/app_runtime/test_runtime_db_scope_lock.py
+?? tests/app_runtime/test_runtime_lock_before_db_side_effects.py
+?? tests/app_runtime/test_runtime_lock_stale_toctou_guard.py
+?? tests/app_runtime/test_runtime_stop_draining.py
+?? tests/app_runtime/test_runtime_stop_draining_support.py
+?? tests/app_runtime/test_validate_dist_static_payload.py
+?? tests/calendar_maintenance/test_add_calendar_days_magnitude_bound.py
+?? tests/calendar_maintenance/test_backup_cleanup_min_keep_floor.py
+?? tests/calendar_maintenance/test_downtime_impact_missing_machine_degradation.py
+?? tests/calendar_maintenance/test_downtime_impact_overlap_merge_degradation.py
+?? tests/calendar_maintenance/test_freeze_window_disabled_reason_coverage.py
+?? tests/calendar_maintenance/test_machine_downtime_create_overlap_race.py
+?? tests/calendar_maintenance/test_maintenance_lock_self_heal_deadzones.py
+?? tests/config/test_plugin_register_failure_rollback.py
+?? tests/config/test_plugins_a5_dependency_boundary.py
+?? tests/excel_data_io/test_unit_excel_date_coerced_cells_diagnosed.py
+?? tests/excel_data_io/test_unit_excel_first_sheet_and_sheet_not_found.py
+?? tests/excel_data_io/test_unit_excel_route_map_degradations_visible.py
+?? tests/excel_data_io/test_unit_excel_station_block_dropped_visible.py
+?? tests/field-gantt-chains.cjs
+?? tests/field-gantt-focus-boundaries.cjs
+?? tests/field-gantt-plan-a.cjs
+?? tests/gantt/gantt_critical_chain_cache_support.py
+?? tests/gantt/gantt_legacy_schema_support.py
+?? tests/gantt/test_gantt_critical_chain_cache_fingerprint.py
+?? tests/gate_meta/test_test_support_dependency_boundary.py
+?? tests/gate_meta/test_workbench_cache_environment.py
+?? tests/gate_meta/test_workbench_registry_contract.py
+?? tests/gate_meta/workbench_cache_environment_support.py
+?? tests/migration_db/fixtures/
+?? tests/migration_db/test_migration_restore_integrity.py
+?? tests/migration_db/test_migration_restore_retry_contract.py
+?? tests/migration_db/test_restore_integrity_check_contract.py
+?? tests/operation_execution/test_operation_execution_error_log_context.py
+?? tests/schedule/service/test_frozen_external_seed_metadata_integration.py
+?? tests/schedule/service/test_schedule_params_end_date_max_sentinel.py
+?? tests/schedule/service/unselected_execution_guardrails_support.py
+?? tests/schedule/summary/test_schedule_summary_incomplete_batches_risk.py
+?? tests/schedule/summary/test_summary_build_context_typing.py
+?? tests/scheduler_analysis/test_report_a6_dependency_boundary.py
+?? tests/scheduler_analysis/test_utilization_zero_capacity_degradation.py
+?? tests/web_pages/request_lifecycle_test_support.py
+?? tests/web_pages/test_app_error_log_request_context.py
+?? tests/web_pages/test_bulk_copy_batch_no_trailing_digit_friendly_error.py
+?? tests/web_pages/test_plan_role_adopted_single_source_contract.py
+?? tests/web_pages/test_public_token_registry_idempotent_issue.py
+?? tests/web_pages/test_routes_a4_dependency_boundary.py
+?? tests/workbench-base-radius.cjs
+?? tests/workbench-batches-style.cjs
+?? tests/workbench-chart-radius.cjs
+?? tests/workbench-gantt-main-style.cjs
+?? tests/workbench-gantt-theme.cjs
+?? tests/workbench-native-radius.cjs
+?? tests/workbench-native-style.cjs
+?? tests/workbench-timebars-contrast.cjs
+?? tests/workbench-timebars-style.cjs
+?? tests/workbench-workspace-surfaces.cjs
+?? tests/workbench/
+?? tools/test_registry_groups_workbench.py
+?? web/bootstrap/launcher_runtime_lock.py
+?? web/bootstrap/launcher_shutdown.py
+?? web/bootstrap/startup_config.py
+?? web/bootstrap/workbench_request_lifecycle.py
+?? web/bootstrap/workbench_request_lifecycle_server.py
+?? web/bootstrap/workbench_request_lifecycle_state.py
+?? web/bootstrap/workbench_request_lifecycle_wsgi.py
+?? web/bootstrap/workbench_run_lifecycle.py
+?? web/bootstrap/workbench_run_runtime.py
+?? web/bootstrap/workbench_run_runtime_lock.py
+?? web/bootstrap/workbench_system_restore.py
+?? web/bootstrap/workbench_system_restore_recovery.py
+?? web/bootstrap/workbench_system_restore_status.py
+?? web/bootstrap/workbench_system_restore_view.py
+?? web/routes/helpers/
+?? web/routes/workbench/

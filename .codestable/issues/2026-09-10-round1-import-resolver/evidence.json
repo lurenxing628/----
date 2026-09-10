@@ -1,0 +1,211 @@
+{
+  "proof": "dirty-worktree targeted proof; concurrently changing checkout",
+  "head": "de96cd3f681bf4f3b1ca9183f347c56f3de8e73a",
+  "before": {
+    "raw_path": "/tmp/r1-l-import-resolver-ZJdf0U/scan-before.json",
+    "module_count": 2565,
+    "edge_counts": {
+      "hard": 29321,
+      "cond": 4,
+      "lazy": 6424,
+      "typeonly": 141
+    },
+    "parse_error_count": 0,
+    "unresolved_count": 49,
+    "new_unresolved": [
+      "tests/gate_meta/test_frozen_bundle_contract.py|198|lazy|_ANCHOR_MODULE",
+      "tests/workbench/test_pending_build_sources.py|22|lazy|spec_from_file_location('workbench_pending_build')",
+      "tests/workbench/test_process_readiness.py|133|lazy|MODULE",
+      "tests/workbench/test_round1_execution_dependency_contract.py|28|lazy|'core.services.workbench.execution_ledger_' Add name",
+      "tests/workbench/test_round1_execution_dependency_contract.py|29|lazy|'core.services.execution.' Add name"
+    ],
+    "new_dir": [
+      "tests/gantt|tests/operation_execution|tests/schedule/route_view|tests/web_pages|tests/workbench"
+    ],
+    "new_file": [],
+    "new_dir_edges": [
+      [
+        ".|web/bootstrap|web/routes",
+        "web.bootstrap.startup_config -> config"
+      ]
+    ],
+    "new_file_edges": [],
+    "scan_roots": [
+      "core",
+      "web",
+      "data",
+      "desktop",
+      "plugins",
+      "tools",
+      "scripts",
+      "*.py",
+      "tests"
+    ],
+    "exit_code": 1
+  },
+  "after": {
+    "raw_path": "/tmp/r1-l-import-resolver-ZJdf0U/scan-final.json",
+    "module_count": 2569,
+    "edge_counts": {
+      "hard": 29586,
+      "cond": 4,
+      "lazy": 6438,
+      "typeonly": 141
+    },
+    "parse_error_count": 0,
+    "unresolved_count": 43,
+    "new_unresolved": [],
+    "new_dir": [
+      "tests/gantt|tests/operation_execution|tests/web_pages|tests/workbench"
+    ],
+    "new_file": [],
+    "new_dir_edges": [],
+    "new_file_edges": [],
+    "scan_roots": [
+      "core",
+      "web",
+      "data",
+      "desktop",
+      "plugins",
+      "tools",
+      "scripts",
+      "*.py",
+      "tests"
+    ],
+    "exit_code": 1
+  },
+  "removed_unresolved": [
+    [
+      "core/services/scheduler/schedule_orchestrator.py",
+      13,
+      "_TARGET_MODULE"
+    ],
+    [
+      "tests/gate_meta/test_frozen_bundle_contract.py",
+      198,
+      "_ANCHOR_MODULE"
+    ],
+    [
+      "tests/workbench/test_pending_build_sources.py",
+      22,
+      "spec_from_file_location('workbench_pending_build')"
+    ],
+    [
+      "tests/workbench/test_process_readiness.py",
+      133,
+      "MODULE"
+    ],
+    [
+      "tests/workbench/test_round1_execution_dependency_contract.py",
+      28,
+      "'core.services.workbench.execution_ledger_' Add name"
+    ],
+    [
+      "tests/workbench/test_round1_execution_dependency_contract.py",
+      29,
+      "'core.services.execution.' Add name"
+    ]
+  ],
+  "added_unresolved": [],
+  "known_call_targets": [
+    {
+      "source": "tests/gate_meta/test_frozen_bundle_contract.py",
+      "line": 198,
+      "expression": "importlib.import_module(_ANCHOR_MODULE)",
+      "actual_module": "core.services.scheduler._frozen_import_anchor",
+      "actual_source_file": "/Users/lurenxing/GitHub/----/core/services/scheduler/_frozen_import_anchor.py",
+      "context": "lazy",
+      "unresolved_at_line": []
+    },
+    {
+      "source": "tests/workbench/test_pending_build_sources.py",
+      "line": 22,
+      "expression": "importlib.util.spec_from_file_location(\"workbench_pending_build\", TOOLS / \"build.py\")",
+      "actual_module": "scripts.workbench.build",
+      "actual_source_file": "/Users/lurenxing/GitHub/----/scripts/workbench/build.py",
+      "context": "lazy",
+      "unresolved_at_line": []
+    },
+    {
+      "source": "tests/workbench/test_process_readiness.py",
+      "line": 133,
+      "expression": "monkeypatch.setattr(importlib.import_module(MODULE), \"workflow_snapshot\", lambda conn: snapshot)",
+      "actual_module": "core.services.workbench.resource_readiness",
+      "actual_source_file": "/Users/lurenxing/GitHub/----/core/services/workbench/resource_readiness.py",
+      "context": "lazy",
+      "unresolved_at_line": []
+    }
+  ],
+  "source_sha256": {
+    "tools/import_cycle_analysis.py": "4ad206c9c2f7d2e322d74143e654e372808cb4e1c131cd764542fa1b49bf5b50",
+    "tools/import_cycle_graph.py": "6f61a9f3ad2350b5d504416de33215cdea571a5e4c9a565a5d8752978f585c55",
+    "tools/scan_import_cycles.py": "6ba8dbe75eac8743e753c583e838cd29cb023c2c45fb9873f2ee88eb0eb0297d",
+    "tests/gate_meta/test_import_cycle_scanner.py": "1668df9160a57f95ad005faffc99b43eb307b64179e0cd7172d10220bbae3136",
+    "tests/gate_meta/test_round1_import_resolver.py": "195d3c3e5ffb69fa107c82936dc1107b9d32beaf1e41569e90b2029cf8027327",
+    "tests/gate_meta/test_frozen_bundle_contract.py": "c7a02daca9a8bfd7c9f57dcb7374a1031534c8e067f8809a9902dbc650487b2b",
+    "tests/workbench/test_pending_build_sources.py": "a3dce156aad40b0733a52962c77dde9fbd91ba3d0a96bd0930da230c3b5ec38a",
+    "tests/workbench/test_process_readiness.py": "318f82885e970e537c2c570b2926a0ad7c153676ad3b083d149b53af0d78a1af",
+    ".codestable/checkup/import_cycles_with_tests_baseline.json": "2878a55393510e524f2259f918142199d187d3097e6a3292e521cf8090571d19",
+    ".codestable/checkup/import_cycles_production_baseline.json": "78d0ae16c6a11543d56b94e4e1a20bd1406731e0dd9a2728d164f5ed25fd799d",
+    "/tmp/r1-l-import-resolver-ZJdf0U/scan-before.json": "33575f89e3d341691777c324304faa37838057f7f0552ec41c367a19ed4bb3b3",
+    "/tmp/r1-l-import-resolver-ZJdf0U/scan-final.json": "923cd826380081cef9cebc9f506e910c5c983f8bf95ec2e35551176920bb154f"
+  },
+  "verification": {
+    "runtime": "Python 3.8.10",
+    "pytest": {
+      "passed": 75,
+      "failed": 0,
+      "exit_code": 0,
+      "output": "75 passed in 0.73s",
+      "files": [
+        "tests/gate_meta/test_import_cycle_scanner.py",
+        "tests/gate_meta/test_round1_import_resolver.py",
+        "tests/gate_meta/test_import_cycle_baseline.py"
+      ]
+    },
+    "pyright": {
+      "version": "1.1.406",
+      "filesAnalyzed": 5,
+      "errorCount": 0,
+      "warningCount": 0,
+      "exit_code": 0
+    },
+    "size_lines": {
+      "tools/import_cycle_analysis.py": 454,
+      "tools/import_cycle_graph.py": 428,
+      "tools/scan_import_cycles.py": 488,
+      "tests/gate_meta/test_import_cycle_scanner.py": 457,
+      "tests/gate_meta/test_round1_import_resolver.py": 193
+    },
+    "oversize": [],
+    "complexity_existing": [
+      {
+        "path": "tools/scan_import_cycles.py",
+        "symbol": "main",
+        "line": 431,
+        "value": 20,
+        "threshold": 15,
+        "modified": false
+      }
+    ],
+    "complexity_new": [],
+    "staged_path": "tests/gate_meta/test_frozen_bundle_contract.py",
+    "staged_blob": "3a75549413489ac9de33181b6f490cbe3cd49730",
+    "staged_and_source_unchanged": true
+  },
+  "registry": {
+    "new_tool_files": [],
+    "new_test_file": "tests/gate_meta/test_round1_import_resolver.py",
+    "new_test_cases": 49,
+    "registry_modified": false,
+    "note": "Handed to mainline/K for aggregation; existing tools remain in their registered paths."
+  },
+  "boundaries": {
+    "global_gate_run": false,
+    "build_run": false,
+    "preview_service_operation": false,
+    "production_db_operation": false,
+    "stage_or_commit": false,
+    "scope": "R1-L only"
+  }
+}

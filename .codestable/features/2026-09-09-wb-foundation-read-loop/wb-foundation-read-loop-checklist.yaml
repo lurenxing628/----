@@ -1,0 +1,27 @@
+feature: wb-foundation-read-loop
+steps:
+  - id: foundation-components
+    action: 并行实现离线资产、系统只读投影与Blueprint及共享协议
+    exit_signal: 三组代码可独立校验，写集无交叉且旧入口不变
+    status: done
+  - id: foundation-live-integration
+    action: 集成系统真实数据页面、主题和错误重试
+    exit_signal: 新入口读取真实隔离实例，数据和状态无需样例兜底
+    status: done
+  - id: foundation-verification
+    action: 隔离后端和109内核验证并记录证据边界
+    exit_signal: 针对性测试和四档桌面主题状态通过，原数据与原型未改
+    status: done
+checks:
+  - id: readonly-facts
+    description: 查询不改业务事实或补默认配置，未知和健康状态分开
+    status: passed
+  - id: offline-assets
+    description: 可独立重建，目标HTML无Babel现场编译与外链资源
+    status: passed
+  - id: browser-live
+    description: 真浏览器点击刷新主题和导航，四档桌面状态无错误溢出
+    status: passed
+  - id: isolation
+    description: 真实用户数据库和旧入口原型及已有暂存未改变
+    status: passed

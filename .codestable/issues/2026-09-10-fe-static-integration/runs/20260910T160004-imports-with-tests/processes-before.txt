@@ -1,0 +1,1 @@
+43268 90731   0.0       00:00 /Library/Frameworks/Python.framework/Versions/3.8/Resources/Python.app/Contents/MacOS/Python -B .codestable/issues/2026-09-10-fe-static-integration/capture_check.py imports-with-tests .venv/bin/python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-when-clean

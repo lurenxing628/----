@@ -1,0 +1,488 @@
+[
+  {
+    "file": "core/models/workbench_batch_query.py",
+    "line": 9,
+    "symbol": "batch_scope",
+    "complexity": 28,
+    "rank": "F",
+    "owner": "FE-05",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/models/workbench_master_overview.py",
+    "line": 59,
+    "symbol": "__post_init__",
+    "complexity": 16,
+    "rank": "M",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/models/workbench_run_baseline.py",
+    "line": 48,
+    "symbol": "RunBaselineComparison",
+    "complexity": 20,
+    "rank": "C",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/models/workbench_run_baseline.py",
+    "line": 57,
+    "symbol": "to_dict",
+    "complexity": 19,
+    "rank": "M",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/models/workbench_run_job.py",
+    "line": 28,
+    "symbol": "durable_value",
+    "complexity": 20,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/models/workbench_system.py",
+    "line": 43,
+    "symbol": "query_input",
+    "complexity": 20,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/process/part_service.py",
+    "line": 380,
+    "symbol": "update_internal_hours",
+    "complexity": 16,
+    "rank": "M",
+    "owner": "FE-04",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/scheduler/execution/execution_ledger_adapter.py",
+    "line": 117,
+    "symbol": "adapt_ledger_facts",
+    "complexity": 25,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/scheduler/execution/execution_ledger_guard.py",
+    "line": 44,
+    "symbol": "ledger_fact_changes",
+    "complexity": 19,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/actual_gantt_scope.py",
+    "line": 81,
+    "symbol": "cohort_match",
+    "complexity": 20,
+    "rank": "F",
+    "owner": "FB-related-reserved",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/actual_gantt_scope.py",
+    "line": 133,
+    "symbol": "view_items",
+    "complexity": 16,
+    "rank": "F",
+    "owner": "FB-related-reserved",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/batch_file_codec.py",
+    "line": 21,
+    "symbol": "read_batch_file",
+    "complexity": 26,
+    "rank": "F",
+    "owner": "FE-05",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/batch_files.py",
+    "line": 22,
+    "symbol": "preview",
+    "complexity": 33,
+    "rank": "M",
+    "owner": "FE-05",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/batch_operations.py",
+    "line": 120,
+    "symbol": "_validate",
+    "complexity": 17,
+    "rank": "M",
+    "owner": "FE-05",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/batch_operations.py",
+    "line": 38,
+    "symbol": "sync_preview",
+    "complexity": 27,
+    "rank": "M",
+    "owner": "FE-05",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/batch_operations.py",
+    "line": 91,
+    "symbol": "update",
+    "complexity": 17,
+    "rank": "M",
+    "owner": "FE-05",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/field_workspace.py",
+    "line": 43,
+    "symbol": "cohort",
+    "complexity": 17,
+    "rank": "M",
+    "owner": "FB-related-reserved",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/master_overview_process.py",
+    "line": 98,
+    "symbol": "_external",
+    "complexity": 24,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/master_overview_process.py",
+    "line": 36,
+    "symbol": "_route",
+    "complexity": 17,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/piece_adoption.py",
+    "line": 111,
+    "symbol": "_constraints",
+    "complexity": 23,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/piece_adoption_execution.py",
+    "line": 28,
+    "symbol": "validate_piece_execution",
+    "complexity": 23,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/plan_calendar_context.py",
+    "line": 45,
+    "symbol": "selected_context",
+    "complexity": 23,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/plan_delivery.py",
+    "line": 26,
+    "symbol": "read_plan_delivery",
+    "complexity": 19,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/plan_delivery_completeness.py",
+    "line": 17,
+    "symbol": "completion_evidence",
+    "complexity": 30,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/plan_delivery_projection.py",
+    "line": 43,
+    "symbol": "project_delivery_batch",
+    "complexity": 31,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/plan_occupancy.py",
+    "line": 48,
+    "symbol": "_resource_occupancy",
+    "complexity": 23,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/plan_projection.py",
+    "line": 118,
+    "symbol": "_adopted_quantities",
+    "complexity": 16,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/process_queries.py",
+    "line": 138,
+    "symbol": "route_difference",
+    "complexity": 19,
+    "rank": "M",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/process_route_preview.py",
+    "line": 149,
+    "symbol": "preview",
+    "complexity": 27,
+    "rank": "M",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/report_catalog.py",
+    "line": 62,
+    "symbol": "catalog_workspace",
+    "complexity": 27,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/resource_readiness.py",
+    "line": 15,
+    "symbol": "_checked_workflow",
+    "complexity": 21,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/run_candidate_baseline.py",
+    "line": 52,
+    "symbol": "_check_baseline",
+    "complexity": 24,
+    "rank": "M",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/run_candidate_baseline.py",
+    "line": 277,
+    "symbol": "_rows",
+    "complexity": 17,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/run_candidate_facts.py",
+    "line": 81,
+    "symbol": "__init__",
+    "complexity": 19,
+    "rank": "M",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/run_candidate_projection.py",
+    "line": 53,
+    "symbol": "scheduled_ids",
+    "complexity": 18,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/run_candidate_tasks.py",
+    "line": 84,
+    "symbol": "tasks_projection",
+    "complexity": 24,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/run_compute.py",
+    "line": 29,
+    "symbol": "compute_prepared_candidate_run",
+    "complexity": 21,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/run_history_projection.py",
+    "line": 48,
+    "symbol": "_job",
+    "complexity": 21,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/run_history_projection.py",
+    "line": 89,
+    "symbol": "_manifest",
+    "complexity": 23,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/run_history_projection.py",
+    "line": 123,
+    "symbol": "scope_summary",
+    "complexity": 19,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/run_input_execution.py",
+    "line": 10,
+    "symbol": "execution_guards",
+    "complexity": 20,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/run_input_external.py",
+    "line": 12,
+    "symbol": "prime_template_cache",
+    "complexity": 22,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/run_input_projection_codec.py",
+    "line": 20,
+    "symbol": "validate_projection_dto",
+    "complexity": 25,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/run_input_runtime.py",
+    "line": 91,
+    "symbol": "_validate_stored_runtime",
+    "complexity": 22,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/system_journal.py",
+    "line": 51,
+    "symbol": "_read",
+    "complexity": 16,
+    "rank": "M",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/trial_base.py",
+    "line": 189,
+    "symbol": "_predecessors",
+    "complexity": 17,
+    "rank": "F",
+    "owner": "FE-02",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/trial_calendar.py",
+    "line": 27,
+    "symbol": "original_duration",
+    "complexity": 21,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/trial_constraints.py",
+    "line": 58,
+    "symbol": "_outside_intervals",
+    "complexity": 17,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/trial_constraints.py",
+    "line": 24,
+    "symbol": "relation_issues",
+    "complexity": 16,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/trial_projection.py",
+    "line": 17,
+    "symbol": "tasks_projection",
+    "complexity": 17,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "core/services/workbench/trial_validation.py",
+    "line": 129,
+    "symbol": "adjusted",
+    "complexity": 17,
+    "rank": "M",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "data/repositories/workbench_run_result_repo.py",
+    "line": 11,
+    "symbol": "prepare_run_result",
+    "complexity": 21,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "web/bootstrap/entrypoint.py",
+    "line": 197,
+    "symbol": "app_main",
+    "complexity": 22,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  },
+  {
+    "file": "web/bootstrap/workbench_system_restore_view.py",
+    "line": 33,
+    "symbol": "recovery_response",
+    "complexity": 16,
+    "rank": "F",
+    "owner": "queued-unassigned",
+    "history_status": "baseline-external; migration-onset-unknown"
+  }
+]

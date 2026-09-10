@@ -1,0 +1,399 @@
+{
+  "schema_version": 1,
+  "reviewer": "Main",
+  "reviewed_at": "2026-09-11",
+  "status": "PASS_FOR_EXPLICIT_VISIBLE_FRAMES",
+  "review_kind": "Actual PNG pixel inspection; no product edits",
+  "image_count": 27,
+  "images": [
+    {
+      "id": "F-ADD-01",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/handling-validation-retained-draft.png",
+      "sha256": "a1b210e58b4ca9087a2cd959b0d0681fead4a655e5f45f68827d07cc06111116",
+      "bytes": 159435,
+      "width": 1392,
+      "height": 924,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N01"
+      ],
+      "observed": "handling-validation-retained-draft",
+      "limits": ""
+    },
+    {
+      "id": "F-ADD-02",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/handling-close-incomplete.png",
+      "sha256": "75af15b2872a1ea5e49c1b06e4fc578b76b4ff8b82ddc2ddf752be129ff208f1",
+      "bytes": 167069,
+      "width": 1392,
+      "height": 924,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N02"
+      ],
+      "observed": "handling-close-incomplete",
+      "limits": ""
+    },
+    {
+      "id": "F-ADD-03",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/reopen-reason-required.png",
+      "sha256": "2be08b152c880725d26285f71d9afaebe5493a97b21d482fabf975c33f01221b",
+      "bytes": 188968,
+      "width": 1392,
+      "height": 924,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N03"
+      ],
+      "observed": "reopen-reason-required",
+      "limits": "确认按钮可见但本轮不执行重开；正向 K 仍引用既有生命周期。"
+    },
+    {
+      "id": "F-ADD-04",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/handling-filter-empty.png",
+      "sha256": "2742c6eb2f6c014508467d3e92554e1872ab25f5006187eae8ddcd5d4ff2d8df",
+      "bytes": 173872,
+      "width": 1392,
+      "height": 924,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N04"
+      ],
+      "observed": "handling-filter-empty",
+      "limits": "实际筛选为待验证；其他无结果筛选只共享相同空表布局，不代表其像素已查看。"
+    },
+    {
+      "id": "F-ADD-05",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/actual-deviation-table.png",
+      "sha256": "36d5167577f41a963b90f46a92509c6e5c80ecad01e2bb4c3371d6dd24b971db",
+      "bytes": 191683,
+      "width": 1392,
+      "height": 924,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N05"
+      ],
+      "observed": "actual-deviation-table",
+      "limits": ""
+    },
+    {
+      "id": "F-ADD-06",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/actual-field-report-destination.png",
+      "sha256": "aef3c05a1fe089e4da05f65eb13d68013b9468230b0e3328d7d292b7d4ac9636",
+      "bytes": 192512,
+      "width": 1392,
+      "height": 924,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N06"
+      ],
+      "observed": "actual-field-report-destination",
+      "limits": ""
+    },
+    {
+      "id": "F-ADD-07",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/actual-no-independent-candidate.png",
+      "sha256": "12e9481a19313d05dcc9fad21ac353f7df9c1ea223672147e83ca12be26ea13f",
+      "bytes": 168484,
+      "width": 1392,
+      "height": 924,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N07"
+      ],
+      "observed": "actual-no-independent-candidate",
+      "limits": ""
+    },
+    {
+      "id": "F-ADD-08",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/actual-comparison-destination.png",
+      "sha256": "43b7c91f826b8912828b913801537bf660f22043110cb627b72b59558c6fe484",
+      "bytes": 197989,
+      "width": 1392,
+      "height": 924,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N08"
+      ],
+      "observed": "actual-comparison-destination",
+      "limits": ""
+    },
+    {
+      "id": "F-ADD-09",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/outsourcing-edit-required-fields.png",
+      "sha256": "55602086aa292c281f650e4d961d660e78e1a430de5b6be5e9aff5043a34c6d5",
+      "bytes": 216178,
+      "width": 1392,
+      "height": 924,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N09"
+      ],
+      "observed": "outsourcing-edit-required-fields",
+      "limits": "实际触发缺少实际发出；其他客户端校验消息共用同一表单和错误区，其既有 K 不变。"
+    },
+    {
+      "id": "F-ADD-10",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/outsourcing-server-date-rejection.png",
+      "sha256": "a4665da27801f03bd17eb3d454dd526c95e3fd044065bfe74253c8bf00fde4e7",
+      "bytes": 219485,
+      "width": 1392,
+      "height": 924,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N10"
+      ],
+      "observed": "outsourcing-server-date-rejection",
+      "limits": "实际触发未来发出；未来回厂使用相同服务端错误区，旧分支 K 保留。"
+    },
+    {
+      "id": "F-ADD-11",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/backup-create-confirmation.png",
+      "sha256": "9b47a8bce410c26d5be7cfd9fae2162a0d609da02441f88dfbdd65af7f395823",
+      "bytes": 201892,
+      "width": 1920,
+      "height": 1080,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N11"
+      ],
+      "observed": "backup-create-confirmation",
+      "limits": "仅打开并取消；创建行为由既有 B/K/P 证明。"
+    },
+    {
+      "id": "F-ADD-12",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/backup-delete-confirmation.png",
+      "sha256": "dae7c0ced939f935a318718c632044f2d25593295d7a0a905a709ef0e96182cb",
+      "bytes": 255400,
+      "width": 1920,
+      "height": 1080,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N12"
+      ],
+      "observed": "backup-delete-confirmation",
+      "limits": "风险确认已勾选，确认按钮可见；仅取消，不执行删除。"
+    },
+    {
+      "id": "F-ADD-13",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/config-invalid-field.png",
+      "sha256": "173d1b7e20b8a8c0218122dcd3a9bea5ec724fdf9183eabe054f663b10b32148",
+      "bytes": 198264,
+      "width": 1920,
+      "height": 1080,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N13"
+      ],
+      "observed": "config-invalid-field",
+      "limits": ""
+    },
+    {
+      "id": "F-ADD-14",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/config-discard-confirmation.png",
+      "sha256": "56872cc5e6677a72944f0b96a2502957ca0c0204fd0929f78a8f3712ec85ee92",
+      "bytes": 202383,
+      "width": 1920,
+      "height": 1080,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N14"
+      ],
+      "observed": "config-discard-confirmation",
+      "limits": ""
+    },
+    {
+      "id": "F-ADD-15",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/config-live-rules-expanded.png",
+      "sha256": "e45587104d6007e89fb6912562b6f50a28b3b43eaf607583d972dce1165b687a",
+      "bytes": 210865,
+      "width": 1920,
+      "height": 1080,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N15"
+      ],
+      "observed": "config-live-rules-expanded",
+      "limits": ""
+    },
+    {
+      "id": "F-ADD-16",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/system-noncompact-log-rows.png",
+      "sha256": "2ad648bd61052ccb2efe919731bfa50412b044ed643ba8a5c105779d25da5f14",
+      "bytes": 478291,
+      "width": 1920,
+      "height": 1080,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N16"
+      ],
+      "observed": "system-noncompact-log-rows",
+      "limits": "实际偏好为非紧凑；只代表行高，不代表 compact 产生数据库写入。"
+    },
+    {
+      "id": "F-ADD-17",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/config-sample-skipped-rule-expanded.png",
+      "sha256": "34991a8d1df1260118f1c70defc80ce7e025a08fc8e2f15c36dc4cf5132ce83f",
+      "bytes": 239882,
+      "width": 1920,
+      "height": 1080,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N17"
+      ],
+      "observed": "config-sample-skipped-rule-expanded",
+      "limits": "管理样例规则正文可见；不是实时发生了一次 skipped 事件。"
+    },
+    {
+      "id": "F-ADD-18",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-receipt-run1/probe-1392-dark/backup-file-operation-receipt.png",
+      "sha256": "4ea3d9aa3afb00e6dec15017104a93d50d0a2758cf662681a9274d48d3931808",
+      "bytes": 202781,
+      "width": 1392,
+      "height": 924,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N18"
+      ],
+      "observed": "真实创建成功回执，展开维护阶段",
+      "limits": "直接证据为创建成功；删除成功使用同一 Outcome file_operation 分支，仅操作文案、代码、记录号、文件名和阶段数据不同，不声称已看到删除成功图片。"
+    },
+    {
+      "id": "F-ADD-19",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-domain-receipt-run1/probe-1920-light/handling-confirmed-receipt.png",
+      "sha256": "77fc4e64844cd945c4b119e0651d2ae515f3980b878eaca7c25d3a559cc23602",
+      "bytes": 273344,
+      "width": 1920,
+      "height": 1080,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N19"
+      ],
+      "observed": "handling-confirmed-receipt",
+      "limits": "真实确认保存后的核实弹窗，不用编辑表单或历史表代替。"
+    },
+    {
+      "id": "F-ADD-20",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-domain-receipt-run1/probe-1920-light/outsourcing-confirmed-receipt.png",
+      "sha256": "93a49f1abf9c716204c2644f813bf1a665f379b93008da632aa33aaf8795f33c",
+      "bytes": 268626,
+      "width": 1920,
+      "height": 1080,
+      "source": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "states": [
+        "N20"
+      ],
+      "observed": "outsourcing-confirmed-receipt",
+      "limits": "真实确认保存后的核实弹窗，不用编辑表单或历史表代替。"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/delivery-following-form.png",
+      "sha256": "a6fb885c28cc31d47027c0f27e8d27ac2632d0016ccbce0662a9be0c25c47548",
+      "bytes": 158131,
+      "width": 1392,
+      "height": 924,
+      "id": "F-OLD-EXTRA-1",
+      "observed": "Handling edit form"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/pending-batches-and-readiness.png",
+      "sha256": "90bc1acf6212dcbea0f1929357d96db9779fca578dfe92f3f67157422c2c6e2a",
+      "bytes": 215824,
+      "width": 1392,
+      "height": 924,
+      "id": "F-OLD-EXTRA-2",
+      "observed": "Pending batches and readiness"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/create-preview.png",
+      "sha256": "eecc6e4cd2a0d55c31835221a01f11e25d7d8f2e65c3e4a895730a686ac1ad80",
+      "bytes": 220380,
+      "width": 1392,
+      "height": 924,
+      "id": "F-OLD-EXTRA-3",
+      "observed": "Outsourcing create preview"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/correction-preview.png",
+      "sha256": "0b148f4fb3846804d149913bc216bf200a62ab6a51f4fd9914c4bc0195597b6c",
+      "bytes": 223087,
+      "width": 1392,
+      "height": 924,
+      "id": "F-OLD-EXTRA-4",
+      "observed": "Outsourcing correction preview"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/system-config-unknown.png",
+      "sha256": "9d85f31d4c47bbc8b095eacd281749bdc365eea681faf94e04f448569c86c635",
+      "bytes": 169307,
+      "width": 1392,
+      "height": 924,
+      "id": "F-OLD-EXTRA-5",
+      "observed": "System unknown configuration values"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/system-overview.png",
+      "sha256": "e91e77b24d4a4bebb2a8298d928ed9fafa267365e5c07b4f7abf1bdabfad8e04",
+      "bytes": 272535,
+      "width": 1920,
+      "height": 1080,
+      "id": "F-OLD-EXTRA-6",
+      "observed": "System overview and eight page self checks"
+    },
+    {
+      "i": 23,
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r3/system-new-process/probe-system-restart-1392-light/system-backups-page-two-after-process-restart.png",
+      "sha256": "a6a3c6eb87d9c6d276d0ea8539ff19abfcc47751c7dd42057ab306a083115ca3",
+      "width": 1392,
+      "height": 924,
+      "id": "F-DELTA-23",
+      "observed": "New-process backup page two with original backup detail",
+      "bytes": 207484
+    }
+  ],
+  "source": {
+    "source": "F13-source18",
+    "build": "F13-copy-build16",
+    "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+    "asset_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-build16",
+    "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+    "source_aggregate": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+    "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+    "manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325"
+  },
+  "findings": {
+    "overlap_or_clipping": "No incoherent overlap or clipping found in the visible subjects of these frames.",
+    "reference_copy": "Unknown quantity, unverified attachments, backup integrity versus restore, and outsourcing return versus operation completion remain distinct in inspected copy."
+  },
+  "limits": [
+    "Only these 27 additional frames are signed; do not infer every pixel or all 228 actions from this record.",
+    "The previous 28-frame and 26-delta Main records remain unchanged; this is a separate supplement.",
+    "F-ADD-04, F-ADD-13, F-ADD-15, and F-ADD-16 include content beyond the viewport. This record signs only visible content, not below-fold text.",
+    "F-ADD-16 contains real static_versioning missing-file warnings. Its visual acceptance covers noncompact row layout, not a zero-warning runtime claim.",
+    "F-ADD-17 is management sample rule text, not proof that a live skipped maintenance event occurred.",
+    "F-ADD-18 directly shows a created-backup receipt, not a deleted-backup receipt.",
+    "F-ADD-19 directly shows a following-state save receipt; close and reopen share its layout, not its executed action.",
+    "F-ADD-20 directly shows a new outsourcing save receipt; correction may share its layout, but this is not correction execution proof.",
+    "These source18/build16 frames are not final clean-HEAD, legacy-retirement, or full-site acceptance proof."
+  ]
+}

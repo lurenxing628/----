@@ -1,0 +1,172 @@
+roadmap: workbench-prototype-migration
+created: 2026-09-09
+review_status: approved
+implementation_authorized: true
+items:
+  - slug: wb-foundation-read-loop
+    description: 核验源码备份和隔离环境，建立109离线外壳及真实系统状态读取最小闭环
+    module: foundation
+    depends_on: []
+    status: done
+    feature: 2026-09-09-wb-foundation-read-loop
+    minimal_loop: true
+    notes: 第一处运行时代码修改前必须具备可恢复的当前源码基线；本项不是最终交付范围
+  - slug: wb-master-resource-contracts
+    description: 接入资源和日历真实维护，补显式技能与多工种关系并保留旧授权和隐藏字段
+    module: master-data
+    depends_on: [wb-foundation-read-loop]
+    status: in-progress
+    feature: 2026-09-09-wb-master-resource-contracts
+    minimal_loop: false
+    notes: 资源与日历已接真实后端；物料详情、数量单位布局、备注及分页保持已做阶段整页验证，资源查询和导出职责已收紧。保留旧授权和隐藏字段，最终全范围与Win7验收仍待完成
+  - slug: wb-process-template-workflow
+    description: 接入真实工艺三步确认、未知工种转建、模板工时与路线文件
+    module: master-data
+    depends_on: [wb-master-resource-contracts]
+    status: in-progress
+    feature: 2026-09-09-wb-process-template-workflow
+    minimal_loop: false
+    notes: 工艺三步确认与文件链已接；有效合并外协组显示真实组周期，成员null不误报缺失也不自动回填。模板来源和采纳工时保护继续共享，最终全范围验收仍待完成
+  - slug: wb-batch-workflow
+    description: 接入批次详情和全部批量及文件操作，预览确认保护已发生事实
+    module: batches
+    depends_on: [wb-process-template-workflow]
+    status: in-progress
+    feature: 2026-09-09-wb-batch-workflow
+    minimal_loop: false
+    notes: 样板三种导入模式全部在范围内，不因replace有风险而静默移除
+  - slug: wb-plan-query-contract
+    description: 提供真实计划身份、公开引用、完整甘特基线与日历产能和交付风险投影
+    module: scheduling
+    depends_on: [wb-foundation-read-loop]
+    status: in-progress
+    feature: 2026-09-09-wb-plan-query-contract
+    minimal_loop: false
+    notes: 正式候选历史身份和完整范围已接，合法零时长采用点标记，单件原编号及计划来源数量已贯通候选正式试调。真实主线零工时v1采用及重启保持已验证，不能伪造占用或缺失数量
+  - slug: wb-execution-ledger
+    description: 建立分次报工与追加更正的持久事实，兼容旧事件并统一累计量和执行约束投影
+    module: execution
+    depends_on: [wb-batch-workflow, wb-plan-query-contract]
+    status: in-progress
+    feature: 2026-09-10-wb-execution-ledger
+    minimal_loop: false
+    notes: 不反复调用旧finish充当部分报工，不伪造旧记录数量和有效工时
+  - slug: wb-preflight-run-candidates
+    description: 接入真实预检和单次参数，生成可恢复的候选集合及真实运行状态
+    module: scheduling
+    depends_on: [wb-batch-workflow, wb-plan-query-contract, wb-execution-ledger]
+    status: in-progress
+    feature: 2026-09-09-workbench-preflight
+    minimal_loop: false
+    notes: v26预检、真实运行、历史与候选预览已接主入口并完成阶段整页回路；完整容量及最终包仍待验收，后台阶段不伪造百分比
+  - slug: wb-candidate-adoption
+    description: 完成真实候选对比和正式采用事务以及版本与审计回显
+    module: scheduling
+    depends_on: [wb-preflight-run-candidates, wb-execution-ledger]
+    status: in-progress
+    feature: 2026-09-09-workbench-candidate-adoption
+    minimal_loop: false
+    notes: 已接真实host正式采用及HTTP退出等待，合法点采用由实际宿主开放；分件整链与主线浏览器v1点采用和重启原回执验证通过。候选选择不写正式计划，最终整包与全场景验收仍待完成
+  - slug: wb-trial-workspace
+    description: 按样板接入试调编辑、冲突投影、草稿恢复与保存及正式采用
+    module: trial
+    depends_on: [wb-plan-query-contract, wb-execution-ledger, wb-candidate-adoption]
+    status: in-progress
+    feature: 2026-09-09-workbench-trial
+    minimal_loop: false
+    notes: 持久试调和两种采用已接，CSV为22列；分件真实主页面五例覆盖采用v5、试调再采用v6与原场景恢复，原单件前置引用和数量保持。复杂场景及最终Win7验收仍待完成
+  - slug: wb-field-workspace
+    description: 现场记录逐项输入补齐更正、Excel导入导出与刷新重启保持
+    module: execution
+    depends_on: [wb-execution-ledger]
+    status: in-progress
+    feature: 2026-09-09-wb-field-workspace-ak
+    minimal_loop: false
+    notes: 合法计划点和单件原编号、计划应做及整批量已贯通，四组合真实浏览器和原报工保留验证通过；旧计划缺数量证据保持未知。既有十列XLSX不能区分同名分件时明确拒绝，完整格式验收未完成
+  - slug: wb-actual-gantt
+    description: 接入真实计划实际剩余三类时段与全部现场甘特视图筛选链路及导出
+    module: execution
+    depends_on: [wb-plan-query-contract, wb-execution-ledger]
+    status: in-progress
+    feature: 2026-09-10-wb-actual-gantt
+    minimal_loop: false
+    notes: 计划点不占资源也不自动完工，单件搜索/详情/CSV数量证据已接；四组合真实浏览器与10000行虚拟画布既有测试通过。缺结束只画开工点，缺剩余安排不从计划尾段虚构
+  - slug: wb-analysis-reports
+    description: 接入统一范围的复盘五类报表专题及目录承诺的四种真实报表
+    module: analytics
+    depends_on: [wb-plan-query-contract, wb-execution-ledger]
+    status: in-progress
+    feature: 2026-09-09-wb-analysis-reports
+    minimal_loop: false
+    notes: 复盘及报表已接真实读取和下载；同底色、长文字展开及滚动保持完成阶段验证，44项真实主页面检查和56个下载核对通过。表图详情导出继续绑定同cohort和snapshot_ref，最终全范围验收仍待完成
+  - slug: wb-calibration
+    description: 提供真实合格样本建议和定额采纳锁定审计及工艺回显与导入保护
+    module: calibration
+    depends_on: [wb-process-template-workflow, wb-execution-ledger]
+    status: in-progress
+    feature: 2026-09-09-workbench-calibration-read
+    minimal_loop: false
+    notes: 已按真实受管启动状态开放采纳；实际主入口采纳、普通维护拒绝覆盖、混合导入与全跳过回执及退出等待已联合验证。v29到v30保留原采纳锁和回执；新批次使用前仍须确认模板工时。旧未关联实例不猜配；最终全页面与Win7验收继续
+  - slug: wb-dashboard
+    description: 接入值班台全页签风险处置历史外协回厂与真实对象跨页导航
+    module: dashboard
+    depends_on: [wb-batch-workflow, wb-candidate-adoption, wb-analysis-reports]
+    status: in-progress
+    feature: 2026-09-09-workbench-dashboard
+    minimal_loop: false
+    notes: v31主入口已接真实外协登记及通用处置；主浏览器走通合并与单工序发出、回厂更正、关闭后风险仍在、独立重开和两类历史。原计划执行不变，重开仅改处置状态/历史/回执三表；复杂跨页与最终验收继续
+  - slug: wb-master-overview
+    description: 接入八域主数据状态关系缺项与精确维护定位及全范围导出
+    module: master-data
+    depends_on: [wb-master-resource-contracts, wb-process-template-workflow, wb-batch-workflow]
+    status: in-progress
+    feature: 2026-09-09-wb-master-overview-u
+    minimal_loop: false
+    notes: 从原始记录和关系计算，不解析界面DOM或沿用固定总数
+  - slug: wb-system-maintenance
+    description: 接入本机备份恢复单删日志诊断和配置全流程并保留维护保护
+    module: system
+    depends_on: [wb-foundation-read-loop]
+    status: in-progress
+    feature: 2026-09-09-wb-system-maintenance
+    minimal_loop: false
+    notes: 真实恢复宿主及warm/cold只读维护页已接；DW宿主联合164项与DU界面123项阶段验证通过。主预览装实际host并核对ready，新增冷恢复不播种/不开库/不退出备份测试通过；最终主线完整恢复与Win7验收继续，仅操作专门测试副本
+  - slug: wb-integration-stress
+    description: 完成全能力真实持久化浏览器逐项输入点击目视及复杂分档混合压测
+    module: release
+    depends_on:
+      - wb-master-resource-contracts
+      - wb-process-template-workflow
+      - wb-batch-workflow
+      - wb-plan-query-contract
+      - wb-execution-ledger
+      - wb-preflight-run-candidates
+      - wb-candidate-adoption
+      - wb-trial-workspace
+      - wb-field-workspace
+      - wb-actual-gantt
+      - wb-analysis-reports
+      - wb-calibration
+      - wb-dashboard
+      - wb-master-overview
+      - wb-system-maintenance
+    status: in-progress
+    feature: null
+    minimal_loop: false
+    notes: 206能力族的阶段真实页面与复杂数据验证已开展；200同资源工序完整四候选payload相同且33.140秒降至3.661秒，1000工序24.201秒。5000同资源最终容量及全能力最终统一门禁仍未完成，不将原型或重叠测试数当成整站证明
+  - slug: wb-legacy-retirement
+    description: 在候选交付树退役旧界面和资产并验证旧URL去向及源码数据恢复方案
+    module: release
+    depends_on: [wb-integration-stress]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 下线UI不删除领域服务和存量配置，备份位于Web和运行包外
+  - slug: wb-win7-release
+    description: 对已退役旧界面的最终包完成完整门禁Win7真机安装与全范围验收后发布
+    module: release
+    depends_on: [wb-legacy-retirement]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 必须核验最终源与包hash，Mac109结果不能替代Win7真机证明
