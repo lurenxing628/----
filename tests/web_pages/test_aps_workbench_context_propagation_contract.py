@@ -1,92 +1,88 @@
-"""契约测试：工作台主流程与报表行链接在页面间跳转时的上下文透传——首页/分析/甘特/派工/复盘等入口逐键保真透传版本、方案身份、日期范围、批次与资源参数；非 adopted 方案复盘入口被禁用且原样透传 plan_role 不改写、模拟预览与历史正式方案首页只读且不复用当前摘要，报表行回跳动作页时保留批次与资源上下文，且全程不向用户外显 plan_role/scenario_id 等内部术语。"""
+"""Retirement contracts: exact canonical identity, explicit unsupported scope and unchanged original exports."""
 
 from __future__ import annotations
 
 import json
 import os
-from typing import Dict, List
-from urllib.parse import parse_qs, urlparse
+from contextlib import closing
+from io import BytesIO
+from urllib.parse import parse_qs, urlsplit
 
+from tests.gantt.test_gantt_url_persistence import _business_state, _canonical_workspace
 from tests.web_pages.reports_workbench_backlink_helpers import (
     INTERNAL_VISIBLE_TOKENS,
     _assert_public_output_boundaries,
-    _client,
-    _href_with_text,
-    _href_with_text_and_class,
-    _href_with_text_and_fragment,
-    _html_for,
-    _parser_for,
-    _query,
-    _visible_text,
+    _PageParser,
+    _xlsx_text,
+)
+from tests.web_pages.reports_workbench_backlink_helpers import (
+    _client as _reports_client,
 )
 
-# ---------------------------------------------------------------------------
-# 合并体：workbench/首页/报表行 链接跳转时的上下文透传契约。
-# 由 P5.1 MERGE 簇合并而来（方案 B：只合 flow + report_row，first_round 保持独立）。
-# 共用 reports_workbench_backlink_helpers._client()（v1 UI + reports 种子，非 conftest app_client）。
-# 去重仅限唯一逐字完全相同的无副作用 helper `_assert_query_values`（原 flow:22 / report_row:13，留一份）。
-# ---------------------------------------------------------------------------
+
+def _client():
+    from core.infrastructure.database import get_connection
+    from core.services.scheduler.config.config_service import ConfigService
+    from core.services.system.system_config_service import SystemConfigService
+    client = _reports_client()
+    with closing(get_connection(client.application.config["DATABASE_PATH"])) as conn:
+        ConfigService(conn).ensure_defaults()
+        SystemConfigService(conn).ensure_defaults(backup_keep_days_default=client.application.config["BACKUP_KEEP_DAYS"])
+        conn.commit()
+    return client
 
 
-# 共享 helper（原两文件逐字相同，去重保留一份）
-def _assert_query_values(query: Dict[str, List[str]], expected: Dict[str, str]) -> None:
+def _assert_query_values(query, expected):
     for key, value in expected.items():
         assert query[key] == [value], (key, query)
 
 
-# ===========================================================================
-# 迁入自 tests/regression_aps_workbench_flow_contract.py
-# （4 个 test + 其本地 helper；含 ★B-6 / R57-PINNED）
-# ===========================================================================
-
-
-def _target_parser(client, href: str):
-    return _parser_for(client, href)
-
-
-def _target_visible(client, href: str) -> str:
-    return _visible_text(_target_parser(client, href))
-
-
-def _assert_public_visible_text(text: str) -> None:
+def _retired(client, path, query):
+    response = client.get(path, query_string=query)
+    assert response.status_code == 410, response.get_data(as_text=True)
+    assert "Location" not in response.headers and response.headers["Cache-Control"] == "no-store"
+    html = response.get_data(as_text=True)
+    assert "旧入口已退役" in html and "原业务数据、保存的配置和历史记录仍保留" in html
+    assert "/static/js/" not in html and "/static/css/" not in html
+    parser = _PageParser()
+    parser.feed(html)
+    _assert_public_output_boundaries(parser)
+    visible = "\n".join(parser.visible_parts)
     for token in INTERNAL_VISIBLE_TOKENS:
-        assert token not in text
+        assert token not in visible
+    assert not any(link["href"].startswith("/workbench?") for link in parser.links)
+    return html, parser
 
 
-def _public_page_surface(parser) -> str:
-    return "\n".join(parser.visible_parts + parser.public_attribute_parts)
+def _no_current_summary(html):
+    # The old home summary/disabled-link markup is gone, not replaced by adopted/current data.
+    for text in ("超期批次 0", "超期批次需要先看", "资源负荷偏高", "设备利用率", "80.0%",
+                 "最新排产", "当前正式采用方案", "当前排产风险概览"):
+        assert text not in html
 
 
-def _assert_no_execution_review_links(parser) -> None:
-    assert not [
-        link
-        for link in parser.links
-        if urlparse(link["href"]).path == "/reports/execution-review"
-    ]
-
-
-def _assert_read_only_home_gap(visible: str, public_surface: str) -> None:
-    for text in ("当前排产摘要为空", "当前查看方案没有可用的首页摘要内容", "超期批次", "数据不足"):
-        assert text in visible
-    for text in ("超期批次 0", "超期批次需要先看", "资源负荷偏高", "设备利用率", "80.0%"):
-        assert text not in visible
-    for text in ("最新排产", "当前正式采用方案", "当前排产风险概览"):
-        assert text not in public_surface
-
-
-def _assert_home_workspace_links_keep_context(parser, expected_by_label: Dict[str, Dict[str, str]]) -> None:
-    seen = set()
-    for link in parser.links:
-        expected = expected_by_label.get(link["text"])
-        if expected is not None:
-            _assert_query_values(_query(link["href"]), expected)
-            seen.add(link["text"])
-    assert seen == set(expected_by_label)
-
-
-def _assert_home_link_keeps_context(parser, expected_query: Dict[str, str]) -> None:
-    home_href = _href_with_text_and_class(parser, "首页值班台", "/", "aps-workbench-nav-link")
-    _assert_query_values(_query(home_href), expected_query)
+def _export(client, parser, path, expected, *, scenario=False):
+    links = [link["href"] for link in parser.links if urlsplit(link["href"]).path == path + "/export"]
+    assert len(links) == 1, parser.links
+    query = parse_qs(urlsplit(links[0]).query)
+    _assert_query_values(query, expected)
+    if scenario:
+        assert "scenario_id" not in query and query["plan_context_token"]
+        assert "SCENARIO-RPT" not in query["plan_context_token"][0]
+    response = client.get(links[0])
+    assert response.status_code == 200 and "attachment" in response.headers["Content-Disposition"]
+    text = _xlsx_text(response.data)
+    assert text and response.data.startswith(b"PK")
+    if path == "/reports/utilization" and expected.get("batch_id") == "B-RPT":
+        import openpyxl
+        book = openpyxl.load_workbook(BytesIO(response.data), read_only=True, data_only=True)
+        try:
+            rows = list(book["设备负荷"].iter_rows(values_only=True))
+            assert rows[0][:4] == ("设备编号", "设备名称", "负荷(小时)", "任务数")
+            assert len(rows) == 2 and rows[1][:4] == ("M-RPT", "一号设备", 4, 1)
+        finally:
+            book.close()
+    return text
 
 
 def _seed_newer_executable_version(version: int) -> None:
@@ -130,386 +126,138 @@ def _seed_newer_executable_version(version: int) -> None:
         conn.close()
 
 
+
 def test_workbench_main_flow_from_home_keeps_context_and_reaches_first_version_pages() -> None:
     client = _client()
-    parser = _parser_for(
-        client,
-        "/?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06"
-        "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT",
+    before = _business_state(client)
+    identity = {"version": "12", "plan_role": "adopted"}
+    scope = dict(identity, date_from="2026-05-06", date_to="2026-05-06",
+                 batch_id="B-RPT", resource_type="machine", resource_id="M-RPT")
+    home, _ = _retired(client, "/", scope)
+    _no_current_summary(home)
+    # The seven original navigation cases keep their literal query fields. Unsupported
+    # old controls cannot silently turn these links into a new default workspace.
+    cases = (
+        ("/reports/overdue", dict(identity, batch_id="B-RPT", resource_type="machine", resource_id="M-RPT")),
+        ("/scheduler/analysis", scope),
+        ("/scheduler/gantt", dict(identity, view="machine", start_date="2026-05-06", end_date="2026-05-06",
+                                  gantt_batch="B-RPT", gantt_resource="M-RPT")),
+        ("/scheduler/gantt", dict(identity, view="operator", start_date="2026-05-06", end_date="2026-05-06", gantt_batch="B-RPT")),
+        ("/scheduler/resource-dispatch", dict(identity, date_from="2026-05-06", date_to="2026-05-06",
+                                              period_preset="custom", scope_type="machine", scope_id="M-RPT", machine_id="M-RPT", batch_id="B-RPT")),
+        ("/reports/execution-review", scope),
+        ("/reports/utilization", dict(identity, start_date="2026-05-06", end_date="2026-05-06",
+                                      batch_id="B-RPT", resource_type="machine", resource_id="M-RPT")),
     )
-    visible = _visible_text(parser)
-
-    assert "计划工作台" in visible
-    assert "首页值班台" in visible
-    assert "今日待处理" in visible
-    _assert_public_visible_text(visible)
-    _assert_public_output_boundaries(parser)
-    _assert_home_workspace_links_keep_context(
-        parser,
-        {
-            "设备甘特图": {
-                "version": "12",
-                "plan_role": "adopted",
-                "start_date": "2026-05-06",
-                "end_date": "2026-05-06",
-            },
-            "资源排班": {
-                "version": "12",
-                "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
-            },
-            "报表中心": {
-                "version": "12",
-                "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
-            },
-            "周计划": {
-                "version": "12",
-                "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
-            },
-        },
-    )
-
-    expectations = (
-        (
-            "查看超期清单",
-            "/reports/overdue",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "batch_id": "B-RPT",
-                "resource_type": "machine",
-                "resource_id": "M-RPT",
-            },
-            "超期",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "batch_id": "B-RPT",
-                "resource_type": "machine",
-                "resource_id": "M-RPT",
-            },
-        ),
-        (
-            "排产分析",
-            "/scheduler/analysis",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
-                "batch_id": "B-RPT",
-                "resource_type": "machine",
-                "resource_id": "M-RPT",
-            },
-            "排产分析",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
-                "batch_id": "B-RPT",
-                "resource_type": "machine",
-                "resource_id": "M-RPT",
-            },
-        ),
-        (
-            "设备甘特图",
-            "/scheduler/gantt",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "view": "machine",
-                "start_date": "2026-05-06",
-                "end_date": "2026-05-06",
-                "gantt_batch": "B-RPT",
-                "gantt_resource": "M-RPT",
-            },
-            "甘特图",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
-                "batch_id": "B-RPT",
-                "resource_type": "machine",
-                "resource_id": "M-RPT",
-            },
-        ),
-        (
-            "人员甘特图",
-            "/scheduler/gantt",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "view": "operator",
-                "start_date": "2026-05-06",
-                "end_date": "2026-05-06",
-                "gantt_batch": "B-RPT",
-            },
-            "甘特图",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
-                "batch_id": "B-RPT",
-            },
-        ),
-        (
-            "资源派工",
-            "/scheduler/resource-dispatch",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
-                "period_preset": "custom",
-                "scope_type": "machine",
-                "scope_id": "M-RPT",
-                "machine_id": "M-RPT",
-                "batch_id": "B-RPT",
-            },
-            "资源排班",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
-                "batch_id": "B-RPT",
-                "resource_type": "machine",
-                "resource_id": "M-RPT",
-            },
-        ),
-        (
-            "计划和现场实际",
-            "/reports/execution-review",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
-                "batch_id": "B-RPT",
-                "resource_type": "machine",
-                "resource_id": "M-RPT",
-            },
-            "正式采用方案",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
-                "batch_id": "B-RPT",
-                "resource_type": "machine",
-                "resource_id": "M-RPT",
-            },
-        ),
-        (
-            "查看资源负荷",
-            "/reports/utilization",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "start_date": "2026-05-06",
-                "end_date": "2026-05-06",
-                "batch_id": "B-RPT",
-                "resource_type": "machine",
-                "resource_id": "M-RPT",
-            },
-            "资源负荷",
-            {
-                "version": "12",
-                "plan_role": "adopted",
-                "date_from": "2026-05-06",
-                "date_to": "2026-05-06",
-                "batch_id": "B-RPT",
-                "resource_type": "machine",
-                "resource_id": "M-RPT",
-            },
-        ),
-    )
-    for label, path, expected_query, expected_text, expected_home_query in expectations:
-        href = _href_with_text(parser, label, path)
-        query = _query(href)
-        _assert_query_values(query, expected_query)
-        target_parser = _target_parser(client, href)
-        target_text = _visible_text(target_parser)
-        assert expected_text in target_text
-        _assert_public_visible_text(target_text)
-        _assert_public_output_boundaries(target_parser)
-        _assert_home_link_keeps_context(target_parser, expected_home_query)
+    for path, query in cases:
+        _, parser = _retired(client, path, query)
+        if path.startswith("/reports/"):
+            text = _export(client, parser, path, query)
+            assert ("M-RPT" if path == "/reports/utilization" else "B-RPT") in text
+            assert "M-OTHER" not in text
+    context, payload = _canonical_workspace(client, dict(identity, start_date="2026-05-06", end_date="2026-05-06"))
+    assert context["range_start"] == "2026-05-06T00:00:00" and context["range_end"] == "2026-05-07T00:00:00"
+    assert payload["data"]["plan"]["version"] == 12 and len(payload["data"]["tasks"]) == 3
+    assert _business_state(client) == before
 
 
-# ★B-6 / R57-PINNED — 非 adopted（plan_role=baseline_best）复盘入口被有意禁用，
-# 且首页链接逐字透传非 adopted 的 plan_role（绝不改写成 adopted）。
-# 整函数原样搬入：:346/:347/:352/:353/:354/:355 透传断言禁去重、禁与主流程 adopted 同义合并。
 def test_workbench_non_adopted_review_entry_is_disabled_and_plain_chinese() -> None:
     client = _client()
-    path = (
-        "/scheduler/analysis?version=12&plan_role=baseline_best"
-        "&date_from=2026-05-06&date_to=2026-05-06"
-    )
-    html = _html_for(client, path)
-    parser = _parser_for(client, path)
-    visible = _visible_text(parser)
-
-    _assert_no_execution_review_links(parser)
-    assert 'aria-disabled="true"' in html
-    assert "计划和现场实际只复盘正式采用方案" in html
-    _assert_public_visible_text(visible)
-
-    home_href = _href_with_text_and_class(parser, "首页值班台", "/", "aps-workbench-nav-link")
-    home_query = parse_qs(urlparse(home_href).query)
-    assert home_query["version"] == ["12"]
-    assert home_query["plan_role"] == ["baseline_best"]
-    assert home_query["date_from"] == ["2026-05-06"]
-    assert home_query["date_to"] == ["2026-05-06"]
-
-    home_html = _html_for(client, home_href)
-    home_parser = _parser_for(client, home_href)
-    _assert_no_execution_review_links(home_parser)
-    assert "计划和现场实际只复盘正式采用方案" in home_html
+    before = _business_state(client)
+    query = dict(version="12", plan_role="baseline_best", date_from="2026-05-06", date_to="2026-05-06")
+    for path in ("/scheduler/analysis", "/"):
+        html, parser = _retired(client, path, query)
+        assert "所选对比方案未保存" in html and "未沿用旧页的采用方案回退" in html
+        assert not [link for link in parser.links if "/execution-review" in link["href"]]
+        _no_current_summary(html)
+    # The old disabled button's business guard remains in the actual export endpoint.
+    blocked = client.get("/reports/execution-review/export", query_string=query)
+    assert blocked.status_code == 400
+    assert "计划和现场实际只复盘正式采用方案" in blocked.get_data(as_text=True)
+    assert _business_state(client) == before
 
 
 def test_workbench_scenario_preview_home_entry_is_read_only_and_does_not_use_current_summary() -> None:
     client = _client()
-    analysis = _parser_for(
-        client,
-        "/scheduler/analysis?version=12&plan_role=adopted&scenario_id=SCENARIO-RPT"
-        "&date_from=2026-05-06&date_to=2026-05-06&batch_id=B-RPT"
-        "&resource_type=machine&resource_id=M-RPT",
-    )
-    home_href = _href_with_text_and_class(analysis, "首页值班台", "/", "aps-workbench-nav-link")
-    html = _html_for(client, home_href)
-    parser = _parser_for(client, home_href)
-    visible = _visible_text(parser)
-    public_surface = _public_page_surface(parser)
-
-    assert "测试模拟方案" in visible
-    _assert_read_only_home_gap(visible, public_surface)
-    _assert_no_execution_review_links(parser)
-    assert "计划和现场实际只复盘正式采用方案" in html
-    _assert_public_visible_text(visible)
-    _assert_public_output_boundaries(parser)
-
-    analysis_query = _query(_href_with_text(parser, "排产分析", "/scheduler/analysis"))
-    _assert_query_values(
-        analysis_query,
-        {
-            "version": "12",
-            "plan_role": "adopted",
-            "date_from": "2026-05-06",
-            "date_to": "2026-05-06",
-            "batch_id": "B-RPT",
-            "resource_type": "machine",
-            "resource_id": "M-RPT",
-        },
-    )
-    assert "scenario_id" not in analysis_query
-    assert analysis_query["plan_context_token"]
-    assert "SCENARIO-RPT" not in analysis_query["plan_context_token"][0]
+    query = dict(version="12", plan_role="adopted", scenario_id="SCENARIO-RPT",
+                 date_from="2026-05-06", date_to="2026-05-06", batch_id="B-RPT",
+                 resource_type="machine", resource_id="M-RPT")
+    broken_before = _business_state(client)
+    broken, _ = _retired(client, "/scheduler/analysis", query)
+    assert "永久身份缺失或绑定已失效" in broken
+    assert _business_state(client) == broken_before
+    # The old helper inserts the scenario before its base history. Recreate only
+    # this disposable fixture after that history exists; never repair refs on GET.
+    from core.infrastructure.database import get_connection
+    with closing(get_connection(client.application.config["DATABASE_PATH"])) as conn:
+        scenario = dict(conn.execute("SELECT * FROM ScheduleAdjustmentScenario WHERE scenario_id='SCENARIO-RPT'").fetchone())
+        rows = [dict(row) for row in conn.execute("SELECT * FROM ScheduleAdjustmentScenarioRow WHERE scenario_id='SCENARIO-RPT'")]
+        conn.execute("DELETE FROM ScheduleAdjustmentScenarioRow WHERE scenario_id='SCENARIO-RPT'")
+        conn.execute("DELETE FROM ScheduleAdjustmentScenario WHERE scenario_id='SCENARIO-RPT'")
+        for table, records in (("ScheduleAdjustmentScenario", [scenario]), ("ScheduleAdjustmentScenarioRow", rows)):
+            for record in records:
+                conn.execute("INSERT INTO " + table + " (" + ",".join(record) + ") VALUES (" + ",".join("?" for _ in record) + ")", tuple(record.values()))
+        conn.commit()
+    before = _business_state(client)
+    for path in ("/scheduler/analysis", "/"):
+        html, parser = _retired(client, path, query)
+        assert "已保存模拟方案" in html
+        _no_current_summary(html)
+        assert not [link for link in parser.links if "/execution-review" in link["href"]]
+    _, parser = _retired(client, "/reports/utilization", query)
+    expected = {key: value for key, value in query.items() if key != "scenario_id"}
+    exported = _export(client, parser, "/reports/utilization", expected, scenario=True)
+    assert "M-RPT" in exported and "M-OTHER" not in exported
+    _, payload = _canonical_workspace(client, dict(version="12", plan_role="adopted", scenario_id="SCENARIO-RPT",
+                                                   start_date="2026-05-06", end_date="2026-05-06"))
+    plan = payload["data"]["plan"]
+    assert plan["kind"] == "scenario" and plan["display_name"] == "测试模拟方案"
+    assert plan["is_current_official"] is False and plan["capabilities"]["report_actual"] is False
+    assert len(payload["data"]["tasks"]) == 1 and payload["data"]["tasks"][0]["batch_id"] == "B-RPT"
+    blocked = client.get("/reports/execution-review/export", query_string=query)
+    assert blocked.status_code == 400 and "只复盘正式采用方案" in blocked.get_data(as_text=True)
+    assert _business_state(client) == before
 
 
 def test_workbench_superseded_adopted_home_entry_keeps_guardrail() -> None:
     client = _client()
     _seed_newer_executable_version(13)
-    analysis = _parser_for(
-        client,
-        "/scheduler/analysis?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06"
-        "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT",
-    )
-    home_href = _href_with_text_and_class(analysis, "首页值班台", "/", "aps-workbench-nav-link")
-    home_query = _query(home_href)
-
-    _assert_query_values(
-        home_query,
-        {
-            "version": "12",
-            "plan_role": "adopted",
-            "date_from": "2026-05-06",
-            "date_to": "2026-05-06",
-            "batch_id": "B-RPT",
-            "resource_type": "machine",
-            "resource_id": "M-RPT",
-        },
-    )
-
-    home_html = _html_for(client, home_href)
-    home_parser = _parser_for(client, home_href)
-    visible = _visible_text(home_parser)
-    public_surface = _public_page_surface(home_parser)
-
-    assert "历史正式方案（已被新版本替代）" in visible
-    _assert_read_only_home_gap(visible, public_surface)
-    _assert_public_output_boundaries(home_parser)
-    _assert_no_execution_review_links(home_parser)
-    assert "这是历史正式方案，只能查看" in home_html
-
-
-# ===========================================================================
-# 迁入自 tests/regression_aps_workbench_report_row_links_contract.py
-# （1 个 public test + 2 私有 helper；其本地 _assert_query_values 与上方逐字相同已去重）
-# ===========================================================================
+    before = _business_state(client)
+    query = dict(version="12", plan_role="adopted", date_from="2026-05-06", date_to="2026-05-06",
+                 batch_id="B-RPT", resource_type="machine", resource_id="M-RPT")
+    for path in ("/scheduler/analysis", "/"):
+        html, _ = _retired(client, path, query)
+        assert "<dd>12</dd>" in html
+        _no_current_summary(html)
+    _, payload = _canonical_workspace(client, dict(version="12", plan_role="adopted",
+                                                   start_date="2026-05-06", end_date="2026-05-06"))
+    plan = payload["data"]["plan"]
+    assert plan["version"] == 12 and plan["kind"] == "official"
+    assert plan["is_current_official"] is False and plan["capabilities"]["report_actual"] is False
+    assert len(payload["data"]["tasks"]) == 3
+    assert all(task["start"].startswith("2026-05-06") for task in payload["data"]["tasks"])
+    assert _business_state(client) == before
 
 
 def test_workbench_report_rows_keep_batch_and_resource_context_when_returning_to_action_pages() -> None:
     client = _client()
-
-    _assert_overdue_row_workbench_links(client)
-    _assert_utilization_row_workbench_links(client)
-
-
-def _assert_overdue_row_workbench_links(client) -> None:
-    overdue = _parser_for(
-        client,
-        "/reports/overdue?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06"
-        "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT",
-    )
-    diagnosis = _query(_href_with_text_and_fragment(overdue, "查看为什么晚了", "/reports/overdue", "batch_id=B-RPT"))
-    _assert_query_values(
-        diagnosis,
-        {
-            "version": "12",
-            "plan_role": "adopted",
-            "batch_id": "B-RPT",
-            "resource_type": "machine",
-            "resource_id": "M-RPT",
-        },
-    )
+    before = _business_state(client)
+    overdue_query = dict(version="12", plan_role="adopted", date_from="2026-05-06", date_to="2026-05-06",
+                         batch_id="B-RPT", resource_type="machine", resource_id="M-RPT")
+    _, overdue = _retired(client, "/reports/overdue", overdue_query)
+    text = _export(client, overdue, "/reports/overdue", overdue_query)
+    assert "B-RPT" in text and "B-OTHER" not in text
+    # Diagnosis is still explicitly undated; no plan-finish/event-date substitution.
+    diagnosis = {key: value for key, value in overdue_query.items() if key not in ("date_from", "date_to")}
     assert "date_from" not in diagnosis and "date_to" not in diagnosis
-
-
-def _assert_utilization_row_workbench_links(client) -> None:
-    utilization = _parser_for(
-        client,
-        "/reports/utilization?version=12&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06"
-        "&resource_type=operator&resource_id=O-RPT",
-    )
-    row_dispatch = _query(
-        _href_with_text_and_fragment(utilization, "查看资源排班", "/scheduler/resource-dispatch", "operator_id=O-RPT")
-    )
-    row_gantt = _query(_href_with_text_and_fragment(utilization, "定位甘特", "/scheduler/gantt", "gantt_resource=O-RPT"))
-
-    _assert_query_values(
-        row_dispatch,
-        {
-            "version": "12",
-            "date_from": "2026-05-06",
-            "date_to": "2026-05-06",
-            "scope_type": "operator",
-            "operator_id": "O-RPT",
-        },
-    )
-    _assert_query_values(
-        row_gantt,
-        {
-            "start_date": "2026-05-06",
-            "end_date": "2026-05-06",
-            "view": "operator",
-            "gantt_resource": "O-RPT",
-        },
-    )
+    _retired(client, "/reports/overdue", diagnosis)
+    utilization_query = dict(version="12", plan_role="adopted", start_date="2026-05-06", end_date="2026-05-06",
+                             resource_type="operator", resource_id="O-RPT")
+    _, utilization = _retired(client, "/reports/utilization", utilization_query)
+    text = _export(client, utilization, "/reports/utilization", utilization_query)
+    assert "O-RPT" in text and "O-OTHER" not in text
+    _retired(client, "/scheduler/resource-dispatch", dict(version="12", date_from="2026-05-06", date_to="2026-05-06",
+                                                         scope_type="operator", operator_id="O-RPT"))
+    _retired(client, "/scheduler/gantt", dict(version="12", start_date="2026-05-06", end_date="2026-05-06",
+                                             view="operator", gantt_resource="O-RPT"))
+    assert _business_state(client) == before

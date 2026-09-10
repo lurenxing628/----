@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+{% include "workbench/legacy_style.html" %}
+<style>
+main { max-width:1400px; }
+.print-toolbar { display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-bottom:24px; }
+.print-sheet { padding-top:0; border:0; margin:0 0 28px; page-break-after:always; }
+.print-sheet:last-child { page-break-after:auto; }
+.print-sheet table { table-layout:fixed; }
+.print-sheet th,.print-sheet td { font-size:12px; border:1px solid var(--line); padding:7px; vertical-align:top; }
+.sheet-head-row th { border:0; padding:0 0 12px; color:var(--text); font-weight:400; }
+.sheet-resource { font-size:18px; font-weight:600; display:block; }
+.sheet-warning { display:block; border:2px solid var(--accent); padding:4px 8px; margin-top:8px; color:var(--accent); font-weight:600; }
+.col-date { width:9%; } .col-batch { width:15%; } .col-part { width:14%; } .col-seq { width:6%; }
+.col-machine { width:16%; } .col-operator { width:13%; } .col-slot { width:11%; } .col-remark { width:16%; }
+@media print {
+  @page { size:A4 landscape; margin:12mm; }
+  thead { display:table-header-group; } tr { page-break-inside:avoid; }
+  .print-sheet th,.print-sheet td { color:#000; border-color:#555; }
+  .sheet-head-row th { border:0; } .sheet-warning { color:#000; border-color:#000; }
+}
+</style>
+</head>
+<body><main data-workbench-print="true">
+  <div class="print-toolbar no-print">
+    <button type="button" onclick="window.print()">打印</button>
+    <a href="{{ links.switch_view_url }}">{{ links.switch_view_label }}</a>
+    <a href="{{ links.back_url }}">返回周计划</a>
+    <span>{{ group_by_label }}视图 · {{ range_label }}</span>
+  </div>
+  {% if sheets %}{% for sheet in sheets %}
+  <section class="print-sheet"><table>
+    <thead>
+      <tr class="sheet-head-row"><th colspan="8">
+        <span class="sheet-resource">{{ sheet.resource_label }}</span>
+        <span>周派工单（{{ group_by_label }}） · v{{ version }} · {{ plan_role_label }} · 生成时间 {{ generated_at_label }} · {{ range_label }}</span>
+        {% if filter_scope_label %}<span> · {{ filter_scope_label }}</span>{% endif %}
+        {% if identity_warning %}<span class="sheet-warning">{{ identity_warning }}</span>{% endif %}
+      </th></tr>
+      <tr><th class="col-date">日期</th><th class="col-batch">批次号</th><th class="col-part">图号</th><th class="col-seq">工序</th>
+        <th class="col-machine">设备</th><th class="col-operator">人员</th><th class="col-slot">时段</th><th class="col-remark">备注</th></tr>
+    </thead>
+    <tbody>{% for row in sheet.rows %}
+      <tr><td>{{ row["日期"] }}</td><td>{{ row["批次号"] }}</td><td>{{ row["图号"] }}</td><td>{{ row["工序"] }}</td>
+        <td>{{ row["设备"] }}</td><td>{{ row["人员"] }}</td><td>{{ row["时段"] }}</td><td></td></tr>
+    {% endfor %}</tbody>
+  </table></section>
+  {% endfor %}{% else %}
+    <p class="notice" role="status">{% if not has_history %}
+      该版本没有排产历史，无法生成派工单。请回到周计划页选择有排程记录的版本。
+    {% else %}
+      {{ range_label }} 没有排程记录，没有可打印的派工单。请回到周计划页换一个周或版本。
+    {% endif %}</p>
+    <a class="no-print" href="{{ links.back_url }}">返回周计划</a>
+  {% endif %}
+</main></body>
+</html>

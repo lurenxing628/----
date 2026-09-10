@@ -578,123 +578,128 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
     _assert_history_section_does_not_claim_export_or_restore(markdown_text, label)
 
 
-def test_config_manual_markdown_contract(app_client) -> None:
-    repo_root = _find_repo_root()
-    js_path = os.path.join(repo_root, "static", "js", "config_manual.js")
-    tpl_path = os.path.join(repo_root, "templates", "scheduler", "config_manual.html")
-    manual_path = os.path.join(repo_root, "static", "docs", "scheduler_manual.md")
+def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> None:
+    from html.parser import HTMLParser
+    from pathlib import Path
 
-    js = _read(js_path)
-    tpl = _read(tpl_path)
-    manual_text = _read(manual_path)
+    from flask import template_rendered
 
-    # 1) 模板-脚本契约
-    for needle in (
-        'id="aps-config-manual-data"',
-        'type="application/json"',
-        '"mode": manual_mode',
-        '"currentManual": current_manual',
-        '"relatedManuals": related_manuals',
-        "js/config_manual.js",
-        'id="tocToggleBtn"',
-        'id="toc-list"',
-        'id="content"',
-        "manual-main-column",
-        "manual-related-panel",
-        "manual_mode == 'page'",
-        "fallback_text if manual_mode == 'page' else manual_text",
-        "查看完整原文对应章节",
-        "返回刚才页面",
-    ):
-        assert needle in tpl, f"模板缺少契约片段: {needle}"
-    assert "相关模块说明" in tpl, "模板缺少相关模块区块"
+    import web.routes.domains.scheduler.scheduler_config as route_mod
 
-    # 3) 安全约束：危险协议应被过滤（允许注释提及 javascript:）
-    assert 'if (!isSafeHref(href))' in js, "链接白名单过滤缺失"
-    assert 'if (lower.startsWith("http://") || lower.startsWith("https://")) return true;' in js, "http/https 白名单缺失"
-    assert 'if (lower.startsWith("mailto:")) return true;' in js, "mailto 白名单缺失"
-    assert "return false;" in js, "危险协议默认拒绝逻辑缺失"
-    assert 'startsWith("javascript:")) return true' not in js, "错误地放开了 javascript: 协议"
-    assert "noopener noreferrer" in js, "外链安全属性缺失"
+    class Manual(HTMLParser):
+        def __init__(self, text):
+            super().__init__(convert_charrefs=True)
+            self.ids, self.hrefs, self.tags, self.pre, self.active = set(), [], [], [], False
+            self.scripts, self.in_script = [], False
+            self.feed(text)
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            self.tags.append((tag, attrs))
+            if attrs.get("id"):
+                self.ids.add(attrs["id"])
+            if tag == "a":
+                self.hrefs.append(attrs.get("href", ""))
+            if tag == "pre":
+                self.active = True
+                self.pre.append("")
+            if tag == "script":
+                self.in_script = True
+                self.scripts.append("")
+        def handle_endtag(self, tag):
+            if tag == "pre":
+                self.active = False
+            if tag == "script":
+                self.in_script = False
+        def handle_data(self, text):
+            if self.active:
+                self.pre[-1] += text
+            if self.in_script:
+                self.scripts[-1] += text
 
-    # 4) 兼容性降级约束
-    assert 'if (!("IntersectionObserver" in window)) return;' in js, "缺少 IntersectionObserver 降级"
-    assert re.search(r"scrollIntoView\(\{ behavior: \"smooth\", block: \"start\" \}\)", js), "缺少平滑滚动主路径"
-    assert "target.scrollIntoView();" in js, "缺少滚动降级路径"
-
-    # 5) hash 初始化约束：数字前缀锚点不应导致初始化中断
-    assert "if (window.location.hash)" in js, "缺少 hash 初始化分支"
-    assert "decodeURIComponent(window.location.hash)" in js, "缺少 hash 解码逻辑"
-    assert "document.getElementById(hashId)" in js, "hash 分支应优先使用 getElementById"
-    assert "document.querySelector(hash)" in js, "hash 分支应保留 querySelector 降级"
-    runtime_full = _run_hash_runtime_check(js_path, mode="full")
-    if not runtime_full.get("ok"):
-        raise RuntimeError(f"整本模式 hash 运行时回归失败：{runtime_full}")
-    runtime_page = _run_hash_runtime_check(js_path, mode="page")
-    if not runtime_page.get("ok"):
-        raise RuntimeError(f"页面模式 hash 运行时回归失败：{runtime_page}")
-
-    # 6) Markdown 一致性：事实源标题、内部锚点
-    assert manual_text.startswith("# 系统使用说明"), "主说明书标题未更新为“系统使用说明”"
+    root = Path(_find_repo_root())
+    manual_path = root / "static/docs/scheduler_manual.md"
+    manual_text = manual_path.read_text(encoding="utf-8")
+    # All source-content and terminology assertions remain unchanged.
+    assert manual_text.startswith("# 系统使用说明")
     _assert_scheduler_manual_required_content(manual_text, "主说明书")
     _assert_manual_uses_batch_maintenance_entry_names(manual_text)
     heading_ids = _extract_heading_ids(manual_text)
     internal_hashes = _extract_internal_hashes(manual_text)
     missing_hashes = [item for item in internal_hashes if item not in heading_ids]
     assert not missing_hashes, f"说明书存在未命中的内部锚点：{missing_hashes[:10]}"
+    assert not (root / "static/js/config_manual.js").exists()
+    assert not (root / "templates/scheduler/config_manual.html").exists()
 
-    # 7) 行为契约：真实请求验证双模式、JSON 数据块与 noscript 回退
-    app = app_client.application
-    client = app_client
-    material_src = _build_url(app, "material.materials_page") + "?"
+    app, client, captured = app_client.application, app_client, []
+    def rendered(sender, template, context, **extra):
+        captured.append((template.name, context))
+    template_rendered.connect(rendered, app, weak=False)
+    try:
+        def read(url):
+            captured.clear()
+            response = client.get(url)
+            assert response.status_code == 200, response.get_data(as_text=True)
+            assert len(captured) == 1 and captured[0][0] == "workbench/manual.html"
+            html = response.get_data(as_text=True)
+            parsed = Manual(html)
+            # Only the shared theme initializer remains; manual text has no executable renderer.
+            assert len(parsed.scripts) == 1 and "aps_kit_theme" in parsed.scripts[0]
+            assert not [attrs for tag, attrs in parsed.tags if tag == "script" and attrs.get("src")]
+            assert not any(href.lower().startswith(("javascript:", "data:")) for href in parsed.hrefs)
+            assert all(href[1:] in parsed.ids for href in parsed.hrefs if href.startswith("#"))
+            assert "说明书正文" in html and "说明书目录" in html
+            return html, parsed, captured[0][1]
 
-    full_url = _build_url(app, "scheduler.config_manual_page", src=material_src)
-    full_resp = client.get(full_url)
-    if full_resp.status_code != 200:
-        raise RuntimeError(f"默认界面整本说明书请求失败：{full_resp.status_code}")
-    full_html = full_resp.get_data(as_text=True)
-    full_cfg = _extract_json_config(full_html)
-    assert full_cfg.get("mode") == "full", "默认界面整本说明书 JSON mode 异常"
-    assert full_cfg.get("manualText") == manual_text, "默认界面整本说明书 JSON 应保留完整 manualText"
-    assert full_cfg.get("currentManual") is None, "默认界面整本说明书不应包含 currentManual"
-    assert full_cfg.get("relatedManuals") == [], "默认界面整本说明书不应包含 relatedManuals"
-    assert "当前页面主题：" not in full_html, "默认界面整本说明书不应出现页面级主题"
-    assert "manual-main-column" not in full_html, "默认界面整本说明书不应渲染页面级右列容器"
-    assert "manual-related-panel" not in full_html, "默认界面整本说明书不应渲染相关模块面板"
+        material_src = _build_url(app, "material.materials_page") + "?"
+        full_url = _build_url(app, "scheduler.config_manual_page", src=material_src)
+        full_html, full, state = read(full_url)
+        # Old embedded JSON assertions now check the actual render context AND emitted text.
+        assert state["manual_mode"] == "full" and state["manual_text"] == manual_text
+        assert state["current_manual"] is None and state["related_manuals"] == []
+        assert material_src in full.hrefs
+        assert heading_ids <= full.ids and set(internal_hashes) <= full.ids
+        expected_bodies = [line for line in manual_text.splitlines(keepends=True) if not re.match(r"^#{1,6}\s+", line)]
+        assert "".join(full.pre) == "".join(expected_bodies)
+        assert "相关说明" not in full_html
 
-    page_url = _build_url(
-        app,
-        "scheduler.config_manual_page",
-        page="material.materials_page",
-        src=material_src,
-    )
-    page_resp = client.get(page_url)
-    if page_resp.status_code != 200:
-        raise RuntimeError(f"默认界面页面级说明书请求失败：{page_resp.status_code}")
-    page_html = page_resp.get_data(as_text=True)
-    page_cfg = _extract_json_config(page_html)
-    assert page_cfg.get("mode") == "page", "默认界面页面级说明 JSON mode 异常"
-    assert page_cfg.get("manualText") == "", "默认界面页面级说明 JSON 不应继续注入整本 manualText"
-    assert (page_cfg.get("currentManual") or {}).get("title") == "物料主数据", "默认界面页面级说明主题异常"
-    related_manuals = list(page_cfg.get("relatedManuals") or [])
-    assert related_manuals, "默认界面页面级说明缺少 relatedManuals"
-    assert any(item.get("preview_sections") for item in related_manuals), "默认界面 relatedManuals 缺少 preview_sections"
-    assert all(len(item.get("preview_sections") or []) <= 2 for item in related_manuals), "默认界面 preview_sections 超过 2 个"
-    assert '<div class="aps-summary-label">当前页面主题</div>' in page_html, "默认界面页面级说明缺少当前页主题标签"
-    assert '<div class="aps-summary-value">物料主数据</div>' in page_html, "默认界面页面级说明缺少当前页主题值"
-    assert '<div class="aps-summary-label">对应整本章节</div>' in page_html, "默认界面页面级说明缺少整本章节标签"
-    assert "相关模块说明" in page_html, "默认界面页面级说明缺少 related 区块"
-    assert "manual-main-column" in page_html, "默认界面页面级说明缺少右列容器"
-    assert "manual-related-panel" in page_html, "默认界面页面级说明缺少相关模块面板类"
-    assert page_html.count('id="content"') == 1, "默认界面页面级说明应只保留一个 #content"
-    assert page_html.index("manual-main-column") < page_html.index('id="content"') < page_html.index("manual-related-panel"), (
-        "默认界面页面级说明右列结构顺序异常"
-    )
-    assert 'data-manual-markdown="' in page_html, "默认界面页面级说明缺少 related Markdown 渲染占位"
-    assert "## 物料主数据" in page_html, "默认界面 noscript 缺少当前页 fallback 标题"
-    current_sections = list((page_cfg.get("currentManual") or {}).get("sections") or [])
-    assert current_sections, "默认界面页面级说明缺少当前页章节"
-    first_section_title = str(current_sections[0].get("title") or "").strip()
-    assert first_section_title and f"### {first_section_title}" in page_html, "默认界面 noscript 缺少当前页关键说明 fallback"
+        page_url = _build_url(app, "scheduler.config_manual_page", page="material.materials_page", src=material_src)
+        page_html, page, page_state = read(page_url)
+        assert page_state["manual_mode"] == "page"
+        assert page_state["current_manual"]["title"] == "物料主数据"
+        related = page_state["related_manuals"]
+        assert related and any(item.get("preview_sections") for item in related)
+        assert all(len(item.get("preview_sections") or []) <= 2 for item in related)
+        assert "物料主数据" in page_html and "相关说明" in page_html
+        assert material_src in page.hrefs and page_state["full_manual_section_url"] in page.hrefs
+        assert "说明书正文" in page_html and page.pre
+        sections = page_state["current_manual"]["sections"]
+        assert sections and sections[0]["title"] in page_html
+        assert _slugify_heading("物料主数据") in page.ids
+        for item in related:
+            assert item["url"] in page.hrefs and item["title"] in page_html
+            for section in item.get("preview_sections") or []:
+                assert section["body_md"] in page.pre
+        for url in (state["download_url"], page_state["download_url"]):
+            download = client.get(url)
+            assert download.status_code == 200 and "attachment" in download.headers["Content-Disposition"]
+            assert download.data == manual_path.read_bytes()
+            download.close()
 
-    print("OK")
+        malicious = "# 1. 数字章节\n[危险](javascript:alert(1))\n<img src=x onerror=alert(1)>\n"
+        with monkeypatch.context() as patch:
+            patch.setattr(route_mod, "_load_manual_text_and_mtime", lambda *_: (malicious, None))
+            html, parsed, _ = read(full_url)
+            assert "1-数字章节" in parsed.ids
+            assert "[危险](javascript:alert(1))" in "".join(parsed.pre)
+            assert "<img" not in html and "&lt;img" in html
+            assert not [tag for tag, attrs in parsed.tags if tag in ("img", "iframe")]
+            assert len(parsed.scripts) == 1 and "alert(1)" not in parsed.scripts[0]
+        # A real open failure remains an explicit readable error without old JS/noscript dependencies.
+        blocked = tmp_path / "unreadable-manual.md"
+        blocked.mkdir()
+        with monkeypatch.context() as patch:
+            patch.setattr(route_mod, "_resolve_scheduler_manual_md_path", lambda: (str(blocked), [str(blocked)]))
+            failed, parsed, _ = read(full_url)
+            assert "说明书加载失败" in failed and parsed.pre
+    finally:
+        template_rendered.disconnect(rendered, app)

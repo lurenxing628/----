@@ -9,6 +9,9 @@ page-break 段容器；备注列存在；「现场状态」零出现（4.11 纸�
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
+from urllib.parse import parse_qs, urlsplit
+
 from web.routes.domains.scheduler.scheduler_week_plan_print import _identity_warning
 
 
@@ -58,6 +61,13 @@ def test_print_page_machine_view_sheets_header_and_remark_column(app_client, db_
     assert "<th class=\"col-remark\"" in html and "备注" in html
     assert "现场状态" not in html  # 4.11：纸面零现场事实
     assert "window.print()" in html
+    assert 'data-workbench-print="true"' in html
+    assert "/static/css/" not in html and "/static/js/" not in html
+    assert "thead { display:table-header-group; }" in html
+    headers = [part.split("</thead>", 1)[0] for part in html.split("<thead>")[1:]]
+    assert len(headers) == 2
+    for header in headers:
+        assert "v7" in header and "2026-06-01 ～ 2026-06-07" in header and "备注" in header
 
 
 def test_print_page_operator_view_unassigned_fallback(app_client, db_env):
@@ -108,21 +118,47 @@ def test_print_page_no_history_empty_state(app_client, db_env):
 
 def test_week_plan_page_print_entry_carries_full_params(app_client, db_env):
     _seed_week_plan(db_env)
-    html = app_client.get(
-        "/scheduler/week-plan?version=7&week_start=2026-06-01&batch_id=B1&resource_type=machine&resource_id=M1"
-    ).get_data(as_text=True)
-    assert "打印周派工单" in html
-    assert "/scheduler/week-plan/print?" in html
-    start = html.index("/scheduler/week-plan/print?")
-    href = html[start: html.index('"', start)]
-    for piece in ("version=7", "week_start=2026-06-01", "batch_id=B1", "resource_type=machine", "resource_id=M1"):
-        assert piece in href, href
+    query = dict(version="7", week_start="2026-06-01", batch_id="B1", resource_type="machine", resource_id="M1")
+    old_page = app_client.get("/scheduler/week-plan", query_string=query)
+    assert old_page.status_code == 410 and "Location" not in old_page.headers
+    assert "旧入口已退役" in old_page.get_data(as_text=True)
+    # 旧周计划的按钮退役；真实打印页及其切换/返回链接继续逐字段保留查询。
+    response = app_client.get("/scheduler/week-plan/print", query_string=query)
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "M1 车床" in html and "B1" in html and "外协/未分配" not in html
+    class Links(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.links = []
+        def handle_starttag(self, tag, attrs):
+            if tag == "a":
+                self.links.append(dict(attrs).get("href", ""))
+    parser = Links()
+    parser.feed(html)
+    selected = [href for href in parser.links if urlsplit(href).path in
+                ("/scheduler/week-plan/print", "/scheduler/week-plan")]
+    assert len(selected) >= 2
+    for href in selected:
+        actual = parse_qs(urlsplit(href).query)
+        for key, value in query.items():
+            assert actual[key] == [value], href
 
 
 def test_print_page_filter_scope_label_in_header(app_client, db_env):
     _seed_week_plan(db_env)
     html = app_client.get(_URL + "&batch_id=B1&resource_type=machine&resource_id=M1").get_data(as_text=True)
     assert "仅含筛选范围：批次 B1、设备 M1" in html
+    from core.infrastructure.database import get_connection
+    with get_connection(db_env) as conn:
+        conn.execute("INSERT INTO ScheduleHistory(version,strategy,result_status,result_summary) VALUES(8,'weighted','success','{}')")
+        conn.execute("INSERT INTO Schedule(op_id,machine_id,start_time,end_time,version) "
+                     "SELECT op_id,machine_id,start_time,end_time,8 FROM Schedule WHERE version=7")
+    warning_html = app_client.get(_URL).get_data(as_text=True)
+    headers = [part.split("</thead>", 1)[0] for part in warning_html.split("<thead>")[1:]]
+    assert len(headers) == 2
+    for header in headers:
+        assert "历史正式方案，已被新版本替代，不得下发执行" in header
 
 
 def test_identity_warning_three_states():

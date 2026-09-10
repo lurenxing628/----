@@ -162,7 +162,7 @@ def _render_excel_machine_page(
             }
         )
     return render_template(
-        "equipment/excel_import_machine.html",
+        'workbench/legacy_result.html',
         title="批量维护设备",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(preview_rows, {"状态": machine_status_label}),

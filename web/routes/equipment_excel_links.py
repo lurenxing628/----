@@ -81,7 +81,7 @@ def _render_excel_link_page(
     filename: Optional[str],
 ):
     return render_template(
-        "equipment/excel_import_machine_operator.html",
+        'workbench/legacy_result.html',
         title="批量维护设备人员关系",
         existing_list=existing_list,
         preview_rows=preview_rows,

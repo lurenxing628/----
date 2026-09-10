@@ -84,7 +84,7 @@ def _render_excel_calendar_page(
     holiday_default_efficiency_warning: Optional[str] = None,
 ):
     return render_template(
-        "scheduler/excel_import_calendar.html",
+        'workbench/legacy_result.html',
         title="批量维护工作日历",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(

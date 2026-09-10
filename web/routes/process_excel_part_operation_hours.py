@@ -222,7 +222,7 @@ def _render_excel_part_op_hours_page(
     filename: Optional[str],
 ):
     return render_template(
-        "process/excel_import_part_operation_hours.html",
+        'workbench/legacy_result.html',
         title="批量维护工序工时",
         existing_list=existing_list,
         preview_rows=preview_rows,

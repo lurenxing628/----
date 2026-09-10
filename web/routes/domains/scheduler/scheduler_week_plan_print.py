@@ -137,7 +137,7 @@ def week_plan_print_page():
 
     history = data.get("history") if isinstance(data.get("history"), dict) else {}
     return render_template(
-        "scheduler/week_plan_print.html",
+        'workbench/print.html',
         title="周派工单",
         sheets=sheets,
         version=version,

@@ -96,7 +96,7 @@ def _render_excel_batches_page(
 ):
     strict_mode_help = "勾选后：按路线生成工序时，资料不完整就停下，并提示哪一行、哪一项要补。不勾选：能确认的数据会继续处理，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正；但批次号、图号、数量这类必填项有问题仍然会报错。"
     return render_template(
-        "scheduler/excel_import_batches.html",
+        'workbench/legacy_result.html',
         title="批量维护批次",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(

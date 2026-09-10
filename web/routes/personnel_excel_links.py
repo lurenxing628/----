@@ -98,7 +98,7 @@ def _render_excel_link_page(
         {"技能等级": skill_level_label, "主操设备": yes_no_label},
     )
     return render_template(
-        "personnel/excel_import_operator_machine.html",
+        'workbench/legacy_result.html',
         title="批量维护人员设备关系",
         existing_list=existing_list,
         preview_rows=preview_display_rows,

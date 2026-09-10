@@ -1,0 +1,12 @@
+{% extends "workbench/legacy_base.html" %}
+{% block content %}
+<p class="notice" role="status">{{ decision.message }}</p>
+<p>已退役的是旧页面或控件；原业务数据、保存的配置和历史记录仍保留。</p>
+{% if decision.public_context %}
+<dl>{% for label, value in decision.public_context.items() %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+{% endif %}
+{% if decision.option_ids %}<p class="muted">对应选项：{{ decision.option_ids|join("、") }}</p>{% endif %}
+{% if decision.links %}
+<nav class="actions">{% for link in decision.links %}<a href="{{ link.url }}">{{ link.label }}</a>{% endfor %}</nav>
+{% endif %}
+{% endblock %}

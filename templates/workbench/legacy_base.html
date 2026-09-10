@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or "APS 智能排产" }}</title>
+  {% include "workbench/legacy_style.html" %}
+  <script>
+  try { var theme = localStorage.getItem('aps_kit_theme') || localStorage.getItem('aps_theme');
+    if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme;
+  } catch (error) { document.documentElement.dataset.preferenceError = 'true'; }
+  </script>
+</head>
+<body>
+  <main data-workbench-legacy-response="true">
+    <header><h1>{{ title or "APS 智能排产" }}</h1><a href="/workbench">工作台</a></header>
+    <p class="notice preference-error" role="status">显示偏好无法读取，本页使用浅色。业务处理结果未被修改。</p>
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+      <p class="notice" data-level="{{ category }}" role="status">{{ message }}</p>
+    {% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

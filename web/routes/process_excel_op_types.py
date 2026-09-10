@@ -59,7 +59,7 @@ def _render_excel_op_type_page(
     filename: Optional[str],
 ):
     return render_template(
-        "process/excel_import_op_types.html",
+        'workbench/legacy_result.html',
         title="批量维护工种",
         existing_list=list(existing.values()),
         preview_rows=project_preview_rows_for_display(preview_rows, {"归属": source_type_label}),

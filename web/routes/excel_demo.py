@@ -55,7 +55,7 @@ def _render_demo_page(
     filename: Any,
 ):
     return render_template(
-        "excel/demo.html",
+        'workbench/legacy_result.html',
         title="Excel 导入演示",
         existing_list=list(existing.values()),
         preview_rows=preview_rows,

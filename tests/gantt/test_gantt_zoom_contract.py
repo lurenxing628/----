@@ -1,113 +1,90 @@
-"""回归测试：在 Node DOM shim 下加载 gantt.js/gantt_zoom.js，校验 zoom.ZOOM_SPECS 缩放级别顺序（month..one-minute）与各级 stepMinutes（half-day=720…one-minute=1），normalizeZoomLevel 把旧 Day/Week/Month 映射到新 key；并用 frappe-gantt vendor 验证分钟级 view_mode 生成递增日期且短任务（36 分钟）条形宽度按列宽缩放不丢失。"""
+"""LEG-035..041: legacy zoom is unreachable; the shipped new model/canvas retains minute precision."""
 
 from __future__ import annotations
 
-import importlib.util
 import json
-from pathlib import Path
+import subprocess
 
+from core.infrastructure.database import get_connection
 from tests._support.paths import REPO_ROOT
+from tests.gantt.test_gantt_url_persistence import _assert_retired, _business_state, _canonical_workspace, _seed
 
 
-def _load_helpers():
-    helper_path = REPO_ROOT / "tests" / "gantt" / "test_gantt_critical_outline_sync.py"
-    spec = importlib.util.spec_from_file_location("regression_gantt_critical_outline_sync", helper_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load gantt DOM helper from {helper_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_zoom_spec_contains_first_version_levels_and_frappe_mapping() -> None:
-    helpers = _load_helpers()
-    node_code = f"""
-{helpers.DOM_SHIM_JS}
-loadScript({json.dumps(str(REPO_ROOT / "static" / "js" / "gantt.js"))});
-loadScript({json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_zoom.js"))});
-
-const zoom = window.__APS_GANTT__.zoom;
-const levels = Object.keys(zoom.ZOOM_SPECS);
-const specs = levels.map((level) => zoom.getZoomSpec(level));
-
-process.stdout.write(JSON.stringify({{
-  levels,
-  specs,
-  legacyDay: zoom.normalizeZoomLevel("Day"),
-  legacyWeek: zoom.normalizeZoomLevel("Week"),
-  legacyMonth: zoom.normalizeZoomLevel("Month"),
-}}));
+def _run_model(code):
+    setup = """
+const fs = require('fs'), path = require('path'), vm = require('vm');
+const fills = [], canvas = { getBoundingClientRect: () => ({ width: 720, height: 56 }),
+  getContext: () => new Proxy({ fillRect: (x,y,w,h) => fills.push({x,y,w,h}) }, { get: (o,k) => o[k] || (() => {}) }) };
+const runtime = vm.createContext({ window: {}, console, document: { documentElement: {} },
+  React: { useRef: () => ({ current: canvas }), useLayoutEffect: fn => fn(), createElement: () => ({}) },
+  MutationObserver: class { observe() {} disconnect() {} },
+  ResizeObserver: class { observe() {} disconnect() {} },
+  getComputedStyle: () => ({ getPropertyValue: () => '#000' }) });
+runtime.window = runtime;
 """
-    result = helpers._run_node_json(node_code)
-
-    assert result["levels"] == [
-        "month",
-        "week",
-        "day",
-        "half-day",
-        "quarter-day",
-        "hour",
-        "fifteen-minute",
-        "five-minute",
-        "one-minute",
-    ]
-    step_by_level = {item["level"]: item["stepMinutes"] for item in result["specs"]}
-    assert step_by_level["half-day"] == 720
-    assert step_by_level["quarter-day"] == 360
-    assert step_by_level["hour"] == 60
-    assert step_by_level["fifteen-minute"] == 15
-    assert step_by_level["five-minute"] == 5
-    assert step_by_level["one-minute"] == 1
-    assert result["legacyDay"] == "day"
-    assert result["legacyWeek"] == "week"
-    assert result["legacyMonth"] == "month"
-
-
-def test_vendor_minute_modes_generate_increasing_dates_without_losing_short_task_width() -> None:
-    helpers = _load_helpers()
-    node_code = f"""
-{helpers.DOM_SHIM_JS}
-loadScript({helpers._vendor_js()});
-
-const modes = ["Hour", "Fifteen Minute", "Five Minute", "One Minute"];
-const out = {{}};
-for (const mode of modes) {{
-  const host = createHost("gantt_" + mode.replace(/\\s+/g, "_"));
-  const gantt = new Gantt(host, [{{
-    id: "T36",
-    name: "36 minute task",
-    start: "2026-05-11 08:00:00",
-    end: "2026-05-11 08:36:00",
-    progress: 0,
-    dependencies: "",
-  }}], {{ view_mode: mode }});
-  const bar = gantt.get_bar("T36");
-  out[mode] = {{
-    dateDeltaMs: gantt.dates[1] - gantt.dates[0],
-    stepMs: gantt.options.step_ms,
-    width: Number(bar.$bar.getAttribute("width")),
-    columnWidth: gantt.options.column_width,
-    stepMinutes: gantt.options.step_minutes,
-  }};
-}}
-process.stdout.write(JSON.stringify(out));
+    setup += "const root = " + json.dumps(str(REPO_ROOT)) + ";\n"
+    setup += """
+for (const name of ['PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'PlanGanttCanvas.js']) {
+  vm.runInContext(fs.readFileSync(path.join(root, 'static/workbench/app', name), 'utf8'), runtime, { filename: name });
+}
+const M = runtime.PlanGanttModel;
 """
-    result = helpers._run_node_json(node_code)
-
-    assert result["Hour"]["dateDeltaMs"] == 60 * 60 * 1000
-    assert result["Fifteen Minute"]["dateDeltaMs"] == 15 * 60 * 1000
-    assert result["Five Minute"]["dateDeltaMs"] == 5 * 60 * 1000
-    assert result["One Minute"]["dateDeltaMs"] == 60 * 1000
-    assert abs(result["One Minute"]["width"] - 36 * result["One Minute"]["columnWidth"]) < 0.001
-    for item in result.values():
-        assert item["width"] > 0
+    result = subprocess.run(["node", "-"], input=setup + code, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return json.loads(result.stdout)
 
 
-def main() -> None:
-    test_zoom_spec_contains_first_version_levels_and_frappe_mapping()
-    test_vendor_minute_modes_generate_increasing_dates_without_losing_short_task_width()
-    print("OK")
+def test_zoom_spec_contains_first_version_levels_and_frappe_mapping(app_client, db_env) -> None:
+    _seed(db_env)
+    before = _business_state(app_client)
+    levels = ["month", "week", "day", "half-day", "quarter-day", "hour", "fifteen-minute", "five-minute", "one-minute"]
+    for level in levels:
+        _assert_retired(app_client, {"version": "3", "gantt_zoom": level})
+    for level in ("Day", "Week", "Month"):
+        _assert_retired(app_client, {"version": "3", "gantt_vm": level})
+    result = _run_model("""
+const steps = [720, 360, 60, 15, 5, 1], start = M.instant('2026-05-11T00:00:00');
+const actual = steps.map(minutes => {
+  const ticks = M.ticks(start, start + minutes * 60000 * 8, 1000, 0, 1000);
+  return { minutes, delta: ticks[1].at - ticks[0].at, increasing: ticks.every((v,i) => !i || v.at > ticks[i-1].at) };
+});
+process.stdout.write(JSON.stringify(actual));
+""")
+    assert [row["minutes"] for row in result] == [720, 360, 60, 15, 5, 1]
+    for row in result:
+        assert row["delta"] == row["minutes"] * 60000 and row["increasing"]
+    assert _business_state(app_client) == before
 
 
-if __name__ == "__main__":
-    main()
+def test_vendor_minute_modes_generate_increasing_dates_without_losing_short_task_width(app_client, db_env) -> None:
+    _seed(db_env)
+    with get_connection(db_env) as conn:
+        conn.execute("UPDATE Schedule SET start_time='2026-05-11 08:00:00',end_time='2026-05-11 08:36:00' WHERE version=3")
+    before = _business_state(app_client)
+    _, payload = _canonical_workspace(app_client, {"version": "3", "start_date": "2026-05-11", "end_date": "2026-05-11"})
+    data = payload["data"]
+    assert len(data["tasks"]) == 1
+    assert data["tasks"][0]["start"] == "2026-05-11T08:00:00" and data["tasks"][0]["end"] == "2026-05-11T08:36:00"
+    result = _run_model("const data = " + json.dumps(data, ensure_ascii=False) + ";\n" + """
+const original = JSON.stringify(data), out = {};
+for (const minutes of [60, 15, 5, 1]) {
+  const model = M.layout(data, 'machine', '', false, 720), row = model.rows[0];
+  const item = row.items[0], ticks = M.ticks(model.start, model.start + minutes * 60000 * 8, 1000, 0, 1000);
+  const startCount = fills.length;
+  runtime.PlanGanttCanvas.DenseRow({ row, model, width: 720, viewport: 720, left: 0,
+    selectedRef: '', risks: new Map(), onSelect: () => {}, onHover: () => {} });
+  const painted = fills.slice(startCount);
+  out[minutes] = { delta: ticks[1].at - ticks[0].at, duration: item.end - item.start,
+    columnWidth: 60000 / (model.end - model.start) * 720, painted, taskRef: item.task.task_ref };
+}
+process.stdout.write(JSON.stringify({ out, unchanged: JSON.stringify(data) === original }));
+""")
+    assert result["unchanged"]
+    for minutes in (60, 15, 5, 1):
+        row = result["out"][str(minutes)]
+        assert row["delta"] == minutes * 60000 and row["duration"] == 36 * 60000
+        assert row["taskRef"] == data["tasks"][0]["task_ref"]
+        assert len(row["painted"]) == 1
+        assert abs(row["painted"][0]["w"] - (36 * row["columnWidth"] - 4)) < 0.001
+        assert row["painted"][0]["w"] > 0
+    assert _business_state(app_client) == before

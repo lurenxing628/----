@@ -119,7 +119,9 @@ def test_report_request_rejects_resource_type_without_resource_id() -> None:
 
     assert page_response.status_code == 400
     assert export_response.status_code == 400
-    assert "缺少设备编号" in page_response.get_data(as_text=True)
+    # 退役页面拒绝非法范围；原解析错误的逐字合同仍由保留导出覆盖。
+    assert "原计划身份、日期或筛选无效" in page_response.get_data(as_text=True)
+    assert "未改选对象或扩大范围" in page_response.get_data(as_text=True)
     assert "缺少设备编号" in export_response.get_data(as_text=True)
 
 
@@ -139,7 +141,14 @@ def test_report_request_rejects_conflicting_resource_aliases() -> None:
 
     assert page_response.status_code == 400
     assert export_response.status_code == 400
-    assert "同时收到了人员编号" in page_response.get_data(as_text=True)
+    assert "原计划身份、日期或筛选无效" in page_response.get_data(as_text=True)
+    same_conflict_export = client.get(
+        "/reports/utilization/export?version=12&plan_role=adopted"
+        "&start_date=2026-05-06&end_date=2026-05-06"
+        "&resource_type=machine&resource_id=M-RPT&operator_id=O-RPT"
+    )
+    assert same_conflict_export.status_code == 400
+    assert "同时收到了人员编号" in same_conflict_export.get_data(as_text=True)
     assert "设备编号冲突" in export_response.get_data(as_text=True)
 
 

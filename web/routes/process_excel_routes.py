@@ -80,7 +80,7 @@ def _render_excel_routes_page(
 ):
     strict_mode_help = "勾选后：资料不完整就停下，并告诉你哪一行、哪一项要补。不勾选：能确认的数据会继续处理，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正；但图号为空、格式错误这类必须先改好的问题仍然会报错。"
     return render_template(
-        "process/excel_import_routes.html",
+        'workbench/legacy_result.html',
         title="批量维护路线文字",
         existing_list=list(existing.values()),
         preview_rows=preview_rows,

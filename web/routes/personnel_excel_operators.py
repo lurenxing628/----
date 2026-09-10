@@ -72,7 +72,7 @@ def _render_excel_operator_page(
             }
         )
     return render_template(
-        "personnel/excel_import_operator.html",
+        'workbench/legacy_result.html',
         title="批量维护人员",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(preview_rows, {"状态": operator_status_label}),

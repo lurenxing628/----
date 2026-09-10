@@ -36,6 +36,7 @@ from web.routes.personnel import bp as personnel_bp
 from web.routes.process import bp as process_bp
 from web.routes.reports import bp as reports_bp
 from web.routes.system import bp as system_bp
+from web.routes.workbench.legacy_dispatch import install_legacy_retirement
 from web.routes.workbench.registration import bp as workbench_bp
 
 from .launcher import resolve_shared_data_root
@@ -250,6 +251,7 @@ def _register_all_blueprints(app: Flask) -> None:
     app.register_blueprint(reports_bp, url_prefix="/reports")
     app.register_blueprint(system_bp, url_prefix="/system")
     app.register_blueprint(workbench_bp)
+    install_legacy_retirement(app)
 
 
 def _register_exit_backup(app: Flask) -> None:

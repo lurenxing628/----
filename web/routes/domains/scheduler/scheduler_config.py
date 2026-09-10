@@ -269,7 +269,7 @@ def config_manual_page():
     )
 
     return render_template(
-        "scheduler/config_manual.html",
+        'workbench/manual.html',
         title=view_state["page_title"],
         manual_mode=view_state["manual_mode"],
         manual_text=manual_text,
