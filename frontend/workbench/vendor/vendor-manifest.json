@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "packages": [
+    {
+      "name": "react",
+      "version": "18.3.1",
+      "license": "MIT",
+      "metadata_url": "https://registry.npmjs.org/react/18.3.1",
+      "tarball": "https://registry.npmjs.org/react/-/react-18.3.1.tgz",
+      "integrity": "sha512-wS+hAgJShR0KhEvPJArfuPVN1+Hz1t0Y6n5jLrGQbkb4urgPE/0Rve+1kMB1v/oWgHgm4WIcV+i7F2pTVj+2iQ==",
+      "tarball_sha256": "8d9bed01a672e7eaf387942d781ad47c6a43089a30a0306060f9fd5ac7870347"
+    },
+    {
+      "name": "react-dom",
+      "version": "18.3.1",
+      "license": "MIT",
+      "metadata_url": "https://registry.npmjs.org/react-dom/18.3.1",
+      "tarball": "https://registry.npmjs.org/react-dom/-/react-dom-18.3.1.tgz",
+      "integrity": "sha512-5m4nQKp+rZRb09LNH59GM4BxTh9251/ylbKIbpe7TpGxfJ+9kv6BLkLBXIjjspbgbnIBNqlI23tRnTWT0snUIw==",
+      "tarball_sha256": "031d4427a99f2f3f6cac18bbbf308594a67e4f47d10f4896fdec446505b040e0"
+    }
+  ],
+  "files": [
+    {
+      "path": "react-18.3.1.production.min.js",
+      "sha256": "d949f1c3687aedadcedac85261865f29b17cd273997e7f6b2bfc53b2f9d4c4dd",
+      "size": 10751
+    },
+    {
+      "path": "react-dom-18.3.1.production.min.js",
+      "sha256": "35f4f974f4b2bcd44da73963347f8952e341f83909e4498227d4e26b98f66f0d",
+      "size": 131835
+    },
+    {
+      "path": "react-dom.LICENSE",
+      "sha256": "52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85",
+      "size": 1086
+    },
+    {
+      "path": "react-dom.package.json",
+      "sha256": "d2f29e31bd48b833e48cd7bbf41f192e8ee4ff8da249fdbe10d4ac4114b8b12e",
+      "size": 1353
+    },
+    {
+      "path": "react.LICENSE",
+      "sha256": "52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85",
+      "size": 1086
+    },
+    {
+      "path": "react.package.json",
+      "sha256": "d4e68a5c96babb20cad1daafea8b78822eae45b341552cf5418d06a5304fa64c",
+      "size": 999
+    }
+  ],
+  "scripts": [
+    "react-18.3.1.production.min.js",
+    "react-dom-18.3.1.production.min.js"
+  ]
+}

@@ -6,11 +6,16 @@
   const emptyAdapter = {};
   const scopeKeys = ['query', 'page', 'size', 'sort', 'direction', 'column_filters', 'status', 'ready_status', 'focus', 'batch_ids'];
   const sourceKeys = ['plan_ref', 'batch_ref', 'task_ref', 'operation_ref', 'return_to'];
+  function validReturnTarget(value) {
+    return ['run', 'dashboard'].includes(value) || C.object(value)
+      && Object.keys(value).every(key => ['view', 'context'].includes(key))
+      && C.own(value, 'view') && value.view === 'dashboard' && C.own(value, 'context') && C.object(value.context);
+  }
   function sourceContext(value, entityRef) {
     if (value == null) return null;
     if (!C.object(value) || Object.keys(value).some(key => !sourceKeys.includes(key))
         || sourceKeys.slice(0, 4).some(key => C.own(value, key) && !B.ref(value[key]))
-        || C.own(value, 'return_to') && !['run', 'dashboard'].includes(value.return_to)
+        || C.own(value, 'return_to') && !validReturnTarget(value.return_to)
         || value.batch_ref && value.batch_ref !== entityRef) throw C.failure('批次来源引用或返回入口不正确。');
     return { ...value };
   }
@@ -102,6 +107,8 @@
       const next = !sort || sort.key !== key ? { key, direction: 'asc' } : sort.direction === 'asc' ? { key, direction: 'desc' } : null;
       setSort(next); filter(next ? { sort: next.key, direction: next.direction } : { sort: 'business_code', direction: 'asc' });
     }
+    const returnTarget = initial.sourceContext && initial.sourceContext.return_to || 'run';
+    const returnView = typeof returnTarget === 'string' ? returnTarget : returnTarget.view;
     const openEditor = entity => { command.reset(); setDialog({ type: 'base', entity }); };
     const deletion = entity => preview('bulk', { action: 'delete', refs: [entity.ref], patch: {} });
     return <div className="plana batch-workspace" data-batch-workspace><window.BatchControls.Styles />
@@ -124,7 +131,7 @@
           {Object.keys(scope.column_filters).length > 0 && <span>列筛选 {Object.keys(scope.column_filters).length} 项</span>}
           {(scope.focus || scope.batch_ids) && <span>已定位{scope.focus === 'gaps' ? '工序缺项' : scope.focus === 'unready' ? '未齐套' : '指定批次'}</span>}
           <Button icon="x" disabled={blocked} onClick={() => filter({ status: undefined, ready_status: undefined, column_filters: {}, focus: undefined, batch_ids: undefined })}>清除全部筛选</Button>
-          {onNav && <Button icon="arrow-left" disabled={blocked} onClick={() => onNav(initial.sourceContext && initial.sourceContext.return_to || 'run')}>{initial.sourceContext && initial.sourceContext.return_to === 'dashboard' ? '返回值班台' : '返回排产'}</Button>}</div>
+          {onNav && <Button icon="arrow-left" disabled={blocked} onClick={() => typeof returnTarget === 'string' ? onNav(returnTarget) : onNav(returnTarget.view, returnTarget.context)}>{returnView === 'dashboard' ? '返回值班台' : '返回排产'}</Button>}</div>
         <ErrorBox error={list.error} />{list.error && <Button icon="refresh-cw" disabled={blocked} onClick={() => filter({})}>重试读取批次</Button>}
         <window.BatchTable rows={data ? data.entities : []} scope={scope} selected={selected} setSelected={setSelected} onOpen={setOpened} onDelete={deletion}
           onSort={sortBy} onFilter={field => setDialog({ type: 'column', field, scope: { ...scope, snapshot_ref: snapshot } })} loading={list.loading} disabled={blocked || list.loading} />

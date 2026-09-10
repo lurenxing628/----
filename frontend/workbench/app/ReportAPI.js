@@ -13,6 +13,26 @@
     scopeKeys.forEach(key => { if (value[key] !== undefined && value[key] !== null && value[key] !== '') result[key] = value[key]; });
     return result;
   }
+  function table(value = {}, topic = 'delivery') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('报表查看状态无效，未改到默认页。');
+    const result = { topic, page: value.page === undefined ? 1 : value.page, size: value.size === undefined ? 20 : value.size,
+      sort: value.sort === undefined ? sorts[topic][0] : value.sort, direction: value.direction === undefined ? 'asc' : value.direction };
+    if (value.topic !== undefined && value.topic !== topic || !Number.isSafeInteger(result.page) || result.page < 1
+      || ![10, 20, 50].includes(result.size) || !sorts[topic].includes(result.sort) || !['asc', 'desc'].includes(result.direction))
+      throw new Error('报表专题、排序或分页无效，未改到其他查看状态。');
+    return result;
+  }
+  async function readView(api, input, signal) {
+    if (input.snapshot_ref) return api.read(input, signal);
+    const first = await api.read({ ...input, page: 1 }, signal);
+    if (input.plan_ref && first.data.plan.plan_ref !== input.plan_ref || first.data.topic !== input.topic)
+      throw new Error('重新读取的计划或专题与原查看状态不一致，未改用其他来源。');
+    const result = input.page === 1 ? first : await api.read({ ...input, ...scope(first.data.scope),
+      snapshot_ref: first.meta.snapshot_ref }, signal);
+    if (result.data.page.number !== input.page || result.data.page.size !== input.size)
+      throw new Error('原报表页已不可用，未改到第一页或其他页。');
+    return result;
+  }
   function validateLedger(data) {
     const count = value => Number.isInteger(value) && value >= 0;
     const amount = value => value === null || Number.isFinite(value);
@@ -47,7 +67,12 @@
       async read(input, signal) { return validate(await io.query('analytics', input, signal)); },
       async detail(ref, input, signal) {
         if (!/^[0-9a-f]{48}$/.test(ref)) throw new Error('工序引用无效，未定位其他对象。');
-        return validate(await io.query('analytics/operations/' + ref, input, signal));
+        const result = validate(await io.query('analytics/operations/' + ref, input, signal));
+        if (!result.data.detail || result.data.detail.operation.operation_ref !== ref
+          || result.data.detail.records.some(row => row.operation_ref !== ref) || result.meta.snapshot_ref !== input.snapshot_ref
+          || input.plan_ref && result.data.plan.plan_ref !== input.plan_ref)
+          throw new Error('工序详情与原对象、计划或当前读取快照不一致，未改指其他工序。');
+        return result;
       },
       async catalog(kind, input, signal) {
         if (!['overdue', 'utilization', 'downtime', 'official-review'].includes(kind)) throw new Error('报表目录不存在。');
@@ -68,5 +93,5 @@
       }
     };
   }
-  window.ReportAPI = { create, scope, validate, topics, sorts };
+  window.ReportAPI = { create, scope, table, readView, validate, topics, sorts };
 })();

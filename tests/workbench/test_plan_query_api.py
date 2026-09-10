@@ -113,7 +113,8 @@ def test_workspace_real_night_interval_and_real_full_projections(plan_api):
     assert data["projections"]["calendar"]["state"] == "available"
     assert data["projections"]["occupancy"]["state"] == "available"
     assert data["projections"]["delivery_risks"]["state"] == "unavailable"
-    assert set(data["projections"]) == {"baseline", "calendar", "occupancy", "delivery_risks"}
+    assert set(data["projections"]) == {"baseline", "calendar", "occupancy", "delivery_risks", "process_order"}
+    assert data["projections"]["process_order"]["state"] == "unavailable"
     detail = plan_api.read("/" + ref, snapshot_ref=result["meta"]["snapshot_ref"])
     assert detail["data"] == data and detail["meta"]["snapshot_ref"] == result["meta"]["snapshot_ref"]
 

@@ -76,9 +76,11 @@ async function verifyCells(page, payload) {
   });
 }
 async function openDetail(page, ref) {
-  const pending = page.waitForResponse(response => new URL(response.url()).pathname === '/api/workbench/v1/calibration/' + ref);
-  await page.locator('.ca-table tr[data-ref="' + ref + '"] button').click();
-  const response = await pending, payload = await response.json(); assert.equal(response.status(), 200, JSON.stringify(payload));
+  const [response] = await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname === '/api/workbench/v1/calibration/' + ref),
+    page.locator('.ca-table tr[data-ref="' + ref + '"]').getByRole('button', { name: /^查看 / }).click(),
+  ]);
+  const payload = await response.json(); assert.equal(response.status(), 200, JSON.stringify(payload));
   await page.locator('[data-sample-group="selected"]').waitFor();
   return payload;
 }
@@ -219,6 +221,9 @@ async function rejectInvalidDetails(page, payload) {
     await page.getByRole('region', { name: '校准详情', exact: true }).getByText(config.template_ref, { exact: true }).waitFor();
     record.recreated_ref_not_retargeted = true; await capture(page, 'deleted-recreated-ref'); await page.close();
     assert.deepEqual(record.errors, []); assert.deepEqual(record.external, []);
+  } catch (error) {
+    record.runner_error = error.stack;
+    throw error;
   } finally {
     if (browser) await browser.close(); await new Promise(resolve => server.close(resolve));
     fs.writeFileSync(path.join(output, 'calibration-lineage-ui.json'), JSON.stringify(record, null, 2));

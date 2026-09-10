@@ -1,11 +1,12 @@
 (function () {
   'use strict';
   const A = window.TrialAPI, C = window.TrialContract, U = window.TrialControls, S = window.TrialSession;
-  function Directory({ revision, onOpen, filterBase }) {
+  function Directory({ revision, onOpen, filterBase, fixedBase }) {
     const [collection, setCollection] = React.useState('drafts'), [query, setQuery] = React.useState({ page: 1, size: 20, status: 'all' });
     const [onlyBase, setOnlyBase] = React.useState(false), [reload, refresh] = React.useReducer(n => n + 1, 0);
     React.useEffect(() => { setQuery(q => ({ page: 1, size: q.size, status: q.status })); }, [revision]);
-    const q = { ...query, ...(onlyBase && filterBase ? { base_kind: Object.keys(filterBase)[0], base_ref: Object.values(filterBase)[0] } : {}) };
+    const selectedBase = fixedBase || (onlyBase ? filterBase : null);
+    const q = { ...query, ...(selectedBase ? { base_kind: Object.keys(selectedBase)[0], base_ref: Object.values(selectedBase)[0] } : {}) };
     const read = S.useRead(async signal => { const v = await A.read('/trial/' + collection, q, signal); C.catalog(v, collection, q); return v; }, [collection, JSON.stringify(q), revision, reload]);
     function reset(patch = {}) { setQuery({ page: 1, size: query.size, status: query.status, ...patch }); refresh(); }
     return <section aria-label="持久试调目录" className="tt-directory"><div className="tt-heading"><U.Tabs value={collection} label="试调目录类别"
@@ -13,7 +14,7 @@
       <div className="tt-tools"><label>状态 <select aria-label="目录状态" value={query.status} onChange={e => reset({ status: e.target.value })}>
         {(collection === 'drafts' ? ['all', 'editing', 'saved', 'discarded'] : ['all', 'saved']).map(s => <option key={s} value={s}>{s === 'all' ? '全部' : U.statusLabel(s)}</option>)}</select></label>
         <label>每页 <select aria-label="目录每页数量" value={query.size} onChange={e => reset({ size: Number(e.target.value) })}>{[10, 20, 50].map(n => <option key={n}>{n}</option>)}</select></label>
-        {filterBase && <label className="tt-check"><input type="checkbox" checked={onlyBase} onChange={e => { setOnlyBase(e.target.checked); reset(); }} />仅此原来源</label>}
+        {filterBase && <label className="tt-check"><input type="checkbox" checked={!!fixedBase || onlyBase} disabled={!!fixedBase} onChange={e => { setOnlyBase(e.target.checked); reset(); }} />仅此原来源</label>}
         <U.Button icon="refresh-cw" aria-label="重新读取试调目录" busy={read.busy} onClick={() => reset()} /></div></div>
       <U.ErrorBox error={read.error} />{read.busy && <p role="status">正在读取目录…</p>}
       {read.result && <><div className="tt-directory-scroll"><table className="tt-table" aria-label="试调目录"><thead><tr><th>名称</th><th>原来源</th><th>状态</th><th>安排</th><th>更新时间</th><th>本机操作者</th><th>操作</th></tr></thead>
@@ -61,7 +62,7 @@
         <U.Pager label="来源" page={d.page} onPage={page => setQ({ ...q, page, snapshot_ref: read.result.meta.snapshot_ref })} />}</>}
     </>;
   }
-  function Create({ initialBase, initialScope = {}, commands, onClose }) {
+  function Create({ initialBase, initialScope = {}, commands, onClose, fixedBase = false, onExisting }) {
     const [base, setBase] = React.useState(initialBase || null), [label, setLabel] = React.useState(initialBase ? '指定原来源' : ''), [epoch, refresh] = React.useReducer(n => n + 1, 0);
     const [inspect, setInspect] = React.useState(false), [agreed, setAgreed] = React.useState(false);
     const input = { base, scope: initialScope };
@@ -70,9 +71,10 @@
     const d = read.result && read.result.data;
     return <U.Modal title="从原来源创建试调" icon="square-pen" onClose={onClose} locked={commands.busy}
       footer={<><U.Button icon="x" disabled={commands.busy} onClick={onClose}>取消</U.Button>
+        {onExisting && <U.Button icon="folder-open" disabled={commands.busy} onClick={onExisting}>打开已有草稿</U.Button>}
         <U.Button icon="refresh-cw" disabled={!base || commands.busy} onClick={() => { commands.restore(); setInspect(true); setAgreed(false); refresh(); }}>核对原来源</U.Button>
         <U.Button icon="plus" className="btn primary" disabled={!d || !agreed || commands.blocked} onClick={() => commands.execute({ action: 'create', input }, d.write_context.write_token)}>确认创建草稿</U.Button></>}>
-      <div className="trial-modal-body"><SourceCatalog selected={base} onSelect={select} />
+      <div className="trial-modal-body">{!fixedBase && <SourceCatalog selected={base} onSelect={select} />}
         <p>已选择：{label || '尚未选择'}</p><U.ErrorBox error={read.error} /><U.ErrorBox error={commands.error} />
         {read.busy && <p role="status">正在核对完整原来源…</p>}{d && <><p>原来源共 {d.task_count} 道安排，完整复制；显示范围不截断草稿。</p>
           <U.Issues rows={d.validation.issues} /><label className="tt-check"><input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} />确认基于此来源创建独立草稿，正式计划保持不变</label></>}

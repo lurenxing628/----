@@ -55,3 +55,20 @@ __all__ = [
     "ResourceDispatchService",
     "ScheduleService",
 ]
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .batch_service import BatchService
+    from .calendar_service import CalendarService
+    from .config.config_service import ConfigService
+    from .gantt_adjustment_draft_service import GanttAdjustmentDraftService
+    from .gantt_adjustment_publish_service import GanttAdjustmentPublishService
+    from .gantt_adjustment_scenario_service import GanttAdjustmentScenarioService
+    from .gantt_adjustment_validation_service import GanttAdjustmentValidationService
+    from .gantt_service import GanttService
+    from .operation_execution_feedback_service import OperationExecutionFeedbackService
+    from .resource_dispatch_actual_record_service import ResourceDispatchActualRecordService
+    from .resource_dispatch_execution_service import ResourceDispatchExecutionService
+    from .resource_dispatch_service import ResourceDispatchService
+    from .schedule_service import ScheduleService

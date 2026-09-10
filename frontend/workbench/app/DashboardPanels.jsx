@@ -1,6 +1,14 @@
 (function () {
   'use strict';
   const C = window.DashboardContract, { Button, Issues } = window.ResourceControls;
+  const navigationLabels = { gantt: '计划甘特', fieldgantt: '现场实际', batches: '批次资料', analysis: '候选方案', field: '现场报工', outsourcing: '外协物流登记' };
+  function navigationTarget(n, onNavigate) {
+    C.check(C.object(n) && Object.prototype.hasOwnProperty.call(navigationLabels, n.view)
+      && C.object(n.context) && typeof n.enabled === 'boolean', '导航目标未知或上下文无效，未打开默认页面。');
+    C.check(n.view === 'outsourcing' ? typeof window.OutsourcingWorkspace === 'function' : typeof onNavigate === 'function', '对象导航尚未接入，原条目仍保留。');
+    C.check(n.enabled || typeof n.reason === 'string' && n.reason.trim().length > 0, '原对象不可定位的原因缺失，未打开其他对象。');
+    return navigationLabels[n.view];
+  }
   const value = v => v === null || v === undefined || v === '' ? '未填写' : typeof v === 'boolean' ? v ? '是' : '否' : String(v);
   const hours = v => v === null || v === undefined ? '未知' : v.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) + ' h';
   function Risk({ risk }) { return <span className={'dy-badge ' + (risk.active === true ? 'danger' : risk.active === false ? 'success' : 'warning')}>{risk.active === true ? '风险仍在' : risk.active === false ? '当前无风险' : '风险未知'}</span>; }
@@ -75,9 +83,18 @@
     <div className="dy-heading"><h3>{item.subject} · {C.categories[item.category]}</h3><div className="dy-tools"><Risk risk={item.risk} /><Status handling={item.handling} /></div></div>
     <p>{item.risk.message}</p><Facts handling={item.handling} /><Evidence source={item.source} /><div className="dy-tools">
       <Button icon={item.handling.status === 'closed' ? 'refresh-cw' : 'square-pen'} onClick={onHandle}>{item.handling.status === 'closed' ? '独立重开' : '登记处置'}</Button>
-      <Button icon="history" onClick={onHistory}>查看处置历史</Button>{item.navigation.map((n, i) => <Button key={i} icon="arrow-right" onClick={() => navigate(n)} reason={n.view === 'outsourcing' ? !window.OutsourcingWorkspace ? '外协登记模块尚未加载' : !n.enabled ? n.reason || '原来源不可导航' : '' : !canNavigate ? '对象导航尚未接入' : !n.enabled ? n.reason || '原来源不可导航' : ''}>{({ gantt: '计划甘特', fieldgantt: '现场实际', batches: '批次资料', analysis: '候选方案', outsourcing: '原外协物流登记' })[n.view]}</Button>)}
+      <Button icon="history" onClick={onHistory}>查看处置历史</Button>{item.navigation.map((n, i) => <Button key={i} icon="arrow-right" onClick={() => navigate(n, item)}>{n.view === 'outsourcing' ? '原外协物流登记' : navigationLabels[n.view] || '未知导航目标'}</Button>)}
       {item.category === 'actual' && item.navigation.some(n => n.enabled && n.command_context === 'read_execution_write_context') && <Button icon="arrow-right" reason={!canNavigate ? '现场报工入口尚未接入' : ''} onClick={() => navigate({ ...item.navigation[0], view: 'field' })}>现场报工</Button>}
     </div>{item.category === 'external' && <div className="dy-note">关闭风险处置不代表已回厂，也不代表工序完工。物流事实与处置历史分别保留。</div>}{item.handling.status === 'closed' && <div className="dy-note">处置已关闭，风险按当前真实来源继续评估。</div>}</section>; }
+  function NavigationConfirmation({ entry, error, onClose, onConfirm }) {
+    const { Modal, ErrorBox } = window.ResourceControls, { item, navigation, label } = entry;
+    return <Modal title="原对象暂不可定位" icon="circle-alert" onClose={onClose} footer={<>
+      <Button icon="x" onClick={onClose}>取消</Button><Button icon="arrow-right" onClick={onConfirm}>打开{label}概览</Button></>}>
+      <div className="modal-b scroll" style={{ overflowWrap: 'anywhere' }}><h3>{item.subject} · {C.categories[item.category]}</h3><p role="status">{navigation.reason}</p>
+        <div className="dy-context">原条目引用 {item.item_ref} · {item.source_state === 'current' ? '当前来源' : '原来源当前未评估'}</div>
+        <Evidence source={item.source} /><p>原条目与处置状态保持不变。</p><ErrorBox error={error} /></div>
+    </Modal>;
+  }
   function Pressure({ data, navigate, canNavigate }) {
     const p = data.resource_pressure, rows = p.resources;
     return <section aria-label="真实资源压力"><div className="dy-heading"><h3>正式计划资源压力</h3>{data.plan && <Button icon="arrow-right" reason={!canNavigate ? '对象导航尚未接入' : ''} onClick={() => navigate({ view: 'gantt', context: { plan_ref: data.plan.plan_ref }, enabled: true })}>计划甘特</Button>}</div>
@@ -104,5 +121,5 @@
   function ExternalHandlingState({ summary }) { return <section aria-label="外协风险处置"><h3>外协风险处置</h3>
     {summary.handling_supported ? <div className="dy-context">已登记处置 {summary.handling_count} 项 · 已关闭处置 {summary.closed_count} 项 · 关闭不改变真实回厂状态</div> : <div className="dy-note warning" role="status">{summary.handling_state === 'unavailable' ? '外协处置台账不可用' : '外协风险处置尚未接入'} · 处置数量未知，未显示为零。</div>}
     <Issues issues={summary.handling_issues || []} /></section>; }
-  window.DashboardPanels = { Overview, Rail, Filters, Pager, List, Gaps, Facts, Evidence, Detail, Pressure, Candidates, Risk, Status, CategoryState, value, ExternalRegistration, ExternalHandlingState };
+  window.DashboardPanels = { Overview, Rail, Filters, Pager, List, Gaps, Facts, Evidence, Detail, NavigationConfirmation, navigationTarget, Pressure, Candidates, Risk, Status, CategoryState, value, ExternalRegistration, ExternalHandlingState };
 })();

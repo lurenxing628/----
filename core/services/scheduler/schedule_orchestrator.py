@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Any, List
+from typing import TYPE_CHECKING, Any, List
 
 __all__ = ["ScheduleOrchestrationOutcome", "orchestrate_schedule_run"]  # noqa: F822
 
@@ -16,3 +16,7 @@ def __getattr__(name: str) -> Any:
 
 def __dir__() -> List[str]:
     return sorted(set(globals()).union(__all__))
+
+
+if TYPE_CHECKING:
+    from .run.schedule_orchestrator import ScheduleOrchestrationOutcome, orchestrate_schedule_run

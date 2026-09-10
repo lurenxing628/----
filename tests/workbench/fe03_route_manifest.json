@@ -1,0 +1,1725 @@
+[
+  {
+    "rule": "/workbench",
+    "endpoint": "workbench.index",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/workbench/trial",
+    "endpoint": "workbench.trial",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/system/overview",
+    "endpoint": "workbench.system_overview",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/material",
+    "endpoint": "workbench.material_list",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/material/<ref>",
+    "endpoint": "workbench.material_detail",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/material/create",
+    "endpoint": "workbench.material_create",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "create"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/material/<ref>/update",
+    "endpoint": "workbench.material_update",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "update"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/material/<ref>/delete",
+    "endpoint": "workbench.material_delete",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "delete"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/commands/<request_key>",
+    "endpoint": "workbench.command_receipt",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/<kind>",
+    "endpoint": "workbench.resource_list",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/<kind>/<ref>",
+    "endpoint": "workbench.resource_detail",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/<kind>/create",
+    "endpoint": "workbench.resource_create",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "create"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/<kind>/<ref>/update",
+    "endpoint": "workbench.resource_update",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "update"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/<kind>/<ref>/delete",
+    "endpoint": "workbench.resource_delete",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "delete"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/resources/summary",
+    "endpoint": "workbench.resource_summary",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/<kind>/<ref>/relations",
+    "endpoint": "workbench.resource_relations",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/<kind>/query",
+    "endpoint": "workbench.resource_table_query",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/<kind>/facets",
+    "endpoint": "workbench.resource_table_facets",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/<kind>/facet-selection",
+    "endpoint": "workbench.resource_table_facet_selection",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/material/bulk-preview",
+    "endpoint": "workbench.material_bulk_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/imports/material/preview",
+    "endpoint": "workbench.material_import_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/material/bulk-confirm",
+    "endpoint": "workbench.material_bulk_delete_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "material.bulk_delete"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/imports/material/confirm",
+    "endpoint": "workbench.material_import_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "material.import"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/exports/material/preview",
+    "endpoint": "workbench.material_export_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/exports/material",
+    "endpoint": "workbench.material_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/templates/material",
+    "endpoint": "workbench.material_template",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/<kind>/bulk-preview",
+    "endpoint": "workbench.resource_bulk_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/imports/<kind>/preview",
+    "endpoint": "workbench.resource_import_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/<kind>/bulk-confirm",
+    "endpoint": "workbench.resource_bulk_delete_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "bulk_delete"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/imports/<kind>/confirm",
+    "endpoint": "workbench.resource_import_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "import"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/exports/<kind>/preview",
+    "endpoint": "workbench.resource_export_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/exports/<kind>",
+    "endpoint": "workbench.resource_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/templates/<kind>",
+    "endpoint": "workbench.resource_template",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calendar/month",
+    "endpoint": "workbench.calendar_month",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calendar/upsert",
+    "endpoint": "workbench.calendar_upsert",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "upsert"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calendar/delete",
+    "endpoint": "workbench.calendar_delete",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "delete"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calendar/range/preview",
+    "endpoint": "workbench.calendar_range_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calendar/range/confirm",
+    "endpoint": "workbench.calendar_range_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch",
+    "endpoint": "workbench.batch_list",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/query",
+    "endpoint": "workbench.batch_query",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/selection",
+    "endpoint": "workbench.batch_selection",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/facets",
+    "endpoint": "workbench.batch_facets",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/choices",
+    "endpoint": "workbench.batch_choices",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/<ref>",
+    "endpoint": "workbench.batch_detail",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/create",
+    "endpoint": "workbench.batch_create",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "create"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/<ref>/update",
+    "endpoint": "workbench.batch_update",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "update"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/<ref>/delete",
+    "endpoint": "workbench.batch_delete",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "delete"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/<ref>/operation_update",
+    "endpoint": "workbench.batch_operation_update",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "operation_update"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/bulk-preview",
+    "endpoint": "workbench.batch_bulk_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "bulk_confirm"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/bulk-confirm",
+    "endpoint": "workbench.batch_bulk_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "bulk_confirm"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/<ref>/sync-preview",
+    "endpoint": "workbench.batch_sync_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "sync_confirm"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/<ref>/sync-confirm",
+    "endpoint": "workbench.batch_sync_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "sync_confirm"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/template",
+    "endpoint": "workbench.batch_template",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/import-preview",
+    "endpoint": "workbench.batch_import_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/import-confirm",
+    "endpoint": "workbench.batch_import_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/export-preview",
+    "endpoint": "workbench.batch_export_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/export",
+    "endpoint": "workbench.batch_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/part",
+    "endpoint": "workbench.process_list",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/part/<ref>",
+    "endpoint": "workbench.process_detail",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/process/<ref>/route-preview",
+    "endpoint": "workbench.process_route_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/process/<ref>/stage-preview",
+    "endpoint": "workbench.process_stage_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/process/<ref>/<action>",
+    "endpoint": "workbench.process_stage_command",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/process/parts/create",
+    "endpoint": "workbench.process_create",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/process/parts/bulk-preview",
+    "endpoint": "workbench.process_bulk_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/process/parts/bulk-confirm",
+    "endpoint": "workbench.process_bulk_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/process-table/facets/<column>",
+    "endpoint": "workbench.process_facets",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/process-table/facet-selection/<column>",
+    "endpoint": "workbench.process_facet_selection",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {
+      "selection": true
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/process-files/<kind>/preview",
+    "endpoint": "workbench.process_file_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/process-files/<kind>/confirm",
+    "endpoint": "workbench.process_file_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/process-files/<kind>/export-preview",
+    "endpoint": "workbench.process_file_export_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/process-files/<kind>/export",
+    "endpoint": "workbench.process_file_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/process-files/<kind>/template",
+    "endpoint": "workbench.process_file_template",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/plans",
+    "endpoint": "workbench.plan_list",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/plans/<plan_ref>",
+    "endpoint": "workbench.plan_detail",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/plans/<plan_ref>/workspace",
+    "endpoint": "workbench.plan_workspace",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/plans/<plan_ref>/export",
+    "endpoint": "workbench.plan_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/execution/tasks",
+    "endpoint": "workbench.field_tasks",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/execution/tasks/<task_ref>",
+    "endpoint": "workbench.field_task",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/execution/tasks/<task_ref>/reports",
+    "endpoint": "workbench.field_report_create",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/execution/reports/<report_ref>/supplement",
+    "endpoint": "workbench.field_report_supplement",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/execution/reports/<report_ref>/correct",
+    "endpoint": "workbench.field_report_correct",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/execution/files/preview",
+    "endpoint": "workbench.field_file_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/execution/files/confirm",
+    "endpoint": "workbench.field_file_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/execution/files/template",
+    "endpoint": "workbench.field_file_template",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/execution/files/export",
+    "endpoint": "workbench.field_file_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/execution/files/errors",
+    "endpoint": "workbench.field_file_errors",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/actual-gantt",
+    "endpoint": "workbench.actual_gantt_workspace",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/actual-gantt/chain",
+    "endpoint": "workbench.actual_gantt_related_chain",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/actual-gantt/export",
+    "endpoint": "workbench.actual_gantt_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/preflight",
+    "endpoint": "workbench.scheduling_preflight",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/runs/preview",
+    "endpoint": "workbench.preview_scheduling_run",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/runs",
+    "endpoint": "workbench.accept_scheduling_run",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/runs/<run_ref>",
+    "endpoint": "workbench.get_scheduling_run",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/requests/<request_key>",
+    "endpoint": "workbench.get_scheduling_request",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/runs/<run_ref>/candidates",
+    "endpoint": "workbench.run_candidate_list",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>",
+    "endpoint": "workbench.run_candidate_detail",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>/workspace",
+    "endpoint": "workbench.run_candidate_workspace",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>/export",
+    "endpoint": "workbench.run_candidate_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>/adopt-preview",
+    "endpoint": "workbench.run_candidate_adopt_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>/adopt",
+    "endpoint": "workbench.run_candidate_adopt",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>/baseline",
+    "endpoint": "workbench.run_candidate_baseline",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/runs",
+    "endpoint": "workbench.run_history_list",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/analytics",
+    "endpoint": "workbench.analytics",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/analytics/export",
+    "endpoint": "workbench.analytics_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/analytics/operations/<operation_ref>",
+    "endpoint": "workbench.analytics_operation",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/reports/<kind>",
+    "endpoint": "workbench.report_catalog",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/reports/<kind>/export",
+    "endpoint": "workbench.report_catalog_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calibration",
+    "endpoint": "workbench.calibration_list",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calibration/export",
+    "endpoint": "workbench.calibration_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calibration/<suggestion_ref>",
+    "endpoint": "workbench.calibration_detail",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calibration/facets/<column>",
+    "endpoint": "workbench.calibration_facets",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calibration/facet-selection/<column>",
+    "endpoint": "workbench.calibration_facet_selection",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {
+      "selection": true
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calibration/<suggestion_ref>/adopt-preview",
+    "endpoint": "workbench.calibration_adoption_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calibration/<suggestion_ref>/adopt",
+    "endpoint": "workbench.calibration_adoption_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calibration/<suggestion_ref>/adopt/receipts/<request_key>",
+    "endpoint": "workbench.calibration_adoption_receipt",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/dashboard",
+    "endpoint": "workbench.dashboard_list",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/dashboard/items/<item_ref>",
+    "endpoint": "workbench.dashboard_detail",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/dashboard/analysis",
+    "endpoint": "workbench.dashboard_analysis",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/dashboard/candidates/<candidate_ref>/comparison",
+    "endpoint": "workbench.dashboard_candidate_comparison",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/dashboard/items/<item_ref>/history",
+    "endpoint": "workbench.dashboard_history",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/dashboard/items/<item_ref>/transition",
+    "endpoint": "workbench.dashboard_transition",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/dashboard/items/<item_ref>/reopen",
+    "endpoint": "workbench.dashboard_reopen",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/outsourcing/targets",
+    "endpoint": "workbench.outsourcing_targets",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/outsourcing/receipts",
+    "endpoint": "workbench.outsourcing_receipts",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/outsourcing/receipts/<outsourcing_ref>",
+    "endpoint": "workbench.outsourcing_detail",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/outsourcing/receipts/<outsourcing_ref>/history",
+    "endpoint": "workbench.outsourcing_history",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/outsourcing/receipts/preview",
+    "endpoint": "workbench.outsourcing_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/outsourcing/receipts",
+    "endpoint": "workbench.outsourcing_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/master-overview",
+    "endpoint": "workbench.master_overview_list",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/master-overview/entities/<domain>/<ref>",
+    "endpoint": "workbench.master_overview_detail",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/master-overview/locate/<domain>/<ref>",
+    "endpoint": "workbench.master_overview_locate",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/master-overview/export",
+    "endpoint": "workbench.master_overview_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/system/backups",
+    "endpoint": "workbench.system_backups_read",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {
+      "kind": "backups"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/system/logs",
+    "endpoint": "workbench.system_logs_read",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {
+      "kind": "logs"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/system/config",
+    "endpoint": "workbench.system_config_read",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/system/config/save",
+    "endpoint": "workbench.system_config_save",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/system/backups/create",
+    "endpoint": "workbench.system_backup_create",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "create"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/system/backups/delete",
+    "endpoint": "workbench.system_backup_delete",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "delete"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/system/backups/restore",
+    "endpoint": "workbench.system_backup_restore",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "restore"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/system/backups/<backup_ref>/download",
+    "endpoint": "workbench.system_backup_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/system/results/<request_key>",
+    "endpoint": "workbench.system_result",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/system/jobs/<job_ref>",
+    "endpoint": "workbench.system_job_result",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/system/logs/export/csv",
+    "endpoint": "workbench.system_logs_csv",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {
+      "format_name": "csv"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/system/logs/export/zip",
+    "endpoint": "workbench.system_logs_zip",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {
+      "format_name": "zip"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/drafts",
+    "endpoint": "workbench.trial_drafts",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/scenarios",
+    "endpoint": "workbench.trial_scenarios",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/drafts/preview",
+    "endpoint": "workbench.trial_create_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/drafts",
+    "endpoint": "workbench.trial_create",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/drafts/<draft_ref>",
+    "endpoint": "workbench.trial_read",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/drafts/<draft_ref>/change",
+    "endpoint": "workbench.trial_change",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/drafts/<draft_ref>/save",
+    "endpoint": "workbench.trial_save",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/drafts/<draft_ref>/discard",
+    "endpoint": "workbench.trial_discard",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/scenarios/<scenario_ref>",
+    "endpoint": "workbench.trial_scenario",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/commands/<request_key>",
+    "endpoint": "workbench.trial_receipt",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/scenarios/<scenario_ref>/adopt-preview",
+    "endpoint": "workbench.trial_adopt_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/scenarios/<scenario_ref>/adopt",
+    "endpoint": "workbench.trial_adopt",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/scenarios/<scenario_ref>/adoption-commands/<request_key>",
+    "endpoint": "workbench.trial_adoption_receipt",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/trial/scenarios/<scenario_ref>/adoption-history",
+    "endpoint": "workbench.trial_adoption_history",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  }
+]

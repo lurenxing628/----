@@ -2,7 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
-const evidence = { errors: [], external: [], screenshots: [], http: [], main_source_used: true, successful_api_stubs: false };
+const evidence = { errors: [], external: [], screenshots: [], http: [], navigation_scopes: [], main_source_used: true, successful_api_stubs: false };
 async function shot(page, name) {
   const file = path.join(input.output, name + '.png'); await page.screenshot({ path: file, fullPage: true }); evidence.screenshots.push(file);
 }
@@ -59,10 +59,24 @@ async function main() {
       await page.getByRole('button', { name: '定位选中工序', exact: true }).click();
       await page.getByRole('button', { name: '适应全部', exact: true }).click();
       await fit(page); await shot(page, width + '-' + theme + '-actual');
-      await page.getByRole('button', { name: '现场报工', exact: true }).click();
+      const originContext = await page.evaluate(() => history.state.workbench.context);
+      const [fieldRead] = await Promise.all([
+        page.waitForResponse(response => new URL(response.url()).pathname === '/api/workbench/v1/execution/tasks'),
+        page.getByRole('button', { name: '现场报工', exact: true }).click(),
+      ]);
+      const fieldPayload = await fieldRead.json();
+      evidence.navigation_scopes.push({ width, theme, origin: originContext, url: fieldRead.url(), status: fieldRead.status(), payload: fieldPayload });
+      assert.equal(fieldRead.status(), 200, JSON.stringify(fieldPayload));
+      assert.equal(fieldPayload.data.scope.plan_ref, input.identity.plan.plan_ref);
+      assert.equal(fieldPayload.data.scope.query, 'B1');
+      assert.equal(new URL(fieldRead.url()).searchParams.has('batch_ids'), false, 'Unrestricted Actual batches must not serialize as an explicit empty Field batch restriction');
       await page.locator('[data-field-workspace]').waitFor();
       await page.getByRole('button', { name: '作业时间线', exact: true }).click();
       const fieldPoint = page.locator('[data-field-point=plan]'); await fieldPoint.waitFor();
+      const returnContext = await page.evaluate(() => history.state.workbench.context.return_to);
+      assert.equal(returnContext.view, 'fieldgantt'); assert.equal(returnContext.context.plan_ref, input.identity.plan.plan_ref);
+      assert.equal(returnContext.context.task_ref, input.identity.task.task_ref); assert.equal(returnContext.context.scope.query, 'B1');
+      if (returnContext.context.scope.batch_ids !== undefined) assert.deepEqual(returnContext.context.scope.batch_ids, []);
       assert.equal(await fieldPoint.getAttribute('data-point-ref'), input.identity.task.task_ref);
       assert.equal((await fieldPoint.boundingBox()).width, 24);
       await fieldPoint.hover(); assert.ok((await page.getByRole('tooltip').innerText()).includes('不占用排产资源'));
@@ -73,6 +87,38 @@ async function main() {
       await fit(page); await shot(page, width + '-' + theme + '-field');
       await page.getByRole('button', { name: '实际甘特', exact: true }).click(); await page.locator('[data-actual-scroll]').waitFor();
     }
+    await page.getByLabel('批次范围', { exact: true }).fill('B1');
+    const [scopedRead] = await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname === '/api/workbench/v1/actual-gantt'),
+      page.getByRole('button', { name: '应用范围', exact: true }).click(),
+    ]);
+    assert.equal(scopedRead.status(), 200); const originalScoped = await scopedRead.json();
+    assert.deepEqual(originalScoped.data.scope.batch_ids, ['B1']);
+    await page.locator('[data-actual-scroll]').waitFor();
+    const [scopedField] = await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname === '/api/workbench/v1/execution/tasks'),
+      page.getByRole('button', { name: '现场报工', exact: true }).click(),
+    ]);
+    const scopedPayload = await scopedField.json();
+    evidence.nonempty_batch_navigation = { url: scopedField.url(), status: scopedField.status(), payload: scopedPayload };
+    assert.equal(scopedField.status(), 200, JSON.stringify(scopedPayload));
+    assert.deepEqual(scopedPayload.data.scope.batch_ids, ['B1']);
+    assert.deepEqual(JSON.parse(new URL(scopedField.url()).searchParams.get('batch_ids')), ['B1']);
+    assert.equal(scopedPayload.data.scope.plan_ref, input.identity.plan.plan_ref);
+    assert(scopedPayload.data.tasks.some(task => task.task_ref === input.identity.task.task_ref));
+    await page.getByRole('button', { name: '作业时间线', exact: true }).waitFor();
+    const nonemptyReturn = await page.evaluate(() => history.state.workbench.context.return_to);
+    assert.deepEqual(nonemptyReturn.context.scope.batch_ids, ['B1']);
+    const [returned] = await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname === '/api/workbench/v1/actual-gantt'),
+      page.locator('.field-toolbar').getByRole('button', { name: '返回', exact: true }).click(),
+    ]);
+    assert.equal(returned.status(), 200); const restoredScope = (await returned.json()).data.scope;
+    assert.deepEqual(restoredScope, originalScoped.data.scope);
+    await page.locator('[data-actual-scroll]').waitFor();
+    assert.equal(await page.getByLabel('搜索现场甘特').inputValue(), 'B1');
+    assert.equal(await page.locator('[data-actual-mark="plan-point"]').getAttribute('aria-pressed'), 'true');
+    evidence.nonempty_batch_navigation.returned_scope = restoredScope;
     await page.getByRole('button', { name: '导出 CSV', exact: true }).click();
     const pending = page.waitForEvent('download'); await page.getByRole('button', { name: '下载 CSV', exact: true }).click();
     const download = await pending, file = path.join(input.output, 'actual.csv'); await download.saveAs(file);

@@ -8,7 +8,7 @@ const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const report = { production: false, external: [], errors: [], sources: [], screenshots: [], fixtures: input.fixtures.length };
 assert(!output.startsWith(root + path.sep), 'Browser artifacts must be outside checkout');
 fs.mkdirSync(output, { recursive: true });
-const files = ['resource-contract.js', 'PointContract.js', 'PlanContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'ResourceControls.jsx', 'PlanDetailsUI.jsx'];
+const files = ['resource-contract.js', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'ResourceControls.jsx', 'PlanDetailsUI.jsx'];
 const sources = files.map(name => ({path: 'frontend/workbench/app/' + name,
   code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8')}));
 const compiled = compile({babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true});

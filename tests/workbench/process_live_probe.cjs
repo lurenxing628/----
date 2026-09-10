@@ -9,8 +9,45 @@ let page,state;
 const workspace=()=>page.locator('[data-process-workspace]');
 async function type(field,value){await field.click();await field.fill('');await field.type(value,{delay:1});}
 async function list(action){const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/workbench/v1/entities/part');await action();const result=await response;assert.equal(result.status(),200,await result.text());await workspace().getByRole('table',{name:'零件工艺列表',exact:true}).and(page.locator('[aria-busy="false"]')).waitFor();return result.json();}
-async function enter(){await list(()=>page.locator('.hb-tile').filter({hasText:/^工艺/}).click());}
+async function enter(restored=false){const tile=page.locator('.hb-tile').filter({hasText:/^工艺/});if(restored){await workspace().getByRole('table',{name:'零件工艺列表',exact:true}).and(page.locator('[aria-busy="false"]')).waitFor();await tile.click();}else await list(()=>tile.click());}
 async function search(text){await type(workspace().getByRole('searchbox',{name:'搜索图号、名称、路线',exact:true}),text);return list(()=>workspace().getByRole('button',{name:'搜索',exact:true}).click());}
+async function actionCapabilities(result){
+  const create=()=>workspace().getByRole('button',{name:/^新增零件/}),importRoute=()=>workspace().getByRole('button',{name:/^导入工艺路线/});
+  const posts=()=>report.requests.filter(row=>row.state===state&&row.method==='POST').length;
+  assert.equal(result.meta.source,'production');assert.equal(result.data.capabilities.create,true);assert.equal(result.data.capabilities.import,true);
+  assert.equal(result.data.create_context.capabilities['process.create'],true);assert.equal(posts(),0);
+  assert(await create().isEnabled());assert(await importRoute().isEnabled());
+  await create().click();let dialog=page.getByRole('dialog',{name:'新增零件',exact:true});await dialog.waitFor();
+  assert.equal(await dialog.getByRole('textbox',{name:'图号',exact:true}).inputValue(),'');
+  await dialog.getByRole('button',{name:'取消',exact:true}).click();await dialog.waitFor({state:'detached'});
+  await importRoute().click();dialog=page.getByRole('dialog',{name:'导入工艺路线',exact:true});await dialog.waitFor();
+  assert(await dialog.getByLabel('选择工艺路线文件',{exact:true}).isEnabled());
+  await dialog.getByRole('button',{name:'取消',exact:true}).click();await dialog.waitFor({state:'detached'});assert.equal(posts(),0);
+  const injections=[],pattern=origin+'/api/workbench/v1/entities/part?*';
+  for(const mode of ['readonly-capabilities','invalid-source']){
+    // Negative fixtures change only permission/source fields on a real GET response.
+    const handler=async route=>{
+      assert.equal(route.request().method(),'GET');const response=await route.fetch();assert.equal(response.status(),200);
+      const body=await response.json();assert.equal(body.meta.source,'production');
+      assert.equal(body.data.capabilities.create,true);assert.equal(body.data.capabilities.import,true);
+      injections.push({mode,original_source:body.meta.source,original_create:body.data.capabilities.create,original_import:body.data.capabilities.import});
+      if(mode==='readonly-capabilities'){body.data.capabilities.create=false;body.data.capabilities.import=false;body.data.create_context.capabilities['process.create']=false;}
+      else body.meta.source='invalid-test-source';
+      await route.fulfill({response,json:body});
+    };
+    await page.route(pattern,handler);
+    try{
+      await list(()=>workspace().getByRole('button',{name:'刷新工艺列表',exact:true}).click());
+      if(mode==='invalid-source')await workspace().getByText('本机资源数据协议不匹配，未使用样例替代。',{exact:true}).waitFor();
+      assert(await create().isDisabled());assert(await importRoute().isDisabled());assert.equal(await page.getByRole('dialog').count(),0);assert.equal(posts(),0);
+    }finally{await page.unroute(pattern,handler);}
+    const restored=await list(()=>workspace().getByRole('button',{name:'刷新工艺列表',exact:true}).click());
+    assert.equal(restored.meta.source,'production');assert.equal(restored.data.capabilities.create,true);assert.equal(restored.data.capabilities.import,true);
+    assert(await create().isEnabled());assert(await importRoute().isEnabled());
+  }
+  assert.deepEqual(injections.map(row=>row.mode),['readonly-capabilities','invalid-source']);assert.equal(posts(),0);
+  report.capability_checks=(report.capability_checks||[]).concat({state,source:result.meta.source,create:true,import:true,dialogs_cancelled:2,injections,posts:posts()});
+}
 async function open(code){await workspace().getByRole('button',{name:'查看 '+code,exact:true}).click();await page.getByRole('tablist',{name:'零件工艺步骤',exact:true}).waitFor();}
 async function routeEntry(){await page.getByRole('tab',{name:/^1 工艺路线/}).click();await page.getByRole('button',{name:'录入路线',exact:true}).click();await page.getByRole('dialog',{name:/^录入工艺路线 · /}).waitFor();}
 async function preflight(){const response=page.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/route-preview'));await page.getByRole('button',{name:'预检路线',exact:true}).click();const result=await response;assert.equal(result.status(),200,await result.text());await page.locator('[data-process-preview]').waitFor();return result.json();}
@@ -64,8 +101,8 @@ async function cases(){
     const result=await list(()=>workspace().getByRole('tab',{name:/^待分拣/}).click());assert.equal(result.data.page.total,3);
     await list(()=>workspace().getByRole('tab',{name:/^已就绪/}).click());await workspace().getByText('当前条件下没有零件。',{exact:true}).waitFor();
     await list(()=>workspace().getByRole('tab',{name:/^全部/}).click());
-    for(const order of ['ascending','descending','none']){await list(()=>workspace().getByRole('button',{name:'排序图号',exact:true}).click());assert.equal(await workspace().locator('th').filter({has:page.getByRole('button',{name:'排序图号',exact:true})}).getAttribute('aria-sort'),order);}
-    assert(await workspace().getByRole('button',{name:/^新增零件/}).isDisabled());assert(await workspace().getByRole('button',{name:/^导入工艺路线/}).isDisabled());
+    let current;for(const order of ['ascending','descending','none']){current=await list(()=>workspace().getByRole('button',{name:'图号排序',exact:true}).click());assert.equal(await workspace().locator('th').filter({has:page.getByRole('button',{name:'图号排序',exact:true})}).getAttribute('aria-sort'),order);}
+    await actionCapabilities(current);
   });
   await run('actual-template-stages-hours-and-group-preserved',async()=>{
     await search('PROC-001');await open('PROC-001');
@@ -124,7 +161,9 @@ async function cases(){
       await page.getByRole('tab',{name:stage}).click();await readAllOperations(name,expected);
     }
     report.timings.push({state,action:'2000-operation-detail',milliseconds:Date.now()-begin});await shot('large-detail');await closeDetail();
-    await page.reload();await page.locator('.hb-tile').first().waitFor();await enter();await search('PROC-001');await open('PROC-001');
+    await page.reload();await page.locator('.hb-tile').first().waitFor();await enter(true);
+    assert.equal(await workspace().getByRole('searchbox',{name:'搜索图号、名称、路线',exact:true}).inputValue(),'PROC-LARGE');
+    await search('PROC-001');await open('PROC-001');
     await page.getByRole('tab',{name:/^3 工时定额/}).click();assert.equal(await page.getByLabel('工序 10 单件工时',{exact:true}).inputValue(),'0.125');await closeDetail();
   });
 }

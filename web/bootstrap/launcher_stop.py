@@ -51,6 +51,7 @@ from .launcher_processes import (
     _run_powershell_text,
     set_process_log_context,
 )
+from .launcher_shutdown import HOST_STOP_PATH
 from .launcher_stop_cleanup import delete_runtime_contract_files_result_for_stop
 from .launcher_stop_process import runtime_process_inactive
 from .launcher_stop_state import _runtime_state_name, _runtime_stop_is_complete
@@ -115,6 +116,10 @@ def _request_runtime_shutdown(contract: Dict[str, Any], timeout_s: float = 3.0) 
         with urllib.request.urlopen(req, timeout=max(float(timeout_s), 0.5)) as resp:
             return int(getattr(resp, "status", 200)) < 400
     except urllib.error.HTTPError as e:
+        if e.code == 503 and contract.get("shutdown_path") != HOST_STOP_PATH:
+            # Restore deliberately blocks ordinary HTTP shutdown. Only the
+            # same token and endpoint may reach the DB-free owning server stop.
+            return _request_runtime_shutdown({**contract, "shutdown_path": HOST_STOP_PATH}, timeout_s)
         ok = int(getattr(e, "code", 500)) < 400
         if not ok:
             _launcher_log_contract_warning("运行时关闭请求被拒绝：url=%s status=%s", url, getattr(e, "code", 500), contract=contract)
@@ -433,10 +438,8 @@ def stop_runtime_from_dir(
     if _runtime_stop_is_complete(status):
         return _finalize_stopped_runtime(status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, logger=logger)
 
-    status = _try_force_kill_runtime(state_dir, status)
-    if _runtime_stop_is_complete(status):
-        return _finalize_stopped_runtime(status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, logger=logger)
-
+    # 关闭请求受理或 HTTP 不再响应，都不能证明后台计算、写入和退出备份已结束。
+    # 普通 stop 到期只报告未退出，不能自动强杀或清理仍被占用的运行时。
     _log_runtime_stop_failure(status, shutdown_requested=shutdown_requested, logger=logger)
     return 1
 
@@ -465,6 +468,7 @@ def _log_runtime_stop_failure(status: Dict[str, Any], *, shutdown_requested: boo
     reason = _runtime_stop_failure_reason(status, shutdown_requested=shutdown_requested)
     launcher_log_warning(
         logger,
+        "停止等待已结束，运行时尚未确认退出；未自动强制终止或清理。请稍后重试停止命令并查看运行时日志。"
         "runtime_stop_failed reason=%s state=%s shutdown_requested=%s pid=%s pid_exists=%s pid_match=%s host=%s port=%s endpoint_up=%s lock_active=%s",
         reason,
         status.get("state"),

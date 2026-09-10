@@ -53,23 +53,29 @@
     </section>;
   }
   function Records({ api, kind, pageSize, onPageSize, revision, command, active = true, initialContext, onReadContext }) {
-    const [start] = React.useState(() => A.recordContext(initialContext));
+    const [start] = React.useState(() => A.recordContext(initialContext, kind));
     const [draft, setDraft] = React.useState(start.filters), [filters, setFilters] = React.useState(start.filters);
-    const [page, setPage] = React.useState(start.page), [snapshot, setSnapshot] = React.useState(start.snapshot_ref), [refresh, reload] = React.useReducer(value => value + 1, 0);
+    const [page, setPage] = React.useState(start.page), [snapshot, setSnapshot] = React.useState(''), [refresh, reload] = React.useReducer(value => value + 1, 0);
     const [selection, setSelection] = React.useState(start.selection), [confirm, setConfirm] = React.useState(null), [downloadBusy, setDownloadBusy] = React.useState(false);
     const [error, setError] = React.useState(null), [notice, setNotice] = React.useState('');
     const request = C.useRead(api, kind, { ...filters, page, page_size: pageSize, snapshot_ref: snapshot }, revision + ':' + refresh, active);
     const payload = request.data, data = payload && payload.data;
-    const selected = selection && data && data.rows.find(row => row.key === selection.key && (kind !== 'backups'
-      || row.record_kind === selection.record_kind && (row.record_kind !== 'backup_file' || row.backup_ref === selection.backup_ref)));
+    const stableSelection = selection && (kind !== 'backups' || /^[a-f0-9]{64}$/.test(selection.key)
+      && ['backup_file', 'restore_event', 'cleanup_event'].includes(selection.record_kind));
+    const matches = stableSelection && data ? data.rows.filter(row => row.key === selection.key && (kind !== 'backups'
+      || row.record_kind === selection.record_kind && (row.record_kind !== 'backup_file' || !selection.backup_ref || row.backup_ref === selection.backup_ref))) : [];
+    const selected = matches.length === 1 ? matches[0] : null;
     function setSelected(row) { setSelection(row ? { key: row.key, ...(kind === 'backups' ? { record_kind: row.record_kind,
       ...(row.record_kind === 'backup_file' ? { backup_ref: row.backup_ref } : {}) } : {}) } : null); }
+    React.useEffect(() => {
+      if (selected && kind === 'backups' && selected.record_kind === 'backup_file' && !selection.backup_ref) setSelected(selected);
+    }, [selected, selection, kind]);
     const previousVersion = React.useRef(revision + ':' + pageSize);
     React.useEffect(() => {
       const next = revision + ':' + pageSize; if (previousVersion.current === next) return;
       previousVersion.current = next; setPage(1); setSnapshot(''); setSelected(null); setConfirm(null);
     }, [revision, pageSize]);
-    const savedScope = JSON.stringify({ filters, page, snapshot_ref: payload ? payload.meta.snapshot_ref : snapshot, selection });
+    const savedScope = JSON.stringify(A.recordContext({ filters, page, selection }, kind));
     React.useLayoutEffect(() => {
       if (onReadContext && active && data && !request.loading && !request.error) onReadContext(kind, JSON.parse(savedScope));
     }, [onReadContext, kind, active, !!data, request.loading, request.error, savedScope]);
@@ -104,7 +110,9 @@
           <C.Button transfer="export" disabled={!data || request.loading} busy={downloadBusy} onClick={() => download('zip')}>脱敏诊断 ZIP</C.Button></>}</div>
       </div>
       <C.ErrorBox error={request.error || error} />{notice && <p className="sm-notice" role="status">{notice}</p>}
-      {selection && data && !selected && <p className="sm-notice" role="status">原选择记录不在当前返回页，未自动替换为其他记录。<C.Button icon="x" onClick={() => setSelected(null)}>清除原选择</C.Button></p>}
+      {selection && data && !selected && <p className="sm-notice" role="status">{!stableSelection
+        ? '原选择缺少可信的稳定记录标识或记录类型，未按旧令牌、同名文件或第一条记录定位。'
+        : '原选择记录未通过当前返回页的唯一身份核对，未自动替换为其他记录。'}<C.Button icon="x" onClick={() => setSelected(null)}>清除原选择</C.Button></p>}
       {kind === 'backups' && data && A.blocked(data, 'create') && <p className="sm-note">文件动作禁用：{A.blocked(data, 'create')}</p>}
       {request.loading && <p className="sm-note" role="status">正在读取{kind === 'logs' ? '日志窗口' : '备份清单'}…</p>}
       {data && <><Sources data={data} kind={kind} /><div className="sm-meta">工厂本地时间 · 数据截至 {payload.meta.as_of.replace('T', ' ')}</div>

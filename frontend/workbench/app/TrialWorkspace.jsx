@@ -39,10 +39,11 @@
     const [modal, setModal] = React.useState(initialTarget.base ? 'create' : null), [revision, refresh] = React.useReducer(n => n + 1, 0);
     const [stored, setStored] = React.useState(null), [selected, setSelected] = React.useState(null), [editing, setEditing] = React.useState(false);
     const [error, setError] = React.useState(null), [notice, setNotice] = React.useState(''), [directory, setDirectory] = React.useState(true);
+    const [origin, setOrigin] = React.useState(initialTarget.task_origin || null), locatedOrigin = React.useRef(null);
     function notifyTarget(next) {
       if (typeof onTargetChange !== 'function') return;
       const failed = () => setError(new Error('试调对象已定位，但页面恢复地址更新失败。原记录仍在目录中，未重复写入。'));
-      try { Promise.resolve(onTargetChange({ ...next })).catch(failed); } catch (_) { failed(); }
+      try { Promise.resolve(onTargetChange({ ...next, ...(origin && next.draft_ref ? { task_origin: origin } : {}) })).catch(failed); } catch (_) { failed(); }
     }
     const key = target.scenario_ref || target.draft_ref || '', isScenario = !!target.scenario_ref;
     const read = S.useRead(async signal => {
@@ -50,6 +51,14 @@
     }, [key, isScenario, revision], !!key);
     React.useEffect(() => { if (read.result) { setStored({ key, result: read.result }); setBase(read.result.data.base); } }, [read.result]);
     const result = read.result || stored && stored.key === key && stored.result, data = result && result.data;
+    const originalTask = React.useMemo(() => {
+      if (!origin || !read.result) return { task: null, error: null };
+      try { return { task: C.originTask(read.result.data, origin), error: null }; }
+      catch (error) { return { task: null, error }; }
+    }, [origin, read.result]);
+    React.useEffect(() => {
+      if (originalTask.task && locatedOrigin.current !== key) { setSelected(originalTask.task.task_ref); locatedOrigin.current = key; }
+    }, [originalTask.task, key]);
     window.WorkbenchCaption.useCaption(data && read.result && !read.busy && !read.error ? {
       reference: data.scenario_ref || data.draft_ref, label: data.scenario_ref ? '当前场景' : '当前草稿',
       name: data.name || U.sourceLabel(data.base_identity),
@@ -59,18 +68,19 @@
     } : null);
     const commands = S.useCommands(receipt => {
       const d = receipt.data, next = d.scenario_ref ? { scenario_ref: d.scenario_ref } : { draft_ref: d.draft_ref };
-      setModal(null); setEditing(false); setTarget(next); setDirectory(false); if (d.scenario_ref) setSelected(null); refresh();
+      setModal(null); setEditing(false); setTarget(next); setDirectory(false); if (d.scenario_ref) { setSelected(null); setOrigin(null); } refresh();
       setNotice(d.scenario_ref ? '场景已保存，正在读取原场景快照；正式计划未改变。' : d.status === 'discarded' ? '指定草稿已放弃，原记录与历史仍保留。' : '试调已持久保存，正式计划未改变。');
       notifyTarget(next);
     });
-    const actions = { ...commands, blocked: commands.blocked || !!key && (!read.result || !!read.error || read.busy) };
+    const actions = { ...commands, blocked: commands.blocked || !!key && (!read.result || !!read.error || read.busy || !!origin && !originalTask.task) };
     function guard() { if (!editing) { setError(null); return true; } setError(new Error('请先保存调整或取消当前工序编辑。')); return false; }
     function select(ref) { if (ref === selected || guard()) setSelected(ref); }
     function open(next) {
       if (!guard()) return;
       try {
+        C.check(!origin || !!next.draft_ref, '原任务定位只能打开草稿，不能把已存场景当作草稿。');
         C.target(next); const canonical = next.scenario_ref ? { scenario_ref: next.scenario_ref } : { draft_ref: next.draft_ref };
-        setTarget(canonical); setStored(null); setSelected(null); setNotice(''); setDirectory(false); refresh(); notifyTarget(canonical);
+        setTarget(canonical); setStored(null); setSelected(null); locatedOrigin.current = null; setNotice(''); setDirectory(false); refresh(); notifyTarget(canonical);
       }
       catch (error) { setError(error); }
     }
@@ -82,13 +92,14 @@
         <U.Button icon="folder-open" onClick={() => setDirectory(!directory)} aria-expanded={directory}>草稿 / 场景目录</U.Button>
         <U.Button icon="plus" disabled={commands.blocked} onClick={() => { if (guard()) setModal('create'); }}>新建试调</U.Button>
       </div></header>
-      <U.ErrorBox error={error} /><U.ErrorBox error={commands.error} />
+      <U.ErrorBox error={error} /><U.ErrorBox error={commands.error} /><U.ErrorBox error={originalTask.error} />
       {!commands.key && commands.note && <p role="status">{commands.note}</p>}
       {commands.error && !commands.key && <U.Button icon="refresh-cw" onClick={reload} disabled={commands.busy}>重读恢复记录与当前内容</U.Button>}
       {commands.key && <section className="tt-notice" aria-label="待核实试调请求"><strong>原试调请求待核实</strong><p>{commands.note || '恢复记录只包含原请求编号，尚未读取结果。'}</p>
         <div className="tt-tools"><U.Button icon="refresh-cw" onClick={commands.lookup} busy={commands.busy}>查询原请求</U.Button><span className="tt-ref">{commands.key}</span></div></section>}
       {notice && <p role="status" className="tt-notice">{notice}</p>}
-      {directory && <window.TrialCatalog.Directory revision={revision} onOpen={open} filterBase={base} />}
+      {directory && <window.TrialCatalog.Directory revision={revision} onOpen={open} filterBase={base}
+        fixedBase={origin ? { plan_ref: origin.plan_ref } : null} />}
       <U.ErrorBox error={read.error} />{key && <div className="tt-heading"><span className="tt-muted">{read.busy ? '正在重新读取，写入已暂停。' : read.error ? '读取失败。下方为上次读取内容，写入已暂停。' : result ? '读取于 ' + U.timeLabel(result.meta.as_of) : ''}</span>
         <U.Button icon="refresh-cw" aria-label="重读当前试调" busy={read.busy} disabled={commands.busy || !!commands.key} onClick={reload} /></div>}
       {!data && <div className="tt-empty" role="status">{read.busy ? '正在读取完整试调…' : '尚未打开试调草稿或场景'}</div>}
@@ -106,13 +117,14 @@
         <details className="tt-refs"><summary>试调身份与读取范围</summary><div>草稿：<span className="tt-ref">{data.draft_ref}</span></div>
           {data.scenario_ref && <div>场景：<span className="tt-ref">{data.scenario_ref}</span></div>}<div>原来源：<span className="tt-ref">{Object.values(data.base)[0]}</span></div>
           <div>完整时间：{U.timeLabel(data.time_scope.start)} 至 {U.timeLabel(data.time_scope.end)}</div></details></>}
-      {modal === 'create' && <window.TrialCatalog.Create initialBase={base} initialScope={initialTarget.base ? initialTarget.scope || {} : {}} commands={commands} onClose={() => setModal(null)} />}
+      {modal === 'create' && <window.TrialCatalog.Create initialBase={origin ? { plan_ref: origin.plan_ref } : base} initialScope={initialTarget.base ? initialTarget.scope || {} : {}}
+        fixedBase={!!origin} onExisting={origin ? () => { setModal(null); setDirectory(true); } : undefined} commands={commands} onClose={() => setModal(null)} />}
       {data && ['save', 'discard'].includes(modal) && <Finish data={data} kind={modal} commands={actions} onClose={() => setModal(null)} onRecheck={reload} />}
     </div>;
   }
   // Load after TrialContract/API/Session/Controls/Catalog/Gantt/Details/Results/Styles.
   // initialTarget: {} | {draft_ref} | {scenario_ref} | {base:{plan_ref|candidate_ref},scope?}.
-  // onTargetChange receives only {draft_ref} or {scenario_ref}; the host owns history.replaceState.
+  // task_origin stays in navigation only; saved scenarios clear the original-task focus.
   function WorkbenchTrialWorkspace({ initialTarget = {}, onNavigate, renderAdoption, onTargetChange }) {
     try { C.target(initialTarget); }
     catch (error) { return <div className="trial-workspace"><window.TrialStyles /><U.ErrorBox error={error} /></div>; }

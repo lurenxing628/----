@@ -15,8 +15,11 @@
       && (!needle || [t.batch_id, t.part_no, t.part_name, t.process_label, t.piece_id, name(t.machine_ref), name(t.operator_ref)].join(' ').toLowerCase().includes(needle)));
   }
   function Gantt({ data, selected, onSelect }) {
-    const [view, setView] = React.useState(data.scope.resource_type || 'machine'), [baseline, setBaseline] = React.useState(true);
-    const [changed, setChanged] = React.useState(false), [query, setQuery] = React.useState(data.scope.query || ''), [limit, setLimit] = React.useState(true);
+    const V = window.TrialViewState, preferences = V.useView(data), values = preferences.value || V.defaults(data);
+    const view = values.mode, baseline = values.baseline, changed = values.only_changed, query = values.query;
+    const setView = mode => preferences.change({ mode }), setBaseline = baseline => preferences.change({ baseline });
+    const setChanged = only_changed => preferences.change({ only_changed }), setQuery = query => preferences.change({ query });
+    const [limit, setLimit] = React.useState(true);
     const [page, setPage] = React.useState(1), [zoom, setZoom] = React.useState(1), [expanded, setExpanded] = React.useState(false);
     const [hover, setHover] = React.useState(null);
     const scope = limit ? data.scope : {}, filtered = React.useMemo(() => matching(data, scope, query, changed), [data, scope, query, changed]);
@@ -52,7 +55,9 @@
     React.useEffect(() => {
       if (expanded) { const handler = e => { if (e.key === 'Escape') setExpanded(false); }; document.addEventListener('keydown', handler); return () => document.removeEventListener('keydown', handler); }
     }, [expanded]);
-    return <section className={'tt-gantt' + (expanded ? ' tt-expanded' : '')} aria-label="试调甘特"><window.PointGantt.Styles /><div className="tt-heading"><h3>排程预览</h3>
+    if (!preferences.value) return <section aria-label="试调甘特"><V.Notice state={preferences} label="试调甘特查看偏好" /></section>;
+    return <section className={'tt-gantt' + (expanded ? ' tt-expanded' : '')} aria-label="试调甘特"><window.PointGantt.Styles />
+      <V.Notice state={preferences} label="试调甘特查看偏好" /><div className="tt-heading"><h3>排程预览</h3>
       <span className="tt-muted">工厂本地时间 · 含夜间</span></div><div className="tt-tools tt-gantt-tools"><U.Tabs value={view} label="甘特分组"
       options={[["machine", '设备'], ['operator', '人员'], ['batch', '批次']]} onChange={v => { setView(v); setPage(1); }} />
       <label className="tt-check"><input type="checkbox" checked={baseline} onChange={e => setBaseline(e.target.checked)} />原安排</label>

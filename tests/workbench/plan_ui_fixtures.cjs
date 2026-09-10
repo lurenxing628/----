@@ -127,7 +127,8 @@
     }
     const selectedStarts = selected.map(row => row.start).sort(), selectedEnds = selected.map(row => row.end).sort();
     return envelope({ plan: header, scope, time_scope: time, plan_span: span, task_span: selected.length ? { start: selectedStarts[0], end: selectedEnds[selectedEnds.length - 1] } : null,
-      tasks: selected, task_count: selected.length, tasks_complete: true, resources, projections: { baseline, calendar, occupancy, delivery_risks: delivery(scope, all, selected, options) } },
+      tasks: selected, task_count: selected.length, tasks_complete: true, resources, projections: { baseline, calendar, occupancy, delivery_risks: delivery(scope, all, selected, options),
+        process_order: { state: 'unavailable', basis: null, items: [], issues: [{ code: 'process_order_not_recorded', message: 'Fixture has no captured process order.' }] } } },
     options.snapshot || query.snapshot_ref || 'workspace-ui:' + planRef + ':' + (scope.range_start || 'full'));
   }
   const api = { ref, clone, instant, wire, plan, envelope, catalog, workspace };

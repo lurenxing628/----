@@ -62,7 +62,9 @@ def main():
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.errors import AppError, ErrorCode
-    from core.services.process import ExternalGroupService, PartService, RouteParser
+    from core.services.process.external_group_service import ExternalGroupService
+    from core.services.process.part_service import PartService
+    from core.services.process.route_parser import RouteParser
     from data.repositories import OpTypeRepository, SupplierRepository
 
     ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
@@ -318,4 +320,3 @@ if __name__ == "__main__":
             print("FAIL")
             print(report_path)
         raise
-

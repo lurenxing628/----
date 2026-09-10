@@ -13,7 +13,7 @@
     const [notice, setNotice] = React.useState(''), [error, setError] = React.useState(null), [downloading, setDownloading] = React.useState(false);
     const [stale, setStale] = React.useState(false), downloadAbort = React.useRef(null);
     const identity = JSON.stringify(input) + ':' + revision;
-    const request = useRead(async signal => A.validate(await api.read(input, signal), input), identity, api);
+    const request = useRead(signal => A.readView(api, input, signal), identity, api);
     const result = request.result, data = result && result.data;
     const bound = { ...input, snapshot_ref: result ? result.meta.snapshot_ref : input.snapshot_ref };
     const detail = useRead(async signal => A.validate(await api.detail(selected, bound, signal), bound, selected),
@@ -22,13 +22,13 @@
     window.WorkbenchPageContext.useSnapshot(data ? {
       scope: Object.fromEntries(Object.entries(input).filter(([key]) => !['page', 'size', 'sort', 'direction', 'snapshot_ref'].includes(key))),
       table: { page: input.page, size: input.size, sort: input.sort, direction: input.direction },
-      snapshot_ref: result.meta.snapshot_ref, selected, sample_ref: sampleRef, table_widths: widths
+      selected, sample_ref: sampleRef, table_widths: widths
     } : null, !!data && !request.busy && !request.error && !stale && (!selected || !!detail.result && !detail.busy && !detail.error));
     React.useEffect(() => { if (isStale(request.error) || isStale(detail.error)) setStale(true); }, [request.error, detail.error]);
     React.useEffect(() => () => { if (downloadAbort.current) downloadAbort.current.abort(); }, [api]);
     function reload() {
       if (downloadAbort.current) downloadAbort.current.abort();
-      setInput(old => ({ ...old, page: 1, snapshot_ref: undefined })); setError(null); setNotice(''); setStale(false); refresh();
+      setInput(old => ({ ...old, snapshot_ref: undefined })); setError(null); setNotice(''); setStale(false); refresh();
     }
     function change(patch) {
       setInput(old => A.input({ ...old, ...patch, page: 1, snapshot_ref: undefined }));
@@ -58,7 +58,7 @@
           {window.CalibrationAdoptionAction && <window.CalibrationAdoptionAction detail={detail.result && detail.result.data} stale={stale || detail.busy} onRefresh={reload} />}
           {typeof onNavigate === 'function' && <Button icon="arrow-right" disabled={!data || disabled} onClick={() => onNavigate('review', { returnTo: { view: 'calib', context: {
             scope: Object.fromEntries(Object.entries(input).filter(([key]) => !['page', 'size', 'sort', 'direction', 'snapshot_ref'].includes(key))),
-            table: { page: input.page, size: input.size, sort: input.sort, direction: input.direction }, snapshot_ref: result.meta.snapshot_ref, selected, sample_ref: sampleRef, table_widths: widths } } })}>执行复盘</Button>}</div></header>
+            table: { page: input.page, size: input.size, sort: input.sort, direction: input.direction }, selected, sample_ref: sampleRef, table_widths: widths } } })}>执行复盘</Button>}</div></header>
       <C.Filters value={input} onChange={change} disabled={disabled} />
       {input.part_ref && <p className="ca-muted">已限定零件来源 <Button icon="x" aria-label="清除零件限定" disabled={disabled} onClick={() => change({ part_ref: null })} /></p>}
       <ErrorBox error={request.error || error} />
@@ -74,7 +74,7 @@
           <div className="ca-actions" style={{ marginLeft: 'auto' }}><label>格式<select aria-label="导出格式" value={format} disabled={disabled} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></select></label>
             <Button transfer="export" busy={downloading} disabled={disabled} reason={A.exportReason(data, format)} onClick={download}>导出全部筛选</Button></div></div>
         <C.Table rows={data.items} selected={selected} disabled={disabled} canView={data.capabilities.view === true} onPart={setPart} onSelect={value => { setSelected(value); setSample(null); }}
-          scope={input} adapter={api} widths={widths} total={data.summary.total} onResize={(key, value) => setWidths(old => ({ ...old, [key]: value }))}
+          scope={bound} adapter={api} widths={widths} total={data.summary.total} onResize={(key, value) => setWidths(old => ({ ...old, [key]: value }))}
           onSort={(sort, direction) => change({ sort: direction ? sort : 'part_no', direction: direction || 'asc' })}
           onFilter={(key, rule) => { const filters = { ...input.column_filters }; if (rule === null) delete filters[key]; else filters[key] = rule; change({ column_filters: filters }); }} />
         <C.Page page={data.page} onChange={page} disabled={disabled} />

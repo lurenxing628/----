@@ -2,7 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '../..'), input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const context = { window: {}, console, URLSearchParams }; vm.createContext(context);
-for (const name of ['resource-contract.js', 'PointContract.js', 'PlanContract.js', 'PointGanttModel.js', 'PlanGanttModel.js',
+for (const name of ['resource-contract.js', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'PointGanttModel.js', 'PlanGanttModel.js',
   'RunCandidateModel.js', 'RunBaselineModel.js', 'TrialContract.js']) {
   vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8'), context, {filename: name});
 }

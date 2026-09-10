@@ -119,13 +119,23 @@ class _FakeApp:
         self.logger = _FakeLogger(state)
         self._state = state
 
-    def run(self, *, host: str, port: int, debug: bool, use_reloader: bool) -> None:
+    def run(
+        self, *, host: str, port: int, debug: bool, use_reloader: bool, request_handler: type
+    ) -> None:
+        from web.bootstrap.workbench_request_lifecycle import WorkbenchRequestHandler
+
+        assert request_handler is WorkbenchRequestHandler
+        assert host == "127.0.0.1"
+        assert port == 58123
+        assert debug is True
+        assert use_reloader is True
         self._state["app_run"].append(
             {
-                "host": str(host),
-                "port": int(port),
-                "debug": bool(debug),
-                "use_reloader": bool(use_reloader),
+                "host": host,
+                "port": port,
+                "debug": debug,
+                "use_reloader": use_reloader,
+                "request_handler": request_handler,
             }
         )
 

@@ -1,0 +1,25 @@
+.operations-shell .brand-word,
+.operations-shell .nav-group-title { letter-spacing: 0; }
+.operations-shell .top-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.operations-shell .page-content { min-width: 0; }
+
+.analysis-workspace .top-header { box-shadow: none; }
+
+@media (max-width: 900px) {
+  .operations-shell .sidebar { width: 56px; }
+  .operations-shell .sidebar-header { padding: 0; justify-content: center; }
+  .operations-shell .brand-word,
+  .operations-shell .nav-group-title,
+  .operations-shell .nav-label { display: none; }
+  .operations-shell .sidebar-nav { padding: 10px 5px; }
+  .operations-shell .nav-item { padding: 0; justify-content: center; min-height: 40px; }
+  .operations-shell .page-content { padding: 18px; }
+  .operations-shell .top-header { padding: 0 18px; gap: 10px; }
+}
+@media (max-width: 600px) {
+  .operations-shell .page-content { padding: 14px 10px; }
+  .operations-shell .top-header { padding: 0 10px; }
+  .operations-shell .top-title { font-size: 15px; }
+  .operations-shell .header-controls { gap: 6px; }
+  .operations-shell .hdr-pill { padding: 0 8px; }
+}

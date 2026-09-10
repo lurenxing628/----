@@ -8,7 +8,7 @@
   const count = value => Number.isInteger(value) && value >= 0;
   const number = value => value === null || typeof value === 'number' && Number.isFinite(value);
   function failure(message, code) { const error = new Error(message); error.committed = false; error.error = { code, message, fields: [] }; return error; }
-  function input(value = {}) {
+  function readInput(value = {}) {
     if (!object(value) || Object.keys(value).some(key => !(key in defaults) && key !== 'snapshot_ref')) throw failure('筛选条件不受支持，未切换到其他范围。');
     const result = { ...defaults, ...value };
     if (typeof result.query !== 'string' || result.query.length > 200 || result.query.includes('\0') || result.part_ref !== null && !ref(result.part_ref)
@@ -19,6 +19,10 @@
     result.query = result.query.trim();
     if (!object(result.column_filters) || Object.keys(result.column_filters).some(key => !(key in sorts) || !object(result.column_filters[key]))) throw failure('校准列筛选不完整。');
     result.column_filters = Object.fromEntries(Object.keys(result.column_filters).sort().map(key => [key, window.ResourceTableFilterModel.rule(result.column_filters[key])]));
+    return result;
+  }
+  function input(value = {}) {
+    const result = readInput(value);
     if (result.page > 1 && !result.snapshot_ref) throw failure('原列表快照缺失，请明确刷新。', 'snapshot_required');
     return result;
   }
@@ -27,7 +31,17 @@
     if (value.selected != null && !ref(value.selected) || value.sample_ref != null && !ref(value.sample_ref)) throw failure('已选记录编号无效。');
     if (value.table_widths !== undefined && (!object(value.table_widths) || Object.keys(value.table_widths).some(key => !(key in sorts)
       || !Number.isFinite(value.table_widths[key]) || value.table_widths[key] < 56 || value.table_widths[key] > 16384))) throw failure('校准表格列宽记录无效。');
-    return input({ ...value.scope, ...value.table, ...(value.snapshot_ref ? { snapshot_ref: value.snapshot_ref } : {}) });
+    const saved = { ...value.scope, ...value.table };
+    delete saved.snapshot_ref;
+    return readInput(saved);
+  }
+  async function readView(api, value, signal) {
+    if (value.snapshot_ref) return validate(await api.read(value, signal), value);
+    const wanted = readInput(value), firstQuery = { ...wanted, page: 1 };
+    const first = validate(await api.read(firstQuery, signal), firstQuery);
+    if (wanted.page === 1) return first;
+    const bound = { ...wanted, snapshot_ref: first.meta.snapshot_ref };
+    return validate(await api.read(bound, signal), bound);
   }
   function validRow(row, meta) {
     return object(row) && ref(row.suggestion_ref) && row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.suggestion_ref
@@ -151,5 +165,5 @@
       facets: (kind, request, signal) => facet(kind, request, signal, false),
       facetSelection: (kind, request, signal) => facet(kind, request, signal, true) };
   }
-  window.CalibrationAPI = { create, validate, input, initial, sorts, exportReason, failure, facetScope };
+  window.CalibrationAPI = { create, validate, input, initial, readView, sorts, exportReason, failure, facetScope };
 })();

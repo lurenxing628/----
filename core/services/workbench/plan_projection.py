@@ -123,10 +123,10 @@ def _adopted_quantities(conn, plan_ref):
     if conn is None:
         return {}, "plan_target_not_recorded"
     try:
-        evidence = _quantity_evidence(conn, plan_ref)
+        evidence = read_adopted_source(conn, plan_ref)
         if evidence is None:
             return {}, "plan_target_not_recorded"
-        basis, audit, arranged = evidence
+        basis, audit, _, arranged, _ = evidence
         result = _source_quantities(conn, basis, audit, arranged)
         require(set(result) == {row["op_id"] for row in arranged}, "quantity.complete_operation_set")
         return result, None
@@ -140,7 +140,8 @@ def _adopted_quantities(conn, plan_ref):
         return {}, "plan_target_unavailable"
 
 
-def _quantity_evidence(conn, plan_ref):
+def read_adopted_source(conn, plan_ref):
+    """Read the audited immutable source; callers retain their read transaction."""
     from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
     from .plan_adoption_baseline import _audit
@@ -163,8 +164,8 @@ def _quantity_evidence(conn, plan_ref):
             "quantity.adoption_baseline")
     verify_capture(baseline, tables)
     require(len(arranged) == audit["row_count"], "quantity.adoption_complete_rows")
-    verify_arranged(conn, plan_ref, locator.version, tables, arranged)
-    return basis, audit, arranged
+    selected = verify_arranged(conn, plan_ref, locator.version, tables, arranged)
+    return basis, audit, tables, arranged, selected
 
 
 def _source_quantities(conn, basis, audit, arranged):

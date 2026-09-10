@@ -21,7 +21,7 @@ const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/proto
 const scripts = new Map(compiled.outputs.map((row, i) => ['/source/' + i + '.js', row.code]));
 const assets = new Map(manifest.files.map(row => ['/static/' + row.path, { ...row, bytes: fs.readFileSync(path.join(root, 'static', row.path)) }]));
 const foundation = manifest.scripts.filter(file => !file.startsWith('workbench/app/'));
-const boot = { schema_version: 1, entry_url: '/', trial_url: '/trial', titles: { trial: '方案试调', gantt: '计划甘特', analysis: '方案对比' } };
+const boot = JSON.parse(fs.readFileSync(path.join(output, 'boot-fixture.json'), 'utf8'));
 const html = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
   '</head><body class="aps-workbench"><div id="root"></div><script id="workbench-boot" type="application/json">' + JSON.stringify(boot) + '</script>' +
@@ -37,7 +37,7 @@ const server = http.createServer((req, res) => {
   if (scripts.has(pathname)) { res.setHeader('Content-Type', 'application/javascript'); res.end(scripts.get(pathname)); return; }
   const asset = assets.get(pathname); if (!asset) { res.writeHead(404); res.end(); return; } res.setHeader('Content-Type', asset.mime); res.end(asset.bytes);
 });
-const report = { browser: null, variants: [], checks: [], screenshots: [], errors: [], external: [], geometry: [],
+const report = { browser: null, variants: [], checks: [], screenshots: [], errors: [], external: [], geometry: [], boot,
   sources: sources.map(s => ({ path: s.path, sha256: crypto.createHash('sha256').update(s.code).digest('hex') })) };
 let page, origin, refs, variant;
 const button = name => page.getByRole('button', { name, exact: true });

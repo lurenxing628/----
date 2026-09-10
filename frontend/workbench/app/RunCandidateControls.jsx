@@ -42,7 +42,7 @@
           <Pager page={d.page.number} pages={Math.max(1, Math.ceil(d.page.total / d.page.size))} disabled={busy} label="候选" onPage={page => onQuery({ page }, true)} /></div></>}
     </section>;
   }
-  function Generation({ data }) {
+  function Generation({ data, analysis }) {
     const g = data.generation, input = g.input, M = window.RunCandidateModel;
     return <section aria-label="生成时范围"><div className="rc-heading"><div className="rc-tools"><h3>当前：{data.candidate.label || '名称未记录'}</h3><Status candidate={data.candidate} /><span className="rc-pending">生成时未分配正式版本</span></div>
       <span>生成窗口：{input.start_date || '未记录'} 至 {input.end_date || '未记录'}</span></div>
@@ -50,12 +50,12 @@
         <div><dt>生成受理 / 结束</dt><dd>{M.timeLabel(g.accepted_at)}<small>{M.timeLabel(g.finished_at)}</small></dd></div>
         <div><dt>齐套检查 / 缺资源</dt><dd>{input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭'} / {{ auto_assign: '自动分配', exclude: '暂不排' }[input.missing_resource_policy] || '未记录'}</dd></div>
         <div><dt>已有执行 / 当时的正式计划</dt><dd>{input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行策略未记录'}<small>{g.baseline.captured_task_count === null ? '正式计划安排数未知' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排'}</small></dd></div></dl>
-      <div className="rc-muted">名称、资源、交期和执行状态来自生成时保存的资料，未读取后来的修改。{g.baseline.reason.message}</div>
-      <div className="rc-muted">原始选批清单：当前候选记录未提供，不能用可见安排反推生成时的完整选批范围。</div>
+      <div className="rc-muted">名称、资源、交期和执行状态来自生成时保存的资料，未读取后来的修改。{analysis ? analysis.baseline.reason && analysis.baseline.reason.message : g.baseline.reason.message}</div>
+      <div className="rc-muted">{analysis ? '受理时选批：' + analysis.batches.map(row => row.batch_id).join(' / ') : '原始选批清单尚未核对，不能用可见安排反推生成时的完整选批范围。'}</div>
       <div>运行记录编号：<code>{g.run_ref}</code></div><div>候选记录编号：<code>{data.candidate.candidate_ref}</code></div>
         <dl className="rc-meta">{window.RunCandidateAPI.metricKeys.map(k => <div key={k}><dt>{M.metricLabels[k]}</dt><dd><Metric metric={data.candidate.metrics[k]} /></dd></div>)}
           <div><dt>实际工时 / 成本</dt><dd>未知<small>当前候选接口未提供实际工时与成本事实。</small></dd></div></dl></details>
-      <span className="rc-muted">原始选批清单未提供 · 不按已排安排推算</span>
+      <span className="rc-muted">{analysis ? '完整受理范围 ' + analysis.batch_refs.length + ' 批' : '完整受理范围待核对'}</span>
       <Reasons rows={[...data.data_gaps, ...data.candidate.data_gaps, ...g.data_gaps, ...data.blocked_reasons, ...data.candidate.blocked_reasons]} /></div>
     </section>;
   }

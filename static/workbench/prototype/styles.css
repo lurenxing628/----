@@ -1,0 +1,12 @@
+/* ============================================================
+   APS 排产系统 · Design System — global entry point
+   Consumers link THIS file. Import manifest only; never add rules.
+   No @font-face: the product is Win7/offline and rides the system
+   font stack (see tokens/typography.css). Mirrors the real
+   static/css/00-tokens.css token contract.
+   ============================================================ */
+
+@import url("tokens/colors.css");
+@import url("tokens/typography.css");
+@import url("tokens/spacing.css");
+@import url("tokens/dark.css");

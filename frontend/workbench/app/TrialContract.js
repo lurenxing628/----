@@ -22,13 +22,30 @@
   }
   // A navigation target is an identity, never an instruction to pick the latest record.
   function target(v = {}) {
-    check(object(v) && Object.keys(v).every(k => ['kind', 'draft_ref', 'scenario_ref', 'base', 'scope'].includes(k)), '试调入口含未知字段，未猜测来源。');
+    check(object(v) && Object.keys(v).every(k => ['kind', 'draft_ref', 'scenario_ref', 'base', 'scope', 'task_origin'].includes(k)), '试调入口含未知字段，未猜测来源。');
     const keys = ['draft_ref', 'scenario_ref', 'base'].filter(k => v[k] !== undefined);
     check(keys.length <= 1, '只能指定一份草稿、场景或原来源。');
     if (v.kind !== undefined) check(v.kind === (v.draft_ref ? 'draft' : v.scenario_ref ? 'scenario' : 'base'));
     keys.forEach(k => k === 'base' ? base(v[k]) : check(ref(v[k])));
     if (v.scope !== undefined) { check(keys[0] === 'base', '已有草稿不能重新指定基础范围。'); scope(v.scope); }
+    if (Object.prototype.hasOwnProperty.call(v, 'task_origin')) {
+      origin(v.task_origin);
+      check(keys.length === 1 && keys[0] !== 'scenario_ref', '原任务定位只能指向原正式计划或指定草稿。');
+      if (v.base) check(v.base.plan_ref === v.task_origin.plan_ref, '原任务与试调原计划不一致，未替换来源。');
+    }
     return v;
+  }
+  function origin(value) {
+    check(fields(value, ['plan_ref', 'operation_ref', 'task_ref']) && Object.keys(value).length === 3
+      && ['plan_ref', 'operation_ref', 'task_ref'].every(key => ref(value[key])), '原任务定位必须包含完整的原计划、工序和任务永久引用。');
+    return value;
+  }
+  function originTask(data, value) {
+    origin(value);
+    check(!data.scenario_ref && data.base && data.base.plan_ref === value.plan_ref, '当前草稿与原任务来源不一致，未定位或开放写入。');
+    const tasks = data.tasks.filter(task => task.source_task_ref === value.task_ref && task.operation_ref === value.operation_ref);
+    check(tasks.length === 1, tasks.length ? '原任务对应多份草稿安排，无法唯一定位，未开放写入。' : '当前草稿没有对应的原任务，未选择同号工序或其他任务。');
+    return tasks[0];
   }
   function issues(v) { check(Array.isArray(v) && v.every(r => fields(r, ['code', 'message']) && typeof r.message === 'string')); }
   function validation(v) {
@@ -122,5 +139,5 @@
     }
     return v;
   }
-  window.TrialContract = { object, ref, count, fields, check, time, base, scope, target, issues, validation, envelope, workspace, catalog, receipt };
+  window.TrialContract = { object, ref, count, fields, check, time, base, scope, target, origin, originTask, issues, validation, envelope, workspace, catalog, receipt };
 })();

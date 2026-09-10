@@ -1,0 +1,6955 @@
+{
+  "schema_version": 1,
+  "kind": "task-c-atomic-acceptance-ledger",
+  "planning_path": ".codestable/roadmap/workbench-prototype-migration/workbench-capabilities.json",
+  "planning_sha256": "0cad8e05a5adbadacf0c2ecef1e56f38bb4c97e6948c1dc5a2fc847bcec1ffb2",
+  "planning_families": 58,
+  "atomic_actions": 599,
+  "status": "execution_pending",
+  "policy": {
+    "B": "真实Flask工厂/SQLite/API；复用证据必须逐来源哈希匹配并标为历史复用",
+    "K": "完整/workbench入口的实际click/fill/pressSequentially；每一步记录输入方式",
+    "V": "保留1920x1080和1392x924深浅四组合截图，待Main逐动作审视；采集不等于V通过",
+    "P": "刷新及停止重开同一私有数据库核验；不适用逐动作解释，不缩分母",
+    "no_shortcut": "family或历史原型passed不能传播成action passed；失败保留，禁止自动忽略"
+  },
+  "families": [
+    {
+      "family_id": "WBP-PROC-001",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-001-A01",
+          "description": "物料节点鼠标进入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-001-A02",
+          "description": "自制工种节点鼠标进入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-001-A03",
+          "description": "设备节点鼠标进入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-001-A04",
+          "description": "人员节点鼠标进入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-001-A05",
+          "description": "外协工种节点鼠标进入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-001-A06",
+          "description": "供应商节点鼠标进入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-001-A07",
+          "description": "工艺节点鼠标进入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-001-A08",
+          "description": "日历节点鼠标进入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-001-A09",
+          "description": "产能链节点键盘进入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-001-A10",
+          "description": "下一步进入批次",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-001-A11",
+          "description": "各节点真实计数",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-001-A12",
+          "description": "各节点就绪与异常口径",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-002",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-002-A01",
+          "description": "全部阶段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-002-A02",
+          "description": "待导入路线阶段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-002-A03",
+          "description": "待分拣阶段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-002-A04",
+          "description": "待填工时阶段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-002-A05",
+          "description": "已就绪阶段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-002-A06",
+          "description": "三段进度真实投影",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-002-A07",
+          "description": "下一步定位",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-003",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-003-A01",
+          "description": "工艺搜索逐键输入并提交",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A02",
+          "description": "工艺搜索无匹配",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A03",
+          "description": "工艺下一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A04",
+          "description": "工艺上一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A05",
+          "description": "物料搜索并提交",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A06",
+          "description": "物料下一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A07",
+          "description": "物料上一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A08",
+          "description": "自制工种：搜索并提交",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A09",
+          "description": "自制工种：下一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A10",
+          "description": "自制工种：上一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A11",
+          "description": "设备：搜索并提交",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A12",
+          "description": "设备：下一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A13",
+          "description": "设备：上一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A14",
+          "description": "人员：搜索并提交",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A15",
+          "description": "人员：下一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A16",
+          "description": "人员：上一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A17",
+          "description": "外协工种：搜索并提交",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A18",
+          "description": "外协工种：下一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A19",
+          "description": "外协工种：上一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A20",
+          "description": "供应商：搜索并提交",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A21",
+          "description": "供应商：下一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-003-A22",
+          "description": "供应商：上一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-004",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-004-A01",
+          "description": "新增弹窗打开",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-004-A02",
+          "description": "图号输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-004-A03",
+          "description": "名称输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-004-A04",
+          "description": "路线文字输入及实时拆序",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-004-A05",
+          "description": "逐序改为自制",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-004-A06",
+          "description": "逐序改为外协",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-004-A07",
+          "description": "换型工时输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-004-A08",
+          "description": "单件工时输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-004-A09",
+          "description": "新增确认与实际持久化",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-004-A10",
+          "description": "新增图号重复拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-004-A11",
+          "description": "取消不新增",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-004-A12",
+          "description": "新零件联动批次选项",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-005",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-005-A01",
+          "description": "录入路线菜单打开",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-005-A02",
+          "description": "选择导入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-005-A03",
+          "description": "选择手工新建",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-005-A04",
+          "description": "无路线详情提示",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-006",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-006-A01",
+          "description": "整条文本录入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-006-A02",
+          "description": "切换逐行模式",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-006-A03",
+          "description": "逐行序号输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-006-A04",
+          "description": "工种选项选择",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-006-A05",
+          "description": "增加行",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-006-A06",
+          "description": "删除行",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-006-A07",
+          "description": "预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-006-A08",
+          "description": "未识别摘要",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-006-A09",
+          "description": "重复序号拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-006-A10",
+          "description": "非连续序号保留",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-007",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-007-A01",
+          "description": "打开路线步骤",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-007-A02",
+          "description": "未完成路线时归属锁定",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-007-A03",
+          "description": "未完成归属时工时锁定",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-007-A04",
+          "description": "重新打开已完成路线",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-007-A05",
+          "description": "重新打开已完成归属",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-007-A06",
+          "description": "重新打开已完成工时",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-007-A07",
+          "description": "路线变化下游失效",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-007-A08",
+          "description": "就绪汇总",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-008",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-008-A01",
+          "description": "逐序选择自制",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-008-A02",
+          "description": "逐序选择外协",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-008-A03",
+          "description": "显示建议来源与依据",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-008-A04",
+          "description": "待定状态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-008-A05",
+          "description": "待确认状态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-008-A06",
+          "description": "人工已选状态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-008-A07",
+          "description": "完成归属确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-008-A08",
+          "description": "确认人与时间持久化",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-008-A09",
+          "description": "重新导入保留人工归属",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-009",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-009-A01",
+          "description": "换型工时输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-009-A02",
+          "description": "单件工时输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-009-A03",
+          "description": "空缺警示",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-009-A04",
+          "description": "零工时合法性一致",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-009-A05",
+          "description": "负数或非有限值拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-009-A06",
+          "description": "保存工时",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-009-A07",
+          "description": "保存范围与非目标工序保留",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-010",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-010-A01",
+          "description": "详情导入路线入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-010-A02",
+          "description": "详情导入工时入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-010-A03",
+          "description": "查看未匹配",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-010-A04",
+          "description": "未匹配清单下载",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-010-A05",
+          "description": "工序搜索",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-010-A06",
+          "description": "导入失败原数据保留",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-011",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-011-A01",
+          "description": "只读逐序资源",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-011-A02",
+          "description": "只读逐序归属",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-011-A03",
+          "description": "只读逐序工时",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-011-A04",
+          "description": "只读逐序外协周期",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-011-A05",
+          "description": "汇总",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-011-A06",
+          "description": "编辑重新打开",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-011-A07",
+          "description": "导出清单",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-012",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-012-A01",
+          "description": "待归类来源记录",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-012-A02",
+          "description": "前往工种库",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-012-A03",
+          "description": "建为自制",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-012-A04",
+          "description": "建为外协",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-012-A05",
+          "description": "创建后原引用联动",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-012-A06",
+          "description": "工种重复拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-013",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-013-A01",
+          "description": "物料列表真实字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-013-A02",
+          "description": "新增物料编号",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-013-A03",
+          "description": "新增物料名称",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-013-A04",
+          "description": "新增规格",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-013-A05",
+          "description": "新增库存数值",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-013-A06",
+          "description": "新增单位",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-013-A07",
+          "description": "启用状态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-013-A08",
+          "description": "低库存状态来源",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-013-A09",
+          "description": "停用状态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-013-A10",
+          "description": "创建确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-013-A11",
+          "description": "库存非法拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-014",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-014-A01",
+          "description": "自制工种列表",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-014-A02",
+          "description": "输入编号",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-014-A03",
+          "description": "输入名称",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-014-A04",
+          "description": "输入产能备注",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-014-A05",
+          "description": "创建确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-014-A06",
+          "description": "可用设备计数",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-014-A07",
+          "description": "可用人员计数",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-014-A08",
+          "description": "重复编号拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-015",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-015-A01",
+          "description": "设备列表",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-015-A02",
+          "description": "输入设备编号",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-015-A03",
+          "description": "输入设备名称",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-015-A04",
+          "description": "绑定单一工种",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-015-A05",
+          "description": "选择真实设备组",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-015-A06",
+          "description": "设置可用状态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-015-A07",
+          "description": "设置检修状态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-015-A08",
+          "description": "创建确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-015-A09",
+          "description": "无效工种引用拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-016",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-016-A01",
+          "description": "人员列表",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-016-A02",
+          "description": "输入工号",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-016-A03",
+          "description": "输入姓名",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-016-A04",
+          "description": "多选技能",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-016-A05",
+          "description": "选择真实班次",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-016-A06",
+          "description": "设置在岗",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-016-A07",
+          "description": "设置请假",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-016-A08",
+          "description": "创建确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-016-A09",
+          "description": "技能不冒充设备授权",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-017",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-017-A01",
+          "description": "外协工种列表",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-017-A02",
+          "description": "输入编号",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-017-A03",
+          "description": "输入名称",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-017-A04",
+          "description": "分别周期策略",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-017-A05",
+          "description": "合并周期策略",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-017-A06",
+          "description": "输入备注",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-017-A07",
+          "description": "创建确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-017-A08",
+          "description": "合并组显式关系不猜测",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-018",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-018-A01",
+          "description": "供应商列表",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-018-A02",
+          "description": "输入编号",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-018-A03",
+          "description": "输入名称",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-018-A04",
+          "description": "多选外协工种",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-018-A05",
+          "description": "输入默认周期",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-018-A06",
+          "description": "启用状态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-018-A07",
+          "description": "待复核状态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-018-A08",
+          "description": "停用状态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-018-A09",
+          "description": "创建确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-018-A10",
+          "description": "非正周期拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-018-A11",
+          "description": "工种引用拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-019",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-019-A01",
+          "description": "物料：选择单行",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A02",
+          "description": "物料：当前列表全选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A03",
+          "description": "物料：取消选择",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A04",
+          "description": "物料：单行删除预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A05",
+          "description": "物料：单行删除确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A06",
+          "description": "物料：批量删除预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A07",
+          "description": "物料：批量删除确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A08",
+          "description": "物料：引用受阻拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A09",
+          "description": "自制工种：选择单行",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A10",
+          "description": "自制工种：当前列表全选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A11",
+          "description": "自制工种：取消选择",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A12",
+          "description": "自制工种：单行删除预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A13",
+          "description": "自制工种：单行删除确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A14",
+          "description": "自制工种：批量删除预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A15",
+          "description": "自制工种：批量删除确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A16",
+          "description": "自制工种：引用受阻拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A17",
+          "description": "设备：选择单行",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A18",
+          "description": "设备：当前列表全选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A19",
+          "description": "设备：取消选择",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A20",
+          "description": "设备：单行删除预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A21",
+          "description": "设备：单行删除确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A22",
+          "description": "设备：批量删除预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A23",
+          "description": "设备：批量删除确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A24",
+          "description": "设备：引用受阻拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A25",
+          "description": "人员：选择单行",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A26",
+          "description": "人员：当前列表全选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A27",
+          "description": "人员：取消选择",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A28",
+          "description": "人员：单行删除预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A29",
+          "description": "人员：单行删除确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A30",
+          "description": "人员：批量删除预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A31",
+          "description": "人员：批量删除确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A32",
+          "description": "人员：引用受阻拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A33",
+          "description": "外协工种：选择单行",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A34",
+          "description": "外协工种：当前列表全选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A35",
+          "description": "外协工种：取消选择",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A36",
+          "description": "外协工种：单行删除预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A37",
+          "description": "外协工种：单行删除确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A38",
+          "description": "外协工种：批量删除预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A39",
+          "description": "外协工种：批量删除确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A40",
+          "description": "外协工种：引用受阻拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A41",
+          "description": "供应商：选择单行",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A42",
+          "description": "供应商：当前列表全选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A43",
+          "description": "供应商：取消选择",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A44",
+          "description": "供应商：单行删除预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A45",
+          "description": "供应商：单行删除确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A46",
+          "description": "供应商：批量删除预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A47",
+          "description": "供应商：批量删除确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-019-A48",
+          "description": "供应商：引用受阻拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-020",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-020-A01",
+          "description": "物料：编号打开详情",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A02",
+          "description": "物料：查看编辑入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A03",
+          "description": "物料：关联入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A04",
+          "description": "物料：不存在对象明确失败",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A05",
+          "description": "自制工种：编号打开详情",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A06",
+          "description": "自制工种：查看编辑入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A07",
+          "description": "自制工种：关联入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A08",
+          "description": "自制工种：不存在对象明确失败",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A09",
+          "description": "设备：编号打开详情",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A10",
+          "description": "设备：查看编辑入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A11",
+          "description": "设备：关联入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A12",
+          "description": "设备：不存在对象明确失败",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A13",
+          "description": "人员：编号打开详情",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A14",
+          "description": "人员：查看编辑入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A15",
+          "description": "人员：关联入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A16",
+          "description": "人员：不存在对象明确失败",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A17",
+          "description": "外协工种：编号打开详情",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A18",
+          "description": "外协工种：查看编辑入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A19",
+          "description": "外协工种：关联入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A20",
+          "description": "外协工种：不存在对象明确失败",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A21",
+          "description": "供应商：编号打开详情",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A22",
+          "description": "供应商：查看编辑入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A23",
+          "description": "供应商：关联入口",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-020-A24",
+          "description": "供应商：不存在对象明确失败",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-021",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-021-A01",
+          "description": "物料：模板下载",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A02",
+          "description": "物料：文件点选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A03",
+          "description": "物料：拖拽文件",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A04",
+          "description": "物料：导入预检",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A05",
+          "description": "物料：关键引用核对",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A06",
+          "description": "物料：确认导入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A07",
+          "description": "物料：逐行错误",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A08",
+          "description": "物料：取消保留原数据",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A09",
+          "description": "自制工种：模板下载",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A10",
+          "description": "自制工种：文件点选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A11",
+          "description": "自制工种：拖拽文件",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A12",
+          "description": "自制工种：导入预检",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A13",
+          "description": "自制工种：关键引用核对",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A14",
+          "description": "自制工种：确认导入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A15",
+          "description": "自制工种：逐行错误",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A16",
+          "description": "自制工种：取消保留原数据",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A17",
+          "description": "设备：模板下载",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A18",
+          "description": "设备：文件点选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A19",
+          "description": "设备：拖拽文件",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A20",
+          "description": "设备：导入预检",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A21",
+          "description": "设备：关键引用核对",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A22",
+          "description": "设备：确认导入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A23",
+          "description": "设备：逐行错误",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A24",
+          "description": "设备：取消保留原数据",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A25",
+          "description": "人员：模板下载",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A26",
+          "description": "人员：文件点选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A27",
+          "description": "人员：拖拽文件",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A28",
+          "description": "人员：导入预检",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A29",
+          "description": "人员：关键引用核对",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A30",
+          "description": "人员：确认导入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A31",
+          "description": "人员：逐行错误",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A32",
+          "description": "人员：取消保留原数据",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A33",
+          "description": "外协工种：模板下载",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A34",
+          "description": "外协工种：文件点选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A35",
+          "description": "外协工种：拖拽文件",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A36",
+          "description": "外协工种：导入预检",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A37",
+          "description": "外协工种：关键引用核对",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A38",
+          "description": "外协工种：确认导入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A39",
+          "description": "外协工种：逐行错误",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A40",
+          "description": "外协工种：取消保留原数据",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A41",
+          "description": "供应商：模板下载",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A42",
+          "description": "供应商：文件点选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A43",
+          "description": "供应商：拖拽文件",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A44",
+          "description": "供应商：导入预检",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A45",
+          "description": "供应商：关键引用核对",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A46",
+          "description": "供应商：确认导入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A47",
+          "description": "供应商：逐行错误",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A48",
+          "description": "供应商：取消保留原数据",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A49",
+          "description": "工艺路线：模板下载",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A50",
+          "description": "工艺路线：文件点选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A51",
+          "description": "工艺路线：拖拽文件",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A52",
+          "description": "工艺路线：导入预检",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A53",
+          "description": "工艺路线：关键引用核对",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A54",
+          "description": "工艺路线：确认导入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A55",
+          "description": "工艺路线：逐行错误",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A56",
+          "description": "工艺路线：取消保留原数据",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A57",
+          "description": "工时定额：模板下载",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A58",
+          "description": "工时定额：文件点选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A59",
+          "description": "工时定额：拖拽文件",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A60",
+          "description": "工时定额：导入预检",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A61",
+          "description": "工时定额：关键引用核对",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A62",
+          "description": "工时定额：确认导入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A63",
+          "description": "工时定额：逐行错误",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-021-A64",
+          "description": "工时定额：取消保留原数据",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-022",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-022-A01",
+          "description": "物料：当前筛选Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A02",
+          "description": "物料：当前筛选CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A03",
+          "description": "物料：全部Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A04",
+          "description": "物料：全部CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A05",
+          "description": "物料：取消导出",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A06",
+          "description": "自制工种：当前筛选Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A07",
+          "description": "自制工种：当前筛选CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A08",
+          "description": "自制工种：全部Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A09",
+          "description": "自制工种：全部CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A10",
+          "description": "自制工种：取消导出",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A11",
+          "description": "设备：当前筛选Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A12",
+          "description": "设备：当前筛选CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A13",
+          "description": "设备：全部Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A14",
+          "description": "设备：全部CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A15",
+          "description": "设备：取消导出",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A16",
+          "description": "人员：当前筛选Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A17",
+          "description": "人员：当前筛选CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A18",
+          "description": "人员：全部Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A19",
+          "description": "人员：全部CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A20",
+          "description": "人员：取消导出",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A21",
+          "description": "外协工种：当前筛选Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A22",
+          "description": "外协工种：当前筛选CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A23",
+          "description": "外协工种：全部Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A24",
+          "description": "外协工种：全部CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A25",
+          "description": "外协工种：取消导出",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A26",
+          "description": "供应商：当前筛选Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A27",
+          "description": "供应商：当前筛选CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A28",
+          "description": "供应商：全部Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A29",
+          "description": "供应商：全部CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A30",
+          "description": "供应商：取消导出",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A31",
+          "description": "工艺路线：当前筛选Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A32",
+          "description": "工艺路线：当前筛选CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A33",
+          "description": "工艺路线：全部Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A34",
+          "description": "工艺路线：全部CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A35",
+          "description": "工艺路线：取消导出",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A36",
+          "description": "工时定额：当前筛选Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A37",
+          "description": "工时定额：当前筛选CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A38",
+          "description": "工时定额：全部Excel",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A39",
+          "description": "工时定额：全部CSV",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-022-A40",
+          "description": "工时定额：取消导出",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-023",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-023-A01",
+          "description": "月视图真实日期",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-023-A02",
+          "description": "上一月",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-023-A03",
+          "description": "下一月",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-023-A04",
+          "description": "今天",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-023-A05",
+          "description": "日格鼠标打开",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-023-A06",
+          "description": "日格键盘打开",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-023-A07",
+          "description": "本月统计",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-023-A08",
+          "description": "默认规则来源",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-024",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-024-A01",
+          "description": "设为工作日",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-024-A02",
+          "description": "设为休息日",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-024-A03",
+          "description": "工作时长输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-024-A04",
+          "description": "效率输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-024-A05",
+          "description": "普通许可切换",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-024-A06",
+          "description": "急件许可切换",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-024-A07",
+          "description": "备注输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-024-A08",
+          "description": "保存",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-024-A09",
+          "description": "清除覆盖",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-024-A10",
+          "description": "零时长含义",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-024-A11",
+          "description": "两许可关闭停排",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-024-A12",
+          "description": "非法值拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-PROC-025",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-PROC-025-A01",
+          "description": "批量弹窗",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A02",
+          "description": "起始日期",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A03",
+          "description": "结束日期",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A04",
+          "description": "每天范围",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A05",
+          "description": "仅工作日范围",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A06",
+          "description": "仅周末范围",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A07",
+          "description": "工作休息切换",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A08",
+          "description": "工时输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A09",
+          "description": "效率输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A10",
+          "description": "普通许可",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A11",
+          "description": "急件许可",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A12",
+          "description": "覆盖预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A13",
+          "description": "确认应用",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A14",
+          "description": "取消不写",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A15",
+          "description": "超范围拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-PROC-025-A16",
+          "description": "旧版本冲突拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-DETAIL-001",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-DETAIL-001-A01",
+          "description": "物料详情字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-001-A02",
+          "description": "物料引用零件",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-001-A03",
+          "description": "编辑物料",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-001-A04",
+          "description": "调整库存",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-001-A05",
+          "description": "旧备注与隐藏字段保留",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-DETAIL-002",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-DETAIL-002-A01",
+          "description": "零件详情字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-002-A02",
+          "description": "工艺顺序",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-002-A03",
+          "description": "打开工艺详情准确定位",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-002-A04",
+          "description": "零件清单下载",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-DETAIL-003",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-DETAIL-003-A01",
+          "description": "自制工种详情字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-003-A02",
+          "description": "真实设备集合",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-003-A03",
+          "description": "真实人员集合",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-003-A04",
+          "description": "查看绑定",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-003-A05",
+          "description": "编辑工种",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-DETAIL-004",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-DETAIL-004-A01",
+          "description": "外协工种详情字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-004-A02",
+          "description": "真实供应商集合",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-004-A03",
+          "description": "查看供应商",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-004-A04",
+          "description": "编辑工种",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-DETAIL-005",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-DETAIL-005-A01",
+          "description": "设备详情字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-005-A02",
+          "description": "本周任务",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-005-A03",
+          "description": "本周利用率及产能口径",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-005-A04",
+          "description": "查看甘特定点导航",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-005-A05",
+          "description": "编辑设备",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-DETAIL-006",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-DETAIL-006-A01",
+          "description": "人员详情字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-006-A02",
+          "description": "真实技能",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-006-A03",
+          "description": "真实班次",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-006-A04",
+          "description": "本周排班",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-006-A05",
+          "description": "查看排班",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-006-A06",
+          "description": "编辑人员",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-DETAIL-007",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-DETAIL-007-A01",
+          "description": "供应商详情字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-007-A02",
+          "description": "承接工种集合",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-007-A03",
+          "description": "默认周期",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-007-A04",
+          "description": "查看承接工种",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-007-A05",
+          "description": "编辑供应商",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-DETAIL-008",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-DETAIL-008-A01",
+          "description": "批次详情实际挂载边界",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-008-A02",
+          "description": "旧方案详情实际挂载边界",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-008-A03",
+          "description": "未知编号明确失败",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-DETAIL-008-A04",
+          "description": "页脚潜在入口不冒充可用",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-001",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-001-A01",
+          "description": "批次列表身份字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-001-A02",
+          "description": "数量交期字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-001-A03",
+          "description": "工序实际进度",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-001-A04",
+          "description": "优先级齐套字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-001-A05",
+          "description": "实际状态及缺项",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-001-A06",
+          "description": "未开工不由前序完成推断",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-002",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-002-A01",
+          "description": "批次号搜索",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-002-A02",
+          "description": "图号搜索",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-002-A03",
+          "description": "名称搜索",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-002-A04",
+          "description": "状态筛选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-002-A05",
+          "description": "齐套筛选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-002-A06",
+          "description": "单清条件",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-002-A07",
+          "description": "清全部条件",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-002-A08",
+          "description": "无数据空态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-002-A09",
+          "description": "无匹配空态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-002-A10",
+          "description": "往返查询状态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-003",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-003-A01",
+          "description": "表头升序",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-003-A02",
+          "description": "表头降序",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-003-A03",
+          "description": "表头取消排序",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-003-A04",
+          "description": "列值多选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-003-A05",
+          "description": "列值全选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-003-A06",
+          "description": "清本列",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-003-A07",
+          "description": "完成过滤",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-003-A08",
+          "description": "外点关闭",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-003-A09",
+          "description": "Escape关闭",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-003-A10",
+          "description": "拖动列宽",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-003-A11",
+          "description": "全量范围排序计数",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-004",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-004-A01",
+          "description": "选择单行",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-004-A02",
+          "description": "当前筛选全选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-004-A03",
+          "description": "半选显示",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-004-A04",
+          "description": "清除选择",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-004-A05",
+          "description": "隐藏选中计数",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-004-A06",
+          "description": "筛选变化保留明确ID集合",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-005",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-005-A01",
+          "description": "展开工序概况",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-005-A02",
+          "description": "逐序序号工种缺项",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-005-A03",
+          "description": "已完与总数",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-005-A04",
+          "description": "无路线未生成",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-006",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-006-A01",
+          "description": "新增弹窗",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-006-A02",
+          "description": "输入批次号",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-006-A03",
+          "description": "选择图号",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-006-A04",
+          "description": "输入数量",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-006-A05",
+          "description": "输入交期",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-006-A06",
+          "description": "选择优先级",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-006-A07",
+          "description": "选择齐套状态",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-006-A08",
+          "description": "输入齐套日期",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-006-A09",
+          "description": "输入备注",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-006-A10",
+          "description": "确认创建",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-006-A11",
+          "description": "重复主键拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-006-A12",
+          "description": "创建不冒充生成工序",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-007",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-007-A01",
+          "description": "打开批量修改",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-007-A02",
+          "description": "选择优先级修改",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-007-A03",
+          "description": "选择交期修改",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-007-A04",
+          "description": "选择备注修改",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-007-A05",
+          "description": "预览旧新值",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-007-A06",
+          "description": "确认批改",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-007-A07",
+          "description": "取消不写",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-007-A08",
+          "description": "预览过期冲突拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-008",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-008-A01",
+          "description": "复制所选预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-008-A02",
+          "description": "新编号预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-008-A03",
+          "description": "字段与工序预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-008-A04",
+          "description": "确认复制",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-008-A05",
+          "description": "完成状态重置",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-008-A06",
+          "description": "编号碰撞拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-008-A07",
+          "description": "编号越界拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-009",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-009-A01",
+          "description": "单行删除预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-009-A02",
+          "description": "单行删除确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-009-A03",
+          "description": "删除所选预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-009-A04",
+          "description": "删除所选确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-009-A05",
+          "description": "详情删除二次确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-009-A06",
+          "description": "已排批次保护",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-009-A07",
+          "description": "已执行批次保护",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-009-A08",
+          "description": "原数据及删除审计",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-010",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-010-A01",
+          "description": "overwrite文件点选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-010-A02",
+          "description": "overwrite真实确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-010-A03",
+          "description": "append文件点选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-010-A04",
+          "description": "append真实确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-010-A05",
+          "description": "replace文件点选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-010-A06",
+          "description": "replace真实确认",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-010-A07",
+          "description": "首工作表解析",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-010-A08",
+          "description": "逐行错误诊断",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-010-A09",
+          "description": "replace保护拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-010-A10",
+          "description": "导入取消不写",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-010-A11",
+          "description": "刷新与重启保留结果",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-011",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-011-A01",
+          "description": "模板按钮真实下载",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-011-A02",
+          "description": "xlsx说明和示例核对",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-012",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-012-A01",
+          "description": "选中范围导出",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-012-A02",
+          "description": "选中计数",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-012-A03",
+          "description": "当前筛选范围导出",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-012-A04",
+          "description": "全部分页内容核对",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-013",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-013-A01",
+          "description": "打开真批次深链",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-013-A02",
+          "description": "详情四区字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-013-A03",
+          "description": "返回列表",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-013-A04",
+          "description": "返回排产",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-013-A05",
+          "description": "缺项定位",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-013-A06",
+          "description": "未齐套定位",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-013-A07",
+          "description": "清除定位",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-013-A08",
+          "description": "不存在批次明确错误",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-014",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-014-A01",
+          "description": "批次号禁用且真值",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-014-A02",
+          "description": "图号禁用且真值",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-014-A03",
+          "description": "修改数量",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-014-A04",
+          "description": "修改交期",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-014-A05",
+          "description": "修改优先级",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-014-A06",
+          "description": "齐套显示",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-014-A07",
+          "description": "修改齐套日期",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-014-A08",
+          "description": "修改备注",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-014-A09",
+          "description": "保存",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-014-A10",
+          "description": "冲突保留草稿",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-014-A11",
+          "description": "失败保留草稿",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-015",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-015-A01",
+          "description": "同步模板预览",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-015-A02",
+          "description": "资料不完整停止刷新开关",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-015-A03",
+          "description": "覆盖警告",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-015-A04",
+          "description": "二次确认同步",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-015-A05",
+          "description": "模板版本核对",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-015-A06",
+          "description": "已执行保护",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-015-A07",
+          "description": "结果审计",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-016",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-016-A01",
+          "description": "选择设备",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-016-A02",
+          "description": "选择人员",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-016-A03",
+          "description": "换型工时输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-016-A04",
+          "description": "单件工时输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-016-A05",
+          "description": "保存自制工序",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-016-A06",
+          "description": "待补颜色与文本",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-016-A07",
+          "description": "可用人员提示",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-016-A08",
+          "description": "不匹配红字",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-016-A09",
+          "description": "纠正不匹配",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-016-A10",
+          "description": "零工时持久化",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-BATCH-017",
+      "workstream": "batches",
+      "actions": [
+        {
+          "action_id": "WBP-BATCH-017-A01",
+          "description": "选择供应商",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-017-A02",
+          "description": "外协周期输入",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-017-A03",
+          "description": "保存外协工序",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-017-A04",
+          "description": "合并组编号只读",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-017-A05",
+          "description": "合并模式只读",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-017-A06",
+          "description": "整组周期只读",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-BATCH-017-A07",
+          "description": "无分组编辑入口边界",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-MD-001",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-MD-001-A01",
+          "description": "手动刷新主数据",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-001-A02",
+          "description": "焦点返回自动重读",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-001-A03",
+          "description": "主数据变更自动重读",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-001-A04",
+          "description": "四总指标",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-001-A05",
+          "description": "八域真实数量",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-001-A06",
+          "description": "待维护计数",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-001-A07",
+          "description": "就绪非等同说明",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-MD-002",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-MD-002-A01",
+          "description": "待维护页签",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-002-A02",
+          "description": "实体页签",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-002-A03",
+          "description": "数据域筛选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-002-A04",
+          "description": "检查状态筛选",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-002-A05",
+          "description": "搜索输入并提交",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-002-A06",
+          "description": "排序",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-002-A07",
+          "description": "稳定筛选范围",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-MD-003",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-MD-003-A01",
+          "description": "问题列表字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-003-A02",
+          "description": "实体列表字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-003-A03",
+          "description": "每页20",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-003-A04",
+          "description": "每页50",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-003-A05",
+          "description": "每页100",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-003-A06",
+          "description": "下一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-003-A07",
+          "description": "上一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-003-A08",
+          "description": "总数与完整性口径",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-MD-004",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-MD-004-A01",
+          "description": "实体行选择",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-004-A02",
+          "description": "侧详情字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-004-A03",
+          "description": "问题焦点",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-004-A04",
+          "description": "已填及总检查字段",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-004-A05",
+          "description": "返回清单焦点",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-004-A06",
+          "description": "选择不改变业务事实",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-MD-005",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-MD-005-A01",
+          "description": "待维护详情页签",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-005-A02",
+          "description": "相关项详情页签",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-005-A03",
+          "description": "字段详情页签",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-005-A04",
+          "description": "详情下一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-005-A05",
+          "description": "详情上一页",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-005-A06",
+          "description": "关联项跳实体清单",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-005-A07",
+          "description": "字段来源",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-005-A08",
+          "description": "未加载关系边界",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-MD-006",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-MD-006-A01",
+          "description": "行维护导航",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-006-A02",
+          "description": "问题动作导航",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-006-A03",
+          "description": "定位当前实体",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-006-A04",
+          "description": "维护基础资料",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-006-A05",
+          "description": "无导航禁用",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-006-A06",
+          "description": "目标删除或变更明确拒绝",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-MD-007",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-MD-007-A01",
+          "description": "待维护筛选CSV下载",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-007-A02",
+          "description": "实体筛选CSV下载",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-007-A03",
+          "description": "全部分页同快照内容",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "family_id": "WBP-MD-008",
+      "workstream": "master-data",
+      "actions": [
+        {
+          "action_id": "WBP-MD-008-A01",
+          "description": "未加载数据域",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-008-A02",
+          "description": "未加载会话",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-008-A03",
+          "description": "真实读取失败显示",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-008-A04",
+          "description": "缺关系不冒充无关联",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-008-A05",
+          "description": "实体规则检查",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        },
+        {
+          "action_id": "WBP-MD-008-A06",
+          "description": "零工时规则一致",
+          "gates": {
+            "B": "pending",
+            "K": "pending",
+            "V": "pending_main_review",
+            "P": "pending"
+          },
+          "evidence": []
+        }
+      ]
+    }
+  ]
+}

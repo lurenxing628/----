@@ -124,8 +124,10 @@ async function scenario(browser,viewport,theme){
       const dialog=await editor(page);equal(await dialog.locator('input[name="stock_qty"]').inputValue(),'');await save(page,'material','update');await close(page);
     });
     await run(page,state,'theme-and-navigation',async()=>{
-      await page.locator('.sidebar-nav').getByRole('link',{name:'系统管理',exact:true}).click();await page.locator('.sm-workbench').waitFor();
-      await page.locator('.sidebar-nav').getByRole('link',{name:'基础资料',exact:true}).click();await page.getByRole('button',{name:'MAT-001',exact:true}).waitFor();
+      await page.locator('.sidebar-nav').getByRole('link',{name:'系统管理',exact:true}).click();await page.locator('.sm-workbench[data-live="true"]').waitFor();
+      await page.locator('.sidebar-nav').getByRole('link',{name:'基础资料',exact:true}).click();
+      await row(page,'MAT-011').waitFor();equal(await page.getByRole('searchbox',{name:'搜索编号或名称'}).inputValue(),'MAT-011');
+      await search(page,'');await page.getByRole('button',{name:'MAT-001',exact:true}).waitFor();
       equal(await page.locator('html').getAttribute('data-theme'),theme);await layout(page);
     });
     const helpers={run,close,type,rail,search,shot,layout,recordExpected:row=>report.expected_failures.push({state,...row})};

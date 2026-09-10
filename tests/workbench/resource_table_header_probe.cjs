@@ -237,6 +237,32 @@ async function cases() {
     await page.locator('table').evaluate(table => table.parentElement.scrollLeft += 10);
     await popup().waitFor({ state: 'detached' });
   });
+  await run('shorter-list-scroll-clamp-retains-menu-and-next-scroll-closes', async () => {
+    await mount();
+    await page.evaluate(() => { document.querySelector('main').style.paddingTop = '650px'; document.body.style.minHeight = '4000px';
+      document.documentElement.style.setProperty('overflow-anchor', 'auto', 'important'); window.scrollTo(0, 600); });
+    await page.waitForFunction(() => document.scrollingElement.scrollTop === 600);
+    await open(); await ready();
+    const previous = await page.evaluate(() => document.scrollingElement.scrollTop);
+    await page.evaluate(() => document.body.style.minHeight = '1300px');
+    await page.waitForFunction(before => document.scrollingElement.scrollTop < before, previous);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await popup().count(), 1, 'Native document clamp after a shorter list must keep the same menu');
+    const clamped = await page.evaluate(() => document.scrollingElement.scrollTop);
+    await page.evaluate(() => { document.querySelector('main').style.paddingTop = '696px'; document.body.style.minHeight = '1346px'; });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await page.evaluate(() => document.scrollingElement.scrollTop), clamped, 'Completing the list cannot anchor-scroll the document');
+    const geometry = await popup().evaluate(panel => {
+      const owner = document.querySelector('[data-column-key="name"] .wb-th-filter').getBoundingClientRect(), box = panel.getBoundingClientRect();
+      return { above: Math.abs(box.bottom - owner.top + 4), below: Math.abs(box.top - owner.bottom - 4) };
+    });
+    assert(Math.min(geometry.above, geometry.below) <= 1, 'Open menu must track its owner after list reflow');
+    await all().uncheck(); await ready(); assert.equal(await popup().count(), 1);
+    await page.evaluate(() => window.scrollBy(0, -30)); await popup().waitFor({ state: 'detached' });
+    assert.deepEqual(await page.evaluate(() => ['overflow-anchor'].map(name => [document.documentElement.style.getPropertyValue(name), document.documentElement.style.getPropertyPriority(name)])), [['auto', 'important']]);
+    await page.evaluate(() => { document.querySelector('main').style.paddingTop = '24px'; document.body.style.minHeight = '';
+      document.documentElement.style.removeProperty('overflow-anchor'); window.scrollTo(0, 0); });
+  });
   await run('narrow-long-title-and-large-selection-render', async () => {
     await mount({ width: 56, longTitle: true });
     const geometry = await page.locator('[data-column-key="name"]').evaluate(el => {

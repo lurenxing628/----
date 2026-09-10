@@ -132,9 +132,17 @@
     if (row.kind === 'remaining' && e.remaining_plan) result.push({ key: 'remaining', kind: 'remaining', start: instant(e.remaining_plan.start), end: instant(e.remaining_plan.end), y: 14, height: 34 });
     return result;
   }
-  function ticks(model, width, left, viewport) {
+  function tickStep(model, width) {
     const steps = [1000, 10000, 60000, 300000, 900000, HOUR, 3 * HOUR, 6 * HOUR, 12 * HOUR, 24 * HOUR, 7 * 24 * HOUR, 30 * 24 * HOUR, 365 * 24 * HOUR];
-    const target = (model.end - model.start) * 135 / width, step = steps.find(v => v >= target) || Math.ceil(target / HOUR) * HOUR;
+    const target = (model.end - model.start) * 135 / width;
+    return steps.find(v => v >= target) || Math.ceil(target / HOUR) * HOUR;
+  }
+  function tickLabel(step) {
+    const unit = [[24 * HOUR, '天'], [HOUR, '小时'], [60000, '分钟'], [1000, '秒']].find(([size]) => step % size === 0);
+    return step / unit[0] + ' ' + unit[1];
+  }
+  function ticks(model, width, left, viewport) {
+    const step = tickStep(model, width);
     const low = model.start + left / width * (model.end - model.start), high = model.start + (left + viewport) / width * (model.end - model.start), result = [];
     for (let at = Math.ceil(low / step) * step; at < high; at += step) result.push({ at, x: (at - model.start) / (model.end - model.start) * width, label: wire(at) });
     return result;
@@ -168,5 +176,5 @@
       pending: data.items.filter(item => item.execution.execution_state === 'unreported').length,
       average: deltas.length ? deltas.reduce((sum, n) => sum + n, 0) / deltas.length : null };
   }
-  window.ActualGanttModel = { instant, wire, time, number, pieceLabel, taskLabel, states, views, lateLabels, names, deadlines, searchText, filter, tracks, layout, visibleRows, marks, ticks, describe, markTitle, metrics };
+  window.ActualGanttModel = { instant, wire, time, number, pieceLabel, taskLabel, states, views, lateLabels, names, deadlines, searchText, filter, tracks, layout, visibleRows, marks, tickStep, tickLabel, ticks, describe, markTitle, metrics };
 })();

@@ -10,6 +10,7 @@ import pytest
 from flask import Flask, g
 
 from tests._support.paths import REPO_ROOT
+from tests.web_pages.request_lifecycle_test_support import run_request_probe
 
 TESTS_DIR = REPO_ROOT / "tests"
 if str(TESTS_DIR) not in sys.path:
@@ -96,12 +97,14 @@ def test_custom_test_app_open_db_raises_when_db_preseeded_but_services_missing(
     app = builder(tmp_path, monkeypatch)
     open_db = _get_before_hook(app, "_open_db")
 
-    with app.test_request_context("/scheduler/"):
+    def probe():
         g.db = _NoopDb()
         with pytest.raises(RuntimeError, match=r"g\.services"):
             open_db()
         assert g.app_logger is app.logger
         assert getattr(g, "services", None) is None
+
+    run_request_probe(app, monkeypatch, "/scheduler/", probe)
 
 
 @pytest.mark.parametrize(
@@ -131,11 +134,14 @@ def test_custom_test_app_open_db_closes_local_db_when_request_services_mount_fai
 
     app = builder(tmp_path, monkeypatch)
     open_db = _get_before_hook(app, "_open_db")
-    with app.test_request_context("/scheduler/"):
+    def probe():
         with pytest.raises(RuntimeError, match="services boom"):
             open_db()
         assert captured["db"].close_calls == 1
         assert getattr(g, "db", None) is None and getattr(g, "services", None) is None
+
+    run_request_probe(app, monkeypatch, "/scheduler/", probe)
+    assert captured["db"].close_calls == 1
 
 
 @pytest.mark.parametrize(
@@ -153,7 +159,9 @@ def test_custom_test_app_open_db_short_circuits_whitelisted_paths_without_mounti
     app = builder(tmp_path, monkeypatch)
     open_db = _get_before_hook(app, "_open_db")
 
-    with app.test_request_context(path):
+    def probe():
         assert open_db() is None
         assert getattr(g, "db", None) is None
         assert getattr(g, "services", None) is None
+
+    run_request_probe(app, monkeypatch, path, probe)

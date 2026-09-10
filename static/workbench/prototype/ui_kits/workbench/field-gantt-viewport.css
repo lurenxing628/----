@@ -1,0 +1,9 @@
+.fg-viewport-axis { position: relative; min-width: 0; overflow: hidden; box-sizing: border-box; letter-spacing: 0; background: var(--ui-surface-muted); }
+.fg-viewport-tier { position: relative; height: 23px; overflow: hidden; border-bottom: 1px solid var(--ui-border); }
+.fg-viewport-tick { position: absolute; top: 0; bottom: 0; box-sizing: border-box; overflow: hidden; padding: 3px 0; box-shadow: inset -1px 0 var(--ui-border); font-size: 12px; line-height: 17px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: 0; color: var(--wb-gantt-muted); }
+.fg-viewport-tick-label { display: block; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 6px; }
+.fg-viewport-tier.is-major .fg-viewport-tick { font-size: 12px; font-weight: 600; color: var(--ui-text); }
+.fg-viewport-clock { position: relative; height: 24px; overflow: hidden; }
+.fg-viewport-now { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px solid var(--wb-gantt-muted); pointer-events: none; }
+.fg-viewport-now-label { position: absolute; top: 4px; left: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0; color: var(--wb-gantt-muted); }
+.fg-viewport-now-label.align-end { left: auto; right: 5px; }

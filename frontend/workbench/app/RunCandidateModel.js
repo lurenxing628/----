@@ -3,6 +3,7 @@
   const geometry = window.PlanGanttModel;
   const { instant, timeLabel, wire, visibleItems, visibleRows, ticks } = geometry;
   const number = value => value === null || value === undefined ? '未知' : typeof value === 'string' ? value : value.toLocaleString('zh-CN', { maximumFractionDigits: 3 });
+  const signedChange = value => value === 0 ? '不变' : (value > 0 ? '增加 ' : '减少 ') + number(Math.abs(value));
   const kindLabels = { machine: '设备', operator: '人员', batch: '批次' };
   const metricLabels = { overdue_count: '超期批次', total_tardiness_hours: '总拖期 h', makespan_hours: '安排跨度 h', changeover_count: '换型次数',
     weighted_tardiness_hours: '加权拖期 h', machine_used_count: '已用设备', operator_used_count: '已用人员', machine_busy_hours_total: '设备占用 h',
@@ -68,5 +69,5 @@
     return { rows, height: top, locations, tasks, groupCount: groups.size,
       start: bounds.start, end: bounds.end };
   }
-  window.RunCandidateModel = { instant, wire, timeLabel, number, visibleItems, visibleRows, ticks, matching, layout, title, pieceLabel, kindLabels, metricLabels, executionLabels, executionValue };
+  window.RunCandidateModel = { instant, wire, timeLabel, number, signedChange, visibleItems, visibleRows, ticks, matching, layout, title, pieceLabel, kindLabels, metricLabels, executionLabels, executionValue };
 })();

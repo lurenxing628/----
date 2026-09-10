@@ -31,8 +31,11 @@ class Probe {
     await select.click();
     await this.page.getByRole('listbox', { name: label, exact: true }).getByRole('option', { name: text, exact: true }).click();
   }
-  async read(action, endpoint = '/api/workbench/v1/analytics', expectedStatus = 200) {
-    const pending = this.page.waitForResponse(response => new URL(response.url()).pathname === endpoint);
+  async read(action, endpoint = '/api/workbench/v1/analytics', expectedStatus = 200, expectedPage = null) {
+    const pending = this.page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.pathname === endpoint && (expectedPage === null || url.searchParams.get('page') === String(expectedPage));
+    });
     await action();
     const response = await pending;
     assert.equal(response.status(), expectedStatus, await response.text());

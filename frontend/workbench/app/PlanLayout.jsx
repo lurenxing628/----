@@ -102,6 +102,10 @@
       @media (max-width:1500px) { .plan-main { grid-template-columns:minmax(0,1fr) 250px; gap:14px; }.plan-board { height:390px; }.plan-catalog-scroll { max-height:155px; } }
       @media (max-width:1050px) { .plan-main { grid-template-columns:minmax(0,1fr); }.plan-inspector { position:static; border-left:0; border-top:1px solid var(--ui-border); max-height:none; }.plan-workspace .plan-actions { margin-left:0; } }
       @media (max-width:620px) { .plan-catalog table { min-width:570px; }.plan-heading { align-items:start; }.plan-range .field { width:100%; }.plan-global-labels { flex-wrap:wrap; }.plan-projection-table table { min-width:620px; } }
+      .plan-workspace .plan-expanded { position:fixed; inset:16px; z-index:40; background:var(--ui-card-bg); padding:12px; display:flex; flex-direction:column; }
+      .plan-workspace .plan-expanded .plan-board-frame { flex:1; min-height:0; display:flex; flex-direction:column; }
+      .plan-workspace .plan-expanded .plan-board { flex:1; min-height:0; height:auto; }
+      .plan-workspace .plan-expanded .plan-toolbar,.plan-workspace .plan-expanded .plan-note,.plan-workspace .plan-expanded .plan-global,.plan-workspace .plan-expanded .plan-footer { flex:none; }
     `}</style>;
   }
   window.PlanLayout = PlanLayout;

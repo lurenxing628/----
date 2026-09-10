@@ -1,0 +1,71 @@
+"""Explicit workbench route registration; imported only by the application factory."""
+
+from .actual_gantt import register_actual_gantt_routes
+from .batches import register_batch_routes
+from .calendars import register_calendar_routes
+from .calibration import register_calibration_routes
+from .calibration_adoption import register_calibration_adoption_routes
+from .dashboard import register_dashboard_routes
+from .execution import register_execution_routes
+from .master_overview import register_master_overview_routes
+from .material_actions import register_material_action_routes
+from .materials import register_material_routes
+from .outsourcing import register_outsourcing_routes
+from .pages import bp
+from .plan_reads import register_plan_read_routes
+from .preflight import register_preflight_routes
+from .process_collections import register_process_collection_routes
+from .process_files import register_process_file_routes
+from .process_reads import register_process_read_routes
+from .process_table_reads import register_process_table_routes
+from .process_writes import register_process_write_routes
+from .reports import register_report_routes
+from .resource_actions import register_resource_action_routes
+from .resource_relations import register_resource_relation_routes
+from .resource_table_queries import register_resource_table_routes
+from .resources import register_resource_routes
+from .run_candidate_adoption import register_run_candidate_adoption_routes
+from .run_candidate_baseline import register_run_candidate_baseline_routes
+from .run_candidates import register_run_candidate_routes
+from .run_history import register_run_history_routes
+from .scheduling_jobs import register_scheduling_job_routes
+from .system_routes import register_system_maintenance_routes
+from .trial import register_trial_routes
+from .trial_adoption import register_trial_adoption_routes
+from .trial_adoption_history import register_trial_adoption_history_routes
+
+register_material_routes(bp)
+register_resource_routes(bp)
+register_resource_relation_routes(bp)
+register_resource_table_routes(bp)
+register_material_action_routes(bp)
+register_resource_action_routes(bp)
+register_calendar_routes(bp)
+register_batch_routes(bp)
+register_process_read_routes(bp)
+register_process_write_routes(bp)
+register_process_collection_routes(bp)
+register_process_table_routes(bp)
+register_process_file_routes(bp)
+register_plan_read_routes(bp)
+register_execution_routes(bp)
+register_actual_gantt_routes(bp)
+register_preflight_routes(bp)
+register_scheduling_job_routes(bp)
+register_run_candidate_routes(bp)
+register_run_candidate_adoption_routes(bp)
+register_run_candidate_baseline_routes(bp)
+register_run_history_routes(bp)
+register_report_routes(bp)
+register_calibration_routes(bp)
+register_calibration_adoption_routes(bp)
+register_dashboard_routes(bp)
+register_outsourcing_routes(bp)
+register_master_overview_routes(bp)
+register_system_maintenance_routes(bp)
+register_trial_routes(bp)
+register_trial_adoption_routes(bp)
+register_trial_adoption_history_routes(bp)
+
+__all__ = ["bp"]
+

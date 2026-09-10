@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-label="APS 智能排产">
+  <rect x="6" y="6" width="84" height="84" rx="20" fill="#2563eb"></rect>
+  <rect x="24" y="30" width="36" height="11" rx="5.5" fill="#ffffff"></rect>
+  <rect x="34" y="44.5" width="42" height="11" rx="5.5" fill="#ffffff" fill-opacity="0.92"></rect>
+  <rect x="24" y="59" width="26" height="11" rx="5.5" fill="#ffffff" fill-opacity="0.78"></rect>
+</svg>

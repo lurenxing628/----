@@ -2,7 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), http = require('node:http'), crypto = require('node:crypto'), assert = require('node:assert/strict');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], ready = JSON.parse(fs.readFileSync(path.join(output, 'ready.json')));
-const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanContract.js', 'PlanAPI.js',
+const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js',
   'ActualGanttModel.js', 'ActualGanttContract.js', 'ActualGanttAPI.js', 'ActualGanttControls.jsx', 'ActualGanttCanvas.jsx', 'ActualGanttRows.jsx', 'ActualGanttWorkspace.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx'];
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -39,6 +39,7 @@ function server() {
             e.reports[0].actual_start='2026-09-08T22:00:00';e.reports[0].actual_end='2026-09-08T23:00:00';e.reports[0].completed_quantity=2;
             return row;
           });dto.data.task_count=10000;dto.data.report_count=10000;
+          dto.data.critical_chain={state:'unavailable',reason_code:'modified_component_fixture',reason:'合成密集组件数据没有真实引擎关键链凭据。',task_refs:[],edges:[]};
         }
         if(spec.remaining)dto.data.items[0].execution.remaining_plan={start:'2026-09-09T01:00:00',end:'2026-09-09T02:00:00',machine_ref:dto.data.items[0].task.machine_ref,operator_ref:dto.data.items[0].task.operator_ref};
         if(spec.unavailable){dto.data.availability={state:'unavailable',reason_code:'execution_ledger_unavailable',reason:'新报工执行投影尚未安装，实际与剩余状态不可核实。'};dto.data.report_count=null;dto.data.items.forEach(i=>i.execution=null);}
@@ -70,7 +71,7 @@ function server() {
   });
 }
 async function wait(page) { await page.locator('[data-actual-scroll]').waitFor(); await page.waitForFunction(() => document.querySelectorAll('.fg-virtual-row').length > 0); }
-async function shot(page, name) { const file = path.join(output, name + '.png'); await page.screenshot({ path: file, fullPage: true }); report.screenshots.push(file); }
+async function shot(page, name, fullPage = true) { const file = path.join(output, name + '.png'); await page.screenshot({ path: file, fullPage }); report.screenshots.push(file); }
 async function action(name, fn) { await fn(); report.cases.push(name); }
 async function main() {
   const web = server(); await new Promise(resolve => web.listen(0, '127.0.0.1', resolve));
@@ -103,8 +104,11 @@ async function main() {
         assert.equal(expected.axis_span.start, '2026-09-08T22:00:00', 'Original business axis start stays unchanged');
         const axis = await page.locator('.fg-foot').innerText(); assert.ok(axis.includes(expected.start) && axis.includes(expected.end), 'Only display axis receives point clearance');
         assert.equal(await page.evaluate(() => JSON.stringify(liveResponse.data)), originalDTO, 'Display layout never mutates the source DTO, axis_span or hours');
-        const fresh = await page.evaluate(async () => (await (await fetch('/api/workbench/v1/actual-gantt?plan_ref=' + liveResponse.data.plan.plan_ref)).json()).data);
-        assert.equal(JSON.stringify(fresh), originalDTO, 'Fresh real HTTP read retains every task, report and business field');
+        const envelope = await page.evaluate(async () => (await (await fetch('/api/workbench/v1/actual-gantt?plan_ref=' + liveResponse.data.plan.plan_ref)).json()));
+        const fresh = envelope.data, original = JSON.parse(originalDTO);
+        assert.equal(fresh.critical_chain.snapshot_ref, envelope.meta.snapshot_ref, 'Each chain binds its own response capability');
+        const facts = { ...fresh, critical_chain: { ...fresh.critical_chain, snapshot_ref: original.critical_chain.snapshot_ref } };
+        assert.equal(JSON.stringify(facts), originalDTO, 'Only the expiring read capability may change; every chain, task, report and business field is retained');
         assert.deepEqual(fresh.items.map(item => item.execution.reports.map(row => row.effective_processing_hours)), expected.hours, 'Display padding never inflates processing hours');
         report.cases.push({name: size + '-' + theme + '-axis-padding', axis_span: expected.axis_span, display_start: expected.start, display_end: expected.end, pad_ms: expected.pad, dto_unchanged: true});
         assert.equal(await page.locator('.fg-clock').count(), 1); assert.ok(await page.locator('[data-plan-end="2026-09-09T06:00:00"]').count());
@@ -139,13 +143,38 @@ async function main() {
       await page.getByRole('button', { name: '适应全部', exact: true }).click();
     });
     await action('server-range-and-local-export-real-csv', async () => {
+      await page.evaluate(() => {
+        window.calendarEvents = [];
+        const state = (event, target) => calendarEvents.push({ event, target: target && target.outerHTML ? target.outerHTML.slice(0, 500) : String(target),
+          at: performance.now(), popup: !!document.querySelector('.wb-control-popup'), x: scrollX, y: scrollY });
+        for (const type of ['pointerdown', 'click', 'focusin', 'scroll']) document.addEventListener(type, event => state(type, event.target), true);
+        new MutationObserver(() => {
+          const present = !!document.querySelector('.wb-control-popup');
+          if (window.calendarPopupPresent !== present) { window.calendarPopupPresent = present; state('popup-' + present, document.activeElement); }
+        }).observe(document.body, { childList: true, subtree: true });
+      });
       for (const label of ['计划完工开始日', '计划完工结束日']) {
-        const input = page.getByLabel(label), box = await input.boundingBox(); await input.click({ position: { x: box.width - 12, y: box.height / 2 } });
-        await page.locator('.wb-control-popup').waitFor();
-        assert.equal(await page.locator('.wb-control-popup').evaluate(node => getComputedStyle(node).backgroundColor), await page.locator('.fg-toolbar').evaluate(node => getComputedStyle(node).backgroundColor));
-        await shot(page, 'calendar-' + label);
-        await page.getByRole('gridcell', { name: '2026-09-09', exact: true }).click();
+        const input = page.getByLabel(label);
+        await page.mouse.move(1300, 110); await page.mouse.wheel(0, -2000);
+        await page.waitForFunction(() => scrollY === 0);
+        await input.focus();
+        await input.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        try {
+          const box = await input.boundingBox(); assert(box.y >= 60, 'Date owner must be below the fixed header before opening');
+          await input.click({ position: { x: box.width - 12, y: box.height / 2 } });
+          await page.locator('.wb-control-popup').waitFor();
+          assert.equal(await page.locator('.wb-control-popup').evaluate(node => getComputedStyle(node).backgroundColor), await page.locator('.fg-toolbar').evaluate(node => getComputedStyle(node).backgroundColor));
+          await shot(page, 'calendar-' + label, false);
+          assert(await page.locator('.wb-control-popup').isVisible(), 'A calendar viewport screenshot must not dismiss the opened picker');
+          await page.getByRole('gridcell', { name: '2026-09-09', exact: true }).click();
+          assert.equal(await input.inputValue(), '2026-09-09');
+        } catch (error) {
+          report.calendar_events = await page.evaluate(() => calendarEvents);
+          await shot(page, 'calendar-failure', false);
+          throw error;
+        }
       }
+      report.calendar_events = await page.evaluate(() => calendarEvents);
       const label = await page.locator('[aria-label="资源范围"] option').filter({ hasText: '五分厂实际改换设备' }).getAttribute('value');
       await page.getByLabel('资源范围', { exact: true }).selectOption(label);
       await page.getByRole('button', { name: '应用范围', exact: true }).click(); await wait(page);
@@ -167,6 +196,26 @@ async function main() {
       await page.evaluate(() => mountActual({ context: { scope: { source: 'demo' } } }));
       await page.getByRole('alert').waitFor(); assert.equal(await page.locator('[data-actual-scroll]').count(), 0);
       assert.ok((await page.getByRole('alert').innerText()).includes('未将演示范围替换为生产范围'));
+    });
+    await action('field-producer-only-normalizes-empty-batches-with-original-return-context', async () => {
+      for (const batches of [[], ['CAT-B']]) {
+        await page.evaluate(context => mountActual({ context }), { plan_ref: ready.plan_ref, scope: { source: 'production', batch_ids: batches } });
+        await wait(page); await page.getByRole('button', { name: '现场报工', exact: true }).click();
+        const field = await page.evaluate(() => navigations.at(-1));
+        assert.equal(field.view, 'field'); assert.equal(field.context.plan_ref, ready.plan_ref);
+        assert.equal(field.context.scope.source, 'production');
+        if (batches.length) assert.deepEqual(field.context.scope.batch_ids, batches);
+        else assert.equal(Object.prototype.hasOwnProperty.call(field.context.scope, 'batch_ids'), false);
+        assert.deepEqual(field.context.return_to.context.scope.batch_ids, batches);
+        await page.getByRole('button', { name: '计划甘特', exact: true }).click();
+        assert.deepEqual(await page.evaluate(() => navigations.at(-1).context.scope.batch_ids), batches);
+      }
+      for (const batches of ['[]', { batch_id: 'CAT-B' }, [7]]) {
+        await page.evaluate(context => mountActual({ context }), { plan_ref: ready.plan_ref, scope: { batch_ids: batches } });
+        await page.getByRole('alert').waitFor(); assert.equal(await page.locator('[data-actual-scroll]').count(), 0);
+        await page.getByRole('button', { name: '现场报工', exact: true }).click();
+        assert.deepEqual(await page.evaluate(() => navigations.at(-1).context.scope.batch_ids), batches, 'Malformed scope cannot be dropped into an unrestricted read');
+      }
     });
     await action('mobile-fit-and-long-resource', async () => {
       await page.setViewportSize({ width: 390, height: 844 }); await page.evaluate(() => mountActual({ key: 'mobile' })); await wait(page);

@@ -241,5 +241,5 @@
       }
     };
   }
-  window.RunCandidateAPI = { create, check, ref, time, catalog, catalogScope, workspace, workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
+  window.RunCandidateAPI = { create, check, ref, time, shape, envelope, catalog, catalogScope, workspace, workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
 })();

@@ -32,7 +32,7 @@
   }
   function backupFile(row) {
     return object(row) && row.record_kind === 'backup_file' && !['event_ref', 'event_source', 'file_capabilities'].some(key => Object.prototype.hasOwnProperty.call(row, key))
-      && nonempty(row.filename) && count(row.size_bytes) && nonempty(row.backup_ref) && context(row.write_context)
+      && /^[a-f0-9]{64}$/.test(row.key) && nonempty(row.filename) && count(row.size_bytes) && nonempty(row.backup_ref) && context(row.write_context)
       && ['manual', 'auto', 'before_restore', 'unknown'].includes(row.type) && row.status === 'unverified'
       && row.file_exists === true && row.verification_state === 'not_checked' && row.last_run_result === null;
   }
@@ -146,18 +146,24 @@
     Object.entries(input || {}).forEach(([key, value]) => { if (value !== '' && value !== undefined && value !== null) params.set(key, value); });
     return params.toString() ? '?' + params : '';
   }
-  function recordContext(value = {}) {
+  function recordSelection(selection, kind) {
+    if (selection === undefined || selection === null) return null;
+    check(object(selection) && Object.keys(selection).every(key => ['key', 'backup_ref', 'record_kind'].includes(key))
+      && (selection.key === undefined || nonempty(selection.key))
+      && (selection.record_kind === undefined || ['backup_file', 'restore_event', 'cleanup_event'].includes(selection.record_kind))
+      && (selection.backup_ref === undefined || nonempty(selection.backup_ref) && (selection.record_kind === undefined || selection.record_kind === 'backup_file')), '维护记录的原选择引用无效。');
+    check(kind !== 'logs' || nonempty(selection.key) && selection.backup_ref === undefined && selection.record_kind === undefined, '日志原选择缺少稳定记录标识或混入了备份令牌。');
+    const recordKind = selection.record_kind || (kind === 'backups' && selection.backup_ref ? 'backup_file' : undefined);
+    return { ...(selection.key !== undefined ? { key: selection.key } : {}), ...(recordKind ? { record_kind: recordKind } : {}) };
+  }
+  function recordContext(value = {}, kind) {
     check(object(value) && Object.keys(value).every(key => ['filters', 'page', 'snapshot_ref', 'selection'].includes(key)), '维护记录恢复范围无效。');
     const filters = { query: '', type: '', status: '', level: '', file: '', start: '', end: '', ...(value.filters || {}) };
     check((value.filters === undefined || object(value.filters)) && Object.keys(filters).every(key => ['query', 'type', 'status', 'level', 'file', 'start', 'end'].includes(key)
       && text(filters[key]) && filters[key].length <= 200), '维护记录筛选恢复范围无效。');
     const page = value.page === undefined ? 1 : value.page, snapshot = value.snapshot_ref === undefined ? '' : value.snapshot_ref;
-    check(count(page) && page >= 1 && page <= 100000 && text(snapshot) && (page === 1 || !!snapshot), '维护记录恢复页码或快照无效。');
-    const selection = value.selection === undefined ? null : value.selection;
-    check(selection === null || object(selection) && Object.keys(selection).every(key => ['key', 'backup_ref', 'record_kind'].includes(key)) && nonempty(selection.key)
-      && (selection.record_kind === undefined || ['backup_file', 'restore_event', 'cleanup_event'].includes(selection.record_kind))
-      && (selection.backup_ref === undefined || nonempty(selection.backup_ref) && (selection.record_kind === undefined || selection.record_kind === 'backup_file')), '维护记录的原选择引用无效。');
-    return { filters, page, snapshot_ref: snapshot, selection };
+    check(count(page) && page >= 1 && page <= 100000 && text(snapshot), '维护记录恢复页码或快照无效。');
+    return { filters, page, selection: recordSelection(value.selection, kind) };
   }
   function pageContext(value = {}) {
     check(object(value) && Object.keys(value).every(key => ['source', 'tab', 'page_size', 'records'].includes(key)), '系统页面恢复范围无效。');
@@ -165,7 +171,7 @@
     const size = value.page_size === undefined ? 10 : value.page_size, records = value.records === undefined ? {} : value.records;
     check(['current', 'sample'].includes(source) && ['overview', 'backups', 'logs', 'config'].includes(tab) && [10, 25, 50].includes(size)
       && object(records) && Object.keys(records).every(key => ['backups', 'logs'].includes(key)), '系统页面恢复状态无效。');
-    return { source, tab, page_size: size, records: Object.fromEntries(Object.entries(records).map(([kind, item]) => [kind, recordContext(item)])) };
+    return { source, tab, page_size: size, records: Object.fromEntries(Object.entries(records).map(([kind, item]) => [kind, recordContext(item, kind)])) };
   }
   function create(fetcher = window.fetch.bind(window)) {
     async function exchange(path, options, consume) {
@@ -194,7 +200,14 @@
       async read(kind, input, signal) {
         check(['backups', 'logs', 'config'].includes(kind));
         const value = await request('/' + kind + parameters(input), { signal });
-        if (kind === 'config') config(envelope(value)); else collection(value, kind); return value;
+        if (kind === 'config') config(envelope(value)); else {
+          collection(value, kind);
+          const query = input || {};
+          check(value.data.page.number === (query.page === undefined ? 1 : query.page)
+            && value.data.page.size === (query.page_size === undefined ? 10 : query.page_size)
+            && (!query.snapshot_ref || value.meta.snapshot_ref === query.snapshot_ref), '维护记录返回的页码、每页数量或快照与原请求不一致。');
+        }
+        return value;
       },
       async command(intent, token, input) {
         check(validIntent(intent) && nonempty(token));

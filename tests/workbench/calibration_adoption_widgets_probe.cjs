@@ -69,8 +69,10 @@ async function waitList(page, action) {
   await action(); const response = await promise; assert.equal(response.status(), 200); await page.locator('.calibration-live[data-ready=true]').waitFor(); return response.json();
 }
 async function selectDetail(page, ref = config.template_ref) {
-  const promise = page.waitForResponse(r => new URL(r.url()).pathname === '/api/workbench/v1/calibration/' + ref);
-  await page.locator('.ca-table tr[data-ref="' + ref + '"] button').click(); const response = await promise;
+  const [response] = await Promise.all([
+    page.waitForResponse(r => new URL(r.url()).pathname === '/api/workbench/v1/calibration/' + ref),
+    page.locator('.ca-table tr[data-ref="' + ref + '"]').getByRole('button', { name: /^查看 / }).click(),
+  ]);
   assert.equal(response.status(), 200); await page.locator('[data-sample-group=selected]').waitFor(); return response.json();
 }
 async function startPreview(page, reason = '核对已完成批次和加工小时，采用中位数定额', declared = '校准复核员') {
@@ -195,6 +197,9 @@ async function boundaries() {
     browser = await launch(); record.browser = browser.version(); assert(record.browser.startsWith('109.'));
     for (const viewport of [{ width: 1920, height: 1080 }, { width: 1392, height: 924 }]) for (const theme of ['light', 'dark']) await happyCase(viewport, theme);
     await boundaries(); assert.deepEqual(record.errors, []); assert.deepEqual(record.external, []);
+  } catch (error) {
+    record.runner_error = error.stack;
+    throw error;
   } finally {
     if (browser) await browser.close(); await new Promise(resolve => server.close(resolve));
     fs.writeFileSync(path.join(output, 'calibration-adoption-ui.json'), JSON.stringify(record, null, 2));

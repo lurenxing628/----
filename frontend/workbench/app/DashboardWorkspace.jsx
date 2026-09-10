@@ -1,17 +1,24 @@
 (function () {
   'use strict';
   const C = window.DashboardContract, S = window.DashboardSession, P = window.DashboardPanels, { Button, ErrorBox } = window.ResourceControls;
+  function durableScope(query) { const result = { ...query }; delete result.snapshot_ref; return result; }
+  async function readList(api, query, signal) {
+    if (query.page === 1 || query.snapshot_ref) return api.list(query, signal);
+    const first = await api.list({ ...query, page: 1 }, signal);
+    return api.list({ ...query, snapshot_ref: first.meta.snapshot_ref }, signal);
+  }
   function Content({ start, onNavigate }) {
     const api = React.useMemo(() => C.create(), []), command = S.useCommand(api);
     const [q, setQuery] = React.useState(start.q), [tab, setTab] = React.useState(start.tab), [selected, setSelected] = React.useState(start.selected);
     const [historyPage, setHistoryPage] = React.useState(start.historyPage), [revision, refresh] = React.useReducer(n => n + 1, 0);
     const [dialog, setDialog] = React.useState(false), [navError, setNavError] = React.useState(null);
+    const [navigationConfirmation, setNavigationConfirmation] = React.useState(null);
     const [outsourcing, setOutsourcing] = React.useState(null), [registrationChanged, setRegistrationChanged] = React.useState(false);
     const [analysisBatch, setAnalysisBatch] = React.useState(start.analysisBatch);
     const [comparisonState, setComparisonState] = React.useState({ context: start.comparison, caption: null });
     const onComparisonState = React.useCallback(value => setComparisonState(previous => C.equal(previous, value) ? previous : value), []);
     const analysisApi = React.useMemo(() => window.DashboardAnalysisAPI.create(), []);
-    const list = S.useRead(signal => api.list(q, signal), [api, q, revision]);
+    const list = S.useRead(signal => readList(api, q, signal), [api, q, revision]);
     const result = list.result, data = result && result.data, snapshot = result && result.meta.snapshot_ref;
     const analysisRead = S.useRead(signal => analysisApi.read(data && data.plan ? data.plan.plan_ref : null, signal),
       [analysisApi, data && data.plan && data.plan.plan_ref, revision], !!data && !list.loading && !list.error && !outsourcing);
@@ -30,17 +37,31 @@
     function reload() { const next = { ...q, page: 1 }; delete next.snapshot_ref; setQuery(next); setHistoryPage(1); setRegistrationChanged(false); refresh(); }
     function category(k) { change({ category: k }); setAnalysisBatch(null); setComparisonState({ context: {}, caption: null }); setTab(k === 'candidate' ? 'compare' : 'items'); }
     function showAnalysis(k) { category(k); setTab('analysis'); }
-    function readContext() { return { scope: { ...q, ...(snapshot ? { snapshot_ref: snapshot } : {}) }, tab,
+    function readContext() { return { scope: durableScope(q), tab,
       ...(selected ? { item_ref: selected, history_page: historyPage } : {}), ...(analysisBatch ? { analysis_batch_ref: analysisBatch } : {}),
       ...(Object.keys(comparisonState.context).length ? { comparison: comparisonState.context } : {}) }; }
-    function navigate(n) {
-      if (!n.enabled) return;
-      const current = readContext();
-      const context = { ...n.context, return_to: { view: 'dashboard', context: current } };
+    function openTarget(n, current, overview = false) {
+      P.navigationTarget(n, onNavigate);
+      const context = { ...(overview ? {} : n.context), return_to: { view: 'dashboard', context: current } };
       if (n.view === 'outsourcing') { setOutsourcing(context); return; }
-      if (typeof onNavigate !== 'function') return;
       if (n.view === 'batches' && context.batch_ref) context.entity_ref = context.batch_ref;
-      try { onNavigate(n.view, context); } catch (e) { setNavError(e); }
+      C.check(onNavigate(n.view, context) !== false, '目标页面未接受导航，原条目仍保留。');
+    }
+    function navigate(n, origin) {
+      try {
+        setNavError(null);
+        const label = P.navigationTarget(n, onNavigate), current = readContext();
+        if (!n.enabled) {
+          C.check(origin && origin === item && origin.item_ref === selected && origin.navigation.includes(n), '不可定位的原条目来源不一致，未打开其他对象。');
+          setNavigationConfirmation({ navigation: n, item: origin, current, label });
+        } else openTarget(n, current);
+      } catch (error) { setNavError(error); }
+    }
+    function confirmNavigation() {
+      try {
+        openTarget(navigationConfirmation.navigation, navigationConfirmation.current, true);
+        setNavigationConfirmation(null);
+      } catch (error) { setNavError(error); }
     }
     function finish() { if (command.finish()) { setDialog(false); reload(); } }
     const currentSummary = data && q.category !== 'all' && data.categories[q.category];
@@ -57,7 +78,7 @@
     window.WorkbenchCaption.useCaption(caption);
     if (outsourcing) return <div className="plana dashboard-live" data-dashboard-outsourcing data-return-item={outsourcing.return_to.context.item_ref}><window.DashboardStyles />
       <header className="dy-heading"><h2>外协物流登记</h2><Button icon="arrow-left" onClick={() => setOutsourcing(null)}>返回原值班台条目</Button></header>
-      <div className="dy-note">原登记引用 {outsourcing.outsourcing_ref} · 物流登记不替代风险处置。</div>
+      <div className="dy-note">{outsourcing.outsourcing_ref ? '原登记引用 ' + outsourcing.outsourcing_ref : '外协物流登记概览'} · 物流登记不替代风险处置。</div>
       {typeof window.OutsourcingWorkspace === 'function' ? <window.OutsourcingWorkspace outsourcingRef={outsourcing.outsourcing_ref} onUpdated={() => setRegistrationChanged(true)} /> : <div className="dy-note warning" role="status">外协登记模块尚未加载。</div>}
     </div>;
     return <div className="plana dashboard-live" data-dashboard-workspace data-ready={!!data} data-analysis-ready={!!analysisData && !analysisRead.loading && !analysisRead.error} aria-busy={list.loading}><window.DashboardStyles />
@@ -106,6 +127,8 @@
           </>}
         </div></div></div><footer className="dy-footer"><span>正式计划 / 执行记录 / 资源日历 / 齐套事实 / 外协登记</span><span>风险与处置独立 · 外协回厂不等于工序完工</span></footer>
       {dialog && (command.saved || item) && <window.DashboardHandling key={command.saved ? command.saved.request_key : item.item_ref} item={item} command={command} onClose={() => setDialog(false)} onFinish={finish} />}
+      {navigationConfirmation && <P.NavigationConfirmation entry={navigationConfirmation} error={navError}
+        onClose={() => setNavigationConfirmation(null)} onConfirm={confirmNavigation} />}
     </div>;
   }
   function WorkbenchDashboardWorkspace({ initialContext = {}, onNavigate }) {
@@ -115,6 +138,7 @@
       C.check(analysis_batch_ref === undefined || C.ref(analysis_batch_ref));
       start = { ...S.context(base), analysisBatch: analysis_batch_ref || null,
         comparison: window.DashboardCandidateComparisonAPI.context(comparison === undefined ? {} : comparison) };
+      start.q = durableScope(start.q);
     } catch (error) { return <div className="plana dashboard-live"><window.DashboardStyles /><h2>计划员值班台</h2><ErrorBox error={error} /></div>; }
     return <Content key={JSON.stringify(start)} start={start} onNavigate={onNavigate} />;
   }

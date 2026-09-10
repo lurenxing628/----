@@ -1,0 +1,325 @@
+(function () {
+  'use strict';
+
+  const A = window.RunJobAPI,
+    U = window.RunJobControls;
+  function RunJobPanel({
+    preflight,
+    onNavigate,
+    adapter
+  }) {
+    const api = React.useMemo(() => adapter || A.create(), [adapter]);
+    const [initial] = React.useState(() => {
+      try {
+        return {
+          intent: A.pending().read(),
+          error: ''
+        };
+      } catch (e) {
+        return {
+          intent: null,
+          error: e.message
+        };
+      }
+    });
+    const [intent, setIntent] = React.useState(initial.intent),
+      [storageError, setStorageError] = React.useState(initial.error);
+    const [run, setRun] = React.useState(null),
+      [preview, setPreview] = React.useState(null),
+      [confirming, setConfirming] = React.useState(false);
+    const [error, setError] = React.useState(''),
+      [notice, setNotice] = React.useState(''),
+      [busy, setBusy] = React.useState(false);
+    const [unavailable, setUnavailable] = React.useState('');
+    const [verified, setVerified] = React.useState(false);
+    const [checking, setChecking] = React.useState(false),
+      [paused, setPaused] = React.useState(document.hidden),
+      [revision, refresh] = React.useReducer(v => v + 1, 0);
+    const alive = React.useRef(false),
+      locked = React.useRef(false),
+      previewRequest = React.useRef(null),
+      activeInput = React.useRef(null),
+      activeIntent = React.useRef(intent);
+    const inputRef = preflight && A.token(preflight.input_ref) ? preflight.input_ref : null;
+    activeInput.current = inputRef;
+    activeIntent.current = intent;
+    React.useEffect(() => {
+      alive.current = true;
+      return () => {
+        alive.current = false;
+        if (previewRequest.current) previewRequest.current.abort();
+      };
+    }, []);
+    React.useEffect(() => {
+      setPreview(null);
+      setConfirming(false);
+      setUnavailable('');
+      if (previewRequest.current) previewRequest.current.abort();
+    }, [inputRef, api]);
+    React.useEffect(() => {
+      function changed(event) {
+        if (event.key !== A.PENDING_KEY && event.key !== null) return;
+        try {
+          const saved = A.pending().read();
+          setIntent(saved);
+          setRun(null);
+          setVerified(false);
+          setPreview(null);
+          setConfirming(false);
+          setStorageError('');
+          refresh();
+        } catch (e) {
+          setStorageError(e.message);
+        }
+      }
+      window.addEventListener('storage', changed);
+      return () => window.removeEventListener('storage', changed);
+    }, []);
+    React.useEffect(() => {
+      if (!intent || storageError) return undefined;
+      setVerified(false);
+      let disposed = false,
+        timer,
+        controller,
+        attempt = 0,
+        querying = false,
+        boundRef = null,
+        done = false;
+      const current = () => !disposed && alive.current && activeIntent.current && activeIntent.current.request_key === intent.request_key;
+      function schedule() {
+        if (current() && !done && !document.hidden) timer = setTimeout(query, A.pollDelay(attempt++));
+      }
+      async function query() {
+        if (!current() || querying || document.hidden || done) return;
+        querying = true;
+        controller = new AbortController();
+        setChecking(true);
+        try {
+          let result;
+          if (!boundRef) {
+            const found = A.lookup(await api.lookup(intent.request_key, controller.signal), intent.run_ref);
+            if (!current() || controller.signal.aborted) return;
+            if (!found.found) {
+              setVerified(false);
+              setNotice('暂未查到原请求记录，结果仍未知；不会更换请求编号或重新提交。');
+              setError('');
+              return;
+            }
+            result = found.run;
+            boundRef = result.run_ref;
+          } else result = A.run(A.envelope(await api.get(boundRef, controller.signal)), boundRef);
+          if (!current() || controller.signal.aborted) return;
+          if (!intent.run_ref) {
+            try {
+              const saved = A.pending().attach(intent, result.run_ref);
+              activeIntent.current = saved;
+              setIntent(saved);
+            } catch (e) {
+              setStorageError(e.message);
+              return;
+            }
+          }
+          setRun(result);
+          setVerified(true);
+          setError('');
+          setNotice('');
+          done = A.terminal(result);
+        } catch (e) {
+          if (current() && !controller.signal.aborted) {
+            setVerified(false);
+            setError(A.message(e));
+          }
+        } finally {
+          querying = false;
+          if (current()) {
+            setChecking(false);
+            schedule();
+          }
+        }
+      }
+      function visibility() {
+        setPaused(document.hidden);
+        clearTimeout(timer);
+        if (document.hidden) {
+          if (controller) controller.abort();
+        } else {
+          attempt = 0;
+          if (!querying) query();
+        }
+      }
+      document.addEventListener('visibilitychange', visibility);
+      visibility();
+      return () => {
+        disposed = true;
+        clearTimeout(timer);
+        if (controller) controller.abort();
+        document.removeEventListener('visibilitychange', visibility);
+      };
+    }, [api, intent, revision, storageError]);
+    async function inspect() {
+      if (locked.current || storageError || !inputRef || intent && (!A.terminal(run) || !verified)) return;
+      locked.current = true;
+      setBusy(true);
+      setError('');
+      setNotice('');
+      setPreview(null);
+      setUnavailable('');
+      const original = inputRef,
+        controller = new AbortController();
+      previewRequest.current = controller;
+      try {
+        const value = A.preview(await api.preview(original, controller.signal), original);
+        if (!alive.current || controller.signal.aborted || activeInput.current !== original) return;
+        setPreview(value);
+        setConfirming(value.write_context.capabilities['scheduling.run']);
+        if (!value.write_context.capabilities['scheduling.run']) setUnavailable(A.message(value.write_context.blocked_reasons[0]));
+      } catch (e) {
+        if (alive.current && !controller.signal.aborted) {
+          setError(A.message(e));
+          if (['run_schema_unavailable', 'run_worker_not_connected'].includes(e.code)) setUnavailable(A.message(e));
+        }
+      } finally {
+        locked.current = false;
+        if (alive.current) setBusy(false);
+      }
+    }
+    async function submit() {
+      if (locked.current || !preview || preview.input_ref !== activeInput.current || preview.write_context.capabilities['scheduling.run'] !== true || storageError) return;
+      locked.current = true;
+      setBusy(true);
+      setError('');
+      let original;
+      try {
+        // Keep admission and the durable identity claim serialized across browser tabs.
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') throw new Error('当前浏览器无法锁定原请求，暂时不能开始排产。');
+        await navigator.locks.request(A.PENDING_KEY, {
+          ifAvailable: true
+        }, async lock => {
+          if (!lock) throw new Error('另一页面正在提交排产，请稍后核实原请求。');
+          if (!alive.current || preview.input_ref !== activeInput.current) return;
+          const previous = activeIntent.current;
+          if (previous && (!A.terminal(run) || !verified)) throw new Error('原运行尚未核实，不能开始下一次排产。');
+          original = A.pending().begin(preview.input_ref, previous);
+          activeIntent.current = original;
+          setIntent(original);
+          setRun(null);
+          setVerified(false);
+          setConfirming(false);
+          try {
+            const receipt = A.accepted(await api.accept(original, preview.write_context.write_token));
+            const saved = A.pending().attach(original, receipt.run_ref);
+            if (alive.current && activeIntent.current && activeIntent.current.request_key === original.request_key) {
+              activeIntent.current = saved;
+              setIntent(saved);
+              setRun(receipt.data);
+              setVerified(true);
+              setNotice(receipt.dispatch_pending ? '排产已受理，交给本机执行器时未确认；正在查询原运行，没有重新提交。' : '');
+            }
+          } catch (e) {
+            if (A.isRejected(e)) {
+              A.pending().reject(original);
+              if (alive.current) {
+                activeIntent.current = null;
+                setIntent(null);
+                setRun(null);
+                setError(A.message(e));
+              }
+            } else if (alive.current) setError('受理结果尚未确认。已保留原请求，正在核实，不会重复提交。');
+          }
+        });
+      } catch (e) {
+        if (alive.current) setStorageError(e.message);
+      } finally {
+        locked.current = false;
+        if (alive.current) {
+          setBusy(false);
+          setPreview(null);
+          setConfirming(false);
+          refresh();
+        }
+      }
+    }
+    function rereadStorage() {
+      try {
+        setIntent(A.pending().read());
+        setStorageError('');
+        setVerified(false);
+        setRun(null);
+        refresh();
+      } catch (e) {
+        setStorageError(e.message);
+      }
+    }
+    const reason = storageError || (!inputRef ? '请先完成排产检查，再确认本次计算。' : intent && (!A.terminal(run) || !verified) ? '原请求尚未结束或结果未知，请先核实原运行。' : unavailable);
+    return /*#__PURE__*/React.createElement("section", {
+      className: "plana run-job-panel",
+      "data-run-job-panel": "true",
+      "aria-label": "\u5019\u9009\u6392\u4EA7"
+    }, /*#__PURE__*/React.createElement(U.Styles, null), /*#__PURE__*/React.createElement("div", {
+      className: "rj-heading"
+    }, /*#__PURE__*/React.createElement("h2", null, "\u5019\u9009\u6392\u4EA7"), /*#__PURE__*/React.createElement("div", {
+      className: "rj-tools"
+    }, /*#__PURE__*/React.createElement(U.Button, {
+      icon: "play",
+      className: "btn primary",
+      reason: reason,
+      busy: busy,
+      onClick: inspect
+    }, "\u6838\u5BF9\u5E76\u5F00\u59CB\u6392\u4EA7"), unavailable && /*#__PURE__*/React.createElement(U.Button, {
+      icon: "refresh-cw",
+      "aria-label": "\u91CD\u65B0\u6838\u5BF9\u6392\u4EA7\u80FD\u529B",
+      busy: busy,
+      onClick: inspect
+    }), intent && /*#__PURE__*/React.createElement(U.Button, {
+      icon: "refresh-cw",
+      "aria-label": "\u67E5\u8BE2\u539F\u8FD0\u884C",
+      busy: checking || busy,
+      onClick: () => {
+        setNotice('');
+        refresh();
+      }
+    }), typeof onNavigate === 'function' && /*#__PURE__*/React.createElement(U.Button, {
+      icon: "arrow-left",
+      onClick: () => onNavigate('run')
+    }, "\u8FD4\u56DE\u6392\u4EA7\u68C0\u67E5"))), reason && /*#__PURE__*/React.createElement("p", {
+      className: "rj-muted"
+    }, reason), storageError && /*#__PURE__*/React.createElement("div", {
+      className: "rj-notice",
+      role: "alert"
+    }, storageError, /*#__PURE__*/React.createElement("div", {
+      className: "rj-tools"
+    }, /*#__PURE__*/React.createElement(U.Button, {
+      icon: "refresh-cw",
+      disabled: busy,
+      onClick: rereadStorage
+    }, "\u91CD\u65B0\u8BFB\u53D6\u6062\u590D\u8BB0\u5F55"))), error && /*#__PURE__*/React.createElement("div", {
+      className: "rj-notice",
+      role: "alert"
+    }, error), notice && /*#__PURE__*/React.createElement("div", {
+      className: "rj-notice",
+      role: "status"
+    }, notice), preview && !confirming && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(U.Scope, {
+      preview: preview
+    }), /*#__PURE__*/React.createElement(U.Reasons, {
+      rows: preview.write_context.blocked_reasons
+    })), intent && /*#__PURE__*/React.createElement(U.Record, {
+      run: run,
+      intent: intent,
+      paused: paused,
+      checking: checking,
+      verified: verified,
+      api: api
+    }), confirming && preview && /*#__PURE__*/React.createElement(U.Confirmation, {
+      preview: preview,
+      busy: busy,
+      onConfirm: submit,
+      onClose: () => {
+        if (!locked.current) {
+          setConfirming(false);
+          setPreview(null);
+        }
+      }
+    }));
+  }
+  window.RunJobPanel = RunJobPanel;
+})();

@@ -15,14 +15,39 @@
         columns={[["开始", r => U.timeLabel(r.start)], ['结束', r => U.timeLabel(r.end)]]} /></>}</div></details>;
   }
   function Results({ data, onSelect }) {
-    const H = window.TrialAdoptionHistoryState;
-    const [tab, setTab] = React.useState(() => H ? H.initialTab(data.scenario_ref) : 'delivery'), name = window.TrialGantt.resourceNames(data), c = data.comparison;
-    const [tabError, setTabError] = React.useState(null);
+    const H = window.TrialAdoptionHistoryState, V = window.TrialViewState, preferences = V.useView(data);
+    function readEntry() {
+      try {
+        const saved = history.state && history.state.trialAdoptionHistory;
+        if (!data.scenario_ref || !saved || saved.scenario_ref !== data.scenario_ref) return { tab: null, error: null };
+        if (!H) throw new Error('本页试调页签恢复组件未加载，未替换原记录。');
+        return { tab: H.restore(data.scenario_ref).tab, error: null };
+      } catch (_) { return { tab: null, error: new Error('本页试调页签记录无法恢复，未用默认页签覆盖。') }; }
+    }
+    const [entry, setEntry] = React.useState(readEntry), name = window.TrialGantt.resourceNames(data), c = data.comparison;
+    const tab = entry.tab || preferences.value && preferences.value.result_tab;
+    function clearEntry() {
+      try {
+        const current = history.state, saved = current && current.trialAdoptionHistory;
+        if (saved && saved.scenario_ref === data.scenario_ref) {
+          const next = { ...current }; delete next.trialAdoptionHistory; history.replaceState(next, '', location.href);
+        }
+        setEntry(readEntry());
+      } catch (_) { setEntry({ ...entry, error: new Error('本页试调页签记录未能清除，未清理其他页面。') }); }
+    }
+    function selectTab(next) {
+      preferences.change({ result_tab: next });
+      try { if (H) H.remember(data.scenario_ref, { tab: next }); setEntry({ tab: next, error: null }); }
+      catch (_) { setEntry({ tab: next, error: new Error('本页试调页签记录保存失败，返回后可能无法恢复。') }); }
+    }
+    if (!preferences.value || entry.error) return <section className="tt-results" aria-label="试调结果恢复">
+      <V.Notice state={preferences} label="试调结果查看偏好" />{entry.error && <><U.ErrorBox error={entry.error} /><div className="tt-tools">
+        <U.Button icon="refresh-cw" onClick={() => setEntry(readEntry())}>重读本页页签记录</U.Button>
+        <U.Button icon="rotate-ccw" onClick={clearEntry}>清除本页页签记录</U.Button></div></>}</section>;
     const arrangement = r => <>{name(r.machine_ref)}<br />{name(r.operator_ref)}<br />{U.timeLabel(r.start)}<br />{U.timeLabel(r.end)}</>;
-    return <section className="tt-results"><U.Tabs value={tab} onChange={next => { setTab(next); setTabError(null); if (H) { try { H.remember(data.scenario_ref, { tab: next }); } catch (_) { setTabError(new Error('试调页签查看状态保存失败，返回后可能无法恢复。')); } } }} label="试调结果" options={[
+    return <section className="tt-results"><V.Notice state={preferences} label="试调结果查看偏好" /><U.Tabs value={tab} onChange={selectTab} label="试调结果" options={[
       ['delivery', '批次对比'], ['capacity', '资源占用'], ['history', '调整记录'], ['adoptions', '采用记录'], ['issues', '约束问题'], ['tasks', '完整任务'], ['unplanned', '未排工序']]} />
       <div role="tabpanel">
-        <U.ErrorBox error={tabError} />
         {tab === 'adoptions' && (window.TrialAdoptionHistory ? <window.TrialAdoptionHistory data={data} /> : <p role="alert">采用记录组件尚未登记加载，未显示替代历史。</p>)}
         {tab === 'delivery' && <><p className="tt-muted">对比基础：原试调来源。交期截止为截至日次日零点（不含）；{c.changeover_reason}</p>
           <U.Table rows={c.batches} label="批次交付对比" columns={[

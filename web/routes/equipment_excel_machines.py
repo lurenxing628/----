@@ -18,7 +18,7 @@ from core.services.common.normalize import is_blank_value
 from core.services.equipment import MachineService
 from core.services.equipment.machine_excel_import_service import MachineExcelImportService
 from core.services.personnel import ResourceTeamService
-from core.services.process import OpTypeService
+from core.services.process.op_type_service import OpTypeService
 
 from .equipment_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 from .helpers.excel_utils import (

@@ -1,4 +1,4 @@
-"""回归测试：Win7 启动器运行时路径/锁/契约/停止流程——共享数据根与各数据目录解析（含 frozen/注册表/环境变量）、运行时所有者与 Chrome 配置目录、运行时锁的失败即关闭（空/非法/不可读锁不被清理），以及 stop_runtime_from_dir 在端点存活、契约不可读/非法、端点文件不全或不可信、Chrome 清理未确认时保留产物并返回 busy，仅在确认停止后才清理（兜底 PID 强杀仅在 PID 确认匹配且契约有效时允许）；另守护 Chrome --user-data-dir 配置目录参数的精确匹配（拒绝相邻同名 profile）。"""
+"""回归测试：Win7 启动器运行时路径/锁/契约/停止流程——共享数据根与各数据目录解析（含 frozen/注册表/环境变量）、运行时所有者与 Chrome 配置目录、运行时锁的失败即关闭（空/非法/不可读锁不被清理），以及 stop_runtime_from_dir 在端点存活、契约不可读/非法、端点文件不全或不可信、Chrome 清理未确认时保留产物并返回 busy，仅在确认停止后才清理（普通 stop 超时不自动强杀；force helper 仍要求 PID 确认匹配且契约有效）；另守护 Chrome --user-data-dir 配置目录参数的精确匹配（拒绝相邻同名 profile）。"""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import List
 
 import pytest
@@ -23,7 +24,6 @@ def _import_launcher():
     repo_root = _repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
-    sys.modules.pop("web.bootstrap.launcher", None)
     return importlib.import_module("web.bootstrap.launcher")
 
 
@@ -31,7 +31,6 @@ def _import_launcher_stop():
     repo_root = _repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
-    sys.modules.pop("web.bootstrap.launcher_stop", None)
     return importlib.import_module("web.bootstrap.launcher_stop")
 
 
@@ -39,7 +38,6 @@ def _import_launcher_stop_cleanup():
     repo_root = _repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
-    sys.modules.pop("web.bootstrap.launcher_stop_cleanup", None)
     return importlib.import_module("web.bootstrap.launcher_stop_cleanup")
 
 
@@ -47,7 +45,6 @@ def _import_launcher_cleanup_result():
     repo_root = _repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
-    sys.modules.pop("web.bootstrap.launcher_cleanup_result", None)
     return importlib.import_module("web.bootstrap.launcher_cleanup_result")
 
 
@@ -55,7 +52,6 @@ def _import_launcher_processes():
     repo_root = _repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
-    sys.modules.pop("web.bootstrap.launcher_processes", None)
     return importlib.import_module("web.bootstrap.launcher_processes")
 
 
@@ -70,7 +66,6 @@ def _import_factory():
     repo_root = _repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
-    sys.modules.pop("web.bootstrap.factory", None)
     return importlib.import_module("web.bootstrap.factory")
 
 
@@ -78,7 +73,6 @@ def _import_paths():
     repo_root = _repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
-    sys.modules.pop("web.bootstrap.paths", None)
     return importlib.import_module("web.bootstrap.paths")
 
 
@@ -86,22 +80,47 @@ def _import_launcher_paths():
     repo_root = _repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
-    sys.modules.pop("web.bootstrap.launcher_paths", None)
     return importlib.import_module("web.bootstrap.launcher_paths")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_launcher_synced_hooks(monkeypatch):
+    launcher = _import_launcher()
+    # Facade calls copy hooks into other modules outside monkeypatch's journal.
+    # Record their originals without reimporting modules held by other tests.
+    targets = (
+        (launcher._paths, ("read_shared_data_root_from_registry",)),
+        (launcher._processes, (
+            "_pid_exists", "_pid_matches_contract", "_kill_runtime_pid", "_run_powershell_text",
+            "_PROCESS_LOG_STATE_DIR", "_PROCESS_LOG_RUNTIME_DIR",
+        )),
+        (launcher._runtime_lock, ("_pid_matches_contract", "_pid_state")),
+        (launcher._stop, (
+            "_pid_exists", "_pid_matches_contract", "_pid_state", "_kill_runtime_pid",
+            "_run_powershell_text", "_probe_runtime_health", "_request_runtime_shutdown",
+            "_list_aps_chrome_pids", "delete_runtime_contract_files",
+            "delete_runtime_contract_files_result", "read_runtime_contract",
+            "read_runtime_contract_result", "read_runtime_endpoint_files_result",
+            "read_runtime_lock", "read_runtime_lock_result", "probe_runtime_health_result",
+            "default_chrome_profile_dir", "_stop_aps_chrome_with_result",
+        )),
+    )
+    for module, names in targets:
+        for name in names:
+            monkeypatch.setattr(module, name, getattr(module, name))
 
 
 def test_runtime_base_dir_fallback_logs_to_stderr(monkeypatch, capsys):
     paths_mod = _import_paths()
-    original_resolve = paths_mod.Path.resolve
 
     def _boom_resolve(self):
         raise RuntimeError("resolve boom")
 
-    monkeypatch.setattr(paths_mod.Path, "resolve", _boom_resolve)
-    got = paths_mod.runtime_base_dir(anchor_file=str(Path("C:/demo/app.py")))
+    with monkeypatch.context() as scoped:
+        scoped.setattr(paths_mod.Path, "resolve", _boom_resolve)
+        got = paths_mod.runtime_base_dir(anchor_file=str(Path("C:/demo/app.py")))
     assert got.endswith(os.path.join("demo"))
     assert "运行根目录解析失败" in capsys.readouterr().err
-    monkeypatch.setattr(paths_mod.Path, "resolve", original_resolve)
 
 
 def test_resolve_shared_data_root_prefers_explicit_env(monkeypatch, tmp_path):
@@ -1152,7 +1171,8 @@ def test_stop_aps_chrome_processes_fails_closed_when_pid_list_unavailable(monkey
 
 def test_windows_pid_state_unknown_when_tasklist_unavailable(monkeypatch, capsys):
     processes = _import_launcher_processes()
-    monkeypatch.setattr(processes.os, "name", "nt")
+    # Exercise only this module's Windows branch; pathlib keeps the host OS.
+    monkeypatch.setattr(processes, "os", SimpleNamespace(name="nt"))
 
     def _boom_run(*_args, **_kwargs):
         raise FileNotFoundError("tasklist missing")
@@ -1392,7 +1412,7 @@ def test_force_kill_runtime_requires_confirmed_pid_match(monkeypatch, tmp_path):
     assert calls == [43210]
 
 
-def test_stop_runtime_force_kills_mixed_endpoint_down_confirmed_pid(monkeypatch, tmp_path):
+def test_stop_runtime_preserves_mixed_endpoint_down_pid_until_retry_confirms_exit(monkeypatch, tmp_path, capsys):
     launcher_stop = _import_launcher_stop()
     runtime_dir = tmp_path / "runtime"
     state_dir = tmp_path / "runtime" / "logs"
@@ -1404,15 +1424,15 @@ def test_stop_runtime_force_kills_mixed_endpoint_down_confirmed_pid(monkeypatch,
         "pid": 43210,
         "pid_exists": True,
         "pid_match": True,
+        "lock_active": True,
         "state_dir": str(state_dir),
     }
-    stopped_status = {**mixed_status, "state": "stale"}
+    stopped_status = {**mixed_status, "state": "stale", "pid_exists": False, "lock_active": False}
     wait_results = iter([mixed_status, stopped_status])
     killed: List[int] = []
     finalized: List[dict] = []
 
     monkeypatch.setattr(launcher_stop, "_classify_runtime_state", lambda _state_dir: mixed_status)
-    monkeypatch.setattr(launcher_stop, "_runtime_stop_is_complete", lambda status: status.get("state") == "stale")
     monkeypatch.setattr(launcher_stop, "_request_runtime_shutdown", lambda _contract, timeout_s=3.0: False)
     monkeypatch.setattr(launcher_stop, "_wait_for_runtime_stop", lambda _state_dir, _deadline: next(wait_results))
     monkeypatch.setattr(launcher_stop, "_kill_runtime_pid", lambda pid: killed.append(int(pid)) or True)
@@ -1423,10 +1443,20 @@ def test_stop_runtime_force_kills_mixed_endpoint_down_confirmed_pid(monkeypatch,
 
     monkeypatch.setattr(launcher_stop, "_finalize_stopped_runtime", _finalize)
 
-    assert launcher_stop.stop_runtime_from_dir(str(runtime_dir), timeout_s=0.1) == 0
-    assert killed == [43210]
+    assert launcher_stop.stop_runtime_from_dir(str(runtime_dir), timeout_s=0.1, stop_aps_chrome=True) == 1
+    assert killed == []
+    assert finalized == []
+    stderr = capsys.readouterr().err
+    assert "runtime_stop_failed reason=mixed_state" in stderr
+    assert "尚未确认退出" in stderr
+    assert "稍后重试" in stderr
+
+    assert launcher_stop.stop_runtime_from_dir(str(runtime_dir), timeout_s=0.1, stop_aps_chrome=True) == 0
+    assert killed == []
+    assert len(finalized) == 1
     assert finalized[0]["status"] is stopped_status
     assert finalized[0]["runtime_dir"] == os.path.abspath(str(runtime_dir))
+    assert finalized[0]["stop_aps_chrome"] is True
 
 
 def test_launcher_stop_safe_int_only_swallows_parse_errors(capsys):

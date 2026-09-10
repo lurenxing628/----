@@ -1,0 +1,56 @@
+/* ============================================================
+   APS 排产系统 · Typography tokens
+   Win7 / offline / Chrome 109. Type rides the installed system
+   stack (Segoe UI + Microsoft YaHei). Microsoft YaHei is now
+   ALSO self-hosted below (@font-face), so the CJK face renders
+   identically on machines where it isn't installed — the token
+   stack is unchanged, the rule just guarantees the family.
+   Five sizes + a KPI step (契约 4.4). Numbers are always tabular.
+   ============================================================ */
+
+/* Self-hosted CJK face — uploaded brand file, served offline.
+   Keeps --font-family pointing at "Microsoft YaHei" (the system
+   name) so installed copies still win and this is the fallback. */
+@font-face {
+  font-family: "Microsoft YaHei";
+  src: url("../fonts/MicrosoftYaHei-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ---- Family (Win7-offline-friendly system stack) ---- */
+  --font-family: "Segoe UI", "Microsoft YaHei", "Microsoft YaHei UI", system-ui,
+    -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+    "Noto Sans CJK SC", "Noto Sans SC", Arial, sans-serif;
+  --font-sans: var(--font-family);
+  --aps-font: var(--font-family);
+
+  /* ---- Size scale (px) — 5 levels + KPI ---- */
+  --font-size-1: 12px;   /* captions, meta, badges */
+  --font-size-2: 13px;   /* secondary body, helper */
+  --font-size-3: 14px;   /* default body */
+  --font-size-4: 17px;   /* card / section heads */
+  --font-size-5: 22px;   /* page titles, section heads */
+  --font-size-kpi: 28px; /* KPI tile numerals */
+  --font-size-display: 36px; /* risk / hero callout numerals (hero lead steps larger) */
+
+  /* ---- Weights — prose stays light; callout numerals are bold ----
+     Anchored on 值班台: the big risk / hero figures read at 700, so 700
+     (not 600) is the canonical weight for any callout numeral.
+     400 body · 500 buttons · 600 headings/section heads · 700 numerals/badges/emphasis */
+  --font-w-regular: 400; /* @kind font */
+  --font-w-medium: 500;  /* @kind font */
+  --font-w-semibold: 600;/* @kind font */
+  --font-w-bold: 700;    /* @kind font */
+
+  /* ---- Line heights ---- */
+  --leading-tight: 1.25;  /* headings */
+  --leading-snug: 1.4;    /* values, dense rows */
+  --leading-normal: 1.5;  /* helper text */
+  --leading-relaxed: 1.65;/* paragraphs */
+
+  /* ---- Numerals: always tabular (认知原则 ⑤) ---- */
+  --num-variant: tabular-nums; /* @kind other */
+}

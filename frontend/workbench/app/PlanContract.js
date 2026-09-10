@@ -9,7 +9,7 @@
   const nullableRef = value => value === null || ref(value);
   const exact = (value, keys) => object(value) && Reflect.ownKeys(value).length === keys.length && keys.every(key => own(value, key));
   const issues = value => Array.isArray(value) && value.every(row => exact(row, ['code', 'message']) && label(row.code) && label(row.message));
-  const projections = ['baseline', 'calendar', 'occupancy', 'delivery_risks'];
+  const projections = ['baseline', 'calendar', 'occupancy', 'delivery_risks', 'process_order'];
   function int64(value) {
     if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0;
     return typeof value === 'string' && /^[1-9][0-9]*$/.test(value)
@@ -342,7 +342,8 @@
         || d.tasks_complete !== true || !d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null)) || !uniqueRefs(d.tasks, 'task_ref')
         || !taskSpans(d, query) || !resourceDirectory(d) || !exact(d.projections, projections)
         || !baseline(d.projections.baseline, d) || !calendar(d.projections.calendar, d)
-        || !occupancy(d.projections.occupancy, d) || !delivery(d.projections.delivery_risks, d))
+        || !occupancy(d.projections.occupancy, d) || !delivery(d.projections.delivery_risks, d)
+        || !window.PlanProcessOrder.validate(d.projections.process_order, d))
       throw C.failure('计划任务、范围或投影协议不完整或串源，未作为完整结果使用。');
     return result;
   }

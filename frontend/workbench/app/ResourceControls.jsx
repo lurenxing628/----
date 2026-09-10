@@ -42,7 +42,22 @@
   }
   const ModalFocusParent = React.createContext(null), modalStack = [];
   const modalSelector = 'button,input,select,textarea,a[href],[tabindex]';
-  let modalFocusQueued = false, modalRestores = [];
+  let modalFocusQueued = false, modalRestores = [], modalScrollStyles = [];
+  function lockModalScroll() {
+    modalScrollStyles = [document.documentElement, document.body].map(node => {
+      const properties = Array.from(node.style).filter(name => /^overflow(?:-[xy])?$/.test(name))
+        .map(name => [name, node.style.getPropertyValue(name), node.style.getPropertyPriority(name)]);
+      node.style.setProperty('overflow', 'hidden', 'important');
+      return { node, properties };
+    });
+  }
+  function unlockModalScroll() {
+    modalScrollStyles.forEach(({ node, properties }) => {
+      node.style.removeProperty('overflow');
+      properties.forEach(([name, value, priority]) => node.style.setProperty(name, value, priority));
+    });
+    modalScrollStyles = [];
+  }
   function modalVisible(node) {
     return !!(node && node.isConnected && node.getClientRects().length && !node.closest('[hidden],[inert],[aria-hidden="true"]') &&
       !['hidden', 'collapse'].includes(getComputedStyle(node).visibility));
@@ -64,6 +79,8 @@
       modalFocusQueued = false;
       const restores = modalRestores; modalRestores = [];
       const top = topModal(), candidates = [];
+      if (top && !modalScrollStyles.length) lockModalScroll();
+      else if (!top && modalScrollStyles.length) unlockModalScroll();
       restores.reverse().forEach(entry => { for (let item = entry; item; item = item.parent) candidates.push(item.previous); });
       if (top) {
         const previous = candidates.find(node => modalFocusable(node) && top.root.contains(node));
@@ -108,14 +125,14 @@
     };
   }
   function Modal({ title, icon, children, footer, onClose, locked, labelId, suspended }) {
-    const ref = React.useRef(null), entry = React.useRef({}), parent = React.useContext(ModalFocusParent);
+    // Capture before this commit disables the launcher and moves focus back to the body.
+    const ref = React.useRef(null), entry = React.useRef({ previous: document.activeElement }), parent = React.useContext(ModalFocusParent);
     const backdropStart = React.useRef(false), id = React.useId();
     React.useLayoutEffect(() => {
       Object.assign(entry.current, { root: ref.current, close: onClose, locked, suspended });
       syncModalFocus();
     });
     React.useLayoutEffect(() => {
-      entry.current.previous = document.activeElement;
       entry.current.parent = parent || modalStack.slice().reverse().find(item => item.root.contains(entry.current.previous)) || null;
       return mountModal(entry.current);
     }, []);

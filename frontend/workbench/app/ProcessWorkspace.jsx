@@ -24,18 +24,26 @@
   }
   function ProcessTable({ entities, selected, setSelected, onOpen, onDelete, disabled, loading, error, scope, adapter, onSort, onFilter, matchingCount, deleteReason }) {
     const allRef = React.useRef(null), visible = entities.map(row => row.ref);
-    const [widths, setWidths] = React.useState({});
+    const table = React.useRef(null), [widths, setWidths] = React.useState(null);
     const selectedSet = new Set(selected), all = !!visible.length && visible.every(ref => selectedSet.has(ref));
-    const ordering = P.ordering(scope), width = column => widths[column.key] || column.width;
+    const ordering = P.ordering(scope), width = column => widths ? widths[column.key] : column.width;
     React.useEffect(() => { if (allRef.current) allRef.current.indeterminate = !all && visible.some(ref => selectedSet.has(ref)); }, [entities, selected, all]);
-    return <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table className="tbl wb-table" aria-label="零件工艺列表" aria-busy={loading} style={{ minWidth: 234 + P.columns.reduce((total, column) => total + width(column), 0), tableLayout: 'fixed' }}>
-      <thead><tr><th style={{ width: 44 }}><input ref={allRef} type="checkbox" aria-label="全选当前页" checked={all} disabled={disabled || loading || !visible.length}
+    function resize(key, value) {
+      if (disabled || !Number.isFinite(value)) return;
+      const current = {};
+      table.current.querySelectorAll('thead th[data-column]').forEach(cell => { current[cell.dataset.column] = cell.getBoundingClientRect().width; });
+      setWidths({ ...current, [key]: Math.max(56, value) });
+    }
+    const sizing = widths ? { width: Object.values(widths).reduce((total, value) => total + value, 0), minWidth: 0 } :
+      { minWidth: 234 + P.columns.reduce((total, column) => total + column.width, 0) };
+    return <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table ref={table} className="tbl wb-table" aria-label="零件工艺列表" aria-busy={loading} style={{ ...sizing, tableLayout: 'fixed' }}>
+      <thead><tr><th data-column="__selection" style={{ width: widths ? widths.__selection : 44 }}><input ref={allRef} type="checkbox" aria-label="全选当前页" checked={all} disabled={disabled || loading || !visible.length}
         onChange={event => setSelected(event.target.checked ? Array.from(new Set(selected.concat(visible))) : selected.filter(ref => !visible.includes(ref)))} /></th>
-        {P.columns.map(column => { const sorted = ordering.find(row => row.field === column.key); return <th key={column.key} style={{ width: width(column) }} aria-sort={sorted ? sorted.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
+        {P.columns.map(column => { const sorted = ordering.find(row => row.field === column.key); return <th key={column.key} data-column={column.key} style={{ width: width(column) }} aria-sort={sorted ? sorted.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
           <window.ResourceTableHeader column={column} kind="part" scope={scope} adapter={adapter} sort={sorted && sorted.field} direction={sorted && sorted.direction} sortActive={!!sorted}
             onSort={onSort} onFilter={rule => onFilter(column.key, rule)} filter={scope.column_filters && scope.column_filters[column.key]} matchingCount={matchingCount}
-            width={width(column)} onResize={value => setWidths(old => ({ ...old, [column.key]: value }))} disabled={disabled} scopeTransform={A.facetScope} pageSize={50} />
-        </th>; })}<th style={{ width: 190 }}>下一步 / 操作</th></tr></thead>
+            width={width(column)} onResize={value => resize(column.key, value)} disabled={disabled} scopeTransform={A.facetScope} pageSize={50} />
+        </th>; })}<th data-column="__actions" style={{ width: widths ? widths.__actions : 190 }}>下一步 / 操作</th></tr></thead>
       <tbody>{entities.map(row => <tr key={row.ref} data-process-ref={row.ref}>
         <td><input type="checkbox" aria-label={'选择 ' + row.business_code} checked={selectedSet.has(row.ref)} disabled={disabled || loading} onChange={event => setSelected(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))} /></td>
         <td><Button className="lnk" disabled={disabled || loading} aria-label={'查看 ' + row.business_code} onClick={() => onOpen(row.ref)} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'left' }}>{row.business_code}</Button></td>

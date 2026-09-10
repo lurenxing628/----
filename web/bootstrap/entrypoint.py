@@ -5,7 +5,7 @@ import os
 import secrets
 import sys
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from flask import Flask
 
@@ -13,6 +13,7 @@ from core.infrastructure.logging import safe_log
 
 from .factory import (
     create_app_core,
+    resolve_startup_debug_flag,
     serve_runtime_app,
     should_own_runtime_resources,
     should_register_runtime_lifecycle_handlers,
@@ -36,7 +37,9 @@ from .launcher import (
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import resolve_runtime_db_path
 from .paths import runtime_base_dir
-from .startup_config import resolve_startup_debug_flag
+from .workbench_request_lifecycle import WorkbenchRequestHandler
+from .workbench_run_lifecycle import install_run_lifecycle, release_runtime_after_jobs, stop_run_runtime
+from .workbench_system_restore_recovery import RECOVERY
 
 PUBLIC_LAUNCH_ERROR_MESSAGE = "应用启动失败：程序没有正常启动，请把 launcher.log 发给维护人员排查。"
 
@@ -67,6 +70,7 @@ class EntryPointDeps:
     # B03 锁命名空间与 DB 绑定：db-scope 锁所需的 DB 路径解析（与 factory._apply_runtime_config
     # 同源，合同测试锁定）；带默认值以兼容既有直接构造。
     resolve_runtime_db_path: Callable[[str], str] = resolve_runtime_db_path
+    install_run_runtime: Optional[Callable[..., Any]] = None
 
 
 def create_app_with_mode(ui_mode: str = "default") -> Flask:
@@ -86,6 +90,8 @@ def _parse_cli_args(argv):
 
 
 def _default_deps(ui_mode: str) -> EntryPointDeps:
+    from .workbench_run_runtime import install_workbench_run_runtime
+
     return EntryPointDeps(
         create_app=lambda: create_app_with_mode(ui_mode),
         clear_launch_error=clear_launch_error,
@@ -108,6 +114,7 @@ def _default_deps(ui_mode: str) -> EntryPointDeps:
         atexit_register=__import__("atexit").register,
         resolve_startup_debug_flag=resolve_startup_debug_flag,
         resolve_runtime_db_path=resolve_runtime_db_path,
+        install_run_runtime=install_workbench_run_runtime,
     )
 
 
@@ -229,6 +236,7 @@ def app_main(
     # 锁归属判定所需的 DEBUG 此刻无 app 可读，由 resolve_startup_debug_flag 从同一 config 源头解析。
     startup_debug = bool(deps.resolve_startup_debug_flag())
     owns_runtime_resources = deps.should_own_runtime_resources(startup_debug)
+    runtime_lock_state: Dict[str, Any] = {}
     if owns_runtime_resources:
         rc = _acquire_runtime_lock_before_app(
             deps,
@@ -237,6 +245,7 @@ def app_main(
             lock_scope_log_dir=lock_scope_log_dir,
             runtime_owner=runtime_owner,
             prelaunch_log_dir=prelaunch_log_dir,
+            runtime_lock_state=runtime_lock_state,
         )
         if rc is not None:
             return rc
@@ -248,35 +257,59 @@ def app_main(
             deps, runtime_dir, str(e), prelaunch_log_dir, logger=None, context="应用启动失败"
         )
         return 14
+    return _serve_created_app(
+        deps, app, ui_mode=ui_mode, runtime_dir=runtime_dir,
+        prelaunch_log_dir=prelaunch_log_dir, runtime_owner=runtime_owner,
+        owns_runtime_resources=owns_runtime_resources, runtime_lock_state=runtime_lock_state,
+    )
+
+
+def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
+                       runtime_owner, owns_runtime_resources, runtime_lock_state):
     debug = bool(app.config.get("DEBUG", False))
-    use_reloader = deps.should_use_runtime_reloader(debug)
+    recovery_required = app.config.get("WORKBENCH_RUN_RUNTIME_REASON") == RECOVERY
+    use_reloader = deps.should_use_runtime_reloader(debug) and not recovery_required
+    runtime = None
+    try:
+        if recovery_required and (not owns_runtime_resources or deps.install_run_runtime is None):
+            _write_launch_error_with_observability(
+                deps, runtime_dir, "恢复宿主必须持有原数据库运行锁。", prelaunch_log_dir,
+                logger=app.logger, context="恢复宿主启动失败")
+            return 14
+        if owns_runtime_resources:
+            try:
+                runtime = install_run_lifecycle(deps, app, runtime_lock_state)
+            except Exception as exc:
+                _write_launch_error_with_observability(
+                    deps, runtime_dir, str(exc), prelaunch_log_dir, logger=app.logger,
+                    context="排产运行恢复检查失败",
+                )
+                return 14
+            if app.config.get("WORKBENCH_RUN_RUNTIME_REASON") == RECOVERY:
+                use_reloader = False
+        raw_host = os.environ.get("APS_HOST")
+        host = deps.pick_bind_host(raw_host, logger=app.logger)
+        host, port = _resolve_listen_endpoint(deps, host, prelaunch_log_dir, runtime_dir, logger=app.logger)
+        _writeback_listen_env(host, port, logger=app.logger)
 
-    raw_host = os.environ.get("APS_HOST")
-    host = deps.pick_bind_host(raw_host, logger=app.logger)
-    host, port = _resolve_listen_endpoint(deps, host, prelaunch_log_dir, runtime_dir, logger=app.logger)
-    _writeback_listen_env(host, port, logger=app.logger)
+        if owns_runtime_resources:
+            rc = _publish_runtime_contract(
+                deps, app, runtime_dir=runtime_dir, host=host, port=port,
+                runtime_owner=runtime_owner, ui_mode=ui_mode, debug=debug,
+                lock_state=runtime_lock_state,
+            )
+            if rc is not None:
+                return rc
+        else:
+            safe_log(app.logger, "info", "开发重载父进程跳过获取运行时锁与运行时契约。")
 
-    if owns_runtime_resources:
-        rc = _publish_runtime_contract(
-            deps,
-            app,
-            runtime_dir=runtime_dir,
-            host=host,
-            port=port,
-            runtime_owner=runtime_owner,
-            ui_mode=ui_mode,
-            debug=debug,
-        )
-        if rc is not None:
-            return rc
-    else:
-        safe_log(app.logger, "info", "开发重载父进程跳过获取运行时锁与运行时契约。")
-
-    if use_reloader:
-        app.run(host=host, port=port, debug=debug, use_reloader=True)
+        if use_reloader:
+            app.run(host=host, port=port, debug=debug, use_reloader=True, request_handler=WorkbenchRequestHandler)
+            return 0
+        deps.serve_runtime_app(app, host, port)
         return 0
-    deps.serve_runtime_app(app, host, port)
-    return 0
+    finally:
+        stop_run_runtime(runtime or runtime_lock_state.get("runtime"))
 
 
 def _resolve_listen_endpoint(deps, host, prelaunch_log_dir, runtime_dir, *, logger) -> Tuple[str, int]:
@@ -318,6 +351,7 @@ def _acquire_runtime_lock_before_app(
     lock_scope_log_dir,
     runtime_owner,
     prelaunch_log_dir,
+    runtime_lock_state=None,
 ) -> Optional[int]:
     # 副作用时序红线：acquire_lock → atexit(release) → create_app（迁移/退出备份注册）→ configure_contract → atexit(delete)
     # 精确保序，任何重排破坏启动语义与崩溃后清理；锁必须是第一个共享资源副作用（双开防线）。
@@ -327,19 +361,27 @@ def _acquire_runtime_lock_before_app(
     # db 路径解析必须与 factory._apply_runtime_config 同源（resolve_runtime_db_path，合同测试锁定）。
     try:
         runtime_db_path = deps.resolve_runtime_db_path(runtime_dir)
-        deps.acquire_runtime_lock(
+        acquired = deps.acquire_runtime_lock(
             lock_scope_target,
             lock_scope_log_dir,
             owner=runtime_owner,
             exe_path=sys.executable,
             db_path=runtime_db_path,
         )
+        if deps.install_run_runtime is not None and not isinstance(acquired, dict):
+            raise RuntimeError("未取得可核对的数据库运行锁，不能启动排产后台。")
     except Exception as e:
         _write_launch_error_with_observability(
             deps, runtime_dir, str(e), prelaunch_log_dir, logger=None, context="获取运行时锁失败"
         )
         return 13
-    deps.atexit_register(deps.release_runtime_lock, lock_scope_target, os.getpid(), runtime_db_path)
+    if runtime_lock_state is not None:
+        runtime_lock_state["payload"] = acquired
+    if deps.install_run_runtime is not None:
+        deps.atexit_register(release_runtime_after_jobs, deps, runtime_lock_state,
+                             lock_scope_target, os.getpid(), runtime_db_path)
+    else:
+        deps.atexit_register(deps.release_runtime_lock, lock_scope_target, os.getpid(), runtime_db_path)
     return None
 
 
@@ -353,6 +395,7 @@ def _publish_runtime_contract(
     runtime_owner,
     ui_mode,
     debug,
+    lock_state=None,
 ) -> Optional[int]:
     # 契约失败用 app.logger（区别于锁/create_app 失败用 None），文案不统一化。返回 None=成功继续；15=契约失败。
     try:
@@ -371,5 +414,11 @@ def _publish_runtime_contract(
         )
         return 15
     if deps.should_register_runtime_lifecycle_handlers(debug):
-        deps.atexit_register(deps.delete_runtime_contract_files, app.config.get("LOG_DIR") or runtime_dir)
+        directory = app.config.get("LOG_DIR") or runtime_dir
+        if deps.install_run_runtime is not None and lock_state is not None:
+            # Cleanup also deletes the shell lock. The first-registered release
+            # callback runs LAST, after stop and the factory's exit backup.
+            lock_state["contract_cleanup_dir"] = directory
+        else:
+            deps.atexit_register(deps.delete_runtime_contract_files, directory)
     return None

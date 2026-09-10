@@ -1,0 +1,141 @@
+(function () {
+  'use strict';
+
+  const B = window.APSBatchContract,
+    C = window.APSResourceContract,
+    S = window.APSResourceSession;
+  const {
+      Button,
+      Modal,
+      ErrorBox
+    } = window.ResourceControls,
+    {
+      Field
+    } = window.BatchControls;
+  function BatchOperationEditor({
+    adapter,
+    entity,
+    operation,
+    source,
+    command,
+    onCommitted,
+    onClose,
+    disabled
+  }) {
+    const internal = operation.source === 'internal',
+      merged = operation.external_group && operation.external_group.merge_mode === 'merged';
+    const keys = internal ? ['machine_ref', 'operator_ref', 'setup_hours', 'unit_hours'] : ['supplier_ref'].concat(merged ? [] : ['external_days']);
+    const original = Object.fromEntries(keys.map(key => [key, operation[key] == null ? '' : String(operation[key])]));
+    const [draft, setDraft] = React.useState(original),
+      [error, setError] = React.useState(null),
+      seen = React.useRef(null);
+    const form = React.useId(),
+      done = command.phase === 'done',
+      locked = disabled || command.locked || done;
+    const choices = S.useQuery(signal => adapter.choices(signal), [adapter]);
+    const catalogs = choices.result && choices.result.data;
+    const names = {
+      machine_ref: '设备',
+      operator_ref: '人员',
+      supplier_ref: '供应商',
+      setup_hours: '换型工时（小时）',
+      unit_hours: '单件工时（小时）',
+      external_days: '外协周期（天）'
+    };
+    const allowed = catalogs && draft.machine_ref ? catalogs.authorizations.filter(row => row.machine_ref === draft.machine_ref).map(row => row.operator_ref) : null;
+    const mismatch = allowed && draft.operator_ref && !allowed.includes(draft.operator_ref);
+    React.useEffect(() => {
+      if (!done || seen.current === command.result.receipt_ref) return;
+      try {
+        B.receipt(command.result, 'operation_update', entity.ref);
+        if (command.result.data.operation_ref !== operation.ref) throw C.failure('回执工序与当前工序不一致。');
+        seen.current = command.result.receipt_ref;
+        onCommitted(command.result);
+      } catch (error) {
+        setError(error);
+      }
+    }, [done, command.result]);
+    async function submit(event) {
+      event.preventDefault();
+      if (locked || mismatch) return;
+      try {
+        const fields = {};
+        for (const key of keys) {
+          if (draft[key] === original[key]) continue;
+          let value = draft[key] === '' ? null : draft[key];
+          if (!key.endsWith('_ref') && value !== null) {
+            if (!/^\d+(?:\.\d+)?$/.test(value) || !Number.isFinite(Number(value)) || Number(value) > Number.MAX_SAFE_INTEGER || key === 'external_days' && Number(value) <= 0) throw C.failure(names[key] + '必须为有效数字。');
+            value = Number(value);
+          }
+          fields[key] = value;
+        }
+        if (!Object.keys(fields).length) throw C.failure('没有需要保存的变更。');
+        setError(null);
+        await command.submit('batch', 'operation_update', entity.ref, entity.write_context, {
+          operation_ref: operation.ref,
+          fields
+        });
+      } catch (error) {
+        setError(error);
+      }
+    }
+    return /*#__PURE__*/React.createElement(Modal, {
+      title: '工序 ' + operation.sequence + ' · ' + operation.label,
+      icon: "wrench",
+      locked: command.locked,
+      onClose: onClose,
+      footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
+        onClick: onClose,
+        disabled: command.locked
+      }, done ? '关闭' : '取消'), !done && /*#__PURE__*/React.createElement(Button, {
+        form: form,
+        type: "submit",
+        icon: "check",
+        className: "btn primary",
+        disabled: locked || !catalogs || !!mismatch,
+        reason: B.reason(entity.write_context, 'operation_update', source)
+      }, "\u4FDD\u5B58\u5DE5\u5E8F"))
+    }, /*#__PURE__*/React.createElement("form", {
+      id: form,
+      className: "modal-b form",
+      onSubmit: submit,
+      noValidate: true
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "fgrid batch-fields"
+    }, keys.map(key => /*#__PURE__*/React.createElement(Field, {
+      key: key,
+      label: names[key]
+    }, key.endsWith('_ref') ? /*#__PURE__*/React.createElement("select", {
+      value: draft[key],
+      disabled: locked || !catalogs,
+      onChange: event => setDraft({
+        ...draft,
+        [key]: event.target.value
+      })
+    }, /*#__PURE__*/React.createElement("option", {
+      value: ""
+    }, "\u672A\u9009\u62E9"), catalogs && catalogs[key.slice(0, -4) + 's'].map(row => /*#__PURE__*/React.createElement("option", {
+      key: row.ref,
+      value: row.ref,
+      disabled: row.status !== 'active'
+    }, row.business_code, " \xB7 ", row.label, row.status === 'active' ? '' : '（不可用）'))) : /*#__PURE__*/React.createElement("input", {
+      value: draft[key],
+      type: "text",
+      inputMode: "decimal",
+      disabled: locked,
+      onChange: event => setDraft({
+        ...draft,
+        [key]: event.target.value
+      })
+    })))), merged && /*#__PURE__*/React.createElement("p", null, "\u5408\u5E76\u5916\u534F\u7EC4 ", operation.external_group.business_code, " \xB7 \u6574\u7EC4\u5468\u671F ", B.label('', operation.external_group.total_days), " \u5929\uFF08\u53EA\u8BFB\uFF09"), allowed && /*#__PURE__*/React.createElement("p", {
+      style: mismatch ? {
+        color: 'var(--ui-danger-text)'
+      } : undefined
+    }, mismatch ? '所选人员未获设备操作授权。' : '设备授权人员：', catalogs.operators.filter(row => allowed.includes(row.ref)).map(row => row.label).join('、') || '无'), /*#__PURE__*/React.createElement(ErrorBox, {
+      error: error || choices.error
+    }), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
+      command: command
+    })));
+  }
+  window.BatchOperationEditor = BatchOperationEditor;
+})();

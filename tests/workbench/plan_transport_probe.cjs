@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '../..');
-const files = ['resource-contract.js', 'resource-api.js', 'PointContract.js', 'PlanContract.js', 'PlanAPI.js'];
+const files = ['resource-contract.js', 'resource-api.js', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js'];
 const scripts = files.map(name => ({name, source: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8')}));
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 const sources = scripts.map(script => ({path: 'frontend/workbench/app/' + script.name, sha256: digest(script.source)}));
@@ -35,6 +35,7 @@ const workspace = () => align(envelope({plan: header(), scope: {source: 'product
     items: [], item_count: 0, items_complete: false}}}));
 function align(payload) {
   const d = payload.data, time = clone(d.time_scope);
+  d.projections.process_order = {state: 'unavailable', basis: null, items: [], issues: [{code: 'process_order_not_recorded', message: 'No captured process order'}]};
   d.projections.calendar = {state: 'available', plan_ref: P, time_scope: time, global: {state: 'available', basis: 'global_calendar',
     windows: [], issues: [], available_hours: 0, effective_hours: 0, normal_available_hours: 0, normal_effective_hours: 0,
     urgent_available_hours: 0, urgent_effective_hours: 0}, resources: [], issues: []};

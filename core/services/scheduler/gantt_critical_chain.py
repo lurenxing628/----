@@ -346,11 +346,29 @@ def _edge_type_stats(edges: List[Dict[str, Any]]) -> Dict[str, int]:
     return stats
 
 
-def _compute_critical_chain_from_loaded_rows(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _explicit_sink(rows: List[Dict[str, Any]], nodes: Dict[str, Dict[str, Any]], target_id: str) -> Tuple[str, str]:
+    if type(target_id) is not str or not target_id or target_id != target_id.strip():
+        return "", "target_invalid"
+    identities = [(row.get("op_code") or "").strip() or _public_task_id(row) for row in rows]
+    if len(set(identities)) != len(identities):
+        return "", "target_identity_conflict"
+    if target_id not in identities:
+        return "", "target_not_found"
+    if target_id not in nodes:
+        return "", "target_time_unavailable"
+    return target_id, ""
+
+
+def _compute_critical_chain_from_loaded_rows(rows: List[Dict[str, Any]], *, target_id: Optional[str] = None) -> Dict[str, Any]:
     collector = DegradationCollector()
     nodes = _build_nodes(rows, collector=collector)
     dropped = _dropped_count((collector.to_counters() or {}).get("bad_time_row_skipped"))
-    if not nodes:
+    sink_id = ""
+    if target_id is not None:
+        sink_id, reason = _explicit_sink(rows, nodes, target_id)
+        if reason:
+            return _unavailable_result(reason)
+    elif not nodes:
         return _empty_result(dropped_count=dropped)
 
     proc_prev = _build_process_prev(nodes)
@@ -358,8 +376,8 @@ def _compute_critical_chain_from_loaded_rows(rows: List[Dict[str, Any]]) -> Dict
     op_prev = _build_prev_by_resource(nodes, resource_key="operator_id")
 
     ctrl_prev, ctrl_prev_edge = _choose_control_prev(nodes, proc_prev=proc_prev, mach_prev=mach_prev, op_prev=op_prev)
-    sink_id = _sink_id(nodes)
-
+    if target_id is None:
+        sink_id = _sink_id(nodes)
     chain, edges = _backtrace_chain(sink_id, ctrl_prev=ctrl_prev, ctrl_prev_edge=ctrl_prev_edge, nodes=nodes)
     sink_end = _node_dt(nodes[sink_id], "end") if sink_id in nodes else None
     makespan_end = _fmt_dt(sink_end) if sink_end is not None else None
@@ -375,9 +393,10 @@ def _compute_critical_chain_from_loaded_rows(rows: List[Dict[str, Any]]) -> Dict
     }
 
 
-def compute_critical_chain_from_rows(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def compute_critical_chain_from_rows(rows: List[Dict[str, Any]], *, target_id: Optional[str] = None) -> Dict[str, Any]:
+    """An explicit sink changes only backtracing, never the full input control graph."""
     try:
-        return _compute_critical_chain_from_loaded_rows(list(rows or []))
+        return _compute_critical_chain_from_loaded_rows(list(rows or []), target_id=target_id)
     except Exception:
         return _unavailable_result("rows_exception")
 

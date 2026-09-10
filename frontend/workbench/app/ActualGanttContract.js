@@ -80,9 +80,51 @@
       if (used.some(r => r != null && (!ref(r) || !resourceRefs.has(r)))) fail('实际或计划资源目录不完整。');
     });
     if (d.availability.state === 'available' ? d.report_count !== count || count > 50000 : d.report_count !== null || !d.availability.reason) fail('报工数量或不可用原因不完整。');
-    if (d.critical_chain.state !== 'unavailable' && (d.critical_chain.state !== 'available' || !d.critical_chain.engine_evidence_ref || d.critical_chain.snapshot_ref !== meta.snapshot_ref || d.critical_chain.task_refs.some(r => !taskRefs.has(r)))) fail('关键链没有绑定本快照的真实引擎证据。');
+    validateChain(d.critical_chain, d, query, meta);
     return result;
   }
+  function validateChain(chain, d, query, meta) {
+    const taskRefs = new Set(d.items.map(item => item.task.task_ref));
+    if (chain.state !== 'unavailable') {
+      if (chain.state !== 'available' || !chain.engine_evidence_ref || chain.snapshot_ref !== meta.snapshot_ref || chain.plan_ref !== query.plan_ref
+        || chain.source !== 'core.services.scheduler.gantt_critical_chain.compute_critical_chain_from_rows'
+        || chain.semantics !== 'selected_plan_control_predecessor_chain' || chain.scope !== 'full_plan' || chain.gap_unit !== 'minute'
+        || !['global', 'related'].includes(chain.mode) || (chain.mode === 'global' ? chain.target_task_ref !== null : !ref(chain.target_task_ref))
+        || chain.time_basis !== 'factory_local' || chain.gap_rounding !== 'floor' || !local(chain.makespan_end)
+        || !Number.isInteger(chain.omitted_point_count) || chain.omitted_point_count < 0 || chain.partial !== (chain.omitted_point_count > 0)
+        || !Array.isArray(chain.nodes) || !chain.nodes.length || chain.task_refs.length !== chain.nodes.length
+        || new Set(chain.task_refs).size !== chain.task_refs.length || chain.edges.length !== chain.nodes.length - 1)
+        fail('关键链没有绑定本快照的真实引擎证据。');
+      const nodes = new Map();
+      chain.nodes.forEach((node, index) => {
+        if (!object(node) || !ref(node.task_ref) || !ref(node.operation_ref) || node.task_ref !== chain.task_refs[index]
+          || !local(node.start) || !local(node.end) || node.start >= node.end || node.in_scope !== taskRefs.has(node.task_ref)
+          || typeof node.batch_id !== 'string' || typeof node.process_label !== 'string' || !Number.isInteger(node.sequence)) fail('关键链节点与当前计划或范围不一致。');
+        nodes.set(node.task_ref, node);
+      });
+      chain.edges.forEach((edge, index) => {
+        if (!object(edge) || edge.from_task_ref !== chain.task_refs[index] || edge.to_task_ref !== chain.task_refs[index + 1]
+          || !['process', 'machine', 'operator'].includes(edge.edge_type) || typeof edge.reason !== 'string' || !edge.reason
+          || !Number.isInteger(edge.gap_minutes)) fail('关键链边或分钟量纲无效。');
+        const from = nodes.get(edge.from_task_ref), to = nodes.get(edge.to_task_ref);
+        if (edge.gap_minutes !== Math.floor((Date.parse(to.start + 'Z') - Date.parse(from.end + 'Z')) / 60000)) fail('关键链边间隔与计划事实不一致。');
+      });
+      if (chain.visible_node_count !== chain.nodes.filter(node => node.in_scope).length || !Number.isInteger(chain.plan_task_count)
+        || chain.plan_task_count < d.task_count || chain.plan_task_count < chain.nodes.length || chain.makespan_end !== chain.nodes[chain.nodes.length - 1].end
+        || chain.mode === 'related' && chain.target_task_ref !== chain.task_refs[chain.task_refs.length - 1])
+        fail('关键链完整性计数不一致。');
+    } else if (typeof chain.reason !== 'string' || !chain.reason) fail('关键链不可用时必须保留明确原因。');
+    return chain;
+  }
+  function related(result, context, original, target) {
+    const d = result && result.data, meta = result && result.meta, query = scope(context);
+    if (!ref(target) || !query.snapshot_ref || !result || result.ok !== true || result.schema_version !== 1 || !d || !meta
+      || meta.source !== 'production' || meta.time_basis !== 'factory_local' || !local(meta.as_of) || meta.snapshot_ref !== query.snapshot_ref
+      || !d.plan || d.plan.plan_ref !== query.plan_ref || !d.scope || cohortKeys.some(key => JSON.stringify(d.scope[key]) !== JSON.stringify(original.scope[key]))
+      || !d.critical_chain || d.critical_chain.plan_ref !== query.plan_ref || d.critical_chain.snapshot_ref !== query.snapshot_ref
+      || d.critical_chain.mode !== 'related' || d.critical_chain.target_task_ref !== target) fail('关联链与原计划、目标或读取快照不一致，未改用全局链。');
+    return validateChain(d.critical_chain, original, query, meta);
+  }
   function transport(value) { const result = { ...value }; if (result.batch_ids) result.batch_ids = JSON.stringify(result.batch_ids); return result; }
-  window.ActualGanttContract = { scope, workspace, transport, local, ref };
+  window.ActualGanttContract = { scope, workspace, related, transport, local, ref };
 })();

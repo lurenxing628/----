@@ -29,11 +29,12 @@
   }
   function PlanGantt({ data, selected, onSelect, query, onQuery, disabled = false }) {
     const [mode, setMode] = React.useState('machine'), [baseline, setBaseline] = React.useState(false), [zoom, setZoom] = React.useState(1);
+    const [changedOnly, setChangedOnly] = React.useState(false), [expanded, setExpanded] = React.useState(false);
     const [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 440 }), [hover, setHover] = React.useState(null);
-    const board = React.useRef(null), search = React.useRef(null), pending = React.useRef(null), frame = React.useRef(null);
+    const board = React.useRef(null), search = React.useRef(null), pending = React.useRef(null), frame = React.useRef(null), expandButton = React.useRef(null);
     const labelWidth = position.width < 550 ? 125 : 170, viewport = Math.max(100, position.width - labelWidth);
     const width = viewport * zoom, selectedRef = selected && selected.task.task_ref;
-    const model = React.useMemo(() => M.layout(data, mode, query, baseline, width), [data, mode, query, baseline, width]);
+    const model = React.useMemo(() => M.layout(data, mode, query, baseline, width, changedOnly), [data, mode, query, baseline, width, changedOnly]);
     const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
     const before = data.projections.baseline, showBaseline = before.state === 'available';
     const ticks = M.ticks(model.start, model.end, width, position.left, viewport);
@@ -49,7 +50,22 @@
       if (pending.current !== null) { board.current.scrollLeft = pending.current * width - viewport / 2; pending.current = null; }
       measure();
     }, [width, model]);
-    React.useEffect(() => { setHover(null); }, [query, mode, baseline, position.top, position.left]);
+    React.useEffect(() => { setHover(null); }, [query, mode, baseline, changedOnly, expanded]);
+    React.useEffect(() => {
+      setHover(current => {
+        if (!current) return null;
+        const node = document.elementFromPoint(current.x, current.y), task = node && node.closest('[data-plan-task]');
+        return task && task.dataset.planTask === current.task.task_ref && task.hasAttribute('data-before') === !!current.before ? current : null;
+      });
+    }, [position.top, position.left]);
+    React.useEffect(() => {
+      if (!expanded) return undefined;
+      const overflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden'; board.current.focus();
+      const close = event => { if (event.key === 'Escape') { event.preventDefault(); setExpanded(false); } };
+      document.addEventListener('keydown', close);
+      return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', close); if (expandButton.current) expandButton.current.focus(); };
+    }, [expanded]);
     function changeZoom(next) {
       pending.current = (position.left + viewport / 2) / width; setZoom(Math.max(1, Math.min(1024, next)));
     }
@@ -61,6 +77,12 @@
       el.scrollLeft = (item.start + item.end - 2 * model.start) / 2 / (model.end - model.start) * width - viewport / 2;
       measure();
     }
+    const located = React.useRef(null);
+    React.useEffect(() => {
+      if (selected && selected.locate && located.current !== selected && model.locations.has(selectedRef)) {
+        located.current = selected; locate(selectedRef);
+      }
+    }, [selected, model]);
     function select(task, beforeTask) { setHover(null); onSelect(task, beforeTask); }
     function move(direction) {
       const tasks = model.tasks, index = tasks.findIndex(task => task.task_ref === selectedRef);
@@ -68,7 +90,7 @@
       if (next) { onSelect(next, false); locate(next.task_ref); }
     }
     const currentIndex = model.tasks.findIndex(task => task.task_ref === selectedRef);
-    return <div className="plan-gantt" data-plan-gantt onKeyDown={event => {
+    return <div className={'plan-gantt' + (expanded ? ' plan-expanded' : '')} data-plan-gantt onKeyDown={event => {
       if (disabled || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[role=dialog]')) return;
       if (event.key === '/') { event.preventDefault(); search.current.focus(); }
       if (event.key === '+' || event.key === '=') { event.preventDefault(); changeZoom(zoom * 2); }
@@ -80,6 +102,8 @@
         <Segment value={mode} options={Object.entries(M.kindLabels)} onChange={setMode} label="甘特分组" disabled={disabled} />
         <label className="plan-check" title={showBaseline ? '持久基础计划对照' : before.reason || '初始基线无法核实'}><input type="checkbox" aria-label="显示初始基线" checked={baseline && showBaseline} disabled={!showBaseline || disabled}
           onChange={event => setBaseline(event.target.checked)} />初始基线</label>
+        <label className="plan-check" title={showBaseline ? '按已核实的初始计划对照筛选' : before.reason || '初始基线无法核实'}><input type="checkbox" aria-label="仅变更" checked={changedOnly && showBaseline} disabled={!showBaseline || disabled}
+          onChange={event => setChangedOnly(event.target.checked)} />仅变更</label>
         <label className="search plan-search"><span className="ic"><Icon name="search" /></span><input ref={search} type="search" aria-label="搜索批次、工序、设备、人员" placeholder="批次、工序、资源" value={query}
           onChange={event => onQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); move(event.shiftKey ? -1 : 1); } if (event.key === 'Escape') onQuery(''); }} /></label>
         <div className="plan-actions">
@@ -88,6 +112,8 @@
           <Button icon="plus" className="btn plan-icon" aria-label="放大时间轴" disabled={zoom >= 1024 || disabled} onClick={() => changeZoom(zoom * 2)} />
           <Button icon="unfold-vertical" className="btn plan-icon plan-fit" aria-label="适合完整跨度" title="适合完整跨度 (F)" onClick={() => { pending.current = 0.5; setZoom(1); board.current.scrollLeft = 0; measure(); }} />
           <Button icon="search" className="btn plan-icon" aria-label="定位选中任务" title="定位选中任务 (L)" disabled={!model.locations.has(selectedRef)} onClick={() => locate()} />
+          <Button icon={expanded ? 'x' : 'chart-gantt'} className="btn plan-icon" aria-label={expanded ? '收起甘特' : '展开甘特'} title={expanded ? '返回完整工作区' : '展开甘特工作区'}
+            aria-expanded={expanded} disabled={disabled} onClick={event => { expandButton.current = event.currentTarget; setExpanded(!expanded); }} />
         </div>
       </div>
       {!showBaseline && <div className="plan-note">初始基线：{before.reason || '无法核实'}</div>}
@@ -110,7 +136,7 @@
                 </div>
               </div>;
             })}
-            {!model.rows.length && <div className="plan-empty" style={{ position: 'sticky', left: 0, width: position.width }}>{query ? '没有匹配安排，完整计划跨度保持不变。' : '该读取范围没有安排。'}</div>}
+            {!model.rows.length && <div className="plan-empty" style={{ position: 'sticky', left: 0, width: position.width }}>{changedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划跨度保持不变。' : '该读取范围没有安排。'}</div>}
           </div>
         </div>
         <div className="plan-footer"><span data-plan-search-count>{model.tasks.length} / {data.task_count} 道安排</span>

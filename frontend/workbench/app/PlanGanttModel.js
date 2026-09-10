@@ -62,9 +62,11 @@
     }
     return result;
   }
-  function layout(data, mode, query, baseline, width = 1000) {
+  function layout(data, mode, query, baseline, width = 1000, changedOnly = false) {
     const labels = names(data), needle = query.trim().toLocaleLowerCase();
-    const matches = task => !needle || searchText(task, labels).includes(needle);
+    const comparison = data.projections.baseline;
+    const changed = new Set(comparison.state === 'available' ? comparison.items.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
+    const matches = task => (!changedOnly || changed.has(task.operation_ref)) && (!needle || searchText(task, labels).includes(needle));
     const selected = data.tasks.filter(matches), groups = new Map(), conflicts = new Set(), locations = new Map();
     let start = instant(data.plan_span.start), end = instant(data.plan_span.end);
     const add = (task, before) => {

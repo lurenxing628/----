@@ -12,7 +12,7 @@ from core.services.equipment import MachineDowntimeService, MachineService
 from core.services.equipment.machine_downtime_query_service import MachineDowntimeQueryService
 from core.services.personnel import OperatorMachineService, OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
-from core.services.process import OpTypeService
+from core.services.process.op_type_service import OpTypeService
 from web.viewmodels.excel_entry_cards import equipment_excel_cards
 
 from .equipment_bp import _machine_status_zh, _operator_status_zh, bp

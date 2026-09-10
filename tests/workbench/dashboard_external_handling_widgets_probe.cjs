@@ -233,7 +233,17 @@ async function boundaries() {
     if (name === 'unknown') {
       await submit(page, ref); await finish(page); assert.equal((await context.request.post(origin + '/__dx_fixture__/mutate')).status(), 200);
       await reload(page); const unknown = await choose(page, ref); assert.equal(unknown.risk.active, null); assert.equal(unknown.source_state, 'not_currently_evaluated');
-      assert.equal(await detail(page).getByRole('button', { name:/^原外协物流登记/ }).isDisabled(), true);
+      const navigation = detail(page).getByRole('button', { name:/^原外协物流登记/ });
+      const beforeNavigation = report.responses.length;
+      assert.equal(await navigation.isEnabled(), true); await navigation.click();
+      const confirmation = page.getByRole('dialog', { name:'原对象暂不可定位', exact:true });
+      await confirmation.getByText(unknown.navigation.find(n => n.view === 'outsourcing').reason, { exact:true }).waitFor();
+      assert((await confirmation.innerText()).includes(ref));
+      assert.equal(await confirmation.getByRole('button', { name:'打开外协物流登记概览', exact:true }).isEnabled(), true);
+      await confirmation.getByRole('button', { name:'取消', exact:true }).click(); await confirmation.waitFor({ state:'hidden' });
+      assert.equal(await detail(page).getAttribute('data-detail-ref'), ref);
+      assert.equal(await page.locator('[data-dashboard-outsourcing]').count(), 0);
+      assert.equal(report.responses.length, beforeNavigation, 'Unlocatable confirmation/cancel must not navigate or submit');
       await history(page, ref); await page.locator('[data-history-sequence="1"]').waitFor(); report.boundaries.unknown_not_guessed = true;
     } else {
       if (name === 'stale') assert.equal((await context.request.post(origin + '/__dx_fixture__/mutate')).status(), 200);

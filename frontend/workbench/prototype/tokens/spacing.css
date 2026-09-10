@@ -1,0 +1,43 @@
+/* ============================================================
+   APS 排产系统 · Spacing, radius, shadow & motion tokens
+   Tight, flat enterprise. Radii are small (4/6/8). Two subtle
+   shadows only — surfaces sit close to the page, they do not float.
+   Motion is short and functional (0.12–0.2s), no bounce.
+   ============================================================ */
+
+:root {
+  /* ---- Spacing scale (px · 契约 4.4 target) ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;   /* column gutter, card padding */
+  --space-6: 32px;
+  --space-7: 40px;
+
+  /* legacy rem ladder (still consumed in places) */
+  --ui-space-1: 0.25rem; --ui-space-2: 0.5rem; --ui-space-3: 0.75rem;
+  --ui-space-4: 1rem; --ui-space-5: 1.25rem; --ui-space-6: 1.5rem;
+
+  /* ---- Radius — three steps (small!) ---- */
+  --radius-1: 4px;
+  --radius-2: 6px;   /* default: buttons, cards, inputs */
+  --radius-3: 8px;   /* risk cards, larger panels */
+  --ui-radius: 6px;
+  --ui-radius-sm: 4px; --ui-radius-md: 6px; --ui-radius-lg: 10px; --ui-radius-pill: 999px;
+
+  /* ---- Shadows — exactly two, both subtle ---- */
+  --ui-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --ui-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-sm: var(--ui-shadow-sm);
+  --shadow-md: var(--ui-shadow-md);
+
+  /* ---- Layout grid (12-col, 24px gutter, content cap ~1128px) ---- */
+  --content-max: 1128px;
+  --grid-gutter: 24px;
+
+  /* ---- Motion ---- */
+  --ease-fast: 0.12s ease;  /* @kind other */
+  --ease: 0.15s ease;       /* @kind other */
+  --ease-nav: 0.2s ease;    /* @kind other */
+}

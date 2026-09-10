@@ -35,6 +35,11 @@
     const [value, setValue] = React.useState(initial.value), [error, setError] = React.useState(null), [result, setResult] = React.useState(null);
     const [busy, setBusy] = React.useState(false), [expanded, setExpanded] = React.useState(false);
     const serial = React.useRef(0), active = React.useRef(null), context = React.useRef(initialContext);
+    const remembered = React.useMemo(() => {
+      try { return C.input(value); }
+      catch (_) { return null; }
+    }, [value]);
+    window.WorkbenchPageContext.useSnapshot(remembered, !initial.error && remembered !== null);
     function invalidate() { serial.current++; if (active.current) active.current.abort(); setResult(null); setError(null); setBusy(false); }
     function change(patch) { invalidate(); setValue(old => ({ ...old, ...patch })); }
     React.useEffect(() => {
@@ -57,6 +62,7 @@
       const rows = kind === 'unready' ? data.unready_batches : kind === 'resources' ? data.tasks.filter(row => row.issues.some(item => ['machine_missing', 'operator_missing', 'operator_skill_missing', 'machine_authorization_missing'].includes(item.code)))
         : data.tasks.filter(row => row.status === 'blocked').concat(data.no_route_batches);
       const ids = Array.from(new Set(rows.map(row => row.batch_id)));
+      invalidate();
       onNavigate('batches', { focus: kind === 'unready' ? 'unready' : 'gaps', batchIds: ids, return_to: 'run' });
     }
     const checks = [

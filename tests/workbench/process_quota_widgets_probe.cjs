@@ -3,7 +3,7 @@
 const fs = require('node:fs'), path = require('node:path'), http = require('node:http'), crypto = require('node:crypto'), assert = require('node:assert/strict');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const config = JSON.parse(fs.readFileSync(0, 'utf8')), output = process.argv[2], root = path.resolve(__dirname, '../..');
-const names = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-api.js', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceTableFilterModel.js', 'ResourceTables.jsx',
+const names = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-api.js', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx', 'ResourceTables.jsx',
   'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceMaterialContract.js', 'ResourceMaterialPreview.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx',
   'ProcessContract.js', 'ProcessAPI.js', 'ProcessActionContract.js', 'ProcessActionPreview.jsx', 'ProcessFileContract.js', 'ProcessFilePreview.jsx', 'ProcessFileActions.jsx', 'ProcessControls.jsx',
@@ -80,7 +80,7 @@ async function contextFor(name, viewport, theme) {
 }
 async function adopt(page, reason) {
   await page.goto(origin + '/calibration'); await page.locator('.calibration-live[data-ready=true]').waitFor();
-  await page.locator('.ca-table tr[data-ref="' + config.template_ref + '"] button').click();
+  await page.locator('.ca-table tr[data-ref="' + config.template_ref + '"]').getByRole('button', { name: '查看 P1 1 Turning', exact: true }).click();
   await page.locator('[data-sample-group=selected]').waitFor(); await button(page, '预览采用').click();
   const dialog = page.getByRole('dialog'); await dialog.getByLabel('采用原因', { exact: true }).fill(reason);
   await dialog.getByLabel('声明人', { exact: true }).fill('DG工时复核员'); await button(page, '读取真实预览').click();

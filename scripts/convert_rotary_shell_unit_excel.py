@@ -69,8 +69,7 @@ def main() -> int:
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from core.services.process import UnitExcelConverter
-    from core.services.process.unit_excel_converter import SheetNotFoundError
+    from core.services.process.unit_excel_converter import SheetNotFoundError, UnitExcelConverter
 
     parser = argparse.ArgumentParser(
         description="把产线单元实际运行数据转换为 APS 标准导入模板（工步并工序，去掉技能等级/主操）。"
@@ -128,4 +127,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

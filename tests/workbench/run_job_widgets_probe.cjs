@@ -51,16 +51,21 @@ async function reset(mode = 'complete') {
 async function confirm() {
   const response = page.waitForResponse(r => r.url().endsWith('/scheduling/runs/preview'));
   await startButton().click(); await page.getByRole('dialog', { name: '确认本次候选排产' }).waitFor();
-  await page.evaluate(v => { window.fixturePreview = v; }, await (await response).json());
+  const preview = await (await response).json();
+  await page.evaluate(v => { window.fixturePreview = v; }, preview);
   assert.equal(await page.locator('.modal-bg').evaluate(n => getComputedStyle(n).position), 'fixed');
-  await page.getByText(/精确批次引用/).click(); assert((await page.locator('.rj-refs li').count()) > 0);
+  await page.getByText('批次编号 · ' + preview.data.normalized_input.batch_refs.length + ' 批', { exact: true }).click();
+  assert((await page.locator('.rj-refs li').count()) > 0);
+  assert.deepEqual(await page.locator('.rj-refs li').allTextContents(), preview.data.normalized_input.batch_refs.slice(0, 20));
   await shot('confirm');
   await button('确认开始排产').evaluate(node => { node.click(); node.click(); });
 }
 async function accepted() {
-  const response = page.waitForResponse(r => r.url().endsWith('/scheduling/runs') && r.status() === 202);
-  await confirm(); await state('queued').waitFor(); const intent = await local(); assert(intent.run_ref);
-  await page.evaluate(v => { window.fixtureAcceptance = v; }, await (await response).json());
+  const [response] = await Promise.all([
+    page.waitForResponse(r => r.url().endsWith('/scheduling/runs') && r.status() === 202), confirm()
+  ]);
+  await state('queued').waitFor(); const intent = await local(); assert(intent.run_ref);
+  await page.evaluate(v => { window.fixtureAcceptance = v; }, await response.json());
   assert.deepEqual(Object.keys(intent).sort(), ['input_ref', 'request_key', 'run_ref']); return intent;
 }
 async function refresh() { await button('查询原运行').waitFor({ state: 'visible' }); await button('查询原运行').click(); }
@@ -175,8 +180,28 @@ async function variants() {
   await state('partial').waitFor(); await page.locator('[data-candidate-ref]').first().waitFor(); assert.equal(await page.locator('[data-candidate-ref]').count(), 4);
   assert.equal(await page.locator('[data-candidate-ref] td:nth-child(2)').filter({ hasText: '部分完成' }).count(), 4);
   await shot('partial'); caseDone('real-excluded-batch-partial');
+  await reset('point'); const point = await accepted(); await control('start', { run_ref: point.run_ref }); await control('release'); await refresh();
+  await state('complete').waitFor(); await page.locator('[data-candidate-ref]').first().waitFor();
+  assert.equal(await page.locator('[data-candidate-ref]').count(), 4);
+  const pointResponse = await page.request.get(origin + '/api/workbench/v1/scheduling/runs/' + point.run_ref);
+  assert.equal(pointResponse.status(), 200); const pointRun = (await pointResponse.json()).data;
+  assert.equal(pointRun.result_persisted, true); assert.equal(pointRun.error, null); assert.equal(pointRun.candidates.length, 4);
+  for (const candidate of pointRun.candidates) {
+    assert.equal(candidate.task_count, 1); assert.equal(candidate.status, 'completed');
+    const response = await page.request.get(origin + '/api/workbench/v1/scheduling/candidates/' + candidate.candidate_ref + '/workspace');
+    assert.equal(response.status(), 200); const data = (await response.json()).data;
+    assert.equal(data.tasks.length, 1); const task = data.tasks[0];
+    assert.equal(task.start, task.end); assert.equal(task.duration_seconds, 0);
+    assert.equal(task.event_kind, 'point'); assert.equal(task.occupies_resources, false);
+  }
+  await shot('zero-duration-point'); caseDone('real-zero-duration-point-candidates');
   await reset('failed'); const failed = await accepted(); await control('start', { run_ref: failed.run_ref }); await control('release'); await refresh();
-  await state('failed').waitFor(); assert.equal(await page.locator('[data-candidate-ref]').count(), 0); await shot('failed'); caseDone('real-zero-duration-failure');
+  await state('failed').waitFor(); assert.equal(await page.locator('[data-candidate-ref]').count(), 0);
+  const failedResponse = await page.request.get(origin + '/api/workbench/v1/scheduling/runs/' + failed.run_ref);
+  assert.equal(failedResponse.status(), 200); const failedRun = (await failedResponse.json()).data;
+  assert.equal(failedRun.state, 'failed'); assert.equal(failedRun.result_persisted, false);
+  assert.equal(failedRun.error.code, 'point_duration_nonzero'); assert.deepEqual(failedRun.candidates, []);
+  await shot('failed'); caseDone('real-positive-duration-collapse-failure');
   await reset(); const interrupted = await accepted(); await control('reconcile_unknown', { run_ref: interrupted.run_ref }); await refresh();
   await state('running', 'awaiting_reconciliation').waitFor(); assert(await startButton().isDisabled()); caseDone('unknown-executor-not-timeout-failure');
   await control('interrupt'); await refresh(); await state('interrupted').waitFor(); await shot('interrupted'); caseDone('confirmed-interruption');

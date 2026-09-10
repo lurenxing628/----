@@ -6,6 +6,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, canonical_js
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan_queries import WorkbenchPlanQueryService
 
+from .actual_gantt_chain import plan_chain
 from .actual_gantt_scope import cohort_match
 from .execution_ledger import ExecutionLedgerService
 
@@ -23,12 +24,14 @@ def check_actual_size(data):
     return data
 
 
-def bind_axis_time(data, as_of):
+def bind_axis_time(data, as_of, snapshot_ref=None):
     """The visible clock is derived from the pinned as_of, not the browser clock."""
     clock = datetime.fromisoformat(as_of).replace(minute=0, second=0, microsecond=0)
     start = clock.isoformat(timespec="seconds")
     end = (clock + timedelta(hours=1)).isoformat(timespec="seconds")
     data["axis_span"] = {"start": min(data["axis_span"]["start"], start), "end": max(data["axis_span"]["end"], end)}
+    if snapshot_ref is not None:
+        data["critical_chain"]["snapshot_ref"] = snapshot_ref
     return data
 
 
@@ -84,8 +87,7 @@ class ActualGanttService:
     def read_snapshot(self):
         return self.plans.read_snapshot()
 
-    def workspace(self, scope):
-        planned, plan_state = self.plans.workspace(PlanReadScope(scope.plan_ref))
+    def _execution(self, planned, scope):
         availability = {"state": "available", "reason_code": None, "reason": None}
         try:
             projection = ledger_projection(self.conn, scope.plan_ref, planned["tasks"])
@@ -105,17 +107,27 @@ class ActualGanttService:
                 raise WorkbenchCommandRejected("projection_invalid", "执行投影不可用或时间口径不一致。")
             items = _items(planned["tasks"], projection)
             resources = _merge_resources(planned["resources"], projection["resources"])
+        return projection, items, resources, availability
+
+    def workspace(self, scope, *, chain_target=None):
+        planned, plan_state = self.plans.workspace(PlanReadScope(scope.plan_ref))
+        projection, items, resources, availability = self._execution(planned, scope)
         items = [item for item in items if cohort_match(item, scope)]
         data = {"plan": planned["plan"], "scope": scope.scope(), "plan_span": planned["plan_span"],
                 "axis_span": _span(planned["plan_span"], items), "availability": availability,
                 "items": items, "task_count": len(items), "items_complete": True,
                 "report_count": sum(len(item["execution"]["reports"]) for item in items) if projection else None,
                 "resources": resources, "calendar": planned["projections"]["calendar"],
-                "critical_chain": {"state": "unavailable", "reason": "尚无绑定本次执行快照的真实引擎关键链证据。", "task_refs": [], "edges": []},
+                "critical_chain": plan_chain(self.plans, planned, plan_state, {item["task"]["task_ref"] for item in items}),
                 "semantics": {"cohort": "plan_finish_date_and_plan_overlap", "resources": "planned_or_actual_or_recorded_remaining",
                               "reports": "all_effective_reports_of_selected_operations", "local_filters": "search_late_selected",
                               "export": "full_snapshot_cohort_or_explicit_local_view", "time_basis": "factory_local"}}
         check_actual_size(data)
         state = input_fingerprint({"plan": plan_state, "execution": projection["snapshot_facts"] if projection else None,
                                    "data": data})
+        if chain_target is not None:
+            # The timeline token pins all plan/ledger facts; target identity also binds the engine evidence.
+            data["critical_chain"] = plan_chain(self.plans, planned, plan_state,
+                {item["task"]["task_ref"] for item in items}, target_task_ref=chain_target)
+            check_actual_size(data)
         return data, state

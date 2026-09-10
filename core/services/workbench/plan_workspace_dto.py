@@ -6,6 +6,7 @@ from .plan_baseline import build_plan_baseline
 from .plan_calendar import project_plan_calendar
 from .plan_delivery import read_plan_delivery
 from .plan_occupancy import project_plan_occupancy
+from .plan_process_order import project_process_order
 
 
 def resource_directory(rows, resources):
@@ -34,7 +35,9 @@ def workspace_projections(conn, *, entry, scope, rows, resources, plan_span, log
     delivery, delivery_facts = read_plan_delivery(conn, scope=scope, identity=entry.plan_identity, logger=logger)
     known = sum(item["risk"] != "unknown" for item in delivery["items"])
     delivery = dict(delivery, state="available" if known == len(delivery["items"]) else "partial" if known else "unavailable")
-    public = {"baseline": baseline, "calendar": calendar, "occupancy": occupancy, "delivery_risks": delivery}
+    process_order, process_facts = project_process_order(conn, plan_ref=scope.plan_ref)
+    public = {"baseline": baseline, "calendar": calendar, "occupancy": occupancy,
+              "delivery_risks": delivery, "process_order": process_order}
     facts = {"baseline": baseline_facts, "calendar": calendar_facts,
-             "occupancy": occupancy_facts, "delivery_risks": delivery_facts}
+             "occupancy": occupancy_facts, "delivery_risks": delivery_facts, "process_order": process_facts}
     return public, facts

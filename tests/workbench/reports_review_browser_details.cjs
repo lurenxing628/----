@@ -46,10 +46,16 @@ async function detailsAndCatalogs(p) {
     await work.locator('.er-chart-disclosure > summary').click();
     await work.locator('.aw-data > summary').click();
     await p.shot('review-charts');
-    await p.read(() => work.locator('.rw-header').getByRole('button', { name: '报表中心', exact: true }).click());
-    assert.equal(p.data.meta.snapshot_ref, before.meta.snapshot_ref);
-    assert.deepEqual(p.data.data.page, before.data.page);
-    assert.equal(p.data.data.topic, before.data.topic);
+    const firstReading = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.pathname === '/api/workbench/v1/analytics' && url.searchParams.get('page') === '1' && !url.searchParams.has('snapshot_ref');
+    }).then(response => response.json());
+    await p.read(() => work.locator('.rw-header').getByRole('button', { name: '报表中心', exact: true }).click(),
+      '/api/workbench/v1/analytics', 200, before.data.page.number);
+    const first = await firstReading;
+    assert.equal(first.ok, true); assert.deepEqual(first.data.scope, before.data.scope);
+    assert.equal(p.data.meta.snapshot_ref, first.meta.snapshot_ref);
+    assert.deepEqual(p.data.data, before.data);
     await page.waitForFunction(expected => Math.abs(document.querySelector('.rw-primary-table').scrollTop - expected) < 2, tableTop);
     await p.shot('restored-report-position');
   });

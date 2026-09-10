@@ -2,7 +2,7 @@
   'use strict';
   const C = window.APSResourceContract, P = window.APSPlanContract, S = window.APSResourceSession;
   const { Button, ErrorBox, Issues } = window.ResourceControls, { Catalog, Identity } = window.PlanCatalogUI;
-  const M = window.PlanGanttModel, { TaskDetail, ProjectionTables } = window.PlanDetailsUI;
+  const M = window.PlanGanttModel, { TaskDetail, ProjectionTables, Conflicts } = window.PlanDetailsUI;
   const adapterIds = new WeakMap(); let nextAdapter = 0;
   function adapterId(adapter) { if (!adapterIds.has(adapter)) adapterIds.set(adapter, ++nextAdapter); return adapterIds.get(adapter); }
   function WorkspaceSession({ adapter, view, onNavigate, planRef, initialContext = {}, disabled = false, renderTrial }) {
@@ -15,6 +15,7 @@
     const [range, setRange] = React.useState({ start: scope.range_start || '', end: scope.range_end || '' });
     const [rangeOpen, setRangeOpen] = React.useState(false), [rangeError, setRangeError] = React.useState(null), [paused, setPaused] = React.useState(false);
     const [query, setQuery] = React.useState(typeof initialContext.query === 'string' ? initialContext.query : ''), [selected, setSelected] = React.useState(null);
+    const [relatedRef, setRelatedRef] = React.useState(null);
     const read = S.useQuery(async signal => {
       if (typeof adapter.workspace !== 'function') throw C.failure('暂时无法读取计划，请稍后重试。');
       P.workspaceScope(selection.plan_ref, scope);
@@ -22,6 +23,13 @@
     }, [adapter, selection && selection.plan_ref, scope], !!selection && !paused);
     const result = read.result, data = result && result.data;
     const chosen = selected && selected.result === result ? selected : null;
+    React.useEffect(() => {
+      if (!relatedRef || !data || read.loading || read.error) return;
+      const task = data.tasks.find(row => row.task_ref === relatedRef);
+      if (task) setSelected({ task, before: false, result, locate: true });
+      else setRangeError(C.failure('同一完整计划中未找到该关系任务，未定位到替代任务。'));
+      setRelatedRef(null);
+    }, [relatedRef, result, read.loading, read.error]);
     React.useEffect(() => {
       if (!data || selected || typeof initialContext.selected_task_ref !== 'string') return;
       const task = data.tasks.find(row => row.task_ref === initialContext.selected_task_ref);
@@ -32,12 +40,18 @@
     Object.assign(remembered, scope, chosen ? { selected_task_ref: chosen.task.task_ref } : {});
     window.WorkbenchPageContext.useSnapshot(remembered, !!data && !read.loading && !read.error && !paused);
     function choose(plan) {
-      setSelection(plan); setScope({}); setRange({ start: '', end: '' }); setRangeError(null); setPaused(false); setQuery(''); setSelected(null); read.reload();
+      setSelection(plan); setScope({}); setRange({ start: '', end: '' }); setRangeError(null); setPaused(false); setQuery(''); setSelected(null); setRelatedRef(null); read.reload();
     }
     function refresh() {
       const next = { ...scope }; delete next.snapshot_ref; setScope(next); setPaused(false); setSelected(null); read.reload();
     }
     function selectTask(task, before = false) { setSelected({ task, before, result }); }
+    function selectRelated(ref) {
+      const task = data.tasks.find(row => row.task_ref === ref);
+      setQuery(''); setRangeError(null);
+      if (task) setSelected({ task, before: false, result, locate: true });
+      else { setRelatedRef(ref); setSelected(null); setScope({}); setRange({ start: '', end: '' }); setPaused(false); read.reload(); }
+    }
     function applyRange(event) {
       event.preventDefault();
       if (!selection || disabled) return;
@@ -99,9 +113,11 @@
           {data.scope.range_start !== null && <span> · 只列出与此时间段有重叠的工序安排，每道安排的起止时间完整保留，不代表整份计划</span>}{query.trim() && <span> · 搜索找到 {matches.length} / {data.task_count} 道工序安排，只影响甘特图显示；分析表和导出仍包含此时间范围内的全部 {data.task_count} 道安排</span>}</div>
         <div className="plan-main"><div>
           {view === 'delay' && <ProjectionTables key={'risk-first:' + result.meta.snapshot_ref} data={data} onResource={setQuery} onBatch={batch => { setQuery(batch); const task = data.tasks.find(row => row.batch_id === batch); if (task) selectTask(task); }} />}
+          {view === 'delay' && <Conflicts key={'conflicts:' + result.meta.snapshot_ref} data={data} />}
           <window.PlanGantt key={'gantt:' + result.meta.snapshot_ref} data={data} selected={chosen} onSelect={selectTask} query={query} onQuery={setQuery} disabled={disabled} />
           {view !== 'delay' && <ProjectionTables key={'risk-last:' + result.meta.snapshot_ref} data={data} onResource={setQuery} onBatch={batch => { setQuery(batch); const task = data.tasks.find(row => row.batch_id === batch); if (task) selectTask(task); }} />}
-        </div><TaskDetail data={data} selected={chosen} onSelect={selectTask} /></div>
+        </div><TaskDetail data={data} selected={chosen} onSelect={selectTask} onRelated={selectRelated}
+          renderTrial={renderTrial} scope={scope} query={query} disabled={!ready || read.loading || !!read.error} /></div>
       </>}
     </div>;
   }

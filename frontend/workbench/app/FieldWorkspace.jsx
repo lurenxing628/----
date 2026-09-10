@@ -1,17 +1,17 @@
 (function () {
   'use strict';
-  const C = window.FieldContract, S = window.APSResourceSession, { Styles, Button, ErrorBox, Feedback } = window.FieldControls;
+  const S = window.APSResourceSession, { Styles, Button, ErrorBox, Feedback } = window.FieldControls;
   let productionAdapter;
   function FieldWorkspace({ adapter, onNavigate, initialContext = {} }) {
     const api = React.useMemo(() => adapter || (productionAdapter || (productionAdapter = window.FieldAPI.create())), [adapter]);
-    const [scope, setScope] = React.useState(() => ({ ...(initialContext.scope || {}), ...(initialContext.plan_ref ? { plan_ref: initialContext.plan_ref } : {}),
-      task_ref: initialContext.task_ref || initialContext.entity_ref, operation_ref: initialContext.operation_ref,
-      snapshot_ref: initialContext.snapshot_ref, page: initialContext.table ? initialContext.table.page : 1, size: initialContext.table ? initialContext.table.size : 20 }));
+    const [scope, setScope] = React.useState(() => window.FieldAPI.initial(initialContext));
     const [opened, setOpened] = React.useState(initialContext.task_ref || initialContext.entity_ref || null), [editor, setEditor] = React.useState(null), [files, setFiles] = React.useState(false), [revision, setRevision] = React.useState(0);
     const drafts = React.useRef(new Map());
     const command = S.useCommand(api);
-    const read = S.useQuery(async signal => C.query(await api.list(scope, signal), 'list'), [api, scope, revision]);
+    const read = S.useQuery(signal => window.FieldAPI.readView(api, scope, signal), [api, scope, revision]);
     const data = read.result && read.result.data, snapshot = read.result && read.result.meta.snapshot_ref;
+    const readPlan = React.useRef(scope.plan_ref);
+    if (data && !read.loading && !read.error) readPlan.current = data.scope.plan_ref;
     const captionPlan = !read.loading && !read.error && data && data.plan;
     const captionStatus = captionPlan && ({ official: captionPlan.is_current_official ? '当前正式采用' : '历史正式方案', candidate: '候选方案', scenario: '试调场景' })[captionPlan.kind];
     window.WorkbenchCaption.useCaption(captionStatus ? {
@@ -21,7 +21,7 @@
     } : null);
     const selectedTask = data && data.tasks.find(task => task.task_ref === opened);
     window.WorkbenchPageContext.useSnapshot(data ? {
-      plan_ref: data.scope.plan_ref, scope: data.scope, snapshot_ref: snapshot,
+      plan_ref: data.scope.plan_ref, scope: data.scope,
       table: { page: data.page.number, size: data.page.size }, task_ref: opened,
       operation_ref: selectedTask ? selectedTask.operation_ref : undefined, return_to: initialContext.return_to
     } : null, !!data && !read.loading && !read.error && !command.locked && command.phase !== 'done' && (!opened || !!selectedTask));
@@ -33,13 +33,19 @@
       setOpened(next); setEditor(saved ? saved.editor : null);
     }
     function filter(next) { if (blocked) return; setScope({ ...next, page: 1, size: scope.size, snapshot_ref: undefined }); setOpened(null); }
-    function refresh() { if (blocked) return; setScope(current => ({ ...current, page: 1, snapshot_ref: undefined })); setRevision(value => value + 1); }
+    function refresh() {
+      if (blocked) return;
+      setScope(current => ({ ...current, plan_ref: current.plan_ref || readPlan.current, task_ref: opened || undefined,
+        operation_ref: selectedTask ? selectedTask.operation_ref : undefined, snapshot_ref: undefined }));
+      setRevision(value => value + 1);
+    }
     function closeEditor() { if (!command.reset()) return; if (editor) drafts.current.delete(editor.taskRef); setEditor(null); }
-    function done() { if (!command.reset()) return; if (editor) drafts.current.delete(editor.taskRef); setEditor(null); setFiles(false); setScope(current => ({ ...current, page: 1, task_ref: opened || undefined, snapshot_ref: undefined })); setRevision(value => value + 1); }
+    function done() { if (!command.reset()) return; if (editor) drafts.current.delete(editor.taskRef); setEditor(null); setFiles(false); setScope(current => ({ ...current, plan_ref: current.plan_ref || readPlan.current,
+      page: undefined, task_ref: opened || undefined, snapshot_ref: undefined })); setRevision(value => value + 1); }
     const effectiveScope = data ? data.scope : scope;
     const returnTarget = initialContext.return_to;
     const returnView = typeof returnTarget === 'string' ? returnTarget : returnTarget && returnTarget.view;
-    const canReturn = ['analysis', 'gantt', 'fieldgantt', 'reports', 'dashboard'].includes(returnView);
+    const canReturn = ['analysis', 'gantt', 'fieldgantt', 'reports', 'review', 'dashboard'].includes(returnView);
     return <section className="plana field-workspace" data-field-workspace aria-label="现场记录"><Styles />
       <div className="field-toolbar"><h2>现场记录</h2><span className="field-note">{data ? data.plan ? data.plan.display_name : '暂无正式计划' : read.loading ? '正在读取计划' : '计划未读取'}</span><span className="field-space" />
         {canReturn && onNavigate && <Button icon="arrow-left" disabled={blocked} onClick={() => onNavigate(returnView, typeof returnTarget === 'object' ? returnTarget.context || {} : { plan_ref: effectiveScope.plan_ref })}>返回</Button>}

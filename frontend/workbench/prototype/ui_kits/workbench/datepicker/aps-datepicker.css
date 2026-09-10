@@ -1,0 +1,215 @@
+/* ============================================================
+   APS 排产系统 · 日期选择器（自定义，替代浏览器原生 type=date）
+   - 纯 CSS，无第三方库；Win7 / 旧版 Chrome 安全
+   - 全部颜色走 --ui-* 设计令牌；自带 dark 主题
+   - 通过提高 .apsdp-* 作用域权重，覆盖遗留 button:not(.btn) 规则
+   用法：与 aps-datepicker.js 配套引入即可自动接管页面里所有
+        <input type="date">（可用 data-aps-skip 退出接管）。
+   ============================================================ */
+
+/* ---- 字段外观（接管后的输入框 + 触发按钮）---- */
+.apsdp-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  position: relative;
+  background: var(--ui-card-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--wb-radius-control);
+  height: 34px;
+  padding: 0 4px 0 0;
+  transition: border-color .15s, box-shadow .15s;
+}
+.apsdp-field:hover { border-color: #cbd5e1; }
+.apsdp-field.is-open,
+.apsdp-field:focus-within {
+  border-color: var(--ui-primary);
+  box-shadow: var(--ui-focus-ring);
+}
+.apsdp-field > input.apsdp-input {
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 4px 0 11px !important;
+  font: inherit;
+  font-size: var(--font-size-3, 14px);
+  color: var(--ui-text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+  min-width: 0;
+  width: 116px;
+}
+.apsdp-field > input.apsdp-input::placeholder { color: var(--ui-muted); letter-spacing: 0; }
+
+.apsdp-trigger {
+  flex: none;
+  width: 28px; height: 26px;
+  margin: 0; padding: 0; min-width: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--wb-radius-control);
+  background: transparent;
+  color: var(--ui-muted);
+  cursor: pointer;
+  transition: background-color .15s, color .15s;
+}
+.apsdp-trigger:hover { background: var(--ui-surface-soft); color: var(--ui-primary); }
+.apsdp-trigger svg { width: 16px; height: 16px; display: block; }
+
+/* ---- 弹出面板 ---- */
+.apsdp-pop {
+  position: absolute;
+  z-index: 4000;
+  width: 268px;
+  background: var(--ui-card-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--wb-radius-overlay);
+  padding: 12px;
+  box-shadow: 0 12px 32px -8px rgb(15 23 42 / .22), 0 2px 6px rgb(15 23 42 / .06);
+  box-sizing: border-box;
+  font-family: var(--font-family);
+  color: var(--ui-text);
+  -webkit-font-smoothing: antialiased;
+}
+.apsdp-pop, .apsdp-pop * { box-sizing: border-box; }
+.apsdp-pop[hidden] { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .apsdp-pop.is-anim { animation: apsdp-pop .14s cubic-bezier(.16,.84,.44,1); }
+  .apsdp-pop.flip-up.is-anim { animation-name: apsdp-pop-up; transform-origin: bottom center; }
+}
+@keyframes apsdp-pop {
+  from { opacity: 0; transform: translateY(-6px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes apsdp-pop-up {
+  from { opacity: 0; transform: translateY(6px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---- 头部：上/下月 + 标题（标题可点开月份快选）---- */
+.apsdp-head {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 8px;
+}
+.apsdp-title {
+  flex: 1;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 30px; padding: 0 10px; margin: 0; min-width: 0;
+  border: 1px solid transparent; border-radius: var(--wb-radius-control);
+  background: transparent;
+  font: inherit; font-size: 14px; font-weight: 600;
+  color: var(--ui-text); cursor: pointer;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  transition: background-color .15s;
+}
+.apsdp-title:hover { background: var(--ui-surface-soft); }
+.apsdp-title .caret { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; opacity: .55; transition: transform .15s; }
+.apsdp-pop.show-months .apsdp-title .caret { transform: rotate(180deg); }
+
+.apsdp-nav {
+  flex: none;
+  width: 30px; height: 30px;
+  margin: 0; padding: 0; min-width: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control);
+  background: var(--ui-card-bg);
+  color: var(--ui-muted);
+  cursor: pointer;
+  transition: background-color .15s, color .15s, border-color .15s;
+}
+.apsdp-nav:hover { background: var(--ui-surface-muted); color: var(--ui-text); border-color: #cbd5e1; }
+.apsdp-nav svg { width: 15px; height: 15px; display: block; }
+
+/* ---- 星期表头 ---- */
+.apsdp-week {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 4px;
+}
+.apsdp-wd {
+  text-align: center;
+  font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  color: var(--ui-muted);
+  padding: 4px 0 6px;
+}
+.apsdp-wd.is-weekend { color: var(--ui-danger); opacity: .75; }
+
+/* ---- 日期网格 ---- */
+.apsdp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.apsdp-day {
+  position: relative;
+  height: 34px; margin: 0; padding: 0; min-width: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--wb-radius-control);
+  background: transparent;
+  font: inherit; font-size: 13px; font-weight: 500; line-height: 1;
+  color: var(--ui-text);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition: background-color .12s, color .12s, box-shadow .12s;
+}
+.apsdp-day:hover { background: var(--ui-surface-soft); }
+.apsdp-day.is-out { color: #cbd5e1; font-weight: 400; }
+.apsdp-day.is-weekend:not(.is-out) { color: var(--ui-danger); }
+.apsdp-day.is-today { font-weight: 700; box-shadow: inset 0 0 0 1.5px var(--ui-primary); color: var(--ui-primary); }
+.apsdp-day.is-marked::after {
+  content: ""; position: absolute; left: 50%; bottom: 5px;
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--ui-primary); transform: translateX(-50%);
+}
+.apsdp-day.is-selected,
+.apsdp-day.is-selected:hover {
+  background: var(--ui-primary); color: #fff; font-weight: 700;
+  box-shadow: 0 2px 6px -1px rgb(37 99 235 / .5);
+}
+.apsdp-day.is-selected.is-weekend { color: #fff; }
+.apsdp-day.is-selected.is-marked::after { background: #fff; }
+.apsdp-day:disabled,
+.apsdp-day.is-disabled { opacity: .3; cursor: not-allowed; background: transparent; box-shadow: none; }
+
+/* ---- 月份快选（点标题展开）---- */
+.apsdp-months { display: none; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 2px 0; }
+.apsdp-pop.show-months .apsdp-grid,
+.apsdp-pop.show-months .apsdp-week { display: none; }
+.apsdp-pop.show-months .apsdp-months { display: grid; }
+.apsdp-month {
+  height: 44px; margin: 0; padding: 0; min-width: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control);
+  background: var(--ui-card-bg);
+  font: inherit; font-size: 13px; font-weight: 500;
+  color: var(--ui-text); cursor: pointer;
+  transition: background-color .12s, border-color .12s, color .12s;
+}
+.apsdp-month:hover { background: var(--ui-surface-soft); border-color: #cbd5e1; }
+.apsdp-month.is-current { background: var(--ui-primary); border-color: var(--ui-primary); color: #fff; font-weight: 700; }
+
+/* ---- 底部：清除 / 今天 ---- */
+.apsdp-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--ui-border);
+}
+.apsdp-link {
+  margin: 0; padding: 4px 8px; min-width: 0;
+  border: 0; border-radius: var(--wb-radius-control); background: transparent;
+  font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: background-color .12s, color .12s;
+}
+.apsdp-link.clear { color: var(--ui-muted); }
+.apsdp-link.clear:hover { color: var(--ui-danger); background: var(--ui-surface-soft); }
+.apsdp-link.today { color: var(--ui-primary); font-weight: 600; }
+.apsdp-link.today:hover { background: var(--ui-primary-soft); }
+
+/* ============================================================
+   Dark 主题（沿用产品 html[data-theme="dark"] 约定）
+   ============================================================ */
+html[data-theme="dark"] .apsdp-field { background: var(--ui-card-bg); border-color: var(--ui-border); }
+html[data-theme="dark"] .apsdp-field:hover { border-color: #475569; }
+html[data-theme="dark"] .apsdp-day.is-out { color: #475569; }
+html[data-theme="dark"] .apsdp-pop {
+  box-shadow: 0 14px 34px -8px rgb(0 0 0 / .55), 0 2px 8px rgb(0 0 0 / .4);
+}
+html[data-theme="dark"] .apsdp-month { background: var(--ui-card-bg); }

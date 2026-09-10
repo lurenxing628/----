@@ -36,7 +36,6 @@ const server = http.createServer(async (request, response) => {
         stopped = true;
         const result = JSON.parse(payload); report.operation = result.data && result.data.operation;
         report.after_restore_hashes = hashes();
-        if (options.drop && !dropped) { dropped = true; return response.destroy(); }
       }
       if (options.overlay !== false && incoming.statusCode === 200 && String(headers['content-type']).startsWith('text/html') && url.pathname === '/workbench') {
         let html = payload.toString('utf8');
@@ -69,6 +68,17 @@ async function geometry(page) {
     const page = await context.newPage(), origin = 'http://127.0.0.1:' + server.address().port;
     page.on('pageerror', error => report.errors.push(error.message));
     await page.route('**/*', route => { if (!route.request().url().startsWith(origin + '/')) { report.external.push(route.request().url()); return route.abort(); } return route.continue(); });
+    if (options.drop) await page.route('**/api/workbench/v1/system/backups/restore', async route => {
+      assert.equal(dropped, false, 'Only one original restore POST may reach the transport');
+      const response = await route.fetch();
+      assert.equal(response.status(), 200);
+      const payload = await response.json();
+      assert.equal(payload.data.operation.request_key, route.request().postDataJSON().request_key);
+      assert.equal(payload.data.operation.state, options.expected || 'succeeded');
+      dropped = true;
+      // Abort after the real response: a TCP destroy would let Chromium retry the POST.
+      await route.abort('failed');
+    });
     await page.goto(origin + '/workbench?view=system');
     if (options.mode === 'warm') {
       await page.getByRole('tab', { name: '备份恢复', exact: true }).click();
@@ -80,7 +90,7 @@ async function geometry(page) {
       await submit.click();
       await page.locator('[data-restore-maintenance=warm]').waitFor();
       await page.waitForFunction(() => !document.querySelector('[data-restore-maintenance] [aria-busy=true]'));
-      if (options.drop) { await page.getByRole('button', { name: '核实原请求', exact: true }).click(); }
+      if (options.drop) { assert.equal(dropped, true); await page.getByRole('button', { name: '核实原请求', exact: true }).click(); }
       await page.getByText(options.expected === 'rollback_failed' ? '系统已暂停，维护结果待核实' : '维护已结束，请重启整个软件', { exact: true }).waitFor();
       assert(await page.evaluate(() => document.getElementById('root').inert));
       assert.equal(await page.getByRole('button', { name: '确认结果', exact: true }).count(), 0);

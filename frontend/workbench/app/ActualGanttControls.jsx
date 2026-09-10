@@ -48,18 +48,25 @@
       .fg-live .fg-canvas-point::after { visibility:hidden; }
       .fg-live .fg-baseline-end { position:absolute; top:70px; height:14px; width:0; border-left:1px solid var(--wb-gantt-plan-edge); z-index:3; pointer-events:none; }
       .fg-live .fg-clock { position:absolute; top:3px; bottom:0; width:0; border-left:1px solid var(--wb-gantt-plan-edge); }
-      .fg-live .fg-wait { position:sticky; left:12px; display:inline-block; margin:16px 12px; font-size:12px; color:var(--ui-info-muted); max-width:280px; }
+      .fg-live .fg-wait { position:sticky; left:12px; display:inline-block; margin:16px 12px; font-size:12px; color:var(--ui-info-muted); max-width:280px; z-index:5; background:var(--ui-card-bg); }
       .fg-live .fg-details { display:flex; flex-wrap:wrap; gap:5px 20px; max-height:230px; overflow:auto; padding:10px 12px; border-bottom:1px solid var(--ui-border); background:var(--ui-card-bg); }.fg-live .fg-details > span { overflow-wrap:anywhere; }.fg-live .fg-details .fg-report-selector { display:flex; align-items:center; gap:8px; width:100%; }
       .fg-live .fg-note { padding:7px 10px; font-size:12px; color:var(--ui-info-muted); background:var(--ui-card-bg); overflow-wrap:anywhere; }
       .fg-live .fg-foot { padding:7px 10px; border-top:1px solid var(--ui-border); background:var(--ui-card-bg); font-size:12px; }.fg-live .fg-foot input { flex:1; min-width:90px; height:12px; padding:0; accent-color:var(--ui-primary); }
       .fg-live .fg-zoom-value { display:inline-block; width:42px; text-align:center; }
       .fg-live .fg-empty { padding:28px 10px; }.fg-live .fg-error { white-space:normal; overflow-wrap:anywhere; }.fg-live .fg-chain-strip { display:flex; gap:8px; padding:8px; flex-wrap:wrap; }
       .fg-live .fg-tip { position:fixed; z-index:200; max-width:360px; padding:10px; font-size:12px; white-space:pre-line; background:var(--ui-card-bg); color:var(--ui-text); border:1px solid var(--ui-border); pointer-events:none; overflow-wrap:anywhere; }
+      .fg-live .fg-chain-slot { height:160px; overflow:auto; border-bottom:1px solid var(--ui-border); }
+      .fg-live .fg-chain-strip { height:100%; overflow:auto; align-items:center; align-content:flex-start; }
+      .fg-live .fg-chain-strip .fg-chain-heading { flex-basis:100%; font-size:12px; }
+      .fg-live .fg-chain-strip .fg-chain-node { max-width:250px; white-space:normal; overflow-wrap:anywhere; text-align:left; }
+      .fg-live .fg-chain-edge-label { font-size:11px; max-width:200px; overflow-wrap:anywhere; }
+      .fg-live .fg-chain-lines { position:absolute; z-index:4; pointer-events:none; overflow:hidden; }
+      .fg-live .fg-chain-lines path { fill:none; stroke:var(--ui-info-text); stroke-width:1.5px; }
       @media(max-width:1500px) { .fg-live .fg-board { height:430px; }.fg-live .fg-toolbar-chart-actions { margin-left:0; } }
       @media(max-width:700px) { .fg-live .fg-range label { width:100%; justify-content:space-between; }.fg-live .fg-range input,.fg-live .fg-range select { max-width:65%; }.fg-live .fg-search { width:100%; }.fg-live .fg-details { max-height:190px; } }
     `}</style></>;
   }
-  function Toolbar({ view, patch, model, data, zoom, onZoom, onFit, onLocate, onExport, busy }) {
+  function Toolbar({ view, patch, model, data, zoom, width, onZoom, onFit, onLocate, onExport, busy }) {
     const allCollapsed = model.groups.length > 0 && model.groups.every(g => view.collapsed[g.id]);
     const counts = Object.fromEntries(Object.keys(M.lateLabels).map(key => [key, key === 'all' ? data.items.length : data.items.filter(item => M.deadlines(item, M.wire(model.asOf))[key]).length]));
     return <div className="gb-toolbar fg-toolbar">
@@ -76,11 +83,27 @@
           <Button className="fg-icon-button" icon={allCollapsed ? 'unfold-vertical' : 'fold-vertical'} aria-label={allCollapsed ? '全部展开' : '全部折叠'} disabled={!model.groups.length} onClick={() => patch({ collapsed: allCollapsed ? {} : Object.fromEntries(model.groups.map(g => [g.id, true])) })} />
           <label className="fg-chain-toggle"><input type="checkbox" checked={view.onlySelected} disabled={!view.selected && !view.onlySelected} onChange={e => patch({ onlySelected: e.target.checked })} />只看选中</label>
           <label className="fg-chain-toggle"><input type="checkbox" checked={view.details} onChange={e => patch({ details: e.target.checked })} />详情</label>
-          <Button className="fg-icon-button" icon="minus" aria-label="缩小时间轴" disabled={zoom <= 1} onClick={() => onZoom(zoom / 2)} /><span className="fg-zoom-value">{zoom}×</span>
+          {view.chain && data.critical_chain.state === 'available' && <label className="fg-chain-toggle"><input type="checkbox" checked={view.chainLines !== false}
+            disabled={!data.critical_chain.edges.length} onChange={e => patch({ chainLines: e.target.checked })} />关键链连线</label>}
+          <Button className="fg-icon-button" icon="minus" aria-label="缩小时间轴" disabled={zoom <= 1} onClick={() => onZoom(zoom / 2)} /><span className="fg-zoom-value" aria-label="时间轴缩放模式">{zoom === 1 ? '自动' : '手动'}</span>
           <Button className="fg-icon-button" icon="plus" aria-label="放大时间轴" disabled={zoom >= 1024} onClick={() => onZoom(zoom * 2)} />
+          <span className="fg-muted" aria-label="时间轴刻度" data-tick-step={M.tickStep(model, width)}>刻度 {M.tickLabel(M.tickStep(model, width))}</span>
           <Button className="fg-icon-button" icon="chart-gantt" aria-label="适应全部" onClick={onFit} />
           <Button className="fg-icon-button" icon="search" aria-label="定位选中工序" disabled={!model.items.some(i => i.task.task_ref === view.selected)} onClick={onLocate} />
         </div></div>
+    </div>;
+  }
+  function Chain({ chain, model, onLocate }) {
+    const visible = new Set(model.items.map(item => item.task.task_ref));
+    return <div className="fg-chain-strip" aria-label="所选计划关键链" data-chain-context={chain.mode} data-chain-target={chain.target_task_ref || ''}>
+      <div className="fg-chain-heading"><strong>{chain.mode === 'related' ? '当前对象目标的控制前驱链' : '整版计划控制前驱链'}</strong> · 原算法近似 · {chain.mode === 'related' ? '目标计划结束' : '计划最晚结束'} {M.time(chain.makespan_end)}
+        {chain.partial && <span role="status"> · 部分结果：原算法不含 {chain.omitted_point_count} 个零时长点</span>}</div>
+      {chain.state === 'unavailable' ? <span role="status">关联链不可用：{chain.reason}</span> : chain.nodes.map((node, index) => <React.Fragment key={node.task_ref}>
+        {index > 0 && <span className="fg-chain-edge-label" title={chain.edges[index - 1].reason} data-chain-edge-reason>{chain.edges[index - 1].reason} · 间隔 {chain.edges[index - 1].gap_minutes} 分钟</span>}
+        <Button className="fg-chain-node" icon="search" disabled={!visible.has(node.task_ref)} data-chain-node={node.task_ref}
+          title={M.taskLabel(node)} onClick={() => onLocate(node.task_ref)}>{node.batch_id} · {node.sequence} {node.process_label}</Button>
+      </React.Fragment>)}
+      <span className="fg-muted">筛选内 {chain.task_refs.filter(ref => visible.has(ref)).length} / {chain.task_refs.length} 个节点 · 工艺实线，资源虚线 · 不是实际工时或剩余预测</span>
     </div>;
   }
   function Range({ scope, resources, onApply, busy }) {
@@ -102,5 +125,5 @@
       <Button type="submit" icon="search" busy={busy}>应用范围</Button><Button icon="x" aria-label="清除来源范围" disabled={busy} onClick={() => onApply({ plan_ref: scope.plan_ref })} />
     </form>;
   }
-  window.ActualGanttControls = { Styles, Toolbar, Range, describe };
+  window.ActualGanttControls = { Styles, Toolbar, Range, Chain, describe };
 })();

@@ -25,7 +25,7 @@ def test_resource_table_header_widgets():
     report = json.loads((output / "table-header-result.json").read_text(encoding="utf-8"))
     assert report["scope"] == "isolated-component-fixtures"
     assert report["browser"].startswith("109.")
-    assert len(report["cases"]) == 60 and all(row["passed"] for row in report["cases"])
+    assert len(report["cases"]) == 64 and all(row["passed"] for row in report["cases"])
     assert len(report["screenshots"]) == 28
     assert not report["errors"] and not report["external"]
     assert report["source_hashes_still_match"]

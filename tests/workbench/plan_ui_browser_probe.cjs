@@ -77,8 +77,8 @@ async function interactive(page) {
     await page.getByRole('button', { name: '收起计划目录', exact: true }).click();
     await page.locator('[data-plan-task]').first().click();
     ok((await page.locator('[data-plan-inspector]').textContent()).includes('时间跨度'));
-    ok(await page.getByRole('button', { name: /^试调：/ }).isDisabled());
-    ok(await page.getByRole('button', { name: /^保存：/ }).isDisabled());
+    ok(await page.getByRole('button', { name: /^调整此工序：/ }).isDisabled());
+    ok(await page.getByRole('button', { name: /^保存：/ }).count() === 0, 'Read-only plan details cannot expose a save placeholder');
     await page.getByRole('button', { name: '资源负荷', exact: true }).click();
     await page.getByRole('table', { name: '资源负荷列表' }).waitFor(); await shot(page, 'selected-task-load');
     await page.getByRole('button', { name: '资源日历', exact: true }).click();

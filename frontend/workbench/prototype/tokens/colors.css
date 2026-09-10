@@ -1,0 +1,102 @@
+/* ============================================================
+   APS 排产系统 · Color tokens  (semantic layer --ui-*)
+   Single source of truth: the product's static/css/00-tokens.css.
+   These mirror the real shipped values verbatim. The whole point of
+   the system: bare hex lives ONLY here; every other file consumes
+   --ui-* / severity tints. Severity has exactly FOUR levels
+   (danger / warning / notice / ok) — never invent a fifth.
+   ============================================================ */
+
+:root {
+  /* ---- Brand / action ---- */
+  --ui-primary: #2563eb;
+  --ui-primary-hover: #1d4ed8;
+  --ui-primary-soft: #eff6ff;   /* tint: active nav, result highlight */
+
+  /* ---- Core semantic colors ---- */
+  --ui-success: #16a34a;
+  --ui-danger: #dc2626;
+  --ui-warning: #d97706;
+
+  /* ---- Surfaces & ink ---- */
+  --ui-bg: #f1f5f9;          /* app canvas */
+  --ui-card-bg: #ffffff;     /* cards, panels */
+  --ui-text: #0f172a;        /* primary ink */
+  --ui-muted: #64748b;       /* secondary copy */
+  --ui-border: #e2e8f0;      /* hairline */
+
+  --ui-surface: var(--ui-card-bg);
+  --ui-surface-muted: #f8fafc;   /* table head, sub-cards, insets */
+  --ui-surface-soft: #f1f5f9;    /* row hover, soft fills */
+  --ui-surface-raised: #ffffff;
+
+  --ui-text-strong: var(--ui-text);
+  --ui-text-subtle: var(--ui-muted);
+  --ui-text-inverse: #ffffff;
+
+  /* ---- Focus ring (pair with :focus-visible, never :focus) ---- */
+  --ui-focus-ring: 0 0 0 3px rgb(37 99 235 / 0.22);
+
+  /* ============================================================
+     Severity / status tint sets — the 4-channel system.
+     Each level ships bg + border + text + muted. A status is shown
+     on THREE channels at once (fill + badge + dot) so it stays
+     colour-blind-safe. notice = info-blue; ok = success-green.
+     ============================================================ */
+  --ui-neutral-bg: #f8fafc; --ui-neutral-border: var(--ui-border);
+  --ui-neutral-text: var(--ui-text); --ui-neutral-muted: var(--ui-muted);
+
+  --ui-info-bg: #eff6ff;    --ui-info-border: #bfdbfe;    --ui-info-text: #1d4ed8;    --ui-info-muted: #475569;
+  --ui-success-bg: #f0fdf4; --ui-success-border: #bbf7d0; --ui-success-text: #15803d; --ui-success-muted: #166534;
+  --ui-warning-bg: #fffbeb; --ui-warning-border: #fde68a; --ui-warning-text: #b45309; --ui-warning-muted: #92400e;
+  --ui-danger-bg: #fef2f2;  --ui-danger-border: #fecaca;  --ui-danger-text: #b91c1c;  --ui-danger-muted: #991b1b;
+
+  /* ---- Table tokens ---- */
+  --ui-table-cell-py: 10px; --ui-table-cell-px: 12px;
+  --ui-table-head-bg: #f8fafc; --ui-table-row-hover-bg: #f1f5f9; --ui-table-row-even-bg: #fcfcfc;
+
+  /* ---- Badge palette (status pills inside tables) ---- */
+  --badge-primary-bg: #dbeafe; --badge-primary-text: #1e40af;
+  --badge-success-bg: #d1fae5; --badge-success-text: #065f46;
+  --badge-warning-bg: #fef3c7; --badge-warning-text: #92400e;
+  --badge-danger-bg: #fee2e2;  --badge-danger-text: #991b1b;
+  --badge-secondary-bg: #f1f5f9; --badge-secondary-text: #475569;
+
+  /* ---- Gantt bar fills (rectangular frappe-gantt bars) ---- */
+  --gantt-normal: #94a3b8;   /* priority-normal  · slate */
+  --gantt-urgent: #f59e0b;   /* priority-urgent  · amber */
+  --gantt-critical: #ef4444; /* priority-critical / overdue · red */
+  --gantt-holiday: #fee2e2;  /* holiday wash */
+  --gantt-nonworking: #fecaca; /* shutdown wash */
+
+  /* ============================================================
+     Shell / structure tokens
+     ============================================================ */
+  --bg-color: var(--ui-bg);
+  --card-bg: var(--ui-card-bg);
+  --text-main: var(--ui-text);
+  --text-muted: var(--ui-muted);
+  --border-color: var(--ui-border);
+  --header-height: 60px;
+
+  /* ---- Sidebar — FINALIZED light spec (策划 §二 "侧栏定版浅色") ----
+     #f8fafc ground + 1px right border; active = primary-soft fill +
+     left 3px primary accent. (Supersedes the legacy dark gradient.) */
+  --sidebar-width: 240px;
+  --sidebar-bg: #f8fafc;
+  --sidebar-border: var(--ui-border);
+  --sidebar-text: #334155;
+  --sidebar-text-strong: #0f172a;
+  --sidebar-muted: #64748b;
+  --sidebar-hover-bg: #f1f5f9;
+  --sidebar-active-bg: var(--ui-primary-soft);
+  --sidebar-active-text: #1d4ed8;
+  --sidebar-active-accent: var(--ui-primary);
+
+  /* ---- Migration aliases (legacy consumers) ---- */
+  --primary-color: var(--ui-primary);
+  --primary-hover: var(--ui-primary-hover);
+  --success-color: var(--ui-success);
+  --warning-color: var(--ui-warning);
+  --danger-color: var(--ui-danger);
+}

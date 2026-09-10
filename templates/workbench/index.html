@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ boot.titles[boot.view] }} · APS 智能排产</title>
+  <script src="{{ url_for('static', filename=assets.theme_script) }}"></script>
+  {% if assets.icon %}<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename=assets.icon) }}">{% endif %}
+  {% for file in assets.styles %}<link rel="stylesheet" href="{{ url_for('static', filename=file) }}">
+  {% endfor %}
+</head>
+<body class="aps-workbench">
+  <div id="root" data-workbench-boot="loading"><section class="wb-page-panel">
+    <h1>APS 智能排产</h1><p role="status">正在打开工作台…</p>
+    <a href="{{ request.full_path }}">重新加载</a>
+  </section></div>
+  <noscript>工作台需要启用本地浏览器的 JavaScript。</noscript>
+  <script>
+  (function () {
+    'use strict';
+    var root = document.getElementById('root'), timer;
+    function stop() {
+      clearTimeout(timer); window.removeEventListener('error', failed, true);
+      window.removeEventListener('aps-workbench-ready', stop);
+    }
+    function failed() {
+      if (root.getAttribute('data-workbench-boot') === 'loading') {
+        root.setAttribute('data-workbench-boot', 'failed');
+        var message = document.createElement('p'), retry = document.createElement('a');
+        message.setAttribute('role', 'alert'); message.textContent = '工作台资源加载失败或启动超时，请重新加载；若仍失败，请检查本机安装文件。';
+        retry.href = location.href; retry.textContent = '重新加载'; root.replaceChildren(message, retry);
+      }
+      stop();
+    }
+    window.addEventListener('error', failed, true);
+    window.addEventListener('aps-workbench-ready', stop);
+    timer = setTimeout(failed, 15000);
+  })();
+  </script>
+  <script id="workbench-boot" type="application/json">{{ boot|tojson }}</script>
+  {% for file in assets.scripts %}<script src="{{ url_for('static', filename=file) }}"></script>
+  {% endfor %}
+</body>
+</html>

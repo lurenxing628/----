@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>方案试调样板 · APS 智能排产</title>
+  <script>
+    (function () {
+      var theme = 'light';
+      try { theme = localStorage.getItem('aps_kit_theme') || 'light'; } catch (error) { console.error('读取主题偏好失败：', error); }
+      document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : 'light');
+    })();
+  </script>
+  <link rel="icon" href="../../assets/logo-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="workbench-ui.css?v=visual-6d78f7f5e0">
+  <link rel="stylesheet" href="gantt-theme.css">
+  <link rel="stylesheet" href="trial-sample.css?v=sidebar-a7800aee30">
+</head>
+<body class="aps-workbench trial-app">
+  <div id="trial-root"><p class="trial-boot" role="status">正在加载方案试调样板…</p></div>
+  <div id="trial-modal-root"></div>
+  <script>window.APSDashboard = {}; window.APSFieldReports = {};</script>
+  <script src="assets/dashboard-icons.js"></script>
+  <script src="assets/field-report-icons.js?v=icons-345c428ac1"></script>
+  <script src="trial-sample-model.js?v=workflow-c2ec8c2f14"></script>
+  <script src="trial-sample-views.js?v=sidebar-80bfda5684"></script>
+  <script src="trial-sample.js?v=boundary-bb3442fd95"></script>
+</body>
+</html>

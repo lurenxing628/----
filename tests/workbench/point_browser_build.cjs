@@ -4,10 +4,10 @@ const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), input = JSON.parse(fs.readFileSync(0, 'utf8')), output = path.resolve(input.output);
 assert(!output.startsWith(root + path.sep), 'Never publish shared assets');
 fs.mkdirSync(output, {recursive: true});
-const files = ['resource-contract.js', 'PointContract.js', 'PlanContract.js', 'resource-session.js', 'ResourceControls.jsx',
+const files = ['resource-contract.js', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'resource-session.js', 'ResourceControls.jsx',
   'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'PlanLayout.jsx', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanDetailsUI.jsx',
   'RunCandidateModel.js', 'RunCandidateControls.jsx', 'RunBaselineModel.js', 'RunBaselineControls.jsx', 'RunCandidateGantt.jsx',
-  'TrialContract.js', 'TrialAPI.js', 'TrialControls.jsx', 'TrialGantt.jsx', 'TrialDetails.jsx', 'TrialStyles.jsx',
+  'TrialContract.js', 'TrialAPI.js', 'TrialControls.jsx', 'TrialViewState.js', 'TrialGantt.jsx', 'TrialDetails.jsx', 'TrialStyles.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
   'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx'];
 const sources = files.map(name => ({path: 'app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8')}));

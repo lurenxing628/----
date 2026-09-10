@@ -11,7 +11,9 @@ from core.models.workbench_run_candidate import (
     RunCandidateReadScope,
     reject,
 )
+from core.services.workbench.run_candidate_analysis import read_candidate_analysis
 from core.services.workbench.run_candidate_export import write_run_candidate_export
+from core.services.workbench.run_candidate_history import read_candidate_history
 from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
 
 from .api_responses import api_endpoint, query_success
@@ -85,9 +87,28 @@ def run_candidate_export(candidate_ref):
     return response
 
 
+def _analysis_response(candidate_ref, kind, reader):
+    _arguments(("snapshot_ref",))
+    data, state = reader(g.db, candidate_ref)
+    snapshot = bind_read_snapshot({"kind": kind, "candidate_ref": candidate_ref}, state, request.args.get("snapshot_ref"))
+    return _response(data, snapshot)
+
+
+@api_endpoint
+def run_candidate_analysis(candidate_ref):
+    return _analysis_response(candidate_ref, "run-candidate-full-analysis", read_candidate_analysis)
+
+
+@api_endpoint
+def run_candidate_adoptions(candidate_ref):
+    return _analysis_response(candidate_ref, "run-candidate-adoption-history", read_candidate_history)
+
+
 def register_run_candidate_routes(bp):
     bp.add_url_rule("/api/workbench/v1/scheduling/runs/<run_ref>/candidates", view_func=run_candidate_list, methods=["GET"])
     base = "/api/workbench/v1/scheduling/candidates/<candidate_ref>"
     bp.add_url_rule(base, endpoint="run_candidate_detail", view_func=run_candidate_workspace, methods=["GET"])
     bp.add_url_rule(base + "/workspace", view_func=run_candidate_workspace, methods=["GET"])
     bp.add_url_rule(base + "/export", view_func=run_candidate_export, methods=["GET"])
+    bp.add_url_rule(base + "/analysis", view_func=run_candidate_analysis, methods=["GET"])
+    bp.add_url_rule(base + "/adoptions", view_func=run_candidate_adoptions, methods=["GET"])

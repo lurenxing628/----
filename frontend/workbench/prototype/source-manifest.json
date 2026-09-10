@@ -1,0 +1,1187 @@
+{
+  "schema_version": 1,
+  "source_root": "前端设计",
+  "entries": {
+    "index": {
+      "path": "ui_kits/workbench/index.html",
+      "scripts": [
+        {
+          "path": "ui_kits/workbench/assets/vendor/react-18.3.1.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/assets/vendor/react-dom-18.3.1.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/assets/vendor/babel-7.29.0.min.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/datepicker/aps-datepicker.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "_ds_bundle.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/detail-drawer.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/plana-logic.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/dashboard-model.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/assets/dashboard-icons.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/dashboard-markup.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/dashboard-views.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/dashboard-workbench.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/field-report-model.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/field-gantt-example.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/field-gantt-density-example.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/field-gantt-chains.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/field-gantt-current-chain-data.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/field-gantt-current-chains.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/assets/field-report-icons.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/field-report-icon-renderer.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/trial-sample-model.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/trial-sample-views.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/plan-workbench.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/batch-draft-model.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/preflight-model.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/workbench-ui.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/report-workbench-model.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/execution-analysis-model.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/fg-screen-model.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/master-data-overview.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/system-workbench-model.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/assets/field-xlsx.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/field-report-import.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/field-report-markup.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/field-report-views.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/field-report-form.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/field-report-editor.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/field-reporting.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/AppShell.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/ProcessNative.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/DashboardScreen.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/PlanShared.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/GanttBoard.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/GanttScreen.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/AnalysisScreen.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/DelayScreen.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/BasicDataScreen.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/FieldReportCalendar.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/FieldRecordScreen.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/FieldGanttViewport.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/FieldGanttRows.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/FieldGanttChain.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/fg-screen-hooks.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/FieldGanttScreen.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/BaseShared.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/BaseProcess.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/BaseBatches.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/BaseMaterial.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/BaseCalendar.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/BaseOpTypes.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/BaseSuppliers.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/BaseEquipment.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/BasePersonnel.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/BaseDataScreen.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/MasterDataOverview.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/SystemManagementScreen.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/AnalysisShared.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/ExecutionReviewScreen.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/ReportsScreen.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/CalibScreen.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/app.jsx",
+          "type": "text/babel"
+        },
+        {
+          "path": "ui_kits/workbench/table-enhance.js",
+          "type": "text/javascript"
+        }
+      ],
+      "styles": [
+        "styles.css",
+        "ui_kits/workbench/basedata.css",
+        "ui_kits/workbench/datepicker/aps-datepicker.css",
+        "ui_kits/workbench/plana.css",
+        "ui_kits/workbench/gantt-theme.css",
+        "ui_kits/workbench/gantt-board.css",
+        "ui_kits/workbench/field-gantt.css",
+        "ui_kits/workbench/field-gantt-viewport.css",
+        "ui_kits/workbench/dashboard-workbench.css",
+        "ui_kits/workbench/field-reporting.css",
+        "ui_kits/workbench/workbench-ui.css",
+        "ui_kits/workbench/operations-workspaces.css",
+        "ui_kits/workbench/report-workbench.css",
+        "ui_kits/workbench/execution-analysis-shared.css",
+        "ui_kits/workbench/execution-review.css",
+        "ui_kits/workbench/master-data-overview.css",
+        "ui_kits/workbench/system-workbench.css",
+        "ui_kits/workbench/trial-sample.css",
+        "ui_kits/workbench/plan-workbench.css",
+        "ui_kits/workbench/batch-workbench.css"
+      ],
+      "icons": [
+        "assets/logo-mark.svg"
+      ],
+      "inline_styles": [
+        {
+          "tag": "style",
+          "line": 37,
+          "text": "\n  * { box-sizing: border-box; }\n  html, body { margin: 0; }\n  body { font-family: var(--font-family); color: var(--ui-text); background: var(--ui-bg); }\n  a { color: inherit; }\n\n  /* ---- shell ---- */\n  .app-container { display: flex; min-height: 100vh; min-width: 0; }\n  .sidebar { width: var(--sidebar-width); background: var(--sidebar-bg); color: var(--sidebar-text); flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid var(--sidebar-border); position: sticky; top: 0; height: 100vh; }\n  .sidebar-header { height: var(--header-height); display: flex; align-items: center; gap: 11px; padding: 0 18px; border-bottom: 1px solid var(--sidebar-border); flex: none; }\n  .brand-tile { width: 30px; height: 30px; border-radius: var(--wb-radius-control); background: var(--ui-primary); color: #fff; display: grid; place-items: center; font-size: 15px; font-weight: 700; flex: none; }\n  .brand-word { font-weight: 700; font-size: 15px; letter-spacing: 0.02em; color: var(--sidebar-text-strong); }\n  .sidebar-nav { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 10px 10px 16px; overflow-y: auto; }\n  .nav-group { display: flex; flex-direction: column; gap: 2px; }\n  .nav-group + .nav-group { margin-top: 12px; }\n  .nav-group-title { padding: 6px 10px 4px; font-size: 11px; font-weight: 600; color: var(--sidebar-muted); letter-spacing: 0.02em; }\n  .nav-item { position: relative; display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px; border: 1px solid transparent; border-radius: var(--wb-radius-control); color: var(--sidebar-text); text-decoration: none; font-weight: 500; font-size: 13.5px; cursor: pointer; transition: background-color .2s, color .2s; }\n  .nav-ico { flex: none; opacity: 0.8; }\n  .nav-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n  .nav-item:hover { background: var(--sidebar-hover-bg); color: var(--sidebar-text-strong); }\n  .nav-item:hover .nav-ico { opacity: 1; }\n  .nav-item.active { background: var(--sidebar-active-bg); color: var(--sidebar-active-text); font-weight: 600; }\n  .nav-item.active .nav-ico { opacity: 1; color: var(--sidebar-active-accent); }\n  .nav-item.active::before { content: \"\"; position: absolute; left: 3px; top: 8px; bottom: 8px; width: 3px; border-radius: var(--wb-radius-control); background: var(--sidebar-active-accent); }\n\n  .main-content { flex: 1; min-width: 0; display: flex; flex-direction: column; }\n  .top-header { height: var(--header-height); background: var(--card-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 18px; padding: 0 24px; box-shadow: var(--shadow-sm); position: sticky; top: 0; z-index: 20; }\n  .top-title { margin: 0; font-size: 18px; font-weight: 600; white-space: nowrap; }\n  .cap-rich { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ui-text); white-space: nowrap; overflow: hidden; flex: 1 1 auto; min-width: 0; }\n  .cap-rich strong { font-weight: 600; }\n  .cap-rich .cap-sep { color: var(--ui-border); font-style: normal; }\n  .cap-rich .cap-muted { color: var(--ui-muted); }\n  .cap-ok { font-size: 12px; font-weight: 700; color: var(--ui-success-text); background: var(--ui-success-bg); border: 1px solid var(--ui-success-border); border-radius: var(--wb-radius-control); padding: 2px 9px; }\n  .header-controls { margin-left: auto; display: flex; align-items: center; gap: 10px; flex: none; }\n  .hdr-pill { min-height: 32px; padding: 0 14px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); color: var(--ui-text); font-size: 12.5px; font-family: inherit; cursor: pointer; white-space: nowrap; transition: background-color .15s, border-color .15s; }\n  .hdr-pill:hover { background: var(--ui-surface-muted); border-color: #cbd5e1; }\n\n  .page-content { padding: 24px; flex: 1; }\n  .kit-foot { margin-top: 18px; text-align: center; font-size: 12px; color: var(--ui-muted); line-height: 1.7; }\n\n  /* ---- scheduler sub-tabs ---- */\n  .subtabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--ui-border); }\n  .subtab { padding: 10px 14px; border: 0; background: transparent; color: var(--ui-muted); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }\n  .subtab:hover { color: var(--ui-text); }\n  .subtab.on { color: var(--ui-primary); border-bottom-color: var(--ui-primary); }\n\n  /* ---- scope bar (排产范围 · 方案C 摘要控制条) ---- */\n  .scope-bar { display: flex; align-items: center; gap: 12px 14px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-surface); background: var(--ui-surface-muted); }\n  .scope-k { font-size: 13px; font-weight: 600; flex: none; }\n  .scope-div { width: 1px; align-self: stretch; min-height: 24px; background: var(--ui-border); flex: none; }\n  .scope-badge { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 11px; border-radius: var(--wb-radius-control); background: var(--ui-primary-soft); border: 1px solid var(--ui-info-border); color: var(--ui-info-text); font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }\n  .scope-badge .sb-arrow { opacity: .55; }\n  .scope-badge .sb-days { font-weight: 700; }\n  .scope-count { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: var(--wb-radius-control); background: var(--ui-card-bg); border: 1px solid var(--ui-border); color: var(--ui-text); font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }\n  .scope-expand { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding: 12px 14px; border: 1px dashed var(--ui-border); border-radius: var(--wb-radius-surface); background: var(--ui-card-bg); }\n  .scope-expand-k { font-size: 12px; color: var(--ui-muted); flex: none; }\n  .bd-chipbtn { height: 28px; padding: 0 12px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); color: var(--ui-text); font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; white-space: nowrap; transition: background-color .15s, border-color .15s, color .15s; }\n  .bd-chipbtn:hover { background: var(--ui-surface-muted); border-color: var(--ui-primary); color: var(--ui-primary); }\n  .bd-chipbtn:active { background: var(--ui-primary-soft); }\n\n  /* ---- dashboard ---- */\n  .dash-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }\n  .eyebrow { font-size: 12px; color: var(--ui-muted); font-weight: 600; letter-spacing: 0.04em; margin-bottom: 4px; }\n  .dash-head h3 { margin: 0; font-size: 22px; font-weight: 600; }\n  .dash-head .muted { margin-top: 5px; font-size: 13px; color: var(--ui-muted); font-variant-numeric: tabular-nums; }\n  .dash-note { font-size: 12px; color: var(--ui-muted); max-width: 280px; line-height: 1.6; }\n  .risk-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); grid-auto-rows: 1fr; gap: 14px; }\n  .sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin: 22px 0 13px; }\n  .sec-head:first-of-type { margin-top: 20px; }\n  .sec-head h4 { margin: 0; font-size: 16px; font-weight: 600; }\n  .sec-head .sec-meta { font-size: 12px; color: var(--ui-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }\n  .rest-head { margin: 22px 0 12px; font-size: 16px; font-weight: 600; }\n  .rest-list { display: flex; flex-direction: column; gap: 12px; }\n  .rest-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; border: 1px solid var(--ui-border); border-left: 4px solid var(--ui-border); border-radius: var(--wb-radius-surface); background: var(--ui-surface-muted); box-shadow: var(--ui-shadow-sm); padding: 14px 18px; }\n  .rest-item.sev-danger { border-left-color: var(--ui-danger); }\n  .rest-item.sev-warning { border-left-color: var(--ui-warning); }\n  .rest-item.sev-notice { border-left-color: var(--ui-info-border); }\n  .rest-item.sev-ok { border-left-color: var(--ui-success); }\n  .rest-body { flex: 1 1 300px; min-width: 0; }\n  .rest-item > .rest-actions { flex-shrink: 0; }\n  .rest-item > span { flex-shrink: 0; }\n  .rest-top { margin-bottom: 8px; }\n  .rest-item h4 { margin: 0; font-size: 15px; font-weight: 600; }\n  .rest-impact { margin: 6px 0 0; font-size: 14px; line-height: 1.6; }\n  .rest-evidence { margin: 4px 0 0; font-size: 13px; color: var(--ui-muted); line-height: 1.6; }\n  .rest-actions { display: flex; gap: 10px; flex-shrink: 0; }\n  .rest-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; flex-shrink: 0; }\n  .rest-state-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }\n\n  /* ---- gantt ---- */\n  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }\n  .seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--wb-radius-control); background: var(--ui-surface-soft); }\n  .seg-btn { min-width: 48px; height: 26px; padding: 0 12px; border: 1px solid transparent; border-radius: var(--wb-radius-control); background: transparent; color: var(--ui-text); font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer; }\n  .seg-btn.on { background: var(--ui-primary); border-color: var(--ui-primary); color: #fff; }\n  .gantt { border: 1px solid var(--ui-border); border-radius: var(--wb-radius-surface); overflow: hidden; background: var(--ui-card-bg); }\n  .gantt-head { display: grid; grid-template-columns: 160px minmax(0,1fr); background: var(--ui-surface-muted); border-bottom: 1px solid var(--ui-border); }\n  .gantt-corner { padding: 10px 12px; font-size: 12px; font-weight: 600; color: var(--ui-muted); }\n  .gantt-days { display: grid; grid-template-columns: repeat(7, 1fr); border-left: 1px solid var(--ui-border); }\n  .gantt-day { text-align: center; padding: 8px 4px; font-size: 12px; font-weight: 600; color: var(--ui-muted); border-right: 1px solid var(--ui-border); }\n  .gantt-day span { display: block; font-size: 10px; color: var(--ui-muted); font-variant-numeric: tabular-nums; margin-top: 2px; }\n  .gantt-row { display: grid; grid-template-columns: 160px minmax(0,1fr); border-bottom: 1px solid var(--ui-border); }\n  .gantt-row:last-child { border-bottom: 0; }\n  .gantt-label { padding: 12px; border-right: 1px solid var(--ui-border); background: var(--ui-surface-muted); }\n  .gl-name { font-size: 13px; font-weight: 600; }\n  .gl-meta { font-size: 11px; color: var(--ui-muted); margin-top: 2px; }\n  .gantt-lane { position: relative; min-height: 72px; padding: 8px; border-left: 1px solid var(--ui-border); background-image: linear-gradient(to right, var(--ui-border) 1px, transparent 1px); background-size: calc(100% / 7) 100%; }\n\n  /* ---- analysis · 方案对比 ---- */\n  .recommend { display: grid; grid-template-columns: 1.25fr 0.75fr; gap: 20px; border: 0; border-left: 3px solid var(--ui-info-border); border-radius: var(--wb-radius-surface); background: var(--ui-info-bg); padding: 18px 20px; margin-bottom: 22px; }\n  .rec-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }\n  .recommend h4 { margin: 0 0 8px; font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }\n  .recommend p { margin: 0 0 16px; font-size: 13.5px; line-height: 1.75; color: var(--ui-text); max-width: 64ch; text-wrap: pretty; }\n  .rec-gc { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 22px; margin-bottom: 18px; }\n  .gc-col h5 { margin: 0 0 9px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.03em; color: var(--ui-muted); text-transform: none; }\n  .gc-list { display: flex; flex-direction: column; gap: 8px; }\n  .gc-li { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; line-height: 1.5; color: var(--ui-text); text-wrap: pretty; }\n  .gc-li b { font-weight: 700; font-variant-numeric: tabular-nums; }\n  .gc-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; margin-top: 6px; }\n  .gc-dot.good { background: var(--ui-success); }\n  .gc-dot.cost { background: var(--ui-warning); }\n  .rec-actions { display: flex; gap: 10px; flex-wrap: wrap; }\n  .rec-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; }\n\n  /* scheme cards (方案卡片) */\n  .scheme-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }\n  .scheme-card { position: relative; display: flex; flex-direction: column; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); padding: 16px; cursor: pointer; transition: border-color .15s, box-shadow .15s, background-color .15s; }\n  .scheme-card:hover { border-color: var(--ui-primary); }\n  .scheme-card.sel { border-color: var(--ui-primary); box-shadow: 0 0 0 1px var(--ui-primary); background: var(--ui-primary-soft); }\n  .sc-ribbon { position: absolute; top: 0; right: 14px; transform: translateY(-50%); display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 10px; border-radius: var(--wb-radius-control); background: var(--ui-primary); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; box-shadow: var(--ui-shadow-sm); }\n  .sc-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }\n  .sc-name { font-size: 15.5px; font-weight: 700; }\n  .sc-verdict { font-size: 12.5px; line-height: 1.55; color: var(--ui-muted); min-height: 40px; margin-bottom: 13px; text-wrap: pretty; }\n  .sc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; padding-top: 13px; border-top: 1px solid var(--ui-border); }\n  .scheme-card.sel .sc-grid { border-top-color: var(--ui-info-border); }\n  .sc-metric { display: flex; flex-direction: column; gap: 3px; min-width: 0; }\n  .sc-m-label { font-size: 11.5px; color: var(--ui-muted); }\n  .sc-m-val { display: flex; align-items: baseline; gap: 5px; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.05; }\n  .sc-m-val .u { font-size: 11px; font-weight: 600; color: var(--ui-muted); }\n  .sc-m-val.best { color: var(--ui-success); }\n  .sc-delta { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }\n  .sc-delta.good { color: var(--ui-success); }\n  .sc-delta.bad { color: var(--ui-danger); }\n  .sc-delta.flat { color: var(--ui-muted); }\n  .sc-foot { margin-top: 15px; }\n\n  /* metric comparison · small multiples (指标对比) */\n  .cmp-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }\n  .cmp-card { border: 0; border-top: 1px solid var(--ui-border); border-radius: var(--wb-radius-surface); background: transparent; padding: 16px 0; }\n  .cmp-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 13px; }\n  .cmp-title strong { font-size: 14px; font-weight: 600; }\n  .cmp-title .cmp-unit { font-size: 11.5px; color: var(--ui-muted); }\n  .cmp-rows { display: flex; flex-direction: column; gap: 10px; }\n  .cmp-row { display: grid; grid-template-columns: 96px 1fr 70px; align-items: center; gap: 10px; }\n  .cmp-name { font-size: 12px; color: var(--ui-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n  .cmp-row.on .cmp-name { color: var(--ui-text); font-weight: 700; }\n  .cmp-track { height: 9px; border-radius: var(--wb-radius-control); background: var(--ui-surface-soft); overflow: hidden; }\n  .cmp-fill { display: block; height: 100%; border-radius: var(--wb-radius-control); background: var(--ui-text); opacity: 0.26; transition: width .35s ease; }\n  .cmp-row.on .cmp-fill { opacity: 1; background: var(--ui-primary); }\n  .cmp-row.best .cmp-fill { background: var(--ui-success); opacity: 1; }\n  .cmp-val { display: flex; align-items: center; gap: 6px; justify-content: flex-end; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }\n  .cmp-val .star { color: var(--ui-success); }\n\n  /* resource load matrix (瓶颈负荷) */\n  .load-matrix { display: grid; grid-template-columns: 92px repeat(3, 1fr); gap: 12px 16px; align-items: center; border: 0; border-top: 1px solid var(--ui-border); border-bottom: 1px solid var(--ui-border); border-radius: var(--wb-radius-surface); background: transparent; padding: 16px 0; }\n  .lm-corner { font-size: 11.5px; font-weight: 700; color: var(--ui-muted); }\n  .lm-colhead { font-size: 12px; font-weight: 700; text-align: left; }\n  .lm-colhead small { display: block; font-size: 11px; font-weight: 500; color: var(--ui-muted); margin-top: 1px; }\n  .lm-res { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }\n  .lm-res small { display: block; font-size: 11px; font-weight: 400; color: var(--ui-muted); }\n  .lm-cell { display: flex; flex-direction: column; gap: 5px; }\n  .lm-cell-top { display: flex; align-items: baseline; gap: 6px; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }\n  .lm-cell-top.on { color: var(--ui-primary); }\n  .lm-cell-top .tag { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: var(--wb-radius-control); }\n\n  /* detail table cell markers */\n  .cell-best { color: var(--ui-success); font-weight: 700; }\n  .sub-title { font-size: 15px; font-weight: 600; margin: 4px 0 12px; }\n  .sub-title span { font-size: 12px; font-weight: 400; color: var(--ui-muted); }\n\n  /* ---- delay ---- */\n  .delay-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }\n  .ds-card { display: flex; flex-direction: column; gap: 7px; min-height: 122px; padding: 14px; border: 1px solid var(--ui-border); border-left: 4px solid var(--ui-border); border-radius: var(--wb-radius-surface); background: var(--ui-surface-muted); }\n  .ds-card.sev-danger { border-left-color: var(--ui-danger); }\n  .ds-card.sev-warning { border-left-color: var(--ui-warning); }\n  .ds-card.sev-notice { border-left-color: var(--ui-info-border); }\n  .ds-card.sev-ok { border-left-color: var(--ui-success); }\n  .ds-label { font-size: 13px; color: var(--ui-muted); }\n  .ds-value { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }\n  .ds-card.sev-danger .ds-value { color: var(--ui-danger); }\n  .ds-card.sev-warning .ds-value { color: var(--ui-warning); }\n  .ds-card.sev-notice .ds-value { color: var(--ui-primary); }\n  .ds-card.sev-ok .ds-value { color: var(--ui-success); }\n  .ds-helper { font-size: 12px; color: var(--ui-muted); line-height: 1.5; flex: 1; }\n  .delay-body { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 16px; }\n  .delay-story, .delay-timeline { border: 0; border-radius: var(--wb-radius-surface); background: transparent; padding: 0; }\n  .delay-story h4, .delay-timeline h4 { margin: 0 0 10px; font-size: 17px; font-weight: 600; }\n  .delay-story p { margin: 0 0 14px; font-size: 13.5px; line-height: 1.7; color: var(--ui-muted); }\n  .story-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }\n  .story-actions { display: flex; flex-wrap: wrap; gap: 10px; }\n  .tl { position: relative; padding-left: 18px; display: flex; flex-direction: column; gap: 12px; }\n  .tl::before { content: \"\"; position: absolute; left: 5px; top: 4px; bottom: 4px; width: 2px; background: var(--ui-border); }\n  .tl-item { position: relative; }\n  .tl-dot { position: absolute; left: -18px; top: 14px; width: 10px; height: 10px; border-radius: 50%; }\n  .tl-dot.tone-danger { background: var(--ui-danger); } .tl-dot.tone-warning { background: var(--ui-warning); }\n  .tl-dot.tone-notice { background: var(--ui-info-border); } .tl-dot.tone-success { background: var(--ui-success); }\n  .tl-card { border: 0; border-bottom: 1px solid var(--ui-border); border-radius: var(--wb-radius-surface); background: transparent; padding: 12px 0; }\n  .tl-row { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 5px; }\n  .tl-row strong { font-size: 13.5px; }\n  .tl-row span { font-size: 11px; color: var(--ui-muted); font-variant-numeric: tabular-nums; }\n  .tl-desc { font-size: 12.5px; color: var(--ui-muted); line-height: 1.6; }\n\n  /* ---- lists / reports ---- */\n  .table-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }\n  .tool-input { min-width: 260px; height: 34px; padding: 0 12px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); font-family: inherit; font-size: 13px; color: var(--ui-text); }\n  .tool-input:focus { outline: none; box-shadow: var(--ui-focus-ring); border-color: var(--ui-primary); }\n  .tool-right { display: flex; gap: 8px; align-items: center; }\n\n  /* ---- field records (现场记录) ---- */\n  .fr-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }\n  .fr-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin: 4px 0 12px; }\n  .fr-section-head h4 { margin: 0; font-size: 16px; font-weight: 600; }\n  .fr-section-head .fr-meta { font-size: 12px; color: var(--ui-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }\n  .fr-pend-list { display: flex; flex-direction: column; gap: 10px; }\n  .fr-pend { display: flex; align-items: center; gap: 18px; padding: 13px 16px; border: 1px solid var(--ui-border); border-left: 4px solid var(--ui-border); border-radius: var(--wb-radius-surface); background: var(--ui-surface-muted); box-shadow: var(--ui-shadow-sm); }\n  .fr-pend.tone-success { border-left-color: var(--ui-success); }\n  .fr-pend.tone-notice { border-left-color: var(--ui-info-border); }\n  .fr-pend.tone-warning { border-left-color: var(--ui-warning); }\n  .fr-pend.tone-danger { border-left-color: var(--ui-danger); }\n  .fr-pend-lead { flex: none; width: 86px; padding-right: 18px; border-right: 1px solid var(--ui-border); display: flex; flex-direction: column; gap: 3px; }\n  .fr-pend-exp { font-size: 12px; font-weight: 700; color: var(--ui-muted); }\n  .fr-pend-time { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }\n  .fr-pend-over { font-size: 11.5px; font-weight: 700; }\n  .fr-pend-body { flex: 1 1 auto; min-width: 0; }\n  .fr-pend-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }\n  .fr-pend-body h4 { margin: 0; font-size: 14.5px; font-weight: 600; }\n  .fr-pend-note { margin: 5px 0 0; font-size: 12.5px; color: var(--ui-muted); line-height: 1.6; }\n  .fr-pend-actions { flex: none; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }\n  .fr-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 26px; border: 1px dashed var(--ui-border); border-radius: var(--wb-radius-surface); background: var(--ui-card-bg); color: var(--ui-muted); text-align: center; font-size: 12.5px; }\n  .fr-empty strong { color: var(--ui-success); font-size: 14px; }\n  .fr-records-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 24px 0 12px; }\n  .fr-btngroup { display: inline-flex; }\n  .fr-btngroup > button:hover { position: relative; z-index: 1; }\n  .fr-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--ui-text); background: var(--ui-surface-soft); border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); padding: 1px 6px; white-space: nowrap; }\n\n  /* inline backfill inputs (回填：实际开工 / 完工 / 工时) */\n  .fr-cellname { display: flex; flex-direction: column; gap: 2px; min-width: 0; }\n  .fr-cellname .fr-sub { font-size: 11.5px; color: var(--ui-muted); white-space: nowrap; }\n  .fr-plan { display: inline-grid; grid-template-columns: auto auto; gap: 2px 8px; align-items: baseline; font-variant-numeric: tabular-nums; white-space: nowrap; }\n  .fr-plan .lab { font-size: 11px; color: var(--ui-muted); }\n  .fr-plan .val { font-size: 12.5px; color: var(--ui-text); font-weight: 500; }\n  .fr-hcell { display: inline-flex; align-items: center; gap: 7px; }\n  .fr-calc { border: 0; background: transparent; padding: 0; font-family: inherit; font-size: 11.5px; font-weight: 700; color: var(--ui-primary); cursor: pointer; font-variant-numeric: tabular-nums; white-space: nowrap; }\n  .fr-calc:hover { text-decoration: underline; }\n\n  @media (max-width: 1080px) {\n    .recommend, .delay-body { grid-template-columns: 1fr; }\n    .scheme-row, .cmp-grid, .rec-gc { grid-template-columns: 1fr; }\n    .delay-summary, .fr-stats { grid-template-columns: repeat(2, 1fr); }\n    .risk-grid { grid-template-columns: repeat(2, 1fr); }\n    .fr-pend { flex-wrap: wrap; }\n    .fr-pend-actions { width: 100%; justify-content: flex-start; }\n    .cap-rich { display: none; }\n  }\n  @media (max-width: 700px) {\n    .top-header { min-height: var(--header-height); height: auto; padding: 10px 14px; gap: 10px; }\n    .top-title { min-width: 0; flex: 1; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }\n  }\n"
+        }
+      ],
+      "inline_scripts": [
+        {
+          "tag": "script",
+          "line": 8,
+          "text": "\n  (function () {\n    var t = \"light\";\n    try { t = localStorage.getItem(\"aps_kit_theme\") || \"light\"; } catch (e) {}\n    if (t !== \"dark\" && t !== \"light\") t = \"light\";\n    document.documentElement.setAttribute(\"data-theme\", t);\n  })();\n"
+        }
+      ]
+    },
+    "trial": {
+      "path": "ui_kits/workbench/trial-sample.html",
+      "scripts": [
+        {
+          "path": "ui_kits/workbench/assets/dashboard-icons.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/assets/field-report-icons.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/trial-sample-model.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/trial-sample-views.js",
+          "type": "text/javascript"
+        },
+        {
+          "path": "ui_kits/workbench/trial-sample.js",
+          "type": "text/javascript"
+        }
+      ],
+      "styles": [
+        "styles.css",
+        "ui_kits/workbench/workbench-ui.css",
+        "ui_kits/workbench/gantt-theme.css",
+        "ui_kits/workbench/trial-sample.css"
+      ],
+      "icons": [
+        "assets/logo-mark.svg"
+      ],
+      "inline_styles": [],
+      "inline_scripts": [
+        {
+          "tag": "script",
+          "line": 7,
+          "text": "\n    (function () {\n      var theme = 'light';\n      try { theme = localStorage.getItem('aps_kit_theme') || 'light'; } catch (error) { console.error('读取主题偏好失败：', error); }\n      document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : 'light');\n    })();\n  "
+        },
+        {
+          "tag": "script",
+          "line": 23,
+          "text": "window.APSDashboard = {}; window.APSFieldReports = {};"
+        }
+      ]
+    }
+  },
+  "files": [
+    {
+      "path": "_ds_bundle.js",
+      "source": "前端设计/_ds_bundle.js",
+      "target": "frontend/workbench/prototype/_ds_bundle.js",
+      "sha256": "cb7f5a0633e81ac1b3e24c2a5971c1fc27d5d73f4d230292458e33e601fd0740",
+      "size": 724621
+    },
+    {
+      "path": "assets/logo-mark.svg",
+      "source": "前端设计/assets/logo-mark.svg",
+      "target": "frontend/workbench/prototype/assets/logo-mark.svg",
+      "sha256": "fbd9a0241b23aeec96abac2f7b5ffaed2dfc89c0e483e4837af44c0ad0ec9f1a",
+      "size": 478
+    },
+    {
+      "path": "components/data/GanttBar.jsx",
+      "source": "前端设计/components/data/GanttBar.jsx",
+      "target": "frontend/workbench/prototype/components/data/GanttBar.jsx",
+      "sha256": "af711d331b8d502469111b2b8f9d71604f6ba22ec54ac04b8e71faf6f28564d3",
+      "size": 1938
+    },
+    {
+      "path": "components/data/Kpi.jsx",
+      "source": "前端设计/components/data/Kpi.jsx",
+      "target": "frontend/workbench/prototype/components/data/Kpi.jsx",
+      "sha256": "0796b335f776d5fda8620be822bb66dda90c010fd159f0f72ce2bb91acb0602b",
+      "size": 1347
+    },
+    {
+      "path": "components/data/RiskCard.jsx",
+      "source": "前端设计/components/data/RiskCard.jsx",
+      "target": "frontend/workbench/prototype/components/data/RiskCard.jsx",
+      "sha256": "34688ea34c1678bf32dd29a097a4e65e9e58fd4337c1ee8bdcfeb032e6fbfd6f",
+      "size": 3953
+    },
+    {
+      "path": "components/data/Table.jsx",
+      "source": "前端设计/components/data/Table.jsx",
+      "target": "frontend/workbench/prototype/components/data/Table.jsx",
+      "sha256": "b8ce21fa6e5640871139ba2356647766a9c277667ff2183de2e750ba22628cec",
+      "size": 23357
+    },
+    {
+      "path": "components/feedback/Badge.jsx",
+      "source": "前端设计/components/feedback/Badge.jsx",
+      "target": "frontend/workbench/prototype/components/feedback/Badge.jsx",
+      "sha256": "95babf8d351fff62fea3e7e09e7ff8ef10e6ffafa8e277e3d40ef4c3cfaedbd4",
+      "size": 1895
+    },
+    {
+      "path": "components/feedback/HeroCard.jsx",
+      "source": "前端设计/components/feedback/HeroCard.jsx",
+      "target": "frontend/workbench/prototype/components/feedback/HeroCard.jsx",
+      "sha256": "06925f21eadd85e62b16f6bb0f6914ba594891f92125813731c92d44a4bbb769",
+      "size": 4886
+    },
+    {
+      "path": "components/feedback/Meter.jsx",
+      "source": "前端设计/components/feedback/Meter.jsx",
+      "target": "frontend/workbench/prototype/components/feedback/Meter.jsx",
+      "sha256": "cfa39fef90ce891151473753fea7cf318b40e9b7259161ae4dffbfb509db22f4",
+      "size": 1100
+    },
+    {
+      "path": "components/forms/Button.jsx",
+      "source": "前端设计/components/forms/Button.jsx",
+      "target": "frontend/workbench/prototype/components/forms/Button.jsx",
+      "sha256": "ef1606117249229c1257aae9cdae099a671dcdcb73784bbd87b525d62e3b05fd",
+      "size": 3105
+    },
+    {
+      "path": "components/layout/Panel.jsx",
+      "source": "前端设计/components/layout/Panel.jsx",
+      "target": "frontend/workbench/prototype/components/layout/Panel.jsx",
+      "sha256": "0eafe1237899061f81b0786977de9271c1427158c295de7a062482e8c58ce55b",
+      "size": 1701
+    },
+    {
+      "path": "fonts/MicrosoftYaHei-Regular.ttf",
+      "source": "前端设计/fonts/MicrosoftYaHei-Regular.ttf",
+      "target": "frontend/workbench/prototype/fonts/MicrosoftYaHei-Regular.ttf",
+      "sha256": "c3c0e7bbcec69ee4765a53831c7be310acaca1ec1b408974ca4f4c73c1aa400c",
+      "size": 15044440
+    },
+    {
+      "path": "styles.css",
+      "source": "前端设计/styles.css",
+      "target": "frontend/workbench/prototype/styles.css",
+      "sha256": "1cc27b0cc4d3ed3e25aa1338b6976966c73b8bdad58965031c4498eb0d465444",
+      "size": 570
+    },
+    {
+      "path": "tokens/colors.css",
+      "source": "前端设计/tokens/colors.css",
+      "target": "frontend/workbench/prototype/tokens/colors.css",
+      "sha256": "d32aee67f6769e9eef0cb0581f8e86dc46364c15ce833b065e9c9e9e303ea8b0",
+      "size": 4569
+    },
+    {
+      "path": "tokens/dark.css",
+      "source": "前端设计/tokens/dark.css",
+      "target": "frontend/workbench/prototype/tokens/dark.css",
+      "sha256": "50fd4c680fdda634bb9e3c07f9e2838ad0dab7894dc79c83fb035d107b671570",
+      "size": 2243
+    },
+    {
+      "path": "tokens/spacing.css",
+      "source": "前端设计/tokens/spacing.css",
+      "target": "frontend/workbench/prototype/tokens/spacing.css",
+      "sha256": "95b3d29a36ba5c3eaaea2708dd60ebc82c4284cf710ed8f25549d093e7b1513d",
+      "size": 1655
+    },
+    {
+      "path": "tokens/typography.css",
+      "source": "前端设计/tokens/typography.css",
+      "target": "frontend/workbench/prototype/tokens/typography.css",
+      "sha256": "1ad5b5be7def746212c9268979bde8d6ad74c2cf5aca9bae64cf77ea3599d867",
+      "size": 2547
+    },
+    {
+      "path": "ui_kits/workbench/AnalysisScreen.jsx",
+      "source": "前端设计/ui_kits/workbench/AnalysisScreen.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/AnalysisScreen.jsx",
+      "sha256": "0db133f7091ff9e79bd6748e08dbf62f98f81f3643002464d1d95f13d19d07fc",
+      "size": 2640
+    },
+    {
+      "path": "ui_kits/workbench/AnalysisShared.jsx",
+      "source": "前端设计/ui_kits/workbench/AnalysisShared.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/AnalysisShared.jsx",
+      "sha256": "47971eacadc513be4438165635709c7c11ca8854d04d09dfbd23a2b13ca16731",
+      "size": 14712
+    },
+    {
+      "path": "ui_kits/workbench/AppShell.jsx",
+      "source": "前端设计/ui_kits/workbench/AppShell.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/AppShell.jsx",
+      "sha256": "2fda9732f49d69d8dde89de468a3c8d948cb0dc5184788a926664b378aa0ec25",
+      "size": 5962
+    },
+    {
+      "path": "ui_kits/workbench/BaseBatches.jsx",
+      "source": "前端设计/ui_kits/workbench/BaseBatches.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/BaseBatches.jsx",
+      "sha256": "65c697db60dc3104ad62b44a108e05327aa69f95ca30f8b480045ab21f953bf8",
+      "size": 60535
+    },
+    {
+      "path": "ui_kits/workbench/BaseCalendar.jsx",
+      "source": "前端设计/ui_kits/workbench/BaseCalendar.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/BaseCalendar.jsx",
+      "sha256": "0c0fa4bfe5e8f4fc7121266a1f5f1bbdbe8cc5659706fc7dffec46937c1fbe33",
+      "size": 11128
+    },
+    {
+      "path": "ui_kits/workbench/BaseDataScreen.jsx",
+      "source": "前端设计/ui_kits/workbench/BaseDataScreen.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/BaseDataScreen.jsx",
+      "sha256": "7c9bcac0744dd1c06ef1ffd22da9e0e13e3d9898955c7682f87ff0963371d772",
+      "size": 8595
+    },
+    {
+      "path": "ui_kits/workbench/BaseEquipment.jsx",
+      "source": "前端设计/ui_kits/workbench/BaseEquipment.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/BaseEquipment.jsx",
+      "sha256": "b8fc4a35f2cb4d66fa5d406446d531a4c371db73e38ff4130f8504009f1ed6f0",
+      "size": 13520
+    },
+    {
+      "path": "ui_kits/workbench/BaseMaterial.jsx",
+      "source": "前端设计/ui_kits/workbench/BaseMaterial.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/BaseMaterial.jsx",
+      "sha256": "4d3e6fee4724a908d4e6a6726dee3b1ce473fbbf5c29e897ca0dfd7418493b4a",
+      "size": 18024
+    },
+    {
+      "path": "ui_kits/workbench/BaseOpTypes.jsx",
+      "source": "前端设计/ui_kits/workbench/BaseOpTypes.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/BaseOpTypes.jsx",
+      "sha256": "d44aa1564e3e43b222f094c50edf00f964969c0aa5e9bf0ff5f2b0b04adf6ab0",
+      "size": 13810
+    },
+    {
+      "path": "ui_kits/workbench/BasePersonnel.jsx",
+      "source": "前端设计/ui_kits/workbench/BasePersonnel.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/BasePersonnel.jsx",
+      "sha256": "a3b49cf25e4b58dee2043ca0ff425ddc8b726e0254fb5916b03d9c06984a4204",
+      "size": 13749
+    },
+    {
+      "path": "ui_kits/workbench/BaseProcess.jsx",
+      "source": "前端设计/ui_kits/workbench/BaseProcess.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/BaseProcess.jsx",
+      "sha256": "eeb553c994b28a81663e000368ac5160260178527f6621754a49ff5f7803c3ce",
+      "size": 21962
+    },
+    {
+      "path": "ui_kits/workbench/BaseShared.jsx",
+      "source": "前端设计/ui_kits/workbench/BaseShared.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/BaseShared.jsx",
+      "sha256": "f066d36643c2358515032417f87320126d6ea0e2daade9d449aaab57e5967622",
+      "size": 23987
+    },
+    {
+      "path": "ui_kits/workbench/BaseSuppliers.jsx",
+      "source": "前端设计/ui_kits/workbench/BaseSuppliers.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/BaseSuppliers.jsx",
+      "sha256": "bb93fa8f20923750c4f2d7ae7a8731d670cbafadaea953fd3268f9bba80601f9",
+      "size": 14165
+    },
+    {
+      "path": "ui_kits/workbench/BasicDataScreen.jsx",
+      "source": "前端设计/ui_kits/workbench/BasicDataScreen.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/BasicDataScreen.jsx",
+      "sha256": "4b8f1fa2d309e7d21d6552ff586e9003bfff7c0273663d460273bb64908a3773",
+      "size": 11591
+    },
+    {
+      "path": "ui_kits/workbench/CalibScreen.jsx",
+      "source": "前端设计/ui_kits/workbench/CalibScreen.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/CalibScreen.jsx",
+      "sha256": "39ef68c7037fb58b1576e662d22cf1c48a5e79119df25d933f334c21101b9d75",
+      "size": 7146
+    },
+    {
+      "path": "ui_kits/workbench/DashboardScreen.jsx",
+      "source": "前端设计/ui_kits/workbench/DashboardScreen.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/DashboardScreen.jsx",
+      "sha256": "c8111f520d10df438b21775d2f3ec9b89e25596d2e4701456c80d011f97aa062",
+      "size": 615
+    },
+    {
+      "path": "ui_kits/workbench/DelayScreen.jsx",
+      "source": "前端设计/ui_kits/workbench/DelayScreen.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/DelayScreen.jsx",
+      "sha256": "63831cecb77efa1495a7b85f2f3228f085e8d8b460dfee3ed9531cd6ca9a6660",
+      "size": 3275
+    },
+    {
+      "path": "ui_kits/workbench/ExecutionReviewScreen.jsx",
+      "source": "前端设计/ui_kits/workbench/ExecutionReviewScreen.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/ExecutionReviewScreen.jsx",
+      "sha256": "7137cc2adf4ff46e1f4960ed0657783b837d05f8e4d51aed8b9a0afd1c23be6d",
+      "size": 19337
+    },
+    {
+      "path": "ui_kits/workbench/FieldGanttChain.jsx",
+      "source": "前端设计/ui_kits/workbench/FieldGanttChain.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/FieldGanttChain.jsx",
+      "sha256": "11e9d17fe38611399f538ae64765170c1448e9b8b122d923dc4584fd5679dc08",
+      "size": 5491
+    },
+    {
+      "path": "ui_kits/workbench/FieldGanttRows.jsx",
+      "source": "前端设计/ui_kits/workbench/FieldGanttRows.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/FieldGanttRows.jsx",
+      "sha256": "0497cc456e04692a67425acc008091de3ebfd94b88688d23181c4e49d7dd0bc4",
+      "size": 9890
+    },
+    {
+      "path": "ui_kits/workbench/FieldGanttScreen.jsx",
+      "source": "前端设计/ui_kits/workbench/FieldGanttScreen.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/FieldGanttScreen.jsx",
+      "sha256": "a536e4258488a1275eecbe25e3bc73c35f94c7acc3c5ee2bd04d54f84ce60cc9",
+      "size": 25038
+    },
+    {
+      "path": "ui_kits/workbench/FieldGanttViewport.jsx",
+      "source": "前端设计/ui_kits/workbench/FieldGanttViewport.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/FieldGanttViewport.jsx",
+      "sha256": "90274938ba27c0505dabde5935a26a3c7b5e9fe3a4172aa65311e2a99c75efd0",
+      "size": 11889
+    },
+    {
+      "path": "ui_kits/workbench/FieldRecordScreen.jsx",
+      "source": "前端设计/ui_kits/workbench/FieldRecordScreen.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/FieldRecordScreen.jsx",
+      "sha256": "c8786990aabef40486852f8cb6edcdb4f0be13da10b0c35466e0725795a07c40",
+      "size": 344
+    },
+    {
+      "path": "ui_kits/workbench/FieldReportCalendar.jsx",
+      "source": "前端设计/ui_kits/workbench/FieldReportCalendar.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/FieldReportCalendar.jsx",
+      "sha256": "7488a9b16a9b1fe746e87c80648f9d398bfa7455bf3b90b0921f13011b9cdc26",
+      "size": 12259
+    },
+    {
+      "path": "ui_kits/workbench/GanttBoard.jsx",
+      "source": "前端设计/ui_kits/workbench/GanttBoard.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/GanttBoard.jsx",
+      "sha256": "b3e05e5f66638aed3a71f6973818bb419a4823bcf4a210341693192d4c52469b",
+      "size": 3536
+    },
+    {
+      "path": "ui_kits/workbench/GanttScreen.jsx",
+      "source": "前端设计/ui_kits/workbench/GanttScreen.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/GanttScreen.jsx",
+      "sha256": "673695cea165ac144044446635a856ecd9b75a54f1946629fac270603fce30f3",
+      "size": 6851
+    },
+    {
+      "path": "ui_kits/workbench/MasterDataOverview.jsx",
+      "source": "前端设计/ui_kits/workbench/MasterDataOverview.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/MasterDataOverview.jsx",
+      "sha256": "bbcb790bd887b4580570fe99423d6a4447bb73b35e4322ea2933263f8c3ee61f",
+      "size": 16551
+    },
+    {
+      "path": "ui_kits/workbench/PlanShared.jsx",
+      "source": "前端设计/ui_kits/workbench/PlanShared.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/PlanShared.jsx",
+      "sha256": "9f3a02cd1cbcbe73b2950e48bd72e3e5e6c7f85f227358e5b37680b2358498e3",
+      "size": 6009
+    },
+    {
+      "path": "ui_kits/workbench/ProcessNative.jsx",
+      "source": "前端设计/ui_kits/workbench/ProcessNative.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/ProcessNative.jsx",
+      "sha256": "030c0f48b98d340ec361b3f55a5331d566b7dd2ffb52e7bd2a9ac6f43b3bb8c7",
+      "size": 841
+    },
+    {
+      "path": "ui_kits/workbench/ReportsScreen.jsx",
+      "source": "前端设计/ui_kits/workbench/ReportsScreen.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/ReportsScreen.jsx",
+      "sha256": "91f6ce0158ba76b1fa662776b096ffbe865f2ce4bd6b31a02cbcfbe98e92fb0a",
+      "size": 26221
+    },
+    {
+      "path": "ui_kits/workbench/SystemManagementScreen.jsx",
+      "source": "前端设计/ui_kits/workbench/SystemManagementScreen.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/SystemManagementScreen.jsx",
+      "sha256": "1201a72fb66dd6aeda8084837ee505f0db4e774d728dfc7a04f91320556217b3",
+      "size": 26626
+    },
+    {
+      "path": "ui_kits/workbench/app.jsx",
+      "source": "前端设计/ui_kits/workbench/app.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/app.jsx",
+      "sha256": "ecd38e22ce586761f55e40b9bb7affb55c26d2baf1f7f290050c53ab0751b997",
+      "size": 8652
+    },
+    {
+      "path": "ui_kits/workbench/assets/dashboard-icons.js",
+      "source": "前端设计/ui_kits/workbench/assets/dashboard-icons.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/assets/dashboard-icons.js",
+      "sha256": "7b01e23e7193897cf57b97089071da63c1d30e2c6b5e339cd8ca413d6c262712",
+      "size": 2713
+    },
+    {
+      "path": "ui_kits/workbench/assets/field-report-icons.js",
+      "source": "前端设计/ui_kits/workbench/assets/field-report-icons.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/assets/field-report-icons.js",
+      "sha256": "345c428ac182fd685df948e1ecacd72a31709b8a042073079ef8b328dbbaa6f0",
+      "size": 3749
+    },
+    {
+      "path": "ui_kits/workbench/assets/field-xlsx.js",
+      "source": "前端设计/ui_kits/workbench/assets/field-xlsx.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/assets/field-xlsx.js",
+      "sha256": "1dd4735bdead3c0e17191deae2055675105afb6a32a7037ddc5f1df19cfee25e",
+      "size": 279646
+    },
+    {
+      "path": "ui_kits/workbench/assets/lucide-LICENSE",
+      "source": "前端设计/ui_kits/workbench/assets/lucide-LICENSE",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/assets/lucide-LICENSE",
+      "sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
+      "size": 3208
+    },
+    {
+      "path": "ui_kits/workbench/assets/vendor/@babel-standalone.LICENSE",
+      "source": "前端设计/ui_kits/workbench/assets/vendor/@babel-standalone.LICENSE",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/assets/vendor/@babel-standalone.LICENSE",
+      "sha256": "117da2af0d4ce0fe1c8e19b5cff9dcd806adf973d328d27b11d4448c4ff24f76",
+      "size": 1106
+    },
+    {
+      "path": "ui_kits/workbench/assets/vendor/babel-7.29.0.min.js",
+      "source": "前端设计/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js",
+      "sha256": "2623a9e22809915ce789b4461154e277ddce520d5a4320c14d44332a5d0dcea0",
+      "size": 3137752
+    },
+    {
+      "path": "ui_kits/workbench/assets/vendor/react-18.3.1.js",
+      "source": "前端设计/ui_kits/workbench/assets/vendor/react-18.3.1.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/assets/vendor/react-18.3.1.js",
+      "sha256": "28348fef6cb0ed8b2ceeb22deaf824428fd13875d84c73d38f77dd216fc24e7f",
+      "size": 109931
+    },
+    {
+      "path": "ui_kits/workbench/assets/vendor/react-dom-18.3.1.js",
+      "source": "前端设计/ui_kits/workbench/assets/vendor/react-dom-18.3.1.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/assets/vendor/react-dom-18.3.1.js",
+      "sha256": "f9044a5e9c39db8bb1a204dff924e526ec0a621e695bb69de1035811be8709e4",
+      "size": 1080227
+    },
+    {
+      "path": "ui_kits/workbench/assets/vendor/react-dom.LICENSE",
+      "source": "前端设计/ui_kits/workbench/assets/vendor/react-dom.LICENSE",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/assets/vendor/react-dom.LICENSE",
+      "sha256": "52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85",
+      "size": 1086
+    },
+    {
+      "path": "ui_kits/workbench/assets/vendor/react.LICENSE",
+      "source": "前端设计/ui_kits/workbench/assets/vendor/react.LICENSE",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/assets/vendor/react.LICENSE",
+      "sha256": "52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85",
+      "size": 1086
+    },
+    {
+      "path": "ui_kits/workbench/basedata.css",
+      "source": "前端设计/ui_kits/workbench/basedata.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/basedata.css",
+      "sha256": "feb2945b2117b1b13cb5a5939235c70cd26da076964e1811e00406e6b3022430",
+      "size": 47215
+    },
+    {
+      "path": "ui_kits/workbench/batch-draft-model.js",
+      "source": "前端设计/ui_kits/workbench/batch-draft-model.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/batch-draft-model.js",
+      "sha256": "481aa208a6e460a9ce33e80ac335c6e41736f951674dc1a10abb4ed7daf36f9e",
+      "size": 13644
+    },
+    {
+      "path": "ui_kits/workbench/batch-workbench.css",
+      "source": "前端设计/ui_kits/workbench/batch-workbench.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/batch-workbench.css",
+      "sha256": "16cd43d8ae6a9d6b56a9da99b730161ce1459d57ada53c1f5fc1ade4fdf10df2",
+      "size": 9253
+    },
+    {
+      "path": "ui_kits/workbench/dashboard-markup.js",
+      "source": "前端设计/ui_kits/workbench/dashboard-markup.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/dashboard-markup.js",
+      "sha256": "c10cc206719ac333b44fbc6dc324c71c4e86b92a071008631cd83cca04d1d310",
+      "size": 2717
+    },
+    {
+      "path": "ui_kits/workbench/dashboard-model.js",
+      "source": "前端设计/ui_kits/workbench/dashboard-model.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/dashboard-model.js",
+      "sha256": "afc23aee37dcc9e1fb25bd6044ad949ed0a0059ceb2ed4030a3cb4cdfc9f5cdf",
+      "size": 15581
+    },
+    {
+      "path": "ui_kits/workbench/dashboard-views.js",
+      "source": "前端设计/ui_kits/workbench/dashboard-views.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/dashboard-views.js",
+      "sha256": "07d616b7ce561c10cd27a2dd1c4578d6830429e1691f511f51abc1a31c305dbc",
+      "size": 23735
+    },
+    {
+      "path": "ui_kits/workbench/dashboard-workbench.css",
+      "source": "前端设计/ui_kits/workbench/dashboard-workbench.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/dashboard-workbench.css",
+      "sha256": "431ac6901097b2e31802019f7a3adda0477f3aff8306e8be83cd8c67a5060587",
+      "size": 23762
+    },
+    {
+      "path": "ui_kits/workbench/dashboard-workbench.js",
+      "source": "前端设计/ui_kits/workbench/dashboard-workbench.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/dashboard-workbench.js",
+      "sha256": "57b0c78076e5c763754c011de073bb1d2fbe060fb2a75badcd1ffb10a7436f17",
+      "size": 14621
+    },
+    {
+      "path": "ui_kits/workbench/datepicker/aps-datepicker.css",
+      "source": "前端设计/ui_kits/workbench/datepicker/aps-datepicker.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/datepicker/aps-datepicker.css",
+      "sha256": "9c379baa2c9683925d5ee8e07a4eeaf379b47b96edf9713bde176f526c8f296e",
+      "size": 8717
+    },
+    {
+      "path": "ui_kits/workbench/datepicker/aps-datepicker.js",
+      "source": "前端设计/ui_kits/workbench/datepicker/aps-datepicker.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/datepicker/aps-datepicker.js",
+      "sha256": "233eb63c42b70477f1bd63f7b69ccc47313d2ee01275ef88e04d810b69ee2ba1",
+      "size": 13728
+    },
+    {
+      "path": "ui_kits/workbench/detail-drawer.js",
+      "source": "前端设计/ui_kits/workbench/detail-drawer.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/detail-drawer.js",
+      "sha256": "037bc6de6814bf4eccb24682b3410d90dc8ae8c90cf9a9974e8676226a0e6556",
+      "size": 31059
+    },
+    {
+      "path": "ui_kits/workbench/execution-analysis-model.js",
+      "source": "前端设计/ui_kits/workbench/execution-analysis-model.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/execution-analysis-model.js",
+      "sha256": "d1286283d1f21460fafdb50e04f5417b4c19f87084875c4049225325d138f42c",
+      "size": 15863
+    },
+    {
+      "path": "ui_kits/workbench/execution-analysis-shared.css",
+      "source": "前端设计/ui_kits/workbench/execution-analysis-shared.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/execution-analysis-shared.css",
+      "sha256": "88b616b39340198496a9310e1352af8b65874bd16aa8e3039ad336eba20c7a21",
+      "size": 7427
+    },
+    {
+      "path": "ui_kits/workbench/execution-review.css",
+      "source": "前端设计/ui_kits/workbench/execution-review.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/execution-review.css",
+      "sha256": "9be0637c7528ab956c3c349d4cb2d59f4ebc99b5325ab5bc3aa78c7ba93fb45b",
+      "size": 9622
+    },
+    {
+      "path": "ui_kits/workbench/fg-screen-hooks.jsx",
+      "source": "前端设计/ui_kits/workbench/fg-screen-hooks.jsx",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/fg-screen-hooks.jsx",
+      "sha256": "e86ff647163112ceb8c41494d69ccf8d408c221b31bbfe054fb9b09e59e786da",
+      "size": 6499
+    },
+    {
+      "path": "ui_kits/workbench/fg-screen-model.js",
+      "source": "前端设计/ui_kits/workbench/fg-screen-model.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/fg-screen-model.js",
+      "sha256": "e5574da22029f9789ea9f57da0dbadb0c546afe6e631e02c246eb1c79559bb84",
+      "size": 3528
+    },
+    {
+      "path": "ui_kits/workbench/field-gantt-chains.js",
+      "source": "前端设计/ui_kits/workbench/field-gantt-chains.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-gantt-chains.js",
+      "sha256": "1dc8a51f9e868b03b8281d7d0bd08d51e42109e71ae8f74b7178a43f5d9ab10e",
+      "size": 7353
+    },
+    {
+      "path": "ui_kits/workbench/field-gantt-current-chain-data.js",
+      "source": "前端设计/ui_kits/workbench/field-gantt-current-chain-data.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-gantt-current-chain-data.js",
+      "sha256": "c7f89d1147fe2e8e3a401ece9b2152bcf9b88ad2b647f89dadc71b0b86554efb",
+      "size": 5140
+    },
+    {
+      "path": "ui_kits/workbench/field-gantt-current-chains.js",
+      "source": "前端设计/ui_kits/workbench/field-gantt-current-chains.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-gantt-current-chains.js",
+      "sha256": "a98cc498b0173ad7c19c1672b2bd6955f3545276e54844824112fb677562e146",
+      "size": 4019
+    },
+    {
+      "path": "ui_kits/workbench/field-gantt-density-example.js",
+      "source": "前端设计/ui_kits/workbench/field-gantt-density-example.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-gantt-density-example.js",
+      "sha256": "d0beee8923d958fcbf59feca2a36706ada84b95b292b5c66966e2661976d7ad7",
+      "size": 1390
+    },
+    {
+      "path": "ui_kits/workbench/field-gantt-example.js",
+      "source": "前端设计/ui_kits/workbench/field-gantt-example.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-gantt-example.js",
+      "sha256": "ca8aa095d09be6bdf3341d457f9471aa9abae00798abc82b7a51fd72bbe32992",
+      "size": 10490
+    },
+    {
+      "path": "ui_kits/workbench/field-gantt-viewport.css",
+      "source": "前端设计/ui_kits/workbench/field-gantt-viewport.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-gantt-viewport.css",
+      "sha256": "58a010a0ee7e4274467324c3d718d6fe5e2f2a5ece3c8f216fd47250590f3c34",
+      "size": 1336
+    },
+    {
+      "path": "ui_kits/workbench/field-gantt.css",
+      "source": "前端设计/ui_kits/workbench/field-gantt.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-gantt.css",
+      "sha256": "d54435911318fabf946ea56b6f1ff55e36ab146e292791538aa78cbface88133",
+      "size": 22138
+    },
+    {
+      "path": "ui_kits/workbench/field-report-editor.js",
+      "source": "前端设计/ui_kits/workbench/field-report-editor.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-report-editor.js",
+      "sha256": "40d3b22ed8706ad6366d6f229216802d4316d005258cd7c895b096d3edc297c4",
+      "size": 9381
+    },
+    {
+      "path": "ui_kits/workbench/field-report-form.js",
+      "source": "前端设计/ui_kits/workbench/field-report-form.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-report-form.js",
+      "sha256": "36df4ef785a23c361f04764b1e9e69271a5081de75997d9a2583d0ebbf277837",
+      "size": 4570
+    },
+    {
+      "path": "ui_kits/workbench/field-report-icon-renderer.js",
+      "source": "前端设计/ui_kits/workbench/field-report-icon-renderer.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-report-icon-renderer.js",
+      "sha256": "9056876fbdd609ffaef03f7fb43902c1b26b18b40d42a0dfbd119f63dcf56e53",
+      "size": 974
+    },
+    {
+      "path": "ui_kits/workbench/field-report-import.js",
+      "source": "前端设计/ui_kits/workbench/field-report-import.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-report-import.js",
+      "sha256": "0838454fb7ce26d852ca218501069ddfcd85b92f5da9f3ef05e2a47ded8d21b6",
+      "size": 17880
+    },
+    {
+      "path": "ui_kits/workbench/field-report-markup.js",
+      "source": "前端设计/ui_kits/workbench/field-report-markup.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-report-markup.js",
+      "sha256": "048774559044e90c31f9c282d3069d43265ac26214a1e68a04a029bcaf15935f",
+      "size": 2002
+    },
+    {
+      "path": "ui_kits/workbench/field-report-model.js",
+      "source": "前端设计/ui_kits/workbench/field-report-model.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-report-model.js",
+      "sha256": "73a2c6f47ded2aa61cded0dc1c85805488b69c8570f899523dcd8232da5d20b2",
+      "size": 5679
+    },
+    {
+      "path": "ui_kits/workbench/field-report-views.js",
+      "source": "前端设计/ui_kits/workbench/field-report-views.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-report-views.js",
+      "sha256": "dbf2003f6a197d85c1d40d6b991ae81618e1e43aefd81a1e9d97405b6a650cca",
+      "size": 10796
+    },
+    {
+      "path": "ui_kits/workbench/field-reporting.css",
+      "source": "前端设计/ui_kits/workbench/field-reporting.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-reporting.css",
+      "sha256": "1f5f80227471c345faccde3c7c0b72ab3b91b692172dc2244156721fdc152c47",
+      "size": 40633
+    },
+    {
+      "path": "ui_kits/workbench/field-reporting.js",
+      "source": "前端设计/ui_kits/workbench/field-reporting.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/field-reporting.js",
+      "sha256": "48890560696d54e34609aa5d0cb0fcb3aa279cb69bf672cfed99b0974ab2c20f",
+      "size": 13897
+    },
+    {
+      "path": "ui_kits/workbench/gantt-board.css",
+      "source": "前端设计/ui_kits/workbench/gantt-board.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/gantt-board.css",
+      "sha256": "0cc64e9ee9f757ae4993b420197b1a6adaf813afee1cdd86a5b29809eb5f3ae8",
+      "size": 21507
+    },
+    {
+      "path": "ui_kits/workbench/gantt-theme.css",
+      "source": "前端设计/ui_kits/workbench/gantt-theme.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/gantt-theme.css",
+      "sha256": "391d20fe38baa5226c38f2a4136b6842356be8c4a0171996ac35e394399d730a",
+      "size": 2340
+    },
+    {
+      "path": "ui_kits/workbench/index.html",
+      "source": "前端设计/ui_kits/workbench/index.html",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/index.html",
+      "sha256": "935941ad163b35d7de3fe441b2bdf843f59b530fb97dbdd7c75386a484561dfe",
+      "size": 32703
+    },
+    {
+      "path": "ui_kits/workbench/master-data-overview.css",
+      "source": "前端设计/ui_kits/workbench/master-data-overview.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/master-data-overview.css",
+      "sha256": "6d353ed4a10934bd413b3bbf0a433bfc6ae2895f9f3087c036f9158d9f5c8959",
+      "size": 7286
+    },
+    {
+      "path": "ui_kits/workbench/master-data-overview.js",
+      "source": "前端设计/ui_kits/workbench/master-data-overview.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/master-data-overview.js",
+      "sha256": "09f0d8fd73f6b6b359cf4594f3c67e40b0d57f5a4c5e9ceae9222df8f1e81c6c",
+      "size": 20352
+    },
+    {
+      "path": "ui_kits/workbench/operations-workspaces.css",
+      "source": "前端设计/ui_kits/workbench/operations-workspaces.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/operations-workspaces.css",
+      "sha256": "8f2ab8f0792f27ae480abe44c2fc884d4ab2729736d9ebdb73302cf889720105",
+      "size": 1115
+    },
+    {
+      "path": "ui_kits/workbench/plan-workbench.css",
+      "source": "前端设计/ui_kits/workbench/plan-workbench.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/plan-workbench.css",
+      "sha256": "6deff7fd99036d18acf64b24ab43fe89c5582492b56834efccd0b41c3b69fef8",
+      "size": 7409
+    },
+    {
+      "path": "ui_kits/workbench/plan-workbench.js",
+      "source": "前端设计/ui_kits/workbench/plan-workbench.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/plan-workbench.js",
+      "sha256": "abd4af715d4a53ba8c09c184922e5e5b8d3deabf4c8d26ba8c0414aa24a014b7",
+      "size": 3954
+    },
+    {
+      "path": "ui_kits/workbench/plana-logic.js",
+      "source": "前端设计/ui_kits/workbench/plana-logic.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/plana-logic.js",
+      "sha256": "90cd952ab16d52bd2adea4a8664e2832c521f7dd5f501cd830e3789423a02623",
+      "size": 132742
+    },
+    {
+      "path": "ui_kits/workbench/plana.css",
+      "source": "前端设计/ui_kits/workbench/plana.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/plana.css",
+      "sha256": "177436ef2591f5e18b571742ae5b019f53faaf9fdb58a1486c066ad606fbf22a",
+      "size": 63641
+    },
+    {
+      "path": "ui_kits/workbench/preflight-model.js",
+      "source": "前端设计/ui_kits/workbench/preflight-model.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/preflight-model.js",
+      "sha256": "ece8b64cd834b857bd2c5c435d99bd3c9f52a35f559736afa34ae4748162c7e9",
+      "size": 2530
+    },
+    {
+      "path": "ui_kits/workbench/report-workbench-model.js",
+      "source": "前端设计/ui_kits/workbench/report-workbench-model.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/report-workbench-model.js",
+      "sha256": "511a0bc8132075d5eee4546c1ab4b64ce0bd64a17f6932b2f8ab013b09a15da6",
+      "size": 16909
+    },
+    {
+      "path": "ui_kits/workbench/report-workbench.css",
+      "source": "前端设计/ui_kits/workbench/report-workbench.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/report-workbench.css",
+      "sha256": "fae6dc40d9be9370a12a58dfc2d2f09d48d1d547d224b193e2260e247970d4d6",
+      "size": 8576
+    },
+    {
+      "path": "ui_kits/workbench/system-workbench-model.js",
+      "source": "前端设计/ui_kits/workbench/system-workbench-model.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/system-workbench-model.js",
+      "sha256": "494043835b02c1b856dadc32c960fc34f22a293982200f6a9ead04b61b2459d3",
+      "size": 14478
+    },
+    {
+      "path": "ui_kits/workbench/system-workbench.css",
+      "source": "前端设计/ui_kits/workbench/system-workbench.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/system-workbench.css",
+      "sha256": "95ae1f6d44eb6ab4abedf0f6ec0cc1c2e2c5481b8fb55b30e1ca3700f301b461",
+      "size": 13605
+    },
+    {
+      "path": "ui_kits/workbench/table-enhance.js",
+      "source": "前端设计/ui_kits/workbench/table-enhance.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/table-enhance.js",
+      "sha256": "7975209c4f0be287ccf9fd0875832b1fac4335c1a9e5941a669be5c2c7405c11",
+      "size": 17261
+    },
+    {
+      "path": "ui_kits/workbench/trial-sample-model.js",
+      "source": "前端设计/ui_kits/workbench/trial-sample-model.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/trial-sample-model.js",
+      "sha256": "c2ec8c2f14b242945416c6b019779eca582af1725329e8e616d63f1f66c3ff00",
+      "size": 16197
+    },
+    {
+      "path": "ui_kits/workbench/trial-sample-views.js",
+      "source": "前端设计/ui_kits/workbench/trial-sample-views.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/trial-sample-views.js",
+      "sha256": "80bfda5684a5fd88e0ac2e0fc8cfe1277f2e909bf41d26dd939e44259f4cae5f",
+      "size": 22650
+    },
+    {
+      "path": "ui_kits/workbench/trial-sample.css",
+      "source": "前端设计/ui_kits/workbench/trial-sample.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/trial-sample.css",
+      "sha256": "a7800aee30e7ced0bc99756b60ef699beb18d50dfc11d4ded5e6426820b620be",
+      "size": 20917
+    },
+    {
+      "path": "ui_kits/workbench/trial-sample.html",
+      "source": "前端设计/ui_kits/workbench/trial-sample.html",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/trial-sample.html",
+      "sha256": "dce80da0061e5915c7d41da1f884902fa628e3ff1452bb70a4de2b9f13888362",
+      "size": 1452
+    },
+    {
+      "path": "ui_kits/workbench/trial-sample.js",
+      "source": "前端设计/ui_kits/workbench/trial-sample.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/trial-sample.js",
+      "sha256": "bb3442fd954b0dbc7289f3d4107d41238503b7ad1f83b78ab19052055028058c",
+      "size": 13875
+    },
+    {
+      "path": "ui_kits/workbench/workbench-ui.css",
+      "source": "前端设计/ui_kits/workbench/workbench-ui.css",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/workbench-ui.css",
+      "sha256": "6d78f7f5e00d2fe9d9e67f627bf143a5605085e1aee1bca0f8dcfdda4d4fc4af",
+      "size": 9247
+    },
+    {
+      "path": "ui_kits/workbench/workbench-ui.js",
+      "source": "前端设计/ui_kits/workbench/workbench-ui.js",
+      "target": "frontend/workbench/prototype/ui_kits/workbench/workbench-ui.js",
+      "sha256": "dac305adf6c4c39529264f245338988d541302ede8b89bcfc318de1d84ab79af",
+      "size": 3341
+    }
+  ],
+  "inline_script_policy": "Archived for provenance only; never emitted into the live entry.",
+  "rebuild_policy": "Normal builds read this snapshot only, never the ignored design directory."
+}

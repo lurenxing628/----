@@ -21,7 +21,21 @@
           <span>{page + 1}</span><Button className="btn plan-icon" icon="chevron-right" aria-label="日历窗口下一段" disabled={(page + 1) * 10 >= windows.length} onClick={() => setPage(page + 1)} /></div>}</>}
     </div>;
   }
-  function TaskDetail({ data, selected, onSelect }) {
+  function Relations({ data, selected, onRelated }) {
+    const order = data.projections.process_order;
+    const relations = window.PlanProcessOrder.relationships(data, selected);
+    return <section aria-label="工艺前后序"><h3>工艺前后序</h3>{relations ? ['previous', 'next'].map(kind => <div key={kind}>
+      <h4>{kind === 'previous' ? '前序' : '后序'}</h4>{!relations[kind].length && <p className="plan-muted">{kind === 'previous' ? '无前序工序' : '无后序工序'}</p>}
+      <div className="plan-actions">{relations[kind].map((row, index) => {
+        const task = row.task, prefix = kind === 'previous' ? '前序' : '后序';
+        const label = task ? prefix + ' ' + task.batch_id + ' · ' + task.sequence + ' ' + task.process_label + ' · ' + M.pieceLabel(task) : prefix + '安排在当前读取范围外';
+        return row.task_ref ? <Button key={row.task_ref} icon={kind === 'previous' ? 'chevron-left' : 'chevron-right'} title={label} aria-label={label}
+          disabled={!onRelated} onClick={() => onRelated(row.task_ref)} style={{ height: 'auto', minHeight: 32, whiteSpace: 'normal', textAlign: 'left', overflowWrap: 'anywhere' }}>
+          {task ? label : '读取完整计划并定位' + prefix}</Button> : <span key={'unplanned:' + index} className="plan-muted">{prefix}未在本计划安排</span>;
+      })}</div>
+    </div>) : <p className="plan-muted">{!selected ? '尚未选中任务' : selected.before ? '当前关系只属于所选计划，初始安排的关系未单独核实。' : order.issues.map(row => row.message).join('；') || '该任务的冻结关系无法核实。'}</p>}</section>;
+  }
+  function TaskDetail({ data, selected, onSelect, onRelated, renderTrial, scope = {}, query = '', disabled = false }) {
     const task = selected && selected.task, labels = React.useMemo(() => M.names(data), [data]);
     const baseline = data.projections.baseline;
     const comparison = task && baseline.state === 'available' && baseline.items.find(item => item.operation_ref === task.operation_ref);
@@ -41,9 +55,12 @@
           ['供应商', selected.before && ['candidate_adoption', 'trial_adoption'].includes(baseline.basis)
             ? '未记录' : task.supplier_ref ? labels.get(task.supplier_ref) || '名称未记录' : '未绑定']
         ]} />
-        <div className="plan-actions"><Button icon="square-pen" reason="暂不支持试调，当前只能查看计划。">试调</Button>
-          <Button icon="file" reason="暂不支持保存试调，不会保存修改或改变正式计划。">保存</Button></div>
+        <div className="plan-actions">{typeof renderTrial === 'function' ? renderTrial({ planRef: data.plan.plan_ref, scope, query,
+          taskOrigin: { plan_ref: data.plan.plan_ref, operation_ref: task.operation_ref, task_ref: task.task_ref },
+          disabled: disabled || selected.before || task.plan_ref !== data.plan.plan_ref, label: '调整此工序' }) :
+          <Button icon="square-pen" reason="试调入口未接入，当前只能查看计划。">调整此工序</Button>}</div>
       </>}</section>
+      <Relations data={data} selected={selected} onRelated={onRelated} />
       <section><h3>初始计划对照</h3>{comparison ? <>
         <Facts items={[
           ['变化', ({ added: '新增安排', removed: '移除安排', changed: '安排已变更', unchanged: '安排未变更' })[comparison.change]],
@@ -76,6 +93,59 @@
       </div>)}</section>
     </aside>;
   }
+  function conflictRows(data) {
+    const projection = data.projections.occupancy, scope = data.time_scope;
+    const require = value => { if (!value) throw new Error('资源重叠明细的范围或并行依据无法核实，未按零重叠显示。'); };
+    require(projection && projection.basis === 'selected_plan_only' && projection.plan_ref === data.plan.plan_ref
+      && ['available', 'partial', 'unavailable'].includes(projection.state) && Array.isArray(projection.resources)
+      && Array.isArray(projection.issues) && projection.time_scope && scope
+      && ['range_start', 'range_end', 'selection', 'boundary', 'time_basis'].every(key => projection.time_scope[key] === scope[key]));
+    const start = M.instant(scope.range_start), end = M.instant(scope.range_end), rows = [], seen = new Set();
+    require(Number.isFinite(start) && Number.isFinite(end) && start <= end);
+    for (const resource of projection.resources) {
+      require(resource && ['machine', 'operator'].includes(resource.kind) && typeof resource.resource_ref === 'string'
+        && /^[a-f0-9]{48}$/.test(resource.resource_ref) && !seen.has(resource.resource_ref)
+        && Array.isArray(resource.segments) && typeof resource.has_overlap === 'boolean');
+      seen.add(resource.resource_ref); let overlap = false;
+      for (const segment of resource.segments) {
+        const low = M.instant(segment.start), high = M.instant(segment.end), count = segment.concurrent_operations;
+        require(Number.isFinite(low) && Number.isFinite(high) && start <= low && low < high && high <= end
+          && Number.isSafeInteger(count) && count > 0);
+        if (count <= 1) continue;
+        overlap = true;
+        rows.push({ kind: resource.kind, resource_ref: resource.resource_ref, label: resource.label,
+          start: segment.start, end: segment.end, concurrent_operations: count });
+      }
+      require(overlap === resource.has_overlap);
+    }
+    return { rows, projection };
+  }
+  function Conflicts({ data }) {
+    const [page, setPage] = React.useState(0), read = React.useMemo(() => {
+      try { return conflictRows(data); } catch (error) { return { error }; }
+    }, [data]);
+    if (read.error) return <section className="plan-projections" aria-label="资源重叠明细"><h3>资源重叠明细</h3><window.ResourceControls.ErrorBox error={read.error} /></section>;
+    const { rows, projection } = read, current = Math.min(page, Math.max(0, Math.ceil(rows.length / 20) - 1)), labels = M.names(data);
+    const known = projection.state === 'available', scope = projection.time_scope;
+    const empty = !known ? '当前范围仍有资料无法核实，不能认定为没有重叠。'
+      : !projection.resources.length ? '当前读取范围没有资源占用记录。' : '当前读取范围未发现资源安排重叠。';
+    return <section className="plan-projections" aria-label="资源重叠明细"><h3>资源重叠明细</h3>
+      <div className="plan-note">{M.timeLabel(scope.range_start)} 至 {M.timeLabel(scope.range_end)}（不含结束）
+        {data.scope.range_start !== null ? ' · 当前读取切片，不代表整份计划' : ' · 完整计划读取范围'}
+        <div>仅列所选计划在该范围的资源安排重叠，不代表等待、停机、缺料或延期原因。</div>
+        {!known && <div>{projection.state === 'partial' ? '部分资料无法核实。' : '资源依据不可完整核实。'}以下仅列已核实片段，未知部分不计为零。</div>}</div>
+      <Issues issues={projection.issues} />
+      {rows.length ? <><div className="plan-projection-table"><table aria-label="资源重叠明细"><thead><tr>
+        {['资源', '开始（含）', '结束（不含）', '并行工序'].map(label => <th key={label}>{label}</th>)}
+      </tr></thead><tbody>{rows.slice(current * 20, current * 20 + 20).map(row => <tr key={row.resource_ref + ':' + row.start + ':' + row.end}>
+        <td>{row.label || labels.get(row.resource_ref) || '资源名称未记录'}<div className="plan-muted">{M.kindLabels[row.kind]}</div></td>
+        <td>{M.timeLabel(row.start)}</td><td>{M.timeLabel(row.end)}</td><td>{row.concurrent_operations}</td>
+      </tr>)}</tbody></table></div><div className="plan-pager"><span>已核实资源重叠片段 · {rows.length} 段</span><span className="plan-actions">
+        <Button icon="chevron-left" aria-label="重叠明细上一页" disabled={current === 0} onClick={() => setPage(current - 1)} />
+        <span>{current + 1} / {Math.ceil(rows.length / 20)}</span><Button icon="chevron-right" aria-label="重叠明细下一页" disabled={(current + 1) * 20 >= rows.length} onClick={() => setPage(current + 1)} />
+      </span></div></> : <p className="plan-muted" role="status">{empty}</p>}
+    </section>;
+  }
   function ProjectionTables({ data, onBatch, onResource }) {
     const [tab, setTab] = React.useState('risk'), [page, setPage] = React.useState(0);
     const projections = data.projections, labels = React.useMemo(() => M.names(data), [data]);
@@ -105,5 +175,5 @@
         <span>{page + 1} / {Math.max(1, Math.ceil(rows.length / 20))}</span><Button className="btn plan-icon" icon="chevron-right" aria-label="分析下一页" disabled={(page + 1) * 20 >= rows.length} onClick={() => setPage(page + 1)} /></span></div>
     </section>;
   }
-  window.PlanDetailsUI = { TaskDetail, ProjectionTables, Facts };
+  window.PlanDetailsUI = { TaskDetail, ProjectionTables, Facts, Conflicts, conflictRows };
 })();

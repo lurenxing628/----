@@ -60,6 +60,11 @@
     React.useLayoutEffect(() => {
       const scrollPositions = new Map();
       for (let node = owner; node; node = node.parentElement) scrollPositions.set(node, [node.scrollLeft, node.scrollTop]);
+      const anchors = Array.from(scrollPositions.keys()).map(node => {
+        const value = node.style.getPropertyValue('overflow-anchor'), priority = node.style.getPropertyPriority('overflow-anchor');
+        node.style.setProperty('overflow-anchor', 'none', 'important');
+        return { node, value, priority };
+      });
       function place() {
         if (!owner.isConnected || owner.disabled || !owner.getClientRects().length) { close.current(false); return; }
         const rect = owner.getBoundingClientRect(), width = Math.min(300, innerWidth - 16);
@@ -75,6 +80,17 @@
         const before = scrollPositions.get(target);
         // A pre-open scroll can be delivered after mounting; the anchor has not moved since opening.
         if (before && target.scrollLeft === before[0] && target.scrollTop === before[1]) return;
+        if (before) {
+          const left = Math.min(before[0], Math.max(0, target.scrollWidth - target.clientWidth));
+          const top = Math.min(before[1], Math.max(0, target.scrollHeight - target.clientHeight));
+          const clamped = left < before[0] - 1 || top < before[1] - 1;
+          // Loading or empty rows can shorten the list and force the browser to clamp its scroll offset.
+          if (clamped && Math.abs(target.scrollLeft - left) <= 1 && Math.abs(target.scrollTop - top) <= 1) {
+            scrollPositions.set(target, [target.scrollLeft, target.scrollTop]);
+            place();
+            return;
+          }
+        }
         close.current(false);
       }
       function keys(event) {
@@ -89,11 +105,13 @@
       }
       function focus(event) { if (!panel.current.contains(event.target) && event.target !== owner) close.current(false); }
       place(); search.current.focus({ preventScroll: true });
-      const observer = new ResizeObserver(place); observer.observe(owner);
+      // Follow list reflow without letting browser scroll anchoring move the open menu's context.
+      const observer = new ResizeObserver(place); anchors.forEach(({ node }) => observer.observe(node));
       window.addEventListener('resize', place); window.addEventListener('keydown', keys, true);
       document.addEventListener('pointerdown', outside, true); document.addEventListener('scroll', scroll, true); document.addEventListener('focusin', focus);
       return () => {
         observer.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('keydown', keys, true);
+        anchors.forEach(({ node, value, priority }) => node.style.setProperty('overflow-anchor', value, priority));
         document.removeEventListener('pointerdown', outside, true); document.removeEventListener('scroll', scroll, true); document.removeEventListener('focusin', focus);
       };
     }, [owner]);

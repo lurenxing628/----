@@ -4,7 +4,7 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), http = re
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
 const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx',
-  'resource-contract.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PlanGanttModel.js', 'RunCandidateAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx',
+  'resource-contract.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PlanGanttModel.js', 'RunCandidateAPI.js', 'RunCandidateAnalysisAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx', 'RunCandidateAnalysis.jsx',
   'RunBaselineAPI.js', 'RunBaselineModel.js', 'RunBaselineControls.jsx',
   'RunCandidateGantt.jsx', 'RunCandidateWorkspace.jsx', 'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx',
   'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx'];
@@ -174,9 +174,9 @@ async function baseline() {
   await page.unroute(pattern); await button('刷新指定候选来源').click(); await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor(); done('failed-refresh-clears-old-data-and-export');
   await page.request.post(origin + '/fixture/restart'); await button('CSV').click(); await page.getByRole('alert').waitFor(); done('expired-read-token-download-not-faked');
   await button('刷新指定候选来源').click(); await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor();
-  await page.evaluate(() => { const api = RunCandidateAPI.create(); window.mountCandidate(fixtureSource, { ...api, workspace: async (...args) => { const v = await api.workspace(...args); v.data.capabilities.view = false; return v; } }); });
+  await page.evaluate(() => { const api = RunCandidateAnalysisAPI.create(); window.mountCandidate(fixtureSource, { ...api, workspace: async (...args) => { const v = await api.workspace(...args); v.data.capabilities.view = false; return v; } }); });
   await page.getByText('接口未授权查看该候选。', { exact: false }).waitFor(); assert.equal(await button('CSV').count(), 0); assert.equal(await page.locator('[data-candidate-lane]').count(), 0); done('view-capability-false-no-content-or-export');
-  await page.evaluate(() => { const api = RunCandidateAPI.create(); window.mountCandidate(fixtureSource, { ...api, workspace: async (...args) => { const v = await api.workspace(...args); v.data.capabilities.export = false; return v; } }); });
+  await page.evaluate(() => { const api = RunCandidateAnalysisAPI.create(); window.mountCandidate(fixtureSource, { ...api, workspace: async (...args) => { const v = await api.workspace(...args); v.data.capabilities.export = false; return v; } }); });
   await button('CSV').waitFor(); assert(await button('CSV').isDisabled()); assert(await button('XLSX').isDisabled()); done('export-capability-false-disabled');
   const history = await (await page.request.get(origin + '/api/workbench/v1/scheduling/runs')).json();
   assert(history.ok); const old = history.data.runs.find(r => r.run_ref === fixtures.complete.run_ref); assert(old);

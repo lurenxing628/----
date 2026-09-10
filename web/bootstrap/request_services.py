@@ -9,8 +9,9 @@ from core.services.equipment import MachineService
 from core.services.material import BatchMaterialService, MaterialService
 from core.services.personnel import OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
-from core.services.process import PartService, SupplierService
 from core.services.process.part_operation_query_service import PartOperationQueryService
+from core.services.process.part_service import PartService
+from core.services.process.supplier_service import SupplierService
 from core.services.scheduler import (
     BatchService,
     CalendarService,

@@ -8,17 +8,15 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from flask import Flask, current_app, g, request
-from werkzeug.serving import make_server
+from werkzeug.serving import ThreadedWSGIServer, make_server
 
-from config import config as config_map
-from core.infrastructure.backup import BackupManager, MaintenanceWindowError, is_maintenance_window_active
+from config import config as _config_map
+from core.infrastructure.backup import BackupManager, is_maintenance_window_active
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
-from core.infrastructure.migration_common import fallback_log
-from core.models.enums import YesNo
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_templates import ExcelTemplateError, ensure_excel_templates
 from core.services.scheduler import _frozen_import_anchor as _scheduler_services_import_anchor
@@ -38,13 +36,28 @@ from web.routes.personnel import bp as personnel_bp
 from web.routes.process import bp as process_bp
 from web.routes.reports import bp as reports_bp
 from web.routes.system import bp as system_bp
+from web.routes.workbench.registration import bp as workbench_bp
 
 from .launcher import resolve_shared_data_root
+from .launcher_shutdown import (
+    RuntimeExitBackupManager,
+    RuntimeHostStopTransport,
+    read_exit_backup_enabled,
+    run_exit_backup,
+)
 from .paths import runtime_base_dir
 from .plugins import bootstrap_plugins
 from .request_services import RequestServices
 from .security import apply_session_cookie_hardening, ensure_secret_key, register_security_headers
+from .startup_config import resolve_config_class
 from .static_versioning import install_versioned_url_for
+from .workbench_request_lifecycle import (
+    WorkbenchRequestHandler,
+    close_workbench_request_connection,
+    install_workbench_request_lifecycle,
+    track_workbench_request_connection,
+)
+from .workbench_system_restore_recovery import prepare_system_restore_startup
 
 # atexit 退出备份去重：避免 create_app_core() 在测试/脚本中被多次调用导致重复注册
 _EXIT_BACKUP_MANAGER = None
@@ -54,6 +67,15 @@ _RUNTIME_SERVER_LOCK = threading.Lock()
 _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
 _FACTORY_ONCE_FLAGS_KEY = "aps.factory.once_flags"
 _PYINSTALLER_IMPORT_ANCHORS = (_scheduler_import_anchor, _scheduler_services_import_anchor)
+
+
+def _resolve_config_class():
+    return resolve_config_class(_config_map)
+
+
+def resolve_startup_debug_flag() -> bool:
+    # 此处只读同一配置源；锁归属判定仍先于 create_app 的数据库及退出备份副作用。
+    return bool(getattr(_resolve_config_class(), "DEBUG", False))
 
 
 def _app_log_once(app: Flask, key: str, level: str, message: str, *args: Any) -> None:
@@ -102,47 +124,17 @@ def should_own_runtime_resources(
     return _should_register_exit_backup(debug=bool(debug), frozen=frozen, run_main=run_main)
 
 
-def _is_exit_backup_enabled(bm: BackupManager) -> Optional[bool]:
-    conn = None
-    try:
-        conn = get_connection(bm.db_path)
-        from core.services.system import SystemConfigService
 
-        cfg = SystemConfigService(conn, logger=bm.logger).get_snapshot_readonly(
-            backup_keep_days_default=int(getattr(bm, "keep_days", 7) or 7)
-        )
-        return cfg.auto_backup_enabled == YesNo.YES.value
-    except Exception as e:
-        fallback_log(bm.logger, "error", f"读取退出自动备份配置失败：{e}")
-        return None
-    finally:
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception:
-                pass
+
+def _is_exit_backup_enabled(bm: BackupManager) -> Optional[bool]:
+    return read_exit_backup_enabled(bm, get_connection)
 
 
 def _run_exit_backup(manager: Optional[BackupManager] = None) -> bool:
     bm = manager or _EXIT_BACKUP_MANAGER
     if bm is None:
         return False
-    enabled = _is_exit_backup_enabled(bm)
-    if enabled is not True:
-        if enabled is None:
-            fallback_log(bm.logger, "warning", "退出自动备份已跳过：读取配置失败。")
-        else:
-            fallback_log(bm.logger, "info", "退出自动备份已跳过：auto_backup_enabled=no。")
-        return False
-    try:
-        bm.backup(suffix="exit")
-        return True
-    except MaintenanceWindowError as e:
-        fallback_log(bm.logger, "warning" if e.code == "busy" else "error", f"退出自动备份已跳过：{e.message}")
-        return False
-    except Exception as e:
-        fallback_log(bm.logger, "error", f"退出自动备份失败：{e}")
-        return False
+    return run_exit_backup(bm, _is_exit_backup_enabled)
 
 
 def _maintenance_gate_response():
@@ -176,13 +168,18 @@ def should_register_runtime_lifecycle_handlers(debug: bool) -> bool:
 
 def serve_runtime_app(app: Flask, host: str, port: int) -> None:
     global _RUNTIME_SERVER, _RUNTIME_SERVER_SHUTDOWN_REQUESTED
-    server = make_server(host, int(port), app, threaded=True)
+    transport = RuntimeHostStopTransport(app)
+    server = cast(ThreadedWSGIServer, make_server(
+        host, int(port), transport, threaded=True, request_handler=WorkbenchRequestHandler))
+    transport.server = server
+    server.daemon_threads = False
     with _RUNTIME_SERVER_LOCK:
         _RUNTIME_SERVER = server
         _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
     try:
         server.serve_forever()
     finally:
+        server.server_close()
         with _RUNTIME_SERVER_LOCK:
             _RUNTIME_SERVER = None
             _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
@@ -209,12 +206,6 @@ def request_runtime_server_shutdown(logger=None) -> bool:
     return True
 
 
-def _resolve_config_class():
-    # 默认环境：源码运行→development（便于调试）；PyInstaller 打包→production（避免 reloader 多进程与副作用）。
-    env = (os.environ.get("APS_ENV") or "").strip().lower()
-    if not env:
-        env = "production" if getattr(sys, "frozen", False) else "default"
-    return config_map.get(env) or config_map["default"]
 
 
 def _ensure_runtime_dirs(app: Flask) -> None:
@@ -246,7 +237,7 @@ def _init_excel_templates(app: Flask) -> None:
 
 
 def _register_all_blueprints(app: Flask) -> None:
-    # 9 蓝图 + scheduler 动态导入；注册顺序与 url_prefix 一字不改。
+    # Preserve legacy registrations; the migrated workspace has an independent entry.
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(excel_demo_bp, url_prefix="/excel-demo")
     app.register_blueprint(personnel_bp, url_prefix="/personnel")
@@ -258,17 +249,13 @@ def _register_all_blueprints(app: Flask) -> None:
     app.register_blueprint(material_bp, url_prefix="/material")
     app.register_blueprint(reports_bp, url_prefix="/reports")
     app.register_blueprint(system_bp, url_prefix="/system")
+    app.register_blueprint(workbench_bp)
 
 
 def _register_exit_backup(app: Flask) -> None:
     # global 退出备份：_EXIT_BACKUP_MANAGER 赋值 + atexit 注册须在 BackupManager 构造后、return 前同一逻辑点；
     # conftest 依赖 _run_exit_backup / _EXIT_BACKUP_REGISTERED 模块级名字不改名。
-    backup_manager = BackupManager(
-        db_path=app.config["DATABASE_PATH"],
-        backup_dir=app.config["BACKUP_DIR"],
-        keep_days=app.config.get("BACKUP_KEEP_DAYS", 7),
-        logger=app.logger,
-    )
+    backup_manager = RuntimeExitBackupManager(app)
 
     global _EXIT_BACKUP_MANAGER, _EXIT_BACKUP_REGISTERED
     _EXIT_BACKUP_MANAGER = backup_manager
@@ -297,6 +284,8 @@ def create_app_core(
     app.config.from_object(cfg_class)
     _apply_runtime_config(app, base_dir=base_dir)
     app.config["APP_UI_MODE"] = ui_mode
+    if prepare_system_restore_startup(app):
+        return app
     # 静态资源长缓存（配合 url_for('static', ...) 版本参数）
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = int(app.config.get("SEND_FILE_MAX_AGE_DEFAULT") or 43200)
     install_versioned_url_for(app, static_dir)
@@ -340,6 +329,8 @@ def create_app_core(
         logger=app.logger,
     )
     app.config["PLUGIN_STATUS"] = plugin_status
+
+    install_workbench_request_lifecycle(app)
 
     @app.before_request
     def _open_db():
@@ -400,18 +391,22 @@ def create_app_core(
             conn = None
             try:
                 conn = get_connection(app.config["DATABASE_PATH"])
+                track_workbench_request_connection(conn)
                 op_logger = OperationLogger(conn, logger=current_app.logger)
                 try:
                     from core.services.system import SystemMaintenanceService
 
-                    _ = SystemMaintenanceService.run_if_due(
-                        conn,
-                        db_path=app.config["DATABASE_PATH"],
-                        backup_dir=app.config["BACKUP_DIR"],
-                        backup_keep_days_default=int(app.config.get("BACKUP_KEEP_DAYS", 7)),
-                        logger=app.logger,
-                        op_logger=op_logger,
-                    )
+                    workbench_request = ((request.endpoint or "").startswith("workbench.")
+                                         or request.path.startswith("/api/workbench/"))
+                    if not workbench_request:
+                        _ = SystemMaintenanceService.run_if_due(
+                            conn,
+                            db_path=app.config["DATABASE_PATH"],
+                            backup_dir=app.config["BACKUP_DIR"],
+                            backup_keep_days_default=int(app.config.get("BACKUP_KEEP_DAYS", 7)),
+                            logger=app.logger,
+                            op_logger=op_logger,
+                        )
                 except Exception as e:
                     app.logger.error(
                         "系统维护任务以非阻塞方式失败（task=run_if_due type=%s error=%s）",
@@ -428,7 +423,7 @@ def create_app_core(
             except Exception:
                 if conn is not None:
                     try:
-                        conn.close()
+                        close_workbench_request_connection(conn)
                     except Exception as close_exc:
                         _app_log_once(
                             app,
@@ -448,7 +443,7 @@ def create_app_core(
         db = g.pop("db", None)
         if db is not None:
             try:
-                db.close()
+                close_workbench_request_connection(db)
             except Exception as exc:
                 _app_log_once(app, "close_db_failed", "warning", "数据库连接关闭失败，已按清理型尽力而为继续：%s", exc)
 

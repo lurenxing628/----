@@ -1,0 +1,41 @@
+/* ============================================================
+   APS 排产系统 · Dark theme  (护眼模式)
+   Activated by html[data-theme="dark"]. Pure token reassignment —
+   per the hard constraint, dark mode only re-maps --ui-* values and
+   allows ≤10 non-token exceptions (currently 0). Every component
+   built on these tokens passes light / dark / print unchanged.
+   ============================================================ */
+
+html[data-theme="dark"] {
+  --bg-color: #0f172a; --card-bg: #1e293b;
+  --text-main: #f1f5f9; --text-muted: #94a3b8; --border-color: #334155;
+  --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.5);
+
+  --ui-bg: #0f172a; --ui-card-bg: #1e293b;
+  --ui-text: #f1f5f9; --ui-muted: #94a3b8; --ui-border: #334155;
+  --ui-shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.4);
+  --ui-shadow-md: 0 4px 6px -1px rgba(0,0,0,0.5);
+
+  --ui-primary: #3b82f6; --ui-primary-hover: #60a5fa; --ui-primary-soft: #13243a;
+
+  --ui-surface: #1e293b; --ui-surface-muted: #162032;
+  --ui-surface-soft: #111827; --ui-surface-raised: #1e293b;
+  --ui-text-strong: #f1f5f9; --ui-text-subtle: #cbd5e1; --ui-text-inverse: #ffffff;
+  --ui-focus-ring: 0 0 0 3px rgb(59 130 246 / 0.28);
+
+  --ui-neutral-bg: #162032; --ui-neutral-border: #334155;
+  --ui-neutral-text: #f1f5f9; --ui-neutral-muted: #cbd5e1;
+  --ui-info-bg: #13243a;    --ui-info-border: #2563eb;    --ui-info-text: #bfdbfe;    --ui-info-muted: #cbd5e1;
+  --ui-success-bg: #064e3b; --ui-success-border: #047857; --ui-success-text: #a7f3d0; --ui-success-muted: #bbf7d0;
+  --ui-warning-bg: #2a2416; --ui-warning-border: #92400e; --ui-warning-text: #fde68a; --ui-warning-muted: #fcd34d;
+  --ui-danger-bg: #450a0a;  --ui-danger-border: #b91c1c;  --ui-danger-text: #fecaca;  --ui-danger-muted: #fca5a5;
+
+  --ui-table-head-bg: #1e293b; --ui-table-row-hover-bg: #1e293b; --ui-table-row-even-bg: #162032;
+
+  /* Sidebar in dark mode (light spec re-mapped to slate) */
+  --sidebar-bg: #111827; --sidebar-border: #334155;
+  --sidebar-text: #cbd5e1; --sidebar-text-strong: #f8fafc; --sidebar-muted: #94a3b8;
+  --sidebar-hover-bg: rgba(148,163,184,0.10);
+  --sidebar-active-bg: #1b2a47; --sidebar-active-text: #f8fafc; --sidebar-active-accent: #60a5fa;
+}

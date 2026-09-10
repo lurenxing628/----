@@ -191,10 +191,11 @@ async function main() {
       await page.locator('.er-chart-disclosure > summary').click();
       const insights = page.locator('.er-insights'); assert((await insights.innerText()).includes('逐次报工 12 条'));
       assert((await insights.innerText()).includes('有效加工工时 3 小时')); assert(!(await insights.innerText()).includes('不能生成实际工时排名'));
-      assert.equal(await page.locator('.er-chart-disclosure .rw-resource-table').count(), 2);
-      const tables = page.locator('.er-chart-disclosure .rw-resource-table');
-      for (const [index, kind] of ['machines', 'people'].entries()) {
-        const values = await tables.nth(index).locator('tbody tr').evaluateAll(nodes => nodes.map(node => Array.from(node.cells).map(cell => cell.textContent)));
+      assert.equal(await page.locator('.er-chart-disclosure .rw-resource-table').count(), 1);
+      for (const [kind, label] of [['machines', '设备'], ['people', '人员']]) {
+        await page.getByRole('tablist', { name: '资源工时类型' }).getByRole('tab', { name: label, exact: true }).click();
+        const values = await page.locator('.er-chart-disclosure .rw-resource-table tbody tr').evaluateAll(nodes => nodes.map(node => Array.from(node.cells).map(cell => cell.textContent)));
+        assert.equal(values.length, dto.data.resources[kind].length);
         dto.data.resources[kind].forEach((row, rowIndex) => assert.deepEqual(values[rowIndex], [row.resource_label, row.operations, row.events, row.production_reports, row.records, row.effective_processing_hours, row.known_effective_processing_hours, row.unknown_hour_events].map(v => v === null ? '未知' : String(v))));
       }
       await page.locator('.er-chart-disclosure').scrollIntoViewIfNeeded(); await shot(page, prefix + '-review');
@@ -208,14 +209,14 @@ async function main() {
       await page.getByRole('searchbox', { name: '搜索批次或工序' }).fill('no-such-operation');
       dto = await change(page, () => page.getByRole('button', { name: '查询范围', exact: true }).click()); assert.equal(dto.data.page.total, 0);
       assert.equal(await page.getByRole('button', { name: /^导出范围/ }).isDisabled(), true);
-      const stale = page.waitForResponse(response => new URL(response.url()).pathname === '/api/workbench/v1/analytics' && response.status() === 409);
+      const fresh = page.waitForResponse(response => new URL(response.url()).pathname === '/api/workbench/v1/analytics' && response.status() === 200);
       await page.evaluate(snapshot_ref => remountReports({ snapshot_ref }), ready.expected.stale_snapshot);
-      assert.equal((await (await stale).json()).error.code, 'snapshot_stale');
-      await page.getByRole('alert').waitFor(); assert.equal(await page.locator('.rw-metrics').count(), 0);
-      dto = await change(page, () => page.getByRole('button', { name: '重新读取', exact: true }).click());
-      await compare(page, dto, prefix + '-stale-recovered');
+      const freshResponse = await fresh;
+      assert.equal(new URL(freshResponse.url()).searchParams.has('snapshot_ref'), false);
+      dto = await freshResponse.json();
+      await compare(page, dto, prefix + '-legacy-token-new-read');
       evidence.cases.push({ width, theme, layout, real_api_comparisons: true, pagination: true, revisions: true, legacy_original: true, exports: true, sort: true,
-        combined_filter: true, cohort_resources: true, stale_recovery: true, chart_points: chartPoints });
+        combined_filter: true, cohort_resources: true, legacy_token_ignored_on_reentry: true, chart_points: chartPoints });
       await context.close();
     }
     assert.deepEqual(evidence.errors, []); assert.deepEqual(evidence.external, []);

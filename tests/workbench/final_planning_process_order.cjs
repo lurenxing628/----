@@ -1,0 +1,102 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { originEdges } = require('./final_planning_origin_edges.cjs');
+
+const taskButton = (page, task) => page.locator('[data-plan-task="' + task.task_ref + '"]:not([data-before])');
+async function processOrderActions(page, report, h, flush) {
+  await h.action(['WBP-GANTT-003.predecessors'], async () => {
+    const before = report.requests.length;
+    const data = report.first_official, order = data.projections.process_order;
+    assert.equal(order.state, 'available'); assert.equal(order.basis, 'run_admission');
+    assert.deepEqual(order.issues, []);
+    assert.deepEqual(order.items.map(row => row.task_ref).sort(), data.tasks.map(row => row.task_ref).sort());
+    const common = data.tasks.find(row => row.batch_id === 'B1' && row.sequence === 60);
+    const previous = data.tasks.filter(row => row.batch_id === 'B1' && row.sequence === 50);
+    assert.equal(previous.length, 3); assert.equal(common.start, common.end);
+    const relation = order.items.find(row => row.task_ref === common.task_ref);
+    assert.deepEqual(relation.predecessor_operation_refs.slice().sort(), previous.map(row => row.operation_ref).sort());
+    await taskButton(page, common).click();
+    const area = page.getByRole('region', { name: '工艺前后序', exact: true });
+    assert.equal(await area.getByRole('button', { name: /^前序 / }).count(), 3);
+    await h.shot('frozen-three-piece-predecessors');
+    for (const task of previous) {
+      await taskButton(page, common).click();
+      await area.getByRole('button', { name: new RegExp('^前序 .*' + task.piece_id + '$') }).click();
+      assert.equal(await taskButton(page, task).getAttribute('aria-pressed'), 'true');
+      await area.getByRole('button', { name: /^后序 / }).click();
+      assert.equal(await taskButton(page, common).getAttribute('aria-pressed'), 'true');
+    }
+    await h.button('读取范围').click();
+    const scoped = data.tasks.find(row => row.batch_id === 'B1' && row.sequence === 40);
+    const outside = data.tasks.filter(row => row.batch_id === 'B1' && row.sequence === 30);
+    const end = new Date(Date.parse(scoped.start + 'Z') + 60000).toISOString().slice(0, 16);
+    await page.getByLabel('读取开始时间', { exact: true }).fill(scoped.start.slice(0, 16));
+    await page.getByLabel('读取结束时间', { exact: true }).fill(end);
+    await h.button('应用范围').click(); await flush();
+    const slice = h.last(value => value.plan && value.tasks);
+    assert(slice.tasks.length > 0 && slice.tasks.length < data.tasks.length);
+    assert.deepEqual(slice.projections.process_order, order);
+    await taskButton(page, scoped).click();
+    assert.equal(await area.getByRole('button', { name: '前序安排在当前读取范围外', exact: true }).count(), 3);
+    await h.shot('frozen-predecessor-outside-range');
+    await area.getByRole('button', { name: '前序安排在当前读取范围外', exact: true }).first().click(); await flush();
+    const full = h.last(value => value.plan && value.tasks);
+    assert.equal(full.plan.plan_ref, data.plan.plan_ref); assert.equal(full.scope.range_start, null);
+    assert.deepEqual(full.tasks, data.tasks);
+    const selected = await page.locator('[data-plan-task][aria-pressed="true"]:not([data-before])').getAttribute('data-plan-task');
+    assert(outside.some(task => task.task_ref === selected));
+    assert(report.requests.slice(before).every(row => row.method === 'GET'));
+    report.process_order = { plan_ref: data.plan.plan_ref, items: order.items, outside_range_selected: selected };
+    await h.shot('frozen-predecessor-full-plan-located');
+  });
+}
+
+async function originalTaskEntry(page, report, h, flush) {
+  const source = report.first_official.tasks.find(row => row.batch_id === 'B1' && row.sequence === 20 && row.piece_id === 'item-B');
+  await page.getByRole('searchbox', { name: '搜索批次、工序、设备、人员', exact: true }).fill('item-B');
+  await taskButton(page, source).click();
+  const before = report.requests.length;
+  const draft = await h.createTrial(true);
+  const matches = draft.tasks.filter(task => task.source_task_ref === source.task_ref && task.operation_ref === source.operation_ref);
+  assert.equal(draft.base.plan_ref, source.plan_ref); assert.equal(matches.length, 1);
+  assert.notEqual(matches[0].task_ref, source.task_ref);
+  const origin = { plan_ref: source.plan_ref, operation_ref: source.operation_ref, task_ref: source.task_ref };
+  const current = await page.evaluate(() => history.state.workbench);
+  assert.equal(current.view, 'trial');
+  assert.deepEqual(current.context, { draft_ref: draft.draft_ref, task_origin: origin });
+  const create = report.requests.slice(before).filter(row => row.method === 'POST' && row.url.endsWith('/trial/drafts'));
+  assert.equal(create.length, 1);
+  assert.deepEqual(create[0].input.input, { base: { plan_ref: source.plan_ref }, scope: { query: 'item-B' } });
+  assert.equal(draft.task_count, report.first_official.task_count);
+  assert(!JSON.stringify(create[0].input).includes('task_origin'));
+  const selected = () => page.locator('.tt-detail').innerText();
+  const selectedRef = () => page.locator('.tt-gantt [data-task-ref][aria-pressed="true"]').getAttribute('data-task-ref');
+  assert((await selected()).includes('item-B'));
+  assert.equal(await selectedRef(), matches[0].task_ref);
+  report.task_origin = { origin, draft_ref: draft.draft_ref, task_ref: matches[0].task_ref, url: page.url() };
+  await h.shot('original-task-draft-located');
+  await page.reload(); await page.locator('[data-trial-workspace] .tt-main').waitFor(); await flush();
+  const reread = h.last(value => value.draft_ref === draft.draft_ref && value.tasks);
+  assert.deepEqual(reread.tasks, draft.tasks);
+  assert.deepEqual((await page.evaluate(() => history.state.workbench)).context, current.context);
+  assert((await selected()).includes('item-B'));
+  assert.equal(await selectedRef(), matches[0].task_ref);
+  assert.equal(report.requests.slice(before).filter(row => row.method === 'POST' && row.url.endsWith('/trial/drafts')).length, 1);
+  await h.shot('original-task-draft-refresh');
+  const canonical = new URL(page.url());
+  canonical.searchParams.set('nav', JSON.stringify({ version: 1, view: 'trial', context: current.context }));
+  const response = await page.goto(canonical.href);
+  assert.equal(response.status(), 200);
+  await page.locator('[data-trial-workspace] .tt-main').waitFor(); await flush();
+  assert.deepEqual(h.last(value => value.draft_ref === draft.draft_ref && value.tasks).tasks, draft.tasks);
+  assert((await selected()).includes('item-B'));
+  assert.equal(await selectedRef(), matches[0].task_ref);
+  report.task_origin.canonical_url = canonical.href;
+  await h.shot('original-task-canonical-entry');
+  await originEdges(page, report, h, flush, draft, matches[0], canonical.href);
+  assert.equal(await page.getByLabel('搜索试调工序', { exact: true }).inputValue(), 'item-B');
+  await page.getByLabel('搜索试调工序', { exact: true }).fill('');
+  assert.equal(await page.locator('.tt-gantt [data-task-ref]').count(), draft.task_count);
+  return reread;
+}
+module.exports = { processOrderActions, originalTaskEntry };

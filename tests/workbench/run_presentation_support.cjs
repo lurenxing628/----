@@ -24,8 +24,8 @@ function serve(backend, report, output) {
   }));
   report.style_build_id = manifest.build_id;
   report.compile = { global_build: false, target: 'chrome109', full_current_shell: true, sources: sources.length, build_order_sha256: hash(JSON.stringify(order)) };
-  const boot = { schema_version: 1, entry_url: '/workbench', trial_url: '/workbench/trial',
-    titles: { analysis: '选择排产方案', run: '执行排产' } };
+  const boot = JSON.parse(fs.readFileSync(path.join(output, 'boot-fixture.json'), 'utf8'));
+  report.boot = boot;
   const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<link rel="icon" href="/static/' + manifest.icon + '"><script src="/static/' + manifest.theme_script + '"></script>' +
     manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + '</head><body class="aps-workbench"><div id="root"></div>' +

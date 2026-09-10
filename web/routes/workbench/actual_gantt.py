@@ -5,6 +5,7 @@ from io import BytesIO
 from flask import current_app, g, request, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_execution_input import public_ref
 from core.services.workbench.actual_gantt import MAX_ACTUAL_RESPONSE_BYTES, ActualGanttService, bind_axis_time
 from core.services.workbench.actual_gantt_export import actual_gantt_csv
 from core.services.workbench.actual_gantt_scope import COHORT_KEYS, VIEW_KEYS, ActualGanttScope
@@ -13,8 +14,10 @@ from .api_responses import api_endpoint, query_success
 from .read_context import bind_read_snapshot
 
 
-def _scope(export=False):
+def _scope(export=False, related=False):
     allowed = set(COHORT_KEYS) | {"snapshot_ref"}
+    if related:
+        allowed.add("target_task_ref")
     if export:
         allowed |= set(VIEW_KEYS) | {"format"}
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
@@ -22,12 +25,12 @@ def _scope(export=False):
     return ActualGanttScope.parse({key: request.args[key] for key in COHORT_KEYS if key in request.args})
 
 
-def _read(scope):
+def _read(scope, *, chain_target=None):
     reader = ActualGanttService(g.db, current_app.logger)
     with reader.read_snapshot():
-        data, state = reader.workspace(scope)
+        data, state = reader.workspace(scope, chain_target=chain_target)
         snapshot = bind_read_snapshot(scope.scope(), state, request.args.get("snapshot_ref"))
-    return bind_axis_time(data, snapshot["as_of"]), snapshot
+    return bind_axis_time(data, snapshot["as_of"], snapshot["snapshot_ref"]), snapshot
 
 
 @api_endpoint
@@ -36,6 +39,19 @@ def actual_gantt_workspace():
     response = query_success(data, snapshot)
     if len(response.get_data()) > MAX_ACTUAL_RESPONSE_BYTES:
         raise WorkbenchCommandRejected("query_too_large", "现场甘特响应超过读取上限，未返回截断数据。", 413)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@api_endpoint
+def actual_gantt_related_chain():
+    scope = _scope(related=True)
+    target = request.args.get("target_task_ref")
+    public_ref(target)
+    if not request.args.get("snapshot_ref"):
+        raise WorkbenchCommandRejected("snapshot_required", "关联链必须绑定当前计划与执行读取快照。", 400)
+    data, snapshot = _read(scope, chain_target=target)
+    response = query_success({key: data[key] for key in ("plan", "scope", "critical_chain")}, snapshot)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -58,4 +74,5 @@ def actual_gantt_export():
 
 def register_actual_gantt_routes(bp):
     bp.add_url_rule("/api/workbench/v1/actual-gantt", view_func=actual_gantt_workspace, methods=["GET"])
+    bp.add_url_rule("/api/workbench/v1/actual-gantt/chain", view_func=actual_gantt_related_chain, methods=["GET"])
     bp.add_url_rule("/api/workbench/v1/actual-gantt/export", view_func=actual_gantt_export, methods=["GET"])

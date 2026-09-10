@@ -9,7 +9,7 @@
   }
   const stack = (first, second) => <div className="rw-stack"><div><CellText value={first} label="主信息" /></div><div className="rw-muted"><CellText value={second} label="工序信息" /></div></div>;
   function status(row) { return <span className={row.finish_late ? 'rw-danger' : row.late_open ? 'rw-warning' : row.complete ? 'rw-success' : 'rw-muted'}>{row.execution_label}</span>; }
-  function Table({ data, onDetail, busy, primary }) {
+  function Table({ data, onDetail, onLocate, busy, primary }) {
     const { DataTable } = window.APSWorkbenchUI;
     let columns;
     const detail = row => <Button className="rw-icon-button" icon="search" aria-label={'查看工序 ' + row.operation_label} disabled={busy || !row.operation_ref} onClick={() => onDetail(row.operation_ref)} />;
@@ -43,6 +43,8 @@
     ];
     else columns = data.columns.filter(column => !column.key.endsWith('_ref')).map(column => ({ key: column.key, title: column.label,
       render: row => <CellText value={text(row[column.key])} label={column.label} />, align: ['operations', 'batches', 'events', 'production_reports', 'records', 'effective_processing_hours', 'known_effective_processing_hours', 'unknown_hour_events'].includes(column.key) ? 'right' : 'left' }));
+    if (data.topic === 'records' && typeof onLocate === 'function') columns.push({ key: 'locate', title: '定位', width: 52,
+      render: row => <Button className="rw-icon-button" icon="chart-gantt" aria-label={'定位实际甘特 ' + (row.report_no || row.event_label)} disabled={busy} onClick={() => onLocate(row)} /> });
     const visible = columns.filter(column => column.key !== 'action' || typeof onDetail === 'function');
     const fixedWidth = visible.every(column => typeof column.width === 'number') ? visible.reduce((sum, column) => sum + column.width, 0) : 0;
     return data.rows.length ? <div className={'rw-table-scroll' + (primary ? ' rw-primary-table' : '')} tabIndex={primary ? 0 : undefined} role={primary ? 'region' : undefined} aria-label={primary ? '报表结果表格' : undefined}><DataTable className={['machines', 'people'].includes(data.topic) ? 'rw-resource-table' : 'rw-table'}
