@@ -6,6 +6,7 @@ _DISPATCH_DETAIL_CODES = {
     "dispatch_operation_failed",
     "dispatch_operation_exception",
     "graph_blocked_after_failure",
+    "graph_fixed_successor_order_conflict",
     "missing_batch",
     "skipped_after_batch_failure",
 }

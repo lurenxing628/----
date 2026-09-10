@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithms import ScheduleResult
-from core.algorithms.greedy.seed import _identity_int, _invalid_identity_supplied
+from core.algorithms.greedy.seed import _identity_int, _invalid_identity_supplied, with_seed_external_group_metadata
 from core.algorithms.value_domains import INTERNAL
 from core.infrastructure.errors import ValidationError
 
@@ -57,26 +57,33 @@ def _coerce_optional_seed_identity(value: Any, *, idx: int, field: str) -> int:
     return 0
 
 
+def _optional_seed_text(item: Dict[str, Any], field: str) -> Optional[str]:
+    return str(item.get(field) or "") or None
+
+
 def coerce_seed_result_item(item: Any, *, idx: int) -> ScheduleResult:
     if not isinstance(item, dict):
         raise TypeError(f"第 {idx + 1} 条已有排产记录格式不正确。")
     start_time, end_time = _coerce_seed_time_range(item, idx=idx)
     op_id = _coerce_optional_seed_identity(item.get("op_id"), idx=idx, field="工序编号")
     seq = _coerce_optional_seed_identity(item.get("seq"), idx=idx, field="工序号")
-    return ScheduleResult(
+    result = ScheduleResult(
         op_id=op_id,
         op_code=str(item.get("op_code") or ""),
         batch_id=str(item.get("batch_id") or ""),
         seq=seq,
-        machine_id=(str(item.get("machine_id") or "") or None),
-        operator_id=(str(item.get("operator_id") or "") or None),
+        machine_id=_optional_seed_text(item, "machine_id"),
+        operator_id=_optional_seed_text(item, "operator_id"),
         start_time=start_time,
         end_time=end_time,
         source=str(item.get("source") or INTERNAL),
-        op_type_name=(str(item.get("op_type_name") or "") or None),
-        seed_source=(str(item.get("seed_source") or "") or None),
-        state_revision=(str(item.get("state_revision") or "") or None),
+        op_type_name=_optional_seed_text(item, "op_type_name"),
+        seed_source=_optional_seed_text(item, "seed_source"),
+        state_revision=_optional_seed_text(item, "state_revision"),
     )
+    if "_external_group_metadata" in item:
+        return with_seed_external_group_metadata(result, item["_external_group_metadata"])
+    return result
 
 
 def coerce_seed_results(

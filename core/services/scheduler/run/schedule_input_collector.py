@@ -13,10 +13,12 @@ from core.services.scheduler.execution.execution_fact_provider import ExecutionF
 from core.shared.boolean_normalize import normalize_yes_no_wide, to_yes_no
 from core.shared.number_utils import parse_finite_float
 
+from .schedule_execution_feedback_guard import ensure_execution_feedback_publishable
 from .schedule_execution_guardrails import (
     _collect_execution_guardrails,
     _op_id,
 )
+from .schedule_execution_reservations import ExecutionResourceCalendar, build_execution_resource_reservations
 from .schedule_input_contracts import _build_algo_operations_outcome
 from .schedule_input_runtime_support import _build_runtime_support_inputs
 
@@ -316,6 +318,11 @@ def collect_schedule_run_input(
         operations,
         prev_version=prev_version,
     )
+    execution_reservations = build_execution_resource_reservations(
+        svc, facts=execution_facts, selected_op_ids={_op_id(op) for op in operations}, start_dt=start_dt_norm,
+    )
+    if execution_reservations:
+        cal_svc = ExecutionResourceCalendar(cal_svc, execution_reservations)
     reschedulable_operations, reschedulable_op_ids, missing_internal_resource_op_ids = _remove_completed_from_reschedulable(
         reschedulable_operations=reschedulable_operations,
         reschedulable_op_ids=reschedulable_op_ids,
@@ -355,12 +362,16 @@ def collect_schedule_run_input(
         execution_fixed_op_ids=execution_fixed_op_ids,
         execution_completed_op_ids=execution_completed_op_ids,
         execution_seed_results=execution_seed_results,
+        execution_reservations=execution_reservations,
         strict_mode=bool(strict_mode),
         build_freeze_window_seed_fn=build_freeze_window_seed_fn,
         load_machine_downtimes_fn=load_machine_downtimes_fn,
         build_resource_pool_fn=build_resource_pool_fn,
         extend_downtime_map_for_resource_pool_fn=extend_downtime_map_for_resource_pool_fn,
         raise_schedule_empty_result_fn=_raise_schedule_empty_result,
+    )
+    ensure_execution_feedback_publishable(
+        execution_facts, selected_op_ids={_op_id(op) for op in operations}, simulate=bool(simulate),
     )
 
     return ScheduleRunInput(
@@ -392,7 +403,7 @@ def collect_schedule_run_input(
         execution_snapshot_revision=execution_snapshot.revision,
         execution_snapshot_op_ids=list(execution_snapshot.op_ids),
         execution_snapshot_op_count=int(execution_snapshot.op_count),
-        execution_has_guarded_facts=bool(execution_fixed_op_ids or execution_completed_op_ids),
+        execution_has_guarded_facts=bool(execution_fixed_op_ids or execution_completed_op_ids or execution_reservations),
         schedule_output_allowed_op_ids=set(reschedulable_op_ids)
         | set(execution_fixed_op_ids)
         | set(execution_completed_op_ids),

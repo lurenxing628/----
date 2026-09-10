@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from core.algorithm_contracts.date_parsers import parse_date, parse_datetime
+from core.algorithm_contracts.date_parsers import due_exclusive, parse_date, parse_datetime
 from core.algorithm_contracts.dispatch_rules import DispatchRule
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_runtime.algo_stats import increment_counter
@@ -258,7 +258,10 @@ def _resolve_end_dt_exclusive(
             increment_counter(algo_stats, "end_date_ignored_count", bucket="param_fallbacks")
     if not end_d:
         return None
-    return datetime(end_d.year, end_d.month, end_d.day, 0, 0, 0) + timedelta(days=1)
+    # 复用 due_exclusive 的哨兵口径：9999-12-31（date.max 的日期）是 ERP 常见的
+    # “无截止”哨兵值，裸 +1 天会溢出 OverflowError；due_exclusive 对该哨兵显式
+    # 返回 datetime.max（语义“不设上限”），普通日期仍按当日 0 点 +1 天作排他上界。
+    return due_exclusive(end_d)
 
 
 def _resolve_strategy(

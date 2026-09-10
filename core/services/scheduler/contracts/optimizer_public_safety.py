@@ -94,6 +94,7 @@ def project_attempt_metrics(value: Any) -> Dict[str, Any]:
             continue
         if isinstance(metric_value, (int, float)):
             out[key] = metric_value
+    _add_metric_completion(out, value)
     return out
 
 
@@ -109,7 +110,33 @@ def project_public_metrics(value: Any) -> Dict[str, Any]:
             continue
         if isinstance(metric_value, (int, float)):
             out[key] = metric_value
+    _add_metric_completion(out, value)
     return out
+
+
+def _add_metric_completion(out: Dict[str, Any], metrics: Dict[str, Any]) -> None:
+    raw = metrics.get("completion")
+    if not isinstance(raw, dict):
+        return
+    completion: Dict[str, Any] = {}
+    if isinstance(raw.get("objective_defined"), bool):
+        completion["objective_defined"] = raw["objective_defined"]
+    for key in ("expected_operation_count", "missing_operation_count", "unexpected_result_count",
+                "complete_batch_count", "incomplete_batch_count", "partial_batch_count", "failure_detail_count"):
+        count = public_int(raw.get(key))
+        if count is not None and count >= 0:
+            completion[key] = count
+    allowed_labels = {
+        "contract": ("expected_operations_complete_only_v1",),
+        "objective_score_policy": ("original", "unknown_all_components"),
+        "due_metrics_scope": ("completed_batches_only",),
+        "resource_metrics_scope": ("scheduled_results_only",),
+    }
+    for key, labels in allowed_labels.items():
+        if raw.get(key) in labels:
+            completion[key] = raw[key]
+    if completion:
+        out["completion"] = completion
 
 
 def safe_counter_dict(value: Any) -> Dict[str, int]:

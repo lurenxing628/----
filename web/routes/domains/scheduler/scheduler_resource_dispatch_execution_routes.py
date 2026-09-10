@@ -20,7 +20,7 @@ from web.viewmodels.scheduler_resource_dispatch_execution import (
     execution_result_payload,
 )
 
-from ...excel_utils import read_uploaded_excel_bytes
+from ...helpers.excel_utils import read_uploaded_excel_bytes
 from .scheduler_bp import bp
 from .scheduler_resource_dispatch_execution_context import (
     _actual_record_result_payload,
@@ -88,7 +88,7 @@ def resource_dispatch_execution_events(op_id: int):
         payload, status = _execution_error_response(exc)
         return jsonify(payload), status
     except Exception:
-        current_app.logger.exception("现场记录加载失败")
+        current_app.logger.exception("现场记录加载失败（op_id=%s）", op_id)
         return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "现场记录加载失败，请稍后重试。")), 500
 
 
@@ -121,7 +121,7 @@ def resource_dispatch_execution_events_by_task(task_key: str):
         payload, status = _execution_error_response(exc)
         return jsonify(payload), status
     except Exception:
-        current_app.logger.exception("现场记录加载失败")
+        current_app.logger.exception("现场记录加载失败（task_key=%s）", task_key)
         return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "现场记录加载失败，请稍后重试。")), 500
 
 
@@ -137,7 +137,7 @@ def resource_dispatch_execution_actual(op_id: int):
         payload, status = _execution_error_response(exc, action=action)
         return jsonify(payload), status
     except Exception:
-        current_app.logger.exception("填写实际情况失败")
+        current_app.logger.exception("填写实际情况失败（op_id=%s）", op_id)
         return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "填写实际情况失败，请稍后重试。")), 500
 
 
@@ -153,7 +153,7 @@ def resource_dispatch_execution_actual_by_task(task_key: str):
         payload, status = _execution_error_response(exc, action=action)
         return jsonify(payload), status
     except Exception:
-        current_app.logger.exception("填写实际情况失败")
+        current_app.logger.exception("填写实际情况失败（task_key=%s）", task_key)
         return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "填写实际情况失败，请稍后重试。")), 500
 
 
@@ -169,7 +169,7 @@ def _record_execution_feedback(op_id: int, action: str):
         payload, status = _execution_error_response(exc, action=action)
         return jsonify(payload), status
     except Exception:
-        current_app.logger.exception("现场记录提交失败")
+        current_app.logger.exception("现场记录提交失败（op_id=%s, action=%s）", op_id, action)
         return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "现场记录提交失败，请稍后重试。")), 500
 
 

@@ -10,7 +10,7 @@ from core.services.common.excel_audit import log_excel_export
 from core.services.scheduler.resource_dispatch_excel import build_resource_dispatch_workbook
 from web.error_boundary import json_error_response, user_visible_app_error_message
 from web.navigation_context import set_current_workbench_navigation_context
-from web.routes.history_summary_logging import log_history_version_option_parse_warnings
+from web.routes.helpers.history_summary_logging import log_history_version_option_parse_warnings
 from web.viewmodels.plan_context_capsule import history_row_capsule_fields
 from web.viewmodels.scheduler_history_summary import decorate_history_version_options
 from web.viewmodels.scheduler_resource_dispatch import (

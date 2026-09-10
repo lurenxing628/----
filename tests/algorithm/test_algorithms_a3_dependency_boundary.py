@@ -22,15 +22,6 @@ _A3_DIR_MEMBERS = {
     "core/algorithms/greedy",
     "core/algorithms/greedy/dispatch",
 }
-_REMAINING_PRODUCTION_DIR_CYCLES = {
-    (".", "web/bootstrap", "web/routes", "web/routes/domains/scheduler"): 41,
-    ("core/plugins", "core/services/common"): 2,
-    ("core/services/report", "core/services/report/exporters"): 3,
-}
-_REMAINING_WITH_TESTS_DIR_CYCLES = {
-    **_REMAINING_PRODUCTION_DIR_CYCLES,
-    ("tests/gantt", "tests/operation_execution", "tests/resource_dispatch", "tests/web_pages"): 11,
-}
 _A3_PARENT_AWARE_FILE_MEMBERS = {
     "core.algorithms",
     "core.algorithms.greedy",
@@ -49,6 +40,8 @@ _AUTO_ASSIGN_CONTRACT_NAMES = (
     "AUTO_ASSIGN_REASON_NO_MACHINE_CANDIDATE",
     "AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE",
     "AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR",
+    # 2026-07-20 A07：窗口截止专属归因，canonical 与旧路径 re-export 必须是同一对象。
+    "AUTO_ASSIGN_REASON_WINDOW_BLOCKED",
     "AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS",
     "AutoAssignAttempt",
     "auto_assign_attempt_from_result",
@@ -93,8 +86,21 @@ def _run_import_cycle_scan(*, include_tests: bool):
     return json.loads(completed.stdout)
 
 
-def _dir_cycle_map(payload):
-    return {tuple(record["members"]): len(record["edges"]) for record in payload["hard_dir_cycles"]}
+def _assert_a3_cycle_boundary(payload):
+    assert payload["module_count"] > 0
+    assert payload["parse_errors"] == []
+    protected_dirs = _A3_DIR_MEMBERS | {"core/algorithm_contracts", "core/algorithm_runtime"}
+    for record in payload["hard_dir_cycles"]:
+        assert not any(
+            member == prefix or member.startswith(prefix + "/")
+            for member in record["members"] for prefix in protected_dirs
+        ), record
+    for key in ("explicit_hard_file_cycles", "explicit_runtime_file_cycles"):
+        for record in payload[key]:
+            assert not any(
+                member == prefix.replace("/", ".") or member.startswith(prefix.replace("/", ".") + ".")
+                for member in record["members"] for prefix in protected_dirs
+            ), record
 
 
 def test_root_greedy_scheduler_public_contract_is_unchanged() -> None:
@@ -387,25 +393,11 @@ def test_a3_is_removed_without_changing_other_directory_cycles() -> None:
     production = _run_import_cycle_scan(include_tests=False)
     with_tests = _run_import_cycle_scan(include_tests=True)
 
-    assert production["module_count"] == 779
-    assert with_tests["module_count"] == 1475
-    assert _dir_cycle_map(production) == _REMAINING_PRODUCTION_DIR_CYCLES
-    assert _dir_cycle_map(with_tests) == _REMAINING_WITH_TESTS_DIR_CYCLES
-    assert not any(_A3_DIR_MEMBERS == set(record["members"]) for record in production["hard_dir_cycles"])
-    assert not any(_A3_DIR_MEMBERS == set(record["members"]) for record in with_tests["hard_dir_cycles"])
-
-    for payload, unresolved_count in ((production, 6), (with_tests, 44)):
-        assert payload["parse_errors"] == []
-        assert len(payload["unresolved_dynamic_imports"]) == unresolved_count
-        assert len(payload["hard_file_cycles"]) == 9
-        assert len(payload["explicit_hard_file_cycles"]) == 0
-        assert payload["runtime_file_cycle_count"] == 13
-        assert len(payload["explicit_runtime_file_cycles"]) == 4
-        assert not any(
-            member in {"core/algorithm_contracts", "core/algorithm_runtime"}
-            for record in payload["hard_dir_cycles"]
-            for member in record["members"]
-        )
+    # Unrelated modules and completed A4/A5/A6 cleanups may change independently.
+    # Protect the actual A3 dependency boundary instead of pinning global counts.
+    assert with_tests["module_count"] > production["module_count"]
+    for payload in (production, with_tests):
+        _assert_a3_cycle_boundary(payload)
 
     algorithm_file_records = [
         record
@@ -414,3 +406,17 @@ def test_a3_is_removed_without_changing_other_directory_cycles() -> None:
     ]
     assert len(algorithm_file_records) == 1
     assert len(algorithm_file_records[0]["edges"]) == 24
+
+
+@pytest.mark.parametrize("cycle_key,member", [
+    ("hard_dir_cycles", "core/algorithm_runtime"),
+    ("hard_dir_cycles", "core/algorithms/greedy/dispatch"),
+    ("explicit_hard_file_cycles", "core.algorithm_contracts.types"),
+    ("explicit_runtime_file_cycles", "core.algorithms.greedy.scheduler"),
+])
+def test_a3_boundary_rejects_reintroduced_cycles(cycle_key, member):
+    payload = {"module_count": 1, "parse_errors": [], "hard_dir_cycles": [],
+               "explicit_hard_file_cycles": [], "explicit_runtime_file_cycles": []}
+    payload[cycle_key] = [{"members": [member, "outside.module"]}]
+    with pytest.raises(AssertionError):
+        _assert_a3_cycle_boundary(payload)

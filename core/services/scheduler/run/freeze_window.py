@@ -27,6 +27,7 @@ _FREEZE_DISABLED_NO_PREVIOUS_VERSION = "no_previous_version"
 _FREEZE_DISABLED_CONFIG_DEGRADED = "config_degraded"
 _FREEZE_DISABLED_NO_RESCHEDULABLE_OPERATIONS = "no_reschedulable_operations"
 _FREEZE_DISABLED_NO_PREVIOUS_SCHEDULE_ROWS = "no_previous_schedule_rows"
+_FREEZE_DISABLED_NO_FREEZABLE_PREFIX = "no_freezable_prefix"
 
 
 @dataclass(frozen=True)
@@ -418,7 +419,13 @@ def _finish_freeze_seed_result(
 
     freeze_meta["freeze_applied"] = bool(frozen_op_ids)
     if str(freeze_meta.get("freeze_state") or "").strip().lower() != "degraded":
-        freeze_meta["freeze_state"] = "active" if frozen_op_ids else "disabled"
+        if frozen_op_ids:
+            freeze_meta["freeze_state"] = "active"
+        else:
+            # 走到收尾且非 degraded 但一个前缀都没冻住（如上一版窗内命中行全部对应
+            # seq<=0 工序，被 freeze_window_prefixes.max_seq_by_batch 跳过）。补上
+            # reason，保住"disabled 必带可查原因"的诊断口径（audit 2026-07-20 A15）。
+            _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_NO_FREEZABLE_PREFIX)
     _finalize_freeze_application_status(freeze_meta)
     return frozen_op_ids, seed_results, warnings
 

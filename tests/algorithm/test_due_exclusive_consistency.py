@@ -101,3 +101,42 @@ def test_due_exclusive_consistency() -> None:
     )
     assert len(scheduled) == 1, f"report scheduled overdue 应为 1，实际={scheduled}"
     assert len(unscheduled) == 0, f"report unscheduled overdue 应为 0，实际={unscheduled}"
+
+
+def test_due_exclusive_max_due_sentinel_end_to_end_not_overdue() -> None:
+    """端到端回归：交期填 9999-12-31（ERP 常用"无交期"哨兵）时，排产评估与逾期报表
+    都不得抛 OverflowError，且口径与 None→datetime.max 一致——永远判为不逾期。"""
+
+    from core.algorithms.evaluation import compute_metrics
+    from core.algorithms.types import ScheduleResult
+    from core.services.common.overdue_calculations import compute_overdue_bucket_groups
+
+    finish_dt = datetime(2026, 2, 2, 0, 0, 0)
+    batch = SimpleNamespace(batch_id="B900", due_date="9999-12-31", priority="normal", quantity=1)
+    result = ScheduleResult(
+        op_id=1,
+        op_code="OP001",
+        batch_id="B900",
+        seq=10,
+        machine_id="MC1",
+        operator_id="OP1",
+        start_time=datetime(2026, 2, 1, 8, 0, 0),
+        end_time=finish_dt,
+        source="internal",
+        op_type_name="A工种",
+    )
+
+    metrics = compute_metrics([result], {"B900": batch})
+    assert metrics.overdue_count == 0, f"9999-12-31 哨兵交期不应判逾期，实际 overdue_count={metrics.overdue_count}"
+    assert abs(metrics.total_tardiness_hours - 0.0) < 1e-9, f"9999-12-31 哨兵交期拖期应为 0，实际={metrics.total_tardiness_hours}"
+
+    scheduled, unscheduled, invalid_time, _as_of = compute_overdue_bucket_groups(
+        [
+            {"batch_id": "B900", "due_date": "9999-12-31", "finish_time": "2026-02-02 00:00:00"},
+            {"batch_id": "B901", "due_date": "9999-12-31", "finish_time": None},
+        ],
+        now_dt=finish_dt,
+    )
+    assert scheduled == [], f"9999-12-31 哨兵交期不应进已排程逾期桶，实际={scheduled}"
+    assert unscheduled == [], f"9999-12-31 哨兵交期不应进未排程逾期桶，实际={unscheduled}"
+    assert invalid_time == [], f"9999-12-31 是合法哨兵交期，不应进异常桶，实际={invalid_time}"

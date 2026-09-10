@@ -1,11 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Set, Tuple, Union
 
+from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
+from core.models.batch import Batch
+from core.models.batch_operation import BatchOperation
 from core.services.common.build_outcome import BuildOutcome
+
+
+class SummaryMetrics(Protocol):
+    # Diagnostic attributes remain optional getattr inputs; do not import algorithms here.
+    def to_dict(self) -> Dict[str, Any]: ...
 
 
 class ScheduleResultStatus(str, Enum):
@@ -17,22 +26,24 @@ class ScheduleResultStatus(str, Enum):
 
 @dataclass(frozen=True)
 class SummaryBuildContext:
+    # Dict / attribute object / config-layer snapshot; normalized by build_result_summary.
     cfg: Any
     version: int
     normalized_batch_ids: List[str]
     start_dt: datetime
-    end_date: Optional[Any]
-    batches: Dict[str, Any]
-    operations: List[Any]
-    results: List[Any]
-    summary: Any
-    used_strategy: Any
+    end_date: Optional[Union[date, str]]
+    batches: Dict[str, Batch]
+    operations: List[BatchOperation]
+    results: List[ScheduleResult]
+    summary: Optional[ScheduleSummary]
+    used_strategy: SortStrategy
+    # Metadata and traces are heterogeneous producer-owned payloads, not normalized here.
     used_params: Dict[str, Any]
     algo_mode: str
     objective_name: str
     time_budget_seconds: int
     best_score: Optional[Tuple[float, ...]]
-    best_metrics: Optional[Any]
+    best_metrics: Optional[SummaryMetrics]
     best_order: List[str]
     attempts: List[Dict[str, Any]]
     improvement_trace: List[Dict[str, Any]]
@@ -41,12 +52,13 @@ class SummaryBuildContext:
     missing_internal_resource_op_ids: Optional[Set[int]] = None
     scheduled_op_ids: Optional[Set[int]] = None
     freeze_meta: Optional[Dict[str, Any]] = None
-    input_build_outcome: Optional[BuildOutcome[Any]] = None
+    input_build_outcome: Optional[BuildOutcome[List[Any]]] = None
     downtime_meta: Optional[Dict[str, Any]] = None
     resource_pool_meta: Optional[Dict[str, Any]] = None
     readiness_gate_enabled: bool = False
     algo_stats: Optional[Dict[str, Any]] = None
     algo_warnings: Optional[List[str]] = None
+    # Producer and degradation consumer share a mutable Dict contract, not a TypedDict.
     warning_merge_status: Optional[Dict[str, Any]] = None
     graph_analysis_public: Optional[Dict[str, Any]] = None
     graph_analysis_diagnostics: Optional[Dict[str, Any]] = None

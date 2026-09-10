@@ -48,7 +48,11 @@ def update_machine_last_state(
             last_op_type_by_machine[machine_id] = op_type
         return
 
+    # audit 2026-07-20 A16：last_op_type 必须与 last_end 同守卫——仅当机台时间线末尾
+    # 真实推进时才允许覆盖上一工种。否则 gap 回填（把更早的空档排进已有更晚工序的机台）
+    # 会把 (end, type) 快照改成"末尾时间不变、工种却换成回填工序"的自相矛盾状态，
+    # 导致换型惩罚（internal_slot._changeover_penalty）与自动选机排序按错的上一工种计算。
     if prev_end is None or end_time > prev_end:
         last_end_by_machine[machine_id] = end_time
-    if op_type:
-        last_op_type_by_machine[machine_id] = op_type
+        if op_type:
+            last_op_type_by_machine[machine_id] = op_type

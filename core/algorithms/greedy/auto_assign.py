@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.auto_assign_contract import (
@@ -13,10 +13,12 @@ from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_NO_MACHINE_CANDIDATE,
     AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE,
     AUTO_ASSIGN_REASON_SUCCESS,
+    AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
     AutoAssignAttempt,
     auto_assign_attempt_from_result,
 )
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours
+from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 from core.infrastructure.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
 
@@ -25,6 +27,13 @@ from core.shared.strict_parse import parse_required_int
 class _MachineCandidates:
     values: List[str]
     reason: str = AUTO_ASSIGN_REASON_SUCCESS
+
+
+class _PairProbe(NamedTuple):
+    """单个机-人组合的评估结果：score=None 表示不可行，window_blocked 标记不可行原因是否为窗口截止。"""
+
+    score: Optional[Tuple[Any, ...]]
+    window_blocked: bool
 
 
 def auto_assign_internal_resources(
@@ -267,6 +276,8 @@ def _choose_best_pair(
     best: Optional[Tuple[Any, ...]] = None
     best_pair: Optional[Tuple[str, str]] = None
     seen_operator = False
+    window_blocked_pairs = 0
+    non_window_infeasible_pairs = 0
     prev_end = batch_progress.get(str(getattr(op, "batch_id", "") or "").strip(), base_time)
     for machine_id in machine_candidates:
         operator_candidates = _operator_candidates_for_machine(machine_id, fixed_operator=fixed_operator, pool=pool)
@@ -274,7 +285,7 @@ def _choose_best_pair(
             continue
         seen_operator = True
         for operator_id in _sort_operator_candidates(operator_candidates, machine_id=machine_id, pool=pool, operator_busy_hours=operator_busy_hours):
-            score = _pair_score(
+            probe = _pair_score(
                 calendar=calendar,
                 op=op,
                 batch=batch,
@@ -293,16 +304,44 @@ def _choose_best_pair(
                 pool=pool,
                 abort_after=best[0] if best is not None else None,
             )
-            if score is not None and (best is None or score < best):
-                best = score
-                best_pair = (machine_id, operator_id)
+            if probe.score is not None:
+                if best is None or probe.score < best:
+                    best = probe.score
+                    best_pair = (machine_id, operator_id)
+            elif probe.window_blocked:
+                window_blocked_pairs += 1
+            else:
+                non_window_infeasible_pairs += 1
     if best_pair is None:
-        if not seen_operator:
-            count("auto_assign_no_operator_candidate_count")
-            return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE)
-        count("auto_assign_no_feasible_pair_count")
-        return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR)
+        return _pair_failure_attempt(
+            seen_operator=seen_operator,
+            window_blocked_pairs=window_blocked_pairs,
+            non_window_infeasible_pairs=non_window_infeasible_pairs,
+            count=count,
+        )
     return AutoAssignAttempt(machine_id=best_pair[0], operator_id=best_pair[1])
+
+
+def _pair_failure_attempt(
+    *,
+    seen_operator: bool,
+    window_blocked_pairs: int,
+    non_window_infeasible_pairs: int,
+    count: Any,
+) -> AutoAssignAttempt:
+    if not seen_operator:
+        count("auto_assign_no_operator_candidate_count")
+        return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE)
+    # 窗口归因规则：仅当"所有被评估的机-人组合都因排产截止窗口被拒、且不存在窗口外原因的
+    # 不可行判定"时才归因 WINDOW_BLOCKED；混合场景（存在窗口外原因的不可行判定）保持
+    # NO_FEASIBLE_PAIR，宁可保守也不把非窗口问题伪装成截止日期问题。
+    # 注：abort_after 剪枝（非窗口 None）只会在已找到可行 best 后出现，走不到这里，
+    # 这里对它的计数纯属防御。
+    if window_blocked_pairs > 0 and non_window_infeasible_pairs == 0:
+        count("auto_assign_window_blocked_count")
+        return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_WINDOW_BLOCKED)
+    count("auto_assign_no_feasible_pair_count")
+    return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR)
 
 
 def _operator_candidates_for_machine(machine_id: str, *, fixed_operator: str, pool: Dict[str, Any]) -> List[str]:
@@ -341,7 +380,7 @@ def _pair_score(
     total_hours_base: float,
     pool: Dict[str, Any],
     abort_after: Optional[datetime],
-) -> Optional[Tuple[Any, ...]]:
+) -> _PairProbe:
     estimate = estimate_internal_slot(
         calendar=calendar,
         op=op,
@@ -357,11 +396,17 @@ def _pair_score(
         last_op_type_by_machine=last_op_type_by_machine,
         abort_after=abort_after,
         total_hours_base=total_hours_base,
+        overlap_reuse=overlap_reuse_for(machine_timeline),
     )
-    if estimate.abort_after_hit or estimate.blocked_by_window:
-        return None
+    if estimate.abort_after_hit:
+        return _PairProbe(score=None, window_blocked=False)
+    if estimate.blocked_by_window:
+        return _PairProbe(score=None, window_blocked=True)
     load_penalty = float(machine_busy_hours.get(machine_id, 0.0) or 0.0) + float(operator_busy_hours.get(operator_id, 0.0) or 0.0)
-    return (estimate.end_time, int(estimate.changeover_penalty), float(load_penalty), _pair_rank(pool, operator_id, machine_id), machine_id, operator_id)
+    return _PairProbe(
+        score=(estimate.end_time, int(estimate.changeover_penalty), float(load_penalty), _pair_rank(pool, operator_id, machine_id), machine_id, operator_id),
+        window_blocked=False,
+    )
 
 
 def _pair_rank(pool: Dict[str, Any], operator_id: str, machine_id: str) -> int:

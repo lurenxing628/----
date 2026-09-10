@@ -1,4 +1,4 @@
-"""回归测试：GreedyScheduler/optimize_schedule 的排序键严格解析边界——batch_order_override 全覆盖时只对 due_date 与 created_at 跳过默认排序、ready_date 仅在 readiness_gate 开启时校验、created_at 严格校验只作用于 FIFO 当前策略；ready_date 调整时日历异常如实冒泡不静默回落，gate 关闭则根本不调用。"""
+"""回归测试：排序键严格解析边界不变；ready_date 只设原始下界，实际资源日历异常须进入失败明细和原始异常日志，不静默回落。"""
 
 from __future__ import annotations
 
@@ -150,19 +150,37 @@ def test_schedule_created_at_strict_only_applies_to_fifo():
 
 
 @pytest.mark.parametrize("strict_mode", [False, True])
-def test_ready_date_adjust_errors_bubble_without_silent_fallback(strict_mode: bool):
-    scheduler = GreedyScheduler(calendar_service=_Calendar(raise_on_midnight=True), config_service=_config())
+def test_ready_date_resource_calendar_errors_remain_visible(strict_mode: bool, monkeypatch, caplog):
+    calendar = _Calendar()
+    calls = []
+    failure = RuntimeError("日历服务暂时不可用")
+
+    def fail_on_resource(dt, priority=None, operator_id=None):
+        calls.append((dt, operator_id))
+        assert operator_id == "O1", "齐套初始化不应搜索全局日历"
+        raise failure
+
+    monkeypatch.setattr(calendar, "adjust_to_working_time", fail_on_resource)
+    scheduler = GreedyScheduler(calendar_service=calendar, config_service=_config())
     batch = _batch("B1", due_date="2026-01-02", ready_date="2026-01-03", created_at=None)
 
-    with pytest.raises(RuntimeError, match="日历服务暂时不可用"):
-        scheduler.schedule(
-            operations=[],
-            batches={"B1": batch},
-            strategy=SortStrategy.PRIORITY_FIRST,
-            start_dt=datetime(2026, 1, 1, 8, 0, 0),
-            readiness_gate_enabled=True,
-            strict_mode=strict_mode,
-        )
+    results, summary, _, _ = scheduler.schedule(
+        operations=[_internal_op("B1")],
+        batches={"B1": batch},
+        strategy=SortStrategy.PRIORITY_FIRST,
+        start_dt=datetime(2026, 1, 1, 8, 0, 0),
+        readiness_gate_enabled=True,
+        strict_mode=strict_mode,
+    )
+    assert calls == [(datetime(2026, 1, 3), "O1")]
+    assert results == []
+    assert not summary.success
+    assert summary.failed_ops == 1 and summary.scheduled_ops == 0
+    assert len(summary.failure_details) == 1
+    assert summary.failure_details[0]["code"] == "dispatch_operation_exception"
+    assert summary.failure_details[0]["op_id"] == 1
+    assert "日历服务暂时不可用" in caplog.text
+    assert any(record.exc_info and record.exc_info[1] is failure for record in caplog.records)
 
 
 @pytest.mark.parametrize("strict_mode", [False, True])

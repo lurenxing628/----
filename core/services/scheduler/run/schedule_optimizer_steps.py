@@ -118,7 +118,10 @@ def _evaluate_ortools_candidate(
         readiness_gate_enabled=bool(readiness_gate_enabled),
         graph_ready_context=graph_ready_context,
     )
-    metrics = compute_metrics(res, batches)
+    metrics = compute_metrics(
+        res, batches, expected_operations=algo_ops_to_schedule,
+        seed_results=seed_sr_list, failure_details=getattr(summ, "failure_details", ()),
+    )
     score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
     algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
     return {
@@ -349,7 +352,10 @@ def _evaluate_multi_start_candidate(
         readiness_gate_enabled=bool(readiness_gate_enabled),
         graph_ready_context=graph_ready_context,
     )
-    metrics = compute_metrics(res, batches)
+    metrics = compute_metrics(
+        res, batches, expected_operations=algo_ops_to_schedule,
+        seed_results=seed_sr_list, failure_details=getattr(summ, "failure_details", ()),
+    )
     score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
     algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
     return {

@@ -24,6 +24,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from tests._support.optimizer_benchmark_ratchet import (  # noqa: E402
     DEFAULT_BASELINE,
+    baseline_update_failures,
     build_light_ratchet_snapshot,
     compare_to_baseline,
     load_baseline,
@@ -35,8 +36,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run optimizer benchmark ratchet checks.")
     parser.add_argument("--tier", choices=("light",), default="light", help="benchmark tier to run")
     parser.add_argument("--baseline", default=str(DEFAULT_BASELINE), help="ratchet baseline path")
-    parser.add_argument("--update-baseline", action="store_true", help="write current snapshot as the tracked baseline")
-    parser.add_argument("--check-baseline", action="store_true", help="compare current snapshot with the baseline")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--update-baseline", action="store_true", help="write a passed, clean snapshot as the baseline")
+    action.add_argument("--check-baseline", action="store_true", help="compare current snapshot with the baseline")
     return parser
 
 
@@ -50,8 +52,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     result = {"snapshot": snapshot}
     status = snapshot.get("status")
     if args.update_baseline:
-        write_baseline(baseline_path, snapshot)
-        result["baseline_written"] = str(baseline_path.relative_to(REPO_ROOT))
+        failures = baseline_update_failures(snapshot)
+        if failures:
+            result["baseline_update"] = {"status": "failed", "failures": failures}
+            status = "failed"
+        else:
+            write_baseline(baseline_path, snapshot)
+            result["baseline_written"] = str(baseline_path)
     elif args.check_baseline:
         baseline = load_baseline(baseline_path)
         if baseline is None:

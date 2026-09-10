@@ -23,15 +23,20 @@ DEFAULT_BASELINE = Path(".codestable/roadmap/scheduler-global-optimizer/benchmar
 
 
 def build_light_ratchet_snapshot(*, repo_root: Path) -> Dict[str, Any]:
+    commit_before = _git_commit(repo_root)
+    dirty_before = _dirty_worktree(repo_root)
     proof = run_optimizer_proof_harness(require_optimal=True)["public"]
     rows = [_proof_case_row(case) for case in proof.get("cases") or []]
     rows.append(run_graph_ready_real_sgs_case(seed=0))
     rows.append(run_graph_ready_flexible_machine_metric_case())
+    commit_after = _git_commit(repo_root)
+    dirty_after = _dirty_worktree(repo_root)
     return {
         "schema_version": RATCHET_SCHEMA_VERSION,
         "generated_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
-        "git_commit": _git_commit(repo_root),
-        "dirty_worktree": _dirty_worktree(repo_root),
+        "git_commit": commit_after,
+        "git_commit_before": commit_before,
+        "dirty_worktree": dirty_before or dirty_after or commit_before != commit_after,
         "tier": "light",
         "status": "passed" if proof.get("status") == "passed" and _rows_pass(rows) else "failed",
         "case_count": len(rows),
@@ -66,8 +71,38 @@ def load_baseline(path: Path) -> Optional[Dict[str, Any]]:
 
 
 def write_baseline(path: Path, snapshot: Dict[str, Any]) -> None:
+    failures = baseline_update_failures(snapshot)
+    if failures:
+        raise ValueError("invalid benchmark baseline: " + ", ".join(failures))
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def baseline_update_failures(snapshot: Dict[str, Any]) -> List[str]:
+    failures = []
+    if snapshot.get("dirty_worktree") is not False:
+        failures.append("baseline_requires_clean_worktree")
+    commit = str(snapshot.get("git_commit") or "")
+    if len(commit) != 40 or any(char not in "0123456789abcdef" for char in commit):
+        failures.append("baseline_requires_known_commit")
+    if snapshot.get("status") != "passed":
+        failures.append("baseline_requires_passed_snapshot")
+    failures.extend(_baseline_case_failures(snapshot))
+    return failures
+
+
+def _baseline_case_failures(snapshot: Dict[str, Any]) -> List[str]:
+    failures = []
+    rows = snapshot.get("cases")
+    if not isinstance(rows, list) or not rows or not all(isinstance(row, dict) for row in rows):
+        failures.append("baseline_requires_nonempty_cases")
+    elif snapshot.get("case_count") != len(rows) or not _rows_pass(rows):
+        failures.append("baseline_requires_valid_cases")
+    elif len({_case_key(row) for row in rows}) != len(rows):
+        failures.append("baseline_requires_unique_cases")
+    elif compare_to_baseline(snapshot, snapshot)["status"] != "passed":
+        failures.append("baseline_requires_valid_metrics")
+    return failures
 
 
 def _proof_case_row(case: Dict[str, Any]) -> Dict[str, Any]:
@@ -132,6 +167,9 @@ def _case_collection_failures(
         failures.append({"reason": "empty_baseline_cases"})
     failures.extend(_case_count_failures("actual", actual, actual_cases))
     failures.extend(_case_count_failures("baseline", baseline, baseline_cases))
+    for label, cases in (("actual", actual_cases), ("baseline", baseline_cases)):
+        if len({_case_key(row) for row in cases}) != len(cases):
+            failures.append({"reason": f"duplicate_{label}_case"})
     return failures
 
 
@@ -145,10 +183,14 @@ def _proof_binding_status(actual: Dict[str, Any], baseline: Dict[str, Any]) -> s
 
 def _worktree_proof_failures(actual: Dict[str, Any], baseline: Dict[str, Any]) -> List[Dict[str, str]]:
     failures: List[Dict[str, str]] = []
-    if actual.get("dirty_worktree") is True:
-        failures.append({"reason": "dirty_actual_worktree"})
-    if baseline.get("dirty_worktree") is True:
-        failures.append({"reason": "dirty_baseline_worktree"})
+    for label, snapshot in (("actual", actual), ("baseline", baseline)):
+        dirty = snapshot.get("dirty_worktree")
+        if dirty is True:
+            failures.append({"reason": f"dirty_{label}_worktree"})
+        elif dirty is not False:
+            failures.append({"reason": f"unknown_{label}_worktree"})
+        if snapshot.get("status") != "passed":
+            failures.append({"reason": f"{label}_snapshot_not_passed"})
     return failures
 
 
@@ -182,6 +224,9 @@ def _matching_row_failures(
     for row in actual_cases:
         base = baseline_rows.get(_case_key(row))
         if base is not None:
+            for field in ("objective_name", "seed", "time_budget_seconds"):
+                if field in base and row.get(field) != base[field]:
+                    failures.append({"case": _case_key(row), "reason": "case_contract_mismatch", "field": field})
             failures.extend(_row_failures(row, base))
     return failures
 
@@ -192,6 +237,8 @@ def _graph_ready_row_failures(row: Dict[str, Any], base: Dict[str, Any]) -> List
     failures.extend(_graph_ready_count_failures(case, row, base))
     baseline_score = _score_tuple(base.get("objective_score"))
     actual_score = _score_tuple(row.get("objective_score"))
+    if not baseline_score:
+        failures.append({"case": case, "metric": "baseline_objective_score", "actual": base.get("objective_score")})
     if not actual_score:
         failures.append({"case": case, "metric": "objective_score", "actual": row.get("objective_score")})
     elif baseline_score and actual_score > baseline_score:
@@ -210,7 +257,11 @@ def _graph_ready_count_failures(case: Tuple[str, str], row: Dict[str, Any], base
     failure = _float_metric_increase_failure(case, row, base, "failed_ops")
     if failure is not None:
         failures.append(failure)
-    for metric in ("candidate_profile_count", "evaluated_candidates", "distinct_candidates", "accepted_distinct_candidates"):
+    # Fewer full decodes are allowed after proven predecode deduplication.
+    # Still require the diagnostic count, and retain outcome-diversity guards.
+    if _valid_int_metric(row.get("evaluated_candidates")) is None:
+        failures.append({"case": case, "metric": "evaluated_candidates", "reason": "missing_or_invalid_actual_evaluated_candidates"})
+    for metric in ("candidate_profile_count", "distinct_candidates", "accepted_distinct_candidates"):
         failure = _int_metric_decrease_failure(case, row, base, metric)
         if failure is not None:
             failures.append(failure)
@@ -300,7 +351,7 @@ def _gap_comparison(gap_to_oracle: Optional[float]) -> str:
 
 
 def _valid_int_metric(value: Any) -> Optional[int]:
-    if isinstance(value, bool) or not isinstance(value, int):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         return None
     return value
 
@@ -360,6 +411,8 @@ def _rows_pass(rows: List[Dict[str, Any]]) -> bool:
 
 def _score_tuple(value: Any) -> Tuple[float, ...]:
     if not isinstance(value, (list, tuple)):
+        return ()
+    if any(_valid_float(item) is None for item in value):
         return ()
     return tuple(float(item) for item in value)
 

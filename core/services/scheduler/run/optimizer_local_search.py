@@ -1,25 +1,32 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, cast
 
 from core.algorithms import ScheduleResult
 
 from .optimizer_acceptance import ACCEPTANCE_IMPROVE_ONLY
+from .optimizer_attempt_records import evaluate_optional_local_candidate
 from .optimizer_candidate_profile import derive_iteration_limits
+from .optimizer_local_search_candidate_eval import evaluate_local_search_candidate
 from .optimizer_local_search_fingerprints import LocalSearchFingerprintTracker
 from .optimizer_local_search_round import run_local_search_candidate_round
 from .optimizer_local_search_state import LocalSearchState, resolve_current_strategy_state
 from .optimizer_neighborhood_moves import (
     BUSINESS_NEIGHBORHOODS,
     DEFAULT_SGS_DISPATCH_RULES,
+    NEIGHBORHOOD_MOVE_SCHEMA_VERSION,
     SGS_DISPATCH_RULE,
+    NeighborhoodMove,
 )
 from .optimizer_search_state import init_seen_hashes
 from .optimizer_vns import VnsState
 
 if TYPE_CHECKING:
     from .optimizer_search_report import OptimizationSearchReportState
+
+RESTART_SHAKE = "restart_shake"
 
 
 def _shake_order(order: List[str], rnd: Any) -> List[str]:
@@ -115,6 +122,104 @@ def _mark_vns_round(
         search_report_state.mark_vns_event(vns_event)
 
 
+def _restart_shake_move(
+    *,
+    base_order: List[str],
+    shaken_order: List[str],
+    dispatch_mode: str,
+    dispatch_rule: str,
+) -> NeighborhoodMove:
+    changed = sum(1 for left, right in zip(base_order, shaken_order) if left != right)
+    changed += abs(len(base_order) - len(shaken_order))
+    return NeighborhoodMove(
+        schema_version=NEIGHBORHOOD_MOVE_SCHEMA_VERSION,
+        neighborhood_name=RESTART_SHAKE,
+        move_kind="shake",
+        input_scope="batch_order",
+        batch_order=tuple(shaken_order),
+        changed_decision_count=changed,
+        expected_effect="diversify_after_stall",
+        dispatch_mode=str(dispatch_mode or ""),
+        dispatch_rule=str(dispatch_rule or ""),
+        decision_key=(RESTART_SHAKE,) + tuple(shaken_order),
+        reason="restart_after_stall",
+    )
+
+
+def _evaluate_restart_candidate(
+    *,
+    shaken_order: List[str],
+    local_state: LocalSearchState,
+    strategy: Any,
+    params: Dict[str, Any],
+    dispatch_mode: str,
+    dispatch_rule: str,
+    scheduler: Any,
+    strict_mode: bool,
+    algo_ops_to_schedule: List[Any],
+    batches: Dict[str, Any],
+    start_dt: datetime,
+    end_date: Optional[date],
+    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
+    seed_sr_list: List[ScheduleResult],
+    resource_pool: Optional[Dict[str, Any]],
+    objective_name: str,
+    optimizer_algo_stats: Optional[Dict[str, Any]],
+    schedule_fn: Callable[..., Any],
+    readiness_gate_enabled: bool,
+    graph_ready_context: Optional[Any],
+    attempts: List[Dict[str, Any]],
+    search_report_state: Optional[OptimizationSearchReportState],
+) -> Optional[Dict[str, Any]]:
+    """对 restart 的扰动顺序做一次真实评估，产出 order/score/results 对齐的候选。
+
+    失败路径复用既有候选失败处理（evaluate_optional_local_candidate）：strict 模式
+    直接抛出，非 strict 记 candidate_rejected 留痕并返回 None。
+    """
+    move = _restart_shake_move(
+        base_order=list(local_state.best.get("order") or []),
+        shaken_order=list(shaken_order),
+        dispatch_mode=dispatch_mode,
+        dispatch_rule=dispatch_rule,
+    )
+    best_resource_pool = local_state.best.get("resource_pool")
+    candidate_resource_pool = (
+        dict(best_resource_pool) if isinstance(best_resource_pool, dict) else {}
+    ) or resource_pool
+    return evaluate_optional_local_candidate(
+        evaluate=partial(
+            evaluate_local_search_candidate,
+            scheduler=scheduler,
+            strict_mode=bool(strict_mode),
+            algo_ops_to_schedule=algo_ops_to_schedule,
+            batches=batches,
+            strategy=strategy,
+            params=params,
+            start_dt=start_dt,
+            end_date=end_date,
+            downtime_map=downtime_map,
+            order=list(shaken_order),
+            seed_sr_list=seed_sr_list,
+            dispatch_mode=dispatch_mode,
+            dispatch_rule=dispatch_rule,
+            resource_pool=candidate_resource_pool,
+            objective_name=objective_name,
+            optimizer_algo_stats=optimizer_algo_stats,
+            schedule_fn=schedule_fn,
+            readiness_gate_enabled=bool(readiness_gate_enabled),
+            graph_ready_context=graph_ready_context,
+            neighborhood_move=move,
+        ),
+        attempts=attempts,
+        move=RESTART_SHAKE,
+        strategy=strategy,
+        dispatch_mode=dispatch_mode,
+        dispatch_rule=dispatch_rule,
+        strict_mode=bool(strict_mode),
+        search_report_state=search_report_state,
+    )
+
+
 def _restart_after_stall(
     *,
     local_state: LocalSearchState,
@@ -122,11 +227,25 @@ def _restart_after_stall(
     dispatch_mode_cfg: str,
     dispatch_rule_cfg: str,
     vns_state: VnsState,
+    evaluate_shaken_order: Callable[[List[str], Any, Dict[str, Any], str, str], Optional[Dict[str, Any]]],
 ) -> Tuple[Any, Any, str, str, Optional[set]]:
     vns_state.mark_shake()
-    local_state.reset_current_to_best(
-        order=_shake_order(list(local_state.best.get("order") or local_state.current_order), rnd)
+    shaken_order = _shake_order(list(local_state.best.get("order") or local_state.current_order), rnd)
+    best_strat, best_params, best_dispatch_mode, best_dispatch_rule = resolve_current_strategy_state(
+        local_state.best, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg
     )
+    # 取舍说明（A01）：restart 在 deadline 预算内多做一次真实评估（schedule_fn）。
+    # 一次解码的成本换来 current 的 order/score/results 三元组对齐——接受准则参照扰动点
+    # 真实分数（而非 best 分数）、邻域按当前顺序的真实排程结果选靶；否则 improve_only 下
+    # 扰动区域的非改进中间步永远走不进去，整段 restart 后的搜索预算被结构性浪费。
+    # restart 受 no_improve>=restart_after 节流，频次有界，额外评估成本可控。
+    candidate = evaluate_shaken_order(shaken_order, best_strat, best_params, best_dispatch_mode, best_dispatch_rule)
+    if candidate is not None:
+        local_state.accept_current(candidate)
+    else:
+        # 扰动顺序评估失败（strict 已抛；非 strict 已按既有失败路径留痕）：
+        # 放弃本次扰动，current 完全回到 best，保持三元组一致。
+        local_state.reset_current_to_best()
     cur_strat, cur_params, cur_dispatch_mode, cur_dispatch_rule = resolve_current_strategy_state(
         local_state.current, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg
     )
@@ -264,6 +383,30 @@ def run_local_search(
                 dispatch_mode_cfg=dispatch_mode_cfg,
                 dispatch_rule_cfg=dispatch_rule_cfg,
                 vns_state=vns_state,
+                evaluate_shaken_order=lambda shaken_order, strategy, params, dispatch_mode, dispatch_rule: _evaluate_restart_candidate(
+                    shaken_order=shaken_order,
+                    local_state=local_state,
+                    strategy=strategy,
+                    params=params,
+                    dispatch_mode=dispatch_mode,
+                    dispatch_rule=dispatch_rule,
+                    scheduler=scheduler,
+                    strict_mode=strict_mode,
+                    algo_ops_to_schedule=algo_ops_to_schedule,
+                    batches=batches,
+                    start_dt=start_dt,
+                    end_date=end_date,
+                    downtime_map=downtime_map,
+                    seed_sr_list=seed_sr_list,
+                    resource_pool=resource_pool,
+                    objective_name=objective_name,
+                    optimizer_algo_stats=optimizer_algo_stats,
+                    schedule_fn=schedule_fn,
+                    readiness_gate_enabled=readiness_gate_enabled,
+                    graph_ready_context=graph_ready_context,
+                    attempts=attempts,
+                    search_report_state=search_report_state,
+                ),
             )
     return local_state.best
 

@@ -12,6 +12,7 @@ from core.services.common.normalize import normalize_text
 from core.shared.number_utils import parse_finite_float
 
 from . import operation_edit_service as op_edit
+from ._sched_display_utils import fmt_dt
 from .repository_bundle import build_schedule_repository_bundle
 from .resource_pool_builder import build_resource_pool, extend_downtime_map_for_resource_pool, load_machine_downtimes
 from .run.freeze_window import build_freeze_window_seed
@@ -111,7 +112,7 @@ class ScheduleService:
 
     @staticmethod
     def _format_dt(dt: datetime) -> str:
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
+        return fmt_dt(dt)
 
     @staticmethod
     def _normalize_datetime(value: Any) -> Optional[datetime]:

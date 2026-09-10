@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from datetime import date, datetime
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
+from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithms.objective_specs import best_score_schema, comparison_metric_key
 from core.models.enums import YesNo
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
@@ -17,7 +18,7 @@ from core.services.scheduler.run.auto_assign_resource_errors import auto_assign_
 from core.services.scheduler.run.optimizer_search_state import compact_attempts
 from core.services.scheduler.run.schedule_persistence_errors import missing_internal_resource_samples
 
-from .due_risk_items import NEAR_DUE_WINDOW_DAYS
+from .due_risk_items import NEAR_DUE_WINDOW_DAYS, incomplete_batches_payload
 from .optimizer_public_summary import project_public_algo_summary
 from .summary_visible_degradation import (
     apply_fallback_count_degradation,
@@ -55,7 +56,10 @@ def _best_score_schema(objective_name: str) -> List[Dict[str, Any]]:
     return best_score_schema(objective_name)
 
 
-def _finish_time_by_batch(results: List[Any]) -> Dict[str, datetime]:
+def _finish_time_by_batch(results: List[ScheduleResult]) -> Dict[str, datetime]:
+    # 口径提示（audit 2026-07-20 A18）：这里取"已排结果"的最大 end_time，不校验批次
+    # 是否排完——半途失败批次的值是被截断的部分完工时间。超期/临期分类前须先按
+    # due_risk_items.incomplete_batch_ids_from_failure_details 排除这类批次。
     finish_by_batch: Dict[str, datetime] = {}
     for result in results:
         finish_time = getattr(result, "end_time", None)
@@ -70,7 +74,7 @@ def _finish_time_by_batch(results: List[Any]) -> Dict[str, datetime]:
     return finish_by_batch
 
 
-def _positive_result_op_ids(results: List[Any]) -> Set[int]:
+def _positive_result_op_ids(results: List[ScheduleResult]) -> Set[int]:
     op_ids: Set[int] = set()
     for result in list(results or []):
         try:
@@ -221,7 +225,7 @@ def _candidate_comparison_algo_dict(ctx: SummaryBuildContext) -> Dict[str, Any]:
     return {"candidate_comparison": dict(ctx.candidate_comparison_public)}
 
 
-def _summary_failure_details(summary: Any) -> List[Dict[str, Any]]:
+def _summary_failure_details(summary: Optional[ScheduleSummary]) -> List[Dict[str, Any]]:
     details = getattr(summary, "failure_details", None)
     if not isinstance(details, list):
         return []
@@ -296,7 +300,7 @@ def _apply_visible_degradations(
     *,
     public_algo: Dict[str, Any],
     fallback_state: FallbackState,
-    summary: Any,
+    summary: Optional[ScheduleSummary],
     warnings: List[str],
     events: List[Dict[str, Any]],
     counters: Dict[str, Any],
@@ -391,7 +395,7 @@ def _build_result_summary_obj(
     degraded_causes: List[str],
     completion_status: str,
     time_cost_ms: int,
-    serialize_end_date_fn: Callable[[Optional[Any]], Optional[str]],
+    serialize_end_date_fn: Callable[[Optional[Union[date, str]]], Optional[str]],
 ) -> Dict[str, Any]:
     raw_summary_errors = list(getattr(ctx.summary, "errors", None) or [])
     failure_details = _summary_failure_details(ctx.summary)
@@ -453,6 +457,15 @@ def _build_result_summary_obj(
             "items": runtime_state.near_due_items,
             "window_days": NEAR_DUE_WINDOW_DAYS,
         },
+        # 排产未完成批次（有失败工序、finish 为截断值）不进超期/临期"健康"分类，
+        # 在此单列风险口径（audit 2026-07-20 A18），构造口径见 due_risk_items。
+        "incomplete_batches": incomplete_batches_payload(
+            svc,
+            failure_details=failure_details,
+            finish_by_batch=runtime_state.finish_by_batch,
+            batches=ctx.batches,
+            results=ctx.results,
+        ),
         "error_count": len(public_error_messages),
         "errors": public_error_messages,
         "errors_sample": public_error_messages[:10],

@@ -352,7 +352,10 @@ def test_incremental_ready_queue_removes_blocked_descendants() -> None:
     assert graph_state["blocked_op_ids"] == {1, 2, 3}
 
 
-def test_graph_ready_blocking_rejects_fixed_successor_conflict() -> None:
+def test_graph_ready_blocking_degrades_input_fixed_successor_conflict() -> None:
+    # 审计 A02：后道工序已报工（输入即固定）但前道排产失败，是可发生的现场
+    # 乱序报工输入——不再整趟 ValidationError 中止，改为返回冲突集按批降级；
+    # 固定工序自身不被阻塞（现实中已执行）。
     predecessors = {1: set(), 2: {1}}
     graph_state, _ops_by_batch = _graph_state(
         predecessors,
@@ -360,6 +363,21 @@ def test_graph_ready_blocking_rejects_fixed_successor_conflict() -> None:
         ops_by_batch={"B1": [_op(1)]},
         sort_keys={1: (0, 10, 1)},
     )
+
+    newly_blocked, fixed_conflicts = _block_graph_operation(graph_state, 1)
+
+    assert newly_blocked == [1]
+    assert fixed_conflicts == [2]
+    assert graph_state["blocked_op_ids"] == {1}
+    assert 2 in graph_state["completed_or_fixed_op_ids"]
+
+
+def test_graph_ready_blocking_still_rejects_run_completed_successor_conflict() -> None:
+    # 内部不变量保持 fail-loud：ready 队列要求前驱先完成，失败工序的后继不可能
+    # 在本趟先完成；传播撞到"本趟已完成"（非输入固定）的工序必须抛错。
+    predecessors = {1: set(), 2: {1}}
+    graph_state, _ops_by_batch = _graph_state(predecessors)
+    graph_state["completed_or_fixed_op_ids"].add(2)
 
     with pytest.raises(ValidationError, match="固定/已完成工序冲突"):
         _block_graph_operation(graph_state, 1)

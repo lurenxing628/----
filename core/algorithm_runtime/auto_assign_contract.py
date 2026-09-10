@@ -9,6 +9,9 @@ AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL = "auto_assign_missing_machine_pool"
 AUTO_ASSIGN_REASON_NO_MACHINE_CANDIDATE = "auto_assign_no_machine_candidate"
 AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE = "auto_assign_no_operator_candidate"
 AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR = "auto_assign_no_feasible_pair"
+# 全部机-人组合的完工时间都越过排产截止窗口（blocked_by_window）时的专属归因；
+# 与 NO_FEASIBLE_PAIR（资源/时间通用不可行）区分，避免把截止日期问题误导成资质问题。
+AUTO_ASSIGN_REASON_WINDOW_BLOCKED = "auto_assign_window_blocked"
 AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS = "invalid_internal_hours"
 
 

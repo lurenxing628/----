@@ -162,7 +162,10 @@ def _baseline_outcome(
         readiness_gate_enabled=bool(readiness_gate_enabled),
         graph_ready_context=graph_ready_context,
     )
-    best_metrics = compute_metrics(results, batches)
+    best_metrics = compute_metrics(
+        results, batches, expected_operations=algo_ops_to_schedule,
+        seed_results=seed_sr_list, failure_details=getattr(summary, "failure_details", ()),
+    )
     best_score = (float(summary.failed_ops),) + objective_score(optimizer_cfg.objective_name, best_metrics)
     best_order = build_order(optimizer_cfg.strategy_enum or SortStrategy.PRIORITY_FIRST, used_params or {})
     algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))

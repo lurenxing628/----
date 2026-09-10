@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from core.algorithm_runtime.algo_stats import ensure_algo_stats, increment_counter
 from core.algorithm_runtime.auto_assign_contract import auto_assign_attempt_from_result
-from core.algorithm_runtime.internal_slot import validate_internal_hours_for_mode
+from core.algorithm_runtime.dispatch_callback_types import (
+    AutoAssignAttemptCallback,
+    AutoAssignCallback,
+    ExternalScheduleCallback,
+    InternalScheduleCallback,
+)
+from core.algorithm_runtime.dispatch_context import check_dispatch_callback_binding, validate_dispatch_internal_input
 
 from .auto_assign import auto_assign_internal_resources_attempt
 from .external_groups import schedule_external
@@ -17,10 +23,10 @@ class ScheduleRunContext:
     calendar: Any
     logger: Any
     algo_stats: Any
-    external_callback: Optional[Callable[..., Any]] = None
-    internal_callback: Optional[Callable[..., Any]] = None
-    auto_assign_callback: Optional[Callable[..., Any]] = None
-    auto_assign_attempt_callback: Optional[Callable[..., Any]] = None
+    external_callback: Optional[ExternalScheduleCallback] = None
+    internal_callback: Optional[InternalScheduleCallback] = None
+    auto_assign_callback: Optional[AutoAssignCallback] = None
+    auto_assign_attempt_callback: Optional[AutoAssignAttemptCallback] = None
 
     @classmethod
     def from_legacy_scheduler(cls, scheduler: Any) -> ScheduleRunContext:
@@ -46,20 +52,25 @@ class ScheduleRunContext:
 
     def schedule_external(self, *args: Any, **kwargs: Any):
         if callable(self.external_callback):
+            check_dispatch_callback_binding(self.external_callback, args, kwargs, slot="schedule_external")
             return self.external_callback(*args, **kwargs)
         call_kwargs = dict(kwargs)
-        return schedule_external(_ScheduleFacade(self.calendar, self.algo_stats), *args, **call_kwargs)
+        facade = _ScheduleFacade(self.calendar, self.algo_stats)
+        check_dispatch_callback_binding(schedule_external, (facade,) + args, call_kwargs, slot="schedule_external fallback")
+        return schedule_external(facade, *args, **call_kwargs)
 
     def schedule_internal(self, *args: Any, **kwargs: Any):
         call_kwargs = dict(kwargs)
         strict_mode = bool(call_kwargs.pop("strict_mode", False))
         _validate_strict_internal_input(call_kwargs, strict_mode=strict_mode)
         if callable(self.internal_callback):
+            check_dispatch_callback_binding(self.internal_callback, args, call_kwargs, slot="schedule_internal")
             return self.internal_callback(*args, **call_kwargs)
         call_kwargs.setdefault("calendar", self.calendar)
         call_kwargs.setdefault("algo_stats", self.algo_stats)
         call_kwargs.setdefault("auto_assign_resources", self.auto_assign_internal_resources_attempt)
         call_kwargs["strict_mode"] = strict_mode
+        check_dispatch_callback_binding(schedule_internal_operation, args, call_kwargs, slot="schedule_internal fallback")
         return schedule_internal_operation(
             *args,
             **call_kwargs,
@@ -67,6 +78,7 @@ class ScheduleRunContext:
 
     def auto_assign_internal_resources(self, *args: Any, **kwargs: Any):
         if callable(self.auto_assign_callback):
+            check_dispatch_callback_binding(self.auto_assign_callback, args, kwargs, slot="auto_assign_internal_resources")
             return self.auto_assign_callback(*args, **kwargs)
         attempt = self.auto_assign_internal_resources_attempt(*args, **kwargs)
         if attempt.machine_id and attempt.operator_id:
@@ -75,12 +87,15 @@ class ScheduleRunContext:
 
     def auto_assign_internal_resources_attempt(self, *args: Any, **kwargs: Any):
         if callable(self.auto_assign_attempt_callback):
+            check_dispatch_callback_binding(self.auto_assign_attempt_callback, args, kwargs, slot="auto_assign_internal_resources_attempt")
             return auto_assign_attempt_from_result(self.auto_assign_attempt_callback(*args, **kwargs))
         if callable(self.auto_assign_callback):
+            check_dispatch_callback_binding(self.auto_assign_callback, args, kwargs, slot="auto_assign_internal_resources")
             return auto_assign_attempt_from_result(self.auto_assign_callback(*args, **kwargs))
         call_kwargs = dict(kwargs)
         call_kwargs.setdefault("calendar", self.calendar)
         call_kwargs.setdefault("algo_stats", self.algo_stats)
+        check_dispatch_callback_binding(auto_assign_internal_resources_attempt, args, call_kwargs, slot="auto_assign_internal_resources_attempt fallback")
         return auto_assign_internal_resources_attempt(*args, **call_kwargs)
 
 
@@ -91,9 +106,7 @@ def ensure_run_context(candidate: Any) -> ScheduleRunContext:
 
 
 def _validate_strict_internal_input(call_kwargs: dict, *, strict_mode: bool) -> None:
-    if not strict_mode:
-        return
-    validate_internal_hours_for_mode(call_kwargs["op"], call_kwargs["batch"], strict_mode=True)
+    validate_dispatch_internal_input(call_kwargs, strict_mode=strict_mode)
 
 
 class _ScheduleFacade:

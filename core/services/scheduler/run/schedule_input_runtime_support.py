@@ -8,7 +8,9 @@ from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.models import BatchOperation
 from core.models.enums import SourceType
 
+from .schedule_execution_reservations import ExecutionResourceReservation, reserve_execution_machines
 from .schedule_input_contracts import _build_freeze_window_seed_with_meta, _op_seq
+from .schedule_input_seed_metadata import with_frozen_external_seed_metadata
 
 
 def _algo_op_id(op: Any) -> int:
@@ -125,6 +127,7 @@ def _build_runtime_support_inputs(
     execution_fixed_op_ids: Set[int],
     execution_completed_op_ids: Set[int],
     execution_seed_results: List[Dict[str, Any]],
+    execution_reservations: List[ExecutionResourceReservation],
     strict_mode: bool,
     build_freeze_window_seed_fn: Any,
     load_machine_downtimes_fn: Any,
@@ -163,6 +166,9 @@ def _build_runtime_support_inputs(
         operations=operations,
         execution_completed_op_ids=set(execution_completed_op_ids or set()),
     )
+    seed_results = with_frozen_external_seed_metadata(
+        seed_results, frozen_op_ids=set(frozen_op_ids), algo_ops=algo_ops,
+    )
     algo_ops_to_schedule = _resolve_algo_ops_to_schedule(
         algo_ops=algo_ops,
         frozen_op_ids=set(frozen_op_ids),
@@ -182,6 +188,7 @@ def _build_runtime_support_inputs(
         extend_downtime_map_for_resource_pool_fn=extend_downtime_map_for_resource_pool_fn,
     )
     optimizer_seed_version = max(int(prev_version) + 1, 1)
+    downtime_map = reserve_execution_machines(downtime_map, execution_reservations)
 
     return (
         set(frozen_op_ids),

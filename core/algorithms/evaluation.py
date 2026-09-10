@@ -4,10 +4,11 @@ import math
 import statistics
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
+from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE, BatchCompletion, collect_batch_completion
 from core.algorithms.objective_specs import objective_metric_keys
 from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import INTERNAL
@@ -61,6 +62,7 @@ class ScheduleMetrics:
     unscheduled_batch_count: int = 0
     invalid_due_batch_ids_sample: List[str] = field(default_factory=list)
     unscheduled_batch_ids_sample: List[str] = field(default_factory=list)
+    completion: Optional[BatchCompletion] = None
 
     def to_dict(self) -> Dict[str, Any]:
         def _round_finite(key: str, v: Any, ndigits: int) -> float:
@@ -72,7 +74,7 @@ class ScheduleMetrics:
                 raise ValueError(f"排产指标 {key} 必须是有限数字：{v!r}")
             return float(round(fv, ndigits))
 
-        return {
+        payload = {
             "overdue_count": int(self.overdue_count),
             "total_tardiness_hours": _round_finite("total_tardiness_hours", self.total_tardiness_hours, 4),
             "makespan_hours": _round_finite("makespan_hours", self.makespan_hours, 4),
@@ -94,6 +96,9 @@ class ScheduleMetrics:
             "invalid_due_batch_ids_sample": [str(x) for x in list(self.invalid_due_batch_ids_sample or [])[:10]],
             "unscheduled_batch_ids_sample": [str(x) for x in list(self.unscheduled_batch_ids_sample or [])[:20]],
         }
+        if self.completion is not None:
+            payload["completion"] = self.completion.to_dict()
+        return payload
 
 
 @dataclass
@@ -129,9 +134,26 @@ class _UtilizationMetrics:
     util_defined: bool
 
 
-def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> ScheduleMetrics:
+def compute_metrics(
+    results: List[ScheduleResult],
+    batches: Dict[str, Any],
+    *,
+    expected_operations: Optional[Iterable[Any]] = None,
+    seed_results: Optional[Iterable[ScheduleResult]] = None,
+    failure_details: Optional[Iterable[Dict[str, Any]]] = None,
+) -> ScheduleMetrics:
+    """Use explicit run inputs to distinguish completion from a partial result.
+
+    Two-argument legacy callers retain their result-only projection. All runtime
+    candidates must pass expected_operations, including when that list is empty.
+    Seeds are expected output identities, not extra synthesized output records.
+    """
+    completion = collect_batch_completion(
+        results, batches, expected_operations=expected_operations,
+        seed_results=seed_results, failure_details=failure_details,
+    )
     result_state = _collect_result_metric_state(results)
-    due_state = _compute_due_metrics(batches, result_state.finish_by_batch)
+    due_state = _compute_due_metrics(batches, result_state.finish_by_batch, completion=completion)
     utilization = _build_utilization_metrics(result_state)
 
     return ScheduleMetrics(
@@ -155,10 +177,14 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
         unscheduled_batch_count=int(due_state.unscheduled_batch_count),
         invalid_due_batch_ids_sample=due_state.invalid_due_batch_ids_sample,
         unscheduled_batch_ids_sample=due_state.unscheduled_batch_ids_sample,
+        completion=completion,
     )
 
 
 def _collect_result_metric_state(results: List[ScheduleResult]) -> _ResultMetricState:
+    # A18: this maximum describes observed output only. _compute_due_metrics
+    # checks completion evidence before treating it as the batch finish time;
+    # partial output still contributes real resource usage, never a forecast.
     state = _ResultMetricState()
     for result in results:
         st = getattr(result, "start_time", None)
@@ -205,13 +231,18 @@ def _record_internal_result(
         state.operator_busy[operator_id] = state.operator_busy.get(operator_id, 0.0) + float(duration_hours)
 
 
-def _compute_due_metrics(batches: Dict[str, Any], finish_by_batch: Dict[str, datetime]) -> _DueMetricState:
+def _compute_due_metrics(
+    batches: Dict[str, Any], finish_by_batch: Dict[str, datetime], *, completion: Optional[BatchCompletion],
+) -> _DueMetricState:
     state = _DueMetricState()
+    incomplete = set(completion.incomplete_batch_ids) if completion is not None else set()
     for bid0, batch in batches.items():
         bid = str(bid0 or "").strip()
         if not bid:
             continue
-        _record_batch_due_state(state, bid=bid, batch=batch, finish_time=finish_by_batch.get(bid))
+        _record_batch_due_state(
+            state, bid=bid, batch=batch, finish_time=finish_by_batch.get(bid), incomplete=bid in incomplete,
+        )
     return state
 
 
@@ -221,6 +252,7 @@ def _record_batch_due_state(
     bid: str,
     batch: Any,
     finish_time: Optional[datetime],
+    incomplete: bool,
 ) -> None:
     due_raw = getattr(batch, "due_date", None)
     due_date_value, due_invalid = _parse_due_date_state(due_raw)
@@ -231,7 +263,7 @@ def _record_batch_due_state(
     if not finish_time:
         _record_unscheduled_batch(state, bid=bid, due_raw=due_raw)
         return
-    if due_date_value:
+    if due_date_value and not incomplete:
         _record_tardiness_if_overdue(state, batch=batch, finish_time=finish_time, due_date_value=due_date_value)
 
 
@@ -343,4 +375,10 @@ def _cv(values: List[float]) -> float:
 
 
 def objective_score(objective: str, metrics: ScheduleMetrics) -> Tuple[float, ...]:
-    return tuple(float(getattr(metrics, key)) for key in objective_metric_keys(objective))
+    keys = objective_metric_keys(objective)
+    if metrics.completion is not None and not metrics.completion.objective_defined:
+        return (UNKNOWN_OBJECTIVE_VALUE,) * len(keys)
+    score = tuple(float(getattr(metrics, key)) for key in keys)
+    if not all(math.isfinite(value) for value in score):
+        raise ValueError("A complete objective score must contain only finite values.")
+    return score

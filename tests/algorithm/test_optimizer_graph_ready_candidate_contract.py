@@ -465,7 +465,9 @@ def test_graph_ready_candidates_run_real_sgs_weight_grid() -> None:
 
     assert row["status"] == "passed"
     assert row["candidate_profile_count"] == 9
-    assert row["evaluated_candidates"] >= 10
+    assert row["decoded_profile_count"] + row["predecode_pruned_profiles"] == row["candidate_profile_count"]
+    assert row["predecode_pruned_profiles"] > 0
+    assert row["evaluated_candidates"] == row["decoded_profile_count"] + 1
     assert row["distinct_candidates"] >= 3
     assert row["accepted_distinct_candidates"] >= 2
     assert row["accepted_distinct_candidates"] == len(row["accepted_output_fingerprints"])
@@ -1453,8 +1455,23 @@ def test_graph_ready_v2_missing_due_date_keeps_v2_production_candidates_even_in_
     graph_profile = state.candidate_profile["graph_ready_optimization"]
     assert best is not None
     assert "v2_status" not in graph_profile
-    assert any(attempt["candidate_origin"] == GRAPH_READY_WEIGHT_GRID_ORIGIN for attempt in attempts)
-    assert any(attempt["candidate_origin"] == GRAPH_READY_V2_GENERATED_ORIGIN for attempt in attempts)
+    efficiency = graph_profile["profile_efficiency"]
+    configured = set(graph_profile["weight_profile_slugs"])
+    profile_attempts = [attempt for attempt in attempts if attempt.get("candidate_status") == "evaluated"
+                        and attempt.get("weight_profile_slug") in configured]
+    decoded = {attempt["weight_profile_slug"] for attempt in profile_attempts}
+    pruned = {item["profile_slug"] for item in efficiency["equivalent_profiles"]}
+    assert efficiency["configured_profiles"] == efficiency["considered_profiles"] == len(configured) == 19
+    assert efficiency["unvisited_profiles"] == efficiency["construction_rejected_profiles"] == efficiency["skipped_before_decode"] == 0
+    assert len(profile_attempts) == efficiency["profile_decodes"]
+    assert efficiency["profile_decodes"] + efficiency["predecode_pruned_profiles"] == efficiency["considered_profiles"]
+    assert decoded | pruned == configured
+    assert all(item["representative_slug"] in decoded for item in efficiency["equivalent_profiles"])
+    assert "balanced" in decoded
+    assert "critical_path_first" in decoded | pruned
+    assert "v2_edd" in decoded | pruned
+    assert best["summary"].failed_ops == 0
+    assert best["score"] < baseline["score"]
 
 
 def test_graph_ready_v2_bad_due_date_non_strict_fails_loud_in_production_candidate_chain() -> None:
@@ -1865,11 +1882,20 @@ def test_graph_ready_v2_runs_real_sgs_and_keeps_repair_attribution_separate() ->
     assert no_repair["oracle_status"] == "not_run"
     assert no_repair["gap_to_oracle_pct"] is None
     assert no_repair["accepted_distinct_candidates"] == len(no_repair["accepted_output_fingerprints"])
-    assert no_repair["repair_scope"] == "benchmark_support_only_not_core"
-    assert with_repair["repair_scope"] == "benchmark_support_only_not_core"
+    assert no_repair["repair_scope"] == "production_core"
+    assert with_repair["repair_scope"] == "production_core"
     assert with_repair["accepted_distinct_candidates"] == len(with_repair["accepted_output_fingerprints"])
     assert "saveability" in no_repair["candidate_families"]
     assert with_repair["repair_evaluated_candidates"] > 0
+    for row in (no_repair, with_repair):
+        efficiency = row["profile_efficiency"]
+        assert efficiency["configured_profiles"] == efficiency["considered_profiles"] == row["candidate_profile_count"] == 19
+        assert efficiency["considered_profiles"] == sum(efficiency[key] for key in (
+            "profile_decodes", "predecode_pruned_profiles", "construction_rejected_profiles", "skipped_before_decode"))
+        assert row["decoded_profile_count"] == efficiency["profile_decodes"]
+        assert row["evaluated_candidates"] == 1 + row["decoded_profile_count"] + row["repair_evaluated_candidates"]
+        assert row["evaluated_candidates"] - 1 <= row["max_candidates"]
+        assert set(row["covered_profile_slugs"]) == set(row["configured_profile_slugs"])
     assert tuple(no_repair["objective_score"]) < tuple(v1["objective_score"])
     assert tuple(with_repair["objective_score"]) <= tuple(no_repair["objective_score"])
 
@@ -1885,6 +1911,27 @@ def test_graph_ready_v2_row_status_rejects_v1_origin_or_non_improvement() -> Non
     not_better_than_v1["comparison_to_graph_ready_v1"] = {"status": "same"}
     not_better_than_v1["v1_reference_objective_score"] = list(not_better_than_v1["objective_score"])
     assert _v2_row_passes(not_better_than_v1) is False
+
+
+@pytest.mark.parametrize("field,value", [
+    ("configured_profiles", 18), ("considered_profiles", 18), ("profile_decodes", 0),
+    ("predecode_pruned_profiles", 100), ("construction_rejected_profiles", 1),
+    ("skipped_before_decode", 1), ("unvisited_profiles", 1),
+])
+def test_graph_ready_v2_row_status_rejects_inconsistent_profile_accounting(field: str, value: int) -> None:
+    row = run_graph_ready_v2_real_sgs_case(seed=0, with_repair=False)
+    assert _v2_row_passes(row)
+    row["profile_efficiency"] = dict(row["profile_efficiency"], **{field: value})
+    assert not _v2_row_passes(row)
+
+
+def test_graph_ready_v2_row_status_requires_family_coverage_and_total_budget() -> None:
+    row = run_graph_ready_v2_real_sgs_case(seed=0, with_repair=True)
+    assert _v2_row_passes(row)
+    missing_family = dict(row, covered_profile_slugs=[slug for slug in row["covered_profile_slugs"] if not slug.startswith("v2_")])
+    assert not _v2_row_passes(missing_family)
+    overspent = dict(row, max_candidates=row["evaluated_candidates"] - 2)
+    assert not _v2_row_passes(overspent)
 
 
 def test_graph_ready_v2_seeded_micro_perturbation_changes_candidate_order_without_worse_score() -> None:
@@ -1928,6 +1975,10 @@ def test_graph_ready_candidates_deduplicate_same_output_fingerprint() -> None:
     state = _state()
     baseline = _candidate([_result(1, "B1", 2), _result(2, "B2", 3)], failed_ops=1)
     state.mark_candidate_accepted(baseline, origin="baseline")
+    context = _context()
+    # Balanced and fanout-first now have different graph decisions, so the
+    # identical decoded fixture must still reach output-fingerprint rejection.
+    context["node_metrics_by_op_id"][2]["impact_count"] = 2.0
 
     best = run_graph_ready_candidates(
         algo_mode="improve",
@@ -1953,7 +2004,7 @@ def test_graph_ready_candidates_deduplicate_same_output_fingerprint() -> None:
         t_begin=1000.0,
         readiness_gate_enabled=False,
         strict_mode=False,
-        graph_ready_context=_context(),
+        graph_ready_context=context,
         clock=_Clock(),
         schedule_fn=_same_schedule,
         search_report_state=state,
@@ -1961,6 +2012,16 @@ def test_graph_ready_candidates_deduplicate_same_output_fingerprint() -> None:
 
     assert best["candidate_origin"] == "graph_ready_base"
     assert state.rejection_summary["same_fingerprint"] >= 1
+    efficiency = state.candidate_profile["graph_ready_optimization"]["profile_efficiency"]
+    assert efficiency["profile_decodes"] >= 2
+    assert efficiency["predecode_pruned_profiles"] > 0
+    assert efficiency["profile_decodes"] + efficiency["predecode_pruned_profiles"] == efficiency["considered_profiles"] == 9
+    assert state.evaluated_candidates == efficiency["profile_decodes"] + 1
+    assert state.accepted_candidates == len(state.accepted_fingerprints) == 2
+    assert len(state.acceptance_events) == 1
+    assert state.acceptance_events[0]["acceptance_name"] == "improve_only"
+    assert state.acceptance_events[0]["accepted"]
+    assert best["score"] < baseline["score"]
 
 
 def test_graph_ready_strict_score_improvement_marks_report_improved() -> None:
@@ -2085,7 +2146,7 @@ def test_graph_ready_candidate_payload_separates_decision_and_decoded_batch_orde
         schedule_fn=_reversed_result_schedule,
         readiness_gate_enabled=False,
         version=7,
-        runtime_ms=0,
+        clock=lambda: 0.0,
     )
 
     assert candidate["decision_batch_order"] == ["B1", "B2"]

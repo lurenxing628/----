@@ -4,12 +4,13 @@ import inspect
 import math
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, List, Mapping, NoReturn, Optional, Sequence, Tuple
+from typing import Any, Mapping, NoReturn, Optional, Sequence, Tuple
 
 from core.errors import ValidationError
 from core.shared.field_labels import display_field_label
 
-from .downtime import find_overlap_shift_end
+from .downtime import SegmentOverlapIndex
+from .slot_overlap_reuse import SlotOverlapReuse
 
 _MISSING = object()
 
@@ -185,12 +186,35 @@ def _slot_segments(
     machine_timeline: Sequence[Tuple[datetime, datetime]],
     operator_timeline: Sequence[Tuple[datetime, datetime]],
     machine_downtimes: Optional[Sequence[Tuple[datetime, datetime]]],
-) -> Tuple[List[Tuple[datetime, datetime]], List[Tuple[datetime, datetime]], List[Tuple[datetime, datetime]]]:
-    return list(machine_timeline or []), list(operator_timeline or []), list(machine_downtimes or [])
+    overlap_reuse: Optional[SlotOverlapReuse] = None,
+    machine_id: str = "",
+    operator_id: str = "",
+) -> Tuple[SegmentOverlapIndex, SegmentOverlapIndex, SegmentOverlapIndex]:
+    """把机台/人员/停机三组段集各包成重叠查询索引。
+
+    只读契约：不再做防御性 list() 拷贝（segment_groups 全程只读、不逃逸，
+    拷贝纯属浪费）；索引绝不修改输入，评估期间调用方也不得变异时间轴。
+    索引惰性物化：0-hop 评估保持旧实现的单次线性扫描成本，一旦避让循环
+    真的 hop，重叠查询由每组每 hop O(T) 线性重扫降为 O(log T)
+    （见 SegmentOverlapIndex）。
+    SGS 显式传入 overlap_reuse 时，用精确内容快照复用本趟已有索引；
+    其他调用保持一次评估内复用，不扩大缓存生命周期。
+    """
+    if overlap_reuse is not None:
+        return (
+            overlap_reuse.index("machine", machine_id, machine_timeline),
+            overlap_reuse.index("operator", operator_id, operator_timeline),
+            overlap_reuse.index("downtime", machine_id, machine_downtimes),
+        )
+    return (
+        SegmentOverlapIndex(machine_timeline),
+        SegmentOverlapIndex(operator_timeline),
+        SegmentOverlapIndex(machine_downtimes),
+    )
 
 
-def _max_shift_count(segment_groups: Tuple[List[Tuple[datetime, datetime]], ...]) -> int:
-    return max(sum(len(segments) for segments in segment_groups) + 1, 10)
+def _max_shift_count(segment_groups: Tuple[SegmentOverlapIndex, ...]) -> int:
+    return max(sum(len(index) for index in segment_groups) + 1, 10)
 
 
 def _adjust_slot_start(calendar: Any, start_time: datetime, *, priority: Any, operator_id: str) -> datetime:
@@ -229,11 +253,11 @@ def _estimate_attempt(calendar: Any, *, earliest: datetime, total_base: float, p
 
 
 def _latest_overlap_shift_end(
-    segment_groups: Tuple[List[Tuple[datetime, datetime]], ...],
+    segment_groups: Tuple[SegmentOverlapIndex, ...],
     earliest: datetime,
     end_time: datetime,
 ) -> Optional[datetime]:
-    candidates = [find_overlap_shift_end(segments, earliest, end_time) for segments in segment_groups]
+    candidates = [index.shift_end(earliest, end_time) for index in segment_groups]
     valid_candidates = [candidate for candidate in candidates if candidate is not None]
     return max(valid_candidates) if valid_candidates else None
 
@@ -280,6 +304,7 @@ def estimate_internal_slot(
     last_op_type_by_machine: Optional[Mapping[str, str]],
     abort_after: Optional[datetime],
     total_hours_base: Optional[float] = None,
+    overlap_reuse: Optional[SlotOverlapReuse] = None,
 ) -> InternalSlotEstimate:
     total_base = _resolve_total_base(op, batch, total_hours_base)
     priority = getattr(batch, "priority", None)
@@ -288,6 +313,9 @@ def estimate_internal_slot(
         machine_timeline=machine_timeline,
         operator_timeline=operator_timeline,
         machine_downtimes=machine_downtimes,
+        overlap_reuse=overlap_reuse,
+        machine_id=machine_id,
+        operator_id=operator_id,
     )
     max_shifts = _max_shift_count(segment_groups)
 

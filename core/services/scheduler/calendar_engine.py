@@ -12,6 +12,12 @@ from core.services.common.datetime_normalize import normalize_hhmm
 from core.services.common.normalize import normalize_text
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
+# add_calendar_days 的业务量级上界：100 年（365 天 × 100）。
+# 依据：外协周期按自然日计，业务上不可能超过百年量级；而 datetime + timedelta 在
+# 约 291 万天（datetime.max）处会抛裸 OverflowError，isfinite/非负守卫拦不住有限
+# 正巨值（如录入笔误 9999999），故与既有 NaN/Inf/负数守卫对称地补一条量级上界。
+MAX_CALENDAR_DAYS = 36500.0
+
 
 @dataclass
 class DayPolicy:
@@ -353,4 +359,9 @@ class CalendarEngine:
             raise ValidationError("周期必须是有限数字", field="days")
         if d < 0:
             raise ValidationError("周期不能为负数", field="days")
+        if d > MAX_CALENDAR_DAYS:
+            raise ValidationError(
+                f"外协周期天数超出合理范围（不能超过 {int(MAX_CALENDAR_DAYS)} 天）",
+                field="days",
+            )
         return start + timedelta(days=d)

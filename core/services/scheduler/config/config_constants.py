@@ -109,10 +109,10 @@ CONFIG_PAGE_VISIBLE_CHANGE_FIELDS: Tuple[str, ...] = CONFIG_PAGE_FIELDS + (
 )
 CONFIG_PAGE_HIDDEN_REPAIR_FIELDS: Tuple[str, ...] = ("auto_assign_persist",)
 
-GRAPH_CONFIG_PENDING_NOTICE = "默认参与排产。系统会先排普通方案，再试几档重点工序优先方案，最后自动采用更合适的一版。"
-GRAPH_CONFIG_PENDING_ACTIVE_NOTICE = (
-    "当前已打开工序图分析。参与排产会自动比较普通方案和重点工序优先方案；只看分析报告只给出检查结果，不会改变排产结果。"
-)
+# 工序图分析的页面提示文案唯一来源在 web/viewmodels/scheduler_config_panel.py
+# （GRAPH_CONFIG_PENDING_NOTICE / GRAPH_CONFIG_PENDING_ACTIVE_NOTICE）。
+# 此处曾有一份逐字副本，全仓零消费者，2026-07-19 审计 D19 定为孤儿死代码后删除；
+# 若未来 core 侧真的需要该文案，须先接通真实消费者并补 parity 测试，不要再抄一份。
 
 HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE = (
     "“假期工作效率”这项设置现在不能直接用，页面已临时按 {value:g} 显示默认值；"

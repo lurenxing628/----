@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -18,6 +19,21 @@ _NO_DUE_DEADLINE_HOURS = 1_000_000_000.0
 _NO_DUE_CRITICAL_RATIO = 1_000_000_000.0
 _NO_DUE_SACRIFICE_PENALTY = 2.0
 _NO_DUE_CAPACITY_WINDOW_DAYS = 30
+
+# 真零工时自制工序（total==0：setup=unit=0，或 quantity=0 且 setup=0）在系统口径下合法
+# （见 _operation_hours 内注释），但 duration 类特征有两条恒>0 的承重合同：
+# 1) _critical_ratio/_saveability 依赖 remaining_hours>0 做除零安全（见 _critical_ratio 注释）；
+# 2) 下游公式层 optimizer_graph_ready_candidates._required_positive_metric 要求
+#    remaining_work_hours / remaining_due_burden_hours 恒>0（既有合同测试锁死）。
+# 取舍：在「从 duration 聚合剔除」与「按文档化最小 epsilon 计入」里选后者——剔除会让全零批次的
+# remaining_hours==0，既打破除零安全承重合同又被下游 >0 合同拒绝；epsilon 计入则保住
+# remaining_hours >= epsilon > 0 的不变量。除零安全论证：critical_ratio=due_budget/remaining
+# <= due_budget/epsilon，due_budget 为有限墙钟/日历窗口小时数，比值恒为有限 float；
+# 无交期路径走占位常量不做除法。epsilon=1e-6 小时（3.6 毫秒）远低于任何真实工时录入粒度，
+# 不会翻转非零工序间的任何特征排序。计入时按 op 留痕（_duration_by_op_id_with_zero_total_trace）。
+_ZERO_TOTAL_DURATION_EPSILON_HOURS = 1e-6
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def enrich_graph_ready_v2_metrics(
@@ -39,7 +55,7 @@ def enrich_graph_ready_v2_metrics(
     if missing_op_ids:
         raise ValidationError("GraphReady v2 特征缺少对应工序。", field="graph_ready_v2_features")
     out: Dict[int, Dict[str, Any]] = {}
-    duration_by_op_id = {op_id: _operation_hours(op, batches=batches) for op_id, op in op_by_id.items()}
+    duration_by_op_id = _duration_by_op_id_with_zero_total_trace(op_by_id, batches=batches)
     batch_id_by_op_id = {op_id: _batch_id_for_operation(op) for op_id, op in op_by_id.items()}
     schedulable_duration_by_op_id = {op_id: duration_by_op_id[op_id] for op_id in metric_op_ids}
     remaining_hours_by_batch_id = _remaining_hours_by_batch(
@@ -145,20 +161,51 @@ def enrich_graph_ready_v2_metrics(
     return out
 
 
+def _duration_by_op_id_with_zero_total_trace(
+    op_by_id: Dict[int, Any],
+    *,
+    batches: Dict[str, Any],
+) -> Dict[int, float]:
+    duration_by_op_id: Dict[int, float] = {}
+    zero_total_op_ids: List[int] = []
+    for op_id, op in op_by_id.items():
+        total = _operation_hours(op, batches=batches)
+        if total <= 0.0:
+            # 真零工时工序：按文档化 epsilon 计入并留痕，取舍与除零安全论证见
+            # _ZERO_TOTAL_DURATION_EPSILON_HOURS 常量注释。
+            zero_total_op_ids.append(int(op_id))
+            total = _ZERO_TOTAL_DURATION_EPSILON_HOURS
+        duration_by_op_id[op_id] = float(total)
+    if zero_total_op_ids:
+        _LOGGER.warning(
+            "GraphReady v2 特征遇到 %d 个总工时为 0 的自制工序，按最小 epsilon=%.0e 小时计入 duration 特征"
+            "（zero_total_op_ids 样本=%s）。",
+            len(zero_total_op_ids),
+            _ZERO_TOTAL_DURATION_EPSILON_HOURS,
+            sorted(zero_total_op_ids)[:20],
+        )
+    return duration_by_op_id
+
+
 def _operation_hours(op: Any, *, batches: Dict[str, Any]) -> float:
     batch = _batch_for_operation(op, batches=batches)
     if _operation_source(op) == EXTERNAL:
         total = _external_operation_hours(op)
+        # 与内部分支不对称是有意的：ext_days/ext_group_total_days 的录入与输入构建全链要求 >0，
+        # 不存在“外协 0 天”的合法语义，total<=0 只可能是坏数据，保持 fail-loud。
         if total <= 0.0:
             raise ValidationError("GraphReady v2 特征要求外协工时必须大于 0。", field="graph_ready_v2_features")
         return float(total)
-    quantity = _positive_float(_required_attr(batch, "quantity", field="batch.quantity"), field="batch.quantity")
+    # 单一真相源：total=setup+unit*quantity 与 core/algorithm_runtime/internal_slot.validate_internal_hours
+    # 同口径——quantity==0 合法（总量=setup）、总工时 0 合法，不复辟 quantity>0 / total>0 硬闸
+    # （系统口径见 schedule_input_runtime_support._ensure_internal_runtime_hours 护栏注释与回归测试
+    # test_ensure_internal_runtime_hours_allows_zero_quantity）。v2 特征层仍保留逐字段存在性/有限性/
+    # 非负的 fail-loud 前置检查（比 legacy「缺失补 0」更严）：进入 optimizer 的工序/批次字段必须齐全，
+    # 缺字段是坏输入而非合法降级。total==0 的处理见 _duration_by_op_id_with_zero_total_trace。
+    quantity = _non_negative_float(_required_attr(batch, "quantity", field="batch.quantity"), field="batch.quantity")
     setup = _non_negative_float(_required_attr(op, "setup_hours", field="operation.setup_hours"), field="operation.setup_hours")
     unit = _non_negative_float(_required_attr(op, "unit_hours", field="operation.unit_hours"), field="operation.unit_hours")
-    total = float(setup + unit * quantity)
-    if total <= 0.0:
-        raise ValidationError("GraphReady v2 特征要求工序工时必须大于 0。", field="graph_ready_v2_features")
-    return total
+    return float(setup + unit * quantity)
 
 
 def _external_operation_hours(op: Any) -> float:
@@ -335,7 +382,9 @@ def _saveability(*, due_hours: float, remaining_hours: float) -> float:
 
 
 def _critical_ratio(*, due_hours: float, remaining_hours: float) -> float:
-    # remaining_hours 由 _operation_hours(恒 >0)汇总,且每批至少含自身工序,故恒为正有限值,无需再防 0。
+    # remaining_hours 由 _duration_by_op_id_with_zero_total_trace 汇总:正常工序 duration>0,
+    # 真零工时工序按 _ZERO_TOTAL_DURATION_EPSILON_HOURS(>0)计入,且每批至少含自身工序,
+    # 故恒为正有限值,无需再防 0。
     return due_hours / remaining_hours
 
 

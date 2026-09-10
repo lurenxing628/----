@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, NoReturn, Optional, cast
 
+from core.algorithm_runtime.graph_cycle import kahn_unreachable_op_ids
 from core.infrastructure.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
 
@@ -32,7 +33,7 @@ def validate_graph_ready_context(
     _validate_link_scope(predecessor_map, known_ids=known_ids, reason="graph_ready_predecessor_out_of_scope")
     _validate_link_scope(successor_map, known_ids=known_ids, reason="graph_ready_successor_out_of_scope")
     _validate_bidirectional_links(predecessor_map, successor_map)
-    _detect_cycle(schedulable_ids=schedulable_ids, predecessor_map=predecessor_map)
+    _detect_cycle(schedulable_ids=schedulable_ids, predecessor_map=predecessor_map, successor_map=successor_map)
     _validate_sort_keys(graph_ready_context.get("sort_key_by_op_id"), schedulable_ids=schedulable_ids)
     _validate_priority_keys(graph_ready_context.get("graph_priority_key_by_op_id"), schedulable_ids=schedulable_ids)
 
@@ -126,27 +127,17 @@ def _validate_bidirectional_links(predecessor_map: Dict[int, set], successor_map
                 _raise("图 ready 候选前后继映射不一致。", "graph_ready_link_mismatch")
 
 
-def _detect_cycle(*, schedulable_ids: set, predecessor_map: Dict[int, set]) -> None:
-    remaining = {op_id: {pre for pre in predecessor_map.get(op_id, set()) if pre in schedulable_ids} for op_id in schedulable_ids}
-    ready = [op_id for op_id, predecessors in remaining.items() if not predecessors]
-    visited = set()
-    while ready:
-        current = ready.pop()
-        if current in visited:
-            continue
-        visited.add(current)
-        _release_successors(current, remaining=remaining, ready=ready, visited=visited)
-    if visited != set(schedulable_ids):
+def _detect_cycle(*, schedulable_ids: set, predecessor_map: Dict[int, set], successor_map: Dict[int, set]) -> None:
+    # 审计 A09：改用与 sgs_graph 同一份共享 Kahn 实现（core/algorithm_runtime/
+    # graph_cycle.py），消除本侧残留的每弹出一个节点全表扫描 remaining 的 O(V²)
+    # 写法（D13 同款），同时终结两份环检测拷贝"修一漏一"的语义漂移。
+    # successor_map 已在上方 _validate_bidirectional_links 校验双向一致。
+    if kahn_unreachable_op_ids(
+        schedulable_ids=set(schedulable_ids),
+        predecessor_map=predecessor_map,
+        successor_map=successor_map,
+    ):
         _raise("图 ready 候选包含环形前后置关系。", "graph_ready_cycle_detected")
-
-
-def _release_successors(current: int, *, remaining: Dict[int, set], ready: List[int], visited: set) -> None:
-    for op_id, predecessors in remaining.items():
-        if current not in predecessors:
-            continue
-        predecessors.discard(current)
-        if not predecessors and op_id not in visited:
-            ready.append(op_id)
 
 
 def _validate_sort_keys(value: Any, *, schedulable_ids: set) -> None:

@@ -9,6 +9,7 @@ from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 
 from .runtime_state import accumulate_busy_hours, update_machine_last_state
+from .slot_overlap_reuse import SlotReuseTimeline
 
 
 @dataclass
@@ -16,7 +17,7 @@ class ScheduleRunState:
     base_time: datetime
     batch_progress: Dict[str, datetime] = field(default_factory=dict)
     external_group_cache: Dict[Tuple[str, str], Tuple[datetime, datetime]] = field(default_factory=dict)
-    machine_timeline: Dict[str, List[Tuple[datetime, datetime]]] = field(default_factory=dict)
+    machine_timeline: Dict[str, List[Tuple[datetime, datetime]]] = field(default_factory=SlotReuseTimeline)
     operator_timeline: Dict[str, List[Tuple[datetime, datetime]]] = field(default_factory=dict)
     machine_busy_hours: Dict[str, float] = field(default_factory=dict)
     operator_busy_hours: Dict[str, float] = field(default_factory=dict)
@@ -140,6 +141,19 @@ class ScheduleRunState:
                 op,
                 batch_id=batch_id,
                 failed_source=self.batch_failure_sources.get(batch_id),
+            )
+        )
+
+    def record_graph_fixed_order_conflict(self, op: Any, batch_id: str, *, fixed_successor_op_ids: List[int]) -> None:
+        # 审计 A02：后道工序已报工（PROCESSING/PAUSED 进固定集）但前道排产失败，
+        # 报工顺序与工艺顺序不一致。只补结构化明细留痕、不重复计数——失败工序
+        # 自身已由 record_dispatch_failure / record_dispatch_exception 计 1。
+        self.failure_details.append(
+            self._failure_detail(
+                "graph_fixed_successor_order_conflict",
+                op,
+                batch_id=batch_id,
+                extra={"fixed_successor_op_ids": [int(item) for item in list(fixed_successor_op_ids or [])][:20]},
             )
         )
 

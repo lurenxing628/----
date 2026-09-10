@@ -12,22 +12,15 @@ from core.models.operation_execution_event import (
     EXECUTION_STATUS_PAUSED,
     EXECUTION_STATUS_PROCESSING,
 )
-from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
-from core.services.scheduler.execution.execution_fact_provider import ExecutionFact, ExecutionFactProvider
-from core.services.scheduler.execution.execution_snapshot import ExecutionSnapshot, build_execution_snapshot
+from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
+from core.services.scheduler.execution.execution_snapshot import ExecutionSnapshot
+
+from .schedule_execution_resource_facts import collect_resource_execution_facts
 
 
 def _op_id(op: Any) -> int:
     try:
         return int(getattr(op, "id", 0) or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _schedule_row_op_id(row: Any) -> int:
-    try:
-        value = row.get("op_id") if isinstance(row, dict) else getattr(row, "op_id", 0)
-        return int(value or 0)
     except (TypeError, ValueError):
         return 0
 
@@ -38,50 +31,6 @@ def _execution_conflict(message: str, *, reason: str, op_id: int) -> AppError:
         message,
         details={"reason": reason, "op_id": int(op_id)},
     )
-
-
-def _schedule_rows_by_op_id(svc: Any, *, version: int, op_ids: Set[int]) -> Dict[int, Any]:
-    rows: Dict[int, Any] = {}
-    duplicates: Set[int] = set()
-    for row in svc.schedule_repo.list_by_version(int(version)):
-        op_id = _schedule_row_op_id(row)
-        if op_id <= 0 or op_id not in op_ids:
-            continue
-        if op_id in rows:
-            duplicates.add(op_id)
-            continue
-        rows[op_id] = row
-    if duplicates:
-        sample = "，".join(str(x) for x in sorted(duplicates)[:10])
-        raise AppError(
-            ErrorCode.SCHEDULE_CONFLICT,
-            f"上一版排程里同一道工序出现了重复记录（示例：{sample}），本次没有写入新排程。请刷新排程数据后重试。",
-            details={"reason": "duplicate_previous_schedule_rows", "sample_op_ids": sorted(duplicates)[:10]},
-        )
-    return rows
-
-
-def _plan_detail_rows_by_op_id(svc: Any, *, version: int, op_ids: Set[int]) -> Dict[int, Any]:
-    if int(version or 0) <= 0 or not op_ids:
-        return {}
-    rows: Dict[int, Any] = {}
-    duplicates: Set[int] = set()
-    for row in svc.schedule_repo.list_by_version_with_details(int(version)):
-        op_id = _schedule_row_op_id(row)
-        if op_id <= 0 or op_id not in op_ids:
-            continue
-        if op_id in rows:
-            duplicates.add(op_id)
-            continue
-        rows[op_id] = row
-    if duplicates:
-        sample = "，".join(str(x) for x in sorted(duplicates)[:10])
-        raise AppError(
-            ErrorCode.SCHEDULE_CONFLICT,
-            f"上一版排程里同一道工序出现了重复记录（示例：{sample}），本次没有写入新排程。请刷新排程数据后重试。",
-            details={"reason": "duplicate_previous_schedule_rows", "sample_op_ids": sorted(duplicates)[:10]},
-        )
-    return rows
 
 
 def _planned_duration(schedule_row: Any, svc: Any, *, op_id: int) -> timedelta:
@@ -177,13 +126,11 @@ def _build_execution_seed_results(
     op_by_id: Dict[int, BatchOperation],
     facts: Dict[int, ExecutionFact],
     guarded_op_ids: Set[int],
-    prev_version: int,
 ) -> List[Dict[str, Any]]:
-    schedule_rows = _schedule_rows_by_op_id(svc, version=int(prev_version), op_ids=guarded_op_ids)
     execution_seed_results: List[Dict[str, Any]] = []
     for op_id in sorted(guarded_op_ids):
         op = op_by_id.get(int(op_id))
-        row = schedule_rows.get(int(op_id))
+        row = svc.schedule_repo.get(int(facts[op_id].schedule_id or 0))
         if op is None or row is None:
             raise _execution_conflict(
                 "现场已经有开工或完工记录，但上一版正式排程里找不到对应工序，本次没有写入新排程。请刷新后重新排。",
@@ -208,16 +155,9 @@ def _collect_execution_guardrails(
     prev_version: int,
 ) -> Tuple[Dict[int, ExecutionFact], Set[int], Set[int], List[Dict[str, Any]], Dict[int, str], ExecutionSnapshot]:
     op_by_id: Dict[int, BatchOperation] = {_op_id(op): op for op in operations if _op_id(op) > 0}
-    plan_rows = _plan_detail_rows_by_op_id(svc, version=int(prev_version), op_ids=set(op_by_id))
-    plan_op_ids = sorted(plan_rows)
-    facts = ExecutionFactProvider(svc.conn, logger=getattr(svc, "logger", None)).facts_by_op_id_for_plan_rows(
-        list(plan_rows.values()),
-        {"version": int(prev_version), "source_table": SOURCE_SCHEDULE, "effective_plan_role": ROLE_ADOPTED},
-        include_op_ids=plan_op_ids,
-    )
-    execution_snapshot = build_execution_snapshot(facts, plan_op_ids)
-    fixed_op_ids = _execution_status_op_ids(facts, (EXECUTION_STATUS_PROCESSING, EXECUTION_STATUS_PAUSED))
-    completed_op_ids = _execution_status_op_ids(facts, (EXECUTION_STATUS_COMPLETED,))
+    facts, _, execution_snapshot = collect_resource_execution_facts(svc, prev_version=prev_version)
+    fixed_op_ids = _execution_status_op_ids(facts, (EXECUTION_STATUS_PROCESSING, EXECUTION_STATUS_PAUSED)) & set(op_by_id)
+    completed_op_ids = _execution_status_op_ids(facts, (EXECUTION_STATUS_COMPLETED,)) & set(op_by_id)
     _raise_if_exception_facts(facts)
     guarded_op_ids = set(fixed_op_ids) | set(completed_op_ids)
     all_revisions = {
@@ -232,6 +172,5 @@ def _collect_execution_guardrails(
         op_by_id=op_by_id,
         facts=facts,
         guarded_op_ids=guarded_op_ids,
-        prev_version=prev_version,
     )
     return facts, fixed_op_ids, completed_op_ids, execution_seed_results, all_revisions, execution_snapshot

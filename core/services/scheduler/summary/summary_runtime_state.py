@@ -1,30 +1,31 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from core.algorithm_contracts.date_parsers import due_exclusive
+from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
+from core.models.batch import Batch
 from core.services.scheduler.contracts.schedule_summary_types import (
     FallbackState,
     FreezeState,
     RuntimeState,
+    SummaryMetrics,
     WarningState,
 )
 
 from .due_risk_items import (
     _build_overdue_items as _build_overdue_items_impl,
 )
+from .due_risk_items import (
+    incomplete_batch_ids_from_failure_details,
+)
 from .schedule_summary_assembly import (
     _finish_time_by_batch as finish_time_by_batch,
 )
 from .schedule_summary_degradation import _metric_int, _metric_sample
 from .schedule_summary_freeze import _extract_freeze_warnings, _freeze_meta_dict
-
-
-def due_exclusive(due_date) -> datetime:
-    if not due_date:
-        return datetime.max
-    return datetime(due_date.year, due_date.month, due_date.day) + timedelta(days=1)
 
 
 def _warning_list(value: Any) -> List[str]:
@@ -158,6 +159,7 @@ def build_overdue_items(
     batches: Dict[str, Any],
     finish_by_batch: Dict[str, datetime],
     summary: Any,
+    incomplete_batch_ids: Optional[Set[str]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     return _build_overdue_items_impl(
         svc,
@@ -166,19 +168,32 @@ def build_overdue_items(
         summary=summary,
         due_exclusive_fn=due_exclusive,
         append_summary_warning_fn=_append_summary_warning,
+        incomplete_batch_ids=incomplete_batch_ids,
     )
 
 
 def _build_runtime_state(
     *,
     svc,
-    batches: Dict[str, Any],
-    results: List[Any],
-    summary: Any,
-    best_metrics: Optional[Any],
+    batches: Dict[str, Batch],
+    results: List[ScheduleResult],
+    summary: Optional[ScheduleSummary],
+    best_metrics: Optional[SummaryMetrics],
 ) -> RuntimeState:
     finish_by_batch = finish_time_by_batch(results)
-    overdue_items, overdue_meta = build_overdue_items(svc, batches=batches, finish_by_batch=finish_by_batch, summary=summary)
+    # 半途失败批次的 finish 是被截断的部分完工时间，排除出超期/临期分类，
+    # 改走 result_summary 的 incomplete_batches 风险清单（audit 2026-07-20 A18）。
+    incomplete_batch_ids = incomplete_batch_ids_from_failure_details(
+        getattr(summary, "failure_details", None),
+        finish_by_batch,
+    )
+    overdue_items, overdue_meta = build_overdue_items(
+        svc,
+        batches=batches,
+        finish_by_batch=finish_by_batch,
+        summary=summary,
+        incomplete_batch_ids=incomplete_batch_ids,
+    )
     invalid_due_count = _metric_int(best_metrics, "invalid_due_count") or int(overdue_meta.get("invalid_due_count") or 0)
     invalid_due_batch_ids_sample = _metric_sample(best_metrics, "invalid_due_batch_ids_sample", limit=10) or list(
         overdue_meta.get("invalid_due_batch_ids_sample") or []
@@ -205,7 +220,7 @@ def _build_runtime_state(
 
 def _build_warning_state(
     *,
-    summary: Any,
+    summary: Optional[ScheduleSummary],
     algo_warnings: Optional[List[str]],
     input_state: Dict[str, Any],
     runtime_state: RuntimeState,

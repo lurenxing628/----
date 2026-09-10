@@ -6,7 +6,7 @@ from core.infrastructure.errors import AppError, ValidationError
 from core.models.enums import SourceType
 from web.public_token_registry import issue_public_token, resolve_public_token
 
-from ...navigation_utils import _safe_next_url
+from ...helpers.navigation_utils import _safe_next_url
 from .scheduler_bp import bp
 from .scheduler_user_messages import scheduler_user_visible_app_error_message
 

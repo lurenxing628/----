@@ -15,14 +15,14 @@ from web.manual_src_security import (
     get_manual_url,
     normalize_manual_src_context,
 )
-from web.routes.form_values import form_yes_no_value
+from web.routes.helpers.form_values import form_yes_no_value
 from web.viewmodels.page_manuals import (
     MANUAL_ENTRY_ENDPOINTS,
     build_page_fallback_text,
     build_page_manual_bundle,
 )
 
-from ...navigation_utils import _safe_next_url
+from ...helpers.navigation_utils import _safe_next_url
 from .scheduler_bp import bp
 from .scheduler_config_display_state import (
     build_scheduler_config_panel_state_from_service,

@@ -358,6 +358,7 @@ def _benchmark_row(
     best_score = _score_list(best.get("score"))
     failed_ops = int(getattr(best.get("summary"), "failed_ops", 0) or 0)
     baseline_failed_ops = int(getattr(baseline.get("summary"), "failed_ops", 0) or 0)
+    efficiency = state.candidate_profile["graph_ready_optimization"]["profile_efficiency"]
     return {
         "case_group": GRAPH_READY_REAL_SGS_CASE_GROUP,
         "case_slug": GRAPH_READY_REAL_SGS_CASE_SLUG,
@@ -374,7 +375,9 @@ def _benchmark_row(
         "oracle_status": "not_run",
         "gap_to_oracle_pct": None,
         "runtime_ms": int(best.get("runtime_ms") or 0),
-        "candidate_profile_count": len(graph_attempts),
+        "candidate_profile_count": int(efficiency["configured_profiles"]),
+        "decoded_profile_count": len(graph_attempts),
+        "predecode_pruned_profiles": int(efficiency["predecode_pruned_profiles"]),
         "evaluated_candidates": int(state.evaluated_candidates),
         "accepted_distinct_candidates": int(len(state.accepted_fingerprints)),
         "distinct_candidates": int(len(state.candidate_fingerprints)),
@@ -399,13 +402,20 @@ def _row_passes(row: Dict[str, Any]) -> bool:
     return (
         int(row.get("failed_ops") or 0) == 0
         and bool(row.get("objective_score_matched"))
-        and int(row.get("candidate_profile_count") or 0) == 9
-        and int(row.get("evaluated_candidates") or 0) >= 10
+        and _profile_coverage_passes(row)
         and int(row.get("distinct_candidates") or 0) >= 3
         and int(row.get("accepted_distinct_candidates") or 0) >= 2
         and str(row.get("best_origin") or "") != "baseline"
         and tuple(_score_list(row.get("objective_score"))) < tuple(_score_list(row.get("baseline_objective_score")))
     )
+
+
+def _profile_coverage_passes(row: Dict[str, Any]) -> bool:
+    configured = int(row.get("candidate_profile_count") or 0)
+    evaluated = int(row.get("evaluated_candidates") or 0)
+    pruned = int(row.get("predecode_pruned_profiles") or 0)
+    # One evaluation belongs to the baseline; all nine profiles remain covered.
+    return configured == 9 and evaluated >= 2 and evaluated + pruned == configured + 1
 
 
 def _flexible_machine_metric_row_passes(row: Dict[str, Any]) -> bool:

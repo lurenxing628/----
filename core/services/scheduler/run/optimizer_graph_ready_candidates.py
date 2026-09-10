@@ -14,7 +14,13 @@ from .optimizer_graph_ready_context import (
     optional_non_negative_number,
     required_non_negative_number,
 )
-from .optimizer_graph_ready_profiles import GraphReadyWeightProfile, finite_number, profile_payload
+from .optimizer_graph_ready_profiles import (
+    GRAPH_READY_V2_REPAIRED_ORIGIN,
+    GraphReadyWeightProfile,
+    finite_number,
+    profile_payload,
+)
+from .optimizer_graph_ready_repair_neighbors import repair_priority_context
 from .optimizer_graph_ready_reporting import public_params
 
 GRAPH_READY_V2_NORMALIZATION_VERSION = "rank_percentile_v1"
@@ -56,15 +62,30 @@ def evaluate_graph_ready_candidate(
     schedule_fn: Callable[..., Any],
     readiness_gate_enabled: bool,
     version: int,
-    runtime_ms: int,
+    clock: Callable[[], float],
     v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]] = None,
+    repair_order: Optional[List[str]] = None,
+    before_decode: Optional[Callable[[], None]] = None,
+    inspect_decision: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
+    # runtime_ms 合同语义是"该候选自身的构造+解码+评估耗时"(同分 tie-break 偏好更快候选,
+    # 见 optimizer_candidate_comparison.candidate_runtime_ms 与 GRAPH_READY_SELECTION_TIEBREAKER)。
+    # 必须在这里 per-candidate 计时,不能由调用方传"自优化开始的累计流逝时间"——
+    # 累计值随 profile 评估序号单调递增,会把"偏好更快"悄悄变成"偏好更早评估的 profile"。
+    t_candidate_begin = clock()
+    _validate_repair_decision(profile, order=order, repair_order=repair_order)
     candidate_context = context_for_profile(
         graph_ready_context=graph_ready_context,
         metrics_by_op_id=metrics_by_op_id,
         profile=profile,
         v2_common_rank_cache=v2_common_rank_cache,
     )
+    if repair_order is not None:
+        candidate_context = repair_priority_context(candidate_context, operations=algo_ops_to_schedule, order=repair_order)
+    if inspect_decision is not None:
+        inspect_decision(candidate_context)
+    if before_decode is not None:
+        before_decode()
     res, summ, used_strat, used_params = schedule_fn(
         scheduler,
         strict_mode=bool(strict_mode),
@@ -83,7 +104,10 @@ def evaluate_graph_ready_candidate(
         readiness_gate_enabled=bool(readiness_gate_enabled),
         graph_ready_context=candidate_context,
     )
-    metrics = compute_metrics(res, batches)
+    metrics = compute_metrics(
+        res, batches, expected_operations=algo_ops_to_schedule, seed_results=seed_sr_list,
+        failure_details=getattr(summ, "failure_details", ()),
+    )
     return _candidate_payload(
         res=res,
         summ=summ,
@@ -99,8 +123,17 @@ def evaluate_graph_ready_candidate(
         resource_pool=resource_pool,
         seed_sr_list=seed_sr_list,
         version=version,
-        runtime_ms=runtime_ms,
+        runtime_ms=max(int((clock() - t_candidate_begin) * 1000), 0),
     )
+
+
+def _validate_repair_decision(profile: GraphReadyWeightProfile, *, order: List[str], repair_order: Optional[List[str]]) -> None:
+    repaired = profile.candidate_origin == GRAPH_READY_V2_REPAIRED_ORIGIN
+    if repaired != (repair_order is not None) or (repaired and (profile.candidate_policy != "elite_repair" or order != repair_order)):
+        raise ValidationError(
+            "GraphReady 修补来源必须对应同一份显式优先决策。", field="graph_ready_elite_repair",
+            details={"reason": "graph_ready_bad_repair_decision"},
+        )
 
 
 def context_for_profile(
@@ -438,7 +471,7 @@ def _result_batch_order(decoded_batch_order: List[str], *, decision_order: List[
 
 def _mutable_scope(profile: GraphReadyWeightProfile, *, version: int) -> Dict[str, Any]:
     return {
-        "scope": "graph_ready_priority",
+        "scope": "graph_ready_elite_repair" if profile.candidate_origin == GRAPH_READY_V2_REPAIRED_ORIGIN else "graph_ready_priority",
         "weight_profile_slug": profile.slug,
         "raw_weights": dict(profile.raw_weights),
         "candidate_policy": profile.candidate_policy,

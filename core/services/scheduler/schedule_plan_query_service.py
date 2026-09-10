@@ -4,10 +4,10 @@ import sqlite3
 from dataclasses import replace
 from typing import Any, Dict, List, Optional
 
-from core.infrastructure.errors import ValidationError
 from core.models.schedule_plan_resolution import SchedulePlanResolution, SchedulePlanRoleOption
 from core.models.schedule_plan_role import (
     ROLE_ADOPTED,
+    # ROLE_BASELINE_BEST / ROLE_CRITICAL_BEST 是本模块对外转口(约15个契约测试经此导入),不是死 import,勿删。
     ROLE_BASELINE_BEST,
     ROLE_CRITICAL_BEST,
     SOURCE_ADJUSTMENT_SCENARIO_ROWS,

@@ -71,7 +71,12 @@ def build_tiny_case_reference(case: TinyBenchmarkCase) -> Dict[str, Any]:
     objective_name = require_known_objective(case.objective_name)
     actual_results, actual_summary = run_case_with_greedy(case)
     assert_oracle_decoder_matches_greedy(case, actual_results)
-    actual_metrics = compute_metrics(actual_results, batch_objects(case))
+    actual_metrics = compute_metrics(
+        actual_results, batch_objects(case), expected_operations=case.operations,
+        seed_results=(), failure_details=actual_summary.failure_details,
+    )
+    if actual_metrics.completion is None or not actual_metrics.completion.objective_defined or actual_summary.failed_ops:
+        raise ValidationError("Incomplete scheduling output cannot provide an objective proof.", field="benchmark_completion")
     actual_score = (float(actual_summary.failed_ops),) + objective_score(objective_name, actual_metrics)
     oracle = run_exact_oracle(case, objective_name=objective_name)
     makespan_bound_value, makespan_bound_sources = makespan_lower_bound(case)

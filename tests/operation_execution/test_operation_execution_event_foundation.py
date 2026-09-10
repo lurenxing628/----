@@ -8,6 +8,7 @@ from typing import Set
 
 import pytest
 
+from core.errors import AppError
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 from core.infrastructure.migration_state import detect_schema_is_current
 from core.infrastructure.operation_execution_event_data_contract import operation_execution_event_sequence_issues
@@ -427,18 +428,35 @@ def test_operation_execution_database_rejects_bad_values_and_duplicates(tmp_path
     try:
         _seed_plan(conn)
         repo = OperationExecutionEventRepo(conn)
-        repo.insert_event(_event())
+        start = repo.insert_event(_event())
         conn.commit()
 
-        with pytest.raises(Exception):
+        # 非法 event_type / reported_status / source_table：仓库层 Python 校验精确拒绝
+        with pytest.raises(ValueError, match="event_type must be one of"):
             repo.insert_event(_event(idempotency_key="key-bad", event_type="running"))
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError, match="reported_status must be one of"):
             repo.insert_event(_event(idempotency_key="key-bad-status", reported_status="finished"))
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError, match="current official schedule rows"):
             repo.insert_event(_event(idempotency_key="key-bad-source", source_table="candidate_rows"))
-        with pytest.raises(Exception):
-            repo.insert_event(_event(idempotency_key="key-negative", quantity_done=-1))
-        with pytest.raises(Exception):
+        # 负数完工数量：带上当前有效 state_revision 让写入真正到达 DB CHECK 约束
+        # （旧写法复用已消费的 revision，被序列校验先挡下，负数量约束从未被行使）
+        with pytest.raises(AppError, match="完整性约束") as negative_quantity:
+            repo.insert_event(
+                _event(
+                    idempotency_key="key-negative",
+                    request_fingerprint="fingerprint-negative",
+                    event_type="pause",
+                    reported_status="paused",
+                    quantity_done=-1,
+                    previous_state_revision=f"10:1:{start.id}",
+                )
+            )
+        assert isinstance(negative_quantity.value.cause, sqlite3.IntegrityError), (
+            f"负数量应被 DB CHECK 拒绝，实际 cause={negative_quantity.value.cause!r}"
+        )
+        assert "quantity_done" in str(negative_quantity.value.cause)
+        # 复用已消费的 previous_state_revision：序列校验精确拒绝过期 revision
+        with pytest.raises(ValueError, match="does not match current state"):
             repo.insert_event(
                 _event(
                     idempotency_key="key-duplicate-revision",

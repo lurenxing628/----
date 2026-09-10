@@ -11,10 +11,12 @@ from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
     AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
     AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID,
+    AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
     auto_assign_attempt_from_result,
 )
 from core.algorithm_runtime.downtime import occupy_resource
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, raise_strict_internal_hours_validation
+from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 
 
 def schedule_internal_operation(
@@ -149,6 +151,13 @@ def _auto_assign_failure_message(*, op: Any, reason: str) -> str:
         return f"自动派工资料不完整，本次无法自动补齐设备和人员：工序 {op_code}"
     if reason == AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS:
         return f"工时不合法：工序 {op_code}"
+    if reason == AUTO_ASSIGN_REASON_WINDOW_BLOCKED:
+        # 窗口截止不是资质/资料问题，不能落进下面的通用文案误导用户去查设备工种。
+        # 改这条中文模板必须同步 core/models/scheduler_public_errors.py 的反解表（同生共死）。
+        return (
+            f"排产截止日期内无法完成：工序 {op_code}。"
+            "请检查排产截止日期设置或减少排产量后再排产。"
+        )
     return (
         f"自动派工没有找到可用的设备和人员组合：工序 {op_code}。"
         "请检查设备工种、人员可操作设备和资源可用时间后再排产。"
@@ -188,6 +197,7 @@ def _estimate_internal(
             machine_downtimes=(machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else [],
             last_op_type_by_machine=last_op_type_by_machine,
             abort_after=None,
+            overlap_reuse=overlap_reuse_for(machine_timeline),
         )
     except ValueError as exc:
         if strict_mode:

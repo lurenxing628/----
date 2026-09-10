@@ -37,11 +37,11 @@ from core.infrastructure.errors import ValidationError
 
 from .auto_assign import auto_assign_internal_resources, auto_assign_internal_resources_attempt
 from .dispatch import dispatch_batch_order, dispatch_sgs
-from .external_groups import schedule_external
+from .external_groups import rebuild_external_group_cache_from_seeds, schedule_external
 from .internal_operation import schedule_internal_operation
 from .run_context import ScheduleRunContext
 from .schedule_params import resolve_schedule_params
-from .seed import _identity_int, normalize_seed_results
+from .seed import _identity_int, normalize_seed_results, seed_external_group_keys, seed_result_for_output
 
 __all__ = [
     "GreedyScheduler",
@@ -114,6 +114,7 @@ class GreedyScheduler:
         state = _prepare_run_state(
             self.calendar,
             batches=batches,
+            operations=operations,
             seed_results=seed_results,
             params=params,
             warnings=warnings,
@@ -366,6 +367,7 @@ def _prepare_run_state(
     calendar: Any,
     *,
     batches: Dict[str, Any],
+    operations: List[Any],
     seed_results: Optional[List[ScheduleResult]],
     params: Any,
     warnings: List[str],
@@ -378,6 +380,16 @@ def _prepare_run_state(
         _initialize_ready_progress(calendar, state=state, batches=batches, strict_mode=strict_mode)
     if seed_results:
         _apply_seed_results(state=state, seed_results=seed_results)
+        # audit 2026-07-20 A14：seed 注入除资源占用/批次进度外，还要按组键重建外部组缓存，
+        # 否则 merged 外协组被部分种入时，未种成员会另起一整段全长组块且零留痕。
+        rebuild_external_group_cache_from_seeds(
+            seed_results=seed_results,
+            seed_group_keys=seed_external_group_keys(seed_results),
+            operations=operations,
+            external_group_cache=state.external_group_cache,
+            warnings=warnings,
+            algo_stats=algo_stats,
+        )
         warnings.extend(state.seed_resource_warnings())
         increment_counter(algo_stats, "seed_missing_machine_id_count", state.missing_seed_machine_count)
         increment_counter(algo_stats, "seed_missing_operator_id_count", state.missing_seed_operator_count)
@@ -389,14 +401,15 @@ def _initialize_ready_progress(calendar: Any, *, state: ScheduleRunState, batche
         ready_date = parse_ready_date_for_sort(getattr(batch, "ready_date", None), strict_mode=bool(strict_mode))
         if batch_id and ready_date is not None:
             ready_start = datetime(ready_date.year, ready_date.month, ready_date.day, 0, 0, 0)
-            state.advance_batch(batch_id, calendar.adjust_to_working_time(ready_start, priority=getattr(batch, "priority", None)))
+            # 齐套只设时间下界；日历校验留给实际资源排槽，外协仍按自然日推进。
+            state.advance_batch(batch_id, ready_start)
 
 
 def _apply_seed_results(*, state: ScheduleRunState, seed_results: List[ScheduleResult]) -> None:
     for result in seed_results:
         _validate_seed_result(result)
         _freeze_seed_resources(state, result)
-        state.record_seed_result(result)
+        state.record_seed_result(seed_result_for_output(result))
 
 
 def _validate_seed_result(result: ScheduleResult) -> None:

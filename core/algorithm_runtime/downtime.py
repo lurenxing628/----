@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import bisect
 import math
+import operator
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from itertools import accumulate, islice
+from typing import Dict, List, Optional, Sequence, Tuple
 
 
 def occupy_resource(
@@ -18,11 +20,102 @@ def occupy_resource(
     bisect.insort(segments, (start, end))
 
 
+class SegmentOverlapIndex:
+    """有序段集上的重复重叠查询索引（避让循环专用）。
+
+    查询语义与对同一段集调用 find_overlap_shift_end 逐一一致：与 [start, end)
+    重叠的段全部落在“起点 < end”的前缀里，该前缀内最大的结束时刻若大于
+    start，就是需要避让到的时刻。
+
+    物化是惰性的：首次 shift_end 直接在原序列上做一次旧式线性扫描（避让循环
+    最常见的 0-hop 评估保持旧实现的单次扫描成本，且不再做防御性拷贝）；第二
+    次查询前才构建“起点数组 + 前缀最大结束时刻数组”，此后每次查询只需一次
+    bisect，把每 hop 的 O(n) 线性重扫降为 O(log n)。
+
+    契约：
+    - segments 必须按起点升序（占用时间轴由 occupy_resource 的 bisect.insort
+      维护，停机表由调度入口 _normalize_machine_downtimes 排序）。乱序输入
+      在物化时抛 ValueError，不做静默排序回退；首查线性扫描与旧实现同语义，
+      故 0-hop 场景对乱序输入的行为与旧实现一致。
+    - 段之间允许互相重叠或嵌套（停机表只排序、不合并），查询结果仍精确。
+    - 只读：本索引绝不修改输入；构建后持有输入序列引用，查询期间调用方
+      不得变异该序列。
+    - len() 返回原始段数（含无效段），与旧 _max_shift_count 的口径一致。
+    """
+
+    __slots__ = ("_segments", "_starts", "_prefix_max_ends", "_scanned_once")
+
+    def __init__(self, segments: Optional[Sequence[Tuple[datetime, datetime]]]) -> None:
+        self._segments = segments or ()
+        self._starts: Optional[Sequence[datetime]] = None
+        self._prefix_max_ends: Sequence[datetime] = ()
+        self._scanned_once = False
+
+    def __len__(self) -> int:
+        return len(self._segments)
+
+    def begin_estimate(self) -> None:
+        # Reuse materialized arrays, but retain the first linear query of each
+        # estimate when still lazy (including the existing unsorted 0-hop contract).
+        self._scanned_once = False
+
+    def shift_end(self, start: datetime, end: datetime) -> Optional[datetime]:
+        """等价于 find_overlap_shift_end(同一段集, start, end)。"""
+        if self._starts is None:
+            if not self._scanned_once:
+                self._scanned_once = True
+                return find_overlap_shift_end(self._segments, start, end)
+            starts = self._materialize()
+        else:
+            starts = self._starts
+        hi = bisect.bisect_left(starts, end)
+        if hi == 0:
+            return None
+        max_end = self._prefix_max_ends[hi - 1]
+        return max_end if max_end > start else None
+
+    def _materialize(self) -> Sequence[datetime]:
+        # 位于 SGS 逐候选评分最内层，构建走 C 层批量操作（zip/map/accumulate），
+        # 不逐元素跑 Python 循环。
+        segs = self._segments
+        if segs:
+            starts, ends = zip(*segs)
+        else:
+            starts, ends = (), ()
+        if any(map(operator.ge, starts, ends)):
+            starts, ends = _drop_invalid_segments(starts, ends)
+        if any(map(operator.gt, starts, islice(starts, 1, None))):
+            raise ValueError(_unsorted_segments_message(starts))
+        self._starts = starts
+        self._prefix_max_ends = tuple(accumulate(ends, max))
+        return starts
+
+
+def _drop_invalid_segments(
+    starts: Sequence[datetime],
+    ends: Sequence[datetime],
+) -> Tuple[Tuple[datetime, ...], Tuple[datetime, ...]]:
+    """过滤无效段（end <= start），与旧 find_overlap_shift_end 的逐段跳过语义一致。"""
+    kept = [(s, e) for s, e in zip(starts, ends) if e > s]
+    if not kept:
+        return (), ()
+    new_starts, new_ends = zip(*kept)
+    return new_starts, new_ends
+
+
+def _unsorted_segments_message(starts: Sequence[datetime]) -> str:
+    for prev, cur in zip(starts, islice(starts, 1, None)):
+        if cur < prev:
+            return f"重叠索引要求段按起点升序：{cur!r} 出现在 {prev!r} 之后"
+    return "重叠索引要求段按起点升序"
+
+
 def find_earliest_available_start(
     segments: List[Tuple[datetime, datetime]],
     base_time: datetime,
     duration_hours: float,
 ) -> datetime:
+    """segments 必须按起点升序（乱序输入在避让进入第二次查询时抛 ValueError，见 SegmentOverlapIndex）。"""
     try:
         dur = float(duration_hours)
     except (TypeError, ValueError, OverflowError) as exc:
@@ -33,29 +126,32 @@ def find_earliest_available_start(
         return base_time
 
     cur = base_time
-    valid_segments = [(s, e) for s, e in (segments or []) if e > s]
-    if not valid_segments:
+    index = SegmentOverlapIndex(segments)
+    if not len(index):
         return cur
 
     duration = timedelta(hours=dur)
     guard = 0
     while True:
         guard += 1
-        if guard > (len(valid_segments) + 1):
+        if guard > (len(index) + 1):
             return cur
-        shift = find_overlap_shift_end(valid_segments, cur, cur + duration)
+        shift = index.shift_end(cur, cur + duration)
         if shift is None or shift <= cur:
             return cur
         cur = shift
 
 
 def find_overlap_shift_end(
-    segments: List[Tuple[datetime, datetime]],
+    segments: Sequence[Tuple[datetime, datetime]],
     start: datetime,
     end: datetime,
 ) -> Optional[datetime]:
     """
     若 [start, end) 与 segments 中任意区间重叠，返回“需要推迟到的最晚结束时刻”（max end）。
+
+    segments 需按起点升序（提前 break 依赖有序）。一次性查询用本函数即可；
+    对同一段集反复查询的避让循环应改用 SegmentOverlapIndex，避免每次从头线性重扫。
     """
     shift: Optional[datetime] = None
     for s, e in segments or []:

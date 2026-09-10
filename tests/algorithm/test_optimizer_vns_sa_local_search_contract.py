@@ -268,8 +268,13 @@ def _run_local_search_once(
         time_budget_seconds=1,
         deadline=1000.005,
         scheduler=SimpleNamespace(_last_algo_stats={"fallback_counts": {}, "param_fallbacks": {}}),
-        algo_ops_to_schedule=[],
-        batches={},
+        algo_ops_to_schedule=[
+            SimpleNamespace(id=row.op_id, batch_id=row.batch_id, seq=row.seq) for row in best["results"]
+        ],
+        batches={
+            row.batch_id: SimpleNamespace(batch_id=row.batch_id, due_date=None, priority="normal", quantity=1)
+            for row in best["results"]
+        },
         start_dt=_START,
         end_date=None,
         downtime_map={},
@@ -319,8 +324,8 @@ def test_improve_only_updates_best_only_for_accepted_changed_better_output() -> 
 
     def _better_schedule(*args: Any, **kwargs: Any):
         return [
-            _result(3, batch_id="B1", start_offset=0),
-            _result(4, batch_id="B0", start_offset=1),
+            _result(2, batch_id="B1", start_offset=0),
+            _result(1, batch_id="B0", start_offset=1),
         ], _summary(failed_ops=0), kwargs.get("strategy"), dict(kwargs.get("strategy_params") or {})
 
     returned, report = _run_local_search_once(best=best, acceptance="improve_only", schedule_fn=_better_schedule)
@@ -342,8 +347,8 @@ def test_vns_local_search_sgs_candidate_switches_dispatch_rule() -> None:
     def _recording_schedule(*args: Any, **kwargs: Any):
         decode_calls.append(dict(kwargs))
         return [
-            _result(3, batch_id="B1", start_offset=0),
-            _result(4, batch_id="B0", start_offset=1),
+            _result(2, batch_id="B1", start_offset=0),
+            _result(1, batch_id="B0", start_offset=1),
         ], _summary(failed_ops=0), kwargs.get("strategy"), dict(kwargs.get("strategy_params") or {})
 
     _run_local_search_once(best=best, acceptance="improve_only", schedule_fn=_recording_schedule)
@@ -418,7 +423,12 @@ def test_local_search_state_keeps_current_and_best_separate() -> None:
     assert state.current_order == ["B1", "B0"]
 
 
-def test_local_search_reset_restores_current_payload_to_best() -> None:
+def test_local_search_reset_restores_current_payload_and_order_to_best() -> None:
+    """reset 合同（A01 修订）：current 的 order/score/results 必须整体对齐回 best。
+
+    禁止把未评估的扰动顺序塞进 reset——那会让接受准则参照 best 分数、邻域用
+    best 顺序的旧 results 选靶。扰动顺序必须先经真实评估再走 accept_current。
+    """
     best = _candidate(order=["B0", "B1"], failed_ops=0)
     best["resource_pool"] = {"best": True}
     worse = _candidate(order=["B1", "B0"], failed_ops=1)
@@ -426,11 +436,11 @@ def test_local_search_reset_restores_current_payload_to_best() -> None:
     state = LocalSearchState.from_best(best, resource_pool=None)
     state.accept_current(worse)
 
-    state.reset_current_to_best(order=["B2", "B0", "B1"])
+    state.reset_current_to_best()
 
     assert state.current is best
     assert state.best is best
-    assert state.current_order == ["B2", "B0", "B1"]
+    assert state.current_order == ["B0", "B1"]
     assert state.current_resource_pool == {"best": True}
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
@@ -8,12 +9,14 @@ from core.infrastructure.errors import ValidationError
 
 from .optimizer_candidate_comparison import candidate_is_preferred
 from .optimizer_graph_ready_acceptance import build_graph_ready_improve_only_acceptance_event
+from .optimizer_graph_ready_budget import GraphReadySearchBudget
 from .optimizer_graph_ready_candidates import build_v2_common_rank_cache, evaluate_graph_ready_candidate
 from .optimizer_graph_ready_context import (
     graph_node_metrics_by_op_id,
     reason_from_validation,
     validate_graph_ready_context,
 )
+from .optimizer_graph_ready_predecode import GraphReadyProfileSearch
 from .optimizer_graph_ready_profile_selection import resolve_graph_ready_profiles_and_metrics
 from .optimizer_graph_ready_profiles import (
     GRAPH_READY_BASE_ORIGIN,
@@ -26,6 +29,8 @@ from .optimizer_graph_ready_profiles import (
     graph_ready_v2_profile_summary,
     graph_ready_weight_profile_summary,
 )
+from .optimizer_graph_ready_repair import EliteRepairPool, run_graph_ready_elite_repair
+from .optimizer_graph_ready_repair_contract import EliteRepairLimits, resolve_elite_repair_limits
 from .optimizer_graph_ready_reporting import (
     append_graph_attempt,
     append_graph_trace,
@@ -121,6 +126,11 @@ def run_graph_ready_candidates(
 
     _update_graph_ready_profile(search_report_state, profile_summary=profile_summary)
     order = _candidate_order(best, build_order=build_order, base_strategy=base_strategy, base_params=base_params)
+    repair_limits = resolve_elite_repair_limits(
+        candidate_construction,
+        enabled=profile_summary.get("candidate_policy") == "objective_aware_portfolio"
+        and (profiles_override is None or candidate_construction is not None),
+    )
     return _run_weight_profiles(
         profiles=profiles,
         best=best,
@@ -150,6 +160,7 @@ def run_graph_ready_candidates(
         schedule_fn=schedule_fn,
         search_report_state=search_report_state,
         order=order,
+        repair_limits=repair_limits,
     )
 
 
@@ -252,40 +263,33 @@ def _run_weight_profiles(
     schedule_fn: Callable[..., Any],
     search_report_state: Optional[OptimizationSearchReportState],
     order: List[str],
+    repair_limits: EliteRepairLimits,
 ) -> Optional[Dict[str, Any]]:
+    budget = GraphReadySearchBudget(limits=repair_limits, deadline=deadline, clock=clock)
     v2_common_rank_cache = build_v2_common_rank_cache(metrics_by_op_id) if _has_v2_profile(profiles) else None
+    evaluate = partial(
+        evaluate_graph_ready_candidate,
+        graph_ready_context=graph_ready_context, metrics_by_op_id=metrics_by_op_id,
+        scheduler=scheduler, strict_mode=bool(strict_mode), algo_ops_to_schedule=algo_ops_to_schedule,
+        batches=batches, strategy=base_strategy, params=base_params, start_dt=start_dt, end_date=end_date,
+        downtime_map=downtime_map, seed_sr_list=seed_sr_list, dispatch_rule=dispatch_rule_cfg,
+        resource_pool=resource_pool, objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
+        schedule_fn=schedule_fn, readiness_gate_enabled=bool(readiness_gate_enabled), version=int(version),
+        clock=clock, v2_common_rank_cache=v2_common_rank_cache,
+    )
+    pool = EliteRepairPool(limits=repair_limits, objective_name=objective_name, operations=algo_ops_to_schedule,
+                           metrics_by_op_id=metrics_by_op_id, start_dt=start_dt, seed=version,
+                           best=best, report_state=search_report_state)
+    search = GraphReadyProfileSearch(evaluate=evaluate, pool=pool, budget=budget, profile_count=len(profiles))
     for profile in profiles:
-        if _deadline_reached(clock=clock, deadline=deadline, search_report_state=search_report_state):
+        if not search.can_start():
             break
-        candidate = _evaluate_profile(
-            profile=profile,
-            graph_ready_context=graph_ready_context,
-            metrics_by_op_id=metrics_by_op_id,
-            scheduler=scheduler,
-            strict_mode=bool(strict_mode),
-            algo_ops_to_schedule=algo_ops_to_schedule,
-            batches=batches,
-            base_strategy=base_strategy,
-            base_params=base_params,
-            start_dt=start_dt,
-            end_date=end_date,
-            downtime_map=downtime_map,
-            order=order,
-            seed_sr_list=seed_sr_list,
-            dispatch_rule_cfg=dispatch_rule_cfg,
-            resource_pool=resource_pool,
-            objective_name=objective_name,
-            optimizer_algo_stats=optimizer_algo_stats,
-            schedule_fn=schedule_fn,
-            readiness_gate_enabled=bool(readiness_gate_enabled),
-            version=int(version),
-            runtime_ms=max(int((clock() - t_begin) * 1000), 0),
-            attempts=attempts,
-            search_report_state=search_report_state,
-            v2_common_rank_cache=v2_common_rank_cache,
-        )
+        candidate = _evaluate_profile(evaluate=search.evaluate, profile=profile, order=order, strict_mode=bool(strict_mode),
+                                      base_strategy=base_strategy, dispatch_rule_cfg=dispatch_rule_cfg,
+                                      attempts=attempts, search_report_state=search_report_state)
         if candidate is None:
             continue
+        pool.observe(candidate, profile)
         if not _candidate_should_replace_best(candidate, profile=profile, best=best, attempts=attempts, search_report_state=search_report_state):
             continue
         incumbent = best
@@ -298,77 +302,29 @@ def _run_weight_profiles(
         )
         append_graph_trace(improvement_trace=improvement_trace, candidate=candidate, profile=profile, clock=clock, t_begin=t_begin)
         best = candidate
-    return best
-
-
-def _deadline_reached(
-    *,
-    clock: Callable[[], float],
-    deadline: float,
-    search_report_state: Optional[OptimizationSearchReportState],
-) -> bool:
-    if clock() <= deadline:
-        return False
-    if search_report_state is not None:
-        search_report_state.mark_deadline_reached()
-        search_report_state.mark_phase_skipped(GRAPH_READY_PHASE, "time_budget")
-    return True
+    search.publish(attempts=attempts, report_state=search_report_state)
+    if not _has_v2_profile(profiles) and not repair_limits.enabled:
+        return best
+    return run_graph_ready_elite_repair(
+        pool, best=best, evaluate=evaluate, profile_evaluations=budget.profile_decodes,
+        deadline=deadline, clock=clock, t_begin=t_begin, attempts=attempts,
+        improvement_trace=improvement_trace, report_state=search_report_state, strict_mode=bool(strict_mode),
+    )
 
 
 def _evaluate_profile(
     *,
+    evaluate: Callable[..., Optional[Dict[str, Any]]],
     profile: GraphReadyWeightProfile,
-    graph_ready_context: Any,
-    metrics_by_op_id: Dict[int, Dict[str, Any]],
-    scheduler: Any,
     strict_mode: bool,
-    algo_ops_to_schedule: List[Any],
-    batches: Dict[str, Any],
     base_strategy: SortStrategy,
-    base_params: Dict[str, Any],
-    start_dt: datetime,
-    end_date: Optional[date],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     order: List[str],
-    seed_sr_list: List[ScheduleResult],
     dispatch_rule_cfg: str,
-    resource_pool: Optional[Dict[str, Any]],
-    objective_name: str,
-    optimizer_algo_stats: Optional[Dict[str, Any]],
-    schedule_fn: Callable[..., Any],
-    readiness_gate_enabled: bool,
-    version: int,
-    runtime_ms: int,
     attempts: List[Dict[str, Any]],
     search_report_state: Optional[OptimizationSearchReportState],
-    v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]],
 ) -> Optional[Dict[str, Any]]:
     try:
-        return evaluate_graph_ready_candidate(
-            profile=profile,
-            graph_ready_context=graph_ready_context,
-            metrics_by_op_id=metrics_by_op_id,
-            scheduler=scheduler,
-            strict_mode=bool(strict_mode),
-            algo_ops_to_schedule=algo_ops_to_schedule,
-            batches=batches,
-            strategy=base_strategy,
-            params=base_params,
-            start_dt=start_dt,
-            end_date=end_date,
-            downtime_map=downtime_map,
-            order=order,
-            seed_sr_list=seed_sr_list,
-            dispatch_rule=dispatch_rule_cfg,
-            resource_pool=resource_pool,
-            objective_name=objective_name,
-            optimizer_algo_stats=optimizer_algo_stats,
-            schedule_fn=schedule_fn,
-            readiness_gate_enabled=bool(readiness_gate_enabled),
-            version=int(version),
-            runtime_ms=int(runtime_ms),
-            v2_common_rank_cache=v2_common_rank_cache,
-        )
+        return evaluate(profile=profile, order=order)
     except ValidationError as exc:
         if strict_mode or is_graph_ready_v2_contract_error(exc):
             raise

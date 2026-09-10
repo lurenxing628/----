@@ -69,6 +69,10 @@ LEGACY_PUBLIC_PATTERNS: Tuple[Pattern[str], ...] = (
         rf"^自动派工没有找到可用的设备和人员组合：工序 (?P<op>{_PUBLIC_ID_PATTERN})。"
         r"请检查设备工种、人员可操作设备和资源可用时间后再排产。$"
     ),
+    re.compile(
+        rf"^排产截止日期内无法完成：工序 (?P<op>{_PUBLIC_ID_PATTERN})。"
+        r"请检查排产截止日期设置或减少排产量后再排产。$"
+    ),
     re.compile(_SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN + _SGS_MISSING_RESOURCE_SUFFIX_PATTERN + "$"),
     re.compile(_SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN + r"缺少自动派工所需工种信息，请补齐工种或固定设备后再排产。$"),
     re.compile(_SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN + r"自动派工资料不完整，请检查设备工种和人员可操作设备后再排产。$"),
@@ -76,6 +80,10 @@ LEGACY_PUBLIC_PATTERNS: Tuple[Pattern[str], ...] = (
     re.compile(
         _SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN
         + r"没有找到可用的自动分配设备和人员组合，请检查设备工种、人员可操作设备和资源可用时间后再排产。$"
+    ),
+    re.compile(
+        _SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN
+        + r"在排产截止日期内无法完成，请检查排产截止日期设置或减少排产量后再排产。$"
     ),
     re.compile(
         rf"^排产窗口截止到 {_DATE_PATTERN}：(?:自制工序|外协工序|外协组) "
@@ -99,6 +107,7 @@ _LEGACY_CODE_PREFIXES: Tuple[Tuple[str, str], ...] = (
     ("自制工序缺少自动派工所需工种信息", "auto_assign_inputs_missing"),
     ("自动派工资料不完整", "auto_assign_resource_pool_incomplete"),
     ("自动派工没有找到可用的设备和人员组合", "auto_assign_no_resource_combination"),
+    ("排产截止日期内无法完成：工序 ", "auto_assign_window_blocked"),
     ("排产窗口截止到 ", "schedule_window_exceeded"),
     ("工时不合法：工序 ", "invalid_internal_work_hours"),
     ("外协周期不合法：工序 ", "invalid_external_days"),
@@ -114,6 +123,12 @@ _SGS_AUTO_ASSIGN_SUFFIX_CODES: Tuple[Tuple[str, str], ...] = (
         "没有找到可用的自动分配设备和人员组合，请检查设备工种、人员可操作设备和资源可用时间后再排产。",
         "auto_assign_no_resource_combination",
     ),
+    # 窗口截止归因（A07）：不进 auto_assign 资源错误集合（它不是资质/资料问题），
+    # 只用于把 SGS 上下文文案反解回 auto_assign_window_blocked。
+    (
+        "在排产截止日期内无法完成，请检查排产截止日期设置或减少排产量后再排产。",
+        "auto_assign_window_blocked",
+    ),
 )
 # 缺资源尾巴的两种顺序都要保留;这里不是重复文案,而是在承接历史中文串。
 _SGS_MISSING_RESOURCE_SUFFIX_CODES: Tuple[Tuple[str, str], ...] = (
@@ -127,6 +142,7 @@ _STRUCTURED_FAILURE_CODES = {
     "dispatch_operation_failed",
     "dispatch_operation_exception",
     "graph_blocked_after_failure",
+    "graph_fixed_successor_order_conflict",
     "missing_batch",
     "skipped_after_batch_failure",
 }
@@ -307,6 +323,11 @@ def _structured_failure_message(detail: Dict[str, Any]) -> str:
         return f"工序 {op_code}：同批前序工序排产失败，本次跳过。"
     if code == "graph_blocked_after_failure":
         return f"工序 {op_code}：依赖的前序工序 {failed_op_code} 排产失败，本次跳过。"
+    if code == "graph_fixed_successor_order_conflict":
+        return (
+            f"工序 {op_code}：它的后道工序已报工，但该前道工序排产失败，"
+            "报工顺序和工艺顺序不一致，本次没有继续安排该批次，请核对报工数据。"
+        )
     if code == "missing_batch":
         return f"工序 {op_code} 找不到所属批次，本次无法排产。"
     return ""

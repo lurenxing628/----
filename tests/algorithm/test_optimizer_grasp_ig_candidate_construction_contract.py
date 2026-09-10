@@ -35,6 +35,7 @@ from core.services.scheduler.summary.summary_size_guard_fields import minimal_su
 _START = datetime(2026, 1, 1, 8, 0, 0)
 _OBJECTIVE = "min_overdue"
 _BASE_ORDER = ["B1", "B2", "B3", "B4"]
+_BASE_OP_IDS = {batch_id: index + 1 for index, batch_id in enumerate(_BASE_ORDER)}
 
 
 class _Clock:
@@ -87,13 +88,15 @@ def _summary(results: List[ScheduleResult], *, failed_ops: int = 0) -> ScheduleS
     )
 
 
-def _result(index: int, batch_id: str, *, machine_id: str = "MC-1", operator_id: str = "OP-1") -> ScheduleResult:
+def _result(
+    index: int, batch_id: str, *, op_id: int, machine_id: str = "MC-1", operator_id: str = "OP-1",
+) -> ScheduleResult:
     start_time = _START + timedelta(hours=index)
     return ScheduleResult(
-        op_id=index + 1,
-        op_code=f"{batch_id}-{index + 1}",
+        op_id=op_id,
+        op_code=f"{batch_id}-1",
         batch_id=batch_id,
-        seq=(index + 1) * 10,
+        seq=10,
         machine_id=machine_id,
         operator_id=operator_id,
         start_time=start_time,
@@ -103,9 +106,14 @@ def _result(index: int, batch_id: str, *, machine_id: str = "MC-1", operator_id:
 
 
 def _results_for_order(
-    order: List[str], *, machine_id: str = "MC-1", operator_id: str = "OP-1"
+    order: List[str], *, machine_id: str = "MC-1", operator_id: str = "OP-1",
+    op_id_by_batch: Optional[Dict[str, int]] = None,
 ) -> List[ScheduleResult]:
-    return [_result(index, batch_id, machine_id=machine_id, operator_id=operator_id) for index, batch_id in enumerate(order)]
+    op_ids = _BASE_OP_IDS if op_id_by_batch is None else op_id_by_batch
+    return [
+        _result(index, batch_id, op_id=op_ids[batch_id], machine_id=machine_id, operator_id=operator_id)
+        for index, batch_id in enumerate(order)
+    ]
 
 
 def _tiny_op(op_id: int, batch_id: str) -> TinyOperationSpec:
@@ -270,7 +278,10 @@ def _run_phase(
         version=int(version),
         candidate_construction=dict(candidate_construction or _construction()),
         scheduler=SimpleNamespace(_last_algo_stats={"fallback_counts": {}, "param_fallbacks": {}}),
-        algo_ops_to_schedule=[],
+        algo_ops_to_schedule=[
+            SimpleNamespace(id=op_id, batch_id=batch_id, seq=10)
+            for batch_id, op_id in _BASE_OP_IDS.items()
+        ],
         batches=_batches(),
         start_dt=_START,
         end_date=None,
@@ -767,7 +778,10 @@ def test_grasp_ig_public_operation_log_and_size_guard_do_not_leak_raw_inputs() -
         graph_sgs_required=False,
     )
     secret_order = ["B-INTERNAL-1", "B-INTERNAL-2"]
-    secret_results = _results_for_order(secret_order, machine_id="MC-SECRET", operator_id="OP-SECRET")
+    secret_op_ids = {batch_id: index + 1 for index, batch_id in enumerate(secret_order)}
+    secret_results = _results_for_order(
+        secret_order, machine_id="MC-SECRET", operator_id="OP-SECRET", op_id_by_batch=secret_op_ids,
+    )
     baseline = _candidate(secret_order, results=secret_results, failed_ops=1)
     better = _candidate(list(reversed(secret_order)), results=secret_results)
     state = _state(candidate_profile=profile.to_report_dict())

@@ -58,7 +58,9 @@ def run_exact_oracle(case: TinyBenchmarkCase, *, objective_name: str) -> ExactOr
             if nodes > int(case.oracle_node_limit):
                 raise _NodeLimitReached()
             results = _decode_sequence(case, sequence)
-            metrics = compute_metrics(results, batch_objects(case))
+            metrics = compute_metrics(results, batch_objects(case), expected_operations=case.operations)
+            if metrics.completion is None or not metrics.completion.objective_defined:
+                raise ValidationError("Incomplete oracle output cannot prove an optimum.", field="benchmark_completion")
             score = (0.0,) + objective_score(objective_name, metrics)
             if best_score is None or score < best_score:
                 best_score = score
@@ -131,6 +133,10 @@ def assert_oracle_decoder_matches_greedy(
         for result in greedy_results
         if result.start_time is not None and result.end_time is not None
     ]
+    expected_ids = set(spec_by_op_id)
+    scheduled_ids = [int(result.op_id) for result in scheduled]
+    if len(scheduled_ids) != len(case.operations) or set(scheduled_ids) != expected_ids:
+        raise ValidationError("Tiny proof requires every expected operation exactly once.", field="benchmark_completion")
     ordered = sorted(
         scheduled,
         key=lambda result: (result.start_time, result.end_time, int(result.op_id)),

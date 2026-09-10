@@ -8,6 +8,8 @@ from core.models.operation_execution_scope import OperationExecutionScope
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact, ExecutionFactProvider
 from core.services.scheduler.execution.execution_snapshot import build_execution_snapshot
 
+from .schedule_execution_reservations import build_execution_resource_reservations
+from .schedule_execution_resource_facts import RESOURCE_SNAPSHOT_PREFIX, collect_resource_execution_facts
 from .schedule_input_contracts import _op_seq
 from .schedule_payload_contract import ValidatedSchedulePayload, ValidatedScheduleRow
 
@@ -131,6 +133,15 @@ def _validate_execution_snapshot(
     expected_op_ids: Optional[List[int]],
     execution_facts: Dict[int, ExecutionFact],
 ) -> None:
+    if str(expected_revision or "").startswith(RESOURCE_SNAPSHOT_PREFIX):
+        _, _, current = collect_resource_execution_facts(
+            svc, prev_version=int(svc.history_repo.get_latest_version() or 0),
+        )
+        if current.revision != expected_revision:
+            raise _execution_guard_conflict(
+                "现场状态刚刚变了，这次重排没有写入。请刷新后重新排。", reason="execution_state_changed",
+            )
+        return
     op_ids = [int(op_id) for op_id in list(expected_op_ids or []) if int(op_id) > 0]
     if not expected_revision or not op_ids:
         return
@@ -259,13 +270,17 @@ def validate_execution_guard_before_persist(
     execution_snapshot_op_ids: Optional[List[int]] = None,
     payload_validation_operations: Optional[List[Any]] = None,
 ) -> None:
-    if not execution_guard_state_revisions:
-        return
     _validate_execution_snapshot(
         svc,
         expected_revision=execution_snapshot_revision,
         expected_op_ids=execution_snapshot_op_ids,
         execution_facts=execution_facts,
+    )
+    if not execution_guard_state_revisions:
+        return
+    _validate_unselected_resource_overlap(
+        svc, payload=validated_schedule_payload, execution_facts=execution_facts,
+        operations=payload_validation_operations,
     )
     _validate_execution_revisions(
         svc,
@@ -299,3 +314,20 @@ def validate_execution_guard_before_persist(
         execution_facts=execution_facts,
         execution_completed_op_ids=execution_completed_op_ids,
     )
+
+
+def _validate_unselected_resource_overlap(
+    svc: Any, *, payload: ValidatedSchedulePayload, execution_facts: Dict[int, ExecutionFact],
+    operations: Optional[List[Any]],
+) -> None:
+    reservations = build_execution_resource_reservations(
+        svc, facts=execution_facts, selected_op_ids=set(_ops_by_id(operations)),
+    )
+    for reservation in reservations:
+        for row in payload.schedule_rows:
+            if ((row.machine_id == reservation.machine_id or row.operator_id == reservation.operator_id)
+                    and row.start_time < reservation.end_time and row.end_time > reservation.start_time):
+                raise _execution_guard_conflict(
+                    "新排程与未选中的在制工序占用冲突，本次没有写入新排程。请刷新后重新排。",
+                    reason="unselected_execution_resource_overlap", op_id=reservation.op_id,
+                )

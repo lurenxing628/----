@@ -6,7 +6,7 @@ from flask import Blueprint, flash
 
 from core.models.scheduler_degradation_messages import public_summary_warning_messages
 
-from ...enum_display import batch_status_zh, day_type_zh, priority_zh, ready_zh
+from ...helpers.enum_display import batch_status_zh, day_type_zh, priority_zh, ready_zh
 
 
 class _SchedulerBlueprint(Blueprint):

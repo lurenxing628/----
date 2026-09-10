@@ -84,6 +84,7 @@ def graph_ready_v2_profile_summary(max_candidate_profiles: int = 60, *, seed: in
         "weight_profile_slugs": [profile.slug for profile in profiles],
         "formula_versions": sorted({profile.formula_version for profile in profiles}),
         "normalization_version": "rank_percentile_v1",
+        "ordering_policy": "v1_v2_round_robin",
         "truncated": bool(truncated),
         "truncation_reason": reason,
         "selection_tiebreaker": list(GRAPH_READY_SELECTION_TIEBREAKER),
@@ -191,7 +192,14 @@ def _graph_ready_v2_profile_specs(*, seed: int = 0) -> Tuple[Dict[str, Any], ...
         _v2_spec("v2_graph_due_hybrid", "graph_due_hybrid", critical_path=1.0, successor_count=0.5, downstream_work_hours=0.5),
         _v2_spec("v2_bottleneck_due_gated", "bottleneck_due_gated", bottleneck_machine=1.0),
     )
-    return v1 + v2_specs
+    # Interleave before truncation so a short portfolio can reach v2 as well as v1.
+    portfolio = []
+    for index in range(max(len(v1), len(v2_specs))):
+        if index < len(v1):
+            portfolio.append(v1[index])
+        if index < len(v2_specs):
+            portfolio.append(v2_specs[index])
+    return tuple(portfolio)
 
 
 def _v2_spec(

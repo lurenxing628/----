@@ -114,11 +114,12 @@ class MachineDowntimeService:
         st_db = self._to_db_datetime(st)
         et_db = self._to_db_datetime(et)
 
-        # 重叠检测（只对 active 生效）
-        if self.repo.has_overlap(mc_id, start_time=st_db, end_time=et_db, exclude_id=None):
-            raise BusinessError(ErrorCode.SCHEDULE_CONFLICT, "该设备在该时间段已存在停机计划（时间段重叠）。请调整时间。")
-
-        with self.tx_manager.transaction():
+        # 重叠检测（只对 active 生效）必须与写入同处一个 BEGIN IMMEDIATE 事务：
+        # 检查留在事务外时，threaded 双请求（各自连接）能同时通过检查、双双插入重叠段（查后插竞态）。
+        # BEGIN IMMEDIATE 起手即拿写锁串行化写者，后到者在锁释放后重查必能看见先写入的行。
+        with self.tx_manager.transaction(begin_immediate=True):
+            if self.repo.has_overlap(mc_id, start_time=st_db, end_time=et_db, exclude_id=None):
+                raise BusinessError(ErrorCode.SCHEDULE_CONFLICT, "该设备在该时间段已存在停机计划（时间段重叠）。请调整时间。")
             d = self.repo.create(
                 {
                     "machine_id": mc_id,
@@ -221,8 +222,9 @@ class MachineDowntimeService:
         created_ids: List[int] = []
         skipped_overlap: List[str] = []
 
-        # 事务仅包裹写入循环：全成或全回滚；范围解析的 DB 读已在事务外完成。
-        with self.tx_manager.transaction():
+        # 事务包裹“逐台重叠检测 + 写入”循环：全成或全回滚；范围解析的 DB 读已在事务外完成。
+        # BEGIN IMMEDIATE 起手即拿写锁串行化写者：并发请求不能同时通过 has_overlap 检查后双双写入重叠段。
+        with self.tx_manager.transaction(begin_immediate=True):
             for mid in target_machine_ids:
                 if self.repo.has_overlap(mid, start_time=st_db, end_time=et_db, exclude_id=None):
                     skipped_overlap.append(mid)

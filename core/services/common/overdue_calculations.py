@@ -25,6 +25,10 @@ def due_exclusive(due_dt: Optional[datetime]) -> datetime:
         due_date = due_dt
     else:
         due_date = due_dt.date()
+    if due_date == date.max:
+        # 9999-12-31 是 ERP 常见的“无交期”哨兵值（date.max）：再 +1 天会溢出
+        # OverflowError。这里显式定义其语义为“最晚”，与 None→datetime.max 合同同向。
+        return datetime.max
     return datetime(due_date.year, due_date.month, due_date.day) + timedelta(days=1)
 
 

@@ -1,4 +1,4 @@
-"""回归测试：贪心调度的资源占用时间线有序性——occupy_resource 乱序插入后段按起始时间保持升序；accumulate_busy_hours 累计设备/人员忙时并对非 datetime 抛 TypeError；update_machine_last_state 在 seed/dispatch 两种模式下正确更新末次结束与工种（seed 不回退已更晚的结束时间）；GreedyScheduler.schedule 对乱序 machine_downtimes 归一化一次后正常排产。"""
+"""回归测试：贪心调度的资源占用时间线有序性——occupy_resource 乱序插入后段按起始时间保持升序；accumulate_busy_hours 累计设备/人员忙时并对非 datetime 抛 TypeError；update_machine_last_state 在 seed/dispatch 两种模式下末次结束与工种同守卫（时间线末尾未真实推进时两者都不更新，audit 2026-07-20 A16）；GreedyScheduler.schedule 对乱序 machine_downtimes 归一化一次后正常排产。"""
 
 from __future__ import annotations
 
@@ -83,6 +83,9 @@ def test_runtime_state_helpers_handle_seed_and_dispatch_modes():
     assert last_end_by_machine["M1"] == base + timedelta(hours=5)
     assert last_op_type_by_machine["M1"] == "新工种"
 
+    # 修正依据 audit 2026-07-20 A14/A16 批次的 A16：dispatch 模式 gap 回填（end 未超过
+    # 已记录的时间线末尾）时，last_op_type 必须与 last_end 同守卫、一起保持不变。
+    # 旧断言锁住的是错误行为（时间不推进却覆盖工种），会让换型惩罚与自动选机按错的上一工种计算。
     update_machine_last_state(
         last_end_by_machine=last_end_by_machine,
         last_op_type_by_machine=last_op_type_by_machine,
@@ -92,6 +95,17 @@ def test_runtime_state_helpers_handle_seed_and_dispatch_modes():
         seed_mode=False,
     )
     assert last_end_by_machine["M1"] == base + timedelta(hours=5)
+    assert last_op_type_by_machine["M1"] == "新工种"
+
+    update_machine_last_state(
+        last_end_by_machine=last_end_by_machine,
+        last_op_type_by_machine=last_op_type_by_machine,
+        machine_id="M1",
+        end_time=base + timedelta(hours=6),
+        op_type_name="派工工种",
+        seed_mode=False,
+    )
+    assert last_end_by_machine["M1"] == base + timedelta(hours=6)
     assert last_op_type_by_machine["M1"] == "派工工种"
 
 

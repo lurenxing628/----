@@ -34,9 +34,15 @@ class LocalSearchState:
         self.best = candidate
         self.accept_current(candidate)
 
-    def reset_current_to_best(self, *, order: List[str]) -> None:
+    def reset_current_to_best(self) -> None:
+        """把 current 完全对齐回 best：order/score/results 三者必须同源。
+
+        restart 的扰动顺序不允许从这里塞入——未评估的顺序配上 best 的 score/results
+        会让接受准则参照错误基准分数、邻域用陈旧 results 选靶（A01）。扰动顺序必须
+        先经 schedule_fn 真实评估成候选，再走 accept_current 对齐三元组。
+        """
         self.current = self.best
-        self.current_order = list(order or self.best.get("order") or [])
+        self.current_order = list(self.best.get("order") or [])
         best_resource_pool = self.best.get("resource_pool")
         self.current_resource_pool = dict(best_resource_pool) if isinstance(best_resource_pool, dict) else {}
 

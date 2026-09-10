@@ -236,6 +236,12 @@ def main():
     # 设置 mtime 为 30 天前（默认 keep_days=7 一定会被删）
     old_mtime = time.time() - 30 * 24 * 3600
     os.utime(old_path, (old_mtime, old_mtime))
+    # 清理带『至少保留最新 MIN_KEEP_BACKUPS 份』数量保底（B01）：补一个新鲜占位备份，
+    # 保证比 old_path 新的文件 >= 保底数，过期文件才会真正进入删除候选。
+    padding_name = "aps_backup_20990101_000000_floor_padding.db"
+    padding_path = os.path.join(test_backups, padding_name)
+    with open(padding_path, "wb") as f:
+        f.write(b"")
 
     resp = client.post("/system/backup/cleanup", data={}, follow_redirects=True)
     _assert_status(lines, "POST /system/backup/cleanup (follow redirects)", resp, 200)

@@ -6,13 +6,17 @@ from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 from core.algorithm_contracts.date_parsers import parse_date
 from core.algorithm_contracts.dispatch_rules import DispatchInputs, DispatchRule, build_dispatch_key
 from core.algorithm_contracts.value_domains import MERGED
-from core.algorithm_runtime.auto_assign_contract import auto_assign_attempt_from_result
+from core.algorithm_runtime.auto_assign_contract import (
+    AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
+    auto_assign_attempt_from_result,
+)
 from core.algorithm_runtime.internal_slot import (
     estimate_internal_slot,
     raise_strict_internal_hours_validation,
     validate_internal_hours_for_mode,
 )
 from core.algorithm_runtime.run_state import ScheduleRunState
+from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 from core.infrastructure.errors import ValidationError
 from core.shared.strict_parse import is_blank_input, parse_optional_date, parse_required_float, parse_required_int
 
@@ -176,6 +180,28 @@ def _score_internal_candidate(
         resource_pool=resource_pool,
     )
     if not resources.machine_id or not resources.operator_id:
+        if resources.auto_assign_reason == AUTO_ASSIGN_REASON_WINDOW_BLOCKED:
+            # 窗口截止导致的自动派工不可放置：与固定资源 blocked_by_window 走同一条降级路径。
+            # 不抛 ValidationError（否则评分阶段中止整个排产 run），改为返回 score_penalty=1.0
+            # 的垫底排序 key——可行候选（penalty=0）永远优先；该候选真被选中时会在放置层
+            # （internal_operation._resolve_internal_resources）按 WINDOW_BLOCKED 记单批失败
+            # 并留下截止日期文案，其余批次继续。
+            return _dispatch_key(
+                dispatch_key_builder=dispatch_key_builder,
+                dispatch_rule=dispatch_rule,
+                priority=meta["priority"],
+                due_date=meta["due_date"],
+                est_start=meta["prev_end"],
+                est_end=meta["prev_end"],
+                proc_hours=total_hours,
+                avg_proc_hours=avg_proc_hours,
+                changeover_penalty=0,
+                batch_order=batch_order,
+                batch_id=batch_id,
+                seq=meta["seq"],
+                op_id=meta["op_id"],
+                score_penalty=1.0,
+            )
         message, details = internal_resource_validation_message(
             batch=batch,
             op=op,
@@ -376,6 +402,7 @@ def _estimate_scoring_slot(
         last_op_type_by_machine=state.last_op_type_by_machine,
         abort_after=None,
         total_hours_base=total_hours,
+        overlap_reuse=overlap_reuse_for(state.machine_timeline),
     )
     if estimate.abort_after_hit:
         raise RuntimeError("SGS 评分不应命中 abort_after 早停")

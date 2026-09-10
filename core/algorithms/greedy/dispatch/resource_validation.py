@@ -6,6 +6,7 @@ from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
     AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
     AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID,
+    AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
 )
 from core.models.scheduler_public_errors import public_safe_identifier, public_safe_label
 
@@ -92,6 +93,13 @@ def _auto_assign_resource_message(
         )
     if auto_assign_reason == AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS:
         return (f"{prefix}工时不合法，请修正工时后再排产。", "invalid_internal_work_hours")
+    if auto_assign_reason == AUTO_ASSIGN_REASON_WINDOW_BLOCKED:
+        # 窗口截止不是资质/资料问题，文案必须指向截止日期，不能误导用户去查设备工种和人员资质。
+        # 改这条中文模板必须同步 core/models/scheduler_public_errors.py 的反解表（同生共死）。
+        return (
+            f"{prefix}在排产截止日期内无法完成，请检查排产截止日期设置或减少排产量后再排产。",
+            "auto_assign_window_blocked",
+        )
     return (
         f"{prefix}没有找到可用的自动分配设备和人员组合，请检查设备工种、人员可操作设备和资源可用时间后再排产。",
         "auto_assign_no_resource_combination",
