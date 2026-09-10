@@ -9,7 +9,7 @@ from core.services.scheduler.schedule_plan_option_display import public_plan_rol
 from core.services.scheduler.schedule_result_view_context import selected_plan_role
 from core.services.scheduler.schedule_result_view_range import normalize_week_offset_for_explicit_range
 from web.error_boundary import json_error_response
-from web.routes.history_summary_logging import (
+from web.routes.helpers.history_summary_logging import (
     log_history_summary_parse_warning,
     log_history_version_option_parse_warnings,
 )

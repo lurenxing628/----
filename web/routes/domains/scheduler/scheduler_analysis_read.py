@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, NamedTuple, Optional
 
 from core.services.scheduler.version_resolution import resolve_version_or_latest
-from web.routes.history_summary_logging import (
+from web.routes.helpers.history_summary_logging import (
     log_history_summary_parse_warning,
     log_history_version_option_parse_warnings,
 )

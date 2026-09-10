@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.services.common.degradation import DegradationCollector
 
+from ._sched_display_utils import fmt_dt as _fmt_dt
 from ._sched_display_utils import record_bad_time_row as _record_bad_time_row
 from ._sched_utils import _safe_int
 from .gantt_task_labels import public_task_label as _public_task_label
@@ -26,10 +27,6 @@ def _parse_dt(value: Any) -> Optional[datetime]:
         except Exception:
             continue
     return None
-
-
-def _fmt_dt(dt: datetime) -> str:
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _clean_text(value: Any) -> str:

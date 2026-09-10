@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
-from .scheduler_workbench_links import TARGET_PAGE_PATHS, build_workbench_link, build_workbench_plan_context
+from core.models.schedule_plan_role import ROLE_ADOPTED
 
-ROLE_ADOPTED = "adopted"
+from .scheduler_workbench_links import TARGET_PAGE_PATHS, build_workbench_link, build_workbench_plan_context
 
 # O18(R67) 裁定保持现状:这是含资源 6 键的导航上下文 superset(15 键,含 scenario_id,
 # 与 reports_export_support 的 14 键 superset 不同形,禁互抄;普查时 16/15 键,R42 已删 plan_id),不收编进

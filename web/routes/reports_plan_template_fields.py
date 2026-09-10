@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from core.models.schedule_plan_role import COMPLETED_RESULT_STATUSES
+from core.models.schedule_plan_role import COMPLETED_RESULT_STATUSES, ROLE_ADOPTED, plan_role_label
 from core.services.scheduler.schedule_plan_option_display import public_plan_role_options
 from web.viewmodels.scheduler_plan_guardrail_messages import result_status_label, summary_unavailable_guardrail_text
 
-ROLE_ADOPTED = "adopted"
-DEFAULT_PLAN_LABEL = "正式采用方案"
+DEFAULT_PLAN_LABEL = plan_role_label(ROLE_ADOPTED)
 DEFAULT_PREVIEW_LABEL = "模拟预览（未命名）"
 
 

@@ -282,10 +282,14 @@ def _report_engine_test_conn() -> sqlite3.Connection:
 
 def test_report_engine_records_bad_time_rows_that_sql_range_cannot_classify() -> None:
     from core.services.report.report_engine import ReportEngine
+    from core.services.scheduler.calendar_engine import DayPolicy
 
     conn = _report_engine_test_conn()
     engine = ReportEngine(conn)
-    engine.calendar = SimpleNamespace(policy_for_datetime=lambda _dt: SimpleNamespace(shift_hours=8.0, efficiency=1.0))
+    engine.calendar = SimpleNamespace(policy_for_datetime=lambda dt: DayPolicy(
+        date_str=dt.date().isoformat(), day_type="workday", shift_hours=8.0,
+        efficiency=1.0, allow_normal="yes", allow_urgent="yes",
+    ))
 
     utilization = engine.utilization(1, "2026-01-01", "2026-01-01")
     downtime = engine.downtime_impact(1, "2026-01-01", "2026-01-01")

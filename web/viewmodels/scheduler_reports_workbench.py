@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlsplit
 
+from core.models.schedule_plan_role import ROLE_ADOPTED, plan_role_label
+
 from .scheduler_plan_guardrail_messages import summary_unavailable_guardrail_text
 from .scheduler_report_limitations import build_report_limitations
 from .scheduler_report_values import ReportPresentationValueError, _optional_number, _sum_number, downtime_summary
@@ -12,8 +14,6 @@ from .scheduler_workbench_links import (
     build_workbench_plan_context,
     can_emit_feedback_write_urls,
 )
-
-ROLE_ADOPTED = "adopted"
 
 
 def _text(value: Any) -> str:
@@ -36,7 +36,7 @@ def _public_plan_label(plan_resolution: Optional[Dict[str, Any]]) -> str:
         or _text(data.get("scenario_display_name"))
         or _text(data.get("scenario_name"))
         or _text(data.get("selected_label"))
-        or "正式采用方案"
+        or plan_role_label(ROLE_ADOPTED)
     )
 
 

@@ -24,7 +24,7 @@ from core.services.report import ReportEngine  # noqa: E402
 from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjustmentScenarioService  # noqa: E402
 from core.services.scheduler.gantt_service import GanttService  # noqa: E402
 from core.services.scheduler.resource_dispatch_service import ResourceDispatchService  # noqa: E402
-from tests.gantt.test_gantt_draft_save_and_preview import (  # noqa: E402
+from tests._support.gantt_scenario import (  # noqa: E402
     VERSION,
     _build_app,
     _connect,

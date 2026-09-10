@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
-import sys
 from pathlib import Path
 
 import pytest
@@ -12,16 +10,29 @@ from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, 
 from core.infrastructure.errors import ValidationError
 from core.infrastructure.migration_state import detect_schema_is_current
 from core.models.schedule_adjustment import DRAFT_STATUS_SAVED_SCENARIO
-from core.services.scheduler.gantt_adjustment_draft_service import GanttAdjustmentDraftService
 from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjustmentScenarioService
 from core.services.scheduler.gantt_service import GanttService
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
 from data.repositories import ScheduleAdjustmentRepository
-from tests._support.excel_templates import point_env_at_shared
-from tests._support.paths import REPO_ROOT
+from tests._support.gantt_scenario import (
+    SCHEMA_PATH as SCHEMA_PATH,
+)
+from tests._support.gantt_scenario import (
+    VERSION as VERSION,
+)
+from tests._support.gantt_scenario import (
+    _build_app as _build_app,
+)
+from tests._support.gantt_scenario import (
+    _connect as _connect,
+)
+from tests._support.gantt_scenario import (
+    _draft_with_change as _draft_with_change,
+)
+from tests._support.gantt_scenario import (
+    _seed_base as _seed_base,
+)
 
-SCHEMA_PATH = REPO_ROOT / "schema.sql"
-VERSION = 5
 _PUBLIC_GANTT_JSON_FORBIDDEN_KEYS = {
     "op_id",
     "schedule_id",
@@ -49,12 +60,6 @@ def _public_json_forbidden_key_paths(value, *, path: str = "data"):
     return paths
 
 
-def _connect(tmp_path: Path):
-    db_path = tmp_path / "aps.db"
-    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "backups"))
-    return get_connection(str(db_path))
-
-
 def _table_names(conn) -> set:
     rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     return {str(row["name"]) for row in rows}
@@ -76,65 +81,6 @@ def _snapshot(conn) -> dict:
             dict(row) for row in conn.execute("SELECT * FROM ScheduleCandidateSelection ORDER BY id").fetchall()
         ],
     }
-
-
-def _seed_base(conn) -> None:
-    conn.executescript(
-        f"""
-        INSERT INTO Machines(machine_id, name, status)
-        VALUES ('M1', '设备一', 'active'), ('M2', '设备二', 'active');
-
-        INSERT INTO Operators(operator_id, name, status)
-        VALUES ('O1', '人员一', 'active'), ('O2', '人员二', 'active');
-
-        INSERT INTO Parts(part_no, part_name)
-        VALUES ('P001', '零件一'), ('P002', '零件二');
-
-        INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
-        VALUES
-          ('B1', 'P001', '零件一', 1, '2026-05-20', 'normal', 'yes', 'scheduled'),
-          ('B2', 'P002', '零件二', 1, '2026-05-20', 'normal', 'yes', 'scheduled');
-
-        INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
-        VALUES
-          (10, 'OP10', 'B1', 'piece-a', 10, '车削', 'internal', 'scheduled'),
-          (20, 'OP20', 'B1', 'piece-a', 20, '钻孔', 'internal', 'scheduled'),
-          (30, 'OP30', 'B2', 'piece-b', 10, '铣削', 'internal', 'scheduled');
-
-        INSERT INTO ScheduleVersionSeq(version) VALUES ({VERSION});
-
-        INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
-        VALUES
-          (70, 10, 'M1', 'O1', '2026-05-04 08:00:00', '2026-05-04 09:00:00', 'unlocked', {VERSION}),
-          (80, 20, 'M1', 'O1', '2026-05-04 10:00:00', '2026-05-04 11:00:00', 'unlocked', {VERSION}),
-          (90, 30, 'M2', 'O2', '2026-05-04 08:00:00', '2026-05-04 09:00:00', 'unlocked', {VERSION});
-
-        INSERT INTO ScheduleHistory(version, strategy, batch_count, op_count, result_status, result_summary, created_by)
-        VALUES ({VERSION}, 'priority_first', 2, 3, 'success', '{{}}', 'pytest');
-        """
-    )
-    conn.commit()
-
-
-def _draft_with_change(
-    conn,
-    *,
-    to_start: str = "2026-05-04 11:00:00",
-    to_end: str = "2026-05-04 12:00:00",
-    to_machine_id=None,
-    to_operator_id=None,
-) -> str:
-    service = GanttAdjustmentDraftService(conn)
-    draft = service.create_draft(base_version=VERSION, base_plan_role="adopted", created_by="pytest")
-    service.record_time_change(draft_id=draft.draft_id, op_id=30, to_start=to_start, to_end=to_end)
-    if to_machine_id is not None or to_operator_id is not None:
-        service.record_resource_change(
-            draft_id=draft.draft_id,
-            op_id=30,
-            to_machine_id=to_machine_id,
-            to_operator_id=to_operator_id,
-        )
-    return draft.draft_id
 
 
 def test_scenario_schema_exists_and_detection_requires_it(tmp_path: Path) -> None:
@@ -373,20 +319,3 @@ def test_save_scenario_route_uses_server_operator_not_json_created_by(tmp_path: 
         assert scenario["created_by"] == "web"
     finally:
         verify_conn.close()
-
-
-def _build_app(tmp_path: Path, monkeypatch):
-    db_path = tmp_path / "aps.db"
-    monkeypatch.setenv("APS_ENV", "development")
-    monkeypatch.setenv("APS_DB_PATH", str(db_path))
-    monkeypatch.setenv("APS_LOG_DIR", str(tmp_path / "logs"))
-    monkeypatch.setenv("APS_BACKUP_DIR", str(tmp_path / "backups"))
-    point_env_at_shared(monkeypatch)
-    (tmp_path / "logs").mkdir(exist_ok=True)
-    (tmp_path / "backups").mkdir(exist_ok=True)
-
-    for name in list(sys.modules):
-        if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
-            sys.modules.pop(name, None)
-    sys.modules.pop("app", None)
-    return importlib.import_module("app").create_app()

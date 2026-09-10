@@ -6,6 +6,8 @@ from typing import Any, Optional
 
 from core.infrastructure.errors import ValidationError
 
+from ._sched_display_utils import fmt_dt as _fmt_dt
+
 
 def _parse_date(value: Optional[str]) -> Optional[date]:
     if value is None:
@@ -17,10 +19,6 @@ def _parse_date(value: Optional[str]) -> Optional[date]:
         return datetime.strptime(s, "%Y-%m-%d").date()
     except Exception:
         return None
-
-
-def _fmt_dt(dt: datetime) -> str:
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _monday_of(d: date) -> date:

@@ -3,32 +3,14 @@
 from __future__ import annotations
 
 import contextlib
-import os
 import random
+import sqlite3
 import threading
 import time
 from collections import OrderedDict
 from typing import Any, Dict, List
 
-from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
-
-
-class _DummyCursor:
-    def __init__(self, db_file: str):
-        self._db_file = str(db_file)
-
-    def fetchall(self):
-        return [(0, "main", self._db_file)]
-
-
-class _DummyConn:
-    def __init__(self, db_file: str):
-        self._db_file = str(db_file)
-
-    def execute(self, sql: str):
-        if "pragma database_list" not in str(sql or "").strip().lower():
-            raise RuntimeError(f"unexpected sql in test: {sql!r}")
-        return _DummyCursor(self._db_file)
+from tests.gantt.gantt_critical_chain_cache_support import cache_db, reset_cache
 
 
 class ConcurrencyProbeOrderedDict(OrderedDict):
@@ -74,48 +56,50 @@ class ConcurrencyProbeOrderedDict(OrderedDict):
             return super().__len__()
 
 
-def test_gantt_critical_chain_cache_thread_safe() -> None:
-    repo_root = REPO_ROOT
+def test_gantt_critical_chain_cache_thread_safe(monkeypatch, tmp_path) -> None:
     import core.services.scheduler.gantt_critical_chain_provider as provider_module
     from core.services.scheduler.gantt_critical_chain_provider import GanttCriticalChainProvider
     from data.repositories import ScheduleRepository
 
+    reset_cache(monkeypatch, cache_max=8)
     probe_cache = ConcurrencyProbeOrderedDict()
+    monkeypatch.setattr(GanttCriticalChainProvider, "_CRITICAL_CHAIN_CACHE", probe_cache)
     compute_count = {"value": 0}
-    compute_count_lock = threading.Lock()
+    query_count = {"value": 0}
+    counters_lock = threading.Lock()
+    original_compute = provider_module.compute_critical_chain
 
-    def _fake_compute(_schedule_repo, version: int) -> Dict[str, Any]:
+    def _compute(schedule_repo, version: int) -> Dict[str, Any]:
         time.sleep(0.001)
-        with compute_count_lock:
+        with counters_lock:
             compute_count["value"] += 1
-        return {
-            "ids": [f"B{int(version)}"],
-            "edges": [],
-            "makespan_end": None,
-            "edge_type_stats": {"process": 0, "machine": 0, "operator": 0, "unknown": 0},
-            "edge_count": 0,
-            "available": True,
-            "reason": "",
-        }
+        return original_compute(schedule_repo, version)
 
-    old_cache = GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE
-    old_lock = GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_LOCK
-    old_max = GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_MAX
-    old_compute = provider_module.compute_critical_chain
+    def _trace_query(sql):
+        if "LEFT JOIN BatchOperations" in sql:
+            with counters_lock:
+                query_count["value"] += 1
 
-    conn = _DummyConn(db_file=os.path.join(repo_root, "db", "aps.db"))
-    provider = GanttCriticalChainProvider(conn=conn, schedule_repo=ScheduleRepository(conn))
-    errors: List[Exception] = []
-
-    try:
-        GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE = probe_cache
-        GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_LOCK = threading.Lock()
-        GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_MAX = 8
-        provider_module.compute_critical_chain = _fake_compute
+    monkeypatch.setattr(provider_module, "compute_critical_chain", _compute)
+    path = tmp_path / "critical-chain-concurrent.db"
+    with cache_db(path=path) as case:
+        case.conn.executemany(
+            "INSERT INTO Schedule(op_id, machine_id, start_time, end_time, version, created_at) "
+            "SELECT op_id, machine_id, start_time, end_time, ?, created_at FROM Schedule WHERE version = 1",
+            [(version,) for version in list(range(2, 33)) + [999]],
+        )
+        case.conn.commit()
+        errors: List[Exception] = []
+        ready = threading.Barrier(10)
 
         def _worker(seed: int) -> None:
             rng = random.Random(seed)
+            conn = sqlite3.connect(str(path))
+            conn.row_factory = sqlite3.Row
+            conn.set_trace_callback(_trace_query)
             try:
+                provider = GanttCriticalChainProvider(conn=conn, schedule_repo=ScheduleRepository(conn))
+                ready.wait(timeout=5)
                 for _ in range(80):
                     version = rng.randint(1, 32)
                     cc = provider.get_critical_chain(version)
@@ -123,8 +107,13 @@ def test_gantt_critical_chain_cache_thread_safe() -> None:
                         raise RuntimeError("critical_chain 返回类型异常")
                     if "ids" not in cc or "available" not in cc or "reason" not in cc or "cache_hit" not in cc:
                         raise RuntimeError(f"critical_chain 缺少字段：{cc}")
+                    assert cc["available"] is True
+                    assert cc["ids"] == ["A", "B"]
+                    assert cc["edges"][0]["edge_type"] == "machine"
             except Exception as exc:
                 errors.append(exc)
+            finally:
+                conn.close()
 
         threads = [threading.Thread(target=_worker, args=(i,)) for i in range(10)]
         for t in threads:
@@ -134,25 +123,42 @@ def test_gantt_critical_chain_cache_thread_safe() -> None:
 
         if errors:
             raise errors[0]
-        if probe_cache.concurrent_hits > 0:
-            raise RuntimeError(f"检测到缓存并发访问重叠：{probe_cache.concurrent_hits}")
+        assert probe_cache.concurrent_hits == 0
+        assert len(probe_cache) <= GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_MAX
+        assert query_count["value"] == 800
+        assert 0 < compute_count["value"] <= query_count["value"]
 
-        # 容量契约：LRU 缓存条目数不应超过上限。
-        if len(GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE) > int(GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_MAX):
-            raise RuntimeError("critical_chain 缓存容量超过上限")
-
-        # cache_hit 契约：同 key 连续调用，第二次应命中缓存。
+        # 单线程阶段精确区分每请求明细读取、命中不重算和内容变更重算。
+        provider = case.provider
+        case.conn.set_trace_callback(_trace_query)
+        queries_before = query_count["value"]
+        computes_before = compute_count["value"]
         first = provider.get_critical_chain(999)
+        assert first["cache_hit"] is False
+        assert first["ids"] == ["A", "B"]
+        first["ids"].append("caller-mutation")
+        first["edges"][0]["from"] = "caller-mutation"
         second = provider.get_critical_chain(999)
-        if bool(first.get("cache_hit")):
-            raise RuntimeError(f"首次调用不应命中缓存：{first}")
-        if not bool(second.get("cache_hit")):
-            raise RuntimeError(f"二次调用应命中缓存：{second}")
-        if int(compute_count["value"]) <= 0:
-            raise RuntimeError("测试桩 compute 未被调用")
+        assert second["cache_hit"] is True
+        assert second["ids"] == ["A", "B"]
+        assert second["edges"][0]["from"] == "A"
+        assert query_count["value"] == queries_before + 2
+        assert compute_count["value"] == computes_before + 1
 
-    finally:
-        GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE = old_cache
-        GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_LOCK = old_lock
-        GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_MAX = old_max
-        provider_module.compute_critical_chain = old_compute
+        aggregate_sql = "SELECT COUNT(*), MAX(id), MAX(created_at) FROM Schedule WHERE version = 999"
+        old_aggregate = tuple(case.conn.execute(aggregate_sql).fetchone())
+        case.conn.execute("UPDATE Schedule SET machine_id = 'M2' WHERE version = 999 AND op_id = 2")
+        case.conn.commit()
+        assert tuple(case.conn.execute(aggregate_sql).fetchone()) == old_aggregate
+        changed = provider.get_critical_chain(999)
+        assert changed["ids"] == ["B"]
+        assert changed["cache_hit"] is False
+        assert query_count["value"] == queries_before + 3
+        assert compute_count["value"] == computes_before + 2
+        stable = provider.get_critical_chain(999)
+        assert stable["ids"] == ["B"]
+        assert stable["cache_hit"] is True
+        assert query_count["value"] == queries_before + 4
+        assert compute_count["value"] == computes_before + 2
+        assert probe_cache.concurrent_hits == 0
+        assert len(probe_cache) <= GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_MAX

@@ -29,8 +29,8 @@ from .exporters import (
 )
 from .report_context_filters import filter_downtime_rows_for_report_context, normalize_report_resource_filter
 from .report_degradation import report_degradation_payload
-from .report_number_parsing import parse_report_nonnegative_int
 from .report_plan_helpers import ReportPlanMixin
+from .values.number_parsing import parse_report_nonnegative_int
 
 
 @dataclass

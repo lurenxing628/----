@@ -20,21 +20,28 @@ def _load_schema(conn: sqlite3.Connection) -> None:
 
 
 class _DummyCursor:
-    def __init__(self, db_file: str):
-        self._db_file = str(db_file)
+    def __init__(self, rows):
+        self._rows = list(rows)
 
     def fetchall(self):
-        return [(0, "main", self._db_file)]
+        return list(self._rows)
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
 
 
 class _DummyConn:
     def __init__(self, db_file: str):
         self._db_file = str(db_file)
 
-    def execute(self, sql: str):
-        if "pragma database_list" not in str(sql or "").strip().lower():
-            raise RuntimeError(f"unexpected sql in test: {sql!r}")
-        return _DummyCursor(self._db_file)
+    def execute(self, sql: str, params=()):
+        text = str(sql or "").strip().lower()
+        if "pragma database_list" in text:
+            return _DummyCursor([(0, "main", self._db_file)])
+        if text.startswith("select count(*)"):
+            # 行集内容指纹查询：返回恒定指纹，保持“数据不变则缓存命中”的测试语义。
+            return _DummyCursor([(3, 30, "2026-05-01 00:00:00")])
+        raise RuntimeError(f"unexpected sql in test: {sql!r}")
 
 
 def test_gantt_payload_surfaces_critical_chain_unavailable(monkeypatch) -> None:

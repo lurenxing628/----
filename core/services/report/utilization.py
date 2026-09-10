@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from core.services.common.degradation import DegradationCollector
 
 from .calculation_helpers import is_internal_source, is_valid_interval, overlap_seconds, parse_dt
-from .report_degradation import record_report_bad_time_row
+from .report_degradation import record_report_bad_time_row, record_report_zero_capacity_window
 
 
 def compute_utilization(
@@ -29,6 +29,15 @@ def compute_utilization(
 
     machine_rows = _build_utilization_rows(by_machine.values(), cap_hours, "machine_id")
     operator_rows = _build_utilization_rows(by_operator.values(), cap_hours, "operator_id")
+    if cap_hours <= 0 and (machine_rows or operator_rows):
+        # 零产能窗口（如整周节假日）下利用率整列 None 是合法语义（除零不适用），
+        # 但不许静默空白：必须降级留痕，payload/导出摘要给出可读提示。不许把 None 改成 0 之类的错数。
+        record_report_zero_capacity_window(
+            degradation_collector,
+            scope="report.utilization",
+            machine_row_count=len(machine_rows),
+            operator_row_count=len(operator_rows),
+        )
     return machine_rows, operator_rows
 
 

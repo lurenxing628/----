@@ -21,12 +21,13 @@ from .gantt_critical_chain import (
     compute_critical_chain,
     compute_critical_chain_from_rows,
 )
+from .gantt_critical_chain_snapshot import CriticalChainSnapshot
 from .schedule_plan_query_service import ROLE_ADOPTED, SchedulePlanQueryService
 from .schedule_result_view_context import default_plan_resolution_dict, selected_plan_role
 
 
 class GanttCriticalChainProvider:
-    """Loads and caches critical-chain results for adopted and candidate plans."""
+    """Caches computation over adopted, candidate and scenario detail snapshots."""
 
     _CRITICAL_CHAIN_CACHE_MAX = 64
     _CRITICAL_CHAIN_CACHE: OrderedDictType[Tuple[Any, ...], Dict[str, Any]] = OrderedDict()
@@ -94,7 +95,17 @@ class GanttCriticalChainProvider:
             return row[index]
         return None
 
-    def _critical_chain_cache_key(self, version: int, *, plan_resolution: Dict[str, Any]) -> Tuple[Any, ...]:
+    def _plan_rows_fingerprint(self, snapshot: CriticalChainSnapshot) -> Optional[str]:
+        try:
+            return snapshot.fingerprint()
+        except (TypeError, ValueError) as exc:
+            if self.logger:
+                self.logger.warning("关键链明细无法生成内容指纹，本次请求绕过缓存：%s", exc)
+            return None
+
+    def _critical_chain_cache_key(
+        self, version: int, *, plan_resolution: Dict[str, Any], fingerprint: str
+    ) -> Tuple[Any, ...]:
         return (
             self._database_scope(),
             int(version),
@@ -102,6 +113,7 @@ class GanttCriticalChainProvider:
             str(plan_resolution.get("source_table") or "schedule"),
             int(plan_resolution.get("candidate_id") or 0),
             str(plan_resolution.get("scenario_id") or ""),
+            fingerprint,
         )
 
     @staticmethod
@@ -117,49 +129,46 @@ class GanttCriticalChainProvider:
     def _critical_chain_cacheable(result: Dict[str, Any]) -> bool:
         return bool(result.get("available", True))
 
-    def get_critical_chain(
-        self,
-        version: int,
-        *,
-        plan_resolution: Optional[Dict[str, Any]] = None,
-        plan_query_service=None,
-    ) -> Dict[str, Any]:
-        plan_resolution = plan_resolution or default_plan_resolution_dict(ROLE_ADOPTED)
-        key = self._critical_chain_cache_key(version, plan_resolution=plan_resolution)
+    def _lookup_cached_critical_chain(self, key: Tuple[Any, ...]) -> Tuple[int, Optional[Dict[str, Any]]]:
+        """返回 (cache_epoch, 命中副本)；未命中时副本为 None。"""
         with self._CRITICAL_CHAIN_CACHE_LOCK:
             cache_epoch = int(self._CRITICAL_CHAIN_CACHE_EPOCH)
             cached = self._CRITICAL_CHAIN_CACHE.get(key)
-            if cached is not None:
-                self._CRITICAL_CHAIN_CACHE.move_to_end(key)
-                out = self._copy_critical_chain_result(cached)
-                out["cache_hit"] = True
-                return out
+            if cached is None:
+                return cache_epoch, None
+            self._CRITICAL_CHAIN_CACHE.move_to_end(key)
+            out = self._copy_critical_chain_result(cached)
+            out["cache_hit"] = True
+            return cache_epoch, out
 
-        role = selected_plan_role(plan_resolution)
-        source_table = str(plan_resolution.get("source_table") or "schedule")
-        if role == ROLE_ADOPTED and source_table == SOURCE_SCHEDULE:
-            raw = compute_critical_chain(self.schedule_repo, int(version))
+    def _load_plan_rows_snapshot(
+        self,
+        version: int,
+        *,
+        plan_resolution: Dict[str, Any],
+        plan_query_service=None,
+    ) -> CriticalChainSnapshot:
+        if selected_plan_role(plan_resolution) == ROLE_ADOPTED and plan_resolution.get("source_table") == SOURCE_SCHEDULE:
+            rows = self.schedule_repo.list_by_version_with_details(int(version))
         else:
-            try:
-                plan_query = self._get_plan_query_service(plan_query_service)
-                query_kwargs = {
-                    "version": int(version),
-                    "source_table": source_table,
-                    "candidate_id": plan_resolution.get("candidate_id"),
-                }
-                if plan_resolution.get("scenario_id"):
-                    query_kwargs["scenario_id"] = plan_resolution.get("scenario_id")
-                rows = plan_query.list_plan_detail_rows_all_for_resolution(**query_kwargs)
-            except (RuntimeError, ValueError, TypeError, KeyError, IndexError, sqlite3.Error):
-                raw = {"available": False, "reason": "rows_load_exception", "reason_code": "rows_load_exception"}
-            else:
-                raw = compute_critical_chain_from_rows([dict(row) for row in rows])
-        computed = _normalize_critical_chain_result(raw)
-        computed["cache_hit"] = False
+            plan_query = self._get_plan_query_service(plan_query_service)
+            query_kwargs = {
+                "version": int(version),
+                "source_table": str(plan_resolution.get("source_table") or "schedule"),
+                "candidate_id": plan_resolution.get("candidate_id"),
+            }
+            if plan_resolution.get("scenario_id"):
+                query_kwargs["scenario_id"] = plan_resolution.get("scenario_id")
+            rows = plan_query.list_plan_detail_rows_all_for_resolution(**query_kwargs)
+        return CriticalChainSnapshot([dict(row) for row in rows])
 
-        if not self._critical_chain_cacheable(computed):
-            return self._copy_critical_chain_result(computed)
-
+    def _store_critical_chain(
+        self,
+        key: Tuple[Any, ...],
+        *,
+        cache_epoch: int,
+        computed: Dict[str, Any],
+    ) -> Dict[str, Any]:
         with self._CRITICAL_CHAIN_CACHE_LOCK:
             if cache_epoch != int(self._CRITICAL_CHAIN_CACHE_EPOCH):
                 return self._copy_critical_chain_result(computed)
@@ -174,3 +183,48 @@ class GanttCriticalChainProvider:
             while len(self._CRITICAL_CHAIN_CACHE) > int(self._CRITICAL_CHAIN_CACHE_MAX) and self._CRITICAL_CHAIN_CACHE:
                 self._CRITICAL_CHAIN_CACHE.popitem(last=False)
             return self._copy_critical_chain_result(computed)
+
+    def get_critical_chain(
+        self,
+        version: int,
+        *,
+        plan_resolution: Optional[Dict[str, Any]] = None,
+        plan_query_service=None,
+    ) -> Dict[str, Any]:
+        plan_resolution = dict(plan_resolution or default_plan_resolution_dict(ROLE_ADOPTED))
+        source_table = str(plan_resolution.get("source_table") or SOURCE_SCHEDULE)
+        plan_resolution["source_table"] = source_table
+        adopted = selected_plan_role(plan_resolution) == ROLE_ADOPTED and source_table == SOURCE_SCHEDULE
+        with self._CRITICAL_CHAIN_CACHE_LOCK:
+            cache_epoch = int(self._CRITICAL_CHAIN_CACHE_EPOCH)
+        # Each production loader uses one SELECT, including its joins/predicates.
+        # Do not commit/rollback an outer transaction or re-read on cache miss.
+        try:
+            snapshot = self._load_plan_rows_snapshot(
+                version, plan_resolution=plan_resolution, plan_query_service=plan_query_service
+            )
+        except Exception as exc:
+            reason = "repo_exception" if adopted else "rows_load_exception"
+            if self.logger:
+                self.logger.warning("关键链明细读取失败（%s）：%s", reason, exc)
+            unavailable = _normalize_critical_chain_result({"available": False, "reason": reason})
+            unavailable["cache_hit"] = False
+            return unavailable
+        fingerprint = self._plan_rows_fingerprint(snapshot)
+        key: Optional[Tuple[Any, ...]] = None
+        if fingerprint is not None:
+            key = self._critical_chain_cache_key(version, plan_resolution=plan_resolution, fingerprint=fingerprint)
+            _, hit = self._lookup_cached_critical_chain(key)
+            if hit is not None:
+                return hit
+
+        if adopted:
+            raw = compute_critical_chain(snapshot, int(version))
+        else:
+            raw = compute_critical_chain_from_rows(snapshot.rows)
+        computed = _normalize_critical_chain_result(raw)
+        computed["cache_hit"] = False
+
+        if key is None or not self._critical_chain_cacheable(computed):
+            return self._copy_critical_chain_result(computed)
+        return self._store_critical_chain(key, cache_epoch=cache_epoch, computed=computed)

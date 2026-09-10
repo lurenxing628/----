@@ -11,7 +11,7 @@ from core.services.scheduler.schedule_result_view_context import plan_role_filte
 from web.navigation_context import set_current_workbench_navigation_context
 from web.request_resource_context import request_report_resource_context
 from web.routes.domains.scheduler.scheduler_plan_context_token import plan_context_token, request_scenario_id_from_args
-from web.routes.history_summary_logging import log_history_summary_parse_warning
+from web.routes.helpers.history_summary_logging import log_history_summary_parse_warning
 from web.viewmodels.dashboard_backup_health import (
     build_backup_health_hint,
     read_latest_backup_time,

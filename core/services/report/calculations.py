@@ -65,13 +65,20 @@ def parse_date(value: Any, field: str) -> date:
 
 def capacity_hours(calendar: Any, start_d: date, end_d: date) -> float:
     """
-    以“日历的工作窗 * efficiency”作为单资源可用工时（简化：不区分设备/人员差异）。
+    累计工作窗与自然日范围的交集 * efficiency（仍不区分设备/人员差异）。
     """
     total = 0.0
-    cur = start_d
-    while cur <= end_d:
-        p = calendar.policy_for_datetime(datetime.combine(cur, datetime.min.time()))
+    cur = datetime.combine(start_d, datetime.min.time())
+    end_dt_excl = datetime.combine(end_d, datetime.min.time()) + timedelta(days=1)
+    while cur < end_dt_excl:
+        p = calendar.policy_for_datetime(cur)
+        window_start, window_end = p.work_window()
         if float(getattr(p, "shift_hours", 0.0) or 0.0) > 0:
-            total += float(getattr(p, "shift_hours", 0.0) or 0.0) * float(getattr(p, "efficiency", 1.0) or 1.0)
-        cur = cur + timedelta(days=1)
+            hours = overlap_seconds(window_start, window_end, cur, end_dt_excl) / 3600.0
+            total += hours * float(getattr(p, "efficiency", 1.0) or 1.0)
+        # 跨夜窗结束后重新取策略，不能直接跳到次日而漏掉同日后续班次。
+        if window_end > cur:
+            cur = window_end
+        else:
+            cur = datetime.combine(cur.date() + timedelta(days=1), datetime.min.time())
     return float(round(total, 6))

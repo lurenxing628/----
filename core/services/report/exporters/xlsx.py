@@ -11,7 +11,7 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 
 from core.services.common.excel_templates import _sanitize_export_cell
-from core.services.report.report_number_parsing import parse_optional_report_float
+from core.services.report.values.number_parsing import parse_optional_report_float
 
 _LOGGER = logging.getLogger(__name__)
 

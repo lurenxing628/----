@@ -8,7 +8,7 @@ from core.infrastructure.errors import ValidationError
 from core.services.report import ReportEngine
 from web.navigation_context import set_current_workbench_navigation_context
 from web.routes.domains.scheduler.scheduler_plan_context_token import plan_context_token
-from web.routes.history_summary_logging import log_history_version_option_parse_warnings
+from web.routes.helpers.history_summary_logging import log_history_version_option_parse_warnings
 from web.routes.report_plan_preview import page_date_range_or_version_span, page_plan_resolution
 from web.routes.reports_export_support import current_report_export_url
 from web.routes.reports_plan_template_fields import report_plan_template_fields
