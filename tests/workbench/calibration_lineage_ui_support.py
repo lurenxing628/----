@@ -17,7 +17,7 @@ from werkzeug.serving import make_server
 
 from core.infrastructure.transaction import TransactionManager
 from core.services.workbench.calibration_export import COLUMNS
-from tests.workbench.test_template_lineage_support import completed, create, origin
+from tests.workbench.template_lineage_support import completed, create, origin
 from web.routes.workbench.calibration import register_calibration_routes
 
 

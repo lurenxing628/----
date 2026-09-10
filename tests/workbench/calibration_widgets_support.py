@@ -10,7 +10,7 @@ from pathlib import Path
 from flask import Blueprint, Flask, g, jsonify, request
 from werkzeug.serving import make_server
 
-from tests.workbench.test_calibration_support import complete_reports
+from tests.workbench.calibration_support import complete_reports
 from web.routes.workbench.calibration import register_calibration_routes
 
 

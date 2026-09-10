@@ -11,9 +11,9 @@ from core.infrastructure.workbench_run_schema import (
     workbench_run_objects,
 )
 from core.models.workbench_command import WorkbenchCommandRejected
-from tests.workbench.test_execution_ledger_support import all_rows
-from tests.workbench.test_run_jobs_support import job_case as _job_case  # noqa: F401
-from tests.workbench.test_run_jobs_support import service
+from tests.workbench.execution_ledger_support import all_rows
+from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
+from tests.workbench.run_jobs_support import service
 
 
 def test_installer_requires_transaction_and_existing_install_is_unchanged(job_case):

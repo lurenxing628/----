@@ -10,10 +10,10 @@ from flask import Blueprint, g, request
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.database import get_connection
 from core.services.workbench.run_jobs import WorkbenchRunService
-from tests.workbench.test_request_lifecycle_support import http_json, http_server
-from tests.workbench.test_run_jobs_support import job_case as _job_case  # noqa: F401
-from tests.workbench.test_run_runtime_support import BASE, install, paused_compute
-from tests.workbench.test_run_runtime_support import owned_case as _owned_case  # noqa: F401
+from tests.workbench.request_lifecycle_support import http_json, http_server
+from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
+from tests.workbench.run_runtime_support import BASE, install, paused_compute
+from tests.workbench.run_runtime_support import owned_case as _owned_case  # noqa: F401
 from web.bootstrap.launcher_paths import db_scope_lock_path
 from web.bootstrap.launcher_runtime_lock import release_runtime_lock
 from web.bootstrap.workbench_request_lifecycle import (

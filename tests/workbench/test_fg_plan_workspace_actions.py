@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.workbench.plan_adoption_baseline_support import adopt_candidate, two_versions
 from tests.workbench.point_downstream_support import app_for, read, serve
+from tests.workbench.run_candidate_support import corrupt_update, retained
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_plan_adoption_baseline_support import adopt_candidate, two_versions
-from tests.workbench.test_run_candidate_support import corrupt_update, retained
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 
 HERE = Path(__file__).resolve().parent

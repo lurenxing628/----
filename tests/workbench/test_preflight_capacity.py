@@ -1,6 +1,6 @@
 """The full permitted selection is returned, never silently truncated."""
 
-from tests.workbench.test_preflight_support import BASE, create_app, seed, snapshot
+from tests.workbench.preflight_support import BASE, create_app, seed, snapshot
 
 
 def test_five_thousand_permanent_batch_refs(schema_conn):

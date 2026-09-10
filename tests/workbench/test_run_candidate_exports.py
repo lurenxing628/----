@@ -7,8 +7,8 @@ from io import BytesIO, StringIO
 import openpyxl
 import pytest
 
-from tests.workbench.test_run_candidate_support import BASE, api, compute, edit_capture, read, retained
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case
+from tests.workbench.run_candidate_support import BASE, api, compute, edit_capture, read, retained
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case
 
 
 def decode(response, fmt):

@@ -8,9 +8,9 @@ from pathlib import Path
 
 from flask import Blueprint, g
 
+from tests.workbench.piece_chain_support import adopt_candidate, adopt_trial, saved_trial
 from tests.workbench.point_frontend_support import app_for, serve
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_piece_chain_support import adopt_candidate, adopt_trial, saved_trial
 from tests.workbench.test_piece_presentation import PIECES, real_case
 from tests.workbench.trial_support import create, snapshot
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401

@@ -9,8 +9,8 @@ from core.infrastructure.backup import BackupManager, RestoreResult
 from core.infrastructure.database import get_connection
 from core.services.workbench.system_journal import assert_system_maintenance_ready, file_fingerprint
 from core.services.workbench.system_restore import restore_outcome
-from tests.workbench.test_system_restore_host_support import BASE, KEY, http_json, http_server
-from tests.workbench.test_system_restore_host_support import restore_host as _restore_host  # noqa: F401
+from tests.workbench.system_restore_host_support import BASE, KEY, http_json, http_server
+from tests.workbench.system_restore_host_support import restore_host as _restore_host  # noqa: F401
 from web.bootstrap import factory
 from web.routes.system_backup_actions import RestoreBackupOutcome
 

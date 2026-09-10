@@ -8,7 +8,7 @@ from datetime import timedelta
 import openpyxl
 import pytest
 
-from tests.workbench.test_calibration_support import (
+from tests.workbench.calibration_support import (
     BASE,
     assert_failure,
     assert_no_writes,
@@ -17,9 +17,9 @@ from tests.workbench.test_calibration_support import (
     query_only,
     scope_token,
 )
-from tests.workbench.test_calibration_support import calibration_api as api_fixture
-from tests.workbench.test_calibration_support import calibration_case as case_fixture
-from tests.workbench.test_execution_ledger_support import NOW
+from tests.workbench.calibration_support import calibration_api as api_fixture
+from tests.workbench.calibration_support import calibration_case as case_fixture
+from tests.workbench.execution_ledger_support import NOW
 
 
 def test_real_complete_reports_still_require_persisted_template_lineage(calibration_api):

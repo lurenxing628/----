@@ -57,7 +57,7 @@ class ProcessHost:
         (self.root / "ready.json").unlink(missing_ok=True)
         self.log = open(self.root / "process.log", "w", encoding="utf-8")
         self._process = subprocess.Popen([sys.executable, "-m",
-            "tests.workbench.test_system_restore_entrypoint_process_support", str(self.root), self.mode],
+            "tests.workbench.system_restore_entrypoint_process_support", str(self.root), self.mode],
             cwd=str(REPO), env=env, stdout=self.log, stderr=subprocess.STDOUT)
         wait_for(lambda: (self.root / "ready.json").exists() or self.process.poll() is not None)
         assert self.process.poll() is None, (self.root / "process.log").read_text()

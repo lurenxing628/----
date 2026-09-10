@@ -7,9 +7,9 @@ from pathlib import Path
 
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan_queries import WorkbenchPlanQueryService
+from tests.workbench.piece_chain_support import piece_layout
+from tests.workbench.plan_adoption_baseline_support import adopt_candidate
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_piece_chain_support import piece_layout
-from tests.workbench.test_plan_adoption_baseline_support import adopt_candidate
 from tests.workbench.trial_support import create, snapshot
 from tests.workbench.trial_support import trial_case as trial_case
 

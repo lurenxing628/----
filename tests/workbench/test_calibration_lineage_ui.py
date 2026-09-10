@@ -10,18 +10,18 @@ import pytest
 
 from tests.workbench.calibration_lineage_ui_support import calibration_case as _calibration_case
 from tests.workbench.calibration_lineage_ui_support import prepare, serve, verify_export
-from tests.workbench.test_calibration_support import (
+from tests.workbench.calibration_support import (
     BASE,
     assert_failure,
     assert_no_writes,
     query_only,
     scope_token,
 )
-from tests.workbench.test_calibration_support import calibration_api as _calibration_api
+from tests.workbench.calibration_support import calibration_api as _calibration_api
+from tests.workbench.template_lineage_support import completed, origin
+from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture
+from tests.workbench.template_lineage_support import lineage_case as _lineage_case
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_template_lineage_support import completed, origin
-from tests.workbench.test_template_lineage_support import ledger_fixture as _ledger_fixture
-from tests.workbench.test_template_lineage_support import lineage_case as _lineage_case
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]

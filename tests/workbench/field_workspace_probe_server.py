@@ -7,8 +7,8 @@ from pathlib import Path
 from werkzeug.serving import make_server
 
 from core.services.workbench.field_report_files_codec import encode_reports
-from tests.workbench.test_execution_ledger_support import ledger_case
-from tests.workbench.test_field_workspace_support import make_app
+from tests.workbench.execution_ledger_support import ledger_case
+from tests.workbench.field_workspace_support import make_app
 
 
 def main():

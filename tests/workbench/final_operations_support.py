@@ -11,8 +11,8 @@ from contextlib import closing
 from pathlib import Path
 
 from core.infrastructure.database import get_connection
+from tests.workbench.system_restore_entrypoint_support import ProcessHost, wait_for
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_system_restore_entrypoint_support import ProcessHost, wait_for
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_BUILD = REPO / "static/workbench"

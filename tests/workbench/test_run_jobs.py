@@ -7,8 +7,8 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.run_jobs_facts import capture_run_facts
 from core.services.workbench.run_worker import WorkbenchRunWorker
-from tests.workbench.test_run_jobs_support import connection, service  # noqa: F401
-from tests.workbench.test_run_jobs_support import job_case as _job_case
+from tests.workbench.run_jobs_support import connection, service  # noqa: F401
+from tests.workbench.run_jobs_support import job_case as _job_case
 
 
 def test_accept_and_real_candidate_result_preserve_original_database(job_case):

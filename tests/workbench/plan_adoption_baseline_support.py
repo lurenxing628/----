@@ -6,9 +6,9 @@ from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan_baseline import build_plan_baseline
 from core.services.workbench.plan_queries import WorkbenchPlanQueryService
 from core.services.workbench.run_worker import WorkbenchRunWorker
-from tests.workbench.test_run_candidate_adoption_support import INTENT
-from tests.workbench.test_run_candidate_adoption_support import service as candidate_service
-from tests.workbench.test_run_candidate_support import corrupt_update
+from tests.workbench.run_candidate_adoption_support import INTENT
+from tests.workbench.run_candidate_adoption_support import service as candidate_service
+from tests.workbench.run_candidate_support import corrupt_update
 from tests.workbench.trial_adoption_support import saved_scenario
 from tests.workbench.trial_adoption_support import service as trial_service
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401

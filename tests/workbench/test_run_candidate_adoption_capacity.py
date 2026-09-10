@@ -2,7 +2,7 @@
 
 import time
 
-from tests.workbench.test_run_candidate_adoption_support import (
+from tests.workbench.run_candidate_adoption_support import (
     INTENT,
     KEY,
     assert_retained,
@@ -11,7 +11,7 @@ from tests.workbench.test_run_candidate_adoption_support import (
     service,
     snapshot,
 )
-from tests.workbench.test_run_candidate_adoption_support import candidate_case as _case  # noqa: F401
+from tests.workbench.run_candidate_adoption_support import candidate_case as _case  # noqa: F401
 
 
 def test_5000_real_operations_adopt_without_truncation(candidate_case):

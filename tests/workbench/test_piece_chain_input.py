@@ -7,10 +7,10 @@ import pytest
 
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.services.workbench.run_input import prepare_candidate_run_input
-from tests.workbench.test_piece_adoption_support import split
-from tests.workbench.test_piece_chain_support import artifact, piece_candidate, piece_layout
-from tests.workbench.test_piece_chain_support import trial_case as trial_case  # noqa: F401
-from tests.workbench.test_run_candidate_support import compute
+from tests.workbench.piece_adoption_support import split
+from tests.workbench.piece_chain_support import artifact, piece_candidate, piece_layout
+from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401
+from tests.workbench.run_candidate_support import compute
 
 
 @pytest.mark.parametrize("parallel", [False, True])

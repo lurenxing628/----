@@ -7,8 +7,7 @@ from core.services.workbench.process_file_codec import decode_process_file, enco
 from core.services.workbench.process_file_export import process_export_rows
 from core.services.workbench.process_files import WorkbenchProcessFileService
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
-from tests.workbench.process_workflow_support import confirm_all
-from tests.workbench.test_process_file_hours_support import (
+from tests.workbench.process_file_hours_support import (
     confirmations,
     groups,
     hours_database,
@@ -16,6 +15,7 @@ from tests.workbench.test_process_file_hours_support import (
     part_ref,
     snapshot,
 )
+from tests.workbench.process_workflow_support import confirm_all
 
 
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))

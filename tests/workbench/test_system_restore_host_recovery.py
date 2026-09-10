@@ -14,8 +14,8 @@ from core.services.workbench.system_journal import (
     assert_system_maintenance_ready,
     file_fingerprint,
 )
-from tests.workbench.test_system_restore_host_support import BASE, KEY, http_json, http_server
-from tests.workbench.test_system_restore_host_support import restore_host as _restore_host  # noqa: F401
+from tests.workbench.system_restore_host_support import BASE, KEY, http_json, http_server
+from tests.workbench.system_restore_host_support import restore_host as _restore_host  # noqa: F401
 
 
 @pytest.mark.parametrize("after_disk_write", [False, True])

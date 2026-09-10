@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from tests.workbench.test_execution_ledger_support import all_rows
-from tests.workbench.test_execution_ledger_support import ledger_case as ledger_fixture
+from tests.workbench.execution_ledger_support import all_rows
+from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture
 
 
 def test_five_thousand_rows_preview_is_read_only_bounded_and_complete(ledger_case):

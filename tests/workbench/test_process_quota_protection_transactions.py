@@ -26,8 +26,8 @@ from tests.workbench.process_quota_protection_support import (
 )
 from tests.workbench.process_quota_protection_support import locked_quota_case as _locked  # noqa: F401
 from tests.workbench.process_quota_protection_support import quota_case as _quota  # noqa: F401
-from tests.workbench.test_template_lineage_support import ledger_fixture as _ledger  # noqa: F401
-from tests.workbench.test_template_lineage_support import lineage_case as _lineage  # noqa: F401
+from tests.workbench.template_lineage_support import ledger_fixture as _ledger  # noqa: F401
+from tests.workbench.template_lineage_support import lineage_case as _lineage  # noqa: F401
 
 
 @pytest.mark.parametrize("entry", ["save", "file", "legacy", "stage"])

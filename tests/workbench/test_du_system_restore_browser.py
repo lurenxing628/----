@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from core.services.workbench.system_journal import file_fingerprint
+from tests.workbench.system_restore_entrypoint_support import KEY, ProcessHost, marker, seed_database
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_system_restore_entrypoint_support import KEY, ProcessHost, marker, seed_database
 
 HERE = Path(__file__).resolve().parent
 VARIANTS = [(1920, 1080, "light"), (1920, 1080, "dark"), (1392, 924, "light"), (1392, 924, "dark")]

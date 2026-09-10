@@ -12,8 +12,8 @@ from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_system import query_input
 from core.services.system import backup_restore
-from tests.workbench.test_system_restore_host_support import BASE
-from tests.workbench.test_system_restore_host_support import restore_host as restore_host
+from tests.workbench.system_restore_host_support import BASE
+from tests.workbench.system_restore_host_support import restore_host as restore_host
 from web.bootstrap import workbench_system_restore as host_module
 from web.routes import system_backup_actions
 

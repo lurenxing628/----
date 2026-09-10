@@ -19,9 +19,9 @@ from tests.workbench.calibration_adoption_support import (
 )
 from tests.workbench.calibration_adoption_support import adoption_case as _adoption_case  # noqa: F401
 from tests.workbench.calibration_adoption_support import ready_adoption_case as _ready_case  # noqa: F401
-from tests.workbench.test_execution_ledger_support import NOW
-from tests.workbench.test_template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
-from tests.workbench.test_template_lineage_support import lineage_case as _lineage_case  # noqa: F401
+from tests.workbench.execution_ledger_support import NOW
+from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
+from tests.workbench.template_lineage_support import lineage_case as _lineage_case  # noqa: F401
 from web.routes.workbench.write_context import issue_write_context
 
 

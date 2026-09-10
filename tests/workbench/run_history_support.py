@@ -16,7 +16,7 @@ from core.services.scheduler.config.config_field_spec import default_snapshot_va
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
-from tests.workbench.test_run_jobs_support import JobCase
+from tests.workbench.run_jobs_support import JobCase
 from web.routes.workbench.run_history import register_run_history_routes
 
 BASE = "/api/workbench/v1/scheduling/runs"

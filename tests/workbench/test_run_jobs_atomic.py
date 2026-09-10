@@ -11,9 +11,9 @@ from core.services.workbench.run_worker import WorkbenchRunWorker
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
-from tests.workbench.test_execution_ledger_support import all_rows
-from tests.workbench.test_run_jobs_support import job_case as _job_case  # noqa: F401
-from tests.workbench.test_run_jobs_support import service
+from tests.workbench.execution_ledger_support import all_rows
+from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
+from tests.workbench.run_jobs_support import service
 
 
 def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):

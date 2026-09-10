@@ -43,7 +43,7 @@ def actual_payload(tmp_path):
     from core.infrastructure.database import ensure_schema, get_connection
     from core.models.workbench_run_job import durable_value
     from core.services.workbench.run_compute import compute_candidate_run
-    from tests.workbench.test_run_compute_support import RunCase
+    from tests.workbench.run_compute_support import RunCase
 
     path = tmp_path / "capacity.sqlite"
     ensure_schema(str(path))

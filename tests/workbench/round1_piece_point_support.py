@@ -10,9 +10,9 @@ from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan_queries import WorkbenchPlanQueryService
 from core.services.workbench.run_jobs import WorkbenchRunService
 from tests.workbench.ea_zero_duration_support import adoption_service, trial_adoption_service
-from tests.workbench.test_piece_chain_support import piece_layout
-from tests.workbench.test_run_candidate_adoption_support import INTENT, assert_retained
-from tests.workbench.test_run_jobs_support import JobCase
+from tests.workbench.piece_chain_support import piece_layout
+from tests.workbench.run_candidate_adoption_support import INTENT, assert_retained
+from tests.workbench.run_jobs_support import JobCase
 from tests.workbench.trial_support import snapshot
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
 from web.bootstrap.workbench_run_runtime import WorkbenchRunRuntime, install_workbench_run_runtime

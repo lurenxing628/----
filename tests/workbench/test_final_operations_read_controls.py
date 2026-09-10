@@ -14,7 +14,7 @@ from core.services.system.system_maintenance_service import SystemMaintenanceSer
 from data.repositories.system_job_state_repo import SystemJobStateRepository
 from tests.workbench.final_operations_seed import seed
 from tests.workbench.final_operations_support import OperationsHost
-from tests.workbench.test_system_restore_entrypoint_support import wait_for
+from tests.workbench.system_restore_entrypoint_support import wait_for
 
 
 def test_final_operations_real_cleanup_and_maintenance_read_controls(tmp_path):

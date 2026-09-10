@@ -14,14 +14,14 @@ from core.services.workbench.run_compute import compute_candidate_run
 from core.services.workbench.run_jobs_facts import capture_run_facts
 from core.services.workbench.run_worker import WorkbenchRunWorker
 from core.services.workbench.trial_adoption import WorkbenchTrialAdoptionService
-from tests.workbench.test_run_candidate_adoption_support import INTENT
-from tests.workbench.test_run_candidate_adoption_support import service as candidate_adoption
-from tests.workbench.test_run_candidate_support import candidate_case as candidate_case  # noqa: F401
-from tests.workbench.test_run_candidate_support import compute, retained
-from tests.workbench.test_run_compute_support import run_case as run_case  # noqa: F401
-from tests.workbench.test_run_compute_support import unchanged
-from tests.workbench.test_run_jobs_support import job_case as job_case  # noqa: F401
-from tests.workbench.test_run_jobs_support import service as run_service
+from tests.workbench.run_candidate_adoption_support import INTENT
+from tests.workbench.run_candidate_adoption_support import service as candidate_adoption
+from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401
+from tests.workbench.run_candidate_support import compute, retained
+from tests.workbench.run_compute_support import run_case as run_case  # noqa: F401
+from tests.workbench.run_compute_support import unchanged
+from tests.workbench.run_jobs_support import job_case as job_case  # noqa: F401
+from tests.workbench.run_jobs_support import service as run_service
 from tests.workbench.trial_adoption_support import saved_scenario
 from tests.workbench.trial_adoption_support import service as adoption_service
 from tests.workbench.trial_support import change, create, snapshot

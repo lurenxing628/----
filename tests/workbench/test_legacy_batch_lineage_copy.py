@@ -9,6 +9,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import restore_snapshot, state_snapshot
 from core.services.workbench.template_lineage_query import TemplateLineageQuery
+from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.identity_metadata_support import insert_row
 from tests.workbench.legacy_batch_lineage_copy_support import (
     assert_only_copy_appends,
@@ -19,8 +20,7 @@ from tests.workbench.legacy_batch_lineage_copy_support import (
     seed_scale,
 )
 from tests.workbench.process_workflow_support import stored_state
-from tests.workbench.test_execution_ledger_support import all_rows
-from tests.workbench.test_template_lineage_support import calibration, create, lineage, origin
+from tests.workbench.template_lineage_support import calibration, create, lineage, origin
 
 _legacy_fixture = legacy_case
 

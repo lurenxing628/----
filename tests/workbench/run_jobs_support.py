@@ -14,7 +14,7 @@ from core.models.workbench_command import canonical_json
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.workbench.preflight import PreflightService
 from core.services.workbench.run_jobs import WorkbenchRunService
-from tests.workbench.test_run_compute_support import RunCase
+from tests.workbench.run_compute_support import RunCase
 from web.public_token_registry import issue_public_token_with_expiry
 from web.routes.workbench.preflight import INPUT_SCOPE, resolve_preflight_input
 from web.routes.workbench.write_context import issue_write_context, validate_write_context

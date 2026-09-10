@@ -8,7 +8,7 @@ from flask import Blueprint, g
 
 from core.infrastructure.database import get_connection
 from core.services.workbench import run_worker
-from tests.workbench.test_run_jobs_support import job_case as _job_case  # noqa: F401
+from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
 from web.bootstrap.workbench_run_runtime import install_workbench_run_runtime
 from web.routes.workbench.preflight import register_preflight_routes

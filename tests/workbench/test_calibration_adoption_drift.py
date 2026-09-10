@@ -7,9 +7,9 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from tests.workbench.calibration_adoption_support import INTENT, KEY, PREVIEW_INTENT, connect, service, snapshot, token
 from tests.workbench.calibration_adoption_support import adoption_case as _adoption_case  # noqa: F401
 from tests.workbench.calibration_adoption_support import ready_adoption_case as _ready_case  # noqa: F401
-from tests.workbench.test_template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
-from tests.workbench.test_template_lineage_support import lineage_case as _lineage_case  # noqa: F401
-from tests.workbench.test_template_lineage_support import origin
+from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
+from tests.workbench.template_lineage_support import lineage_case as _lineage_case  # noqa: F401
+from tests.workbench.template_lineage_support import origin
 
 
 def _drift(case, kind):
@@ -35,7 +35,7 @@ def _drift(case, kind):
         case.command("correct", row["report_ref"], {"original_revision_ref": row["revision_ref"],
                                                   "effective_processing_hours": None, "reason": "unknown after review"})
     elif kind == "new_sample":
-        from tests.workbench.test_template_lineage_support import completed
+        from tests.workbench.template_lineage_support import completed
 
         completed(case, [9], prefix="NEW", version=3)
     else:

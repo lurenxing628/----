@@ -8,7 +8,7 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import RunCandidateCatalogScope, RunCandidateReadScope
 from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
-from tests.workbench.test_run_candidate_support import (
+from tests.workbench.run_candidate_support import (
     BASE,
     api,
     compute,
@@ -18,7 +18,7 @@ from tests.workbench.test_run_candidate_support import (
     read,
     retained,
 )
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case
 
 
 @pytest.mark.parametrize("query", ["size=0", "size=51", "page=0", "page=1.0", "size=1&size=2",

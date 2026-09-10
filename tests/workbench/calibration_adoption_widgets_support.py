@@ -15,7 +15,7 @@ from core.infrastructure.workbench_calibration_adoption_schema import install
 from core.services.workbench.production_report import WorkbenchProductionReportService
 from tests.workbench.calibration_adoption_support import assert_preserved, snapshot
 from tests.workbench.calibration_lineage_ui_support import template_completed
-from tests.workbench.test_template_lineage_support import completed, origin
+from tests.workbench.template_lineage_support import completed, origin
 from web.routes.workbench.calibration import register_calibration_routes
 from web.routes.workbench.calibration_adoption import register_calibration_adoption_routes
 

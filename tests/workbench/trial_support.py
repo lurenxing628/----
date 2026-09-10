@@ -13,7 +13,7 @@ from core.models.workbench_trial_codec import fingerprint
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.workbench.run_worker import WorkbenchRunWorker
 from core.services.workbench.trial import WorkbenchTrialService
-from tests.workbench.test_run_jobs_support import JobCase
+from tests.workbench.run_jobs_support import JobCase
 from web.routes.workbench.trial import register_trial_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 

@@ -8,8 +8,8 @@ from types import SimpleNamespace
 import pytest
 from flask import Flask, Response, g
 
-from tests.workbench.test_request_lifecycle_support import LifecycleCase, http_json, http_server
-from tests.workbench.test_request_lifecycle_support import request_case as _request_case  # noqa: F401
+from tests.workbench.request_lifecycle_support import LifecycleCase, http_json, http_server
+from tests.workbench.request_lifecycle_support import request_case as _request_case  # noqa: F401
 from web.bootstrap.workbench_request_lifecycle import (
     install_workbench_request_lifecycle,
     lookup_workbench_request_lifecycle,

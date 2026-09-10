@@ -12,6 +12,8 @@ import pytest
 
 from scripts import run_daily_quality_gate as daily
 from tests.gate_meta.workbench_round1_registry_support import (
+    FINAL_CANDIDATE_READONLY_FILES,
+    FINAL_CANDIDATE_READONLY_INPUTS,
     FINAL_INTEGRATION_SUPPLEMENTAL_FILES,
     POST_ROUND1_TARGETS,
     ROUND1_ALGORITHM_TESTS,
@@ -91,9 +93,9 @@ SYSTEM_RESTORE_VIEW_INPUTS = (
     "web/bootstrap/workbench_system_restore_status.py",
     "web/bootstrap/workbench_system_restore_view.py",
     "templates/workbench/recovery.html",
-    "tests/workbench/test_system_restore_entrypoint_support.py",
-    "tests/workbench/test_system_restore_entrypoint_process_support.py",
-    "tests/workbench/test_system_restore_host_support.py",
+    "tests/workbench/system_restore_entrypoint_support.py",
+    "tests/workbench/system_restore_entrypoint_process_support.py",
+    "tests/workbench/system_restore_host_support.py",
 )
 SYSTEM_RESTORE_BROWSER_INPUTS = (
     *SYSTEM_RESTORE_VIEW_INPUTS,
@@ -257,8 +259,8 @@ POINT_PIECE_INPUTS = (
     "core/services/workbench/trial_adoption.py", "core/services/workbench/trial_validation.py",
     "core/services/workbench/official_plan_persistence.py", "core/services/workbench/production_report.py",
     "core/services/workbench/execution_ledger.py", "data/repositories/workbench_plan_identity_repo.py",
-    "tests/workbench/ea_zero_duration_support.py", "tests/workbench/test_piece_adoption_support.py",
-    "tests/workbench/test_run_candidate_support.py", "tests/workbench/trial_support.py",
+    "tests/workbench/ea_zero_duration_support.py", "tests/workbench/piece_adoption_support.py",
+    "tests/workbench/run_candidate_support.py", "tests/workbench/trial_support.py",
 )
 ALGORITHM_CALENDAR_INPUTS = (
     "schema.sql", "core/infrastructure/migrations/v31.py",
@@ -285,14 +287,14 @@ DELIVERED_REQUIRED_INPUTS = (
     ("data/repositories/workbench_trial_repo.py", "workbench_trial"),
     ("core/services/workbench/preflight_result.py", "workbench_preflight"),
     ("core/services/workbench/run_jobs.py", "workbench_preflight"),
-    ("tests/workbench/test_preflight_support.py", "workbench_preflight"),
-    ("tests/workbench/test_request_lifecycle_support.py", "workbench_preflight"),
+    ("tests/workbench/preflight_support.py", "workbench_preflight"),
+    ("tests/workbench/request_lifecycle_support.py", "workbench_preflight"),
     ("web/routes/workbench/scheduling_jobs.py", "workbench_preflight"),
     ("web/bootstrap/factory.py", "workbench_preflight"),
     ("web/bootstrap/launcher_runtime_lock.py", "workbench_preflight"),
     ("web/bootstrap/workbench_request_lifecycle.py", "workbench_preflight"),
     ("web/bootstrap/workbench_run_runtime.py", "workbench_preflight"),
-    ("tests/workbench/test_piece_chain_support.py", "workbench_piece_adoption"),
+    ("tests/workbench/piece_chain_support.py", "workbench_piece_adoption"),
     ("core/services/workbench/piece_adoption_trial.py", "workbench_piece_adoption"),
     ("core/algorithm_runtime/piece_input.py", "workbench_piece_adoption"),
     ("tests/workbench/merged_cycle_projection_support.py", "workbench_process"),
@@ -342,7 +344,7 @@ DELIVERED_BROWSER_INPUTS = (
     "frontend/workbench/app/ActualGanttModel.js", "frontend/workbench/app/ActualGanttRows.jsx",
     "core/services/workbench/field_workspace.py", "core/services/workbench/field_workspace_scope.py",
     "core/services/workbench/actual_gantt_scope.py", "core/services/workbench/actual_gantt_export.py",
-    "tests/workbench/fg_plan_workspace_actions_probe.cjs", "tests/workbench/test_plan_adoption_baseline_support.py",
+    "tests/workbench/fg_plan_workspace_actions_probe.cjs", "tests/workbench/plan_adoption_baseline_support.py",
     "tests/workbench/plan_ui_browser_probe.cjs", "tests/workbench/plan_ui_browser_harness.cjs",
     "tests/workbench/plan_scope_caption_probe.cjs", "tests/workbench/ea_zero_duration_support.py",
     "web/routes/workbench/plan_reads.py", "core/services/workbench/plan_projection.py",
@@ -365,8 +367,8 @@ DELIVERED_BROWSER_INPUTS = (
     "tests/workbench/piece_main_visuals.cjs",
     "tests/workbench/piece_presentation_build.cjs", "tests/workbench/piece_presentation_host.jsx",
     "tests/workbench/piece_presentation_browser.cjs", "tests/workbench/piece_presentation_contract.cjs",
-    "tests/workbench/test_piece_chain_support.py", "tests/workbench/test_run_candidate_baseline_support.py",
-    "tests/workbench/test_run_candidate_support.py", "tests/workbench/plan_catalog_support.py",
+    "tests/workbench/piece_chain_support.py", "tests/workbench/run_candidate_baseline_support.py",
+    "tests/workbench/run_candidate_support.py", "tests/workbench/plan_catalog_support.py",
     "tests/workbench/trial_support.py", "tests/workbench/plan_ui_fixtures.cjs",
     "tests/workbench/live_environment.py", "tests/workbench/run_live_server.py",
     "tests/workbench/run_live_server_support.py",
@@ -493,7 +495,18 @@ def test_run_job_extension_preserves_all_previous_targets_in_order():
     original = ("test_run_jobs.py", "test_run_jobs_schema.py", "test_run_jobs_api.py", "test_run_jobs_atomic.py",
                 "test_run_jobs_concurrency.py", "test_run_jobs_recovery.py", "test_run_jobs_restart.py")
     assert _groups()["workbench_run_jobs"]["target_paths"] == [
-        PREFIX + name for name in (*original, *RUN_REQUIRED_FILES["workbench_run_jobs"])]
+        PREFIX + name for name in (*original, *RUN_REQUIRED_FILES["workbench_run_jobs"], *FINAL_CANDIDATE_READONLY_FILES)]
+    all_groups = (*test_registry.REQUIRED_REGRESSION_GROUPS, *WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS)
+    for name in FINAL_CANDIDATE_READONLY_FILES:
+        target = PREFIX + name
+        assert [row["group_id"] for row in all_groups if target in row["target_paths"]] == ["workbench_run_jobs"]
+        assert target in POST_ROUND1_TARGETS and target not in test_registry.iter_startup_regressions()
+        assert quality_gate_shared.quality_gate_required_test_nodeid_matches(target + "::test_contract")
+        assert (ROOT / target).is_file() and _has_test_definition(ROOT / target)
+    owner = _groups()["workbench_run_jobs"]
+    for source in FINAL_CANDIDATE_READONLY_INPUTS:
+        assert source in owner["input_file_scopes"] and (ROOT / source).is_file()
+        assert all(source not in row["target_paths"] for row in all_groups)
 
 
 @pytest.mark.parametrize("group_id,filenames", NEW_REQUIRED_FILES.items())
@@ -587,7 +600,7 @@ def test_completed_extensions_keep_exact_required_owner_and_append_order(group_i
     *((source, "workbench_system") for source in SYSTEM_RESTORE_VIEW_INPUTS),
     ("web/bootstrap/workbench_system_restore.py", "workbench_system"),
     ("web/bootstrap/workbench_system_restore_recovery.py", "workbench_system"),
-    ("tests/workbench/test_system_restore_host_support.py", "workbench_system"),
+    ("tests/workbench/system_restore_host_support.py", "workbench_system"),
     ("tests/workbench/calibration_adoption_host_support.py", "workbench_calibration_adoption"),
     ("core/services/workbench/outsourcing_commands.py", "workbench_outsourcing"),
     ("data/repositories/workbench_outsourcing_source_repo.py", "workbench_outsourcing"),
@@ -618,9 +631,9 @@ def test_completed_extensions_keep_exact_required_owner_and_append_order(group_i
     ("web/bootstrap/launcher_shutdown.py", "workbench_system"),
     ("web/bootstrap/launcher_stop.py", "workbench_system"),
     ("web/bootstrap/workbench_system_restore_status.py", "workbench_system"),
-    ("tests/workbench/test_system_restore_entrypoint_support.py", "workbench_system"),
-    ("tests/workbench/test_system_restore_entrypoint_process_support.py", "workbench_system"),
-    ("tests/workbench/test_system_restore_entrypoint_legacy_support.py", "workbench_system"),
+    ("tests/workbench/system_restore_entrypoint_support.py", "workbench_system"),
+    ("tests/workbench/system_restore_entrypoint_process_support.py", "workbench_system"),
+    ("tests/workbench/system_restore_entrypoint_legacy_support.py", "workbench_system"),
     ("core/services/workbench/zero_duration.py", "workbench_zero_duration"),
     ("core/algorithm_runtime/internal_slot.py", "workbench_zero_duration"),
     ("core/services/workbench/trial_validation.py", "workbench_zero_duration"),
@@ -712,7 +725,7 @@ def test_critical_api_contract_has_exact_owner_and_required_nodeid(group_id, fil
     ("core/services/workbench/run_candidate_storage.py", "workbench_plans"),
     ("core/services/workbench/trial_adoption_storage.py", "workbench_plans"),
     ("core/models/workbench_trial_codec.py", "workbench_plans"),
-    ("tests/workbench/test_plan_adoption_baseline_support.py", "workbench_plans"),
+    ("tests/workbench/plan_adoption_baseline_support.py", "workbench_plans"),
     ("core/services/workbench/process_quota_protection.py", "workbench_process"),
     ("core/services/process/part_service.py", "workbench_process"),
     ("core/services/process/part_operation_hours_excel_import_service.py", "workbench_process"),
@@ -799,14 +812,14 @@ def test_critical_api_contract_has_exact_owner_and_required_nodeid(group_id, fil
     ("web/bootstrap/factory.py", "workbench_request_lifecycle"),
     ("core/services/system/maintenance/backup_task.py", "workbench_request_lifecycle"),
     ("core/services/workbench/system_restore.py", "workbench_request_lifecycle"),
-    ("tests/workbench/test_request_lifecycle_support.py", "workbench_request_lifecycle"),
-    ("tests/workbench/test_run_runtime_support.py", "workbench_run_jobs"),
+    ("tests/workbench/request_lifecycle_support.py", "workbench_request_lifecycle"),
+    ("tests/workbench/run_runtime_support.py", "workbench_run_jobs"),
     ("tests/workbench/run_entrypoint_support.py", "workbench_run_jobs"),
-    ("tests/workbench/test_run_history_support.py", "workbench_run_jobs"),
-    ("tests/workbench/test_run_candidate_support.py", "workbench_run_jobs"),
+    ("tests/workbench/run_history_support.py", "workbench_run_jobs"),
+    ("tests/workbench/run_candidate_support.py", "workbench_run_jobs"),
     ("frontend/workbench/app/ResourceFileContract.js", "workbench_resources"),
     ("frontend/workbench/app/PlanContract.js", "workbench_plans"),
-    ("tests/workbench/test_execution_ledger_support.py", "workbench_execution_ledger"),
+    ("tests/workbench/execution_ledger_support.py", "workbench_execution_ledger"),
     ("core/models/workbench_calibration_adoption.py", "workbench_calibration_adoption"),
     ("core/infrastructure/workbench_calibration_adoption_schema.py", "workbench_calibration_adoption"),
     ("core/services/workbench/calibration_adoption.py", "workbench_calibration_adoption"),
@@ -881,9 +894,9 @@ def test_registered_scopes_exist_and_test_helpers_are_inputs_only():
         for scope in group["input_file_scopes"]:
             assert not Path(scope).is_absolute(), scope
             assert any(ROOT.glob(scope)), (group["group_id"], scope)
-    for helper in ("test_execution_ledger_support.py", "test_run_runtime_support.py", "run_entrypoint_support.py",
-                   "test_run_history_support.py", "test_run_candidate_support.py", "run_job_widgets_support.py",
-                   "test_run_candidate_widgets_support.py"):
+    for helper in ("execution_ledger_support.py", "run_runtime_support.py", "run_entrypoint_support.py",
+                   "run_history_support.py", "run_candidate_support.py", "run_job_widgets_support.py",
+                   "run_candidate_widgets_support.py"):
         assert not test_registry.required_test_nodeid_matches(PREFIX + helper + "::test_placeholder")
 
 
@@ -1142,8 +1155,8 @@ def test_completed_du_restore_keeps_explicit_scopes_and_required_browser_boundar
     assert set(SYSTEM_RESTORE_VIEW_INPUTS) <= set(system["input_file_scopes"])
     assert set(SYSTEM_RESTORE_BROWSER_INPUTS) <= set(browser["input_file_scopes"])
     assert set(SYSTEM_RESTORE_VIEW_INPUTS).isdisjoint(_targets(WORKBENCH_REQUIRED_REGRESSION_GROUPS))
-    for filename in ("test_du_system_restore_view.py", "test_system_restore_entrypoint_support.py",
-                     "test_system_restore_entrypoint_process_support.py", "test_system_restore_host_support.py"):
+    for filename in ("test_du_system_restore_view.py", "system_restore_entrypoint_support.py",
+                     "system_restore_entrypoint_process_support.py", "system_restore_host_support.py"):
         tree = ast.parse((ROOT / PREFIX / filename).read_text(encoding="utf-8"))
         imports = [node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
         imports += [alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names]
@@ -1171,7 +1184,7 @@ def test_completed_du_restore_keeps_explicit_scopes_and_required_browser_boundar
     ("frontend/workbench/app/RunCandidateWorkspace.jsx", "workbench_browser"),
     ("tests/workbench/run_job_widgets_support.py", "workbench_browser"),
     ("tests/workbench/run_job_widgets_probe.cjs", "workbench_browser"),
-    ("tests/workbench/test_run_candidate_widgets_support.py", "workbench_browser"),
+    ("tests/workbench/run_candidate_widgets_support.py", "workbench_browser"),
     ("tests/workbench/test_run_candidate_widgets.cjs", "workbench_browser"),
     ("tests/workbench/run_adoption_widgets_probe.cjs", "workbench_browser"),
     ("tests/workbench/calibration_lineage_ui_probe.cjs", "workbench_browser"),
@@ -1254,7 +1267,7 @@ def test_stop_draining_is_startup_only_serial_and_support_remains_input_only():
     assert not test_registry.required_test_nodeid_matches(path + "::test_contract")
     assert classify_nodeid(path + "::test_contract") == "serial"
     assert not is_perf_nodeid(path + "::test_contract")
-    assert "tests/app_runtime/test_runtime_stop_draining_support.py" not in test_registry.iter_startup_regressions()
+    assert "tests/app_runtime/runtime_stop_draining_support.py" not in test_registry.iter_startup_regressions()
 
 
 def _dashboard_retention_snapshots():
@@ -1279,7 +1292,7 @@ def _dashboard_retention_snapshots():
 
 @pytest.fixture(params=("trial", "candidate"))
 def retention_assertion(request):
-    from tests.workbench.test_run_candidate_adoption_support import assert_retained as candidate_retained
+    from tests.workbench.run_candidate_adoption_support import assert_retained as candidate_retained
     from tests.workbench.trial_adoption_support import assert_retained as trial_retained
     return {"trial": trial_retained, "candidate": candidate_retained}[request.param]
 

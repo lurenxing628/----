@@ -2,8 +2,8 @@
 
 import pytest
 
-from tests.workbench.test_run_history_support import BASE, api, corrupt, dump, edit_receipt, seed
-from tests.workbench.test_run_history_support import history_case as _history_case
+from tests.workbench.run_history_support import BASE, api, corrupt, dump, edit_receipt, seed
+from tests.workbench.run_history_support import history_case as _history_case
 
 
 @pytest.mark.parametrize("damage", ["missing_receipt", "receipt_state", "manifest_state", "missing_candidate", "duplicate_candidate",

@@ -14,7 +14,7 @@ from core.services.workbench.trial_adoption import WorkbenchTrialAdoptionService
 from core.services.workbench.trial_capacity import _resource
 from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
-from tests.workbench.test_run_candidate_support import corrupt_update, edit_capture
+from tests.workbench.run_candidate_support import corrupt_update, edit_capture
 from tests.workbench.trial_adoption_support import saved_scenario
 from tests.workbench.trial_support import candidate, create, service, snapshot
 from tests.workbench.trial_support import trial_case as trial_case

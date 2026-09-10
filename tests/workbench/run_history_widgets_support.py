@@ -8,8 +8,8 @@ from flask import Blueprint, Flask, g, jsonify, request
 
 from core.infrastructure.migration_state import current_schema_contract_issues
 from core.services.workbench.run_worker import WorkbenchRunWorker
-from tests.workbench.test_run_history_support import connect, seed
-from tests.workbench.test_run_jobs_support import JobCase
+from tests.workbench.run_history_support import connect, seed
+from tests.workbench.run_jobs_support import JobCase
 from web.routes.workbench.run_candidate_baseline import register_run_candidate_baseline_routes
 from web.routes.workbench.run_candidates import register_run_candidate_routes
 from web.routes.workbench.run_history import register_run_history_routes

@@ -3,8 +3,8 @@
 import sqlite3
 import time
 
-from tests.workbench.test_run_history_support import BASE, api, dump, read, seed
-from tests.workbench.test_run_history_support import history_case as _history_case
+from tests.workbench.run_history_support import BASE, api, dump, read, seed
+from tests.workbench.run_history_support import history_case as _history_case
 
 
 def test_350_runs_5000_candidates_batched_counts_without_reading_payloads(history_case):

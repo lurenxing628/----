@@ -19,9 +19,9 @@ from tests.workbench.process_quota_protection_file_receipt_support import quota_
 from tests.workbench.process_quota_protection_support import adopt, snapshot, templates
 from tests.workbench.process_quota_protection_support import quota_case as _quota  # noqa: F401
 from tests.workbench.process_workflow_support import confirm_all
-from tests.workbench.test_template_lineage_support import completed
-from tests.workbench.test_template_lineage_support import ledger_fixture as _ledger  # noqa: F401
-from tests.workbench.test_template_lineage_support import lineage_case as _lineage  # noqa: F401
+from tests.workbench.template_lineage_support import completed
+from tests.workbench.template_lineage_support import ledger_fixture as _ledger  # noqa: F401
+from tests.workbench.template_lineage_support import lineage_case as _lineage  # noqa: F401
 
 
 @pytest.mark.parametrize("fmt", ["csv", "xlsx"])

@@ -8,10 +8,10 @@ from pathlib import Path
 from flask import Blueprint
 
 from tests.workbench.final_operations_support import REPO
+from tests.workbench.run_candidate_baseline_support import api, original_plan
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case
+from tests.workbench.run_candidate_support import compute
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_run_candidate_baseline_support import api, original_plan
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case
-from tests.workbench.test_run_candidate_support import compute
 from web.routes.workbench.dashboard_analysis import dashboard_analysis, dashboard_candidate_comparison
 
 

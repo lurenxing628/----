@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from flask import Response, abort, g, stream_with_context
 
-from tests.workbench.test_request_lifecycle_support import PATHS, http_json, http_server
-from tests.workbench.test_request_lifecycle_support import request_case as _request_case  # noqa: F401
+from tests.workbench.request_lifecycle_support import PATHS, http_json, http_server
+from tests.workbench.request_lifecycle_support import request_case as _request_case  # noqa: F401
 from web.bootstrap.launcher_paths import db_scope_lock_path
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
 

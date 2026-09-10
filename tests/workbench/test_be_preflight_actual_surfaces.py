@@ -8,11 +8,11 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from tests.workbench.actual_gantt_support import BASE, connect, prepare, seed_report
 from tests.workbench.plan_read_support import add_tasks
-from tests.workbench.test_actual_gantt_support import BASE, connect, prepare, seed_report
+from tests.workbench.preflight_support import BASE as PREFLIGHT_BASE
+from tests.workbench.preflight_support import create_app, snapshot
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_preflight_support import BASE as PREFLIGHT_BASE
-from tests.workbench.test_preflight_support import create_app, snapshot
 
 ROOT = Path(__file__).resolve().parents[2]
 

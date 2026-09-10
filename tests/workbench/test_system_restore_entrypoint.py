@@ -8,7 +8,7 @@ from contextlib import closing
 import pytest
 
 from core.services.workbench.system_journal import file_fingerprint
-from tests.workbench.test_system_restore_entrypoint_support import (
+from tests.workbench.system_restore_entrypoint_support import (
     BASE,
     KEY,
     ProcessHost,

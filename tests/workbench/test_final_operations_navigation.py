@@ -11,9 +11,9 @@ from core.infrastructure.database import get_connection
 from tests.workbench.dashboard_support import follow
 from tests.workbench.final_operations_seed import seed
 from tests.workbench.final_operations_support import OperationsHost
+from tests.workbench.run_jobs_support import JobCase
+from tests.workbench.system_restore_entrypoint_support import wait_for
 from tests.workbench.test_final_operations_restore import _restart_audit_only
-from tests.workbench.test_run_jobs_support import JobCase
-from tests.workbench.test_system_restore_entrypoint_support import wait_for
 
 
 def _prepare(host):

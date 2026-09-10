@@ -7,9 +7,9 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.dashboard_candidate_comparison import read_candidate_comparison
-from tests.workbench.test_run_candidate_baseline_support import original_plan
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case
-from tests.workbench.test_run_candidate_support import compute, retained
+from tests.workbench.run_candidate_baseline_support import original_plan
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case
+from tests.workbench.run_candidate_support import compute, retained
 
 RANGE = {"range_start": "2026-09-09T00:00:00", "range_end": "2026-09-26T00:00:00"}
 

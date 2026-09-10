@@ -11,8 +11,8 @@ import pytest
 
 from tests.workbench.ea_zero_duration_support import adopt
 from tests.workbench.point_frontend_support import app_for, serve
+from tests.workbench.run_candidate_support import compute
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_run_candidate_support import compute
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 
 HERE = Path(__file__).resolve().parent

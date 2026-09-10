@@ -4,10 +4,10 @@ from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan_queries import WorkbenchPlanQueryService
 from core.services.workbench.run_compute import compute_candidate_run
 from tests.workbench.ea_zero_duration_support import adoption_service, trial_adoption_service
-from tests.workbench.test_run_candidate_adoption_support import INTENT, assert_retained
-from tests.workbench.test_run_candidate_support import compute
-from tests.workbench.test_run_compute_support import run_case as run_case  # noqa: F401
-from tests.workbench.test_run_compute_support import unchanged
+from tests.workbench.run_candidate_adoption_support import INTENT, assert_retained
+from tests.workbench.run_candidate_support import compute
+from tests.workbench.run_compute_support import run_case as run_case  # noqa: F401
+from tests.workbench.run_compute_support import unchanged
 from tests.workbench.trial_adoption_support import service as public_trial_adoption
 from tests.workbench.trial_support import change, connect, create, snapshot
 from tests.workbench.trial_support import service as trial_service

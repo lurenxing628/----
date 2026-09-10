@@ -14,7 +14,7 @@ from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.workbench.run_worker import WorkbenchRunWorker
 from core.services.workbench.trial import WorkbenchTrialService
-from tests.workbench.test_run_jobs_support import JobCase
+from tests.workbench.run_jobs_support import JobCase
 from web.routes.workbench.plan_reads import register_plan_read_routes
 from web.routes.workbench.run_candidates import register_run_candidate_routes
 from web.routes.workbench.run_history import register_run_history_routes

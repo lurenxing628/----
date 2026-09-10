@@ -8,7 +8,7 @@ import pytest
 
 from core.infrastructure.backup import BackupManager
 from core.services.workbench.system_journal import SystemMaintenanceJournal
-from tests.workbench.test_system_restore_entrypoint_support import BASE, KEY, REPO, ProcessHost
+from tests.workbench.system_restore_entrypoint_support import BASE, KEY, REPO, ProcessHost
 from web.bootstrap import factory
 from web.bootstrap.launcher_shutdown import HOST_STOP_PATH
 from web.bootstrap.workbench_system_restore_recovery import system_journal_directory

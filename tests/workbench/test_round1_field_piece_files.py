@@ -6,11 +6,11 @@ import json
 import pytest
 
 from core.services.workbench.field_report_files_codec import decode_reports, encode_reports
-from tests.workbench.test_execution_ledger_support import all_rows
-from tests.workbench.test_execution_ledger_support import ledger_case as ledger_case
-from tests.workbench.test_field_workspace_support import BASE, success
-from tests.workbench.test_field_workspace_support import field_api as field_api
-from tests.workbench.test_round1_field_piece_files_support import (
+from tests.workbench.execution_ledger_support import all_rows
+from tests.workbench.execution_ledger_support import ledger_case as ledger_case
+from tests.workbench.field_workspace_support import BASE, success
+from tests.workbench.field_workspace_support import field_api as field_api
+from tests.workbench.round1_field_piece_files_support import (
     PIECES,
     by_piece,
     confirm,
@@ -18,7 +18,7 @@ from tests.workbench.test_round1_field_piece_files_support import (
     fill_template,
     report_values,
 )
-from tests.workbench.test_round1_field_piece_files_support import (
+from tests.workbench.round1_field_piece_files_support import (
     piece_file_api as piece_file_api,
 )
 from web.routes.workbench.execution_files import PREVIEW_NAMESPACE

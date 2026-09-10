@@ -9,9 +9,9 @@ from core.errors import AppError
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.services.scheduler.run.schedule_execution_persistence_guard import validate_execution_guard_before_persist
 from core.services.scheduler.schedule_service import ScheduleService
+from tests.workbench.piece_adoption_support import START, lower_input, payload, slot_payload, split
+from tests.workbench.piece_adoption_support import candidate_case as candidate_case  # noqa: F401
 from tests.workbench.test_piece_adoption import check
-from tests.workbench.test_piece_adoption_support import START, lower_input, payload, slot_payload, split
-from tests.workbench.test_piece_adoption_support import candidate_case as candidate_case  # noqa: F401
 
 
 def _second_resource(case, ids, piece="item-B"):

@@ -7,8 +7,8 @@ from flask import Blueprint, g
 
 from core.models.workbench_command import canonical_json
 from core.services.workbench.run_candidate_adoption import WorkbenchRunCandidateAdoptionService
-from tests.workbench.test_run_candidate_support import candidate_case as candidate_case  # noqa: F401
-from tests.workbench.test_run_candidate_support import compute, connect, corrupt_update
+from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401
+from tests.workbench.run_candidate_support import compute, connect, corrupt_update
 from tests.workbench.trial_adoption_support import assert_dashboard_task_appends
 from web.routes.workbench.materials import command_receipt
 from web.routes.workbench.run_candidate_adoption import register_run_candidate_adoption_routes

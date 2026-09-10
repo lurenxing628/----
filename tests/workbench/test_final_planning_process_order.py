@@ -8,10 +8,10 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan_process_order import project_process_order
 from core.services.workbench.plan_queries import WorkbenchPlanQueryService
-from tests.workbench.test_piece_chain_support import adopt_trial, piece_layout, saved_trial
-from tests.workbench.test_plan_adoption_baseline_support import adopt_candidate, mutate_json
-from tests.workbench.test_round1_piece_point_support import adopt, candidate
-from tests.workbench.test_round1_piece_point_support import point_case as point_case
+from tests.workbench.piece_chain_support import adopt_trial, piece_layout, saved_trial
+from tests.workbench.plan_adoption_baseline_support import adopt_candidate, mutate_json
+from tests.workbench.round1_piece_point_support import adopt, candidate
+from tests.workbench.round1_piece_point_support import point_case as point_case
 from tests.workbench.trial_support import official, snapshot
 from tests.workbench.trial_support import trial_case as trial_case
 

@@ -8,8 +8,8 @@ from flask import Flask
 from core.infrastructure.migration_state import set_schema_version
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.workbench.run_worker import WorkbenchRunWorker
+from tests.workbench.run_jobs_support import JobCase
 from tests.workbench.run_schema_migration_support import connect
-from tests.workbench.test_run_jobs_support import JobCase
 
 FIXTURE_V26 = Path(__file__).parent / "fixtures" / "schema-v26.sql"
 

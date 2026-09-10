@@ -3,7 +3,7 @@
 import pytest
 
 from core.services.workbench.preflight import PreflightService
-from tests.workbench.test_run_candidate_adoption_support import (
+from tests.workbench.run_candidate_adoption_support import (
     INTENT,
     KEY,
     assert_retained,
@@ -12,7 +12,7 @@ from tests.workbench.test_run_candidate_adoption_support import (
     service,
     snapshot,
 )
-from tests.workbench.test_run_candidate_adoption_support import candidate_case as _case  # noqa: F401
+from tests.workbench.run_candidate_adoption_support import candidate_case as _case  # noqa: F401
 
 
 @pytest.mark.parametrize("mode", ["auto_assign", "multiday", "external", "locked"])

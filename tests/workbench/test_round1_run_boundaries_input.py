@@ -11,7 +11,7 @@ from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.workbench.run_input_external import prime_template_cache
 from core.services.workbench.run_input_projection_codec import restore_execution_projections, validate_projection_dto
 from core.services.workbench.run_input_runtime import _validate_stored_runtime
-from tests.workbench.test_run_compute_support import run_case as _run_case
+from tests.workbench.run_compute_support import run_case as _run_case
 
 
 @pytest.mark.parametrize("field,value", [

@@ -9,8 +9,8 @@ from core.services.workbench.plan_point_evidence import official_point_work
 from core.services.workbench.zero_duration import PointEventError
 from core.services.workbench.zero_duration_evidence import point_basis, trial_point_evidence, work_point_evidence
 from tests.workbench.ea_zero_duration_support import adoption_service
-from tests.workbench.test_round1_piece_point_support import adopt, candidate, layout, managed_run, workspace
-from tests.workbench.test_round1_piece_point_support import point_case as point_case
+from tests.workbench.round1_piece_point_support import adopt, candidate, layout, managed_run, workspace
+from tests.workbench.round1_piece_point_support import point_case as point_case
 from tests.workbench.trial_support import snapshot
 from tests.workbench.trial_support import trial_case as trial_case
 

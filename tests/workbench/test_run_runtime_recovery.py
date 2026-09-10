@@ -15,17 +15,17 @@ from core.models.workbench_run_job import new_run_ref
 from core.services.workbench.run_jobs import WorkbenchRunService
 from core.services.workbench.run_worker import WorkbenchRunWorker
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
-from tests.workbench import test_run_runtime_support as support
-from tests.workbench.test_run_jobs_support import job_case as _job_case  # noqa: F401
-from tests.workbench.test_run_runtime_support import (
+from tests.workbench import run_runtime_support as support
+from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
+from tests.workbench.run_runtime_support import (
     BASE,
     install,
     intent,
 )
-from tests.workbench.test_run_runtime_support import (
+from tests.workbench.run_runtime_support import (
     owned_case as _owned_case,  # noqa: F401
 )
-from tests.workbench.test_run_runtime_support import (
+from tests.workbench.run_runtime_support import (
     runtime_api as _runtime_api,
 )
 from web.bootstrap import workbench_run_runtime as host
@@ -119,7 +119,7 @@ from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock
 from web.bootstrap.workbench_run_runtime import install_workbench_run_runtime
 from core.infrastructure.database import get_connection
 from core.services.workbench.run_worker import WorkbenchRunWorker
-from tests.workbench.test_run_jobs_support import JobCase
+from tests.workbench.run_jobs_support import JobCase
 
 path, runtime_dir = sys.argv[1:]
 claim = acquire_runtime_lock(runtime_dir, db_path=path)

@@ -3,15 +3,15 @@
 import pytest
 
 from core.services.workbench.run_worker import WorkbenchRunWorker
-from tests.workbench.test_piece_chain_support import (
+from tests.workbench.piece_chain_support import (
     adopt_candidate,
     adopt_trial,
     artifact,
     piece_candidate,
     saved_trial,
 )
-from tests.workbench.test_piece_chain_support import trial_case as trial_case  # noqa: F401
-from tests.workbench.test_run_jobs_support import service as run_service
+from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401
+from tests.workbench.run_jobs_support import service as run_service
 from tests.workbench.trial_support import snapshot
 
 

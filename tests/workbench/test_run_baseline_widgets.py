@@ -13,8 +13,8 @@ from werkzeug.serving import make_server
 
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION
 from tests.workbench.run_baseline_widgets_support import BaselineWidgetServer
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 
 
 def test_run_baseline_widgets_real_browser(candidate_case):

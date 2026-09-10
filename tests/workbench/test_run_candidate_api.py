@@ -9,8 +9,8 @@ import pytest
 from flask import Blueprint
 
 from tests._support.excel_templates import point_env_at_shared
-from tests.workbench.test_run_candidate_support import BASE, api, compute, corrupt_update, read, retained, state
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case
+from tests.workbench.run_candidate_support import BASE, api, compute, corrupt_update, read, retained, state
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case
 from web.routes.workbench.run_candidates import register_run_candidate_routes
 
 

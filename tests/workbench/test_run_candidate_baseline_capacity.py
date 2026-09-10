@@ -3,9 +3,9 @@
 import time
 from datetime import datetime, timedelta
 
-from tests.workbench.test_run_candidate_baseline_support import api
-from tests.workbench.test_run_candidate_support import BASE, compute, public, retained
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case
+from tests.workbench.run_candidate_baseline_support import api
+from tests.workbench.run_candidate_support import BASE, compute, public, retained
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case
 
 
 def test_real_5000_baseline_rows_and_four_candidates_bounded_complete_read(candidate_case):

@@ -6,7 +6,7 @@ from contextlib import closing
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.database import ensure_schema, get_connection
 from tests.workbench.final_operations_support import REPO, OperationsHost
-from tests.workbench.test_system_restore_entrypoint_support import wait_for
+from tests.workbench.system_restore_entrypoint_support import wait_for
 
 
 def test_final_operations_restore_waits_for_real_work_and_retains_later_data(tmp_path):

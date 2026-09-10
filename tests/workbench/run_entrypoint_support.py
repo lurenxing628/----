@@ -10,7 +10,7 @@ from flask import Flask
 
 from core.infrastructure.database import get_connection
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
-from tests.workbench.test_run_jobs_support import JobCase
+from tests.workbench.run_jobs_support import JobCase
 from web.bootstrap import entrypoint, factory
 from web.bootstrap.launcher_paths import db_scope_lock_path
 

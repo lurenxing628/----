@@ -7,7 +7,7 @@ from typing import Any, Dict
 
 import pytest
 
-from tests.workbench.test_resource_file_support import decode
+from tests.workbench.resource_file_support import decode
 
 BASE = "/api/workbench/v1"
 VIEWS = [("material", None), ("op_type", "internal"), ("op_type", "external"),

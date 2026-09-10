@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from tests.workbench.test_calibration_support import (
+from tests.workbench.calibration_support import (
     BASE,
     assert_failure,
     complete_reports,
@@ -12,8 +12,8 @@ from tests.workbench.test_calibration_support import (
     ledger_fixture,
     scope_token,
 )
-from tests.workbench.test_calibration_support import calibration_api as api_fixture
-from tests.workbench.test_calibration_support import calibration_case as case_fixture
+from tests.workbench.calibration_support import calibration_api as api_fixture
+from tests.workbench.calibration_support import calibration_case as case_fixture
 
 
 @pytest.mark.parametrize("damage", ["json", "missing_revision", "chain", "hours", "quantity", "extra_field", "time"])

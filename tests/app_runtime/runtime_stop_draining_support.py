@@ -49,7 +49,7 @@ def isolated_env(root: Path):
 
 
 def subprocess_command(mode: str, root: Path, *extra: str):
-    return [sys.executable, "-m", "tests.app_runtime.test_runtime_stop_draining_support", mode, str(root)] + list(extra)
+    return [sys.executable, "-m", "tests.app_runtime.runtime_stop_draining_support", mode, str(root)] + list(extra)
 
 
 @contextmanager

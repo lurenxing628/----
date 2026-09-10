@@ -8,9 +8,9 @@ from core.models.workbench_calibration import CalibrationCandidate, CalibrationL
 from core.services.workbench.calibration import filtered_suggestions
 from core.services.workbench.calibration_method import build_suggestion, summarize_samples
 from core.services.workbench.calibration_samples import review_sample
-from tests.workbench.test_calibration_support import calibration_case as case_fixture
-from tests.workbench.test_calibration_support import complete_reports, ledger_fixture, reviewed
-from tests.workbench.test_execution_ledger_support import NOW
+from tests.workbench.calibration_support import calibration_case as case_fixture
+from tests.workbench.calibration_support import complete_reports, ledger_fixture, reviewed
+from tests.workbench.execution_ledger_support import NOW
 
 
 @pytest.mark.parametrize("count", [0, 1, 4, 5, 20, 25])

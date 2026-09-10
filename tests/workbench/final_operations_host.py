@@ -16,11 +16,11 @@ def main():
     from jinja2 import FileSystemLoader
 
     from core.infrastructure.database import get_connection
-    from tests.workbench import test_system_restore_entrypoint_process_support as driver
+    from tests.workbench import system_restore_entrypoint_process_support as driver
     from tests.workbench.final_operations_source_binding import source_binding
     from tests.workbench.live_environment import install_path_guard
+    from tests.workbench.run_jobs_support import JobCase
     from tests.workbench.run_live_server_support import attach_journal, loaded_python_sources
-    from tests.workbench.test_run_jobs_support import JobCase
     from web.bootstrap import factory
 
     evidence = install_path_guard(root)

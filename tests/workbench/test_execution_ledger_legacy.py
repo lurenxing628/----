@@ -10,8 +10,8 @@ from core.infrastructure.workbench_execution_ledger_schema import (
     install_execution_ledger,
 )
 from core.models.workbench_command import WorkbenchCommandRejected
-from tests.workbench.test_execution_ledger_support import END, all_rows
-from tests.workbench.test_execution_ledger_support import ledger_case as ledger_fixture
+from tests.workbench.execution_ledger_support import END, all_rows
+from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture
 
 
 @pytest.mark.parametrize("quantity", [None, 0, 10])

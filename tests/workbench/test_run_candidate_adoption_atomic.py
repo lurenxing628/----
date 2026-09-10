@@ -8,7 +8,7 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.services.scheduler import schedule_service
-from tests.workbench.test_run_candidate_adoption_support import (
+from tests.workbench.run_candidate_adoption_support import (
     INTENT,
     KEY,
     CommitFailureConnection,
@@ -17,8 +17,8 @@ from tests.workbench.test_run_candidate_adoption_support import (
     service,
     snapshot,
 )
-from tests.workbench.test_run_candidate_adoption_support import candidate_case as _case  # noqa: F401
-from tests.workbench.test_run_candidate_support import connect
+from tests.workbench.run_candidate_adoption_support import candidate_case as _case  # noqa: F401
+from tests.workbench.run_candidate_support import connect
 
 
 @pytest.mark.parametrize("table", ["Schedule", "ScheduleHistory", "OperationLogs", "WorkbenchCommandReceipts"])

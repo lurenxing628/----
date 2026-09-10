@@ -67,7 +67,7 @@ def main():
             runtime = installer(app, **kwargs)
             assert runtime.ready
             from core.services.workbench.system_journal import SystemMaintenanceJournal, file_fingerprint
-            from tests.workbench.test_system_restore_entrypoint_support import KEY
+            from tests.workbench.system_restore_entrypoint_support import KEY
             journal = SystemMaintenanceJournal(app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"], app.config["DATABASE_PATH"])
             (root / "before-maintenance.sha256").write_text(file_fingerprint(app.config["DATABASE_PATH"]), encoding="ascii")
             journal.begin(KEY, "restore", {})
@@ -134,7 +134,7 @@ def install_fault(root, mode):
 def start_worker(root, app, runtime):
     from types import SimpleNamespace
 
-    from tests.workbench.test_system_restore_host_support import seed_worker
+    from tests.workbench.system_restore_host_support import seed_worker
     case = SimpleNamespace(path=app.config["DATABASE_PATH"], app=app)
     accepted = seed_worker(case)
     (root / "worker.json").write_text(json.dumps(accepted), encoding="utf-8")

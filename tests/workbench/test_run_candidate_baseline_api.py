@@ -3,9 +3,9 @@
 import pytest
 
 from core.services.workbench.run_worker import WorkbenchRunWorker
-from tests.workbench.test_run_candidate_baseline_support import api, original_plan
-from tests.workbench.test_run_candidate_support import BASE, compute, read, retained
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case
+from tests.workbench.run_candidate_baseline_support import api, original_plan
+from tests.workbench.run_candidate_support import BASE, compute, read, retained
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case
 
 
 def test_hook_real_get_and_snapshot_unchanged_by_current_metadata(candidate_case):

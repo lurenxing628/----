@@ -15,8 +15,8 @@ from core.models.workbench_run_history import RunHistoryScope
 from core.services.workbench.run_history import WorkbenchRunHistoryQueryService
 from core.services.workbench.run_worker import WorkbenchRunWorker
 from tests._support.excel_templates import point_env_at_shared
-from tests.workbench.test_run_history_support import BASE, dump, read, seed
-from tests.workbench.test_run_history_support import history_case as _history_case
+from tests.workbench.run_history_support import BASE, dump, read, seed
+from tests.workbench.run_history_support import history_case as _history_case
 from web.routes.workbench.run_candidates import register_run_candidate_routes
 from web.routes.workbench.run_history import register_run_history_routes
 
@@ -82,7 +82,7 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
 
 
 def test_get_registration_coexists_with_existing_post_and_no_worker_required(history_case):
-    from tests.workbench.test_run_history_support import api
+    from tests.workbench.run_history_support import api
     from web.routes.workbench.scheduling_jobs import register_scheduling_job_routes
 
     case = history_case

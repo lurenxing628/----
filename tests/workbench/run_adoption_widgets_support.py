@@ -7,10 +7,10 @@ from pathlib import Path
 
 from flask import Blueprint, Flask, g, jsonify, request
 
-from tests.workbench.test_run_candidate_adoption_support import assert_retained, snapshot
-from tests.workbench.test_run_candidate_support import connect
-from tests.workbench.test_run_candidate_widgets_support import compute
-from tests.workbench.test_run_jobs_support import JobCase
+from tests.workbench.run_candidate_adoption_support import assert_retained, snapshot
+from tests.workbench.run_candidate_support import connect
+from tests.workbench.run_candidate_widgets_support import compute
+from tests.workbench.run_jobs_support import JobCase
 from web.routes.workbench.materials import command_receipt
 from web.routes.workbench.run_candidate_adoption import register_run_candidate_adoption_routes
 from web.routes.workbench.run_candidates import register_run_candidate_routes

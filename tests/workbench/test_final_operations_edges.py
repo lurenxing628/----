@@ -7,7 +7,7 @@ from core.infrastructure.database import get_connection
 from tests.workbench.dashboard_support import follow
 from tests.workbench.final_operations_seed import seed
 from tests.workbench.final_operations_support import OperationsHost
-from tests.workbench.test_system_restore_entrypoint_support import wait_for
+from tests.workbench.system_restore_entrypoint_support import wait_for
 
 
 def test_final_operations_history_and_real_storage_failure(tmp_path):

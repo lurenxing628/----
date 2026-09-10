@@ -14,7 +14,7 @@ from core.infrastructure.backup import BackupManager
 from core.infrastructure.database import get_connection
 from core.services.process.op_type_service import OpTypeService
 from core.services.workbench.commands import WorkbenchCommandService
-from tests.workbench.test_request_lifecycle_support import PATHS, http_json, http_server, production_server
+from tests.workbench.request_lifecycle_support import PATHS, http_json, http_server, production_server
 from web.bootstrap import factory
 from web.bootstrap.launcher_paths import db_scope_lock_path
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock

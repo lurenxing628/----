@@ -10,7 +10,7 @@ from core.services.workbench.run_jobs import WorkbenchRunService
 from core.services.workbench.run_jobs_facts import capture_run_facts
 from core.services.workbench.run_worker import WorkbenchRunWorker
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
-from tests.workbench.test_run_jobs_support import JobCase, connection
+from tests.workbench.run_jobs_support import JobCase, connection
 from web.routes.workbench.preflight import register_preflight_routes
 from web.routes.workbench.run_candidates import register_run_candidate_routes
 from web.routes.workbench.scheduling_jobs import register_scheduling_job_routes

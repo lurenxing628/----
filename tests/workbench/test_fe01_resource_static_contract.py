@@ -13,8 +13,8 @@ from core.models.workbench_resource_query import ResourcePageRequest
 from core.models.workbench_resource_table_query import table_columns
 from core.services.workbench.resource_files import WorkbenchResourceFileService
 from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from tests.workbench.resource_file_support import decode
 from tests.workbench.resource_table_support import VIEWS, stored_state, table_database
-from tests.workbench.test_resource_file_support import decode
 from web.routes.workbench.resource_file_exports import resource_export, resource_export_preview
 from web.routes.workbench.resource_table_queries import register_resource_table_routes
 

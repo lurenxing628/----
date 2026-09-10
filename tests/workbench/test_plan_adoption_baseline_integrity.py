@@ -7,17 +7,17 @@ import pytest
 
 from core.errors import AppError
 from core.services.workbench.plan_baseline import build_plan_baseline
-from tests.workbench.plan_baseline_support import baseline_fixture as baseline_fixture  # noqa: F401
-from tests.workbench.test_plan_adoption_baseline_support import (
+from tests.workbench.plan_adoption_baseline_support import (
     adopt_candidate,
     adopt_trial,
     mutate_json,
     read,
     two_versions,
 )
-from tests.workbench.test_plan_adoption_baseline_support import trial_case as trial_case  # noqa: F401
-from tests.workbench.test_run_candidate_adoption_support import snapshot
-from tests.workbench.test_run_candidate_support import corrupt_update
+from tests.workbench.plan_adoption_baseline_support import trial_case as trial_case  # noqa: F401
+from tests.workbench.plan_baseline_support import baseline_fixture as baseline_fixture  # noqa: F401
+from tests.workbench.run_candidate_adoption_support import snapshot
+from tests.workbench.run_candidate_support import corrupt_update
 
 
 @pytest.mark.parametrize("source", ["candidate", "trial"])

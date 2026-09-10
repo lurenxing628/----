@@ -5,7 +5,7 @@ import sqlite3
 from flask import g, request
 
 from core.services.workbench.run_candidate_adoption import WorkbenchRunCandidateAdoptionService
-from tests.workbench.test_run_candidate_adoption_support import (
+from tests.workbench.run_candidate_adoption_support import (
     BASE,
     INTENT,
     KEY,
@@ -14,7 +14,7 @@ from tests.workbench.test_run_candidate_adoption_support import (
     candidate,
     snapshot,
 )
-from tests.workbench.test_run_candidate_adoption_support import candidate_case as _case  # noqa: F401
+from tests.workbench.run_candidate_adoption_support import candidate_case as _case  # noqa: F401
 
 
 def test_preview_and_adopt_independent_post_routes(candidate_case):

@@ -4,9 +4,9 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.run_candidate_history import read_candidate_history
-from tests.workbench.test_run_candidate_adoption_support import INTENT, KEY, preview, service
-from tests.workbench.test_run_candidate_support import api, compute, connect, retained
-from tests.workbench.test_run_candidate_support import candidate_case as _case  # noqa: F401
+from tests.workbench.run_candidate_adoption_support import INTENT, KEY, preview, service
+from tests.workbench.run_candidate_support import api, compute, connect, retained
+from tests.workbench.run_candidate_support import candidate_case as _case  # noqa: F401
 
 
 @pytest.mark.parametrize("has_baseline", [False, True])

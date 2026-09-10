@@ -2,10 +2,10 @@
 
 import json
 
-from tests.workbench.test_piece_adoption_support import split
-from tests.workbench.test_run_candidate_adoption_support import INTENT, assert_retained
-from tests.workbench.test_run_candidate_adoption_support import service as candidate_adoption
-from tests.workbench.test_run_candidate_support import compute
+from tests.workbench.piece_adoption_support import split
+from tests.workbench.run_candidate_adoption_support import INTENT, assert_retained
+from tests.workbench.run_candidate_adoption_support import service as candidate_adoption
+from tests.workbench.run_candidate_support import compute
 from tests.workbench.trial_adoption_support import service as trial_adoption
 from tests.workbench.trial_support import change, create, snapshot
 from tests.workbench.trial_support import service as trial_service

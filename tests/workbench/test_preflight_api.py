@@ -6,9 +6,9 @@ import pytest
 
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
-from tests.workbench.test_preflight_support import BASE, add_op, checked, legacy_events, payload, ref_for, snapshot
-from tests.workbench.test_preflight_support import pf as pf_fixture
-from tests.workbench.test_preflight_support import pf_legacy_schema as pf_legacy_fixture
+from tests.workbench.preflight_support import BASE, add_op, checked, legacy_events, payload, ref_for, snapshot
+from tests.workbench.preflight_support import pf as pf_fixture
+from tests.workbench.preflight_support import pf_legacy_schema as pf_legacy_fixture
 from web.routes.workbench.preflight import resolve_preflight_input
 
 

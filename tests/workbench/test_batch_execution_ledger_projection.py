@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
+from tests.workbench.batch_execution_ledger_support import batch_ledger_fixture, report
 from tests.workbench.batch_support import BASE, batch_database, detail, list_data, post, state
-from tests.workbench.test_batch_execution_ledger_support import batch_ledger_fixture, report
 
 _batch_fixture = batch_database
 _ledger_fixture = batch_ledger_fixture

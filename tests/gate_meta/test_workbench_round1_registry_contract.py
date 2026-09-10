@@ -247,9 +247,9 @@ def test_round1_changed_sources_select_the_real_contract_owner(source, group_id)
 
 
 @pytest.mark.parametrize("source", (
-    "tests/workbench/test_round1_field_piece_files_support.py",
-    "tests/workbench/test_round1_field_piece_files_probe.py",
-    "tests/workbench/test_round1_piece_point_support.py",
+    "tests/workbench/round1_field_piece_files_support.py",
+    "tests/workbench/round1_field_piece_files_probe.py",
+    "tests/workbench/round1_piece_point_support.py",
     "tests/gate_meta/workbench_round1_registry_support.py",
 ))
 def test_support_and_browser_probe_are_real_inputs_never_test_targets(source):
@@ -302,7 +302,7 @@ def test_browser_entry_still_runs_real_browser_with_exact_download_oracle():
                    for node in calls)
     script = (ROOT / ROUND1_BROWSER_INPUTS[0]).read_text(encoding="utf-8")
     assert "chromium.launch(" in script and "WORKBENCH_BROWSER" in script
-    assert "'-m', 'tests.workbench.test_round1_field_piece_files_probe'" in script
+    assert "'-m', 'tests.workbench.round1_field_piece_files_probe'" in script
 
 
 @pytest.mark.parametrize("group_id", ("workbench_run_compute_capacity", "workbench_run_jobs_capacity"))

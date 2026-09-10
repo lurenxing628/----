@@ -8,7 +8,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.workflow_state import operation_confirmations, read_workflow
 from core.services.workbench.process_file_hours import ProcessHoursFileOperations
-from tests.workbench.test_process_file_hours_support import (
+from tests.workbench.process_file_hours_support import (
     apply,
     confirmations,
     groups,

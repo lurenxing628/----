@@ -10,8 +10,8 @@ from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
 from core.services.scheduler.execution_snapshot import build_execution_snapshot
+from tests.workbench.execution_ledger_support import LedgerCase
 from tests.workbench.plan_identity_support import load_v24_schema
-from tests.workbench.test_execution_ledger_support import LedgerCase
 
 PLAN_FIELDS = {"source_table": "schedule", "effective_plan_role": "adopted", "scenario_id": None}
 

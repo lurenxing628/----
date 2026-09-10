@@ -12,8 +12,8 @@ from pathlib import Path
 from werkzeug.serving import make_server
 
 from tests.workbench.run_adoption_widgets_support import AdoptionWidgetServer
+from tests.workbench.run_candidate_support import candidate_case as _case  # noqa: F401
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_run_candidate_support import candidate_case as _case  # noqa: F401
 
 
 def test_run_adoption_widgets_real_browser(candidate_case):

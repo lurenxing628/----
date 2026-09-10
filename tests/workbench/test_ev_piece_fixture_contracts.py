@@ -7,10 +7,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from tests.workbench.run_candidate_baseline_support import api, original_plan
+from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401
+from tests.workbench.run_candidate_support import compute, read, retained
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_run_candidate_baseline_support import api, original_plan
-from tests.workbench.test_run_candidate_support import candidate_case as candidate_case  # noqa: F401
-from tests.workbench.test_run_candidate_support import compute, read, retained
 
 ROOT = Path(os.environ.get("WORKBENCH_EV_SOURCE_ROOT", Path(__file__).resolve().parents[2]))
 SOURCES = ["frontend/workbench/app/" + name for name in (

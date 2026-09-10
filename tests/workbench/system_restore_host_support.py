@@ -11,7 +11,7 @@ import pytest
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.database import get_connection
 from core.services.workbench.system_journal import SystemMaintenanceJournal, assert_system_maintenance_ready
-from tests.workbench.test_request_lifecycle_support import http_json, http_server  # noqa: F401
+from tests.workbench.request_lifecycle_support import http_json, http_server  # noqa: F401
 from web.bootstrap import factory
 from web.bootstrap.launcher_paths import db_scope_lock_path
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
@@ -92,7 +92,7 @@ def restore_host(db_env, tmp_path, monkeypatch):
 
 def seed_worker(case):
     from core.services.scheduler.config.config_field_spec import default_snapshot_values
-    from tests.workbench.test_run_jobs_support import JobCase
+    from tests.workbench.run_jobs_support import JobCase
     with closing(get_connection(case.path)) as conn:
         conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
         conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")

@@ -6,14 +6,14 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.services.workbench.run_worker import WorkbenchRunWorker
-from tests.workbench.test_piece_chain_support import piece_candidate, piece_layout, saved_trial
-from tests.workbench.test_piece_chain_support import trial_case as trial_case  # noqa: F401
-from tests.workbench.test_round1_piece_point_support import adopt, candidate, workspace
-from tests.workbench.test_round1_piece_point_support import point_case as point_case
-from tests.workbench.test_run_candidate_adoption_support import INTENT
-from tests.workbench.test_run_candidate_adoption_support import service as candidate_adoption
-from tests.workbench.test_run_candidate_support import compute
-from tests.workbench.test_run_jobs_support import service as run_service
+from tests.workbench.piece_chain_support import piece_candidate, piece_layout, saved_trial
+from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401
+from tests.workbench.round1_piece_point_support import adopt, candidate, workspace
+from tests.workbench.round1_piece_point_support import point_case as point_case
+from tests.workbench.run_candidate_adoption_support import INTENT
+from tests.workbench.run_candidate_adoption_support import service as candidate_adoption
+from tests.workbench.run_candidate_support import compute
+from tests.workbench.run_jobs_support import service as run_service
 from tests.workbench.trial_adoption_support import service as trial_adoption
 from tests.workbench.trial_support import connect, snapshot
 

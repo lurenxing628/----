@@ -26,7 +26,7 @@ def test_actual_gantt_browser():
     node, browser, modules = runtime_tools()
     print("ACTUAL_GANTT_ARTIFACTS " + str(root), flush=True)
     with (root / "server.log").open("w", encoding="utf-8") as log:
-        server = subprocess.Popen([sys.executable, "-B", str(HERE / "test_actual_gantt_live_server.py"), str(root)], stdout=log, stderr=log)
+        server = subprocess.Popen([sys.executable, "-B", str(HERE / "actual_gantt_live_server.py"), str(root)], stdout=log, stderr=log)
         try:
             deadline = time.monotonic() + 30
             while not (root / "ready.json").exists():

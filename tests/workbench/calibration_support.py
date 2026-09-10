@@ -9,8 +9,8 @@ from flask import Blueprint, Flask, g
 from core.models.workbench_calibration import CalibrationCandidate, CalibrationLineage, CalibrationQuery
 from core.services.workbench.calibration_samples import review_sample
 from data.repositories.workbench_calibration_query_repo import WorkbenchCalibrationQueryRepository
-from tests.workbench.test_execution_ledger_support import NOW, all_rows
-from tests.workbench.test_execution_ledger_support import ledger_case as ledger_fixture
+from tests.workbench.execution_ledger_support import NOW, all_rows
+from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture
 from web.routes.workbench.calibration import register_calibration_routes
 
 BASE = "/api/workbench/v1/calibration"

@@ -6,8 +6,8 @@ import pytest
 from flask import Flask, Response
 
 from core.services.workbench.system_journal import SystemMaintenanceJournal
-from tests.workbench.test_request_lifecycle_support import PATHS
-from tests.workbench.test_request_lifecycle_support import request_case as _request_case  # noqa: F401
+from tests.workbench.request_lifecycle_support import PATHS
+from tests.workbench.request_lifecycle_support import request_case as _request_case  # noqa: F401
 from web.bootstrap.workbench_request_lifecycle import (
     install_workbench_request_lifecycle,
     track_workbench_request_connection,

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from tests.workbench.test_round1_field_piece_files_support import fill_template, report_values
+from tests.workbench.round1_field_piece_files_support import fill_template, report_values
 
 
 def selected_piece_file(content):

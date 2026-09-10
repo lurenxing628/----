@@ -51,7 +51,7 @@ def test_report_ledger_widgets_live():
     env.update(NODE_PATH=modules, WORKBENCH_BROWSER=browser)
     print("BC_REPORT_LEDGER_ARTIFACTS " + str(root), flush=True)
     with (root / "server.log").open("w", encoding="utf-8") as log:
-        server = subprocess.Popen([sys.executable, "-B", str(HERE / "test_report_ledger_widgets_server.py"), str(root)],
+        server = subprocess.Popen([sys.executable, "-B", str(HERE / "report_ledger_widgets_server.py"), str(root)],
             cwd=str(root), env=env, stdout=log, stderr=log)
         try:
             deadline = time.monotonic() + 90

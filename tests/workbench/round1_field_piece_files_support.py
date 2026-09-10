@@ -6,9 +6,9 @@ import pytest
 from flask import Blueprint
 from openpyxl import load_workbook
 
-from tests.workbench.test_execution_ledger_support import ledger_case as ledger_case
-from tests.workbench.test_field_workspace_support import BASE, success
-from tests.workbench.test_field_workspace_support import field_api as field_api
+from tests.workbench.execution_ledger_support import ledger_case as ledger_case
+from tests.workbench.field_workspace_support import BASE, success
+from tests.workbench.field_workspace_support import field_api as field_api
 from web.routes.workbench.actual_gantt import register_actual_gantt_routes
 
 ACTUAL = '/api/workbench/v1/actual-gantt'

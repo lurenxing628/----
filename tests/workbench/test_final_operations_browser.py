@@ -11,7 +11,7 @@ import pytest
 from core.infrastructure.database import get_connection
 from tests.workbench.final_operations_seed import seed
 from tests.workbench.final_operations_support import REPO, OperationsHost, digest
-from tests.workbench.test_system_restore_entrypoint_support import wait_for
+from tests.workbench.system_restore_entrypoint_support import wait_for
 
 
 @pytest.mark.parametrize("width,theme", [(1920, "light"), (1920, "dark"), (1392, "light"), (1392, "dark")])

@@ -7,8 +7,8 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF, new_run_ref
 from core.services.workbench.run_worker import WorkbenchRunWorker
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
-from tests.workbench.test_run_jobs_support import connection, service  # noqa: F401
-from tests.workbench.test_run_jobs_support import job_case as _job_case
+from tests.workbench.run_jobs_support import connection, service  # noqa: F401
+from tests.workbench.run_jobs_support import job_case as _job_case
 
 
 def test_restart_keeps_committed_results_and_never_recomputes(job_case):

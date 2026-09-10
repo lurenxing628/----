@@ -5,8 +5,8 @@ import json
 import pytest
 
 from tests.workbench.run_baseline_widgets_support import record, small_cases
-from tests.workbench.test_run_candidate_baseline_support import baseline
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case  # noqa: F401
+from tests.workbench.run_candidate_baseline_support import baseline
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.trial_widgets_support import TrialWidgetServer, service
 
 

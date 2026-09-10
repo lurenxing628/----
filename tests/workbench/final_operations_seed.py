@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.database import ensure_schema, get_connection
+from tests.workbench.run_jobs_support import JobCase
 from tests.workbench.run_live_server_support import seed_run_data
-from tests.workbench.test_run_jobs_support import JobCase
 
 
 def seed(root, *, include_candidate_baseline=False):

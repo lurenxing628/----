@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
+from tests.workbench.system_maintenance_support import SystemTestAPI
+from tests.workbench.system_restore_host_support import restore_host as _restore_host_fixture  # noqa: F401
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_system_maintenance_support import SystemTestAPI
-from tests.workbench.test_system_restore_host_support import restore_host as _restore_host_fixture  # noqa: F401
 
 HERE = Path(__file__).resolve().parent
 NAMES = ["SystemRestoreStatus.js", "SystemMaintenanceAPI.js", "SystemMaintenanceControls.jsx", "SystemRestorePanel.jsx", "SystemMaintenanceRecords.jsx",

@@ -11,6 +11,8 @@ from core.models.workbench_trial_adoption import TrialAdoptionBlocked
 from core.services.workbench import piece_adoption
 from core.services.workbench.piece_adoption import validate_piece_adoption
 from core.services.workbench.trial_adoption_validation import validate_trial_adoption
+from tests.workbench.piece_adoption_support import lower_input, slot_payload, split
+from tests.workbench.piece_chain_support import adopt_candidate, saved_trial
 from tests.workbench.piece_production_connection_support import (
     assert_all_old_rows_retained,
     assert_official_rows,
@@ -22,11 +24,9 @@ from tests.workbench.piece_production_connection_support import (
 )
 from tests.workbench.piece_production_connection_support import production_case as production_case  # noqa: F401
 from tests.workbench.piece_production_connection_support import stable_tmp_path as tmp_path  # noqa: F401
-from tests.workbench.test_piece_adoption_support import lower_input, slot_payload, split
-from tests.workbench.test_piece_chain_support import adopt_candidate, saved_trial
-from tests.workbench.test_run_candidate_adoption_support import INTENT
-from tests.workbench.test_run_candidate_adoption_support import service as candidate_adoption
-from tests.workbench.test_run_candidate_support import compute
+from tests.workbench.run_candidate_adoption_support import INTENT
+from tests.workbench.run_candidate_adoption_support import service as candidate_adoption
+from tests.workbench.run_candidate_support import compute
 from tests.workbench.trial_adoption_support import service as trial_adoption
 from tests.workbench.trial_support import service as trial_service
 from tests.workbench.trial_support import snapshot
@@ -157,7 +157,7 @@ def test_saved_snapshot_drift_after_preview_rejected_in_write_transaction(produc
     other = open_connection(case.path, case.connection_kind)
     try:
         if field == "baseline":
-            from tests.workbench.test_run_jobs_support import JobCase
+            from tests.workbench.run_jobs_support import JobCase
             JobCase(other).plan(2, list(ids.values()))
         else:
             other.execute("UPDATE Batches SET " + field + "=? WHERE batch_id='B1'", (value,))

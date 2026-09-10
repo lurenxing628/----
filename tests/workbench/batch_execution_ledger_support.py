@@ -5,8 +5,8 @@ import pytest
 from core.infrastructure.migration_state import get_schema_version, set_schema_version
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
 from tests.workbench.batch_support import batch_database, create_batch_client, detail, ref_for
+from tests.workbench.execution_ledger_support import LedgerCase
 from tests.workbench.plan_identity_support import load_v24_schema
-from tests.workbench.test_execution_ledger_support import LedgerCase
 
 _batch_fixture = batch_database
 

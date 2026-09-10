@@ -15,9 +15,9 @@ from core.services.scheduler import workbench_plan_page
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 from tests._support.dependency_boundaries import assert_import_orders, assert_no_import_prefixes
 from tests._support.paths import REPO_ROOT
+from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.plan_catalog_support import candidate, history, seed_operation
 from tests.workbench.plan_catalog_support import scenario as seed_scenario
-from tests.workbench.test_execution_ledger_support import all_rows
 
 VERSION = 7
 _ALIASES = (

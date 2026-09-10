@@ -10,8 +10,8 @@ from core.infrastructure.migrations import v27, v28
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_metadata_schema import _canonical_sql
 from core.services.workbench.template_lineage import TemplateLineageWriter
+from tests.workbench.run_jobs_support import JobCase
 from tests.workbench.run_schema_migration_support import connect, source_ddl
-from tests.workbench.test_run_jobs_support import JobCase
 from tests.workbench.trial_lineage_migration_support import seed_v26
 from tests.workbench.trial_support import create, service
 

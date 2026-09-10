@@ -14,6 +14,7 @@ from core.infrastructure.workbench_dashboard_external_schema import objects
 from tests.workbench.calibration_dashboard_migration_support import canonical_object
 from tests.workbench.dashboard_external_support import ExternalCase
 from tests.workbench.dashboard_support import follow
+from tests.workbench.execution_ledger_support import LedgerCase
 from tests.workbench.legacy_migration_current_support import V31_TABLES as V31_TABLES
 from tests.workbench.legacy_migration_current_support import (
     assert_v31_receipt_maps_only as assert_v31_receipt_maps_only,
@@ -22,7 +23,6 @@ from tests.workbench.legacy_migration_current_support import missing_v31_issues 
 from tests.workbench.outsourcing_identity_migration_support import seed_v29
 from tests.workbench.outsourcing_support import OutsourcingCase
 from tests.workbench.run_schema_migration_support import connect, snapshot, source_ddl
-from tests.workbench.test_execution_ledger_support import LedgerCase
 
 FIXTURE_V30 = Path(__file__).parent / "fixtures" / "schema-v30.sql"
 FIXTURE_V30_SHA = "16460ac6d0f95373eca466b101cfcc46097187760e2438fb3a8c292c28761b2e"

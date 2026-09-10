@@ -5,7 +5,7 @@ from contextlib import closing
 from core.infrastructure.database import get_connection
 from core.services.workbench.plan_point_evidence import official_point_work
 from tests.workbench.ea_zero_duration_support import adoption_service, trial_adoption_service
-from tests.workbench.test_round1_piece_point_support import (
+from tests.workbench.round1_piece_point_support import (
     adopt,
     artifact,
     candidate,
@@ -13,8 +13,8 @@ from tests.workbench.test_round1_piece_point_support import (
     operation_ref,
     workspace,
 )
-from tests.workbench.test_round1_piece_point_support import point_case as point_case
-from tests.workbench.test_run_candidate_adoption_support import INTENT
+from tests.workbench.round1_piece_point_support import point_case as point_case
+from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.trial_support import change, create, service, snapshot
 from tests.workbench.trial_support import trial_case as trial_case
 

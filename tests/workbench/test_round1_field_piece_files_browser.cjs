@@ -8,7 +8,7 @@ const report = { scope: 'R1-B real file component workflow only', errors: [], sc
 let page;
 
 function workbook(action, source, destination) {
-  const args = ['-m', 'tests.workbench.test_round1_field_piece_files_probe', action, source];
+  const args = ['-m', 'tests.workbench.round1_field_piece_files_probe', action, source];
   if (destination) args.push(destination);
   const result = spawnSync(process.env.WORKBENCH_PYTHON, args, { cwd: H.root, encoding: 'utf8', env: process.env });
   assert.equal(result.status, 0, result.stdout + result.stderr);

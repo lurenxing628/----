@@ -7,11 +7,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tests.workbench.final_master_acceptance_cli import start, stop
 from tests.workbench.final_master_fixture_support import snapshot, source_hashes
 from tests.workbench.final_master_preservation_support import resource_preservation, restart_preservation
 from tests.workbench.final_operations_source_binding import source_binding
 from tests.workbench.live_environment import REPO, environment, read_identity, write_json
-from tests.workbench.test_final_master_acceptance import start, stop
 from tests.workbench.test_live_browser import runtime_tools
 
 

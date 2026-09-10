@@ -19,7 +19,7 @@ from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.template_lineage import TemplateLineageWriter
 from core.services.workbench.template_lineage_query import TemplateLineageQuery
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
-from tests.workbench.test_execution_ledger_support import NOW, LedgerCase
+from tests.workbench.execution_ledger_support import NOW, LedgerCase
 
 
 class TemplateLineageCase(LedgerCase):

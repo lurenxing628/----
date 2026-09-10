@@ -7,7 +7,7 @@ import zipfile
 import pytest
 
 from core.services.system.system_config_service import SystemConfigService
-from tests.workbench.test_system_maintenance_support import system_api as _system_api_fixture  # noqa: F401
+from tests.workbench.system_maintenance_support import system_api as _system_api_fixture  # noqa: F401
 
 
 def test_config_read_does_not_persist_defaults(system_api):

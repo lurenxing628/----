@@ -9,12 +9,12 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.part_service import PartService
 from core.services.workbench.template_lineage import TemplateLineageWriter
+from tests.workbench.execution_ledger_support import LedgerCase
 from tests.workbench.final_execution_cases import ADOPT_TABLES, CALIBRATION, command, seed, sql
 from tests.workbench.final_execution_cases import final_calibration_host as final_calibration_host
 from tests.workbench.final_execution_cases import final_e_runtime as final_e_runtime
 from tests.workbench.final_execution_support import changes, old_rows_preserved, restart_preserved
 from tests.workbench.live_environment import write_json
-from tests.workbench.test_execution_ledger_support import LedgerCase
 
 INTENT = {"reason": "逐项核对真实整道完工样本", "declared_operator": "最终验收员"}
 

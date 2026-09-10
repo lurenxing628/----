@@ -14,7 +14,7 @@ from live_environment import REPO, environment, install_path_guard, read_identit
 
 
 def seed(api):
-    from tests.workbench.test_execution_ledger_support import LedgerCase
+    from tests.workbench.execution_ledger_support import LedgerCase
 
     with api.db() as conn:
         conn.execute("UPDATE BatchOperations SET op_code='OP-01' WHERE id=1")

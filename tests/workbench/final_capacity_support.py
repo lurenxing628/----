@@ -14,7 +14,7 @@ RUN_TABLES = frozenset(("WorkbenchRunJobs", "WorkbenchRunReceipts", "WorkbenchRu
 def seed_dense(app, *, operations, batches=100, **_fixture_options):
     from core.infrastructure.database import get_connection
     from core.services.scheduler.config.config_field_spec import default_snapshot_values
-    from tests.workbench.test_run_compute_support import RunCase
+    from tests.workbench.run_compute_support import RunCase
 
     if not 1 <= batches <= 100 or not 1 <= operations <= 50:
         raise ValueError("Dense fixture requires 1..100 batches and 1..50 operations")

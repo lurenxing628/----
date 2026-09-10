@@ -11,8 +11,8 @@ from pathlib import Path
 from werkzeug.serving import make_server
 
 from tests.workbench.run_job_widgets_support import WidgetServer
+from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_run_jobs_support import job_case as _job_case  # noqa: F401
 
 
 def test_run_job_widgets(job_case):

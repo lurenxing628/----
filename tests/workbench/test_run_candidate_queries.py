@@ -6,7 +6,7 @@ import pytest
 
 from core.models.workbench_run_candidate import RunCandidateCatalogScope, RunCandidateReadScope
 from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
-from tests.workbench.test_run_candidate_support import (
+from tests.workbench.run_candidate_support import (
     api,
     compute,
     connect,
@@ -15,7 +15,7 @@ from tests.workbench.test_run_candidate_support import (
     read,
     retained,
 )
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case
 
 
 def test_real_four_candidates_workspace_and_all_tables_readonly(candidate_case):

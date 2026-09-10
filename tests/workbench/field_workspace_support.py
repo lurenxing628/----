@@ -9,7 +9,7 @@ import pytest
 from flask import Blueprint, Flask, g, jsonify, request
 
 from core.services.workbench.commands import WorkbenchCommandService
-from tests.workbench.test_execution_ledger_support import ledger_case as _ledger_fixture
+from tests.workbench.execution_ledger_support import ledger_case as _ledger_fixture
 from web.routes.workbench.api_responses import api_endpoint
 from web.routes.workbench.execution import register_execution_routes
 from web.routes.workbench.resources import register_resource_routes

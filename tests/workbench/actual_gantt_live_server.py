@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT))
 
 from werkzeug.serving import make_server
 
-from tests.workbench.test_actual_gantt_support import prepare
+from tests.workbench.actual_gantt_support import prepare
 
 
 def serve(root):

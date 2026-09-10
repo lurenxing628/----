@@ -158,7 +158,7 @@ def seed_run_data(app, *, include_formal=True, calibration=False, outsourcing=Fa
     from core.services.scheduler.config.config_field_spec import default_snapshot_values
     from tests.workbench.plan_read_support import seed_plans
     from tests.workbench.report_api_support import event
-    from tests.workbench.test_run_jobs_support import JobCase
+    from tests.workbench.run_jobs_support import JobCase
 
     if calibration and include_formal:
         raise ValueError("Calibration fixture owns its original sample plan")

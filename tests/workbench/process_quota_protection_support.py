@@ -15,7 +15,7 @@ from core.services.workbench.process_queries import WorkbenchProcessQueryService
 from core.services.workbench.process_quota_protection import ProcessQuotaProtection
 from tests.workbench.calibration_adoption_support import INTENT, KEY, service, snapshot, token
 from tests.workbench.process_workflow_support import confirm_all
-from tests.workbench.test_template_lineage_support import completed
+from tests.workbench.template_lineage_support import completed
 from web.routes.process_excel_part_operation_hours import (
     _build_existing_for_append,
     _build_existing_internal,

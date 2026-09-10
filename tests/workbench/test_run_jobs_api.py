@@ -4,7 +4,7 @@ import pytest
 from flask import Blueprint, g
 
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
-from tests.workbench.test_run_jobs_support import job_case as _job_case  # noqa: F401
+from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
 from web.routes.workbench.preflight import register_preflight_routes
 from web.routes.workbench.scheduling_jobs import register_scheduling_job_routes
 

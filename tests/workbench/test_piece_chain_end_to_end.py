@@ -6,16 +6,16 @@ import pytest
 
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan_queries import WorkbenchPlanQueryService
-from tests.workbench.test_piece_chain_support import (
+from tests.workbench.piece_chain_support import (
     adopt_candidate,
     adopt_trial,
     artifact,
     piece_candidate,
     saved_trial,
 )
-from tests.workbench.test_piece_chain_support import trial_case as trial_case  # noqa: F401
-from tests.workbench.test_run_candidate_adoption_support import INTENT
-from tests.workbench.test_run_candidate_adoption_support import service as candidate_adoption
+from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401
+from tests.workbench.run_candidate_adoption_support import INTENT
+from tests.workbench.run_candidate_adoption_support import service as candidate_adoption
 from tests.workbench.trial_adoption_support import service as trial_adoption
 from tests.workbench.trial_support import connect, snapshot
 from tests.workbench.trial_support import service as trial_service

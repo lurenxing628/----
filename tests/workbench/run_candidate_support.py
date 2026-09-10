@@ -13,7 +13,7 @@ from core.infrastructure.database import ensure_schema
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.workbench.run_worker import WorkbenchRunWorker
-from tests.workbench.test_run_jobs_support import JobCase
+from tests.workbench.run_jobs_support import JobCase
 from web.routes.workbench.run_candidates import register_run_candidate_routes
 
 BASE = "/api/workbench/v1/scheduling"

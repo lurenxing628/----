@@ -7,7 +7,7 @@ import pytest
 from flask import Blueprint
 
 from tests.workbench.material_actions_api_support import database, expire_contexts, snapshot, without_startup_logs
-from tests.workbench.test_resource_file_support import SCOPES, decode, file_bytes
+from tests.workbench.resource_file_support import SCOPES, decode, file_bytes
 
 BASE = "/api/workbench/v1"
 
@@ -185,7 +185,7 @@ def test_confirm_must_bind_current_server_preview_not_foreign_write_context(clie
 
 
 def test_10000_selected_export_keeps_server_refs_out_of_short_token_binding(client):
-    from tests.workbench.test_resource_file_support import seed_many
+    from tests.workbench.resource_file_support import seed_many
     from web import public_token_registry
     from web.routes.workbench.resource_action_context import EXPORT_SCOPE, EXTENSION, PREVIEW_SCOPE
     with database(client) as conn:

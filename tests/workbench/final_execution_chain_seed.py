@@ -1,6 +1,6 @@
 """Only real plan facts are seeded; the production engine must derive every chain edge."""
 
-from tests.workbench.test_execution_ledger_support import LedgerCase
+from tests.workbench.execution_ledger_support import LedgerCase
 
 
 def chain_plan(api):

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from tests.workbench.test_run_candidate_adoption_support import (
+from tests.workbench.run_candidate_adoption_support import (
     INTENT,
     KEY,
     candidate,
@@ -14,8 +14,8 @@ from tests.workbench.test_run_candidate_adoption_support import (
     service,
     snapshot,
 )
-from tests.workbench.test_run_candidate_adoption_support import candidate_case as _case  # noqa: F401
-from tests.workbench.test_run_candidate_support import corrupt_update, edit_artifact
+from tests.workbench.run_candidate_adoption_support import candidate_case as _case  # noqa: F401
+from tests.workbench.run_candidate_support import corrupt_update, edit_artifact
 
 
 @pytest.mark.parametrize("sql", [

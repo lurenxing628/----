@@ -39,6 +39,14 @@ FINAL_INTEGRATION_SUPPLEMENTAL_FILES = {
         "test_final_operations_edges.py", "test_final_operations_inflight.py",
         "test_final_master_action_ledger.py", "test_final_master_config_preservation.py",
         "test_final_master_resource_revisions.py",
+        "test_final_operations_navigation.py",
+        "test_final_operations_system_recovery.py",
+        "test_final_operations_system_restart.py",
+        "test_final_planning_process_order.py",
+        "test_final_planning_task_origin.py",
+        "test_final_planning_required.py",
+        "test_batch_dashboard_return_context.py",
+        "test_final_planning_l5_contract.py",
     ),
     "workbench_run_compute_capacity": (
         "test_final_capacity_contract.py",
@@ -62,6 +70,19 @@ CAPACITY_SOURCE_BINDING_ENV_KEYS = (
     "WORKBENCH_CAPACITY_FORBIDDEN_ORIGIN", "WORKBENCH_CAPACITY_MANIFEST_SHA256",
 )
 
+FINAL_CANDIDATE_READONLY_FILES = (
+    "test_final_planning_analysis.py", "test_final_planning_analysis_history.py",
+    "test_final_planning_analysis_contract.py",
+)
+
+
+FINAL_CANDIDATE_READONLY_INPUTS = (
+    "tests/workbench/final_planning_analysis_contract.cjs",
+    "frontend/workbench/app/RunCandidateAPI.js",
+    "frontend/workbench/app/RunCandidateAnalysisAPI.js",
+)
+
+
 POST_ROUND1_TARGETS = frozenset((
     "tests/gate_meta/test_scheduler_lazy_exports_final.py",
     "tests/workbench/test_final_capacity_cli_loading.py",
@@ -71,6 +92,7 @@ POST_ROUND1_TARGETS = frozenset((
     "tests/workbench/test_final_navigation_boot.py",
     "tests/workbench/test_final_legacy_navigation.py",
     *("tests/workbench/" + name for names in FINAL_INTEGRATION_SUPPLEMENTAL_FILES.values() for name in names),
+    *("tests/workbench/" + name for name in FINAL_CANDIDATE_READONLY_FILES),
 ))
 
 
@@ -182,14 +204,14 @@ ROUND1_INPUT_OWNERS = (
     ("core/services/scheduler/execution/execution_plan_identity.py", "workbench_execution_scheduler"),
     ("core/services/workbench/dashboard_commands.py", "workbench_outsourcing"),
     ("tests/workbench/test_batch_files.py", "workbench_batches"),
-    ("tests/workbench/test_round1_field_piece_files_support.py", "workbench_field"),
-    ("tests/workbench/test_round1_piece_point_support.py", "workbench_piece_adoption"),
+    ("tests/workbench/round1_field_piece_files_support.py", "workbench_field"),
+    ("tests/workbench/round1_piece_point_support.py", "workbench_piece_adoption"),
     ("tests/gate_meta/workbench_round1_registry_support.py", "workbench_registry"),
 )
 
 ROUND1_BROWSER_INPUTS = (
     "tests/workbench/test_round1_field_piece_files_browser.cjs",
-    "tests/workbench/test_round1_field_piece_files_probe.py",
-    "tests/workbench/test_round1_field_piece_files_support.py",
+    "tests/workbench/round1_field_piece_files_probe.py",
+    "tests/workbench/round1_field_piece_files_support.py",
     "tests/workbench/field_workspace_probe_harness.cjs",
 )

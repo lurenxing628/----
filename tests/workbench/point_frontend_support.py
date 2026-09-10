@@ -7,8 +7,8 @@ from flask import Blueprint, Flask, g, send_from_directory
 from werkzeug.serving import make_server
 
 from tests.workbench.ea_zero_duration_support import adopt, trial_adoption_service
-from tests.workbench.test_run_candidate_adoption_support import INTENT
-from tests.workbench.test_run_candidate_support import compute
+from tests.workbench.run_candidate_adoption_support import INTENT
+from tests.workbench.run_candidate_support import compute
 from tests.workbench.trial_support import change, connect, create, service
 from web.routes.workbench.plan_reads import register_plan_read_routes
 from web.routes.workbench.run_candidates import register_run_candidate_routes

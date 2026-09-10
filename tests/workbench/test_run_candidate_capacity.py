@@ -2,9 +2,9 @@
 
 import time
 
+from tests.workbench.run_candidate_support import BASE, api, compute, connect, read, retained
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case
 from tests.workbench.test_run_candidate_exports import decode
-from tests.workbench.test_run_candidate_support import BASE, api, compute, connect, read, retained
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case
 
 
 def test_real_5000_by_four_no_n_plus_one_full_csv_xlsx_and_preservation(candidate_case):

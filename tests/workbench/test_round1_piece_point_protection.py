@@ -4,8 +4,8 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.run_compute import compute_candidate_run
-from tests.workbench.test_round1_piece_point_support import adopt, artifact, candidate, layout, operation_ref
-from tests.workbench.test_round1_piece_point_support import point_case as point_case
+from tests.workbench.round1_piece_point_support import adopt, artifact, candidate, layout, operation_ref
+from tests.workbench.round1_piece_point_support import point_case as point_case
 from tests.workbench.trial_support import change, create, service, snapshot
 from tests.workbench.trial_support import trial_case as trial_case
 

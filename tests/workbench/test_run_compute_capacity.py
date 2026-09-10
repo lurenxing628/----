@@ -3,8 +3,8 @@
 import time
 
 from core.services.workbench.run_compute import compute_candidate_run
-from tests.workbench.test_run_compute_support import run_case as _run_case  # noqa: F401
-from tests.workbench.test_run_compute_support import unchanged
+from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
+from tests.workbench.run_compute_support import unchanged
 
 
 def test_5000_operations_produce_complete_candidates_with_no_database_changes(run_case):

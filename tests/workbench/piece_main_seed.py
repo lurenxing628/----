@@ -4,10 +4,10 @@ import os
 import sqlite3
 from contextlib import closing
 
+from tests.workbench.piece_chain_support import piece_layout
 from tests.workbench.plan_catalog_support import candidate, scenario
+from tests.workbench.run_jobs_support import JobCase
 from tests.workbench.run_live_server_support import seed_run_data
-from tests.workbench.test_piece_chain_support import piece_layout
-from tests.workbench.test_run_jobs_support import JobCase
 
 
 def seed(app, **_options):
@@ -51,7 +51,7 @@ def seed(app, **_options):
                          "target_quantity": 1, "batch_quantity": 1, "total_hours": .5})
         assert not conn.execute("PRAGMA foreign_key_check").fetchall()
         return {**original, "batches": ["B1", "B2"], "pieces": list(pieces), "task_count": 9, "operations": expected,
-                "seed_source": "tests/workbench/test_piece_chain_support.py:piece_layout",
+                "seed_source": "tests/workbench/piece_chain_support.py:piece_layout",
                 "original_plan_ref": case.plan_ref(4), "official_version": 4,
                 "original_receipt_ref": receipt["receipt_ref"],
                 "original_production_reports": conn.execute("SELECT count(*) FROM WorkbenchProductionReports").fetchone()[0],

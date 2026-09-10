@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from tests.workbench.test_master_overview_support import BASE, args, detail, query, ref_for, stored
-from tests.workbench.test_master_overview_support import overview_client as _overview_client
+from tests.workbench.master_overview_support import BASE, args, detail, query, ref_for, stored
+from tests.workbench.master_overview_support import overview_client as _overview_client
 
 
 def test_eight_domains_are_real_counts_and_get_is_readonly(overview_client):

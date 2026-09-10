@@ -8,7 +8,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.services.workbench.execution_ledger import ExecutionLedgerService
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
-from tests.workbench.test_run_candidate_adoption_support import (
+from tests.workbench.run_candidate_adoption_support import (
     INTENT,
     KEY,
     assert_retained,
@@ -17,7 +17,7 @@ from tests.workbench.test_run_candidate_adoption_support import (
     service,
     snapshot,
 )
-from tests.workbench.test_run_candidate_adoption_support import candidate_case as _case  # noqa: F401
+from tests.workbench.run_candidate_adoption_support import candidate_case as _case  # noqa: F401
 
 
 def test_real_candidate_adoption_empty_baseline_and_receipt_replay(candidate_case):

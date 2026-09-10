@@ -5,7 +5,7 @@ from core.models.workbench_dashboard import DashboardQuery
 from core.services.workbench.dashboard import WorkbenchDashboardService
 from core.services.workbench.run_worker import WorkbenchRunWorker
 from tests.workbench.dashboard_support import NOW
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case  # noqa: F401
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 
 
 def test_real_candidates_without_official_are_not_selected_as_official(candidate_case):

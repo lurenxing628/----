@@ -8,7 +8,7 @@ from core.services.workbench.production_report import WorkbenchProductionReportS
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 from tests.workbench.calibration_adoption_support import snapshot
 from tests.workbench.process_workflow_support import confirm_all
-from tests.workbench.test_template_lineage_support import TemplateLineageCase, completed
+from tests.workbench.template_lineage_support import TemplateLineageCase, completed
 
 BASE = "/api/workbench/v1/calibration/"
 INTENT = {"reason": "Verified completed samples from the original template", "declared_operator": "Planner"}

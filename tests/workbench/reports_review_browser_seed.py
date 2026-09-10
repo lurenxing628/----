@@ -1,6 +1,6 @@
 """EI fixture extends existing real ledger helpers; no fabricated HTTP payloads."""
 
-from tests.workbench.test_execution_ledger_support import LedgerCase
+from tests.workbench.execution_ledger_support import LedgerCase
 
 LONG_REMARK = "复核记录：尺寸、设备与人员已经核对；保留完整原始备注供追溯。" * 14
 LONG_CODE = "EI-LONG-" + "连续加工工序长名称" * 7

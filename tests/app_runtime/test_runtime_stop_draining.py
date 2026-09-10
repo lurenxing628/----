@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.app_runtime.test_runtime_stop_draining_support import (
+from tests.app_runtime.runtime_stop_draining_support import (
     REPO_ROOT,
     isolated_env,
     pending_http_write,

@@ -10,8 +10,8 @@ from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.workbench.execution_ledger import ExecutionLedgerService
 from core.services.workbench.run_compute import compute_candidate_run
 from core.services.workbench.run_input_projection_codec import restore_execution_projections
-from tests.workbench.test_run_compute_support import run_case as _run_case  # noqa: F401
-from tests.workbench.test_run_compute_support import unchanged
+from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
+from tests.workbench.run_compute_support import unchanged
 
 
 def test_complete_actual_interval_is_preserved_and_successor_waits(run_case, monkeypatch):

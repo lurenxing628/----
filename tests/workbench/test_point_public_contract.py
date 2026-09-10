@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 
 from tests.workbench.ea_zero_duration_support import point_candidate
-from tests.workbench.test_run_candidate_baseline_support import api, original_plan
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case  # noqa: F401
-from tests.workbench.test_run_candidate_support import read, retained
+from tests.workbench.run_candidate_baseline_support import api, original_plan
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
+from tests.workbench.run_candidate_support import read, retained
 
 
 @pytest.mark.parametrize("has_baseline", [False, True])

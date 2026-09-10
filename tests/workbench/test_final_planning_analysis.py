@@ -11,9 +11,9 @@ from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.dashboard_candidate_comparison import read_candidate_comparison
 from core.services.workbench.run_candidate_analysis import read_candidate_analysis
 from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
-from tests.workbench.test_run_candidate_baseline_support import baseline, original_plan
-from tests.workbench.test_run_candidate_support import api, compute, connect, retained
-from tests.workbench.test_run_candidate_support import candidate_case as _case  # noqa: F401
+from tests.workbench.run_candidate_baseline_support import baseline, original_plan
+from tests.workbench.run_candidate_support import api, compute, connect, retained
+from tests.workbench.run_candidate_support import candidate_case as _case  # noqa: F401
 
 
 def test_full_admission_metrics_reuse_delivery_comparison_and_ignore_visible_scope(candidate_case):

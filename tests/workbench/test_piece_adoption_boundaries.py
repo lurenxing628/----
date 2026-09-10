@@ -10,9 +10,9 @@ from core.infrastructure.errors import ValidationError
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
 from core.services.workbench.run_compute import compute_candidate_run
+from tests.workbench.piece_adoption_support import START, lower_input, payload, slot_payload, split
+from tests.workbench.piece_adoption_support import candidate_case as candidate_case  # noqa: F401
 from tests.workbench.test_piece_adoption import check
-from tests.workbench.test_piece_adoption_support import START, lower_input, payload, slot_payload, split
-from tests.workbench.test_piece_adoption_support import candidate_case as candidate_case  # noqa: F401
 
 
 @pytest.mark.parametrize("change", ["efficiency", "downtime", "operator_inactive"])

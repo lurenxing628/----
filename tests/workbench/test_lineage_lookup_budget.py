@@ -18,6 +18,7 @@ from core.services.scheduler.batch_service import BatchService
 from core.services.workbench.calibration import WorkbenchCalibrationService
 from core.services.workbench.template_lineage import TemplateLineageWriter
 from core.services.workbench.template_lineage_query import TemplateLineageQuery
+from tests.workbench.execution_ledger_support import NOW
 from tests.workbench.lineage_lookup_budget_support import (
     ORIGINAL_FAILURE_STEPS,
     ORIGINAL_VM_BUDGET,
@@ -31,7 +32,6 @@ from tests.workbench.lineage_lookup_budget_support import (
 )
 from tests.workbench.lineage_lookup_budget_support import v27_fixture as _v27_fixture
 from tests.workbench.plan_identity_support import dynamic_scale, seed_plans
-from tests.workbench.test_execution_ledger_support import NOW
 
 
 def test_original_v27_regression_is_retained(v27_conn):

@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from werkzeug.serving import make_server
 
+from tests.workbench.system_maintenance_support import system_api as _system_api_fixture  # noqa: F401
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_system_maintenance_support import system_api as _system_api_fixture  # noqa: F401
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]

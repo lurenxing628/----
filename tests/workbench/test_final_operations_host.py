@@ -6,7 +6,7 @@ from pathlib import Path
 from tests.workbench.final_operations_actions import FAMILIES, actions
 from tests.workbench.final_operations_seed import seed
 from tests.workbench.final_operations_support import REPO, OperationsHost
-from tests.workbench.test_system_restore_entrypoint_support import wait_for
+from tests.workbench.system_restore_entrypoint_support import wait_for
 
 
 def test_final_operations_action_denominator_matches_all_planning_families():

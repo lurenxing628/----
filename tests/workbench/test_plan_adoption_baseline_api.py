@@ -6,9 +6,9 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import plan_adoption_baseline_values as values
+from tests.workbench.plan_adoption_baseline_support import adopt_candidate, read, two_versions
+from tests.workbench.plan_adoption_baseline_support import trial_case as trial_case  # noqa: F401
 from tests.workbench.plan_read_support import assert_error, make_api
-from tests.workbench.test_plan_adoption_baseline_support import adopt_candidate, read, two_versions
-from tests.workbench.test_plan_adoption_baseline_support import trial_case as trial_case  # noqa: F401
 from tests.workbench.test_plan_export_api import read_rows
 from tests.workbench.test_plan_transport import catalog_fixture, run_probe, workspace_fixture
 

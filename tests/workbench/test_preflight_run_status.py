@@ -6,7 +6,7 @@ import pytest
 
 from core.infrastructure.database import get_connection
 from core.services.workbench.preflight import PreflightService
-from tests.workbench.test_preflight_support import (
+from tests.workbench.preflight_support import (
     deny_writes,
     payload,
     read_only_snapshot,
@@ -14,8 +14,8 @@ from tests.workbench.test_preflight_support import (
     seed,
     snapshot,
 )
-from tests.workbench.test_preflight_support import pf as _pf_fixture  # noqa: F401
-from tests.workbench.test_request_lifecycle_support import http_json, http_server
+from tests.workbench.preflight_support import pf as _pf_fixture  # noqa: F401
+from tests.workbench.request_lifecycle_support import http_json, http_server
 from web.bootstrap import factory
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
 from web.bootstrap.workbench_request_lifecycle import lookup_workbench_request_lifecycle

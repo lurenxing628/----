@@ -8,9 +8,9 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.run_candidate_facts import _columns
-from tests.workbench.test_run_candidate_baseline_support import baseline, legacy_blob_events, original_plan
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case
-from tests.workbench.test_run_candidate_support import compute, corrupt_update, edit_capture, retained
+from tests.workbench.run_candidate_baseline_support import baseline, legacy_blob_events, original_plan
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case
+from tests.workbench.run_candidate_support import compute, corrupt_update, edit_capture, retained
 
 
 @pytest.mark.parametrize("field,value", [("baseline_json", "{}"), ("baseline_json", b"{}"), ("execution_json", "[]"),

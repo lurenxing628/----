@@ -13,9 +13,9 @@ from pathlib import Path
 from werkzeug.serving import make_server
 
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION
+from tests.workbench.run_history_support import history_case as _history_case  # noqa: F401
 from tests.workbench.run_history_widgets_support import HistoryWidgetServer
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_run_history_support import history_case as _history_case  # noqa: F401
 
 
 def test_run_history_widgets_chromium109_four_combinations(history_case, monkeypatch):

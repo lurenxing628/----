@@ -10,8 +10,8 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.actual_gantt import ActualGanttService
 from core.services.workbench.actual_gantt_scope import ActualGanttScope, cohort_match, deadlines
+from tests.workbench.actual_gantt_support import BASE, actual_api_fixture, prepare, seed_report
 from tests.workbench.plan_read_support import add_tasks, assert_no_private_facts
-from tests.workbench.test_actual_gantt_support import BASE, actual_api_fixture, prepare, seed_report
 
 
 def read(api, **query):

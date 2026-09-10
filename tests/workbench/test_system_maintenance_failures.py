@@ -8,7 +8,7 @@ from core.infrastructure.logging import OperationLogger
 from core.services.workbench.system_exports import logs_csv
 from core.services.workbench.system_journal import SystemMaintenanceJournal, assert_system_maintenance_ready
 from core.services.workbench.system_redaction import public_system_text
-from tests.workbench.test_system_maintenance_support import system_api as _system_api_fixture  # noqa: F401
+from tests.workbench.system_maintenance_support import system_api as _system_api_fixture  # noqa: F401
 
 
 def test_audit_failure_does_not_invent_backup_failure(system_api, monkeypatch):

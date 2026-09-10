@@ -10,7 +10,7 @@ from flask import Blueprint, Flask, g, jsonify, request
 from core.infrastructure.database import get_connection
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.services.scheduler import schedule_service
-from tests.workbench.test_run_jobs_support import JobCase
+from tests.workbench.run_jobs_support import JobCase
 from tests.workbench.trial_adoption_support import assert_dashboard_task_appends
 from tests.workbench.trial_adoption_support import service as adoption_service
 from tests.workbench.trial_support import CommitFailureConnection, change, connect, create, snapshot

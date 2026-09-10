@@ -9,8 +9,7 @@ from core.models.workbench_process_file import INT64_MAX
 from core.models.workbench_resource_action import ResourceActionPreview, public_action_row
 from core.services.workbench.process_file_hours import ProcessHoursFileOperations
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
-from tests.workbench.process_route_support import read_only_probe
-from tests.workbench.test_process_file_hours_support import (
+from tests.workbench.process_file_hours_support import (
     apply,
     decoded,
     hours_database,
@@ -19,6 +18,7 @@ from tests.workbench.test_process_file_hours_support import (
     reconfirm_source,
     snapshot,
 )
+from tests.workbench.process_route_support import read_only_probe
 
 
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))

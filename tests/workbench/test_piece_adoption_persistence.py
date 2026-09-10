@@ -10,10 +10,10 @@ from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_run_job import durable_value
 from core.services.workbench.official_plan_persistence import persist_official_plan_in_tx
 from core.services.workbench.piece_adoption import validate_piece_adoption
-from tests.workbench.test_piece_adoption_support import candidate_case as candidate_case  # noqa: F401
-from tests.workbench.test_piece_adoption_support import greedy_payload, lower_input, slot_payload, split
-from tests.workbench.test_run_candidate_adoption_support import assert_retained, snapshot
-from tests.workbench.test_run_candidate_support import connect
+from tests.workbench.piece_adoption_support import candidate_case as candidate_case  # noqa: F401
+from tests.workbench.piece_adoption_support import greedy_payload, lower_input, slot_payload, split
+from tests.workbench.run_candidate_adoption_support import assert_retained, snapshot
+from tests.workbench.run_candidate_support import connect
 
 
 def _lower_save(case, prepared, value, engine_results, engine):

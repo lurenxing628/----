@@ -10,8 +10,8 @@ from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalib
 from tests.workbench.calibration_adoption_support import INTENT, KEY, connect, service, snapshot, token
 from tests.workbench.calibration_adoption_support import adoption_case as _adoption_case  # noqa: F401
 from tests.workbench.calibration_adoption_support import ready_adoption_case as _ready_case  # noqa: F401
-from tests.workbench.test_template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
-from tests.workbench.test_template_lineage_support import lineage_case as _lineage_case  # noqa: F401
+from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
+from tests.workbench.template_lineage_support import lineage_case as _lineage_case  # noqa: F401
 
 
 @pytest.mark.parametrize("table", ["PartOperations", "WorkbenchCalibrationAdoptions", "WorkbenchCalibrationQuotaLocks", "WorkbenchCommandReceipts"])

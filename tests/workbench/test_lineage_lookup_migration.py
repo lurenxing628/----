@@ -20,9 +20,9 @@ from core.services.scheduler.config.config_field_spec import default_snapshot_va
 from core.services.workbench.template_lineage import TemplateLineageWriter
 from tests.workbench.dashboard_external_migration_support import V31_TABLES, assert_v31_receipt_maps_only
 from tests.workbench.legacy_migration_current_support import V30_TABLES, assert_v30_source_maps_only
+from tests.workbench.run_jobs_support import JobCase
 from tests.workbench.run_schema_migration_support import connect, snapshot, source_ddl
 from tests.workbench.schema29_regression_support import V29_TABLES, assert_v29_source_maps_only
-from tests.workbench.test_run_jobs_support import JobCase
 from tests.workbench.trial_support import change, create, service
 
 FIXTURE = Path(__file__).parent / "fixtures" / "schema-v27.sql"

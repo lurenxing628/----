@@ -22,8 +22,8 @@ from core.services.workbench.run_input_external import prime_template_cache
 from core.services.workbench.run_input_rows import batch_model, operation_model
 from core.services.workbench.run_input_runtime import _locked_seeds
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
-from tests.workbench.test_run_candidate_adoption_support import snapshot
-from tests.workbench.test_run_candidate_support import candidate_case as candidate_case  # noqa: F401
+from tests.workbench.run_candidate_adoption_support import snapshot
+from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401
 
 START = datetime(2026, 9, 9, 8)
 

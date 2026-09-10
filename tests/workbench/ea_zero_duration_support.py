@@ -2,8 +2,8 @@
 
 from core.services.workbench.run_candidate_adoption import WorkbenchRunCandidateAdoptionService
 from core.services.workbench.trial_adoption import WorkbenchTrialAdoptionService
-from tests.workbench.test_run_candidate_adoption_support import INTENT
-from tests.workbench.test_run_candidate_support import compute
+from tests.workbench.run_candidate_adoption_support import INTENT
+from tests.workbench.run_candidate_support import compute
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
 

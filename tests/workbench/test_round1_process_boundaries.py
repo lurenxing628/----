@@ -23,8 +23,8 @@ from tests.workbench.process_quota_protection_support import locked_quota_case a
 from tests.workbench.process_quota_protection_support import quota_case as _quota_case
 from tests.workbench.process_route_support import all_table_snapshot, read_only_probe
 from tests.workbench.process_stage_api_support import StageAPI, rejected
-from tests.workbench.test_template_lineage_support import ledger_fixture as _ledger_fixture
-from tests.workbench.test_template_lineage_support import lineage_case as _lineage_case
+from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture
+from tests.workbench.template_lineage_support import lineage_case as _lineage_case
 from web.routes.process_parts import update_internal_hours
 from web.routes.workbench.process_reads import register_process_read_routes
 from web.routes.workbench.process_writes import register_process_write_routes

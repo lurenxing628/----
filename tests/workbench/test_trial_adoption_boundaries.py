@@ -4,7 +4,7 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.trial_adoption_validation import validate_trial_adoption
-from tests.workbench.test_run_candidate_support import corrupt_update
+from tests.workbench.run_candidate_support import corrupt_update
 from tests.workbench.trial_adoption_support import INTENT, KEY, full_plan, preview, saved_scenario, service
 from tests.workbench.trial_adoption_support import trial_case as trial_case
 from tests.workbench.trial_support import change, create, snapshot

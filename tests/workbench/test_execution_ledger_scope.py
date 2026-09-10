@@ -5,8 +5,8 @@ import sqlite3
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from tests.workbench.test_execution_ledger_support import NOW, all_rows
-from tests.workbench.test_execution_ledger_support import ledger_case as ledger_fixture
+from tests.workbench.execution_ledger_support import NOW, all_rows
+from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture
 
 
 @pytest.mark.parametrize("after_install", [False, True])

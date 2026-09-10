@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.workbench.run_candidate_adoption_support import INTENT, KEY, preview, service
+from tests.workbench.run_candidate_support import api, compute
+from tests.workbench.run_candidate_support import candidate_case as _case  # noqa: F401
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_run_candidate_adoption_support import INTENT, KEY, preview, service
-from tests.workbench.test_run_candidate_support import api, compute
-from tests.workbench.test_run_candidate_support import candidate_case as _case  # noqa: F401
 
 
 @pytest.mark.parametrize("adopted", [False, True])

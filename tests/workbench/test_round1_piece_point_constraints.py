@@ -4,8 +4,8 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from tests.workbench.ea_zero_duration_support import trial_adoption_service
-from tests.workbench.test_round1_piece_point_support import adopt, candidate, layout, operation_ref
-from tests.workbench.test_round1_piece_point_support import point_case as point_case
+from tests.workbench.round1_piece_point_support import adopt, candidate, layout, operation_ref
+from tests.workbench.round1_piece_point_support import point_case as point_case
 from tests.workbench.trial_support import change, create, service, snapshot
 from tests.workbench.trial_support import trial_case as trial_case
 

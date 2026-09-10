@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from core.infrastructure.migration_state import set_schema_version
-from tests.workbench.test_execution_ledger_support import LedgerCase
+from tests.workbench.execution_ledger_support import LedgerCase
 
 FIXTURE_V25 = Path(__file__).parent / "fixtures" / "schema-v25.sql"
 

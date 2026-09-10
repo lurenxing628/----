@@ -6,7 +6,7 @@ from contextlib import closing
 from pathlib import Path
 
 from tests.workbench.piece_main_seed import seed as piece_seed
-from tests.workbench.test_run_jobs_support import JobCase
+from tests.workbench.run_jobs_support import JobCase
 
 
 def seed(app, **options):

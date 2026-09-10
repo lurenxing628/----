@@ -10,12 +10,12 @@ from core.services.workbench.run_candidate_facts import GenerationFacts
 from core.services.workbench.run_candidate_storage import CandidateStore
 from core.services.workbench.run_candidate_tasks import operation_labels
 from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
+from tests.workbench.piece_chain_support import adopt_candidate, adopt_trial, piece_layout, saved_trial
+from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401
 from tests.workbench.plan_catalog_support import candidate, scenario
+from tests.workbench.run_candidate_baseline_support import baseline
+from tests.workbench.run_candidate_support import compute, retained
 from tests.workbench.test_piece_chain_end_to_end import workspace
-from tests.workbench.test_piece_chain_support import adopt_candidate, adopt_trial, piece_layout, saved_trial
-from tests.workbench.test_piece_chain_support import trial_case as trial_case  # noqa: F401
-from tests.workbench.test_run_candidate_baseline_support import baseline
-from tests.workbench.test_run_candidate_support import compute, retained
 from tests.workbench.trial_support import snapshot
 
 PIECES = ("第一件主体多字中文业务编号甲", "第二件主体多字中文业务编号乙", "第三件主体多字中文业务编号丙")

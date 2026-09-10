@@ -4,8 +4,8 @@ import ast
 from pathlib import Path
 
 from core.services.execution.ledger_reader import ExecutionLedgerReader
-from tests.workbench.test_scheduler_execution_ledger_support import ledger_case as ledger_fixture
-from tests.workbench.test_scheduler_execution_ledger_support import read_facts
+from tests.workbench.scheduler_execution_ledger_support import ledger_case as ledger_fixture
+from tests.workbench.scheduler_execution_ledger_support import read_facts
 
 
 def test_ten_thousand_tasks_use_one_loaded_projection_and_bounded_sql(ledger_case, monkeypatch):

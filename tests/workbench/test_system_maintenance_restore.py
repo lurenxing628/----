@@ -7,7 +7,7 @@ import pytest
 
 from core.infrastructure.backup import BackupManager, maintenance_window
 from core.services.workbench.system_journal import assert_system_maintenance_ready
-from tests.workbench.test_system_restore_entrypoint_legacy_support import (
+from tests.workbench.system_restore_entrypoint_legacy_support import (
     system_api as _system_api_fixture,  # noqa: F401
 )
 

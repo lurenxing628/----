@@ -7,9 +7,9 @@ import pytest
 
 from core.models.workbench_run_candidate import local_time
 from core.services.workbench.run_worker import WorkbenchRunWorker
-from tests.workbench.test_run_candidate_baseline_support import baseline, original_plan
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case
-from tests.workbench.test_run_candidate_support import compute, retained
+from tests.workbench.run_candidate_baseline_support import baseline, original_plan
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case
+from tests.workbench.run_candidate_support import compute, retained
 
 
 def test_real_four_candidates_compare_only_captured_official_rows(candidate_case):

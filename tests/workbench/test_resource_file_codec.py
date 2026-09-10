@@ -12,7 +12,7 @@ from core.services.workbench import resource_file_writer
 from core.services.workbench.resource_file_codec import read_resource_file
 from core.services.workbench.resource_file_writer import check_capacity
 from core.services.workbench.resource_files import WorkbenchResourceFileService
-from tests.workbench.test_resource_file_support import (
+from tests.workbench.resource_file_support import (
     confirm,
     exported,
     file_bytes,
@@ -20,7 +20,7 @@ from tests.workbench.test_resource_file_support import (
     scope,
     snapshot,
 )
-from tests.workbench.test_resource_file_support import existing_raw as raw
+from tests.workbench.resource_file_support import existing_raw as raw
 
 
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))

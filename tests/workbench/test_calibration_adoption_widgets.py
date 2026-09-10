@@ -8,9 +8,9 @@ import sys
 from pathlib import Path
 
 from tests.workbench.calibration_adoption_widgets_support import serve
+from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
+from tests.workbench.template_lineage_support import lineage_case as _lineage_case  # noqa: F401
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
-from tests.workbench.test_template_lineage_support import lineage_case as _lineage_case  # noqa: F401
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]

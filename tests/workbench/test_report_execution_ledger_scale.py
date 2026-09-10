@@ -1,8 +1,8 @@
 """Bounded SQL and snapshot preservation at the admitted full operation count."""
 
 from core.services.workbench.execution_ledger import ExecutionLedgerService
+from tests.workbench.execution_ledger_support import LedgerCase
 from tests.workbench.report_execution_ledger_support import report_ledger_api as _fixture
-from tests.workbench.test_execution_ledger_support import LedgerCase
 
 
 def test_ten_thousand_operations_one_projection_no_n_plus_one(report_ledger_api, monkeypatch):

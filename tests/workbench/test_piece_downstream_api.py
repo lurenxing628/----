@@ -3,9 +3,9 @@
 import csv
 import io
 
+from tests.workbench.piece_chain_support import adopt_candidate
 from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read, report
 from tests.workbench.test_piece_chain_end_to_end import workspace
-from tests.workbench.test_piece_chain_support import adopt_candidate
 from tests.workbench.test_piece_presentation import PIECES, real_case
 from tests.workbench.trial_support import snapshot
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401

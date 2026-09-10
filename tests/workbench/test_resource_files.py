@@ -12,7 +12,7 @@ from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource_files import WorkbenchResourceFileService
 from tests.workbench.identity_metadata_support import business_snapshot
 from tests.workbench.resource_entity_support import create_catalog
-from tests.workbench.test_resource_file_support import (
+from tests.workbench.resource_file_support import (
     SCOPES,
     TABLES,
     confirm,
@@ -24,7 +24,7 @@ from tests.workbench.test_resource_file_support import (
     scope,
     snapshot,
 )
-from tests.workbench.test_resource_file_support import existing_raw as raw
+from tests.workbench.resource_file_support import existing_raw as raw
 
 
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))

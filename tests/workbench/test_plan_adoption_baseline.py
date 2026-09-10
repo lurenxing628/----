@@ -5,10 +5,10 @@ import sqlite3
 import pytest
 
 from core.models.workbench_trial_codec import fingerprint
+from tests.workbench.plan_adoption_baseline_support import adopt_candidate, adopt_trial, read, two_versions
+from tests.workbench.plan_adoption_baseline_support import trial_case as trial_case  # noqa: F401
 from tests.workbench.plan_read_support import make_api
-from tests.workbench.test_plan_adoption_baseline_support import adopt_candidate, adopt_trial, read, two_versions
-from tests.workbench.test_plan_adoption_baseline_support import trial_case as trial_case  # noqa: F401
-from tests.workbench.test_run_candidate_adoption_support import snapshot
+from tests.workbench.run_candidate_adoption_support import snapshot
 from tests.workbench.trial_adoption_support import INTENT, saved_scenario
 from tests.workbench.trial_adoption_support import service as trial_service
 from tests.workbench.trial_support import candidate as unadopted_candidate

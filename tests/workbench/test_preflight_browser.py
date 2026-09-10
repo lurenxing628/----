@@ -11,8 +11,8 @@ from pathlib import Path
 
 from werkzeug.serving import make_server
 
+from tests.workbench.preflight_support import create_app, seed, snapshot
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_preflight_support import create_app, seed, snapshot
 
 
 def test_preflight_real_browser():

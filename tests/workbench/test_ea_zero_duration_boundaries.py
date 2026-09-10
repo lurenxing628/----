@@ -17,10 +17,10 @@ from core.services.workbench.run_candidates import WorkbenchRunCandidateQuerySer
 from core.services.workbench.run_compute import compute_candidate_run
 from core.services.workbench.run_input import prepare_candidate_run_input
 from tests.workbench.ea_zero_duration_support import adopt, adoption_service, point_candidate
-from tests.workbench.test_run_candidate_adoption_support import INTENT
-from tests.workbench.test_run_candidate_adoption_support import service as public_adoption
-from tests.workbench.test_run_compute_support import run_case as run_case  # noqa: F401
-from tests.workbench.test_run_compute_support import unchanged
+from tests.workbench.run_candidate_adoption_support import INTENT
+from tests.workbench.run_candidate_adoption_support import service as public_adoption
+from tests.workbench.run_compute_support import run_case as run_case  # noqa: F401
+from tests.workbench.run_compute_support import unchanged
 from tests.workbench.trial_support import create, snapshot  # noqa: F401
 from tests.workbench.trial_support import trial_case as trial_case
 

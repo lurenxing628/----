@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from core.services.workbench.field_report_files_codec import decode_reports
-from tests.workbench.test_round1_field_piece_files_support import PIECES, fill_template, report_values
+from tests.workbench.round1_field_piece_files_support import PIECES, fill_template, report_values
 
 
 def main():

@@ -14,13 +14,13 @@ from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.execution_ledger import ExecutionLedgerService
 from tests.gantt.test_gantt_scenario_publish import _saved_scenario, _seed_base
 from tests.schedule.service.test_scheduler_reschedule_execution_minimum_guard import _seed_two_operation_plan
-from tests.workbench.test_scheduler_execution_ledger_support import (
+from tests.workbench.scheduler_execution_ledger_support import (
     formal_rows,
     install_case,
     raw_connection,
     read_facts,
 )
-from tests.workbench.test_scheduler_execution_ledger_support import ledger_case as ledger_fixture
+from tests.workbench.scheduler_execution_ledger_support import ledger_case as ledger_fixture
 
 
 @pytest.mark.parametrize("simulate", [False, True])

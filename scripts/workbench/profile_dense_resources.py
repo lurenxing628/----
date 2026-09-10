@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT))
 def seed(output, batches, operations):
     from core.infrastructure.database import ensure_schema
     from core.services.scheduler.config.config_field_spec import default_snapshot_values
-    from tests.workbench.test_run_compute_support import RunCase
+    from tests.workbench.run_compute_support import RunCase
 
     path = output / "case.sqlite"
     ensure_schema(str(path), schema_path=str(ROOT / "schema.sql"))
@@ -52,7 +52,7 @@ def seed(output, batches, operations):
 def worker(args):
     from core.models.workbench_run_job import durable_value
     from core.services.workbench.run_compute import compute_candidate_run
-    from tests.workbench.test_execution_ledger_support import all_rows
+    from tests.workbench.execution_ledger_support import all_rows
 
     output = Path(args.output)
     started = time.monotonic()

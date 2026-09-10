@@ -7,8 +7,7 @@ import pytest
 from core.models.workbench_resource_action import ResourceActionPreview
 from core.services.workbench.process_file_hours import ProcessHoursFileOperations
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
-from tests.workbench.process_workflow_support import confirm_all
-from tests.workbench.test_process_file_hours_support import (
+from tests.workbench.process_file_hours_support import (
     apply,
     confirmations,
     decoded,
@@ -16,6 +15,7 @@ from tests.workbench.test_process_file_hours_support import (
     part_ref,
     snapshot,
 )
+from tests.workbench.process_workflow_support import confirm_all
 
 
 def seed_scale(conn, count, merged):

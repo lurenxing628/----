@@ -11,7 +11,7 @@ import pytest
 
 from tests.workbench.ea_zero_duration_support import adopt, point_candidate
 from tests.workbench.point_downstream_support import app_for, read, serve
-from tests.workbench.test_run_candidate_support import retained
+from tests.workbench.run_candidate_support import retained
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 
 HERE = Path(__file__).resolve().parent

@@ -9,9 +9,8 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
-from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_piece_chain_support import piece_layout
-from tests.workbench.test_run_candidate_support import (
+from tests.workbench.piece_chain_support import piece_layout
+from tests.workbench.run_candidate_support import (
     api,
     compute,
     connect,
@@ -21,7 +20,8 @@ from tests.workbench.test_run_candidate_support import (
     read,
     retained,
 )
-from tests.workbench.test_run_candidate_support import candidate_case as candidate_case
+from tests.workbench.run_candidate_support import candidate_case as candidate_case
+from tests.workbench.test_live_browser import runtime_tools
 
 
 def workspace(case, ref, **scope):

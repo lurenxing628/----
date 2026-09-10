@@ -19,8 +19,8 @@ from tests.workbench.process_quota_protection_file_receipt_support import (
 from tests.workbench.process_quota_protection_file_receipt_support import quota_file_api as _file_api  # noqa: F401
 from tests.workbench.process_quota_protection_support import connect, snapshot
 from tests.workbench.process_quota_protection_support import quota_case as _quota  # noqa: F401
-from tests.workbench.test_template_lineage_support import ledger_fixture as _ledger  # noqa: F401
-from tests.workbench.test_template_lineage_support import lineage_case as _lineage  # noqa: F401
+from tests.workbench.template_lineage_support import ledger_fixture as _ledger  # noqa: F401
+from tests.workbench.template_lineage_support import lineage_case as _lineage  # noqa: F401
 from web.routes.workbench.resource_action_context import EXTENSION
 
 

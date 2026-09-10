@@ -8,8 +8,8 @@ import subprocess
 from pathlib import Path
 
 from tests.workbench.dashboard_widgets_support import serve
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_live_browser import runtime_tools
-from tests.workbench.test_run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]

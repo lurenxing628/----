@@ -3,8 +3,8 @@
 import pytest
 
 from core.models.workbench_run_history import STATES
-from tests.workbench.test_run_history_support import BASE, api, corrupt, dump, read, seed
-from tests.workbench.test_run_history_support import history_case as _history_case
+from tests.workbench.run_history_support import BASE, api, corrupt, dump, read, seed
+from tests.workbench.run_history_support import history_case as _history_case
 
 
 def test_all_states_and_awaiting_are_explicit_and_read_only(history_case):

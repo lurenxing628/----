@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.workbench.test_system_maintenance_support import BASE, SystemTestAPI
+from tests.workbench.system_maintenance_support import BASE, SystemTestAPI
 from web.bootstrap import factory
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
 from web.bootstrap.workbench_run_runtime import install_workbench_run_runtime

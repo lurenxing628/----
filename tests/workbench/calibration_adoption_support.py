@@ -9,10 +9,10 @@ from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_calibration_adoption_schema import install
 from core.models.workbench_template_lineage import typed_value
 from core.services.workbench.calibration_adoption import WorkbenchCalibrationAdoptionService
-from tests.workbench.test_execution_ledger_support import NOW
-from tests.workbench.test_template_lineage_support import completed
-from tests.workbench.test_template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
-from tests.workbench.test_template_lineage_support import lineage_case as _lineage_case  # noqa: F401
+from tests.workbench.execution_ledger_support import NOW
+from tests.workbench.template_lineage_support import completed
+from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
+from tests.workbench.template_lineage_support import lineage_case as _lineage_case  # noqa: F401
 from web.routes.workbench.calibration_adoption import register_calibration_adoption_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 

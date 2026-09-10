@@ -10,10 +10,10 @@ from pathlib import Path
 
 import openpyxl
 
+from tests.workbench.calibration_support import calibration_api as api_fixture
+from tests.workbench.calibration_support import calibration_case as case_fixture
+from tests.workbench.calibration_support import ledger_fixture
 from tests.workbench.calibration_widgets_support import serve
-from tests.workbench.test_calibration_support import calibration_api as api_fixture
-from tests.workbench.test_calibration_support import calibration_case as case_fixture
-from tests.workbench.test_calibration_support import ledger_fixture
 from tests.workbench.test_live_browser import runtime_tools
 
 ROOT = Path(__file__).resolve().parents[2]
