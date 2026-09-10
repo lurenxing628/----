@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-from tests.gantt.test_gantt_url_persistence import _Boot
+from tests._support.gantt_retirement import _Boot
 
 _API = "/api/workbench/v1/system/logs"
 

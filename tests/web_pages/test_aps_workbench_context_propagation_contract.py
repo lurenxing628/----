@@ -8,7 +8,7 @@ from contextlib import closing
 from io import BytesIO
 from urllib.parse import parse_qs, urlsplit
 
-from tests.gantt.test_gantt_url_persistence import _business_state, _canonical_workspace
+from tests._support.gantt_retirement import _business_state, _canonical_workspace
 from tests.web_pages.reports_workbench_backlink_helpers import (
     INTERNAL_VISIBLE_TOKENS,
     _assert_public_output_boundaries,

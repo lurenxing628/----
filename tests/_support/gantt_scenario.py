@@ -8,6 +8,7 @@ from pathlib import Path
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.scheduler.gantt_adjustment_draft_service import GanttAdjustmentDraftService
+from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjustmentScenarioService
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 
@@ -76,6 +77,23 @@ def _draft_with_change(
             to_operator_id=to_operator_id,
         )
     return draft.draft_id
+
+
+def _saved_scenario(conn):
+    draft_service = GanttAdjustmentDraftService(conn)
+    draft = draft_service.create_draft(base_version=VERSION, base_plan_role="adopted", created_by="pytest")
+    draft_service.record_time_change(
+        draft_id=draft.draft_id,
+        op_id=30,
+        to_start="2026-05-04 11:00:00",
+        to_end="2026-05-04 12:00:00",
+    )
+    return GanttAdjustmentScenarioService(conn).save_scenario(
+        draft_id=draft.draft_id,
+        scenario_name="单日模拟",
+        created_by="planner",
+    )
+
 
 def _build_app(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "aps.db"
