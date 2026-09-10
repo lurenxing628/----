@@ -6,8 +6,8 @@ from contextlib import closing
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.run_worker import WorkbenchRunWorker
 from tests.workbench.final_planning_seed import seed as planning_seed
-from tests.workbench.test_run_jobs_support import JobCase
-from tests.workbench.test_run_jobs_support import service as run_service
+from tests.workbench.run_jobs_support import JobCase
+from tests.workbench.run_jobs_support import service as run_service
 from tests.workbench.trial_support import service as trial_service
 
 
