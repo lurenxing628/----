@@ -1,3 +1,5 @@
+"""Runtime and annotation contracts for typed dispatch callbacks."""
+
 from __future__ import annotations
 
 import ast

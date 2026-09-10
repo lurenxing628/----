@@ -1,3 +1,5 @@
+"""Regression contracts for dispatch callback binding and scheduling context."""
+
 from __future__ import annotations
 
 import inspect

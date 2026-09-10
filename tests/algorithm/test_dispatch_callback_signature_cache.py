@@ -1,3 +1,5 @@
+"""Regression coverage for callback signature caching and object lifetime."""
+
 from __future__ import annotations
 
 import gc

@@ -1,3 +1,5 @@
+"""Type, immutability and serialization contracts for summary build context."""
+
 from __future__ import annotations
 
 import ast

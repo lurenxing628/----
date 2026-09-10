@@ -1,3 +1,5 @@
+"""Filtered report exports preserve complete cohorts and CSV/XLSX payloads."""
+
 import csv
 import io
 

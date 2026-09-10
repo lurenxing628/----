@@ -1,3 +1,5 @@
+"""Production contracts for bounded graph-ready elite repair candidates."""
+
 from __future__ import annotations
 
 import json

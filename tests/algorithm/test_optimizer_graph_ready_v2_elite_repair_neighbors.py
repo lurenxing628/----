@@ -1,3 +1,5 @@
+"""Regression coverage for elite-repair neighborhoods and priority limits."""
+
 from __future__ import annotations
 
 from copy import deepcopy
