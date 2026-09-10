@@ -23,6 +23,18 @@ from .v16 import run as run_v16
 from .v17 import run as run_v17
 from .v18 import run as run_v18
 from .v19 import run as run_v19
+from .v20 import run as run_v20
+from .v21 import run as run_v21
+from .v22 import run as run_v22
+from .v23 import run as run_v23
+from .v24 import run as run_v24
+from .v25 import run as run_v25
+from .v26 import run as run_v26
+from .v27 import run as run_v27
+from .v28 import run as run_v28
+from .v29 import run as run_v29
+from .v30 import run as run_v30
+from .v31 import run as run_v31
 
 # 版本迁移注册表：target_version -> run(conn, logger=None) -> MigrationOutcome
 MIGRATIONS: Dict[int, Callable[..., MigrationOutcome]] = {
@@ -45,6 +57,18 @@ MIGRATIONS: Dict[int, Callable[..., MigrationOutcome]] = {
     17: run_v17,
     18: run_v18,
     19: run_v19,
+    20: run_v20,
+    21: run_v21,
+    22: run_v22,
+    23: run_v23,
+    24: run_v24,
+    25: run_v25,
+    26: run_v26,
+    27: run_v27,
+    28: run_v28,
+    29: run_v29,
+    30: run_v30,
+    31: run_v31,
 }
 
 

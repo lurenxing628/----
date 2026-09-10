@@ -19,6 +19,8 @@ from core.infrastructure.migrations.v6 import run as run_v6
 from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 
 SCHEMA_PATH = os.path.join(REPO_ROOT, "schema.sql")
+# Frozen from 05660bd77d04cbc425d79e3bdc861b90d3c67adc:schema.sql.
+LEGACY_SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "schema-v4.sql")
 
 
 class _BrokenLogger:
@@ -169,7 +171,8 @@ def test_ensure_schema_migration_entry_path_survives_broken_logger(capsys: pytes
         conn = sqlite3.connect(db_path)
         try:
             conn.row_factory = sqlite3.Row
-            _load_schema(conn)
+            with open(LEGACY_SCHEMA_PATH, "r", encoding="utf-8") as source:
+                conn.executescript(source.read())
             conn.execute("UPDATE SchemaVersion SET version=4 WHERE id=1")
             conn.execute("INSERT INTO Operators (operator_id, name) VALUES (?, ?)", ("OP1", "测试员"))
             conn.execute("INSERT INTO Machines (machine_id, name) VALUES (?, ?)", ("MC1", "设备"))

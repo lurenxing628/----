@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from pathlib import Path
+
+# Historical pre-v5 DDL: 05660bd77d04cbc425d79e3bdc861b90d3c67adc:schema.sql.
+LEGACY_SCHEMA_PATH = Path(__file__).parent / "fixtures" / "schema-v4.sql"
 
 
 def _version_of(db_path: str) -> int:
@@ -43,7 +47,7 @@ def test_ensure_schema_fastforward_empty_only(tmp_path, schema_path) -> None:
 
     conn0 = sqlite3.connect(nonempty_db)
     try:
-        with open(schema_path, "r", encoding="utf-8") as f:
+        with open(LEGACY_SCHEMA_PATH, "r", encoding="utf-8") as f:
             conn0.executescript(f.read())
         conn0.execute("UPDATE SchemaVersion SET version=0 WHERE id=1")
         conn0.execute("INSERT INTO Operators (operator_id, name) VALUES (?, ?)", ("OP100", "测试员甲"))

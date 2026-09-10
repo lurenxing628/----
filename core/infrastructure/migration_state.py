@@ -5,8 +5,23 @@ from typing import List, Optional
 
 from .migration_common import MigrationOutcome, column_exists, fallback_log, table_exists
 from .migration_operation_execution_contract import operation_execution_event_contract_issues
+from .workbench_calibration_adoption_schema import contract_issues as calibration_adoption_contract_issues
+from .workbench_dashboard_external_schema import contract_issues as dashboard_external_contract_issues
+from .workbench_dashboard_schema import workbench_dashboard_contract_issues
+from .workbench_execution_ledger_schema import execution_ledger_contract_issues
+from .workbench_lineage_lookup_schema import lineage_lookup_contract_issues
+from .workbench_metadata_schema import workbench_metadata_contract_issues
+from .workbench_outsourcing_schema import workbench_outsourcing_contract_issues
+from .workbench_plan_identity_schema import workbench_plan_identity_contract_issues
+from .workbench_plan_identity_write_guard import plan_identity_write_guard_contract_issues
+from .workbench_process_schema import workbench_process_contract_issues
+from .workbench_process_workflow_schema import workbench_process_workflow_contract_issues
+from .workbench_resource_schema import workbench_resource_contract_issues
+from .workbench_run_schema import workbench_run_contract_issues
+from .workbench_template_lineage_schema import template_lineage_contract_issues
+from .workbench_trial_schema import workbench_trial_contract_issues
 
-CURRENT_SCHEMA_VERSION = 19
+CURRENT_SCHEMA_VERSION = 31
 
 
 class MigrationContractError(RuntimeError):
@@ -137,6 +152,17 @@ def set_schema_version(conn: sqlite3.Connection, version: int) -> None:
 
 def is_truly_empty_db(conn: sqlite3.Connection) -> bool:
     for name in list_user_tables(conn):
+        # This exact unused metadata seed is part of a fresh schema, not business data.
+        if name == "WorkbenchPlanIdentityClock":
+            rows = conn.execute("SELECT singleton, revision FROM WorkbenchPlanIdentityClock LIMIT 2").fetchall()
+            if [tuple(row) for row in rows] != [(1, 1)]:
+                return False
+            continue
+        if name == "WorkbenchExecutionLedgerClock":
+            rows = conn.execute("SELECT singleton, revision, next_report_no FROM WorkbenchExecutionLedgerClock LIMIT 2").fetchall()
+            if [tuple(row) for row in rows] != [(1, 1, 1)]:
+                return False
+            continue
         quoted_name = '"' + str(name).replace('"', '""') + '"'
         row = conn.execute(f"SELECT 1 FROM {quoted_name} LIMIT 1").fetchone()
         if row is not None:
@@ -252,6 +278,21 @@ def current_schema_contract_issues(conn: sqlite3.Connection) -> List[str]:
         if not ok:
             issues.append(label)
     issues.extend(operation_execution_event_contract_issues(conn))
+    issues.extend(workbench_metadata_contract_issues(conn))
+    issues.extend(workbench_resource_contract_issues(conn))
+    issues.extend(workbench_process_contract_issues(conn))
+    issues.extend(workbench_process_workflow_contract_issues(conn))
+    issues.extend(workbench_plan_identity_contract_issues(conn))
+    issues.extend(execution_ledger_contract_issues(conn))
+    issues.extend(workbench_run_contract_issues(conn))
+    issues.extend(template_lineage_contract_issues(conn))
+    issues.extend(workbench_trial_contract_issues(conn))
+    issues.extend(lineage_lookup_contract_issues(conn))
+    issues.extend(calibration_adoption_contract_issues(conn))
+    issues.extend(workbench_dashboard_contract_issues(conn))
+    issues.extend(plan_identity_write_guard_contract_issues(conn))
+    issues.extend(workbench_outsourcing_contract_issues(conn))
+    issues.extend(dashboard_external_contract_issues(conn))
     return issues
 
 

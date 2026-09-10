@@ -22,7 +22,7 @@ from __future__ import annotations
 import secrets
 import threading
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from flask import current_app
 
@@ -152,4 +152,14 @@ def resolve_public_token(scope: str, token: Any, *, message: str, field: str) ->
         return value
 
 
-__all__ = ["issue_public_token", "resolve_public_token"]
+def issue_public_token_with_expiry(scope: str, value: Any, *, ttl_seconds: int = _DEFAULT_TTL_SECONDS) -> Tuple[str, float]:
+    """Return the actual expiry, including when idempotent issuance reuses a token."""
+    if not _text(scope) or not _text(value):
+        raise ValueError("公开 token 的 scope 和内容不能为空。")
+    with _LOCK:
+        token = issue_public_token(scope, value, ttl_seconds=ttl_seconds)
+        entry = _scope_state(_text(scope))["tokens"][token]
+        return token, float(entry["expires_at"])
+
+
+__all__ = ["issue_public_token", "resolve_public_token", "issue_public_token_with_expiry"]

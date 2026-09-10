@@ -2,6 +2,10 @@
 
 import os
 import sqlite3
+from pathlib import Path
+
+# Frozen from 05660bd77d04cbc425d79e3bdc861b90d3c67adc:schema.sql.
+LEGACY_SCHEMA_PATH = Path(__file__).parent / "fixtures" / "schema-v4.sql"
 
 
 def test_migrate_backup_dir_none_creates_backup(tmp_path, schema_path):
@@ -27,7 +31,7 @@ def test_migrate_backup_dir_none_creates_backup(tmp_path, schema_path):
     conn0 = sqlite3.connect(test_db)
     try:
         conn0.execute("PRAGMA foreign_keys = OFF;")
-        with open(schema_path, "r", encoding="utf-8") as f:
+        with open(LEGACY_SCHEMA_PATH, "r", encoding="utf-8") as f:
             conn0.executescript(f.read())
         conn0.execute("UPDATE SchemaVersion SET version=4 WHERE id=1")
         conn0.execute("INSERT INTO Operators (operator_id, name) VALUES (?, ?)", ("OP001", "张三"))

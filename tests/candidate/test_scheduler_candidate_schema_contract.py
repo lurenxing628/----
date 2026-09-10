@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Set
 
@@ -12,6 +14,10 @@ from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, 
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
+# Verbatim schema.sql from 196d7e56ecc2f7cfc2ea6b2140227b73cb2e1fed (runtime schema version 9).
+# Original Git blob: 524c344e14533fb26b96254435c873552429732f.
+SCHEMA_V9_PATH = REPO_ROOT / "tests" / "migration_db" / "fixtures" / "schema-v9.sql"
+SCHEMA_V9_SHA256 = "f2451893212a29118dc1378770dbac18b33d3f5b10a44b8d87d9bf8aeef255a4"
 
 
 def _connect_fresh_schema(tmp_path: Path) -> sqlite3.Connection:
@@ -128,14 +134,13 @@ def test_candidate_schema_exists_in_fresh_database_with_expected_constraints(tmp
 
 def test_candidate_schema_migration_keeps_candidate_tables_independent_from_schedule_history(tmp_path: Path) -> None:
     db_path = tmp_path / "legacy_v9.db"
+    legacy_schema = SCHEMA_V9_PATH.read_bytes()
+    assert hashlib.sha256(legacy_schema).hexdigest() == SCHEMA_V9_SHA256
     conn = get_connection(str(db_path))
     try:
         conn.executescript(
-            SCHEMA_PATH.read_text(encoding="utf-8")
+            legacy_schema.decode("utf-8")
             + """
-            DROP TABLE IF EXISTS ScheduleCandidateSelection;
-            DROP TABLE IF EXISTS ScheduleCandidateRows;
-            DROP TABLE IF EXISTS ScheduleCandidate;
             CREATE TABLE LegacyRows (id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO LegacyRows (id, name) VALUES (1, 'keep-me');
             DELETE FROM SchemaVersion;
@@ -143,10 +148,17 @@ def test_candidate_schema_migration_keeps_candidate_tables_independent_from_sche
             """
         )
         conn.commit()
+        assert [row[0] for row in conn.execute("SELECT version FROM SchemaVersion WHERE id=1")] == [9]
+        before_tables = _table_names(conn)
+        assert not any(name.startswith(("Workbench", "ScheduleCandidate")) for name in before_tables)
+        assert not conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'wb_%'").fetchall()
+        legacy_rows = [tuple(row) for row in conn.execute("SELECT * FROM LegacyRows ORDER BY id")]
+        assert legacy_rows == [(1, "keep-me")]
     finally:
         conn.close()
 
-    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "legacy_backups"))
+    backup_dir = tmp_path / "legacy_backups"
+    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=str(backup_dir))
 
     conn = get_connection(str(db_path))
     try:
@@ -157,5 +169,17 @@ def test_candidate_schema_migration_keeps_candidate_tables_independent_from_sche
         assert "ScheduleHistory" not in _foreign_targets(conn, "ScheduleCandidateRows")
         assert "ScheduleHistory" not in _foreign_targets(conn, "ScheduleCandidateSelection")
         assert conn.execute("SELECT name FROM LegacyRows WHERE id = 1").fetchone()["name"] == "keep-me"
+        assert [tuple(row) for row in conn.execute("SELECT * FROM LegacyRows ORDER BY id")] == legacy_rows
+        assert not conn.execute("PRAGMA foreign_key_check").fetchall()
     finally:
         conn.close()
+
+    backup_path, = backup_dir.glob(f"aps_backup_*_before_migrate_v9_to_v{CURRENT_SCHEMA_VERSION}.db")
+    backup_bytes = backup_path.read_bytes()
+    with closing(sqlite3.connect(backup_path.resolve().as_uri() + "?mode=ro", uri=True)) as backup_conn:
+        backup_conn.row_factory = sqlite3.Row
+        assert [row[0] for row in backup_conn.execute("PRAGMA integrity_check")] == ["ok"]
+        assert [row[0] for row in backup_conn.execute("SELECT version FROM SchemaVersion WHERE id=1")] == [9]
+        assert _table_names(backup_conn) == before_tables
+        assert [tuple(row) for row in backup_conn.execute("SELECT * FROM LegacyRows ORDER BY id")] == legacy_rows
+    assert backup_path.read_bytes() == backup_bytes

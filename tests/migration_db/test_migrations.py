@@ -14,6 +14,8 @@ from core.infrastructure.migrations.v15 import _EVENT_INDEX_SQL
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
+# Frozen from 244fbb7e5cfe68713e59b15a741d8e459657b207:schema.sql.
+LEGACY_V14_SCHEMA_PATH = Path(__file__).parent / "fixtures" / "schema-v14.sql"
 
 
 def _table_names(conn: sqlite3.Connection) -> Set[str]:
@@ -68,22 +70,17 @@ def test_v14_database_migrates_operation_execution_events_without_losing_rows(tm
     db_path = tmp_path / "legacy_v14.db"
     conn = get_connection(str(db_path))
     try:
-        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        conn.executescript(LEGACY_V14_SCHEMA_PATH.read_text(encoding="utf-8"))
         conn.executescript(
             """
             DELETE FROM SchemaVersion;
             INSERT INTO SchemaVersion (id, version) VALUES (1, 14);
-            DROP INDEX IF EXISTS idx_operation_execution_events_latest_exception;
-            DROP INDEX IF EXISTS idx_operation_execution_events_op_revision_unique;
-            DROP INDEX IF EXISTS idx_operation_execution_events_batch;
-            DROP INDEX IF EXISTS idx_operation_execution_events_schedule_op;
-            DROP INDEX IF EXISTS idx_operation_execution_events_schedule;
-            DROP INDEX IF EXISTS idx_operation_execution_events_op;
-            DROP TABLE OperationExecutionEvents;
             CREATE TABLE LegacyRows (id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO LegacyRows (id, name) VALUES (1, 'keep-me');
             """
         )
+        assert "OperationExecutionEvents" not in _table_names(conn)
+        assert not any(name.startswith("Workbench") for name in _table_names(conn))
         conn.commit()
     finally:
         conn.close()

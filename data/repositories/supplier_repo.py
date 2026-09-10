@@ -33,6 +33,22 @@ class SupplierRepository(BaseRepository):
         rows = self.fetchall(sql, tuple(params))
         return [Supplier.from_row(r) for r in rows]
 
+    def list_capabilities(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Raw effective bindings; do not default invalid cycles through Supplier.from_row."""
+        sql = """WITH bindings AS (
+            SELECT supplier_id, op_type_id, 0 AS explicit FROM Suppliers
+                WHERE op_type_id IS NOT NULL AND op_type_id <> ''
+            UNION ALL SELECT supplier_id, op_type_id, 1 FROM WorkbenchSupplierOpTypes
+        ) SELECT b.supplier_id, b.op_type_id, s.default_days, s.status,
+            MAX(b.explicit) AS explicit, s.supplier_id IS NULL AS missing_supplier
+            FROM bindings AS b LEFT JOIN Suppliers AS s ON s.supplier_id = b.supplier_id"""
+        params: List[Any] = []
+        if status is not None:
+            sql += " WHERE s.status = ? OR s.supplier_id IS NULL"
+            params.append(status)
+        sql += " GROUP BY b.supplier_id, b.op_type_id ORDER BY b.supplier_id, b.op_type_id"
+        return self.fetchall(sql, params)
+
     def create(self, supplier: Union[Supplier, Dict[str, Any]]) -> Supplier:
         s = supplier if isinstance(supplier, Supplier) else Supplier.from_row(supplier)
         self.execute(
@@ -150,4 +166,3 @@ class SupplierRepository(BaseRepository):
             )
             is not None
         )
-
