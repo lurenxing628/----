@@ -21,6 +21,7 @@ from core.infrastructure.migration_common import fallback_log
 from core.models.enums import YesNo
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_templates import ExcelTemplateError, ensure_excel_templates
+from core.services.scheduler import _frozen_import_anchor as _scheduler_services_import_anchor
 from web.bootstrap.template_globals import install_template_globals
 from web.error_boundary import (
     render_error_template,
@@ -52,7 +53,7 @@ _RUNTIME_SERVER: Any = None
 _RUNTIME_SERVER_LOCK = threading.Lock()
 _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
 _FACTORY_ONCE_FLAGS_KEY = "aps.factory.once_flags"
-_PYINSTALLER_IMPORT_ANCHORS = (_scheduler_import_anchor,)
+_PYINSTALLER_IMPORT_ANCHORS = (_scheduler_import_anchor, _scheduler_services_import_anchor)
 
 
 def _app_log_once(app: Flask, key: str, level: str, message: str, *args: Any) -> None:

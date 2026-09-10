@@ -84,6 +84,7 @@ if exist vendor (
     --hidden-import web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes ^
     --hidden-import web.routes.domains.scheduler.scheduler_run ^
     --hidden-import web.routes.domains.scheduler.scheduler_week_plan ^
+    --hidden-import web.routes.domains.scheduler.scheduler_week_plan_print ^
     --name "排产系统" ^
     app.py
 ) else (
@@ -109,6 +110,7 @@ if exist vendor (
     --hidden-import web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes ^
     --hidden-import web.routes.domains.scheduler.scheduler_run ^
     --hidden-import web.routes.domains.scheduler.scheduler_week_plan ^
+    --hidden-import web.routes.domains.scheduler.scheduler_week_plan_print ^
     --name "排产系统" ^
     app.py
 )
