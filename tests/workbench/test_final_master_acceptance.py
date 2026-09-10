@@ -126,7 +126,7 @@ def run(phase="overview"):
                 "trace_path": str(trace_path), "attempted_writes": 0, "rows_exact": True}
         assert result.returncode == 0 and restarted_probe.returncode == 0, "Browser failed; see " + str(root)
         assert report["restart_preservation"]["passed"]
-        if phase in ("overview", "inspect", "controls", "context_restore"):
+        if phase in ("overview", "inspect", "controls", "context_restore", "remaining_controls", "domain_gaps"):
             assert report["read_database_unchanged"]
     finally:
         if server is not None:
@@ -140,5 +140,5 @@ def run(phase="overview"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--phase", choices=("overview", "inspect", "resources", "process_batches", "controls", "context_restore"), default="overview")
+    parser.add_argument("--phase", choices=("overview", "inspect", "resources", "process_batches", "controls", "context_restore", "remaining_controls", "domain_gaps"), default="overview")
     run(parser.parse_args().phase)

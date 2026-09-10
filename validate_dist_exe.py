@@ -34,12 +34,12 @@ from core.infrastructure.safe_files import read_fixed_text, remove_fixed_file
 
 _EXPECTED_CONTRACT_VERSION = 1
 
-# static 验收锚点：templates/base.html 每个页面都引用的核心样式与脚本（B14）。
+# static 验收锚点：新工作台入口从实际 manifest 加载的核心样式与主脚本（B14）。
 # tests/app_runtime/test_validate_dist_static_payload.py 对账：锚点必须真实存在于
-# 仓库 static/ 且被 base.html 引用，防止锚点随重构漂移成永真检查。
+# 仓库 static/、列入 manifest 且由实际入口模板加载，不能保留已退役的旧资源。
 _STATIC_BUNDLE_ANCHORS = (
-    "static/css/style.css",
-    "static/js/common.js",
+    "static/workbench/prototype/styles.css",
+    "static/workbench/app/main.js",
 )
 
 

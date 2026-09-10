@@ -1066,6 +1066,28 @@
     "strict_slashes": true
   },
   {
+    "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>/analysis",
+    "endpoint": "workbench.run_candidate_analysis",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>/adoptions",
+    "endpoint": "workbench.run_candidate_adoptions",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
     "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>/adopt-preview",
     "endpoint": "workbench.run_candidate_adopt_preview",
     "methods": [
