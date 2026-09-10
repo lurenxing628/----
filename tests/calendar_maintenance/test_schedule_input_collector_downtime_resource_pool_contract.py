@@ -36,6 +36,9 @@ def _insert_fixture(conn: sqlite3.Connection) -> None:
     conn.execute("INSERT INTO Operators(operator_id, name, status) VALUES ('OP_FIXED', '固定人员', 'active')")
     conn.execute("INSERT INTO Operators(operator_id, name, status) VALUES ('OP_POOL', '候选人员', 'active')")
     conn.execute(
+        "INSERT INTO OperatorMachine(operator_id, machine_id, skill_level, is_primary) VALUES ('OP_FIXED', 'MC_FIXED', 'normal', 'no')"
+    )
+    conn.execute(
         "INSERT INTO OperatorMachine(operator_id, machine_id, skill_level, is_primary) VALUES ('OP_POOL', 'MC_POOL', 'expert', 'yes')"
     )
     conn.execute("INSERT INTO Batches(batch_id, part_no, quantity, ready_status, status) VALUES ('B001', 'P001', 1, 'yes', 'pending')")

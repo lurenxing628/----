@@ -15,6 +15,7 @@ from core.algorithm_runtime.internal_slot import (
     raise_strict_internal_hours_validation,
     validate_internal_hours_for_mode,
 )
+from core.algorithm_runtime.piece_input import external_group_key
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 from core.infrastructure.errors import ValidationError
@@ -266,7 +267,7 @@ def _external_candidate_window(
     merge_mode = str(getattr(op, "ext_merge_mode", None) or "").strip().lower()
     ext_group_id = str(getattr(op, "ext_group_id", None) or "").strip()
     if merge_mode == MERGED and ext_group_id:
-        cached = state.external_group_cache.get((batch_id, ext_group_id))
+        cached = state.external_group_cache.get(external_group_key(op))
         if cached:
             return cached
         total_days = _parse_external_days(

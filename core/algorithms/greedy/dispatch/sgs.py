@@ -8,6 +8,7 @@ from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
 from core.algorithm_runtime.dispatch_context import DispatchContextContractError, ensure_dispatch_context
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours_for_mode
+from core.algorithm_runtime.piece_input import operation_batch, operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.slot_overlap_reuse import sgs_overlap_reuse
 from core.infrastructure.errors import ValidationError
@@ -59,7 +60,7 @@ def dispatch_sgs(
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     state: Optional[ScheduleRunState] = None,
     batch_progress: Optional[Dict[str, datetime]] = None,
-    external_group_cache: Optional[Dict[Tuple[str, str], Tuple[datetime, datetime]]] = None,
+    external_group_cache: Optional[Dict[Tuple[str, ...], Tuple[datetime, datetime]]] = None,
     machine_timeline: Optional[Dict[str, List[Tuple[datetime, datetime]]]] = None,
     operator_timeline: Optional[Dict[str, List[Tuple[datetime, datetime]]]] = None,
     machine_busy_hours: Optional[Dict[str, float]] = None,
@@ -170,7 +171,7 @@ def _average_proc_hours(
 
 def _append_proc_sample(ctx: Any, samples: List[float], *, op: Any, batch: Any, strict_mode: bool) -> Optional[float]:
     try:
-        sample = validate_internal_hours_for_mode(op, batch, strict_mode=strict_mode)
+        sample = validate_internal_hours_for_mode(op, operation_batch(op, batch), strict_mode=strict_mode)
     except ValueError:
         # 非 strict 预扫跳过坏工时样本会让均值悄悄偏移，必须计数留痕（不许零留痕静默跳过）。
         ctx.increment("dispatch_key_avg_proc_hours_sample_skipped_count")
@@ -198,6 +199,8 @@ def _run_sgs_loop(
     graph_ready_context: Optional[Any],
 ) -> None:
     graph_state = _prepare_graph_ready_state(graph_ready_context, ops_by_batch=ops_by_batch)
+    if graph_state is not None and isinstance(graph_ready_context, dict) and graph_ready_context.get("piece_scope"):
+        graph_state["end_time_by_op_id"] = {row.op_id: row.end_time for row in state.results}
     while True:
         candidates = _collect_candidates(
             graph_state=graph_state,
@@ -308,6 +311,8 @@ def _score_candidate(
     total_hours_by_op_id: Dict[int, float],
     graph_state: Optional[Dict[str, Any]] = None,
 ) -> Tuple[float, ...]:
+    state = operation_dispatch_state(state, graph_state, op, batch)
+    batch = operation_batch(op, batch)
     def score() -> Tuple[float, ...]:
         if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == EXTERNAL:
             return _score_external_candidate(
@@ -369,8 +374,8 @@ def _dispatch_selected(
         result, _blocked = _schedule_op(
             ctx,
             op=op,
-            batch=batches[batch_id],
-            state=state,
+            batch=operation_batch(op, batches[batch_id]),
+            state=operation_dispatch_state(state, graph_state, op, batches[batch_id]),
             base_time=state.base_time,
             end_dt_exclusive=end_dt_exclusive,
             machine_downtimes=machine_downtimes,
@@ -382,6 +387,8 @@ def _dispatch_selected(
             state.record_dispatch_success(result)
             next_idx[batch_id] = int(next_idx.get(batch_id, 0) or 0) + 1
             if graph_state is not None:
+                if "end_time_by_op_id" in graph_state:
+                    graph_state["end_time_by_op_id"][_op_id(op)] = result.end_time
                 _mark_graph_operation_completed(graph_state, _op_id(op))
         else:
             extra_failed_count = 0

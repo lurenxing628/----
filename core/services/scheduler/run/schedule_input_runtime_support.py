@@ -7,6 +7,7 @@ from core.algorithm_runtime.internal_slot import validate_internal_hours
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.models import BatchOperation
 from core.models.enums import SourceType
+from core.services.personnel.operator_qualification import validate_fixed_operator_qualifications
 
 from .schedule_execution_reservations import ExecutionResourceReservation, reserve_execution_machines
 from .schedule_input_contracts import _build_freeze_window_seed_with_meta, _op_seq
@@ -78,6 +79,7 @@ def _load_runtime_resource_inputs(
     *,
     cfg: Any,
     algo_ops: List[Any],
+    resource_pool_ops: List[Any],
     start_dt_norm: datetime,
     algo_warnings: List[str],
     load_machine_downtimes_fn: Any,
@@ -96,7 +98,7 @@ def _load_runtime_resource_inputs(
     resource_pool, pool_warnings = build_resource_pool_fn(
         svc,
         cfg=cfg,
-        algo_ops=algo_ops,
+        algo_ops=resource_pool_ops,
         meta=resource_pool_meta,
     )
     if pool_warnings:
@@ -134,6 +136,7 @@ def _build_runtime_support_inputs(
     build_resource_pool_fn: Any,
     extend_downtime_map_for_resource_pool_fn: Any,
     raise_schedule_empty_result_fn: Any,
+    validate_completed_seed_constraints_fn: Any = None,
 ) -> Tuple[
     Set[int],
     List[Dict[str, Any]],
@@ -161,7 +164,8 @@ def _build_runtime_support_inputs(
         execution_seed_results=list(execution_seed_results or []),
         freeze_seed_results=list(seed_results or []),
     )
-    _validate_completed_downstream_seed_constraints(
+    validate_seeds = validate_completed_seed_constraints_fn or _validate_completed_downstream_seed_constraints
+    validate_seeds(
         seed_results=seed_results,
         operations=operations,
         execution_completed_op_ids=set(execution_completed_op_ids or set()),
@@ -177,10 +181,12 @@ def _build_runtime_support_inputs(
         raise_schedule_empty_result_fn=raise_schedule_empty_result_fn,
     )
     _ensure_internal_runtime_hours(batches, algo_ops_to_schedule)
+    validate_fixed_operator_qualifications(svc.conn, algo_ops_to_schedule, logger=svc.logger)
     downtime_meta, resource_pool_meta, downtime_map, resource_pool = _load_runtime_resource_inputs(
         svc,
         cfg=cfg,
         algo_ops=algo_ops,
+        resource_pool_ops=algo_ops_to_schedule,
         start_dt_norm=start_dt_norm,
         algo_warnings=algo_warnings,
         load_machine_downtimes_fn=load_machine_downtimes_fn,

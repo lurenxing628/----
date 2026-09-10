@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
 from core.algorithm_runtime.algo_stats import increment_counter
+from core.algorithm_runtime.piece_input import external_group_key
 from core.infrastructure.errors import ValidationError
 from core.shared.degradation import DegradationCollector
 from core.shared.field_parse import parse_field_float
@@ -15,10 +16,10 @@ def rebuild_external_group_cache_from_seeds(
     *,
     seed_results: List[ScheduleResult],
     operations: List[Any],
-    external_group_cache: Dict[Tuple[str, str], Tuple[datetime, datetime]],
+    external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
     warnings: List[str],
     algo_stats: Any,
-    seed_group_keys: Optional[Dict[int, Tuple[str, str]]] = None,
+    seed_group_keys: Optional[Dict[int, Tuple[str, ...]]] = None,
 ) -> None:
     """seed 注入时按组键把已排 merged 外协组成员的起止块写回 external_group_cache（audit 2026-07-20 A14）。
 
@@ -48,8 +49,8 @@ def rebuild_external_group_cache_from_seeds(
         increment_counter(algo_stats, "seed_external_group_block_inconsistent_count", 1)
 
 
-def _merged_group_key_by_op_id(operations: List[Any]) -> Dict[int, Tuple[str, str]]:
-    group_key_by_op_id: Dict[int, Tuple[str, str]] = {}
+def _merged_group_key_by_op_id(operations: List[Any]) -> Dict[int, Tuple[str, ...]]:
+    group_key_by_op_id: Dict[int, Tuple[str, ...]] = {}
     for op in operations:
         if str(getattr(op, "source", "") or "").strip().lower() != EXTERNAL:
             continue
@@ -60,17 +61,17 @@ def _merged_group_key_by_op_id(operations: List[Any]) -> Dict[int, Tuple[str, st
             continue
         op_id = _op_identity_int(getattr(op, "id", 0))
         if op_id > 0:
-            group_key_by_op_id[op_id] = (bid, ext_group_id)
+            group_key_by_op_id[op_id] = external_group_key(op)
     return group_key_by_op_id
 
 
 def _seed_blocks_by_group(
     seed_results: List[ScheduleResult],
-    group_key_by_op_id: Dict[int, Tuple[str, str]],
+    group_key_by_op_id: Dict[int, Tuple[str, ...]],
     operation_ids: set,
-    seed_group_keys: Dict[int, Tuple[str, str]],
-) -> Dict[Tuple[str, str], List[Tuple[datetime, datetime]]]:
-    blocks_by_group: Dict[Tuple[str, str], List[Tuple[datetime, datetime]]] = {}
+    seed_group_keys: Dict[int, Tuple[str, ...]],
+) -> Dict[Tuple[str, ...], List[Tuple[datetime, datetime]]]:
+    blocks_by_group: Dict[Tuple[str, ...], List[Tuple[datetime, datetime]]] = {}
     for result in seed_results:
         op_id = _op_identity_int(getattr(result, "op_id", 0))
         operation_key = group_key_by_op_id.get(op_id)
@@ -96,12 +97,12 @@ def _op_identity_int(value: Any) -> int:
 
 
 def _inconsistent_group_block_warning(
-    key: Tuple[str, str],
+    key: Tuple[str, ...],
     *,
     blocks: List[Tuple[datetime, datetime]],
     distinct_blocks: List[Tuple[datetime, datetime]],
 ) -> str:
-    bid, ext_group_id = key
+    bid, ext_group_id = key[:2]
     sample = "；".join(
         f"{start.strftime('%Y-%m-%d %H:%M')}~{end.strftime('%Y-%m-%d %H:%M')}" for start, end in distinct_blocks[:3]
     )
@@ -118,7 +119,7 @@ def schedule_external(
     op: Any,
     batch: Any,
     batch_progress: Dict[str, datetime],
-    external_group_cache: Dict[Tuple[str, str], Tuple[datetime, datetime]],
+    external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
     base_time: datetime,
     errors: List[str],
     end_dt_exclusive: Optional[datetime],
@@ -140,7 +141,7 @@ def schedule_external(
     merge_mode = str(getattr(op, "ext_merge_mode", None) or "").strip().lower()
     ext_group_id = str(getattr(op, "ext_group_id", None) or "").strip()
     if merge_mode == MERGED and ext_group_id:
-        cache_key = (bid, ext_group_id)
+        cache_key = external_group_key(op)
         cached = external_group_cache.get(cache_key)
         if cached:
             start, end = cached

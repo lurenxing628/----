@@ -35,7 +35,7 @@ class ExternalScheduleCallback(Protocol):
         op: Any,
         batch: Any,
         batch_progress: Dict[str, datetime],
-        external_group_cache: Dict[Tuple[str, str], Tuple[datetime, datetime]],
+        external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
         base_time: datetime,
         errors: List[str],
         end_dt_exclusive: Optional[datetime],

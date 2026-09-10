@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from core.infrastructure.errors import AppError, ErrorCode
 from core.models.operation_execution_scope import OperationExecutionScope
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact, ExecutionFactProvider
+from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable
 from core.services.scheduler.execution.execution_snapshot import build_execution_snapshot
 
 from .schedule_execution_reservations import build_execution_resource_reservations
@@ -185,6 +186,15 @@ def _validate_completed_seed_row(
     row: ValidatedScheduleRow,
     fact: ExecutionFact,
 ) -> None:
+    if fact.ledger_operation_ref is not None and (
+        not _resource_equal(row.machine_id, fact.actual_machine_id)
+        or not _resource_equal(row.operator_id, fact.actual_operator_id)
+    ):
+        raise _execution_guard_conflict(
+            "已完工的报工工序不能改掉实际设备或人员，本次没有写入新排程。",
+            reason="execution_completed_resource_moved",
+            op_id=fact.op_id,
+        )
     if fact.actual_start_time is not None and not _time_equal(row.start_time, fact.actual_start_time):
         raise _execution_guard_conflict(
             "已完工的工序不能被重排移动，本次没有写入新排程。请刷新后重新排。",
@@ -276,6 +286,7 @@ def validate_execution_guard_before_persist(
         expected_op_ids=execution_snapshot_op_ids,
         execution_facts=execution_facts,
     )
+    ensure_ledger_execution_schedulable(execution_facts)
     if not execution_guard_state_revisions:
         return
     _validate_unselected_resource_overlap(

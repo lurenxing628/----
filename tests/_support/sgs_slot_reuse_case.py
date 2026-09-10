@@ -14,6 +14,8 @@ BASE = datetime(2026, 9, 8, 8)
 class MemoryCalendar(CalendarEngine):
     def __init__(self):
         super().__init__(conn=None)
+        # This benchmark supplies its full calendar in memory, with no assigned shift profiles.
+        self.operator_shift_calendar = SimpleNamespace(apply_policy=lambda policy, operator_id: policy)
 
     def _resolve_calendar_row(self, date_str, op_id):
         day = datetime.strptime(date_str, "%Y-%m-%d")

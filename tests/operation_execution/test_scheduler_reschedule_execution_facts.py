@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -12,9 +13,10 @@ import pytest
 import core.services.scheduler.schedule_service as schedule_service_mod
 from core.infrastructure.errors import AppError, ValidationError
 from core.models.operation_execution_scope import OperationExecutionScope
-from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
+from core.models.schedule_plan_role import ROLE_ADOPTED, ROLE_CRITICAL_BEST, SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
 from core.services.scheduler.operation_execution_feedback_service import OperationExecutionFeedbackService
+from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
 from core.services.scheduler.schedule_service import ScheduleService
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
 from tests.schedule.service.test_scheduler_reschedule_execution_minimum_guard import (
@@ -82,14 +84,22 @@ def test_reschedule_records_execution_snapshot_and_execution_seed_source(tmp_pat
         conn.execute("UPDATE BatchOperations SET status = 'processing' WHERE id = 10")
         conn.execute("UPDATE BatchOperations SET status = 'pending' WHERE id = 20")
         conn.commit()
-        OperationExecutionFeedbackService(conn).start_operation(
+        started = OperationExecutionFeedbackService(conn).start_operation(
             _context(),
             event_time="2026-05-01 08:30:00",
             operator_id="O1",
             machine_id="M1",
         )
+        event_repo = OperationExecutionEventRepo(conn)
+        original_events = event_repo.list_events_by_scope(_execution_scope())
+        original_event, = original_events
+        assert (original_event.schedule_version, original_event.schedule_id, original_event.op_id,
+                original_event.batch_id, original_event.source_table, original_event.effective_plan_role,
+                original_event.scenario_id) == (1, 100, 10, "B1", SOURCE_SCHEDULE, ROLE_ADOPTED, None)
         original_optimize = schedule_service_mod.optimize_schedule
+        original_orchestrate = schedule_service_mod.orchestrate_schedule_run
         captured_calls = []
+        captured_comparisons = []
 
         def optimize_with_capture(**kwargs):
             captured_calls.append(
@@ -100,7 +110,13 @@ def test_reschedule_records_execution_snapshot_and_execution_seed_source(tmp_pat
             )
             return original_optimize(**kwargs)
 
+        def orchestrate_with_capture(*args, **kwargs):
+            outcome = original_orchestrate(*args, **kwargs)
+            captured_comparisons.append(outcome.candidate_comparison)
+            return outcome
+
         monkeypatch.setattr(schedule_service_mod, "optimize_schedule", optimize_with_capture)
+        monkeypatch.setattr(schedule_service_mod, "orchestrate_schedule_run", orchestrate_with_capture)
 
         result = ScheduleService(conn).run_schedule(
             ["B1"],
@@ -115,25 +131,65 @@ def test_reschedule_records_execution_snapshot_and_execution_seed_source(tmp_pat
             seeds = {int(seed["op_id"]): seed for seed in call["seed_results"]}
             assert seeds[10]["seed_source"] == "execution_fact"
             assert seeds[10]["state_revision"].startswith("10:1:")
+            assert seeds[10]["state_revision"] == started.state_revision
+            assert {field: seeds[10][field] for field in (
+                "op_id", "op_code", "batch_id", "seq", "source", "machine_id", "operator_id", "start_time", "end_time",
+            )} == {"op_id": 10, "op_code": "OP10", "batch_id": "B1", "seq": 10, "source": "internal",
+                   "machine_id": "M1", "operator_id": "O1", "start_time": datetime(2026, 5, 1, 8, 30),
+                   "end_time": datetime(2026, 5, 1, 9, 30)}
             graph_ready_context = call["graph_ready_context"]
             if graph_ready_context is not None:
                 assert 10 in graph_ready_context["fixed_op_ids"]
 
-        candidate_rows = conn.execute(
+        comparison, = captured_comparisons
+        assert comparison is not None and comparison.selection.critical_best_key is not None
+        critical, = [candidate for candidate in comparison.candidates
+                     if candidate.candidate_key == comparison.selection.critical_best_key]
+        assert critical.kind == "critical_chain" and critical.status == "completed"
+        version = int(result["version"])
+        selection, = conn.execute(
             """
-            SELECT rows.op_id, rows.lock_status
-            FROM ScheduleCandidateRows rows
+            SELECT selection.candidate_id, selection.source_table,
+                   candidate.candidate_key, candidate.candidate_kind, candidate.status
+            FROM ScheduleCandidateSelection selection
             JOIN ScheduleCandidate candidate
-              ON candidate.id = rows.candidate_id
-             AND candidate.version = rows.version
-            WHERE rows.version = ?
-              AND rows.op_id = 10
-              AND candidate.candidate_kind = 'critical_chain'
+              ON candidate.id = selection.candidate_id AND candidate.version = selection.version
+            WHERE selection.version = ? AND selection.role = ?
             """,
-            (int(result["version"]),),
+            (version, ROLE_CRITICAL_BEST),
         ).fetchall()
+        assert selection["candidate_kind"] == "critical_chain" and selection["status"] == "completed"
+        assert selection["candidate_key"] == critical.candidate_key
+        expected_source = (SOURCE_SCHEDULE if critical.candidate_key == comparison.selection.selected_candidate_key
+                           else SOURCE_CANDIDATE_ROWS)
+        assert selection["source_table"] == expected_source
+        query = SchedulePlanQueryService(conn)
+        resolution = query.resolve_existing_plan(version, ROLE_CRITICAL_BEST)
+        assert resolution.selected_role == ROLE_CRITICAL_BEST
+        assert (resolution.candidate_id, resolution.candidate_key, resolution.source_table) == (
+            selection["candidate_id"], critical.candidate_key, selection["source_table"])
+        plan_rows = query.list_plan_detail_rows_all_for_resolution(
+            version=version, source_table=resolution.source_table, candidate_id=resolution.candidate_id)
+        actual_results, candidate_rows = [], []
+        for row in plan_rows:
+            assert ("op_id" in row and "machine_id" in row and "operator_id" in row
+                    and "start_time" in row and "end_time" in row and "source" in row
+                    and "lock_status" in row and "op_code" in row and "batch_id" in row and "piece_id" in row)
+            actual_results.append((row["op_id"], row["machine_id"], row["operator_id"],
+                                   row["start_time"], row["end_time"], row["source"]))
+            if row["op_id"] == 10:
+                candidate_rows.append({"op_id": row["op_id"], "lock_status": row["lock_status"]})
+                assert (row["op_code"], row["batch_id"], row["piece_id"], row["machine_id"], row["operator_id"],
+                        row["start_time"], row["end_time"]) == (
+                            "OP10", "B1", "piece-a", "M1", "O1", "2026-05-01 08:30:00", "2026-05-01 09:30:00")
+        assert sorted(actual_results) == sorted(
+            (row.op_id, row.machine_id, row.operator_id, row.start_time.isoformat(sep=" "),
+             row.end_time.isoformat(sep=" "), row.source) for row in critical.results)
+        assert {row[0] for row in actual_results} == {10, 20}
         assert candidate_rows
+        assert len(candidate_rows) == 1
         assert {row["lock_status"] for row in candidate_rows} == {"locked"}
+        assert event_repo.list_events_by_scope(_execution_scope()) == original_events
 
         summary = _history_summary(conn, int(result["version"]))
         snapshot = summary["execution_snapshot"]

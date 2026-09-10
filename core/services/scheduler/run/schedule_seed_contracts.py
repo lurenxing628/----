@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.algorithm_contracts.schedule_point_evidence import PointSeedResult, SchedulePointEvidence
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithms import ScheduleResult
 from core.algorithms.greedy.seed import _identity_int, _invalid_identity_supplied, with_seed_external_group_metadata
@@ -41,6 +43,9 @@ def _coerce_seed_time_range(item: Dict[str, Any], *, idx: int) -> Tuple[Any, Any
         raise TypeError(f"第 {idx + 1} 条已有排产记录的开始时间和结束时间必须是有效时间。")
     try:
         valid_time_range = start_time < end_time
+        evidence = item.get("_point_evidence")
+        if start_time == end_time and type(evidence) is SchedulePointEvidence:
+            valid_time_range = evidence.matches(SimpleNamespace(**item))
     except Exception as exc:
         raise TypeError(f"第 {idx + 1} 条已有排产记录的时间区间不正确。") from exc
     if not valid_time_range:
@@ -83,6 +88,8 @@ def coerce_seed_result_item(item: Any, *, idx: int) -> ScheduleResult:
     )
     if "_external_group_metadata" in item:
         return with_seed_external_group_metadata(result, item["_external_group_metadata"])
+    if start_time == end_time:
+        return PointSeedResult(result, item["_point_evidence"])
     return result
 
 

@@ -13,6 +13,7 @@ from core.models.operation_execution_event import (
     EXECUTION_STATUS_PROCESSING,
 )
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
+from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable
 from core.services.scheduler.execution.execution_snapshot import ExecutionSnapshot
 
 from .schedule_execution_resource_facts import collect_resource_execution_facts
@@ -154,8 +155,23 @@ def _collect_execution_guardrails(
     *,
     prev_version: int,
 ) -> Tuple[Dict[int, ExecutionFact], Set[int], Set[int], List[Dict[str, Any]], Dict[int, str], ExecutionSnapshot]:
-    op_by_id: Dict[int, BatchOperation] = {_op_id(op): op for op in operations if _op_id(op) > 0}
     facts, _, execution_snapshot = collect_resource_execution_facts(svc, prev_version=prev_version)
+    return _execution_guardrail_tuple(svc, operations, facts, execution_snapshot)
+
+
+def build_execution_guardrails_from_projections(svc, operations, *, prev_version, execution_projections):
+    """Consume an explicit AJ snapshot without reloading or reaggregating reports."""
+    if execution_projections is None:
+        raise ValueError("必须显式传入 AJ 执行投影；无事实时传空列表。")
+    facts, _, execution_snapshot = collect_resource_execution_facts(
+        svc, prev_version=prev_version, execution_projections=execution_projections,
+    )
+    return _execution_guardrail_tuple(svc, operations, facts, execution_snapshot)
+
+
+def _execution_guardrail_tuple(svc, operations, facts, execution_snapshot):
+    op_by_id: Dict[int, BatchOperation] = {_op_id(op): op for op in operations if _op_id(op) > 0}
+    ensure_ledger_execution_schedulable(facts)
     fixed_op_ids = _execution_status_op_ids(facts, (EXECUTION_STATUS_PROCESSING, EXECUTION_STATUS_PAUSED)) & set(op_by_id)
     completed_op_ids = _execution_status_op_ids(facts, (EXECUTION_STATUS_COMPLETED,)) & set(op_by_id)
     _raise_if_exception_facts(facts)

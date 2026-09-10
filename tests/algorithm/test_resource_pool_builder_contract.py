@@ -74,8 +74,11 @@ def test_build_resource_pool_disabled_sets_attempted_false() -> None:
     }
 
 
-def test_build_resource_pool_success_filters_active_matching_resources() -> None:
+def test_build_resource_pool_success_filters_active_matching_resources(schema_conn) -> None:
     svc = _StubSvc()
+    svc.conn = schema_conn
+    schema_conn.execute("INSERT INTO Operators(operator_id,name,status) VALUES ('OP_1','Legacy operator','active')")
+    schema_conn.commit()
     svc.machine_repo = SimpleNamespace(
         list=lambda status: [
             SimpleNamespace(machine_id="MC_1", op_type_id="OT_A"),

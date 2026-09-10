@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from core.models.operation_execution_event import (
     EXECUTION_STATUS_NOT_STARTED,
     parse_operation_event_time,
 )
 from core.models.operation_execution_scope import OperationExecutionScope
+from core.models.workbench_execution import ExecutionProjection
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
 
+from .execution_ledger_adapter import adapt_ledger_facts, ledger_read_snapshot
 from .operation_execution_scope_read import scopes_by_op_id_for_plan_rows
 
 
@@ -48,6 +50,11 @@ class ExecutionFact:
     source_table: Optional[str] = None
     effective_plan_role: Optional[str] = None
     scenario_id: Optional[str] = None
+    ledger_operation_ref: Optional[str] = None
+    ledger_execution_state: Optional[str] = None
+    remaining_quantity: Optional[int] = None
+    execution_effective_intervals: Tuple[Tuple[datetime, datetime], ...] = ()
+    execution_protection_reasons: Tuple[str, ...] = ()
 
 
 def _state_value(state, attr: str):
@@ -110,8 +117,25 @@ class ExecutionFactProvider:
     def facts_by_op_id(self, op_ids: Sequence[int]) -> Dict[int, ExecutionFact]:
         raise ValueError("现场执行事实必须按完整计划身份读取，不能只按 op_id 聚合。")
 
-    def facts_by_scope(self, scopes: Sequence[OperationExecutionScope]) -> Dict[OperationExecutionScope, ExecutionFact]:
+    def facts_by_scope(
+        self, scopes: Sequence[OperationExecutionScope], *,
+        execution_projections: Optional[Sequence[ExecutionProjection]] = None,
+    ) -> Dict[OperationExecutionScope, ExecutionFact]:
         normalized = list(dict.fromkeys(scopes or ()))
+        # The injectable legacy repository also supports connection-free unit tests.
+        if self.conn is None:
+            if execution_projections is not None:
+                raise ValueError("执行投影适配需要真实连接核对永久计划身份。")
+            return self._legacy_facts(normalized)
+        with ledger_read_snapshot(self.conn) as ledger:
+            facts = self._legacy_facts(normalized)
+            if ledger is None:
+                if execution_projections:
+                    raise ValueError("旧版本数据库不能接收执行台账投影。")
+                return facts
+            return adapt_ledger_facts(ledger, facts, execution_projections=execution_projections)
+
+    def _legacy_facts(self, normalized: Sequence[OperationExecutionScope]) -> Dict[OperationExecutionScope, ExecutionFact]:
         states = self.event_repo.aggregate_states_by_scopes(normalized)
         return {
             scope: _fact_from_state(
@@ -127,8 +151,9 @@ class ExecutionFactProvider:
         scopes: Sequence[OperationExecutionScope],
         *,
         include_op_ids: Sequence[int] = (),
+        execution_projections: Optional[Sequence[ExecutionProjection]] = None,
     ) -> Dict[int, ExecutionFact]:
-        facts_by_scope = self.facts_by_scope(scopes)
+        facts_by_scope = self.facts_by_scope(scopes, execution_projections=execution_projections)
         out: Dict[int, ExecutionFact] = {}
         scopes_by_op_id: Dict[int, OperationExecutionScope] = {}
         for scope, fact in facts_by_scope.items():
@@ -149,11 +174,13 @@ class ExecutionFactProvider:
         plan_fields: Mapping[str, Any],
         *,
         include_op_ids: Sequence[int] = (),
+        execution_projections: Optional[Sequence[ExecutionProjection]] = None,
     ) -> Dict[int, ExecutionFact]:
         scopes_by_op_id = scopes_by_op_id_for_plan_rows(rows, plan_fields)
         return self.facts_by_op_id_for_scopes(
             list(scopes_by_op_id.values()),
             include_op_ids=include_op_ids,
+            execution_projections=execution_projections,
         )
 
 

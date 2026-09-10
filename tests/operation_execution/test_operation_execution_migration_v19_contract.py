@@ -177,9 +177,9 @@ def test_ensure_schema_rejects_current_version_with_stale_v18_event_contract(tmp
                 version INTEGER NOT NULL,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
-            INSERT INTO SchemaVersion(id, version) VALUES (1, 19);
             """
         )
+        conn.execute("INSERT INTO SchemaVersion(id, version) VALUES (1, ?)", (CURRENT_SCHEMA_VERSION,))
         conn.commit()
         assert not detect_schema_is_current(conn)
     finally:

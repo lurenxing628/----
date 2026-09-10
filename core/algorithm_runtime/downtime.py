@@ -43,13 +43,15 @@ class SegmentOverlapIndex:
     - len() 返回原始段数（含无效段），与旧 _max_shift_count 的口径一致。
     """
 
-    __slots__ = ("_segments", "_starts", "_prefix_max_ends", "_scanned_once")
+    __slots__ = ("_segments", "_starts", "_prefix_max_ends", "_scanned_once", "_covered_starts", "_covered_ends")
 
     def __init__(self, segments: Optional[Sequence[Tuple[datetime, datetime]]]) -> None:
         self._segments = segments or ()
         self._starts: Optional[Sequence[datetime]] = None
         self._prefix_max_ends: Sequence[datetime] = ()
         self._scanned_once = False
+        self._covered_starts: Optional[Sequence[datetime]] = None
+        self._covered_ends: Sequence[datetime] = ()
 
     def __len__(self) -> int:
         return len(self._segments)
@@ -89,6 +91,30 @@ class SegmentOverlapIndex:
         self._starts = starts
         self._prefix_max_ends = tuple(accumulate(ends, max))
         return starts
+
+    def covered_end(self, instant: datetime) -> Optional[datetime]:
+        """End of the continuous occupied block containing this instant.
+
+        This is intentionally separate from shift_end's exact one-hop contract.
+        Touching positive intervals cover their common boundary without a gap.
+        """
+        if self._covered_starts is None:
+            if self._starts is None:
+                self._materialize()
+            merged: List[Tuple[datetime, datetime]] = []
+            for start, end in self._segments:
+                if end <= start:
+                    continue
+                if merged and start <= merged[-1][1]:
+                    merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+                else:
+                    merged.append((start, end))
+            self._covered_starts = tuple(row[0] for row in merged)
+            self._covered_ends = tuple(row[1] for row in merged)
+        index = bisect.bisect_right(self._covered_starts, instant) - 1
+        if index >= 0 and instant < self._covered_ends[index]:
+            return self._covered_ends[index]
+        return None
 
 
 def _drop_invalid_segments(

@@ -1,0 +1,73 @@
+(function () {
+  'use strict';
+  const M = window.ActualGanttModel, { Button } = window.ResourceControls;
+  function emptyReports(row, mode) {
+    const execution = row.item.execution;
+    if (!execution) return '执行记录不可用';
+    if (mode !== 'batch') {
+      const resource = M.views[mode];
+      if (execution.reports.length) {
+        const field = 'actual_' + mode + '_ref', bound = execution.reports.some(report => report[field]);
+        const unbound = execution.reports.some(report => !report[field]);
+        return '本' + resource + '暂无报工；报工在' + (bound ? '其他' + resource + (unbound ? '及' : '') : '') + (unbound ? '“' + resource + '未填写”分组' : '下');
+      }
+      return '本' + resource + '暂无报工' + (execution.legacy_facts.length ? '；工序有旧执行事实，非逐次报工' : '');
+    }
+    return execution.legacy_facts.length ? '旧执行事实保留，非逐次报工' : '暂无实际报工';
+  }
+  function Bar({ mark, row, model, width, selected, onSelect, onHover, canvasPainted = false }) {
+    const x = (mark.start - model.start) / (model.end - model.start) * width, size = (mark.end - mark.start) / (model.end - model.start) * width;
+    const kind = { actual: 'act', plan: 'plan', remaining: 'remaining' }[mark.kind];
+    const title = M.markTitle(mark, row.item, model.labels);
+    function hover(event) {
+      if (!event) { onHover(null); return; }
+      const rect = event.currentTarget.getBoundingClientRect();
+      onHover({ item: row.item, report: mark.report, title, x: rect.right, y: rect.top });
+    }
+    if (mark.kind === 'plan-point' || mark.kind === 'point') return <window.PointGantt.Marker
+      task={mark.report ? { task_ref: mark.report.report_ref, start: mark.report.actual_start } : row.item.task}
+      x={x} top={mark.y} title={title} tone={(mark.kind === 'plan-point' ? 'plan' : '') + (canvasPainted ? ' fg-canvas-point' : '')} selected={selected === row.item.task.task_ref}
+      data-actual-mark={mark.kind} data-report-ref={mark.report && mark.report.report_ref} data-task-ref={row.item.task.task_ref}
+      onSelect={() => onSelect(row.item, mark.report)} onHover={hover} onFocus={hover} onBlur={() => onHover(null)} />;
+    return <button className={'fg-mark fg-' + kind} data-actual-mark={mark.kind} data-report-ref={mark.report && mark.report.report_ref} data-task-ref={row.item.task.task_ref}
+      style={{ left: x, width: size, top: mark.y, height: mark.height }}
+      title={title} aria-label={title} aria-pressed={selected === row.item.task.task_ref} onClick={() => onSelect(row.item, mark.report)}
+      onMouseEnter={hover} onMouseLeave={() => onHover(null)} onFocus={hover} onBlur={() => onHover(null)}>
+      {size >= 55 && mark.kind !== 'plan' && <><span>{mark.report ? mark.report.report_no : '剩余 ' + M.number(row.item.execution.remaining_quantity) + ' 件'}</span>
+        {size >= 150 && <span>{mark.report ? M.number(mark.report.completed_quantity) + ' 件 · ' + M.number(mark.report.effective_processing_hours) + 'h' : M.time(row.item.execution.remaining_plan.start)}</span>}</>}
+    </button>;
+  }
+  function Rows({ model, view, width, viewport, left, top, height, labelWidth, dense, onSelect, onHover, patch }) {
+    const visible = M.visibleRows(model.rows, Math.max(0, top - 100), top + height + 100), ticks = M.ticks(model, width, left, viewport);
+    return visible.map(row => {
+      const style = { top: row.top + 52, height: row.height, width: width + labelWidth };
+      if (row.kind === 'group') return <div key={row.key} className="fg-virtual-row fg-group-row" style={style} data-resource={row.group.id}>
+        <div className="fg-frozen"><Button className="fg-icon-button" icon={view.collapsed[row.group.id] ? 'chevron-right' : 'chevron-down'} aria-label={(view.collapsed[row.group.id] ? '展开 ' : '折叠 ') + row.group.label}
+          aria-expanded={!view.collapsed[row.group.id]} onClick={() => patch({ collapsed: { ...view.collapsed, [row.group.id]: !view.collapsed[row.group.id] } })} />
+          <strong className="fg-resource-label" title={row.group.label}>{row.group.label}</strong></div><div className="fg-group-summary">{row.group.members.size} 道工序 · {model.executionAvailable ? row.group.reportCount + ' 次报工 · ' + (row.group.knownHours === null ? '实报工时未知' : '已知实报工时 ' + M.number(row.group.knownHours) + 'h') + (row.group.unknownHours ? ' · ' + row.group.unknownHours + ' 条工时待补' : '') + (row.group.legacyCount ? ' · ' + row.group.legacyCount + ' 条旧事实' : '') : '执行记录不可用'}</div></div>;
+      const { item } = row, e = item.execution, t = item.task, marks = M.marks(row);
+      const renderMark = (mark, canvasPainted = false) => <Bar key={mark.key} {...{ mark, row, model, width, onSelect, onHover, canvasPainted }} selected={view.selected} />;
+      const pending = window.PointContract.isPoint(t) ? '计划点已安排 · 完成待确认' : '待续排';
+      const nowX = (model.asOf - model.start) / (model.end - model.start) * width;
+      const timing = M.deadlines(item, M.wire(model.asOf));
+      return <div key={row.key} className={'fg-virtual-row' + (view.selected === t.task_ref ? ' is-selected' : '')} data-task-row={t.task_ref} data-kind={row.kind} style={style}>
+        <div className="fg-frozen"><button className="fg-task-select" title={M.taskLabel(t)} onClick={() => onSelect(item, row.reports[0])}>{M.taskLabel(t)}</button>
+          <span className="fg-row-caption" title={'计划应做 ' + M.number(t.quantity) + ' 件 · 批次 ' + M.number(t.batch_quantity) + ' 件'}>{row.kind === 'remaining' ? '执行剩余 ' + M.number(e.remaining_quantity) + ' 件' : e ? M.states[e.execution_state] + ' · 已知 ' + M.number(e.known_completed_quantity) + ' / 计划 ' + M.number(t.quantity) : '计划应做 ' + M.number(t.quantity) + ' 件 · 执行记录不可用'}</span>
+          <span className="fg-row-caption" title={!row.reports.length && row.kind === 'actual' ? emptyReports(row, view.mode) : undefined}>{row.kind === 'remaining' ? e.remaining_plan ? '已有剩余安排' : pending : row.reports.length ? row.reports.length + ' 次报工' + (row.trackCount > 1 ? ' · 分行 ' + row.track + '/' + row.trackCount : '') : emptyReports(row, view.mode)}</span>
+          {row.kind !== 'remaining' && (timing.finishLate || timing.unclosed || timing.forecastLate) && <span className="fg-row-caption">{timing.finishLate ? '已完晚' : timing.unclosed ? '到期未确认完成' : '剩余安排预计晚'}</span>}</div>
+        <div className="fg-track" style={{ width }}>
+          {ticks.map(tick => <i className="fg-gridline" key={tick.at} style={{ left: tick.x }} />)}
+          {nowX >= 0 && nowX <= width && <i className="fg-now" style={{ left: nowX }} aria-hidden="true" />}
+          {row.kind === 'actual' && !window.PointContract.isPoint(t) && (row.baseline || row.reports.length > 0) && <i className="fg-baseline-end" data-plan-end={t.end} style={{ left: (M.instant(t.end) - model.start) / (model.end - model.start) * width }} title={'计划完工 ' + M.time(t.end)} aria-hidden="true" />}
+          {(dense || marks.length > 50) ? <window.ActualGanttCanvas.DenseRow {...{ row, model, width, viewport, left, onSelect, onHover, renderMark }} selected={view.selected} /> :
+            marks.filter(mark => (mark.end - model.start) / (model.end - model.start) * width >= left - 12 && (mark.start - model.start) / (model.end - model.start) * width <= left + viewport + 12)
+              .map(mark => renderMark(mark))}
+          {row.kind === 'remaining' && !e.remaining_plan && <span className="fg-wait">{pending} · {M.number(e.remaining_quantity)} 件</span>}
+          {row.kind === 'actual' && !row.reports.length && <span className="fg-wait">{emptyReports(row, view.mode)}</span>}
+          {row.reports.some(r => !r.actual_start) && <span className="fg-wait">本次开工待补，未绘制时段</span>}
+        </div></div>;
+    });
+  }
+  window.ActualGanttRows = Rows;
+  window.ActualGanttBar = Bar;
+})();

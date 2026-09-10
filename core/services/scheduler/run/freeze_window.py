@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.algorithms.value_domains import INTERNAL
 from core.infrastructure.errors import ValidationError
 from core.models.enums import YesNo
 from core.models.scheduler_degradation_messages import (
@@ -17,6 +16,15 @@ from .freeze_window_prefixes import (
     group_seed_operations_by_batch,
     max_seq_by_batch,
     prefix_op_ids_for_batch,
+)
+from .freeze_window_seed_rows import (
+    build_seed_results as _build_seed_results,
+)
+from .freeze_window_seed_rows import (
+    cache_seed_for_prefix as _cache_seed_for_prefix,
+)
+from .freeze_window_seed_rows import (
+    discard_seed_cache as _discard_seed_cache,
 )
 
 _FREEZE_DEGRADATION_CODE = "freeze_seed_unavailable"
@@ -170,12 +178,14 @@ def _load_schedule_map(
     op_ids: List[int],
     start_str: str,
     freeze_end_str: str,
+    schedule_rows_reader: Any = None,
 ) -> _LoadedScheduleMapOutcome:
     schedule_map: Dict[int, Dict[str, Any]] = {}
     invalid_row_count = 0
     invalid_row_samples: List[str] = []
     duplicate_op_ids: Set[int] = set()
-    rows = svc.schedule_repo.list_version_rows_by_op_ids_start_range(
+    reader = schedule_rows_reader if schedule_rows_reader is not None else svc.schedule_repo.list_version_rows_by_op_ids_start_range
+    rows = reader(
         version=int(prev_version),
         op_ids=op_ids,
         start_time=start_str,
@@ -204,62 +214,6 @@ def _load_schedule_map(
         invalid_row_count=int(invalid_row_count),
         invalid_row_samples=invalid_row_samples,
     )
-
-
-def _cache_seed_for_prefix(
-    svc,
-    *,
-    prefix: List[int],
-    schedule_map: Dict[int, Dict[str, Any]],
-    seed_tmp: Dict[int, Dict[str, Any]],
-) -> int:
-    for oid in prefix:
-        row = schedule_map.get(int(oid)) or {}
-        st = svc._normalize_datetime(row.get("start_time"))
-        et = svc._normalize_datetime(row.get("end_time"))
-        if not st or not et or et <= st:
-            return int(oid)
-        seed_tmp[int(oid)] = {"row": row, "start_time": st, "end_time": et}
-    return 0
-
-
-def _discard_seed_cache(prefix: List[int], seed_tmp: Dict[int, Dict[str, Any]]) -> None:
-    for oid in prefix:
-        seed_tmp.pop(int(oid), None)
-
-
-def _build_seed_results(
-    frozen_op_ids: Set[int],
-    *,
-    op_by_id: Dict[int, Any],
-    seed_tmp: Dict[int, Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    seed_results: List[Dict[str, Any]] = []
-    for oid in sorted(frozen_op_ids):
-        op0 = op_by_id.get(oid)
-        seed = seed_tmp.get(oid)
-        if not op0 or not seed:
-            continue
-        row = seed.get("row")
-        st = seed.get("start_time")
-        et = seed.get("end_time")
-        if not row or not st or not et:
-            continue
-        seed_results.append(
-            {
-                "op_id": oid,
-                "op_code": op0.op_code,
-                "batch_id": op0.batch_id,
-                "seq": int(op0.seq or 0),
-                "machine_id": row.get("machine_id"),
-                "operator_id": row.get("operator_id"),
-                "start_time": st,
-                "end_time": et,
-                "source": (op0.source or INTERNAL).strip(),
-                "op_type_name": getattr(op0, "op_type_name", None),
-            }
-        )
-    return seed_results
 
 
 def _empty_freeze_seed_result(
@@ -321,6 +275,7 @@ def _load_previous_schedule_for_freeze(
     strict_mode: bool,
     freeze_meta: Dict[str, Any],
     warnings: List[str],
+    schedule_rows_reader: Any = None,
 ) -> Optional[_LoadedScheduleMapOutcome]:
     try:
         load_outcome = _load_schedule_map(
@@ -329,6 +284,7 @@ def _load_previous_schedule_for_freeze(
             op_ids=scope.op_ids_all,
             start_str=scope.start_str,
             freeze_end_str=scope.freeze_end_str,
+            schedule_rows_reader=schedule_rows_reader,
         )
     except Exception:
         logger = getattr(svc, "logger", None)
@@ -370,6 +326,7 @@ def _apply_freeze_prefixes(
     freeze_meta: Dict[str, Any],
     warnings: List[str],
     strict_mode: bool,
+    point_validator: Any = None,
 ) -> Set[int]:
     frozen_op_ids: Set[int] = set()
     max_seq_lookup = max_seq_by_batch(schedule_map, scope.op_by_id)
@@ -389,7 +346,8 @@ def _apply_freeze_prefixes(
             )
             continue
 
-        invalid_oid = _cache_seed_for_prefix(svc, prefix=prefix, schedule_map=schedule_map, seed_tmp=seed_tmp)
+        invalid_oid = _cache_seed_for_prefix(svc, prefix=prefix, schedule_map=schedule_map, seed_tmp=seed_tmp,
+                                             point_validator=point_validator)
         if invalid_oid:
             _record_freeze_degradation(
                 freeze_meta,
@@ -440,6 +398,8 @@ def build_freeze_window_seed(
     reschedulable_operations: Optional[List[Any]] = None,
     strict_mode: bool = False,
     meta: Optional[Dict[str, Any]] = None,
+    point_validator: Any = None,
+    schedule_rows_reader: Any = None,
 ) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
     warnings: List[str] = []
     freeze_meta = _init_freeze_meta(meta)
@@ -465,6 +425,7 @@ def build_freeze_window_seed(
         strict_mode=bool(strict_mode),
         freeze_meta=freeze_meta,
         warnings=warnings,
+        schedule_rows_reader=schedule_rows_reader,
     )
     if load_outcome is None:
         return _empty_freeze_seed_result(freeze_meta, warnings)
@@ -478,6 +439,7 @@ def build_freeze_window_seed(
         freeze_meta=freeze_meta,
         warnings=warnings,
         strict_mode=bool(strict_mode),
+        point_validator=point_validator,
     )
     return _finish_freeze_seed_result(
         frozen_op_ids,

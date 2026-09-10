@@ -9,6 +9,7 @@ from typing import Any, Mapping, NoReturn, Optional, Sequence, Tuple
 from core.errors import ValidationError
 from core.shared.field_labels import display_field_label
 
+from .busy_block_skip import advance_busy_block
 from .downtime import SegmentOverlapIndex
 from .slot_overlap_reuse import SlotOverlapReuse
 
@@ -347,6 +348,11 @@ def estimate_internal_slot(
                 end_dt_exclusive=end_dt_exclusive,
                 efficiency_fallback_used=efficiency_fallback_used,
             )
+
+        if attempt.end_time > attempt.start_time:
+            shift_to = advance_busy_block(calendar, earliest=earliest, shift_to=shift_to,
+                segment_groups=segment_groups, total_base=total_base, priority=priority,
+                operator_id=operator_id, abort_after=abort_after)
 
         shift_count += 1
         if shift_count > max_shifts:

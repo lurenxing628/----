@@ -236,6 +236,7 @@ def _run_plan_selection(
     schedule_input: ScheduleRunInput,
     strict_mode: bool,
     optimize_schedule_fn: Any,
+    candidate_comparison_fn: Any = None,
 ) -> Tuple[_NormalizedOptimizerOutcome, Optional[Dict[str, Any]], Optional[Dict[str, Any]], Any]:
     if not _candidate_comparison_enabled(schedule_input.cfg):
         optimizer_outcome, graph_public, graph_diagnostics = _run_optimizer_once(
@@ -245,7 +246,7 @@ def _run_plan_selection(
             logger=svc.logger,
         )
         return optimizer_outcome, graph_public, graph_diagnostics, None
-    candidate_comparison = run_candidate_comparison(
+    candidate_comparison = (candidate_comparison_fn or run_candidate_comparison)(
         schedule_input=schedule_input,
         optimize_schedule_fn=optimize_schedule_fn,
         run_time_budget_seconds=getattr(schedule_input, "run_time_budget_seconds", None),
@@ -289,6 +290,8 @@ def orchestrate_schedule_run(
     allocate_version: bool = True,
     version_override: Any = None,
     persist_schedule_fn: Any = None,
+    point_validator: Any = None,
+    candidate_comparison_fn: Any = None,
 ) -> ScheduleOrchestrationOutcome:
     if callable(persist_schedule_fn) and not allocate_version:
         raise ValueError("持久化排产必须分配新版本号，不能在 allocate_version=False 时传入 persist_schedule_fn。")
@@ -297,6 +300,7 @@ def orchestrate_schedule_run(
         schedule_input=schedule_input,
         strict_mode=bool(strict_mode),
         optimize_schedule_fn=optimize_schedule_fn,
+        candidate_comparison_fn=candidate_comparison_fn,
     )
     allowed_op_ids_raw = _allowed_schedule_output_op_ids(schedule_input)
     validated_schedule_payload = build_validated_schedule_payload(
@@ -305,6 +309,7 @@ def orchestrate_schedule_run(
         operations=_payload_validation_operations(schedule_input),
         missing_internal_resource_op_ids=set(getattr(schedule_input, "missing_internal_resource_op_ids", None) or set()),
         schedule_errors=list(getattr(optimizer_outcome.summary, "errors", None) or []),
+        point_validator=point_validator,
     )
 
     warning_merge_status = _merge_summary_warnings(

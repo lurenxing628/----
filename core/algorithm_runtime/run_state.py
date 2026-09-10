@@ -16,7 +16,7 @@ from .slot_overlap_reuse import SlotReuseTimeline
 class ScheduleRunState:
     base_time: datetime
     batch_progress: Dict[str, datetime] = field(default_factory=dict)
-    external_group_cache: Dict[Tuple[str, str], Tuple[datetime, datetime]] = field(default_factory=dict)
+    external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]] = field(default_factory=dict)
     machine_timeline: Dict[str, List[Tuple[datetime, datetime]]] = field(default_factory=SlotReuseTimeline)
     operator_timeline: Dict[str, List[Tuple[datetime, datetime]]] = field(default_factory=dict)
     machine_busy_hours: Dict[str, float] = field(default_factory=dict)
@@ -42,7 +42,7 @@ class ScheduleRunState:
         *,
         base_time: datetime,
         batch_progress: Dict[str, datetime],
-        external_group_cache: Dict[Tuple[str, str], Tuple[datetime, datetime]],
+        external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
         machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
         operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
         machine_busy_hours: Dict[str, float],

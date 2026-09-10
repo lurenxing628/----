@@ -116,6 +116,10 @@ def test_schedule_service_passes_algo_stats_to_summary(schema_conn) -> None:
     schedule_service_mod.persist_schedule = lambda *_args, **_kwargs: None
 
     conn = schema_conn
+    conn.execute("INSERT INTO Operators(operator_id,name,status) VALUES ('OP001','Stats operator','active')")
+    conn.execute("INSERT INTO Machines(machine_id,name,status) VALUES ('MC001','Stats machine','active')")
+    conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('OP001','MC001')")
+    conn.commit()
     try:
         ConfigService(conn, logger=None, op_logger=None).restore_default()
         svc = ScheduleService(conn)

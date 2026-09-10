@@ -6,6 +6,7 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.models import BatchOperation
 from core.models.enums import BatchOperationStatus, MachineStatus, MergeMode, OperatorStatus, SupplierStatus
 from core.services.common.strict_parse import parse_required_float
+from core.services.personnel.operator_qualification import OperatorQualificationService, require_machine_authorization
 
 _OPERATION_NOT_FOUND_MESSAGE = "这道工序不存在或已被删除，请刷新批次详情后重试。"
 
@@ -94,14 +95,11 @@ def _validate_operator_available(svc, operator_id_text: Optional[str]) -> None:
 
 
 def _validate_operator_machine_match(svc, *, mc_id: Optional[str], operator_id_text: Optional[str], op: BatchOperation) -> None:
-    if not (mc_id and operator_id_text):
+    if not operator_id_text:
         return
-    if svc.operator_machine_repo.exists(operator_id_text, mc_id):
-        return
-    raise ValidationError(
-        f"人员“{operator_id_text}”未被配置为可操作设备“{mc_id}”。"
-        "请先在【人员管理】或【设备管理】中维护人机关联后再排产。",
-        field="设备/人员",
+    require_machine_authorization(svc.operator_machine_repo, operator_id_text, mc_id)
+    OperatorQualificationService(svc.conn, logger=svc.logger).require(
+        operator_id=operator_id_text, op_type_id=op.op_type_id, machine_id=None,
     )
 
 
@@ -224,9 +222,6 @@ def update_internal_operation(
     # 人员存在性 + 在岗性
     _validate_operator_available(svc, operator_id_text)
 
-    # 人员-设备匹配性（双向约束）：两者都选择时必须已维护可操作关联
-    _validate_operator_machine_match(svc, mc_id=mc_id, operator_id_text=operator_id_text, op=op)
-
     sh, uh = _normalize_hours(svc, setup_hours=setup_hours, unit_hours=unit_hours)
 
     updates: Dict[str, Any] = {
@@ -241,6 +236,7 @@ def update_internal_operation(
             updates["status"] = st
 
     with svc.tx_manager.transaction():
+        _validate_operator_machine_match(svc, mc_id=mc_id, operator_id_text=operator_id_text, op=op)
         svc.op_repo.update(op_id_int, updates)
 
     return svc._get_op_or_raise(op_id_int)

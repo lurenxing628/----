@@ -4,6 +4,7 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from core.algorithm_contracts.schedule_point_evidence import PointSeedResult, point_seed_valid
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL
 from core.algorithm_runtime.algo_stats import increment_counter
@@ -14,37 +15,43 @@ class _SeedScheduleResult(ScheduleResult):
     # Internal transport only: not a dataclass field or part of the public result schema.
     __slots__ = ("_external_group_identity",)
 
-    def __init__(self, result: ScheduleResult, identity: Tuple[int, str, str]) -> None:
+    def __init__(self, result: ScheduleResult, identity: Tuple[int, str, str, Optional[str]]) -> None:
         super().__init__(**asdict(result))
         self._external_group_identity = identity
 
 
 def with_seed_external_group_metadata(result: ScheduleResult, metadata: Any) -> ScheduleResult:
-    if not isinstance(metadata, dict) or set(metadata) != {"op_id", "batch_id", "ext_group_id"}:
+    if not isinstance(metadata, dict) or set(metadata) not in (
+        {"op_id", "batch_id", "ext_group_id"}, {"op_id", "batch_id", "ext_group_id", "piece_id"},
+    ):
         raise ValidationError("冻结外协种子的组身份资料不完整，系统已停止排产。", field="seed_results")
     op_id = _identity_int(metadata["op_id"])
     batch_id, group_id = metadata["batch_id"], metadata["ext_group_id"]
     if op_id <= 0 or not all(isinstance(value, str) and value.strip() for value in (batch_id, group_id)):
         raise ValidationError("冻结外协种子的组身份资料无效，系统已停止排产。", field="seed_results")
-    seed = _SeedScheduleResult(result, (op_id, batch_id.strip(), group_id.strip()))
+    piece = metadata.get("piece_id")
+    if "piece_id" in metadata and (type(piece) is not str or not piece or piece.strip() != piece):
+        raise ValidationError("Frozen piece identity must be canonical.", field="seed_results")
+    seed = _SeedScheduleResult(result, (op_id, batch_id.strip(), group_id.strip(), piece))
     seed_external_group_key(seed)
     return seed
 
 
-def seed_external_group_key(result: ScheduleResult) -> Optional[Tuple[str, str]]:
+def seed_external_group_key(result: ScheduleResult) -> Optional[Tuple[str, ...]]:
     if not isinstance(result, _SeedScheduleResult):
         return None
-    op_id, batch_id, group_id = result._external_group_identity
+    op_id, batch_id, group_id, piece = result._external_group_identity
     if (
         _identity_int(result.op_id) != op_id
         or str(result.batch_id or "").strip() != batch_id
         or str(result.source or "").strip().lower() != EXTERNAL
     ):
         raise ValidationError("冻结外协种子的组身份与工序不一致，系统已停止排产。", field="seed_results")
-    return batch_id, group_id
+    key = batch_id, group_id
+    return key if piece is None else key + (piece,)
 
 
-def seed_external_group_keys(seed_results: List[ScheduleResult]) -> Dict[int, Tuple[str, str]]:
+def seed_external_group_keys(seed_results: List[ScheduleResult]) -> Dict[int, Tuple[str, ...]]:
     keys = {}
     for result in seed_results:
         key = seed_external_group_key(result)
@@ -54,7 +61,7 @@ def seed_external_group_keys(seed_results: List[ScheduleResult]) -> Dict[int, Tu
 
 
 def seed_result_for_output(result: ScheduleResult) -> ScheduleResult:
-    if isinstance(result, _SeedScheduleResult):
+    if isinstance(result, (_SeedScheduleResult, PointSeedResult)):
         return ScheduleResult(**asdict(result))
     return result
 
@@ -159,6 +166,8 @@ def _invalid_time_window_reason(seed_result: Any) -> Optional[str]:
         return "dropped_bad_time_type"
     try:
         if seed_result.end_time > seed_result.start_time:
+            return None
+        if point_seed_valid(seed_result):
             return None
     except TypeError:
         return "dropped_bad_time_incomparable"

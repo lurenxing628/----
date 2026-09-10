@@ -161,7 +161,7 @@ class GreedyScheduler:
         op: Any,
         batch: Any,
         batch_progress: Dict[str, datetime],
-        external_group_cache: Dict[Tuple[str, str], Tuple[datetime, datetime]],
+        external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
         base_time: datetime,
         errors: List[str],
         end_dt_exclusive: Optional[datetime],
@@ -413,11 +413,12 @@ def _apply_seed_results(*, state: ScheduleRunState, seed_results: List[ScheduleR
 
 
 def _validate_seed_result(result: ScheduleResult) -> None:
+    from core.algorithm_contracts.schedule_point_evidence import point_seed_valid
     if not result:
         raise ValidationError("已有排产记录无效，系统已停止排产。", field="seed_results")
     if not isinstance(result.start_time, datetime) or not isinstance(result.end_time, datetime):
         raise ValidationError("已有排产记录的开始时间和结束时间必须是有效时间。", field="seed_results")
-    if result.end_time <= result.start_time:
+    if result.end_time <= result.start_time and not point_seed_valid(result):
         raise ValidationError("已有排产记录的开始时间必须早于结束时间。", field="seed_results")
     op_id = _identity_int(getattr(result, "op_id", 0))
     if op_id <= 0:
@@ -425,6 +426,10 @@ def _validate_seed_result(result: ScheduleResult) -> None:
 
 
 def _freeze_seed_resources(state: ScheduleRunState, result: ScheduleResult) -> None:
+    from core.algorithm_contracts.schedule_point_evidence import point_seed_valid
+
+    if point_seed_valid(result):
+        return
     if (result.source or "").strip().lower() != INTERNAL:
         return
     if not isinstance(result.start_time, datetime) or not isinstance(result.end_time, datetime):

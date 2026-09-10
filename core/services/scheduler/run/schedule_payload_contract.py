@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
+from core.algorithm_contracts.schedule_point_evidence import verified_point
 from core.infrastructure.errors import ValidationError
 from core.models.enums import SourceType
 from core.shared.strict_parse import parse_required_int
@@ -155,6 +156,7 @@ def _build_validated_schedule_row(
     index: int,
     allowed_op_ids: Optional[Set[int]],
     op_source_by_id: Dict[int, str],
+    point_validator: Any = None,
 ) -> Tuple[Optional[ValidatedScheduleRow], Optional[int], Optional[str]]:
     identity = _result_identity(result, index=index)
     if result is None:
@@ -171,7 +173,7 @@ def _build_validated_schedule_row(
     if not isinstance(start_time, datetime) or not isinstance(end_time, datetime):
         return None, None, f"{identity}: start_time/end_time 必须是有效时间"
     try:
-        valid_time_range = start_time < end_time
+        valid_time_range = start_time <= end_time
     except Exception:
         return None, None, f"{identity}: start_time/end_time are not comparable"
     if not valid_time_range:
@@ -197,6 +199,8 @@ def _build_validated_schedule_row(
     resource_error = _validate_schedule_row_resources(row, identity=identity)
     if resource_error is not None:
         return None, None, resource_error
+    if start_time == end_time and not verified_point(row, point_validator):
+        return None, None, f"{identity}: start_time must be earlier than end_time without verified point evidence"
     return row, None, None
 
 
@@ -207,6 +211,7 @@ def build_validated_schedule_payload(
     operations: Optional[List[Any]] = None,
     missing_internal_resource_op_ids: Optional[Set[int]] = None,
     schedule_errors: Optional[List[str]] = None,
+    point_validator: Any = None,
 ) -> ValidatedSchedulePayload:
     schedule_rows: List[ValidatedScheduleRow] = []
     scheduled_op_ids: Set[int] = set()
@@ -224,6 +229,7 @@ def build_validated_schedule_payload(
             index=index,
             allowed_op_ids=allowed_op_ids,
             op_source_by_id=op_source_by_id,
+            point_validator=point_validator,
         )
         if out_of_scope_op_id is not None:
             out_of_scope_op_ids.append(int(out_of_scope_op_id))
