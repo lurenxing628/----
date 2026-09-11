@@ -2,17 +2,21 @@
 
 import json
 import shutil
+from copy import deepcopy
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlencode
 
 import openpyxl
 import pytest
 
 from core.services.report.exporters import xlsx
+from core.services.report.report_engine import ReportEngine
+from core.services.workbench.report_exports import export_table
 from tests.workbench.final_execution_cases import final_e_runtime as final_e_runtime
 from tests.workbench.final_execution_support import restart_preserved, serving
 from tests.workbench.live_environment import write_json
-from tests.workbench.reports_review_browser_oracle import verify
+from tests.workbench.reports_review_browser_oracle import rows_from_download, verify, verify_snapshot
 
 
 def test_full_main_reports_all_download_bytes_scope_sql_and_real_restart(final_e_runtime):
@@ -43,6 +47,51 @@ def test_full_main_reports_all_download_bytes_scope_sql_and_real_restart(final_e
         write_json(host.root / "final-reports-proof.json", {"initial_cases": report["cases"], "restart_cases": restarted["cases"],
             "wire_sql_proof": proof, "strict_changed_tables": [], "old_rows_preserved": True,
             "private_full_build": ready["assets"]["build_id"], "restart_audit": restart_audit})
+
+
+@pytest.mark.parametrize("format_name", ["csv", "xlsx"])
+@pytest.mark.parametrize("token", ["plain-ref", "-FU964sBK0YQFoS6hBSnxbrKOPzxW-9J", "=ref", "+ref", "@ref", "'-ref"])
+def test_report_snapshot_oracle_checks_exact_format_and_rejects_wrong_identity(schema_conn, tmp_path, format_name, token):
+    data = {"topic": "records", "provenance": "original-source", "data_gaps": ["unknown"],
+            "plan": {"display_name": "original-plan", "plan_ref": "plan-ref"}, "scope": {"query": "B1"},
+            "summary": {"rows": 2}, "columns": [{"key": "remark", "label": "备注"}]}
+    exported = export_table(ReportEngine(schema_conn), data, [{"remark": "=1+1"}, {"remark": "-note"}],
+                            {"snapshot_ref": token, "as_of": "2026-09-11T15:44:11"}, format_name)
+    path = tmp_path / ("snapshot." + format_name)
+    try:
+        path.write_bytes(exported.data.read())
+    finally:
+        exported.data.close()
+    download = {"path": str(path), "url": "http://127.0.0.1/export?" + urlencode({"snapshot_ref": token}),
+                "headers": {"x-workbench-snapshot": token}}
+    sheets, metadata = rows_from_download(download)
+    expected = "'" + token if format_name == "csv" and token[0] in "=+-@" else token
+    assert metadata["范围快照"] == expected
+    assert [row[0] for row in sheets["范围全部结果"][1:]] == ["'=1+1", "'-note"]
+    verify_snapshot(download, sheets, metadata)
+    for wrong in {"wrong-ref", "'" + expected, expected[1:] if expected.startswith("'") else "-" + expected}:
+        with pytest.raises(AssertionError):
+            verify_snapshot(download, sheets, {**metadata, "范围快照": wrong})
+    with pytest.raises(AssertionError):
+        verify_snapshot({**download, "headers": {"x-workbench-snapshot": "wrong-ref"}}, sheets, metadata)
+    with pytest.raises(AssertionError):
+        verify_snapshot({**download, "url": "http://127.0.0.1/export?snapshot_ref=wrong-ref"}, sheets, metadata)
+    if format_name == "csv":
+        altered = deepcopy(sheets)
+        altered["范围全部结果"][2][-4] = "wrong-ref"
+        with pytest.raises(AssertionError):
+            verify_snapshot(download, altered, metadata)
+    else:
+        workbook = openpyxl.load_workbook(str(path), read_only=True, data_only=False)
+        try:
+            cell = next(row[1] for row in workbook["范围与口径"].iter_rows() if row[0].value == "范围快照")
+            assert cell.value == token and cell.data_type == "s"
+            assert all(cell.data_type != "f" for sheet in workbook for row in sheet.iter_rows() for cell in row)
+        finally:
+            workbook.close()
+    write_json(tmp_path / "snapshot-oracle-proof.json", {"format": format_name, "raw_snapshot": token,
+               "exported_snapshot": expected, "headers_exact": True, "wrong_identities_rejected": True,
+               "formula_protection_preserved": True})
 
 
 @pytest.mark.parametrize("write_only", (False, True), ids=("normal", "write-only"))

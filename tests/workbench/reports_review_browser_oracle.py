@@ -43,6 +43,19 @@ def rows_from_download(download):
     return sheets, {row[0]: row[1] for row in info if len(row) == 2}
 
 
+def verify_snapshot(download, sheets, meta):
+    token = parse_qs(urlsplit(download["url"]).query)["snapshot_ref"][0]
+    assert download["headers"]["x-workbench-snapshot"] == token
+    is_csv = Path(download["path"]).suffix == ".csv"
+    # Compare the exact protected CSV representation, never strip arbitrary apostrophes.
+    expected = "'" + token if is_csv and token.startswith(("=", "+", "-", "@")) else token
+    assert meta["范围快照"] == expected, (download["path"], meta["范围快照"], expected)
+    if is_csv:
+        rows = sheets["范围全部结果"]
+        assert rows[0][-4] == "范围快照"
+        assert all(row[-4] == expected for row in rows[1:])
+
+
 def verify_records(rows, reports, revisions):
     values = [dict(zip(rows[0], row)) for row in rows[1:]]
     production = {row["报工引用"]: row for row in values if row["记录来源"] == "逐次报工"}
@@ -116,7 +129,7 @@ def verify(root):
         assert wire["sha256"] == download["sha256"] and Path(wire["path"]).read_bytes() == bytes_value
         sheets, meta = rows_from_download(download)
         query = parse_qs(urlsplit(download["url"]).query)
-        assert meta["范围快照"] == query["snapshot_ref"][0]
+        verify_snapshot(download, sheets, meta)
         count = int(download["headers"]["x-workbench-row-count"])
         result = {"path": download["path"], "wire_sha256": wire["sha256"], "rows": count, "sheets": list(sheets)}
         if "范围全部结果" in sheets:
