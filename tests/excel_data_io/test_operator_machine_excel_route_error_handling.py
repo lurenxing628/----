@@ -68,10 +68,7 @@ def test_personnel_excel_preview_hides_internal_runtime_error(monkeypatch) -> No
             conn.close()
 
         _reset_aps_logger_handlers()
-        config_mod = importlib.import_module("config")
-        importlib.reload(config_mod)
         factory_mod = importlib.import_module("web.bootstrap.factory")
-        importlib.reload(factory_mod)
         app = factory_mod.create_app_core(
             ui_mode="default",
             enable_secret_key=True,
