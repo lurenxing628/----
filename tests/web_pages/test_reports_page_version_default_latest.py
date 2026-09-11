@@ -8,6 +8,13 @@ import sys
 from pathlib import Path
 
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.legacy_report_contract import (
+    PageContract,
+    assert_rejected,
+    assert_retired,
+    get_unchanged,
+    saved_summary_display,
+)
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -55,8 +62,18 @@ def _build_app(tmp_path, monkeypatch, *, with_history: bool = True):
     return app_mod.create_app()
 
 
-def _assert_selected_latest(html: str, version: int) -> None:
-    assert f'value="{version}" selected' in html, html
+def _read(client, path):
+    return get_unchanged(client, path, client.application.config["DATABASE_PATH"])
+
+
+def _assert_missing_page(response):
+    assert response.status_code == 404
+    assert "Location" not in response.headers
+    page = PageContract(response.get_data(as_text=True))
+    assert "页面不存在或已被删除" in page.text
+    assert "v0" not in page.text
+    assert not page.controls
+    assert not any("/export" in link or "version=" in link for link in page.links)
 
 
 def test_reports_page_version_default_latest(tmp_path, monkeypatch) -> None:
@@ -65,75 +82,66 @@ def test_reports_page_version_default_latest(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    overdue_html = client.get("/reports/overdue").get_data(as_text=True)
-    _assert_selected_latest(overdue_html, 7)
-    assert "当前版本没有可导出的超期结果，请换一个排产版本后再试。" in overdue_html
+    for path, export_path in (
+        ("/reports/overdue", "/reports/overdue/export?version=7&plan_role=adopted"),
+        ("/reports/overdue?version=latest", "/reports/overdue/export?version=7&plan_role=adopted"),
+        ("/reports/utilization", "/reports/utilization/export?version=7&plan_role=adopted"),
+        ("/reports/downtime?version=latest", "/reports/downtime/export?version=7&plan_role=adopted"),
+    ):
+        assert_retired(_read(client, path), public=("7", "正式采用方案"), downloads=(export_path,))
+    row, _display = saved_summary_display(app.config["DATABASE_PATH"], 7)
+    assert row == ("simulated", '{"is_simulation": true, "completion_status": "partial"}')
+    empty_export = _read(client, "/reports/overdue/export?version=7")
+    assert empty_export.status_code == 400
+    assert "当前版本没有可导出的超期结果，请换一个排产版本后再试。" in empty_export.get_data(as_text=True)
 
-    overdue_latest_html = client.get("/reports/overdue?version=latest").get_data(as_text=True)
-    _assert_selected_latest(overdue_latest_html, 7)
+    invalid_resp = _read(client, "/reports/overdue?version=abc")
+    assert_rejected(invalid_resp, forbidden=("version 不合法", "abc"))
+    invalid_export = _read(client, "/reports/overdue/export?version=abc")
+    assert invalid_export.status_code == 400
+    assert VERSION_ERROR_MESSAGE in invalid_export.get_data(as_text=True)
 
-    utilization_html = client.get("/reports/utilization").get_data(as_text=True)
-    _assert_selected_latest(utilization_html, 7)
-
-    downtime_html = client.get("/reports/downtime?version=latest").get_data(as_text=True)
-    _assert_selected_latest(downtime_html, 7)
-
-    invalid_resp = client.get("/reports/overdue?version=abc")
-    invalid_html = invalid_resp.get_data(as_text=True)
-    assert invalid_resp.status_code == 400
-    assert VERSION_ERROR_MESSAGE in invalid_html
-    assert "version 不合法" not in invalid_html
-
-    missing_resp = client.get("/reports/overdue?version=999")
-    missing_html = missing_resp.get_data(as_text=True)
-    assert missing_resp.status_code == 404
-    assert "排产版本不存在，请先选择已有版本。" in missing_html
+    _assert_missing_page(_read(client, "/reports/overdue?version=999"))
+    missing_export = _read(client, "/reports/overdue/export?version=999")
+    assert missing_export.status_code == 404
+    assert "排产版本不存在，请先选择已有版本。" in missing_export.get_data(as_text=True)
 
 
 def test_reports_page_date_range_requires_both_sides_and_valid_format(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
+    cases = (
+        ("start_date=2026-01-01", "缺少开始日期或结束日期"),
+        ("end_date=2026-01-07", "缺少开始日期或结束日期"),
+        ("start_date=bad-date&end_date=2026-01-07", "日期格式不正确"),
+        ("start_date=2026-01-01&end_date=bad-date", "日期格式不正确"),
+        ("start_date=2026-01-01&end_date=2026-04-15", "日期范围不能超过 62 天"),
+    )
     for endpoint in ("/reports/utilization", "/reports/downtime"):
-        start_only = client.get(f"{endpoint}?version=latest&start_date=2026-01-01")
-        assert start_only.status_code == 400
-        assert "缺少开始日期或结束日期" in start_only.get_data(as_text=True)
+        for query, message in cases:
+            assert_rejected(_read(client, f"{endpoint}?version=latest&{query}"))
+            exported = _read(client, f"{endpoint}/export?version=latest&{query}")
+            assert exported.status_code == 400
+            assert message in exported.get_data(as_text=True)
 
-        end_only = client.get(f"{endpoint}?version=latest&end_date=2026-01-07")
-        assert end_only.status_code == 400
-        assert "缺少开始日期或结束日期" in end_only.get_data(as_text=True)
-
-        bad_start = client.get(f"{endpoint}?version=latest&start_date=bad-date&end_date=2026-01-07")
-        assert bad_start.status_code == 400
-        assert "日期格式不正确" in bad_start.get_data(as_text=True)
-
-        bad_end = client.get(f"{endpoint}?version=latest&start_date=2026-01-01&end_date=bad-date")
-        assert bad_end.status_code == 400
-        assert "日期格式不正确" in bad_end.get_data(as_text=True)
-
-        ok_resp = client.get(f"{endpoint}?version=latest&start_date=2026-01-01&end_date=2026-01-07")
-        assert ok_resp.status_code == 200
-
-        long_resp = client.get(f"{endpoint}?version=latest&start_date=2026-01-01&end_date=2026-04-15")
-        assert long_resp.status_code == 400
-        assert "日期范围不能超过 62 天" in long_resp.get_data(as_text=True)
-
-        long_export = client.get(f"{endpoint}/export?version=latest&start_date=2026-01-01&end_date=2026-04-15")
-        assert long_export.status_code == 400
-        assert "日期范围不能超过 62 天" in long_export.get_data(as_text=True)
+        dates = "start_date=2026-01-01&end_date=2026-01-07"
+        assert_retired(
+            _read(client, f"{endpoint}?version=latest&{dates}"),
+            public=("7", "正式采用方案", "2026-01-01 至 2026-01-07"),
+            downloads=(f"{endpoint}/export?version=7&{dates}&plan_role=adopted",),
+        )
+        empty_export = _read(client, f"{endpoint}/export?version=latest&{dates}")
+        assert empty_export.status_code == 400
+        assert "暂无数据，不能导出" in empty_export.get_data(as_text=True)
 
 
 def test_reports_no_history_pages_do_not_expose_v0_and_exports_404(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch, with_history=False)
     client = app.test_client()
 
-    overdue_resp = client.get("/reports/overdue")
-    overdue_html = overdue_resp.get_data(as_text=True)
-    assert overdue_resp.status_code == 200
-    assert "暂无排产历史" in overdue_html
-    assert "v0" not in overdue_html
-
-    export_resp = client.get("/reports/overdue/export")
+    _assert_missing_page(_read(client, "/reports/overdue"))
+    export_resp = _read(client, "/reports/overdue/export")
     assert export_resp.status_code == 404
     assert "暂无排产历史" in export_resp.get_data(as_text=True)
 

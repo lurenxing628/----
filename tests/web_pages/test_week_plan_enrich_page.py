@@ -9,8 +9,40 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
+
+from tests._support.legacy_report_contract import assert_retired, business_rows, get_unchanged
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _week_model(client, db_path, week_start):
+    from core.infrastructure.database import get_connection
+    from core.services.report import ReportEngine
+    from core.services.scheduler.gantt_service import GanttService
+    from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
+    from core.services.scheduler.week_plan_daily_summary import build_week_plan_daily_summary
+    from web.routes.domains.scheduler.scheduler_week_plan_preview import (
+        build_week_plan_preview_state,
+        week_plan_span_jump,
+    )
+
+    response = get_unchanged(client, f"/scheduler/week-plan?version=7&week_start={week_start}", db_path)
+    assert_retired(response, public=("7", "正式采用方案"))
+    before = business_rows(db_path)
+    conn = get_connection(db_path)
+    try:
+        data = GanttService(conn).get_week_plan_rows(version=7, week_start=week_start)
+        services = SimpleNamespace(schedule_plan_query_service=SchedulePlanQueryService(conn))
+        with client.application.app_context():
+            preview = build_week_plan_preview_state(data, span_jump=week_plan_span_jump(services, data))
+        daily = build_week_plan_daily_summary(data["daily_planned_minutes"], calendar=ReportEngine(conn).calendar,
+                                               week_start=data["week_start"], week_end=data["week_end"])
+    finally:
+        conn.close()
+    assert business_rows(db_path) == before
+    return data, preview, daily
 
 
 def _seed_week_plan(db_path: str, *, with_schedule: bool = True) -> None:
@@ -39,28 +71,36 @@ def _seed_week_plan(db_path: str, *, with_schedule: bool = True) -> None:
 
 def test_week_plan_renders_execution_status_column_and_daily_summary(app_client, db_env):
     _seed_week_plan(db_env)
-    html = app_client.get("/scheduler/week-plan?version=7&week_start=2026-06-01").get_data(as_text=True)
-    assert "现场状态" in html
-    assert "待开工" in html  # 无事实工序的缺省态
-    # 每日汇总条 + 4.6 容量来源明示
-    assert "2026-06-01：计划 4 小时" in html
-    assert "容量按全局工作日历估算，未按单台设备/单人细分" in html
+    data, preview, daily = _week_model(app_client, db_env, "2026-06-01")
+    assert len(preview["preview_rows"]) == 1
+    assert preview["preview_rows"][0]["现场状态"] == "待开工"
+    assert data["daily_planned_minutes"] == {"2026-06-01": 240}
+    assert len(daily) == 1
+    assert daily[0]["date"] == "2026-06-01"
+    assert daily[0]["planned_hours_label"] == "4 小时"
+    assert daily[0]["capacity_hours_label"] != "-"
+    assert "machine_id" not in daily[0] and "operator_id" not in daily[0]
+    assert not (REPO_ROOT / "templates/scheduler/week_plan.html").exists()
 
 
 def test_week_plan_empty_week_upgraded_hint_with_jump_link(app_client, db_env):
     _seed_week_plan(db_env)
-    # 看一个没有排程的周：升级文案告知计划所在区间 + 跳转链接
-    html = app_client.get("/scheduler/week-plan?version=7&week_start=2026-07-06").get_data(as_text=True)
-    assert "这个版本的计划在 2026-06-01 ～ 2026-06-01" in html
-    assert "跳到计划区间" in html
-    assert "week_start=2026-06-01" in html  # 链接带计划区间日期
+    data, preview, daily = _week_model(app_client, db_env, "2026-07-06")
+    assert data["rows"] == [] and daily == []
+    assert "这个版本的计划在 2026-06-01 ～ 2026-06-01" in preview["empty_message"]
+    link = preview["empty_jump_link"]
+    assert link["label"] == "跳到计划区间"
+    query = parse_qs(urlsplit(link["url"]).query)
+    assert query["version"] == ["7"] and query["plan_role"] == ["adopted"]
+    assert query["week_start"] == ["2026-06-01"]
 
 
 def test_week_plan_empty_week_no_plan_rows_keeps_plain_message(app_client, db_env):
     _seed_week_plan(db_env, with_schedule=False)  # 有历史但无计划行（失败/模拟）
-    html = app_client.get("/scheduler/week-plan?version=7&week_start=2026-07-06").get_data(as_text=True)
-    assert "暂无数据" in html
-    assert "跳到计划区间" not in html
+    data, preview, daily = _week_model(app_client, db_env, "2026-07-06")
+    assert data["rows"] == [] and daily == []
+    assert "暂无数据" in preview["empty_message"]
+    assert preview["empty_jump_link"] is None
 
 
 def test_week_plan_export_contains_execution_status_column(app_client, db_env):

@@ -14,6 +14,12 @@ from urllib.parse import parse_qs, urlparse
 
 from flask import Flask
 
+from tests._support.legacy_report_contract import (
+    UNSUPPORTED_SCOPE,
+    assert_plan_navigation,
+    assert_retired,
+    get_unchanged,
+)
 from web.routes.system_history import _load_history_span_dates
 from web.viewmodels.system_history_links import build_history_version_links
 
@@ -293,21 +299,46 @@ def _seed_history_with_plan_rows(db_path: str) -> None:
 
 def test_history_page_renders_workbench_links_and_disabled_state(app_client, db_env):
     _seed_history_with_plan_rows(db_env)
-    html = app_client.get("/system/history").get_data(as_text=True)
-    # v7 行：5 链接可点且带身份与日期
-    assert "/scheduler/gantt?view=machine&amp;version=7&amp;plan_role=adopted" in html
-    assert "start_date=2026-06-01" in html
-    assert "week_start=2026-06-01" in html
-    # v8 行：日期必填链接禁用并带原因 title
-    assert 'class="table-action-link is-disabled"' in html
-    assert "还没有确认日期范围" in html
-    # 收编范围外的裸链接原样（分页/去补充不动）
-    assert "history_version_links" not in html  # 旧宏名零残留（防回潮锚点）
+    response = get_unchanged(app_client, "/system/history", db_env)
+    assert_retired(response, message=UNSUPPORTED_SCOPE)
+    from core.infrastructure.database import get_connection
+    from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
+
+    conn = get_connection(db_env)
+    try:
+        service = SchedulePlanQueryService(conn)
+        span7, error7 = _load_history_span_dates(service, 7, {})
+        span8, error8 = _load_history_span_dates(service, 8, {})
+        assert span7["start_date"] == "2026-06-01"
+        assert span7["end_date"] == "2026-06-05"
+        assert span8 is None and not error8 and not error7
+        links = build_history_version_links(7, span=span7)
+        assert len(links) == 5 and all(not link["disabled"] for link in links)
+        assert all(_query_values(link["url"])["version"] == "7" for link in links)
+        assert all(_query_values(link["url"])["plan_role"] == "adopted" for link in links)
+        empty_links = build_history_version_links(8, span=span8)
+        assert all(link["disabled"] and "还没有确认日期范围" in link["disabled_reason"] for link in empty_links[:4])
+    finally:
+        conn.close()
+    assert "history_version_links" not in response.get_data(as_text=True)
 
 
 def test_analysis_version_picker_links_keep_plan_identity(app_client, db_env):
     _seed_history_with_plan_rows(db_env)
-    html = app_client.get("/scheduler/analysis?version=7").get_data(as_text=True)
-    assert "查看设备甘特图" in html
-    assert "/scheduler/gantt?view=machine&amp;version=7&amp;plan_role=adopted" in html
-    assert "start_date=2026-06-01" in html
+    response = get_unchanged(app_client, "/scheduler/analysis?version=7", db_env)
+    assert_plan_navigation(response, db_env, version=7)
+    from core.infrastructure.database import get_connection
+    from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
+
+    conn = get_connection(db_env)
+    try:
+        span, error = _load_history_span_dates(SchedulePlanQueryService(conn), 7, {})
+        assert not error
+        assert (span["start_date"], span["end_date"]) == ("2026-06-01", "2026-06-05")
+        gantt = build_history_version_links(7, span=span)[0]
+        assert _query_values(gantt["url"]) == {
+            "view": "machine", "version": "7", "plan_role": "adopted",
+            "start_date": "2026-06-01", "end_date": "2026-06-05",
+        }
+    finally:
+        conn.close()

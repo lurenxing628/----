@@ -14,6 +14,12 @@ import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
 
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.legacy_report_contract import (
+    assert_rejected,
+    assert_retired,
+    assert_typed_navigation,
+    get_unchanged,
+)
 from tests._support.paths import REPO_ROOT
 
 
@@ -98,18 +104,13 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
     app = app_mod.create_app()
     client = app.test_client()
 
-    resp_dashboard = client.get("/")
-    _assert_status(resp_dashboard, "GET /")
-    html_dashboard = resp_dashboard.data.decode("utf-8")
-    assert "资源排班" in html_dashboard
+    resp_dashboard = get_unchanged(client, "/", test_db)
+    assert assert_typed_navigation(resp_dashboard, "dashboard") == {}
 
     default_query = "period_preset=week&query_date=2026-03-02&version=1"
 
-    resp_default_page = client.get(f"/scheduler/resource-dispatch?{default_query}")
-    _assert_status(resp_default_page, "GET /scheduler/resource-dispatch (default all operators)")
-    html_default_page = resp_default_page.data.decode("utf-8")
-    assert 'data-can-query="1"' in html_default_page
-    assert "全部人员" in html_default_page
+    resp_default_page = get_unchanged(client, f"/scheduler/resource-dispatch?{default_query}", test_db)
+    assert_retired(resp_default_page, public=("1", "正式采用方案"))
 
     resp_default_data = client.get(f"/scheduler/resource-dispatch/data?{default_query}")
     _assert_status(resp_default_data, "GET /scheduler/resource-dispatch/data (default all operators)")
@@ -123,13 +124,8 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
 
     query = "scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=1"
 
-    resp_page = client.get(f"/scheduler/resource-dispatch?{query}")
-    _assert_status(resp_page, "GET /scheduler/resource-dispatch")
-    html_page = resp_page.data.decode("utf-8")
-    assert "资源排班" in html_page
-    assert 'id="rdPage"' in html_page
-    assert "导出资源排班.xlsx" in html_page
-    assert '<option value="team"' in html_page
+    resp_page = get_unchanged(client, f"/scheduler/resource-dispatch?{query}", test_db)
+    assert_retired(resp_page, public=("1", "正式采用方案", "人员"))
 
     resp_data = client.get(f"/scheduler/resource-dispatch/data?{query}")
     _assert_status(resp_data, "GET /scheduler/resource-dispatch/data")
@@ -163,11 +159,8 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
 
     query_team = "scope_type=team&team_id=TEAM-OP&team_axis=operator&period_preset=week&query_date=2026-03-02&version=1"
 
-    resp_team_page = client.get(f"/scheduler/resource-dispatch?{query_team}")
-    _assert_status(resp_team_page, "GET /scheduler/resource-dispatch (team)")
-    html_team_page = resp_team_page.data.decode("utf-8")
-    assert "班组轴" in html_team_page
-    assert '<option value="team" selected' in html_team_page
+    resp_team_page = get_unchanged(client, f"/scheduler/resource-dispatch?{query_team}", test_db)
+    assert_rejected(resp_team_page)
 
     resp_team_data = client.get(f"/scheduler/resource-dispatch/data?{query_team}")
     _assert_status(resp_team_data, "GET /scheduler/resource-dispatch/data (team)")

@@ -15,6 +15,14 @@ from core.services.report import ReportEngine
 from core.services.report.execution_review import _execution_scope
 from core.services.report.exporters.xlsx import export_execution_review_xlsx
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
+from tests._support.legacy_report_contract import (
+    IDENTITY_UNAVAILABLE,
+    assert_rejected,
+    assert_retired,
+    get_unchanged,
+    report_read_context,
+)
+from tests._support.paths import REPO_ROOT
 from tests.operation_execution.operation_execution_feedback_test_support import _build_app
 
 EXPECTED_HEADERS = [
@@ -49,6 +57,21 @@ DEAD_EXECUTION_REVIEW_LABEL_KEYS = (
     "actual_resource_identity_label",
     "actual_resource_export_label",
 )
+
+
+def _read(client, path):
+    return get_unchanged(client, path, client.application.config["DATABASE_PATH"])
+
+
+def _review_model(client, query):
+    path = "/reports/execution-review?" + query
+    assert_retired(_read(client, path), public=("2", "正式采用方案"),
+                   downloads=("/reports/execution-review/export?" + query + "&plan_role=adopted",))
+    return report_read_context(client.application, client.application.config["DATABASE_PATH"], path)
+
+
+def _review_labels(model):
+    return "\n".join(str(value) for row in model["rows"] for key, value in row.items() if key.endswith("_label"))
 
 
 def _load_xlsx(resp):
@@ -280,21 +303,20 @@ def _assert_feedback_workbook(wb) -> None:
 
 def _assert_matching_feedback_page(client, db_path: str) -> None:
     before_schedule = _schedule_row(db_path)
-    page = client.get("/reports/execution-review?version=2&date_from=2026-05-01&date_to=2026-05-01&batch_id=B1")
-    body = page.get_data(as_text=True)
-    assert page.status_code == 200
-    assert body.count("<tr>") == 2
+    model = _review_model(client, "version=2&date_from=2026-05-01&date_to=2026-05-01&batch_id=B1")
+    body = _review_labels(model)
+    assert len(model["rows"]) == 1
     assert "2026-05-01 09:00:00" in body
     assert "2026-05-02 08:00:00" not in body
     _assert_feedback_page(body)
     assert _schedule_row(db_path) == before_schedule
 
-
 def _assert_empty_feedback_page(client) -> None:
-    empty_page = client.get("/reports/execution-review?version=2&batch_id=NO_SUCH")
-    assert empty_page.status_code == 200
-    assert "当前筛选条件下暂无计划任务" in empty_page.get_data(as_text=True)
-
+    model = _review_model(client, "version=2&batch_id=NO_SUCH")
+    assert model["rows"] == []
+    assert model["count"] == 0
+    assert model["empty_reason"] == "no_data"
+    assert model["batch_filter_label"] == "NO_SUCH"
 
 def _assert_matching_export_response(export_resp) -> None:
     assert export_resp.status_code == 200
@@ -330,33 +352,45 @@ def _assert_no_internal_workbook_values(wb) -> None:
 
 
 def _assert_report_index_entry(client) -> None:
-    index_page = client.get("/reports/")
-    assert index_page.status_code == 200
-    index_body = index_page.get_data(as_text=True)
-    assert "计划和现场实际" in index_body
-    assert "/reports/execution-review" in index_body
-
+    assert_retired(_read(client, "/reports/"), public=("2", "正式采用方案"))
+    model = report_read_context(client.application, client.application.config["DATABASE_PATH"], "/reports/")
+    card = next(card for card in model["reports_workbench"]["entry_cards"] if card["key"] == "execution_review")
+    assert card["title"] == "计划和现场实际"
+    assert card["link"]["url"].startswith("/reports/execution-review?")
+    assert "version=2" in card["link"]["url"]
 
 def _assert_dispatch_entry(client) -> None:
-    dispatch_page = client.get("/scheduler/resource-dispatch?version=2&period_preset=custom&start_date=2026-05-01&end_date=2026-05-01")
-    dispatch_body = dispatch_page.get_data(as_text=True)
-    assert dispatch_page.status_code == 200
-    assert "/reports/execution-review" in dispatch_body
-    assert "/scheduler/execution-review" not in dispatch_body
-
+    query = "version=2&period_preset=custom&start_date=2026-05-01&end_date=2026-05-01"
+    assert_retired(_read(client, "/scheduler/resource-dispatch?" + query), public=("2", "正式采用方案"))
+    data_response = _read(client, "/scheduler/resource-dispatch/data?" + query)
+    assert data_response.status_code == 200
+    data = data_response.get_json()["data"]
+    assert data["filters"]["version"] == 2
+    assert data["filters"]["start_date"] == "2026-05-01"
+    assert data["filters"]["end_date"] == "2026-05-01"
+    assert data["detail_rows"]
+    from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
+    from web.routes.domains.scheduler.scheduler_resource_dispatch import _execution_review_link
+    conn = get_connection(client.application.config["DATABASE_PATH"])
+    try:
+        conn.execute("PRAGMA query_only=ON")
+        payload = ResourceDispatchService(conn).get_dispatch_payload(
+            version=2, period_preset="custom", start_date="2026-05-01", end_date="2026-05-01")
+        with client.application.app_context():
+            link = _execution_review_link(payload["filters"], payload["filters"])
+    finally:
+        conn.close()
+    assert link["url"].startswith("/reports/execution-review?")
+    assert not link["url"].startswith("/scheduler/execution-review")
 
 def _assert_scenario_nav_disables_execution_review(client) -> None:
-    nav_page = client.get(
-        "/reports/utilization?version=2&plan_role=adopted&scenario_id=scenario-plain"
-        "&date_from=2026-05-01&date_to=2026-05-01&batch_id=B1"
-    )
-    nav_body = nav_page.get_data(as_text=True)
-    assert nav_page.status_code == 200
-    assert "计划和现场实际只复盘正式采用方案" in nav_body
-    assert 'aria-disabled="true"' in nav_body
-    assert "/reports/execution-review?version=2&amp;plan_role" not in nav_body
-    assert "/reports/execution-review?version=2&amp;scenario_id" not in nav_body
-
+    path = ("/reports/utilization?version=2&plan_role=adopted&scenario_id=scenario-plain"
+            "&date_from=2026-05-01&date_to=2026-05-01&batch_id=B1")
+    assert_retired(_read(client, path), message=IDENTITY_UNAVAILABLE)
+    model = report_read_context(client.application, client.application.config["DATABASE_PATH"], path)
+    link = next(link for link in model["report_navigation_links"] if link["label"] == "计划和现场实际")
+    assert link["disabled"] is True and link["url"] == ""
+    assert "计划和现场实际只复盘正式采用方案" in link["disabled_reason"]
 
 def _assert_stream_export(db_path: str) -> None:
     conn = get_connection(db_path)
@@ -382,10 +416,9 @@ def test_execution_review_page_and_export_show_no_feedback_state(tmp_path, monke
     app, _db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    page = client.get("/reports/execution-review?version=2")
-    body = page.get_data(as_text=True)
-    assert page.status_code == 200
-    assert "计划和现场实际" in body
+    model = _review_model(client, "version=2")
+    body = _review_labels(model)
+    assert model["title"] == "报表 - 计划和现场实际"
     assert "暂无现场反馈" in body
     assert "一号设备 / 张三" in body
     assert "actual_machine_id" not in body
@@ -419,8 +452,10 @@ def test_execution_review_filter_does_not_preserve_preview_token(tmp_path, monke
     page = client.get(f"/reports/execution-review?version=2&plan_context_token={token}")
     body = page.get_data(as_text=True)
 
-    assert page.status_code == 200
-    assert "计划和现场实际只复盘正式采用方案" in body
+    assert_rejected(page)
+    rejected_export = _read(client, f"/reports/execution-review/export?version=2&plan_context_token={token}")
+    assert rejected_export.status_code == 400
+    assert "计划和现场实际只复盘正式采用方案" in rejected_export.get_data(as_text=True)
     assert 'name="plan_context_token"' not in body
     assert "scenario-review-preview" not in body
 
@@ -430,10 +465,9 @@ def test_execution_review_ignores_feedback_when_plan_identity_mismatches(tmp_pat
     _seed_execution_events(db_path)
     client = app.test_client()
 
-    page = client.get("/reports/execution-review?version=2&date_from=2026-05-01&date_to=2026-05-01&batch_id=B1")
-    body = page.get_data(as_text=True)
-    assert page.status_code == 200
-    assert body.count("<tr>") == 2
+    model = _review_model(client, "version=2&date_from=2026-05-01&date_to=2026-05-01&batch_id=B1")
+    body = _review_labels(model)
+    assert len(model["rows"]) == 1
     _assert_no_feedback_page(body)
 
     export_resp = client.get(
@@ -537,16 +571,17 @@ def test_execution_review_validation_and_offline_template_contract(tmp_path, mon
     client = app.test_client()
 
     missing_date = client.get("/reports/execution-review?version=2&date_from=2026-05-01")
-    assert missing_date.status_code == 400
-    assert "开始日期和结束日期要一起填写" in missing_date.get_data(as_text=True)
+    assert_rejected(missing_date)
+    missing_export = _read(client, "/reports/execution-review/export?version=2&date_from=2026-05-01")
+    assert missing_export.status_code == 400
+    assert "开始日期和结束日期要一起填写" in missing_export.get_data(as_text=True)
 
     reversed_date = client.get("/reports/execution-review/export?version=2&date_from=2026-05-02&date_to=2026-05-01")
     assert reversed_date.status_code == 400
     assert "结束日期不能早于开始日期" in reversed_date.get_data(as_text=True)
 
     long_date = client.get("/reports/execution-review?version=2&date_from=2026-01-01&date_to=2026-04-15")
-    assert long_date.status_code == 400
-    assert "日期范围不能超过 62 天" in long_date.get_data(as_text=True)
+    assert_rejected(long_date)
 
     long_date_export = client.get("/reports/execution-review/export?version=2&date_from=2026-01-01&date_to=2026-04-15")
     assert long_date_export.status_code == 400
@@ -559,13 +594,13 @@ def test_execution_review_validation_and_offline_template_contract(tmp_path, mon
     finally:
         conn.close()
 
-    with open("templates/reports/execution_review.html", encoding="utf-8") as fh:
-        template = fh.read()
+    assert not (REPO_ROOT / "templates/reports/execution_review.html").exists()
     forbidden = ("http://", "https://", "cdn", "reason_code", "event_type", "report_exception", "text-meta")
-    for token in forbidden:
-        assert token not in template
-    for token in DEAD_EXECUTION_REVIEW_LABEL_KEYS:
-        assert token not in template
+    for relative in ("frontend/workbench/app/ReviewWorkspace.jsx", "frontend/workbench/app/ReportWorkspace.jsx",
+                     "frontend/workbench/app/ReportTable.jsx"):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        for token in forbidden + DEAD_EXECUTION_REVIEW_LABEL_KEYS:
+            assert token not in source
 
 
 def test_execution_review_scope_fails_loudly_when_plan_identity_is_incomplete() -> None:

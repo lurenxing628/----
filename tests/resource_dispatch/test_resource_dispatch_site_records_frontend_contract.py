@@ -2,209 +2,112 @@
 
 from __future__ import annotations
 
-from typing import Tuple
+from io import BytesIO
 
+import openpyxl
+
+from tests._support.legacy_report_contract import (
+    IDENTITY_UNAVAILABLE,
+    RETIRED_SCOPE,
+    assert_rejected,
+    assert_retired,
+    get_unchanged,
+)
 from tests.operation_execution.operation_execution_feedback_test_support import (
     _build_app,
     _current_query,
-    read_resource_dispatch_script_bundle,
 )
 
 
-def _assert_contains_all(text: str, values: Tuple[str, ...]) -> None:
-    for value in values:
-        assert value in text
-
-
-def _assert_contains_none(text: str, values: Tuple[str, ...]) -> None:
-    for value in values:
-        assert value not in text
-
-
 def test_resource_dispatch_page_has_site_records_words_and_excel_entries(tmp_path, monkeypatch) -> None:
-    app, _db_path = _build_app(tmp_path, monkeypatch)
+    app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
-    from web.routes.domains.scheduler import scheduler_resource_dispatch as rd_routes
-
-    monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
-
-    resp = client.get(f"/scheduler/resource-dispatch?{_current_query()}")
-    body = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    source = read_resource_dispatch_script_bundle()
-    page_contract = body + "\n" + source
-    _assert_contains_all(
-        page_contract,
-        ("现场记录", "填写实际情况", "导入实际情况 Excel", "下载填写模板", "查看计划和实际", "查看现场记录"),
-    )
-    _assert_contains_all(
-        body,
-        (
-            "data-execution-url=",
-            "data-actual-record-url-template=",
-            "data-actual-template-url=",
-            "data-actual-import-url=",
-            'data-actual-record-url-template="/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual?',
-            'data-actual-template-url="/scheduler/resource-dispatch/execution/actual-template?',
-            'data-actual-import-url="/scheduler/resource-dispatch/execution/import?',
-            'href="/reports/execution-review?version=2',
-            "plan_role=adopted",
-            "query_date=2026-05-01",
-            "period_preset=week",
-            "scope_type=operator",
-            "scope_id=O1",
-            'id="rdExecutionCreatedBy"',
-            "反馈人",
-            'id="rdExecutionCreatedBy" class="w-180" autocomplete="off" placeholder="可不填"',
-        ),
-    )
-    _assert_contains_none(
-        body,
-        (
-            "data-actual-import-preview-url=",
-            "data-actual-import-confirm-url=",
-        ),
-    )
-    _assert_contains_none(
-        body,
-        (
-            "执行事实补录",
-            "执行事件",
-            "事件底座",
-            "生产事实",
-            "事实台账",
-            "执行状态读模型",
-            "这些记录来自人工填写或 Excel 导入，不代表设备自动采集",
-            "请先填写反馈人",
-            "暂停生产",
-            "预览导入",
-            "确认写入",
-            "检查 Excel",
-        ),
-    )
+    query = _current_query()
+    response = get_unchanged(client, "/scheduler/resource-dispatch?" + query, db_path)
+    assert_retired(response, public=("2", "正式采用方案", "人员"))
+    data_response = get_unchanged(client, "/scheduler/resource-dispatch/execution/data?" + query, db_path)
+    assert data_response.status_code == 200
+    data = data_response.get_json()["data"]
+    assert data["can_write_feedback"] is True
+    actions = {item["action"]: item for item in data["tasks"][0]["available_actions"]}
+    assert actions["fill_actual"]["label"] == "填写实际情况"
+    assert actions["view_records"]["label"] == "查看现场记录"
+    assert actions["fill_actual"]["enabled"] is True
+    template = get_unchanged(client, "/scheduler/resource-dispatch/execution/actual-template?" + query, db_path)
+    assert template.status_code == 200
+    assert template.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    workbook = openpyxl.load_workbook(BytesIO(template.data))
+    try:
+        assert workbook.sheetnames and "B1" in str(list(workbook.active.values))
+    finally:
+        workbook.close()
+    rules = {rule.rule: rule.methods for rule in app.url_map.iter_rules()}
+    assert "POST" in rules["/scheduler/resource-dispatch/execution/import"]
+    assert "POST" in rules["/scheduler/resource-dispatch/execution/tasks/<task_key>/actual"]
 
 
 def test_resource_dispatch_actual_record_url_uses_normalized_filters_when_query_date_missing(tmp_path, monkeypatch) -> None:
-    app, _db_path = _build_app(tmp_path, monkeypatch)
+    app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
-    from web.routes.domains.scheduler import scheduler_resource_dispatch as rd_routes
-
-    monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
-
-    resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=custom"
-        "&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted"
-    )
-    body = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert 'data-actual-record-url-template="/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual?' in body
-    assert "query_date=2026-05-01" in body
-    assert "start_date=2026-05-01" in body
-    assert "end_date=2026-05-07" in body
+    query = ("scope_type=operator&operator_id=O1&period_preset=custom"
+             "&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted")
+    response = get_unchanged(client, "/scheduler/resource-dispatch?" + query, db_path)
+    assert_retired(response, public=("2", "正式采用方案", "2026-05-01 至 2026-05-07", "人员"))
+    data_response = get_unchanged(client, "/scheduler/resource-dispatch/data?" + query, db_path)
+    assert data_response.status_code == 200
+    filters = data_response.get_json()["data"]["filters"]
+    assert filters["query_date"] == "2026-05-01"
+    assert filters["start_date"] == "2026-05-01" and filters["end_date"] == "2026-05-07"
+    assert filters["scope_id"] == "O1" and filters["version"] == 2
 
 
 def test_resource_dispatch_read_only_page_does_not_emit_actual_write_urls(tmp_path, monkeypatch) -> None:
-    app, _db_path = _build_app(tmp_path, monkeypatch)
+    app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
-    from web.routes.domains.scheduler import scheduler_resource_dispatch as rd_routes
-
-    monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
-
-    resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01"
-        "&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=baseline_best"
-    )
-    body = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert "只能查看" in body
-    assert "不能写现场记录" in body
-    assert 'href="/reports/execution-review' not in body
-    for attr in (
-        "data-actual-record-url-template=",
-        "data-actual-template-url=",
-        "data-actual-import-url=",
-    ):
-        assert attr not in body
-    for forbidden in (
-        "/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual",
-        "/scheduler/resource-dispatch/execution/actual-template?",
-        "/scheduler/resource-dispatch/execution/import?",
-        'id="rdExecutionCreatedBy"',
-        'id="rdActualImportSubmit"',
-    ):
-        assert forbidden not in body
+    query = ("scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01"
+             "&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=baseline_best")
+    response = get_unchanged(client, "/scheduler/resource-dispatch?" + query, db_path)
+    assert_retired(response, public=("2", "原算法代表方案"))
+    payload = get_unchanged(client, "/scheduler/resource-dispatch/execution/data?" + query, db_path).get_json()
+    assert payload["success"] is True and payload["data"]["can_write_feedback"] is False
+    assert "不能填写现场记录" in payload["data"]["disabled_reason"]
+    assert all(action["action"] != "fill_actual" for task in payload["data"]["tasks"] for action in task["available_actions"])
+    template = get_unchanged(client, "/scheduler/resource-dispatch/execution/actual-template?" + query, db_path)
+    assert template.status_code == 409 and template.get_json()["success"] is False
+    assert template.get_json()["error"]["message"] == "当前不是最新正式采用方案，不能填写现场记录。"
 
 
 def test_resource_dispatch_unqueryable_write_page_does_not_render_none_links(tmp_path, monkeypatch) -> None:
-    app, _db_path = _build_app(tmp_path, monkeypatch)
+    app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
-    from web.routes.domains.scheduler import scheduler_resource_dispatch as rd_routes
-
-    monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
-
-    resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=team&period_preset=week&query_date=2026-05-01"
-        "&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted"
-    )
-    body = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert 'href="None"' not in body
-    assert 'href=""' not in body
-    assert 'data-actual-record-url-template=' not in body
-    assert 'data-actual-template-url=' not in body
-    assert 'data-actual-import-url=' not in body
-    assert "下载填写模板" in body
-    assert "/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual" not in body
-    assert "/scheduler/resource-dispatch/execution/actual-template?" not in body
-    assert "/scheduler/resource-dispatch/execution/import?" not in body
+    query = ("scope_type=team&period_preset=week&query_date=2026-05-01"
+             "&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted")
+    response = get_unchanged(client, "/scheduler/resource-dispatch?" + query, db_path)
+    assert_rejected(response, forbidden=('href="None"', 'href=""', "data-actual-record-url-template="))
+    template = get_unchanged(client, "/scheduler/resource-dispatch/execution/actual-template?" + query, db_path)
+    assert template.status_code == 400 and template.get_json()["success"] is False
 
 
 def test_resource_dispatch_history_can_review_but_scenario_pages_do_not_emit_review_or_write_urls(tmp_path, monkeypatch) -> None:
-    app, _db_path = _build_app(tmp_path, monkeypatch)
+    app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
-    from web.routes.domains.scheduler import scheduler_resource_dispatch as rd_routes
-
-    monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
-
-    history_url = (
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week"
-        "&query_date=2026-04-30&date_from=2026-04-30&date_to=2026-05-06&version=1&plan_role=adopted"
+    queries = (
+        "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-04-30&date_from=2026-04-30&date_to=2026-05-06&version=1&plan_role=adopted",
+        _current_query() + "&scenario_id=scenario-plain",
     )
-    scenario_url = (
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week"
-        "&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07"
-        "&version=2&plan_role=adopted&scenario_id=scenario-plain"
-    )
-
-    history_resp = client.get(history_url)
-    history_body = history_resp.get_data(as_text=True)
-    assert history_resp.status_code == 200
-    assert 'href="/reports/execution-review' in history_body
-
-    scenario_resp = client.get(scenario_url)
-    scenario_body = scenario_resp.get_data(as_text=True)
-    assert scenario_resp.status_code == 200
-    assert 'href="/reports/execution-review' not in scenario_body
-
-    for body in (history_body, scenario_body):
-        for attr in (
-            "data-actual-record-url-template=",
-            "data-actual-template-url=",
-            "data-actual-import-url=",
-        ):
-            assert attr not in body
-        for forbidden in (
-            "/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual",
-            "/scheduler/resource-dispatch/execution/actual-template?",
-            "/scheduler/resource-dispatch/execution/import?",
-            'id="rdExecutionCreatedBy"',
-            'id="rdActualImportSubmit"',
-        ):
-            assert forbidden not in body
+    for query in queries:
+        response = get_unchanged(client, "/scheduler/resource-dispatch?" + query, db_path)
+        assert_retired(response, message=IDENTITY_UNAVAILABLE if "scenario_id=" in query else RETIRED_SCOPE)
+        payload = get_unchanged(client, "/scheduler/resource-dispatch/execution/data?" + query, db_path).get_json()
+        assert payload["success"] is True and payload["data"]["can_write_feedback"] is False
+        template = get_unchanged(client, "/scheduler/resource-dispatch/execution/actual-template?" + query, db_path)
+        assert template.status_code == 409 and template.get_json()["success"] is False
+        assert template.get_json()["error"]["message"] == "当前不是最新正式采用方案，不能填写现场记录。"
+    history = get_unchanged(client, "/reports/execution-review/export?version=1&date_from=2026-04-30&date_to=2026-05-06", db_path)
+    assert history.status_code == 200
+    blocked = get_unchanged(client, "/reports/execution-review/export?version=2&scenario_id=scenario-plain&date_from=2026-05-01&date_to=2026-05-07", db_path)
+    assert blocked.status_code == 400
+    assert "只复盘正式采用方案" in blocked.get_data(as_text=True)
 
 
 def test_resource_dispatch_invalid_plan_context_token_is_blocked_without_default_page(tmp_path, monkeypatch) -> None:
@@ -223,7 +126,7 @@ def test_resource_dispatch_invalid_plan_context_token_is_blocked_without_default
     page_body = page_resp.get_data(as_text=True)
 
     assert page_resp.status_code == 400
-    assert "方案预览入口已失效" in page_body
+    assert_rejected(page_resp, forbidden=("bad-token", "scenario_id"))
     assert "data-actual-record-url-template=" not in page_body
     assert "/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual" not in page_body
 
@@ -253,8 +156,8 @@ def test_resource_dispatch_execution_entry_rejects_incomplete_plan_context(tmp_p
     page_resp = client.get("/scheduler/resource-dispatch?version=2")
     page_body = page_resp.get_data(as_text=True)
 
-    assert page_resp.status_code == 200
-    assert 'data-execution-url=""' in page_body
+    assert_retired(page_resp, public=("2", "正式采用方案"))
+    assert 'data-execution-url=' not in page_body
     assert "data-actual-record-url-template=" not in page_body
     assert "/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual" not in page_body
 

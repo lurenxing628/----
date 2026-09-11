@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Tuple
 
-from flask import render_template
+from tests._support.paths import REPO_ROOT
+from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 
 def make_metrics(*, overdue_count: int, invalid_due_count: int = 0, unscheduled_batch_count: int = 0) -> Dict[str, Any]:
@@ -209,29 +210,6 @@ def build_case_inputs(*, version: int, summary_obj: Dict[str, Any]) -> Tuple[Dic
     return selected, {"version": int(version), "result_summary": result_summary_json}
 
 
-def render_analysis_html(app, render_template, *, version: int, selected: Dict[str, Any], ctx: Dict[str, Any]) -> str:
-    from web.viewmodels.scheduler_summary_display import build_summary_display_state
-
-    with app.test_request_context(f"/scheduler/analysis?version={version}"):
-        return render_template(
-            "scheduler/analysis.html",
-            title="regression",
-            versions=[
-                {
-                    "version": int(version),
-                    "schedule_time": selected["schedule_time"],
-                    "strategy": selected["strategy"],
-                    "result_status": selected["result_status"],
-                }
-            ],
-            selected_summary_display=build_summary_display_state(
-                ctx.get("selected_summary"),
-                result_status=(ctx.get("selected") or {}).get("result_status"),
-                parse_state=(ctx.get("selected") or {}).get("result_summary_parse_state"),
-            ),
-            trend_summary_state={"incomplete": False, "parse_failed_count": 0},
-            **ctx,
-        )
 
 
 def card_by_key(ctx: Dict[str, Any], key: str) -> Dict[str, Any]:
@@ -244,7 +222,8 @@ def card_by_key(ctx: Dict[str, Any], key: str) -> Dict[str, Any]:
 def test_scheduler_analysis_observability(app_client) -> None:
     from web.viewmodels.scheduler_analysis_vm import build_analysis_context
 
-    app = app_client.application
+    assert not (REPO_ROOT / "templates/scheduler/analysis.html").exists()
+    assert not (REPO_ROOT / "templates/components/ui_macros.html").exists()
 
     old_summary = make_old_summary()
     old_selected, old_hist = build_case_inputs(version=1, summary_obj=old_summary)
@@ -255,21 +234,14 @@ def test_scheduler_analysis_observability(app_client) -> None:
     assert not old_ctx.get("extra_cards"), "旧 summary 不应生成数据异常/未排批次卡片"
     assert old_ctx.get("freeze_display") is None, "旧 summary 不应生成冻结摘要"
 
-    old_html = render_analysis_html(app, render_template, version=1, selected=old_selected, ctx=old_ctx)
-    assert "裁剪后摘要" not in old_html, "旧 summary 不应展示裁剪提示"
-    assert "停机避让约束已降级" not in old_html, "旧 summary 不应展示停机降级提示"
-    assert "冻结窗口约束已降级" not in old_html, "旧 summary 不应展示冻结窗口降级提示"
-    assert "-/-" not in old_html, "旧 summary 缺少派工规则时不应展示 -/-"
-    assert "优化对比指标" in old_html, "旧 summary 兼容提示应展示中文字段名"
-    assert "系统比较顺序" in old_html, "旧 summary 兼容提示应展示中文字段名"
-    assert "comparison_metric" not in old_html, "旧 summary 不应暴露内部字段 comparison_metric"
-    assert "best_score_schema" not in old_html, "旧 summary 不应暴露内部字段 best_score_schema"
-    assert "new schema" not in old_html and "schema 字段" not in old_html, "旧 summary 不应暴露 schema 术语"
-    assert "start:priority_first|batch_order:slack" not in old_html, "旧 summary 不应暴露算法方案标签"
-    assert "方案 1" in old_html, "attempts 方案应显示为普通中文序号"
-    assert 'stat-card-label">数据异常批次数</div>' not in old_html, "旧 summary 不应展示数据异常卡片"
-    assert 'stat-card-label">未排批次数</div>' not in old_html, "旧 summary 不应展示未排批次卡片"
-    assert "冻结工序数：" not in old_html, "旧 summary 不应展示冻结摘要"
+    assert old_ctx["compat_fallback"]["used"] is True
+    assert "优化对比指标" in old_ctx["compat_fallback"]["missing_field_labels"]
+    assert "系统比较顺序" in old_ctx["compat_fallback"]["missing_field_labels"]
+    assert old_ctx["attempts"][0]["display_tag"] == "方案 1"
+    assert "start:priority_first|batch_order:slack" not in old_ctx["attempts"][0]["display_tag"]
+    old_display = build_summary_display_state(old_ctx["selected_summary"], result_status="success")
+    assert old_display["summary_truncated"] is False
+    assert old_ctx["summary_degradation_messages"] == []
 
     prev_summary = make_prev_summary()
     _prev_selected, prev_hist = build_case_inputs(version=1, summary_obj=prev_summary)
@@ -305,25 +277,17 @@ def test_scheduler_analysis_observability(app_client) -> None:
     assert any(item.get("code") == "downtime_avoid_degraded" for item in summary_degradation_messages), summary_degradation_messages
     assert any(item.get("code") == "freeze_window_degraded" for item in summary_degradation_messages), summary_degradation_messages
 
-    new_html = render_analysis_html(app, render_template, version=2, selected=new_selected, ctx=new_ctx)
-    assert "600000" in new_html, "未展示 original_size_bytes"
-    assert "提醒：4 条" in new_html, "未展示 warning_total"
-    assert "另有 1 条提醒，请到系统管理里的排产历史查看这次排产的详细提醒。" in new_html, "未展示 warning_hidden_count"
-    assert "开始时间已规范化为：2026-05-19 08:00:00" not in new_html, "第 4 条 warning 不应出现在 preview 中"
-    assert "停机区间加载失败" in new_html, "未展示停机降级原因"
-    assert "【冻结窗口】跳过批次 B001" not in new_html, "不应展示冻结窗口内部降级明细"
-    assert 'stat-card-label">数据异常批次数</div>' in new_html, "未展示数据异常卡片"
-    assert 'stat-card-label">未排批次数</div>' in new_html, "未展示未排批次卡片"
-    assert "对比上一版：-3" in new_html, "未展示数据异常对比差值"
-    assert "对比上一版：-5" in new_html, "未展示未排批次对比差值"
-    assert "当前状态" in new_html and "部分未生效" in new_html, "未展示冻结状态标签"
-    assert "冻结工序数" in new_html and '<div class="aps-summary-value">4</div>' in new_html, "未展示冻结工序数"
-    assert "冻结批次数" in new_html and '<div class="aps-summary-value">7</div>' in new_html, "未展示冻结批次数"
-    assert 'data-col-key="score"' not in new_html, "普通页面不应把内部评分列直接展示给用户"
-    assert "<td>[0, 1]</td>" not in new_html, "普通页面不应直接展示内部评分串"
-    assert "start:priority_first|sgs:cr" not in new_html, "attempts 不应暴露算法方案标签"
-    assert "多起点方案" in new_html, "新 summary 应展示安全的方案来源"
-    assert "方案来源未知" not in new_html, "新 summary 不应丢失安全方案来源后退化为未知"
+    new_display = build_summary_display_state(new_ctx["selected_summary"], result_status="success")
+    assert new_display["summary_truncated"] is True
+    assert new_ctx["selected_summary"]["original_size_bytes"] == 600000
+    assert new_display["warning_total"] == 4 and new_display["warning_hidden_count"] == 1
+    assert len(new_display["warnings_preview"]) == 3
+    assert "开始时间已规范化为：2026-05-19 08:00:00" not in new_display["warnings_preview"]
+    public_degradation = json.dumps(new_ctx["display_summary_degradation_messages"], ensure_ascii=False)
+    assert "【冻结窗口】跳过批次 B001" not in public_degradation
+    assert new_ctx["attempts"][0]["display_tag"] == "多起点方案"
+    assert "start:priority_first|sgs:cr" not in new_ctx["attempts"][0]["display_tag"]
+    assert {card["label"] for card in new_ctx["extra_cards"]} == {"数据异常批次数", "未排批次数"}
 
     fallback_summary = make_top_level_fallback_summary()
     fallback_selected, fallback_hist = build_case_inputs(version=3, summary_obj=fallback_summary)
@@ -339,9 +303,7 @@ def test_scheduler_analysis_observability(app_client) -> None:
     assert int(fallback_unscheduled_card.get("value") or 0) == 2, "读侧回退后未排批次卡片值错误"
     assert fallback_unscheduled_card.get("delta") is None, "上一版缺少未排批次字段时不应展示差值"
 
-    fallback_html = render_analysis_html(app, render_template, version=3, selected=fallback_selected, ctx=fallback_ctx)
-    assert 'stat-card-label">数据异常批次数</div>' in fallback_html, "读侧回退场景未展示数据异常卡片"
-    assert 'stat-card-label">未排批次数</div>' in fallback_html, "读侧回退场景未展示未排批次卡片"
+    assert {card["label"] for card in fallback_ctx["extra_cards"]} == {"数据异常批次数", "未排批次数"}
 
     private_warning_summary = {
         "version": 4,
@@ -354,18 +316,8 @@ def test_scheduler_analysis_observability(app_client) -> None:
         raw_hist=[private_warning_hist],
         selected_item=private_warning_selected,
     )
-    private_warning_html = render_analysis_html(
-        app,
-        render_template,
-        version=4,
-        selected=private_warning_selected,
-        ctx=private_warning_ctx,
-    )
-    assert "提醒：1 条" not in private_warning_html, "内部诊断不应算作业务提醒"
-    assert "维护诊断：1 条" in private_warning_html, "内部诊断应单独展示为维护诊断"
-    assert "查看前 0 条提醒" not in private_warning_html, "不应为 0 条可见提醒展示空展开按钮"
-    assert "另有 1 条提醒" not in private_warning_html, "没有可见提醒时不应提示另有 1 条"
-    assert "当前页没有可安全展开的提醒明细" not in private_warning_html, "不应再用空提醒文案解释内部诊断"
-    assert "去排产历史查看" not in private_warning_html, "只有内部诊断时不应提供无效历史跳转"
-    assert "/system/history?version=4" not in private_warning_html, "只有内部诊断时不应生成历史跳转"
-    assert "sqlite" not in private_warning_html, "页面不应泄露内部错误细节"
+    private_display = build_summary_display_state(private_warning_ctx["selected_summary"], result_status="success")
+    assert private_display["warning_total"] == 0
+    assert private_display["maintenance_diagnostic_count"] == 1
+    assert private_display["warnings_preview"] == [] and private_display["warning_hidden_count"] == 0
+    assert "sqlite" not in json.dumps(private_display, ensure_ascii=False)

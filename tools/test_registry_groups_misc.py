@@ -19,6 +19,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
         ),
         "input_file_scopes": (
             "tests/_support/schedule_retirement.py",
+            "tests/_support/legacy_report_contract.py",
             "web/routes/domains/scheduler/scheduler_batches.py",
             "web/routes/domains/scheduler/scheduler_batch_detail.py",
             "web/routes/domains/scheduler/scheduler_excel_batches*.py",
@@ -218,6 +219,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
         "input_file_scopes": (
             "tests/_support/gantt_retirement.py",
             "tests/_support/workbench_web_contract.py",
+            "tests/_support/legacy_report_contract.py",
             "tests/_support/workbench_browser_contract.py",
             "tests/_support/workbench_browser_probe.cjs",
             "tests/_support/paths.py",

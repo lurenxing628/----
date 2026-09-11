@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from tests._support.legacy_report_contract import assert_rejected, get_unchanged
 from tests.web_pages.reports_workbench_backlink_helpers import _client, _query
 
 
@@ -165,19 +166,31 @@ def test_scheduler_pages_selected_plan_role_use_core_contract() -> None:
 def test_scheduler_navigation_rejects_conflicting_resource_aliases() -> None:
     client = _client()
 
-    response = client.get(
+    response = get_unchanged(
+        client,
         "/scheduler/gantt?view=machine&version=12&start_date=2026-05-06&end_date=2026-05-06"
-        "&machine_id=M-RPT&operator_id=O-RPT"
+        "&machine_id=M-RPT&operator_id=O-RPT",
+        client.application.config["DATABASE_PATH"],
     )
 
-    assert response.status_code == 400
-    assert "资源筛选同时包含设备和人员" in response.get_data(as_text=True)
+    assert_rejected(response)
+    import pytest
+
+    from core.infrastructure.errors import ValidationError
+    from web.routes.workbench.legacy_navigation_plan import resource_filter
+
+    with pytest.raises(ValidationError, match="资源筛选同时包含设备和人员"):
+        resource_filter({"machine_id": "M-RPT", "operator_id": "O-RPT"})
 
 
 def test_week_plan_rejects_scope_type_without_scope_id() -> None:
     client = _client()
 
     for path in ("/scheduler/week-plan", "/scheduler/week-plan/export"):
-        response = client.get(f"{path}?version=12&week_start=2026-05-06&scope_type=machine")
+        response = get_unchanged(client, f"{path}?version=12&week_start=2026-05-06&scope_type=machine",
+                                 client.application.config["DATABASE_PATH"])
         assert response.status_code == 400
-        assert "资源筛选类型是设备，但缺少设备编号" in response.get_data(as_text=True)
+        if path.endswith("/export"):
+            assert "资源筛选类型是设备，但缺少设备编号" in response.get_data(as_text=True)
+        else:
+            assert_rejected(response)

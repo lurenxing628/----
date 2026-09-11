@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-from html.parser import HTMLParser
-from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
-
-from tests._support.paths import REPO_ROOT as PROJECT_ROOT
-from tests.candidate.test_scheduler_candidate_analysis_contract import (
+from tests._support.analysis_route_contract import (
     _build_app,
     _call_analysis_page,
     _comparison_summary,
@@ -18,6 +13,7 @@ from tests.candidate.test_scheduler_candidate_analysis_contract import (
     _PlanRoleServiceMustNotBeCalled,
     _PlanRoleServiceStub,
 )
+from tests._support.paths import REPO_ROOT as PROJECT_ROOT
 
 ACTION_HUB_TEMPLATE = "scheduler/analysis_parts/_action_hub.html"
 CANDIDATE_TEMPLATE = "scheduler/analysis_parts/_candidate_comparison.html"
@@ -36,34 +32,24 @@ VISIBLE_FORBIDDEN_TERMS = (
 )
 
 
-class _TextCollector(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.parts: List[str] = []
-
-    def handle_data(self, data: str) -> None:
-        text = str(data or "").strip()
-        if text:
-            self.parts.append(text)
-
-    @property
-    def text(self) -> str:
-        return " ".join(self.parts)
-
-
-def _visible_text(html: str) -> str:
-    parser = _TextCollector()
-    parser.feed(html)
-    return parser.text
+def _public_words(value):
+    public_keys = {"title", "label", "candidate_label", "role_label", "comparison_note", "empty_state",
+                   "notice", "text", "message", "disabled_reason", "summary", "reason", "note"}
+    words = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in public_keys and isinstance(item, str):
+                words.append(item)
+            elif isinstance(item, (dict, list)):
+                words.append(_public_words(item))
+    elif isinstance(value, list):
+        words.extend(_public_words(item) for item in value)
+    return "\n".join(words)
 
 
-def _render_part(part_name: str, **ctx: Any) -> str:
-    env = Environment(
-        loader=FileSystemLoader(str(PROJECT_ROOT / "templates")),
-        autoescape=select_autoescape(("html", "xml")),
-    )
-    template = env.from_string("{% import 'components/ui_macros.html' as ui %}" f"{{% include '{part_name}' %}}")
-    return template.render(**ctx)
+def _assert_old_parts_retired():
+    for name in (ACTION_HUB_TEMPLATE, CANDIDATE_TEMPLATE, "scheduler/analysis.html"):
+        assert not (PROJECT_ROOT / "templates" / name).exists()
 
 
 def _payload(monkeypatch, path: str, summary: Dict[str, Any], plan_role_service: Any) -> Dict[str, Any]:
@@ -140,8 +126,8 @@ def test_analysis_action_hub_shows_disabled_reason_when_date_range_is_missing(mo
     )
 
     hub = payload["analysis_action_hub"]
-    html = _render_part(ACTION_HUB_TEMPLATE, analysis_action_hub=hub)
-    visible = _visible_text(html)
+    _assert_old_parts_retired()
+    visible = _public_words(hub)
 
     assert hub["next_links"]
     links = {link["label"]: link for link in hub["next_links"]}
@@ -162,8 +148,8 @@ def test_analysis_action_hub_renders_visible_business_text_without_internal_term
         _PlanRoleServiceStub(_plan_role_options()),
     )
 
-    html = _render_part(ACTION_HUB_TEMPLATE, analysis_action_hub=payload["analysis_action_hub"])
-    visible = _visible_text(html)
+    _assert_old_parts_retired()
+    visible = _public_words(payload["analysis_action_hub"])
 
     assert "排产分析行动入口" in visible
     assert "系统建议采用" in visible
@@ -183,8 +169,8 @@ def test_analysis_action_hub_shows_plain_empty_state_without_candidate_compariso
     )
 
     hub = payload["analysis_action_hub"]
-    html = _render_part(ACTION_HUB_TEMPLATE, analysis_action_hub=hub)
-    visible = _visible_text(html)
+    _assert_old_parts_retired()
+    visible = _public_words(hub)
 
     assert hub["has_recommendation"] is False
     assert hub["summary_cards"] == []
@@ -202,15 +188,11 @@ def test_detailed_candidate_part_does_not_repeat_action_hub_recommendation(monke
         _PlanRoleServiceStub(_plan_role_options()),
     )
 
-    html = _render_part(
-        CANDIDATE_TEMPLATE,
-        candidate_comparison_display=payload["candidate_comparison_display"],
-        analysis_action_hub=payload["analysis_action_hub"],
-    )
-    visible = _visible_text(html)
-
-    assert "方案对比" in visible
-    assert "analysisCandidateComparisonTable" in html
+    _assert_old_parts_retired()
+    display = payload["candidate_comparison_display"]
+    visible = _public_words(display["rows"])
+    assert display["has_comparison"] is True and len(display["rows"]) == 3
+    assert payload["analysis_action_hub"]["recommendation_card"] == display["recommendation_card"]
     assert "系统建议采用" not in visible
     assert visible.count("正式采用方案") >= 1
 
@@ -222,10 +204,10 @@ def test_detailed_candidate_part_keeps_legacy_recommendation_without_action_hub_
         _PlanRoleServiceStub(_plan_role_options()),
     )
 
-    html = _render_part(CANDIDATE_TEMPLATE, candidate_comparison_display=payload["candidate_comparison_display"])
-    visible = _visible_text(html)
-
-    assert "方案对比" in visible
+    _assert_old_parts_retired()
+    display = payload["candidate_comparison_display"]
+    visible = _public_words(display)
+    assert display["has_comparison"] is True and len(display["rows"]) == 3
     assert "系统建议采用" in visible
     assert "正式采用方案" in visible
-    assert "analysisCandidateComparisonTable" in html
+    assert display["recommendation_card"]["candidate_label"] == "重点工序优先方案 1/5"

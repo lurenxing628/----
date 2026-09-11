@@ -17,6 +17,7 @@ from core.services.scheduler.resource_dispatch_range import resolve_dispatch_ran
 from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_CRITICAL_BEST
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.legacy_report_contract import assert_rejected, assert_retired, get_unchanged, saved_summary_display
 from tests._support.paths import REPO_ROOT
 
 
@@ -25,9 +26,14 @@ def _read(rel_path: str) -> str:
 
 
 def test_resource_dispatch_page_renders_generic_degradation_channel() -> None:
-    template_source = _read("templates/scheduler/resource_dispatch.html")
+    from web.viewmodels.scheduler_resource_dispatch_execution import build_execution_payload
 
-    assert 'id="rdDegradationSummary"' in template_source
+    assert not (REPO_ROOT / "templates/scheduler/resource_dispatch.html").exists()
+    payload = build_execution_payload({"rows": [], "degradation_events": [
+        {"code": "resource_pool_degraded", "message": "/tmp/private/raw"}]})
+    assert payload["tasks"] == [] and payload["degradation_events"]
+    assert payload["degradation_message"]
+    assert "/tmp/private/raw" not in json.dumps(payload, ensure_ascii=False)
 
 
 def _build_client(tmp_path, monkeypatch):
@@ -167,9 +173,16 @@ def test_resource_dispatch_invalid_queries_redirect_to_clean_url(tmp_path, monke
     ]
 
     for case_name, url, expected_params, missing_keys in cases:
-        resp = client.get(url)
-        assert resp.status_code == 302, case_name
-        params = _query_dict(resp.headers["Location"])
+        resp = get_unchanged(client, url, tmp_path / "aps_test.db")
+        if case_name in ("invalid_scope_type", "invalid_team_axis", "invalid_version", "zero_version"):
+            assert_rejected(resp)
+        else:
+            assert_retired(resp, public=("1", "正式采用方案"))
+        data = get_unchanged(client, url.replace("resource-dispatch?", "resource-dispatch/data?"), tmp_path / "aps_test.db")
+        assert data.status_code == 400 and data.get_json()["success"] is False, case_name
+        exported = get_unchanged(client, url.replace("resource-dispatch?", "resource-dispatch/export?"), tmp_path / "aps_test.db")
+        assert exported.status_code == 302, case_name
+        params = _query_dict(exported.headers["Location"])
         for key, expected_value in expected_params.items():
             assert params.get(key) == expected_value, case_name
         for key in missing_keys:
@@ -183,7 +196,8 @@ def test_resource_dispatch_missing_history_version_fails_closed_without_query_cl
     page_resp = client.get(f"/scheduler/resource-dispatch?{query}")
     page_html = page_resp.get_data(as_text=True)
     assert page_resp.status_code == 404
-    assert "排产版本不存在，请先选择已有版本。" in page_html
+    assert "页面不存在或已被删除" in page_html
+    assert "999" not in page_html
     assert page_resp.headers.get("Location") is None
 
     data_resp = client.get(f"/scheduler/resource-dispatch/data?{query}")
@@ -202,28 +216,33 @@ def test_resource_dispatch_missing_history_version_fails_closed_without_query_cl
 def test_resource_dispatch_version_dropdown_uses_composed_result_status_label(tmp_path, monkeypatch) -> None:
     client = _build_client(tmp_path, monkeypatch)
 
-    resp = client.get("/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&version=1")
+    resp = get_unchanged(client, "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&version=1", tmp_path / "aps_test.db")
     html = resp.get_data(as_text=True)
 
-    assert resp.status_code == 200
-    assert "模拟排产 / 部分成功" in html
+    assert_retired(resp, public=("1", "正式采用方案"))
+    original, display = saved_summary_display(tmp_path / "aps_test.db", 1)
+    assert original[0] == "simulated"
+    assert json.loads(original[1])["completion_status"] == "partial"
+    assert display["result_status_label"] == "模拟排产 / 部分成功"
     assert "模拟排产）" not in html
 
 
 def test_resource_dispatch_mixed_invalid_filters_settle_without_500(tmp_path, monkeypatch) -> None:
     client = _build_client(tmp_path, monkeypatch)
 
-    resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP404&period_preset=week&query_date=bad&version=1",
-        follow_redirects=True,
-    )
-
-    assert resp.status_code == 200
-    html = resp.data.decode("utf-8")
-    assert "资源排班" in html
-    assert "id=\"rdPage\"" in html
-    assert "query_date格式不正确" not in html
-    assert "查询日期填写不正确，请检查后重试。" in html
+    query = "scope_type=operator&operator_id=OP404&period_preset=week&query_date=bad&version=1"
+    resp = get_unchanged(client, "/scheduler/resource-dispatch?" + query, tmp_path / "aps_test.db")
+    assert_retired(resp, public=("1", "正式采用方案"))
+    data = get_unchanged(client, "/scheduler/resource-dispatch/data?" + query, tmp_path / "aps_test.db")
+    assert data.status_code == 400
+    payload = data.get_json()
+    assert payload["success"] is False
+    assert payload["error"]["message"] == "所选人员不存在：OP404"
+    date_response = get_unchanged(client, "/scheduler/resource-dispatch/data?" + query.replace("OP404", "OP001"), tmp_path / "aps_test.db")
+    assert date_response.status_code == 400
+    assert date_response.get_json()["success"] is False
+    assert "日期" in date_response.get_json()["error"]["message"]
+    assert "query_date格式不正确" not in json.dumps(payload, ensure_ascii=False)
 
 
 def test_resource_dispatch_data_returns_machine_field_and_invalid_query_keys(tmp_path, monkeypatch) -> None:

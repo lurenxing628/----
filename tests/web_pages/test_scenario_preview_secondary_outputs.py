@@ -8,11 +8,20 @@ import re
 import sys
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import pytest
 from openpyxl import load_workbook
 
+from tests._support.legacy_report_contract import (
+    RETIRED_SCOPE,
+    UNSUPPORTED_SCOPE,
+    PageContract,
+    assert_rejected,
+    assert_retired,
+    get_unchanged,
+    report_read_context,
+)
 from tests._support.paths import REPO_ROOT
 
 TESTS_ROOT = REPO_ROOT / "tests"
@@ -143,13 +152,43 @@ def _assert_report_export_uses_public_scenario_name(response, *, scenario_id: st
     return workbook_text
 
 
-def _assert_scenario_filter_resets_when_plan_identity_changes(html: str) -> None:
-    assert ('name="plan_context_token"' in html) or ('name="scenario_id"' in html)
-    assert "data-report-plan-version-select" in html
-    assert "data-report-plan-role-select" in html
-    assert "data-initial-version" in html
-    assert "data-initial-plan-role" in html
-    assert "report_plan_filter.js" in html
+def _retired_preview(client, path, scenario_id, name):
+    db = client.application.config["DATABASE_PATH"]
+    response = get_unchanged(client, path, db)
+    parts = urlsplit(path)
+    page = PageContract(response.get_data(as_text=True))
+    downloads = []
+    if parts.path.startswith("/reports/"):
+        assert len(page.links) == 2
+        link = page.links[1]
+        target = urlsplit(link)
+        assert target.path == parts.path + "/export"
+        query = parse_qs(target.query)
+        original = parse_qs(parts.query)
+        assert original.pop("scenario_id") == [scenario_id]
+        token = query.pop("plan_context_token")[0]
+        assert query == original
+        assert scenario_id not in token
+        assert scenario_id not in _decode_urlsafe_first_segment(token)
+        from web.routes.domains.scheduler.scheduler_plan_context_token import scenario_id_from_plan_context_token
+        with client.application.app_context():
+            assert scenario_id_from_plan_context_token(token) == scenario_id
+        exported = get_unchanged(client, link, db)
+        assert exported.status_code == 200
+        _assert_report_export_uses_public_scenario_name(exported, scenario_id=scenario_id, expected_name=name)
+        downloads = [link]
+    assert_retired(response, public=(str(VERSION), "正式采用方案", "已保存模拟方案"),
+                   downloads=downloads,
+                   message=UNSUPPORTED_SCOPE if parts.path == "/scheduler/gantt" else RETIRED_SCOPE)
+    assert scenario_id not in unquote(response.get_data(as_text=True))
+    assert "report_plan_filter.js" not in response.get_data(as_text=True)
+    if parts.path.startswith("/reports/"):
+        model = report_read_context(client.application, db, path)
+        assert model["report_plan_status"]["is_preview"] is True
+        assert model["report_plan_status"]["label"] == name
+        assert "当前方案：" + name in model["report_plan_status"]["source_text"]
+        return model
+    return None
 
 
 def test_secondary_output_services_read_scenario_rows_and_do_not_fallback(tmp_path: Path) -> None:
@@ -237,31 +276,16 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     client = app.test_client()
     scenario_query = f"version={VERSION}&plan_role=adopted&scenario_id={scenario_id}"
 
-    week_html = client.get(f"/scheduler/week-plan?week_start=2026-05-04&{scenario_query}").get_data(as_text=True)
-    assert "当前周计划正在预览“二级页模拟”" in week_html
-    assert week_html.count("当前周计划正在预览") == 1
-    assert 'name="plan_context_token"' in week_html
-    assert f'name="scenario_id" value="{scenario_id}"' not in week_html
-    token_match = re.search(r'name="plan_context_token"\s+value="([^"]+)"', week_html)
-    assert token_match is not None
-    plan_token = token_match.group(1)
-    assert scenario_id not in plan_token
-    assert scenario_id not in _decode_urlsafe_first_segment(plan_token)
-    assert f"scenario_id={scenario_id}" not in unquote(week_html)
-    assert "/scheduler/resource-dispatch?" in week_html and "plan_context_token=" in week_html
-    assert "/scheduler/gantt?view=machine" in week_html and "plan_context_token=" in week_html
-    _assert_scenario_filter_resets_when_plan_identity_changes(week_html)
-    assert "这套方案只用于对比，不代表最终采用的排产结果" not in week_html
-    assert "2026-05-06" in week_html
-    assert "11:00" in week_html
-
-    gantt_html = client.get(
-        f"/scheduler/gantt?view=machine&start_date=2026-05-04&end_date=2026-05-10&{scenario_query}"
-    ).get_data(as_text=True)
-    _assert_scenario_filter_resets_when_plan_identity_changes(gantt_html)
+    _retired_preview(client, f"/scheduler/week-plan?week_start=2026-05-04&{scenario_query}",
+                     scenario_id, "二级页模拟")
+    _retired_preview(client,
+                     f"/scheduler/gantt?view=machine&start_date=2026-05-04&end_date=2026-05-10&{scenario_query}",
+                     scenario_id, "二级页模拟")
 
     week_export = client.get(f"/scheduler/week-plan/export?week_start=2026-05-04&{scenario_query}")
     assert week_export.status_code == 200
+    assert "2026-05-06" in _workbook_text(week_export.data)
+    assert "11:00" in _workbook_text(week_export.data)
     week_disposition = unquote(str(week_export.headers.get("Content-Disposition") or ""))
     assert scenario_id not in week_disposition
     assert "二级页模拟" in week_disposition
@@ -278,15 +302,9 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     assert formal_week_export.status_code == 200
     assert _workbook_summary_values(formal_week_export.data) is None
 
-    resource_html = client.get(
-        f"/scheduler/resource-dispatch?scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-06&{scenario_query}"
-    ).get_data(as_text=True)
-    assert "当前资源排班正在预览" in resource_html
-    assert 'name="plan_context_token"' in resource_html
-    assert f'name="scenario_id" value="{scenario_id}"' not in resource_html
-    assert f"scenario_id={scenario_id}" not in unquote(resource_html)
-    assert "/scheduler/week-plan?" in resource_html and "plan_context_token=" in resource_html
-    _assert_scenario_filter_resets_when_plan_identity_changes(resource_html)
+    _retired_preview(client,
+                     f"/scheduler/resource-dispatch?scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-06&{scenario_query}",
+                     scenario_id, "二级页模拟")
 
     resource_data = client.get(
         f"/scheduler/resource-dispatch/data?scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-06&{scenario_query}"
@@ -307,46 +325,16 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     assert "二级页模拟" in resource_disposition
     assert "正式采用方案" not in resource_disposition
 
-    overdue_html = client.get(f"/reports/overdue?{scenario_query}").get_data(as_text=True)
-    assert "当前超期清单正在预览" in overdue_html
-    assert f'name="scenario_id" value="{scenario_id}"' not in overdue_html
-    assert f"scenario_id={scenario_id}" not in unquote(overdue_html)
-    assert 'name="plan_context_token"' in overdue_html
-    _assert_scenario_filter_resets_when_plan_identity_changes(overdue_html)
-    assert "模拟预览暂不支持导出" not in overdue_html
-    assert f"/reports/overdue/export?version={VERSION}&amp;plan_role=adopted&amp;plan_context_token=" in overdue_html
-    assert "B2" in overdue_html
-
-    utilization_html = client.get(
-        f"/reports/utilization?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}"
-    ).get_data(as_text=True)
-    assert "当前资源负荷与利用率正在预览" in utilization_html
-    assert f'name="scenario_id" value="{scenario_id}"' not in utilization_html
-    assert f"scenario_id={scenario_id}" not in unquote(utilization_html)
-    assert 'name="plan_context_token"' in utilization_html
-    _assert_scenario_filter_resets_when_plan_identity_changes(utilization_html)
-    assert "/reports/downtime?" in utilization_html and "plan_context_token=" in utilization_html
-    assert "/reports/utilization/export?" in utilization_html and "plan_context_token=" in utilization_html
-    assert "M2" in utilization_html
-    assert '<div class="aps-summary-label">排产方案</div>' in utilization_html
-    assert '<div class="aps-summary-value">二级页模拟</div>' in utilization_html
-    assert "当前方案：二级页模拟" in utilization_html
-    assert "模拟预览暂不支持导出" not in utilization_html
-
-    downtime_html = client.get(
-        f"/reports/downtime?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}"
-    ).get_data(as_text=True)
-    assert "当前停机影响统计正在预览" in downtime_html
-    assert f'name="scenario_id" value="{scenario_id}"' not in downtime_html
-    assert f"scenario_id={scenario_id}" not in unquote(downtime_html)
-    assert 'name="plan_context_token"' in downtime_html
-    _assert_scenario_filter_resets_when_plan_identity_changes(downtime_html)
-    assert "0.5" in downtime_html
-    assert '<div class="aps-summary-label">排产方案</div>' in downtime_html
-    assert '<div class="aps-summary-value">二级页模拟</div>' in downtime_html
-    assert "当前方案：二级页模拟" in downtime_html
-    assert "/reports/downtime/export?" in downtime_html and "plan_context_token=" in downtime_html
-    assert "模拟预览暂不支持导出" not in downtime_html
+    overdue = _retired_preview(client, f"/reports/overdue?{scenario_query}", scenario_id, "二级页模拟")
+    assert any(row["batch_id"] == "B2" for row in overdue["rows"])
+    utilization = _retired_preview(
+        client, f"/reports/utilization?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}",
+        scenario_id, "二级页模拟")
+    assert any(row["machine_id"] == "M2" and row["hours"] == 1.0 for row in utilization["machine_rows"])
+    downtime = _retired_preview(
+        client, f"/reports/downtime?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}",
+        scenario_id, "二级页模拟")
+    assert any(row["machine_id"] == "M2" and row["schedule_overlap_hours"] == 0.5 for row in downtime["rows"])
 
     export_resp = client.get(f"/reports/overdue/export?{scenario_query}")
     assert export_resp.status_code == 200
@@ -402,17 +390,9 @@ def test_secondary_output_pages_use_plain_fallback_for_unnamed_scenario(tmp_path
         f"/reports/downtime?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}",
     ]
     for url in page_urls:
-        html = client.get(url).get_data(as_text=True)
-        assert "模拟预览（未命名）" in html, url
-        if "/reports/utilization?" in url or "/reports/downtime?" in url:
-            assert "当前方案：模拟预览（未命名）" in html, url
-            assert '<div class="aps-summary-label">排产方案</div>' in html, url
-            assert '<div class="aps-summary-value">模拟预览（未命名）</div>' in html, url
-            assert "当前方案：None" not in html, url
-            if "/reports/utilization?" in url:
-                assert "当前资源负荷与利用率正在预览“模拟预览（未命名）”，正式计划还没有改变。" in html, url
-            if "/reports/downtime?" in url:
-                assert "当前停机影响统计正在预览“模拟预览（未命名）”，正式计划还没有改变。" in html, url
+        model = _retired_preview(client, url, scenario_id, "模拟预览（未命名）")
+        if model is not None:
+            assert "当前方案：None" not in model["report_plan_status"]["source_text"]
 
     week_export = client.get(f"/scheduler/week-plan/export?week_start=2026-05-04&{scenario_query}")
     assert week_export.status_code == 200
@@ -465,10 +445,9 @@ def test_secondary_output_pages_reject_bad_scenario_without_showing_official_pla
         f"/reports/utilization?start_date=2026-05-04&end_date=2026-05-04&{bad_query}",
         f"/reports/downtime?start_date=2026-05-04&end_date=2026-05-04&{bad_query}",
     ):
-        response = client.get(url, follow_redirects=False)
+        response = get_unchanged(client, url, app.config["DATABASE_PATH"])
         html = response.get_data(as_text=True)
-        assert response.status_code == 400, url
-        assert "模拟方案不存在" in html, url
+        assert_rejected(response)
         assert "正式设备" not in html, url
 
     data_resp = client.get(

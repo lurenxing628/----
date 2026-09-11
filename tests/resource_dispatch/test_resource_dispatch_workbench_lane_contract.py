@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict
 
+from tests._support.legacy_report_contract import IDENTITY_UNAVAILABLE, RETIRED_SCOPE, assert_retired, get_unchanged
 from tests._support.paths import REPO_ROOT
 from tests.operation_execution.operation_execution_feedback_test_support import (
     RESOURCE_DISPATCH_TEMPLATE,
@@ -21,10 +22,6 @@ from tests.operation_execution.operation_execution_feedback_test_support import 
 
 def _source(path: Path) -> str:
     return path.read_text(encoding="utf-8")
-
-
-def _script_index(template: str, name: str) -> int:
-    return template.index("filename='js/" + name + "'")
 
 
 def _run_node_json(node_code: str) -> Dict[str, Any]:
@@ -42,66 +39,31 @@ def _run_node_json(node_code: str) -> Dict[str, Any]:
     return json.loads(proc.stdout)
 
 
-def _render_execution_cards(payload: Dict[str, Any]) -> Dict[str, Any]:
-    node_code = r"""
-const payload = __PAYLOAD__;
+def _field_fallbacks():
+    return _run_node_json(r"""
 const fs = require("fs");
-const nodes = {
-  rdExecutionCards: { innerHTML: "" },
-  rdExecutionNotice: { textContent: "", hidden: false }
-};
-function trim(value) {
-  return value === undefined || value === null ? "" : String(value).trim();
-}
-function escapeHtml(value) {
-  const escapes = {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"};
-  return String(value === undefined || value === null ? "" : value).replace(/[&<>"']/g, function (ch) {
-    return escapes[ch];
-  });
-}
-global.window = {};
-global.document = {};
-window.__APS_RESOURCE_DISPATCH__ = {
-  execution: {},
-  $: function (id) { return nodes[id] || null; },
-  trim: trim,
-  escapeHtml: escapeHtml,
-  show: function (el, visible) { el.hidden = !visible; },
-  resourceDisplayHtml: function (row, prefix, fallback) {
-    const label = trim(row && (row[prefix + "_label"] || row[prefix + "_name"] || row[prefix + "_id"]));
-    return escapeHtml(label || fallback || "");
-  },
-  core: { currentQueryString: function () { return ""; } }
-};
-const source = fs.readFileSync("static/js/resource_execution_cards.js", "utf8");
-eval(source);
-window.__APS_RESOURCE_DISPATCH__.execution.renderExecutionCards(payload);
+global.window = { APSResourceContract: {} };
+eval(fs.readFileSync("frontend/workbench/app/FieldContract.js", "utf8"));
+const C = window.FieldContract;
 process.stdout.write(JSON.stringify({
-  html: nodes.rdExecutionCards.innerHTML,
-  noticeText: nodes.rdExecutionNotice.textContent,
-  noticeHidden: nodes.rdExecutionNotice.hidden
+  absent: C.display(null), empty: C.display(""), zero: C.display(0),
+  start: C.date(null), end: C.date(""), readonly: C.blocked(null, "create")
 }));
-""".replace("__PAYLOAD__", json.dumps(payload, ensure_ascii=False))
-    return _run_node_json(node_code)
+""")
 
 
 def test_resource_dispatch_execution_scripts_are_loaded_by_responsibility() -> None:
-    template = _source(RESOURCE_DISPATCH_TEMPLATE)
-    ordered = [
-        "resource_dispatch_shared.js",
-        "resource_dispatch_core.js",
-        "resource_execution_context.js",
-        "resource_execution_cards.js",
-        "resource_execution_actual.js",
-        "resource_execution_import.js",
-        "resource_execution.js",
-        "resource_dispatch_boot.js",
-    ]
-
-    positions = [_script_index(template, name) for name in ordered]
+    assert not RESOURCE_DISPATCH_TEMPLATE.exists()
+    legacy = ["resource_dispatch_shared.js", "resource_dispatch_core.js", "resource_execution_context.js",
+              "resource_execution_cards.js", "resource_execution_actual.js", "resource_execution_import.js",
+              "resource_execution.js", "resource_dispatch_boot.js"]
+    assert all(not (REPO_ROOT / "static/js" / name).exists() for name in legacy)
+    order = json.loads(_source(REPO_ROOT / "scripts/workbench/build-order.json"))["live"]
+    expected = ["FieldContract.js", "FieldAPI.js", "FieldControls.jsx", "FieldFilters.jsx",
+                "FieldEditor.jsx", "FieldDetail.jsx", "FieldTable.jsx", "FieldFiles.jsx", "FieldWorkspace.jsx"]
+    positions = [order.index(name) for name in expected]
     assert positions == sorted(positions)
-    for name in ordered:
-        assert (REPO_ROOT / "static" / "js" / name).exists()
+    assert all((REPO_ROOT / "frontend/workbench/app" / name).is_file() for name in expected)
 
 
 def test_task_card_uses_plain_fallback_when_part_is_missing() -> None:
@@ -126,38 +88,33 @@ def test_task_card_uses_plain_fallback_when_part_is_missing() -> None:
 
 
 def test_execution_cards_render_dom_fallbacks_for_missing_part_and_operation() -> None:
-    result = _render_execution_cards(
-        {
-            "tasks": [
-                {
-                    "op_id": 10,
-                    "schedule_id": 100,
-                    "batch_id": "B1",
-                    "available_actions": [],
-                }
-            ]
-        }
-    )
-    html = result["html"]
+    from web.viewmodels.scheduler_resource_dispatch_execution import build_task_card
 
-    assert result["noticeHidden"] is True
-    assert "未命名工序" in html
-    assert "图号 / 物料：未填写图号或物料" in html
-    assert "暂无开工记录" in html
-    assert "未填写实际完工" in html
-    assert "计划和实际：暂未记录现场实际" in html
-    assert 'title="当前任务暂不能查看现场记录。"' in html
+    assert not (REPO_ROOT / "static/js/resource_execution_cards.js").exists()
+    card = build_task_card({}, None, can_write_feedback=False, feedback_write_enabled=False)
+    assert card["op_name"] == "工序"
+    assert card["part_label"] == "未填写图号或物料"
+    assert card["actual_start_time"] is None and card["actual_end_time"] is None
+    assert card["actual_delta_summary"] == "暂未记录现场实际"
+    assert card["task_key"] == "" and card["state_key"] == ""
+    values = _field_fallbacks()
+    assert values["absent"] == values["empty"] == values["start"] == values["end"] == "待补"
+    assert values["zero"] == "0"
+    assert values["readonly"] == "当前上下文不可写，请刷新并核对正式计划。"
 
 
 def test_resource_dispatch_keeps_execution_inside_existing_page() -> None:
-    checked_files = [
-        RESOURCE_DISPATCH_TEMPLATE,
-        REPO_ROOT / "web" / "routes" / "domains" / "scheduler" / "scheduler_resource_dispatch.py",
-        REPO_ROOT / "web" / "routes" / "domains" / "scheduler" / "scheduler_resource_dispatch_execution_routes.py",
-    ]
+    from web.routes.workbench.legacy_page_contract import PAGE_POLICIES
 
-    for path in checked_files:
-        assert "/scheduler/resource-execution" not in _source(path)
+    assert PAGE_POLICIES["scheduler.resource_dispatch_page"] == "retired"
+    assert not RESOURCE_DISPATCH_TEMPLATE.exists()
+    for relative in ("web/routes/domains/scheduler/scheduler_resource_dispatch.py",
+                     "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+                     "frontend/workbench/app/FieldWorkspace.jsx"):
+        assert "/scheduler/resource-execution" not in _source(REPO_ROOT / relative)
+    workspace = _source(REPO_ROOT / "frontend/workbench/app/FieldWorkspace.jsx")
+    assert "<window.FieldTable " in workspace and "<window.FieldDetail " in workspace
+    assert "<window.FieldFiles " in workspace
 
 
 def test_execution_data_contains_part_time_delta_and_record_labels(tmp_path, monkeypatch) -> None:
@@ -215,28 +172,25 @@ def test_execution_data_contains_part_time_delta_and_record_labels(tmp_path, mon
 
 
 def test_nonformal_resource_dispatch_pages_do_not_emit_write_addresses(tmp_path, monkeypatch) -> None:
-    app, _db_path = _build_app(tmp_path, monkeypatch)
+    app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
-    urls = [
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-04-30&date_from=2026-04-30&date_to=2026-05-06&version=1&plan_role=adopted",
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=baseline_best",
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted&scenario_id=scenario-plain",
+    queries = [
+        "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-04-30&date_from=2026-04-30&date_to=2026-05-06&version=1&plan_role=adopted",
+        "scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=baseline_best",
+        _current_query() + "&scenario_id=scenario-plain",
     ]
-
-    for url in urls:
-        resp = client.get(url)
-        body = resp.get_data(as_text=True)
-
-        assert resp.status_code == 200
-        assert "查看计划和实际" in body
-        assert "只能查看" in body
-        assert "不能写现场记录" in body
-        assert "data-actual-record-url-template=" not in body
-        assert "data-actual-template-url=" not in body
-        assert "data-actual-import-url=" not in body
-        assert "/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual" not in body
-        assert "/scheduler/resource-dispatch/execution/actual-template?" not in body
-        assert "/scheduler/resource-dispatch/execution/import?" not in body
+    for query in queries:
+        response = get_unchanged(client, "/scheduler/resource-dispatch?" + query, db_path)
+        assert_retired(response, message=IDENTITY_UNAVAILABLE if "scenario_id=" in query else RETIRED_SCOPE)
+        payload = _json(get_unchanged(client, "/scheduler/resource-dispatch/execution/data?" + query, db_path))
+        assert payload["success"] is True
+        assert payload["data"]["can_write_feedback"] is False
+        assert "不能填写现场记录" in payload["data"]["disabled_reason"]
+        assert all(action["action"] != "fill_actual"
+                   for task in payload["data"]["tasks"] for action in task["available_actions"])
+        blocked = get_unchanged(client, "/scheduler/resource-dispatch/execution/actual-template?" + query, db_path)
+        assert blocked.status_code == 409 and blocked.get_json()["success"] is False
+        assert blocked.get_json()["error"]["message"] == "当前不是最新正式采用方案，不能填写现场记录。"
 
 
 def test_available_actions_reachable_write_gate_combos_stay_stable() -> None:
@@ -312,10 +266,10 @@ def test_empty_execution_cards_surface_public_degradation_message() -> None:
 
     assert payload["tasks"] == []
     assert payload["degradation_message"] == RESOURCE_POOL_BUILD_FAILED_MESSAGE
-    rendered = _render_execution_cards(payload)
-    assert RESOURCE_POOL_BUILD_FAILED_MESSAGE in rendered["html"]
-    assert "当前查询范围内暂无现场记录任务卡" not in rendered["html"]
-    assert "/tmp/internal/raw" not in rendered["html"]
+    assert payload["degradation_events"]
+    assert "当前查询范围内暂无现场记录任务卡" not in payload["degradation_message"]
+    assert "/tmp/internal/raw" not in json.dumps(payload, ensure_ascii=False)
+    assert not (REPO_ROOT / "static/js/resource_execution_cards.js").exists()
 
 
 def test_positive_int_consolidated_to_execution_scope_strict_parser() -> None:

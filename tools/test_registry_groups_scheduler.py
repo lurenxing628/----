@@ -289,6 +289,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/_support/optimizer_fjsp_*.py",
             "tests/_support/busy_block_case.py",
             "tests/_support/schedule_retirement.py",
+            "tests/_support/legacy_report_contract.py",
             "tests/migration_db/fixtures/schema-v9.sql",
             ".codestable/roadmap/scheduler-global-optimizer/benchmark-ratchet-baseline.json",
             "web/routes/domains/scheduler/scheduler_run.py",
@@ -427,6 +428,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
         ),
         "input_file_scopes": (
             "tests/_support/schedule_retirement.py",
+            "tests/_support/legacy_report_contract.py",
             "tests/operation_execution/operation_execution_feedback_test_support.py",
             "tests/web_pages/reports_workbench_backlink_helpers.py",
             "tests/_support/gantt_current.py",

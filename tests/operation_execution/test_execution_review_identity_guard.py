@@ -13,14 +13,29 @@ from core.infrastructure.errors import ValidationError
 from core.models.execution_review_identity import can_read_execution_review
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.services.report.execution_review import ExecutionReviewMixin
+from tests._support.legacy_report_contract import (
+    IDENTITY_UNAVAILABLE,
+    MISSING_ROLE,
+    assert_rejected,
+    assert_retired,
+    get_unchanged,
+)
 from tests.web_pages.reports_workbench_backlink_helpers import (
     _assert_public_output_boundaries,
     _client,
-    _href_with_text_and_fragment,
-    _parser_for,
+    _PageParser,
     _visible_text,
     _xlsx_text,
 )
+
+
+def _retired_review(client, path, **expected):
+    response = get_unchanged(client, path, client.application.config["DATABASE_PATH"])
+    assert_retired(response, **expected)
+    parser = _PageParser()
+    parser.feed(response.get_data(as_text=True))
+    _assert_public_output_boundaries(parser)
+    return parser
 
 
 def _seed_historical_adopted_version() -> None:
@@ -162,16 +177,17 @@ def test_execution_review_service_blocks_partial_before_reading_plan_rows() -> N
 
 def test_execution_review_direct_candidate_request_is_visible_blocked() -> None:
     client = _client()
-    parser = _parser_for(
+    parser = _retired_review(
         client,
         "/reports/execution-review?version=12&plan_role=baseline_best"
         "&date_from=2026-05-06&date_to=2026-05-06&batch_id=B-RPT",
+        message=MISSING_ROLE,
+        public=("12", "原算法代表方案"),
     )
     visible = _visible_text(parser)
 
-    assert "计划和现场实际只复盘正式采用方案" in visible
-    assert "原算法代表方案" in visible
-    assert "不能当作正式现场复盘显示" in visible
+    assert "未沿用旧页的采用方案回退" in visible
+    assert "B-RPT" not in visible
     assert "查看现场记录入口" not in visible
     assert _export_links(parser) == []
     _assert_no_adopted_continuation_links(parser)
@@ -179,14 +195,15 @@ def test_execution_review_direct_candidate_request_is_visible_blocked() -> None:
 
 def test_execution_review_unknown_plan_role_does_not_leak_raw_role() -> None:
     client = _client()
-    resp = client.get("/reports/execution-review?version=12&plan_role=future_role")
-    parser = _parser_for(client, "/reports/execution-review?version=12&plan_role=future_role")
+    resp = get_unchanged(client, "/reports/execution-review?version=12&plan_role=future_role",
+                         client.application.config["DATABASE_PATH"])
+    assert_rejected(resp, message="原计划角色无效，未改用采用方案。", forbidden=("future_role",))
+    parser = _PageParser()
+    parser.feed(resp.get_data(as_text=True))
     body = resp.get_data(as_text=True)
     visible = _visible_text(parser)
 
-    assert resp.status_code == 200
-    assert "计划和现场实际只复盘正式采用方案" in visible
-    assert "未知方案身份" in visible
+    assert "未改用采用方案" in visible
     assert "future_role" not in body
     assert "future_role" not in visible
     assert _export_links(parser) == []
@@ -194,15 +211,15 @@ def test_execution_review_unknown_plan_role_does_not_leak_raw_role() -> None:
 
 def test_execution_review_direct_scenario_request_is_visible_blocked() -> None:
     client = _client()
-    parser = _parser_for(
+    parser = _retired_review(
         client,
         "/reports/execution-review?version=12&plan_role=adopted&scenario_id=SCENARIO-RPT"
         "&date_from=2026-05-06&date_to=2026-05-06",
+        message=IDENTITY_UNAVAILABLE,
     )
     visible = _visible_text(parser)
 
-    assert "计划和现场实际只复盘正式采用方案" in visible
-    assert "模拟预览身份" in visible
+    assert "未补建身份或换查其他计划" in visible
     assert "B-RPT" not in visible
     assert _export_links(parser) == []
     _assert_no_adopted_continuation_links(parser)
@@ -210,45 +227,49 @@ def test_execution_review_direct_scenario_request_is_visible_blocked() -> None:
 
 def test_execution_review_resource_filter_export_keeps_formal_rows() -> None:
     client = _client()
-    parser = _parser_for(
+    export_href = (
+        "/reports/execution-review/export?version=12&date_from=2026-05-06&date_to=2026-05-06"
+        "&resource_type=machine&resource_id=M-RPT&plan_role=adopted"
+    )
+    parser = _retired_review(
         client,
         "/reports/execution-review?version=12&date_from=2026-05-06&date_to=2026-05-06"
         "&resource_type=machine&resource_id=M-RPT",
+        downloads=(export_href,), public=("12", "正式采用方案", "设备", "2026-05-06 至 2026-05-06"),
     )
     visible = _visible_text(parser)
 
-    assert "B-RPT" in visible
-    assert "B-SAME" in visible
+    assert "B-RPT" not in visible
+    assert "B-SAME" not in visible
     assert "B-OTHER" not in visible
     assert "M-OTHER" not in visible
-    export_href = _href_with_text_and_fragment(
-        parser,
-        "导出 Excel",
-        "/reports/execution-review/export",
-        "resource_id=M-RPT",
-    )
-    export_resp = client.get(export_href)
+    assert _export_links(parser) == [export_href]
+    export_resp = get_unchanged(client, export_href, client.application.config["DATABASE_PATH"])
     export_text = _xlsx_text(export_resp.data)
 
     assert export_resp.status_code == 200
     assert "B-RPT" in export_text
     assert "B-SAME" in export_text
     assert "B-OTHER" not in export_text
+    assert "M-OTHER" not in export_text
     _assert_public_output_boundaries(parser)
 
 
 def test_execution_review_historical_adopted_version_is_visible_history() -> None:
     client = _client()
     _seed_historical_adopted_version()
-    parser = _parser_for(client, "/reports/execution-review?version=11")
+    parser = _retired_review(
+        client, "/reports/execution-review?version=11",
+        public=("11", "正式采用方案"),
+        downloads=("/reports/execution-review/export?version=11&plan_role=adopted",),
+    )
     visible = _visible_text(parser)
 
-    assert "历史正式方案（已被新版本替代）" in visible
-    assert "这个历史版本已被更新的正式排产替代，只能查看，不能写现场事实。" in visible
-    assert "排产方案\n历史正式方案（已被新版本替代）" in visible
-    assert "排产方案\n正式采用方案" not in visible
+    assert "现场记录入口" not in visible
+    assert not parser.inputs
 
-    export_resp = client.get("/reports/execution-review/export?version=11")
+    export_resp = get_unchanged(client, "/reports/execution-review/export?version=11",
+                               client.application.config["DATABASE_PATH"])
     assert export_resp.status_code == 200
     export_text = _xlsx_text(export_resp.data)
 

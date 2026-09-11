@@ -17,6 +17,7 @@ from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, RO
 from data.repositories.schedule_candidate_repo import ScheduleCandidateRepository
 from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.legacy_report_contract import MISSING_ROLE, assert_retired, get_unchanged
 from tests._support.paths import REPO_ROOT
 from web.routes.domains.scheduler.scheduler_week_plan import _plan_context_from_data
 
@@ -196,36 +197,37 @@ def test_week_plan_context_keeps_existing_plan_resolution_dict() -> None:
 
 
 def test_week_plan_page_uses_candidate_rows_and_export_url_preserves_plan_role(tmp_path, monkeypatch) -> None:
-    app, _db_path = _build_app(tmp_path, monkeypatch)
+    app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    resp = client.get(f"/scheduler/week-plan?week_start=2026-05-11&version={VERSION}&plan_role={ROLE_BASELINE_BEST}")
-    html = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert 'name="plan_role"' in html
-    assert "候选设备" in html
-    assert "候选人员" in html
-    assert "plan_role=baseline_best" in html
-    assert f"/scheduler/resource-dispatch?version={VERSION}&amp;plan_role={ROLE_BASELINE_BEST}" in html
-    assert f"/scheduler/gantt?view=machine&amp;version={VERSION}&amp;plan_role={ROLE_BASELINE_BEST}" in html
-    assert f"/scheduler/gantt?view=operator&amp;version={VERSION}&amp;plan_role={ROLE_BASELINE_BEST}" in html
-    assert f"/scheduler/analysis?version={VERSION}&amp;plan_role={ROLE_BASELINE_BEST}" in html
-    assert f"/scheduler/week-plan?version={VERSION}&amp;plan_role={ROLE_BASELINE_BEST}" in html
-    assert "当前周计划正在预览" not in html
+    query = f"week_start=2026-05-11&version={VERSION}&plan_role={ROLE_BASELINE_BEST}"
+    resp = get_unchanged(client, "/scheduler/week-plan?" + query, db_path)
+    page = assert_retired(resp, public=(str(VERSION), "原算法代表方案"))
+    assert "当前周计划正在预览" not in page.text
+    exported = get_unchanged(client, "/scheduler/week-plan/export?" + query, db_path)
+    assert exported.status_code == 200
+    assert "原算法代表方案" in unquote(exported.headers["Content-Disposition"])
+    workbook = openpyxl.load_workbook(io.BytesIO(exported.data))
+    try:
+        assert "查询摘要" in workbook.sheetnames
+        sheet = workbook["周计划"]
+        assert sheet["A2"].value == "2026-05-12"
+        assert sheet["E2"].value == "M-CANDIDATE 候选设备"
+        assert sheet["F2"].value == "O-CANDIDATE 候选人员"
+        assert "M-ADOPTED 正式设备" not in str(list(sheet.values))
+    finally:
+        workbook.close()
 
 
 def test_week_plan_missing_valid_plan_role_page_only_shows_fallback_notice(tmp_path, monkeypatch) -> None:
-    app, _db_path = _build_app(tmp_path, monkeypatch)
+    app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    resp = client.get(f"/scheduler/week-plan?week_start=2026-05-11&version={VERSION}&plan_role={ROLE_CRITICAL_BEST}")
-    html = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert "已显示正式采用方案" in html
-    assert "这套结果只用来对照查看" not in html
-    assert "这是一套对比参考方案" not in html
+    resp = get_unchanged(client, f"/scheduler/week-plan?week_start=2026-05-11&version={VERSION}&plan_role={ROLE_CRITICAL_BEST}", db_path)
+    page = assert_retired(resp, public=(str(VERSION),), message=MISSING_ROLE)
+    assert "已显示正式采用方案" not in page.text
+    assert "这套结果只用来对照查看" not in page.text
+    assert "这是一套对比参考方案" not in page.text
 
 
 def test_week_plan_export_uses_same_plan_role_and_logs_requested_effective_roles(tmp_path, monkeypatch) -> None:

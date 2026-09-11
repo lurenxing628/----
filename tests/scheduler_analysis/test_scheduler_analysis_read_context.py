@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 
 from core.infrastructure.database import ensure_schema, get_connection
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.legacy_report_contract import analysis_read_context, assert_plan_navigation, get_unchanged
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -153,34 +154,33 @@ def test_analysis_read_context_no_history_keeps_page_empty_and_resolution_no_his
     assert read_ctx.versions == []
     assert read_ctx.raw_hist == []
 
-    app, _db_path = _build_app(tmp_path, monkeypatch)
-    response = app.test_client().get("/scheduler/analysis")
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    response = get_unchanged(app.test_client(), "/scheduler/analysis", db_path)
     html = _html(response)
 
-    assert response.status_code == 200
-    assert "暂无排产历史" in html
+    assert response.status_code == 404
+    assert "页面不存在或已被删除" in html
+    assert "Location" not in response.headers
 
 
 def test_analysis_read_context_defaults_to_latest_version(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_history(db_path, version=7)
 
-    response = app.test_client().get("/scheduler/analysis")
-    html = _html(response)
-
-    assert response.status_code == 200
-    _assert_selected_version(html, 7)
+    response = get_unchanged(app.test_client(), "/scheduler/analysis", db_path)
+    assert_plan_navigation(response, db_path, version=7)
+    read = analysis_read_context(app, db_path, None)
+    assert read.selected_version == 7 and read.selected_item["version"] == 7
 
 
 def test_analysis_read_context_latest_query_still_selects_latest(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_history(db_path, version=7)
 
-    response = app.test_client().get("/scheduler/analysis?version=latest")
-    html = _html(response)
-
-    assert response.status_code == 200
-    _assert_selected_version(html, 7)
+    response = get_unchanged(app.test_client(), "/scheduler/analysis?version=latest", db_path)
+    assert_plan_navigation(response, db_path, version=7)
+    read = analysis_read_context(app, db_path, "latest")
+    assert read.selected_version == 7 and read.selected_item["version"] == 7
 
 
 def test_analysis_read_context_explicit_existing_version_keeps_other_versions_in_picker(tmp_path, monkeypatch) -> None:
@@ -188,24 +188,27 @@ def test_analysis_read_context_explicit_existing_version_keeps_other_versions_in
     _insert_history(db_path, version=6)
     _insert_history(db_path, version=7)
 
-    response = app.test_client().get("/scheduler/analysis?version=6")
-    html = _html(response)
-
-    assert response.status_code == 200
-    _assert_selected_version(html, 6)
-    assert 'value="7"' in html
+    response = get_unchanged(app.test_client(), "/scheduler/analysis?version=6", db_path)
+    assert_plan_navigation(response, db_path, version=6)
+    read = analysis_read_context(app, db_path, "6")
+    assert read.selected_version == 6 and read.selected_item["version"] == 6
+    assert {item["version"] for item in read.versions} == {6, 7}
 
 
 def test_analysis_read_context_missing_explicit_version_keeps_trends_visible(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_history(db_path, version=7)
 
-    response = app.test_client().get("/scheduler/analysis?version=999")
+    response = get_unchanged(app.test_client(), "/scheduler/analysis?version=999", db_path)
     html = _html(response)
 
-    assert response.status_code == 200
-    assert "v999 无对应排产历史" in html
+    assert response.status_code == 404
+    assert "Location" not in response.headers
     assert 'aps-summary-value">v999' not in html
+    read = analysis_read_context(app, db_path, "999")
+    assert read.selected_item is None
+    assert read.selected_history_resolution["history_missing"] is True
+    assert {item["version"] for item in read.raw_hist} == {7}
 
 
 def test_analysis_read_context_invalid_summary_does_not_break_page(tmp_path, monkeypatch) -> None:
@@ -213,11 +216,11 @@ def test_analysis_read_context_invalid_summary_does_not_break_page(tmp_path, mon
     _insert_history(db_path, version=7, result_summary="{broken json")
     warnings = _capture_warning_logs(app, monkeypatch)
 
-    response = app.test_client().get("/scheduler/analysis?version=7")
-    html = _html(response)
-
-    assert response.status_code == 200
-    assert "排产优化分析" in html
+    response = get_unchanged(app.test_client(), "/scheduler/analysis?version=7", db_path)
+    assert_plan_navigation(response, db_path, version=7)
+    read = analysis_read_context(app, db_path, "7")
+    assert read.selected_item["result_summary_parse_state"]["parse_failed"] is True
+    assert read.trend_summary_state["parse_failed_count"] == 1
     assert any("排产分析页 排产摘要 解析失败（version=7, source=selected" in item for item in warnings)
     assert any("排产分析页 排产摘要 解析失败（version=7, source=trend" in item for item in warnings)
 

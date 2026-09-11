@@ -14,6 +14,7 @@ from flask import Flask
 from openpyxl import load_workbook
 
 from core.infrastructure.database import ensure_schema, get_connection
+from tests._support.legacy_report_contract import assert_retired, get_unchanged, report_read_context
 from tests._support.paths import REPO_ROOT
 
 TESTS_ROOT = REPO_ROOT / "tests"
@@ -74,6 +75,16 @@ def _build_app(tmp_path: Path, monkeypatch):
     import app as app_mod  # noqa: E402
 
     return app_mod.create_app(), scenario_id
+
+
+def _retired_model(client):
+    db = client.application.config["DATABASE_PATH"]
+    path = f"/reports/overdue?version={VERSION}&plan_role=adopted"
+    response = get_unchanged(client, path, db)
+    assert_retired(response, public=(str(VERSION), "正式采用方案"),
+                   downloads=(f"/reports/overdue/export?version={VERSION}&plan_role=adopted",))
+    _assert_no_internal_terms(response.get_data(as_text=True))
+    return report_read_context(client.application, db, path)
 
 
 def _workbook_texts(xlsx_bytes: bytes) -> Iterable[str]:
@@ -161,20 +172,29 @@ def test_overdue_page_shows_delay_diagnosis_in_plain_chinese(tmp_path: Path, mon
     app, _scenario_id = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    response = client.get(f"/reports/overdue?version={VERSION}&plan_role=adopted")
-    assert response.status_code == 200
-    html = response.get_data(as_text=True)
-
-    assert "查看为什么晚了" in html
-    assert "建议先复核" in html
-    assert "证据等级" in html
-    assert "证据缺口" in html
-    assert "下一步" in html
-    assert "没有现场执行反馈时，不判断现场做慢了" in html
-    assert "缺少批次物料明细" in html
-    assert "当前物料数据不足，只提示核对物料，不判断一定是物料造成延期" in html
-    assert "物料不够导致延期" not in html
-    _assert_no_internal_terms(html)
+    model = _retired_model(client)
+    diagnosis = model["delay_diagnosis"]
+    assert diagnosis["items_by_batch"]
+    for item in diagnosis["items_by_batch"].values():
+        assert item["leading_clue_label"]
+        assert item["confidence_label"] in ("证据较充分", "证据较少", "当前数据不足")
+        assert item["data_gaps"]
+        assert item["suggested_actions"]
+        assert all(action["label"] and action["reason"] for action in item["suggested_actions"])
+    assert any(link["label"] == "查看为什么晚了" for row in model["rows"] for link in row["workbench_links"])
+    public = str(diagnosis)
+    assert "没有现场执行反馈时，不判断现场做慢了" in public
+    assert "缺少批次物料明细" in public
+    assert "当前物料数据不足，只提示核对物料，不判断一定是物料造成延期" in public
+    assert "物料不够导致延期" not in public
+    _assert_no_internal_terms(public)
+    export = get_unchanged(client, f"/reports/overdue/export?version={VERSION}&plan_role=adopted",
+                           app.config["DATABASE_PATH"])
+    assert export.status_code == 200
+    exported = "\n".join(_workbook_texts(export.data))
+    for label in ("建议先复核", "证据等级", "证据缺口"):
+        assert label in exported
+    _assert_no_internal_terms(exported)
 
 
 def test_overdue_page_and_export_show_bad_finish_time_as_data_issue(tmp_path: Path, monkeypatch) -> None:
@@ -182,14 +202,12 @@ def test_overdue_page_and_export_show_bad_finish_time_as_data_issue(tmp_path: Pa
     _insert_bad_finish_time_batch()
     client = app.test_client()
 
-    page_response = client.get(f"/reports/overdue?version={VERSION}&plan_role=adopted")
-    assert page_response.status_code == 200
-    html = page_response.get_data(as_text=True)
-
-    assert "B_BAD_TIME" in html
-    assert "排程时间异常" in html
-    assert "计划完成时间写法不对" in html
-    assert "有排程记录，但计划完成时间写法不对" in html
+    model = _retired_model(client)
+    row = next(row for row in model["rows"] if row["batch_id"] == "B_BAD_TIME")
+    assert row["bucket_label"] == "排程时间异常"
+    assert "计划完成时间写法不对" in row["data_issue_message"]
+    assert "有排程记录，但计划完成时间写法不对" in model["delay_diagnosis"]["items_by_batch"]["B_BAD_TIME"]["delay_text"]
+    assert model["invalid_time_count"] == 1
 
     export_response = client.get(f"/reports/overdue/export?version={VERSION}&plan_role=adopted")
     assert export_response.status_code == 200
@@ -226,20 +244,15 @@ def test_overdue_page_keeps_bad_due_separate_from_schedule_time_issue(tmp_path: 
     _insert_bad_due_date_batch()
     client = app.test_client()
 
-    response = client.get(f"/reports/overdue?version={VERSION}&plan_role=adopted")
-    assert response.status_code == 200
-    html = response.get_data(as_text=True)
-
-    assert "交期写法异常" in html
-    assert re.search(
-        r'<div class="aps-summary-label">交期写法异常</div>\s*'
-        r'<div class="aps-summary-value">1 个</div>',
-        html,
-        re.S,
-    )
-    assert re.search(r"排程时间异常.*?0 个", html, re.S)
-    assert "交期写法不对，系统暂时不能判断这个批次是否超期" in html
-    assert "还没有计划完成时间，截至当前已经晚了 0.00 小时" not in html
+    model = _retired_model(client)
+    row = next(row for row in model["rows"] if row["batch_id"] == "B_BAD_DUE")
+    assert row["bucket_label"] == "交期写法异常"
+    assert model["invalid_due_count"] == 1
+    assert model["invalid_time_count"] == 0
+    public = model["delay_diagnosis"]["items_by_batch"]["B_BAD_DUE"]["delay_text"]
+    assert "交期写法不对，系统暂时不能判断这个批次是否超期" in public
+    assert "还没有计划完成时间，截至当前已经晚了 0.00 小时" not in public
+    _assert_no_internal_terms(public)
 
 
 def test_overdue_export_surfaces_bad_due_degradation_even_without_bad_finish_time(tmp_path: Path, monkeypatch) -> None:

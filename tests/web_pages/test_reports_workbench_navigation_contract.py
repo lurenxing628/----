@@ -6,17 +6,90 @@ import base64
 import json
 import os
 
-from tests.web_pages.reports_workbench_backlink_helpers import (
-    REPO_ROOT,
-    _client,
-    _href_with_text,
-    _href_with_text_and_class,
-    _href_with_text_and_fragment,
-    _input_values,
-    _parser_for,
-    _query,
-    _xlsx_text,
+from tests._support.legacy_report_contract import (
+    ANALYSIS_SCOPE,
+    MISSING_ROLE,
+    RETIRED_SCOPE,
+    UNSUPPORTED_SCOPE,
+    assert_plan_navigation,
+    assert_retired,
+    business_rows,
+    get_unchanged,
+    report_read_context,
 )
+from tests.web_pages.reports_workbench_backlink_helpers import REPO_ROOT, _client, _query, _xlsx_text
+
+
+def _read(client, path):
+    return get_unchanged(client, path, client.application.config["DATABASE_PATH"])
+
+
+def _retired(client, path, *, download="", message=RETIRED_SCOPE, public=("12",)):
+    return assert_retired(_read(client, path), downloads=(download,) if download else (),
+                          message=message, public=public)
+
+
+def _report_model(client, path):
+    return report_read_context(client.application, client.application.config["DATABASE_PATH"], path)
+
+
+def _link(links, label):
+    matches = [link for link in links if link["label"] == label]
+    assert len(matches) == 1, (label, links)
+    return matches[0]
+
+
+def _scheduler_navigation(client, path):
+    """Exercise retained publishers with the exact stored plan and explicit query."""
+    from flask import request
+
+    from core.infrastructure.database import get_connection
+    from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
+    from core.services.scheduler.schedule_result_view_range import get_plan_time_span_dates
+    from web.navigation_context import (
+        build_report_navigation_links,
+        build_scheduler_navigation_links,
+        build_workbench_navigation_links,
+    )
+    from web.request_resource_context import request_report_resource_context
+    from web.routes.domains.scheduler.scheduler_navigation_publish import (
+        publish_analysis_navigation_context,
+        publish_gantt_navigation_context,
+        publish_week_plan_navigation_context,
+    )
+
+    db = client.application.config["DATABASE_PATH"]
+    before = business_rows(db)
+    conn = get_connection(db)
+    try:
+        with client.application.test_request_context(path):
+            args = request.args
+            version = int(args["version"])
+            role = args.get("plan_role") or "adopted"
+            service = SchedulePlanQueryService(conn)
+            plan = service.resolve_plan_view(version, role).to_dict()
+            span = get_plan_time_span_dates(service, version, role, None)
+            kwargs = {
+                "version": version, "plan_resolution": plan,
+                "date_from": args.get("date_from") or args.get("start_date") or span["start_date"],
+                "date_to": args.get("date_to") or args.get("end_date") or span["end_date"],
+                "batch_id": args.get("batch_id") or args.get("gantt_batch"),
+                "back_to": args.get("back_to"),
+            }
+            resource = request_report_resource_context()
+            if request.path.endswith("/gantt"):
+                publish_gantt_navigation_context(
+                    **kwargs, view=args.get("view") or "machine", gantt_resource=args.get("gantt_resource") or "")
+            elif request.path.endswith("/analysis"):
+                publish_analysis_navigation_context(**kwargs, resource_context=resource)
+            elif request.path.endswith("/week-plan"):
+                publish_week_plan_navigation_context(**kwargs, resource_context=resource, fallback_scenario_id=None)
+            links = build_workbench_navigation_links() + build_scheduler_navigation_links() + build_report_navigation_links()
+            result = {link["label"]: link for link in links}
+    finally:
+        conn.close()
+    assert business_rows(db) == before
+    return result
 
 
 def _decode_urlsafe_first_segment(token: str) -> str:
@@ -93,70 +166,64 @@ def _seed_superseded_adopted_version(version: int) -> None:
 
 def test_execution_review_navigation_keeps_formal_plan_role() -> None:
     client = _client()
-    parser = _parser_for(
-        client,
-        "/reports/execution-review?version=12&date_from=2026-05-06&date_to=2026-05-06"
-        "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT",
-    )
-
-    for text, path in (
-        ("报表中心", "/reports/"),
-        ("超期清单", "/reports/overdue"),
-        ("资源负荷与利用率", "/reports/utilization"),
-        ("停机影响统计", "/reports/downtime"),
-    ):
-        query = _query(_href_with_text(parser, text, path))
+    query = ("version=12&date_from=2026-05-06&date_to=2026-05-06"
+             "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT")
+    path = "/reports/execution-review?" + query
+    _retired(client, path, download="/reports/execution-review/export?" + query + "&plan_role=adopted")
+    model = _report_model(client, path)
+    for label in ("报表中心", "超期清单", "资源负荷与利用率", "停机影响统计"):
+        query = _query(_link(model["report_navigation_links"], label)["url"])
         assert query["plan_role"] == ["adopted"]
         assert query["batch_id"] == ["B-RPT"]
         assert query["resource_type"] == ["machine"]
         assert query["resource_id"] == ["M-RPT"]
 
-
 def test_report_navigation_drops_plan_id_and_keeps_return_context() -> None:
     client = _client()
-    parser = _parser_for(
-        client,
-        "/reports/utilization?version=12&plan_id=PLAN-RPT&plan_role=adopted"
-        "&start_date=2026-05-06&end_date=2026-05-06&batch_id=B-RPT"
-        "&resource_type=operator&resource_id=O-RPT"
-        "&back_to=%2Fscheduler%2Fresource-dispatch%3Fscope_type%3Doperator",
-    )
-
-    for text, path in (
-        ("报表中心", "/reports/"),
-        ("超期清单", "/reports/overdue"),
-        ("计划和现场实际", "/reports/execution-review"),
-        ("导出 Excel", "/reports/utilization/export"),
-    ):
-        query = _query(_href_with_text(parser, text, path))
+    path = ("/reports/utilization?version=12&plan_id=PLAN-RPT&plan_role=adopted"
+            "&start_date=2026-05-06&end_date=2026-05-06&batch_id=B-RPT"
+            "&resource_type=operator&resource_id=O-RPT"
+            "&back_to=%2Fscheduler%2Fresource-dispatch%3Fscope_type%3Doperator")
+    _retired(client, path)
+    model = _report_model(client, path)
+    urls = [_link(model["report_navigation_links"], label)["url"]
+            for label in ("报表中心", "超期清单", "计划和现场实际")]
+    urls.append(model["utilization_export_url"])
+    for url in urls:
+        query = _query(url)
         assert "plan_id" not in query
         assert query["back_to"] == ["/scheduler/resource-dispatch?scope_type=operator"]
-
-    hidden_inputs = _input_values(parser)
-    assert "plan_id" not in hidden_inputs
-    assert hidden_inputs["back_to"] == ["/scheduler/resource-dispatch?scope_type=operator"]
-
+    assert "plan_id" not in model["navigation_context"]
+    assert model["navigation_context"]["back_to"] == "/scheduler/resource-dispatch?scope_type=operator"
 
 def test_execution_review_marks_superseded_adopted_version_as_history() -> None:
     client = _client()
     _seed_superseded_adopted_version(5)
-
-    parser = _parser_for(client, "/reports/execution-review?version=5&date_from=2026-05-05&date_to=2026-05-05")
-    visible = " ".join(parser.visible_parts)
-
-    assert "历史正式方案" in visible
-    assert "已被更新的正式排产替代" in visible
-    assert "不能写现场事实" in visible
-
+    query = "version=5&date_from=2026-05-05&date_to=2026-05-05"
+    path = "/reports/execution-review?" + query
+    download = "/reports/execution-review/export?" + query + "&plan_role=adopted"
+    _retired(client, path, download=download, public=("5", "正式采用方案"))
+    model = _report_model(client, path)
+    status = model["report_plan_status"]
+    assert status["is_superseded"] is True
+    assert "历史正式方案" in status["label"]
+    assert "已被更新的正式排产替代" in status["source_text"]
+    assert "不能写现场事实" in status["source_text"]
+    assert model["navigation_context"]["can_write_feedback"] is False
+    exported = _read(client, download)
+    assert exported.status_code == 200
+    assert "历史正式方案" in _xlsx_text(exported.data)
 
 def test_scheduler_nav_template_uses_python_link_builder() -> None:
-    source = (REPO_ROOT / "templates" / "components" / "ui_macros.html").read_text(encoding="utf-8")
-    macro = source.split("{% macro scheduler_nav", 1)[1].split("{% endmacro %}", 1)[0]
-
-    assert "build_scheduler_navigation_links(active)" in macro
-    assert "request.args.get" not in macro
-    assert "url_for(" not in macro
-
+    assert not (REPO_ROOT / "templates/components/ui_macros.html").exists()
+    source = (REPO_ROOT / "frontend/workbench/app/WorkbenchNavigation.js").read_text(encoding="utf-8")
+    main = (REPO_ROOT / "frontend/workbench/app/main.jsx").read_text(encoding="utf-8")
+    assert "window.WorkbenchNavigation.href(boot, view)" in main
+    assert "window.WorkbenchNavigation.navigate(boot, page, target, nextContext)" in main
+    assert "check(same(value, boot.navigation))" in source
+    assert "url.searchParams.set('view', target)" in source
+    assert "request.args.get" not in source and "url_for(" not in source
+    assert "plan_id" not in source and "scenario_id" not in source
 
 def test_all_nav_specs_have_nonempty_plain_url() -> None:
     from web.viewmodels.scheduler_navigation_links import build_scheduler_navigation_links
@@ -282,25 +349,26 @@ def test_top_navigation_uses_shared_guardrails_for_partial_context() -> None:
 
 def test_report_top_navigation_uses_resolved_version_span_context() -> None:
     client = _client()
-    parser = _parser_for(client, "/reports/overdue?version=12&plan_role=adopted")
-
-    overdue = _query(_href_with_text(parser, "超期清单", "/reports/overdue"))
+    path = "/reports/overdue?version=12&plan_role=adopted"
+    _retired(client, path, download="/reports/overdue/export?version=12&plan_role=adopted")
+    model = _report_model(client, path)
+    overdue = _query(_link(model["report_navigation_links"], "超期清单")["url"])
     assert overdue["version"] == ["12"]
     assert overdue["plan_role"] == ["adopted"]
     for key in ("date_from", "date_to", "start_date", "end_date", "query_date", "period_preset"):
         assert key not in overdue
-
+    assert model["navigation_context"]["date_from"] == "2026-05-06"
+    assert model["navigation_context"]["date_to"] == "2026-05-06"
 
 def test_overdue_delay_diagnosis_gantt_action_keeps_filter_context() -> None:
     client = _client()
-    parser = _parser_for(
-        client,
-        "/reports/overdue?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06"
-        "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT"
-        "&back_to=%2Fscheduler%2Fresource-dispatch%3Fscope_type%3Dmachine",
-    )
-
-    query = _query(_href_with_text_and_fragment(parser, "查看为什么晚了", "/reports/overdue", "batch_id=B-RPT"))
+    path = ("/reports/overdue?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06"
+            "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT"
+            "&back_to=%2Fscheduler%2Fresource-dispatch%3Fscope_type%3Dmachine")
+    _retired(client, path)
+    model = _report_model(client, path)
+    row = next(row for row in model["rows"] if row["batch_id"] == "B-RPT")
+    query = _query(_link(row["workbench_links"], "查看为什么晚了")["url"])
     assert query["version"] == ["12"]
     assert query["plan_role"] == ["adopted"]
     assert query["batch_id"] == ["B-RPT"]
@@ -309,94 +377,68 @@ def test_overdue_delay_diagnosis_gantt_action_keeps_filter_context() -> None:
     assert "date_from" not in query and "date_to" not in query
     assert query["back_to"] == ["/scheduler/resource-dispatch?scope_type=machine"]
 
-
 def test_scheduler_version_only_pages_keep_navigation_clickable() -> None:
     client = _client()
-    for url in (
-        "/scheduler/gantt?view=machine&version=12",
-        "/scheduler/analysis?version=12",
-        "/scheduler/resource-dispatch?version=12",
-    ):
-        parser = _parser_for(client, url)
-        query = _query(_href_with_text_and_class(parser, "首页值班台", "/", "aps-workbench-nav-link"))
-        assert query["version"] == ["12"]
-
+    for path in ("/scheduler/gantt?view=machine&version=12", "/scheduler/analysis?version=12",
+                 "/scheduler/resource-dispatch?version=12"):
+        response = _read(client, path)
+        if path.startswith("/scheduler/analysis"):
+            assert_plan_navigation(response, client.application.config["DATABASE_PATH"], version=12)
+        else:
+            assert_retired(response, public=("12",),
+                           message=UNSUPPORTED_SCOPE if "/gantt?" in path else RETIRED_SCOPE)
+        model = _scheduler_navigation(client, path)
+        assert _query(model["首页值班台"]["url"])["version"] == ["12"]
 
 def test_scheduler_version_only_non_adopted_context_uses_guardrails() -> None:
     client = _client()
-    parser = _parser_for(client, "/scheduler/analysis?version=12&plan_role=baseline_best")
-
-    execution_review_links = [
-        item
-        for item in parser.links
-        if item["text"] == "计划和现场实际" and item["href"].startswith("/reports/execution-review")
-    ]
-    assert execution_review_links == []
-
+    path = "/scheduler/analysis?version=12&plan_role=baseline_best"
+    _retired(client, path, message=MISSING_ROLE, public=("12", "原算法代表方案"))
+    model = _scheduler_navigation(client, path)
+    assert model["计划和现场实际"]["disabled"] is True
+    assert model["计划和现场实际"]["url"] == ""
 
 def test_scheduler_analysis_route_keeps_execution_review_disabled_for_superseded_success_plan() -> None:
     client = _client()
     _seed_newer_executable_version(13)
-    parser = _parser_for(
-        client,
-        "/scheduler/analysis?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-07",
-    )
-
-    execution_review_links = [
-        item["href"]
-        for item in parser.links
-        if "计划和现场实际" in item["text"] and item["href"].startswith("/reports/execution-review")
-    ]
-    assert execution_review_links == []
-
+    path = "/scheduler/analysis?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-07"
+    _retired(client, path, message=ANALYSIS_SCOPE)
+    model = _scheduler_navigation(client, path)
+    assert model["计划和现场实际"]["disabled"] is True
+    assert model["计划和现场实际"]["url"] == ""
+    assert "历史正式方案" in model["计划和现场实际"]["disabled_reason"]
 
 def test_scheduler_pages_keep_back_to_after_publishing_navigation_context() -> None:
     client = _client()
-    encoded_back_to = "%2Fscheduler%2Fresource-dispatch%3Fscope_type%3Dmachine"
-    for url, text, path in (
-        (f"/scheduler/analysis?version=12&back_to={encoded_back_to}", "首页值班台", "/"),
-        (f"/scheduler/gantt?view=machine&version=12&back_to={encoded_back_to}", "首页值班台", "/"),
-        (f"/scheduler/resource-dispatch?version=12&back_to={encoded_back_to}", "首页值班台", "/"),
-        (f"/scheduler/week-plan?version=12&back_to={encoded_back_to}", "报表中心", "/reports/"),
+    encoded = "%2Fscheduler%2Fresource-dispatch%3Fscope_type%3Dmachine"
+    for path, label, message in (
+        (f"/scheduler/analysis?version=12&back_to={encoded}", "首页值班台", ANALYSIS_SCOPE),
+        (f"/scheduler/gantt?view=machine&version=12&back_to={encoded}", "首页值班台", UNSUPPORTED_SCOPE),
+        (f"/scheduler/resource-dispatch?version=12&back_to={encoded}", "首页值班台", RETIRED_SCOPE),
+        (f"/scheduler/week-plan?version=12&back_to={encoded}", "报表中心", RETIRED_SCOPE),
     ):
-        parser = _parser_for(client, url)
-        query = _query(_href_with_text(parser, text, path))
+        _retired(client, path, message=message)
+        query = _query(_scheduler_navigation(client, path)[label]["url"])
         assert query["back_to"] == ["/scheduler/resource-dispatch?scope_type=machine"]
-
 
 def test_scheduler_pages_keep_batch_and_resource_after_publishing_navigation_context() -> None:
     client = _client()
-    page_cases = (
-        (
-            "/scheduler/gantt?view=machine&version=12&start_date=2026-05-06&end_date=2026-05-06"
-            "&gantt_batch=B-RPT&gantt_resource=M-RPT",
-            "报表中心",
-            "/reports/",
-            {"batch_id": ["B-RPT"], "resource_type": ["machine"], "resource_id": ["M-RPT"]},
-        ),
-        (
-            "/scheduler/analysis?version=12&date_from=2026-05-06&date_to=2026-05-06"
-            "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT",
-            "资源排班",
-            "/scheduler/resource-dispatch",
-            {"batch_id": ["B-RPT"], "scope_type": ["machine"], "scope_id": ["M-RPT"], "machine_id": ["M-RPT"]},
-        ),
-        (
-            "/scheduler/week-plan?version=12&week_start=2026-05-06"
-            "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT",
-            "报表中心",
-            "/reports/",
-            {"batch_id": ["B-RPT"], "resource_type": ["machine"], "resource_id": ["M-RPT"]},
-        ),
+    cases = (
+        ("/scheduler/gantt?view=machine&version=12&start_date=2026-05-06&end_date=2026-05-06"
+         "&gantt_batch=B-RPT&gantt_resource=M-RPT", "报表中心", UNSUPPORTED_SCOPE,
+         {"batch_id": ["B-RPT"], "resource_type": ["machine"], "resource_id": ["M-RPT"]}),
+        ("/scheduler/analysis?version=12&date_from=2026-05-06&date_to=2026-05-06"
+         "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT", "资源排班", ANALYSIS_SCOPE,
+         {"batch_id": ["B-RPT"], "scope_type": ["machine"], "scope_id": ["M-RPT"], "machine_id": ["M-RPT"]}),
+        ("/scheduler/week-plan?version=12&week_start=2026-05-06"
+         "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT", "报表中心", RETIRED_SCOPE,
+         {"batch_id": ["B-RPT"], "resource_type": ["machine"], "resource_id": ["M-RPT"]}),
     )
-
-    for source_url, link_text, link_path, expected in page_cases:
-        parser = _parser_for(client, source_url)
-        query = _query(_href_with_text(parser, link_text, link_path))
-
+    for path, label, message, expected in cases:
+        _retired(client, path, message=message)
+        query = _query(_scheduler_navigation(client, path)[label]["url"])
         for key, value in expected.items():
             assert query[key] == value
-
 
 def test_gantt_data_endpoint_returns_full_scope_ignoring_view_filters() -> None:
     # finding-08：甘特数据接口恒返回全量，不按 gantt_batch/gantt_resource 后端预筛——批次/
@@ -428,54 +470,39 @@ def test_gantt_data_endpoint_returns_full_scope_ignoring_view_filters() -> None:
 
 def test_gantt_page_controls_keep_scope_filters_for_followup_actions() -> None:
     client = _client()
-    parser = _parser_for(
-        client,
-        "/scheduler/gantt?view=machine&version=12&start_date=2026-05-06&end_date=2026-05-06"
-        "&gantt_batch=B-RPT&gantt_resource=M-RPT",
-    )
-
-    machine_query = _query(_href_with_text(parser, "设备视图", "/scheduler/gantt"))
-    operator_query = _query(_href_with_text(parser, "人员视图", "/scheduler/gantt"))
-    assert machine_query["gantt_batch"] == ["B-RPT"]
-    assert machine_query["gantt_resource"] == ["M-RPT"]
-    assert operator_query["gantt_batch"] == ["B-RPT"]
-    assert "gantt_resource" not in operator_query
-
-    for text in ("上周", "回到本周", "下周"):
-        query = _query(_href_with_text(parser, text, "/scheduler/gantt"))
-        assert query["gantt_batch"] == ["B-RPT"]
-        assert query["gantt_resource"] == ["M-RPT"]
-
-    hidden_inputs = _input_values(parser)
-    assert hidden_inputs["gantt_batch"] == ["B-RPT"]
-    assert hidden_inputs["gantt_resource"] == ["M-RPT"]
-
+    path = ("/scheduler/gantt?view=machine&version=12&start_date=2026-05-06&end_date=2026-05-06"
+            "&gantt_batch=B-RPT&gantt_resource=M-RPT")
+    _retired(client, path, message=UNSUPPORTED_SCOPE)
+    model = _scheduler_navigation(client, path)
+    machine = _query(model["设备甘特图"]["url"])
+    operator = _query(model["人员甘特图"]["url"])
+    assert machine["gantt_batch"] == ["B-RPT"]
+    assert machine["gantt_resource"] == ["M-RPT"]
+    assert operator["gantt_batch"] == ["B-RPT"]
+    assert "gantt_resource" not in operator
+    assert machine["start_date"] == ["2026-05-06"] and machine["end_date"] == ["2026-05-06"]
+    assert operator["start_date"] == ["2026-05-06"] and operator["end_date"] == ["2026-05-06"]
+    data = _read(client, path.replace("/scheduler/gantt?", "/scheduler/gantt/data?"))
+    assert data.status_code == 200
+    batches = {task["meta"]["batch_id"] for task in data.get_json()["data"]["tasks"]}
+    assert batches == {"B-RPT", "B-SAME", "B-OTHER"}
 
 def test_week_plan_preview_and_export_scope_filters_are_applied_by_backend() -> None:
     client = _client()
-    path = (
-        "/scheduler/week-plan?version=12&week_start=2026-05-06"
-        "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT"
-    )
-    parser = _parser_for(client, path)
-    visible_text = "\n".join(parser.visible_parts)
-
-    assert "B-RPT" in visible_text
-    assert "B-OTHER" not in visible_text
-    assert "B-SAME" not in visible_text
-
-    hidden_inputs = _input_values(parser)
-    assert hidden_inputs["batch_id"] == ["B-RPT"]
-    assert hidden_inputs["resource_type"] == ["machine"]
-    assert hidden_inputs["resource_id"] == ["M-RPT"]
-
-    export_href = _href_with_text(parser, "导出周计划表.xlsx", "/scheduler/week-plan/export")
+    query = ("version=12&week_start=2026-05-06"
+             "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT")
+    _retired(client, "/scheduler/week-plan?" + query)
+    export_href = "/scheduler/week-plan/export?" + query
     export_query = _query(export_href)
     assert export_query["batch_id"] == ["B-RPT"]
     assert export_query["resource_type"] == ["machine"]
     assert export_query["resource_id"] == ["M-RPT"]
-
-    export_response = client.get(export_href)
+    model = _scheduler_navigation(client, "/scheduler/week-plan?" + query)
+    context = _query(model["报表中心"]["url"])
+    assert context["batch_id"] == ["B-RPT"]
+    assert context["resource_type"] == ["machine"]
+    assert context["resource_id"] == ["M-RPT"]
+    export_response = _read(client, export_href)
     assert export_response.status_code == 200
     workbook_text = _xlsx_text(export_response.data)
     assert "B-RPT" in workbook_text

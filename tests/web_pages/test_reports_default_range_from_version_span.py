@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from urllib.parse import unquote
+
+from tests._support.legacy_report_contract import assert_retired, business_rows, get_unchanged, xlsx_text
+
 
 def _assert_status(resp, name: str, expect: int = 200) -> None:
     if resp.status_code != expect:
@@ -9,9 +13,41 @@ def _assert_status(resp, name: str, expect: int = 200) -> None:
         raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect}，body={body[:500]}")
 
 
-def _assert_contains(html: str, needle: str, name: str) -> None:
-    if needle not in html:
-        raise RuntimeError(f"{name} 未包含期望内容：{needle!r}")
+def _assert_retained_range(client, db_path, version, dates):
+    from core.infrastructure.database import get_connection
+    from core.services.report import ReportEngine
+    from web.routes.report_plan_preview import export_date_range_or_version_span
+
+    before = business_rows(db_path)
+    conn = get_connection(db_path)
+    try:
+        engine = ReportEngine(conn)
+        assert export_date_range_or_version_span(engine, version, "adopted", None, "", "") == dates
+        for build in (engine.utilization, engine.downtime_impact):
+            report = build(version, *dates, enforce_date_range_limit=False)
+            assert (report["start_date"], report["end_date"]) == dates
+            if version == 9 and build == engine.downtime_impact:
+                assert report["machines"] == []
+    finally:
+        conn.close()
+    for name in ("utilization", "downtime"):
+        export_path = f"/reports/{name}/export?version={version}&plan_role=adopted"
+        response = get_unchanged(client, f"/reports/{name}?version={version}", db_path)
+        assert_retired(response, public=(str(version), "正式采用方案"), downloads=(export_path,))
+        exported = get_unchanged(client, export_path, db_path)
+        if name == "downtime" and version == 9:
+            assert exported.status_code == 400
+            assert "暂无数据，不能导出" in exported.get_data(as_text=True)
+            continue
+        _assert_status(exported, export_path)
+        filename = unquote(exported.headers["Content-Disposition"])
+        assert dates[0] + "至" + dates[1] in filename
+        text = xlsx_text(exported.data)
+        if name == "utilization":
+            assert ("MC_R1" if version == 9 else "MC_LONG_R1") in text
+        elif version == 10:
+            assert "MC_LONG_R1" in text
+    assert business_rows(db_path) == before
 
 
 def test_reports_default_range_from_version_span(app_client, db_path) -> None:
@@ -59,24 +95,7 @@ def test_reports_default_range_from_version_span(app_client, db_path) -> None:
     finally:
         conn.close()
 
-    client = app_client
-
-    # utilization：无日期参数时，应自动落到 version=9 的排程范围
-    r = client.get("/reports/utilization?version=9")
-    _assert_status(r, "GET /reports/utilization?version=9")
-    util_html = r.data.decode("utf-8", errors="ignore")
-    _assert_contains(util_html, 'name="start_date" value="2099-01-10"', "utilization start_date")
-    _assert_contains(util_html, 'name="end_date" value="2099-01-10"', "utilization end_date")
-    _assert_contains(util_html, "已按所选版本的排程范围自动带入日期。", "utilization hint")
-    _assert_contains(util_html, "MC_R1", "utilization machine row")
-
-    # downtime：同样应自动使用 version=9 的日期范围（即使结果为空）
-    r = client.get("/reports/downtime?version=9")
-    _assert_status(r, "GET /reports/downtime?version=9")
-    dt_html = r.data.decode("utf-8", errors="ignore")
-    _assert_contains(dt_html, 'name="start_date" value="2099-01-10"', "downtime start_date")
-    _assert_contains(dt_html, 'name="end_date" value="2099-01-10"', "downtime end_date")
-    _assert_contains(dt_html, "已按所选版本的排程范围自动带入日期。", "downtime hint")
+    _assert_retained_range(app_client, db_path, 9, ("2099-01-10", "2099-01-10"))
 
 
 def test_reports_version_span_longer_than_custom_limit_is_allowed(app_client, db_path) -> None:
@@ -130,23 +149,12 @@ def test_reports_version_span_longer_than_custom_limit_is_allowed(app_client, db
     finally:
         conn.close()
 
-    client = app_client
-
-    r = client.get("/reports/utilization?version=10")
-    _assert_status(r, "GET /reports/utilization?version=10")
-    util_html = r.data.decode("utf-8", errors="ignore")
-    _assert_contains(util_html, 'name="start_date" value="2099-01-10"', "long utilization start_date")
-    _assert_contains(util_html, 'name="end_date" value="2099-04-15"', "long utilization end_date")
-    _assert_contains(util_html, "已按所选版本的排程范围自动带入日期。", "long utilization hint")
-    assert "utilization/export" in util_html
-    assert "utilization/export?version=10&amp;start_date" not in util_html
-    _assert_status(client.get("/reports/utilization/export?version=10"), "GET /reports/utilization/export?version=10")
-
-    r = client.get("/reports/downtime?version=10")
-    _assert_status(r, "GET /reports/downtime?version=10")
-    dt_html = r.data.decode("utf-8", errors="ignore")
-    _assert_contains(dt_html, 'name="start_date" value="2099-01-10"', "long downtime start_date")
-    _assert_contains(dt_html, 'name="end_date" value="2099-04-15"', "long downtime end_date")
-    assert "downtime/export" in dt_html
-    assert "downtime/export?version=10&amp;start_date" not in dt_html
-    _assert_status(client.get("/reports/downtime/export?version=10"), "GET /reports/downtime/export?version=10")
+    _assert_retained_range(app_client, db_path, 10, ("2099-01-10", "2099-04-15"))
+    for name in ("utilization", "downtime"):
+        rejected = get_unchanged(
+            app_client,
+            f"/reports/{name}/export?version=10&start_date=2099-01-10&end_date=2099-04-15",
+            db_path,
+        )
+        assert rejected.status_code == 400
+        assert "日期范围不能超过 62 天" in rejected.get_data(as_text=True)

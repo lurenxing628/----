@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.legacy_report_contract import assert_retired, get_unchanged
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -89,12 +90,10 @@ def test_resource_dispatch_invalid_summary_surfaces_overdue_degraded(tmp_path, m
     client = app.test_client()
     query = "scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=1"
 
-    page_resp = client.get(f"/scheduler/resource-dispatch?{query}")
-    assert page_resp.status_code == 200
-    page_html = page_resp.get_data(as_text=True)
-    assert 'id="rdOverdueWarning"' in page_html
+    page_resp = get_unchanged(client, f"/scheduler/resource-dispatch?{query}", tmp_path / "aps_test.db")
+    assert_retired(page_resp, public=("1", "正式采用方案"))
 
-    data_resp = client.get(f"/scheduler/resource-dispatch/data?{query}")
+    data_resp = get_unchanged(client, f"/scheduler/resource-dispatch/data?{query}", tmp_path / "aps_test.db")
     assert data_resp.status_code == 200
     payload = json.loads(data_resp.get_data(as_text=True) or "{}")
     assert payload.get("success") is True, payload
@@ -102,6 +101,7 @@ def test_resource_dispatch_invalid_summary_surfaces_overdue_degraded(tmp_path, m
     assert len(data.get("detail_rows") or []) == 1
     assert data.get("overdue_markers_degraded") is True
     assert data.get("overdue_markers_partial") is False
+    assert data["detail_rows"][0]["is_overdue"] is False
     assert "超期" in str(data.get("overdue_markers_message") or "")
     assert any("资源排班超期标记降级" in item for item in logged), logged
 
@@ -121,12 +121,10 @@ def test_resource_dispatch_partial_overdue_summary_surfaces_warning(tmp_path, mo
     client = app.test_client()
     query = "scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=1"
 
-    page_resp = client.get(f"/scheduler/resource-dispatch?{query}")
-    assert page_resp.status_code == 200
-    page_html = page_resp.get_data(as_text=True)
-    assert 'id="rdOverdueWarning"' in page_html
+    page_resp = get_unchanged(client, f"/scheduler/resource-dispatch?{query}", tmp_path / "aps_test.db")
+    assert_retired(page_resp, public=("1", "正式采用方案"))
 
-    data_resp = client.get(f"/scheduler/resource-dispatch/data?{query}")
+    data_resp = get_unchanged(client, f"/scheduler/resource-dispatch/data?{query}", tmp_path / "aps_test.db")
     assert data_resp.status_code == 200
     payload = json.loads(data_resp.get_data(as_text=True) or "{}")
     assert payload.get("success") is True, payload

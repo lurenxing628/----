@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import openpyxl
 
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.legacy_report_contract import assert_rejected, assert_retired, get_unchanged
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -58,19 +59,17 @@ def test_week_plan_filename_uses_normalized_version(tmp_path, monkeypatch) -> No
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    page_default = client.get("/scheduler/week-plan?week_start=2026-03-02")
-    assert page_default.status_code == 200
+    page_default = get_unchanged(client, "/scheduler/week-plan?week_start=2026-03-02", tmp_path / "aps_test.db")
+    assert_retired(page_default, public=("7", "正式采用方案"))
 
-    page_latest = client.get("/scheduler/week-plan?week_start=2026-03-02&version=latest")
-    assert page_latest.status_code == 200
+    page_latest = get_unchanged(client, "/scheduler/week-plan?week_start=2026-03-02&version=latest", tmp_path / "aps_test.db")
+    assert_retired(page_latest, public=("7", "正式采用方案"))
 
     page_invalid = client.get("/scheduler/week-plan?week_start=2026-03-02&version=abc")
-    assert page_invalid.status_code == 400
-    assert "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。" in page_invalid.get_data(as_text=True)
+    assert_rejected(page_invalid, forbidden=("abc",))
 
     page_zero = client.get("/scheduler/week-plan?week_start=2026-03-02&version=0")
-    assert page_zero.status_code == 400
-    assert "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。" in page_zero.get_data(as_text=True)
+    assert_rejected(page_zero)
 
     resp_default = client.get("/scheduler/week-plan/export?week_start=2026-03-02")
     assert resp_default.status_code == 200
@@ -82,23 +81,27 @@ def test_week_plan_filename_uses_normalized_version(tmp_path, monkeypatch) -> No
     disposition_latest = unquote(resp_latest.headers.get("Content-Disposition", ""))
     assert "v7_2026-03-02至2026-03-08.xlsx" in disposition_latest, disposition_latest
 
-    resp_invalid = client.get("/scheduler/week-plan/export?week_start=2026-03-02&version=abc", follow_redirects=True)
-    assert resp_invalid.status_code == 200
-    assert "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。" in resp_invalid.get_data(as_text=True)
-
-    resp_zero = client.get("/scheduler/week-plan/export?week_start=2026-03-02&version=0", follow_redirects=True)
-    assert resp_zero.status_code == 200
-    assert "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。" in resp_zero.get_data(as_text=True)
+    for raw_version in ("abc", "0"):
+        failed = client.get("/scheduler/week-plan/export?week_start=2026-03-02&version=" + raw_version)
+        assert failed.status_code == 302
+        location = urlparse(failed.headers["Location"])
+        assert location.path == "/scheduler/week-plan"
+        query = parse_qs(location.query)
+        assert "version" not in query
+        assert query["week_start"] == ["2026-03-02"]
+        retired = get_unchanged(client, failed.headers["Location"], tmp_path / "aps_test.db")
+        page = assert_retired(retired, public=("7", "正式采用方案"))
+        assert "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。" in page.text
 
 
 def test_week_plan_no_history_page_empty_and_export_404(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch, with_history=False)
     client = app.test_client()
 
-    page_resp = client.get("/scheduler/week-plan?week_start=2026-03-02")
+    page_resp = get_unchanged(client, "/scheduler/week-plan?week_start=2026-03-02", tmp_path / "aps_test.db")
     page_html = page_resp.get_data(as_text=True)
-    assert page_resp.status_code == 200
-    assert "暂无版本" in page_html
+    assert page_resp.status_code == 404
+    assert "Location" not in page_resp.headers
     assert 'aps-summary-value">v1' not in page_html
     assert 'aps-summary-value">v0' not in page_html
 

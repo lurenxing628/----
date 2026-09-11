@@ -19,6 +19,12 @@ from core.services.common.excel_audit import public_export_filters
 from core.services.report import ReportEngine
 from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.legacy_report_contract import (
+    MISSING_ROLE,
+    assert_rejected,
+    assert_retired,
+    get_unchanged,
+)
 from tests._support.paths import REPO_ROOT
 from web.routes.report_plan_preview import default_plan_resolution
 
@@ -294,37 +300,31 @@ def test_candidate_report_pages_receive_plan_role_and_keep_export_links_on_same_
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    overdue_resp = client.get("/reports/overdue?version=17&plan_role=baseline_best")
-    _assert_status(overdue_resp, "candidate overdue page")
-    overdue_html = overdue_resp.get_data(as_text=True)
-    assert "原算法代表方案" in overdue_html
-    assert "2026-01-03 12:00:00" in overdue_html
-    assert "plan_role=baseline_best" in overdue_html
-
-    utilization_resp = client.get("/reports/utilization?version=17&plan_role=baseline_best&start_date=2026-01-03&end_date=2026-01-03")
-    _assert_status(utilization_resp, "candidate utilization page")
-    utilization_html = utilization_resp.get_data(as_text=True)
-    assert "原算法代表方案" in utilization_html
-    assert "MC_CANDIDATE" in utilization_html
-    assert "候选方案设备" in utilization_html
-    assert "MC_ADOPTED" not in utilization_html
-    assert "plan_role=baseline_best" in utilization_html
-    assert (
-        "/reports/downtime?version=17&amp;plan_role=baseline_best&amp;start_date=2026-01-03&amp;end_date=2026-01-03"
-        in utilization_html
-    )
-
-    downtime_resp = client.get("/reports/downtime?version=17&plan_role=baseline_best&start_date=2026-01-03&end_date=2026-01-03")
-    _assert_status(downtime_resp, "candidate downtime page")
-    downtime_html = downtime_resp.get_data(as_text=True)
-    assert "原算法代表方案" in downtime_html
-    assert "MC_CANDIDATE" in downtime_html
-    assert "2.0" in downtime_html
-    assert "plan_role=baseline_best" in downtime_html
-    assert (
-        "/reports/utilization?version=17&amp;plan_role=baseline_best&amp;start_date=2026-01-03&amp;end_date=2026-01-03"
-        in downtime_html
-    )
+    for topic in ("overdue", "utilization", "downtime"):
+        query = "version=17&plan_role=baseline_best"
+        if topic != "overdue":
+            query += "&start_date=2026-01-03&end_date=2026-01-03"
+        download = "/reports/" + topic + "/export?" + query
+        response = get_unchanged(client, "/reports/" + topic + "?" + query, tmp_path / "aps_test.db")
+        assert_retired(response, public=("17", "原算法代表方案"), downloads=(download,))
+        exported = get_unchanged(client, download, tmp_path / "aps_test.db")
+        _assert_status(exported, topic + " original download")
+        _assert_export_public_text(exported)
+        workbook = _load_xlsx(exported)
+        try:
+            if topic == "overdue":
+                assert workbook["超期清单"]["G2"].value == "2026-01-03 12:00:00"
+            elif topic == "utilization":
+                sheet = workbook["设备负荷"]
+                assert sheet["A2"].value == "MC_CANDIDATE"
+                assert sheet["B2"].value == "候选方案设备"
+                _assert_number(sheet["C2"].value, 4.0)
+                assert "MC_ADOPTED" not in _workbook_text(exported)
+            else:
+                assert workbook["停机影响"]["A2"].value == "MC_CANDIDATE"
+                _assert_number(workbook["停机影响"]["E2"].value, 2.0)
+        finally:
+            workbook.close()
 
 
 def test_candidate_report_exports_use_selected_plan_rows_and_filename_label(tmp_path, monkeypatch) -> None:
@@ -408,10 +408,13 @@ def test_candidate_report_pages_reject_non_completed_candidate_rows(tmp_path, mo
     )
 
     for url in urls:
-        resp = client.get(url)
+        resp = get_unchanged(client, url, tmp_path / "aps_test.db")
         html = resp.get_data(as_text=True)
         assert resp.status_code == 400, url
-        assert "这套对比参考方案当前不是已完成状态，不能查看明细。" in html
+        if "/export?" in url:
+            assert "这套对比参考方案当前不是已完成状态，不能查看明细。" in html
+        else:
+            assert_rejected(resp)
         assert "candidate_rows" not in html
         assert "MC_CANDIDATE" not in html
         assert "候选方案设备" not in html
@@ -438,10 +441,13 @@ def test_candidate_report_pages_reject_non_completed_schedule_source_comparison(
         "/reports/utilization?version=17&plan_role=baseline_best&start_date=2026-01-02&end_date=2026-01-02",
         "/reports/downtime/export?version=17&plan_role=baseline_best&start_date=2026-01-02&end_date=2026-01-02",
     ):
-        resp = client.get(url)
+        resp = get_unchanged(client, url, tmp_path / "aps_test.db")
         html = resp.get_data(as_text=True)
         assert resp.status_code == 400, url
-        assert "这套对比参考方案当前不是已完成状态，不能查看明细。" in html
+        if "/export?" in url:
+            assert "这套对比参考方案当前不是已完成状态，不能查看明细。" in html
+        else:
+            assert_rejected(resp)
         assert "source_table" not in html
         assert "candidate_id" not in html
         assert "MC_ADOPTED" not in html
@@ -451,26 +457,15 @@ def test_candidate_report_missing_role_falls_back_to_adopted_with_visible_status
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    page_resp = client.get("/reports/overdue?version=17&plan_role=critical_best")
-    _assert_status(page_resp, "candidate fallback page")
-    html = page_resp.get_data(as_text=True)
-    assert "当前版本没有保存这套方案明细，已显示正式采用方案。" in html
-    assert "正式采用方案" in html
-    assert "plan_role=critical_best" in html
-    assert "2026-01-02 10:00:00" in html
-    assert "2026-01-03 12:00:00" not in html
-
-    utilization_page = client.get("/reports/utilization?version=17&plan_role=critical_best&start_date=2026-01-02&end_date=2026-01-02")
-    _assert_status(utilization_page, "candidate fallback utilization page")
-    utilization_html = utilization_page.get_data(as_text=True)
-    assert "当前版本没有保存这套方案明细，已显示正式采用方案。" in utilization_html
-    assert "plan_role=critical_best" in utilization_html
-
-    downtime_page = client.get("/reports/downtime?version=17&plan_role=critical_best&start_date=2026-01-02&end_date=2026-01-02")
-    _assert_status(downtime_page, "candidate fallback downtime page")
-    downtime_html = downtime_page.get_data(as_text=True)
-    assert "当前版本没有保存这套方案明细，已显示正式采用方案。" in downtime_html
-    assert "plan_role=critical_best" in downtime_html
+    for topic in ("overdue", "utilization", "downtime"):
+        query = "version=17&plan_role=critical_best"
+        if topic != "overdue":
+            query += "&start_date=2026-01-02&end_date=2026-01-02"
+        response = get_unchanged(client, "/reports/" + topic + "?" + query, tmp_path / "aps_test.db")
+        page = assert_retired(response, public=("17",), message=MISSING_ROLE)
+        assert "2026-01-02 10:00:00" not in page.text
+        assert "2026-01-03 12:00:00" not in page.text
+        assert "已显示正式采用方案" not in page.text
 
     export_resp = client.get("/reports/overdue/export?version=17&plan_role=critical_best")
     _assert_status(export_resp, "candidate fallback export")
@@ -526,8 +521,13 @@ def test_report_pages_reject_unknown_plan_role_without_history(tmp_path, monkeyp
     app = _build_empty_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    resp = client.get("/reports/overdue?plan_role=bad_role")
+    resp = get_unchanged(client, "/reports/overdue?plan_role=bad_role", tmp_path / "aps_empty.db")
     html = resp.get_data(as_text=True)
 
-    assert resp.status_code == 400
-    assert "排产方案不正确" in html
+    assert resp.status_code == 404
+    assert "bad_role" not in html
+    assert 'value="0"' not in html
+    assert "Location" not in resp.headers
+    exported = client.get("/reports/overdue/export?plan_role=bad_role")
+    assert exported.status_code == 404
+    assert "暂无排产历史" in exported.get_data(as_text=True)

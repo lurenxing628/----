@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from flask import Flask, g
 
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.legacy_report_contract import assert_retired, get_unchanged, saved_summary_display
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -255,11 +256,14 @@ def test_week_plan_page_hides_zero_warning_preview_button(tmp_path, monkeypatch)
     app = _build_real_app(tmp_path, monkeypatch, summary_obj=summary)
     client = app.test_client()
 
-    response = client.get("/scheduler/week-plan?version=3")
+    response = get_unchanged(client, "/scheduler/week-plan?version=3", tmp_path / "aps_test.db")
     html = response.get_data(as_text=True)
 
-    assert response.status_code == 200
-    assert "维护诊断：1 条" in html
+    assert_retired(response, public=("3", "正式采用方案"))
+    original, display = saved_summary_display(tmp_path / "aps_test.db", 3)
+    assert json.loads(original[1]) == summary
+    assert display["maintenance_diagnostic_count"] == 1
+    assert display["warning_total"] == 0 and display["warnings_preview"] == []
     assert "去排产历史查看" not in html
     assert "/system/history?version=3" not in html
     assert "sqlite" not in html
@@ -482,11 +486,16 @@ def test_week_plan_page_renders_warning_pipeline_guard_html(tmp_path, monkeypatc
     app = _build_real_app(tmp_path, monkeypatch, summary_obj=summary)
     client = app.test_client()
 
-    response = client.get("/scheduler/week-plan?week_start=2026-04-13&version=3")
+    response = get_unchanged(client, "/scheduler/week-plan?week_start=2026-04-13&version=3", tmp_path / "aps_test.db")
     html = response.get_data(as_text=True)
 
-    assert response.status_code == 200
-    assert "排产提醒整理状态：未完整整理" in html
+    assert_retired(response, public=("3", "正式采用方案"))
+    original, display = saved_summary_display(tmp_path / "aps_test.db", 3)
+    assert json.loads(original[1]) == summary
+    pipeline = display["warning_pipeline_display"]
+    assert pipeline["summary_merge_failed"] is True
+    assert pipeline["algo_warning_count"] == 2 and pipeline["summary_warning_count"] == 0
+    assert pipeline["message"] == "排产提示没有完整整理。"
     assert "summary_warnings_assignment_failed" not in html
 
 
@@ -500,8 +509,9 @@ def test_week_plan_page_renders_simulated_completion_status_label(tmp_path, monk
     app = _build_real_app(tmp_path, monkeypatch, summary_obj=summary, result_status="simulated")
     client = app.test_client()
 
-    response = client.get("/scheduler/week-plan?week_start=2026-04-13&version=3")
-    html = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "模拟排产 / 部分成功" in html
+    response = get_unchanged(client, "/scheduler/week-plan?week_start=2026-04-13&version=3", tmp_path / "aps_test.db")
+    assert_retired(response, public=("3", "正式采用方案"))
+    original, display = saved_summary_display(tmp_path / "aps_test.db", 3)
+    assert original[0] == "simulated" and json.loads(original[1]) == summary
+    assert display["result_status_label"] == "模拟排产 / 部分成功"
+    assert display["completion_status"] == "partial"

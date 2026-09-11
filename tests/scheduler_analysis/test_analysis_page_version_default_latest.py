@@ -9,6 +9,13 @@ import sys
 from pathlib import Path
 
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.legacy_report_contract import (
+    analysis_read_context,
+    assert_plan_navigation,
+    assert_rejected,
+    get_unchanged,
+    saved_summary_display,
+)
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -55,48 +62,27 @@ def _build_app(tmp_path, monkeypatch, *, result_status: str = "success", result_
 def test_analysis_page_version_default_latest(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
-
-    resp = client.get("/scheduler/analysis")
-    assert resp.status_code == 200
-    html = resp.get_data(as_text=True)
-    assert "版本概览" in html
-    assert 'aps-summary-label">版本' in html
-    assert 'aps-summary-value">v7' in html
-
-    resp_empty = client.get("/scheduler/analysis?version=")
-    assert resp_empty.status_code == 200
-    empty_html = resp_empty.get_data(as_text=True)
-    assert "版本概览" in empty_html
-    assert 'aps-summary-label">版本' in empty_html
-    assert 'aps-summary-value">v7' in empty_html
-
-    resp_latest = client.get("/scheduler/analysis?version=latest")
-    assert resp_latest.status_code == 200
-    latest_html = resp_latest.get_data(as_text=True)
-    assert "版本概览" in latest_html
-    assert 'aps-summary-label">版本' in latest_html
-    assert 'aps-summary-value">v7' in latest_html
-
-    resp_invalid = client.get("/scheduler/analysis?version=abc")
-    invalid_html = resp_invalid.get_data(as_text=True)
-    assert resp_invalid.status_code == 400
-    assert "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。" in invalid_html
-    assert "version 不合法" not in invalid_html
-    assert "期望整数" not in invalid_html
+    db_path = tmp_path / "aps_test.db"
+    contexts = []
+    for suffix in ("", "?version=", "?version=latest"):
+        response = get_unchanged(client, "/scheduler/analysis" + suffix, db_path)
+        contexts.append(assert_plan_navigation(response, db_path, version=7))
+    assert contexts[0] == contexts[1] == contexts[2]
+    invalid = get_unchanged(client, "/scheduler/analysis?version=abc", db_path)
+    assert_rejected(invalid, forbidden=("abc", "version 不合法", "期望整数"))
 
 
 def test_analysis_missing_version_keeps_trends_visible_without_fake_selected(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
-    client = app.test_client()
-
-    response = client.get("/scheduler/analysis?version=999")
-    html = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "v999 无对应排产历史" in html
-    assert 'aps-summary-value">v999' not in html
-    assert 'value="999"' not in html
-    assert "版本趋势（最近 1 个有指标的版本）" in html
+    db_path = tmp_path / "aps_test.db"
+    response = get_unchanged(app.test_client(), "/scheduler/analysis?version=999", db_path)
+    assert response.status_code == 404 and "Location" not in response.headers
+    assert 'value="999"' not in response.get_data(as_text=True)
+    read = analysis_read_context(app, db_path, "999")
+    assert read.selected_item is None
+    assert read.selected_history_resolution["history_missing"] is True
+    assert "v999 无对应排产历史" in read.selected_history_resolution["message"]
+    assert {item["version"] for item in read.raw_hist} == {7}
 
 
 def test_analysis_version_dropdown_uses_completion_status_label(tmp_path, monkeypatch) -> None:
@@ -108,14 +94,14 @@ def test_analysis_version_dropdown_uses_completion_status_label(tmp_path, monkey
     )
     client = app.test_client()
 
-    response = client.get("/scheduler/analysis?version=7")
-    html = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "模拟排产 / 部分成功" in html
-    # 下拉框保留复合标签（统一字源），不被压扁成单一 outcome（fusion-label-single-source）
-    assert "v7 · 模拟排产 / 部分成功" in html
-    assert "v7 · 部分成功" not in html
+    db_path = tmp_path / "aps_test.db"
+    response = get_unchanged(client, "/scheduler/analysis?version=7", db_path)
+    assert_plan_navigation(response, db_path, version=7)
+    original, display = saved_summary_display(db_path, 7)
+    assert original[0] == "simulated"
+    assert display["result_status_label"] == "模拟排产 / 部分成功"
+    read = analysis_read_context(app, db_path, "7")
+    assert read.versions[0]["result_status_label"] == "模拟排产 / 部分成功"
 
 
 def test_analysis_page_shows_degraded_freeze_window_when_config_defaults_to_disabled(tmp_path, monkeypatch) -> None:
@@ -152,11 +138,14 @@ def test_analysis_page_shows_degraded_freeze_window_when_config_defaults_to_disa
     )
     client = app.test_client()
 
-    response = client.get("/scheduler/analysis?version=7")
-    html = response.get_data(as_text=True)
+    from web.viewmodels.scheduler_analysis_vm import build_analysis_context
 
-    assert response.status_code == 200
-    assert "冻结窗口" in html and "部分未生效" in html
-    assert "当前状态" in html and "部分未生效" in html
-    assert "冻结窗口资料不完整" in html
-    assert "冻结窗口：未启用" not in html
+    db_path = tmp_path / "aps_test.db"
+    response = get_unchanged(client, "/scheduler/analysis?version=7", db_path)
+    assert_plan_navigation(response, db_path, version=7)
+    read = analysis_read_context(app, db_path, "7")
+    ctx = build_analysis_context(selected_ver=7, raw_hist=read.raw_hist, selected_item=read.selected_item)
+    assert ctx["freeze_display"]["state"] == "degraded"
+    assert ctx["freeze_display"]["state_label"] == "部分未生效"
+    assert ctx["freeze_display"]["degraded"] is True
+    assert any(item["code"] == "freeze_window_degraded" for item in ctx["summary_degradation_messages"])
