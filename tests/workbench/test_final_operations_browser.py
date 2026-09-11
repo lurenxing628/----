@@ -3,6 +3,7 @@
 import csv
 import io
 import json
+import subprocess
 import zipfile
 from contextlib import closing
 
@@ -10,12 +11,69 @@ import pytest
 
 from core.infrastructure.database import get_connection
 from tests.workbench.final_operations_seed import seed
-from tests.workbench.final_operations_support import REPO, OperationsHost, digest
+from tests.workbench.final_operations_support import REPO, OperationsHost, digest, runtime_tools
 from tests.workbench.system_restore_entrypoint_support import wait_for
+
+REQUEST_BINDING_PROBE = r"""
+const assert = require('node:assert/strict'), { EventEmitter } = require('node:events');
+const { support } = require(process.argv[1]);
+class Page extends EventEmitter {
+  wait(kind, predicate) {
+    return new Promise(resolve => {
+      const listener = value => { if (predicate(value)) { this.off(kind, listener); resolve(value); } };
+      this.on(kind, listener);
+    });
+  }
+  waitForRequest(predicate) { return this.wait('request', predicate); }
+  waitForResponse(predicate) { return this.wait('response', predicate); }
+}
+(async () => {
+  const cases = ['get', 'post', 'wrong-status', 'missing-response', 'body-error'];
+  for (const mode of cases) {
+    const page = new Page(), reads = [], method = mode === 'post' ? 'POST' : 'GET';
+    const expected = mode === 'post' ? 422 : 200, bodyError = new Error('Current response body failed');
+    function response(name, verb = method, suffix = '/dashboard') {
+      const request = { url: () => 'http://127.0.0.1/api/workbench/v1' + suffix, method: () => verb,
+        response: async () => mode === 'missing-response' && name === 'current' ? null : value };
+      const value = { url: request.url, request: () => request,
+        status: () => mode === 'wrong-status' && name === 'current' ? 503 : expected,
+        text: async () => { reads.push(name); if (name === 'old') throw new Error('Old aborted response body');
+          if (mode === 'body-error' && name === 'current') throw bodyError;
+          return JSON.stringify({ request: name }); },
+        json: async () => JSON.parse(await value.text()) };
+      return value;
+    }
+    const old = response('old'), current = response('current');
+    const decoys = [response('wrong-method', method === 'GET' ? 'POST' : 'GET'), response('wrong-path', method, '/unrelated')];
+    page.emit('request', old.request());
+    const h = support(page, {}, {});
+    let actions = 0;
+    const result = h.request('/dashboard', async () => {
+      actions++;
+      for (const value of decoys) { page.emit('request', value.request()); page.emit('response', value); }
+      page.emit('response', old);
+      page.emit('request', current.request()); page.emit('response', current);
+    }, expected, method);
+    if (mode === 'wrong-status') await assert.rejects(result, error => error.code === 'ERR_ASSERTION' && error.actual === 503 && error.expected === 200);
+    else if (mode === 'missing-response') await assert.rejects(result, /action request ended without a response/);
+    else if (mode === 'body-error') await assert.rejects(result, error => error === bodyError);
+    else assert.deepEqual(await result, { request: 'current' });
+    assert.equal(actions, 1);
+    assert(reads.every(name => name === 'current'));
+  }
+  process.stdout.write(JSON.stringify({ cases, old_response_bodies_read: 0, repeated_actions: 0 }));
+})().catch(error => { console.error(error); process.exitCode = 1; });
+"""
 
 
 @pytest.mark.parametrize("width,theme", [(1920, "light"), (1920, "dark"), (1392, "light"), (1392, "dark")])
 def test_final_operations_main_controls_and_persistence(tmp_path, width, theme):
+    binding = subprocess.run([runtime_tools()[0], "-e", REQUEST_BINDING_PROBE,
+                              str(REPO / "tests/workbench/final_operations_browser_support.cjs")],
+                             text=True, capture_output=True, timeout=20)
+    (tmp_path / "request-binding-proof.json").write_text(binding.stdout, encoding="utf-8")
+    assert binding.returncode == 0, binding.stderr
+    assert len(json.loads(binding.stdout)["cases"]) == 5
     host = OperationsHost(tmp_path / f"operations-{width}-{theme}")
     seed(host.root, include_candidate_baseline=True)
     try:

@@ -10,8 +10,10 @@ function support(page, config, report) {
     return value;
   }
   async function request(suffix, run, status = 200, method = 'GET') {
-    const response = page.waitForResponse(r => new URL(r.url()).pathname === base + suffix && r.request().method() === method);
-    await run(); const result = await response;
+    // An older in-flight refresh can respond after this action has cancelled it.
+    const response = page.waitForRequest(r => new URL(r.url()).pathname === base + suffix && r.method() === method).then(r => r.response());
+    const [result] = await Promise.all([response, run()]);
+    assert(result, 'The action request ended without a response');
     assert.equal(result.status(), status, await result.text());
     return result.json();
   }
