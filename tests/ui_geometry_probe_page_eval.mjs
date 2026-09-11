@@ -12,6 +12,15 @@ export const WAIT_FOR_PAGE_STABLE_EXPRESSION = String.raw`
           window.addEventListener("load", resolve, { once: true });
         }), 5000, "load timeout");
       }
+      await withTimeout(new Promise((resolve, reject) => {
+        const check = () => {
+          const state = document.querySelector('#root')?.dataset.workbenchBoot;
+          if (state === 'ready') resolve();
+          else if (state === 'failed') reject(new Error('React boot failed'));
+          else setTimeout(check, 25);
+        };
+        check();
+      }), 5000, "workbench boot timeout");
       if (document.fonts && document.fonts.ready) {
         await withTimeout(document.fonts.ready, 3000, "fonts timeout");
       }
@@ -20,7 +29,16 @@ export const WAIT_FOR_PAGE_STABLE_EXPRESSION = String.raw`
         document.body ? document.body.scrollWidth : 0,
         document.documentElement ? document.documentElement.scrollWidth : 0
       );
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await withTimeout((async () => {
+        for (;;) {
+          const transitions = document.getAnimations().filter(animation => animation instanceof CSSTransition
+            && (animation.playState === 'running' || animation.pending));
+          if (!transitions.length) break;
+          await Promise.all(transitions.map(animation => animation.finished.catch(error => {
+            if (error.name !== 'AbortError') throw error;
+          })));
+        }
+      })(), 5000, 'CSS transition timeout');
       const second = Math.max(
         document.body ? document.body.scrollWidth : 0,
         document.documentElement ? document.documentElement.scrollWidth : 0
@@ -29,240 +47,179 @@ export const WAIT_FOR_PAGE_STABLE_EXPRESSION = String.raw`
     })()
 `;
 
+
+function inspectCurrentPage(httpStatus) {
+  const expected = window.__APS_EXPECTED_SIGNALS__;
+  const visible = element => {
+    if (!element) return false;
+    const box = element.getBoundingClientRect(), style = getComputedStyle(element);
+    return box.width > 0 && box.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+  };
+  const nodes = selectors => [...new Set(selectors.flatMap(selector => [...document.querySelectorAll(selector)]))].filter(visible);
+  const overlaps = (a, b) => !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
+  const textRects = label => {
+    const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT), boxes = [];
+    while (walker.nextNode()) {
+      if (!walker.currentNode.textContent.trim()) continue;
+      const range = document.createRange(); range.selectNodeContents(walker.currentNode);
+      boxes.push(...range.getClientRects()); range.detach();
+    }
+    return boxes;
+  };
+  const requiredControls = expected.controls || {}, missingRequiredToggleIds = [], toggleChecks = [];
+  for (const [selector, count] of Object.entries(requiredControls)) {
+    const inputs = [...document.querySelectorAll(selector)];
+    if (inputs.length !== count) missingRequiredToggleIds.push(selector + ': expected ' + count + ', got ' + inputs.length);
+    inputs.forEach(input => {
+      const label = input.closest('label'), segment = input.closest('.pf-segment');
+      let ok = ['radio', 'checkbox'].includes(input.type), evidence;
+      if (segment) {
+        const face = label && label.querySelector('span'), other = [...segment.querySelectorAll('label > span')].filter(node => node !== face);
+        const box = face && face.getBoundingClientRect(), text = face && textRects(face);
+        ok = ok && !!input.name && visible(face) && text.length > 0
+          && other.every(node => !overlaps(box, node.getBoundingClientRect()))
+          && text.every(rect => rect.left >= box.left - 1 && rect.right <= box.right + 1);
+        evidence = { presentation: 'native-radio-with-segment-label', inputType: input.type, labelText: face?.textContent,
+          inputOpacity: getComputedStyle(input).opacity, labelWidth: box?.width };
+      } else {
+        const labels = [...(input.labels || [])].filter(visible), box = input.getBoundingClientRect();
+        const rectangles = labels.flatMap(textRects);
+        ok = ok && visible(input) && labels.length > 0 && rectangles.length > 0
+          && rectangles.every(rect => !overlaps(box, rect));
+        evidence = { presentation: 'native-input-and-label', inputType: input.type, labels: labels.map(node => node.textContent.trim()),
+          inputWidth: box.width };
+      }
+      if (!ok) missingRequiredToggleIds.push(selector + ': missing/invalid visible label geometry');
+      toggleChecks.push({ selector, ok, checked: input.checked, disabled: input.disabled, ...evidence });
+    });
+  }
+  const summarySelectors = expected.summaries || [], noticeSelectors = expected.notices || [];
+  const summaries = nodes(summarySelectors);
+  const notices = nodes(['.pf-alert', '.sm-note', '.plan-note', '.rw-basis', '.sm-notice', ...noticeSelectors]);
+  const missingVisualSamples = summarySelectors.filter(selector => !nodes([selector]).length)
+    .concat(noticeSelectors.filter(selector => !nodes([selector]).length));
+  function parseRgb(value) {
+    const text = String(value || ''), start = text.indexOf('('), end = text.indexOf(')');
+    if (start < 0 || end <= start) return null;
+    const parts = text.slice(start + 1, end).split(',');
+    if (parts.length >= 4 && Number(parts[3]) === 0) return null;
+    const channels = parts.slice(0, 3).map(Number);
+    return channels.length === 3 && channels.every(Number.isFinite) ? channels : null;
+  }
+  function background(element) {
+    for (let node = element; node; node = node.parentElement) {
+      const value = parseRgb(getComputedStyle(node).backgroundColor);
+      if (value) return value;
+    }
+    return null;
+  }
+  function luminance(rgb) {
+    const linear = rgb.map(value => value / 255 <= 0.03928 ? value / 255 / 12.92 : Math.pow((value / 255 + 0.055) / 1.055, 2.4));
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  }
+  function lowContrast(element) {
+    const foreground = parseRgb(getComputedStyle(element).color), bg = background(element);
+    if (!foreground || !bg) return true;
+    const values = [luminance(foreground), luminance(bg)];
+    return (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05) < 3;
+  }
+  function badDarkBackground(element) {
+    const bg = background(element), fg = parseRgb(getComputedStyle(element).color);
+    return !bg || !fg || bg.every(value => value === 255) || bg.every((value, index) => value === fg[index]);
+  }
+  function textNodes(roots) {
+    return [...new Set(roots.flatMap(root => [root, ...root.querySelectorAll('*')]))]
+      .filter(node => visible(node) && [...node.childNodes].some(child => child.nodeType === Node.TEXT_NODE && child.textContent.trim()));
+  }
+  const multilineTableDetails = [];
+  function multilineTableComputedOk(selector) {
+    const table = document.querySelector(selector);
+    if (!visible(table)) return false;
+    const logHeaders = ['工厂本地时间', '类型', '状态', '级别', '摘要 / 来源', '详情'];
+    const headers = [...table.querySelectorAll('thead th')];
+    const fixedLogHeaders = selector === '.sm-logs-table' && headers.length === logHeaders.length
+      && headers.every((cell, index) => cell.textContent.trim() === logHeaders[index]);
+    const cells = [...table.querySelectorAll('thead th, tbody td')].filter(visible);
+    if (!cells.length || !table.querySelector('tbody td')) return false;
+    const inspected = cells.slice(0, 12).map(cell => {
+      const style = getComputedStyle(cell);
+      const wrapOk = style.overflowWrap === 'anywhere' || style.wordBreak !== 'normal';
+      const box = cell.getBoundingClientRect(), texts = textRects(cell);
+      const textWithinCell = texts.every(rect => rect.width > 0 && rect.height > 0
+        && rect.left >= box.left - 1 && rect.right <= box.right + 1
+        && rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1);
+      const fixedHeader = fixedLogHeaders && headers.includes(cell);
+      const multiline = fixedHeader ? texts.length > 0 && textWithinCell : wrapOk;
+      return { tag: cell.tagName, text: cell.textContent, whiteSpace: style.whiteSpace, textOverflow: style.textOverflow,
+        overflow: style.overflow, overflowWrap: style.overflowWrap, wordBreak: style.wordBreak,
+        textWithinCell, fixedHeaderGeometry: fixedHeader,
+        ok: style.whiteSpace === 'normal' && style.textOverflow !== 'ellipsis' && style.overflow !== 'hidden' && multiline };
+    });
+    multilineTableDetails.push({ selector, fixedLogHeaders, headerTexts: headers.map(cell => cell.textContent.trim()), cells: inspected });
+    return (selector !== '.sm-logs-table' || fixedLogHeaders) && inspected.every(cell => cell.ok);
+  }
+  const multilineTableChecks = Object.fromEntries((expected.tables || []).map(selector => [selector, multilineTableComputedOk(selector)]));
+  const multilineTextDetails = (expected.multiline || []).map(selector => {
+    const element = document.querySelector(selector), style = element && getComputedStyle(element), lines = element ? textRects(element) : [];
+    const count = new Set(lines.map(rect => Math.round(rect.top))).size;
+    return { selector, visible: visible(element), lines: count, chars: element?.textContent.length || 0,
+      ok: visible(element) && count >= 2 && element.textContent.length > 0
+        && ['pre-wrap', 'pre-line', 'normal'].includes(style.whiteSpace) && style.textOverflow !== 'ellipsis'
+        && style.overflowX !== 'hidden' && style.overflowY !== 'hidden'
+        && element.scrollWidth <= element.clientWidth + 1 && !lowContrast(element) };
+  });
+  function selectorFor(element) {
+    const classes = String(element.className || '').trim().split(/\s+/).filter(Boolean).slice(0, 3).join('.');
+    return element.tagName.toLowerCase() + (element.id ? '#' + element.id : '') + (classes ? '.' + classes : '');
+  }
+  function scroller(element) {
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+      const style = getComputedStyle(parent);
+      if (['auto', 'scroll'].includes(style.overflowX) && parent.scrollWidth > parent.clientWidth + 1) return selectorFor(parent);
+    }
+    return '';
+  }
+  const overflowOffenders = [...document.querySelectorAll('body *')].filter(visible).map(element => {
+    const rect = element.getBoundingClientRect(), style = getComputedStyle(element), ancestor = scroller(element);
+    return { outside: rect.right > innerWidth + 1 || rect.left < -1, selector: selectorFor(element),
+      rect: { left: rect.left, right: rect.right, width: rect.width, height: rect.height },
+      overflowX: style.overflowX, whiteSpace: style.whiteSpace, position: style.position,
+      insideHorizontalScroller: !!ancestor, horizontalScroller: ancestor,
+      textSample: String(element.innerText || element.textContent || '').replace(/\s+/g, ' ').slice(0, 80) };
+  }).filter(row => row.outside).slice(0, 20);
+  const scrollMetrics = { bodyScrollWidth: document.body.scrollWidth, documentScrollWidth: document.documentElement.scrollWidth, innerWidth };
+  const maxScrollWidth = Math.max(scrollMetrics.bodyScrollWidth, scrollMetrics.documentScrollWidth);
+  const hasAppShell = document.querySelector('#root')?.dataset.workbenchBoot === 'ready'
+    && !!document.querySelector('.operations-shell .sidebar-nav') && !!document.querySelector('.operations-shell .top-header')
+    && [...document.querySelectorAll('.top-header button')].some(node => node.textContent.startsWith('深色：'));
+  const bodyText = document.body.innerText, title = document.title || '';
+  const includesKeyword = (value, keyword) => value.toLowerCase().includes(keyword.toLowerCase());
+  const keywords = window.__APS_ERROR_PAGE_KEYWORDS__;
+  const matchedErrorKeyword = keywords.find(keyword => includesKeyword(title, keyword))
+    || (!hasAppShell && keywords.find(keyword => includesKeyword(bodyText, keyword))) || '';
+  const finalPath = location.pathname + location.search;
+  const missingExpectedTexts = expected.texts.filter(text => !bodyText.includes(text));
+  const missingExpectedIds = expected.selectors.filter(selector => !visible(document.querySelector(selector)));
+  const labelNodes = Object.keys(requiredControls).flatMap(selector => [...document.querySelectorAll(selector)].flatMap(input => [...(input.labels || [])]));
+  const contrastText = textNodes([...summaries, ...notices, ...labelNodes, ...nodes(expected.multiline || [])]);
+  const pluginBody = expected.plugin_audit ? document.querySelector('.sm-detail pre')?.textContent : null;
+  return JSON.stringify({
+    case: expected.case, path: finalPath, expectedPath: expected.path, pathMismatch: finalPath !== expected.path,
+    httpStatus, url: location.href, title, hasAppShell, pageLooksError: httpStatus >= 500 || !!matchedErrorKeyword,
+    matchedErrorKeyword, missingExpectedTexts, missingExpectedIds, width: innerWidth, bodyOverflow: maxScrollWidth > innerWidth + 1,
+    maxScrollWidth, scrollMetrics, overflowOffenders, toggleCount: toggleChecks.length,
+    toggleOverlapCount: toggleChecks.filter(row => !row.ok).length, toggleChecks, visibleNotices: notices.length,
+    darkTheme: document.documentElement.dataset.theme === 'dark', darkSummaryCount: summaries.length,
+    darkSummaryBadCount: summaries.filter(badDarkBackground).length, darkLowContrastSummaryCount: summaries.filter(lowContrast).length,
+    darkLowContrastTextCount: contrastText.filter(lowContrast).length, darkNoticeBadCount: notices.filter(badDarkBackground).length,
+    missingVisualSamples, multilineTableChecks, multilineTableDetails, multilineTextDetails, requiredToggleIds: Object.keys(requiredControls), missingRequiredToggleIds,
+    pluginAudit: expected.plugin_audit ? { publicBodyMatches: pluginBody === expected.identity.startup_public_body,
+      privateCanaryAbsent: !!pluginBody && !pluginBody.includes(expected.identity.private_path_canary),
+      truncationMarkerAbsent: !!pluginBody && !document.querySelector('.sm-detail').textContent.includes('本条详情已截断'),
+      claim: 'persisted public startup diagnostic, not plugin health' } : null,
+  });
+}
+
 export function buildPageInspectionExpression(httpStatus) {
-  return String.raw`
-    (() => {
-      const maxScrollWidth = Math.max(
-        document.body ? document.body.scrollWidth : 0,
-        document.documentElement ? document.documentElement.scrollWidth : 0
-      );
-      const bodyOverflow = maxScrollWidth > window.innerWidth + 1;
-      const toggleRows = [...document.querySelectorAll('.aps-toggle-row')];
-      const toggleOverlapCount = toggleRows.filter((row) => {
-        const track = row.querySelector('.aps-toggle-track');
-        const title = row.querySelector('.aps-toggle-title');
-        if (!track || !title) return false;
-        const a = track.getBoundingClientRect();
-        const b = title.getBoundingClientRect();
-        return !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
-      }).length;
-      const visibleNotices = [...document.querySelectorAll('.aps-notice,.aps-summary-item')]
-        .filter((el) => {
-          const rect = el.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0;
-        }).length;
-      document.documentElement.setAttribute('data-theme', 'dark');
-      const darkSummaryBadCount = [...document.querySelectorAll('.aps-summary-item')]
-        .filter((el) => {
-          const style = getComputedStyle(el);
-          return style.backgroundColor.includes('255, 255, 255') || style.color === style.backgroundColor;
-        }).length;
-      const logsTable = document.querySelector('#systemLogsTable');
-      const bodyText = document.body ? document.body.innerText || "" : "";
-      const titleText = document.title || "";
-      const hasAppShell = Boolean(document.querySelector('header nav, header.top-header, nav.sidebar-nav'))
-        && Boolean(document.getElementById('apsThemeToggle'));
-      function includesKeyword(value, keyword) {
-        return String(value || "").toLowerCase().includes(String(keyword || "").toLowerCase());
-      }
-      const errorKeywords = window.__APS_ERROR_PAGE_KEYWORDS__ || [];
-      const matchedTitleErrorKeyword = errorKeywords.find((keyword) => includesKeyword(titleText, keyword)) || "";
-      const matchedBodyErrorKeyword = errorKeywords.find((keyword) => includesKeyword(bodyText, keyword)) || "";
-      const matchedErrorKeyword = matchedTitleErrorKeyword || (!hasAppShell ? matchedBodyErrorKeyword : "");
-      const pageLooksError = ${httpStatus} >= 500 || Boolean(matchedErrorKeyword);
-      const expectedTexts = window.__APS_EXPECTED_SIGNALS__?.texts || [];
-      const expectedIds = window.__APS_EXPECTED_SIGNALS__?.ids || [];
-      const expectedPath = window.__APS_EXPECTED_SIGNALS__?.path || "";
-      const finalPath = location.pathname + location.search;
-      const missingExpectedTexts = expectedTexts.filter((text) => !bodyText.includes(text));
-      const missingExpectedIds = expectedIds.filter((id) => !document.getElementById(id));
-      const pathMismatch = Boolean(expectedPath && finalPath !== expectedPath);
-      function parseRgb(value) {
-        const text = String(value || "");
-        const start = text.indexOf("(");
-        const end = text.indexOf(")");
-        if (start < 0 || end <= start) return null;
-        const parts = text.slice(start + 1, end).split(",");
-        const alpha = parts.length >= 4 ? Number(String(parts[3] || "").trim()) : 1;
-        if (Number.isFinite(alpha) && alpha === 0) return null;
-        const channels = parts.slice(0, 3)
-          .map((part) => Number(String(part || "").trim()));
-        return channels.every((item) => Number.isFinite(item)) ? channels : null;
-      }
-      function channelToLinear(value) {
-        const normalized = value / 255;
-        return normalized <= 0.03928
-          ? normalized / 12.92
-          : Math.pow((normalized + 0.055) / 1.055, 2.4);
-      }
-      function luminance(rgb) {
-        return 0.2126 * channelToLinear(rgb[0])
-          + 0.7152 * channelToLinear(rgb[1])
-          + 0.0722 * channelToLinear(rgb[2]);
-      }
-      function contrastRatio(a, b) {
-        const high = Math.max(luminance(a), luminance(b));
-        const low = Math.min(luminance(a), luminance(b));
-        return (high + 0.05) / (low + 0.05);
-      }
-      function isVisible(el) {
-        const rect = el.getBoundingClientRect();
-        const style = getComputedStyle(el);
-        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
-      }
-      function selectorFor(el) {
-        if (!el) return "";
-        const tag = String(el.tagName || "").toLowerCase();
-        const id = el.id ? "#" + el.id : "";
-        const classes = String(el.className || "").trim().split(/\s+/).filter(Boolean).slice(0, 3).join(".");
-        return tag + id + (classes ? "." + classes : "");
-      }
-      function horizontalScrollerAncestor(el) {
-        let node = el.parentElement;
-        while (node && node !== document.documentElement) {
-          const style = getComputedStyle(node);
-          if ((style.overflowX === "auto" || style.overflowX === "scroll") && node.scrollWidth > node.clientWidth + 1) {
-            return selectorFor(node);
-          }
-          node = node.parentElement;
-        }
-        return "";
-      }
-      const overflowOffenders = [...document.querySelectorAll("body *")]
-        .filter((el) => isVisible(el))
-        .map((el) => {
-          const rect = el.getBoundingClientRect();
-          const style = getComputedStyle(el);
-          const outside = rect.right > window.innerWidth + 1 || rect.left < -1;
-          return {
-            outside,
-            tagName: String(el.tagName || ""),
-            id: el.id || "",
-            className: String(el.className || "").slice(0, 160),
-            selector: selectorFor(el),
-            rect: { left: rect.left, right: rect.right, width: rect.width, height: rect.height },
-            position: style.position,
-            overflowX: style.overflowX,
-            whiteSpace: style.whiteSpace,
-            textSample: String(el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80),
-            insideHorizontalScroller: Boolean(horizontalScrollerAncestor(el)),
-            horizontalScroller: horizontalScrollerAncestor(el),
-          };
-        })
-        .filter((row) => row.outside)
-        .slice(0, 20);
-      const scrollMetrics = {
-        bodyScrollWidth: document.body ? document.body.scrollWidth : 0,
-        documentScrollWidth: document.documentElement ? document.documentElement.scrollWidth : 0,
-        innerWidth: window.innerWidth,
-      }
-      function nearestBackground(el) {
-        let node = el;
-        while (node && node !== document.documentElement) {
-          const bg = parseRgb(getComputedStyle(node).backgroundColor);
-          if (bg) {
-            return bg;
-          }
-          node = node.parentElement;
-        }
-        return parseRgb(getComputedStyle(document.body || document.documentElement).backgroundColor);
-      }
-      function lowContrastTextCount(selectors) {
-        return selectors.flatMap((selector) => [...document.querySelectorAll(selector)])
-          .filter((el) => isVisible(el))
-          .filter((el) => {
-            const fg = parseRgb(getComputedStyle(el).color);
-            const bg = nearestBackground(el);
-            return fg && bg && contrastRatio(fg, bg) < 3;
-          }).length;
-      }
-      function multilineTableComputedOk(selector) {
-        const table = document.querySelector(selector);
-        if (!table) {
-          return true;
-        }
-        if (!table.classList.contains('aps-table--multiline')) {
-          return false;
-        }
-        const cells = [...table.querySelectorAll('thead th, tbody td')].filter((cell) => isVisible(cell));
-        if (!cells.length) {
-          return false;
-        }
-        return cells.slice(0, 12).every((cell) => {
-          const style = getComputedStyle(cell);
-          const wrapOk = style.overflowWrap === 'anywhere' || style.wordBreak !== 'normal';
-          return (
-            style.whiteSpace === 'normal'
-            && style.textOverflow !== 'ellipsis'
-            && style.overflow !== 'hidden'
-            && wrapOk
-          );
-        });
-      }
-      const requiredToggleByPath = {
-        "/scheduler/": ["runEnforceReady", "runStrictMode"],
-        "/scheduler/batches": ["batchManageStrictMode"],
-        "/scheduler/excel/batches": ["batchImportAutoOps", "batchImportStrictMode"],
-        "/process/": ["processCreateStrictMode"],
-      };
-      const requiredToggleIds = requiredToggleByPath[location.pathname] || [];
-      const missingRequiredToggleIds = requiredToggleIds
-        .filter((id) => !document.getElementById(id));
-      const darkLowContrastSummaryCount = [...document.querySelectorAll('.aps-summary-item')]
-        .filter((el) => {
-          const style = getComputedStyle(el);
-          const fg = parseRgb(style.color);
-          const bg = parseRgb(style.backgroundColor);
-          return fg && bg && contrastRatio(fg, bg) < 3;
-        }).length;
-      const darkLowContrastTextCount = lowContrastTextCount([
-        '.aps-summary-label',
-        '.aps-summary-value',
-        '.aps-summary-desc',
-        '.aps-notice-title',
-        '.aps-notice-body',
-        '.aps-toggle-title',
-        '.aps-toggle-desc',
-      ]);
-      const darkNoticeBadCount = [...document.querySelectorAll('.aps-notice')]
-        .filter((el) => {
-          const style = getComputedStyle(el);
-          return style.backgroundColor.includes('255, 255, 255');
-        }).length;
-      const multilineTableChecks = {
-        systemLogsTable: multilineTableComputedOk('#systemLogsTable'),
-        pluginStatusTable: multilineTableComputedOk('#pluginStatusTable'),
-        systemHistoryTable: multilineTableComputedOk('#systemHistoryTable'),
-      };
-      return JSON.stringify({
-        path: finalPath,
-        expectedPath,
-        pathMismatch,
-        httpStatus: ${httpStatus},
-        url: location.href,
-        title: document.title || "",
-        hasAppShell,
-        pageLooksError,
-        matchedErrorKeyword,
-        missingExpectedTexts,
-        missingExpectedIds,
-        width: window.innerWidth,
-        bodyOverflow,
-        maxScrollWidth,
-        scrollMetrics,
-        overflowOffenders,
-        toggleCount: toggleRows.length,
-        toggleOverlapCount,
-        visibleNotices,
-        darkSummaryBadCount,
-        darkLowContrastSummaryCount,
-        darkLowContrastTextCount,
-        darkNoticeBadCount,
-        multilineTableChecks,
-        logsTableMultiline: multilineTableChecks.systemLogsTable,
-        requiredToggleIds,
-        missingRequiredToggleIds,
-      });
-    })()
-`;
+  return '(' + inspectCurrentPage.toString() + ')(' + JSON.stringify(httpStatus) + ')';
 }

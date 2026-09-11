@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { createCdpClientClass } from "./ui_geometry_cdp_client.mjs";
 import { WAIT_FOR_PAGE_STABLE_EXPRESSION, buildPageInspectionExpression } from "./ui_geometry_probe_page_eval.mjs";
+import { buildScenarioPreparationExpression } from "./ui_geometry_probe_scenarios.mjs";
 
 const chromePath = process.argv[2];
 const baseUrl = process.argv[3];
@@ -11,10 +12,12 @@ const expectedByPath = JSON.parse(process.argv[5]);
 const errorPageKeywords = JSON.parse(process.argv[6]);
 const profileBaseDir = process.argv[7];
 const runtimeContext = JSON.parse(process.argv[8] || "{}");
+const evidenceDir = path.resolve(profileBaseDir, '..', 'geometry-evidence');
+await fs.mkdir(evidenceDir, { recursive: true });
 await fs.mkdir(profileBaseDir, { recursive: true });
 const userDataDir = await fs.mkdtemp(path.join(profileBaseDir, "aps-ui-chrome-"));
 const chromeArgs = [
-  "--headless=new",
+  "--headless",
   "--disable-gpu",
   "--disable-dev-shm-usage",
   "--no-first-run",
@@ -305,6 +308,19 @@ async function inspectPage(client, url, expected, httpStatus) {
         });
       }
       await loaded;
+      await waitForPageStable(client, url, { width, height: 900 });
+      const prepared = await client.send("Runtime.evaluate", {
+        expression: buildScenarioPreparationExpression(expected), awaitPromise: true, returnByValue: true,
+      });
+      if (prepared.exceptionDetails || prepared.result?.value?.ready !== true) {
+        const scene = await client.send('Runtime.evaluate', { expression: '({title:document.title,root:document.querySelector("#root")?.dataset.workbenchBoot,text:document.body.innerText})', returnByValue: true });
+        const screenshot = await client.send('Page.captureScreenshot', { format: 'png' });
+        const screenshotPath = path.join(evidenceDir, expected.case + '-' + width + '-preparation.png');
+        await fs.writeFile(screenshotPath, Buffer.from(screenshot.data, 'base64'));
+        fail("page_expected_dom_failed", { stage: "prepareCurrentScenario", url, expectedCase: expected.case,
+          viewport: { width, height: 900 }, details: prepared.exceptionDetails || prepared.result,
+          scene: scene.result?.value, screenshot: screenshotPath });
+      }
       pageLoaded = true;
     }
     await waitForPageStable(client, url, { width, height: 900 });
@@ -328,13 +344,23 @@ async function inspectPage(client, url, expected, httpStatus) {
     if (!evaluated.result || typeof evaluated.result.value !== "string") {
       throw new Error(`页面检查脚本没有返回 JSON 字符串：${JSON.stringify(evaluated.result || {})}`);
     }
-    results.push(JSON.parse(evaluated.result.value));
+    const item = JSON.parse(evaluated.result.value);
+    await fs.writeFile(path.join(evidenceDir, expected.case + '-' + width + '.json'), JSON.stringify(item, null, 2));
+    if (item.bodyOverflow || item.toggleOverlapCount || item.darkLowContrastTextCount || item.darkSummaryBadCount
+      || item.darkLowContrastSummaryCount || item.darkNoticeBadCount || item.missingVisualSamples.length
+      || Object.values(item.multilineTableChecks).some(value => !value) || item.multilineTextDetails.some(row => !row.ok)) {
+      const screenshot = await client.send('Page.captureScreenshot', { format: 'png' });
+      item.screenshot = path.join(evidenceDir, expected.case + '-' + width + '.png');
+      await fs.writeFile(item.screenshot, Buffer.from(screenshot.data, 'base64'));
+    }
+    results.push(item);
   }
   return results;
 }
 
 try {
   const port = await readDebugPort();
+  if (!paths.length) fail('page_expected_dom_failed', { stage: 'scenario-input', message: 'Geometry scenarios are required' });
   await preflightDevTools(port);
   const page = await newPage(port);
   const client = new CdpClient(page.webSocketDebuggerUrl);
@@ -343,11 +369,13 @@ try {
   await client.send("Page.enable");
   await client.send("Runtime.enable");
   const results = [];
-  for (const pagePath of paths) {
-    const url = `${baseUrl}${pagePath}`;
+  for (const caseId of paths) {
+    const expected = expectedByPath[caseId];
+    if (!expected || expected.case !== caseId) throw new Error('Missing geometry scenario ' + caseId);
+    const url = `${baseUrl}${expected.path}`;
     const httpResponse = await fetchWithTimeout(url, { redirect: "manual" }, 5000);
     const httpStatus = httpResponse.status;
-    results.push(...await inspectPage(client, url, expectedByPath[pagePath] || {}, httpStatus));
+    results.push(...await inspectPage(client, url, expected, httpStatus));
   }
   await writeLine(process.stdout, JSON.stringify(results));
 } catch (error) {

@@ -1,16 +1,21 @@
-"""回归测试：不依赖真实浏览器，用 HTMLParser 解析各 UI 页面 HTML，断言其满足契约——含 apsThemeToggle id 与 nav/header 即视为正常 app shell（不误报错误页），缺 shell 或标题/正文命中错误关键词则判为错误页；并校验 SMOKE_PATHS 覆盖首版本工作台各页，每页 HTTP 200、含期望文本/id、不含禁止文本。"""
+"""SSR boot, local assets and retirement preservation; rendered geometry remains a real-browser obligation."""
 
 from __future__ import annotations
 
+import json
 from html.parser import HTMLParser
 from typing import Dict, Iterable, List, Optional, Set, Tuple
+from urllib.parse import urlsplit
 
-from tests.app_runtime.ui_geometry_browser_support import _build_app
+from tests._support.paths import REPO_ROOT
+from tests.app_runtime.ui_geometry_browser_support import _build_app, _shutdown_app
 from tests.app_runtime.ui_geometry_contract_data import (
     ERROR_PAGE_KEYWORDS,
-    EXPECTED_PAGE_SIGNALS,
     FULL_UI_CONTRACT_PATHS,
+    GEOMETRY_CASES,
+    geometry_scenarios,
 )
+from tests.app_runtime.ui_geometry_fixture_support import assert_geometry_retention, assert_retired_geometry_boundary
 
 SMOKE_PATHS = FULL_UI_CONTRACT_PATHS
 
@@ -23,23 +28,43 @@ class _HtmlSignalParser(HTMLParser):
         self.tags: Set[str] = set()
         self.text_parts: List[str] = []
         self.title_parts: List[str] = []
+        self.assets: List[Tuple[str, str]] = []
+        self.boot_parts: List[str] = []
+        self.root_state = ""
         self._in_title = False
+        self._in_script = False
+        self._in_boot = False
 
     def handle_starttag(self, tag: str, attrs: Iterable[Tuple[str, Optional[str]]]) -> None:
         self.tags.add(tag)
+        attr_map: Dict[str, str] = {name: value or "" for name, value in attrs}
         if tag == "title":
             self._in_title = True
-        attr_map: Dict[str, str] = {name: value or "" for name, value in attrs}
         if attr_map.get("id"):
             self.ids.add(attr_map["id"])
+        if attr_map.get("id") == "root":
+            self.root_state = attr_map.get("data-workbench-boot", "")
         if tag == "meta" and attr_map.get("name"):
             self.meta_names.add(attr_map["name"])
+        if tag == "script":
+            self._in_script = True
+            self._in_boot = attr_map.get("id") == "workbench-boot" and attr_map.get("type") == "application/json"
+            if attr_map.get("src"):
+                self.assets.append((tag, attr_map["src"]))
+        if tag == "link" and attr_map.get("rel") in ("stylesheet", "icon"):
+            self.assets.append((tag, attr_map.get("href", "")))
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "title":
             self._in_title = False
+        if tag == "script":
+            self._in_script = self._in_boot = False
 
     def handle_data(self, data: str) -> None:
+        if self._in_boot:
+            self.boot_parts.append(data)
+        if self._in_script:
+            return
         text = data.strip()
         if text:
             self.text_parts.append(text)
@@ -54,6 +79,10 @@ class _HtmlSignalParser(HTMLParser):
     def title(self) -> str:
         return " ".join(self.title_parts)
 
+    @property
+    def boot(self):
+        return json.loads("".join(self.boot_parts)) if self.boot_parts else None
+
 
 def _parse_html(html: str) -> _HtmlSignalParser:
     parser = _HtmlSignalParser()
@@ -65,6 +94,12 @@ def _contains_keyword(text: str, keyword: str) -> bool:
     return keyword.lower() in text.lower()
 
 
+def _has_boot_shell(parsed):
+    return ("root" in parsed.ids and "workbench-boot" in parsed.ids
+            and parsed.root_state in ("loading", "ready") and isinstance(parsed.boot, dict)
+            and parsed.boot.get("schema_version") == 1)
+
+
 def _matched_error_keyword(html: str, parsed: _HtmlSignalParser, status_code: int) -> str:
     if status_code >= 500:
         for keyword in ERROR_PAGE_KEYWORDS:
@@ -74,11 +109,7 @@ def _matched_error_keyword(html: str, parsed: _HtmlSignalParser, status_code: in
     for keyword in ERROR_PAGE_KEYWORDS:
         if _contains_keyword(parsed.title, keyword):
             return keyword
-    has_app_shell = (
-        "apsThemeToggle" in parsed.ids
-        and ("nav" in parsed.tags or "header" in parsed.tags)
-    )
-    if has_app_shell:
+    if _has_boot_shell(parsed):
         return ""
     lower_html = html.lower()
     if "werkzeug" in lower_html and ("traceback" in lower_html or "debugger" in lower_html):
@@ -91,57 +122,69 @@ def _matched_error_keyword(html: str, parsed: _HtmlSignalParser, status_code: in
 
 def test_error_keyword_detector_does_not_flag_normal_app_shell_log_text() -> None:
     html = """
-    <html>
-      <head><title>系统管理 - 操作日志</title></head>
-      <body><header><nav>系统</nav></header><button id="apsThemeToggle">主题</button><main>Traceback in old Werkzeug log row</main></body>
-    </html>
+    <html><head><title>系统管理 - 操作日志</title></head><body>
+      <div id="root" data-workbench-boot="ready"><header class="top-header">系统</header>
+        <nav class="sidebar-nav">工作台</nav><main>Traceback in old Werkzeug log row</main></div>
+      <script id="workbench-boot" type="application/json">{"schema_version":1,"view":"system"}</script>
+    </body></html>
     """
     parsed = _parse_html(html)
-
+    assert _has_boot_shell(parsed)
     assert _matched_error_keyword(html, parsed, 200) == ""
 
 
 def test_error_keyword_detector_flags_error_page_title() -> None:
     html = "<html><head><title>Internal Server Error</title></head><body>broken</body></html>"
     parsed = _parse_html(html)
-
     assert _matched_error_keyword(html, parsed, 200) == "Internal Server Error"
+    assert not _has_boot_shell(parsed)
 
 
 def test_ui_geometry_contract_includes_first_version_workbench_pages() -> None:
-    workbench_paths = {
-        "/?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
-        "/scheduler/analysis?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
-        "/scheduler/gantt?view=machine&version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&gantt_batch=B_UI_GEOMETRY&gantt_resource=M_UI_GEOMETRY",
-        "/scheduler/gantt?view=operator&version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&gantt_batch=B_UI_GEOMETRY&gantt_resource=O_UI_GEOMETRY",
-        "/scheduler/resource-dispatch?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&scope_type=machine&machine_id=M_UI_GEOMETRY&batch_id=B_UI_GEOMETRY",
-        "/reports/?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
-        "/reports/overdue?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
-        "/reports/utilization?version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&resource_type=operator&resource_id=O_UI_GEOMETRY",
-        "/reports/execution-review?version=1&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
-    }
+    assert set(SMOKE_PATHS) == {"/workbench?view=" + view for view in (
+        "dashboard", "run", "analysis", "gantt", "field", "batches", "system", "process", "reports", "review",
+    )}
+    assert all(case["selectors"] and case["texts"] for case in GEOMETRY_CASES)
+    cases = {case["case"]: case for case in GEOMETRY_CASES}
+    assert cases["gantt-machine"]["dimension"] == "machine" and cases["gantt-operator"]["dimension"] == "operator"
+    assert cases["plan-invalid-summary"]["action"] == "invalid-history"
+    assert cases["plugin-startup-audit"]["plugin_audit"]
+    assert all(cases[name]["report_scope"] for name in (
+        "reports-overview", "reports-overdue", "reports-utilization", "reports-execution", "reports-downtime",
+    ))
 
-    assert workbench_paths.issubset(set(SMOKE_PATHS))
+
+def _assert_local_boot(html, parsed, case):
+    assert _has_boot_shell(parsed), case["case"]
+    assert parsed.root_state == "loading", case["case"]
+    assert parsed.boot["view"] == case["view"]
+    assert parsed.boot["navigation"] == case["navigation"]
+    assert case["view"] in parsed.boot["enabled_views"]
+    assert parsed.boot["titles"][case["view"]] in parsed.title
+    assert parsed.boot["entry_url"] == "/workbench"
+    assert parsed.boot["overview_url"] == "/api/workbench/v1/system/overview"
+    assert "viewport" in parsed.meta_names
+    assert any(tag == "script" for tag, _ in parsed.assets) and any(tag == "link" for tag, _ in parsed.assets)
+    for _, uri in parsed.assets:
+        target = urlsplit(uri)
+        assert not target.scheme and not target.netloc and target.path.startswith("/static/workbench/"), uri
+        assert (REPO_ROOT / "static" / target.path[len("/static/"):]).is_file(), uri
+    assert _matched_error_keyword(html, parsed, 200) == "", case["case"]
 
 
 def test_ui_smoke_pages_render_expected_html_contract(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
-    client = app.test_client()
-
-    for page_path in SMOKE_PATHS:
-        response = client.get(page_path)
-        html = response.get_data(as_text=True)
-        parsed = _parse_html(html)
-        expected = EXPECTED_PAGE_SIGNALS[page_path]
-
-        assert response.status_code == 200, page_path
-        assert "apsThemeToggle" in parsed.ids, page_path
-        assert "nav" in parsed.tags or "header" in parsed.tags, page_path
-        matched_error = _matched_error_keyword(html, parsed, response.status_code)
-        assert matched_error == "", f"{page_path}: matched error keyword {matched_error}"
-        for text in expected.get("stable_texts") or ():
-            assert text in parsed.visible_text, f"{page_path}: missing text {text}"
-        for text in expected.get("forbidden_texts") or ():
-            assert text not in parsed.visible_text, f"{page_path}: forbidden text {text}"
-        for element_id in expected["ids"]:
-            assert element_id in parsed.ids, f"{page_path}: missing id {element_id}"
+    try:
+        assert_retired_geometry_boundary(app)
+        scenarios = geometry_scenarios(app.extensions["ui_geometry_evidence"]["identity"])
+        for case in scenarios:
+            response = app.test_client().get(case["path"], follow_redirects=False)
+            try:
+                assert response.status_code == 200, case["case"]
+                html = response.get_data(as_text=True)
+                _assert_local_boot(html, _parse_html(html), case)
+            finally:
+                response.close()
+        assert_geometry_retention(app)
+    finally:
+        _shutdown_app(app)

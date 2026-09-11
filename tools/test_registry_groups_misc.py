@@ -218,9 +218,11 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/app_runtime/ui_geometry_contract_data.py",
             "tests/app_runtime/ui_geometry_runtime_support.py",
             "tests/app_runtime/ui_geometry_browser_support.py",
+            "tests/app_runtime/ui_geometry_fixture_support.py",
             "tests/ui_geometry_probe.mjs",
             "tests/ui_geometry_cdp_client.mjs",
             "tests/ui_geometry_probe_page_eval.mjs",
+            "tests/ui_geometry_probe_scenarios.mjs",
             "templates/**/*.html",
             "static/**/*",
             # P0.3 收窄：整树 web/viewmodels 由 analysis owner 覆盖、core/data 由 run_core owner 覆盖故移除；

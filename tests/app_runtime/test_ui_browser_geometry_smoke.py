@@ -1,11 +1,11 @@
-"""回归测试：用真实 Chrome 跑 UI 几何冒烟，断言各页面无 body 级横向溢出、无开关重叠、暗色摘要/通知对比度达标、多行表格渲染正确、HTTP 200 且有 app shell 不报错、路径与期望 DOM（文本/id/必需开关）匹配；并守护 SMOKE_PATHS 与 EXPECTED_PAGE_SIGNALS 覆盖 scheduler run、system history(version=2)、reports 各页与探针脚本中的几何检查点。"""
+"""Real current-UI geometry, with retired controls excluded and data/audit retention checked separately."""
 
 from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
-from typing import Any, Dict, List, cast
+import time
+from typing import Any, Dict, List
 
 import pytest
 
@@ -18,8 +18,17 @@ from tests.app_runtime.ui_geometry_browser_support import (
     _find_node_with_browser_runtime,
     _run_chrome_geometry_probe,
     _serve_app,
+    _shutdown_app,
     _shutdown_served_app,
 )
+from tests.app_runtime.ui_geometry_contract_data import (
+    GEOMETRY_CASES,
+    READY_RADIOS,
+    RESOURCE_RADIOS,
+    RETIRED_GEOMETRY,
+    geometry_scenarios,
+)
+from tests.app_runtime.ui_geometry_fixture_support import assert_geometry_retention, assert_retired_geometry_boundary
 
 
 @pytest.mark.skipif(
@@ -33,27 +42,57 @@ from tests.app_runtime.ui_geometry_browser_support import (
 def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, monkeypatch) -> None:
     chrome = _find_chrome()
     node = _find_node_with_browser_runtime()
-    app = _build_app(tmp_path, monkeypatch)
-    served = _serve_app(app)
-    try:
-        results = _run_chrome_geometry_probe(
-            chrome_path=chrome.chrome_path,
-            node_path=node.node_path,
-            base_url=served.base_url,
-            tmp_path=tmp_path,
-            chrome_info=chrome,
-            node_info=node,
-        )
-    finally:
-        _shutdown_served_app(served)
+    deadline = time.monotonic() + 90
+    results, scenarios = [], []
+    # The invalid-history catalog must not replace the real current v1 used by execution views.
+    for invalid_history in (False, True):
+        root = tmp_path / ("invalid-history" if invalid_history else "current-plan")
+        measured, cases = _run_geometry_phase(root, monkeypatch, chrome, node, deadline, invalid_history)
+        results.extend(measured)
+        scenarios.extend(cases)
+    expected_pairs = {(case["case"], width) for case in scenarios for width in (1024, 768)}
+    assert len(results) == len(expected_pairs)
+    assert {(item["case"], item["width"]) for item in results} == expected_pairs
+    assert {case["case"] for case in scenarios} == {case["case"] for case in GEOMETRY_CASES}
+    _assert_geometry_results(results, scenarios)
 
+
+def _run_geometry_phase(tmp_path, monkeypatch, chrome, node, deadline, invalid_history):
+    app = _build_app(tmp_path, monkeypatch, invalid_history=invalid_history)
+    served = None
+    history_cases = {"plan-history", "plan-invalid-summary"}
+    scenarios = [case for case in geometry_scenarios(app.extensions["ui_geometry_evidence"]["identity"])
+                 if (case["case"] in history_cases) == invalid_history]
+    try:
+        assert_retired_geometry_boundary(app)
+        served = _serve_app(app)
+        results = _run_chrome_geometry_probe(
+            chrome_path=chrome.chrome_path, node_path=node.node_path, base_url=served.base_url,
+            tmp_path=tmp_path, scenarios=scenarios, deadline=deadline, chrome_info=chrome, node_info=node,
+        )
+        assert_geometry_retention(app)
+    finally:
+        try:
+            if served is not None:
+                _shutdown_served_app(served)
+        finally:
+            _shutdown_app(app)
+    return results, scenarios
+
+
+def _assert_geometry_results(results, scenarios):
     overflowing = [item for item in results if item["bodyOverflow"]]
     overlapping_toggles = [item for item in results if item["toggleOverlapCount"]]
     bad_dark_summary = [item for item in results if item["darkSummaryBadCount"]]
     bad_dark_summary_contrast = [item for item in results if item["darkLowContrastSummaryCount"]]
     bad_dark_text_contrast = [item for item in results if item["darkLowContrastTextCount"]]
     bad_dark_notice = [item for item in results if item["darkNoticeBadCount"]]
-    bad_logs_table = [item for item in results if not item["logsTableMultiline"]]
+    bad_multiline_text = [item for item in results if any(not row["ok"] for row in item["multilineTextDetails"])]
+    missing_visual_samples = [item for item in results if item["missingVisualSamples"]]
+    bad_theme = [item for item in results if not item["darkTheme"]]
+    bad_plugin_audit = [item for item in results if item["pluginAudit"] is not None
+                       and not all(item["pluginAudit"][key] for key in
+                                   ("publicBodyMatches", "privateCanaryAbsent", "truncationMarkerAbsent"))]
     bad_multiline_tables = [
         item
         for item in results
@@ -74,6 +113,7 @@ def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, mo
             failures.append(
                 {
                     "kind": kind,
+                    "case": row.get("case"),
                     "path": row.get("path"),
                     "url": row.get("url"),
                     "viewport": {"width": row.get("width"), "height": 900},
@@ -94,9 +134,25 @@ def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, mo
     add_failure("page_visual_contract_failed", bad_dark_summary_contrast, ["darkLowContrastSummaryCount"])
     add_failure("page_visual_contract_failed", bad_dark_text_contrast, ["darkLowContrastTextCount"])
     add_failure("page_visual_contract_failed", bad_dark_notice, ["darkNoticeBadCount"])
-    add_failure("page_visual_contract_failed", bad_logs_table, ["logsTableMultiline"])
-    add_failure("page_visual_contract_failed", bad_multiline_tables, ["multilineTableChecks"])
+    add_failure("page_visual_contract_failed", bad_multiline_text, ["multilineTextDetails"])
+    add_failure("page_visual_contract_failed", missing_visual_samples, ["missingVisualSamples"])
+    add_failure("page_visual_contract_failed", bad_theme, ["darkTheme"])
+    add_failure("page_expected_dom_failed", bad_plugin_audit, ["pluginAudit"])
+    add_failure("page_visual_contract_failed", bad_multiline_tables, ["multilineTableChecks", "multilineTableDetails"])
 
+    by_case = {case["case"]: case for case in scenarios}
+    for item in results:
+        expected = by_case[item["case"]]
+        assert set(item["multilineTableChecks"]) == set(expected.get("tables", []))
+        assert {row["selector"] for row in item["multilineTextDetails"]} == set(expected.get("multiline", []))
+        assert item["toggleCount"] == sum(expected.get("controls", {}).values())
+        for table in item["multilineTableDetails"]:
+            if table["selector"] == ".sm-logs-table":
+                assert table["fixedLogHeaders"] and table["headerTexts"] == [
+                    "工厂本地时间", "类型", "状态", "级别", "摘要 / 来源", "详情",
+                ]
+    if not any(item["darkSummaryCount"] > 0 for item in results):
+        failures.append({"kind": "page_expected_dom_failed", "details": {"message": "no visible summaries found"}})
     if not any(item["toggleCount"] > 0 for item in results):
         failures.append({"kind": "page_expected_dom_failed", "details": {"message": "no visible toggle rows found"}})
     if not any(item["visibleNotices"] > 0 for item in results):
@@ -106,31 +162,26 @@ def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, mo
 
 
 def test_ui_browser_geometry_smoke_covers_scheduler_run_page() -> None:
-    backup_signals = EXPECTED_PAGE_SIGNALS["/system/backup"]
-    logs_signals = EXPECTED_PAGE_SIGNALS["/system/logs"]
-    history_version_signals = EXPECTED_PAGE_SIGNALS["/system/history?version=2"]
-    assert "/scheduler/?status=pending" in SMOKE_PATHS
-    assert "/scheduler/batches?status=pending" not in SMOKE_PATHS
-    assert "/system/history" in SMOKE_PATHS
-    assert "/system/history?version=2" in SMOKE_PATHS
-    assert any(path.startswith("/reports/?") for path in SMOKE_PATHS)
-    assert any(path.startswith("/reports/overdue?") for path in SMOKE_PATHS)
-    assert any(path.startswith("/reports/utilization?") for path in SMOKE_PATHS)
-    assert any(path.startswith("/reports/execution-review?") for path in SMOKE_PATHS)
-    assert any(path.startswith("/reports/downtime?") for path in SMOKE_PATHS)
-    assert EXPECTED_PAGE_SIGNALS["/scheduler/?status=pending"]["ids"] == [
-        "jsRunScheduleForm",
-        "runEnforceReady",
-        "runStrictMode",
-    ]
-    assert "pluginStatusTable" in cast(List[str], backup_signals["ids"])
-    assert "启动问题" in cast(List[str], backup_signals["diagnostic_texts"])
-    assert "详情格式异常" in cast(List[str], logs_signals["diagnostic_texts"])
-    assert "当前版本的排产摘要读取失败" in cast(List[str], history_version_signals["diagnostic_texts"])
-    assert EXPECTED_PAGE_SIGNALS["/system/history"]["ids"] == ["systemHistoryTable"]
-    repo_root = REPO_ROOT
-    probe_source = (repo_root / "tests" / "ui_geometry_probe_page_eval.mjs").read_text(encoding="utf-8")
-    assert '"/scheduler/": ["runEnforceReady", "runStrictMode"]' in probe_source
-    assert "multilineTableComputedOk('#systemLogsTable')" in probe_source
-    assert "multilineTableComputedOk('#pluginStatusTable')" in probe_source
-    assert "multilineTableComputedOk('#systemHistoryTable')" in probe_source
+    assert "/workbench?view=run" in SMOKE_PATHS
+    assert "/workbench?view=system" in SMOKE_PATHS
+    assert len(GEOMETRY_CASES) == len(EXPECTED_PAGE_SIGNALS) == 20
+    assert EXPECTED_PAGE_SIGNALS["run-preflight"]["controls"] == {READY_RADIOS: 2, RESOURCE_RADIOS: 2}
+    assert EXPECTED_PAGE_SIGNALS["plan-invalid-summary"]["action"] == "invalid-history"
+    assert {EXPECTED_PAGE_SIGNALS[key]["catalog"] for key in
+            ("reports-overdue", "reports-utilization", "reports-downtime")} == {"overdue", "utilization", "downtime"}
+    assert EXPECTED_PAGE_SIGNALS["reports-execution"]["view"] == "review"
+    assert EXPECTED_PAGE_SIGNALS["plugin-startup-audit"]["plugin_audit"] is True
+    assert EXPECTED_PAGE_SIGNALS["plugin-startup-audit"]["log_summary"] == "plugins/load"
+    assert RETIRED_GEOMETRY["scheduler.config"]["geometry_counted"] is False
+    assert RETIRED_GEOMETRY["pluginStatusTable"]["geometry_counted"] is False
+    assert set(RETIRED_GEOMETRY["scheduler.config"]["controls"]) == {
+        "freezeWindowEnabled", "preferPrimarySkill", "enforceReadyDefault", "autoAssignEnabled", "orToolsEnabled",
+    }
+    assert all("pluginStatusTable" not in selector and "sm-check-table" not in selector
+               for case in GEOMETRY_CASES for selector in case["selectors"])
+    probe_source = (REPO_ROOT / "tests/ui_geometry_probe_page_eval.mjs").read_text(encoding="utf-8")
+    assert "multilineTableComputedOk" in probe_source
+    assert "CSSTransition" in probe_source and "animation.finished" in probe_source
+    assert "contrastText.filter(lowContrast)" in probe_source
+    assert "maxScrollWidth > innerWidth + 1" in probe_source
+    assert "document.documentElement.setAttribute" not in probe_source
