@@ -7,7 +7,7 @@ description: 维护 `.codestable/architecture/` 这份只记现状的系统地�
 
 ## 启动必读
 
-开始任何判断或动作前，先读取 `.codestable/attention.md`；缺失则视为骨架不完整，提示先补齐或运行 `cs-onboard`，不要回退到外部 AI 入口文件。
+在项目内执行本技能时，按需读取 `.codestable/attention.md`；本轮已读且未变化则复用，内容丢失或文件变化时重读。它补充而不替代适用的 `AGENTS.md`。文件或目录缺失时说明限制，不自动初始化，也不阻止只读调查或已授权的小范围工作。只有用户选择完整 CodeStable 流程时，才补齐该流程实际需要的材料。
 
 `.codestable/architecture/` 是项目"地图"——design 写方案前读它定位、issue-analyze 做根因时读它理解模块边界、新人读它知道系统大致长什么样。本技能是"起草 / 刷新 / 体检"三件事的统一入口。
 

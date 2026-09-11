@@ -31,17 +31,16 @@ cs-semantic-radar 补这块。核心不是"自动改代码"，是建一套**长�
 
 ## 启动必读
 
-开始任何动作前：
-1. 读 `.codestable/attention.md`（项目注意事项）。
-2. 读 `.codestable/semantics/README.md`（若存在）——它记了隔离环境、跑法、两条工具铁律。缺失说明是首次落地，按 Phase 1 建。
-3. 确认隔离审计环境 `.venv-semantic`（Python 3.14）在位：`.venv-semantic/bin/python --version`。缺失按"环境"一节重建。
+先区分只读询问与已授权维护，再按需读取 `.codestable/attention.md` 和 `.codestable/semantics/README.md`。本轮已读且未变化时复用，变化或上下文丢失时重读。缺少材料时说明限制，不自动创建资产。
+
+只有确需运行工具时才检查隔离环境 `.venv-semantic`（Python 3.14）。缺失时报告缺项；安装依赖或重建环境须有明确授权，不为回答概念问题自动安装。
 
 ---
 
 ## 不可动摇的环境纪律（这是本 skill 的命门）
 
 - **隔离 `.venv-semantic`（Python 3.14）跑全部审计工具**，绝不污染交付 `.venv`（3.8）/`requirements.txt`。本项目 Win7/Python3.8 离线交付，运行包只服务交付不服务审计。
-- **语义测试刻意放 `tests/` 之外**（在 `.codestable/semantics/tests/`）。交付门禁 `testpaths=["tests"]` 跑 3.8 venv（无 hypothesis），放进 tests/ 会让当前全绿的 3.8 门禁在 import hypothesis 时崩。已验证 0 泄漏，别破坏这个隔离。
+- **语义测试刻意放 `tests/` 之外**（在 `.codestable/semantics/tests/`）。交付门禁 `testpaths=["tests"]` 跑 3.8 venv（无 hypothesis），放进 tests/ 会让当前全绿的 3.8 门禁在 import hypothesis 时崩。历史隔离检查不代表当前仍然通过；本轮涉及这条边界时重新验证，不破坏该隔离。
 - **工具只进 `.codestable/semantics/requirements-semantic.txt`**：hypothesis / syrupy / drift-analyzer。
 - 重建环境：`python3.14 -m venv .venv-semantic && .venv-semantic/bin/pip install -r .codestable/semantics/requirements-semantic.txt`。
 
@@ -49,7 +48,7 @@ cs-semantic-radar 补这块。核心不是"自动改代码"，是建一套**长�
 
 ## 两条工具铁律（读 drift 结果前必看，已被血泪验证）
 
-1. **drift 的 AVS「Architecture Violation」≠ 本项目分层违规**。drift AVS 是 Martin 不稳定度耦合指标（`A.py -> B.py`），不是有向越层；本项目 AST 全量分层违规仍是 **0**。别把上百条 AVS 当上百处越层。
+1. **drift 的 AVS「Architecture Violation」≠ 本项目分层违规**。drift AVS 是 Martin 不稳定度耦合指标（`A.py -> B.py`），不是有向越层；本项目分层违规必须以本轮 AST 分层检查为准，不能沿用历史“零违规”结论。别把 AVS 数量直接当作越层数量。
 2. **drift 的 MDS「Exact duplicates」里有真护栏**。它会把 `normalization_matrix._merge_aliases ↔ boolean_normalize`（=审计 §90 LB-B1 承重双实现）标成"删重复"——而删它撞分层红线。**drift 结果必须过 Agent 语义法医，不能直接采信"删重复"。**
 
 ---
@@ -68,9 +67,10 @@ cs-semantic-radar 补这块。核心不是"自动改代码"，是建一套**长�
 
 ### Phase 0：定模式 + 算增量
 
-- 首次落地（无 `.codestable/semantics/`）→ 跑 Phase 1+2 全套建资产。
-- 已有资产 → 默认只跑"扫描 + 守卫复跑 + 增量 triage"（Phase 3-5），不重建身份证。
-- 给用户一句确认：**"语义雷达已建。本次：重跑 drift 基线 + 跑 12 个守卫 + triage 新增 MDS/PFS。OK 吗？"**
+- 询问概念是否一致、研究或审查：只读相关代码、概念账本和已有证据，不写基线或台账。
+- 明确要求建资产：执行 Phase 1-2；缺少环境时先说明安装需求与影响。
+- 明确要求运行扫描或维护雷达：按所选模式执行 Phase 3-5；先说明实际输出路径和验证方式，不重复索要已经给出的授权。
+- 守卫数量从当前测试收集结果确定，不硬编码历史数量。扫描会写基线，执行前检查相关文件是否有原有修改；未获准覆盖时使用工具支持的临时输出或报告限制。
 
 ### Phase 1：建概念身份证（首次 / 新概念）
 
@@ -99,8 +99,8 @@ cs-semantic-radar 补这块。核心不是"自动改代码"，是建一套**长�
 
 ### Phase 5：跑守卫 + 收口
 
-1. `python .codestable/semantics/run_semantic_guards.py`（应全绿）。
-2. `python .codestable/semantics/tools/check_concept_registry.py`（账本未腐烂）。
+1. `.venv-semantic/bin/python .codestable/semantics/run_semantic_guards.py`（应全绿）。
+2. `.venv-semantic/bin/python .codestable/semantics/tools/check_concept_registry.py`（账本未腐烂）。
 3. 发现的真债**只登记不顺手改**；要改走 cs-issue/cs-refactor，等用户确认。
 
 ---
@@ -129,7 +129,7 @@ cs-semantic-radar 补这块。核心不是"自动改代码"，是建一套**长�
 
 ## 分模式（带参数）
 
-- `/cs-semantic-radar`（无参）→ 已有资产则跑 Phase 3-5（扫描+triage+守卫）；无资产则全套 Phase 1-5
+- `/cs-semantic-radar`（无参）→ 先按本轮意图区分只读询问与维护；意图不清时做只读状态检查，不自动建资产或重写基线
 - `/cs-semantic-radar 建` → 只 Phase 1-2（建/补概念身份证 + 守卫）
 - `/cs-semantic-radar 扫` → 只 Phase 3-4（drift 扫描 + triage）
 - `/cs-semantic-radar 守卫` → 只 Phase 5（跑守卫 + 账本校验，省 token）
@@ -138,9 +138,11 @@ cs-semantic-radar 补这块。核心不是"自动改代码"，是建一套**长�
 
 ## 退出条件
 
+按所选模式核对适用项；只读询问以证据、结论和未核实范围为结果，不要求安装环境或生成台账。守卫模式不要求重跑 drift，建设模式不自动执行未请求的全量扫描。未执行项标为“不适用”或“未验证”，不能标为通过。
+
 - [ ] `.venv-semantic` 在位，三工具可 import
 - [ ] concept-registry.yaml 通过 check_concept_registry.py（账本未腐烂）
-- [ ] 12 个守卫全绿（Hypothesis + snapshot）
+- [ ] 已运行本轮适用守卫，报告实际收集数量、通过/失败/跳过数量（Hypothesis + snapshot）
 - [ ] drift 基线已重生，MDS/PFS 已 triage
 - [ ] 高置信 semantic_drift/stale_doc 已登记进 ledger（带退出条件）
 - [ ] 发现的真债只登记未改代码

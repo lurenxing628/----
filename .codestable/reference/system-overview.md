@@ -20,7 +20,7 @@ CodeStable 把这几类场景各配一套子技能，产物放进统一的目录
 - `cs-refactor` — 代码优化(行为不变、结构/性能/可读性变),scan → design → apply
 - `cs-audit` — 主动审计系统,扫描 bug 隐患 / 安全 / 性能 / 可维护性 / 架构偏离,只列发现清单；用户要求修复时再进入对应修复动作
 
-两类都不直接让 AI 写代码,而是先产出 spec(功能方案 / 问题分析),用户 review 后再动手,代码和 doc 一起交付。针对的是术语冲突、范围失控、改完不留存档这三种 AI 默认会出的问题。
+工作方式按风险分为只读调查、已授权的局部修改、需要完整设计的复杂工作。审查不自动修复；小任务不先补齐整套文档；复杂任务保留必要方案、约束和验收证据。
 
 **沉淀**——把做事过程产生的知识存下来,下次遇到同类问题直接复用:
 
@@ -46,7 +46,7 @@ CodeStable 把这几类场景各配一套子技能，产物放进统一的目录
 
 ## 场景路由
 
-仓库里还没有 `.codestable/` 目录,先用 `cs-onboard` 搭骨架。
+缺少 `.codestable/` 不阻断调查或已授权的小范围工作。只有用户明确选择接入体系时才执行 `cs-onboard`，并保留现有文件与项目定制。
 
 | 场景 | 子技能 |
 |---|---|
@@ -77,7 +77,7 @@ learning / trick / decision / explore 都是存档文档类型,区别在记录�
 - 全项目今后都得遵守的规定 —— `cs-decide`(产出 `doc_type: decision`)
 - 调查了一个问题,留份证据 —— `cs-explore`(产出 `doc_type: explore`)
 
-四者共用 `.codestable/compound/` 目录,靠 frontmatter 的 `doc_type` 字段和文件名中间的类型段(`YYYY-MM-DD-{doc_type}-{slug}.md`)区分。每个子技能只认自己的 `doc_type`,不读写别家产物——**"A 和 B 有什么不同"这种判断由本节负责,子技能里不再重复**。
+四者共用 `.codestable/compound/` 目录,靠 frontmatter 的 `doc_type` 字段和文件名中间的类型段(`YYYY-MM-DD-{doc_type}-{slug}.md`)区分。每个子技能按自己的 `doc_type` 维护产物，可以读取其他类型的相关证据，不越权写入——**"A 和 B 有什么不同"这种判断由本节负责,子技能里不再重复**。
 
 
 ## 愿景档案 vs 结构档案 vs 规划档案 vs 单次动作
@@ -94,14 +94,13 @@ learning / trick / decision / explore 都是存档文档类型,区别在记录�
 用户说"我想要一个 X 系统"这种大需求,先走 roadmap 拆成若干子 feature,再一条一条走 feature 流程。直接起 feature 会变成巨型 design 塞不下、拆了又没有追踪抓手。
 
 
-## feature 和 issue 的阶段不可跳
+## 按风险选择工作方式
 
-feature 走 brainstorm(可选) → design → implement → acceptance,issue 走 report → analyze → fix。每个阶段有退出条件,上一个没满足,下一个不开始。
+1. **只读调查**：回答问题、研究、审查和提出建议时读取证据并报告，不自动修复、初始化目录或落档。用户明确要求保存报告时，只写该报告所需文件。
+2. **局部修改**：目标明确、风险局部且已获实施授权时，功能走 `cs-feat-ff`，修复走 `cs-issue` 快速通道，小重构走 `cs-refactor-ff`。一次说明后连续实施和验证，不重复索要相同授权。现有 CodeStable 项目保留一份对应轻量记录；非本体系的小任务可在最终回复说明，不为记录而初始化。
+3. **完整流程**：跨模块、高风险或用户明确要求完整设计时，功能按 design → implement → acceptance，问题按 report → analyze → fix，重构按 scan → design → apply。保留适用的验证与已约定的人工审核，不把每个实现细节都升级为重新审批。
 
-AI 最常见的问题是一口气铺几百行代码才让人看——等发现问题已经很难中止。阶段间的人工 checkpoint 就是为了早一步中止。每个 checkpoint 具体检查什么,对应子技能里讲。
-
-例外两种:issue 根因一眼确定时走快速通道,跳过 analyze 直接 fix;feature 范围小时走 `cs-feat-ff`,写完 spec 直接进实现。
-
+调查后可根据新证据调整路径。新增高风险、超出已授权范围、发布或提交等额外动作单独确认；没有实测证据不能把计划或静态检查写成验证通过。
 
 ## 进一步参考
 

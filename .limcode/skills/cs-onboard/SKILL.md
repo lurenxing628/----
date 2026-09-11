@@ -22,7 +22,7 @@ description: 把新仓库或有零散文档的仓库接入 CodeStable 体系，�
 
 ## 标准骨架（目标状态）
 
-> 共享路径与命名约定的权威版本是项目里的 `.codestable/reference/shared-conventions.md`——本技能从技能包复制过去。下面只列 onboard 创建 / 检查的骨架文件。
+> 项目里的 `.codestable/reference/shared-conventions.md` 是该项目的现行约定。技能包只提供初始化模板，不能自动覆盖项目定制。下面列出可创建或检查的骨架。
 
 ```
 .codestable/
@@ -83,10 +83,9 @@ description: 把新仓库或有零散文档的仓库接入 CodeStable 体系，�
 - `.codestable/{requirements,roadmap,features,issues,refactors,audits,brainstorms,compound}/.gitkeep`
 - `.codestable/attention.md`（最小骨架模板见同目录 `reference.md`）
 - `.codestable/architecture/ARCHITECTURE.md`（占位模板见同目录 `reference.md`）
-- `.codestable/tools/`（用 `cp -rf` / `Copy-Item -Recurse -Force` 整目录拷贝技能包 `cs-onboard/tools/`，**不要 Read 再 Write**）
-- `.codestable/reference/`（同上）
+- `.codestable/tools/` 和 `.codestable/reference/`：仅向确认不存在的目标复制技能包文件；目标已有内容时按下方“安全更新”处理。
 
-> **落盘用 shell 整目录覆盖**，不要 Read 再 Write——这两个目录是机器共享资产，Read+Write 会截断大文件、改缩进、吃空行，还慢费 token。具体命令见迁移路径步骤 4。
+> 文件复制使用标准文件工具并核对内容校验值，不经模型转述重建文件。禁止整目录强制覆盖；备份不等于获得覆盖授权。
 
 **步骤 3：attention.md 提醒**
 
@@ -114,7 +113,7 @@ attention.md 已创建但默认只有空骨架。汇报时提醒用户：有编�
 
 **步骤 2：逐条对齐**
 
-中 / 低置信度的用 `AskUserQuestion` 问：
+中 / 低置信度且现有要求无法确定的，用当前宿主支持的方式澄清，不假定存在某个固定提问工具：
 
 - 中：给推断理由，问"按这个方式归位？"
 - 低：描述文件内容，给 2-3 个候选位置 + "跳过"
@@ -130,25 +129,15 @@ attention.md 已创建但默认只有空骨架。汇报时提醒用户：有编�
 
 对照标准骨架补齐**用户确认后仍缺失**的目录 / 文件。已有内容不覆盖。
 
-**`.codestable/tools/` 和 `.codestable/reference/` 一律用技能包新版本覆盖**——这两个目录是技能包维护的共享资产，权威源在 `cs-onboard/tools/` 和 `cs-onboard/reference/`，项目里的只是落盘副本。技能包升级后再跑 onboard 的目的之一就是刷新副本，留旧版本会让子技能按过时口径工作。
+**安全更新**：技能包是候选模板，不自动认定比项目文件更新或更权威。
 
-覆盖前在汇报列出被覆盖文件让用户知道；用户明确说"我改过 tools/xxx.py 请保留"才例外保留并标红。这是迁移路径**唯一强制覆盖**的动作，其他已有文件遵守"不经确认不动"。
+1. 比较明确目标的路径、文件类型和内容校验值，区分：目标缺失、完全相同、内容不同。遇到符号链接或文件类型冲突先说明，不跨链接覆盖。
+2. 缺失项：在已确认的初始化范围内新增；相同项：跳过。
+3. 不同项：展示差异、来源和保留方案。用户已明确批准具体差异时可执行；否则保留原文件，不以“刷新骨架”作为覆盖许可。
+4. 覆盖或合并已获授权的文件前，保存可恢复副本并记录校验值；实际写入前复核文件未被其他任务改动。
+5. 只更新获准文件，保留项目额外文件；不删除、清空目录，不运行整目录强制覆盖。核对新增和修改结果，并确认未授权文件的校验值不变。
 
-**落盘命令**：
-
-```bash
-# macOS / Linux
-cp -rf <cs-onboard 技能目录>/tools/.      .codestable/tools/
-cp -rf <cs-onboard 技能目录>/reference/.  .codestable/reference/
-
-# Windows PowerShell
-Copy-Item -Recurse -Force <cs-onboard 技能目录>\tools\*      .codestable\tools\
-Copy-Item -Recurse -Force <cs-onboard 技能目录>\reference\*  .codestable\reference\
-```
-
-不要：Read+Write 手工搬（截断 / 改缩进）、一个个 cp（多步骤多出错）、先比 diff（规则就是无条件覆盖）。
-
-`<cs-onboard 技能目录>` 指包含本文件的 `cs-onboard/` 目录本身。本仓库 LimCode 优先使用 `.limcode/skills/cs-onboard/`；其他宿主也可能位于 `~/.agents/skills/cs-onboard/`、`~/.codex/skills/cs-onboard/` 或插件目录。不确定先 `ls` 定位。拷完 `ls .codestable/tools/ .codestable/reference/` 验证。
+技能包目录指本文件所在目录。本仓库使用 `.limcode/skills/cs-onboard/` 中的模板；其他宿主使用实际加载的技能目录。项目有自己的模板时先核实其适用性，不根据目录名或时间戳猜测权威版本。共享工具使用宿主运行环境，不改产品依赖或交付兼容要求。
 
 **步骤 5：处理不迁移的文件**
 
@@ -172,7 +161,7 @@ Copy-Item -Recurse -Force <cs-onboard 技能目录>\reference\*  .codestable\ref
 
 - [ ] `.codestable/` 标准子目录都存在：requirements / architecture / roadmap / features / issues / refactors / audits / brainstorms / compound / tools / reference
 - [ ] `.codestable/attention.md` 已建
-- [ ] `.codestable/tools/` 和 `.codestable/reference/` 已从技能包复制
+- [ ] `.codestable/tools/` 和 `.codestable/reference/` 的适用缺项已补齐；相同项已跳过，不同项按授权更新或明确保留，未覆盖项目定制
 - [ ] `.codestable/architecture/ARCHITECTURE.md` 已建
 - [ ] 迁移路径：每条映射都有明确处理结果（迁移 / 保留原位）
 - [ ] 迁移路径：没有未经确认就移动的文件
@@ -184,11 +173,11 @@ Copy-Item -Recurse -Force <cs-onboard 技能目录>\reference\*  .codestable\ref
 
 - **未经确认就移动 / 删除已有文件**——迁移核心原则是用户拍板
 - **替用户填 attention.md 实质内容**——必须项目 owner 来定，AI 只提供模板
-- **重新引入 `AGENTS.md` / `CLAUDE.md` 兼容路径**——CodeStable 的启动注意事项入口固定为 `.codestable/attention.md`
+- **混淆入口职责**——`.codestable/attention.md` 保存流程注意事项，适用的 `AGENTS.md` 等项目规则仍须遵守。
 - **建完骨架立刻开始 feature/issue**——onboard 是"搭环境"不是"开始干活"
 - **低置信度直接执行**——低 = 必须问
-- **`.codestable/tools/` 和 `.codestable/reference/` 走"不覆盖"保守策略**——这两个**必须**用技能包新版本覆盖，否则升级后用户停留在过时口径
-- **用 Read + Write 手工搬**——必须 `cp -rf` / `Copy-Item -Recurse -Force` 整目录覆盖
+- **把模板升级当成覆盖许可**——有差异先核对并保留；只执行用户已批准的更新。
+- **复制后只看文件名**——还要验证内容以及未授权文件未变。
 - **Glob 时忘记排除 `node_modules/` `.git/`**——会让扫描结果充斥噪声
 
 ---

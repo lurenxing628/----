@@ -1,6 +1,6 @@
 # CodeStable 共享口径
 
-由 `cs-onboard` 复制到项目的 `.codestable/reference/shared-conventions.md`。所有 CodeStable 子技能用项目相对路径 `.codestable/reference/shared-conventions.md` 引用本文件——跨子技能共享但不适合堆在单个技能里的规范的唯一权威版本。
+由 `cs-onboard` 复制到项目的 `.codestable/reference/shared-conventions.md`。所有 CodeStable 子技能用项目相对路径 `.codestable/reference/shared-conventions.md` 引用本文件——跨子技能的项目现行共享约定。技能包内同名文件仅是新项目模板，不能覆盖平台规则、适用的 AGENTS.md 或项目已有定制。
 
 skill 本身不共享文件系统（每个 skill 是独立安装单元），共享口径不能放在某个 skill 内部被别的 skill 引用。放在"工作项目"里对所有 skill 都可达。
 
@@ -66,7 +66,7 @@ onboard 完成后骨架（`cs-onboard` 负责搭建）：
 - 开放 brainstorm：`brainstorms/{slug}/`，不带日期前缀，保留发散材料给后续 roadmap 读取
 - 沉淀类：`compound/YYYY-MM-DD-{doc_type}-{slug}.md`，日期用**归档当天**
 - 架构 doc：`architecture/{type}-{slug}.md`（长效，不带日期前缀）；总入口固定 `ARCHITECTURE.md`
-- 项目注意事项入口固定为 `.codestable/attention.md`，所有 CodeStable 子技能启动前必须读取；不再兼容 `AGENTS.md` / `CLAUDE.md` 等外部入口
+- 项目注意事项入口为 `.codestable/attention.md`，按任务需要读取；本轮已读且未变化时复用，变化或上下文丢失时重读。它补充而不替代适用的 `AGENTS.md`；缺失不阻断只读调查和已授权的局部工作
 
 ### 架构 doc 分组规则（同类聚合）
 
@@ -98,7 +98,7 @@ onboard 完成后骨架（`cs-onboard` 负责搭建）：
 - 每个文档 frontmatter 顶部带 `doc_type`（learning / trick / decision / explore）作跨子技能归属判定
 - 文件名 `YYYY-MM-DD-{doc_type}-{slug}.md`——日期打头便于 `ls` 排序，type 段在中间便于 grep
 - 各子技能在 `doc_type` 之外保留专属 frontmatter（learning 的 `track` / trick 的 `type` / decision 的 `category` / explore 的 `type`）
-- 各子技能只认自己的 `doc_type` 不读写别家
+- 各子技能按 `doc_type` 维护自己负责的产物；可以读取其他类型的相关证据，不越权修改其他产物
 - `status` 等通用字段语义和本文件保持一致
 
 **外部读者文档**（guidedoc / libdoc）：frontmatter 由各自子技能定义。无特殊说明：`draft` = 待 review，`current` = 当前有效，`outdated` = 代码已变更待同步。
@@ -123,13 +123,13 @@ onboard 完成后骨架（`cs-onboard` 负责搭建）：
 
 **design 的职责**：
 
-- 提取 `steps`（4-8 步，每步独立可验证退出信号）：后端节奏 = 编排骨架 → 计算节点逐个填 → 接通持久化 → 测试覆盖；前端 = 静态结构 → 交互逻辑 → 状态接入 → 联调收尾
+- 提取 `steps`（步数按实际需要，每步有独立可验证退出信号）：后端节奏 = 编排骨架 → 计算节点逐个填 → 接通持久化 → 测试覆盖；前端 = 静态结构 → 交互逻辑 → 状态接入 → 联调收尾
 - 提取 `checks`：第 1 节"明确不做"→ 范围守护；第 2.1 接口 → 名词契约；第 2.2 主流程 + 流程级约束 → 编排骨架；第 2.3 挂载点 → 挂载点；第 3 节场景清单 → 验收场景
 
 **implement 的职责**：
 
 - 按 `steps` 顺序执行，每步完成把 status `pending` → `done`
-- 实现到具体文件级时需要拆分某步、或发现微重构是其前置（参考第 7 节反射检查）→ 跟用户对齐后追加 / 拆分 steps，**不偷偷做**
+- 实现到具体文件级时可在原范围内细分步骤并记录；新增前置重构扩大范围、改变业务或外部约定时，说明影响并确认后再追加
 - 不改写 `checks`
 
 **acceptance 的职责**：只更新 `checks[].status`（`pending` → `passed` / `failed`），不重写 `steps`。
@@ -196,7 +196,7 @@ planned  → dropped      （cs-roadmap update 模式，用户决定不做时改
 2. `cs-decide`：动手过程拍板的长期约束
 3. `scoped-commit`
 
-**统一规则**：一律一句话提示；用户说"不用"立即跳过；不强制；上游主动提示，下游承接执行。
+**统一规则**：收尾把确有价值的后续项合并提示一次，不逐项追问，不为制造产物而追加流程；用户已授权的收尾直接完成，未授权的文档扩写、提交或发布不自动执行。
 
 ---
 
@@ -217,7 +217,7 @@ acceptance / issue-fix 走完后把本次产物提交为一个 commit：
 
 feature-design / issue-analyze / issue-fix 动手前到 `.codestable/compound/` 搜已有沉淀：
 
-- 总是先搜 `architecture/` 和 `compound/`
+- 按任务相关性检索 `architecture/` 和 `compound/`；本轮已有且未变化的相关结果直接复用。不存在时说明限制，不为调查自动初始化
 - 在 `compound/` 用 `doc_type` 过滤（learning / trick / decision / explore）
 - 搜到的结果只作参考输入，不盲目套用——可能已 `outdated` 或不适合当前上下文
 - 搜到和当前方向冲突的 decision → **必须**正面回应"为什么仍然这么做"或调整方向
@@ -240,7 +240,7 @@ feature-design / issue-analyze / issue-fix 动手前到 `.codestable/compound/` 
    - **确实是不同主题**：新建，文末"相关文档"列出已有那条说明区别
 6. **识别用户意图是"改已有"还是"记新的"**——用户说"改 / 更新 / 修订 / 补充 {某条}"、明确指向某条旧文档、或话题高度重合时默认走"更新已有"，不要闷头新建。分不清就问。
 
-各子技能只认自己的 `doc_type`，不读写别家产物。
+各子技能按 `doc_type` 区分写入归属；允许读取其他类型的相关证据，跨类型更新须属于本轮授权范围。
 
 ---
 
@@ -260,6 +260,6 @@ feature-design / issue-analyze / issue-fix 动手前到 `.codestable/compound/` 
 | 要给函数加第 4+ 个参数时 | 函数做的事是不是太多了？参数列表是 API 恶化的早期信号 |
 | 要新写"万能工具类 / helper"时 | 真没归属还是只是想不起来放哪儿就先堆 util？ |
 
-**停下来之后**：反射检查只把问题提出来，结论用户定。停下来想清楚的动作（拆 / 新建 / 重命名 / 抽共用）会让改动超出现有 steps 范围 → 跟用户对齐再决定（纳入当前推进 / 记顺手发现留后续）。
+**检查之后**：先判断这是原范围内的内部实现，还是扩大改动范围。必要且局部的内部调整可按现有模式实现并验证；跨模块重划、公开接口变化或独立重构先说明影响，再确认是否纳入。
 
-不许偷偷拆完继续写，也不许忽略信号硬冲。默认动作是停、问、再继续。
+检查是判断风险的提示，不是每次都问用户的命令。没有证据不要为拆而拆；超出授权范围的工作留作后续，不静默扩大范围。

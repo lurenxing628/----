@@ -23,7 +23,7 @@ description: APS 项目专属地基体检——重建机器基线、复查 14 �
 
 ## 启动必读
 
-开始任何判断或动作前依次读取：
+先确定本轮是只读快检还是已授权的基线维护。按需读取下列材料；本轮已读且未变化时复用，变化或上下文丢失时重读：
 
 1. `.codestable/attention.md`
 2. `.codestable/checkup/README.md`
@@ -31,7 +31,7 @@ description: APS 项目专属地基体检——重建机器基线、复查 14 �
 4. `.codestable/architecture/ARCHITECTURE.md`
 5. `.codestable/audits/` 下最近一次 `*-checkup*/index.md`（若存在）
 
-缺少 `baseline.json` 时先走“基线模式”，不要回退到已经失效的 `.codestable/audits/2026-06-01-foundation-maturity/` 路径。
+缺少 `baseline.json` 时报告无法比较的项目；只读快检不自动生成基线。用户明确要求建立或重验基线后才执行对应模式，不回退到失效历史目录。
 
 ## 两条水位线不可混
 
@@ -49,11 +49,13 @@ description: APS 项目专属地基体检——重建机器基线、复查 14 �
 ## 模式
 
 - `/cs-checkup`：完整体检，执行 Phase 0-6。
-- `/cs-checkup 快检`：只做 Phase 0，报告基线后有多少提交、哪些分区变化、机器门禁是否可直接复跑。
+- `/cs-checkup 快检` 或“项目现在什么状况”等询问：只做 Phase 0 和必要的现行材料核查，报告变化与限制，不更新报告、扫描快照或水位线。
 - `/cs-checkup 基线`：重验 clean HEAD 的机器基线；不自动补 332 个历史提交的决定考古。
 - `/cs-checkup 结构`：执行 Phase 1-3，刷新代码投影并复查变更分区。
 - `/cs-checkup 决定`：执行 Phase 4，增量补决定考古。
 - `/cs-checkup 全量`：从指定历史起点重做结构与决定；必须先让用户确认成本和起点。
+
+明确选择完整体检或维护模式后，可以写该模式约定的报告与基线；不因此获得修改业务代码、提交或更新无关历史的授权。
 
 ## Phase 0：钉范围与工作树边界
 
@@ -83,7 +85,7 @@ description: APS 项目专属地基体检——重建机器基线、复查 14 �
 4. dead-code quick：
    - `python3 tools/scan_dead_code_islands.py --mode quick`
 
-先把输出写到临时目录，比较后再更新 `.codestable/checkup/latest/`。
+先把输出写到临时目录，比较后仅在本轮授权包含基线维护时更新 `.codestable/checkup/latest/`；不得覆盖尚未纳入本轮的在途修改。
 
 最高优先级红线：
 
@@ -151,6 +153,8 @@ description: APS 项目专属地基体检——重建机器基线、复查 14 �
 - **不自动调用 Claude Code。**
 
 ## 退出条件
+
+按本轮模式检查适用项，未执行阶段标为“不适用”而非“通过”。只读快检完成范围、变化与限制报告即可，不要求重跑全部扫描或写入档案。以下清单适用于完整体检，其他模式只核对涉及项。
 
 - [ ] 已说明扫描的是 clean commit 还是在途工作树
 - [ ] codemap / callgraph / import cycles / dead-code 均有实际结果
