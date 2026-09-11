@@ -145,7 +145,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "templates/workbench/legacy_result.html",
             "templates/workbench/retired.html",
             "tests/_support/legacy_http.py",
-            "tests/_support/sqlite_snapshot.py",
             "tests/workbench/fixtures/schema-v24.sql",
         ),
         "env_keys": (
@@ -205,7 +204,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "templates/workbench/legacy_result.html",
             "templates/workbench/retired.html",
             "tests/_support/legacy_http.py",
-            "tests/_support/sqlite_snapshot.py",
         ),
         "env_keys": (
             "APS_ENV",

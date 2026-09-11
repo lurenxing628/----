@@ -158,6 +158,7 @@ ROUND1_SCANNER_SOURCES = (
 )
 
 SNAPSHOT_REQUIRED_GROUPS = (
+    "scheduler_batches_material_resource",
     "workbench_registry", "workbench_foundation", "workbench_resources", "workbench_process", "workbench_batches",
     "workbench_plans", "workbench_system", "workbench_field", "workbench_preflight", "workbench_mainmigration",
     "workbench_run_compute", "workbench_run_jobs", "workbench_trial", "workbench_template_lineage",
