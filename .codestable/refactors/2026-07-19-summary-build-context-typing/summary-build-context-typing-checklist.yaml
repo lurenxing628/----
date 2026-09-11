@@ -1,0 +1,34 @@
+refactor: 2026-07-19-summary-build-context-typing
+steps:
+  - id: baseline
+    title: 现场与字段来源刻画
+    status: done
+  - id: typing
+    title: 参数对象和消费者纯类型收敛
+    status: done
+  - id: verification
+    title: 专属合同测试及回归证据
+    status: done
+checks:
+  - id: structure
+    title: 字段顺序默认值、字典和业务语句不变
+    status: passed
+  - id: static
+    title: 生产静态检查无本轮新增错误，正负样例有效
+    status: passed
+  - id: runtime
+    title: 相关运行时回归与新合同测试通过
+    status: passed
+  - id: dependency
+    title: contracts 不反向导入 algorithms 或 A1 业务层
+    status: passed
+  - id: shared-boundary
+    title: 保留 dirty、无越界写入、不暂存提交或修改公共基线
+    status: passed
+verification_scope: dirty-worktree scoped evidence only; not a clean-worktree proof
+known_external_failures:
+  - A3 directory-cycle test stops at the shared module-count snapshot
+  - Full production pyright has errors outside the U01 write set
+remaining_static_boundary:
+  - Legacy SimpleNamespace test doubles add 23 domain-type diagnostics
+  - cfg and producer-owned heterogeneous payloads retain Any
