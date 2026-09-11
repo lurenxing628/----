@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 
 from core.infrastructure.safe_files import stat_regular_file
+from core.models.operation_log_labels import operation_log_summary
 from core.models.operation_log_public_projection import public_operation_log_detail_text
 from core.models.workbench_command import input_fingerprint
 from core.services.system.operation_log_service import OperationLogService
@@ -78,7 +79,7 @@ def log_records(conn, log_dir, logger):
     try:
         operations = OperationLogService(conn, logger=logger).list_recent(limit=501)
         for item in operations[:500]:
-            summary = public_system_text(f"{item.module}/{item.action}", 1000)
+            summary = public_system_text(operation_log_summary(item.module, item.action), 1000)
             body = public_system_text(public_operation_log_detail_text(item.detail) + "\n" + str(item.error_message or ""))
             rows.append({"key": input_fingerprint({"operation": item.id, "time": item.log_time, "body": body}),
                          "time": str(item.log_time or "").replace(" ", "T") or None,

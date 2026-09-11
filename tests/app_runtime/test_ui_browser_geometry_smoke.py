@@ -171,7 +171,7 @@ def test_ui_browser_geometry_smoke_covers_scheduler_run_page() -> None:
             ("reports-overdue", "reports-utilization", "reports-downtime")} == {"overdue", "utilization", "downtime"}
     assert EXPECTED_PAGE_SIGNALS["reports-execution"]["view"] == "review"
     assert EXPECTED_PAGE_SIGNALS["plugin-startup-audit"]["plugin_audit"] is True
-    assert EXPECTED_PAGE_SIGNALS["plugin-startup-audit"]["log_summary"] == "plugins/load"
+    assert EXPECTED_PAGE_SIGNALS["plugin-startup-audit"]["log_summary"] == "扩展功能管理 · 其他操作（load）"
     assert RETIRED_GEOMETRY["scheduler.config"]["geometry_counted"] is False
     assert RETIRED_GEOMETRY["pluginStatusTable"]["geometry_counted"] is False
     assert set(RETIRED_GEOMETRY["scheduler.config"]["controls"]) == {

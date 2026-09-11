@@ -105,6 +105,29 @@ def test_stale_backup_and_user_paths_never_delete(system_api):
     assert system_api.journal().lookup("system-test-request-0001") is None
 
 
+@pytest.mark.parametrize("module,action,expected", [
+    ("scheduler", "schedule", "排产管理 · 排产"),
+    (" system ", " backup ", "系统管理 · 备份"),
+    ("raw_mod", "raw_act", "其他模块（raw_mod） · 其他操作（raw_act）"),
+    ("", "", "- · -"),
+])
+def test_operation_log_summary_uses_shared_labels_without_rewriting_audit(system_api, module, action, expected):
+    conn = system_api.connect()
+    try:
+        detail = '{"message":"日志标签回归原记录"}'
+        conn.execute("INSERT INTO OperationLogs(log_time,log_level,module,action,detail) VALUES (?,?,?,?,?)",
+                     ("2026-09-11 08:00:00", "INFO", module, action, detail))
+        conn.commit()
+        before = tuple(conn.iterdump())
+        row, = system_api.read("/logs", type="operation", file="OperationLogs")["data"]["rows"]
+        assert row["summary"] == expected
+        assert "日志标签回归原记录" in row["body"]
+        assert tuple(conn.execute("SELECT module,action,detail FROM OperationLogs").fetchone()) == (module, action, detail)
+        assert tuple(conn.iterdump()) == before
+    finally:
+        conn.close()
+
+
 def test_windows_filter_pagination_export_and_diagnostic_redaction(system_api):
     entries = [f"2026-09-09 10:00:{index % 60:02d} [INFO] row {index}\n" for index in range(220)]
     entries[-1] = "2026-09-09 11:00:00 [ERROR] failure\nAuthorization: Bearer secret-test-sentinel\n/Users/private/db/main.db\n"

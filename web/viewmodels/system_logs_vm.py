@@ -4,6 +4,9 @@ import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.models.operation_log_labels import ACTION_LABELS as _ACTION_LABELS
+from core.models.operation_log_labels import MODULE_LABELS as _MODULE_LABELS
+from core.models.operation_log_labels import operation_log_label as _label
 from core.models.operation_log_public_projection import public_operation_log_error_message
 
 from .ui_presenters import UiEmptyState, UiToggleRow, checked_attr
@@ -13,37 +16,6 @@ _LOG_LEVEL_LABELS = {
     "WARN": "警告",
     "WARNING": "警告",
     "ERROR": "错误",
-}
-
-_MODULE_LABELS = {
-    "equipment": "设备管理",
-    "excel_demo": "Excel 演示",
-    "material": "物料管理",
-    "personnel": "人员管理",
-    "plugins": "扩展功能管理",
-    "process": "工艺管理",
-    "scheduler": "排产管理",
-    "system": "系统管理",
-}
-
-_ACTION_LABELS = {
-    "backup": "备份",
-    "backup_delete": "删除备份",
-    "batch_material_add": "添加批次物料",
-    "batch_material_delete": "删除批次物料",
-    "batch_material_update": "更新批次物料",
-    "cleanup": "清理",
-    "create": "新增",
-    "delete": "删除",
-    "export": "导出",
-    "import": "导入",
-    "logs_cleanup": "清理日志",
-    "logs_delete": "删除日志",
-    "restore": "恢复",
-    "schedule": "排产",
-    "simulate": "模拟排产",
-    "toggle": "切换状态",
-    "update": "更新",
 }
 
 _TARGET_TYPE_LABELS = {
@@ -100,15 +72,6 @@ def build_system_logs_page_view_model(settings: Any) -> SystemLogsPageState:
             desc="当前筛选条件下没有找到操作日志，可以放宽时间、模块或级别后再查询。",
         ),
     )
-
-
-def _label(value: Any, labels: Dict[str, str], fallback: str) -> str:
-    key = str(value or "").strip()
-    if not key:
-        return "-"
-    if key in labels:
-        return labels[key]
-    return f"{fallback}（{key}）"
 
 
 def _resolve_label_or_code(value: Any, labels: Dict[str, str]) -> str:
