@@ -1,0 +1,47 @@
+{
+  "scope": "r2-final-5000-20260910-v1 initial managed server polling",
+  "method": "nearest-rank: sorted_values[ceil(n*p)-1]; client HTTP plus JSON decode",
+  "trace": "/private/tmp/aps-final-capacity-B.bk32eh/formal-5000-r2-v1/aps-workbench-live-nz5iurpx/sessions/7f08e36f471c49f2852c42c81a87d1bd/client-requests.json",
+  "trace_sha256": "7d19172b35a75426e0dbc84963ac63abf990014cc8bf8783a59b297e2cb64a0d",
+  "poll_states": {"queued": 1, "running": 34, "complete": 1},
+  "initial_http_requests": 115,
+  "initial_http_status_counts": {"200": 113, "202": 2},
+  "metrics": {
+    "status_poll_including_terminal": {
+      "count": 36,
+      "status_codes": [200],
+      "p50_seconds": 0.6708914159999964,
+      "p95_seconds": 0.8162980419999997,
+      "p99_seconds": 0.867509708,
+      "max_seconds": 0.867509708,
+      "mean_seconds": 0.5893384709722225
+    },
+    "request_lookup_queued_or_running": {
+      "count": 35,
+      "status_codes": [200],
+      "p50_seconds": 0.6932789999999995,
+      "p95_seconds": 0.8762341669999998,
+      "p99_seconds": 0.9133807500000017,
+      "max_seconds": 0.9133807500000017,
+      "mean_seconds": 0.614307671428571
+    },
+    "resources_summary_queued_or_running": {
+      "count": 35,
+      "status_codes": [200],
+      "p50_seconds": 2.3637553749999967,
+      "p95_seconds": 3.261825083000005,
+      "p99_seconds": 3.349389000000002,
+      "max_seconds": 3.349389000000002,
+      "mean_seconds": 2.1409746499142868
+    },
+    "combined_polling": {
+      "count": 106,
+      "status_codes": [200],
+      "p50_seconds": 0.7450710829999991,
+      "p95_seconds": 2.921503291999997,
+      "p99_seconds": 3.261825083000005,
+      "max_seconds": 3.349389000000002,
+      "mean_seconds": 1.1099157188867927
+    }
+  }
+}

@@ -1,0 +1,29 @@
+doc_type: feature-checklist
+feature: graph-ready-elite-repair
+status: completed
+steps:
+  - id: 1
+    action: 内部预算合同和有限确定性邻域
+    exit_signal: 邻域与预算边界测试通过
+    status: done
+  - id: 2
+    action: 正式 phase 接线和阶段报告
+    exit_signal: 真实 SGS 链与严格接受测试通过
+    status: done
+  - id: 3
+    action: GraphReady 回归和多 seed 同预算验收
+    exit_signal: 验收记录真实测试、收益与限制
+    status: done
+checks:
+  - id: budget
+    description: top K、邻居、候选和时间预算截断可查
+    status: passed
+  - id: decode
+    description: 正式 SGS、统一评价、指纹和严格接受
+    status: passed
+  - id: report
+    description: 拒绝、剪枝、预算跳过分离且公开聚合安全
+    status: passed
+  - id: regression
+    description: 现有合同和真实多 seed 同预算比较
+    status: passed

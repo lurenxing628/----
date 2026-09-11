@@ -1,0 +1,434 @@
+{
+  "source_sha256": {
+    "core/algorithm_runtime/__init__.py": "ad849f8a385243e9ccb9d557d1cb8d37a962b936e89c488fae6fabcf492540f9",
+    "core/algorithm_runtime/algo_stats.py": "6ad15bba7de60abce891f1ad2f3a447f86d109cfeb9ee1143dec4e147cbb4bc9",
+    "core/algorithm_runtime/auto_assign_contract.py": "ba3b38bc1e647c32d8ff7786df69d4c21c179611eb603b5e028abad8cbaa947e",
+    "core/algorithm_runtime/dispatch_callback_types.py": "7235305965e6b51802784a39aebaf94108b99657a8c48f1ef865afbb5b5b600f",
+    "core/algorithm_runtime/dispatch_context.py": "a731d13892d8c3edd4f00b09e016192c41a2cdf121a873c50b3593fa411391cf",
+    "core/algorithm_runtime/downtime.py": "10716a728b0079d9a806e76152a7ef9726c379dbef1d59990274560ff041b120",
+    "core/algorithm_runtime/graph_cycle.py": "70da62d8ba9d5596d33b10d7ec4ad9a0bf4994eb7bbc6348c4d96f92840bdef8",
+    "core/algorithm_runtime/internal_slot.py": "f0a3ffaca17575cbd609efee9c57e9c1c9c22b4c5df1dc6b080277f147c7c937",
+    "core/algorithm_runtime/run_state.py": "5766bd37c366f77c70036a45754c6d3c8d66e99a12c4126c4ab08a506a5344e5",
+    "core/algorithm_runtime/runtime_state.py": "84565e5269057a6f84cdf33d21c1c50086d9b700496fad1489f8488dcba2b49a",
+    "core/algorithm_runtime/slot_overlap_reuse.py": "75a4d9b31e29b8fcf0af21282498f7465bcee06a04b1fa1a28423227614b607b",
+    "core/algorithms/greedy/__init__.py": "dae24fa35bbda6b7310e74cf034512c00e2a2d4da2138393ac433b1d58346333",
+    "core/algorithms/greedy/algo_stats.py": "49eedca3d4a3136bc19a39b5e50cdd58a89f559f3fe6f86ed771eb46a0f278b0",
+    "core/algorithms/greedy/auto_assign.py": "de0aedcc438eebd66022c84c50c120aec08a10523b354b528c69309d2a4cd835",
+    "core/algorithms/greedy/date_parsers.py": "1bacfab35616433dd2742fa7f2c5e2e8a36c054e461bb7c62f407e9e4166739c",
+    "core/algorithms/greedy/dispatch/__init__.py": "aca8dd48805a9f31ab5a586aa23ebeb137dc360a1d3d4d14d864a2e1343476b2",
+    "core/algorithms/greedy/dispatch/batch_order.py": "acd4bbb4b8c048746d2626ac5ec14e52c43bc0a294171a728e84f54040c5bf5d",
+    "core/algorithms/greedy/dispatch/ready_queue.py": "0a89bafdba7059a24bf5bf31c101a82e631f61b6ac1867f6bdf6be75f04ac397",
+    "core/algorithms/greedy/dispatch/resource_validation.py": "429afd68110ea8bf3b24bfa6b39c7ea9485cea9632bdedfea2ab79970ec36bee",
+    "core/algorithms/greedy/dispatch/runtime_state.py": "898c73d4a68d722e7d3c1c1310878aa599af402f7c66dcfa12e6acdcde868c42",
+    "core/algorithms/greedy/dispatch/sgs.py": "65e154745d9199d9a5e7046c48a596c9edd21a1bef94a2fe9d740da7a9f72c71",
+    "core/algorithms/greedy/dispatch/sgs_graph.py": "2bd73dfa9445e9fae7b12c784ef9fcc5084fbffc1a9231a47d14cb2862b61565",
+    "core/algorithms/greedy/dispatch/sgs_scoring.py": "dc7fca19eb3f8f95c782b8cd9c59e076390dc02005d5d0b54c93842b484e5f99",
+    "core/algorithms/greedy/downtime.py": "714e6a739f4cb9aba066e2c9344aeede55a1eb188be2c7428dfbf4fa0486d1a2",
+    "core/algorithms/greedy/external_groups.py": "f739ce89e86f1cca52651e864bd68b7c49acf4fabfeb7f2d4f0d1e6023600868",
+    "core/algorithms/greedy/internal_operation.py": "6aacde377a957bda2e4a9a6500b3406e15011c4cb0273bb9d6cf2b32e8eec2e9",
+    "core/algorithms/greedy/internal_slot.py": "05ea950fc081cf9b9093a6207fb57c450c63412ecf2e6d372ffd88c0dba24a29",
+    "core/algorithms/greedy/run_context.py": "39e159a441f6ba1c6b7a3afa027d4f25d05de972b3efe64992458da977c176ac",
+    "core/algorithms/greedy/run_state.py": "b27f92543138d1b370268d5c61691523d9eb9ec30b3e48e6e5f8fe7cc87377bc",
+    "core/algorithms/greedy/schedule_params.py": "9343952c93f2a6dc4394d7da219f9b8959cd6a7f729499885ffb9ee0f5c5d86f",
+    "core/algorithms/greedy/scheduler.py": "ba68f2c24c8ede39678fc542a80b845f50246b65423c5fcb1fa3f9dbdf2f18b6",
+    "core/algorithms/greedy/seed.py": "c26644bff77057215f60780369577d62fb67c315486ca3b98969902c096ecdae",
+    "core/services/scheduler/calendar_engine.py": "b69347918349bca6bd9b5d94b7b55dccdcae46cd952a2e690cbb5044e2c3ec70",
+    "tests/_support/sgs_slot_reuse_case.py": "060e39a370982c57ce35553bd0c89795485091975a717f681b44dbb2b4c8e83d"
+  },
+  "sources_unchanged": true,
+  "cases": [
+    {
+      "auto": true,
+      "batches": 36,
+      "operations": 288,
+      "seeds": 36,
+      "timings": {
+        "off": [
+          2.4207033330000005,
+          2.4288767920000005,
+          2.413310291000002,
+          2.4015151669999995,
+          2.4186404170000024
+        ],
+        "on": [
+          2.281505084000001,
+          2.290454875,
+          2.208940459000001,
+          2.2111571669999996,
+          2.2128722499999967
+        ]
+      },
+      "medians": {
+        "off": 2.4186404170000024,
+        "on": 2.2128722499999967
+      },
+      "reduction_percent": 8.507596480804425,
+      "exact_payload_equal": true,
+      "profiles": {
+        "off": [
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "__init__",
+            "calls": 151740,
+            "own_seconds": 0.013990819000000002,
+            "cumulative_seconds": 0.013990819000000002
+          },
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "shift_end",
+            "calls": 723291,
+            "own_seconds": 0.134085628,
+            "cumulative_seconds": 0.387782983
+          },
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "_materialize",
+            "calls": 135510,
+            "own_seconds": 0.14489796000000002,
+            "cumulative_seconds": 0.18576641400000002
+          },
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "find_overlap_shift_end",
+            "calls": 151740,
+            "own_seconds": 0.029420137000000002,
+            "cumulative_seconds": 0.029420137000000002
+          },
+          {
+            "file": "core/algorithm_runtime/internal_slot.py",
+            "name": "_slot_segments",
+            "calls": 50580,
+            "own_seconds": 0.018484666,
+            "cumulative_seconds": 0.032475485000000005
+          },
+          {
+            "file": "core/algorithms/greedy/scheduler.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 1.25e-06,
+            "cumulative_seconds": 6.875e-06
+          },
+          {
+            "file": "core/algorithm_runtime/internal_slot.py",
+            "name": "estimate_internal_slot",
+            "calls": 50580,
+            "own_seconds": 0.180970349,
+            "cumulative_seconds": 4.137814596
+          },
+          {
+            "file": "core/algorithm_runtime/slot_overlap_reuse.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 9.160000000000001e-07,
+            "cumulative_seconds": 9.160000000000001e-07
+          },
+          {
+            "file": "core/algorithms/greedy/auto_assign.py",
+            "name": "_pair_score",
+            "calls": 44960,
+            "own_seconds": 0.051920562,
+            "cumulative_seconds": 3.836104133
+          },
+          {
+            "file": "core/services/scheduler/calendar_engine.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 1.8740000000000002e-06,
+            "cumulative_seconds": 8.166000000000001e-06
+          },
+          {
+            "file": "core/services/scheduler/calendar_engine.py",
+            "name": "add_working_hours",
+            "calls": 241097,
+            "own_seconds": 0.328989702,
+            "cumulative_seconds": 1.663557943
+          }
+        ],
+        "on": [
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "__init__",
+            "calls": 608,
+            "own_seconds": 8.6253e-05,
+            "cumulative_seconds": 8.6253e-05
+          },
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "shift_end",
+            "calls": 723291,
+            "own_seconds": 0.114091523,
+            "cumulative_seconds": 0.16530813
+          },
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "_materialize",
+            "calls": 607,
+            "own_seconds": 0.001412527,
+            "cumulative_seconds": 0.0017818760000000002
+          },
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "find_overlap_shift_end",
+            "calls": 814,
+            "own_seconds": 0.00034601600000000004,
+            "cumulative_seconds": 0.00034601600000000004
+          },
+          {
+            "file": "core/algorithm_runtime/internal_slot.py",
+            "name": "_slot_segments",
+            "calls": 50580,
+            "own_seconds": 0.019031604,
+            "cumulative_seconds": 0.077079568
+          },
+          {
+            "file": "core/algorithms/greedy/scheduler.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 1.125e-06,
+            "cumulative_seconds": 6.583e-06
+          },
+          {
+            "file": "core/algorithm_runtime/internal_slot.py",
+            "name": "estimate_internal_slot",
+            "calls": 50580,
+            "own_seconds": 0.18073476800000002,
+            "cumulative_seconds": 3.960097127
+          },
+          {
+            "file": "core/algorithm_runtime/slot_overlap_reuse.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 2.08e-07,
+            "cumulative_seconds": 2.08e-07
+          },
+          {
+            "file": "core/algorithm_runtime/slot_overlap_reuse.py",
+            "name": "index",
+            "calls": 151740,
+            "own_seconds": 0.041777189,
+            "cumulative_seconds": 0.058047964
+          },
+          {
+            "file": "core/algorithm_runtime/slot_overlap_reuse.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 9.160000000000001e-07,
+            "cumulative_seconds": 9.160000000000001e-07
+          },
+          {
+            "file": "core/algorithms/greedy/auto_assign.py",
+            "name": "_pair_score",
+            "calls": 44960,
+            "own_seconds": 0.047060613,
+            "cumulative_seconds": 3.6735240850000004
+          },
+          {
+            "file": "core/services/scheduler/calendar_engine.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 1.6250000000000001e-06,
+            "cumulative_seconds": 7.3340000000000004e-06
+          },
+          {
+            "file": "core/services/scheduler/calendar_engine.py",
+            "name": "add_working_hours",
+            "calls": 241097,
+            "own_seconds": 0.330203427,
+            "cumulative_seconds": 1.66650566
+          }
+        ]
+      },
+      "payload_sha256": "f25e32d7e256bb06e8bb8de0a65d498a9e5e91ddbe660cf242f566d1311d2296",
+      "original_before_payload_equal": true
+    },
+    {
+      "auto": false,
+      "batches": 36,
+      "operations": 288,
+      "seeds": 36,
+      "timings": {
+        "off": [
+          0.2647138749999982,
+          0.26476008299999876,
+          0.26524362499999654,
+          0.2646747499999975,
+          0.26482608300000265
+        ],
+        "on": [
+          0.24526429200000166,
+          0.244917166999997,
+          0.2448334999999986,
+          0.24547462499999995,
+          0.24517266600000198
+        ]
+      },
+      "medians": {
+        "off": 0.26476008299999876,
+        "on": 0.24517266600000198
+      },
+      "reduction_percent": 7.3981760309377425,
+      "exact_payload_equal": true,
+      "profiles": {
+        "off": [
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "__init__",
+            "calls": 16854,
+            "own_seconds": 0.001622357,
+            "cumulative_seconds": 0.001622357
+          },
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "shift_end",
+            "calls": 68634,
+            "own_seconds": 0.013537718,
+            "cumulative_seconds": 0.042614913000000004
+          },
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "_materialize",
+            "calls": 16230,
+            "own_seconds": 0.017480866,
+            "cumulative_seconds": 0.022403335
+          },
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "find_overlap_shift_end",
+            "calls": 16854,
+            "own_seconds": 0.0031858710000000003,
+            "cumulative_seconds": 0.0031858710000000003
+          },
+          {
+            "file": "core/algorithm_runtime/internal_slot.py",
+            "name": "_slot_segments",
+            "calls": 5618,
+            "own_seconds": 0.0021918320000000003,
+            "cumulative_seconds": 0.0038141890000000004
+          },
+          {
+            "file": "core/algorithms/greedy/scheduler.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 6.26e-07,
+            "cumulative_seconds": 4.334e-06
+          },
+          {
+            "file": "core/algorithm_runtime/internal_slot.py",
+            "name": "estimate_internal_slot",
+            "calls": 5618,
+            "own_seconds": 0.018114723000000003,
+            "cumulative_seconds": 0.408837571
+          },
+          {
+            "file": "core/algorithm_runtime/slot_overlap_reuse.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 5.830000000000001e-07,
+            "cumulative_seconds": 5.830000000000001e-07
+          },
+          {
+            "file": "core/services/scheduler/calendar_engine.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 8.750000000000001e-07,
+            "cumulative_seconds": 4.125e-06
+          },
+          {
+            "file": "core/services/scheduler/calendar_engine.py",
+            "name": "add_working_hours",
+            "calls": 22878,
+            "own_seconds": 0.032033594,
+            "cumulative_seconds": 0.162962835
+          }
+        ],
+        "on": [
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "__init__",
+            "calls": 588,
+            "own_seconds": 7.0163e-05,
+            "cumulative_seconds": 7.0163e-05
+          },
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "shift_end",
+            "calls": 68634,
+            "own_seconds": 0.011029171,
+            "cumulative_seconds": 0.017164331
+          },
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "_materialize",
+            "calls": 562,
+            "own_seconds": 0.000987287,
+            "cumulative_seconds": 0.0012469220000000001
+          },
+          {
+            "file": "core/algorithm_runtime/downtime.py",
+            "name": "find_overlap_shift_end",
+            "calls": 614,
+            "own_seconds": 0.000254558,
+            "cumulative_seconds": 0.000254558
+          },
+          {
+            "file": "core/algorithm_runtime/internal_slot.py",
+            "name": "_slot_segments",
+            "calls": 5618,
+            "own_seconds": 0.002206048,
+            "cumulative_seconds": 0.009018088
+          },
+          {
+            "file": "core/algorithms/greedy/scheduler.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 7.08e-07,
+            "cumulative_seconds": 4.583e-06
+          },
+          {
+            "file": "core/algorithm_runtime/internal_slot.py",
+            "name": "estimate_internal_slot",
+            "calls": 5618,
+            "own_seconds": 0.018154496000000003,
+            "cumulative_seconds": 0.38611833
+          },
+          {
+            "file": "core/algorithm_runtime/slot_overlap_reuse.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 1.67e-07,
+            "cumulative_seconds": 1.67e-07
+          },
+          {
+            "file": "core/algorithm_runtime/slot_overlap_reuse.py",
+            "name": "index",
+            "calls": 16854,
+            "own_seconds": 0.004871970000000001,
+            "cumulative_seconds": 0.00681204
+          },
+          {
+            "file": "core/algorithm_runtime/slot_overlap_reuse.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 7.08e-07,
+            "cumulative_seconds": 7.08e-07
+          },
+          {
+            "file": "core/services/scheduler/calendar_engine.py",
+            "name": "__init__",
+            "calls": 1,
+            "own_seconds": 1.126e-06,
+            "cumulative_seconds": 4.75e-06
+          },
+          {
+            "file": "core/services/scheduler/calendar_engine.py",
+            "name": "add_working_hours",
+            "calls": 22878,
+            "own_seconds": 0.032088468,
+            "cumulative_seconds": 0.161877139
+          }
+        ]
+      },
+      "payload_sha256": "71340d8c16deca634461a49d4e3245deb65c120fe0cf89272b12bea72a284c11"
+    }
+  ]
+}

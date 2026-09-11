@@ -1,0 +1,478 @@
+{
+  "source_checks": {
+    "web/routes/helpers/form_values.py: unchanged implementation": true,
+    "web/routes/helpers/history_summary_logging.py: unchanged implementation": true,
+    "web/routes/helpers/navigation_utils.py: unchanged implementation": true,
+    "web/routes/helpers/pagination.py: unchanged implementation": true,
+    "web/routes/helpers/enum_display.py: unchanged implementation": true,
+    "web/routes/helpers/excel_utils.py: unchanged implementation": true,
+    "web/routes/helpers/normalizers.py: unchanged implementation": true,
+    "web/routes/equipment_excel_machines.py: import-only plus preserved dirty": true,
+    "web/routes/material.py: import-only plus preserved dirty": true,
+    "web/routes/process_op_types.py: import-only plus preserved dirty": true,
+    "web/routes/system_logs.py: import-only plus preserved dirty": true,
+    "web/routes/process_excel_part_operation_hours.py: import-only plus preserved dirty": true,
+    "web/routes/reports_page_support.py: import-only plus preserved dirty": true,
+    "web/routes/system_plugins.py: import-only plus preserved dirty": true,
+    "web/routes/process_excel_routes.py: import-only plus preserved dirty": true,
+    "web/routes/personnel_excel_operator_calendar.py: import-only plus preserved dirty": true,
+    "web/routes/process_bp.py: import-only plus preserved dirty": true,
+    "web/routes/process_suppliers.py: import-only plus preserved dirty": true,
+    "web/routes/personnel_excel_links.py: import-only plus preserved dirty": true,
+    "web/routes/personnel_excel_operators.py: import-only plus preserved dirty": true,
+    "web/routes/personnel_bp.py: import-only plus preserved dirty": true,
+    "web/routes/equipment_bp.py: import-only plus preserved dirty": true,
+    "web/routes/personnel_teams.py: import-only plus preserved dirty": true,
+    "web/routes/system_backup.py: import-only plus preserved dirty": true,
+    "web/routes/dashboard.py: import-only plus preserved dirty": true,
+    "web/routes/personnel_calendar_pages.py: import-only plus preserved dirty": true,
+    "web/routes/process_excel_op_types.py: import-only plus preserved dirty": true,
+    "web/routes/process_excel_route_apply.py: import-only plus preserved dirty": true,
+    "web/routes/process_excel_suppliers.py: import-only plus preserved dirty": true,
+    "web/routes/equipment_excel_links.py: import-only plus preserved dirty": true,
+    "web/routes/personnel_pages.py: import-only plus preserved dirty": true,
+    "web/routes/equipment_pages.py: import-only plus preserved dirty": true,
+    "web/routes/system_history.py: import-only plus preserved dirty": true,
+    "web/routes/process_parts.py: import-only plus preserved dirty": true,
+    "web/routes/excel_demo.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_excel_calendar.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_week_plan.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_batches.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_config.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_utils.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_run.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_analysis_read.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_gantt.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_bp.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_resource_dispatch.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_excel_batches.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_batch_detail.py: import-only plus preserved dirty": true,
+    "web/routes/domains/scheduler/scheduler_ops.py: import-only plus preserved dirty": true,
+    "manager: import and equivalent Python38 annotation only; rollback preserved": true,
+    "report parser: byte-identical implementation": true,
+    "core/services/report/exporters/xlsx.py: bodies unchanged": true,
+    "core/services/report/delay_diagnosis_presentation.py: bodies unchanged": true,
+    "web/routes/reports_export_support.py: bodies unchanged": true,
+    "core/services/report/report_engine.py: bodies unchanged": true,
+    "core/services/report/execution_review.py: bodies unchanged": true,
+    "resource support: byte-identical": true,
+    "gantt: all test and helper function ASTs preserved": true,
+    "tests/operation_execution/operation_execution_feedback_test_support.py: import-only": true,
+    "tests/web_pages/test_scenario_preview_secondary_outputs.py: import-only": true
+  },
+  "source_check_count": 60,
+  "all_source_checks_passed": true,
+  "trailing_blank_only": [
+    "web/routes/personnel_bp.py",
+    "web/routes/equipment_bp.py"
+  ],
+  "changed_files": {
+    "a4": [
+      {
+        "path": "web/routes/form_values.py",
+        "line": 1
+      },
+      {
+        "path": "web/routes/helpers/form_values.py",
+        "line": 9
+      },
+      {
+        "path": "web/routes/history_summary_logging.py",
+        "line": 1
+      },
+      {
+        "path": "web/routes/helpers/history_summary_logging.py",
+        "line": 10
+      },
+      {
+        "path": "web/routes/navigation_utils.py",
+        "line": 1
+      },
+      {
+        "path": "web/routes/helpers/navigation_utils.py",
+        "line": 11
+      },
+      {
+        "path": "web/routes/pagination.py",
+        "line": 1
+      },
+      {
+        "path": "web/routes/helpers/pagination.py",
+        "line": 10
+      },
+      {
+        "path": "web/routes/enum_display.py",
+        "line": 1
+      },
+      {
+        "path": "web/routes/helpers/enum_display.py",
+        "line": 20
+      },
+      {
+        "path": "web/routes/excel_utils.py",
+        "line": 1
+      },
+      {
+        "path": "web/routes/helpers/excel_utils.py",
+        "line": 30
+      },
+      {
+        "path": "web/routes/normalizers.py",
+        "line": 1
+      },
+      {
+        "path": "web/routes/helpers/normalizers.py",
+        "line": 15
+      },
+      {
+        "path": "web/routes/helpers/__init__.py",
+        "line": 1
+      },
+      {
+        "path": "web/routes/equipment_excel_machines.py",
+        "line": 24
+      },
+      {
+        "path": "web/routes/material.py",
+        "line": 11
+      },
+      {
+        "path": "web/routes/process_op_types.py",
+        "line": 9
+      },
+      {
+        "path": "web/routes/system_logs.py",
+        "line": 8
+      },
+      {
+        "path": "web/routes/process_excel_part_operation_hours.py",
+        "line": 23
+      },
+      {
+        "path": "web/routes/reports_page_support.py",
+        "line": 11
+      },
+      {
+        "path": "web/routes/system_plugins.py",
+        "line": 8
+      },
+      {
+        "path": "web/routes/process_excel_routes.py",
+        "line": 16
+      },
+      {
+        "path": "web/routes/personnel_excel_operator_calendar.py",
+        "line": 22
+      },
+      {
+        "path": "web/routes/process_bp.py",
+        "line": 11
+      },
+      {
+        "path": "web/routes/process_suppliers.py",
+        "line": 9
+      },
+      {
+        "path": "web/routes/personnel_excel_links.py",
+        "line": 19
+      },
+      {
+        "path": "web/routes/personnel_excel_operators.py",
+        "line": 21
+      },
+      {
+        "path": "web/routes/personnel_bp.py",
+        "line": 9
+      },
+      {
+        "path": "web/routes/equipment_bp.py",
+        "line": 9
+      },
+      {
+        "path": "web/routes/personnel_teams.py",
+        "line": 8
+      },
+      {
+        "path": "web/routes/system_backup.py",
+        "line": 14
+      },
+      {
+        "path": "web/routes/dashboard.py",
+        "line": 14
+      },
+      {
+        "path": "web/routes/personnel_calendar_pages.py",
+        "line": 10
+      },
+      {
+        "path": "web/routes/process_excel_op_types.py",
+        "line": 21
+      },
+      {
+        "path": "web/routes/process_excel_route_apply.py",
+        "line": 15
+      },
+      {
+        "path": "web/routes/process_excel_suppliers.py",
+        "line": 22
+      },
+      {
+        "path": "web/routes/equipment_excel_links.py",
+        "line": 20
+      },
+      {
+        "path": "web/routes/personnel_pages.py",
+        "line": 15
+      },
+      {
+        "path": "web/routes/equipment_pages.py",
+        "line": 19
+      },
+      {
+        "path": "web/routes/system_history.py",
+        "line": 5
+      },
+      {
+        "path": "web/routes/process_parts.py",
+        "line": 11
+      },
+      {
+        "path": "web/routes/excel_demo.py",
+        "line": 21
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_excel_calendar.py",
+        "line": 16
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_week_plan.py",
+        "line": 19
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+        "line": 23
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_batches.py",
+        "line": 11
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_config.py",
+        "line": 18
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_utils.py",
+        "line": 9
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_run.py",
+        "line": 8
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_analysis_read.py",
+        "line": 7
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_gantt.py",
+        "line": 12
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_bp.py",
+        "line": 9
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
+        "line": 13
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_excel_batches.py",
+        "line": 16
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_batch_detail.py",
+        "line": 19
+      },
+      {
+        "path": "web/routes/domains/scheduler/scheduler_ops.py",
+        "line": 9
+      }
+    ],
+    "a5": [
+      {
+        "path": "core/plugins/manager.py",
+        "line": 11
+      }
+    ],
+    "a6": [
+      {
+        "path": "core/services/report/values/__init__.py",
+        "line": 1
+      },
+      {
+        "path": "core/services/report/values/number_parsing.py",
+        "line": 9
+      },
+      {
+        "path": "core/services/report/report_number_parsing.py",
+        "line": 1
+      },
+      {
+        "path": "core/services/report/exporters/xlsx.py",
+        "line": 14
+      },
+      {
+        "path": "core/services/report/delay_diagnosis_presentation.py",
+        "line": 7
+      },
+      {
+        "path": "web/routes/reports_export_support.py",
+        "line": 10
+      },
+      {
+        "path": "core/services/report/report_engine.py",
+        "line": 32
+      },
+      {
+        "path": "core/services/report/execution_review.py",
+        "line": 16
+      }
+    ],
+    "tests": [
+      {
+        "path": "tests/_support/resource_dispatch_frontend_support.py",
+        "line": 29
+      },
+      {
+        "path": "tests/resource_dispatch/resource_dispatch_frontend_support.py",
+        "line": 1
+      },
+      {
+        "path": "tests/_support/gantt_scenario.py",
+        "line": 18
+      },
+      {
+        "path": "tests/gantt/test_gantt_draft_save_and_preview.py",
+        "line": 5
+      },
+      {
+        "path": "tests/operation_execution/operation_execution_feedback_test_support.py",
+        "line": 14
+      },
+      {
+        "path": "tests/web_pages/test_scenario_preview_secondary_outputs.py",
+        "line": 27
+      },
+      {
+        "path": "tests/web_pages/test_frontend_ui_language_polish.py",
+        "line": 16
+      }
+    ],
+    "boundary_tests": [
+      {
+        "path": "tests/_support/dependency_boundaries.py",
+        "line": 13
+      },
+      {
+        "path": "tests/web_pages/test_routes_a4_dependency_boundary.py",
+        "line": 35
+      },
+      {
+        "path": "tests/config/test_plugins_a5_dependency_boundary.py",
+        "line": 17
+      },
+      {
+        "path": "tests/scheduler_analysis/test_report_a6_dependency_boundary.py",
+        "line": 20
+      },
+      {
+        "path": "tests/gate_meta/test_test_support_dependency_boundary.py",
+        "line": 17
+      }
+    ]
+  },
+  "scans": {
+    "production": {
+      "before_modules": 786,
+      "after_modules": 802,
+      "before_dirs": 3,
+      "after_dirs": 1,
+      "hard_files": 9,
+      "explicit_hard_files": 0,
+      "unresolved": 6,
+      "parse_errors": [],
+      "unexpected_delta": {
+        "hard_dir_cycles": [],
+        "hard_file_cycle_records": [],
+        "unresolved_added": [],
+        "unresolved_removed": []
+      }
+    },
+    "tests": {
+      "before_modules": 1522,
+      "after_modules": 1555,
+      "before_dirs": 4,
+      "after_dirs": 1,
+      "hard_files": 9,
+      "explicit_hard_files": 0,
+      "unresolved": 45,
+      "parse_errors": [],
+      "unexpected_delta": {
+        "hard_dir_cycles": [],
+        "hard_file_cycle_records": [],
+        "unresolved_added": [],
+        "unresolved_removed": []
+      }
+    }
+  },
+  "callgraph": {
+    "moved_callable_count": 56,
+    "missing_moved_callables": [],
+    "related_confident_edges": 278,
+    "missing_related_confident_edges": [],
+    "deterministic_files": 10,
+    "two_run_hashes_equal": true,
+    "sha256": {
+      "summary.json": "ad65022099207be42e3d5ec31c3d1594c8dde4ab3c6c0c3a5afb30bbd29e915f",
+      "islands.json": "7c2c067151820d2b040f34e96b1b9feab4ce42fab3b839607d909e289ccd29e1",
+      "high_fan_in.json": "7d02b6a1b80b6ce5af46a12293a9b327c06237681a60baaa954c442df15d2527",
+      "edges.json": "28e24c0e07aacf1458aabc928bd63f164bf6d4b392d6224cacd030f7a19598be",
+      "risk_dataflow.json": "29b7588794d3a7d5a3851679ba87228a7412f72fa17d9cbfaec1dfd47f05fc5f",
+      "cycles.json": "36a49f0192fd6eb26995eea555c2092bc0a09328272a9c9d736a1fc737a4617d",
+      "articulation_points.json": "706bcf8e361242721034412635f3e3a1debeb872e38fa73c34e0c42d8c018746",
+      "dynamic_unresolved.json": "b8842296a6f4a5bdbf72b632410d442c66d3e911141451ac378d5dd19051ea9d",
+      "functions.json": "78e3d3216c189557b0a3b132eeb45ee293ee5a27cc1e3ab1aa8e9268051697d9",
+      "dataflow_nodes.json": "4a1a9cad2fdc8dc510472d8b8c3d5a9b715fc8a44be07df780d94f85a8ae8154"
+    },
+    "note": "Whole-repo graph contains concurrent agents; mapping claims only the moved callable surface."
+  },
+  "verification": {
+    "characterization": "65 passed",
+    "a4_initial": "81 passed",
+    "a5_final": "40 passed",
+    "a6": "47 passed",
+    "tests_support": "178 passed",
+    "final_integration": "1072 passed in 93.84s",
+    "py38_owned_files": "78 files / 0 findings",
+    "ruff": "passed",
+    "architecture": "19 passed / 2 failed: one same-body moved fallback ledger identity and unrelated scheduler/run complexity",
+    "pyright_gate": "3 errors outside this write set, 15 existing-style warnings",
+    "formal_import_scopes": "both exit 1 against existing baselines; no new hard SCC/edge or unresolved relative to saved dirty start",
+    "full_quality_gate": "not run: shared dirty concurrent worktree; final baseline/ledger/registry/HEAD binding is owned by main agent",
+    "clean_worktree_proof": false
+  },
+  "callable_path_map": {
+    "web/routes/form_values.py": "web/routes/helpers/form_values.py",
+    "web/routes/history_summary_logging.py": "web/routes/helpers/history_summary_logging.py",
+    "web/routes/navigation_utils.py": "web/routes/helpers/navigation_utils.py",
+    "web/routes/pagination.py": "web/routes/helpers/pagination.py",
+    "web/routes/enum_display.py": "web/routes/helpers/enum_display.py",
+    "web/routes/excel_utils.py": "web/routes/helpers/excel_utils.py",
+    "web/routes/normalizers.py": "web/routes/helpers/normalizers.py",
+    "core/services/report/report_number_parsing.py": "core/services/report/values/number_parsing.py"
+  },
+  "ledger_identity_map": {
+    "fallback:web-routes-excel_utils-read_uploaded_xlsx-fef185cd8db6": "fallback:web-routes-helpers-excel_utils-read_uploaded_xlsx-fef185cd8db6"
+  },
+  "tool_incident": "Default symbol_locator auto-refreshed existing shared callgraph before product edits. No safe preimage existed; no restore attempted. All later graphs use separate /tmp paths. Main agent must rebuild final shared evidence."
+}

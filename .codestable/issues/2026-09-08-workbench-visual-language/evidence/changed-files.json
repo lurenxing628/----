@@ -1,0 +1,451 @@
+{
+  "date": "2026-09-08",
+  "baseline": "/tmp/aps-ui-implementation.elQPXm/前端设计",
+  "changedFiles": [
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/AnalysisScreen.jsx",
+      "status": "modified",
+      "before": "321cc4436baf0a0a00ada2062ea6ef07c4ec3e893a9dbe8591ecfe03fd68868a",
+      "after": "0db133f7091ff9e79bd6748e08dbf62f98f81f3643002464d1d95f13d19d07fc"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/AnalysisShared.jsx",
+      "status": "modified",
+      "before": "946f1f49ab0695948d796e186126139e3f30548e9b895362c350ccffe8f8b543",
+      "after": "47971eacadc513be4438165635709c7c11ca8854d04d09dfbd23a2b13ca16731"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/BaseBatches.jsx",
+      "status": "modified",
+      "before": "c0ba6d34d232d41d8c5d5d1dbd7ef02105745a292f6bd0a90eb3d3184a74fc8f",
+      "after": "65c697db60dc3104ad62b44a108e05327aa69f95ca30f8b480045ab21f953bf8"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/CalibScreen.jsx",
+      "status": "modified",
+      "before": "89e2951aafb2c6966ae061cc77701923b4764036d8f5794cdcfd019fd03f731a",
+      "after": "39ef68c7037fb58b1576e662d22cf1c48a5e79119df25d933f334c21101b9d75"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/DelayScreen.jsx",
+      "status": "modified",
+      "before": "bc556efa5591931de67d459e761d07e4a23fed889fd5d65d0c89bef0f2c569a4",
+      "after": "63831cecb77efa1495a7b85f2f3228f085e8d8b460dfee3ed9531cd6ca9a6660"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/ExecutionReviewScreen.jsx",
+      "status": "modified",
+      "before": "c17c61026182ff1268016564f6e1d9a2b6766f6501980f1ef49fb8230cbef63a",
+      "after": "7137cc2adf4ff46e1f4960ed0657783b837d05f8e4d51aed8b9a0afd1c23be6d"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/FieldGanttRows.jsx",
+      "status": "modified",
+      "before": "1c68fed941e2f760e459bec69df5f8127f66b6dcdde093985031ec3bdc960817",
+      "after": "0497cc456e04692a67425acc008091de3ebfd94b88688d23181c4e49d7dd0bc4"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/FieldGanttScreen.jsx",
+      "status": "modified",
+      "before": "07e61c59e8e54ea6ee056f00eff73cff5b4214d36d1c50a33087d6543fbedd50",
+      "after": "ead03d3767a60b3e63acfb3d88b77cea533175b7bea779640b587cbafa74275a"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/GanttScreen.jsx",
+      "status": "modified",
+      "before": "308ce8ce22bb3cd7766594f4b18069674a7e8fdbe6be543b3254c8ccddb86f21",
+      "after": "673695cea165ac144044446635a856ecd9b75a54f1946629fac270603fce30f3"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/MasterDataOverview.jsx",
+      "status": "modified",
+      "before": "1508f9e9db3ae331b9a7a29d23d3b84f902aab59f8109b8f737e71a208a07a53",
+      "after": "bbcb790bd887b4580570fe99423d6a4447bb73b35e4322ea2933263f8c3ee61f"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/ReportsScreen.jsx",
+      "status": "modified",
+      "before": "8beae379ba8743ab9a31f2b9901e9dde0e4c8a200618235e0eda2af68aeb3fcf",
+      "after": "91f6ce0158ba76b1fa662776b096ffbe865f2ce4bd6b31a02cbcfbe98e92fb0a"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/SystemManagementScreen.jsx",
+      "status": "modified",
+      "before": "87fcf484b346a80a14edb7defa3a8fc12bff4878ad562b1e8925033629910496",
+      "after": "baff014be137a54863aacd8a3d5c850e518dd2eef5ec3c47f382574d810ea4b2"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/basedata.css",
+      "status": "modified",
+      "before": "62276a088d8ba3620e470023ddbc87930cbab6c96e2736260dcae43bde4b4090",
+      "after": "feb2945b2117b1b13cb5a5939235c70cd26da076964e1811e00406e6b3022430"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/batch-workbench.css",
+      "status": "modified",
+      "before": "2236bc18d358d7ef2cfddcfffdb99d68cee5752e88bea383228749b55f6ae0af",
+      "after": "16cd43d8ae6a9d6b56a9da99b730161ce1459d57ada53c1f5fc1ade4fdf10df2"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/dashboard-markup.js",
+      "status": "modified",
+      "before": "6b67e9bc3e54aa1aef71c914c84c784cb88801151b1a3521f27fa6003eb9af70",
+      "after": "c10cc206719ac333b44fbc6dc324c71c4e86b92a071008631cd83cca04d1d310"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/dashboard-model.js",
+      "status": "modified",
+      "before": "51cf217fdd64b487776c98d10452216ca997597af899857f5f6d19673324718b",
+      "after": "afc23aee37dcc9e1fb25bd6044ad949ed0a0059ceb2ed4030a3cb4cdfc9f5cdf"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/dashboard-views.js",
+      "status": "modified",
+      "before": "e5d5a5e8fe155ded0f46ab69083476335f3c0140dadce01d82ddae67f9949acf",
+      "after": "07d616b7ce561c10cd27a2dd1c4578d6830429e1691f511f51abc1a31c305dbc"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/dashboard-workbench.css",
+      "status": "modified",
+      "before": "cddec4f456593b0c6d6c0fae812dcf6a84b01fc1c9b8cd3c75e3a66119e0e66b",
+      "after": "431ac6901097b2e31802019f7a3adda0477f3aff8306e8be83cd8c67a5060587"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/dashboard-workbench.js",
+      "status": "modified",
+      "before": "8710c42ca04036fae4c01368e215c7bf75edc5d563962876c0a9052ca53506ac",
+      "after": "57b0c78076e5c763754c011de073bb1d2fbe060fb2a75badcd1ffb10a7436f17"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/execution-analysis-model.js",
+      "status": "modified",
+      "before": "c31e9583206dad4f996a7dc31ff9e232b02d41fb3981c2cf565e20a2a564ce40",
+      "after": "d1286283d1f21460fafdb50e04f5417b4c19f87084875c4049225325d138f42c"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/execution-analysis-shared.css",
+      "status": "modified",
+      "before": "f697460fc26acdc534c8153fa6604a17d19702068a2041ef2556e6d041df4197",
+      "after": "88b616b39340198496a9310e1352af8b65874bd16aa8e3039ad336eba20c7a21"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/execution-review.css",
+      "status": "modified",
+      "before": "85b90c382a6b94a58e75ff33cb032a0568830479de07021dd383635a7cb8e862",
+      "after": "182bfa2ac27853cee17a1f2ddd675caf7fbc1e5da3d76a77421edd9ac3910af5"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/field-gantt-viewport.css",
+      "status": "modified",
+      "before": "bc65f854558ddad75b4978cc898af4a1ce1ada3b5773f204a58b12c23ed16e25",
+      "after": "030dbc5d5c36e45c81923c527a9a525436e660afe8634c9054dba27fabf846ef"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/field-gantt.css",
+      "status": "modified",
+      "before": "4e3ad155732e3afdb0ffaa64d4a21fbfdeaa38f1c27b9623fdabd3bc335689a1",
+      "after": "8d470453b4d782fadec569e93d90d422c83c991affb31e610a2d6115bed98bcb"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/field-report-views.js",
+      "status": "modified",
+      "before": "617da2634ad6f2b0bbdb2c0fc2fa69b4113a34ffdec13f5072f19b013fc29c37",
+      "after": "dbf2003f6a197d85c1d40d6b991ae81618e1e43aefd81a1e9d97405b6a650cca"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/field-reporting.css",
+      "status": "modified",
+      "before": "e02cc684ea18d45163a3557f5a305241ca45b68818418592ebdf522177d56e86",
+      "after": "1f5f80227471c345faccde3c7c0b72ab3b91b692172dc2244156721fdc152c47"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/index.html",
+      "status": "modified",
+      "before": "b755c842dbb646be33da6371cde00a6e6fb863b55b982aaf1bd10a7c866a7fe6",
+      "after": "116b4d48841166e37964d4ffadbe3cdb18e3edf6366acb23b7cec51d1daaa0fc"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/master-data-overview.css",
+      "status": "modified",
+      "before": "564c3761e3365e6a8ec27eac9af120a3591e99e2c1e36a71aaaf968636a26ab8",
+      "after": "6d353ed4a10934bd413b3bbf0a433bfc6ae2895f9f3087c036f9158d9f5c8959"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/plan-workbench.css",
+      "status": "modified",
+      "before": "6b4634b8037fd7b36157c2d0b6f421dea427789c7803dd9b973364a87c592401",
+      "after": "6deff7fd99036d18acf64b24ab43fe89c5582492b56834efccd0b41c3b69fef8"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/plana.css",
+      "status": "modified",
+      "before": "90d4024a38e8a850879ecc426e163544d82342d36a2a93c72d92b257e9f4d226",
+      "after": "177436ef2591f5e18b571742ae5b019f53faaf9fdb58a1486c066ad606fbf22a"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/report-workbench-model.js",
+      "status": "modified",
+      "before": "f4aaf8da0cea83ecfb9852d5fb6e2ee2865b0cd976336cc39ecbc9bf82257276",
+      "after": "511a0bc8132075d5eee4546c1ab4b64ce0bd64a17f6932b2f8ab013b09a15da6"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/report-workbench.css",
+      "status": "modified",
+      "before": "72c353e72c4d95bfe9f0c4853b42420bdb00e57c5a802477c403a020bb11ae61",
+      "after": "14723d6eb3a7e29991d84b2cfc79074594d1cddd0a09c3fd6f047415185da4c3"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/system-workbench-model.js",
+      "status": "modified",
+      "before": "69e7eb254d06469f746d99ae7e091257c6f264152b2721d430965fededfb8262",
+      "after": "494043835b02c1b856dadc32c960fc34f22a293982200f6a9ead04b61b2459d3"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/system-workbench.css",
+      "status": "modified",
+      "before": "8b42ccc9f44ef92062c555f5a05f45a928ac02ebd412e5cf2ff80791f873263b",
+      "after": "94f33a4ef0d8f78d1ef81f0ce615fc47dad688d13c0d4e774e14de1b162eb9b4"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/analysis-alignment-browser.cjs",
+      "status": "modified",
+      "before": "d6450e8b0caf496b291201079c643a60757031e7df3882f139e4c4b868962de6",
+      "after": "803d00eba0c4e064f49578da279a9658f38aac2297bf7c5ffc7e27f20baba408"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/analysis-language-browser.cjs",
+      "status": "modified",
+      "before": "7b870666263a8bb033f24778f18fe40d5a7d0522e503e91afebec6de6d7ce760",
+      "after": "61cadc29d06a0485a1f7113214863cab4c163e80e4e77ed9b912c7ebd7f51ecf"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/analysis-language-model.cjs",
+      "status": "modified",
+      "before": "99750a763dd7efc055e2aa5fef540ae93220fa5af230f817fcddf10c49a2f123",
+      "after": "0a262419e2cb7c336107e6855d574f58751ce99cd93d1792a761b47b2bcafdf1"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/batch-workbench-browser.cjs",
+      "status": "modified",
+      "before": "aefe209e45397d98b5105afff1e0be3b93b0a4cd7c307e6d63d81cec8ab178a6",
+      "after": "5b538593a9ac534cd1efccaa353bb6fa6a43e469f03f44b6c1d333f3adfc1f4f"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/dashboard-handling-browser.cjs",
+      "status": "modified",
+      "before": "514ef5243d7eac30f8d8ba0cedc705ea9458ed9bfbe44a9b5bddbac0fd0be270",
+      "after": "9709d8f5b4f3dc224963eb18e5b2519f53ee57953cf44aeaca154c89f85be902"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/dashboard-handling-model.cjs",
+      "status": "modified",
+      "before": "f551984775fe368cbd6f782b6c68b55b743a061a66870f75eef4044f6eea052a",
+      "after": "e2c9e6fd9ebcd378b9cab1cf6ecf5ba9cb40a55a83bea88a76c9e970f3bbbd38"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/dashboard-integration.cjs",
+      "status": "modified",
+      "before": "3443c48ae19bec032425713ca9007b2cc4429cbad2e09dd9f10688eeddf24e7c",
+      "after": "7864655b2ee95e9f265317d905b2a6889fc02eda682d4f2388db1fd231002b0d"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/data-alignment-browser.cjs",
+      "status": "modified",
+      "before": "561760e771e071c9ea29fd8aba61fe9d63b4237caa8c64a8d23feb13d1086bc8",
+      "after": "c8d4254e307fe8c75594e6729e9c119d57db4e71f654dc0595cf4221557de9e8"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/execution-analysis-model.cjs",
+      "status": "modified",
+      "before": "65ffc935e41da73130a31748ed74f62441bcd36796476a412ce7ed9b1d481bf3",
+      "after": "0890b4823103c9d1c27dc7163578e522f541a6a273e85d3f994f0e45fff9e0a2"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/execution-review-ui.cjs",
+      "status": "modified",
+      "before": "1bcc75b41014744eadbfcbb6aa3c4d12d4fbc463c6d86151d13ea29ff25091e8",
+      "after": "839e36f1d04148d4b0805755bccf5d3cc12cc2906633f482e145813e44de1140"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/fg-screen-host.cjs",
+      "status": "modified",
+      "before": "3e9f7f50796142b51a22ac36df7082bcb716aabcd3390c948522b7d0158cc0a8",
+      "after": "2108e7265a925603a3fdbdc9785717c35394f79d4ab122d595dee7a7fc4711d3"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/field-alignment-browser.cjs",
+      "status": "modified",
+      "before": "280dc3ebd152a4b2beae58b19492a8851d930502020b93e125ef6d480d2708f0",
+      "after": "128e3d4b19e3143da66d9f3dd16dcfd6882bce1313891de687fe923a9b2d125d"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/field-gantt-hover-plan-a.cjs",
+      "status": "modified",
+      "before": "87dd996f5e47ddc170deba7ed8f0319f96218ce8f6652215985b1f977c3bda01",
+      "after": "507475ad00277283c383b7e98fc1a37eff84aa08307df11b5422bd94432a67e9"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/field-gantt-style.cjs",
+      "status": "modified",
+      "before": "18afda1f104575803c1e227025cde756e99c8a82c83fd2d0c1382703e7489696",
+      "after": "fa1078d8b7f23e7fed379fed5fd96cc990d8cfb5a89a1e7a0edeff544d812d2f"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/field-gantt-toolbar-deadline.cjs",
+      "status": "modified",
+      "before": "264b9aee65d6fba0a4be152fb0a3e5262f8e6d02ded285651ae3a10f6c73b590",
+      "after": "85e42e5b2346761f974dffa0ac416641382be3982c6a95589bd283cab59e338d"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/field-gantt.integration.cjs",
+      "status": "modified",
+      "before": "89aa2c09e4c5bfa78e3ed86b0440258a67ac71172b8bc7e0c1a6797a22251b69",
+      "after": "f7252aaaa5dca50853386c694fde53fb09aaf3efd26c1033e0ef540c0eacb377"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/field-reporting.integration.cjs",
+      "status": "modified",
+      "before": "b98e07d6d8451e4bee798d971a3f56ce6a350de0ef2fc69c4f531853873c55d9",
+      "after": "8d6d68ec7c9082d31020cb450810cd46c30cd70b3c773766be010a337a1d49fa"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/report-center-ui.cjs",
+      "status": "modified",
+      "before": "35191b27dd0e99e4689a83b2060ee45f28afc961bb4912e1cca653a9f55d5f0c",
+      "after": "a13fa04e63d6971149617330941b9253645d985fa2c64b8537bd0f9d7ee614d3"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/report-review-navigation-browser.cjs",
+      "status": "modified",
+      "before": "7cb00411b1d5f9483715aca41ac8183787695e78b904c5284ff613969186dd50",
+      "after": "ff5626b24e8f6effd69944efad8d70928d22895b6fa2fe66af54e227ce1c3de5"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/report-workbench-csv.cjs",
+      "status": "modified",
+      "before": "68b285b3e1eb4f3feadb6f143429084825e26301954ee8eb804461c5c0273ce7",
+      "after": "bc161e119d4a34146a82241fcdfdd6304f0b46e5a705b74543359650ef7cb689"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/report-workbench-model.cjs",
+      "status": "modified",
+      "before": "0f7fabd21d91b98c766d39712017587835f1e0746005d446a98f66564134b27c",
+      "after": "0f7f9baf4d59c07454dd483f39890e7b8e48a47d9da1e61996e218cee5061bc8"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/report-workbench-ui.cjs",
+      "status": "modified",
+      "before": "71dcfd5320497afb7d4e9f308b7693d9f9b50db19a3f5245d4b22d0d01ca3034",
+      "after": "99f39bba88976c3b6b850c59d92849f53df3b0b655de94e52c780c87bd5be567"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/run-plan-alignment-browser.cjs",
+      "status": "modified",
+      "before": "e6722f3222c6b89bb0bd5805898c51b65ce9cc7f8c67c0aa32ba357132af7201",
+      "after": "55b1c873ab3b3a4e8462f623bc37e8a696337329f84fbd3676339f404a474391"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/system-layout-browser.cjs",
+      "status": "modified",
+      "before": "f3a6d71f36ddbfbb766c79248332cbc889235d5da7a3529faa384e22ed2531e3",
+      "after": "778b894c0311da0e646e0ba7c85eb420cd0c61d74fd6d14ed3b5feda0ece17cc"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/system-workbench-dom.cjs",
+      "status": "modified",
+      "before": "080e182e70cf534ab45a46a4aa91b41c6c41835b6246da16cfaf5de3373f96e4",
+      "after": "d1bc159dc9a0a72389de1eba81e878f2da024db0d179e06144046fe31e4ac0d2"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/system-workbench-model.cjs",
+      "status": "modified",
+      "before": "1f2f754a780974d61c0e51300dbe2dec4a4b912b5bd671add2da341832479b5a",
+      "after": "cbbf087c8a199ea3eaf46573de0902f758158dec93bbda40970d985bc841799e"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/trial-sample-text.cjs",
+      "status": "modified",
+      "before": "a9bee3aad786cad0f1e868cbf6a91113107767671a40bb61fa89ae6856314a8e",
+      "after": "3f7b4fbf6e255b39f05cafed0b67c6ca2e2400168dbf7a49f0403b4c0d85766d"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/workbench-business-radius.cjs",
+      "status": "modified",
+      "before": "722c99e6c0a1a56390459a8d24dc13f6ba6529995bd6d0c4c3df8cccaf0e0bfe",
+      "after": "e2637aa7f87d4b5951b1c8bc5cb813a20ac49a521cba8a0432236094b8031d3d"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/workbench-business-style.cjs",
+      "status": "modified",
+      "before": "ef2762c9a371c964a2f6df24dddc9f2f1b7fd0db309c7eee82e247d5e285e528",
+      "after": "1ce794704f704100e0487940823b6861831cb3e3f4a257c67c8d75ec7a521577"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/workbench-native-date-theme.cjs",
+      "status": "added",
+      "before": null,
+      "after": "4d437e6dba7fb64a00530a1414d1df76fb8907aae6e83232b3635c2c29b6b7f6"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/workbench-shared-style.cjs",
+      "status": "modified",
+      "before": "16edf20c33d8b7fbf5183799c55819f45e424359d7e876325cf2d186ac110cfa",
+      "after": "8c7382c6e4137efede9dc79204ea4ddb9502b4294776eea4596e6647892f7926"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/trial-sample.css",
+      "status": "modified",
+      "before": "2d08012c034f1b1453a05464ad288a10c980d4a749cb066288f661df3bcbd54b",
+      "after": "ab9ddd84481a0ca69a1d20e1251d64078eacd87bfa70f9d8593b8206c64b36a3"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/trial-sample.html",
+      "status": "modified",
+      "before": "f7d3c3fcc11c7fa6d4b7ffd76375bcd5eaba2d29818dba85a0fc58cf895aea2a",
+      "after": "d750b186d229e1915f9a7922e0aeacfd4e540ab07bd7e2a3a48ac9c7177b59e4"
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/workbench-ui.css",
+      "status": "modified",
+      "before": "91954a503b8ce195466c8e378b05517a8ca3c3fc8a943b8152f49e6959f4fed1",
+      "after": "6d78f7f5e00d2fe9d9e67f627bf143a5605085e1aee1bca0f8dcfdda4d4fc4af"
+    }
+  ],
+  "counts": {
+    "allFrontendFiles": 533,
+    "changed": 68,
+    "runtime": 37,
+    "tests": 31,
+    "unchangedCorePrototypeFiles": 25,
+    "unchangedBundledResources": 17,
+    "cacheReferencesVerified": 37
+  },
+  "preservedPrototypeFiles": [
+    "plan-workbench.js",
+    "preflight-model.js",
+    "trial-sample-model.js",
+    "trial-sample-views.js",
+    "trial-sample.js",
+    "plana-logic.js",
+    "batch-draft-model.js",
+    "master-data-overview.js",
+    "field-report-model.js",
+    "field-report-import.js",
+    "field-report-editor.js",
+    "field-reporting.js",
+    "field-report-form.js",
+    "fg-screen-model.js",
+    "fg-screen-hooks.jsx",
+    "FieldGanttChain.jsx",
+    "FieldGanttViewport.jsx",
+    "field-gantt-chains.js",
+    "field-gantt-current-chain-data.js",
+    "field-gantt-current-chains.js",
+    "field-gantt-example.js",
+    "field-gantt-density-example.js",
+    "ProcessNative.jsx",
+    "BaseShared.jsx",
+    "workbench-ui.js"
+  ],
+  "stagedPreserved": "200\t0\ttests/gate_meta/test_frozen_bundle_contract.py"
+}

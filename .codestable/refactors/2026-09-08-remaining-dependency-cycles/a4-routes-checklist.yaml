@@ -1,0 +1,21 @@
+doc_type: refactor-checklist
+refactor: 2026-09-08-remaining-dependency-cycles
+scope: web/routes backend helpers and scheduler consumers
+status: approved
+source_plan: .codestable/refactors/2026-09-08-remaining-dependency-cycles/a4-routes-refactor-design.md
+steps:
+  - id: characterize
+    title: Lock existing behavior before edits
+    status: done
+    checks:
+      - Existing characterization set 65 passed
+  - id: apply
+    title: Apply the independently bounded dependency change
+    status: done
+    checks:
+      - Identity and module patch contracts preserved
+  - id: verify
+    title: Run slice tests and both dependency scopes
+    status: done
+    checks:
+      - Record actual test and scan results without baseline updates

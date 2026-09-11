@@ -1,0 +1,21 @@
+feature: execution-analytics-split
+user_visual_acceptance: pending
+steps:
+  - id: scope
+    description: 核实旧实现并确定两个入口和共享分析口径
+    status: done
+  - id: implementation
+    description: 并行实现两页，主代理完成共享模型和接线
+    status: done
+  - id: verification
+    description: 数字对账、跨页条件、复杂场景和既有入口回归
+    status: done
+  - id: handoff
+    description: 记录边界并交用户现场验收
+    status: done
+checks:
+  - 同源指标图表与导出
+  - 应完分母和未闭合分类
+  - 两个独立入口且筛选可往返
+  - 不虚构产能日历或异常原因
+  - 两主题、密集数据、空状态与键盘操作

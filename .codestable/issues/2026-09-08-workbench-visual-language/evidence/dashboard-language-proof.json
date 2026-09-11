@@ -1,0 +1,69 @@
+{
+  "result": "PASS",
+  "checks": 42,
+  "cases": [
+    {
+      "theme": "light",
+      "label": "值班台 9 月独立样例",
+      "backfill": "/tmp/aps-ui-dashboard-visual-20260908/1920-light-chinese-source-backfill.png",
+      "history": "/tmp/aps-ui-dashboard-visual-20260908/1920-light-chinese-source-history.png",
+      "navigation": "/tmp/aps-ui-dashboard-visual-20260908/1920-light-chinese-source-navigation.png",
+      "keys": {
+        "origin": {
+          "page": "dashboard",
+          "source": "dashboard-september",
+          "snapshot": "2026-09-07T11:40",
+          "category": "actual",
+          "item": "dashboard-september:actual:a3",
+          "subject": "B202609-024 · 10 下料"
+        },
+        "navigation": {
+          "mode": "overview",
+          "locatable": false,
+          "reason": "值班台 9 月独立样例与现场报工独立样例不是同一数据源，未建立该条目映射，无法定位。即使批次编号相同，也不视为同一记录。"
+        },
+        "source": "current",
+        "search": "",
+        "scope": {
+          "source": "current"
+        }
+      }
+    },
+    {
+      "theme": "dark",
+      "label": "值班台 9 月独立样例",
+      "backfill": "/tmp/aps-ui-dashboard-visual-20260908/1920-dark-chinese-source-backfill.png",
+      "history": "/tmp/aps-ui-dashboard-visual-20260908/1920-dark-chinese-source-history.png",
+      "navigation": "/tmp/aps-ui-dashboard-visual-20260908/1920-dark-chinese-source-navigation.png",
+      "keys": {
+        "origin": {
+          "page": "dashboard",
+          "source": "dashboard-september",
+          "snapshot": "2026-09-07T11:40",
+          "category": "actual",
+          "item": "dashboard-september:actual:a3",
+          "subject": "B202609-024 · 10 下料"
+        },
+        "navigation": {
+          "mode": "overview",
+          "locatable": false,
+          "reason": "值班台 9 月独立样例与现场报工独立样例不是同一数据源，未建立该条目映射，无法定位。即使批次编号相同，也不视为同一记录。"
+        },
+        "source": "current",
+        "search": "",
+        "scope": {
+          "source": "current"
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "externalRequests": [],
+  "modelContract": "AST identical after normalizing only Chinese display literals and the approved canonical-label history expression; ASCII/internal string literals retained",
+  "workbenchContract": "Byte-identical except the single backfill source label expression",
+  "dataAndNavigationKeysIdentical": true,
+  "testResults": {
+    "modelCases": 19,
+    "integrationAssertions": 167
+  }
+}

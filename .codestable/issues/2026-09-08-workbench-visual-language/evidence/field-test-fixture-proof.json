@@ -1,0 +1,171 @@
+{
+  "result": "PASS",
+  "date": "2026-09-08",
+  "baselineEvidence": "/tmp/aps-ui-field-visual-20260908/preexisting-test-failures.json",
+  "runs": [
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/field-gantt.integration.cjs",
+      "arguments": [
+        "--host"
+      ],
+      "exitCode": 0,
+      "stdout": "{\n  \"result\": \"PASS\",\n  \"assertions\": 510,\n  \"minSmallTextContrast\": 5.62,\n  \"verification\": \"Real shared model + JSDOM/CSV/static CSS, not browser pixel proof\",\n  \"hostIntegration\": \"PASS\",\n  \"hostWarnings\": [],\n  \"timezone\": \"host\"\n}\n",
+      "stderr": "",
+      "baselineSha256": "89aa2c09e4c5bfa78e3ed86b0440258a67ac71172b8bc7e0c1a6797a22251b69",
+      "currentSha256": "f7252aaaa5dca50853386c694fde53fb09aaf3efd26c1033e0ef540c0eacb377",
+      "staticAssertionCalls": {
+        "before": 188,
+        "after": 193
+      },
+      "summary": {
+        "result": "PASS",
+        "assertions": 510,
+        "minSmallTextContrast": 5.62,
+        "verification": "Real shared model + JSDOM/CSV/static CSS, not browser pixel proof",
+        "hostIntegration": "PASS",
+        "hostWarnings": [],
+        "timezone": "host"
+      }
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/field-gantt-hover-plan-a.cjs",
+      "arguments": [],
+      "exitCode": 0,
+      "stdout": "{\n  \"result\": \"PASS\",\n  \"checks\": 218,\n  \"scope\": \"Real entry + controlled viewport rectangles; hover, fit, grouping, palette and source isolation. Not browser pixels.\"\n}\n",
+      "stderr": "",
+      "baselineSha256": "87dd996f5e47ddc170deba7ed8f0319f96218ce8f6652215985b1f977c3bda01",
+      "currentSha256": "507475ad00277283c383b7e98fc1a37eff84aa08307df11b5422bd94432a67e9",
+      "staticAssertionCalls": {
+        "before": 58,
+        "after": 59
+      },
+      "summary": {
+        "result": "PASS",
+        "checks": 218,
+        "scope": "Real entry + controlled viewport rectangles; hover, fit, grouping, palette and source isolation. Not browser pixels."
+      }
+    },
+    {
+      "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/field-reporting.integration.cjs",
+      "arguments": [],
+      "exitCode": 0,
+      "stdout": "{\n  \"checks\": 75,\n  \"result\": \"PASS\",\n  \"scope\": \"Original index entry and JSDOM interactions, not browser pixels\"\n}\n",
+      "stderr": "",
+      "baselineSha256": "b98e07d6d8451e4bee798d971a3f56ce6a350de0ef2fc69c4f531853873c55d9",
+      "currentSha256": "8d6d68ec7c9082d31020cb450810cd46c30cd70b3c773766be010a337a1d49fa",
+      "staticAssertionCalls": {
+        "before": 72,
+        "after": 72
+      },
+      "summary": {
+        "checks": 75,
+        "result": "PASS",
+        "scope": "Original index entry and JSDOM interactions, not browser pixels"
+      }
+    }
+  ],
+  "unchangedRuntime": [
+    {
+      "name": "field-report-model.js",
+      "sha256": "73a2c6f47ded2aa61cded0dc1c85805488b69c8570f899523dcd8232da5d20b2",
+      "unchanged": true
+    },
+    {
+      "name": "field-report-editor.js",
+      "sha256": "40d3b22ed8706ad6366d6f229216802d4316d005258cd7c895b096d3edc297c4",
+      "unchanged": true
+    },
+    {
+      "name": "field-reporting.js",
+      "sha256": "48890560696d54e34609aa5d0cb0fcb3aa279cb69bf672cfed99b0974ab2c20f",
+      "unchanged": true
+    },
+    {
+      "name": "field-report-form.js",
+      "sha256": "36df4ef785a23c361f04764b1e9e69271a5081de75997d9a2583d0ebbf277837",
+      "unchanged": true
+    },
+    {
+      "name": "field-report-import.js",
+      "sha256": "0838454fb7ce26d852ca218501069ddfcd85b92f5da9f3ef05e2a47ded8d21b6",
+      "unchanged": true
+    },
+    {
+      "name": "fg-screen-model.js",
+      "sha256": "e5574da22029f9789ea9f57da0dbadb0c546afe6e631e02c246eb1c79559bb84",
+      "unchanged": true
+    },
+    {
+      "name": "fg-screen-hooks.jsx",
+      "sha256": "53726fd6bec510098eeb11e7ee5679df540881a2c989f78550ed17fed8590aa0",
+      "unchanged": true
+    },
+    {
+      "name": "FieldGanttScreen.jsx",
+      "sha256": "ead03d3767a60b3e63acfb3d88b77cea533175b7bea779640b587cbafa74275a",
+      "unchanged": true
+    },
+    {
+      "name": "FieldGanttRows.jsx",
+      "sha256": "0497cc456e04692a67425acc008091de3ebfd94b88688d23181c4e49d7dd0bc4",
+      "unchanged": true
+    },
+    {
+      "name": "FieldGanttChain.jsx",
+      "sha256": "11e9d17fe38611399f538ae64765170c1448e9b8b122d923dc4584fd5679dc08",
+      "unchanged": true
+    },
+    {
+      "name": "FieldGanttViewport.jsx",
+      "sha256": "90274938ba27c0505dabde5935a26a3c7b5e9fe3a4172aa65311e2a99c75efd0",
+      "unchanged": true
+    },
+    {
+      "name": "field-gantt-chains.js",
+      "sha256": "1dc8a51f9e868b03b8281d7d0bd08d51e42109e71ae8f74b7178a43f5d9ab10e",
+      "unchanged": true
+    },
+    {
+      "name": "field-gantt-current-chain-data.js",
+      "sha256": "c7f89d1147fe2e8e3a401ece9b2152bcf9b88ad2b647f89dadc71b0b86554efb",
+      "unchanged": true
+    },
+    {
+      "name": "field-gantt-current-chains.js",
+      "sha256": "a98cc498b0173ad7c19c1672b2bd6955f3545276e54844824112fb677562e146",
+      "unchanged": true
+    },
+    {
+      "name": "field-gantt-example.js",
+      "sha256": "ca8aa095d09be6bdf3341d457f9471aa9abae00798abc82b7a51fd72bbe32992",
+      "unchanged": true
+    },
+    {
+      "name": "field-gantt-density-example.js",
+      "sha256": "d0beee8923d958fcbf59feca2a36706ada84b95b292b5c66966e2661976d7ad7",
+      "unchanged": true
+    }
+  ],
+  "preservedContracts": [
+    "quantity-derived completion and reopen on correction",
+    "unknown values distinct from zero",
+    "per-report times and original resource ownership",
+    "same-resource gaps and overlap tracks",
+    "exact time proportions and date boundaries",
+    "filtered and full CSV rows, quoting and unknown fields",
+    "keyboard hover and non-jumping chain preview",
+    "source-qualified chain selection",
+    "missing-source recovery without changing hook order",
+    "actual report save and page-return continuity"
+  ],
+  "fixtureAdjustments": [
+    "Load shipped local React and current fg-screen model/hooks",
+    "Explicitly open the optional chain and target its dedicated line toggle",
+    "Use the actual late-filter select and its display/export label",
+    "Check adaptive tick labels against actual grid hours",
+    "Apply in-memory fixture edits through the same remount lifecycle as a real return from the reporting page",
+    "Select auto-fit before auto resize cases",
+    "Use the actual 14-page host and displayed plan version"
+  ],
+  "plainDashboardCopyProof": "/tmp/aps-ui-dashboard-visual-20260908/plain-source-copy-proof.json"
+}

@@ -1,0 +1,2085 @@
+{
+  "disposition": "Optional consistency candidate only; no mandatory same-class fixes confirmed.",
+  "candidate": [
+    {
+      "label": "gantt-resource",
+      "width": 1920,
+      "theme": "light",
+      "file": "/tmp/aps-other-surfaces-umo7f8/gantt-resource-1920-light.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(255, 255, 255)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 264,
+            "y": 263.59375,
+            "width": 1342,
+            "height": 361,
+            "top": 263.59375,
+            "right": 1606,
+            "bottom": 624.59375,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 264.59375,
+            "width": 1340,
+            "height": 45,
+            "top": 264.59375,
+            "right": 1605,
+            "bottom": 309.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 309.59375,
+            "width": 1340,
+            "height": 51,
+            "top": 309.59375,
+            "right": 1605,
+            "bottom": 360.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 360.59375,
+            "width": 160,
+            "height": 76,
+            "top": 360.59375,
+            "right": 425,
+            "bottom": 436.59375,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 425,
+            "y": 360.59375,
+            "width": 1180,
+            "height": 76,
+            "top": 360.59375,
+            "right": 1605,
+            "bottom": 436.59375,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 265,
+            "y": 590.59375,
+            "width": 1340,
+            "height": 33,
+            "top": 590.59375,
+            "right": 1605,
+            "bottom": 623.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(71, 85, 105)"
+        }
+      ]
+    },
+    {
+      "label": "gantt-person",
+      "width": 1920,
+      "theme": "light",
+      "file": "/tmp/aps-other-surfaces-umo7f8/gantt-person-1920-light.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(255, 255, 255)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 264,
+            "y": 263.59375,
+            "width": 1342,
+            "height": 361,
+            "top": 263.59375,
+            "right": 1606,
+            "bottom": 624.59375,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 264.59375,
+            "width": 1340,
+            "height": 45,
+            "top": 264.59375,
+            "right": 1605,
+            "bottom": 309.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 309.59375,
+            "width": 1340,
+            "height": 51,
+            "top": 309.59375,
+            "right": 1605,
+            "bottom": 360.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 360.59375,
+            "width": 160,
+            "height": 76,
+            "top": 360.59375,
+            "right": 425,
+            "bottom": 436.59375,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 425,
+            "y": 360.59375,
+            "width": 1180,
+            "height": 76,
+            "top": 360.59375,
+            "right": 1605,
+            "bottom": 436.59375,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 265,
+            "y": 590.59375,
+            "width": 1340,
+            "height": 33,
+            "top": 590.59375,
+            "right": 1605,
+            "bottom": 623.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(71, 85, 105)"
+        }
+      ]
+    },
+    {
+      "label": "gantt-batch",
+      "width": 1920,
+      "theme": "light",
+      "file": "/tmp/aps-other-surfaces-umo7f8/gantt-batch-1920-light.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(255, 255, 255)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 264,
+            "y": 263.59375,
+            "width": 1342,
+            "height": 438,
+            "top": 263.59375,
+            "right": 1606,
+            "bottom": 701.59375,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 264.59375,
+            "width": 1340,
+            "height": 45,
+            "top": 264.59375,
+            "right": 1605,
+            "bottom": 309.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 309.59375,
+            "width": 1340,
+            "height": 51,
+            "top": 309.59375,
+            "right": 1605,
+            "bottom": 360.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 360.59375,
+            "width": 160,
+            "height": 76,
+            "top": 360.59375,
+            "right": 425,
+            "bottom": 436.59375,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 425,
+            "y": 360.59375,
+            "width": 1180,
+            "height": 76,
+            "top": 360.59375,
+            "right": 1605,
+            "bottom": 436.59375,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 265,
+            "y": 667.59375,
+            "width": 1340,
+            "height": 33,
+            "top": 667.59375,
+            "right": 1605,
+            "bottom": 700.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(71, 85, 105)"
+        }
+      ]
+    },
+    {
+      "label": "trial-resource",
+      "width": 1920,
+      "theme": "light",
+      "file": "/tmp/aps-other-surfaces-umo7f8/trial-resource-1920-light.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(255, 255, 255)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 264,
+            "y": 371.484375,
+            "width": 1302,
+            "height": 384.765625,
+            "top": 371.484375,
+            "right": 1566,
+            "bottom": 756.25,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 372.484375,
+            "width": 1300,
+            "height": 45,
+            "top": 372.484375,
+            "right": 1565,
+            "bottom": 417.484375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 417.484375,
+            "width": 1300,
+            "height": 56.1875,
+            "top": 417.484375,
+            "right": 1565,
+            "bottom": 473.671875,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 473.671875,
+            "width": 160,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 425,
+            "bottom": 555,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 425,
+            "y": 473.671875,
+            "width": 1140,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 1565,
+            "bottom": 555,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 265,
+            "y": 719.65625,
+            "width": 1300,
+            "height": 35.59375,
+            "top": 719.65625,
+            "right": 1565,
+            "bottom": 755.25,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(71, 85, 105)"
+        }
+      ]
+    },
+    {
+      "label": "trial-batch",
+      "width": 1920,
+      "theme": "light",
+      "file": "/tmp/aps-other-surfaces-umo7f8/trial-batch-1920-light.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(255, 255, 255)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 264,
+            "y": 371.484375,
+            "width": 1302,
+            "height": 467.09375,
+            "top": 371.484375,
+            "right": 1566,
+            "bottom": 838.578125,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 372.484375,
+            "width": 1300,
+            "height": 45,
+            "top": 372.484375,
+            "right": 1565,
+            "bottom": 417.484375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 417.484375,
+            "width": 1300,
+            "height": 56.1875,
+            "top": 417.484375,
+            "right": 1565,
+            "bottom": 473.671875,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 473.671875,
+            "width": 160,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 425,
+            "bottom": 555,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 425,
+            "y": 473.671875,
+            "width": 1140,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 1565,
+            "bottom": 555,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 265,
+            "y": 801.984375,
+            "width": 1300,
+            "height": 35.59375,
+            "top": 801.984375,
+            "right": 1565,
+            "bottom": 837.578125,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(71, 85, 105)"
+        }
+      ]
+    },
+    {
+      "label": "gantt-resource",
+      "width": 1920,
+      "theme": "dark",
+      "file": "/tmp/aps-other-surfaces-umo7f8/gantt-resource-1920-dark.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(30, 41, 59)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 264,
+            "y": 263.59375,
+            "width": 1342,
+            "height": 361,
+            "top": 263.59375,
+            "right": 1606,
+            "bottom": 624.59375,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 264.59375,
+            "width": 1340,
+            "height": 45,
+            "top": 264.59375,
+            "right": 1605,
+            "bottom": 309.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 309.59375,
+            "width": 1340,
+            "height": 51,
+            "top": 309.59375,
+            "right": 1605,
+            "bottom": 360.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 360.59375,
+            "width": 160,
+            "height": 76,
+            "top": 360.59375,
+            "right": 425,
+            "bottom": 436.59375,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 425,
+            "y": 360.59375,
+            "width": 1180,
+            "height": 76,
+            "top": 360.59375,
+            "right": 1605,
+            "bottom": 436.59375,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 265,
+            "y": 590.59375,
+            "width": 1340,
+            "height": 33,
+            "top": 590.59375,
+            "right": 1605,
+            "bottom": 623.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(203, 213, 225)"
+        }
+      ]
+    },
+    {
+      "label": "gantt-person",
+      "width": 1920,
+      "theme": "dark",
+      "file": "/tmp/aps-other-surfaces-umo7f8/gantt-person-1920-dark.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(30, 41, 59)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 264,
+            "y": 263.59375,
+            "width": 1342,
+            "height": 361,
+            "top": 263.59375,
+            "right": 1606,
+            "bottom": 624.59375,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 264.59375,
+            "width": 1340,
+            "height": 45,
+            "top": 264.59375,
+            "right": 1605,
+            "bottom": 309.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 309.59375,
+            "width": 1340,
+            "height": 51,
+            "top": 309.59375,
+            "right": 1605,
+            "bottom": 360.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 360.59375,
+            "width": 160,
+            "height": 76,
+            "top": 360.59375,
+            "right": 425,
+            "bottom": 436.59375,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 425,
+            "y": 360.59375,
+            "width": 1180,
+            "height": 76,
+            "top": 360.59375,
+            "right": 1605,
+            "bottom": 436.59375,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 265,
+            "y": 590.59375,
+            "width": 1340,
+            "height": 33,
+            "top": 590.59375,
+            "right": 1605,
+            "bottom": 623.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(203, 213, 225)"
+        }
+      ]
+    },
+    {
+      "label": "gantt-batch",
+      "width": 1920,
+      "theme": "dark",
+      "file": "/tmp/aps-other-surfaces-umo7f8/gantt-batch-1920-dark.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(30, 41, 59)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 264,
+            "y": 263.59375,
+            "width": 1342,
+            "height": 438,
+            "top": 263.59375,
+            "right": 1606,
+            "bottom": 701.59375,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 264.59375,
+            "width": 1340,
+            "height": 45,
+            "top": 264.59375,
+            "right": 1605,
+            "bottom": 309.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 309.59375,
+            "width": 1340,
+            "height": 51,
+            "top": 309.59375,
+            "right": 1605,
+            "bottom": 360.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 360.59375,
+            "width": 160,
+            "height": 76,
+            "top": 360.59375,
+            "right": 425,
+            "bottom": 436.59375,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 425,
+            "y": 360.59375,
+            "width": 1180,
+            "height": 76,
+            "top": 360.59375,
+            "right": 1605,
+            "bottom": 436.59375,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 265,
+            "y": 667.59375,
+            "width": 1340,
+            "height": 33,
+            "top": 667.59375,
+            "right": 1605,
+            "bottom": 700.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(203, 213, 225)"
+        }
+      ]
+    },
+    {
+      "label": "trial-resource",
+      "width": 1920,
+      "theme": "dark",
+      "file": "/tmp/aps-other-surfaces-umo7f8/trial-resource-1920-dark.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(30, 41, 59)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 264,
+            "y": 371.484375,
+            "width": 1302,
+            "height": 384.765625,
+            "top": 371.484375,
+            "right": 1566,
+            "bottom": 756.25,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 372.484375,
+            "width": 1300,
+            "height": 45,
+            "top": 372.484375,
+            "right": 1565,
+            "bottom": 417.484375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 417.484375,
+            "width": 1300,
+            "height": 56.1875,
+            "top": 417.484375,
+            "right": 1565,
+            "bottom": 473.671875,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 473.671875,
+            "width": 160,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 425,
+            "bottom": 555,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 425,
+            "y": 473.671875,
+            "width": 1140,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 1565,
+            "bottom": 555,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 265,
+            "y": 719.65625,
+            "width": 1300,
+            "height": 35.59375,
+            "top": 719.65625,
+            "right": 1565,
+            "bottom": 755.25,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(203, 213, 225)"
+        }
+      ]
+    },
+    {
+      "label": "trial-batch",
+      "width": 1920,
+      "theme": "dark",
+      "file": "/tmp/aps-other-surfaces-umo7f8/trial-batch-1920-dark.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(30, 41, 59)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 264,
+            "y": 371.484375,
+            "width": 1302,
+            "height": 467.09375,
+            "top": 371.484375,
+            "right": 1566,
+            "bottom": 838.578125,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 372.484375,
+            "width": 1300,
+            "height": 45,
+            "top": 372.484375,
+            "right": 1565,
+            "bottom": 417.484375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 417.484375,
+            "width": 1300,
+            "height": 56.1875,
+            "top": 417.484375,
+            "right": 1565,
+            "bottom": 473.671875,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 473.671875,
+            "width": 160,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 425,
+            "bottom": 555,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 425,
+            "y": 473.671875,
+            "width": 1140,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 1565,
+            "bottom": 555,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 265,
+            "y": 801.984375,
+            "width": 1300,
+            "height": 35.59375,
+            "top": 801.984375,
+            "right": 1565,
+            "bottom": 837.578125,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(203, 213, 225)"
+        }
+      ]
+    },
+    {
+      "label": "gantt-resource",
+      "width": 1392,
+      "theme": "light",
+      "file": "/tmp/aps-other-surfaces-umo7f8/gantt-resource-1392-light.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(255, 255, 255)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 264,
+            "y": 263.59375,
+            "width": 858,
+            "height": 361,
+            "top": 263.59375,
+            "right": 1122,
+            "bottom": 624.59375,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 264.59375,
+            "width": 856,
+            "height": 45,
+            "top": 264.59375,
+            "right": 1121,
+            "bottom": 309.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 309.59375,
+            "width": 1120,
+            "height": 51,
+            "top": 309.59375,
+            "right": 1385,
+            "bottom": 360.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 360.59375,
+            "width": 160,
+            "height": 76,
+            "top": 360.59375,
+            "right": 425,
+            "bottom": 436.59375,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 425,
+            "y": 360.59375,
+            "width": 960,
+            "height": 76,
+            "top": 360.59375,
+            "right": 1385,
+            "bottom": 436.59375,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 265,
+            "y": 590.59375,
+            "width": 856,
+            "height": 33,
+            "top": 590.59375,
+            "right": 1121,
+            "bottom": 623.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(71, 85, 105)"
+        }
+      ]
+    },
+    {
+      "label": "gantt-person",
+      "width": 1392,
+      "theme": "light",
+      "file": "/tmp/aps-other-surfaces-umo7f8/gantt-person-1392-light.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(255, 255, 255)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 264,
+            "y": 263.59375,
+            "width": 858,
+            "height": 361,
+            "top": 263.59375,
+            "right": 1122,
+            "bottom": 624.59375,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 264.59375,
+            "width": 856,
+            "height": 45,
+            "top": 264.59375,
+            "right": 1121,
+            "bottom": 309.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 309.59375,
+            "width": 1120,
+            "height": 51,
+            "top": 309.59375,
+            "right": 1385,
+            "bottom": 360.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 360.59375,
+            "width": 160,
+            "height": 76,
+            "top": 360.59375,
+            "right": 425,
+            "bottom": 436.59375,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 425,
+            "y": 360.59375,
+            "width": 960,
+            "height": 76,
+            "top": 360.59375,
+            "right": 1385,
+            "bottom": 436.59375,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 265,
+            "y": 590.59375,
+            "width": 856,
+            "height": 33,
+            "top": 590.59375,
+            "right": 1121,
+            "bottom": 623.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(71, 85, 105)"
+        }
+      ]
+    },
+    {
+      "label": "gantt-batch",
+      "width": 1392,
+      "theme": "light",
+      "file": "/tmp/aps-other-surfaces-umo7f8/gantt-batch-1392-light.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(255, 255, 255)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 264,
+            "y": 263.59375,
+            "width": 858,
+            "height": 438,
+            "top": 263.59375,
+            "right": 1122,
+            "bottom": 701.59375,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 264.59375,
+            "width": 856,
+            "height": 45,
+            "top": 264.59375,
+            "right": 1121,
+            "bottom": 309.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 309.59375,
+            "width": 1120,
+            "height": 51,
+            "top": 309.59375,
+            "right": 1385,
+            "bottom": 360.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 265,
+            "y": 360.59375,
+            "width": 160,
+            "height": 76,
+            "top": 360.59375,
+            "right": 425,
+            "bottom": 436.59375,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 425,
+            "y": 360.59375,
+            "width": 960,
+            "height": 76,
+            "top": 360.59375,
+            "right": 1385,
+            "bottom": 436.59375,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 265,
+            "y": 667.59375,
+            "width": 856,
+            "height": 33,
+            "top": 667.59375,
+            "right": 1121,
+            "bottom": 700.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(71, 85, 105)"
+        }
+      ]
+    },
+    {
+      "label": "trial-resource",
+      "width": 1392,
+      "theme": "light",
+      "file": "/tmp/aps-other-surfaces-umo7f8/trial-resource-1392-light.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(255, 255, 255)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 256,
+            "y": 371.484375,
+            "width": 824,
+            "height": 384.765625,
+            "top": 371.484375,
+            "right": 1080,
+            "bottom": 756.25,
+            "left": 256
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 257,
+            "y": 372.484375,
+            "width": 822,
+            "height": 45,
+            "top": 372.484375,
+            "right": 1079,
+            "bottom": 417.484375,
+            "left": 257
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 257,
+            "y": 417.484375,
+            "width": 960,
+            "height": 56.1875,
+            "top": 417.484375,
+            "right": 1217,
+            "bottom": 473.671875,
+            "left": 257
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 257,
+            "y": 473.671875,
+            "width": 160,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 417,
+            "bottom": 555,
+            "left": 257
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 417,
+            "y": 473.671875,
+            "width": 800,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 1217,
+            "bottom": 555,
+            "left": 417
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 257,
+            "y": 719.65625,
+            "width": 822,
+            "height": 35.59375,
+            "top": 719.65625,
+            "right": 1079,
+            "bottom": 755.25,
+            "left": 257
+          },
+          "borderRight": "0px none rgb(71, 85, 105)"
+        }
+      ]
+    },
+    {
+      "label": "trial-batch",
+      "width": 1392,
+      "theme": "light",
+      "file": "/tmp/aps-other-surfaces-umo7f8/trial-batch-1392-light.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(255, 255, 255)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 256,
+            "y": 371.484375,
+            "width": 824,
+            "height": 467.09375,
+            "top": 371.484375,
+            "right": 1080,
+            "bottom": 838.578125,
+            "left": 256
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 257,
+            "y": 372.484375,
+            "width": 822,
+            "height": 45,
+            "top": 372.484375,
+            "right": 1079,
+            "bottom": 417.484375,
+            "left": 257
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 257,
+            "y": 417.484375,
+            "width": 960,
+            "height": 56.1875,
+            "top": 417.484375,
+            "right": 1217,
+            "bottom": 473.671875,
+            "left": 257
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(248, 250, 252)",
+          "effective": "rgb(248, 250, 252)",
+          "rect": {
+            "x": 257,
+            "y": 473.671875,
+            "width": 160,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 417,
+            "bottom": 555,
+            "left": 257
+          },
+          "borderRight": "1px solid rgb(226, 232, 240)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 417,
+            "y": 473.671875,
+            "width": 800,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 1217,
+            "bottom": 555,
+            "left": 417
+          },
+          "borderRight": "0px none rgb(15, 23, 42)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(255, 255, 255)",
+          "rect": {
+            "x": 257,
+            "y": 801.984375,
+            "width": 822,
+            "height": 35.59375,
+            "top": 801.984375,
+            "right": 1079,
+            "bottom": 837.578125,
+            "left": 257
+          },
+          "borderRight": "0px none rgb(71, 85, 105)"
+        }
+      ]
+    },
+    {
+      "label": "gantt-resource",
+      "width": 1392,
+      "theme": "dark",
+      "file": "/tmp/aps-other-surfaces-umo7f8/gantt-resource-1392-dark.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(30, 41, 59)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 264,
+            "y": 263.59375,
+            "width": 858,
+            "height": 361,
+            "top": 263.59375,
+            "right": 1122,
+            "bottom": 624.59375,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 264.59375,
+            "width": 856,
+            "height": 45,
+            "top": 264.59375,
+            "right": 1121,
+            "bottom": 309.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 309.59375,
+            "width": 1120,
+            "height": 51,
+            "top": 309.59375,
+            "right": 1385,
+            "bottom": 360.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 360.59375,
+            "width": 160,
+            "height": 76,
+            "top": 360.59375,
+            "right": 425,
+            "bottom": 436.59375,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 425,
+            "y": 360.59375,
+            "width": 960,
+            "height": 76,
+            "top": 360.59375,
+            "right": 1385,
+            "bottom": 436.59375,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 265,
+            "y": 590.59375,
+            "width": 856,
+            "height": 33,
+            "top": 590.59375,
+            "right": 1121,
+            "bottom": 623.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(203, 213, 225)"
+        }
+      ]
+    },
+    {
+      "label": "gantt-person",
+      "width": 1392,
+      "theme": "dark",
+      "file": "/tmp/aps-other-surfaces-umo7f8/gantt-person-1392-dark.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(30, 41, 59)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 264,
+            "y": 263.59375,
+            "width": 858,
+            "height": 361,
+            "top": 263.59375,
+            "right": 1122,
+            "bottom": 624.59375,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 264.59375,
+            "width": 856,
+            "height": 45,
+            "top": 264.59375,
+            "right": 1121,
+            "bottom": 309.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 309.59375,
+            "width": 1120,
+            "height": 51,
+            "top": 309.59375,
+            "right": 1385,
+            "bottom": 360.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 360.59375,
+            "width": 160,
+            "height": 76,
+            "top": 360.59375,
+            "right": 425,
+            "bottom": 436.59375,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 425,
+            "y": 360.59375,
+            "width": 960,
+            "height": 76,
+            "top": 360.59375,
+            "right": 1385,
+            "bottom": 436.59375,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 265,
+            "y": 590.59375,
+            "width": 856,
+            "height": 33,
+            "top": 590.59375,
+            "right": 1121,
+            "bottom": 623.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(203, 213, 225)"
+        }
+      ]
+    },
+    {
+      "label": "gantt-batch",
+      "width": 1392,
+      "theme": "dark",
+      "file": "/tmp/aps-other-surfaces-umo7f8/gantt-batch-1392-dark.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(30, 41, 59)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 264,
+            "y": 263.59375,
+            "width": 858,
+            "height": 438,
+            "top": 263.59375,
+            "right": 1122,
+            "bottom": 701.59375,
+            "left": 264
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 264.59375,
+            "width": 856,
+            "height": 45,
+            "top": 264.59375,
+            "right": 1121,
+            "bottom": 309.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 309.59375,
+            "width": 1120,
+            "height": 51,
+            "top": 309.59375,
+            "right": 1385,
+            "bottom": 360.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 265,
+            "y": 360.59375,
+            "width": 160,
+            "height": 76,
+            "top": 360.59375,
+            "right": 425,
+            "bottom": 436.59375,
+            "left": 265
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 425,
+            "y": 360.59375,
+            "width": 960,
+            "height": 76,
+            "top": 360.59375,
+            "right": 1385,
+            "bottom": 436.59375,
+            "left": 425
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 265,
+            "y": 667.59375,
+            "width": 856,
+            "height": 33,
+            "top": 667.59375,
+            "right": 1121,
+            "bottom": 700.59375,
+            "left": 265
+          },
+          "borderRight": "0px none rgb(203, 213, 225)"
+        }
+      ]
+    },
+    {
+      "label": "trial-resource",
+      "width": 1392,
+      "theme": "dark",
+      "file": "/tmp/aps-other-surfaces-umo7f8/trial-resource-1392-dark.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(30, 41, 59)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 256,
+            "y": 371.484375,
+            "width": 824,
+            "height": 384.765625,
+            "top": 371.484375,
+            "right": 1080,
+            "bottom": 756.25,
+            "left": 256
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 257,
+            "y": 372.484375,
+            "width": 822,
+            "height": 45,
+            "top": 372.484375,
+            "right": 1079,
+            "bottom": 417.484375,
+            "left": 257
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 257,
+            "y": 417.484375,
+            "width": 960,
+            "height": 56.1875,
+            "top": 417.484375,
+            "right": 1217,
+            "bottom": 473.671875,
+            "left": 257
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 257,
+            "y": 473.671875,
+            "width": 160,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 417,
+            "bottom": 555,
+            "left": 257
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 417,
+            "y": 473.671875,
+            "width": 800,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 1217,
+            "bottom": 555,
+            "left": 417
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 257,
+            "y": 719.65625,
+            "width": 822,
+            "height": 35.59375,
+            "top": 719.65625,
+            "right": 1079,
+            "bottom": 755.25,
+            "left": 257
+          },
+          "borderRight": "0px none rgb(203, 213, 225)"
+        }
+      ]
+    },
+    {
+      "label": "trial-batch",
+      "width": 1392,
+      "theme": "dark",
+      "file": "/tmp/aps-other-surfaces-umo7f8/trial-batch-1392-dark.png",
+      "surfaces": [
+        {
+          "cls": "tr-board-shell",
+          "bg": "rgb(30, 41, 59)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 256,
+            "y": 371.484375,
+            "width": 824,
+            "height": 467.09375,
+            "top": 371.484375,
+            "right": 1080,
+            "bottom": 838.578125,
+            "left": 256
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-toolbar",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 257,
+            "y": 372.484375,
+            "width": 822,
+            "height": 45,
+            "top": 372.484375,
+            "right": 1079,
+            "bottom": 417.484375,
+            "left": 257
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-axis",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 257,
+            "y": 417.484375,
+            "width": 960,
+            "height": 56.1875,
+            "top": 417.484375,
+            "right": 1217,
+            "bottom": 473.671875,
+            "left": 257
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-resource",
+          "bg": "rgb(22, 32, 50)",
+          "effective": "rgb(22, 32, 50)",
+          "rect": {
+            "x": 257,
+            "y": 473.671875,
+            "width": 160,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 417,
+            "bottom": 555,
+            "left": 257
+          },
+          "borderRight": "1px solid rgb(51, 65, 85)"
+        },
+        {
+          "cls": "tr-track",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 417,
+            "y": 473.671875,
+            "width": 800,
+            "height": 81.328125,
+            "top": 473.671875,
+            "right": 1217,
+            "bottom": 555,
+            "left": 417
+          },
+          "borderRight": "0px none rgb(241, 245, 249)"
+        },
+        {
+          "cls": "tr-legend",
+          "bg": "rgba(0, 0, 0, 0)",
+          "effective": "rgb(30, 41, 59)",
+          "rect": {
+            "x": 257,
+            "y": 801.984375,
+            "width": 822,
+            "height": 35.59375,
+            "top": 801.984375,
+            "right": 1079,
+            "bottom": 837.578125,
+            "left": 257
+          },
+          "borderRight": "0px none rgb(203, 213, 225)"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "results": [
+    {
+      "width": 1392,
+      "initialTheme": "light",
+      "legacyPlanTheme": "dark",
+      "version": 16,
+      "history": 1,
+      "draftPreserved": true,
+      "crossTab": true,
+      "failedWritePreserved": true
+    },
+    {
+      "width": 1392,
+      "initialTheme": "dark",
+      "legacyPlanTheme": "light",
+      "version": 16,
+      "history": 1,
+      "draftPreserved": true,
+      "crossTab": true,
+      "failedWritePreserved": true
+    },
+    {
+      "width": 1920,
+      "initialTheme": "light",
+      "legacyPlanTheme": "dark",
+      "version": 16,
+      "history": 1,
+      "draftPreserved": true,
+      "crossTab": true,
+      "failedWritePreserved": true
+    },
+    {
+      "width": 1920,
+      "initialTheme": "dark",
+      "legacyPlanTheme": "light",
+      "version": 16,
+      "history": 1,
+      "draftPreserved": true,
+      "crossTab": true,
+      "failedWritePreserved": true
+    }
+  ],
+  "errors": [],
+  "remote": []
+}

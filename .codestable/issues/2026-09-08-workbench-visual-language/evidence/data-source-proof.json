@@ -1,0 +1,176 @@
+{
+  "comparedAgainst": "/tmp/aps-ui-implementation.elQPXm/前端设计/ui_kits/workbench",
+  "files": [
+    {
+      "file": "ProcessNative.jsx",
+      "changed": false,
+      "beforeSha256": "030c0f48b98d340ec361b3f55a5331d566b7dd2ffb52e7bd2a9ac6f43b3bb8c7",
+      "afterSha256": "030c0f48b98d340ec361b3f55a5331d566b7dd2ffb52e7bd2a9ac6f43b3bb8c7"
+    },
+    {
+      "file": "plana.css",
+      "changed": true,
+      "beforeSha256": "90d4024a38e8a850879ecc426e163544d82342d36a2a93c72d92b257e9f4d226",
+      "afterSha256": "177436ef2591f5e18b571742ae5b019f53faaf9fdb58a1486c066ad606fbf22a"
+    },
+    {
+      "file": "BaseBatches.jsx",
+      "changed": true,
+      "beforeSha256": "c0ba6d34d232d41d8c5d5d1dbd7ef02105745a292f6bd0a90eb3d3184a74fc8f",
+      "afterSha256": "65c697db60dc3104ad62b44a108e05327aa69f95ca30f8b480045ab21f953bf8"
+    },
+    {
+      "file": "batch-workbench.css",
+      "changed": true,
+      "beforeSha256": "2236bc18d358d7ef2cfddcfffdb99d68cee5752e88bea383228749b55f6ae0af",
+      "afterSha256": "16cd43d8ae6a9d6b56a9da99b730161ce1459d57ada53c1f5fc1ade4fdf10df2"
+    },
+    {
+      "file": "MasterDataOverview.jsx",
+      "changed": true,
+      "beforeSha256": "1508f9e9db3ae331b9a7a29d23d3b84f902aab59f8109b8f737e71a208a07a53",
+      "afterSha256": "bbcb790bd887b4580570fe99423d6a4447bb73b35e4322ea2933263f8c3ee61f"
+    },
+    {
+      "file": "master-data-overview.css",
+      "changed": true,
+      "beforeSha256": "564c3761e3365e6a8ec27eac9af120a3591e99e2c1e36a71aaaf968636a26ab8",
+      "afterSha256": "6d353ed4a10934bd413b3bbf0a433bfc6ae2895f9f3087c036f9158d9f5c8959"
+    },
+    {
+      "file": "CalibScreen.jsx",
+      "changed": true,
+      "beforeSha256": "89e2951aafb2c6966ae061cc77701923b4764036d8f5794cdcfd019fd03f731a",
+      "afterSha256": "39ef68c7037fb58b1576e662d22cf1c48a5e79119df25d933f334c21101b9d75"
+    },
+    {
+      "file": "basedata.css",
+      "changed": true,
+      "beforeSha256": "62276a088d8ba3620e470023ddbc87930cbab6c96e2736260dcae43bde4b4090",
+      "afterSha256": "feb2945b2117b1b13cb5a5939235c70cd26da076964e1811e00406e6b3022430"
+    },
+    {
+      "file": "tests/data-alignment-browser.cjs",
+      "changed": true,
+      "beforeSha256": "561760e771e071c9ea29fd8aba61fe9d63b4237caa8c64a8d23feb13d1086bc8",
+      "afterSha256": "c8d4254e307fe8c75594e6729e9c119d57db4e71f654dc0595cf4221557de9e8"
+    },
+    {
+      "file": "tests/batch-workbench-browser.cjs",
+      "changed": true,
+      "beforeSha256": "aefe209e45397d98b5105afff1e0be3b93b0a4cd7c307e6d63d81cec8ab178a6",
+      "afterSha256": "5b538593a9ac534cd1efccaa353bb6fa6a43e469f03f44b6c1d333f3adfc1f4f"
+    }
+  ],
+  "unchanged": [
+    {
+      "file": "ProcessNative.jsx",
+      "identical": true,
+      "sha256": "030c0f48b98d340ec361b3f55a5331d566b7dd2ffb52e7bd2a9ac6f43b3bb8c7"
+    },
+    {
+      "file": "plana-logic.js",
+      "identical": true,
+      "sha256": "90cd952ab16d52bd2adea4a8664e2832c521f7dd5f501cd830e3789423a02623"
+    },
+    {
+      "file": "batch-draft-model.js",
+      "identical": true,
+      "sha256": "481aa208a6e460a9ce33e80ac335c6e41736f951674dc1a10abb4ed7daf36f9e"
+    },
+    {
+      "file": "master-data-overview.js",
+      "identical": true,
+      "sha256": "09f0d8fd73f6b6b359cf4594f3c67e40b0d57f5a4c5e9ceae9222df8f1e81c6c"
+    },
+    {
+      "file": "BaseShared.jsx",
+      "identical": true,
+      "sha256": "f066d36643c2358515032417f87320126d6ea0e2daade9d449aaab57e5967622"
+    },
+    {
+      "file": "assets/vendor/react-18.3.1.js",
+      "identical": true,
+      "sha256": "28348fef6cb0ed8b2ceeb22deaf824428fd13875d84c73d38f77dd216fc24e7f"
+    },
+    {
+      "file": "assets/vendor/react-dom-18.3.1.js",
+      "identical": true,
+      "sha256": "f9044a5e9c39db8bb1a204dff924e526ec0a621e695bb69de1035811be8709e4"
+    },
+    {
+      "file": "assets/vendor/babel-7.29.0.min.js",
+      "identical": true,
+      "sha256": "2623a9e22809915ce789b4461154e277ddce520d5a4320c14d44332a5d0dcea0"
+    }
+  ],
+  "handlers": [
+    {
+      "file": "BaseBatches.jsx",
+      "beforeCount": 94,
+      "afterCount": 94,
+      "identical": true
+    },
+    {
+      "file": "MasterDataOverview.jsx",
+      "beforeCount": 23,
+      "afterCount": 23,
+      "identical": true
+    },
+    {
+      "file": "CalibScreen.jsx",
+      "beforeCount": 5,
+      "afterCount": 5,
+      "identical": true
+    }
+  ],
+  "calibration": {
+    "SEED": true,
+    "devColor": true,
+    "devText": true,
+    "sampleOnlyCopy": true,
+    "adoptedLabel": "样例已采纳"
+  },
+  "chromeVersion": "152.0.7977.77",
+  "verification": {
+    "records": 708,
+    "failures": 0,
+    "errors": 0,
+    "screenshots": 200,
+    "filteredCsv": 4,
+    "badgeContrast": [
+      {
+        "case": "1392-light-batch-status-contrast",
+        "minimum": 4.7914469872179986
+      },
+      {
+        "case": "1392-light-calib-status-contrast",
+        "minimum": 4.7914469872179986
+      },
+      {
+        "case": "1392-dark-batch-status-contrast",
+        "minimum": 7.578334267231109
+      },
+      {
+        "case": "1392-dark-calib-status-contrast",
+        "minimum": 7.578334267231109
+      },
+      {
+        "case": "1920-light-batch-status-contrast",
+        "minimum": 4.7914469872179986
+      },
+      {
+        "case": "1920-light-calib-status-contrast",
+        "minimum": 4.7914469872179986
+      },
+      {
+        "case": "1920-dark-batch-status-contrast",
+        "minimum": 7.578334267231109
+      },
+      {
+        "case": "1920-dark-calib-status-contrast",
+        "minimum": 7.578334267231109
+      }
+    ]
+  }
+}

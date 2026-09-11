@@ -1,0 +1,21 @@
+feature: workbench-radius-system
+steps:
+  - id: snapshot
+    action: 完整保存当前前端及相关测试并验签
+    status: done
+  - id: shared
+    action: 落实共用半径、普通控件适配和报表平级分区
+    status: done
+  - id: parallel-pages
+    action: 四个互斥范围处理实际页面、图表、表单和浮层
+    status: done
+  - id: verify
+    action: 整合差异并检查原入口交互、形状、对比度和备份
+    status: done
+checks:
+  - 通用区域使用 0/4/8 三档，功能图形及用户指定产能链原版圆角例外保持
+  - 普通内容不包浮卡，同级标题对齐
+  - 报表两侧真实数据区等高，窄屏恢复自然高度，不填充假记录
+  - 表格内外框、控件、浮层及悬停状态均检查
+  - 业务数据、计算、时间图形语义和事件不变
+  - 原有未提交和暂存内容保留，不声称像素或 clean proof

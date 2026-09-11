@@ -1,0 +1,62 @@
+{
+  "exact_payload_equal": true,
+  "excluded_fields": [
+    "summary.duration_seconds"
+  ],
+  "payload_sha256": [
+    "f25e32d7e256bb06e8bb8de0a65d498a9e5e91ddbe660cf242f566d1311d2296",
+    "f25e32d7e256bb06e8bb8de0a65d498a9e5e91ddbe660cf242f566d1311d2296"
+  ],
+  "calls": [
+    {
+      "file": "core/algorithm_runtime/downtime.py",
+      "name": "__init__",
+      "before": 151740,
+      "after": 608
+    },
+    {
+      "file": "core/algorithm_runtime/downtime.py",
+      "name": "_materialize",
+      "before": 135510,
+      "after": 607
+    },
+    {
+      "file": "core/algorithm_runtime/downtime.py",
+      "name": "shift_end",
+      "before": 723291,
+      "after": 723291
+    },
+    {
+      "file": "core/algorithm_runtime/internal_slot.py",
+      "name": "estimate_internal_slot",
+      "before": 50580,
+      "after": 50580
+    },
+    {
+      "file": "core/algorithms/greedy/auto_assign.py",
+      "name": "_pair_score",
+      "before": 44960,
+      "after": 44960
+    },
+    {
+      "file": "core/services/scheduler/calendar_engine.py",
+      "name": "add_working_hours",
+      "before": 241097,
+      "after": 241097
+    }
+  ],
+  "elapsed_seconds": {
+    "before": [
+      2.383224833,
+      2.4138235000000003,
+      2.3962449160000006
+    ],
+    "after": [
+      2.219710417,
+      2.255134,
+      2.2460619999999993
+    ]
+  },
+  "timing_status": "exploratory_only_exclusive_window_not_confirmed",
+  "independent_of_wall_clock": "call counts and exact output equality"
+}

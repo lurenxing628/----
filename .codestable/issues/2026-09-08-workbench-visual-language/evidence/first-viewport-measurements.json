@@ -1,0 +1,559 @@
+{
+  "browser": "152.0.7977.77",
+  "measurements": [
+    {
+      "state": "reports-1920-light",
+      "label": "current: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序数量 / 待报计划开工 / 完工实际开工 / 整道完工整道完工偏差完成情况 / 到期操作B202609-0",
+        "x": 264,
+        "y": 419.09375,
+        "width": 1632,
+        "height": 362,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(15, 23, 42)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "reports-1920-light",
+      "label": "current: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 5
+    },
+    {
+      "state": "reports-1920-light",
+      "label": "complex: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序数量 / 待报计划开工 / 完工实际开工 / 整道完工整道完工偏差完成情况 / 到期操作DEMO-0110",
+        "x": 264,
+        "y": 419.09375,
+        "width": 1632,
+        "height": 1066,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(15, 23, 42)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "reports-1920-light",
+      "label": "complex: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 9
+    },
+    {
+      "state": "reports-1920-light",
+      "label": "dense: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序数量 / 待报计划开工 / 完工实际开工 / 整道完工整道完工偏差完成情况 / 到期操作U01-DEMO-",
+        "x": 264,
+        "y": 419.09375,
+        "width": 1632,
+        "height": 1322,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(15, 23, 42)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "reports-1920-light",
+      "label": "dense: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 9
+    },
+    {
+      "state": "review-1920-light",
+      "label": "current: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序计划完工 / 整道完工执行情况整道完工偏差有效工时 / 待补定位B202609-02950 检验 · 定位",
+        "x": 264,
+        "y": 400.59375,
+        "width": 1632,
+        "height": 350,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(15, 23, 42)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "review-1920-light",
+      "label": "current: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 5
+    },
+    {
+      "state": "review-1920-light",
+      "label": "complex: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序计划完工 / 整道完工执行情况整道完工偏差有效工时 / 待补定位DEMO-0110 下料 · 回转壳体20",
+        "x": 264,
+        "y": 400.59375,
+        "width": 1632,
+        "height": 1032,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(15, 23, 42)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "review-1920-light",
+      "label": "complex: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 10
+    },
+    {
+      "state": "review-1920-light",
+      "label": "dense: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序计划完工 / 整道完工执行情况整道完工偏差有效工时 / 待补定位U01-DEMO-0110 下料 · 回转",
+        "x": 264,
+        "y": 400.59375,
+        "width": 1632,
+        "height": 1280,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(15, 23, 42)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "review-1920-light",
+      "label": "dense: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 10
+    },
+    {
+      "state": "reports-1920-dark",
+      "label": "current: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序数量 / 待报计划开工 / 完工实际开工 / 整道完工整道完工偏差完成情况 / 到期操作B202609-0",
+        "x": 264,
+        "y": 419.09375,
+        "width": 1632,
+        "height": 362,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(241, 245, 249)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "reports-1920-dark",
+      "label": "current: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 5
+    },
+    {
+      "state": "reports-1920-dark",
+      "label": "complex: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序数量 / 待报计划开工 / 完工实际开工 / 整道完工整道完工偏差完成情况 / 到期操作DEMO-0110",
+        "x": 264,
+        "y": 419.09375,
+        "width": 1632,
+        "height": 1066,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(241, 245, 249)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "reports-1920-dark",
+      "label": "complex: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 9
+    },
+    {
+      "state": "reports-1920-dark",
+      "label": "dense: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序数量 / 待报计划开工 / 完工实际开工 / 整道完工整道完工偏差完成情况 / 到期操作U01-DEMO-",
+        "x": 264,
+        "y": 419.09375,
+        "width": 1632,
+        "height": 1322,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(241, 245, 249)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "reports-1920-dark",
+      "label": "dense: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 9
+    },
+    {
+      "state": "review-1920-dark",
+      "label": "current: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序计划完工 / 整道完工执行情况整道完工偏差有效工时 / 待补定位B202609-02950 检验 · 定位",
+        "x": 264,
+        "y": 400.59375,
+        "width": 1632,
+        "height": 350,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(241, 245, 249)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "review-1920-dark",
+      "label": "current: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 5
+    },
+    {
+      "state": "review-1920-dark",
+      "label": "complex: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序计划完工 / 整道完工执行情况整道完工偏差有效工时 / 待补定位DEMO-0110 下料 · 回转壳体20",
+        "x": 264,
+        "y": 400.59375,
+        "width": 1632,
+        "height": 1032,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(241, 245, 249)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "review-1920-dark",
+      "label": "complex: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 10
+    },
+    {
+      "state": "review-1920-dark",
+      "label": "dense: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序计划完工 / 整道完工执行情况整道完工偏差有效工时 / 待补定位U01-DEMO-0110 下料 · 回转",
+        "x": 264,
+        "y": 400.59375,
+        "width": 1632,
+        "height": 1280,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(241, 245, 249)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "review-1920-dark",
+      "label": "dense: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 10
+    },
+    {
+      "state": "reports-1392-light",
+      "label": "current: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序数量 / 待报计划开工 / 完工实际开工 / 整道完工整道完工偏差完成情况 / 到期操作B202609-0",
+        "x": 264,
+        "y": 419.09375,
+        "width": 1104,
+        "height": 362,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(15, 23, 42)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "reports-1392-light",
+      "label": "current: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 5
+    },
+    {
+      "state": "reports-1392-light",
+      "label": "complex: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序数量 / 待报计划开工 / 完工实际开工 / 整道完工整道完工偏差完成情况 / 到期操作DEMO-0110",
+        "x": 264,
+        "y": 419.09375,
+        "width": 1104,
+        "height": 1066,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(15, 23, 42)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "reports-1392-light",
+      "label": "complex: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 7
+    },
+    {
+      "state": "reports-1392-light",
+      "label": "dense: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序数量 / 待报计划开工 / 完工实际开工 / 整道完工整道完工偏差完成情况 / 到期操作U01-DEMO-",
+        "x": 264,
+        "y": 419.09375,
+        "width": 1104,
+        "height": 1322,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(15, 23, 42)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "reports-1392-light",
+      "label": "dense: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 7
+    },
+    {
+      "state": "review-1392-light",
+      "label": "current: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序计划完工 / 整道完工执行情况整道完工偏差有效工时 / 待补定位B202609-02950 检验 · 定位",
+        "x": 264,
+        "y": 400.59375,
+        "width": 1104,
+        "height": 350,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(15, 23, 42)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "review-1392-light",
+      "label": "current: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 5
+    },
+    {
+      "state": "review-1392-light",
+      "label": "complex: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序计划完工 / 整道完工执行情况整道完工偏差有效工时 / 待补定位DEMO-0110 下料 · 回转壳体20",
+        "x": 264,
+        "y": 400.59375,
+        "width": 1104,
+        "height": 1032,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(15, 23, 42)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "review-1392-light",
+      "label": "complex: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 7
+    },
+    {
+      "state": "review-1392-light",
+      "label": "dense: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序计划完工 / 整道完工执行情况整道完工偏差有效工时 / 待补定位U01-DEMO-0110 下料 · 回转",
+        "x": 264,
+        "y": 400.59375,
+        "width": 1104,
+        "height": 1280,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(15, 23, 42)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "review-1392-light",
+      "label": "dense: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 7
+    },
+    {
+      "state": "reports-1392-dark",
+      "label": "current: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序数量 / 待报计划开工 / 完工实际开工 / 整道完工整道完工偏差完成情况 / 到期操作B202609-0",
+        "x": 264,
+        "y": 419.09375,
+        "width": 1104,
+        "height": 362,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(241, 245, 249)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "reports-1392-dark",
+      "label": "current: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 5
+    },
+    {
+      "state": "reports-1392-dark",
+      "label": "complex: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序数量 / 待报计划开工 / 完工实际开工 / 整道完工整道完工偏差完成情况 / 到期操作DEMO-0110",
+        "x": 264,
+        "y": 419.09375,
+        "width": 1104,
+        "height": 1066,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(241, 245, 249)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "reports-1392-dark",
+      "label": "complex: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 7
+    },
+    {
+      "state": "reports-1392-dark",
+      "label": "dense: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序数量 / 待报计划开工 / 完工实际开工 / 整道完工整道完工偏差完成情况 / 到期操作U01-DEMO-",
+        "x": 264,
+        "y": 419.09375,
+        "width": 1104,
+        "height": 1322,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(241, 245, 249)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "reports-1392-dark",
+      "label": "dense: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 7
+    },
+    {
+      "state": "review-1392-dark",
+      "label": "current: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序计划完工 / 整道完工执行情况整道完工偏差有效工时 / 待补定位B202609-02950 检验 · 定位",
+        "x": 264,
+        "y": 400.59375,
+        "width": 1104,
+        "height": 350,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(241, 245, 249)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "review-1392-dark",
+      "label": "current: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 5
+    },
+    {
+      "state": "review-1392-dark",
+      "label": "complex: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序计划完工 / 整道完工执行情况整道完工偏差有效工时 / 待补定位DEMO-0110 下料 · 回转壳体20",
+        "x": 264,
+        "y": 400.59375,
+        "width": 1104,
+        "height": 1032,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(241, 245, 249)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "review-1392-dark",
+      "label": "complex: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 7
+    },
+    {
+      "state": "review-1392-dark",
+      "label": "dense: first table meets default height target",
+      "pass": true,
+      "evidence": {
+        "name": "批次 / 工序计划完工 / 整道完工执行情况整道完工偏差有效工时 / 待补定位U01-DEMO-0110 下料 · 回转",
+        "x": 264,
+        "y": 400.59375,
+        "width": 1104,
+        "height": 1280,
+        "font": "13px",
+        "line": "20.15px",
+        "color": "rgb(241, 245, 249)",
+        "bottom": "0px",
+        "radius": "0px"
+      }
+    },
+    {
+      "state": "review-1392-dark",
+      "label": "dense: useful records fit on the first screen",
+      "pass": true,
+      "evidence": 7
+    }
+  ],
+  "errors": [],
+  "network": []
+}

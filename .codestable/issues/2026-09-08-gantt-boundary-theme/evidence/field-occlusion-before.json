@@ -1,0 +1,112 @@
+{
+  "browser": "152.0.7977.77",
+  "browserClosed": true,
+  "pageErrors": [],
+  "shortOutline": {
+    "viewport": 1024,
+    "axisHours": 8,
+    "hourWidth": 81.5,
+    "a": {
+      "x": 437.5,
+      "y": 546,
+      "width": 1.34375,
+      "height": 44,
+      "right": 438.84375,
+      "bottom": 590
+    },
+    "b": {
+      "x": 438.84375,
+      "y": 546,
+      "width": 1.34375,
+      "height": 44,
+      "right": 440.1875,
+      "bottom": 590
+    },
+    "pixel": {
+      "x": 438,
+      "y": 568,
+      "before": [
+        96,
+        133,
+        172,
+        255
+      ],
+      "after": [
+        23,
+        39,
+        47,
+        255
+      ]
+    },
+    "focus": true
+  },
+  "stickyFocus": {
+    "viewport": 1440,
+    "axisHours": 8,
+    "hourWidth": 480,
+    "scrollLeft": 600,
+    "focusedReport": "short-a",
+    "focused": true,
+    "focusVisible": true,
+    "bar": {
+      "x": 244,
+      "y": 480,
+      "width": 7.984375,
+      "height": 44,
+      "right": 251.984375,
+      "bottom": 524
+    },
+    "resource": {
+      "x": 16,
+      "y": 470,
+      "width": 348,
+      "height": 88,
+      "right": 364,
+      "bottom": 558
+    },
+    "hits": [
+      {
+        "tag": "STRONG",
+        "cls": ""
+      },
+      {
+        "tag": "DIV",
+        "cls": "fg-row-heading is-actual"
+      },
+      {
+        "tag": "DIV",
+        "cls": "gb-res-main"
+      },
+      {
+        "tag": "DIV",
+        "cls": "gb-res"
+      },
+      {
+        "tag": "DIV",
+        "cls": "fg-act is-narrow",
+        "report": "short-a"
+      },
+      {
+        "tag": "DIV",
+        "cls": "fg-track"
+      },
+      {
+        "tag": "DIV",
+        "cls": "gb-row fg-actual-row fg-group-first fg-plan-row",
+        "task": "short"
+      },
+      {
+        "tag": "SECTION",
+        "cls": "fg-lane"
+      }
+    ]
+  },
+  "sourceHashes": {
+    "FieldGanttScreen.jsx": "ead03d3767a60b3e63acfb3d88b77cea533175b7bea779640b587cbafa74275a",
+    "FieldGanttRows.jsx": "0497cc456e04692a67425acc008091de3ebfd94b88688d23181c4e49d7dd0bc4",
+    "FieldGanttViewport.jsx": "90274938ba27c0505dabde5935a26a3c7b5e9fe3a4172aa65311e2a99c75efd0",
+    "FieldGanttChain.jsx": "11e9d17fe38611399f538ae64765170c1448e9b8b122d923dc4584fd5679dc08",
+    "field-gantt.css": "8d470453b4d782fadec569e93d90d422c83c991affb31e610a2d6115bed98bcb",
+    "field-gantt-viewport.css": "030dbc5d5c36e45c81923c527a9a525436e660afe8634c9054dba27fabf846ef"
+  }
+}

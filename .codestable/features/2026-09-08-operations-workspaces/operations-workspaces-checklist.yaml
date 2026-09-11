@@ -1,0 +1,22 @@
+feature: operations-workspaces
+steps:
+  - id: evidence
+    description: 核实已有能力、页面数据与风格，确定实施边界
+    status: done
+  - id: pages
+    description: 并行完成三个工作台及入口接线
+    status: done
+  - id: verification
+    description: 统计导出对账、缺失值、分页与跨页回归
+    status: done
+  - id: handoff
+    description: 留下实现证据并交用户现场验收，人工观感验收仍待用户确认
+    status: done
+checks:
+  - 同源数据与样例隔离
+  - 缺失数据不伪装为零或成功
+  - 搜索筛选分页与全量导出一致
+  - 基础资料修改回读与维护定位
+  - 系统危险操作没有生产副作用
+  - 本地依赖无新增外网请求
+  - 既有报工甘特回归和浅深色样式合同

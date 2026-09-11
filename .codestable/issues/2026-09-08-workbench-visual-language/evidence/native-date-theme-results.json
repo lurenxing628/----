@@ -1,0 +1,222 @@
+{
+  "results": [
+    {
+      "width": 1920,
+      "theme": "light",
+      "view": "reports",
+      "boundary": 0,
+      "value": "2026-09-07",
+      "scheme": "light",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "view": "reports",
+      "boundary": 1,
+      "value": "2026-09-08",
+      "scheme": "light",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "view": "review",
+      "boundary": 0,
+      "value": "2026-09-07",
+      "scheme": "light",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "view": "review",
+      "boundary": 1,
+      "value": "2026-09-08",
+      "scheme": "light",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "view": "system",
+      "boundary": 0,
+      "value": "",
+      "scheme": "light",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "view": "system",
+      "boundary": 1,
+      "value": "",
+      "scheme": "light",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "view": "reports",
+      "boundary": 0,
+      "value": "2026-09-07",
+      "scheme": "dark",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "view": "reports",
+      "boundary": 1,
+      "value": "2026-09-08",
+      "scheme": "dark",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "view": "review",
+      "boundary": 0,
+      "value": "2026-09-07",
+      "scheme": "dark",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "view": "review",
+      "boundary": 1,
+      "value": "2026-09-08",
+      "scheme": "dark",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "view": "system",
+      "boundary": 0,
+      "value": "",
+      "scheme": "dark",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "view": "system",
+      "boundary": 1,
+      "value": "",
+      "scheme": "dark",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1392,
+      "theme": "light",
+      "view": "reports",
+      "boundary": 0,
+      "value": "2026-09-07",
+      "scheme": "light",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1392,
+      "theme": "light",
+      "view": "reports",
+      "boundary": 1,
+      "value": "2026-09-08",
+      "scheme": "light",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1392,
+      "theme": "light",
+      "view": "review",
+      "boundary": 0,
+      "value": "2026-09-07",
+      "scheme": "light",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1392,
+      "theme": "light",
+      "view": "review",
+      "boundary": 1,
+      "value": "2026-09-08",
+      "scheme": "light",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1392,
+      "theme": "light",
+      "view": "system",
+      "boundary": 0,
+      "value": "",
+      "scheme": "light",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1392,
+      "theme": "light",
+      "view": "system",
+      "boundary": 1,
+      "value": "",
+      "scheme": "light",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1392,
+      "theme": "dark",
+      "view": "reports",
+      "boundary": 0,
+      "value": "2026-09-07",
+      "scheme": "dark",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1392,
+      "theme": "dark",
+      "view": "reports",
+      "boundary": 1,
+      "value": "2026-09-08",
+      "scheme": "dark",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1392,
+      "theme": "dark",
+      "view": "review",
+      "boundary": 0,
+      "value": "2026-09-07",
+      "scheme": "dark",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1392,
+      "theme": "dark",
+      "view": "review",
+      "boundary": 1,
+      "value": "2026-09-08",
+      "scheme": "dark",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1392,
+      "theme": "dark",
+      "view": "system",
+      "boundary": 0,
+      "value": "",
+      "scheme": "dark",
+      "visiblePixels": 73
+    },
+    {
+      "width": 1392,
+      "theme": "dark",
+      "view": "system",
+      "boundary": 1,
+      "value": "",
+      "scheme": "dark",
+      "visiblePixels": 73
+    }
+  ],
+  "errors": [],
+  "requests": []
+}

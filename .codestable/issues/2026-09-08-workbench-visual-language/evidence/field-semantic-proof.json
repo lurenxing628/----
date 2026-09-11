@@ -1,0 +1,129 @@
+{
+  "result": "PASS",
+  "baseline": "/tmp/aps-ui-implementation.elQPXm/前端设计/ui_kits/workbench",
+  "unchangedFiles": [
+    {
+      "name": "field-report-model.js",
+      "sha256": "73a2c6f47ded2aa61cded0dc1c85805488b69c8570f899523dcd8232da5d20b2"
+    },
+    {
+      "name": "field-report-editor.js",
+      "sha256": "40d3b22ed8706ad6366d6f229216802d4316d005258cd7c895b096d3edc297c4"
+    },
+    {
+      "name": "field-reporting.js",
+      "sha256": "48890560696d54e34609aa5d0cb0fcb3aa279cb69bf672cfed99b0974ab2c20f"
+    },
+    {
+      "name": "field-report-form.js",
+      "sha256": "36df4ef785a23c361f04764b1e9e69271a5081de75997d9a2583d0ebbf277837"
+    },
+    {
+      "name": "field-report-import.js",
+      "sha256": "0838454fb7ce26d852ca218501069ddfcd85b92f5da9f3ef05e2a47ded8d21b6"
+    },
+    {
+      "name": "fg-screen-model.js",
+      "sha256": "e5574da22029f9789ea9f57da0dbadb0c546afe6e631e02c246eb1c79559bb84"
+    },
+    {
+      "name": "fg-screen-hooks.jsx",
+      "sha256": "53726fd6bec510098eeb11e7ee5679df540881a2c989f78550ed17fed8590aa0"
+    },
+    {
+      "name": "FieldGanttViewport.jsx",
+      "sha256": "90274938ba27c0505dabde5935a26a3c7b5e9fe3a4172aa65311e2a99c75efd0"
+    },
+    {
+      "name": "field-gantt-example.js",
+      "sha256": "ca8aa095d09be6bdf3341d457f9471aa9abae00798abc82b7a51fd72bbe32992"
+    },
+    {
+      "name": "field-gantt-density-example.js",
+      "sha256": "d0beee8923d958fcbf59feca2a36706ada84b95b292b5c66966e2661976d7ad7"
+    },
+    {
+      "name": "field-gantt-chains.js",
+      "sha256": "1dc8a51f9e868b03b8281d7d0bd08d51e42109e71ae8f74b7178a43f5d9ab10e"
+    },
+    {
+      "name": "field-gantt-current-chain-data.js",
+      "sha256": "c7f89d1147fe2e8e3a401ece9b2152bcf9b88ad2b647f89dadc71b0b86554efb"
+    },
+    {
+      "name": "field-gantt-current-chains.js",
+      "sha256": "a98cc498b0173ad7c19c1672b2bd6955f3545276e54844824112fb677562e146"
+    },
+    {
+      "name": "DashboardScreen.jsx",
+      "sha256": "c8111f520d10df438b21775d2f3ec9b89e25596d2e4701456c80d011f97aa062"
+    },
+    {
+      "name": "FieldRecordScreen.jsx",
+      "sha256": "c8786990aabef40486852f8cb6edcdb4f0be13da10b0c35466e0725795a07c40"
+    },
+    {
+      "name": "FieldGanttChain.jsx",
+      "sha256": "11e9d17fe38611399f538ae64765170c1448e9b8b122d923dc4584fd5679dc08"
+    }
+  ],
+  "dashboardOnlyDisplayStrings": false,
+  "ganttCalculationPrefixIdentical": true,
+  "identicalTimeStyleSelectors": [
+    ".fg-track",
+    ".fg-reference-band",
+    ".fg-plan, .fg-act, .fg-remaining",
+    ".fg-plan, .fg-sw-plan",
+    ".fg-plan",
+    ".fg-ref",
+    ".fg-ref::before",
+    ".fg-act, .fg-sw-act",
+    ".fg-remaining, .fg-sw-remaining",
+    ".fg-act, .fg-remaining",
+    ".fg-act, .fg-remaining, .fg-unscheduled, .fg-no-reports",
+    ".fg-start"
+  ],
+  "boundedTestFixtureRepair": {
+    "result": "PASS",
+    "proof": "/tmp/aps-ui-field-visual-20260908/test-fixture-fix-proof.json",
+    "baselineEvidence": "/tmp/aps-ui-field-visual-20260908/preexisting-test-failures.json",
+    "tests": [
+      {
+        "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/field-gantt.integration.cjs",
+        "checks": 510,
+        "hostIntegration": "PASS"
+      },
+      {
+        "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/field-gantt-hover-plan-a.cjs",
+        "checks": 218,
+        "hostIntegration": null
+      },
+      {
+        "file": "/Users/lurenxing/GitHub/----/前端设计/ui_kits/workbench/tests/field-reporting.integration.cjs",
+        "checks": 75,
+        "hostIntegration": null
+      }
+    ],
+    "unchangedRuntimeFiles": 16
+  },
+  "plainDashboardSourceCopy": {
+    "result": "PASS",
+    "proof": "/tmp/aps-ui-dashboard-visual-20260908/plain-source-copy-proof.json",
+    "sourceAndRouteKeysUnchanged": true,
+    "markupOnlyOneSentenceChanged": true
+  },
+  "dashboardDisplayOnly": {
+    "result": "PASS",
+    "proof": "/tmp/aps-ui-dashboard-visual-20260908/chinese-source-language-proof.json",
+    "change": "Chinese display literals plus provenance.label reuse in history and the existing backfill dialog; no rule or route changes"
+  },
+  "approvedFollowUpDisplayChanges": [
+    {
+      "name": "dashboard-workbench.js",
+      "sha256": "8710c42ca04036fae4c01368e215c7bf75edc5d563962876c0a9052ca53506ac",
+      "afterSha256": "57b0c78076e5c763754c011de073bb1d2fbe060fb2a75badcd1ffb10a7436f17",
+      "proof": "/tmp/aps-ui-dashboard-visual-20260908/chinese-source-language-proof.json"
+    }
+  ],
+  "currentUnchangedFileCount": 16
+}
