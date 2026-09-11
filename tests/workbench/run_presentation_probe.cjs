@@ -86,7 +86,7 @@ async function candidates() {
   assert((await generation.innerText()).includes('实际工时 / 成本')); await shot('generation-expanded');
   await generation.locator('summary').first().click(); done('generation-details-retain-records-metrics-and-gaps');
   await page.getByText('范围与导出口径', { exact: true }).click();
-  assert((await page.locator('.rc-scope').innerText()).includes('不改变导出范围')); await page.getByText('范围与导出口径', { exact: true }).click();
+  assert((await page.locator('.rc-scope').filter({ has: page.getByText('范围与导出口径', { exact: true }) }).innerText()).includes('不改变导出范围')); await page.getByText('范围与导出口径', { exact: true }).click();
   await page.locator('.rc-reasons').filter({ has: page.locator('summary', { hasText: '原因与数据缺项' }) }).first().locator('summary').first().click();
   await shot('gaps-expanded'); await page.locator('.rc-reasons[open]').locator('summary').first().click();
   await page.getByLabel('候选状态', { exact: true }).click(); await page.getByRole('listbox').waitFor(); await shot('shared-select');
@@ -122,7 +122,7 @@ async function candidates() {
   done('full-shell-injected-host-entrypoints');
   assert((await page.locator('[aria-label="生成时范围"]').innerText()).includes('生成时未分配正式版本'));
   await restore(fixtures.partial); const partial = (await realWorkspace(fixtures.partial.candidate_ref)).data;
-  assert(partial.unplanned_operation_count > 0); assert((await page.locator('.rc-scope').innerText()).includes('未安排 1 道'));
+  assert(partial.unplanned_operation_count > 0); assert((await page.locator('.rc-scope').filter({ has: page.getByText('范围与导出口径', { exact: true }) }).innerText()).includes('未安排 1 道'));
   await checkLayout('partial-first-screen'); await page.getByRole('tab', { name: '未安排明细', exact: true }).click();
   await page.getByText('生成时该工序明确排除，未隐藏此项。', { exact: true }).waitFor(); await download('xlsx', partial, 'partial');
   for (const state of ['failed', 'skipped']) {

@@ -125,7 +125,7 @@
       {runRef && !candidateRef && <div className="rc-empty">尚未选择此运行中的候选。</div>}
       {data && !shown && <div className="rc-notice">接口未授权查看该候选。<C.Reasons rows={data.blocked_reasons} /></div>}
       {shown && <><C.Generation key={shown.candidate.candidate_ref} data={shown} analysis={analysis} /><C.Reasons rows={result.warnings} />
-        <C.ErrorBox error={analysisRead.error} />{analysis && <Analysis.Overview data={analysis} />}
+        <C.ErrorBox error={analysisRead.error} />
         <div className="rc-heading"><div className="rc-tools"><h3>候选工作区</h3><span className="rc-muted">读取于 {M.timeLabel(result.meta.as_of)} · 工厂本地时间</span></div>
         <div className="rc-tools"><input type="search" aria-label="搜索候选工序" placeholder="批次、工序、设备、人员" value={query} onChange={e => setQuery(e.target.value)} />
           <span className="rc-muted">匹配安排 {tasks.length} / {shown.task_count}</span></div>
@@ -146,7 +146,8 @@
               tab === 'delivery' ? analysis && <Analysis.Batches key={analysis.candidate_ref} data={analysis} onLast={task => { lastOperation(task); setTab('tasks'); }}
                 onBatch={onNavigate && (row => onNavigate('gantt', { run_ref: analysis.run_ref, candidate_ref: analysis.candidate_ref, batch_ref: row.batch_ref, candidate_tab: 'tasks' }))} /> : tab === 'unplanned' && shown.unplanned_operations === null ? <div className="rc-notice">生成时未保留可核实的未安排明细，不能当成零项。</div> :
               <window.RunCandidateGantt.TaskList key={tab + ':' + query + ':' + result.meta.snapshot_ref} tasks={tab === 'tasks' ? tasks : unplanned} selected={chosen} onSelect={select} planned={tab === 'tasks'} />}</section>
-        </div>{!['delivery', 'history'].includes(tab) && <C.Detail task={chosen} onClose={() => setSelected(null)} />}</div></>}
+        </div>{!['delivery', 'history'].includes(tab) && <C.Detail task={chosen} onClose={() => setSelected(null)} />}</div>
+        {analysis && <Analysis.Overview data={analysis} />}</>}
     </div>;
   }
   function RunCandidateWorkspace(props) {
