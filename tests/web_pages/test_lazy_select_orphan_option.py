@@ -5,14 +5,20 @@ by GET; edits must fail closed instead of clearing or replacing missing resource
 """
 
 import sqlite3
+from contextlib import closing
 
+from core.infrastructure.database import get_connection
+from core.services.system import SystemConfigService
+from core.services.system.maintenance import MaintenanceThrottle
 from tests._support.gantt_retirement import _business_state
 from tests._support.workbench_browser_contract import browser_contract
 from tests._support.workbench_web_contract import canonical_boot, retired_response
 
 
-def test_lazy_select_orphan_option(app_client, repo_root) -> None:
+def test_lazy_select_orphan_option(app_client, repo_root, monkeypatch) -> None:
     database = app_client.application.config["DATABASE_PATH"]
+    with closing(get_connection(database)) as conn:
+        SystemConfigService(conn).ensure_defaults(int(app_client.application.config.get("BACKUP_KEEP_DAYS", 7)))
     # A legacy damaged row cannot be created through the current guarded write API.
     with sqlite3.connect(database) as conn:
         conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('P1','零件')")
@@ -22,11 +28,15 @@ def test_lazy_select_orphan_option(app_client, repo_root) -> None:
         conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name,source,machine_id,operator_id) "
                      "VALUES ('OP1','B_TEST',1,'OT','INTERNAL','MISSING_MC','MISSING_OP')")
         reference = conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND entity_key='B_TEST' AND active=1").fetchone()[0]
-    canonical_boot(app_client, "/", "dashboard", {})
+    monkeypatch.setattr(MaintenanceThrottle, "_last_check_ts", MaintenanceThrottle._last_check_ts)
+    with monkeypatch.context() as initial_request:
+        initial_request.setattr(MaintenanceThrottle, "allow_run", classmethod(lambda cls, seconds: False))
+        canonical_boot(app_client, "/", "dashboard", {})
     for source, expected_status in (("INTERNAL", 409), ("internal", 409)):
         with sqlite3.connect(database) as conn:
             conn.execute("UPDATE BatchOperations SET source=? WHERE op_code='OP1'", (source,))
         before = _business_state(app_client)
+        MaintenanceThrottle.reset()
         retired_response(app_client.get("/scheduler/batches/B_TEST?lazy_select=1"))
         canonical_boot(app_client, "/scheduler/batches/B_TEST", "batches", {"entity_ref": reference})
         response = app_client.get("/api/workbench/v1/entities/batch/" + reference)
