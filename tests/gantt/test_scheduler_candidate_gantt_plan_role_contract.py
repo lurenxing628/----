@@ -353,17 +353,29 @@ def test_gantt_missing_valid_plan_role_falls_back_to_adopted(tmp_path, monkeypat
 
 
 def test_gantt_missing_valid_plan_role_page_only_shows_fallback_notice(tmp_path, monkeypatch) -> None:
+    from tests._support.gantt_current import assert_retired, prepare_read_state
+    from tests._support.gantt_retirement import _business_state
+
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
-
-    resp = client.get(f"/scheduler/gantt?version={VERSION}&plan_role={ROLE_CRITICAL_BEST}")
-    html = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert "你原本选择的是“重点工序优先代表方案”" in html
-    assert "已显示正式采用方案" in html
+    before = prepare_read_state(client)
+    html = assert_retired(client, {"version": VERSION, "plan_role": ROLE_CRITICAL_BEST},
+                          "所选对比方案未保存，未沿用旧页的采用方案回退。")
+    assert "已显示正式采用方案" not in html
     assert "这套结果只用来对照查看" not in html
     assert "这是一套对比参考方案" not in html
+    # The retained JSON API still declares its old fallback explicitly.
+    response = client.get("/scheduler/gantt/data", query_string={"version": VERSION, "plan_role": ROLE_CRITICAL_BEST})
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["requested_plan_role"] == ROLE_CRITICAL_BEST
+    assert data["effective_plan_role"] == ROLE_ADOPTED
+    assert data["plan_role_resolution"]["is_fallback"] is True
+    assert "正式采用方案" in data["plan_role_message"]
+    assert len(data["tasks"]) == 1
+    assert data["tasks"][0]["meta"]["machine_id"] == "M-ADOPTED"
+    assert _public_json_forbidden_key_paths(data) == []
+    assert _business_state(client) == before
 
 
 def test_plan_role_same_as_adopted_still_keeps_comparison_identity(tmp_path) -> None:
@@ -408,19 +420,35 @@ def test_plan_role_same_as_adopted_still_keeps_comparison_identity(tmp_path) -> 
 
 
 def test_gantt_page_and_boot_preserve_plan_role(tmp_path, monkeypatch) -> None:
+    from contextlib import closing
+
+    from core.models.workbench_plan_reference import WorkbenchPlanLocator
+    from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
+    from tests._support.gantt_current import assert_plan_exports, prepare_read_state
+    from tests._support.gantt_retirement import _business_state, _canonical_workspace
+
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
-
-    resp = client.get(f"/scheduler/gantt?version={VERSION}&plan_role={ROLE_BASELINE_BEST}")
-    html = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert 'name="plan_role"' in html
-    assert 'data-plan-role="baseline_best"' in html
-    assert "plan_role=baseline_best" in html
-    assert f"/scheduler/analysis?version={VERSION}&amp;plan_role={ROLE_BASELINE_BEST}" in html
-    assert "当前查看的是“原算法代表方案”" in html
-    assert "这是一套对比参考方案" in html
+    before = prepare_read_state(client)
+    with closing(get_connection(app.config["DATABASE_PATH"])) as conn:
+        repo = WorkbenchPlanIdentityRepository(conn)
+        candidate_ref = repo.get_plan_ref(WorkbenchPlanLocator(VERSION, ROLE_BASELINE_BEST))
+        adopted_ref = repo.get_plan_ref(WorkbenchPlanLocator(VERSION, ROLE_ADOPTED))
+    context, payload = _canonical_workspace(client, {"version": VERSION, "plan_role": ROLE_BASELINE_BEST})
+    assert context == {"plan_ref": candidate_ref}
+    assert candidate_ref != adopted_ref
+    assert payload["data"]["plan"]["kind"] == "candidate"
+    assert payload["data"]["plan"]["is_current_official"] is False
+    assert payload["data"]["plan"]["capabilities"]["adopt"] is False
+    tasks = payload["data"]["tasks"]
+    assert len(tasks) == 1 and tasks[0]["start"] == "2026-05-12T13:00:00"
+    assert tasks[0]["end"] == "2026-05-13T15:00:00"
+    resources = {item["ref"]: item for item in payload["data"]["resources"]}
+    assert resources[tasks[0]["machine_ref"]]["business_code"] == "M-CANDIDATE"
+    assert resources[tasks[0]["operator_ref"]]["business_code"] == "O-CANDIDATE"
+    assert _public_json_forbidden_key_paths(payload["data"]) == []
+    assert_plan_exports(client, context, payload)
+    assert _business_state(client) == before
 
 
 def test_gantt_candidate_plan_overdue_markers_are_computed_from_candidate_rows(tmp_path, monkeypatch) -> None:
@@ -493,11 +521,22 @@ def test_gantt_non_adopted_schedule_source_overdue_markers_use_adopted_history(t
 
 
 def test_gantt_page_rejects_unknown_plan_role_without_history(tmp_path, monkeypatch) -> None:
+    from tests._support.gantt_current import prepare_read_state
+    from tests._support.gantt_retirement import _business_state
+
     app = _build_empty_app(tmp_path, monkeypatch)
     client = app.test_client()
+    before = prepare_read_state(client)
 
     resp = client.get("/scheduler/gantt?plan_role=evil")
     html = resp.get_data(as_text=True)
 
-    assert resp.status_code == 400
-    assert "排产方案不正确" in html
+    # The current bridge resolves the missing version first, and never invents one.
+    assert resp.status_code == 404
+    assert "页面不存在或已被删除" in html
+    assert "Location" not in resp.headers and "workbench-boot" not in html
+    response = client.get("/scheduler/gantt/data?plan_role=evil")
+    assert response.status_code == 400
+    assert response.get_json()["success"] is False
+    assert "排产方案不正确" in response.get_json()["error"]["message"]
+    assert _business_state(client) == before

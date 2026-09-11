@@ -1,360 +1,106 @@
-"""回归测试（Node DOM 仿真）：甘特图点击任务条后，任务详情面板只展示公开中文标签（批次/图号或物料/工序/资源/计划与现场实际时间/超期提示/跳转链接），不得泄漏内部字段（op_id/schedule_id/source_table/scenario_id 等）；旧弹窗标题回退公开详情标题；后端缺 op_code 的任务也要渲染公开标题并保留工艺依赖连线。"""
+"""Public task details on current components and retained legacy JSON builders.
 
-from __future__ import annotations
+Legacy execution/priority/link rows and popup critical-chain text are retired
+UI, not new forecast facts. Their retained payload fields are checked separately
+from the current plan inspector and frozen process-order relation controls.
+"""
 
-import importlib.util
-import json
-from pathlib import Path
+import copy
 
 from core.services.scheduler.gantt_range import resolve_week_range
 from core.services.scheduler.gantt_tasks import build_tasks
-from tests._support.paths import REPO_ROOT
-
-
-def _load_gantt_helpers():
-    helper_path = REPO_ROOT / "tests" / "gantt" / "test_gantt_critical_outline_sync.py"
-    spec = importlib.util.spec_from_file_location("regression_gantt_critical_outline_sync", helper_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load gantt DOM helper from {helper_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+from tests._support.gantt_current_js import run_current_js
+from web.viewmodels.scheduler_gantt_public_payload import public_gantt_data_payload
 
 
 def test_gantt_click_updates_stable_detail_without_showing_internal_fields() -> None:
-    helpers = _load_gantt_helpers()
-    node_code = f"""
-{helpers.DOM_SHIM_JS}
-createHost("gantt");
-createHost("ganttEmpty");
-createHost("ganttError");
-createHost("ganttLegend");
-createHost("ganttZoomWarning");
-createHost("ganttTaskDetail");
-
-loadScript({helpers._vendor_js()});
-loadScript({helpers._gantt_js()});
-loadScript({helpers._gantt_zoom_js()});
-loadScript({helpers._gantt_adapter_js()});
-loadScript({helpers._gantt_color_js()});
-loadScript({helpers._outline_js()});
-loadScript({helpers._gantt_contract_js()});
-loadScript({helpers._gantt_help_js()});
-loadScript({helpers._gantt_popup_js()});
-loadScript({helpers._gantt_legend_js()});
-loadScript({helpers._gantt_holidays_js()});
-loadScript({helpers._gantt_decorations_js()});
-loadScript({helpers._gantt_render_js()});
-
-const ns = window.__APS_GANTT__;
-const state = ns.state;
-state.cfg = {{
-  view: "machine",
-  startDate: "2026-05-01",
-  endDate: "2026-05-01",
-  weekStart: "2026-05-01",
-}};
-state.allTasks = [{{
-  id: "T1",
-  name: "op_123 一号设备 张三",
-  start: "2026-05-01 08:00:00",
-  end: "2026-05-01 09:00:00",
-  progress: 0,
-  dependencies: "",
-  meta: {{
-    batch_id: "B1",
-    part_label: "P001 零件一",
-    operation_label: "10（车削）",
-    resource_label: "设备：M1 一号设备；人员：O1 张三",
-    planned_time_label: "2026-05-01 08:00:00 ～ 2026-05-01 09:00:00",
-    priority: "urgent",
-    source: "internal",
-    duration_minutes: 150,
-    execution_status_label: "已完工",
-    actual_start_time_label: "2026-05-01 08:12:00",
-    actual_end_time_label: "2026-05-01 08:58:00",
-    actual_summary_label: "现场状态：已完工；实际开工：2026-05-01 08:12:00；实际完工：2026-05-01 08:58:00",
-    overdue_label: "已标记超期",
-    delay_hint: "该批次已被标记为超期，建议查看超期清单或排产诊断。",
-    is_overdue: true,
-    due_date: "2026-05-01",
-    detail_links: [
-      {{ label: "查看资源排班", url: "/scheduler/resource-dispatch?version=2&batch_id=B1", disabled: false }},
-      {{ label: "查看计划和现场实际", url: "/reports/execution-review?version=2&batch_id=B1", disabled: false }},
-      {{ label: "查看超期清单", url: "/reports/overdue?version=2&batch_id=B1", disabled: false }}
-    ],
-    op_id: "OP-SECRET",
-    schedule_id: "SCH-SECRET",
-    source_table: "schedule",
-    scenario_id: "SC-SECRET"
-  }},
-}}];
-state.critical = {{
-  ids: ["op_111", "op_222"],
-  edges: [{{
-    from: "op_111",
-    to: "op_222",
-    from_label: "10（车削）",
-    to_label: "20（精加工）",
-    edge_type: "process",
-    reason: "工艺前驱",
-    gap_minutes: 0
-  }}],
-  available: true
-}};
-state.ccIdSet = new Set();
-state.ccPrevByTo = new Map();
-state.ccEdgeMetaByTo = new Map();
-state.calendarDays = [];
-state.ui.mode = "view";
-state.ui.zoomLevel = "hour";
-state.ui.viewMode = "Hour";
-state.ui.colorMode = "batch";
-state.ui.depsMode = "critical";
-state.ui.highlightCC = true;
-state.ui.onlyOverdue = false;
-state.ui.onlyExternal = false;
-state.ui.filterBatch = "";
-state.ui.filterResource = "";
-
-ns.render();
-const emptyText = document.getElementById("ganttTaskDetail").textContent;
-state.gantt.options.on_click(state.currentTasks[0]);
-const detail = document.getElementById("ganttTaskDetail");
-process.stdout.write(JSON.stringify({{
-  emptyText,
-  detailText: detail.textContent,
-  focusBatch: state.focusBatch,
-}}));
-"""
-    result = helpers._run_node_json(node_code)
-    detail_text = result["detailText"]
-
-    assert "点击甘特条查看任务详情" in result["emptyText"]
-    assert result["focusBatch"] == "B1"
-    for text in (
-        "批次",
-        "B1",
-        "图号或物料",
-        "P001 零件一",
-        "工序",
-        "10（车削）",
-        "资源",
-        "设备：M1 一号设备；人员：O1 张三",
-        "计划时间",
-        "优先级",
-        "急件",
-        "加工方式",
-        "自制",
-        "时长",
-        "2 小时 30 分钟",
-        "现场状态",
-        "已完工",
-        "实际开工",
-        "2026-05-01 08:12:00",
-        "实际完工",
-        "2026-05-01 08:58:00",
-        "已标记超期",
-        "查看资源排班",
-        "查看计划和现场实际",
-        "查看超期清单",
-    ):
-        assert text in detail_text
-    for hidden in ("op_123", "op_id", "schedule_id", "source_table", "scenario_id", "OP-SECRET", "SCH-SECRET", "SC-SECRET"):
-        assert hidden not in detail_text
+    meta = {"batch_id": "B1", "part_label": "P001 零件一", "operation_label": "10（车削）",
+            "resource_label": "设备：M1 一号设备；人员：O1 张三", "priority": "urgent", "source": "internal",
+            "duration_minutes": 150, "execution_status_label": "已完工",
+            "actual_start_time_label": "2026-05-01 08:12:00", "actual_end_time_label": "2026-05-01 08:58:00",
+            "overdue_label": "已标记超期", "is_overdue": True,
+            "detail_links": [{"label": "查看资源排班", "url": "/scheduler/resource-dispatch?version=2&batch_id=B1"},
+                             {"label": "查看计划和现场实际", "url": "/reports/execution-review?version=2&batch_id=B1"},
+                             {"label": "查看超期清单", "url": "/reports/overdue?version=2&batch_id=B1"}],
+            "op_id": "OP-SECRET", "schedule_id": "SCH-SECRET", "source_table": "schedule", "scenario_id": "SC-SECRET"}
+    original = copy.deepcopy(meta)
+    public = public_gantt_data_payload({"tasks": [{"meta": meta}]})["tasks"][0]["meta"]
+    for key in ("op_id", "schedule_id", "source_table", "scenario_id"):
+        assert key not in public
+    assert public == {key: value for key, value in original.items()
+                      if key not in ("op_id", "schedule_id", "source_table", "scenario_id")}
+    assert meta == original
+    result = run_current_js(r"""
+const data=h.fixture([['车削','2026-05-01T08:00:00','2026-05-01T09:00:00']]), task=data.tasks[0];
+data.resources[0].label='一号设备'; data.resources[1].label='张三';
+Object.assign(task,{op_id:'OP-SECRET',schedule_id:'SCH-SECRET',scenario_id:'SC-SECRET',source_table:'schedule',name:'op_123'});
+const original=JSON.stringify(data);
+const empty=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected:null,onSelect:()=>{}});
+assert(h.text(empty).includes('尚未选中任务'));
+const view=h.gantt(data), bar=view.nodes.find(node=>node.type==='button' && node.props['data-plan-task']);
+bar.props.onClick(); assert.strictEqual(view.selections[0].task,task);
+const detail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected:{task,before:false},onSelect:()=>{}}), text=h.text(detail);
+for (const label of ['任务详情','B1','10','车削','设备','一号设备','人员','张三','计划开始','2026-05-01 08:00:00','计划结束','2026-05-01 09:00:00','1 h']) assert(text.includes(label),label);
+for (const value of ['op_123','op_id','schedule_id','source_table','scenario_id','OP-SECRET','SCH-SECRET','SC-SECRET']) assert(!text.includes(value),value);
+assert.strictEqual(JSON.stringify(data),original);
+return true;
+""")
+    assert result["result"] is True
 
 
 def test_legacy_popup_title_uses_public_detail_title_fallback() -> None:
-    helpers = _load_gantt_helpers()
-    node_code = f"""
-{helpers.DOM_SHIM_JS}
-loadScript({helpers._gantt_js()});
-loadScript({helpers._gantt_color_js()});
-loadScript({helpers._gantt_contract_js()});
-loadScript({helpers._gantt_popup_js()});
-
-const ns = window.__APS_GANTT__;
-const popupText = ns.popup.buildTaskPopupHtml({{
-  id: "op_123",
-  name: "op_123 一号设备 张三",
-  start: "2026-05-01 08:00:00",
-  end: "2026-05-01 09:00:00",
-  progress: 0,
-  meta: {{
-    operation_label: "10（车削）",
-    _raw_name: "op_123 一号设备 张三",
-    batch_id: "B1",
-    part_label: "P001 零件一"
-  }}
-}}, {{ ids: [], edges: [], available: true }});
-const legacyCriticalPopupText = ns.popup.buildTaskPopupHtml({{
-  id: "op_456",
-  name: "20（精加工） 一号设备 张三",
-  start: "2026-05-01 09:00:00",
-  end: "2026-05-01 10:00:00",
-  progress: 0,
-  meta: {{ operation_label: "20（精加工）" }}
-}}, {{
-  ids: ["op_123", "op_456"],
-  edges: [{{ from: "op_123", to: "op_456", edge_type: "process", reason: "工艺前驱", gap_minutes: 0 }}],
-  available: true
-}});
-process.stdout.write(JSON.stringify({{ popupText, legacyCriticalPopupText }}));
-"""
-    result = helpers._run_node_json(node_code)
-    assert '<div class="title">10（车削）</div>' in result["popupText"]
-    # popup 现场摘要行（fusion-gantt-execution-visuals）：无记录显示诚实缺省
-    assert "现场：暂未记录现场实际" in result["popupText"]
-    assert "op_123" not in result["popupText"]
-    assert "前面影响它的工序：未命名工序" in result["legacyCriticalPopupText"]
-    assert "op_123" not in result["legacyCriticalPopupText"]
+    result = run_current_js(r"""
+const data=h.fixture([['车削','2026-05-01T08:00:00','2026-05-01T09:00:00']]), task=data.tasks[0];
+task.name='op_123 一号设备 张三'; task.meta={_raw_name:task.name};
+const title=h.runtime.PlanGanttModel.taskTitle(task,h.runtime.PlanGanttModel.names(data),false);
+assert(title.includes('B1') && title.includes('10') && title.includes('车削'));
+assert(!title.includes('op_123'));
+const detail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected:{task,before:false},onSelect:()=>{}});
+const text=h.text(detail);
+assert(!text.includes('op_123') && text.includes('Frozen process order unavailable'));
+assert(text.includes('未记录，无法核实'));
+assert(!text.includes('已完工') && !text.includes('预计按期'));
+assert.strictEqual(h.runtime.__APS_GANTT__,undefined);
+return true;
+""")
+    assert result["result"] is True
 
 
 def test_backend_missing_op_code_tasks_render_public_titles_and_keep_process_dependencies() -> None:
-    wr = resolve_week_range(start_date="2026-05-01", end_date="2026-05-01")
-    outcome = build_tasks(
-        view="machine",
-        wr=wr,
-        rows=[
-            {
-                "schedule_id": 9001,
-                "op_id": 111,
-                "op_code": "",
-                "batch_id": "B1",
-                "piece_id": "piece-a",
-                "part_no": "P001",
-                "part_name": "零件一",
-                "seq": 10,
-                "op_type_name": "车削",
-                "source": "internal",
-                "op_status": "scheduled",
-                "machine_id": "M1",
-                "machine_name": "一号设备",
-                "operator_id": "O1",
-                "operator_name": "张三",
-                "priority": "normal",
-                "lock_status": "locked",
-                "start_time": "2026-05-01 08:00:00",
-                "end_time": "2026-05-01 09:00:00",
-                "due_date": "2026-05-01",
-            },
-            {
-                "schedule_id": 9002,
-                "op_id": 222,
-                "op_code": "",
-                "batch_id": "B1",
-                "piece_id": "piece-a",
-                "part_no": "P001",
-                "part_name": "零件一",
-                "seq": 20,
-                "op_type_name": "精加工",
-                "source": "internal",
-                "op_status": "scheduled",
-                "machine_id": "M1",
-                "machine_name": "一号设备",
-                "operator_id": "O1",
-                "operator_name": "张三",
-                "priority": "normal",
-                "lock_status": "locked",
-                "start_time": "2026-05-01 09:00:00",
-                "end_time": "2026-05-01 10:00:00",
-                "due_date": "2026-05-01",
-            },
-        ],
-        overdue_set=set(),
-    )
-    tasks = outcome.value
+    rows = []
+    for schedule_id, op_id, seq, label, start, end in (
+        (9001, 111, 10, "车削", "2026-05-01 08:00:00", "2026-05-01 09:00:00"),
+        (9002, 222, 20, "精加工", "2026-05-01 09:00:00", "2026-05-01 10:00:00"),
+    ):
+        rows.append({"schedule_id": schedule_id, "op_id": op_id, "op_code": "", "batch_id": "B1", "piece_id": "piece-a",
+                     "part_no": "P001", "part_name": "零件一", "seq": seq, "op_type_name": label,
+                     "source": "internal", "op_status": "scheduled", "machine_id": "M1", "machine_name": "一号设备",
+                     "operator_id": "O1", "operator_name": "张三", "priority": "normal", "lock_status": "locked",
+                     "start_time": start, "end_time": end, "due_date": "2026-05-01"})
+    original = copy.deepcopy(rows)
+    tasks = build_tasks(view="machine", wr=resolve_week_range(start_date="2026-05-01", end_date="2026-05-01"),
+                        rows=rows, overdue_set=set()).value
     first_id = tasks[0]["id"]
-    second_id = tasks[1]["id"]
     assert all(str(task["id"]).startswith("task_") for task in tasks)
     assert all("op_" not in str(task["id"]) for task in tasks)
     assert tasks[1]["dependencies"] == first_id
     assert all("op_" not in task["name"] for task in tasks)
-
-    helpers = _load_gantt_helpers()
-    tasks_json = json.dumps(tasks, ensure_ascii=False)
-    node_code = f"""
-{helpers.DOM_SHIM_JS}
-createHost("gantt");
-createHost("ganttEmpty");
-createHost("ganttError");
-createHost("ganttLegend");
-createHost("ganttZoomWarning");
-createHost("ganttTaskDetail");
-
-loadScript({helpers._vendor_js()});
-loadScript({helpers._gantt_js()});
-loadScript({helpers._gantt_zoom_js()});
-loadScript({helpers._gantt_adapter_js()});
-loadScript({helpers._gantt_color_js()});
-loadScript({helpers._outline_js()});
-loadScript({helpers._gantt_contract_js()});
-loadScript({helpers._gantt_help_js()});
-loadScript({helpers._gantt_popup_js()});
-loadScript({helpers._gantt_legend_js()});
-loadScript({helpers._gantt_holidays_js()});
-loadScript({helpers._gantt_decorations_js()});
-loadScript({helpers._gantt_render_js()});
-
-const ns = window.__APS_GANTT__;
-const state = ns.state;
-state.cfg = {{
-  view: "machine",
-  startDate: "2026-05-01",
-  endDate: "2026-05-01",
-  weekStart: "2026-05-01",
-}};
-state.allTasks = {tasks_json};
-state.critical = {{
-  ids: [{json.dumps(first_id)}, {json.dumps(second_id)}],
-  edges: [{{
-    from: {json.dumps(first_id)},
-    to: {json.dumps(second_id)},
-    from_label: "10（车削）",
-    to_label: "20（精加工）",
-    edge_type: "process",
-    reason: "工艺前驱",
-    gap_minutes: 0
-  }}],
-  available: true
-}};
-state.ccIdSet = new Set();
-state.ccPrevByTo = new Map();
-state.ccEdgeMetaByTo = new Map();
-state.calendarDays = [];
-state.ui.mode = "view";
-state.ui.zoomLevel = "hour";
-state.ui.viewMode = "Hour";
-state.ui.colorMode = "batch";
-state.ui.depsMode = "process";
-state.ui.highlightCC = true;
-state.ui.onlyOverdue = false;
-state.ui.onlyExternal = false;
-state.ui.filterBatch = "";
-state.ui.filterResource = "";
-
-ns.render();
-const second = state.currentTasks.find((task) => task.id === {json.dumps(second_id)});
-state.gantt.options.on_click(second);
-const detailText = document.getElementById("ganttTaskDetail").textContent;
-const popupText = ns.popup.buildTaskPopupHtml(second, state.critical);
-process.stdout.write(JSON.stringify({{
-  detailText,
-  popupText,
-  dependency: second.dependencies,
-  rawName: second.meta._raw_name,
-}}));
-"""
-    result = helpers._run_node_json(node_code)
-    dependency = result["dependency"]
-    if isinstance(dependency, list):
-        assert dependency == [first_id]
-    else:
-        assert dependency == first_id
-    assert result["rawName"].startswith("20（精加工）")
-    assert "20（精加工）" in result["detailText"]
-    assert "20（精加工）" in result["popupText"]
-    assert "前面影响它的工序：10（车削）" in result["popupText"]
-    for hidden in ("op_111", "op_222"):
-        assert hidden not in result["detailText"]
-        assert hidden not in result["popupText"]
+    assert tasks[1]["name"].startswith("20（精加工）")
+    assert rows == original
+    result = run_current_js(r"""
+const data=h.fixture(sourceData.map(task=>[task.meta.operation_label,task.start.replace(' ','T'),task.end.replace(' ','T')]));
+data.projections.process_order={state:'available',basis:'run_admission',issues:[],items:data.tasks.map((task,index)=>({
+  task_ref:task.task_ref,operation_ref:task.operation_ref,predecessor_operation_refs:index?[data.tasks[0].operation_ref]:[]}))};
+assert(h.runtime.PlanProcessOrder.validate(data.projections.process_order,data));
+const before=JSON.stringify(data), selected={task:data.tasks[1],before:false}, links=[];
+const detail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected,onSelect:()=>{},onRelated:ref=>links.push(ref)});
+const text=h.text(detail);
+assert(text.includes('20（精加工）') && text.includes('10（车削）'));
+for (const hidden of ['op_111','op_222']) assert(!text.includes(hidden));
+const previous=h.walk(detail).find(node=>node.type==='button' && String(node.props['aria-label']).startsWith('前序'));
+previous.props.onClick(); h.equal(links,[data.tasks[0].task_ref]);
+assert(h.runtime.PlanGanttModel.taskTitle(selected.task,h.runtime.PlanGanttModel.names(data),false).includes('20（精加工）'));
+assert.strictEqual(JSON.stringify(data),before);
+return true;
+""", tasks)
+    assert result["result"] is True

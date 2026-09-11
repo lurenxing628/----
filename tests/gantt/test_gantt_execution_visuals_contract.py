@@ -105,47 +105,68 @@ _CSS = None
 def _css() -> str:
     global _CSS
     if _CSS is None:
-        from tests._support.paths import REPO_ROOT
+        from tests._support.gantt_current_js import run_current_js
 
-        _CSS = (REPO_ROOT / "static" / "css" / "aps_gantt.css").read_text(encoding="utf-8")
+        _CSS = run_current_js("return h.text(h.render(h.runtime.PlanLayout, {}));")["result"]
     return _CSS
 
 
 def test_css_completed_overlay_covers_normal_hover_active_with_values():
-    import re
+    from tests._support.gantt_current_js import run_current_js
 
-    # 三态选择器在同一规则组里，且规则体锁 fill token 与 opacity 值
-    m = re.search(
-        r"\.bar-wrapper\.execution-completed \.bar-progress,\s*"
-        r"\.gantt \.bar-wrapper\.execution-completed:hover \.bar-progress,\s*"
-        r"\.gantt \.bar-wrapper\.execution-completed\.active \.bar-progress \{([^}]*)\}",
-        _css(),
-    )
-    assert m, "completed 罩层三态选择器组缺失（frappe hover/active 默认紫会闪回）"
-    body = m.group(1)
-    assert "var(--ui-success)" in body
-    assert "fill-opacity: 0.45" in body
+    fact = _one_task({123: _fact("completed", start="2026-05-01 08:05:00")})
+    assert fact["progress"] == 100 and "execution-completed" in fact["custom_class"].split()
+    # The plan canvas no longer overlays actual progress. Completion must not
+    # silently become an on-time forecast or change selected task geometry.
+    result = run_current_js(r"""
+const data=h.fixture(), task=data.tasks[0]; Object.assign(task,{progress:100,custom_class:'execution-completed'});
+const before=JSON.stringify(data), view=h.gantt(data), bar=view.nodes.find(node=>node.props['data-plan-task']===task.task_ref);
+assert(bar.props.className.includes('primary') && !bar.props.className.includes('success'));
+assert(!view.nodes.some(node=>/bar-progress|execution-completed/.test(node.props.className||'')));
+bar.props.onMouseEnter({clientX:100,clientY:100}); bar.props.onClick();
+const active=h.gantt(data,{selected:{task,before:false}}).nodes.find(node=>node.props['data-plan-task']===task.task_ref);
+h.equal(active.props.style,bar.props.style); assert(active.props['aria-pressed']);
+assert.strictEqual(JSON.stringify(data),before);
+return true;
+""")
+    assert result["result"] is True
+    assert ".plan-bar[aria-pressed=true] .plan-bar-face,.plan-bar:focus-visible .plan-bar-face" in _css()
+    assert "box-shadow:inset 0 0 0 2px var(--wb-gantt-gold)" in _css()
 
 
 def test_css_execution_strokes_guarded_by_not_overdue():
+    from tests._support.gantt_current_js import run_current_js
+
     css = _css()
-    for status, token in (("processing", "--ui-primary"), ("paused", "--ui-warning"), ("exception", "--ui-danger")):
-        sel = f".bar-wrapper.execution-{status}:not(.overdue) .bar"
-        assert sel in css, f"{status} 描边缺 :not(.overdue) 守卫（overdue 红边优先由选择器语义保证）"
-        seg = css[css.index(sel):]
-        assert f"var({token})" in seg[: seg.index("}")]
+    for status in ("processing", "paused", "exception"):
+        task = _one_task({123: _fact(status, start="2026-05-01 08:05:00")})
+        assert task["progress"] == 0 and "execution-" + status in task["custom_class"].split()
+    result = run_current_js(r"""
+const M=h.runtime.PlanGanttModel, data=h.fixture(), task=data.tasks[0];
+for (const status of ['processing','paused','exception','completed']) {
+  task.custom_class='execution-'+status;
+  assert.strictEqual(M.tone(task,new Set(),new Map([[task.batch_id,'overdue']])),'critical');
+  assert.strictEqual(M.tone(task,new Set([task.task_ref]),new Map([[task.batch_id,'on_time']])),'critical');
+  assert.strictEqual(M.tone(task,new Set(),new Map()),'primary');
+}
+return true;
+""")
+    assert result["result"] is True
+    assert ".plan-bar.critical .plan-bar-face { background:var(--wb-gantt-critical-fill); border-color:var(--wb-gantt-critical-edge); }" in css
+    assert ".plan-bar.conflict .plan-bar-face { border-style:dashed; }" in css
 
 
 def test_css_dark_block_restates_execution_and_overdue_strokes():
+    from tests._support.paths import REPO_ROOT
+
     css = _css()
-    # dark 基础 .bar stroke 规则特异性 (0,4,1) 会盖掉 (0,4,0) 描边——块内必须重申；
-    # 规则体同时锁 token 值（防颜色被改坏而选择器仍在）
-    for status, token in (("processing", "--ui-primary"), ("paused", "--ui-warning"), ("exception", "--ui-danger")):
-        sel = f'html[data-theme="dark"] .gantt .bar-wrapper.execution-{status}:not(.overdue) .bar'
-        assert sel in css, status
-        seg = css[css.index(sel):]
-        assert f"var({token})" in seg[: seg.index("}")], status
-    dark_overdue = 'html[data-theme="dark"] .gantt .bar-wrapper.overdue .bar'
-    assert dark_overdue in css
-    seg = css[css.index(dark_overdue):]
-    assert "var(--ui-danger)" in seg[: seg.index("}")]
+    theme = (REPO_ROOT / "static/workbench/prototype/ui_kits/workbench/gantt-theme.css").read_text(encoding="utf-8")
+    light, dark = theme.split('html[data-theme="dark"]', 1)
+    for token, light_value, dark_value in (
+        ("primary-edge", "#6085ac", "#7aa0c6"), ("critical-edge", "#b25f69", "#c38796"),
+        ("success-edge", "#527f70", "#77a795"), ("gold", "#9b7d32", "#d7ba76"),
+    ):
+        assert "--wb-gantt-" + token + ":" + light_value in light
+        assert "--wb-gantt-" + token + ":" + dark_value in dark
+        assert "var(--wb-gantt-" + token + ")" in css
+    assert "execution-processing" not in css and "execution-completed" not in css

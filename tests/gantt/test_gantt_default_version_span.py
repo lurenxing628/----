@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.gantt_current import assert_retired, navigation, prepare_read_state, read_workspace
+from tests._support.gantt_retirement import _business_state
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -77,16 +79,17 @@ def test_gantt_page_without_range_uses_selected_version_span(tmp_path, monkeypat
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    resp = client.get("/scheduler/gantt?version=3")
-    html = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert 'data-start-date="2026-05-11"' in html
-    assert 'data-end-date="2026-05-16"' in html
-    assert 'data-range-source="version_span"' in html
-    assert "2026年5月11日 ～ 2026年5月16日" in html
-    assert 'name="week_start"' not in html
-    assert "view=operator&amp;version=3&amp;plan_role=adopted&amp;start_date=" not in html
+    before = prepare_read_state(client)
+    context = navigation(client, {"version": 3})
+    assert set(context) == {"plan_ref"}
+    data = read_workspace(client, context)["data"]
+    assert data["plan"]["version"] == 3
+    assert data["plan_span"] == {"start": "2026-05-11T08:00:00", "end": "2026-05-16T12:00:00"}
+    assert data["time_scope"]["range_start"] == data["plan_span"]["start"]
+    assert data["time_scope"]["range_end"] == data["plan_span"]["end"]
+    assert data["time_scope"]["boundary"] == "half_open"
+    assert len(data["tasks"]) == 1
+    assert _business_state(client) == before
 
 
 def test_gantt_data_without_range_uses_selected_version_span(tmp_path, monkeypatch) -> None:
@@ -152,24 +155,34 @@ def test_gantt_page_data_url_is_scopeless(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    resp = client.get("/scheduler/gantt?version=3&gantt_batch=B001&gantt_resource=MC001")
-    html = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert 'data-url="/scheduler/gantt/data"' in html  # data-url 无 gantt_batch/gantt_resource
+    before = prepare_read_state(client)
+    assert_retired(client, {"version": 3, "gantt_batch": "B001", "gantt_resource": "MC001"})
+    context = navigation(client, {"version": 3})
+    assert set(context) == {"plan_ref"}
+    data = read_workspace(client, context)["data"]
+    assert len(data["tasks"]) == 1 and data["tasks"][0]["batch_id"] == "B001"
+    rejected = client.get("/api/workbench/v1/plans/" + context["plan_ref"] + "/workspace?gantt_batch=NONEXISTENT")
+    assert rejected.status_code == 400 and rejected.get_json()["error"]["code"] == "invalid_input"
+    assert "data" not in rejected.get_json()
+    # Existing unfiltered legacy data remains independent of the retired page.
+    legacy = client.get("/scheduler/gantt/data?version=3&gantt_batch=NONEXISTENT")
+    assert legacy.status_code == 200 and len(legacy.get_json()["data"]["tasks"]) == 1
+    assert _business_state(client) == before
 
 
 def test_gantt_page_and_data_respect_explicit_range(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    page_resp = client.get("/scheduler/gantt?version=3&start_date=2026-05-04&end_date=2026-05-10")
-    html = page_resp.get_data(as_text=True)
-
-    assert page_resp.status_code == 200
-    assert 'data-start-date="2026-05-04"' in html
-    assert 'data-end-date="2026-05-10"' in html
-    assert 'data-range-source="request"' in html
+    before = prepare_read_state(client)
+    context = navigation(client, {"version": 3, "start_date": "2026-05-04", "end_date": "2026-05-10"})
+    assert context["range_start"] == "2026-05-04T00:00:00"
+    assert context["range_end"] == "2026-05-11T00:00:00"
+    current = read_workspace(client, context)["data"]
+    assert current["tasks"] == [] and current["tasks_complete"] is True
+    assert current["plan_span"]["start"] == "2026-05-11T08:00:00"
+    assert current["time_scope"]["range_start"] == context["range_start"]
+    assert current["time_scope"]["range_end"] == context["range_end"]
 
     data_resp = client.get("/scheduler/gantt/data?view=machine&version=3&start_date=2026-05-04&end_date=2026-05-10")
     payload = data_resp.get_json()
@@ -179,6 +192,7 @@ def test_gantt_page_and_data_respect_explicit_range(tmp_path, monkeypatch) -> No
     assert data.get("tasks") == []
     assert data.get("range_source") == "request"
     assert data.get("empty_message") == "当前范围无任务，请切换到 2026-05-11 ～ 2026-05-16。"
+    assert _business_state(client) == before
 
 
 def test_gantt_data_rejects_explicit_range_longer_than_62_days(tmp_path, monkeypatch) -> None:
@@ -218,19 +232,17 @@ def test_gantt_page_and_data_ignore_offset_when_explicit_dates_present(tmp_path,
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    page_resp = client.get("/scheduler/gantt?version=3&start_date=2026-05-04&end_date=2026-05-10&offset=1")
-    html = page_resp.get_data(as_text=True)
-
-    assert page_resp.status_code == 200
-    assert 'data-start-date="2026-05-04"' in html
-    assert 'data-end-date="2026-05-10"' in html
-    assert 'data-range-source="request"' in html
-    assert (
-        "view=operator&amp;version=3&amp;plan_role=adopted&amp;start_date=2026-05-04&amp;end_date=2026-05-10"
-    ) in html
-    assert "view=operator&amp;week_start=" not in html
-    assert "week_start=2026-05-04&amp;offset=1&amp;version=3" in html
-    assert "week_start=2026-05-04&amp;offset=1&amp;version=3&amp;start_date" not in html
+    before = prepare_read_state(client)
+    query = {"version": 3, "start_date": "2026-05-04", "end_date": "2026-05-10"}
+    assert_retired(client, dict(query, offset=1))
+    context = navigation(client, query)
+    assert navigation(client, dict(query, offset_weeks=1)) == context
+    assert context["range_start"] == "2026-05-04T00:00:00"
+    assert context["range_end"] == "2026-05-11T00:00:00"
+    current = read_workspace(client, context)["data"]
+    assert current["tasks"] == []
+    assert current["time_scope"]["range_start"] == context["range_start"]
+    assert current["time_scope"]["range_end"] == context["range_end"]
 
     data_resp = client.get(
         "/scheduler/gantt/data?view=machine&version=3&start_date=2026-05-04&end_date=2026-05-10&offset=1"
@@ -243,19 +255,21 @@ def test_gantt_page_and_data_ignore_offset_when_explicit_dates_present(tmp_path,
     assert data.get("week_end") == "2026-05-10"
     assert data.get("range_source") == "request"
     assert data.get("tasks") == []
+    assert _business_state(client) == before
 
 
 def test_gantt_page_and_data_ignore_invalid_offset_when_explicit_dates_present(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    page_resp = client.get("/scheduler/gantt?version=3&start_date=2026-05-04&end_date=2026-05-10&offset=bad")
-    html = page_resp.get_data(as_text=True)
-
-    assert page_resp.status_code == 200
-    assert 'data-start-date="2026-05-04"' in html
-    assert 'data-end-date="2026-05-10"' in html
-    assert 'data-offset="0"' in html
+    before = prepare_read_state(client)
+    query = {"version": 3, "start_date": "2026-05-04", "end_date": "2026-05-10"}
+    assert_retired(client, dict(query, offset="bad"))
+    context = navigation(client, query)
+    assert navigation(client, dict(query, offset_weeks="bad")) == context
+    assert context["range_start"] == "2026-05-04T00:00:00"
+    assert context["range_end"] == "2026-05-11T00:00:00"
+    assert read_workspace(client, context)["data"]["tasks"] == []
 
     data_resp = client.get(
         "/scheduler/gantt/data?view=machine&version=3&start_date=2026-05-04&end_date=2026-05-10&offset=bad"
@@ -267,6 +281,7 @@ def test_gantt_page_and_data_ignore_invalid_offset_when_explicit_dates_present(t
     assert data.get("week_start") == "2026-05-04"
     assert data.get("week_end") == "2026-05-10"
     assert data.get("range_source") == "request"
+    assert _business_state(client) == before
 
 
 def test_gantt_data_start_date_only_ignores_offset(tmp_path, monkeypatch) -> None:

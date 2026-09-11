@@ -67,20 +67,23 @@ def test_gantt_bad_time_rows_surface_degraded(schema_conn, repo_root) -> None:
     events = data.get("degradation_events") or []
     assert events and events[0].get("code") == "bad_time_row_skipped"
 
-    gantt_boot_js = (repo_root / "static" / "js" / "gantt_boot.js").read_text(encoding="utf-8")
-    gantt_contract_js = (repo_root / "static" / "js" / "gantt_contract.js").read_text(encoding="utf-8")
-    gantt_render_js = (repo_root / "static" / "js" / "gantt_render.js").read_text(encoding="utf-8")
-    assert "buildDegradationMessages" in gantt_boot_js, "gantt_boot.js 未接入共享退化提示构造器"
-    assert "bad_time_row_skipped" in gantt_contract_js, "gantt_contract.js 未消费 bad_time_row_skipped"
-    assert "all_rows_filtered_by_invalid_time" in gantt_contract_js, "gantt_contract.js 未消费统一空原因码"
-    assert "已过滤 " in gantt_contract_js, "gantt_contract.js 未提供部分过滤提示"
-    assert "已过滤 \" + badTimeSkipped + \" 条开始或结束时间写法不对的排程记录。当前区间没有可显示排程" in gantt_render_js, (
-        "gantt_render.js 未在坏时间全量过滤空态展示过滤条数"
-    )
-    assert "当前区间的排程开始或结束时间写法不对，已全部过滤，请到系统管理里的排产历史查看这次排产的详细提醒。" in gantt_render_js, (
-        "gantt_render.js 未区分坏时间全量过滤空态"
-    )
-    assert "当前筛选条件下暂无可显示任务。" in gantt_render_js, "gantt_render.js 未区分前端筛选后的空态"
+    from core.models.workbench_command import WorkbenchCommandRejected
+    from core.services.workbench.plan_projection import public_time
+    from tests._support.gantt_current_js import run_current_js
+
+    # The retained service may report a partial result; the new complete-plan
+    # producer rejects the invalid source instead of silently dropping that row.
+    with pytest.raises(WorkbenchCommandRejected) as caught:
+        public_time("2026-03-02 99:00:00")
+    assert (caught.value.code, caught.value.status) == ("plan_unavailable", 409)
+    assert "未返回截断或替代数据" in str(caught.value)
+    assert conn.execute("SELECT start_time FROM Schedule WHERE op_id=?", (op_id_invalid,)).fetchone()[0] == "2026-03-02 99:00:00"
+    assert not (repo_root / "static/js/gantt_boot.js").exists()
+    run_current_js(r"""
+const tree=h.render(h.runtime.ResourceControls.Issues,{issues:sourceData});
+sourceData.forEach(issue=>assert(h.text(tree).includes(issue.message)));
+assert(!h.text(tree).includes('99:00:00'));
+""", events)
 
 
 # =====================================================================
@@ -123,11 +126,10 @@ def test_gantt_calendar_load_failed_degraded(app_client, db_path, repo_root) -> 
     client = app_client
 
     with mock.patch("core.services.scheduler.gantt_service.build_calendar_days", side_effect=_calendar_failed):
-        page_resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02&version=3")
-        _assert_status(page_resp, "GET /scheduler/gantt")
-        html = page_resp.data.decode("utf-8", errors="ignore")
-        assert 'id="ganttDegradationWarning"' in html, html
-        assert "工作日历加载失败，当前不显示假期/停工背景标注。" not in html, html
+        from tests._support.gantt_current import assert_retired
+
+        html = assert_retired(client, {"view": "machine", "week_start": "2026-03-02", "version": 3})
+        assert 'id="ganttDegradationWarning"' not in html
 
         data_resp = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02&version=3")
         _assert_status(data_resp, "GET /scheduler/gantt/data")
@@ -143,11 +145,26 @@ def test_gantt_calendar_load_failed_degraded(app_client, db_path, repo_root) -> 
         assert "RuntimeError" not in str(events)
         assert all("sample" not in evt for evt in events if isinstance(evt, dict)), events
 
-    gantt_boot_js = open(os.path.join(str(repo_root), "static", "js", "gantt_boot.js"), "r", encoding="utf-8").read()
-    gantt_contract_js = open(os.path.join(str(repo_root), "static", "js", "gantt_contract.js"), "r", encoding="utf-8").read()
-    assert "ganttDegradationWarning" in gantt_boot_js, "gantt_boot.js 未接入页面退化提示节点"
-    assert "buildDegradationMessages" in gantt_boot_js, "gantt_boot.js 未接入共享退化提示构造器"
-    assert "calendar_load_failed" in gantt_contract_js, "gantt_contract.js 未识别 calendar_load_failed"
+    from tests._support.gantt_current import plan_fixture
+    from tests._support.gantt_current_js import run_current_js
+    from tests._support.gantt_retirement import _business_state
+
+    _, context, _, before = plan_fixture(client)
+    with mock.patch("core.services.workbench.plan_calendar.CalendarFacts.calendar",
+                    side_effect=OSError("RAW_SECRET sqlite /tmp/private.db")) as failure:
+        response = client.get("/api/workbench/v1/plans/" + context["plan_ref"] + "/workspace")
+    assert failure.call_count == 1
+    assert response.status_code == 500
+    payload = response.get_json()
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "storage_failure"
+    assert "data" not in payload
+    assert all(raw not in response.get_data(as_text=True) for raw in ("RAW_SECRET", "sqlite", "/tmp/private.db"))
+    run_current_js(r"""
+const tree=h.render(h.runtime.ResourceControls.ErrorBox,{error:new Error(sourceData.error.message)}),text=h.text(tree);
+assert(text.includes(sourceData.error.message));assert(!text.includes('0%'));assert(!text.includes('该读取范围没有安排。'));
+""", payload)
+    assert _business_state(client) == before
 
 
 # =====================================================================
@@ -234,10 +251,13 @@ def _build_overdue_app(db_env, monkeypatch, result_summary):
 def test_gantt_overdue_markers_summary(db_env, monkeypatch, case) -> None:
     app, client, logged = _build_overdue_app(db_env, monkeypatch, case["result_summary"])
 
-    page_resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02&version=1")
-    assert page_resp.status_code == 200
-    page_html = page_resp.get_data(as_text=True)
-    assert 'id="ganttOverdueWarning"' in page_html
+    from tests._support.gantt_current import assert_retired, prepare_read_state, read_workspace
+    from tests._support.gantt_current_js import run_current_js
+    from tests._support.gantt_retirement import _business_state
+
+    before = prepare_read_state(client)
+    page_html = assert_retired(client, {"view": "machine", "week_start": "2026-03-02", "version": 1})
+    assert 'id="ganttOverdueWarning"' not in page_html
 
     data_resp = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02&version=1")
     assert data_resp.status_code == 200
@@ -252,3 +272,27 @@ def test_gantt_overdue_markers_summary(db_env, monkeypatch, case) -> None:
         tasks = data.get("tasks") or []
         assert tasks and tasks[0].get("meta", {}).get("is_overdue") is case["expect_task_overdue"]
     assert any(case["expect_log_kw"] in item for item in logged), logged
+    catalog = client.get("/api/workbench/v1/plans")
+    assert catalog.status_code == 200
+    plans = catalog.get_json()["data"]["plans"]
+    assert len(plans) == 1 and plans[0]["version"] == 1
+    plan = plans[0]
+    if case["expect_degraded"]:
+        assert plan["capabilities"]["view"] is False
+        assert any(reason["code"] == "summary_invalid" for reason in plan["blocked_reasons"])
+        response = client.get("/api/workbench/v1/plans/" + plan["plan_ref"] + "/workspace")
+        assert response.status_code == 409
+        assert response.get_json()["ok"] is False and "data" not in response.get_json()
+    else:
+        assert plan["capabilities"]["view"] is True
+        current = read_workspace(client, {"plan_ref": plan["plan_ref"]})
+        risk = current["data"]["projections"]["delivery_risks"]["items"][0]
+        assert risk["batch_id"] == "B001"
+        assert risk["risk"] == "on_time"
+        assert risk["is_overdue"] is False
+        assert risk["delay_hours"] == 0
+        run_current_js(r"""
+const data=sourceData.data,tree=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected:{task:data.tasks[0]}});
+assert(h.text(tree).includes('预计按期'));assert(!h.text(tree).includes('预计超期'));
+""", current)
+    assert _business_state(client) == before

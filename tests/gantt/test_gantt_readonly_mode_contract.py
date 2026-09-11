@@ -1,206 +1,48 @@
-"""回归测试：甘特图查看模式（readonly）契约——readonly/readonly_dates/readonly_progress 下拖拽、缩放手柄、进度修改均被拦截（bar 的 x/width/progressWidth 不变、handle 数为 0、on_date_change/on_progress_change 不触发），但 on_click 与 popup 仍生效，且正式 render 把 readonly 选项透传给 Gantt、模板含查看模式提示与缩放控件。"""
+"""Current Gantt bars select and inspect without editing dates or progress.
 
-from __future__ import annotations
+Retired Frappe readonly flags and popup handles are not current APIs. The
+actual shipped bar and inspector contracts are exercised instead.
+"""
 
-import importlib.util
-import json
-from pathlib import Path
-
-from tests._support.paths import REPO_ROOT
-
-
-def _load_gantt_dom_helpers():
-    helper_path = REPO_ROOT / "tests" / "gantt" / "test_gantt_critical_outline_sync.py"
-    spec = importlib.util.spec_from_file_location("regression_gantt_critical_outline_sync", helper_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load gantt DOM helper from {helper_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+from tests._support.gantt_current_js import run_current_js
 
 
 def test_readonly_gantt_blocks_drag_resize_and_progress_events_but_keeps_click() -> None:
-    helpers = _load_gantt_dom_helpers()
-    node_code = f"""
-{helpers.DOM_SHIM_JS}
-createHost("gantt");
-loadScript({helpers._vendor_js()});
-
-let dateChanges = 0;
-let progressChanges = 0;
-let clicks = 0;
-
-const gantt = new Gantt("#gantt", [{{
-  id: "T1",
-  name: "Readonly Task",
-  start: "2026-05-11 08:00:00",
-  end: "2026-05-11 09:00:00",
-  progress: 50,
-  dependencies: "",
-}}], {{
-  view_mode: "Hour",
-  readonly: true,
-  readonly_dates: true,
-  readonly_progress: true,
-  popup_trigger: "click",
-  on_date_change: function () {{ dateChanges += 1; }},
-  on_progress_change: function () {{ progressChanges += 1; }},
-  on_click: function () {{ clicks += 1; }},
-}});
-
-const bar = gantt.get_bar("T1");
-const wrapper = findWrapperById("T1");
-const svg = document.querySelector("#gantt svg.gantt");
-const before = {{
-  x: Number(bar.$bar.getAttribute("x")),
-  width: Number(bar.$bar.getAttribute("width")),
-  progressWidth: Number(bar.$bar_progress.getAttribute("width")),
-  handles: wrapper.querySelectorAll(".handle").length,
-}};
-
-function event(type, target, offsetX, offsetY) {{
-  const evt = document.createEvent("HTMLEvents");
-  evt.initEvent(type, true, true);
-  evt.offsetX = offsetX;
-  evt.offsetY = offsetY;
-  target.dispatchEvent(evt);
-}}
-
-event("mousedown", wrapper, before.x, 0);
-event("mousemove", svg, before.x + 200, 0);
-event("mouseup", svg, before.x + 200, 0);
-event("click", wrapper.querySelector(".bar-hit"), before.x, 0);
-
-const after = {{
-  x: Number(bar.$bar.getAttribute("x")),
-  width: Number(bar.$bar.getAttribute("width")),
-  progressWidth: Number(bar.$bar_progress.getAttribute("width")),
-  handles: wrapper.querySelectorAll(".handle").length,
-  popupVisible: document.querySelector("#gantt .popup-wrapper").style.opacity,
-  dateChanges,
-  progressChanges,
-  clicks,
-}};
-
-process.stdout.write(JSON.stringify({{ before, after }}));
-"""
-    result = helpers._run_node_json(node_code)
-
-    assert result["before"]["handles"] == 0
-    assert result["after"]["handles"] == 0
-    assert result["after"]["x"] == result["before"]["x"]
-    assert result["after"]["width"] == result["before"]["width"]
-    assert result["after"]["progressWidth"] == result["before"]["progressWidth"]
-    assert result["after"]["dateChanges"] == 0
-    assert result["after"]["progressChanges"] == 0
-    assert result["after"]["clicks"] == 1
-    assert str(result["after"]["popupVisible"]) == "1"
+    result = run_current_js(r"""
+const data=h.fixture(), before=JSON.stringify(data), view=h.gantt(data), bars=view.nodes.filter(node=>node.props['data-plan-task']);
+const initial=bars.map(node=>h.clone(node.props.style));
+for (const bar of bars) {
+  for (const handler of ['onMouseDown','onMouseMove','onMouseUp','onPointerDown','onTouchStart','onDragStart','onDrop','onDateChange','onProgressChange']) assert.strictEqual(bar.props[handler],undefined);
+  assert.notStrictEqual(bar.props.draggable,true);
+  bar.props.onMouseEnter({clientX:300,clientY:200}); bar.props.onMouseLeave(); bar.props.onClick();
+}
+h.equal(bars.map(node=>node.props.style),initial);
+assert.strictEqual(view.selections.length,bars.length);
+assert(view.selections.every(row=>row.before===false && data.tasks.includes(row.task)));
+assert(!view.nodes.some(node=>/handle|bar-progress/.test(node.props.className||'')));
+assert.strictEqual(JSON.stringify(data),before);
+return bars.length;
+""")
+    assert result["result"] == 2
 
 
 def test_formal_render_passes_readonly_options_and_blocks_drag() -> None:
-    helpers = _load_gantt_dom_helpers()
-    node_code = f"""
-{helpers.DOM_SHIM_JS}
-createHost("gantt");
-createHost("ganttEmpty");
-createHost("ganttError");
-createHost("ganttLegend");
-createHost("ganttZoomWarning");
-
-loadScript({helpers._vendor_js()});
-const RealGantt = Gantt;
-let lastOptions = null;
-function CapturingGantt(selector, tasks, options) {{
-  lastOptions = options || {{}};
-  return new RealGantt(selector, tasks, options);
-}}
-CapturingGantt.prototype = RealGantt.prototype;
-window.Gantt = CapturingGantt;
-global.Gantt = CapturingGantt;
-
-loadScript({helpers._gantt_js()});
-loadScript({helpers._gantt_zoom_js()});
-loadScript({helpers._gantt_adapter_js()});
-loadScript({helpers._gantt_color_js()});
-loadScript({helpers._outline_js()});
-loadScript({helpers._gantt_contract_js()});
-loadScript({helpers._gantt_help_js()});
-loadScript({helpers._gantt_popup_js()});
-loadScript({helpers._gantt_legend_js()});
-loadScript({helpers._gantt_holidays_js()});
-loadScript({helpers._gantt_decorations_js()});
-loadScript({helpers._gantt_render_js()});
-
-const ns = window.__APS_GANTT__;
-const state = ns.state;
-state.cfg = {{
-  view: "machine",
-  startDate: "2026-05-11",
-  endDate: "2026-05-11",
-  weekStart: "2026-05-11",
-}};
-state.allTasks = [{{
-  id: "T1",
-  name: "Formal readonly task",
-  start: "2026-05-11 08:00:00",
-  end: "2026-05-11 09:00:00",
-  progress: 40,
-  dependencies: "",
-  meta: {{ batch_id: "B001", source: "internal", status: "pending" }},
-}}];
-state.critical = {{ ids: [], edges: [], available: true }};
-state.ccIdSet = new Set();
-state.ccPrevByTo = new Map();
-state.ccEdgeMetaByTo = new Map();
-state.calendarDays = [];
-state.ui.mode = "view";
-state.ui.zoomLevel = "hour";
-state.ui.viewMode = "Hour";
-state.ui.colorMode = "batch";
-state.ui.depsMode = "critical";
-state.ui.highlightCC = true;
-state.ui.onlyOverdue = false;
-state.ui.onlyExternal = false;
-state.ui.filterBatch = "";
-state.ui.filterResource = "";
-
-ns.render();
-
-const bar = state.gantt.get_bar("T1");
-const wrapper = findWrapperById("T1");
-const svg = document.querySelector("#gantt svg.gantt");
-const beforeX = Number(bar.$bar.getAttribute("x"));
-
-function event(type, target, offsetX, offsetY) {{
-  const evt = document.createEvent("HTMLEvents");
-  evt.initEvent(type, true, true);
-  evt.offsetX = offsetX;
-  evt.offsetY = offsetY;
-  target.dispatchEvent(evt);
-}}
-
-event("mousedown", wrapper, beforeX, 0);
-event("mousemove", svg, beforeX + 200, 0);
-event("mouseup", svg, beforeX + 200, 0);
-
-process.stdout.write(JSON.stringify({{
-  readonly: lastOptions && lastOptions.readonly,
-  readonlyDates: lastOptions && lastOptions.readonly_dates,
-  readonlyProgress: lastOptions && lastOptions.readonly_progress,
-  viewMode: lastOptions && lastOptions.view_mode,
-  handleCount: wrapper.querySelectorAll(".handle").length,
-  beforeX,
-  afterX: Number(bar.$bar.getAttribute("x")),
-}}));
-"""
-    result = helpers._run_node_json(node_code)
-
-    assert result["readonly"] is True
-    assert result["readonlyDates"] is True
-    assert result["readonlyProgress"] is True
-    assert result["viewMode"] == "Hour"
-    assert result["handleCount"] == 0
-    assert result["afterX"] == result["beforeX"]
+    result = run_current_js(r"""
+const data=h.fixture(), task=data.tasks[0], before=JSON.stringify(data), view=h.gantt(data,{selected:{task,before:false}});
+const bar=view.nodes.find(node=>node.type==='button' && node.props['data-plan-task']===task.task_ref);
+assert.strictEqual(bar.props['aria-pressed'],true);
+const initial=h.clone(bar.props.style), detail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected:{task,before:false},onSelect:()=>{}});
+const text=h.text(detail);
+assert(text.includes('计划开始') && text.includes('计划结束') && text.includes('当前所选计划安排'));
+assert(text.includes(task.start.replace('T',' ')) && text.includes(task.end.replace('T',' ')));
+assert(h.walk(detail).filter(node=>node.type==='input').length===0);
+for (const node of view.nodes.filter(node=>node.props['data-plan-task'])) assert(!node.props.onMouseDown && !node.props.onDateChange && !node.props.onProgressChange);
+bar.props.onClick(); h.equal(bar.props.style,initial);
+assert.strictEqual(view.selections[0].task,task);
+assert.strictEqual(JSON.stringify(data),before);
+return true;
+""")
+    assert result["result"] is True
 
 
 def main() -> None:

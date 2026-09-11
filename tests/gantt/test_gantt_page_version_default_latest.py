@@ -80,16 +80,27 @@ def _build_app(
 
 
 def test_gantt_page_version_default_latest(tmp_path, monkeypatch) -> None:
+    from contextlib import closing
+
+    from core.infrastructure.database import get_connection
+    from core.models.workbench_plan_reference import WorkbenchPlanLocator
+    from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
+    from tests._support.gantt_current import assert_retired, navigation, prepare_read_state
+    from tests._support.gantt_retirement import _business_state
+
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
-
-    page_resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02")
-    assert page_resp.status_code == 200
-    assert "第 7 版" in page_resp.get_data(as_text=True)
-
-    page_latest_resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02&version=latest")
-    assert page_latest_resp.status_code == 200
-    assert "第 7 版" in page_latest_resp.get_data(as_text=True)
+    before = prepare_read_state(client)
+    assert_retired(client, {"view": "machine", "week_start": "2026-03-02"})
+    assert_retired(client, {"view": "machine", "week_start": "2026-03-02", "version": "latest"})
+    default_context = navigation(client, {"week_start": "2026-03-02"})
+    latest_context = navigation(client, {"week_start": "2026-03-02", "version": "latest"})
+    assert latest_context == default_context
+    with closing(get_connection(app.config["DATABASE_PATH"])) as conn:
+        locator = WorkbenchPlanIdentityRepository(conn).resolve_plan(default_context["plan_ref"])
+    assert locator == WorkbenchPlanLocator(7, "adopted")
+    assert default_context["range_start"] == "2026-03-02T00:00:00"
+    assert default_context["range_end"] == "2026-03-09T00:00:00"
 
     data_resp = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02")
     assert data_resp.status_code == 200
@@ -100,7 +111,8 @@ def test_gantt_page_version_default_latest(tmp_path, monkeypatch) -> None:
     invalid_page_resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02&version=0")
     invalid_page_html = invalid_page_resp.get_data(as_text=True)
     assert invalid_page_resp.status_code == 400
-    assert "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。" in invalid_page_html
+    assert "原计划身份、日期或筛选无效，未改选对象或扩大范围。" in invalid_page_html
+    assert "Location" not in invalid_page_resp.headers
 
     invalid_data_resp = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02&version=-1")
     invalid_payload = invalid_data_resp.get_json()
@@ -111,18 +123,25 @@ def test_gantt_page_version_default_latest(tmp_path, monkeypatch) -> None:
     missing_page_resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02&version=999")
     missing_page_html = missing_page_resp.get_data(as_text=True)
     assert missing_page_resp.status_code == 404
-    assert "排产版本不存在，请先选择已有版本。" in missing_page_html
+    assert "页面不存在或已被删除" in missing_page_html
     assert "data-version=\"None\"" not in missing_page_html
+    assert "Location" not in missing_page_resp.headers
+    assert _business_state(client) == before
 
 
 def test_gantt_no_history_does_not_synthesize_v1_even_with_orphan_schedule(tmp_path, monkeypatch) -> None:
+    from tests._support.gantt_current import prepare_read_state
+    from tests._support.gantt_retirement import _business_state
+
     app = _build_app(tmp_path, monkeypatch, with_history=False, orphan_schedule=True)
     client = app.test_client()
+    before = prepare_read_state(client)
 
     page_resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02")
     page_html = page_resp.get_data(as_text=True)
-    assert page_resp.status_code == 200
-    assert "暂无排产版本" in page_html
+    assert page_resp.status_code == 404
+    assert "页面不存在或已被删除" in page_html
+    assert "Location" not in page_resp.headers
     assert "第 1 版" not in page_html
     assert "第 0 版" not in page_html
     assert "第 None 版" not in page_html
@@ -142,6 +161,10 @@ def test_gantt_no_history_does_not_synthesize_v1_even_with_orphan_schedule(tmp_p
     missing_payload = missing_resp.get_json()
     assert missing_resp.status_code == 404
     assert missing_payload["success"] is False
+    catalog = client.get("/api/workbench/v1/plans?collection=history")
+    assert catalog.status_code == 200
+    assert catalog.get_json()["data"]["plans"] == []
+    assert _business_state(client) == before
 
 
 def test_gantt_no_history_explicit_dates_ignore_offset(tmp_path, monkeypatch) -> None:
@@ -184,6 +207,13 @@ def test_gantt_service_no_history_explicit_dates_ignore_offset(tmp_path, monkeyp
 
 
 def test_gantt_page_selected_version_label_includes_simulated_completion_status(tmp_path, monkeypatch) -> None:
+    from contextlib import closing
+
+    from core.infrastructure.database import get_connection
+    from tests._support.gantt_current import assert_retired, navigation, prepare_read_state
+    from tests._support.gantt_retirement import _business_state
+    from web.viewmodels.scheduler_history_summary import build_history_summary_display, decorate_history_version_options
+
     app = _build_app(
         tmp_path,
         monkeypatch,
@@ -191,17 +221,33 @@ def test_gantt_page_selected_version_label_includes_simulated_completion_status(
         result_summary={"completion_status": "partial", "counts": {"op_count": 3, "scheduled_ops": 2, "failed_ops": 1}},
     )
     client = app.test_client()
-
-    response = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02&version=7")
-    html = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    # simulated 行保留复合标签「模拟排产 / 部分成功」（统一字源），不被压扁成单一 outcome
-    assert "v7 · 模拟排产 / 部分成功" in html
-    assert "v7 · 部分成功" not in html
+    before = prepare_read_state(client)
+    assert_retired(client, {"view": "machine", "week_start": "2026-03-02", "version": 7})
+    context = navigation(client, {"version": 7})
+    # The legacy dropdown is retired. Its shared summary formatter and stored
+    # simulated/partial facts remain contracts, not claims about the new label.
+    with closing(get_connection(app.config["DATABASE_PATH"])) as conn:
+        row = dict(conn.execute("SELECT * FROM ScheduleHistory WHERE version = 7").fetchone())
+    display = build_history_summary_display(raw_summary=row["result_summary"], result_status=row["result_status"])
+    option = decorate_history_version_options([row])[0]
+    assert display["result_status_label"] == "模拟排产 / 部分成功"
+    assert option["version_option_label"] == "v7 · 模拟排产 / 部分成功"
+    assert option["version_option_label"] != "v7 · 部分成功"
+    catalog = client.get("/api/workbench/v1/plans?collection=history")
+    assert catalog.status_code == 200
+    assert any(plan["version"] == 7 and plan["plan_ref"] == context["plan_ref"]
+               for plan in catalog.get_json()["data"]["plans"])
+    assert _business_state(client) == before
 
 
 def test_gantt_page_non_selected_version_option_uses_completion_status_label(tmp_path, monkeypatch) -> None:
+    from contextlib import closing
+
+    from core.infrastructure.database import get_connection
+    from tests._support.gantt_current import assert_retired, prepare_read_state
+    from tests._support.gantt_retirement import _business_state
+    from web.viewmodels.scheduler_history_summary import decorate_history_version_options
+
     app = _build_app(
         tmp_path,
         monkeypatch,
@@ -216,15 +262,18 @@ def test_gantt_page_non_selected_version_option_uses_completion_status_label(tmp
         ],
     )
     client = app.test_client()
-
-    response = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02&version=7")
-    html = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "v6" in html
-    # simulated 行保留复合标签，不被第二套 status 字典压扁（fusion-label-single-source）
-    assert "v6 · 模拟排产 / 部分成功" in html
-    assert "v6 · 部分成功" not in html
+    before = prepare_read_state(client)
+    assert_retired(client, {"view": "machine", "week_start": "2026-03-02", "version": 7})
+    with closing(get_connection(app.config["DATABASE_PATH"])) as conn:
+        rows = [dict(row) for row in conn.execute("SELECT * FROM ScheduleHistory ORDER BY version DESC")]
+    options = decorate_history_version_options(rows)
+    assert [option["version"] for option in options] == [7, 6]
+    assert options[1]["version_option_label"] == "v6 · 模拟排产 / 部分成功"
+    assert options[1]["version_option_label"] != "v6 · 部分成功"
+    catalog = client.get("/api/workbench/v1/plans?collection=history")
+    assert catalog.status_code == 200
+    assert [plan["version"] for plan in catalog.get_json()["data"]["plans"]] == [7, 6]
+    assert _business_state(client) == before
 
 
 def test_gantt_data_uses_app_error_http_mapping(tmp_path, monkeypatch) -> None:

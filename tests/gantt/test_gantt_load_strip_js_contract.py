@@ -86,87 +86,86 @@ def _run(helpers, rows_js: str, body: str) -> dict:
 
 
 def test_top5_truncation_with_more_notice_and_order_preserved():
-    helpers = _load_gantt_helpers()
-    result = _run(helpers, _rows_js(7), """
-const html = ns.buildLoadStripHtml(rows, geo);
-const labels = [];
-const labelRe = /aps-load-strip-label[^>]*>([^<]+)</g;
-let m;
-while ((m = labelRe.exec(html)) !== null) labels.push(m[1]);
-process.stdout.write(JSON.stringify({
-  labels, more: html.indexOf("另有 2 个资源有排程") >= 0,
-  source: html.indexOf("按全局工作日历估算，未按单台设备/单人细分") >= 0,
-}));
+    """The retired Top-5 strip is replaced by an ordered, paged resource table."""
+    from tests._support.gantt_current_js import run_current_js
+
+    run_current_js(r"""
+const data=h.fixture();data.projections.occupancy.resources=Array.from({length:25},(_,i)=>({resource_ref:h.reference(500+i),kind:'machine',label:'MC'+(i+1)+' 车床',arranged_hours:2,occupied_hours:2,available_hours:8,overlap_hours:0,has_overlap:false,utilization:0.25,issues:[]}));
+const before=h.clone(data), seen=[];
+for(const page of [0,1]) {
+ const tree=h.render(h.runtime.PlanDetailsUI.ProjectionTables,{data,onResource:()=>{}},{ProjectionTables:{0:'load',1:page}});
+ const rows=h.walk(tree).filter(n=>n.type==='tbody').flatMap(n=>h.walk(n).filter(row=>row.type==='tr'));
+ assert.strictEqual(rows.length,page===0?20:5);seen.push(...rows.map(row=>h.text(h.walk(row).find(n=>n.type==='button'))));
+ assert(h.text(tree).includes('25 项'));assert(h.text(tree).includes('只统计所选计划在此时间范围内的安排'));
+ const next=h.walk(tree).find(n=>n.props['aria-label']==='分析下一页');assert.strictEqual(next.props.disabled,page===1);
+ if(!page){next.props.onClick();assert(h.updates().some(row=>row.name==='ProjectionTables'&&row.index===1&&row.value===1));}
+}
+h.equal(seen,data.projections.occupancy.resources.map(row=>row.label));h.equal(data,before);
 """)
-    assert result["labels"] == ["MC1 车床", "MC2 车床", "MC3 车床", "MC4 车床", "MC5 车床"]  # 保序 Top 5
-    assert result["more"] is True
-    assert result["source"] is True  # 容量来源文案（4.6 明示）
 
 
 def test_empty_rows_or_missing_geometry_hide_strip():
-    helpers = _load_gantt_helpers()
-    result = _run(helpers, "[]", """
-ns.renderLoadStrip();
-const host = document.getElementById("ganttLoadStrip");
-const emptyHidden = host.classList.contains("is-hidden");
-// 无甘特几何（gantt 未渲染）同样隐藏
-state.gantt = null;
-ns.initResourceLoad([{ date: "2026-06-15", resource_id: "MC1", resource_label: "MC1",
-  hours: 1, capacity_hours: 8, ratio: 0.125, severity: "normal", links: [] }]);
-ns.renderLoadStrip();
-process.stdout.write(JSON.stringify({
-  emptyHidden, noGeoHidden: host.classList.contains("is-hidden"),
-}));
+    """Unknown and genuinely empty occupancy must not collapse to one state."""
+    from tests._support.gantt_current_js import run_current_js
+
+    run_current_js(r"""
+const data=h.fixture();
+for(const state of ['available','unavailable','partial']) {
+ data.projections.occupancy={state,resources:[],issues:[]};const before=h.clone(data);
+ const tree=h.render(h.runtime.PlanDetailsUI.ProjectionTables,{data},{ProjectionTables:{0:'load'}}),text=h.text(tree);
+ assert(text.includes(state==='available'?'所选时间范围内没有记录。':'资料未记录或无法核实。'));
+ assert(!text.includes(state==='available'?'资料未记录或无法核实。':'所选时间范围内没有记录。'));
+ assert(!h.walk(tree).some(n=>n.props.id==='ganttLoadStrip'));assert(!text.includes('0%'));h.equal(data,before);
+}
 """)
-    assert result["emptyHidden"] is True
-    assert result["noGeoHidden"] is True
 
 
 def test_unknown_ratio_cell_shows_question_mark_not_zero():
-    helpers = _load_gantt_helpers()
-    rows = json.dumps([{
-        "date": "2026-06-15", "resource_id": "MC1", "resource_label": "MC1",
-        "hours": 2.0, "capacity_hours": None, "ratio": None,
-        "severity": "unknown", "links": [],
-    }], ensure_ascii=False)
-    result = _run(helpers, rows, """
-const html = ns.buildLoadStripHtml(rows, geo);
-process.stdout.write(JSON.stringify({ html }));
+    """Current null capacity remains unknown, never zero percent or a meter."""
+    from tests._support.gantt_current_js import run_current_js
+
+    run_current_js(r"""
+const data=h.fixture();data.projections.occupancy={state:'partial',issues:[],resources:[{resource_ref:h.reference(200),kind:'machine',label:'MC1',arranged_hours:2,occupied_hours:2,available_hours:null,overlap_hours:0,has_overlap:false,utilization:null,issues:[{code:'calendar_unavailable',message:'日历资料无法核实。'}]}]};
+const before=h.clone(data), tree=h.render(h.runtime.PlanDetailsUI.ProjectionTables,{data},{ProjectionTables:{0:'load'}}), text=h.text(tree);
+assert(text.includes('无法核实'));assert(!text.includes('0%'));assert(!h.walk(tree).some(n=>n.props.className==='plan-meter'));
+const cells=h.walk(tree).filter(n=>n.type==='tbody').flatMap(n=>h.walk(n).filter(row=>row.type==='td'));assert.strictEqual(h.text(cells[3]),'无法核实');assert(h.text(cells[5]).includes('无法核实'));
+h.equal(data,before);
 """)
-    assert "aps-load-cell-unknown" in result["html"]
-    assert ">?</button>" in result["html"]
-    assert "利用率暂时算不了" in result["html"]
-    assert "0%" not in result["html"]
 
 
 def test_cell_geometry_uses_holiday_layer_pixel_formula():
-    helpers = _load_gantt_helpers()
-    rows = json.dumps([
-        {"date": "2026-06-15", "resource_id": "MC1", "resource_label": "MC1", "hours": 1.0,
-         "capacity_hours": 8.0, "ratio": 0.125, "severity": "normal", "links": []},
-        {"date": "2026-06-17", "resource_id": "MC1", "resource_label": "MC1", "hours": 1.0,
-         "capacity_hours": 8.0, "ratio": 0.125, "severity": "normal", "links": []},
-    ], ensure_ascii=False)
-    result = _run(helpers, rows, """
-const html = ns.buildLoadStripHtml(rows, geo);
-const xs = [];
-const re = /left:(\\d+)px;width:(\\d+)px/g;
-let m;
-while ((m = re.exec(html)) !== null) xs.push([Number(m[1]), Number(m[2])]);
-process.stdout.write(JSON.stringify({ xs }));
+    """No Frappe day strip; current calendar retains exact half-open windows."""
+    from tests._support.gantt_current_js import run_current_js
+
+    run_current_js(r"""
+const data=h.fixture(), windows=[{start:'2026-06-15T00:00:00',end:'2026-06-16T00:00:00',allow_normal:true,allow_urgent:true,efficiency:1},{start:'2026-06-17T00:00:00',end:'2026-06-18T00:00:00',allow_normal:false,allow_urgent:true,efficiency:0.5}];
+data.projections.calendar={state:'available',issues:[],resources:[{resource_ref:h.reference(200),kind:'machine',label:'MC1',available_hours:48,normal_effective_hours:24,urgent_effective_hours:36,windows,issues:[]}]};
+const before=h.clone(data), M=h.runtime.PlanGanttModel;
+const tree=h.render(h.runtime.PlanDetailsUI.ProjectionTables,{data},{ProjectionTables:{0:'calendar'},CalendarWindows:{0:true}}), text=h.text(tree);
+for(const window of windows) {assert(text.includes(M.timeLabel(window.start)));assert(text.includes(M.timeLabel(window.end)));assert.strictEqual(M.instant(window.end)-M.instant(window.start),86400000);}
+assert.strictEqual(M.instant(windows[1].start)-M.instant(windows[0].start),2*86400000);assert(text.includes('普通禁止'));assert(text.includes('急件允许'));assert(text.includes('效率 0.5'));
+assert(!h.walk(tree).some(n=>String(n.props.className||'').includes('aps-load-cell')));h.equal(data,before);
 """)
-    # day 视图 step_minutes=1440/column_width=38：6-15 是 gantt_start 当天 x=0，6-17 偏移 2 天 = 76px；宽 = dayWidth-2 = 36
-    assert result["xs"] == [[0, 36], [76, 36]]
 
 
-def test_popup_filters_day_tasks_and_renders_links():
-    helpers = _load_gantt_helpers()
-    result = _run(helpers, _rows_js(1), """
-const html = ns.buildLoadPopupHtml({ id: "MC1", label: "MC1 车床" }, rows[0]);
-process.stdout.write(JSON.stringify({ html }));
-""")
-    assert "B1" in result["html"] and "铣面" in result["html"]  # 当天任务在列
-    assert "B2" not in result["html"]  # 6-16 的任务不混入 6-15 弹层
-    assert 'href="/scheduler/resource-dispatch?machine_id=MC1"' in result["html"]
-    assert "模拟预览" in result["html"]  # disabled 链接出原因 title
-    assert 'href=""' not in result["html"]  # disabled 不渲染 a 标签
+def test_popup_filters_day_tasks_and_renders_links(app_client):
+    """Current exact read scope drives occupancy and resource selection."""
+    from tests._support.gantt_current import plan_fixture, read_workspace
+    from tests._support.gantt_current_js import run_current_js
+    from tests._support.gantt_retirement import _business_state
+
+    _, context, full, before = plan_fixture(app_client)
+    context = dict(context, range_start="2026-05-04T10:00:00", range_end="2026-05-04T11:00:00")
+    payload = read_workspace(app_client, context)
+    assert payload["data"]["task_count"] == 1
+    assert payload["data"]["tasks"][0]["process_label"] == "钻孔"
+    assert payload["data"]["plan_span"] == full["data"]["plan_span"]
+    assert all(row["label"] not in ("设备二", "人员二") for row in payload["data"]["projections"]["occupancy"]["resources"])
+    run_current_js(r"""
+const data=sourceData.data, picked=[], before=h.clone(data);
+const tree=h.render(h.runtime.PlanDetailsUI.ProjectionTables,{data,onResource:label=>picked.push(label)},{ProjectionTables:{0:'load'}});
+const table=h.walk(tree).find(n=>n.type==='tbody'), buttons=h.walk(table).filter(n=>n.type==='button');
+assert.strictEqual(buttons.length,2);buttons.forEach(button=>button.props.onClick());h.equal(picked,['设备一','人员一']);
+assert(!h.walk(tree).some(n=>n.type==='a'&&n.props.href===''));assert(!h.text(tree).includes('设备二'));h.equal(data,before);
+""", payload)
+    assert _business_state(app_client) == before

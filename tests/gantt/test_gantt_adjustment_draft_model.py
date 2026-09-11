@@ -149,20 +149,42 @@ def test_schema_current_detection_requires_schedule_version_sequence(tmp_path: P
 
 
 def test_adjustment_draft_migration_preserves_existing_v11_data(tmp_path: Path) -> None:
+    from contextlib import closing
+
+    from core.infrastructure.migrations.v12 import run as migrate_v12
+    from tests.gantt.gantt_legacy_schema_support import assert_frozen_catalog, load_frozen_schema
+
     db_path = tmp_path / "legacy_v11.db"
     conn = get_connection(str(db_path))
     try:
-        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        # v12 is additive: only the two draft tables and their indexes. Start
+        # from the verified historical v12 DDL, not today's schema relabeled 11.
+        load_frozen_schema(conn, version=12)
         conn.executescript(
             """
             DELETE FROM SchemaVersion;
             INSERT INTO SchemaVersion (id, version) VALUES (1, 11);
             DROP TABLE ScheduleAdjustmentChange;
             DROP TABLE ScheduleAdjustmentDraft;
-            CREATE TABLE LegacyRows (id INTEGER PRIMARY KEY, name TEXT);
-            INSERT INTO LegacyRows (id, name) VALUES (1, 'keep-me');
             """
         )
+        conn.commit()
+        assert {"ScheduleAdjustmentDraft", "ScheduleAdjustmentChange"}.isdisjoint(_table_names(conn))
+        assert not any(name.startswith("Workbench") for name in _table_names(conn))
+        # Replaying the actual v12 migration must reproduce the entire frozen
+        # catalog, including columns, indexes and foreign keys, before seeding.
+        with closing(get_connection(":memory:")) as probe:
+            conn.backup(probe)
+            migrate_v12(probe)
+            probe.execute("UPDATE SchemaVersion SET version = 12 WHERE id = 1")
+            probe.commit()
+            assert_frozen_catalog(probe, version=12)
+        conn.executescript("CREATE TABLE LegacyRows (id INTEGER PRIMARY KEY, name TEXT); "
+                           "INSERT INTO LegacyRows (id, name) VALUES (1, 'keep-me');")
+        _seed_formal_schedule(conn)
+        formal_before = _formal_schedule_rows(conn)
+        history_before = [tuple(row) for row in conn.execute("SELECT * FROM ScheduleHistory ORDER BY id")]
+        sequence_before = _seq_versions(conn)
         conn.commit()
     finally:
         conn.close()
@@ -174,6 +196,10 @@ def test_adjustment_draft_migration_preserves_existing_v11_data(tmp_path: Path) 
         assert int(schema_version["version"]) == CURRENT_SCHEMA_VERSION
         assert {"ScheduleAdjustmentDraft", "ScheduleAdjustmentChange"} <= _table_names(conn)
         assert conn.execute("SELECT name FROM LegacyRows WHERE id = 1").fetchone()["name"] == "keep-me"
+        assert _formal_schedule_rows(conn) == formal_before
+        assert [tuple(row) for row in conn.execute("SELECT * FROM ScheduleHistory ORDER BY id")] == history_before
+        assert _seq_versions(conn) == sequence_before
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     finally:
         conn.close()
 

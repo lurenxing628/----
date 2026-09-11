@@ -107,7 +107,7 @@ def test_symlink_with_whitelist_name_rejected(app_client):
 
 
 @_requires_symlink
-def test_runtime_logs_page_refuses_symlink(app_client):
+def test_runtime_logs_page_refuses_symlink(app_client, monkeypatch):
     # 页面查看日志链路与诊断包同一道锁：白名单真名（aps_error.log）被替换成软链接
     # 指向假 secret 时，读原语拒读，密文绝不回显到页面（finding-01 页面链路补齐）。
     log_dir = app_client.application.config["LOG_DIR"]
@@ -117,12 +117,68 @@ def test_runtime_logs_page_refuses_symlink(app_client):
         os.remove(link)
     os.symlink(os.path.join(log_dir, "aps_secret_key.txt"), link)
 
-    resp = app_client.get("/system/runtime-logs?file=aps_error.log")
-    html = resp.get_data(as_text=True)
-    resp.close()
+    import builtins
+    from contextlib import closing
+    from pathlib import Path
 
-    assert resp.status_code == 200
+    import core.services.workbench.system_reads as reads
+    from core.infrastructure.database import get_connection
+    from core.services.system.system_config_service import SystemConfigService
+
+    database = app_client.application.config["DATABASE_PATH"]
+    with closing(get_connection(database)) as conn:
+        SystemConfigService(conn).ensure_defaults(app_client.application.config["BACKUP_KEEP_DAYS"])
+
+    def state():
+        with closing(get_connection(database)) as conn:
+            tables = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+            return {name: sorted(repr(tuple(row)) for row in conn.execute('SELECT * FROM "' + name.replace('"', '""') + '"'))
+                    for name in tables}
+
+    target = Path(log_dir) / "aps_secret_key.txt"
+    before_data, before_bytes = state(), target.read_bytes()
+    before_target, before_link = target.stat(), os.lstat(link)
+    before_destination = os.readlink(link)
+    opened, tail_reads = [], []
+    original_open, original_tail = builtins.open, reads.read_log_entries_tail
+
+    def observed_open(file, mode="r", *args, **kwargs):
+        if not isinstance(file, int) and ("r" in mode or "+" in mode):
+            resolved = os.path.realpath(os.fsdecode(file))
+            opened.append(resolved)
+            assert resolved != str(target.resolve()), "日志 GET 不得打开软链接目标"
+        return original_open(file, mode, *args, **kwargs)
+
+    def observed_tail(path, **kwargs):
+        tail_reads.append(os.path.abspath(path))
+        assert os.path.abspath(path) != link, "软链接必须在尾读前被拒绝"
+        return original_tail(path, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "open", observed_open)
+        patch.setattr(reads, "read_log_entries_tail", observed_tail)
+        resp = app_client.get("/system/runtime-logs?file=aps_error.log")
+        html = resp.get_data(as_text=True)
+        assert resp.status_code == 410 and "Location" not in resp.headers
+        assert "旧入口已退役" in html
+        resp.close()
+        canonical = app_client.get("/api/workbench/v1/system/logs?file=aps_error.log")
+        assert canonical.status_code == 200, canonical.get_data(as_text=True)
+        payload = canonical.get_json()
+        assert payload["ok"] and payload["data"]["rows"] == []
+        failed = next(row for row in payload["data"]["sources"] if row["source"] == "aps_error.log")
+        assert failed["state"] == "error" and failed["count"] is None
+        assert "日志文件无法读取" in failed["message"]
+        assert "PAGE-LEAK-SECRET" not in canonical.get_data(as_text=True)
+        canonical.close()
+
     assert "PAGE-LEAK-SECRET" not in html, "页面不应跟随软链接读取并回显非日志内容"
+    assert str(target.resolve()) not in opened and link not in tail_reads
+    assert target.read_bytes() == before_bytes and state() == before_data
+    assert os.path.islink(link) and os.readlink(link) == before_destination
+    for before, after in ((before_target, target.stat()), (before_link, os.lstat(link))):
+        assert (after.st_dev, after.st_ino, after.st_mode, after.st_size, after.st_mtime_ns) == (
+            before.st_dev, before.st_ino, before.st_mode, before.st_size, before.st_mtime_ns)
 
 
 def test_operation_logs_failure_yields_explanation_file(app_client, monkeypatch):

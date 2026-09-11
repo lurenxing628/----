@@ -93,122 +93,131 @@ def _run(helpers, body: str) -> dict:
 
 # ---------- ①筛选精确匹配 ----------
 
-def test_apply_filters_batch_exact_match_not_substring():
-    helpers = _load_gantt_helpers()
-    result = _run(helpers, """
-state.ui.filterBatch = "B1";
-const exact = ns.applyFilters(state.allTasks).map(t => t.id);
-state.ui.filterBatch = "b1"; // 大小写不敏感保留（后端 id 只 strip 未统一大小写）
-const ci = ns.applyFilters(state.allTasks).map(t => t.id);
-state.ui.filterBatch = "";
-const all = ns.applyFilters(state.allTasks).map(t => t.id);
-process.stdout.write(JSON.stringify({ exact, ci, all }));
+def test_apply_filters_batch_exact_match_not_substring(app_client):
+    """Exact legacy filters retire explicitly; batch grouping keeps identities."""
+    from tests._support.gantt_current import assert_retired, plan_fixture
+    from tests._support.gantt_current_js import run_current_js
+    from tests._support.gantt_retirement import _business_state
+
+    query, context, payload, before = plan_fixture(app_client)
+    for value in ("B1", "b1", "B12", "B100"):
+        assert_retired(app_client, dict(query, gantt_batch=value))
+        response = app_client.get("/api/workbench/v1/plans/" + context["plan_ref"] + "/workspace",
+                                  query_string={"gantt_batch": value})
+        assert response.status_code == 400
+        assert response.get_json()["ok"] is False
+        assert "data" not in response.get_json()
+    run_current_js(r"""
+const data=h.processFixture();data.tasks.forEach((task,index)=>{task.batch_id=['B1','B12','B100'][index];});const before=h.clone(data), M=h.runtime.PlanGanttModel;
+const grouped=M.layout(data,'batch','',false,830,false);assert.strictEqual(grouped.groupCount,3);
+for(const task of data.tasks) assert(grouped.rows.some(row=>row.items.length===1&&row.items[0].task.task_ref===task.task_ref));
+// Current search is intentionally substring search, not the retired exact filter.
+assert.strictEqual(M.layout(data,'batch','b1',false,830,false).tasks.length,3);h.equal(data,before);
 """)
-    assert result["exact"] == ["T1"]  # B1 不再带出 B12/B100
-    assert result["ci"] == ["T1"]
-    assert result["all"] == ["T1", "T2", "T3"]
+    assert payload["data"]["task_count"] == 3
+    assert _business_state(app_client) == before
 
 
-def test_apply_filters_resource_exact_both_views():
-    helpers = _load_gantt_helpers()
-    result = _run(helpers, """
-state.ui.filterResource = "MC1";
-const machineById = ns.applyFilters(state.allTasks).map(t => t.id);
-state.ui.filterResource = "车床一号"; // 名称等值同样命中（id/名称双字段 or 语义保留）
-const machineByName = ns.applyFilters(state.allTasks).map(t => t.id);
-state.cfg = { view: "operator" };
-state.ui.filterResource = "OP1";
-const operatorById = ns.applyFilters(state.allTasks).map(t => t.id);
-state.ui.filterResource = "张三";
-const operatorByName = ns.applyFilters(state.allTasks).map(t => t.id);
-process.stdout.write(JSON.stringify({ machineById, machineByName, operatorById, operatorByName }));
+def test_apply_filters_resource_exact_both_views(app_client):
+    """A retired exact resource filter cannot silently become fuzzy search."""
+    from tests._support.gantt_current import assert_retired, plan_fixture
+    from tests._support.gantt_current_js import run_current_js
+    from tests._support.gantt_retirement import _business_state
+
+    query, context, _, before = plan_fixture(app_client)
+    for value in ("MC1", "车床一号", "OP1", "张三"):
+        assert_retired(app_client, dict(query, gantt_resource=value))
+        response = app_client.get("/api/workbench/v1/plans/" + context["plan_ref"] + "/workspace",
+                                  query_string={"gantt_resource": value})
+        assert response.status_code == 400
+        assert response.get_json()["ok"] is False
+        assert "data" not in response.get_json()
+    run_current_js(r"""
+const data=h.processFixture();data.resources=[];
+data.tasks.forEach((task,index)=>{for(const kind of ['machine','operator']) {const ref=h.reference((kind==='machine'?200:300)+index);task[kind+'_ref']=ref;data.resources.push({ref,label:(kind==='machine'?'MC':'OP')+[1,12,100][index],business_code:String(index)});}});
+const before=h.clone(data), M=h.runtime.PlanGanttModel;
+for(const mode of ['machine','operator']) {const model=M.layout(data,mode,'',false,830,false);assert.strictEqual(model.groupCount,3);for(const task of data.tasks) assert(model.rows.some(row=>row.items.length===1&&row.items[0].task.task_ref===task.task_ref));}
+h.equal(data,before);
 """)
-    assert result["machineById"] == ["T1"]  # MC1 不带出 MC12/MC100
-    assert result["machineByName"] == ["T1"]
-    assert result["operatorById"] == ["T1"]  # OP1 不带出 OP12/OP100
-    assert result["operatorByName"] == ["T1"]
+    assert _business_state(app_client) == before
 
 
 # ---------- ②dark cc-outline 覆盖 ----------
 
 def test_dark_cc_outline_override_locked():
-    css = (REPO_ROOT / "static" / "css" / "aps_gantt.css").read_text(encoding="utf-8")
-    # 锁选择器+token 值（不只测存在）：亮色外圈 #334155 与暗色边框/卡片底同色隐形
-    pattern = re.compile(
-        r'html\[data-theme="dark"\]\s+\.aps-cc-outline-outer\s*\{[^}]*stroke:\s*var\(--ui-muted\)',
-    )
-    assert pattern.search(css), "dark 块缺 .aps-cc-outline-outer 的 --ui-muted 覆盖"
+    """Current dark risk/selection tokens do not claim legacy critical-chain CSS."""
+    from tests._support.gantt_current_js import run_current_js
+
+    css = (REPO_ROOT / "static/workbench/prototype/ui_kits/workbench/gantt-theme.css").read_text(encoding="utf-8")
+    dark = css.split('[data-theme="dark"]', 1)[1]
+    assert "--wb-gantt-critical-edge:#c38796" in dark
+    assert "--wb-gantt-gold:#d7ba76" in dark
+    run_current_js(r"""
+const css=h.text(h.render(h.runtime.PlanLayout,{}));
+assert(css.includes('var(--wb-gantt-critical-edge)'));assert(css.includes('var(--wb-gantt-gold)'));
+const data=h.fixture(), before=h.clone(data);data.projections.delivery_risks.items=[{batch_id:'B1',risk:'overdue'}];
+const selected=h.gantt(data,{selected:{task:data.tasks[0]}}).nodes.find(n=>n.props['data-plan-task']===data.tasks[0].task_ref);
+assert(selected.props.className.includes('critical'));assert.strictEqual(selected.props['aria-pressed'],true);assert(!selected.props.className.includes('aps-cc-outline'));
+h.equal(data.tasks,before.tasks);
+""")
 
 
 # ---------- ③死按钮整壳零残留 ----------
 
 def test_simulation_shell_removed_zero_references():
-    html = (REPO_ROOT / "templates" / "scheduler" / "gantt.html").read_text(encoding="utf-8")
-    assert "ganttSimulationEntry" not in html
-    assert "aps_gantt_simulation" not in html
-    assert not (REPO_ROOT / "static" / "css" / "aps_gantt_simulation.css").exists()
-    hex_contract = (REPO_ROOT / "tests" / "web_pages" / "test_css_token_source_contract.py").read_text(
-        encoding="utf-8"
-    )
-    assert "aps_gantt_simulation" not in hex_contract  # 删文件后白名单残留即漂移
-    # 文字连带反向守卫：防旧口径（灰色入口/不能点击/入口仍禁用）被塞回文档或 viewmodel
-    for rel in (
-        ".codestable/architecture/ui-gantt.md",
-        "web/viewmodels/page_manuals_scheduler_outputs.py",
-        "static/docs/scheduler_manual.md",
-    ):
+    """Retired simulation shell stays absent; the real trial entry is separate."""
+    assert not (REPO_ROOT / "templates/scheduler/gantt.html").exists()
+    for rel in ("frontend/workbench/app/PlanGantt.jsx", "frontend/workbench/app/PlanWorkspace.jsx"):
         text = (REPO_ROOT / rel).read_text(encoding="utf-8")
-        for stale in (
-            "灰色说明入口",
-            "灰色禁用按钮",
-            "灰色入口",
-            "不能点击",
-            "当前页面入口仍禁用",
-            "ganttSimulationEntry",
-        ):
-            assert stale not in text, f"{rel} 残留旧口径文案：{stale}"
+        assert "ganttSimulationEntry" not in text
+        assert "aps_gantt_simulation" not in text
+    assert not (REPO_ROOT / "static/css/aps_gantt_simulation.css").exists()
+    hex_contract = (REPO_ROOT / "tests/web_pages/test_css_token_source_contract.py").read_text(encoding="utf-8")
+    assert "aps_gantt_simulation" not in hex_contract
+    for rel in (".codestable/architecture/ui-gantt.md", "web/viewmodels/page_manuals_scheduler_outputs.py", "static/docs/scheduler_manual.md"):
+        text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        for stale in ("灰色说明入口", "灰色禁用按钮", "灰色入口", "不能点击", "当前页面入口仍禁用", "ganttSimulationEntry"):
+            assert stale not in text, (rel, stale)
 
 
 # ---------- ④双份真相断言 ----------
 
-def test_collect_zoom_spec_mismatches_red_green():
-    helpers = _load_gantt_helpers()
-    result = _run(helpers, _boot_stub_ui_js() + f"""
-loadScript({helpers._gantt_boot_js()});
-// 绿：真 vendor 写值全配
-const real = ns.collectZoomSpecMismatches(function (options, mode) {{
-  Gantt.prototype.update_view_scale.call({{ options: options }}, mode);
-}});
-// 红：篡改任一级 step_minutes
-const tampered = ns.collectZoomSpecMismatches(function (options, mode) {{
-  Gantt.prototype.update_view_scale.call({{ options: options }}, mode);
-  if (mode === "Hour") options.step_minutes = 999;
-}});
-process.stdout.write(JSON.stringify({{ real, tampered,
-  bootError: document.getElementById("ganttError").textContent }}));
-""")
-    assert result["real"] == []
-    assert len(result["tampered"]) == 1
-    assert "Hour" in result["tampered"][0]
-    assert "999" in result["tampered"][0]
-    # 真 vendor 下 boot 启动断言静默通过
-    assert result["bootError"] == ""
+def test_collect_zoom_spec_mismatches_red_green(app_client):
+    """Numeric current geometry consumes the validated local-time contract."""
+    from tests._support.gantt_current import plan_fixture
+    from tests._support.gantt_current_js import run_current_js
+    from tests._support.gantt_retirement import _business_state
+
+    _, context, payload, before = plan_fixture(app_client)
+    run_current_js(r"""
+const C=h.runtime.APSPlanContract, original=h.clone(sourceData), ref=sourceData.data.plan.plan_ref;
+const data=C.workspace(sourceData,ref).data; assert.strictEqual(data.task_count,3);
+for(const alter of [p=>p.data.tasks[0].start='2026-99-99T00:00:00',p=>p.data.task_count++,p=>p.data.tasks[0].end=p.data.tasks[0].start]) {
+ const bad=h.clone(sourceData);alter(bad);assert.throws(()=>C.workspace(bad,ref),/计划任务、范围或投影协议不完整或串源/);
+}
+for(const width of [830,1660,849920]) {const M=h.runtime.PlanGanttModel,model=M.layout(data,'machine','',false,width,false);for(const row of model.rows) for(const item of row.items) assert.strictEqual(item.end-item.start,M.instant(item.task.end)-M.instant(item.task.start));}
+h.equal(sourceData,original);
+""", payload)
+    assert context["plan_ref"] == payload["data"]["plan"]["plan_ref"]
+    assert _business_state(app_client) == before
 
 
-def test_boot_zoom_drift_fails_loud_with_early_error():
-    helpers = _load_gantt_helpers()
-    result = _run(helpers, _boot_stub_ui_js() + f"""
-// vendor 数值表漂移仿真：换成写错值的假 Gantt 再加载 boot
-window.Gantt = {{ prototype: {{ update_view_scale: function (mode) {{
-  this.options.step_minutes = 1;
-  this.options.column_width = 1;
-}} }} }};
-loadScript({helpers._gantt_boot_js()});
-process.stdout.write(JSON.stringify({{
-  error: document.getElementById("ganttError").textContent,
-  loadAndRenderExported: typeof ns.loadAndRender === "function",
-}}));
-""")
-    assert "时间粒度配置与渲染组件不一致" in result["error"]
-    # fail-loud：失配即停整个 boot，不带着错误几何跛行渲染
-    assert result["loadAndRenderExported"] is False
+def test_boot_zoom_drift_fails_loud_with_early_error(app_client):
+    """Reject date/scope drift before using any current rendering result."""
+    from tests._support.gantt_current import plan_fixture
+    from tests._support.gantt_current_js import run_current_js
+    from tests._support.gantt_retirement import _business_state
+
+    _, _, payload, before = plan_fixture(app_client)
+    run_current_js(r"""
+const C=h.runtime.APSPlanContract, ref=sourceData.data.plan.plan_ref;let renders=0;
+const accept=payload=>{const result=C.workspace(payload,ref);renders++;return h.gantt(result.data);};
+const valid=accept(sourceData);assert(valid.nodes.some(n=>n.props['data-plan-task']));
+for(const alter of [p=>p.data.time_scope.time_basis='utc',p=>p.data.time_scope.range_end='2027-01-01T00:00:00',p=>p.data.tasks_complete=false]) {
+ const bad=h.clone(sourceData);alter(bad);let failure;
+ try {accept(bad);}catch(error){failure=error;}assert(failure);assert.strictEqual(renders,1);
+ const error=h.render(h.runtime.ResourceControls.ErrorBox,{error:failure});assert(h.text(error).includes('未作为完整结果使用'));
+ assert(!h.walk(error).some(n=>n.props['data-plan-task']));
+}
+""", payload)
+    assert _business_state(app_client) == before

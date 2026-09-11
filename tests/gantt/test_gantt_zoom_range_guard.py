@@ -20,306 +20,101 @@ def _load_helpers():
 
 
 def test_zoom_range_guard_blocks_overwide_minute_views_and_warns_soft_limit() -> None:
-    helpers = _load_helpers()
-    node_code = f"""
-{helpers.DOM_SHIM_JS}
-loadScript({json.dumps(str(REPO_ROOT / "static" / "js" / "gantt.js"))});
-loadScript({json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_zoom.js"))});
+    """Legacy SVG cutoffs retired; adaptive ticks stay bounded at every zoom."""
+    from tests._support.gantt_current_js import run_current_js
 
-const zoom = window.__APS_GANTT__.zoom;
-function check(zoomLevel, startDate, endDate, taskCount, dependencyCount) {{
-  return zoom.validateZoomRange({{
-    zoomLevel,
-    startDate,
-    endDate,
-    taskCount: taskCount || 10,
-    dependencyCount: dependencyCount || 0,
-    holidayMarkerCount: 0,
-  }});
-}}
-
-process.stdout.write(JSON.stringify({{
-  oneMinuteTwoDays: check("one-minute", "2026-05-11", "2026-05-12"),
-  fiveMinuteFourDays: check("five-minute", "2026-05-11", "2026-05-14"),
-  fifteenMinuteEightDays: check("fifteen-minute", "2026-05-11", "2026-05-18"),
-  hourFifteenDays: check("hour", "2026-05-11", "2026-05-25"),
-  hardNodes: check("day", "2026-05-11", "2026-05-12", 100, 10000),
-  softNodes: check("day", "2026-05-11", "2026-05-12", 100, 5600),
-  tooManyTasks: check("day", "2026-05-25", "2026-07-14", 1440, 0),
-  okDay: check("day", "2026-05-11", "2026-05-12", 100, 20),
-}}));
-"""
-    result = helpers._run_node_json(node_code)
-
-    assert result["oneMinuteTwoDays"]["ok"] is False
-    assert result["fiveMinuteFourDays"]["ok"] is False
-    assert result["fifteenMinuteEightDays"]["ok"] is False
-    assert result["hourFifteenDays"]["ok"] is False
-    assert result["hardNodes"]["ok"] is False
-    assert result["hardNodes"]["reason"] == "nodes"
-    assert result["softNodes"]["ok"] is True
-    assert result["softNodes"]["level"] == "soft"
-    assert result["softNodes"]["reason"] == "nodes"
-    assert result["tooManyTasks"]["ok"] is False
-    assert result["tooManyTasks"]["level"] == "hard"
-    assert result["tooManyTasks"]["reason"] == "tasks"
-    assert "任务太多" in result["tooManyTasks"]["message"]
-    assert result["okDay"]["ok"] is True
-    assert result["okDay"]["level"] == "ok"
+    run_current_js(r"""
+const M=h.runtime.PlanGanttModel;
+for(const days of [2,4,8,15,51]) for(let zoom=1;zoom<=1024;zoom*=2) {
+ const start=M.instant('2026-05-11T00:00:00'),end=start+days*86400000,width=830*zoom;
+ for(const left of [0,width/2,Math.max(0,width-830)]) {
+  const ticks=M.ticks(start,end,width,left,830);assert(ticks.length>0&&ticks.length<=12);
+  ticks.forEach((tick,index)=>{assert(Number.isFinite(tick.x));assert(Math.abs(tick.x-(tick.at-start)/(end-start)*width)<1e-7);assert.strictEqual(M.wire(tick.at),tick.label);if(index)assert(tick.at>ticks[index-1].at);});
+ }
+}
+assert.strictEqual(h.runtime.Gantt,undefined);
+""")
 
 
-def test_render_range_guard_uses_actual_task_span_and_blocks_before_new_gantt() -> None:
-    helpers = _load_helpers()
-    node_code = f"""
-{helpers.DOM_SHIM_JS}
-createHost("gantt");
-createHost("ganttEmpty");
-createHost("ganttError");
-createHost("ganttLegend");
-createHost("ganttZoomWarning");
+def test_render_range_guard_uses_actual_task_span_and_blocks_before_new_gantt(app_client) -> None:
+    """Reject inconsistent full-span metadata; never derive it from a search."""
+    from tests._support.gantt_current import plan_fixture
+    from tests._support.gantt_current_js import run_current_js
+    from tests._support.gantt_retirement import _business_state
 
-loadScript({helpers._vendor_js()});
-const RealGantt = Gantt;
-let constructorCalls = 0;
-function CapturingGantt(selector, tasks, options) {{
-  constructorCalls += 1;
-  return new RealGantt(selector, tasks, options);
-}}
-CapturingGantt.prototype = RealGantt.prototype;
-window.Gantt = CapturingGantt;
-global.Gantt = CapturingGantt;
-
-loadScript({helpers._gantt_js()});
-loadScript({helpers._gantt_zoom_js()});
-loadScript({helpers._gantt_adapter_js()});
-loadScript({helpers._gantt_color_js()});
-loadScript({helpers._outline_js()});
-loadScript({helpers._gantt_contract_js()});
-loadScript({helpers._gantt_help_js()});
-loadScript({helpers._gantt_popup_js()});
-loadScript({helpers._gantt_legend_js()});
-loadScript({helpers._gantt_holidays_js()});
-loadScript({helpers._gantt_decorations_js()});
-loadScript({helpers._gantt_render_js()});
-
-const ns = window.__APS_GANTT__;
-const state = ns.state;
-state.cfg = {{
-  view: "machine",
-  startDate: "2026-05-11",
-  endDate: "2026-05-11",
-  weekStart: "2026-05-11",
-}};
-state.allTasks = [{{
-  id: "T_CROSS",
-  name: "Cross day short task",
-  start: "2026-05-11 23:45:00",
-  end: "2026-05-12 00:15:00",
-  progress: 0,
-  dependencies: "",
-  meta: {{ batch_id: "B001", source: "internal", status: "pending" }},
-}}];
-state.critical = {{ ids: [], edges: [], available: true }};
-state.ccIdSet = new Set();
-state.ccPrevByTo = new Map();
-state.ccEdgeMetaByTo = new Map();
-state.calendarDays = [];
-state.ui.zoomLevel = "one-minute";
-state.ui.viewMode = "One Minute";
-state.ui.colorMode = "batch";
-state.ui.depsMode = "critical";
-state.ui.highlightCC = true;
-state.ui.onlyOverdue = false;
-state.ui.onlyExternal = false;
-state.ui.filterBatch = "";
-state.ui.filterResource = "";
-
-ns.render();
-
-process.stdout.write(JSON.stringify({{
-  constructorCalls,
-  warning: document.getElementById("ganttZoomWarning").textContent || "",
-  currentTasks: state.currentTasks.length,
-  ganttIsNull: state.gantt === null,
-}}));
-"""
-    result = helpers._run_node_json(node_code)
-
-    assert result["constructorCalls"] == 0
-    assert result["ganttIsNull"] is True
-    assert result["currentTasks"] == 1
-    assert "范围太宽" in result["warning"] or "时间格太多" in result["warning"]
+    _, _, payload, before = plan_fixture(app_client)
+    run_current_js(r"""
+const C=h.runtime.APSPlanContract, M=h.runtime.PlanGanttModel, data=C.workspace(sourceData,sourceData.data.plan.plan_ref).data;
+const full=M.layout(data,'machine','',false,830,false);
+for(const query of ['钻孔','DOES_NOT_EXIST']){const filtered=M.layout(data,'machine',query,false,830,false);assert.strictEqual(filtered.start,full.start);assert.strictEqual(filtered.end,full.end);}
+for(const value of ['2026-05-04T08:30:00','2026-05-03T08:00:00']) {
+ const bad=h.clone(sourceData);bad.data.plan_span.start=value;
+ assert.throws(()=>C.workspace(bad,data.plan.plan_ref),/计划任务、范围或投影协议不完整或串源/);
+}
+assert(full.tasks.length===3);assert.strictEqual(M.layout(data,'machine','DOES_NOT_EXIST',false,830,false).tasks.length,0);
+""", payload)
+    assert _business_state(app_client) == before
 
 
 def test_render_range_guard_treats_midnight_end_as_selected_day_boundary() -> None:
-    helpers = _load_helpers()
-    node_code = f"""
-{helpers.DOM_SHIM_JS}
-createHost("gantt");
-createHost("ganttEmpty");
-createHost("ganttError");
-createHost("ganttLegend");
-createHost("ganttZoomWarning");
+    """Midnight remains the exclusive end, without adding a whole extra day."""
+    from tests._support.gantt_current_js import run_current_js
 
-loadScript({helpers._vendor_js()});
-const RealGantt = Gantt;
-let constructorCalls = 0;
-function CapturingGantt(selector, tasks, options) {{
-  constructorCalls += 1;
-  return new RealGantt(selector, tasks, options);
-}}
-CapturingGantt.prototype = RealGantt.prototype;
-window.Gantt = CapturingGantt;
-global.Gantt = CapturingGantt;
-
-loadScript({helpers._gantt_js()});
-loadScript({helpers._gantt_zoom_js()});
-loadScript({helpers._gantt_adapter_js()});
-loadScript({helpers._gantt_color_js()});
-loadScript({helpers._outline_js()});
-loadScript({helpers._gantt_contract_js()});
-loadScript({helpers._gantt_help_js()});
-loadScript({helpers._gantt_popup_js()});
-loadScript({helpers._gantt_legend_js()});
-loadScript({helpers._gantt_holidays_js()});
-loadScript({helpers._gantt_decorations_js()});
-loadScript({helpers._gantt_render_js()});
-
-const ns = window.__APS_GANTT__;
-const state = ns.state;
-state.cfg = {{
-  view: "machine",
-  startDate: "2026-05-11",
-  endDate: "2026-05-11",
-  weekStart: "2026-05-11",
-}};
-state.allTasks = [{{
-  id: "T_TO_MIDNIGHT",
-  name: "Ends exactly at midnight",
-  start: "2026-05-11 23:45:00",
-  end: "2026-05-12 00:00:00",
-  progress: 0,
-  dependencies: "",
-  meta: {{ batch_id: "B001", source: "internal", status: "pending" }},
-}}];
-state.critical = {{ ids: [], edges: [], available: true }};
-state.ccIdSet = new Set();
-state.ccPrevByTo = new Map();
-state.ccEdgeMetaByTo = new Map();
-state.calendarDays = [];
-state.ui.zoomLevel = "one-minute";
-state.ui.viewMode = "One Minute";
-state.ui.colorMode = "batch";
-state.ui.depsMode = "critical";
-state.ui.highlightCC = true;
-state.ui.onlyOverdue = false;
-state.ui.onlyExternal = false;
-state.ui.filterBatch = "";
-state.ui.filterResource = "";
-
-ns.render();
-
-process.stdout.write(JSON.stringify({{
-  constructorCalls,
-  warning: document.getElementById("ganttZoomWarning").textContent || "",
-  currentTasks: state.currentTasks.length,
-  ganttIsNull: state.gantt === null,
-  dateCount: state.gantt ? state.gantt.dates.length : 0,
-  barWidth: state.gantt ? state.gantt.get_bar("T_TO_MIDNIGHT").$bar.getWidth() : 0,
-}}));
-"""
-    result = helpers._run_node_json(node_code)
-
-    assert result["constructorCalls"] == 1
-    assert result["ganttIsNull"] is False
-    assert result["currentTasks"] == 1
-    assert result["warning"] == ""
-    assert result["dateCount"] <= 1441
-    assert result["barWidth"] == 270
+    run_current_js(r"""
+const data=h.fixture([['Midnight','2026-05-11T23:55:00','2026-05-12T00:00:00']]),before=h.clone(data),M=h.runtime.PlanGanttModel;
+data.plan_span.start='2026-05-11T00:00:00';data.time_scope.range_start=data.plan_span.start;
+for(const zoom of [1,64,1024]) {
+ const width=830*zoom, model=M.layout(data,'machine','',false,width,false);
+ assert.strictEqual(model.end-model.start,86400000);const item=model.rows[0].items[0];assert.strictEqual(item.end-item.start,300000);
+ const left=Math.max(0,width-830),result=h.gantt(data,{states:{PlanGantt:{2:zoom,5:{left,top:0,width:1000,height:440}}}});
+ const bar=result.nodes.find(n=>n.props['data-plan-task']);assert(bar);assert(Math.abs(bar.props.style.left+bar.props.style.width-width)<1e-7);
+ assert(Math.abs(bar.props.style.width-300000/86400000*width)<1e-7);
+ assert(M.visibleItems([item],item.end,item.end+86400000).length===0);
+}
+h.equal(data.tasks,before.tasks);
+""")
 
 
-def test_render_guard_blocks_too_many_tasks_before_new_gantt() -> None:
-    helpers = _load_helpers()
-    node_code = f"""
-{helpers.DOM_SHIM_JS}
-createHost("gantt");
-createHost("ganttEmpty");
-createHost("ganttError");
-createHost("ganttLegend");
-createHost("ganttZoomWarning");
+def test_render_guard_blocks_too_many_tasks_before_new_gantt(app_client) -> None:
+    """The current 10000-row bound rejects oversize before per-task rendering."""
+    import pytest
 
-let constructorCalls = 0;
-function CapturingGantt(selector, tasks, options) {{
-  constructorCalls += 1;
-  return {{ selector, tasks, options }};
-}}
-window.Gantt = CapturingGantt;
-global.Gantt = CapturingGantt;
+    from core.models.schedule_plan_role import SOURCE_SCHEDULE
+    from core.models.workbench_command import WorkbenchCommandRejected
+    from core.models.workbench_plan_scope import MAX_PLAN_TASKS
+    from core.services.workbench.plan_queries import _admit_rows
+    from tests._support.gantt_current import plan_fixture
+    from tests._support.gantt_current_js import run_current_js
+    from tests._support.gantt_retirement import _business_state
 
-loadScript({helpers._gantt_js()});
-loadScript({helpers._gantt_zoom_js()});
-loadScript({helpers._gantt_adapter_js()});
-loadScript({helpers._gantt_color_js()});
-loadScript({helpers._outline_js()});
-loadScript({helpers._gantt_contract_js()});
-loadScript({helpers._gantt_help_js()});
-loadScript({helpers._gantt_popup_js()});
-loadScript({helpers._gantt_legend_js()});
-loadScript({helpers._gantt_holidays_js()});
-loadScript({helpers._gantt_decorations_js()});
-loadScript({helpers._gantt_render_js()});
+    assert MAX_PLAN_TASKS == 10000
 
-const ns = window.__APS_GANTT__;
-const state = ns.state;
-state.cfg = {{
-  view: "machine",
-  startDate: "2026-05-25",
-  endDate: "2026-07-14",
-  weekStart: "2026-05-25",
-}};
-state.allTasks = [];
-for (let i = 0; i < 1440; i += 1) {{
-  state.allTasks.push({{
-    id: "T_" + i,
-    name: "Task " + i,
-    start: "2026-05-25 08:00:00",
-    end: "2026-05-25 09:00:00",
-    progress: 0,
-    dependencies: "",
-    meta: {{ batch_id: "B" + i, source: "internal", status: "pending", machine_id: "M" + (i % 10), machine: "M" + (i % 10) }},
-  }});
-}}
-state.critical = {{ ids: [], edges: [], available: true }};
-state.ccIdSet = new Set();
-state.ccPrevByTo = new Map();
-state.ccEdgeMetaByTo = new Map();
-state.calendarDays = [];
-state.ui.zoomLevel = "day";
-state.ui.viewMode = "Day";
-state.ui.colorMode = "batch";
-state.ui.depsMode = "critical";
-state.ui.highlightCC = true;
-state.ui.onlyOverdue = false;
-state.ui.onlyExternal = false;
-state.ui.filterBatch = "";
-state.ui.filterResource = "";
+    class Rows:
+        def __init__(self, count):
+            self.count = count
 
-ns.render();
+        def _plan_rows_sql(self, **scope):
+            assert scope == {"source_table": SOURCE_SCHEDULE, "candidate_id": None, "scenario_id": None}
+            return "SELECT id FROM Schedule WHERE version=?", []
 
-process.stdout.write(JSON.stringify({{
-  constructorCalls,
-  warning: document.getElementById("ganttZoomWarning").textContent || "",
-  currentTasks: state.currentTasks.length,
-  ganttIsNull: state.gantt === null,
-}}));
-"""
-    result = helpers._run_node_json(node_code)
+        def fetchall(self, sql, params):
+            assert sql == "SELECT id FROM (SELECT id FROM Schedule WHERE version=?) LIMIT ?"
+            assert params == [5, MAX_PLAN_TASKS + 1]
+            return [None] * self.count
 
-    assert result["constructorCalls"] == 0
-    assert result["ganttIsNull"] is True
-    assert result["currentTasks"] == 1440
-    assert "任务太多" in result["warning"]
-    assert "页面卡住" in result["warning"]
+    assert _admit_rows(Rows(MAX_PLAN_TASKS), 5, SOURCE_SCHEDULE) is None
+    with pytest.raises(WorkbenchCommandRejected) as caught:
+        _admit_rows(Rows(MAX_PLAN_TASKS + 1), 5, SOURCE_SCHEDULE)
+    assert (caught.value.code, caught.value.status, caught.value.committed) == ("query_too_large", 413, False)
+    assert "未返回截断任务" in str(caught.value)
+    _, _, payload, before = plan_fixture(app_client)
+    run_current_js(r"""
+const C=h.runtime.APSPlanContract, ref=sourceData.data.plan.plan_ref;C.workspace(sourceData,ref);
+const bad=h.clone(sourceData);bad.data.tasks=Array(10001).fill(bad.data.tasks[0]);bad.data.task_count=10001;let visited=0;
+bad.data.tasks.every=()=>{visited++;throw new Error('must not inspect an oversize payload');};
+assert.throws(()=>C.workspace(bad,ref),/计划任务、范围或投影协议不完整或串源/);assert.strictEqual(visited,0);
+""", payload)
+    assert _business_state(app_client) == before
 
 
 def main() -> None:

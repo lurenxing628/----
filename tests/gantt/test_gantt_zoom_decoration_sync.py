@@ -20,229 +20,45 @@ def _load_helpers():
 
 
 def test_fine_zoom_keeps_holiday_today_arrow_and_critical_outline_aligned_to_real_bar() -> None:
-    helpers = _load_helpers()
-    node_code = f"""
-{helpers.DOM_SHIM_JS}
-createHost("gantt");
-createHost("ganttEmpty");
-createHost("ganttError");
-createHost("ganttLegend");
-createHost("ganttZoomWarning");
+    """Retired SVG decorations do not drift current grid, bar and selection."""
+    from tests._support.gantt_current_js import run_current_js
 
-loadScript({helpers._vendor_js()});
-loadScript({helpers._gantt_js()});
-loadScript({helpers._gantt_zoom_js()});
-loadScript({helpers._gantt_adapter_js()});
-loadScript({helpers._gantt_color_js()});
-loadScript({helpers._outline_js()});
-loadScript({helpers._gantt_contract_js()});
-loadScript({helpers._gantt_help_js()});
-loadScript({helpers._gantt_popup_js()});
-loadScript({helpers._gantt_legend_js()});
-loadScript({helpers._gantt_holidays_js()});
-loadScript({helpers._gantt_decorations_js()});
-loadScript({helpers._gantt_render_js()});
-
-const ns = window.__APS_GANTT__;
-const state = ns.state;
-
-function pad(value) {{
-  return value < 10 ? "0" + value : String(value);
-}}
-function localDateText(date) {{
-  return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate());
-}}
-
-const todayText = localDateText(new Date());
-const levels = ["hour", "fifteen-minute", "five-minute", "one-minute"];
-const out = [];
-
-for (const level of levels) {{
-const spec = ns.zoom.getZoomSpec(level);
-state.cfg = {{
-  view: "machine",
-  startDate: todayText,
-  endDate: todayText,
-  weekStart: todayText,
-}};
-state.allTasks = [
-  {{
-    id: "T10",
-    name: "Short critical",
-    start: todayText + " 08:00:00",
-    end: todayText + " 08:10:00",
-    progress: 0,
-    dependencies: "",
-    meta: {{
-      batch_id: "B001",
-      source: "external",
-      priority: "critical",
-      status: "pending",
-      is_overdue: true,
-    }},
-  }},
-  {{
-    id: "T11",
-    name: "Short dependent",
-    start: todayText + " 08:20:00",
-    end: todayText + " 08:30:00",
-    progress: 0,
-    dependencies: "T10",
-    meta: {{
-      batch_id: "B001",
-      source: "internal",
-      priority: "normal",
-      status: "pending",
-    }},
-  }},
-];
-state.critical = {{ ids: ["T10"], edges: [], makespan_end: todayText + " 08:30:00", available: true }};
-state.ccIdSet = new Set(["T10"]);
-state.ccPrevByTo = new Map();
-state.ccEdgeMetaByTo = new Map();
-state.calendarDays = [{{ date: todayText, day_type: "holiday", shift_hours: 0, is_holiday: true, is_nonworking: true }}];
-state.ui.zoomLevel = level;
-state.ui.viewMode = spec.frappeViewMode;
-state.ui.colorMode = "batch";
-state.ui.depsMode = "process";
-state.ui.highlightCC = true;
-state.ui.onlyOverdue = false;
-state.ui.onlyExternal = false;
-state.ui.filterBatch = "";
-state.ui.filterResource = "";
-
-ns.render();
-
-const wrapper = findWrapperById("T10");
-const bar = wrapper.querySelector(".bar");
-const hit = wrapper.querySelector(".bar-hit");
-const holiday = document.querySelector(".aps-holiday-rect");
-const today = document.querySelector(".today-highlight");
-const outline = wrapper.querySelector(".aps-cc-outline-outer");
-const arrow = document.querySelector("#gantt .arrow path");
-out.push({{
-  level,
-  barWidth: Number(bar.getAttribute("width")),
-  hitWidth: Number(hit.getAttribute("width")),
-  holidayX: Number(holiday.getAttribute("x")),
-  holidayWidth: Number(holiday.getAttribute("width")),
-  todayX: Number(today.getAttribute("x")),
-  todayWidth: Number(today.getAttribute("width")),
-  outlineWidth: Number(outline.getAttribute("width")),
-  expectedBarWidth: 10 / spec.stepMinutes * spec.columnWidthPx,
-  expectedDayWidth: 1440 / spec.stepMinutes * spec.columnWidthPx,
-  scrollLeft: document.querySelector("#gantt .gantt-container").scrollLeft,
-  arrowPath: arrow ? String(arrow.getAttribute("d") || "") : "",
-  overdue: wrapper.classList.contains("overdue"),
-  external: wrapper.classList.contains("aps-external"),
-}});
-}}
-
-process.stdout.write(JSON.stringify({{ out }}));
-"""
-    result = helpers._run_node_json(node_code)
-
-    assert [item["level"] for item in result["out"]] == ["hour", "fifteen-minute", "five-minute", "one-minute"]
-    for item in result["out"]:
-        assert abs(item["barWidth"] - item["expectedBarWidth"]) < 0.001, item
-        assert item["hitWidth"] >= 12
-        assert item["holidayX"] == 0
-        assert item["holidayWidth"] == item["expectedDayWidth"]
-        assert item["todayX"] == 0
-        assert item["todayWidth"] == item["expectedDayWidth"]
-        assert abs(item["outlineWidth"] - (item["barWidth"] + 4)) < 0.001
-        if item["hitWidth"] > item["barWidth"]:
-            assert item["outlineWidth"] < item["hitWidth"] + 4
-        assert item["scrollLeft"] == 0
-        assert item["arrowPath"]
-        assert "NaN" not in item["arrowPath"]
-        assert item["overdue"] is True
-        assert item["external"] is True
+    run_current_js(r"""
+const data=h.processFixture(),before=h.clone(data),M=h.runtime.PlanGanttModel,task=data.tasks[0];
+for(let zoom=1;zoom<=1024;zoom*=2) {
+ const width=830*zoom,model=M.layout(data,'machine','',false,width,false), result=h.gantt(data,{selected:{task},states:{PlanGantt:{2:zoom}}});
+ const bar=result.nodes.find(n=>n.props['data-plan-task']===task.task_ref);assert(bar);assert.strictEqual(bar.props['aria-pressed'],true);
+ const duration=M.instant(task.end)-M.instant(task.start);assert(Math.abs(bar.props.style.width-duration/(model.end-model.start)*width)<1e-7);
+ const ticks=result.nodes.filter(n=>n.props.className==='plan-tick'),lines=result.nodes.filter(n=>n.props.className==='plan-gridline');assert(ticks.length>0&&ticks.length<=12);
+ for(const tick of ticks) assert(lines.some(line=>line.props.style.left===tick.props.style.left));
+ const plain=h.gantt(data,{states:{PlanGantt:{2:zoom}}}).nodes.find(n=>n.props['data-plan-task']===task.task_ref);h.equal(bar.props.style,plain.props.style);
+ assert(!result.nodes.some(n=>String(n.props.className||'').includes('aps-cc-outline')));
+}
+h.equal(data,before);
+""")
 
 
 
 
 def test_week_month_zoom_holiday_width_is_one_day_not_whole_column() -> None:
-    helpers = _load_helpers()
-    node_code = f"""
-{helpers.DOM_SHIM_JS}
-createHost("gantt");
-createHost("ganttEmpty");
-createHost("ganttError");
-createHost("ganttLegend");
-createHost("ganttZoomWarning");
+    """Day facts retain day duration independently of coarse adaptive ticks."""
+    from tests._support.gantt_current_js import run_current_js
 
-loadScript({helpers._vendor_js()});
-loadScript({helpers._gantt_js()});
-loadScript({helpers._gantt_zoom_js()});
-loadScript({helpers._gantt_adapter_js()});
-loadScript({helpers._gantt_color_js()});
-loadScript({helpers._outline_js()});
-loadScript({helpers._gantt_contract_js()});
-loadScript({helpers._gantt_help_js()});
-loadScript({helpers._gantt_popup_js()});
-loadScript({helpers._gantt_legend_js()});
-loadScript({helpers._gantt_holidays_js()});
-loadScript({helpers._gantt_decorations_js()});
-loadScript({helpers._gantt_render_js()});
-
-const ns = window.__APS_GANTT__;
-const state = ns.state;
-const anchor = "2026-06-01";
-const out = [];
-
-for (const level of ["week", "month"]) {{
-  const spec = ns.zoom.getZoomSpec(level);
-  state.cfg = {{
-    view: "machine",
-    startDate: anchor,
-    endDate: anchor,
-    weekStart: anchor,
-  }};
-  state.allTasks = [{{
-    id: "T10",
-    name: "Holiday width task",
-    start: anchor + " 08:00:00",
-    end: anchor + " 10:00:00",
-    progress: 0,
-    dependencies: "",
-    meta: {{ batch_id: "B001", source: "internal" }},
-  }}];
-  state.critical = {{ ids: [], edges: [], available: true }};
-  state.ccIdSet = new Set();
-  state.ccPrevByTo = new Map();
-  state.ccEdgeMetaByTo = new Map();
-  state.calendarDays = [{{ date: anchor, day_type: "holiday", shift_hours: 0, is_holiday: true, is_nonworking: true }}];
-  state.ui.zoomLevel = level;
-  state.ui.viewMode = spec.frappeViewMode;
-  state.ui.colorMode = "batch";
-  state.ui.depsMode = "none";
-  state.ui.highlightCC = true;
-  state.ui.onlyOverdue = false;
-  state.ui.onlyExternal = false;
-  state.ui.filterBatch = "";
-  state.ui.filterResource = "";
-
-  ns.render();
-
-  const holiday = document.querySelector(".aps-holiday-rect");
-  out.push({{
-    level,
-    holidayX: Number(holiday.getAttribute("x")),
-    holidayWidth: Number(holiday.getAttribute("width")),
-    expectedDayWidth: 1440 / spec.stepMinutes * spec.columnWidthPx,
-    columnWidth: spec.columnWidthPx,
-  }});
-}}
-
-process.stdout.write(JSON.stringify({{ out }}));
-"""
-    result = helpers._run_node_json(node_code)
-
-    assert [item["level"] for item in result["out"]] == ["week", "month"]
-    for item in result["out"]:
-        assert abs(item["holidayWidth"] - item["expectedDayWidth"]) < 0.001, item
-        assert item["holidayWidth"] < item["columnWidth"], item
+    run_current_js(r"""
+const M=h.runtime.PlanGanttModel,day=86400000;
+for(const days of [7,31]) {
+ const start=M.instant('2026-05-01T00:00:00'),end=start+days*day,width=830;
+ const facts=[{start:'2026-05-02T00:00:00',end:'2026-05-03T00:00:00'},{start:'2026-05-04T00:00:00',end:'2026-05-05T00:00:00'}],before=h.clone(facts);
+ const x=t=>(M.instant(t)-start)/(end-start)*width;
+ facts.forEach(fact=>{assert.strictEqual(M.instant(fact.end)-M.instant(fact.start),day);assert(Math.abs(x(fact.end)-x(fact.start)-width/days)<1e-8);});
+ assert(Math.abs(x(facts[1].start)-x(facts[0].start)-2*width/days)<1e-8);
+ const ticks=M.ticks(start,end,width,0,width);assert(ticks.length>0&&ticks.length<=12);
+ const data=h.fixture();data.projections.calendar={state:'available',issues:[],resources:[{resource_ref:h.reference(200),kind:'machine',label:'MC1',available_hours:48,normal_effective_hours:48,urgent_effective_hours:48,issues:[],windows:facts.map(fact=>({...fact,allow_normal:true,allow_urgent:true,efficiency:1}))}]};
+ const tree=h.render(h.runtime.PlanDetailsUI.ProjectionTables,{data},{ProjectionTables:{0:'calendar'},CalendarWindows:{0:true}});
+ facts.forEach(fact=>{assert(h.text(tree).includes(M.timeLabel(fact.start)));assert(h.text(tree).includes(M.timeLabel(fact.end)));});h.equal(facts,before);
+}
+assert.strictEqual(h.runtime.Gantt,undefined);
+""")
 
 
 def main() -> None:

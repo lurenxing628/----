@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -303,6 +304,9 @@ def test_scenario_id_preview_reads_scenario_rows_without_adopted_fallback(tmp_pa
 
 
 def test_gantt_service_and_template_keep_scenario_preview_context(tmp_path: Path, monkeypatch) -> None:
+    from tests._support.gantt_current import assert_plan_exports, assert_retired, prepare_read_state
+    from tests._support.gantt_retirement import _business_state, _canonical_workspace
+
     conn = _connect(tmp_path)
     try:
         _seed_base(conn)
@@ -327,15 +331,18 @@ def test_gantt_service_and_template_keep_scenario_preview_context(tmp_path: Path
 
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
-    response = client.get(
-        f"/scheduler/gantt?version={VERSION}&plan_role=adopted&scenario_id={scenario.scenario_id}"
-    )
-    html = response.get_data(as_text=True)
-    assert response.status_code == 200
-    assert "当前正在预览模拟方案" in html
-    assert 'data-plan-context-token="' in html
-    assert f'data-scenario-id="{scenario.scenario_id}"' not in html
-    assert f'name="scenario_id" value="{scenario.scenario_id}"' not in html
+    before = prepare_read_state(client)
+    query = {"version": VERSION, "plan_role": "adopted", "scenario_id": scenario.scenario_id}
+    context, workspace = _canonical_workspace(client, query)
+    assert set(context) == {"plan_ref"}
+    assert scenario.scenario_id not in json.dumps(context)
+    assert workspace["data"]["plan"]["kind"] == "scenario"
+    assert workspace["data"]["plan"]["is_current_official"] is False
+    current = next(task for task in workspace["data"]["tasks"] if task["process_label"] == "铣削")
+    assert current["start"] == "2026-05-04T11:00:00"
+    assert current["end"] == "2026-05-04T12:00:00"
+    assert _public_json_forbidden_key_paths(workspace["data"]) == []
+    assert_plan_exports(client, context, workspace)
     data_response = client.get(
         f"/scheduler/gantt/data?view=machine&version={VERSION}&plan_role=adopted&scenario_id={scenario.scenario_id}"
     )
@@ -344,12 +351,9 @@ def test_gantt_service_and_template_keep_scenario_preview_context(tmp_path: Path
     assert data_response.status_code == 200
     assert public_data.get("is_scenario_preview") is True
     assert _public_json_forbidden_key_paths(public_data) == []
-    zoom_html = client.get(
-        f"/scheduler/gantt?version={VERSION}&plan_role=adopted&scenario_id={scenario.scenario_id}&gantt_zoom=hour"
-    ).get_data(as_text=True)
-    assert zoom_html.count("gantt_zoom=hour") >= 5
-    assert "offset=-1" in zoom_html
-    assert "plan_context_token=" in zoom_html
+    zoom_html = assert_retired(client, dict(query, gantt_zoom="hour"))
+    assert scenario.scenario_id not in zoom_html
+    assert _business_state(client) == before
 
 
 def test_save_scenario_route_uses_server_operator_not_json_created_by(tmp_path: Path, monkeypatch) -> None:

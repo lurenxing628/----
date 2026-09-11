@@ -1,4 +1,7 @@
-"""守护甘特前端状态语义：gantt.js 依赖开关统一为 depsMode（不得残留 showProcessDeps/onlyCCDeps），且 gantt_color.js 的 statusKeyForTask 优先按 meta.status(completed/processing/blocked)映射为 done/in_progress/blocked，无后端状态时才按时间回退。"""
+"""执行事实保留，当前计划风险配色不得从时钟或旧 status 反推实际完成。
+
+旧 Frappe 状态色与依赖开关已退役，当前配色只消费所选计划的交付风险和资源重叠。
+"""
 
 from __future__ import annotations
 
@@ -143,19 +146,39 @@ process.stdout.write(JSON.stringify({ out }));
 
 
 def main() -> None:
-    repo_root = find_repo_root()
-    color_js_path = os.path.join(repo_root, "static", "js", "gantt_color.js")
-    if not os.path.exists(color_js_path):
-        raise RuntimeError(f"缺少文件：{color_js_path}")
+    """Current plan risk tones must never reinterpret execution as clock status."""
+    from copy import deepcopy
+    from types import SimpleNamespace
 
-    ret = _run_node_status_check(color_js_path)
-    rows = ret.get("out") or []
-    if not rows:
-        raise RuntimeError("status 语义检查无输出")
-    bad = [x for x in rows if str(x.get("got")) != str(x.get("expected"))]
-    if bad:
-        raise RuntimeError(f"status 语义不符合预期：{bad}")
+    from core.services.scheduler.gantt_range import resolve_week_range
+    from core.services.scheduler.gantt_tasks import build_tasks
+    from tests._support.gantt_current_js import run_current_js
 
+    row = {"schedule_id": 1, "op_id": 123, "op_code": "B1-20", "batch_id": "B1", "piece_id": "piece-a",
+           "part_no": "P1", "part_name": "零件1", "seq": 20, "op_type_name": "车削", "source": "internal",
+           "op_status": "scheduled", "machine_id": "M1", "machine_name": "一号设备", "operator_id": "O1",
+           "operator_name": "张三", "priority": "normal", "lock_status": "locked",
+           "start_time": "2026-05-01 08:00:00", "end_time": "2026-05-01 12:00:00", "due_date": "2026-05-30"}
+    before = deepcopy(row)
+    for status in ("completed", "processing", "paused", "exception"):
+        task = build_tasks(view="machine", wr=resolve_week_range(start_date="2026-05-01", end_date="2026-05-01"),
+                           rows=[row], overdue_set=set(), execution_facts_by_op_id={123: SimpleNamespace(
+                               actual_status=status, actual_start_time="2026-05-01 08:05:00", actual_end_time=None)}).value[0]
+        assert task["progress"] == (100 if status == "completed" else 0)
+        assert "execution-" + status in task["custom_class"].split()
+    assert row == before
+    run_current_js(r"""
+const data=h.fixture(),task=data.tasks[0],M=h.runtime.PlanGanttModel;
+for(const status of ['completed','processing','blocked',null]) {
+ task.meta={status};const before=h.clone(task);
+ assert.strictEqual(M.tone(task,new Set(),new Map()),'primary');
+ assert.strictEqual(M.tone(task,new Set(),new Map([['B1','unknown']])),'primary');
+ assert.strictEqual(M.tone(task,new Set(),new Map([['B1','on_time']])),'success');
+ assert.strictEqual(M.tone(task,new Set(),new Map([['B1','overdue']])),'critical');
+ assert.strictEqual(M.tone(task,new Set([task.task_ref]),new Map([['B1','on_time']])),'critical');h.equal(task,before);
+}
+assert(!h.text(h.gantt(data).tree).includes('已完成'));assert.strictEqual(h.runtime.Gantt,undefined);
+""")
     print("OK")
 
 

@@ -383,8 +383,16 @@ def _build_app(tmp_path: Path, monkeypatch):
 
 
 def test_validate_simulate_route_is_callable_but_not_wired_to_gantt_page(tmp_path: Path, monkeypatch) -> None:
+    from contextlib import closing
+
+    from tests._support.gantt_current import prepare_read_state
+    from tests._support.gantt_retirement import _business_state, _canonical_workspace
+
     app, draft_id = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
+    prepare_read_state(client)
+    with closing(get_connection(app.config["DATABASE_PATH"])) as conn:
+        formal_before = _snapshot(conn)
 
     response = client.post("/scheduler/gantt/adjustments/validate-simulate", json={"draft_id": draft_id})
     payload = response.get_json()
@@ -393,10 +401,17 @@ def test_validate_simulate_route_is_callable_but_not_wired_to_gantt_page(tmp_pat
     assert payload["success"] is True
     assert payload["data"]["status"] == "valid"
 
-    for rel in ("templates/scheduler/gantt.html",):
+    assert not (REPO_ROOT / "templates/scheduler/gantt.html").exists()
+    for rel in ("frontend/workbench/app/PlanGantt.jsx", "frontend/workbench/app/PlanWorkspace.jsx"):
         text = (REPO_ROOT / rel).read_text(encoding="utf-8")
         assert "validate-simulate" not in text
         assert "data-adjustment-url" not in text
+    before_reads = _business_state(client)
+    _context, workspace = _canonical_workspace(client, {"version": VERSION})
+    assert workspace["data"]["plan"]["capabilities"]["edit_draft"] is False
+    assert _business_state(client) == before_reads
+    with closing(get_connection(app.config["DATABASE_PATH"])) as conn:
+        assert _snapshot(conn) == formal_before
 
 
 def test_validate_simulate_route_public_json_hides_internal_issue_fields(tmp_path: Path, monkeypatch) -> None:
