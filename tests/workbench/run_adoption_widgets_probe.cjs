@@ -1,7 +1,7 @@
 /* CB source-only UI probe. Adoption always reaches the real isolated Flask service. */
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
-const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
+const { chromium } = require('playwright'), { expect } = require('playwright/test'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
 const files = ['resource-contract.js', 'ResourceControls.jsx', 'WorkbenchControlStyles.jsx', 'RunAdoptionAPI.js', 'RunAdoptionControls.jsx', 'RunAdoptionAction.jsx'];
 const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
@@ -39,7 +39,7 @@ const server = http.createServer((req, res) => {
   if (scripts.has(pathname)) { res.setHeader('Content-Type', 'application/javascript'); res.end(scripts.get(pathname)); return; }
   const asset = assets.get(pathname); if (!asset) { res.writeHead(404); res.end(); return; } res.setHeader('Content-Type', asset.mime); res.end(asset.bytes);
 });
-const report = { browser: null, variants: [], checks: [], screenshots: [], errors: [], external: [], dialogs: [], layout: [],
+const report = { browser: null, variants: [], checks: [], screenshots: [], errors: [], external: [], dialogs: [], layout: [], wait_contracts: [],
   sources: sources.map(s => ({ path: s.path, sha256: crypto.createHash('sha256').update(s.code).digest('hex') })) };
 let page, origin, variant, fixture;
 const button = name => page.getByRole('button', { name, exact: true });
@@ -47,6 +47,19 @@ const done = name => report.checks.push({ variant, name, passed: true });
 const state = () => page.evaluate(() => RunAdoptionAPI.pending().read());
 const evidence = async () => (await page.request.get(origin + '/fixture/evidence')).json();
 const control = action => page.request.post(origin + '/fixture/control', { data: { action } });
+async function waitForAsyncCondition(predicate) {
+  // waitForFunction tests the Promise itself; evaluate awaits the predicate's value.
+  await expect.poll(() => page.evaluate(predicate), { timeout: 15000 }).toBe(true);
+}
+async function checkAsyncObservationWait() {
+  await page.evaluate(() => { window.__adoptionWaitSamples = 0; });
+  try {
+    await waitForAsyncCondition(async () => ++window.__adoptionWaitSamples >= 3);
+    const samples = await page.evaluate(() => window.__adoptionWaitSamples);
+    report.wait_contracts.push({ variant, samples });
+    assert.equal(samples, 3, 'An async predicate must be sampled until its resolved value becomes true');
+  } finally { await page.evaluate(() => { delete window.__adoptionWaitSamples; }); }
+}
 async function shot(name) { const file = path.join(output, variant + '-' + name + '.png'); await page.screenshot({ path: file, fullPage: true, animations: 'disabled' }); report.screenshots.push(file); }
 async function reset(mode = 'normal') {
   fixture = await (await page.request.post(origin + '/fixture/reset', { data: { mode } })).json();
@@ -134,19 +147,19 @@ async function rejections() {
 }
 async function uncertain() {
   await reset('paused'); await inspect(); await fill(); await button('确认正式采用').click();
-  await page.waitForFunction(async () => (await (await fetch('/fixture/evidence')).json()).started);
+  await waitForAsyncCondition(async () => (await (await fetch('/fixture/evidence')).json()).started);
   const original = await state(); await button('关闭并保留请求').click();
   await page.evaluate(ref => mountAdoption(ref), fixture.other_ref); await button('核实采用结果').click();
   await page.getByText('存在另一候选的原采用请求，请先核实该记录。', { exact: true }).waitFor();
   assert.equal(await button('确认正式采用').count(), 0); assert.equal(await page.getByLabel('采用原因', { exact: true }).getAttribute('readonly'), '');
   await page.reload(); await button('核实采用结果').click(); await page.getByRole('button', { name: '查询原请求', exact: true }).waitFor();
   assert.equal((await state()).request_key, original.request_key); assert.equal((await evidence()).receipts, 0);
-  await control('release'); await page.waitForFunction(async () => (await (await fetch('/fixture/evidence')).json()).receipts === 1);
+  await control('release'); await waitForAsyncCondition(async () => (await (await fetch('/fixture/evidence')).json()).receipts === 1);
   await button('查询原请求').click(); await success(); done('inflight-close-candidate-switch-refresh-not-recorded-then-lookup');
   await reset(); await inspect(); await fill(); await page.route('**/api/workbench/v1/commands/*', route => route.abort());
   await page.request.post(origin + '/probe/drop-next-adoption-reply'); await button('确认正式采用').click();
   await page.getByRole('dialog', { name: '核实原采用请求' }).waitFor();
-  await page.waitForFunction(async () => (await (await fetch('/fixture/evidence')).json()).receipts === 1);
+  await waitForAsyncCondition(async () => (await (await fetch('/fixture/evidence')).json()).receipts === 1);
   const lost = await state(); await button('关闭并保留请求').click(); await page.reload();
   await button('核实采用结果').click(); assert.equal(await button('进入正式方案').count(), 0); await shot('unknown-preserved');
   await page.unroute('**/api/workbench/v1/commands/*'); await button('查询原请求').click(); await success();
@@ -186,7 +199,7 @@ async function focusAndStorage() {
       page = await context.newPage(); page.setDefaultTimeout(15000);
       page.on('pageerror', error => report.errors.push(error.message)); page.on('dialog', dialog => { report.dialogs.push(dialog.type()); dialog.dismiss(); });
       await page.route('**/*', route => { if (!route.request().url().startsWith(origin + '/')) { report.external.push(route.request().url()); return route.abort(); } return route.continue(); });
-      try { await page.goto(origin); await basic(); await rejections(); await uncertain(); await focusAndStorage(); row.passed = true; }
+      try { await page.goto(origin); await checkAsyncObservationWait(); await basic(); await rejections(); await uncertain(); await focusAndStorage(); row.passed = true; }
       catch (error) { row.error = error.stack; await shot('FAILED'); throw error; }
       finally { await control('release'); await context.close(); }
     }
