@@ -10,7 +10,7 @@ import openpyxl
 import pytest
 
 from tests._support.paths import REPO_ROOT
-from tests._support.resource_dispatch_frontend_support import read_resource_dispatch_script_bundle
+from tests._support.workbench_browser_contract import browser_contract
 
 
 def _read(rel_path: str) -> str:
@@ -18,82 +18,60 @@ def _read(rel_path: str) -> str:
 
 
 def _read_analysis_template() -> str:
-    parts = (
-        "templates/scheduler/analysis.html",
-        "templates/scheduler/analysis_parts/_version_picker.html",
-        "templates/scheduler/analysis_parts/_selected_overview.html",
-        "templates/scheduler/analysis_parts/_candidate_comparison.html",
-        "templates/scheduler/analysis_parts/_optimization_process.html",
-    )
-    return "\n".join(_read(path) for path in parts)
+    """Read current analysis presenters; do not restore removed templates."""
+    return "\n".join(_read(path) for path in (
+        "frontend/workbench/app/PlanCatalogUI.jsx", "frontend/workbench/app/PlanDetailsUI.jsx",
+        "frontend/workbench/app/RunHistoryControls.jsx", "frontend/workbench/app/RunCandidateControls.jsx",
+        "frontend/workbench/app/RunCandidateAnalysis.jsx",
+    ))
 
 
 def test_scheduler_config_and_batch_hints_are_user_facing_chinese() -> None:
-    expected_holiday_hint = "假期也安排生产且未单独填写效率时，系统会使用这里的效率值；请输入大于 0 的数字。"
-    expected_batch_manage_hint = (
-        "只在批次需要按零件路线生成工序时生效。勾选后：缺工种、缺供应商或外协周期不正确时，会停止创建并提示原因。"
-        "不勾选：能确认的工序会先生成；缺少外协周期时会先按 1 天记录并提醒补正。"
-    )
-    expected_batch_schedule_hint = (
-        "勾选后：系统会先检查两类内容。第一，高级设置里的选项必须是页面能选到的值，例如派工方式、智能派工策略、自动分配设备人员不能乱填。"
-        "第二，工时、外协周期、权重、锁定天数这类数字必须是正常数字，不能空着、填负数或填文字。"
-        "发现这些问题会停下，让你先修改。不勾选：为了兼容旧数据，系统会先按默认值继续排，例如空工时按 0 小时、外协周期缺失按 1 天、坏掉的高级设置按页面默认项，并在结果提醒里告诉你需要回去补哪项。"
-    )
-
-    source = _read("templates/scheduler/config.html")
-    assert expected_holiday_hint in source
-    assert "假期安排生产但未单独设置效率时" not in source
-    assert "&gt;0" not in source
-
-    source = _read("templates/scheduler/batches_manage.html")
-    assert expected_batch_manage_hint in source
-    assert "解析器不支持 strict_mode" not in source
-
-    run_panel = _read("templates/scheduler/_run_panel.html")
-    assert expected_batch_schedule_hint in run_panel
-    assert "配置不合法" not in run_panel
-    assert "安全取值" not in run_panel
-    assert "工时空着时可能按 0" not in run_panel
-    source = _read("templates/scheduler/batches.html")
-    assert '{% include "scheduler/_run_panel.html" %}' in source
-    assert "dispatch_mode / dispatch_rule / auto_assign_enabled" not in source
-    assert "设了截止日期的话，排不完会提示失败。" not in source
+    browser_contract("""
+const value = {type:'work',hours:'8',eff:'100',allowNormal:'yes',allowUrgent:'no',note:''};
+expect(window.APSCalendarContract.input(value).eff === 100);
+for (const eff of ['', '0', '-1', 'bad', '201']) {
+  let message = '';
+  try { window.APSCalendarContract.input({...value,eff}); } catch(error) { message = error.message; }
+  expect(message === '效率须大于 0 且不超过 200%。', 'Bad efficiency was accepted or leaked an internal field name');
+}
+const node = await render(React.createElement(window.PreflightControls.Rules,
+  {value:{ready_check:true,missing_resource_policy:'auto_assign'},onChange:()=>{},disabled:false}));
+expect(node.textContent.includes('工时、工种、外协资料仍为必填项'));
+expect(node.textContent.includes('本次参数，不改全局配置'));
+expect(node.textContent.includes('开工和完工事实不能解除保护'));
+expect(!node.textContent.includes('missing_resource_policy') && !node.textContent.includes('strict_mode'));
+return true;
+""", scripts=("static/workbench/app/resource-contract.js", "static/workbench/app/ResourceControls.js",
+              "static/workbench/app/CalendarContract.js", "static/workbench/app/PreflightControls.js"))
+    batch = _read("frontend/workbench/app/BatchDetail.jsx")
+    assert "资料不完整时停止刷新" in batch
+    assert "B.label('status', entity.status)" in batch
+    assert "解析器不支持 strict_mode" not in batch
+    calendar = _read("frontend/workbench/app/CalendarFields.jsx")
+    assert "效率（%）" in calendar and "可排工时（小时）" in calendar
+    assert "假期安排生产但未单独设置效率时" not in calendar
 
 
 def test_scheduler_run_copy_avoids_vague_vocabulary_for_operators() -> None:
-    forbidden_terms = (
-        "配置不合法",
-        "安全取值",
-        "工时空着时可能",
-        "可能按 0 小时",
-        "当前配置无效",
-        "配置无效",
-        "格式不合法",
-        "时间不合法",
-        "外协周期缺失或不合法",
-    )
-    user_facing_sources = (
-        "templates/scheduler/_run_panel.html",
-        "web/viewmodels/scheduler_run_options.py",
-        "web/viewmodels/page_manuals_scheduler.py",
-        "web/viewmodels/page_manuals_scheduler_week_plan.py",
-        "web/viewmodels/scheduler_degradation_presenter.py",
-        "core/services/scheduler/summary/schedule_summary_degradation.py",
-        "static/js/gantt_contract.js",
-        "static/js/gantt_help.js",
-        "static/docs/scheduler_manual.md",
-    )
-
-    for rel_path in user_facing_sources:
-        source = _read(rel_path)
+    forbidden_terms = ("配置不合法", "安全取值", "工时空着时可能", "可能按 0 小时", "当前配置无效",
+                       "配置无效", "格式不合法", "时间不合法", "外协周期缺失或不合法")
+    for path in (
+        "frontend/workbench/app/PreflightControls.jsx", "frontend/workbench/app/RunJobControls.jsx",
+        "frontend/workbench/app/PlanGantt.jsx", "frontend/workbench/app/PlanWorkspace.jsx",
+        "web/viewmodels/scheduler_run_options.py", "web/viewmodels/page_manuals_scheduler.py",
+        "web/viewmodels/page_manuals_scheduler_week_plan.py", "web/viewmodels/scheduler_degradation_presenter.py",
+        "core/services/scheduler/summary/schedule_summary_degradation.py", "static/docs/scheduler_manual.md",
+    ):
+        source = _read(path)
         for term in forbidden_terms:
-            assert term not in source, f"{rel_path} 仍包含含糊旧说法：{term}"
+            assert term not in source, (path, term)
 
 
 def test_scheduler_config_repair_notices_use_public_field_labels() -> None:
-    source = _read("templates/scheduler/config.html")
-    assert "current_config_notice_items" in source
-    assert "ui.details_notice(notice" in source
+    source = _read("frontend/workbench/app/SystemMaintenanceConfig.jsx")
+    assert "base.dirty_reasons[field.key]" in source
+    assert "{field.label}" in source and "base.stored_values[field.key]" in source
     assert "notice.fields" not in source
 
     panel_vm = _read("web/viewmodels/scheduler_config_panel.py")
@@ -111,103 +89,88 @@ def test_scheduler_config_repair_notices_use_public_field_labels() -> None:
 
 
 def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> None:
+    import logging
+    import re
+    import sqlite3
+    import tempfile
+
+    from core.services.workbench.system_reads import log_records
+
     analysis = _read_analysis_template()
-    assert "dispatch_mode_zh" in analysis
-    assert "dispatch_rule_zh" in analysis
-    assert "attempts / 优化曲线 / 超期明细" not in analysis
-    assert "r.dispatch_mode }}/{{ r.dispatch_rule" not in analysis
-    assert "{{ r.score }}" not in analysis
-    assert 'data-col-key="score"' not in analysis
-    assert "algo_config.get('algo_mode') or algo.mode" in analysis
-    assert "mode_zh.get(algo.mode" not in analysis
-
-    source = _read("templates/scheduler/gantt.html")
-    # 原锚点「排程数据」随 #27 删除的提示文案一起消失；改锁空态文案（同义中文承载）
-    assert "没有可显示的排程" in source
-    assert "Schedule 数据" not in source
-
-    logs = _read("templates/system/logs.html")
-    assert "按英文值筛选" not in logs
-    assert "如：排产、备份、设备" in logs
-    assert "如：新增、导入、删除" in logs
-    assert "<code>{{ r.module }}</code>" not in logs
-    assert "<code>{{ r.action }}</code>" not in logs
-    assert "{{ r.module_label }}" in logs
-    assert "{{ r.action_label }}" in logs
-    assert "{{ r.module }}" not in logs
-    assert "{{ r.action }}" not in logs
-    assert 'title="{{ r.module }}"' not in logs
-    assert 'title="{{ r.action }}"' not in logs
-    assert 'title="{{ r.target_type }}"' not in logs
+    for label in ("齐套检查", "缺资源策略", "任务详情", "前序", "后序", "计划开始", "计划结束"):
+        assert label in analysis
+    for term in ("attempts / 优化曲线 / 超期明细", 'data-col-key="score"', "r.dispatch_mode }}/{{ r.dispatch_rule"):
+        assert term not in analysis
+    logs = _read("frontend/workbench/app/SystemMaintenanceRecords.jsx")
+    assert "日志详情" in logs and "操作记录" in logs and "{row.summary}" in logs
+    assert "{row.module}" not in logs and "{row.action}" not in logs
+    # Operation summaries retain the public vocabulary of the existing log view.
+    with tempfile.TemporaryDirectory(prefix="aps-A-log-label-") as directory:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.executescript(_read("schema.sql"))
+            conn.execute("INSERT INTO OperationLogs(log_level,module,action,detail) VALUES ('INFO','scheduler','schedule','{}')")
+            conn.commit()
+            before = list(conn.iterdump())
+            rows, sources = log_records(conn, directory, logging.getLogger("A-log-label-contract"))
+            operation = [row for row in rows if row["type"] == "operation"]
+            assert len(operation) == 1 and sources
+            assert list(conn.iterdump()) == before
+            summary = operation[0]["summary"]
+            assert re.findall(r"[\u4e00-\u9fff]+", summary) == ["排产管理", "排产"], operation[0]
+            assert "scheduler" not in summary and "schedule" not in summary
+        finally:
+            conn.close()
 
 
 def test_debug_details_do_not_expose_flask_endpoint_names_to_users() -> None:
-    rel_paths = (
-        "templates/scheduler/config.html",
-        "templates/scheduler/batches.html",
-        "templates/personnel/list.html",
-        "templates/personnel/detail.html",
-        "templates/personnel/calendar.html",
-    )
-    for rel_path in rel_paths:
-        source = _read(rel_path)
-        assert "后端接口未注册（endpoint" not in source
-        assert "endpoint）" not in source
-        assert "missing_preset_endpoints|join" not in source
+    for path in ("frontend/workbench/app/main.jsx", "frontend/workbench/app/ResourceForms.jsx",
+                 "frontend/workbench/app/BatchForms.jsx", "frontend/workbench/app/SystemMaintenanceConfig.jsx",
+                 "frontend/workbench/app/PlanWorkspace.jsx", "templates/workbench/legacy_result.html"):
+        source = _read(path)
+        for term in ("后端接口未注册（endpoint", "endpoint）", "missing_preset_endpoints|join"):
+            assert term not in source
 
 
 def test_process_excel_current_tables_render_chinese_display_fields() -> None:
-    operators = _read("templates/personnel/excel_import_operator.html")
-    assert 'r["状态显示"]' in operators
-    assert '<td>{{ r["状态"] }}</td>' not in operators
+    from types import SimpleNamespace
 
-    machines = _read("templates/equipment/excel_import_machine.html")
-    assert 'r["状态显示"]' in machines
-    assert '<td>{{ r["状态"] }}</td>' not in machines
+    from web.routes.workbench.legacy_presentation import preview_fields
 
-    batches = _read("templates/scheduler/excel_import_batches.html")
-    assert 'r["优先级显示"]' in batches
-    assert 'r["齐套显示"]' in batches
-    assert '<td>{{ r["优先级"] }}</td>' not in batches
-    assert '<td>{{ r["齐套"] }}</td>' not in batches
-
-    calendar = _read("templates/scheduler/excel_import_calendar.html")
-    assert 'r["类型显示"]' in calendar
-    assert 'r["允许普通件显示"]' in calendar
-    assert 'r["允许急件显示"]' in calendar
-    assert '<td>{{ r["类型"] }}</td>' not in calendar
-    assert '<td>{{ r["允许普通件"] }}</td>' not in calendar
-    assert '<td>{{ r["允许急件"] }}</td>' not in calendar
-
-    operator_calendar = _read("templates/personnel/excel_import_operator_calendar.html")
-    assert 'r["类型显示"]' in operator_calendar
-    assert 'r["允许普通件显示"]' in operator_calendar
-    assert 'r["允许急件显示"]' in operator_calendar
-    assert '<td>{{ r["类型"] }}</td>' not in operator_calendar
-    assert '<td>{{ r["允许普通件"] }}</td>' not in operator_calendar
-    assert '<td>{{ r["允许急件"] }}</td>' not in operator_calendar
-
-    op_types = _read("templates/process/excel_import_op_types.html")
-    assert 'r["归属显示"]' in op_types
-    assert '<td>{{ r["归属"] }}</td>' not in op_types
-
-    part_operation_hours = _read("templates/process/excel_import_part_operation_hours.html")
-    assert 'r["归属显示"]' in part_operation_hours
-    assert '<td>{{ r["归属"] }}</td>' not in part_operation_hours
-
-    suppliers = _read("templates/process/excel_import_suppliers.html")
-    assert 'r["状态显示"]' in suppliers
-    assert 'r["备注"]' in suppliers
-    assert '<td>{{ r["状态"] }}</td>' not in suppliers
-
-    preview_component = _read("templates/components/excel_import.html")
-    assert "r.display_data" in preview_component
-    assert "r.data | tojson_zh" not in preview_component
-
-    batch_preview_template = _read("templates/scheduler/excel_import_batches.html")
-    assert "r.display_data" in batch_preview_template
-    assert "r.data | tojson_zh" not in batch_preview_template
-    assert "else r.data" not in batch_preview_template
+    cases = (
+        ("personnel.excel_operator_preview", {"状态": "在岗"}, {"状态": "active"}),
+        ("equipment.excel_machine_preview", {"状态": "停机"}, {"状态": "inactive"}),
+        ("scheduler.excel_batches_preview", {"优先级": "急件", "齐套": "部分齐套"}, {"优先级": "urgent", "齐套": "partial"}),
+        ("scheduler.excel_calendar_preview", {"类型": "工作日", "允许普通件": "是", "允许急件": "否"}, {"类型": "workday"}),
+        ("personnel.excel_operator_calendar_preview", {"类型": "休息日", "允许普通件": "否", "允许急件": "是"}, {"类型": "holiday"}),
+        ("process.excel_op_type_preview", {"归属": "自制"}, {"归属": "internal"}),
+        ("process.excel_part_op_hours_preview", {"图号": "P1", "工序": "10", "单件工时(h)": "0.25"},
+         {"图号": "P1", "工序": 10, "单件工时(h)": 0.25, "归属": "external"}),
+        ("process.excel_supplier_preview", {"状态": "启用", "备注": "原备注"}, {"状态": "active", "备注": "原备注"}),
+    )
+    for endpoint, public, raw in cases:
+        original = dict(raw)
+        row = SimpleNamespace(data=raw, display_data={**public, "op_id": "private-operation"},
+                              display_changes={}, changes={})
+        fields = preview_fields(row, endpoint)
+        projected = {field["label"]: field["value"] for field in fields}
+        assert projected == public, (endpoint, projected)
+        assert row.data == original
+        assert "op_id" not in projected and "private-operation" not in str(projected)
+    template = _read("templates/workbench/legacy_result.html")
+    assert "row|legacy_preview_fields(request.endpoint)" in template
+    assert "{{ field.label }}" in template and "{{ field.value }}" in template
+    assert "{{ field.before }}" in template and "{{ field.after }}" in template
+    assert "r.data | tojson_zh" not in template
+    hours = _read("frontend/workbench/app/ProcessHoursEditor.jsx")
+    assert "window.APSProcessContract.sourceLabel(row.source)" in hours
+    browser_contract("""
+expect(window.APSProcessContract.sourceLabel('internal') === '自制');
+expect(window.APSProcessContract.sourceLabel('external') === '外协');
+expect(window.APSProcessContract.sourceLabel('unknown') === '未归类');
+return true;
+""", scripts=("static/workbench/app/resource-contract.js", "static/workbench/app/ProcessContract.js"))
     batch_route = _read("web/routes/domains/scheduler/scheduler_excel_batches.py")
     assert "encode_preview_rows_payload" in batch_route
 
@@ -659,42 +622,20 @@ def test_excel_exports_use_chinese_labels_for_enum_columns() -> None:
 
 
 def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
-    gantt_boot = _read("static/js/gantt_boot.js")
-    assert "页面脚本加载不完整" in gantt_boot
-    assert "reportClientError" in gantt_boot
-    assert "缺失：" not in gantt_boot
-    assert "未找到数据接口 URL（data-url；兼容 data-data-url）" not in gantt_boot
-    assert "dataUrl=" not in gantt_boot
-    assert "甘特图数据请求超过" in gantt_boot
-    assert ">${fetchTimeoutMs}ms" not in gantt_boot
-
-    gantt_render = _read("static/js/gantt_render.js")
-    gantt_decorations = _read("static/js/gantt_decorations.js")
-    gantt_popup = _read("static/js/gantt_popup.js")
-    assert "甘特图装饰刷新失败" in gantt_decorations
-    assert "Gantt decorate failed" not in gantt_render + gantt_decorations
-    assert "加工方式：" in gantt_popup
-    assert "前面影响它的工序：" in gantt_popup
-    assert "为什么影响总工期：" in gantt_popup
-    assert "中间等待：" in gantt_popup
-    assert "间隔（分钟）" not in gantt_render + gantt_popup
-    assert "间隔(分)" not in gantt_render + gantt_popup
-    assert "关键链前驱：" not in gantt_render + gantt_popup
-    assert "关键链依据：" not in gantt_render + gantt_popup
-
-    gantt_contract = _read("static/js/gantt_contract.js")
-    gantt_help = _read("static/js/gantt_help.js")
-    for phrase in (
-        "查看模式",
-        "时间粒度：月/周/日",
-        "短工序",
-        "范围保护",
-        "开始日从 00:00 开始",
-    ):
-        assert phrase in gantt_help
-    assert "function getHelpItems" not in gantt_contract
-    assert "透明点击区" not in gantt_help
-
+    boot = _read("frontend/workbench/app/main.jsx")
+    assert "工作台资源未完整加载，请检查本机安装文件。" in boot
+    assert "root.replaceChildren(alert, retry)" in boot
+    for term in ("缺失：", "未找到数据接口 URL（data-url；兼容 data-data-url）", "dataUrl="):
+        assert term not in boot
+    transport = _read("frontend/workbench/app/transport.js")
+    for phrase in ("本机状态读取超时，请稍后重试。", "无法连接本机服务", "本机工作台数据协议不匹配，未使用样例替代。"):
+        assert phrase in transport
+    assert "AbortController" in transport and "clearTimeout(timer)" in transport
+    detail = _read("frontend/workbench/app/PlanDetailsUI.jsx")
+    for phrase in ("工艺前后序", "前序", "后序", "计划开始", "计划结束", "读取完整计划并定位"):
+        assert phrase in detail
+    for term in ("间隔（分钟）", "间隔(分)", "关键链前驱：", "关键链依据："):
+        assert term not in detail
     manual = _read("static/docs/scheduler_manual.md")
     manual_viewmodel = _read("web/viewmodels/page_manuals_scheduler_outputs.py")
     for phrase in (
@@ -718,12 +659,6 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
     ):
         assert phrase in manual_viewmodel
     assert "不能放进下载文件名的符号" in manual
-
-    resource_dispatch = read_resource_dispatch_script_bundle()
-    assert "有一条排班提示没有完整说明" in resource_dispatch
-    for phrase in ("自制", "外协", "来源未识别", "已锁定", "未锁定", "锁定状态未识别"):
-        assert phrase in resource_dispatch
-    assert "parts.push(escapeHtml(code));" not in resource_dispatch
 
 
 def test_process_and_scheduler_errors_use_chinese_terms() -> None:
@@ -755,40 +690,29 @@ def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
     assert '"comparison_metric": "优化对比指标"' in analysis_compat
     assert '"best_score_schema": "系统比较顺序"' in analysis_compat
 
-    analysis_template = _read_analysis_template()
-    assert "compat_fallback.missing_field_labels" in analysis_template
-    assert "compat_fallback.missing_fields | join" not in analysis_template
-    assert 'data-col-key="source"' in analysis_template
-    assert ">方案来源</th>" in analysis_template
-    assert "<th>方案来源</th>" not in analysis_template
-    assert "r.display_tag" in analysis_template or "{{ r.tag }}" in analysis_template
-    assert "方案 {{ loop.index }}" not in analysis_template
-    assert "row_dispatch_rule" in analysis_template
-    assert "/{{ dispatch_rule_zh" not in analysis_template
+    analysis = _read_analysis_template()
+    assert "完整候选比较摘要" in analysis and "整份候选与受理基线" in analysis
+    assert "metric.value === null" in analysis and "metric.known_subtotal" in analysis
+    assert "metric.reason.message" in analysis
+    for term in ("compat_fallback.missing_fields | join", "方案 {{ loop.index }}", "/{{ dispatch_rule_zh", "{plan.source_table}", "{plan.scenario_id}"):
+        assert term not in analysis
 
 
 def test_reports_and_v2_batch_templates_match_public_manual_contracts() -> None:
-    utilization = _read("templates/reports/utilization.html")
-    assert "利用率(%)" in utilization
-    assert "utilization_percent" in utilization
-    assert "r.utilization if r.utilization is not none" not in utilization
-
+    catalog = _read("core/services/workbench/report_catalog.py")
+    assert '("utilization_percent", "计划利用率(%)")' in catalog
+    assert 'None if row.get("utilization") is None else round(row["utilization"] * 100, 2)' in catalog
     exporter = _read("core/services/report/exporters/xlsx.py")
     assert '["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"]' in exporter
-    assert '"利用率(%)"' in exporter
-    assert "_utilization_percent" in exporter
-
-    for rel_path in ("templates/scheduler/batches.html", "templates/scheduler/batches_manage.html"):
-        source = _read(rel_path)
-        assert "scheduler.delete_batch" in source
-        assert "确认删除该批次" in source
-        assert 'name="next"' in source
-
-    gantt_v2 = _read("templates/scheduler/gantt.html")
-    for line in gantt_v2.splitlines():
-        if "上周" in line or "回到本周" in line or "下周" in line:
-            assert "start_date=" not in line
-            assert "end_date=" not in line
+    assert '"利用率(%)"' in exporter and "_utilization_percent" in exporter
+    batches = _read("frontend/workbench/app/BatchWorkspace.jsx")
+    assert "删除所选" in batches and "preview('bulk', { action: 'delete', refs: selected" in batches
+    assert "scope, token || snapshot" in batches
+    assert "<BaseFields value={value}" in _read("frontend/workbench/app/BatchForms.jsx")
+    gantt = _read("frontend/workbench/app/PlanGantt.jsx")
+    assert "setZoom" in gantt and "selectedRef" in gantt
+    assert "start_date=" not in gantt and "end_date=" not in gantt
+    assert "base.write_context.write_token" in _read("frontend/workbench/app/SystemMaintenanceConfig.jsx")
 
 
 @pytest.mark.parametrize(

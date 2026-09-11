@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from core.infrastructure.database import get_connection
+from tests._support.workbench_web_contract import retired_response
 
 
 def test_system_logs_delete_no_clamp(db_env) -> None:
@@ -40,11 +41,9 @@ def test_system_logs_delete_no_clamp(db_env) -> None:
 
     # log_id=0/负数 不应夹逼为 1（不应误删 id=1）
     r0 = client.post("/system/logs/delete", data={"log_id": "0"}, follow_redirects=True)
-    if r0.status_code != 200:
-        raise RuntimeError(f"POST /system/logs/delete log_id=0 返回 {r0.status_code}，期望 200")
+    assert "日志编号不合法" in retired_response(r0, post_result=True)
     rn = client.post("/system/logs/delete", data={"log_id": "-1"}, follow_redirects=True)
-    if rn.status_code != 200:
-        raise RuntimeError(f"POST /system/logs/delete log_id=-1 返回 {rn.status_code}，期望 200")
+    assert "日志编号不合法" in retired_response(rn, post_result=True)
 
     conn = get_connection(db_env)
     try:
@@ -60,8 +59,7 @@ def test_system_logs_delete_no_clamp(db_env) -> None:
         data={"log_ids": ["1", "abc", "0", "-1", "1000000000001"]},
         follow_redirects=True,
     )
-    if rb.status_code != 200:
-        raise RuntimeError(f"POST /system/logs/delete-batch 混入非法编号返回 {rb.status_code}，期望 200")
+    retired_response(rb, post_result=True)
     if "日志编号不合法" not in rb.get_data(as_text=True):
         raise RuntimeError("批量删除混入非法编号时，应向用户提示日志编号不合法")
 
@@ -75,8 +73,7 @@ def test_system_logs_delete_no_clamp(db_env) -> None:
 
     # log_id=1 应能正常删除
     r1 = client.post("/system/logs/delete", data={"log_id": "1"}, follow_redirects=True)
-    if r1.status_code != 200:
-        raise RuntimeError(f"POST /system/logs/delete log_id=1 返回 {r1.status_code}，期望 200")
+    retired_response(r1, post_result=True)
 
     conn = get_connection(db_env)
     try:

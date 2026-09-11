@@ -16,6 +16,7 @@ from core.services.process.part_service import PartService
 from core.services.scheduler.batch_service import BatchService
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
+from tests._support.workbench_web_contract import retired_response
 from web.routes import system_backup as system_backup_mod
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -70,7 +71,7 @@ def test_scheduler_bulk_delete_surfaces_business_reason_and_logs_unexpected(tmp_
     )
     body = resp.get_data(as_text=True)
 
-    assert resp.status_code == 200
+    retired_response(resp, post_result=True)
     assert "批量删除完成：成功 1，失败 2。" in body
     assert "B_RULE: 已被排程引用" in body
     assert "B_BUG: 内部错误，请查看日志" in body
@@ -105,7 +106,7 @@ def test_equipment_bulk_routes_show_reasons_and_log_unexpected(tmp_path, monkeyp
         follow_redirects=True,
     )
     status_body = resp_status.get_data(as_text=True)
-    assert resp_status.status_code == 200
+    retired_response(resp_status, post_result=True)
     assert "批量状态更新完成：成功 1，失败 2。" in status_body
     assert "MC_RULE: 当前状态不允许切换" in status_body
     assert "MC_BUG: 内部错误，请查看日志" in status_body
@@ -117,7 +118,7 @@ def test_equipment_bulk_routes_show_reasons_and_log_unexpected(tmp_path, monkeyp
         follow_redirects=True,
     )
     delete_body = resp_delete.get_data(as_text=True)
-    assert resp_delete.status_code == 200
+    retired_response(resp_delete, post_result=True)
     assert "批量删除完成：成功 1，失败 2。" in delete_body
     assert "MC_RULE: 已被批次工序引用" in delete_body
     assert "MC_BUG: 内部错误，请查看日志" in delete_body
@@ -152,7 +153,7 @@ def test_personnel_bulk_routes_show_reasons_and_log_unexpected(tmp_path, monkeyp
         follow_redirects=True,
     )
     status_body = resp_status.get_data(as_text=True)
-    assert resp_status.status_code == 200
+    retired_response(resp_status, post_result=True)
     assert "批量状态更新完成：成功 1，失败 2。" in status_body
     assert "OP_RULE: 当前状态不允许切换" in status_body
     assert "OP_BUG: 内部错误，请查看日志" in status_body
@@ -164,7 +165,7 @@ def test_personnel_bulk_routes_show_reasons_and_log_unexpected(tmp_path, monkeyp
         follow_redirects=True,
     )
     delete_body = resp_delete.get_data(as_text=True)
-    assert resp_delete.status_code == 200
+    retired_response(resp_delete, post_result=True)
     assert "批量删除完成：成功 1，失败 2。" in delete_body
     assert "OP_RULE: 已被排程引用" in delete_body
     assert "OP_BUG: 内部错误，请查看日志" in delete_body
@@ -192,7 +193,7 @@ def test_process_bulk_delete_shows_reason_and_logs_unexpected(tmp_path, monkeypa
     )
     body = resp.get_data(as_text=True)
 
-    assert resp.status_code == 200
+    retired_response(resp, post_result=True)
     assert "批量删除完成：成功 1，失败 2。" in body
     assert "P_RULE: 已被批次引用" in body
     assert "P_BUG: 内部错误，请查看日志" in body
@@ -232,7 +233,7 @@ def test_system_backup_batch_delete_shows_specific_failure_reasons(tmp_path, mon
     )
     body = resp.get_data(as_text=True)
 
-    assert resp.status_code == 200
+    retired_response(resp, post_result=True)
     assert "批量删除完成：成功 1，失败 3。" in body
     assert "aps_backup_missing.db: 文件不存在" in body
     assert "../evil.db: 备份文件名不合法" in body
@@ -257,10 +258,21 @@ def test_system_backup_page_surfaces_unsafe_hidden_backup_file(tmp_path, monkeyp
         pytest.skip(f"平台不允许创建软链接：{exc}")
 
     resp = client.get("/system/backup")
-    body = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert "备份目录需要检查" in body
-    assert "有 1 个备份文件不是安全的普通文件" in body
-    assert unsafe_backup.name in body
+    retired_response(resp)
+    overview = client.get("/api/workbench/v1/system/overview")
+    assert overview.status_code == 200
+    backups = overview.get_json()["data"]["backups"]
+    assert backups["state"] == "partial" and backups["count"] is None
+    assert backups["known_count"] == 0 and backups["files"] == []
+    assert len(backups["issues"]) == 1
+    assert backups["issues"][0]["filename"] == unsafe_backup.name
+    assert backups["issues"][0]["status"] == "error"
+    assert backups["verification_status"] == "not_checked"
+    response = client.get("/api/workbench/v1/system/backups")
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert not any(row.get("filename") == unsafe_backup.name for row in data["rows"])
+    assert any(item["code"] == "file_unreadable" and "不是普通文件" in item["message"] for item in data["sources"])
+    source = (REPO_ROOT / "frontend/workbench/app/SystemMaintenanceRecords.jsx").read_text(encoding="utf-8")
+    assert "data.sources.map" in source and "{item.message}" in source
     assert victim.read_text(encoding="utf-8") == "VICTIM-UNTOUCHED"

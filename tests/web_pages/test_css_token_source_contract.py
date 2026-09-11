@@ -10,6 +10,17 @@ import re
 from pathlib import Path
 
 CSS_DIR = Path(__file__).resolve().parents[2] / "static" / "css"
+WORKBENCH = Path(__file__).resolve().parents[2] / "static/workbench/prototype"
+
+
+def _active_tokens(name):
+    """Require the served token source and its explicit local stylesheet import."""
+    entry = (WORKBENCH / "styles.css").read_text(encoding="utf-8")
+    assert '@import url("tokens/' + name + '");' in entry
+    path = WORKBENCH / "tokens" / name
+    source = Path(__file__).resolve().parents[2] / "frontend/workbench/prototype/tokens" / name
+    assert path.read_bytes() == source.read_bytes()
+    return path.read_text(encoding="utf-8")
 
 # 裸 hex：3/4/6/8 位全收（alpha 变体不漏）；\b 边界挡 #id 选择器后跟字母的形态
 _HEX_RE = re.compile(r"#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b")
@@ -77,7 +88,7 @@ def _count_retired_hex(css_text: str, retired_hex: str) -> int:
 
 
 def test_tokens_file_declares_definitive_colors():
-    css = _strip_comments((CSS_DIR / "00-tokens.css").read_text(encoding="utf-8"))
+    css = _strip_comments(_active_tokens("colors.css") + _active_tokens("spacing.css"))
     # 亮色态文本 = 去掉暗色块后的部分（锚守卫只对 light root 生效）
     light_css = re.sub(r'html\[data-theme="dark"\]\s*\{.*?\}', "", css, flags=re.S)
     for decl in DEFINITIVE_COLORS | COLLAPSED_VALUE_ANCHORS:
@@ -91,7 +102,7 @@ def test_tokens_file_declares_definitive_colors():
 
 
 def test_tokens_dark_block_is_pure_token_reassignment():
-    css = _strip_comments((CSS_DIR / "00-tokens.css").read_text(encoding="utf-8"))
+    css = _strip_comments(_active_tokens("dark.css"))
     m = re.search(r'html\[data-theme="dark"\]\s*\{(.*?)\}', css, re.S)
     assert m, "00-tokens.css 应有暗色块"
     offenders = [

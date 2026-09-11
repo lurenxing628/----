@@ -10,6 +10,7 @@ import sqlite3
 from core.infrastructure.database import ensure_schema
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
+from tests._support.workbench_web_contract import retired_response
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
@@ -70,8 +71,10 @@ def test_bulk_copy_batch_without_trailing_digit_gets_friendly_error_not_500(tmp_
     )
     body = resp.get_data(as_text=True)
 
-    assert resp.status_code == 200, f"应正常返回页面而非 500，实际={resp.status_code}"
+    retired_response(resp, post_result=True)
     assert "批量复制完成：成功 0，失败 1。" in body
     assert "批次号末尾必须包含数字" in body, "用户必须看到可自助修正的具体原因"
     assert "系统错误" not in body, "输入问题不得被包装成'系统错误'"
     assert logged == [], f"输入问题不得写 logger.exception ERROR 堆栈，实际={logged!r}"
+    with sqlite3.connect(app.config["DATABASE_PATH"]) as conn:
+        assert conn.execute("SELECT batch_id,quantity FROM Batches ORDER BY batch_id").fetchall() == [("急件A", 5)]

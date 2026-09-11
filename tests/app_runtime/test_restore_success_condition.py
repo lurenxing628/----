@@ -7,12 +7,13 @@ import os
 import sqlite3
 from unittest import mock
 
+from tests._support.workbench_web_contract import retired_response
 
-def _assert_status(resp, name: str, expect: int = 200) -> str:
-    if resp.status_code != expect:
-        body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
-        raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect}，body={body[:500]}")
-    return resp.data.decode("utf-8", errors="ignore")
+
+def _assert_status(resp, name: str) -> str:
+    """The POST still verifies/rolls back; its result lands on the retired GET."""
+    assert resp.history[0].request.path == "/system/backup/restore", name
+    return retired_response(resp, post_result=True)
 
 
 def _restore_log_count(db_path: str) -> int:

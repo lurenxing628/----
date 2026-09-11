@@ -154,6 +154,13 @@ def test_reports_and_geometry_split_files_are_group_scopes() -> None:
 
     assert REPORT_CHAIN_SCOPES <= set(reports_group["input_file_scopes"])
     assert GEOMETRY_SPLIT_SCOPES <= set(ui_group["input_file_scopes"])
+
+    from tools.test_registry import iter_required_regression_groups
+
+    groups = {group["group_id"]: group for group in iter_required_regression_groups()}
+    for group_id in ("ui_layout_presenters_system", "workbench_system"):
+        assert "core/models/operation_log_labels.py" in groups[group_id]["input_file_scopes"]
+    assert "core/services/workbench/system_reads.py" in ui_group["input_file_scopes"]
     for group_id in ("scheduler_run_core", "scheduler_analysis_gantt_reports_week_plan",
                      "scheduler_batches_material_resource"):
         assert "tests/_support/schedule_retirement.py" in _group(group_id)["input_file_scopes"]

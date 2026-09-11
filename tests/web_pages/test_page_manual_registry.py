@@ -721,8 +721,8 @@ def _assert_page_manual_closeout_forbidden_phrases(page_manuals) -> None:
             assert phrase not in text, f"{source_name} 仍包含本轮明确禁用的页面帮助文案：{phrase}"
 
     visible_sources = {
-        "templates/scheduler/excel_import_calendar.html": _read(
-            os.path.join(repo_root, "templates", "scheduler", "excel_import_calendar.html")
+        "frontend/workbench/app/CalendarFields.jsx": _read(
+            os.path.join(repo_root, "frontend", "workbench", "app", "CalendarFields.jsx")
         ),
         "core/services/common/excel_validators.py": _read(
             os.path.join(repo_root, "core", "services", "common", "excel_validators.py")
@@ -752,8 +752,8 @@ def _assert_ready_check_visible_copy_contract(repo_root: str, page_manuals, manu
         "web/routes/domains/scheduler/scheduler_config_display_state.py": _read(
             os.path.join(repo_root, "web", "routes", "domains", "scheduler", "scheduler_config_display_state.py")
         ),
-        "templates/scheduler/excel_import_batches.html": _read(
-            os.path.join(repo_root, "templates", "scheduler", "excel_import_batches.html")
+        "frontend/workbench/app/BatchFiles.jsx": _read(
+            os.path.join(repo_root, "frontend", "workbench", "app", "BatchFiles.jsx")
         ),
     }
     for manual_id in ("excel_batches", "material_batch", "scheduler_batches", "scheduler_config"):

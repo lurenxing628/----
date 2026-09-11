@@ -6,6 +6,11 @@ fusion-dashboard-cockpit：「当前查看排产」卡退役后，排产生成�
 
 from __future__ import annotations
 
+from core.infrastructure.database import get_connection
+from tests._support.gantt_retirement import _business_state
+from tests._support.workbench_web_contract import canonical_boot
+from web.viewmodels.scheduler_history_summary import format_public_datetime
+
 
 def _assert_status(resp, name: str, expect: int = 200) -> None:
     if resp.status_code != expect:
@@ -34,26 +39,44 @@ def _seed_history(db_path: str, schedule_time: str) -> None:
 def test_dashboard_schedule_time_normal_value_uses_public_format(app_client, db_path) -> None:
     _seed_history(db_path, "2026-05-05 10:00:00")
 
-    resp = app_client.get("/")
-    _assert_status(resp, "GET /")
-
-    html = resp.data.decode("utf-8", errors="ignore")
-    if "2026年5月5日 10:00" not in html:
-        raise RuntimeError("首页排产时间未走公开口径格式化")
+    canonical_boot(app_client, "/", "dashboard", {})
+    before = _business_state(app_client)
+    conn = get_connection(db_path)
+    try:
+        stored = conn.execute("SELECT schedule_time FROM ScheduleHistory WHERE version=1").fetchone()[0]
+    finally:
+        conn.close()
+    assert stored == "2026-05-05 10:00:00"
+    assert format_public_datetime(stored) == "2026年5月5日 10:00"
+    resp = app_client.get("/api/workbench/v1/plans")
+    _assert_status(resp, "GET plan catalog")
+    html = resp.get_data(as_text=True)
+    assert resp.get_json()["data"]["plans"][0]["version"] == 1
     if "2026-05-05 10:00:00" in html:
         raise RuntimeError("首页泄漏了 DB 原始时间串")
+    assert _business_state(app_client) == before
 
 
 def test_dashboard_schedule_time_dirty_value_shows_honest_error(app_client, db_path) -> None:
     _seed_history(db_path, "debug raw garbage")
 
-    resp = app_client.get("/")
-    _assert_status(resp, "GET /")
-
-    html = resp.data.decode("utf-8", errors="ignore")
+    canonical_boot(app_client, "/", "dashboard", {})
+    before = _business_state(app_client)
+    conn = get_connection(db_path)
+    try:
+        stored = conn.execute("SELECT schedule_time FROM ScheduleHistory WHERE version=1").fetchone()[0]
+    finally:
+        conn.close()
+    assert stored == "debug raw garbage"
+    assert format_public_datetime(stored) == "时间记录异常"
+    resp = app_client.get("/api/workbench/v1/plans")
+    _assert_status(resp, "GET plan catalog")
+    html = resp.get_data(as_text=True)
     if "Internal Server Error" in html or "Traceback" in html:
         raise RuntimeError("脏 schedule_time 导致首页报错而非诚实降级")
     if "debug raw garbage" in html:
         raise RuntimeError("脏 schedule_time 裸串泄漏到首页展示")
-    if "时间记录异常" not in html:
-        raise RuntimeError("脏 schedule_time 未显示「时间记录异常」诚实口径")
+    plan = resp.get_json()["data"]["plans"][0]
+    assert plan["version"] == 1
+    assert plan["capabilities"]["view"] is False and plan["blocked_reasons"]
+    assert _business_state(app_client) == before

@@ -8,8 +8,16 @@ muted 行去重后版本号归胶囊单点。
 
 from __future__ import annotations
 
-from html.parser import HTMLParser
+from contextlib import closing
+from unittest.mock import patch
 
+from core.infrastructure.database import get_connection
+from core.models.workbench_plan_reference import WorkbenchPlanLocator
+from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
+from tests._support.gantt_retirement import _business_state
+from tests._support.paths import REPO_ROOT
+from tests._support.workbench_browser_contract import browser_contract
+from tests._support.workbench_web_contract import canonical_boot, retired_response
 from web.viewmodels.plan_context_capsule import build_plan_context_capsule, history_row_capsule_fields
 from web.viewmodels.scheduler_workbench_links import build_workbench_plan_context
 
@@ -130,90 +138,106 @@ def _seed_history(db_path: str) -> None:
     conn.close()
 
 
-def _capsule_html(html: str) -> str:
-    assert 'class="aps-plan-capsule"' in html, "胶囊容器未渲染"
-    start = html.index('class="aps-plan-capsule"')
-    return html[start : html.index("</div>", start)]
+def _retained_plan(client, version):
+    """Keep raw history metadata while reading the same permanent plan identity."""
+    canonical_boot(client, "/", "dashboard", {})
+    before = _business_state(client)
+    with closing(get_connection(client.application.config["DATABASE_PATH"])) as conn:
+        row = dict(conn.execute("SELECT * FROM ScheduleHistory WHERE version=?", (version,)).fetchone())
+        reference = WorkbenchPlanIdentityRepository(conn).get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
+    response = client.get("/api/workbench/v1/plans")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["meta"]["source"] == "production"
+    entries = [plan for plan in payload["data"]["plans"] if plan["plan_ref"] == reference]
+    assert len(entries) == 1 and entries[0]["version"] == version and entries[0]["kind"] == "official"
+    assert not {"plan_role", "scenario_id", "source_table", "candidate_id"} & set(entries[0])
+    capsule = build_plan_context_capsule(build_workbench_plan_context(
+        version=version, plan_role="adopted", generated_at=row["schedule_time"], strategy=row["strategy"]))
+    assert _business_state(client) == before
+    return reference, capsule, before
 
 
-class _VisibleTextParser(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.parts: list = []
-        self._skip_depth = 0
-
-    def handle_starttag(self, tag, attrs):
-        # 跳过 WorkbenchLink 导航面包屑（.aps-dashboard-action-context）——它含「v7，方案身份，日期」
-        # 是链接去向上下文（item#11 全站契约），不是「版本展示字段」，不参与正文唯一性判定
-        cls = dict(attrs).get("class") or ""
-        if self._skip_depth or "aps-dashboard-action-context" in cls:
-            self._skip_depth += 1
-
-    def handle_endtag(self, tag):
-        if self._skip_depth:
-            self._skip_depth -= 1
-
-    def handle_data(self, data: str) -> None:
-        if self._skip_depth:
-            return
-        text = str(data or "").strip()
-        if text:
-            self.parts.append(text)
-
-
-def _visible_text_excluding_breadcrumb(html: str) -> str:
-    parser = _VisibleTextParser()
-    parser.feed(html)
-    return "\n".join(parser.parts)
+def _retired_plan(client, path, version=7):
+    """An inexpressible old scope stays explicit; metadata and exports are retained."""
+    reference, capsule, before = _retained_plan(client, version)
+    body = retired_response(client.get(path))
+    assert "<dt>排产版本</dt><dd>" + str(version) + "</dd>" in body
+    assert "<dt>方案</dt><dd>正式采用方案</dd>" in body
+    assert "plan_role" not in body.replace("plan_role=adopted", "")
+    assert _business_state(client) == before
+    return reference, capsule, body
 
 
 def test_dashboard_capsule_fed_and_chrome_deduped(app_client, db_env):
     _seed_history(db_env)
-    html = app_client.get("/").get_data(as_text=True)
-    capsule = _capsule_html(html)
-    # 喂参落点实证：第二次发布（latest_plan_context 构造处）喂参未被覆盖
-    assert "v7" in capsule
-    assert "2026年6月1日 08:00" in capsule
-    assert "综合优先级和交期" in capsule
-    # 去重实证：今日待处理 muted 行不再渲染 version_label·plan_role_label
-    assert "今日待处理" in html
-    workbench_start = html.index("今日待处理")
-    muted_section = html[workbench_start : workbench_start + 600]
-    assert "v7 ·" not in muted_section
-    # 4.2 阶段二正文唯一性：版本号作为独立展示字段只剩壳层胶囊一处——删 stat-grid 版本卡
-    # （label「当前查看版本」）+ risk latest_version 卡（label「当前计划」）+「当前查看排产」卡。
-    assert "当前查看版本" not in html
-    assert "当前查看排产" not in html
-    # 剔除胶囊与链接面包屑后，正文可见文本无第二处版本号
-    body_visible = _visible_text_excluding_breadcrumb(html.replace(capsule, ""))
-    assert "v7" not in body_visible
+    reference, capsule, before = _retained_plan(app_client, 7)
+    assert capsule["version_label"] == "v7"
+    assert capsule["generated_at_label"] == "2026年6月1日 08:00"
+    assert capsule["strategy_label"] == "综合优先级和交期"
+    response = app_client.get("/api/workbench/v1/dashboard")
+    assert response.status_code == 200
+    plan = response.get_json()["data"]["plan"]
+    assert plan["plan_ref"] == reference and plan["version"] == 7
+    observed = browser_contract("""
+for (let i=0;i<150 && !document.querySelector('.wb-current-plan');i++) await new Promise(resolve=>setTimeout(resolve,20));
+const captions = document.querySelectorAll('.wb-current-plan');
+expect(captions.length === 1, 'Current plan must have a single caption');
+expect(captions[0].dataset.planRef === data.reference);
+expect(captions[0].textContent.includes('正式 v7'));
+const body = document.body.innerText.replace(captions[0].innerText,'');
+expect(!body.includes('v7'), 'Version duplicated outside current-plan caption');
+expect(!body.includes('当前查看版本') && !body.includes('当前查看排产'));
+return captions[0].textContent;
+""", app=app_client.application, data={"reference": reference})
+    assert "正式 v7" in observed
+    assert _business_state(app_client) == before
 
 
 def test_gantt_capsule_fed(app_client, db_env):
     _seed_history(db_env)
-    capsule = _capsule_html(app_client.get("/scheduler/gantt?version=7").get_data(as_text=True))
-    assert "v7" in capsule
-    assert "2026年6月1日 08:00" in capsule
+    reference, capsule, before = _retained_plan(app_client, 7)
+    canonical_boot(app_client, "/scheduler/gantt?version=7", "gantt", {"plan_ref": reference})
+    response = app_client.get("/api/workbench/v1/plans/" + reference + "/workspace")
+    assert response.status_code == 200
+    assert response.get_json()["data"]["plan"]["version"] == 7
+    assert capsule["version_label"] == "v7" and capsule["generated_at_label"] == "2026年6月1日 08:00"
+    assert _business_state(app_client) == before
 
 
 def test_analysis_capsule_fed(app_client, db_env):
     _seed_history(db_env)
-    capsule = _capsule_html(app_client.get("/scheduler/analysis?version=7").get_data(as_text=True))
-    assert "2026年6月1日 08:00" in capsule
+    reference, capsule, before = _retained_plan(app_client, 7)
+    canonical_boot(app_client, "/scheduler/analysis?version=7", "analysis", {"plan_ref": reference})
+    assert capsule["generated_at_label"] == "2026年6月1日 08:00"
+    assert _business_state(app_client) == before
 
 
 def test_week_plan_capsule_fed(app_client, db_env):
     _seed_history(db_env)
-    capsule = _capsule_html(app_client.get("/scheduler/week-plan?version=7").get_data(as_text=True))
-    assert "2026年6月1日 08:00" in capsule
+    _reference, capsule, body = _retired_plan(app_client, "/scheduler/week-plan?version=7")
+    assert capsule["generated_at_label"] == "2026年6月1日 08:00"
+    assert "未改用新报表默认范围" in body
 
 
 def test_reports_capsule_fed(app_client, db_env):
-    # reports 多入口共用 _publish_report_context：抽超期页做页面断言，
-    # 公共取数由 history_row_capsule_fields 单测覆盖
     _seed_history(db_env)
-    capsule = _capsule_html(app_client.get("/reports/overdue?version=7").get_data(as_text=True))
-    assert "2026年6月1日 08:00" in capsule
+    _reference, capsule, body = _retired_plan(app_client, "/reports/overdue?version=7")
+    assert capsule["generated_at_label"] == "2026年6月1日 08:00"
+    assert 'href="/reports/overdue/export?version=7&amp;plan_role=adopted"' in body
+    download = app_client.get("/reports/overdue/export?version=7&plan_role=adopted")
+    assert download.status_code == 400
+    assert "当前版本没有可导出的超期结果" in download.get_data(as_text=True)
+    assert "Content-Disposition" not in download.headers
+    with closing(get_connection(db_env)) as conn:
+        conn.execute("UPDATE Batches SET due_date='2026-06-01' WHERE batch_id='B1'")
+        conn.commit()
+    before = _business_state(app_client)
+    download = app_client.get("/reports/overdue/export?version=7&plan_role=adopted")
+    assert download.status_code == 200
+    assert "attachment" in download.headers["Content-Disposition"]
+    assert download.data.startswith(b"PK")
+    assert _business_state(app_client) == before
 
 
 def _seed_two_versions(db_path: str) -> None:
@@ -248,34 +272,41 @@ def _seed_two_versions(db_path: str) -> None:
 
 
 def test_reports_index_old_version_capsule_shows_that_version(app_client, db_env):
-    # #6：报表首页带旧版本号（非最新 v7，最新是 v8）时，胶囊须回显 v7 的生成时间/策略，
-    # 而非因原 limit=1 只取最新版导致显示「-」。
     _seed_two_versions(db_env)
-    html = app_client.get("/reports/?version=7").get_data(as_text=True)
-    capsule = _capsule_html(html)
-    assert "v7" in capsule
-    assert "2026年6月1日 08:00" in capsule  # v7 的生成时间
-    assert "综合优先级和交期" in capsule  # weighted → v7 策略
-    assert "2026年6月10日 09:00" not in capsule  # 不是最新 v8 的时间
+    reference, capsule, body = _retired_plan(app_client, "/reports/?version=7")
+    assert capsule["version_label"] == "v7"
+    assert capsule["generated_at_label"] == "2026年6月1日 08:00"
+    assert capsule["strategy_label"] == "综合优先级和交期"
+    assert "2026年6月10日 09:00" not in str(capsule)
+    assert "<dd>8</dd>" not in body
+    with closing(get_connection(db_env)) as conn:
+        assert WorkbenchPlanIdentityRepository(conn).resolve_plan(reference) == WorkbenchPlanLocator(7, "adopted")
 
 
 def test_resource_dispatch_capsule_fed(app_client, db_env):
     _seed_history(db_env)
-    capsule = _capsule_html(app_client.get("/scheduler/resource-dispatch?version=7").get_data(as_text=True))
-    assert "2026年6月1日 08:00" in capsule
+    _reference, capsule, body = _retired_plan(app_client, "/scheduler/resource-dispatch?version=7")
+    assert capsule["generated_at_label"] == "2026年6月1日 08:00"
+    assert "未改用新报表默认范围" in body
 
 
 def test_basic_data_page_renders_no_capsule(app_client, db_env):
     _seed_history(db_env)
-    html = app_client.get("/material/materials").get_data(as_text=True)
-    assert 'class="aps-plan-capsule"' not in html
+    boot = canonical_boot(app_client, "/material/materials", "process", {"source": "production"})
+    assert "plan_ref" not in boot["navigation"]["context"]
+    source = (REPO_ROOT / "frontend/workbench/app/WorkbenchCaption.jsx").read_text(encoding="utf-8")
+    assert 'if (!value) return <div className="cap-rich" />' in source
 
 
 def test_url_fallback_renders_base_fields_without_query(app_client, db_env):
-    # 无发布点页面带 ?version=N：胶囊渲染基础字段，generated_at/strategy 为「-」
-    # （URL 不含此信息，不查库补——胶囊是回显不是查询入口）
     _seed_history(db_env)
-    html = app_client.get("/system/history?version=7").get_data(as_text=True)
-    capsule = _capsule_html(html)
-    assert "v7" in capsule
-    assert "2026年6月1日 08:00" not in capsule
+    canonical_boot(app_client, "/", "dashboard", {})
+    before = _business_state(app_client)
+    from core.services.workbench.legacy_navigation_queries import LegacyNavigationQueries
+
+    with patch.object(LegacyNavigationQueries, "bind_plan", side_effect=AssertionError("Retired control must not query a plan")):
+        body = retired_response(app_client.get("/system/history?version=7"))
+    assert "未忽略条件后跳转" in body
+    assert "2026年6月1日 08:00" not in body
+    assert 'class="aps-plan-capsule"' not in body
+    assert _business_state(app_client) == before

@@ -376,6 +376,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "test_round1_runtime_observation.py",
     ), (
         "core/models/workbench_system.py", "core/models/workbench_master_overview.py",
+        "core/models/operation_log_labels.py",
         "core/services/system/**/*.py", "core/services/workbench/system*.py",
         "core/services/system/backup_restore.py", "web/routes/system_backup_actions.py",
         "core/services/process/unit_excel/**/*.py", "core/services/process/unit_excel_converter.py",

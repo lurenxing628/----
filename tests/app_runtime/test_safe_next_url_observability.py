@@ -504,42 +504,44 @@ def test_current_public_return_url_uses_public_plan_token_and_drops_internal_key
 
 
 def test_batch_and_personnel_bulk_forms_submit_current_page_next() -> None:
-    batch_template = (REPO_ROOT / "templates/scheduler/batches_manage.html").read_text(encoding="utf-8")
-    scheduler_batch_template = (REPO_ROOT / "templates/scheduler/batches.html").read_text(encoding="utf-8")
-    personnel_template = (REPO_ROOT / "templates/personnel/list.html").read_text(encoding="utf-8")
-    batch_detail_template = (REPO_ROOT / "templates/scheduler/batch_detail.html").read_text(encoding="utf-8")
-    personnel_detail_template = (REPO_ROOT / "templates/personnel/detail.html").read_text(encoding="utf-8")
+    """React history replaces hidden next fields, retaining each page's exact context."""
+    from tests._support.workbench_browser_contract import browser_contract
+    from web.routes.workbench.pages import VIEW_TITLES
 
-    assert batch_template.count('name="next" value="{{ current_public_return_url() }}"') >= 3
-    assert "url_for('scheduler.batch_detail', batch_id=r.batch_id, next=current_public_return_url())" in batch_template
-    assert scheduler_batch_template.count(
-        "url_for('scheduler.batch_detail', batch_id=r.batch_id, next=current_public_return_url())"
-    ) >= 2
-    assert 'name="next" value="{{ batch_return_next }}"' in batch_detail_template
-    assert "batch_return_url" in batch_detail_template
-    assert personnel_template.count('name="next" value="{{ current_public_return_url() }}"') >= 3
-    assert (
-        "url_for('personnel.detail_page', operator_id=r.operator_id, next=current_public_return_url())"
-        in personnel_template
-    )
-    assert "personnel_return_url" in personnel_detail_template
-    assert 'name="next" value="{{ personnel_return_next }}"' in personnel_detail_template
-    assert 'name="next" value="{{ personnel_return_next }}"' in (
-        REPO_ROOT / "templates/personnel/calendar.html"
-    ).read_text(encoding="utf-8")
-
-    allowed_next_tokens = (
-        "next=current_public_return_url()",
-        "next=batch_return_next",
-        "next=personnel_return_next",
-    )
-    for template_path in (REPO_ROOT / "templates").glob("**/*.html"):
-        template_text = template_path.read_text(encoding="utf-8")
-        for endpoint in ("scheduler.batch_detail", "personnel.detail_page"):
-            pattern = re.compile(r"url_for\(['\"]" + re.escape(endpoint) + r"['\"][^)]*\)")
-            offenders = [
-                call.group(0)
-                for call in pattern.finditer(template_text)
-                if not any(token in call.group(0) for token in allowed_next_tokens)
-            ]
-            assert not offenders, f"{template_path.relative_to(REPO_ROOT)} detail links missing next: {offenders}"
+    contexts = {
+        "batches": {"read_view": {"scope": {"query": "B001", "status": "", "ready_status": "no", "page": 2, "size": 20},
+                                "entity_ref": "a" * 48, "selected_refs": ["a" * 48]}},
+        "process": {"source": "production", "kind": "operator", "read_view": {
+            "scope": {"query": "张三", "status": "active", "page": 2, "size": 50, "sort": "business_code", "direction": "asc"},
+            "selected_refs": ["b" * 48], "sort_active": True,
+            "detail": {"kind": "operator", "entity_ref": "b" * 48}}},
+    }
+    result = browser_contract("""
+const N = window.WorkbenchNavigation, boot = {titles:data.titles,entry_url:'/workbench',trial_url:'/workbench/trial',navigation:null};
+expect(!window.ResourceWorkspace.navigation(data.contexts.process).error, 'Resource fixture must match the real read-view contract');
+const team = JSON.parse(JSON.stringify(data.contexts.process)); team.read_view.scope.team_id = 'TEAM-01';
+const unsupported = window.ResourceWorkspace.navigation(team);
+expect(unsupported.error && unsupported.context === null, 'Unsupported team scope was widened silently');
+const returned = {};
+for (const view of ['batches','process']) {
+  history.replaceState({workbench:{view,context:data.contexts[view],key:1}},'', '/workbench?view=' + view);
+  const first = N.read(boot), away = N.navigate(boot,first,'dashboard');
+  expect(!Object.keys(away.context).length);
+  const back = N.navigate(boot,away,view);
+  expect(JSON.stringify(back.context) === JSON.stringify(data.contexts[view]), 'Original return scope changed');
+  const snapshot = JSON.stringify(history.state);
+  let rejected = false;
+  try { N.navigate(boot,back,'http://evil.example/x'); } catch (_) { rejected = true; }
+  expect(rejected && JSON.stringify(history.state) === snapshot, 'Invalid navigation changed saved scope');
+  expect(location.origin === 'http://127.0.0.1');
+  returned[view] = back.context;
+}
+return returned;
+""", scripts=("static/workbench/app/WorkbenchNavigation.js", "static/workbench/app/resource-contract.js",
+              "static/workbench/app/ResourceControls.js", "static/workbench/app/ResourceWorkspace.js"),
+        data={"titles": VIEW_TITLES, "contexts": contexts})
+    assert result == contexts
+    for name in ("frontend/workbench/app/BatchWorkspace.jsx", "frontend/workbench/app/ResourceWorkspace.jsx"):
+        source = (REPO_ROOT / name).read_text(encoding="utf-8")
+        assert "useSnapshot" in source and "read_view" in source
+        assert "location.assign('http" not in source

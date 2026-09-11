@@ -143,8 +143,11 @@ def test_restore_connection_close_failure_stays_stopped(restore_host, monkeypatc
         conn = sqlite3.connect(path, factory=FailedClose)
         conn.row_factory = sqlite3.Row
         return conn
-    target = "web.bootstrap.workbench_system_restore.get_connection" if audit_connection else "web.bootstrap.factory.get_connection"
-    monkeypatch.setattr(target, connect)
+    if audit_connection:
+        monkeypatch.setattr("web.bootstrap.workbench_system_restore.get_connection", connect)
+    else:
+        hook = next(item for item in case.app.before_request_funcs[None] if item.__name__ == "_open_db")
+        monkeypatch.setitem(hook.__globals__, "get_connection", connect)
     response = case.client.post(BASE + "/backups/restore", json=body, buffered=True)
     assert response.status_code == 200, response.get_json()
     assert response.get_json()["data"]["operation"]["state"] == "recovery_required"

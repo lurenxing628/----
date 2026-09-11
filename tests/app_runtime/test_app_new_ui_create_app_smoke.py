@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from tests._support.workbench_web_contract import canonical_boot, retired_response
+
 
 def test_app_new_ui_create_app_smoke(db_env, monkeypatch) -> None:
     import importlib
@@ -25,10 +27,8 @@ def test_app_new_ui_create_app_smoke(db_env, monkeypatch) -> None:
         raise RuntimeError("app_new_ui 模块级 app 为 None")
 
     client = app.test_client()
-    r1 = client.get("/")
-    if r1.status_code != 200:
-        raise RuntimeError(f"GET / 返回非 200：{r1.status_code}")
+    boot = canonical_boot(client, "/", "dashboard", {})
+    assert "dashboard" in boot["enabled_views"]
 
     r2 = client.get("/excel-demo/")
-    if r2.status_code != 200:
-        raise RuntimeError(f"GET /excel-demo/ 返回非 200：{r2.status_code}")
+    retired_response(r2)

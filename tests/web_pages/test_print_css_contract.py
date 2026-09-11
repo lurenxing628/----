@@ -8,21 +8,22 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-PRINT_CSS = Path(__file__).resolve().parents[2] / "static" / "css" / "print.css"
+PRINT_CSS = Path(__file__).resolve().parents[2] / "templates/workbench/print.html"
 
 
 def _read() -> str:
-    return PRINT_CSS.read_text(encoding="utf-8")
+    return PRINT_CSS.read_text(encoding="utf-8") + PRINT_CSS.with_name("legacy_style.html").read_text(encoding="utf-8")
 
 
 def test_sidebar_in_print_hide_list():
     css = _read()
     hide_block = re.search(r"@media print\s*\{(.+?display:\s*none\s*!important;\s*\})", css, re.S)
     assert hide_block, "print.css 应有 @media print 内的 display:none 隐藏块"
-    assert ".sidebar" in hide_block.group(1), (
-        "打印隐藏名单必须含 .sidebar——它是 div（header/nav 元素选择器盖不住），"
-        "缺了会打印出 240px 深色侧栏占位列"
-    )
+    assert ".no-print" in hide_block.group(1)
+    assert 'class="print-toolbar no-print"' in css
+    assert 'data-workbench-print="true"' in css
+    assert "sidebar" not in css and "{% extends" not in css
+    assert "table-header-group" in css and "page-break-inside:avoid" in css
 
 
 def test_page_rule_a4_landscape():

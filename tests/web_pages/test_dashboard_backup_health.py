@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from tests._support.workbench_web_contract import canonical_boot
 from web.viewmodels.dashboard_backup_health import (
     BACKUP_STALE_DAYS,
     build_backup_health_hint,
@@ -184,41 +185,66 @@ def test_hint_read_error_is_explicit():
 # ---------- 首页渲染契约 ----------
 
 
+def _current_backup_state(client):
+    """Retired homepage hints now use explicit, unverified system metadata."""
+    canonical_boot(client, "/", "dashboard", {})
+    response = client.get("/api/workbench/v1/system/overview")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True and payload["meta"]["source"] == "production"
+    state = payload["data"]["backups"]
+    assert state["verification_status"] == "not_checked"
+    assert "尚未校验备份内容" in state["message"]
+    return state
+
+
 def test_dashboard_shows_stale_hint(app_client):
     # 路由用真实 datetime.now()，播种 mtime 以真实时间为基准
     backup_dir = os.environ["APS_BACKUP_DIR"]
-    _seed(backup_dir, "aps_backup_20260604_090000.db", days_ago=8, base=datetime.now())
-    html = app_client.get("/").get_data(as_text=True)
-    assert "天未备份" in html
-    assert "数据备份" in html
+    seeded = _seed(backup_dir, "aps_backup_20260604_090000.db", days_ago=8, base=datetime.now())
+    state = _current_backup_state(app_client)
+    assert state["state"] == "available" and state["count"] == 1
+    latest = datetime.fromisoformat(state["latest"]["modified_at"])
+    assert state["latest"]["filename"] == seeded.name
+    assert (datetime.now().date() - latest.date()).days == 8
+    hint = build_backup_health_hint(latest=latest, read_error=None, now=datetime.now())
+    assert "天未备份" in hint["title"]
+    assert seeded.read_bytes() == b"x"
 
 
 def test_dashboard_shows_never_backed_up_hint(app_client):
     # db_env 建了空 backups 目录 → 「尚未备份」态
-    html = app_client.get("/").get_data(as_text=True)
-    assert "尚未发现任何备份" in html
+    state = _current_backup_state(app_client)
+    assert state["state"] == "empty" and state["count"] == 0
+    assert state["files"] == [] and state["latest"] is None
+    assert build_backup_health_hint(latest=None, read_error=None, now=NOW)["title"] == "尚未发现任何备份"
 
 
 def test_dashboard_healthy_renders_no_hint(app_client):
     backup_dir = os.environ["APS_BACKUP_DIR"]
     _seed(backup_dir, "aps_backup_20260612_090000.db", days_ago=0, base=datetime.now())
-    html = app_client.get("/").get_data(as_text=True)
-    # 收窄断言：不被未来页面其他含「未备份」字样的无关文案误伤
-    assert "尚未发现任何备份" not in html
-    assert "天未备份" not in html
-    assert "备份状态读取失败" not in html
+    state = _current_backup_state(app_client)
+    assert state["state"] == "available" and state["count"] == 1
+    latest = datetime.fromisoformat(state["latest"]["modified_at"])
+    assert build_backup_health_hint(latest=latest, read_error=None, now=datetime.now()) is None
+    assert not state["issues"] and state["error"] is None
 
 
 def test_dashboard_read_failure_explicit_and_page_alive(app_client, monkeypatch, caplog):
     import logging
 
-    def _boom(_backup_dir):
+    def _boom(*args, **kwargs):
         raise PermissionError("mock denied")
 
-    monkeypatch.setattr("web.routes.dashboard.read_latest_backup_time", _boom)
+    monkeypatch.setattr("core.services.system.workbench_overview.build_system_overview", _boom)
+    canonical_boot(app_client, "/", "dashboard", {})
     with caplog.at_level(logging.ERROR):
-        resp = app_client.get("/")
-    assert resp.status_code == 200
-    html = resp.get_data(as_text=True)
-    assert "备份状态读取失败" in html
-    assert any("备份目录" in r.getMessage() for r in caplog.records)
+        resp = app_client.get("/api/workbench/v1/system/overview")
+    assert resp.status_code == 500
+    payload = resp.get_json()
+    assert payload["ok"] is False and "data" not in payload
+    assert payload["error"]["code"] == "system_read_failed"
+    assert payload["error"]["request_ref"] and payload["error"]["retryable"] is True
+    assert "mock denied" not in resp.get_data(as_text=True)
+    assert any("工作台系统概况读取失败" in r.getMessage() for r in caplog.records)
+    assert app_client.get("/workbench?view=system").status_code == 200

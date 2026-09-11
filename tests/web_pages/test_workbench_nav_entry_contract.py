@@ -1,271 +1,194 @@
-"""回归测试：计划工作台导航宏 workbench_nav_menu 的契约——base.html 只挂载不写文案；菜单恰好渲染 7 个只读入口并按序透传当前页的 version/plan_role/批次/资源等上下文；班组维度与非正式方案上下文下会禁用会 400 的链接和"计划和现场实际"入口；菜单本身保持纯只读（无 form/script/data-*/on*、不外链 CDN、不暴露 plan_role 等内部字段）。"""
+"""React sidebar and typed navigation preserve scope, identity and read-only entries."""
 
 from __future__ import annotations
 
 import importlib
+import json
+from contextlib import closing
 from html.parser import HTMLParser
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from unittest.mock import patch
+from urllib.parse import urlencode
 
-from flask import render_template_string
+import pytest
 
+from core.infrastructure.database import get_connection
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_plan_reference import WorkbenchPlanLocator
+from core.models.workbench_report import ReportScope
+from core.services.workbench.report_facts import WorkbenchReportFacts
 from tests._support.paths import REPO_ROOT
+from tests._support.workbench_browser_contract import browser_contract
+from tests._support.workbench_web_contract import boot_payload, canonical_boot
+from web.routes.workbench.pages import VIEW_TITLES
+
+NAV_INPUTS = ("static/workbench/app/WorkbenchNavigation.js",)
+DESTINATIONS = [
+    ("process", "基础资料"), ("batches", "批次管理"), ("run", "执行排产"),
+    ("analysis", "选择排产方案"), ("trial", "方案试调"), ("gantt", "设备 / 人员 / 批次甘特"),
+    ("field", "现场记录"), ("fieldgantt", "现场实际甘特"), ("review", "执行复盘"),
+    ("reports", "报表中心"), ("calib", "工时定额校准"), ("dashboard", "值班台"),
+    ("basedata", "主数据总览"), ("system", "系统管理"),
+]
 
 
 class _WorkbenchMenuParser(HTMLParser):
-    def __init__(self) -> None:
+    """Inspect only the real sidebar, not invisible boot fields or application code."""
+
+    def __init__(self):
         super().__init__()
-        self.links: List[Tuple[str, str]] = []
-        self.anchor_hrefs: List[str] = []
-        self.tags: List[str] = []
-        self.attrs: List[Tuple[str, str, str]] = []
-        self._current_link: Optional[Dict[str, object]] = None
+        self.links, self.tags, self.attrs = [], [], []
+        self._link = None
 
-    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
-        tag = tag.lower()
+    def handle_starttag(self, tag, attrs):
         self.tags.append(tag)
-        attr_map = {name.lower(): value or "" for name, value in attrs}
-        for name, value in attr_map.items():
-            self.attrs.append((tag, name, value))
+        self.attrs.extend((tag, key, value or "") for key, value in attrs)
         if tag == "a":
-            self.anchor_hrefs.append(attr_map.get("href", ""))
-            if "aps-workbench-nav-link" in attr_map.get("class", "").split():
-                self._current_link = {"href": attr_map.get("href", ""), "text": []}
+            self._link = [dict(attrs).get("href"), []]
 
-    def handle_endtag(self, tag: str) -> None:
-        if tag == "a" and self._current_link is not None:
-            text_parts = self._current_link.get("text", [])
-            text = " ".join("".join(text_parts).split()) if isinstance(text_parts, list) else ""
-            self.links.append((str(self._current_link.get("href", "")), text))
-            self._current_link = None
+    def handle_data(self, text):
+        if self._link is not None:
+            self._link[1].append(text)
 
-    def handle_data(self, data: str) -> None:
-        if self._current_link is not None:
-            text_parts = self._current_link.setdefault("text", [])
-            if isinstance(text_parts, list):
-                text_parts.append(data)
+    def handle_endtag(self, tag):
+        if tag == "a" and self._link is not None:
+            self.links.append((self._link[0], " ".join("".join(self._link[1]).split())))
+            self._link = None
 
 
-def _parse_workbench_menu(html: str) -> _WorkbenchMenuParser:
-    parser = _WorkbenchMenuParser()
-    parser.feed(html)
-    return parser
+def _menu(app):
+    """Read the actual React navigation without invoking any command."""
+    return browser_contract(
+        "const menu = document.querySelector('.sidebar-nav'); expect(menu); return menu.outerHTML;",
+        app=app,
+    )
 
 
-def _assert_link_contains(links: Dict[str, str], label: str, values: Tuple[str, ...]) -> None:
-    for value in values:
-        assert value in links[label]
-
-
-def _read(rel_path: str) -> str:
-    return (REPO_ROOT / rel_path).read_text(encoding="utf-8")
-
-
-def _render_workbench_menu(path: str = "/") -> str:
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    with app.test_request_context(path):
-        return render_template_string(
-            '{% import "components/ui_macros.html" as ui %}{{ ui.workbench_nav_menu() }}'
-        )
-
-
-def _render_workbench_menu_with_team_context() -> str:
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    from web.navigation_context import set_current_workbench_navigation_context
-    from web.viewmodels.scheduler_workbench_links import build_workbench_plan_context
-
-    with app.test_request_context("/scheduler/resource-dispatch"):
-        set_current_workbench_navigation_context(
-            build_workbench_plan_context(
-                version=12,
-                plan_role="adopted",
-                date_from="2026-05-06",
-                date_to="2026-05-07",
-                resource_type="team",
-                resource_id="T-RPT",
-                can_write_feedback=True,
-            )
-        )
-        return render_template_string(
-            '{% import "components/ui_macros.html" as ui %}{{ ui.workbench_nav_menu() }}'
-        )
+def _read(name):
+    """Read the current declared presentation source."""
+    return (REPO_ROOT / name).read_text(encoding="utf-8")
 
 
 def test_base_header_mounts_plan_workbench_menu() -> None:
-    # 双轨退役（2026-06）后 templates/base.html 是唯一壳（原 web_new_test V2 镜像已删），
-    # 本测试合并了原 V1/V2 两条断言：挂载 + nav 包裹结构一起钉死。
-    base = _read("templates/base.html")
-
-    # 必须包在 <nav> 里：菜单链接样式选择器是 nav .aps-workbench-nav-link（ui_contract.css），
-    # 宏还在但 nav 包裹丢了 = 链接裸样式，这里钉死结构防回归
-    assert "<nav class=\"top-header-workbench\">{{ ui.workbench_nav_menu() }}</nav>" in base
-    assert "计划工作台" not in base, "顶层菜单文案应由 UI 宏统一维护，base.html 只负责挂载"
+    source = _read("frontend/workbench/app/main.jsx")
+    assert '<nav className="sidebar-nav">' in source
+    assert "NAV_GROUPS.map" in source and "group.items.map" in source
+    assert "{item.label}" in source and "href={href(item.id)}" in source
+    assert source.count("<window.WorkbenchCaption.Caption />") == 1
+    assert "const NAV_GROUPS" not in source
+    assert not (REPO_ROOT / "templates/base.html").exists()
 
 
 def test_default_ui_serves_plan_workbench_menu(app_client) -> None:
-    """默认界面渲染出计划工作台入口——不带任何 cookie/参数走真实渲染链。"""
-    resp = app_client.get("/")
-
-    assert resp.status_code == 200
-    body = resp.get_data(as_text=True)
-    assert "css/style.css" in body, "默认渲染链应引用新壳样式 css/style.css（前提自检，防止壳被改动后本测试静默测错壳）"
-    assert "aps-workbench-nav" in body
-    assert "计划工作台" in body
+    boot = canonical_boot(app_client, "/", "dashboard", {})
+    assert {key for key, _ in DESTINATIONS} <= set(boot["enabled_views"])
+    parser = _WorkbenchMenuParser()
+    parser.feed(_menu(app_client.application))
+    assert any(text == "值班台" and href == "/workbench?view=dashboard" for href, text in parser.links)
 
 
 def test_workbench_menu_renders_six_core_destinations(db_env) -> None:
-    html = _render_workbench_menu()
-    parser = _parse_workbench_menu(html)
-
-    expected_pairs = [
-        ("首页值班台", "/"),
-        ("报表中心", "/reports/"),
-        ("排产分析", "/scheduler/analysis"),
-        ("设备甘特图", "/scheduler/gantt?view=machine"),
-        ("人员甘特图", "/scheduler/gantt?view=operator"),
-        ("资源派工", "/scheduler/resource-dispatch"),
-        ("计划和现场实际", "/reports/execution-review"),
-    ]
-    assert "计划工作台" in html
-    assert parser.anchor_hrefs == [href for _label, href in expected_pairs]
-    assert len(parser.links) == len(expected_pairs), "计划工作台菜单只能有这 7 个只读入口"
-    assert [href for href, _text in parser.links] == [href for _label, href in expected_pairs]
-    for (label, _href), (_actual_href, text) in zip(expected_pairs, parser.links):
-        assert label in text
+    app = importlib.import_module("app").create_app()
+    parser = _WorkbenchMenuParser()
+    parser.feed(_menu(app))
+    expected = [("/workbench/trial" if key == "trial" else "/workbench?view=" + key, label)
+                for key, label in DESTINATIONS]
+    assert parser.links == expected
+    assert len(parser.links) == 14
+    assert {"dashboard", "reports", "analysis", "gantt", "field", "review"} <= {key for key, _ in DESTINATIONS}
 
 
 def test_workbench_menu_preserves_report_workbench_context(db_env) -> None:
-    html = _render_workbench_menu(
-        "/reports/overdue?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-07"
-        "&query_date=2026-05-06&period_preset=week&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT"
-    )
-    parser = _parse_workbench_menu(html)
-    links = {text: href for href, text in parser.links}
-
-    expected = {
-        "首页值班台 先看今天需要处理什么": (
-            "/?version=12&plan_role=adopted",
-            "batch_id=B-RPT",
-            "resource_type=machine",
-        ),
-        "报表中心 从风险报表继续追踪问题": (
-            "/reports/?version=12&plan_role=adopted",
-            "batch_id=B-RPT",
-            "resource_type=machine",
-        ),
-        "设备甘特图 按设备查看排产结果": (
-            "start_date=2026-05-06",
-            "gantt_batch=B-RPT",
-            "gantt_resource=M-RPT",
-        ),
-        "资源派工 看排班和现场记录入口": (
-            "period_preset=custom",
-            "scope_type=machine",
-            "machine_id=M-RPT",
-        ),
-    }
-    for label, values in expected.items():
-        _assert_link_contains(links, label, values)
-    assert "计划和现场实际只复盘正式采用方案" in html
-    assert "计划和现场实际 复盘正式计划和现场事实" not in links
+    app = importlib.import_module("app").create_app()
+    context = {"scope": {"source": "production", "plan_ref": "a" * 48,
+                         "plan_finish_date_from": "2026-05-06", "plan_finish_date_to": "2026-05-07",
+                         "batch_ref": "b" * 48, "resource_type": "machine", "resource_ref": "c" * 48}}
+    navigation = {"version": 1, "view": "reports", "context": context}
+    query = urlencode({"view": "reports", "nav": json.dumps(navigation)})
+    boot = boot_payload(app.test_client().get("/workbench?" + query))
+    assert boot["navigation"] == navigation
+    observed = browser_contract("""
+const boot = data.boot;
+history.replaceState(null, '', '/workbench?view=reports&nav=' + encodeURIComponent(JSON.stringify(boot.navigation)));
+const N = window.WorkbenchNavigation, first = N.read(boot);
+expect(JSON.stringify(first.context) === JSON.stringify(boot.navigation.context), 'URL scope changed');
+const ganttContext = {plan_ref: first.context.scope.plan_ref, range_start:'2026-05-06T00:00:00', range_end:'2026-05-08T00:00:00'};
+const gantt = N.navigate(boot, first, 'gantt', ganttContext);
+expect(JSON.stringify(gantt.context) === JSON.stringify(ganttContext), 'Explicit target changed');
+const back = N.navigate(boot, gantt, 'reports');
+expect(JSON.stringify(back.context) === JSON.stringify(first.context), 'Returning discarded original filters');
+return {original: first.context, returned: back.context, target: gantt.context};
+""", scripts=NAV_INPUTS, data={"boot": boot})
+    assert observed["original"] == observed["returned"] == context
+    assert observed["target"]["plan_ref"] == context["scope"]["plan_ref"]
 
 
 def test_workbench_menu_disables_team_context_links_that_would_400(db_env) -> None:
-    html = _render_workbench_menu_with_team_context()
-    parser = _parse_workbench_menu(html)
-    links = {text: href for href, text in parser.links}
-
-    assert "当前页面暂不支持班组维度筛选" in html
-    for label in (
-        "首页值班台 先看今天需要处理什么",
-        "报表中心 从风险报表继续追踪问题",
-        "排产分析 看推荐方案和排产诊断",
-        "计划和现场实际 复盘正式计划和现场事实",
-    ):
-        assert label not in links
-
-    assert "gantt_resource=T-RPT" not in links["设备甘特图 按设备查看排产结果"]
-    assert "gantt_resource=T-RPT" not in links["人员甘特图 按人员查看排产结果"]
-    dispatch = links["资源派工 看排班和现场记录入口"]
-    assert "scope_type=team" in dispatch
-    assert "scope_id=T-RPT" in dispatch
-    assert "team_id=T-RPT" in dispatch
-    assert "resource_type=team" not in dispatch
+    app = importlib.import_module("app").create_app()
+    client = app.test_client()
+    for view in ("dashboard", "reports", "analysis", "review", "gantt"):
+        context = {"scope": {"plan_ref": "a" * 48, "resource_type": "team", "resource_ref": "b" * 48}}
+        if view in ("gantt", "analysis"):
+            context = {"plan_ref": "a" * 48, "resource_type": "team", "resource_ref": "b" * 48}
+        navigation = {"version": 1, "view": view, "context": context}
+        response = client.get("/workbench", query_string={"view": view, "nav": json.dumps(navigation)})
+        assert response.status_code == 400
+        assert "Location" not in response.headers
+        message = "未忽略" if view in ("dashboard", "analysis", "gantt") else "未恢复旧选择"
+        assert message in response.get_data(as_text=True)
+        assert 'id="workbench-boot"' not in response.get_data(as_text=True)
+    # Team-specific dispatch has no equivalent typed navigation; never silently widen it.
+    response = client.get("/workbench", query_string={"view": "field", "nav": json.dumps(
+        {"version": 1, "view": "field", "context": {"scope_type": "team", "team_id": "T-RPT"}})})
+    assert response.status_code == 400 and "Location" not in response.headers
 
 
 def test_workbench_menu_disables_execution_review_for_non_formal_context(db_env) -> None:
-    html = _render_workbench_menu(
-        "/reports/utilization?version=12&plan_role=baseline_best&scenario_id=SCN-1"
-        "&start_date=2026-05-06&end_date=2026-05-07"
-    )
-    parser = _parse_workbench_menu(html)
-
-    assert "计划和现场实际只复盘正式采用方案" in html
-    assert 'aria-disabled="true"' in html
-    assert "/reports/execution-review" not in parser.anchor_hrefs
-    assert not any("计划和现场实际" in text for _href, text in parser.links)
+    with closing(get_connection(db_env)) as conn:
+        reader = WorkbenchReportFacts(conn)
+        for locator in (WorkbenchPlanLocator(12, "baseline_best", "SCN-1"), WorkbenchPlanLocator(12, "adopted", "SCN-1")):
+            with patch.object(reader.plans.references, "resolve_plan", return_value=locator) as resolve, \
+                    patch.object(reader.plans, "_selected") as selected, patch.object(reader.engine, "latest_version") as latest:
+                with pytest.raises(WorkbenchCommandRejected, match="不能使用候选或模拟方案") as failure:
+                    reader.current_plan(ReportScope(plan_ref="a" * 48))
+                assert failure.value.code == "plan_not_current_official"
+                resolve.assert_called_once_with("a" * 48)
+                selected.assert_not_called()
+                latest.assert_not_called()
 
 
 def test_workbench_menu_is_readonly_and_hides_internal_fields(db_env) -> None:
-    html = _render_workbench_menu()
-    parser = _parse_workbench_menu(html)
-    forbidden_fragments = (
-        "plan_role",
-        "scenario_id",
-        "source_table",
-        "candidate_id",
-        "op_id",
-        "schedule_id",
-        "actual-template",
-        "actual-import",
-        "actual-write",
-        "formaction=",
-        "javascript:",
-        "data-actual-record-url-template",
-        "导入",
-        "模板下载",
-    )
-
-    lower_html = html.lower()
-    for fragment in forbidden_fragments:
-        assert fragment.lower() not in lower_html
-
-    forbidden_tags = {
-        "base",
-        "button",
-        "embed",
-        "form",
-        "iframe",
-        "input",
-        "link",
-        "object",
-        "script",
-        "select",
-        "style",
-        "textarea",
-    }
-    assert forbidden_tags.isdisjoint(set(parser.tags))
-
-    for tag, attr_name, value in parser.attrs:
-        assert not attr_name.startswith("data-"), (tag, attr_name, value)
-        assert not attr_name.startswith("on"), (tag, attr_name, value)
-        assert attr_name not in {"download", "method", "formaction"}, (tag, attr_name, value)
-        assert "javascript:" not in value.lower(), (tag, attr_name, value)
-        if tag == "a" and attr_name == "href":
-            assert value in {href for href, _text in parser.links}, value
+    app = importlib.import_module("app").create_app()
+    html = _menu(app)
+    parser = _WorkbenchMenuParser()
+    parser.feed(html)
+    for fragment in ("plan_role", "scenario_id", "source_table", "candidate_id", "op_id", "schedule_id",
+                     "actual-template", "actual-import", "actual-write", "formaction=", "javascript:",
+                     "data-actual-record-url-template", "导入", "模板下载"):
+        assert fragment.lower() not in html.lower()
+    assert {"base", "button", "embed", "form", "iframe", "input", "link", "object",
+            "script", "select", "style", "textarea"}.isdisjoint(parser.tags)
+    expected = {"/workbench/trial" if key == "trial" else "/workbench?view=" + key for key, _ in DESTINATIONS}
+    for tag, name, value in parser.attrs:
+        assert not name.startswith("on") and not name.startswith("data-")
+        assert name not in {"download", "method", "formaction"}
+        assert "javascript:" not in value.lower()
+        if tag == "a" and name == "href":
+            assert value in expected
 
 
 def test_workbench_menu_uses_local_css_and_no_javascript_dependency() -> None:
-    macro = _read("templates/components/ui_macros.html") + _read("templates/components/workbench_nav_macros.html")
-    css = _read("static/css/ui_contract.css")
+    # React replaces the JS-free macro; both its scripts and CSS must be local and prebuilt.
+    from web.routes.workbench.assets import read_asset_manifest
 
-    assert "<details class=\"aps-workbench-nav" in macro
-    assert "<summary class=\"aps-workbench-nav-summary\">" in macro
-    assert "aps-workbench-nav-menu" in css
-    assert "aps-workbench-nav-link" in css
-
-    combined = macro + css
-    for external in ("https://", "http://", "cdn", "unpkg", "fonts.googleapis", "cdnjs"):
-        assert external not in combined
+    manifest = read_asset_manifest(str(REPO_ROOT / "static"))
+    assert manifest["target"] == "chrome109"
+    assert "workbench/app/main.js" in manifest["scripts"]
+    assert "workbench/app/WorkbenchNavigation.js" in manifest["scripts"]
+    assert "workbench/prototype/ui_kits/workbench/index.inline.css" in manifest["styles"]
+    for name in manifest["scripts"] + manifest["styles"] + [manifest["theme_script"]]:
+        assert (REPO_ROOT / "static" / name).is_file()
+        assert not any(fragment in name for fragment in ("https://", "http://", "cdn", "unpkg"))
+    host = _read("templates/workbench/index.html")
+    assert "<noscript>" in host and "JavaScript" in host
+    assert "text/babel" not in host
+    assert "aps-workbench-ready" in host and "role', 'alert'" in host

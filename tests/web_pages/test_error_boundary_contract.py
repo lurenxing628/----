@@ -419,7 +419,10 @@ def test_render_error_template_renders_rich_error_template_path() -> None:
             field_label="目标字段",
         )
 
-    assert 'class="card"' in body
+    assert '<main data-workbench-error="true">' in body
+    assert 'role="alert"' in body
+    assert "请修复配置后重试" in body
+    assert 'href="/system/runtime-logs"' in body
     assert "配置错误" in body
     assert "400" not in body
     assert "错误码" not in body

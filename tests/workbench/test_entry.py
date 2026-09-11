@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from tests._support.workbench_web_contract import canonical_boot
 from web.routes.workbench.assets import WorkbenchAssetsUnavailable, read_asset_manifest
 
 
@@ -65,7 +66,7 @@ def test_new_host_uses_built_entry_without_replacing_old_home(app_client, tmp_pa
     assert response.headers["Cache-Control"] == "no-store"
     assert app_client.get("/workbench?view=not-a-page").status_code == 404
     assert app_client.get("/workbench/trial").status_code == 200
-    assert app_client.get("/").status_code == 200
+    canonical_boot(app_client, "/", "dashboard", {})
 
 
 def test_new_host_reports_missing_assets_explicitly(app_client, tmp_path, monkeypatch):
@@ -93,7 +94,7 @@ def test_system_overview_skips_maintenance_but_normal_requests_keep_it(app_clien
     assert app_client.get("/workbench?view=system").status_code == 200
     assert app_client.get("/workbench/trial").status_code == 200
     assert calls == []
-    assert app_client.get("/").status_code == 200
+    canonical_boot(app_client, "/", "dashboard", {})
     assert calls == ["maintenance"]
 
 
@@ -115,14 +116,14 @@ def test_system_overview_failure_is_not_demo_success(app_client, monkeypatch):
 
 @pytest.mark.parametrize("detection_failure,status", [(False, 503), (True, 500)])
 def test_system_overview_preserves_maintenance_gate_with_read_failure_contract(app_client, monkeypatch, detection_failure, status):
-    from web.bootstrap import factory
-
     def maintenance(*args, **kwargs):
         if detection_failure:
             raise OSError("private-maintenance-detail")
         return True
 
-    monkeypatch.setattr(factory, "is_maintenance_window_active", maintenance)
+    hooks = app_client.application.before_request_funcs[None]
+    hook = next(item for item in hooks if item.__name__ == "_open_db")
+    monkeypatch.setitem(hook.__globals__, "is_maintenance_window_active", maintenance)
     response = app_client.get("/api/workbench/v1/system/overview")
     assert response.status_code == status
     payload = response.get_json()

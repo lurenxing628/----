@@ -1,94 +1,68 @@
-"""回归测试：批次详情页懒加载下拉（lazy_select）下，当工序的 machine_id/operator_id 指向已删除资源（不在懒加载模板 options 中）时，首屏 select 仍渲染带 data-orphan/data-static-disabled 的「（已删除）」回退 option 并强制选中；同时校验 source 大小写不敏感（INTERNAL 识别为内部工序）及 batch_detail_linkage.js 含回插占位项与懒加载失败保护逻辑。"""
+"""Missing legacy resource values remain unchanged and explicit in current batch reads.
 
-import re
+Legacy lazy-select markup is retired. Unknown source values are not normalized
+by GET; edits must fail closed instead of clearing or replacing missing resources.
+"""
+
+import sqlite3
+
+from tests._support.gantt_retirement import _business_state
+from tests._support.workbench_browser_contract import browser_contract
+from tests._support.workbench_web_contract import canonical_boot, retired_response
 
 
 def test_lazy_select_orphan_option(app_client, repo_root) -> None:
-    from flask import render_template
-
-    from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
-
-    app = app_client.application
-
-    missing_mc = "MISSING_MC"
-    missing_op = "MISSING_OP"
-    deleted_suffix = "\uff08\u5df2\u5220\u9664\uff09"  # （已删除）
-
-    # 构造“问题场景”：
-    # - 首屏 select 有回退 option（缺失 machine/operator）
-    # - 懒加载模板 tplMachineOptions/tplOperatorOptions 不包含该回退项
-    ctx = dict(
-        title="regression",
-        batch={
-            "batch_id": "B_TEST",
-            "part_no": "P1",
-            "part_name": "",
-            "quantity": 1,
-            "due_date": None,
-            "ready_date": None,
-        },
-        priority_zh="P",
-        ready_status_zh="Y",
-        batch_status_zh="S",
-        operations=[
-            {
-                "id": 1,
-                "op_code": "OP1",
-                "seq": 1,
-                "op_type_name": "OT",
-                # 回归点：source 大小写不敏感（历史数据/导入可能出现 INTERNAL/External）
-                "source": "INTERNAL",
-                "machine_id": missing_mc,
-                "operator_id": missing_op,
-                "setup_hours": 0,
-                "unit_hours": 0,
-                "supplier_id": None,
-                "ext_days": None,
-                "merge_hint": None,
-            }
-        ],
-        # 注意：这里故意不包含 missing_mc/missing_op，模拟“值不在懒加载模板 options 中”的情况
-        machine_options=[{"value": "MC1", "label": "MC1 Machine1", "disabled": False}],
-        operator_options=[{"value": "OP1", "label": "OP1 Operator1", "disabled": False}],
-        supplier_options=[],
-        machine_operators={},
-        operator_machines={},
-        machine_operator_meta={},
-        prefer_primary_skill="no",
-        lazy_select_enabled=True,
-        batch_detail_strict_toggle=build_strict_mode_toggle(
-            "batchDetailGenerateOpsStrictMode",
-            desc="工序资料不完整时先停下，避免把缺资料的批次继续生成下去。",
-        ),
-    )
-
-    with app.test_request_context("/scheduler/batches/B_TEST?lazy_select=1"):
-        html = render_template("scheduler/batch_detail.html", **ctx)
-
-    # 1) 首屏 fallback option 必须存在且带 data-orphan + 强制选中 + “已删除”后缀
-    #    （只校验载荷标记，不锁死属性书写顺序，避免模板格式微调误报）
-    assert f'value="{missing_mc}"' in html and f"{missing_mc}{deleted_suffix}" in html, "首屏缺少 machine 回退 option（值或“已删除”后缀）"
-    assert f'value="{missing_op}"' in html and f"{missing_op}{deleted_suffix}" in html, "首屏缺少 operator 回退 option（值或“已删除”后缀）"
-    assert html.count('data-orphan="1"') >= 2, "首屏回退 option 缺少 data-orphan 孤儿标记"
-    assert html.count('data-static-disabled="1"') >= 2, "首屏回退 option 缺少 data-static-disabled 静态禁用标记"
-    assert 'data-linkage-row="1"' in html, "source 大小写不敏感回归：INTERNAL 应被识别为内部工序"
-
-    # 2) 懒加载模板 options 不应包含缺失值（复现原问题条件）
-    m = re.search(r'<template id="tplMachineOptions">([\s\S]*?)</template>', html)
-    assert m, "缺少 tplMachineOptions"
-    assert missing_mc not in m.group(1), "tplMachineOptions 不应包含缺失 machine_id（本用例要求）"
-
-    m2 = re.search(r'<template id="tplOperatorOptions">([\s\S]*?)</template>', html)
-    assert m2, "缺少 tplOperatorOptions"
-    assert missing_op not in m2.group(1), "tplOperatorOptions 不应包含缺失 operator_id（本用例要求）"
-
-    # 3) JS 必须包含“回插占位项 + 强制选中”的逻辑（防止首次交互静默丢值）
-    #    注意：批次详情页使用外部脚本 static/js/batch_detail_linkage.js（非 inline），因此这里检查：
-    #    - HTML 必须加载该脚本
-    #    - JS 文件内容必须包含关键逻辑片段
-    assert "js/batch_detail_linkage.js" in html, "模板未加载 batch_detail_linkage.js"
-
-    # 手工回归建议（更贴近真实浏览器行为）：
-    # - 让某条内部工序 machine_id 或 operator_id 指向 DB 中已删除的资源（保留工序记录）。
-    # - 打开批次详情页：GET /scheduler/batches/<batch_id>?lazy_select=1
-    # - 首次点开设备/人员下拉：已删除项仍保持选中；另一侧下拉不应被“全禁用”；提示文案为“已删除”。
+    database = app_client.application.config["DATABASE_PATH"]
+    # A legacy damaged row cannot be created through the current guarded write API.
+    with sqlite3.connect(database) as conn:
+        conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('P1','零件')")
+        conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('B_TEST','P1',1)")
+        conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('MC1','Machine1')")
+        conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('OP1','Operator1')")
+        conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name,source,machine_id,operator_id) "
+                     "VALUES ('OP1','B_TEST',1,'OT','INTERNAL','MISSING_MC','MISSING_OP')")
+        reference = conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND entity_key='B_TEST' AND active=1").fetchone()[0]
+    canonical_boot(app_client, "/", "dashboard", {})
+    for source, expected_status in (("INTERNAL", 409), ("internal", 409)):
+        with sqlite3.connect(database) as conn:
+            conn.execute("UPDATE BatchOperations SET source=? WHERE op_code='OP1'", (source,))
+        before = _business_state(app_client)
+        retired_response(app_client.get("/scheduler/batches/B_TEST?lazy_select=1"))
+        canonical_boot(app_client, "/scheduler/batches/B_TEST", "batches", {"entity_ref": reference})
+        response = app_client.get("/api/workbench/v1/entities/batch/" + reference)
+        assert response.status_code == 200
+        entity = response.get_json()["data"]
+        operation = entity["operations"][0]
+        assert operation["source"] == source and operation["ref"] == operation["operation_ref"]
+        assert operation["machine_ref"] is None and operation["operator_ref"] is None
+        choices = app_client.get("/api/workbench/v1/entities/batch/choices").get_json()["data"]
+        assert [row["business_code"] for row in choices["machines"]] == ["MC1"]
+        assert [row["business_code"] for row in choices["operators"]] == ["OP1"]
+        messages = " ".join(item["message"] for item in operation["issues"])
+        if source == "INTERNAL":
+            assert operation["editable"] is False and "工序归属未明确" in messages
+            assert entity["write_context"]["capabilities"]["batch.operation_update"] is False
+        else:
+            assert "设备未补齐或不可用" in messages and "人员未补齐或不在岗" in messages
+        location = app_client.get("/scheduler/batches/B_TEST").headers["Location"]
+        text = browser_contract("""
+for (let i=0;i<150 && !document.querySelector('table[aria-label="批次工序"]');i++) await new Promise(resolve=>setTimeout(resolve,20));
+const table = document.querySelector('table[aria-label="批次工序"]'); expect(table);
+const row = table.tBodies[0].rows[0], button = Array.from(row.querySelectorAll('button')).find(node=>node.textContent==='补充资料');
+expect(row.textContent.includes(data.source === 'INTERNAL' ? '工序归属未明确' : '设备未补齐或不可用'));
+expect(!row.textContent.includes('Machine1') && !row.textContent.includes('Operator1'), 'Missing resource silently replaced');
+if(data.source === 'INTERNAL') expect(button.disabled);
+return row.textContent;
+""", app=app_client.application, path=location, data={"source": source})
+        assert "未归类" in text if source == "INTERNAL" else "自制" in text
+        rejected = app_client.post("/api/workbench/v1/entities/batch/" + reference + "/operation_update", json={
+            "request_key": "orphan-resource-" + source, "write_token": entity["write_context"]["write_token"],
+            "input": {"operation_ref": operation["ref"], "fields": {"setup_hours": 1}},
+        })
+        assert rejected.status_code == expected_status, rejected.get_json()
+        assert rejected.get_json()["error"]["code"] == ("stale_write" if source == "INTERNAL" else "constraint_conflict")
+        assert rejected.get_json()["committed"] is False
+        assert _business_state(app_client) == before
+        with sqlite3.connect(database) as conn:
+            assert conn.execute("SELECT source,machine_id,operator_id,setup_hours FROM BatchOperations WHERE op_code='OP1'").fetchone() == (source, "MISSING_MC", "MISSING_OP", 0)
+    assert not (repo_root / "templates/scheduler/batch_detail.html").exists()

@@ -7,8 +7,10 @@
 
 from __future__ import annotations
 
-import re
+import json
 
+from tests._support.gantt_retirement import _business_state
+from tests._support.workbench_web_contract import canonical_boot
 from web.routes.dashboard import _summary_near_due_count
 
 
@@ -47,17 +49,6 @@ def test_summary_near_due_count_inconsistent_count_below_items_returns_none() ->
     # count == len(items) 一致、或 count > len(items)（items 被 size-guard 裁剪）可信 → 返回 count
     assert _summary_near_due_count({"near_due_batches": {"count": 2, "items": [{"batch_id": "B1"}, {"batch_id": "B2"}]}}) == 2
     assert _summary_near_due_count({"near_due_batches": {"count": 5, "items": [{"batch_id": "B1"}]}}) == 5
-
-
-def _extract_near_due_text(html: str) -> str:
-    m = re.search(
-        r"临期批次</span>\s*<span class=['\"]aps-dashboard-risk-value['\"]>\s*([^<]+)\s*</span>",
-        html,
-        re.S,
-    )
-    if not m:
-        raise RuntimeError(f"未找到首页「临期批次」体检格，body={html[:500]!r}")
-    return m.group(1).strip()
 
 
 def test_dashboard_near_due_cell_renders_end_to_end(app_client, db_path) -> None:
@@ -99,16 +90,26 @@ def test_dashboard_near_due_cell_renders_end_to_end(app_client, db_path) -> None
     finally:
         conn.close()
 
-    resp = app_client.get("/")
-    if resp.status_code != 200:
-        body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
-        raise RuntimeError(f"GET / 返回 {resp.status_code}，body={body[:500]}")
-    html = resp.data.decode("utf-8", errors="ignore")
+    canonical_boot(app_client, "/", "dashboard", {})
+    before = _business_state(app_client)
+    conn = get_connection(db_path)
+    try:
+        summary = json.loads(conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=1").fetchone()[0])
+    finally:
+        conn.close()
+    assert _summary_near_due_count(summary) == 2
+    assert summary["near_due_batches"]["window_days"] == 3
+    resp = app_client.get("/api/workbench/v1/dashboard")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
     if "Internal Server Error" in html or "Traceback" in html:
         raise RuntimeError("首页临期渲染出现错误页")
-    # 第 7 格「临期批次」端到端渲出，值落合法三态之一（精确态由 contract + 读取单测覆盖）
-    # 端到端真实渲出 count=2（identity 匹配、摘要可用、闸门放行）：第 7 格不是兜底"数据不足"/"暂无"
-    assert _extract_near_due_text(html) == "2"
+    # New delivery reads use complete facts, not the retired sampled summary cell.
+    data = resp.get_json()["data"]
+    assert data["plan"]["version"] == 1
+    assert data["categories"]["delivery"]["risk_count"] is None
+    assert data["categories"]["delivery"]["evaluation_gaps"]
     # 临期窗口（3 天）来自 summary 冻结值，不把内部身份泄漏到可见文本
     for token in ("op_id", "schedule_id", "scenario_id", "candidate_id", "source_table"):
-        assert f">{token}<" not in html
+        assert '"' + token + '"' not in html
+    assert _business_state(app_client) == before

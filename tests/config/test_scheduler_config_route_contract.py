@@ -17,7 +17,9 @@ from core.infrastructure.errors import ValidationError
 from core.services.scheduler.config.config_field_spec import field_label_for
 from core.services.scheduler.config.config_service import ConfigService
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.gantt_retirement import _business_state
 from tests._support.paths import REPO_ROOT
+from tests._support.workbench_web_contract import retired_response
 from web.routes.domains.scheduler.scheduler_config_display_state import build_auto_assign_persist_display_state
 
 
@@ -43,7 +45,8 @@ def _build_real_app(tmp_path, monkeypatch):
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
     point_env_at_shared(monkeypatch)
 
-    from core.infrastructure.database import ensure_schema
+    from core.infrastructure.database import ensure_schema, get_connection
+    from core.services.system.system_config_service import SystemConfigService
 
     for name in list(sys.modules):
         if name == "app" or name.startswith("web.bootstrap.entrypoint") or name.startswith("web.bootstrap.factory"):
@@ -53,7 +56,13 @@ def _build_real_app(tmp_path, monkeypatch):
 
     ensure_schema(str(test_db), logger=None, schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=None)
     app_mod = importlib.import_module("app")
-    return app_mod.create_app(), str(test_db)
+    app = app_mod.create_app()
+    conn = get_connection(str(test_db))
+    try:
+        SystemConfigService(conn).ensure_defaults(app.config.get("BACKUP_KEEP_DAYS", 7))
+    finally:
+        conn.close()
+    return app, str(test_db)
 
 
 def _mutate_real_scheduler_config(db_path: str, *, delete_keys=()) -> None:
@@ -1092,16 +1101,29 @@ def test_scheduler_config_page_renders_provenance_and_hidden_degraded_html(tmp_p
     )
     client = app.test_client()
 
+    before = _business_state(client)
     response = client.get("/scheduler/config")
-    body = response.get_data(as_text=True)
+    body = retired_response(response)
+    assert "常用方案" not in body
+    # The advanced editor is retired; its retained metadata must remain honest and read-only.
+    from core.infrastructure.database import get_connection
+    from web.routes.domains.scheduler.scheduler_config_display_state import (
+        build_scheduler_config_panel_state_from_service,
+    )
 
-    assert response.status_code == 200
-    assert "常用方案" in body
-    assert "基线未记录" in body
-    assert "当前运行配置缺少基线记录，无法确认与任何方案的一致性；请显式保存或重新应用方案。" in body
+    conn = get_connection(db_path)
+    try:
+        panel = build_scheduler_config_panel_state_from_service(ConfigService(conn, logger=None, op_logger=None))
+        assert panel.current_config_state["provenance_missing"] is True
+        public = "\n".join(item.value + "\n" + item.desc for item in panel.current_config_display_items)
+        assert "基线未记录" in public
+        assert "当前运行配置缺少基线记录，无法确认与任何方案的一致性；请显式保存或重新应用方案。" in public
+        hidden = "\n".join(panel.config_hidden_warnings)
+        assert "平时不直接显示的设置“保存系统补齐的设备和人员”需要重新确认" in hidden
+        assert "auto_assign_persist" not in hidden
+    finally:
+        conn.close()
     assert "当前配置中有" not in body
     assert "来自旧数据或格式不标准，请检查后保存一次。" not in body
-    assert "scheduler-config-degraded-summary" in body
-    assert "平时不直接显示的设置“保存系统补齐的设备和人员”需要重新确认" in body
-    assert "保存系统补齐的设备和人员" in body
     assert "auto_assign_persist" not in body
+    assert _business_state(client) == before

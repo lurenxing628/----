@@ -22,6 +22,18 @@ RECLAIMED_TEMPLATES = (
     "templates/reports/downtime.html",
 )
 
+ACTIVE_LABEL_SOURCES = (
+    "frontend/workbench/app/DashboardWorkspace.jsx",
+    "frontend/workbench/app/DashboardPanels.jsx",
+    "frontend/workbench/app/PlanCatalogUI.jsx",
+    "frontend/workbench/app/PlanDetailsUI.jsx",
+    "frontend/workbench/app/WorkbenchCaption.jsx",
+    "frontend/workbench/app/ReportWorkspace.jsx",
+    "frontend/workbench/app/ReportTable.jsx",
+    "frontend/workbench/app/ReportControls.jsx",
+    "frontend/workbench/app/ReviewWorkspace.jsx",
+)
+
 # 字面字典回潮形态：{% set status_zh = {...} %}（analysis.html 的
 # {% set status_zh = analysis_labels.get(...) %} 是后端注入，不命中本正则）
 _INLINE_DICT_RE = re.compile(r"\{%-?\s*set\s+(?:status_zh|strategy_zh)\s*=\s*\{", re.S)
@@ -30,10 +42,15 @@ _INLINE_DICT_RE = re.compile(r"\{%-?\s*set\s+(?:status_zh|strategy_zh)\s*=\s*\{"
 def test_no_inline_label_dict_in_reclaimed_templates():
     offenders = []
     for rel in RECLAIMED_TEMPLATES:
+        assert not (REPO_ROOT / rel).exists(), "Retired templates must not return: " + rel
+    for rel in ACTIVE_LABEL_SOURCES:
         text = (REPO_ROOT / rel).read_text(encoding="utf-8")
-        if _INLINE_DICT_RE.search(text):
+        if _INLINE_DICT_RE.search(text) or re.search(r"(?:const|let|var)\s+(?:status_zh|strategy_zh)\s*=\s*\{", text):
             offenders.append(rel)
     assert not offenders, f"模板内联词表回潮（唯一字源在 viewmodel decorate 链）：{offenders}"
+    catalog = (REPO_ROOT / "frontend/workbench/app/PlanCatalogUI.jsx").read_text(encoding="utf-8")
+    assert "{plan.display_name}" in catalog
+    assert "{plan.plan_role}" not in catalog and "{plan.scenario_id}" not in catalog
 
 
 def test_ok2_dead_key_never_returns():

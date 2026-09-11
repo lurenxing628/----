@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import importlib
-import os
+import logging
 import sys
-from pathlib import Path
 from types import SimpleNamespace
 
 from flask import current_app, g
@@ -117,9 +116,8 @@ def test_request_scope_app_logger_binding(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(request_services_mod, "ScheduleHistoryQueryService", _StubHistoryService)
     monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
 
-    with app.test_request_context("/scheduler/"):
-        app.preprocess_request()
-
+    def binding_probe():
+        """Exercise the real WSGI admission and request-service lifecycle."""
         assert g.app_logger is current_app.logger
         assert getattr(g, "db", None) is not None
         assert getattr(g, "op_logger", None) is not None
@@ -134,3 +132,16 @@ def test_request_scope_app_logger_binding(tmp_path, monkeypatch) -> None:
         assert captured.get("config_op_logger") is g.op_logger
         assert captured.get("history_op_logger") is g.op_logger
         assert captured.get("history_limit") == 1
+        return "binding verified"
+
+    second = _build_app(tmp_path / "second", monkeypatch)
+    for index, current in enumerate((app, second)):
+        current.logger = logging.getLogger("aps-binding-fixture-" + str(index))
+        current.add_url_rule("/binding-probe", "binding_probe", binding_probe)
+    assert app.logger is not second.logger
+    for current in (app, second, app):
+        captured.clear()
+        response = current.test_client().get("/binding-probe", buffered=True)
+        assert response.status_code == 200
+        assert response.get_data(as_text=True) == "binding verified"
+        assert captured["logger"] is current.logger
