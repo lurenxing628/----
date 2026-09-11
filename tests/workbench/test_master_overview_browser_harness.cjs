@@ -31,7 +31,7 @@ function pageResult(fixture, scope, page, spec) {
     page: { number: page, size: scope.size, total: spec.badCount ? total + 999 : total, pages: Math.max(1, Math.ceil(total / scope.size)) } };
 }
 function setup(report, output) {
-  const fixture = JSON.parse(fs.readFileSync(path.join(output, 'fixture.json'))), files = ['resource-contract.js', 'ResourceControls.jsx', 'transport.js'].concat(names);
+  const fixture = JSON.parse(fs.readFileSync(path.join(output, 'fixture.json'))), files = ['WorkbenchPageContext.jsx', 'resource-contract.js', 'ResourceControls.jsx', 'transport.js'].concat(names);
   const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
   const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
   report.target = built.target; report.global_build = false;

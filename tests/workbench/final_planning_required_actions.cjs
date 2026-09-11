@@ -46,6 +46,7 @@ async function delayConflictDetails(page, ready, report, h, flush) {
   assert.deepEqual(restored.projections.occupancy, occupancy); assert.deepEqual(await cells(), expectedCells);
   report.delay_conflicts = { plan_ref: data.plan.plan_ref, occupancy, expected_rows: expected,
     actual_cells: await cells(), f5_same_projection_and_rows: true, request_start: start, request_end: report.requests.length };
+  await h.shot('required-delay-conflict-details');
 }
 
 async function trialViewRecovery(page, ready, report, h, flush, requestStart) {

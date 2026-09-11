@@ -5,11 +5,11 @@ const { chromium } = require('playwright'), { compile } = require('../../scripts
 const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 if (!output) throw new Error('Pass a temporary artifact directory');
 fs.mkdirSync(output, { recursive: true });
-const files = ['resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx',
+const files = ['WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx',
   'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx', 'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceTables.jsx', 'ResourceMetrics.jsx', 'ResourceRail.jsx',
   'CalendarContract.js', 'ResourceWorkspace.jsx', 'CalendarFields.jsx', 'CalendarDayDialog.jsx', 'CalendarRangeDialog.jsx', 'ResourceCalendar.jsx',
   'ResourceMaterialContract.js', 'ResourceFileContract.js', 'ResourceMaterialPreview.jsx', 'ResourceMaterialActions.jsx', 'ResourceFileActions.jsx', 'ResourceCatalogModel.js', 'ResourceCatalogEditor.jsx', 'ResourceCatalog.jsx',
-  'ProcessAPI.js', 'ProcessContract.js', 'ProcessActionContract.js', 'ProcessActionPreview.jsx', 'ProcessCollectionActions.jsx', 'ProcessFileContract.js', 'ProcessFilePreview.jsx', 'ProcessFileActions.jsx', 'ProcessControls.jsx',
+  'ProcessAPI.js', 'ProcessContract.js', 'ProcessReadView.js', 'ProcessActionContract.js', 'ProcessActionPreview.jsx', 'ProcessCollectionActions.jsx', 'ProcessFileContract.js', 'ProcessFilePreview.jsx', 'ProcessFileActions.jsx', 'ProcessControls.jsx',
   'ProcessStageEditor.jsx', 'ProcessOpTypeCreate.jsx', 'ProcessSourceEditor.jsx', 'ProcessHoursEditor.jsx', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx', 'ProcessWorkspace.jsx', 'ResourceLive.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx'];
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
@@ -31,7 +31,7 @@ function part(n){const state=f.spec.locked?'route':'ready';return {ref:R(n),busi
   relationships:{operation_count:123,batch_count:2,internal_count:0,external_count:123,unclassified_count:0},issues:[],write_context:wc,capabilities:caps,
   workflow:{origin:'managed',stage:state,ready:state==='ready',route:stamp(f.spec.locked?'unconfirmed':'confirmed'),source:stamp(f.spec.locked?'locked':'confirmed'),hours:stamp(f.spec.locked?'locked':'confirmed')},
   operations:Array.from({length:123},(_,i)=>({ref:R(1000+i+n*10000),sequence:i+1,label:'同名工序'+(i+1)+'很长的工序名称'.repeat(f.spec.long?12:0),source:'external',op_type_ref:R(11),op_type_label:'外协工种',supplier_ref:R(4),supplier_label:'原供应商',external_group_ref:R(3000+Math.min(i,69)+n*10000),
-    setup_hours:null,unit_hours:null,external_days:2,status:f.spec.deletedOperation&&i===116?'deleted':'active',issues:[],confirmation:{source:stamp('confirmed'),hours:stamp('confirmed')}})),
+    setup_hours:null,unit_hours:null,external_days:2,external_days_source:'operation',status:f.spec.deletedOperation&&i===116?'deleted':'active',issues:[],confirmation:{source:stamp('confirmed'),hours:stamp('confirmed')}})),
   external_groups:Array.from({length:70},(_,i)=>({ref:R(3000+i+n*10000),start_sequence:i+1,end_sequence:i+1,merge_mode:'separate',total_days:null,supplier_ref:R(4),supplier_label:'原供应商',remark:'原组',issues:[]}))};}
 function monthData(year,month){const K=APSCalendarContract,days=Array.from({length:K.monthDays(year,month)},(_,i)=>{const date=K.monthKey(year,month)+'-'+String(i+1).padStart(2,'0'),weekday=(new Date(date+'T12:00:00').getDay()+6)%7,explicit=i===8&&!f.spec.deletedDate;
   return {date,day:i+1,weekday,is_weekend:weekday>=5,is_today:false,explicit,calendar_ref:explicit?R(900):null,entity:explicit?{ref:R(900)}:null,

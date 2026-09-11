@@ -146,6 +146,8 @@ async function contrast() {
   assert(rows.length > 0); rows.forEach(row=>assert(row.ratio>=4.5, JSON.stringify(row))); return rows;
 }
 async function shot(kind, name, modal = false) {
+  await page.waitForFunction(() => document.getAnimations().every(animation =>
+    typeof animation.transitionProperty !== 'string' || (!animation.pending && animation.playState !== 'running')));
   const layout=await geometry(kind), dialog=modal?await modalGeometry():null, colors=await contrast();
   const file=variant+'-'+kind+'-'+name+'.png';
   await page.screenshot({path:path.join(output,file),fullPage:!modal,animations:'disabled'});
