@@ -8,11 +8,19 @@ import threading
 from unittest import mock
 from urllib.parse import unquote
 
+from core.infrastructure.migration_state import set_schema_version
+from tests._support.paths import REPO_ROOT
 
-def _set_schema_version(db_path: str, version: int) -> None:
+
+def _seed_predecessor(db_path: str) -> None:
+    """Load real v24 DDL; never label current tables as an older schema."""
+    source = REPO_ROOT / "tests/workbench/fixtures/schema-v24.sql"
     conn = sqlite3.connect(db_path)
     try:
-        conn.execute("UPDATE SchemaVersion SET version=? WHERE id=1", (int(version),))
+        assert not conn.execute("SELECT name FROM sqlite_master").fetchall()
+        conn.executescript(source.read_text(encoding="utf-8"))
+        assert not conn.execute("SELECT name FROM sqlite_master WHERE name='WorkbenchExecutionLedgerClock'").fetchone()
+        set_schema_version(conn, 24)
         conn.commit()
     finally:
         conn.close()
@@ -44,11 +52,10 @@ def test_maintenance_window_mutex(tmp_path, schema_path) -> None:
     backup_dir = os.path.join(tmpdir, "backups")
     os.makedirs(backup_dir, exist_ok=True)
 
-    ensure_schema(db_path, logger=None, schema_path=schema_path, backup_dir=backup_dir)
-    _set_schema_version(db_path, 4)
+    _seed_predecessor(db_path)
 
     mgr = BackupManager(db_path=db_path, backup_dir=backup_dir, keep_days=7, logger=None)
-    backup_path = mgr.backup(suffix="seed_v4")
+    backup_path = mgr.backup(suffix="seed_v24")
 
     hold_started = threading.Event()
     hold_release = threading.Event()
@@ -225,8 +232,9 @@ def test_maintenance_window_mutex(tmp_path, schema_path) -> None:
     if not backup_done["path"] or not os.path.exists(str(backup_done["path"])):
         raise RuntimeError("持锁 backup() 完成后应生成备份文件")
 
-    _set_schema_version(db_path, 6)
-    _set_schema_version(backup_path, 4)
+    ensure_schema(db_path, logger=None, schema_path=schema_path, backup_dir=backup_dir)
+    with sqlite3.connect(backup_path) as saved:
+        assert saved.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == 24
 
     observed = {"inside_window": False}
     orig_migrate = database_mod._migrate_with_backup

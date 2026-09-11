@@ -5,6 +5,8 @@ import os
 import re
 from unittest.mock import patch
 
+from tests._support.legacy_http import assert_followed_confirmation, confirmation_inputs, notice_messages
+
 COUNT_RE = re.compile(r"(?:导入完成|导入部分完成)：新增\s*(\d+)，更新\s*(\d+)，跳过\s*(\d+)，错误\s*(\d+)。")
 
 
@@ -78,6 +80,7 @@ def _post_export_preview_confirm(
     )
     _assert_status(f"{preview_url} preview", preview_resp, 200)
     preview_html = preview_resp.data.decode("utf-8", errors="ignore")
+    assert confirmation_inputs(preview_html, confirm_url)["mode"] == mode
 
     raw_rows_json = _extract_raw_rows_json(preview_html)
     preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
@@ -96,8 +99,7 @@ def _post_export_preview_confirm(
     payload.update(confirm_extra)
 
     confirm_resp = client.post(confirm_url, data=payload, follow_redirects=True)
-    _assert_status(f"{confirm_url} confirm", confirm_resp, 200)
-    return confirm_resp.data.decode("utf-8", errors="ignore")
+    return assert_followed_confirmation(confirm_resp, confirm_url[:-len("/confirm")])
 
 
 def _post_file_preview_confirm(
@@ -123,6 +125,7 @@ def _post_file_preview_confirm(
     )
     _assert_status(f"{preview_url} preview", preview_resp, 200)
     preview_html = preview_resp.data.decode("utf-8", errors="ignore")
+    assert confirmation_inputs(preview_html, confirm_url)["mode"] == mode
 
     raw_rows_json = _extract_raw_rows_json(preview_html)
     preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
@@ -141,12 +144,12 @@ def _post_file_preview_confirm(
     payload.update(confirm_extra)
 
     confirm_resp = client.post(confirm_url, data=payload, follow_redirects=True)
-    _assert_status(f"{confirm_url} confirm", confirm_resp, 200)
-    return confirm_resp.data.decode("utf-8", errors="ignore")
+    return assert_followed_confirmation(confirm_resp, confirm_url[:-len("/confirm")])
 
 
 def _assert_skip_semantics(case_name: str, html: str, *, expect_auto_suffix: bool = False) -> None:
-    m = COUNT_RE.search(html)
+    success = notice_messages(html, "success")
+    m = COUNT_RE.search(" ".join(success))
     if not m:
         raise RuntimeError(f"{case_name} 未找到导入计数提示")
     new_count, update_count, skip_count, error_count = [int(x) for x in m.groups()]
@@ -154,7 +157,7 @@ def _assert_skip_semantics(case_name: str, html: str, *, expect_auto_suffix: boo
         raise RuntimeError(
             f"{case_name} 结果语义异常：新增={new_count} 更新={update_count} 跳过={skip_count} 错误={error_count}"
         )
-    if "alert alert-success" not in html:
+    if not success:
         raise RuntimeError(f"{case_name} 未渲染 success 提示")
     if expect_auto_suffix and "已按模板自动生成批次工序" not in html:
         raise RuntimeError(f"{case_name} 未保留 auto_generate_ops 提示后缀")
@@ -294,7 +297,7 @@ def test_excel_import_result_semantics(app_client, db_path) -> None:
             }
         ],
     )
-    if "导入完成" not in html or "alert alert-success" not in html:
+    if "导入完成" not in html or not notice_messages(html, "success"):
         raise RuntimeError("工作日历真实写路径未渲染 success 提示")
     conn = get_connection(db_path)
     try:
@@ -362,11 +365,11 @@ def test_excel_import_result_semantics(app_client, db_path) -> None:
             follow_redirects=True,
         )
 
-    _assert_status("op_types confirm", confirm_resp, 200)
-    warning_html = confirm_resp.data.decode("utf-8", errors="ignore")
+    warning_html = assert_followed_confirmation(confirm_resp, "/process/excel/op-types")
     if "导入部分完成" not in warning_html:
         raise RuntimeError("op_types confirm 未展示“导入部分完成”")
     if "错误示例" not in warning_html or "模拟部分失败" not in warning_html:
         raise RuntimeError("op_types confirm 未展示错误示例")
-    if "alert alert-warning" not in warning_html:
+    if not notice_messages(warning_html, "warning"):
         raise RuntimeError("op_types confirm 未渲染 warning 提示")
+    assert notice_messages(warning_html, "success") == []

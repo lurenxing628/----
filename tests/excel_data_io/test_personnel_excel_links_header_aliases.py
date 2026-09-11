@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import io
 import json
-import re
 from base64 import urlsafe_b64decode
 
 from core.infrastructure.database import get_connection
+from tests._support.legacy_http import confirmation_inputs, follow_legacy_post_redirect
 
 
 def _make_xlsx_bytes(headers, rows):
@@ -31,23 +31,6 @@ def _make_xlsx_bytes(headers, rows):
             wb.close()
         except Exception:
             pass
-
-
-def _extract_raw_rows_json(html: str) -> str:
-    m = re.search(r'<textarea name="raw_rows_json"[^>]*>(.*?)</textarea>', html, re.S)
-    if not m:
-        raise RuntimeError("未能从页面提取 raw_rows_json")
-    return m.group(1).replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&").strip()
-
-
-def _extract_hidden_input(html: str, name: str) -> str:
-    for m in re.finditer(r"<input[^>]+>", html, re.I):
-        tag = m.group(0)
-        if re.search(rf'name="{re.escape(name)}"', tag):
-            vm = re.search(r'value="([^"]*)"', tag)
-            value = vm.group(1) if vm else ""
-            return value.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&").strip()
-    return ""
 
 
 def _decode_preview_rows_payload(raw_rows_json: str) -> str:
@@ -75,8 +58,9 @@ def _preview_and_confirm(client, *, headers, rows, filename: str):
     )
     _assert_status("personnel links preview", preview_resp, 200)
     preview_html = preview_resp.data.decode("utf-8", errors="ignore")
-    raw_rows_json = _extract_raw_rows_json(preview_html)
-    preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
+    fields = confirmation_inputs(preview_html, "/personnel/excel/links/confirm")
+    raw_rows_json = fields["raw_rows_json"]
+    preview_baseline = fields["preview_baseline"]
     if not preview_baseline:
         raise RuntimeError("人员设备关联预览缺少 preview_baseline")
     confirm_resp = client.post(
@@ -87,9 +71,9 @@ def _preview_and_confirm(client, *, headers, rows, filename: str):
             "raw_rows_json": raw_rows_json,
             "preview_baseline": preview_baseline,
         },
-        follow_redirects=True,
+        follow_redirects=False,
     )
-    _assert_status("personnel links confirm", confirm_resp, 200)
+    follow_legacy_post_redirect(client, confirm_resp, "/personnel/excel/links")
     return raw_rows_json
 
 

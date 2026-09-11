@@ -1,36 +1,9 @@
-"""回归测试：日历读侧归一化——WorkCalendar/OperatorCalendar 存量行混存遗留值（如 day_type=Weekend、allow_normal=Yes/是/NO）时，/scheduler/calendar 与 /personnel/<id>/calendar 页面必须统一渲染成中文口径（假期/是/否），不得把英文或大小写混写原样漏给用户。"""
+"""日历旧 GET 明确退役；保留的导出读侧归一为中文且不改写全局或个人原值。"""
 
 from __future__ import annotations
 
-import re
-
-
-def _assert_status(resp, name: str, expect: int = 200) -> None:
-    if resp.status_code != expect:
-        body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
-        raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect}，body={body[:500]}")
-
-
-def _assert_calendar_row(
-    html: str,
-    date_value: str,
-    day_type_zh: str,
-    shift_hours_re: str,
-    allow_normal_zh: str,
-    allow_urgent_zh: str,
-) -> None:
-    pattern = (
-        rf"<td>{re.escape(date_value)}</td>"
-        rf"\s*<td>{re.escape(day_type_zh)}</td>"
-        rf".*?<td>{shift_hours_re}</td>"
-        rf".*?<td>{re.escape(allow_normal_zh)}</td>"
-        rf"\s*<td>{re.escape(allow_urgent_zh)}</td>"
-    )
-    if re.search(pattern, html, re.S) is None:
-        raise RuntimeError(
-            f"未找到归一化后的日历行：date={date_value}, day_type_zh={day_type_zh}, shift_hours_re={shift_hours_re}, "
-            f"allow_normal_zh={allow_normal_zh}, allow_urgent_zh={allow_urgent_zh}"
-        )
+from tests._support.legacy_http import assert_retired_response, xlsx_download_rows
+from tests._support.sqlite_snapshot import table_rows
 
 
 def test_calendar_pages_readside_normalization(app_client, db_path) -> None:
@@ -54,15 +27,23 @@ def test_calendar_pages_readside_normalization(app_client, db_path) -> None:
             ("OP100", "2026-02-02", "Weekend", 0, 1.0, "是", "否", "personal legacy"),
         )
         conn.commit()
+        before = {table: table_rows(conn, table) for table in ("WorkCalendar", "OperatorCalendar")}
     finally:
         conn.close()
 
-    resp_scheduler = app_client.get("/scheduler/calendar")
-    _assert_status(resp_scheduler, "GET /scheduler/calendar")
-    html_scheduler = resp_scheduler.data.decode("utf-8", errors="ignore")
-    _assert_calendar_row(html_scheduler, "2026-02-01", "假期", r"0(?:\.0+)?", "是", "否")
-
-    resp_personnel = app_client.get("/personnel/OP100/calendar")
-    _assert_status(resp_personnel, "GET /personnel/OP100/calendar")
-    html_personnel = resp_personnel.data.decode("utf-8", errors="ignore")
-    _assert_calendar_row(html_personnel, "2026-02-02", "假期", r"0(?:\.0+)?", "是", "否")
+    assert_retired_response(app_client.get("/scheduler/calendar"))
+    assert_retired_response(app_client.get("/personnel/OP100/calendar"))
+    global_rows = xlsx_download_rows(app_client.get("/scheduler/excel/calendar/export"))
+    personal_rows = xlsx_download_rows(app_client.get("/personnel/excel/operator_calendar/export"))
+    assert len(global_rows) == len(personal_rows) == 1
+    assert global_rows[0]["日期"] == "2026-02-01"
+    assert personal_rows[0]["日期"] == "2026-02-02" and personal_rows[0]["工号"] == "OP100"
+    for row in (global_rows[0], personal_rows[0]):
+        assert row["类型"] == "假期"
+        assert row["可用工时"] == 0
+        assert row["允许普通件"] == "是" and row["允许急件"] == "否"
+    conn = get_connection(db_path)
+    try:
+        assert before == {table: table_rows(conn, table) for table in before}
+    finally:
+        conn.close()

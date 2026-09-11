@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
 
-def _assert_status(resp, name: str, expect: int = 200) -> None:
-    if resp.status_code != expect:
-        body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
-        raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect}，body={body[:500]}")
+from tests._support.legacy_http import canonical_resource
+from tests._support.sqlite_snapshot import table_rows
 
 
 def test_operator_machine_dirty_flags_visible(app_client, db_path) -> None:
@@ -27,6 +26,7 @@ def test_operator_machine_dirty_flags_visible(app_client, db_path) -> None:
             ("OP200", "MC201", "", None),
         )
         conn.commit()
+        before = table_rows(conn, "OperatorMachine")
 
         rows = OperatorMachineQueryService(conn).list_simple_rows()
     finally:
@@ -45,10 +45,58 @@ def test_operator_machine_dirty_flags_visible(app_client, db_path) -> None:
     assert str((row_blank.get("dirty_reasons") or {}).get("is_primary") or "") != "", row_blank
 
     resp = app_client.get("/personnel/OP200")
-    _assert_status(resp, "GET /personnel/OP200")
-    html = resp.data.decode("utf-8", errors="ignore")
+    entity = canonical_resource(app_client, resp, "operator", "OP200")
+    conn = get_connection(db_path)
+    try:
+        assert table_rows(conn, "OperatorMachine") == before
+    finally:
+        conn.close()
+    warnings = [issue["message"] for issue in entity["issues"]
+                if "技能等级" in issue["message"] and "主操设备" in issue["message"]]
+    assert len(warnings) == 2, entity
+    for machine_id in ("MC200", "MC201"):
+        assert any(machine_id in message for message in warnings), warnings
 
-    assert "以下 2 条记录中有部分字段的旧格式已被系统自动修正" in html, html
-    assert "涉及字段：" in html, html
-    assert "技能等级" in html, html
-    assert "主操设备" in html, html
+
+@pytest.mark.parametrize(
+    ("skill", "primary", "expected_fields"),
+    [
+        ("expert", "yes", ()),
+        ("skilled", "off", ("skill_level", "is_primary")),
+        ("", None, ("skill_level", "is_primary")),
+        ("expert", "off", ("is_primary",)),
+        ("invalid-level", "invalid-primary", ("skill_level", "is_primary")),
+    ],
+    ids=("canonical", "legacy", "blank", "primary-only", "invalid"),
+)
+def test_workbench_authorization_issues_are_read_only(app_client, db_path, skill, primary, expected_fields):
+    from core.infrastructure.database import get_connection
+
+    conn = get_connection(db_path)
+    tables = ("Operators", "Machines", "OperatorMachine", "OperatorSkill", "WorkbenchOperatorProfiles", "WorkbenchEntityRefs")
+    try:
+        conn.execute("INSERT INTO Operators(operator_id,name,status) VALUES('OP-PAIR','paired operator','active')")
+        conn.execute("INSERT INTO Machines(machine_id,name,status) VALUES('MC-PAIR','paired machine','active')")
+        conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id,skill_level,is_primary) VALUES('OP-PAIR','MC-PAIR',?,?)",
+                     (skill, primary))
+        conn.commit()
+        before = {table: table_rows(conn, table) for table in tables}
+    finally:
+        conn.close()
+    entity = canonical_resource(app_client, app_client.get("/personnel/OP-PAIR"), "operator", "OP-PAIR")
+    assert entity["relationships"]["machine_authorization_count"] == 1
+    assert entity["relationships"]["skill_refs"] == [] and entity["relationships"]["skills_declared"] is False
+    issues = [issue for issue in entity["issues"] if issue["code"] == "machine_authorization_dirty"]
+    assert len(issues) == (1 if expected_fields else 0)
+    if issues:
+        assert set(issues[0]["fields"]) == set(expected_fields)
+        message = issues[0]["message"]
+        assert "MC-PAIR" in message and "原值未改写" in message
+        for field, label in (("skill_level", "技能等级"), ("is_primary", "主操设备")):
+            assert (label in message) is (field in expected_fields)
+        assert all(value not in message for value in (skill, primary) if value)
+    conn = get_connection(db_path)
+    try:
+        assert {table: table_rows(conn, table) for table in tables} == before
+    finally:
+        conn.close()

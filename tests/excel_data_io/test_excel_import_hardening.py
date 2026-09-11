@@ -5,9 +5,7 @@ from __future__ import annotations
 import importlib
 import io
 import os
-import re
 import sys
-from html import unescape
 from pathlib import Path
 
 import openpyxl
@@ -15,6 +13,12 @@ import pytest
 from flask import g
 
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.legacy_http import (
+    assert_no_confirmation,
+    capture_legacy_preview,
+    notice_messages,
+    rejected_preview_payload,
+)
 from tests._support.paths import REPO_ROOT
 
 if str(REPO_ROOT) not in sys.path:
@@ -72,22 +76,6 @@ def _make_xlsx(headers, rows) -> bytes:
         return output.getvalue()
     finally:
         wb.close()
-
-
-def _extract_raw_rows_json(html: str) -> str:
-    m = re.search(r'<textarea name="raw_rows_json"[^>]*>(.*?)</textarea>', html, re.S)
-    if not m:
-        raise RuntimeError("未能从页面提取 raw_rows_json")
-    return unescape(m.group(1)).strip()
-
-
-def _extract_hidden_input(html: str, name: str) -> str:
-    for m in re.finditer(r"<input[^>]+>", html, re.I):
-        tag = m.group(0)
-        if re.search(rf'name="{re.escape(name)}"', tag):
-            vm = re.search(r'value="([^"]*)"', tag)
-            return unescape(vm.group(1)).strip() if vm else ""
-    raise RuntimeError(f"未能从页面提取隐藏字段：{name}")
 
 
 def test_batch_quantity_float_is_rejected_without_truncation(tmp_path) -> None:
@@ -392,17 +380,19 @@ def test_operator_calendar_preview_and_confirm_reject_bool_numeric_cells(tmp_pat
         [["OP001", "2026-04-04", "workday", "08:00", "", True, 1.0, "yes", "yes", "bool-cell"]],
     )
 
-    preview_resp = client.post(
-        "/personnel/excel/operator_calendar/preview",
-        data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "operator_calendar.xlsx")},
-        content_type="multipart/form-data",
-    )
+    with capture_legacy_preview(app) as captured:
+        preview_resp = client.post(
+            "/personnel/excel/operator_calendar/preview",
+            data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "operator_calendar.xlsx")},
+            content_type="multipart/form-data",
+        )
     preview_html = preview_resp.get_data(as_text=True)
     assert preview_resp.status_code == 200
     assert "“可用工时”必须是数字" in preview_html
 
-    raw_rows_json = _extract_raw_rows_json(preview_html)
-    preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
+    blocked_fields = rejected_preview_payload(captured, preview_html)
+    raw_rows_json = blocked_fields["raw_rows_json"]
+    preview_baseline = blocked_fields["preview_baseline"]
     assert preview_baseline
 
     confirm_resp = client.post(
@@ -419,6 +409,7 @@ def test_operator_calendar_preview_and_confirm_reject_bool_numeric_cells(tmp_pat
     assert confirm_resp.status_code == 200
     assert "导入被拒绝：Excel 存在 1 行错误。" in confirm_html
     assert "“可用工时”必须是数字" in confirm_html
+    assert_no_confirmation(confirm_html)
 
     verify_conn = get_connection(db_path)
     try:
@@ -479,19 +470,21 @@ def test_op_type_preview_and_confirm_reject_duplicate_name_conflict(tmp_path, mo
         [["OT002", "数车", "internal"]],
     )
 
-    preview_resp = client.post(
-        "/process/excel/op-types/preview",
-        data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "op_types.xlsx")},
-        content_type="multipart/form-data",
-    )
+    with capture_legacy_preview(app) as captured:
+        preview_resp = client.post(
+            "/process/excel/op-types/preview",
+            data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "op_types.xlsx")},
+            content_type="multipart/form-data",
+        )
 
     preview_html = preview_resp.get_data(as_text=True)
     assert preview_resp.status_code == 200
     assert "已识别旧列“工种ID”，本次按“工种编号”处理" in preview_html
     assert "工种名称“数车”已被工种编号“OT001”使用，名称不能重复。" in preview_html
 
-    raw_rows_json = _extract_raw_rows_json(preview_html)
-    preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
+    blocked_fields = rejected_preview_payload(captured, preview_html)
+    raw_rows_json = blocked_fields["raw_rows_json"]
+    preview_baseline = blocked_fields["preview_baseline"]
     assert preview_baseline
 
     confirm_resp = client.post(
@@ -508,7 +501,8 @@ def test_op_type_preview_and_confirm_reject_duplicate_name_conflict(tmp_path, mo
     confirm_html = confirm_resp.get_data(as_text=True)
     assert confirm_resp.status_code == 200
     assert "导入被拒绝：Excel 存在 1 行错误。" in confirm_html
-    assert 'data-flash="success"' not in confirm_html
+    assert notice_messages(confirm_html, "success") == []
+    assert_no_confirmation(confirm_html)
 
     verify_conn = get_connection(db_path)
     try:

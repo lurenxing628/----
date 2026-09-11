@@ -3,6 +3,16 @@
 import io
 import re
 
+from tests._support.legacy_http import (
+    assert_followed_confirmation,
+    assert_no_confirmation,
+    assert_retired_response,
+    capture_legacy_preview,
+    confirmation_inputs,
+    rejected_preview_payload,
+)
+from tests._support.sqlite_snapshot import table_rows
+
 
 def _make_xlsx_bytes(headers, rows):
     import openpyxl
@@ -50,6 +60,17 @@ def _assert_status(name: str, resp, expect_code: int = 200):
         raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect_code}；body={body[:500] if body else None}")
 
 
+def _stored_operations(db_path):
+    """Keep a full persisted operation-row snapshot around rejected confirmations."""
+    from core.infrastructure.database import get_connection
+
+    conn = get_connection(db_path)
+    try:
+        return table_rows(conn, "PartOperations")
+    finally:
+        conn.close()
+
+
 def test_process_excel_part_operation_hours_append_fill_empty_only(app_client, db_path) -> None:
     from core.infrastructure.database import get_connection
 
@@ -77,7 +98,7 @@ def test_process_excel_part_operation_hours_append_fill_empty_only(app_client, d
         data={"mode": "overwrite", "filename": "op_types.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
         follow_redirects=True,
     )
-    _assert_status("op_types confirm", r, 200)
+    assert_followed_confirmation(r, "/process/excel/op-types")
 
     # 2) 路线导入（生成 internal:5/10 + external:20）
     routes_rows = [{"图号": "A1001", "名称": "测试件", "工艺路线字符串": "5数车10数车20表面处理"}]
@@ -98,7 +119,7 @@ def test_process_excel_part_operation_hours_append_fill_empty_only(app_client, d
         data={"mode": "overwrite", "filename": "routes.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
         follow_redirects=True,
     )
-    _assert_status("routes confirm", r, 200)
+    assert_followed_confirmation(r, "/process/excel/routes")
 
     # 3) 初始化：seq=5 置为已维护工时，seq=10 保持 0（待 append 补齐）
     conn = get_connection(db_path)
@@ -111,14 +132,14 @@ def test_process_excel_part_operation_hours_append_fill_empty_only(app_client, d
     finally:
         conn.close()
 
-    # 4) 页面模式应隐藏 replace，仅保留 overwrite/append
+    # 4) 旧控制页退役；原 POST 仍拒绝 replace，不能借退役扩大写入模式。
     r = client.get("/process/excel/part-operation-hours")
-    _assert_status("part_operation_hours page", r, 200)
-    html_page = r.data.decode("utf-8", errors="ignore")
-    if 'value="replace"' in html_page:
-        raise RuntimeError("零件工序工时页面不应展示 replace 模式")
-    if "只补空工时" not in html_page:
-        raise RuntimeError("零件工序工时页面未展示 append 补齐语义")
+    assert_retired_response(r)
+    before_replace = _stored_operations(db_path)
+    replacement = client.post("/process/excel/part-operation-hours/preview", data={"mode": "replace"})
+    _assert_status("part_operation_hours replace rejected", replacement, 400)
+    assert "不支持“清空本类数据后重导”" in replacement.get_data(as_text=True)
+    assert _stored_operations(db_path) == before_replace
 
     # 5) append 预览（含 skip/update/error 混合）
     append_rows_mixed = [
@@ -128,11 +149,12 @@ def test_process_excel_part_operation_hours_append_fill_empty_only(app_client, d
         {"图号": "A1001", "工序": 99, "换型时间(h)": 0.2, "单件工时(h)": 0.1},  # 不存在 -> ERROR
     ]
     buf = _make_xlsx_bytes(["图号", "工序", "换型时间(h)", "单件工时(h)"], append_rows_mixed)
-    r = client.post(
-        "/process/excel/part-operation-hours/preview",
-        data={"mode": "append", "file": (buf, "part_op_hours_append_mixed.xlsx")},
-        content_type="multipart/form-data",
-    )
+    with capture_legacy_preview(client.application) as captured:
+        r = client.post(
+            "/process/excel/part-operation-hours/preview",
+            data={"mode": "append", "file": (buf, "part_op_hours_append_mixed.xlsx")},
+            content_type="multipart/form-data",
+        )
     _assert_status("part_operation_hours append preview mixed", r, 200)
     html_mixed = r.data.decode("utf-8", errors="ignore")
     if "会跳过" not in html_mixed:
@@ -143,10 +165,13 @@ def test_process_excel_part_operation_hours_append_fill_empty_only(app_client, d
         raise RuntimeError("append 预览未识别 external 工序错误")
     if "工序不存在" not in html_mixed:
         raise RuntimeError("append 预览未识别不存在工序错误")
-    raw_mixed = _extract_raw_rows_json(html_mixed)
-    preview_baseline_mixed = _extract_hidden_input(html_mixed, "preview_baseline")
+    assert "只补空工时" in html_mixed
+    blocked_fields = rejected_preview_payload(captured, html_mixed)
+    raw_mixed = blocked_fields["raw_rows_json"]
+    preview_baseline_mixed = blocked_fields["preview_baseline"]
     if not preview_baseline_mixed:
         raise RuntimeError("part_operation_hours append preview mixed 缺少 preview_baseline")
+    before_rejected = _stored_operations(db_path)
     r = client.post(
         "/process/excel/part-operation-hours/confirm",
         data={
@@ -159,6 +184,8 @@ def test_process_excel_part_operation_hours_append_fill_empty_only(app_client, d
     )
     _assert_status("part_operation_hours append confirm mixed", r, 200)
     html_mixed_confirm = r.data.decode("utf-8", errors="ignore")
+    assert_no_confirmation(html_mixed_confirm)
+    assert _stored_operations(db_path) == before_rejected
     if "导入被拒绝" not in html_mixed_confirm:
         raise RuntimeError("append confirm（含错误行）应拒绝导入")
 
@@ -175,6 +202,7 @@ def test_process_excel_part_operation_hours_append_fill_empty_only(app_client, d
     )
     _assert_status("part_operation_hours append preview ok", r, 200)
     preview_html = r.data.decode("utf-8", errors="ignore")
+    assert confirmation_inputs(preview_html, "/process/excel/part-operation-hours/confirm")["mode"] == "append"
     raw_ok = _extract_raw_rows_json(preview_html)
     preview_baseline_ok = _extract_hidden_input(preview_html, "preview_baseline")
     if not preview_baseline_ok:
@@ -189,7 +217,7 @@ def test_process_excel_part_operation_hours_append_fill_empty_only(app_client, d
         },
         follow_redirects=True,
     )
-    _assert_status("part_operation_hours append confirm ok", r, 200)
+    assert_followed_confirmation(r, "/process/excel/part-operation-hours")
 
     # 7) 验证 DB：seq5 保持原值；seq10 被补齐；seq20 不变
     conn = get_connection(db_path)
@@ -250,7 +278,7 @@ def test_process_excel_part_operation_hours_import(app_client, db_path) -> None:
         data={"mode": "overwrite", "filename": "op_types.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
         follow_redirects=True,
     )
-    _assert_status("op_types confirm", r, 200)
+    assert_followed_confirmation(r, "/process/excel/op-types")
 
     # 2) 路线导入（生成 PartOperations：5 internal / 10 external）
     routes_rows = [{"图号": "A1001", "名称": "测试件", "工艺路线字符串": "5数车10表面处理"}]
@@ -267,7 +295,7 @@ def test_process_excel_part_operation_hours_import(app_client, db_path) -> None:
         data={"mode": "overwrite", "filename": "routes.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
         follow_redirects=True,
     )
-    _assert_status("routes confirm", r, 200)
+    assert_followed_confirmation(r, "/process/excel/routes")
 
     # 3) 先验证：包含 external 行时预览应给 ERROR
     hours_rows_with_external = [
@@ -282,23 +310,26 @@ def test_process_excel_part_operation_hours_import(app_client, db_path) -> None:
     )
     _assert_status("part_operation_hours preview bad", r, 200)
     html_bad = r.data.decode("utf-8", errors="ignore")
+    assert_no_confirmation(html_bad)
     if "仅支持内部工序导入工时" not in html_bad:
         raise RuntimeError("预览未识别外部工序行（期望提示：仅支持内部工序导入工时）")
 
     # 3.1) 非有限数字（NaN）应被拒绝
     hours_rows_nan = [{"图号": "A1001", "工序": 5, "换型时间(h)": "NaN", "单件工时(h)": 0.5}]
     buf = _make_xlsx_bytes(["图号", "工序", "换型时间(h)", "单件工时(h)"], hours_rows_nan)
-    r = client.post(
-        "/process/excel/part-operation-hours/preview",
-        data={"mode": "overwrite", "file": (buf, "part_op_hours_nan.xlsx")},
-        content_type="multipart/form-data",
-    )
+    with capture_legacy_preview(client.application) as captured_nan:
+        r = client.post(
+            "/process/excel/part-operation-hours/preview",
+            data={"mode": "overwrite", "file": (buf, "part_op_hours_nan.xlsx")},
+            content_type="multipart/form-data",
+        )
     _assert_status("part_operation_hours preview nan", r, 200)
     html_nan = r.data.decode("utf-8", errors="ignore")
     if "必须是有限数字" not in html_nan:
         raise RuntimeError("预览未识别 NaN（期望提示：必须是有限数字）")
-    raw_nan = _extract_raw_rows_json(html_nan)
-    preview_baseline_nan = _extract_hidden_input(html_nan, "preview_baseline")
+    blocked_fields = rejected_preview_payload(captured_nan, html_nan)
+    raw_nan = blocked_fields["raw_rows_json"]
+    preview_baseline_nan = blocked_fields["preview_baseline"]
     if not preview_baseline_nan:
         raise RuntimeError("part_operation_hours preview nan 缺少 preview_baseline")
     r = client.post(
@@ -313,23 +344,26 @@ def test_process_excel_part_operation_hours_import(app_client, db_path) -> None:
     )
     _assert_status("part_operation_hours confirm nan", r, 200)
     html_nan_confirm = r.data.decode("utf-8", errors="ignore")
+    assert_no_confirmation(html_nan_confirm)
     if "导入被拒绝" not in html_nan_confirm:
         raise RuntimeError("confirm 阶段未拒绝 NaN 数据")
 
     # 3.2) 非有限数字（Inf）应被拒绝
     hours_rows_inf = [{"图号": "A1001", "工序": 5, "换型时间(h)": 0.5, "单件工时(h)": "Inf"}]
     buf = _make_xlsx_bytes(["图号", "工序", "换型时间(h)", "单件工时(h)"], hours_rows_inf)
-    r = client.post(
-        "/process/excel/part-operation-hours/preview",
-        data={"mode": "overwrite", "file": (buf, "part_op_hours_inf.xlsx")},
-        content_type="multipart/form-data",
-    )
+    with capture_legacy_preview(client.application) as captured_inf:
+        r = client.post(
+            "/process/excel/part-operation-hours/preview",
+            data={"mode": "overwrite", "file": (buf, "part_op_hours_inf.xlsx")},
+            content_type="multipart/form-data",
+        )
     _assert_status("part_operation_hours preview inf", r, 200)
     html_inf = r.data.decode("utf-8", errors="ignore")
     if "必须是有限数字" not in html_inf:
         raise RuntimeError("预览未识别 Inf（期望提示：必须是有限数字）")
-    raw_inf = _extract_raw_rows_json(html_inf)
-    preview_baseline_inf = _extract_hidden_input(html_inf, "preview_baseline")
+    blocked_fields = rejected_preview_payload(captured_inf, html_inf)
+    raw_inf = blocked_fields["raw_rows_json"]
+    preview_baseline_inf = blocked_fields["preview_baseline"]
     if not preview_baseline_inf:
         raise RuntimeError("part_operation_hours preview inf 缺少 preview_baseline")
     r = client.post(
@@ -344,6 +378,7 @@ def test_process_excel_part_operation_hours_import(app_client, db_path) -> None:
     )
     _assert_status("part_operation_hours confirm inf", r, 200)
     html_inf_confirm = r.data.decode("utf-8", errors="ignore")
+    assert_no_confirmation(html_inf_confirm)
     if "导入被拒绝" not in html_inf_confirm:
         raise RuntimeError("confirm 阶段未拒绝 Inf 数据")
 
@@ -385,7 +420,7 @@ def test_process_excel_part_operation_hours_import(app_client, db_path) -> None:
         },
         follow_redirects=True,
     )
-    _assert_status("part_operation_hours confirm", r, 200)
+    assert_followed_confirmation(r, "/process/excel/part-operation-hours")
 
     conn = get_connection(db_path)
     try:

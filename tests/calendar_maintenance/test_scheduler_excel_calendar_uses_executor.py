@@ -2,9 +2,9 @@
 
 import importlib
 import io
-import re
-from html import unescape
 from unittest.mock import patch
+
+from tests._support.legacy_http import confirmation_inputs, follow_legacy_post_redirect
 
 
 def _make_xlsx_bytes(headers, rows):
@@ -23,22 +23,6 @@ def _make_xlsx_bytes(headers, rows):
     wb.close()
     buf.seek(0)
     return buf
-
-
-def _extract_raw_rows_json(html: str) -> str:
-    match = re.search(r'<textarea name="raw_rows_json"[^>]*>(.*?)</textarea>', html, re.S)
-    if not match:
-        raise RuntimeError("未能从页面提取 raw_rows_json")
-    return unescape(match.group(1)).strip()
-
-
-def _extract_hidden_input(html: str, name: str) -> str:
-    for match in re.finditer(r"<input[^>]+>", html, re.I):
-        tag = match.group(0)
-        if re.search(rf'name="{re.escape(name)}"', tag):
-            value_match = re.search(r'value="([^"]*)"', tag)
-            return unescape(value_match.group(1)).strip() if value_match else ""
-    return ""
 
 
 def _assert_status(name: str, resp, expect_code: int = 200) -> None:
@@ -89,8 +73,9 @@ def test_scheduler_excel_calendar_uses_executor(app_client, db_path) -> None:
     )
     _assert_status("POST /scheduler/excel/calendar/preview", preview_resp, 200)
     preview_html = preview_resp.data.decode("utf-8", errors="ignore")
-    raw_rows_json = _extract_raw_rows_json(preview_html)
-    preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
+    fields = confirmation_inputs(preview_html, "/scheduler/excel/calendar/confirm")
+    raw_rows_json = fields["raw_rows_json"]
+    preview_baseline = fields["preview_baseline"]
     if not preview_baseline:
         raise RuntimeError("工作日历预览页缺少 preview_baseline")
 
@@ -113,9 +98,9 @@ def test_scheduler_excel_calendar_uses_executor(app_client, db_path) -> None:
                 "raw_rows_json": raw_rows_json,
                 "preview_baseline": preview_baseline,
             },
-            follow_redirects=True,
+            follow_redirects=False,
         )
-        _assert_status("POST /scheduler/excel/calendar/confirm", confirm_resp, 200)
+        confirm_html = follow_legacy_post_redirect(client, confirm_resp, "/scheduler/excel/calendar")
         if executor_mock.call_count != 1:
             raise RuntimeError(f"工作日历确认导入未通过通用执行器，实际调用次数：{executor_mock.call_count}")
 
@@ -134,7 +119,6 @@ def test_scheduler_excel_calendar_uses_executor(app_client, db_path) -> None:
     if "__source_row_num" in (getattr(pr, "data", None) or {}) or "__source_sheet_name" in (getattr(pr, "data", None) or {}):
         raise RuntimeError(f"执行器收到的预览行不应再包含保留元数据键：{pr.data!r}")
 
-    confirm_html = confirm_resp.data.decode("utf-8", errors="ignore")
     expected_message = "导入完成：新增 0，更新 0，跳过 1，错误 0。"
     if expected_message not in confirm_html:
         raise RuntimeError(f"工作日历确认导入未使用执行器统计结果提示页面：未找到 {expected_message!r}")

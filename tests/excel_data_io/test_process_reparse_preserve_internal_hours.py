@@ -1,7 +1,8 @@
 """回归测试：经 /process/parts/<part>/reparse 重解析工艺路线时，已有内部工序(seq=5)的换型/单件工时(setup_hours/unit_hours)原样保留，新增工序(seq=15)工时回落默认 0，工序归属仍判为 internal。"""
 
 import io
-import re
+
+from tests._support.legacy_http import confirmation_inputs, follow_legacy_post_redirect
 
 
 def _make_xlsx_bytes(headers, rows):
@@ -19,25 +20,6 @@ def _make_xlsx_bytes(headers, rows):
     wb.save(buf)
     buf.seek(0)
     return buf
-
-
-def _extract_raw_rows_json(html: str) -> str:
-    m = re.search(r'<textarea name="raw_rows_json"[^>]*>(.*?)</textarea>', html, re.S)
-    if not m:
-        raise RuntimeError("未能从预览页面提取 raw_rows_json")
-    raw = m.group(1)
-    raw = raw.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&")
-    return raw.strip()
-
-
-def _extract_hidden_input(html: str, name: str) -> str:
-    for m in re.finditer(r"<input[^>]+>", html, re.I):
-        tag = m.group(0)
-        if re.search(rf'name="{re.escape(name)}"', tag):
-            vm = re.search(r'value="([^"]*)"', tag)
-            value = vm.group(1) if vm else ""
-            return value.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&").strip()
-    return ""
 
 
 def _assert_status(name: str, resp, expect_code: int = 200):
@@ -59,8 +41,9 @@ def _preview_confirm_excel(client, *, preview_url: str, confirm_url: str, header
     )
     _assert_status(f"{filename} preview", r, 200)
     preview_html = r.data.decode("utf-8", errors="ignore")
-    raw = _extract_raw_rows_json(preview_html)
-    preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
+    fields = confirmation_inputs(preview_html, confirm_url)
+    raw = fields["raw_rows_json"]
+    preview_baseline = fields["preview_baseline"]
     if not preview_baseline:
         raise RuntimeError(f"{filename} 预览页面缺少 preview_baseline")
     r = client.post(
@@ -71,9 +54,9 @@ def _preview_confirm_excel(client, *, preview_url: str, confirm_url: str, header
             "raw_rows_json": raw,
             "preview_baseline": preview_baseline,
         },
-        follow_redirects=True,
+        follow_redirects=False,
     )
-    _assert_status(f"{filename} confirm", r, 200)
+    follow_legacy_post_redirect(client, r, confirm_url[:-len("/confirm")])
 
 
 def test_process_reparse_preserve_internal_hours(app_client, db_path) -> None:
@@ -168,4 +151,3 @@ def test_process_reparse_preserve_internal_hours(app_client, db_path) -> None:
             )
     finally:
         conn.close()
-

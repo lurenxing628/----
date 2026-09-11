@@ -1,25 +1,18 @@
-"""回归测试：设备详情页 /equipment/<id> 与人员详情页 /personnel/<id> 的读侧归一——把库里 legacy 的 OperatorMachine.skill_level("skilled") 显示为 expert 选中、is_primary 的中文"是"/"off" 归一为勾选/未勾选；link/update 写回后落库为规范值 expert 与 yes/no。"""
+"""旧详情保持身份跳转；保留的关联下载归一显示，link/update 写回规范值且互不串写。"""
 
 from __future__ import annotations
 
-import re
 from typing import Optional, Tuple
+
+from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
+from tests._support.legacy_http import canonical_resource, xlsx_download_rows
+from tests._support.sqlite_snapshot import table_rows
 
 
 def _assert_status(resp, name: str, expect: int = 200) -> None:
     if resp.status_code != expect:
         body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
         raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect}，body={body[:500]}")
-
-
-def _selected_skill_value(html: str) -> Optional[str]:
-    m = re.search(r'<option value="(beginner|normal|expert)"\s+selected>', html)
-    return m.group(1) if m else None
-
-
-def _is_primary_checked(html: str, form_id: str) -> bool:
-    pattern = rf'name="is_primary" value="yes" form="{re.escape(form_id)}"\s+checked'
-    return re.search(pattern, html) is not None
 
 
 def _fetch_link(conn, operator_id: str, machine_id: str) -> Tuple[Optional[str], Optional[str]]:
@@ -50,20 +43,32 @@ def test_operator_machine_detail_readside_normalization(app_client, db_path) -> 
             ("OP200", "MC200", "skilled", "off"),
         )
         conn.commit()
+        before = table_rows(conn, "OperatorMachine")
     finally:
         conn.close()
 
     resp_equipment = app_client.get("/equipment/MC100")
-    _assert_status(resp_equipment, "GET /equipment/MC100")
-    html_equipment = resp_equipment.data.decode("utf-8", errors="ignore")
-    assert _selected_skill_value(html_equipment) == "expert", "设备详情页未将 skilled 归一显示为 expert"
-    assert _is_primary_checked(html_equipment, "linkform_0"), "设备详情页未将中文“是”归一显示为勾选"
+    canonical_resource(app_client, resp_equipment, "machine", "MC100")
 
     resp_personnel = app_client.get("/personnel/OP200")
-    _assert_status(resp_personnel, "GET /personnel/OP200")
-    html_personnel = resp_personnel.data.decode("utf-8", errors="ignore")
-    assert _selected_skill_value(html_personnel) == "expert", "人员详情页未将 skilled 归一显示为 expert"
-    assert not _is_primary_checked(html_personnel, "linkform_0"), "人员详情页未将 off 归一显示为未勾选"
+    canonical_resource(app_client, resp_personnel, "operator", "OP200")
+    equipment_rows = xlsx_download_rows(app_client.get("/equipment/excel/links/export"))
+    personnel_rows = xlsx_download_rows(app_client.get("/personnel/excel/links/export"))
+    assert len(equipment_rows) == len(personnel_rows) == 2
+    first = next(row for row in equipment_rows if row["设备编号"] == "MC100")
+    second = next(row for row in personnel_rows if row["工号"] == "OP200")
+    assert first["工号"] == "OP100" and second["设备编号"] == "MC200"
+    assert first["技能等级"] == second["技能等级"] == "熟练"
+    assert first["主操设备"] == "是" and second["主操设备"] == "否"
+    conn = get_connection(db_path)
+    try:
+        links = {(row["operator_id"], row["machine_id"]): row for row in OperatorMachineQueryService(conn).list_simple_rows()}
+        assert links[("OP100", "MC100")]["skill_level"] == links[("OP200", "MC200")]["skill_level"] == "expert"
+        assert links[("OP100", "MC100")]["is_primary"] == "yes"
+        assert links[("OP200", "MC200")]["is_primary"] == "no"
+        assert table_rows(conn, "OperatorMachine") == before
+    finally:
+        conn.close()
 
     resp_save_equipment = app_client.post(
         "/equipment/MC100/link/update",
@@ -71,6 +76,15 @@ def test_operator_machine_detail_readside_normalization(app_client, db_path) -> 
         follow_redirects=True,
     )
     _assert_status(resp_save_equipment, "POST /equipment/MC100/link/update")
+    assert len(resp_save_equipment.history) == 2
+    assert resp_save_equipment.history[0].status_code == 302
+    assert resp_save_equipment.history[0].headers["Location"] == "/equipment/MC100"
+    canonical_resource(app_client, resp_save_equipment.history[1], "machine", "MC100")
+    conn = get_connection(db_path)
+    try:
+        assert _fetch_link(conn, "OP200", "MC200") == ("skilled", "off")
+    finally:
+        conn.close()
 
     resp_save_personnel = app_client.post(
         "/personnel/OP200/link/update",
@@ -78,6 +92,10 @@ def test_operator_machine_detail_readside_normalization(app_client, db_path) -> 
         follow_redirects=True,
     )
     _assert_status(resp_save_personnel, "POST /personnel/OP200/link/update")
+    assert len(resp_save_personnel.history) == 2
+    assert resp_save_personnel.history[0].status_code == 302
+    assert resp_save_personnel.history[0].headers["Location"] == "/personnel/OP200"
+    canonical_resource(app_client, resp_save_personnel.history[1], "operator", "OP200")
 
     conn = get_connection(db_path)
     try:

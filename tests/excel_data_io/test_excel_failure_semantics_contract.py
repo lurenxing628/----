@@ -20,6 +20,7 @@ def test_excel_failure_semantics_contracts(db_path) -> None:
     from core.services.process.op_type_service import OpTypeService
     from core.services.process.part_operation_hours_excel_import_service import PartOperationHoursExcelImportService
     from core.services.process.part_service import PartService
+    from core.services.process.quota_protection import ProcessQuotaProtection
     from core.services.process.supplier_excel_import_service import SupplierExcelImportService
     from core.services.scheduler import BatchService, CalendarService
 
@@ -167,19 +168,20 @@ def test_excel_failure_semantics_contracts(db_path) -> None:
                 pass
 
         part_hours_import = PartOperationHoursExcelImportService(conn)
+        hours_preview = [ImportPreviewRow(
+            row_num=2, status=RowStatus.UPDATE,
+            data={"__row_id__": "P_HOURS|5", "图号": "P_HOURS", "工序": 5, "换型时间(h)": 1.0, "单件工时(h)": 0.5},
+            message="将更新",
+        )]
+        metadata = ProcessQuotaProtection(conn).legacy_metadata()
+        part_hours_import.protect_preview_rows(hours_preview, metadata)
+        assert hours_preview[0].data["template_operation_ref"] == metadata["P_HOURS|5"]["template_operation_ref"]
+        before_hours = [tuple(row) for row in conn.execute("SELECT * FROM PartOperations ORDER BY part_no, seq")]
         with patch.object(part_hours_import.part_svc, "update_internal_hours", side_effect=ValidationError("模拟工时失败")):
-            part_hours_stats = part_hours_import.apply_preview_rows(
-                [
-                    ImportPreviewRow(
-                        row_num=2,
-                        status=RowStatus.UPDATE,
-                        data={"图号": "P_HOURS", "工序": 5, "换型时间(h)": 1.0, "单件工时(h)": 0.5},
-                        message="将更新",
-                    )
-                ]
-            )
+            part_hours_stats = part_hours_import.apply_preview_rows(hours_preview)
         if int(part_hours_stats.get("error_count", 0)) != 1 or int(part_hours_stats.get("update_count", 0)) != 0:
             raise RuntimeError(f"part_operation_hours 应按行计错继续：{part_hours_stats}")
+        assert [tuple(row) for row in conn.execute("SELECT * FROM PartOperations ORDER BY part_no, seq")] == before_hours
 
         operator_machine_svc = OperatorMachineService(conn)
         operator_machine_stats = operator_machine_svc.apply_import_links(

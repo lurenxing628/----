@@ -83,14 +83,18 @@ def _cleanup_audits(conn):
 def _latest_cleanup(conn, audited_actions):
     rows, issues = [], []
     for job in SystemJobStateRepository(conn).list_all():
-        if job.job_key not in _JOBS:
+        if job.job_key not in _JOBS and job.job_key != "auto_backup":
+            continue
+        if job.last_run_time is None and job.last_run_detail is None:
+            continue
+        label = "自动备份" if job.job_key == "auto_backup" else _JOBS[job.job_key][1]
+        detail, field_issues = _job_detail(job, label)
+        issues.extend(field_issues)
+        if job.job_key == "auto_backup":
             continue
         action, label, count_key = _JOBS[job.job_key]
         if action in audited_actions:
             continue
-        if job.last_run_time is None and job.last_run_detail is None:
-            continue
-        detail = _detail(job.last_run_detail)
         count = detail.get(count_key)
         known = type(count) is int and count >= 0
         state = "failed" if isinstance(detail.get("error"), str) and detail["error"] else (
@@ -120,3 +124,24 @@ def maintenance_records(conn, backup_dir, journal):
     if truncated:
         sources.append({"code": "cleanup_audit_window_truncated", "message": "清理审计超过最近读取窗口，不代表完整历史。"})
     return rows, sources
+
+
+def _job_detail(job, label):
+    """Report malformed persisted job fields without publishing parser input."""
+    issues = []
+    if job.last_run_time not in (None, "") and _timestamp(job.last_run_time) is None:
+        issues.append({"code": "maintenance_last_time_invalid", "job_key": job.job_key,
+                       "message": label + "：上次执行时间记录异常，系统会在下次执行后重新记录。"})
+    raw = job.last_run_detail
+    if raw is None or raw == "":
+        return {}, issues
+    try:
+        detail = json.loads(raw)
+    except (TypeError, ValueError):
+        detail = None
+    if not isinstance(detail, dict):
+        message = "上次结果记录异常，详细内容请让维护人员查看日志。"
+        issues.append({"code": "maintenance_last_detail_invalid", "job_key": job.job_key,
+                       "message": label + "：" + message})
+        detail = {"record_error": message}
+    return detail, issues

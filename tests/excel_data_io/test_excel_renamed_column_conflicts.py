@@ -5,15 +5,20 @@ from __future__ import annotations
 import importlib
 import io
 import os
-import re
 import sys
-from html import unescape
 from pathlib import Path
 
 import openpyxl
 import pytest
 
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.legacy_http import (
+    assert_followed_confirmation,
+    assert_no_confirmation,
+    capture_legacy_preview,
+    confirmation_inputs,
+    rejected_preview_payload,
+)
 from tests._support.paths import REPO_ROOT
 
 if str(REPO_ROOT) not in sys.path:
@@ -59,22 +64,6 @@ def _make_xlsx(headers, rows) -> bytes:
         return output.getvalue()
     finally:
         wb.close()
-
-
-def _extract_raw_rows_json(html: str) -> str:
-    m = re.search(r'<textarea name="raw_rows_json"[^>]*>(.*?)</textarea>', html, re.S)
-    if not m:
-        raise RuntimeError("未能从页面提取 raw_rows_json")
-    return unescape(m.group(1)).strip()
-
-
-def _extract_hidden_input(html: str, name: str) -> str:
-    for m in re.finditer(r"<input[^>]+>", html, re.I):
-        tag = m.group(0)
-        if re.search(rf'name="{re.escape(name)}"', tag):
-            vm = re.search(r'value="([^"]*)"', tag)
-            return unescape(vm.group(1)).strip() if vm else ""
-    raise RuntimeError(f"未能从页面提取隐藏字段：{name}")
 
 
 def _preview_row(data):
@@ -132,23 +121,25 @@ def test_op_type_preview_and_confirm_reject_renamed_id_column_conflict(tmp_path,
         "请保留一个编号列，或把两个值改成一致后重新导入。"
     )
 
-    preview_resp = client.post(
-        "/process/excel/op-types/preview",
-        data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "op_types.xlsx")},
-        content_type="multipart/form-data",
-    )
+    with capture_legacy_preview(app) as captured:
+        preview_resp = client.post(
+            "/process/excel/op-types/preview",
+            data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "op_types.xlsx")},
+            content_type="multipart/form-data",
+        )
     preview_html = preview_resp.get_data(as_text=True)
     assert preview_resp.status_code == 200
     assert expected_message in preview_html
     assert "已识别旧列“工种ID”，本次按“工种编号”处理" in preview_html
+    blocked_fields = rejected_preview_payload(captured, preview_html)
 
     confirm_resp = client.post(
         "/process/excel/op-types/confirm",
         data={
             "mode": ImportMode.OVERWRITE.value,
             "filename": "op_types.xlsx",
-            "raw_rows_json": _extract_raw_rows_json(preview_html),
-            "preview_baseline": _extract_hidden_input(preview_html, "preview_baseline"),
+            "raw_rows_json": blocked_fields["raw_rows_json"],
+            "preview_baseline": blocked_fields["preview_baseline"],
         },
         follow_redirects=True,
     )
@@ -156,6 +147,7 @@ def test_op_type_preview_and_confirm_reject_renamed_id_column_conflict(tmp_path,
     assert confirm_resp.status_code == 200
     assert "导入被拒绝：Excel 存在 1 行错误。" in confirm_html
     assert expected_message in confirm_html
+    assert_no_confirmation(confirm_html)
 
     verify_conn = get_connection(db_path)
     try:
@@ -178,23 +170,25 @@ def test_supplier_preview_and_confirm_reject_renamed_id_column_conflict(tmp_path
         "请保留一个编号列，或把两个值改成一致后重新导入。"
     )
 
-    preview_resp = client.post(
-        "/process/excel/suppliers/preview",
-        data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "suppliers.xlsx")},
-        content_type="multipart/form-data",
-    )
+    with capture_legacy_preview(app) as captured:
+        preview_resp = client.post(
+            "/process/excel/suppliers/preview",
+            data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "suppliers.xlsx")},
+            content_type="multipart/form-data",
+        )
     preview_html = preview_resp.get_data(as_text=True)
     assert preview_resp.status_code == 200
     assert expected_message in preview_html
     assert "已识别旧列“供应商ID”，本次按“供应商编号”处理" in preview_html
+    blocked_fields = rejected_preview_payload(captured, preview_html)
 
     confirm_resp = client.post(
         "/process/excel/suppliers/confirm",
         data={
             "mode": ImportMode.OVERWRITE.value,
             "filename": "suppliers.xlsx",
-            "raw_rows_json": _extract_raw_rows_json(preview_html),
-            "preview_baseline": _extract_hidden_input(preview_html, "preview_baseline"),
+            "raw_rows_json": blocked_fields["raw_rows_json"],
+            "preview_baseline": blocked_fields["preview_baseline"],
         },
         follow_redirects=True,
     )
@@ -202,6 +196,7 @@ def test_supplier_preview_and_confirm_reject_renamed_id_column_conflict(tmp_path
     assert confirm_resp.status_code == 200
     assert "导入被拒绝：Excel 存在 1 行错误。" in confirm_html
     assert expected_message in confirm_html
+    assert_no_confirmation(confirm_html)
 
     verify_conn = get_connection(db_path)
     try:
@@ -225,19 +220,19 @@ def test_machine_preview_and_confirm_accept_legacy_machine_headers(tmp_path, mon
     assert preview_resp.status_code == 200
     assert "已识别旧列“机器编号/机器名称”，本次按“设备编号/设备名称”处理" in preview_html
     assert "“设备编号”不能为空" not in preview_html
+    fields = confirmation_inputs(preview_html, "/equipment/excel/machines/confirm")
 
     confirm_resp = client.post(
         "/equipment/excel/machines/confirm",
         data={
             "mode": ImportMode.OVERWRITE.value,
             "filename": "machines_alias.xlsx",
-            "raw_rows_json": _extract_raw_rows_json(preview_html),
-            "preview_baseline": _extract_hidden_input(preview_html, "preview_baseline"),
+            "raw_rows_json": fields["raw_rows_json"],
+            "preview_baseline": fields["preview_baseline"],
         },
         follow_redirects=True,
     )
-    confirm_html = confirm_resp.get_data(as_text=True)
-    assert confirm_resp.status_code == 200
+    confirm_html = assert_followed_confirmation(confirm_resp, "/equipment/excel/machines")
     assert "导入完成" in confirm_html
 
     verify_conn = get_connection(db_path)
@@ -266,22 +261,24 @@ def test_machine_preview_and_confirm_reject_legacy_machine_header_conflicts(tmp_
         "请保留一个编号列，或把两个值改成一致后重新导入。"
     )
 
-    preview_resp = client.post(
-        "/equipment/excel/machines/preview",
-        data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "machines_conflict.xlsx")},
-        content_type="multipart/form-data",
-    )
+    with capture_legacy_preview(app) as captured:
+        preview_resp = client.post(
+            "/equipment/excel/machines/preview",
+            data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "machines_conflict.xlsx")},
+            content_type="multipart/form-data",
+        )
     preview_html = preview_resp.get_data(as_text=True)
     assert preview_resp.status_code == 200
     assert expected_id_message in preview_html
+    blocked_fields = rejected_preview_payload(captured, preview_html)
 
     confirm_resp = client.post(
         "/equipment/excel/machines/confirm",
         data={
             "mode": ImportMode.OVERWRITE.value,
             "filename": "machines_conflict.xlsx",
-            "raw_rows_json": _extract_raw_rows_json(preview_html),
-            "preview_baseline": _extract_hidden_input(preview_html, "preview_baseline"),
+            "raw_rows_json": blocked_fields["raw_rows_json"],
+            "preview_baseline": blocked_fields["preview_baseline"],
         },
         follow_redirects=True,
     )
@@ -289,6 +286,7 @@ def test_machine_preview_and_confirm_reject_legacy_machine_header_conflicts(tmp_
     assert confirm_resp.status_code == 200
     assert "导入被拒绝：Excel 存在 1 行错误。" in confirm_html
     assert expected_id_message in confirm_html
+    assert_no_confirmation(confirm_html)
 
     verify_conn = get_connection(db_path)
     try:

@@ -1,4 +1,4 @@
-"""冒烟测试：班组(ResourceTeams)端到端贯通——人员/设备 Excel 模板及导出表头含「班组」列，/personnel/teams 班组管理页与 /personnel、/equipment 的 team_id 筛选能显示班组名并过滤资源、非法 team_id 重定向回列表页，人员/设备 Excel 预览页与下载模板/导出均带班组列与班组名。"""
+"""班组旧页面拒绝丢条件跳转；原领域筛选及 Excel 班组列、名称和下载合同保留。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,14 @@ import sys
 from pathlib import Path
 from typing import List
 
+import pytest
+
+from core.errors import BusinessError
+from core.services.equipment.machine_service import MachineService
+from core.services.personnel.operator_service import OperatorService
+from tests._support.legacy_http import assert_retired_response, confirmation_inputs, xlsx_download_rows
 from tests._support.paths import REPO_ROOT
+from tests._support.sqlite_snapshot import table_rows
 
 
 def _assert_status(resp, name: str, expect: int = 200) -> None:
@@ -69,6 +76,7 @@ def test_team_pages_and_excel_routes_show_team_columns_and_headers(tmp_path, mon
             ("MC001", "数控车床1", "active", "TEAM-01", "设备备注"),
         )
         conn.commit()
+        before = {table: table_rows(conn, table) for table in ("ResourceTeams", "Operators", "Machines")}
     finally:
         conn.close()
 
@@ -81,31 +89,34 @@ def test_team_pages_and_excel_routes_show_team_columns_and_headers(tmp_path, mon
     assert _xlsx_headers((test_templates / "设备信息.xlsx").read_bytes()) == ["设备编号", "设备名称", "工种", "班组", "状态"]
 
     resp_team_page = client.get("/personnel/teams")
-    _assert_status(resp_team_page, "GET /personnel/teams")
+    assert_retired_response(resp_team_page)
 
     resp_personnel = client.get("/personnel/?team_id=TEAM-01")
-    _assert_status(resp_personnel, "GET /personnel/?team_id=TEAM-01")
-    html_personnel = resp_personnel.data.decode("utf-8", errors="ignore")
-    assert "OP001" in html_personnel
+    assert_retired_response(resp_personnel)
 
     resp_equipment = client.get("/equipment/?team_id=TEAM-01")
-    _assert_status(resp_equipment, "GET /equipment/?team_id=TEAM-01")
-    html_equipment = resp_equipment.data.decode("utf-8", errors="ignore")
-    assert "MC001" in html_equipment
+    assert_retired_response(resp_equipment)
 
     resp_personnel_invalid = client.get("/personnel/?team_id=TEAM-404")
-    assert resp_personnel_invalid.status_code == 302
-    assert resp_personnel_invalid.headers["Location"].endswith("/personnel/")
+    assert_retired_response(resp_personnel_invalid)
 
     resp_equipment_invalid = client.get("/equipment/?team_id=TEAM-404")
-    assert resp_equipment_invalid.status_code == 302
-    assert resp_equipment_invalid.headers["Location"].endswith("/equipment/")
+    assert_retired_response(resp_equipment_invalid)
+    conn = get_connection(str(test_db))
+    try:
+        assert [row.operator_id for row in OperatorService(conn).list(team_id="TEAM-01")] == ["OP001"]
+        assert [row.machine_id for row in MachineService(conn).list(team_id="TEAM-01")] == ["MC001"]
+        for service in (OperatorService(conn), MachineService(conn)):
+            with pytest.raises(BusinessError, match="TEAM-404"):
+                service.list(team_id="TEAM-404")
+    finally:
+        conn.close()
 
     resp_operator_excel = client.get("/personnel/excel/operators")
-    _assert_status(resp_operator_excel, "GET /personnel/excel/operators")
+    assert_retired_response(resp_operator_excel)
 
     resp_machine_excel = client.get("/equipment/excel/machines")
-    _assert_status(resp_machine_excel, "GET /equipment/excel/machines")
+    assert_retired_response(resp_machine_excel)
 
     resp_operator_template = client.get("/personnel/excel/operators/template")
     _assert_status(resp_operator_template, "GET /personnel/excel/operators/template")
@@ -118,12 +129,34 @@ def test_team_pages_and_excel_routes_show_team_columns_and_headers(tmp_path, mon
     resp_operator_export = client.get("/personnel/excel/operators/export")
     _assert_status(resp_operator_export, "GET /personnel/excel/operators/export")
     assert _xlsx_headers(resp_operator_export.data) == ["工号", "姓名", "状态", "班组", "备注"]
+    operator_rows = xlsx_download_rows(resp_operator_export)
+    assert len(operator_rows) == 1
+    assert operator_rows[0]["工号"] == "OP001" and operator_rows[0]["班组"] == "车工一组"
 
     resp_machine_export = client.get("/equipment/excel/machines/export")
     _assert_status(resp_machine_export, "GET /equipment/excel/machines/export")
     assert _xlsx_headers(resp_machine_export.data) == ["设备编号", "设备名称", "工种", "班组", "状态"]
+    machine_rows = xlsx_download_rows(resp_machine_export)
+    assert len(machine_rows) == 1
+    assert machine_rows[0]["设备编号"] == "MC001" and machine_rows[0]["班组"] == "车工一组"
+    for path, response, filename in (
+        ("/personnel/excel/operators", resp_operator_export, "operators.xlsx"),
+        ("/equipment/excel/machines", resp_machine_export, "machines.xlsx"),
+    ):
+        preview = client.post(path + "/preview", data={
+            "mode": "overwrite", "file": (io.BytesIO(response.data), filename),
+        }, content_type="multipart/form-data")
+        _assert_status(preview, "POST " + path + "/preview")
+        body = preview.get_data(as_text=True)
+        fields = confirmation_inputs(body, path + "/confirm")
+        assert fields["mode"] == "overwrite" and "班组" in body and "车工一组" in body
 
     (test_templates / "人员基本信息.xlsx").unlink()
     resp_excel_demo_template = client.get("/excel-demo/template")
     _assert_status(resp_excel_demo_template, "GET /excel-demo/template")
     assert _xlsx_headers(resp_excel_demo_template.data) == ["工号", "姓名", "状态", "班组", "备注"]
+    conn = get_connection(str(test_db))
+    try:
+        assert before == {table: table_rows(conn, table) for table in before}
+    finally:
+        conn.close()

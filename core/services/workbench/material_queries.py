@@ -30,7 +30,10 @@ def _project(row):
         raise WorkbenchCommandRejected("storage_failure", "物料永久引用缺失，未自动修补数据；请检查数据库。", 500)
     stock = row["stock_qty"]
     if stock is not None and (type(stock) not in (int, float) or not math.isfinite(stock) or stock < 0):
-        raise WorkbenchCommandRejected("storage_failure", "物料库存不是有效的非负数，未用零值替代；请核对原资料。", 500)
+        cause = ValueError("Materials material_id={!r} stock_qty={!r}".format(row["material_id"], stock))
+        raise WorkbenchCommandRejected(
+            "storage_failure", "物料“{}”库存数量不是有效的非负有限数字，未用零值替代；请核对原资料。".format(row["material_id"]),
+            500) from cause
     issues = [{"code": "stock_level_unknown", "scope": "collection", "message": "尚未配置低库存判断依据。"}]
     if stock is None:
         issues.append({"code": "stock_unknown", "message": "库存数量尚未填写。"})

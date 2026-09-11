@@ -2,9 +2,11 @@
 
 import io
 import json
-import re
 from base64 import urlsafe_b64decode
 from typing import Any, cast
+
+from tests._support.legacy_http import assert_no_confirmation, capture_legacy_preview, rejected_preview_payload
+from tests._support.sqlite_snapshot import table_rows
 
 
 def _make_xlsx_bytes(headers, rows):
@@ -22,25 +24,6 @@ def _make_xlsx_bytes(headers, rows):
     wb.save(buf)
     buf.seek(0)
     return buf
-
-
-def _extract_raw_rows_json(html: str) -> str:
-    m = re.search(r'<textarea name="raw_rows_json"[^>]*>(.*?)</textarea>', html, re.S)
-    if not m:
-        raise RuntimeError("未能从预览页面提取 raw_rows_json")
-    raw = m.group(1)
-    raw = raw.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&")
-    return raw.strip()
-
-
-def _extract_hidden_input(html: str, name: str) -> str:
-    for m in re.finditer(r"<input[^>]+>", html, re.I):
-        tag = m.group(0)
-        if re.search(rf'name="{re.escape(name)}"', tag):
-            vm = re.search(r'value="([^"]*)"', tag)
-            value = vm.group(1) if vm else ""
-            return value.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&").strip()
-    return ""
 
 
 def _decode_preview_rows_payload(raw_rows_json: str) -> str:
@@ -78,6 +61,7 @@ def test_process_excel_part_operation_hours_source_row_num(app_client, db_path) 
             ("A1001", 5, None, "数车", "internal", None, None, None, 0.0, 0.0, "active"),
         )
         conn.commit()
+        before = table_rows(conn, "PartOperations")
     finally:
         conn.close()
 
@@ -90,18 +74,20 @@ def test_process_excel_part_operation_hours_source_row_num(app_client, db_path) 
     ]
     buf = _make_xlsx_bytes(headers, rows)
 
-    resp = client.post(
-        "/process/excel/part-operation-hours/preview",
-        data={"mode": "overwrite", "file": (buf, "part_op_hours_source_row.xlsx")},
-        content_type="multipart/form-data",
-    )
+    with capture_legacy_preview(client.application) as captured:
+        resp = client.post(
+            "/process/excel/part-operation-hours/preview",
+            data={"mode": "overwrite", "file": (buf, "part_op_hours_source_row.xlsx")},
+            content_type="multipart/form-data",
+        )
     _assert_status("part_operation_hours preview", resp, 200)
     preview_html = resp.data.decode("utf-8", errors="ignore")
     if "必须是有限数字" not in preview_html:
         raise RuntimeError("预览阶段未命中有限数字校验")
 
-    raw_rows_json = _extract_raw_rows_json(preview_html)
-    preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
+    blocked_fields = rejected_preview_payload(captured, preview_html)
+    raw_rows_json = blocked_fields["raw_rows_json"]
+    preview_baseline = blocked_fields["preview_baseline"]
     if not preview_baseline:
         raise RuntimeError("预览页面缺少 preview_baseline")
 
@@ -128,9 +114,15 @@ def test_process_excel_part_operation_hours_source_row_num(app_client, db_path) 
     )
     _assert_status("part_operation_hours confirm", resp, 200)
     confirm_html = resp.data.decode("utf-8", errors="ignore")
+    assert_no_confirmation(confirm_html)
     if "导入被拒绝" not in confirm_html:
         raise RuntimeError("确认阶段未拒绝错误数据")
     if "错误示例：第3行：" not in confirm_html:
         raise RuntimeError("确认阶段错误示例未优先显示原始 Excel 行号 3")
     if "错误示例：第2行：" in confirm_html:
         raise RuntimeError("确认阶段错误示例错误回退到了压缩行号 2")
+    conn = get_connection(db_path)
+    try:
+        assert table_rows(conn, "PartOperations") == before
+    finally:
+        conn.close()

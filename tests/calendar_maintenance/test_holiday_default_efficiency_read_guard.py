@@ -10,11 +10,21 @@ from pathlib import Path
 import openpyxl
 import pytest
 
+from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.personnel.operator_service import OperatorService
 from core.services.scheduler.config.config_service import ConfigService
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.legacy_http import (
+    assert_no_confirmation,
+    assert_retired_response,
+    canonical_navigation,
+    confirmation_inputs,
+    follow_legacy_post_redirect,
+    notice_messages,
+)
 from tests._support.paths import REPO_ROOT
+from tests._support.sqlite_snapshot import table_rows
 from web.routes.excel_utils import encode_preview_rows_payload
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -168,6 +178,56 @@ def _encoded_preview_rows(rows) -> str:
     return payload
 
 
+def _config_rows(db_path):
+    """Snapshot raw configuration including missing rows and stored text values."""
+    conn = get_connection(db_path)
+    try:
+        return table_rows(conn, "ScheduleConfig")
+    finally:
+        conn.close()
+
+
+def _read_config_panel(db_path):
+    """Exercise the retained read model without rendering or invoking a retired page."""
+    from web.routes.domains.scheduler.scheduler_config_display_state import (
+        build_scheduler_config_panel_state_from_service,
+    )
+
+    conn = get_connection(db_path)
+    try:
+        return build_scheduler_config_panel_state_from_service(ConfigService(conn))
+    finally:
+        conn.close()
+
+
+def _rejected_calendar_preview(client, personal):
+    """Use the retained POST to prove a bad default is publicly rejected before writing."""
+    row = {"日期": "2026-04-01", "类型": "holiday", "可用工时": 0, "效率": None,
+           "允许普通件": "no", "允许急件": "no", "说明": "config-guard"}
+    path = "/scheduler/excel/calendar"
+    if personal:
+        row.update({"工号": "OP001", "班次开始": "08:00", "班次结束": ""})
+        path = "/personnel/excel/operator_calendar"
+    response = client.post(path + "/preview", data={
+        "mode": "overwrite", "file": (_make_xlsx(list(row), [row]), "calendar.xlsx"),
+    }, content_type="multipart/form-data")
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert_no_confirmation(body)
+    assert any("假期工作效率" in message for message in notice_messages(body, "error"))
+    assert "holiday_default_efficiency" not in body
+
+
+def _rejected_config_preset(client):
+    """Keep the real config POST rejection and public field label after GET retirement."""
+    response = client.post("/scheduler/config/preset/save", data={"preset_name": "F-invalid-config"})
+    body = follow_legacy_post_redirect(client, response, "/scheduler/config")
+    errors = notice_messages(body, "error")
+    assert errors and any("假期工作效率" in message for message in errors), body
+    assert not notice_messages(body, "success")
+    assert "holiday_default_efficiency" not in body
+
+
 def test_calendar_excel_row_errors_use_plain_column_copy() -> None:
     from web.routes.domains.scheduler.scheduler_excel_calendar_rows import validate_calendar_import_row
 
@@ -234,32 +294,33 @@ def test_calendar_pages_show_degraded_warning_when_holiday_default_efficiency_in
         warnings.append(message % args if args else str(message))
 
     monkeypatch.setattr(app.logger, "warning", _fake_warning)
-
-    _set_config_raw(db_path, "NaN")
-    resp_scheduler = client.get("/scheduler/calendar")
-    scheduler_body = resp_scheduler.get_data(as_text=True)
-    assert resp_scheduler.status_code == 200
-    assert "假期工作效率" in scheduler_body
-    assert "holiday_default_efficiency" not in scheduler_body
-    assert '"holidayDefaultEfficiency": null' in scheduler_body
-    assert '"holidayDefaultEfficiency": 0.8' not in scheduler_body
-    assert "页面已临时按" in scheduler_body
-    assert "0.8" in scheduler_body
-    assert "排产参数页修复配置" in scheduler_body
-    assert "继续依赖该默认值进行操作" in scheduler_body
-
-    _set_config_raw(db_path, "0")
-    resp_personnel = client.get("/personnel/OP001/calendar")
-    personnel_body = resp_personnel.get_data(as_text=True)
-    assert resp_personnel.status_code == 200
-    assert "假期工作效率" in personnel_body
-    assert "holiday_default_efficiency" not in personnel_body
-    assert '"holidayDefaultEfficiency": null' in personnel_body
-    assert '"holidayDefaultEfficiency": 0.8' not in personnel_body
-    assert "页面已临时按" in personnel_body
-    assert "0.8" in personnel_body
-    assert "排产参数页修复配置" in personnel_body
-    assert "继续依赖该默认值进行操作" in personnel_body
+    for raw, path, personal in (("NaN", "/scheduler/calendar", False), ("0", "/personnel/OP001/calendar", True)):
+        _set_config_raw(db_path, raw)
+        before = _config_rows(db_path)
+        body = assert_retired_response(client.get(path))
+        assert "holidayDefaultEfficiency" not in body
+        if personal:
+            assert "未改查公共日历或其他人员" in body
+        conn = get_connection(db_path)
+        try:
+            service = ConfigService(conn)
+            value, degraded, warning = service.get_holiday_default_efficiency_display_state(logger=app.logger)
+            assert value == 0.8 and degraded is True
+            assert "假期工作效率" in warning and "holiday_default_efficiency" not in warning
+            assert "页面已临时按" in warning and "0.8" in warning
+            assert "排产参数页修复配置" in warning and "继续依赖该默认值进行操作" in warning
+            with pytest.raises(ValidationError):
+                service.get_holiday_default_efficiency(strict_mode=True)
+        finally:
+            conn.close()
+        current = client.get("/api/workbench/v1/resources/summary")
+        assert current.status_code == 200
+        holiday = current.get_json()["data"]["calendar"]["holiday_default_efficiency"]
+        assert holiday["status"] == "unavailable" and holiday["value"] is None
+        assert holiday["issues"]
+        _rejected_calendar_preview(client, personal)
+        assert _config_rows(db_path) == before
+        assert _count_rows(db_path, "WorkCalendar") == _count_rows(db_path, "OperatorCalendar") == 0
     assert any("假期工作效率" in item for item in warnings)
 
 
@@ -273,14 +334,18 @@ def test_scheduler_config_page_shows_degraded_warning_when_holiday_default_effic
 
     monkeypatch.setattr(app.logger, "warning", _fake_warning)
 
+    _seed_default_scheduler_config(db_path)
     _set_config_raw(db_path, "NaN")
+    before = _config_rows(db_path)
     resp = client.get("/scheduler/config")
-    body = resp.get_data(as_text=True)
-    assert resp.status_code == 200
-    assert 'name="holiday_default_efficiency"' in body
-    assert 'value="0.8"' in body
-    assert "假期工作效率 这项设置现在不能直接用" in body
-    assert 'class="flash-card flash-warning"' in body
+    assert_retired_response(resp)
+    panel = _read_config_panel(db_path)
+    assert panel.cfg.holiday_default_efficiency == 0.8
+    assert "holiday_default_efficiency" in panel.config_field_metadata
+    assert "假期工作效率 这项设置现在不能直接用" in panel.config_field_warnings["holiday_default_efficiency"]
+    assert any(item.tone == "warning" for item in panel.notice_items)
+    _rejected_config_preset(client)
+    assert _config_rows(db_path) == before
 
 
 def test_scheduler_config_page_shows_summary_and_inline_warnings_for_multiple_degraded_fields_in_v2(
@@ -295,20 +360,25 @@ def test_scheduler_config_page_shows_summary_and_inline_warnings_for_multiple_de
 
     monkeypatch.setattr(app.logger, "warning", _fake_warning)
 
+    _seed_default_scheduler_config(db_path)
     _set_schedule_config_raw(db_path, "holiday_default_efficiency", "NaN")
     _set_schedule_config_raw(db_path, "objective", " BAD_OBJECTIVE ")
     _set_schedule_config_raw(db_path, "dispatch_mode", " BAD_MODE ")
 
-    resp = client.get("/scheduler/config")
-    body = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert "scheduler-config-degraded-summary" in body
-    assert body.count("scheduler-config-field-warning") >= 3
-    assert 'name="holiday_default_efficiency"' in body
-    assert 'name="objective"' in body
-    assert 'name="dispatch_mode"' in body
-    assert 'value="0.8"' in body
+    before = _config_rows(db_path)
+    assert_retired_response(client.get("/scheduler/config"))
+    panel = _read_config_panel(db_path)
+    expected = {"holiday_default_efficiency", "objective", "dispatch_mode"}
+    assert expected.issubset(panel.config_field_metadata)
+    assert expected.issubset(panel.config_degraded_fields)
+    assert len(panel.config_field_warnings) >= 3
+    for field in expected:
+        assert panel.config_field_warnings[field]
+        assert field not in panel.config_field_warnings[field]
+    assert any(item.tone == "warning" and len(item.detail_items) >= 3 for item in panel.notice_items)
+    assert panel.cfg.holiday_default_efficiency == 0.8
+    _rejected_config_preset(client)
+    assert _config_rows(db_path) == before
 
 
 @pytest.mark.parametrize(
@@ -341,7 +411,22 @@ def test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config(
     after = _count_rows(db_path, "ScheduleConfig")
     missing_after = _count_schedule_config_key(db_path, "objective")
 
-    assert response.status_code == 200
+    if needs_batch:
+        context = canonical_navigation(client, response, "batches")
+        assert set(context) == {"entity_ref"}
+        conn = get_connection(db_path)
+        try:
+            row = conn.execute(
+                "SELECT entity_key FROM WorkbenchEntityRefs WHERE kind='batch' AND ref=? AND active=1",
+                (context["entity_ref"],),
+            ).fetchone()
+            assert row is not None and row["entity_key"] == "B001"
+        finally:
+            conn.close()
+    else:
+        assert_retired_response(response)
+    assert after == _count_rows(db_path, "ScheduleConfig")
+    assert missing_after == _count_schedule_config_key(db_path, "objective")
     assert before == after
     assert missing_before == 0
     assert missing_after == 0
@@ -351,12 +436,17 @@ def test_scheduler_config_page_renders_auto_assign_persist_visibility(tmp_path, 
     app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
     _set_schedule_config_raw(db_path, "auto_assign_persist", "no")
-
+    before = _config_rows(db_path)
     resp = client.get("/scheduler/config")
-    body = resp.get_data(as_text=True)
-    assert resp.status_code == 200
-    assert "保存系统补齐的设备和人员" in body
-    assert "已关闭" in body
+    assert_retired_response(resp)
+    panel = _read_config_panel(db_path)
+    state = panel.current_auto_assign_persist_state
+    assert panel.cfg.auto_assign_persist == "no"
+    assert state["enabled"] is False and state["value"] == "no" and state["label"] == "已关闭"
+    item = panel.current_auto_assign_persist_item
+    assert item.label == "保存补齐资源" and item.value == "已关闭"
+    assert "不改工序原来的资料" in item.desc
+    assert _config_rows(db_path) == before
 
 
 def test_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain(tmp_path, monkeypatch) -> None:
@@ -377,10 +467,10 @@ def test_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chai
             "allow_urgent": "no",
             "remark": "cfg",
         },
-        follow_redirects=True,
+        follow_redirects=False,
     )
-    body = resp.get_data(as_text=True)
-    assert resp.status_code == 200
+    body = follow_legacy_post_redirect(client, resp, "/scheduler/calendar")
+    assert any("假期工作效率" in message for message in notice_messages(body, "error"))
     assert "假期工作效率" in body
     assert "holiday_default_efficiency" not in body
     assert "日历配置已保存" not in body
@@ -406,10 +496,10 @@ def test_operator_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_
             "allow_urgent": "no",
             "remark": "cfg",
         },
-        follow_redirects=True,
+        follow_redirects=False,
     )
-    body = resp.get_data(as_text=True)
-    assert resp.status_code == 200
+    body = follow_legacy_post_redirect(client, resp, "/personnel/OP001/calendar")
+    assert any("假期工作效率" in message for message in notice_messages(body, "error"))
     assert "假期工作效率" in body
     assert "holiday_default_efficiency" not in body
     assert "个人日历配置已保存" not in body
@@ -528,8 +618,8 @@ def test_scheduler_excel_calendar_preview_bootstraps_pristine_store_without_prio
             "mode": "overwrite",
             "file": (
                 _make_xlsx(
-                    ["鏃ユ湡", "绫诲瀷", "鍙敤宸ユ椂", "鏁堢巼", "鍏佽鏅€氫欢", "鍏佽鎬ヤ欢", "璇存槑"],
-                    [{"鏃ユ湡": "2026-04-01", "绫诲瀷": "holiday", "鍙敤宸ユ椂": 0, "鏁堢巼": None, "鍏佽鏅€氫欢": "no", "鍏佽鎬ヤ欢": "no", "璇存槑": "cfg"}],
+                    ["日期", "类型", "可用工时", "效率", "允许普通件", "允许急件", "说明"],
+                    [{"日期": "2026-04-01", "类型": "holiday", "可用工时": 0, "效率": None, "允许普通件": "no", "允许急件": "no", "说明": "cfg"}],
                 ),
                 "calendar.xlsx",
             ),
@@ -539,8 +629,10 @@ def test_scheduler_excel_calendar_preview_bootstraps_pristine_store_without_prio
     preview_body = preview_resp.get_data(as_text=True)
 
     assert preview_resp.status_code == 200
-    assert 'name="raw_rows_json"' in preview_body
+    fields = confirmation_inputs(preview_body, "/scheduler/excel/calendar/confirm")
+    assert fields["mode"] == "overwrite" and fields["filename"] == "calendar.xlsx"
     assert _count_rows(db_path, "ScheduleConfig") > 0
+    assert _count_rows(db_path, "WorkCalendar") == 0
 
 
 def test_operator_calendar_excel_preview_bootstraps_pristine_store_without_prior_read(tmp_path, monkeypatch) -> None:
@@ -554,19 +646,19 @@ def test_operator_calendar_excel_preview_bootstraps_pristine_store_without_prior
             "mode": "overwrite",
             "file": (
                 _make_xlsx(
-                    ["宸ュ彿", "鏃ユ湡", "绫诲瀷", "鐝寮€濮?", "鐝缁撴潫", "鍙敤宸ユ椂", "鏁堢巼", "鍏佽鏅€氫欢", "鍏佽鎬ヤ欢", "璇存槑"],
+                    ["工号", "日期", "类型", "班次开始", "班次结束", "可用工时", "效率", "允许普通件", "允许急件", "说明"],
                     [
                         {
-                            "宸ュ彿": "OP001",
-                            "鏃ユ湡": "2026-04-02",
-                            "绫诲瀷": "holiday",
-                            "鐝寮€濮?": "08:00",
-                            "鐝缁撴潫": "",
-                            "鍙敤宸ユ椂": 0,
-                            "鏁堢巼": None,
-                            "鍏佽鏅€氫欢": "no",
-                            "鍏佽鎬ヤ欢": "no",
-                            "璇存槑": "cfg",
+                            "工号": "OP001",
+                            "日期": "2026-04-02",
+                            "类型": "holiday",
+                            "班次开始": "08:00",
+                            "班次结束": "",
+                            "可用工时": 0,
+                            "效率": None,
+                            "允许普通件": "no",
+                            "允许急件": "no",
+                            "说明": "cfg",
                         }
                     ],
                 ),
@@ -578,5 +670,7 @@ def test_operator_calendar_excel_preview_bootstraps_pristine_store_without_prior
     preview_body = preview_resp.get_data(as_text=True)
 
     assert preview_resp.status_code == 200
-    assert 'name="raw_rows_json"' in preview_body
+    fields = confirmation_inputs(preview_body, "/personnel/excel/operator_calendar/confirm")
+    assert fields["mode"] == "overwrite" and fields["filename"] == "operator_calendar.xlsx"
     assert _count_rows(db_path, "ScheduleConfig") > 0
+    assert _count_rows(db_path, "OperatorCalendar") == 0

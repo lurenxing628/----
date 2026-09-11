@@ -12,6 +12,7 @@ import pytest
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.models import Material
 from core.services.material.material_service import MaterialService
+from tests._support.legacy_http import canonical_navigation
 
 NON_FINITE = [
     float("nan"), float("inf"), float("-inf"), "nan", "NaN", " inf ",
@@ -300,13 +301,15 @@ def test_existing_material_page_surfaces_dirty_quantity_location(app_client, db_
         conn.commit()
         before = _snapshot(conn)
         response = app_client.get("/material/materials", headers={"Accept": accept})
-        assert response.status_code == 409
-        if accept == "application/json":
-            payload = response.get_json()
-            assert payload["error"]["code"] == ErrorCode.DB_INTEGRITY_ERROR.value
-            message = payload["error"]["message"]
-        else:
-            message = response.get_data(as_text=True)
+        context = canonical_navigation(app_client, response, "process")
+        assert context == {"source": "production"}
+        response = app_client.get("/api/workbench/v1/entities/material", headers={"Accept": accept})
+        assert response.status_code == 500 and response.is_json
+        payload = response.get_json()
+        assert payload["ok"] is False and payload["error"]["code"] == "storage_failure"
+        assert _snapshot(conn) == before
+        message = payload["error"]["message"]
+        assert all(private not in message for private in ("Materials", "stock_qty", "NaN", "Traceback"))
         assert "M002" in message
         assert "\u5e93\u5b58\u6570\u91cf" in message
         assert "\u6709\u9650\u6570\u5b57" in message
@@ -314,5 +317,40 @@ def test_existing_material_page_surfaces_dirty_quantity_location(app_client, db_
         assert "stock_qty" in caplog.text
         assert "NaN" in caplog.text
         assert _snapshot(conn) == before
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    ("stock", "expected_status"),
+    [(0, 200), (12.5, 200), (None, 200), ("NaN", 500), (-1, 500)],
+    ids=("zero", "positive", "missing", "nonfinite", "negative"),
+)
+def test_workbench_material_query_preserves_stock_and_identity(app_client, db_path, caplog, stock, expected_status):
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("INSERT INTO Materials(material_id,name,stock_qty) VALUES('M-PAIR','paired material',?)", (stock,))
+        conn.commit()
+        before = _snapshot(conn)
+        references = conn.execute("SELECT * FROM WorkbenchEntityRefs ORDER BY ref").fetchall()
+        stored = conn.execute("SELECT stock_qty FROM Materials WHERE material_id='M-PAIR'").fetchone()[0]
+        response = app_client.get("/api/workbench/v1/entities/material")
+        assert response.status_code == expected_status and response.is_json
+        payload = response.get_json()
+        if expected_status == 200:
+            assert payload["ok"] is True
+            entities = payload["data"]["entities"]
+            assert len(entities) == 1 and entities[0]["business_code"] == "M-PAIR"
+            assert entities[0]["fields"]["stock_qty"] == stored
+            assert any(issue["code"] == "stock_unknown" for issue in entities[0]["issues"]) is (stock is None)
+        else:
+            assert payload["ok"] is False and payload["committed"] is False
+            assert payload["error"]["code"] == "storage_failure"
+            message = payload["error"]["message"]
+            assert "M-PAIR" in message and "库存数量" in message and "有限数字" in message
+            assert all(value not in message for value in ("Materials", "stock_qty", str(stock), "Traceback"))
+            assert "Materials" in caplog.text and "stock_qty" in caplog.text and repr(stored) in caplog.text
+        assert _snapshot(conn) == before
+        assert conn.execute("SELECT * FROM WorkbenchEntityRefs ORDER BY ref").fetchall() == references
     finally:
         conn.close()

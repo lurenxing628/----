@@ -2,6 +2,7 @@
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_supplier import supplier_state
+from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 
 
 def _related(value):
@@ -66,6 +67,7 @@ def _operator(entity, raw, state):
     relations["shift_profile"] = _related(state["shift"])
     relations["shift_profile_ref"] = relations["shift_profile"]["ref"] if relations["shift_profile"] else None
     relations["machine_authorization_count"] = len(state["machine_authorizations"])
+    entity["issues"].extend(_authorization_issues(state["machine_authorizations"]))
     if any(item["record"]["category"] != "internal" for item in state["skill_types"]):
         entity["issues"].append({"code": "operator_skill_invalid", "message": "已登记技能含非自制工种，请核对；未认定其具备自制资格。"})
     if relations["skills_declared"] and not relations["skill_refs"]:
@@ -107,3 +109,17 @@ def _supplier(entity, raw):
         message = "原供应商停用原因未知，未认定为待复核。" if raw["status"] == "inactive" else "原供应商状态无法识别，当前保留原值，未认定为启用或停用。"
         entity["issues"].append({"code": "legacy_status_unknown", "message": message})
     return entity
+
+
+def _authorization_issues(rows):
+    """Expose affected link fields without changing raw authorization values."""
+    issues = []
+    labels = {"skill_level": "技能等级", "is_primary": "主操设备"}
+    for row in rows:
+        normalized = OperatorMachineQueryService._normalize_row(row)
+        fields = normalized.get("dirty_fields", [])
+        if fields:
+            message = "设备“{}”的关联记录需核对，涉及字段：{}；当前仅按兼容规则解释，原值未改写。".format(
+                row["machine_id"], "、".join(labels[field] for field in fields))
+            issues.append({"code": "machine_authorization_dirty", "fields": list(fields), "message": message})
+    return issues

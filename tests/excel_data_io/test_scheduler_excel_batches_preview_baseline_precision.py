@@ -8,10 +8,10 @@ import json
 import os
 import sys
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from html.parser import HTMLParser
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List
 
+from tests._support.legacy_http import assert_no_confirmation, follow_legacy_post_redirect, notice_messages
 from tests._support.paths import REPO_ROOT
 
 TESTS_DIR = REPO_ROOT / "tests"
@@ -27,43 +27,8 @@ from tests.excel_data_io.excel_preview_confirm_helpers import build_confirm_payl
 _STALE_PREVIEW_MESSAGE = "导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。"
 
 
-class _FlashMessageParser(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.messages: List[Tuple[str, str]] = []
-        self._category: Optional[str] = None
-        self._depth = 0
-        self._parts: List[str] = []
-
-    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
-        attrs_dict = dict(attrs)
-        if self._category is None and tag == "div" and attrs_dict.get("data-flash"):
-            self._category = str(attrs_dict["data-flash"])
-            self._depth = 1
-            self._parts = []
-            return
-        if self._category is not None:
-            self._depth += 1
-
-    def handle_endtag(self, tag: str) -> None:
-        if self._category is None:
-            return
-        self._depth -= 1
-        if self._depth == 0:
-            message = " ".join(" ".join(self._parts).split())
-            self.messages.append((self._category, message))
-            self._category = None
-            self._parts = []
-
-    def handle_data(self, data: str) -> None:
-        if self._category is not None:
-            self._parts.append(data)
-
-
 def _flash_messages(html: str, category: str) -> List[str]:
-    parser = _FlashMessageParser()
-    parser.feed(html)
-    return [message for flash_category, message in parser.messages if flash_category == category]
+    return notice_messages(html, category)
 
 
 def _assert_stale_preview_error(html: str, *, expected: bool) -> None:
@@ -131,7 +96,7 @@ def _preview_batches(client, *, rows, auto_generate_ops: str, strict_mode: str =
     return response.get_data(as_text=True)
 
 
-def _confirm_batches(client, preview_html: str, *, auto_generate_ops: str, strict_mode: str = "no") -> str:
+def _confirm_batches(client, preview_html: str, *, auto_generate_ops: str, strict_mode: str = "no", rejected: bool = False) -> str:
     payload = build_confirm_payload(
         preview_html,
         mode="overwrite",
@@ -140,9 +105,13 @@ def _confirm_batches(client, preview_html: str, *, auto_generate_ops: str, stric
         confirm_extra={"auto_generate_ops": auto_generate_ops, "strict_mode": strict_mode},
         confirm_hidden_fields=["auto_generate_ops", "strict_mode"],
     )
-    response = client.post("/scheduler/excel/batches/confirm", data=payload, follow_redirects=True)
+    response = client.post("/scheduler/excel/batches/confirm", data=payload, follow_redirects=False)
+    if not rejected:
+        return follow_legacy_post_redirect(client, response, "/scheduler/excel/batches")
     assert response.status_code == 200, response.get_data(as_text=True)[:500]
-    return response.get_data(as_text=True)
+    html = response.get_data(as_text=True)
+    assert_no_confirmation(html)
+    return html
 
 
 def _assert_batch_present(db_path: str, batch_id: str) -> None:
@@ -336,7 +305,7 @@ def test_scheduler_excel_batches_autobuild_supplier_default_days_drift_requires_
     finally:
         conn.close()
 
-    confirm_html = _confirm_batches(client, preview_html, auto_generate_ops="1")
+    confirm_html = _confirm_batches(client, preview_html, auto_generate_ops="1", rejected=True)
 
     _assert_stale_preview_error(confirm_html, expected=True)
     _assert_batch_absent(db_path, "B_PARSE_REVIEW")
@@ -439,7 +408,7 @@ def test_scheduler_excel_batches_autobuild_supplier_status_change_requires_repre
     finally:
         conn.close()
 
-    confirm_html = _confirm_batches(client, preview_html, auto_generate_ops="1")
+    confirm_html = _confirm_batches(client, preview_html, auto_generate_ops="1", rejected=True)
 
     _assert_stale_preview_error(confirm_html, expected=True)
     _assert_batch_absent(db_path, "B_PARSE_STATUS_OK")
