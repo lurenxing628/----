@@ -1,0 +1,486 @@
+{
+  "status": "confirmed_read_snapshot_restart_failure",
+  "ticket_values_omitted": true,
+  "responses": [
+    {
+      "state": "1392x924-light",
+      "page_id": 10,
+      "path": "/api/workbench/v1/analytics",
+      "method": "GET",
+      "request_body": null,
+      "query_fields": [
+        "source",
+        "plan_ref",
+        "plan_finish_date_from",
+        "plan_finish_date_to",
+        "batch_ref",
+        "query",
+        "focus",
+        "topic",
+        "page",
+        "size",
+        "sort",
+        "direction",
+        "snapshot_ref"
+      ],
+      "has_command_fields": false,
+      "history": {
+        "view": "reports",
+        "context_keys": [
+          "scope",
+          "topic",
+          "snapshot_ref",
+          "table",
+          "selected",
+          "chartsOpen",
+          "catalogOpen",
+          "scroll",
+          "resourceView"
+        ],
+        "scope_fields": [
+          "source",
+          "plan_ref",
+          "plan_finish_date_from",
+          "plan_finish_date_to",
+          "batch_ref",
+          "query",
+          "focus"
+        ],
+        "table_fields": [
+          "topic",
+          "page",
+          "size",
+          "sort",
+          "direction",
+          "snapshot_ref"
+        ],
+        "has_snapshot_ref": true,
+        "has_table_snapshot_ref": true,
+        "two_read_refs_equal": true
+      },
+      "error": {
+        "code": "snapshot_stale",
+        "fields": [],
+        "message": "读取范围已失效，请重新刷新；未自动切换到新数据。",
+        "request_ref": "bd52995e7e3149128258386e7d85bff7",
+        "retryable": false
+      },
+      "body_top_fields": [
+        "committed",
+        "error",
+        "ok"
+      ],
+      "file": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-responses/78791.json"
+    },
+    {
+      "state": "1392x924-dark",
+      "page_id": 72,
+      "path": "/api/workbench/v1/analytics",
+      "method": "GET",
+      "request_body": null,
+      "query_fields": [
+        "source",
+        "plan_ref",
+        "plan_finish_date_from",
+        "plan_finish_date_to",
+        "batch_ref",
+        "query",
+        "focus",
+        "topic",
+        "page",
+        "size",
+        "sort",
+        "direction",
+        "snapshot_ref"
+      ],
+      "has_command_fields": false,
+      "history": {
+        "view": "reports",
+        "context_keys": [
+          "scope",
+          "topic",
+          "snapshot_ref",
+          "table",
+          "selected",
+          "chartsOpen",
+          "catalogOpen",
+          "scroll",
+          "resourceView"
+        ],
+        "scope_fields": [
+          "source",
+          "plan_ref",
+          "plan_finish_date_from",
+          "plan_finish_date_to",
+          "batch_ref",
+          "query",
+          "focus"
+        ],
+        "table_fields": [
+          "topic",
+          "page",
+          "size",
+          "sort",
+          "direction",
+          "snapshot_ref"
+        ],
+        "has_snapshot_ref": true,
+        "has_table_snapshot_ref": true,
+        "two_read_refs_equal": true
+      },
+      "error": {
+        "code": "snapshot_stale",
+        "fields": [],
+        "message": "读取范围已失效，请重新刷新；未自动切换到新数据。",
+        "request_ref": "897dec56ca51494aaac7d0e228028c38",
+        "retryable": false
+      },
+      "body_top_fields": [
+        "committed",
+        "error",
+        "ok"
+      ],
+      "file": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-responses/80117.json"
+    },
+    {
+      "state": "1920x1080-light",
+      "page_id": 134,
+      "path": "/api/workbench/v1/analytics",
+      "method": "GET",
+      "request_body": null,
+      "query_fields": [
+        "source",
+        "plan_ref",
+        "plan_finish_date_from",
+        "plan_finish_date_to",
+        "batch_ref",
+        "query",
+        "focus",
+        "topic",
+        "page",
+        "size",
+        "sort",
+        "direction",
+        "snapshot_ref"
+      ],
+      "has_command_fields": false,
+      "history": {
+        "view": "reports",
+        "context_keys": [
+          "scope",
+          "topic",
+          "snapshot_ref",
+          "table",
+          "selected",
+          "chartsOpen",
+          "catalogOpen",
+          "scroll",
+          "resourceView"
+        ],
+        "scope_fields": [
+          "source",
+          "plan_ref",
+          "plan_finish_date_from",
+          "plan_finish_date_to",
+          "batch_ref",
+          "query",
+          "focus"
+        ],
+        "table_fields": [
+          "topic",
+          "page",
+          "size",
+          "sort",
+          "direction",
+          "snapshot_ref"
+        ],
+        "has_snapshot_ref": true,
+        "has_table_snapshot_ref": true,
+        "two_read_refs_equal": true
+      },
+      "error": {
+        "code": "snapshot_stale",
+        "fields": [],
+        "message": "读取范围已失效，请重新刷新；未自动切换到新数据。",
+        "request_ref": "9071af13c85547658f0ca2b2af6a8ac3",
+        "retryable": false
+      },
+      "body_top_fields": [
+        "committed",
+        "error",
+        "ok"
+      ],
+      "file": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-responses/81443.json"
+    },
+    {
+      "state": "1920x1080-dark",
+      "page_id": 196,
+      "path": "/api/workbench/v1/analytics",
+      "method": "GET",
+      "request_body": null,
+      "query_fields": [
+        "source",
+        "plan_ref",
+        "plan_finish_date_from",
+        "plan_finish_date_to",
+        "batch_ref",
+        "query",
+        "focus",
+        "topic",
+        "page",
+        "size",
+        "sort",
+        "direction",
+        "snapshot_ref"
+      ],
+      "has_command_fields": false,
+      "history": {
+        "view": "reports",
+        "context_keys": [
+          "scope",
+          "topic",
+          "snapshot_ref",
+          "table",
+          "selected",
+          "chartsOpen",
+          "catalogOpen",
+          "scroll",
+          "resourceView"
+        ],
+        "scope_fields": [
+          "source",
+          "plan_ref",
+          "plan_finish_date_from",
+          "plan_finish_date_to",
+          "batch_ref",
+          "query",
+          "focus"
+        ],
+        "table_fields": [
+          "topic",
+          "page",
+          "size",
+          "sort",
+          "direction",
+          "snapshot_ref"
+        ],
+        "has_snapshot_ref": true,
+        "has_table_snapshot_ref": true,
+        "two_read_refs_equal": true
+      },
+      "error": {
+        "code": "snapshot_stale",
+        "fields": [],
+        "message": "读取范围已失效，请重新刷新；未自动切换到新数据。",
+        "request_ref": "e24a7555e39f4ee99788c61ffbec9e8e",
+        "retryable": false
+      },
+      "body_top_fields": [
+        "committed",
+        "error",
+        "ok"
+      ],
+      "file": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-responses/82769.json"
+    }
+  ],
+  "source_links": [
+    {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/source/frontend/workbench/app/ReportWorkspace.jsx",
+      "sha256": "3ff23a639135f2a2dcba522799432b19663892b2eaafa703855966832c8795e8",
+      "lines": [
+        9,
+        27
+      ]
+    },
+    {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/source/web/routes/workbench/reports.py",
+      "sha256": "bd004ceb272f1a9f8c441ca1725993a00a4cfb7b7e776f311952247e450b1e0c",
+      "lines": [
+        25,
+        36,
+        72,
+        87,
+        128
+      ]
+    },
+    {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/source/web/routes/workbench/read_context.py",
+      "sha256": "5d89eb0d56824a7c0f5764749c1216ea29cf311a481de4fb756f5d95ebfac9cd",
+      "lines": [
+        12,
+        24
+      ]
+    },
+    {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/source/web/public_token_registry.py",
+      "sha256": "293ff16c927bbc3bb86ff9c47e98eb093827b52e3f908b8eb8edde0b67fc8a9e",
+      "lines": [
+        47,
+        134
+      ]
+    },
+    {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/source/frontend/workbench/app/WorkbenchNavigation.js",
+      "sha256": "aca7bc323ef80e50146c6189111a51b59521208c6ab3570677de8e7761169799",
+      "lines": [
+        32,
+        36
+      ]
+    }
+  ],
+  "restart": {
+    "old_pid": 22346,
+    "new_pid": 25308,
+    "browser_pid": 22380,
+    "same_origin": "http://127.0.0.1:63894",
+    "original_pages": 24,
+    "identities": [
+      {
+        "state": "1392x924-light",
+        "page_id": 1,
+        "context_id": 1,
+        "alive": true
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 4,
+        "context_id": 2,
+        "alive": true
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 7,
+        "context_id": 3,
+        "alive": true
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 10,
+        "context_id": 4,
+        "alive": true
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 13,
+        "context_id": 5,
+        "alive": true
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 16,
+        "context_id": 6,
+        "alive": true
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 63,
+        "context_id": 46,
+        "alive": true
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 66,
+        "context_id": 47,
+        "alive": true
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 69,
+        "context_id": 48,
+        "alive": true
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 72,
+        "context_id": 49,
+        "alive": true
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 75,
+        "context_id": 50,
+        "alive": true
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 78,
+        "context_id": 51,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 125,
+        "context_id": 91,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 128,
+        "context_id": 92,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 131,
+        "context_id": 93,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 134,
+        "context_id": 94,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 137,
+        "context_id": 95,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 140,
+        "context_id": 96,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 187,
+        "context_id": 136,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 190,
+        "context_id": 137,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 193,
+        "context_id": 138,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 196,
+        "context_id": 139,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 199,
+        "context_id": 140,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 202,
+        "context_id": 141,
+        "alive": true
+      }
+    ]
+  },
+  "product_owner": "E via Main"
+}
+

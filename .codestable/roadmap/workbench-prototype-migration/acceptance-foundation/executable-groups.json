@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "status": "executable_unit_verified_not_live_verified",
+  "recorded_utc": "2026-09-10T14:55:37Z",
+  "execution": {
+    "groups": [
+      "canonical",
+      "boot"
+    ],
+    "case_kinds": {
+      "canonical_navigation": 212,
+      "boot_contract_fault": 40
+    },
+    "total_cases": 252,
+    "restart_pages": 24,
+    "navigation_seed": true,
+    "browser_timeout_seconds": 1800
+  },
+  "test_snapshot": {
+    "sha256": "ea5f795e8b58ac16dcf21435b2858f1115ec872b2416aa1995290ac548884b16",
+    "files": {
+      "tests/workbench/final_foundation_live.py": "88e76262ab9e6220b46d2a2e74bd83cc3c9c1448c7595cb90332d5556cc29495",
+      "tests/workbench/final_foundation_live_support.py": "70d203dc0cbcd3282ed3682e97dfd83221b3b8b4c8b640fce1f936ef45f2d482",
+      "tests/workbench/final_foundation_live_source_guard.py": "482891d6a467f8259093236c0bb080fe91d7bc6b25f68a22fab1ebba79b19def",
+      "tests/workbench/final_foundation_live_nav_cases.py": "bee2fe4d27f53b38b50df6a95f5891eea46395180e0b9d2e4c20672c1b87b8a2",
+      "tests/workbench/final_foundation_navigation_seed.py": "a2ec4cc29816c0e3a6e16a33e8537443e5b80bf0b4f40a5ba14686a380280f22",
+      "tests/workbench/test_final_foundation_live.py": "a93e5e6dd97dab39c85ae4d46702c1ae4b3d02f573fa8789864aca2d5ee2e08d",
+      "tests/workbench/final_foundation_live.cjs": "946da48018498621ae261b2ad2d4241b31f962fa41f9be6d07a5aa3c3624312c",
+      "tests/workbench/final_foundation_live_probe.cjs": "a8daefd045740d47f7f162e3392ddb1fff8170b028e4165721365336f9325b7d",
+      "tests/workbench/final_foundation_live_actions.cjs": "a735c9303fd989191abab17008e09e148c27f1fe1b0d4aa1aa016223cec533ae",
+      "tests/workbench/final_foundation_live_faults.cjs": "4be957e0cc0a39f61718b513ac0dab4d4caf1adb689149db84f111512ba1bee0",
+      "tests/workbench/final_foundation_live_boot_cases.cjs": "bf17d5e3b84704ebba588249bd550d0b77d01d65acc212a70c6b20173a5564b3",
+      "tests/workbench/final_foundation_live_navigation.cjs": "74027d6d5a7d2e650a870278560b3d05432a0c66683a544c645083242929d7fb"
+    },
+    "ownership": "B tests only; not the original F test snapshot"
+  },
+  "browser_executed": false,
+  "original_workspace": "/Users/lurenxing/GitHub/----",
+  "historical_92": "Unchanged; old 64b6 result remains in handoff.md and its immutable raw fixture",
+  "product_overlay_allowed": false,
+  "main_host_edited": false,
+  "f_snapshot_path_received": false,
+  "b_owned_full_copy_required": true,
+  "f_source_overlay_allowed": false,
+  "authorization": "After verified B-owned full source/asset copy and required product contracts, run 252 directly without a second Main GO",
+  "intermediate_group": "canonical,boot",
+  "final_all_group": {
+    "groups": [
+      "legacy",
+      "canonical",
+      "boot"
+    ],
+    "total_cases": 344,
+    "restart_pages": 28
+  },
+  "grouping": {
+    "canonical": {
+      "positive_recipes": 6,
+      "transitions_each": 4,
+      "matrix": 4,
+      "positive_cases": 96,
+      "http400_recipes": 24,
+      "http400_cases": 96,
+      "domain404_recipes": 5,
+      "domain404_cases": 20,
+      "total_cases": 212
+    },
+    "boot": {
+      "definitions": 10,
+      "matrix": 4,
+      "total_cases": 40
+    }
+  },
+  "source_requirements": [
+    "Copy F's complete source and actual assets to an OWNED B snapshot; verify every product/asset SHA and mode without rebuilding",
+    "Overlay exactly the 12 B-owned test files ONLY in B's copy; record this separate test snapshot SHA and leave F's running source untouched",
+    "Never replace product files or tests/workbench/final_foundation_host.py",
+    "Require B's matching copied asset root, F build ID and manifest SHA; forbid original-workspace and F-source/asset fallbacks",
+    "Keep B and F on different fresh DB roots; B owns only its host/browser and same-port restart"
+  ],
+  "f5_mechanism": "Playwright page.reload: actual full document reload; not a claimed physical F5 key event"
+}

@@ -1,0 +1,14 @@
+{% extends "error_base.html" %}
+{% block content %}
+<header><h1>{{ title or "发生错误" }}</h1></header>
+<p class="notice" role="alert">{{ message or "发生未知错误，请查看日志。" }}</p>
+{% if field_label %}<p>相关字段：{{ field_label }}</p>{% endif %}
+{% if details %}
+  {% if details is mapping and details.get("field") and details|length == 1 and not field_label %}
+    <p class="muted">相关字段：请查看上方提示。</p>
+  {% elif details is string %}<h2>详细信息</h2><p>{{ details }}</p>
+  {% else %}<p class="muted">系统已记录更详细的信息，请联系维护人员查看日志。</p>{% endif %}
+{% endif %}
+{% if occurred_at %}<p class="muted">发生时刻：{{ occurred_at }}</p>{% endif %}
+<p>可<a href="/system/runtime-logs">打开运行日志</a>按发生时刻核查；也可在运行日志中导出诊断包。请保留原请求信息核查结果，不要重复提交。</p>
+{% endblock %}

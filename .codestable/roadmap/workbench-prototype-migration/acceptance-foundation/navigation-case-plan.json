@@ -1,0 +1,1250 @@
+{
+  "schema_version": 1,
+  "status": "prepared_not_live_verified",
+  "groups": [
+    "canonical-positive",
+    "canonical-http400",
+    "canonical-domain-failure"
+  ],
+  "matrix": [
+    "1392x924-light",
+    "1392x924-dark",
+    "1920x1080-light",
+    "1920x1080-dark"
+  ],
+  "source": {
+    "kind": "navigation_condition_preparation",
+    "root": "/private/tmp/aps-final-foundation-B.xYPahs/navigation-unit.A82W1l/pytest/test_navigation_case_plan_uses0/aps-workbench-live-nb_vi1bw",
+    "plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+    "draft_ref": "5d00808f4d67aab9170ccbe776163eab10825cbc821aa42f",
+    "receipt_ref": "03a5072df0fb4a26b9700d728aa2f953"
+  },
+  "cases": [
+    {
+      "id": "gantt-explicit-plan-range",
+      "group": "canonical-positive",
+      "status": "planned_not_executed",
+      "view": "gantt",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"gantt\",\"context\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&nav=%7B%22version%22%3A1%2C%22view%22%3A%22gantt%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D",
+      "payload": {
+        "version": 1,
+        "view": "gantt",
+        "context": {
+          "plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+          "range_start": "2026-09-07T08:00:00",
+          "range_end": "2026-09-07T08:15:00"
+        }
+      },
+      "transitions": [
+        "direct_url",
+        "copy_url_new_tab",
+        "same_tab_f5",
+        "same_tab_same_port_new_host_pid"
+      ],
+      "html_status": 200,
+      "dto": {
+        "method": "GET",
+        "path": "/api/workbench/v1/plans/17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd/workspace",
+        "request_query": {
+          "range_start": "2026-09-07T08:00:00",
+          "range_end": "2026-09-07T08:15:00"
+        },
+        "response_fields": {
+          "data.plan.plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+          "data.scope.plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+          "data.scope.range_start": "2026-09-07T08:00:00",
+          "data.scope.range_end": "2026-09-07T08:15:00"
+        }
+      },
+      "caption": {
+        "reference": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+        "name": "adopted label",
+        "kind": "official",
+        "version": 3,
+        "is_current_official": true,
+        "range": {
+          "range_start": "2026-09-07T08:00:00",
+          "range_end": "2026-09-07T08:15:00"
+        }
+      },
+      "checks": [
+        "server boot.navigation equals parsed URL object",
+        "real workspace consumes the original context",
+        "no history writes, product hooks, fake API responses, or default-plan substitution",
+        "save original/copied page and browser context identities across host restart"
+      ]
+    },
+    {
+      "id": "analysis-explicit-plan-range",
+      "group": "canonical-positive",
+      "status": "planned_not_executed",
+      "view": "analysis",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "analysis"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"analysis\",\"context\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=analysis&nav=%7B%22version%22%3A1%2C%22view%22%3A%22analysis%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D",
+      "payload": {
+        "version": 1,
+        "view": "analysis",
+        "context": {
+          "plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+          "range_start": "2026-09-07T08:00:00",
+          "range_end": "2026-09-07T08:15:00"
+        }
+      },
+      "transitions": [
+        "direct_url",
+        "copy_url_new_tab",
+        "same_tab_f5",
+        "same_tab_same_port_new_host_pid"
+      ],
+      "html_status": 200,
+      "dto": {
+        "method": "GET",
+        "path": "/api/workbench/v1/plans/17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd/workspace",
+        "request_query": {
+          "range_start": "2026-09-07T08:00:00",
+          "range_end": "2026-09-07T08:15:00"
+        },
+        "response_fields": {
+          "data.plan.plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+          "data.scope.plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+          "data.scope.range_start": "2026-09-07T08:00:00",
+          "data.scope.range_end": "2026-09-07T08:15:00"
+        }
+      },
+      "caption": {
+        "reference": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+        "name": "adopted label",
+        "kind": "official",
+        "version": 3,
+        "is_current_official": true,
+        "range": {
+          "range_start": "2026-09-07T08:00:00",
+          "range_end": "2026-09-07T08:15:00"
+        }
+      },
+      "checks": [
+        "server boot.navigation equals parsed URL object",
+        "real workspace consumes the original context",
+        "no history writes, product hooks, fake API responses, or default-plan substitution",
+        "save original/copied page and browser context identities across host restart"
+      ]
+    },
+    {
+      "id": "delay-explicit-plan-range",
+      "group": "canonical-positive",
+      "status": "planned_not_executed",
+      "view": "delay",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "delay"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"delay\",\"context\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=delay&nav=%7B%22version%22%3A1%2C%22view%22%3A%22delay%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D",
+      "payload": {
+        "version": 1,
+        "view": "delay",
+        "context": {
+          "plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+          "range_start": "2026-09-07T08:00:00",
+          "range_end": "2026-09-07T08:15:00"
+        }
+      },
+      "transitions": [
+        "direct_url",
+        "copy_url_new_tab",
+        "same_tab_f5",
+        "same_tab_same_port_new_host_pid"
+      ],
+      "html_status": 200,
+      "dto": {
+        "method": "GET",
+        "path": "/api/workbench/v1/plans/17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd/workspace",
+        "request_query": {
+          "range_start": "2026-09-07T08:00:00",
+          "range_end": "2026-09-07T08:15:00"
+        },
+        "response_fields": {
+          "data.plan.plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+          "data.scope.plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+          "data.scope.range_start": "2026-09-07T08:00:00",
+          "data.scope.range_end": "2026-09-07T08:15:00"
+        }
+      },
+      "caption": {
+        "reference": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+        "name": "adopted label",
+        "kind": "official",
+        "version": 3,
+        "is_current_official": true,
+        "range": {
+          "range_start": "2026-09-07T08:00:00",
+          "range_end": "2026-09-07T08:15:00"
+        }
+      },
+      "checks": [
+        "server boot.navigation equals parsed URL object",
+        "real workspace consumes the original context",
+        "no history writes, product hooks, fake API responses, or default-plan substitution",
+        "save original/copied page and browser context identities across host restart"
+      ]
+    },
+    {
+      "id": "reports-explicit-plan-cohort",
+      "group": "canonical-positive",
+      "status": "planned_not_executed",
+      "view": "reports",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "reports"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"reports\",\"context\":{\"scope\":{\"source\":\"production\",\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"batch_ref\":\"fda97114c8940e8d9914d4494fee118ab8d3ce0f9d3b8bb6\",\"plan_finish_date_from\":\"2026-09-07\",\"plan_finish_date_to\":\"2026-09-07\",\"query\":\"CAT-B\",\"focus\":\"all\"},\"topic\":\"records\",\"catalogOpen\":false}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=reports&nav=%7B%22version%22%3A1%2C%22view%22%3A%22reports%22%2C%22context%22%3A%7B%22scope%22%3A%7B%22source%22%3A%22production%22%2C%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22batch_ref%22%3A%22fda97114c8940e8d9914d4494fee118ab8d3ce0f9d3b8bb6%22%2C%22plan_finish_date_from%22%3A%222026-09-07%22%2C%22plan_finish_date_to%22%3A%222026-09-07%22%2C%22query%22%3A%22CAT-B%22%2C%22focus%22%3A%22all%22%7D%2C%22topic%22%3A%22records%22%2C%22catalogOpen%22%3Afalse%7D%7D",
+      "payload": {
+        "version": 1,
+        "view": "reports",
+        "context": {
+          "scope": {
+            "source": "production",
+            "plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+            "batch_ref": "fda97114c8940e8d9914d4494fee118ab8d3ce0f9d3b8bb6",
+            "plan_finish_date_from": "2026-09-07",
+            "plan_finish_date_to": "2026-09-07",
+            "query": "CAT-B",
+            "focus": "all"
+          },
+          "topic": "records",
+          "catalogOpen": false
+        }
+      },
+      "transitions": [
+        "direct_url",
+        "copy_url_new_tab",
+        "same_tab_f5",
+        "same_tab_same_port_new_host_pid"
+      ],
+      "html_status": 200,
+      "dto": {
+        "method": "GET",
+        "path": "/api/workbench/v1/analytics",
+        "request_query": {
+          "source": "production",
+          "plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+          "batch_ref": "fda97114c8940e8d9914d4494fee118ab8d3ce0f9d3b8bb6",
+          "plan_finish_date_from": "2026-09-07",
+          "plan_finish_date_to": "2026-09-07",
+          "query": "CAT-B",
+          "focus": "all",
+          "topic": "records"
+        },
+        "response_scope": {
+          "source": "production",
+          "plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+          "batch_ref": "fda97114c8940e8d9914d4494fee118ab8d3ce0f9d3b8bb6",
+          "plan_finish_date_from": "2026-09-07",
+          "plan_finish_date_to": "2026-09-07",
+          "query": "CAT-B",
+          "focus": "all"
+        },
+        "response_fields": {
+          "data.plan.plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+          "data.topic": "records"
+        }
+      },
+      "caption": {
+        "reference": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+        "name": "adopted label",
+        "kind": "official",
+        "version": 3,
+        "is_current_official": true,
+        "range": {
+          "plan_finish_date_from": "2026-09-07",
+          "plan_finish_date_to": "2026-09-07"
+        }
+      },
+      "checks": [
+        "server boot.navigation equals parsed URL object",
+        "real workspace consumes the original context",
+        "no history writes, product hooks, fake API responses, or default-plan substitution",
+        "save original/copied page and browser context identities across host restart"
+      ]
+    },
+    {
+      "id": "trial-base-scope-preview",
+      "group": "canonical-positive",
+      "status": "planned_not_executed",
+      "view": "trial",
+      "path": "/workbench/trial",
+      "query_pairs": [
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"trial\",\"context\":{\"base\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\"},\"scope\":{\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}}"
+        ]
+      ],
+      "url_suffix": "/workbench/trial?nav=%7B%22version%22%3A1%2C%22view%22%3A%22trial%22%2C%22context%22%3A%7B%22base%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%7D%2C%22scope%22%3A%7B%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D%7D",
+      "payload": {
+        "version": 1,
+        "view": "trial",
+        "context": {
+          "base": {
+            "plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd"
+          },
+          "scope": {
+            "range_start": "2026-09-07T08:00:00",
+            "range_end": "2026-09-07T08:15:00"
+          }
+        }
+      },
+      "transitions": [
+        "direct_url",
+        "copy_url_new_tab",
+        "same_tab_f5",
+        "same_tab_same_port_new_host_pid"
+      ],
+      "html_status": 200,
+      "dto": {
+        "method": "POST",
+        "path": "/api/workbench/v1/trial/drafts/preview",
+        "trigger": "click real 核对原来源",
+        "request_json": {
+          "base": {
+            "plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd"
+          },
+          "scope": {
+            "range_start": "2026-09-07T08:00:00",
+            "range_end": "2026-09-07T08:15:00"
+          }
+        },
+        "response_fields": {
+          "data.base": {
+            "plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd"
+          },
+          "data.scope": {
+            "range_start": "2026-09-07T08:00:00",
+            "range_end": "2026-09-07T08:15:00"
+          },
+          "data.tasks_complete": true,
+          "data.task_count": 1
+        }
+      },
+      "caption": {
+        "applicable": false,
+        "reason": "Base preview is not an existing draft; never claim a fabricated draft caption",
+        "check": "no invented draft identity; preview does not satisfy the existing-draft caption case"
+      },
+      "checks": [
+        "server boot.navigation equals parsed URL object",
+        "real workspace consumes the original context",
+        "no history writes, product hooks, fake API responses, or default-plan substitution",
+        "save original/copied page and browser context identities across host restart"
+      ]
+    },
+    {
+      "id": "trial-existing-real-draft",
+      "group": "canonical-positive",
+      "status": "planned_not_executed",
+      "view": "trial",
+      "path": "/workbench/trial",
+      "query_pairs": [
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"trial\",\"context\":{\"draft_ref\":\"5d00808f4d67aab9170ccbe776163eab10825cbc821aa42f\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench/trial?nav=%7B%22version%22%3A1%2C%22view%22%3A%22trial%22%2C%22context%22%3A%7B%22draft_ref%22%3A%225d00808f4d67aab9170ccbe776163eab10825cbc821aa42f%22%7D%7D",
+      "payload": {
+        "version": 1,
+        "view": "trial",
+        "context": {
+          "draft_ref": "5d00808f4d67aab9170ccbe776163eab10825cbc821aa42f"
+        }
+      },
+      "transitions": [
+        "direct_url",
+        "copy_url_new_tab",
+        "same_tab_f5",
+        "same_tab_same_port_new_host_pid"
+      ],
+      "html_status": 200,
+      "dto": {
+        "method": "GET",
+        "path": "/api/workbench/v1/trial/drafts/5d00808f4d67aab9170ccbe776163eab10825cbc821aa42f",
+        "response_fields": {
+          "data.draft_ref": "5d00808f4d67aab9170ccbe776163eab10825cbc821aa42f",
+          "data.base": {
+            "plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd"
+          },
+          "data.scope": {
+            "range_end": "2026-09-07T08:15:00",
+            "range_start": "2026-09-07T08:00:00"
+          },
+          "data.tasks_complete": true,
+          "data.task_count": 1
+        }
+      },
+      "caption": {
+        "reference": "5d00808f4d67aab9170ccbe776163eab10825cbc821aa42f",
+        "name_from": "data.name or real data.base_identity.display_name + version",
+        "identity": "draft",
+        "status": "editing",
+        "baseline": {
+          "plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+          "version": 3
+        },
+        "range": {
+          "start": "2026-09-07T08:00:00",
+          "end": "2026-09-07T08:15:00",
+          "time_basis": "factory_local",
+          "selection": "complete_base"
+        }
+      },
+      "checks": [
+        "server boot.navigation equals parsed URL object",
+        "real workspace consumes the original context",
+        "no history writes, product hooks, fake API responses, or default-plan substitution",
+        "save original/copied page and browser context identities across host restart"
+      ]
+    },
+    {
+      "id": "duplicate-nav-identical",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"gantt\",\"context\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"gantt\",\"context\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&nav=%7B%22version%22%3A1%2C%22view%22%3A%22gantt%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D&nav=%7B%22version%22%3A1%2C%22view%22%3A%22gantt%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "duplicate-view-identical",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"gantt\",\"context\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}"
+        ],
+        [
+          "view",
+          "gantt"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&nav=%7B%22version%22%3A1%2C%22view%22%3A%22gantt%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D&view=gantt",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "duplicate-view-different",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"gantt\",\"context\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}"
+        ],
+        [
+          "view",
+          "analysis"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&nav=%7B%22version%22%3A1%2C%22view%22%3A%22gantt%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D&view=analysis",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "empty-nav",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "nav",
+          ""
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&nav=",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "malformed-nav-json",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "nav",
+          "{"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&nav=%7B",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "plan-unknown-scope",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"gantt\",\"context\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\",\"scope\":{\"all\":true}}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&nav=%7B%22version%22%3A1%2C%22view%22%3A%22gantt%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%2C%22scope%22%3A%7B%22all%22%3Atrue%7D%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "plan-unsupported-query",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "analysis"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"analysis\",\"context\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\",\"query\":\"CAT-B\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=analysis&nav=%7B%22version%22%3A1%2C%22view%22%3A%22analysis%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%2C%22query%22%3A%22CAT-B%22%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "plan-short-ref",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"gantt\",\"context\":{\"plan_ref\":\"invalid-short-ref\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&nav=%7B%22version%22%3A1%2C%22view%22%3A%22gantt%22%2C%22context%22%3A%7B%22plan_ref%22%3A%22invalid-short-ref%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "plan-uppercase-ref",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "delay"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"delay\",\"context\":{\"plan_ref\":\"A7d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=delay&nav=%7B%22version%22%3A1%2C%22view%22%3A%22delay%22%2C%22context%22%3A%7B%22plan_ref%22%3A%22A7d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "plan-half-range",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "delay"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"delay\",\"context\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"range_start\":\"2026-09-07T08:00:00\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=delay&nav=%7B%22version%22%3A1%2C%22view%22%3A%22delay%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "plan-reversed-range",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "analysis"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"analysis\",\"context\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"range_start\":\"2026-09-07T08:15:00\",\"range_end\":\"2026-09-07T08:00:00\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=analysis&nav=%7B%22version%22%3A1%2C%22view%22%3A%22analysis%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22range_start%22%3A%222026-09-07T08%3A15%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A00%3A00%22%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "plan-ephemeral-url-token",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"gantt\",\"context\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\",\"snapshot_ref\":\"not-a-durable-navigation-field\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&nav=%7B%22version%22%3A1%2C%22view%22%3A%22gantt%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%2C%22snapshot_ref%22%3A%22not-a-durable-navigation-field%22%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "reports-unknown-scope",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "reports"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"reports\",\"context\":{\"scope\":{\"source\":\"production\",\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"batch_ref\":\"fda97114c8940e8d9914d4494fee118ab8d3ce0f9d3b8bb6\",\"plan_finish_date_from\":\"2026-09-07\",\"plan_finish_date_to\":\"2026-09-07\",\"query\":\"CAT-B\",\"focus\":\"all\",\"date_from\":\"2026-09-07\"}}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=reports&nav=%7B%22version%22%3A1%2C%22view%22%3A%22reports%22%2C%22context%22%3A%7B%22scope%22%3A%7B%22source%22%3A%22production%22%2C%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22batch_ref%22%3A%22fda97114c8940e8d9914d4494fee118ab8d3ce0f9d3b8bb6%22%2C%22plan_finish_date_from%22%3A%222026-09-07%22%2C%22plan_finish_date_to%22%3A%222026-09-07%22%2C%22query%22%3A%22CAT-B%22%2C%22focus%22%3A%22all%22%2C%22date_from%22%3A%222026-09-07%22%7D%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "reports-empty-scope",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "reports"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"reports\",\"context\":{\"scope\":{}}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=reports&nav=%7B%22version%22%3A1%2C%22view%22%3A%22reports%22%2C%22context%22%3A%7B%22scope%22%3A%7B%7D%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "reports-wrong-ref-format",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "reports"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"reports\",\"context\":{\"scope\":{\"source\":\"production\",\"plan_ref\":\"invalid-short-ref\",\"batch_ref\":\"fda97114c8940e8d9914d4494fee118ab8d3ce0f9d3b8bb6\",\"plan_finish_date_from\":\"2026-09-07\",\"plan_finish_date_to\":\"2026-09-07\",\"query\":\"CAT-B\",\"focus\":\"all\"}}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=reports&nav=%7B%22version%22%3A1%2C%22view%22%3A%22reports%22%2C%22context%22%3A%7B%22scope%22%3A%7B%22source%22%3A%22production%22%2C%22plan_ref%22%3A%22invalid-short-ref%22%2C%22batch_ref%22%3A%22fda97114c8940e8d9914d4494fee118ab8d3ce0f9d3b8bb6%22%2C%22plan_finish_date_from%22%3A%222026-09-07%22%2C%22plan_finish_date_to%22%3A%222026-09-07%22%2C%22query%22%3A%22CAT-B%22%2C%22focus%22%3A%22all%22%7D%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "trial-mixed-base",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench/trial",
+      "query_pairs": [
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"trial\",\"context\":{\"base\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"candidate_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\"}}}"
+        ]
+      ],
+      "url_suffix": "/workbench/trial?nav=%7B%22version%22%3A1%2C%22view%22%3A%22trial%22%2C%22context%22%3A%7B%22base%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22candidate_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%7D%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "trial-unknown-scope",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench/trial",
+      "query_pairs": [
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"trial\",\"context\":{\"base\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\"},\"scope\":{\"unknown\":true}}}"
+        ]
+      ],
+      "url_suffix": "/workbench/trial?nav=%7B%22version%22%3A1%2C%22view%22%3A%22trial%22%2C%22context%22%3A%7B%22base%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%7D%2C%22scope%22%3A%7B%22unknown%22%3Atrue%7D%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "nav-view-mismatch",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "nav",
+          "{\"version\": 1, \"view\": \"analysis\", \"context\": {\"plan_ref\": \"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\", \"range_start\": \"2026-09-07T08:00:00\", \"range_end\": \"2026-09-07T08:15:00\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&nav=%7B%22version%22%3A+1%2C+%22view%22%3A+%22analysis%22%2C+%22context%22%3A+%7B%22plan_ref%22%3A+%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C+%22range_start%22%3A+%222026-09-07T08%3A00%3A00%22%2C+%22range_end%22%3A+%222026-09-07T08%3A15%3A00%22%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "nav-unknown-outer-field",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "nav",
+          "{\"version\": 1, \"view\": \"gantt\", \"context\": {\"plan_ref\": \"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\", \"range_start\": \"2026-09-07T08:00:00\", \"range_end\": \"2026-09-07T08:15:00\"}, \"extra\": true}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&nav=%7B%22version%22%3A+1%2C+%22view%22%3A+%22gantt%22%2C+%22context%22%3A+%7B%22plan_ref%22%3A+%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C+%22range_start%22%3A+%222026-09-07T08%3A00%3A00%22%2C+%22range_end%22%3A+%222026-09-07T08%3A15%3A00%22%7D%2C+%22extra%22%3A+true%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "duplicate-json-context-key",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"gantt\",\"context\":{\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\",\"plan_ref\":\"17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&nav=%7B%22version%22%3A1%2C%22view%22%3A%22gantt%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%2C%22plan_ref%22%3A%2217d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd%22%7D%7D",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "legacy-version-no-nav",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "version",
+          "3"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&version=3",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "legacy-role-no-nav",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "plan_role",
+          "adopted"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&plan_role=adopted",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "legacy-identity-no-nav",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "version",
+          "3"
+        ],
+        [
+          "plan_role",
+          "adopted"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&version=3&plan_role=adopted",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "trial-path-view-mismatch-no-nav",
+      "group": "canonical-http400",
+      "status": "planned_not_executed",
+      "path": "/workbench/trial",
+      "query_pairs": [
+        [
+          "view",
+          "reports"
+        ]
+      ],
+      "url_suffix": "/workbench/trial?view=reports",
+      "html_status": 400,
+      "checks": [
+        "no workbench-boot script or domain success DTO",
+        "new-style offline alert page",
+        "visible recovery navigation",
+        "actual open-workbench link recovers to Main",
+        "record expected HTTP errors separately from normal business reads"
+      ]
+    },
+    {
+      "id": "gantt-unknown-well-formed-ref",
+      "group": "canonical-domain-failure",
+      "status": "planned_not_executed",
+      "view": "gantt",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "gantt"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"gantt\",\"context\":{\"plan_ref\":\"43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=gantt&nav=%7B%22version%22%3A1%2C%22view%22%3A%22gantt%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2243f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D",
+      "payload": {
+        "version": 1,
+        "view": "gantt",
+        "context": {
+          "plan_ref": "43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34",
+          "range_start": "2026-09-07T08:00:00",
+          "range_end": "2026-09-07T08:15:00"
+        }
+      },
+      "html_status": 200,
+      "domain_status": 404,
+      "domain_error_code": "entity_not_found",
+      "missing_ref": "43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34",
+      "precondition": "Before using this derived ref, verify an actual missing-object response in this new private fixture",
+      "checks": [
+        "boot retains the exact explicit unknown reference",
+        "real domain request carries that reference",
+        "no 200 plan DTO for another plan and no fabricated caption",
+        "real retry retains the failed object"
+      ],
+      "trigger": "initial domain read"
+    },
+    {
+      "id": "analysis-unknown-well-formed-ref",
+      "group": "canonical-domain-failure",
+      "status": "planned_not_executed",
+      "view": "analysis",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "analysis"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"analysis\",\"context\":{\"plan_ref\":\"43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=analysis&nav=%7B%22version%22%3A1%2C%22view%22%3A%22analysis%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2243f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D",
+      "payload": {
+        "version": 1,
+        "view": "analysis",
+        "context": {
+          "plan_ref": "43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34",
+          "range_start": "2026-09-07T08:00:00",
+          "range_end": "2026-09-07T08:15:00"
+        }
+      },
+      "html_status": 200,
+      "domain_status": 404,
+      "domain_error_code": "entity_not_found",
+      "missing_ref": "43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34",
+      "precondition": "Before using this derived ref, verify an actual missing-object response in this new private fixture",
+      "checks": [
+        "boot retains the exact explicit unknown reference",
+        "real domain request carries that reference",
+        "no 200 plan DTO for another plan and no fabricated caption",
+        "real retry retains the failed object"
+      ],
+      "trigger": "initial domain read"
+    },
+    {
+      "id": "delay-unknown-well-formed-ref",
+      "group": "canonical-domain-failure",
+      "status": "planned_not_executed",
+      "view": "delay",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "delay"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"delay\",\"context\":{\"plan_ref\":\"43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34\",\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=delay&nav=%7B%22version%22%3A1%2C%22view%22%3A%22delay%22%2C%22context%22%3A%7B%22plan_ref%22%3A%2243f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34%22%2C%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D",
+      "payload": {
+        "version": 1,
+        "view": "delay",
+        "context": {
+          "plan_ref": "43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34",
+          "range_start": "2026-09-07T08:00:00",
+          "range_end": "2026-09-07T08:15:00"
+        }
+      },
+      "html_status": 200,
+      "domain_status": 404,
+      "domain_error_code": "entity_not_found",
+      "missing_ref": "43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34",
+      "precondition": "Before using this derived ref, verify an actual missing-object response in this new private fixture",
+      "checks": [
+        "boot retains the exact explicit unknown reference",
+        "real domain request carries that reference",
+        "no 200 plan DTO for another plan and no fabricated caption",
+        "real retry retains the failed object"
+      ],
+      "trigger": "initial domain read"
+    },
+    {
+      "id": "reports-unknown-well-formed-ref",
+      "group": "canonical-domain-failure",
+      "status": "planned_not_executed",
+      "view": "reports",
+      "path": "/workbench",
+      "query_pairs": [
+        [
+          "view",
+          "reports"
+        ],
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"reports\",\"context\":{\"scope\":{\"source\":\"production\",\"plan_ref\":\"43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34\",\"batch_ref\":\"fda97114c8940e8d9914d4494fee118ab8d3ce0f9d3b8bb6\",\"plan_finish_date_from\":\"2026-09-07\",\"plan_finish_date_to\":\"2026-09-07\",\"query\":\"CAT-B\",\"focus\":\"all\"}}}"
+        ]
+      ],
+      "url_suffix": "/workbench?view=reports&nav=%7B%22version%22%3A1%2C%22view%22%3A%22reports%22%2C%22context%22%3A%7B%22scope%22%3A%7B%22source%22%3A%22production%22%2C%22plan_ref%22%3A%2243f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34%22%2C%22batch_ref%22%3A%22fda97114c8940e8d9914d4494fee118ab8d3ce0f9d3b8bb6%22%2C%22plan_finish_date_from%22%3A%222026-09-07%22%2C%22plan_finish_date_to%22%3A%222026-09-07%22%2C%22query%22%3A%22CAT-B%22%2C%22focus%22%3A%22all%22%7D%7D%7D",
+      "payload": {
+        "version": 1,
+        "view": "reports",
+        "context": {
+          "scope": {
+            "source": "production",
+            "plan_ref": "43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34",
+            "batch_ref": "fda97114c8940e8d9914d4494fee118ab8d3ce0f9d3b8bb6",
+            "plan_finish_date_from": "2026-09-07",
+            "plan_finish_date_to": "2026-09-07",
+            "query": "CAT-B",
+            "focus": "all"
+          }
+        }
+      },
+      "html_status": 200,
+      "domain_status": 404,
+      "domain_error_code": "entity_not_found",
+      "missing_ref": "43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34",
+      "precondition": "Before using this derived ref, verify an actual missing-object response in this new private fixture",
+      "checks": [
+        "boot retains the exact explicit unknown reference",
+        "real domain request carries that reference",
+        "no 200 plan DTO for another plan and no fabricated caption",
+        "real retry retains the failed object"
+      ],
+      "trigger": "initial domain read"
+    },
+    {
+      "id": "trial-unknown-well-formed-ref",
+      "group": "canonical-domain-failure",
+      "status": "planned_not_executed",
+      "view": "trial",
+      "path": "/workbench/trial",
+      "query_pairs": [
+        [
+          "nav",
+          "{\"version\":1,\"view\":\"trial\",\"context\":{\"base\":{\"plan_ref\":\"43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34\"},\"scope\":{\"range_start\":\"2026-09-07T08:00:00\",\"range_end\":\"2026-09-07T08:15:00\"}}}"
+        ]
+      ],
+      "url_suffix": "/workbench/trial?nav=%7B%22version%22%3A1%2C%22view%22%3A%22trial%22%2C%22context%22%3A%7B%22base%22%3A%7B%22plan_ref%22%3A%2243f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34%22%7D%2C%22scope%22%3A%7B%22range_start%22%3A%222026-09-07T08%3A00%3A00%22%2C%22range_end%22%3A%222026-09-07T08%3A15%3A00%22%7D%7D%7D",
+      "payload": {
+        "version": 1,
+        "view": "trial",
+        "context": {
+          "base": {
+            "plan_ref": "43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34"
+          },
+          "scope": {
+            "range_start": "2026-09-07T08:00:00",
+            "range_end": "2026-09-07T08:15:00"
+          }
+        }
+      },
+      "html_status": 200,
+      "domain_status": 404,
+      "domain_error_code": "entity_not_found",
+      "missing_ref": "43f3c6024fcd702a53d04645eda6d4fde9bf6100c0891c34",
+      "precondition": "Before using this derived ref, verify an actual missing-object response in this new private fixture",
+      "checks": [
+        "boot retains the exact explicit unknown reference",
+        "real domain request carries that reference",
+        "no 200 plan DTO for another plan and no fabricated caption",
+        "real retry retains the failed object"
+      ],
+      "trigger": "click real 核对原来源"
+    }
+  ],
+  "writes_after_baseline": "none; POST trial preview is a read, never commit another draft",
+  "execution_gate": "Wait for Main final stable complete build and explicit GO; do not rerun the historical 92 cases now",
+  "restart_policy": "Keep each tested original page alive. Never clear history or rewrite URL to hide stale context; report initial failure and any explicit recovery separately.",
+  "reference_reuse_policy": "Regenerate from the fresh running fixture preparation receipt; never replay these unit references against another database."
+}

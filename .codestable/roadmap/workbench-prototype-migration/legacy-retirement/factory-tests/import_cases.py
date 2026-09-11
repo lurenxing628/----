@@ -1,0 +1,28 @@
+"""Twelve real legacy preview/confirm owners, each with a concrete stored result."""
+
+CASES = {
+    "demo": {"prefix": "/excel-demo", "template": "人员基本信息.xlsx", "row": ["O-NEW", "新增人员", "在岗", None, "原备注"],
+             "sql": "SELECT name,status,remark FROM Operators WHERE operator_id='O-NEW'", "expected": ["新增人员", "active", "原备注"]},
+    "operators": {"prefix": "/personnel/excel/operators", "template": "人员基本信息.xlsx", "row": ["O-NEW", "新增人员", "在岗", None, "原备注"],
+                  "sql": "SELECT name,status,remark FROM Operators WHERE operator_id='O-NEW'", "expected": ["新增人员", "active", "原备注"]},
+    "operator_links": {"prefix": "/personnel/excel/links", "template": "人员设备关联.xlsx", "row": ["O-BASE", "M-BASE", "普通", "是"],
+                       "sql": "SELECT skill_level,is_primary FROM OperatorMachine WHERE operator_id='O-BASE' AND machine_id='M-BASE'", "expected": ["normal", "yes"]},
+    "machine_links": {"prefix": "/equipment/excel/links", "template": "设备人员关联.xlsx", "row": ["M-BASE", "O-BASE", "普通", "是"],
+                      "sql": "SELECT skill_level,is_primary FROM OperatorMachine WHERE operator_id='O-BASE' AND machine_id='M-BASE'", "expected": ["normal", "yes"]},
+    "machines": {"prefix": "/equipment/excel/machines", "template": "设备信息.xlsx", "row": ["M-NEW", "新增设备", "数车", None, "可用"],
+                 "sql": "SELECT name,op_type_id,status FROM Machines WHERE machine_id='M-NEW'", "expected": ["新增设备", "OT-IN", "active"]},
+    "op_types": {"prefix": "/process/excel/op-types", "template": "工种配置.xlsx", "row": ["OT-NEW", "新工种", "自制"],
+                 "sql": "SELECT name,category FROM OpTypes WHERE op_type_id='OT-NEW'", "expected": ["新工种", "internal"]},
+    "suppliers": {"prefix": "/process/excel/suppliers", "template": "供应商配置.xlsx", "row": ["S-NEW", "新增供方", "标印", 3, "启用", "原备注"],
+                  "sql": "SELECT name,op_type_id,default_days,status,remark FROM Suppliers WHERE supplier_id='S-NEW'", "expected": ["新增供方", "OT-EXT", 3, "active", "原备注"]},
+    "routes": {"prefix": "/process/excel/routes", "template": "零件工艺路线.xlsx", "row": ["P-NEW", "新增工艺", "5数车10标印"], "extra": {"strict_mode": "yes"},
+               "sql": "SELECT part_name,route_raw,route_parsed FROM Parts WHERE part_no='P-NEW'", "expected": ["新增工艺", "5数车10标印", "yes"]},
+    "hours": {"prefix": "/process/excel/part-operation-hours", "template": "零件工序工时.xlsx", "row": ["P-HOURS", 5, 1.25, 0.75], "mode": "overwrite",
+              "sql": "SELECT setup_hours,unit_hours FROM PartOperations WHERE part_no='P-HOURS' AND seq=5", "expected": [1.25, 0.75]},
+    "batches": {"prefix": "/scheduler/excel/batches", "template": "批次信息.xlsx", "row": ["B-NEW", "P-HOURS", 2, "2026-10-10", "普通", "齐套", None, "原备注"], "extra": {"auto_generate_ops": "1"},
+                "sql": "SELECT part_no,quantity,priority,ready_status FROM Batches WHERE batch_id='B-NEW'", "expected": ["P-HOURS", 2, "normal", "yes"]},
+    "calendar": {"prefix": "/scheduler/excel/calendar", "template": "工作日历.xlsx", "row": ["2026-10-10", "工作日", 7.5, 0.9, "是", "是", "原备注"],
+                 "sql": "SELECT day_type,shift_hours,efficiency,remark FROM WorkCalendar WHERE date='2026-10-10'", "expected": ["workday", 7.5, 0.9, "原备注"]},
+    "operator_calendar": {"prefix": "/personnel/excel/operator_calendar", "template": "人员专属工作日历.xlsx", "row": ["O-BASE", "2026-10-10", "工作日", "08:00", "15:30", 7.5, 0.9, "是", "是", "原备注"],
+                          "sql": "SELECT day_type,shift_hours,efficiency,remark FROM OperatorCalendar WHERE operator_id='O-BASE' AND date='2026-10-10'", "expected": ["workday", 7.5, 0.9, "原备注"]},
+}

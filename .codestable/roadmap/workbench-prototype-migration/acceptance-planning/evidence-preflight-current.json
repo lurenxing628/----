@@ -1,0 +1,1884 @@
+{
+  "schema_version": 1,
+  "status": "partial_acceptance_not_all_capabilities_passed",
+  "source_build": "b7b4f7c2241d948af6ae121f9940aaccba477ae26b8341b6393cee139e4491cb",
+  "cohorts": [
+    "preflight"
+  ],
+  "observed_python_product_sources": {
+    "files_observed": 1084,
+    "sha256": "c879dc67574b2ba3dfecf3402e2b6cbdd24659e79e96ce1e09786160ff097144",
+    "basis": "Union of loaded core/web/data Python sources; every shared path must have the same digest across all admitted hosts."
+  },
+  "capability_denominator": 37,
+  "action_denominator": 146,
+  "K_passed": 5,
+  "K_not_run": 141,
+  "capabilities_with_observed_actions": 3,
+  "status_counts": {
+    "B": {
+      "not_run": 141,
+      "not_applicable": 1,
+      "passed": 4
+    },
+    "K": {
+      "not_run": 141,
+      "passed": 5
+    },
+    "V": {
+      "not_run": 141,
+      "pending_main_review": 5
+    },
+    "P": {
+      "not_run": 146
+    }
+  },
+  "visual_boundary": "截图索引附 full/viewport SHA；D 的抽查不替代 Main 逐项视觉终审。",
+  "persistence_boundary": "本账本只有预检或只读边界，所有业务表逐项保持；没有进行正式采用，不据此声明采用持久性。",
+  "samples": [
+    {
+      "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-58vtidos",
+      "width": 1920,
+      "theme": "light",
+      "cohort": "preflight",
+      "build_id": "b7b4f7c2241d948af6ae121f9940aaccba477ae26b8341b6393cee139e4491cb",
+      "result_sha256": "4251f2886a17d9c497736bdafaa0f38ea8aa9cc9e614f26bb0275336275147ac",
+      "table_count": 77,
+      "tables_unchanged": true,
+      "hosts": [
+        {
+          "mode": "preflight",
+          "pid": 16903,
+          "session": "43400074f3b345f1a217176ee280e717",
+          "normal_shutdown": true,
+          "loaded_python_sources_unchanged": true
+        }
+      ],
+      "screenshots": [
+        {
+          "name": "unready-preflight-reasons",
+          "full": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-58vtidos/screenshots/final-planning-preflight-unready-preflight-reasons.png",
+          "viewport": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-58vtidos/screenshots/final-planning-preflight-unready-preflight-reasons-viewport.png",
+          "mode": "preflight",
+          "full_sha256": "40870f4de7dd7d40bd2c2602fde4e728319bf060bc931189c2e89c1dfd7b7599",
+          "viewport_sha256": "ced0090b7945156fb3e79786e4389c9ee5b8efaf9742becb02961afba62286a1"
+        },
+        {
+          "name": "preflight-batch-target",
+          "full": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-58vtidos/screenshots/final-planning-preflight-preflight-batch-target.png",
+          "viewport": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-58vtidos/screenshots/final-planning-preflight-preflight-batch-target-viewport.png",
+          "mode": "preflight",
+          "full_sha256": "78dcd0473d27d343bc9b58dec11305adc73b2699705e3d6e2c382c7bc989ed3b",
+          "viewport_sha256": "7ab462362f6830de94f316f9267cd3d6405fe27339488f041b8676684cc370bf"
+        },
+        {
+          "name": "preflight-return-context",
+          "full": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-58vtidos/screenshots/final-planning-preflight-preflight-return-context.png",
+          "viewport": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-58vtidos/screenshots/final-planning-preflight-preflight-return-context-viewport.png",
+          "mode": "preflight",
+          "full_sha256": "9c1547eb2682e1eedf28a60585517ae7b008fc56014ed62c96f228fd3d5352fc",
+          "viewport_sha256": "9c1547eb2682e1eedf28a60585517ae7b008fc56014ed62c96f228fd3d5352fc"
+        }
+      ]
+    },
+    {
+      "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-hff06hgh",
+      "width": 1920,
+      "theme": "dark",
+      "cohort": "preflight",
+      "build_id": "b7b4f7c2241d948af6ae121f9940aaccba477ae26b8341b6393cee139e4491cb",
+      "result_sha256": "7149c743b896c9e2335e04cb00d14703629f04e20d4d218c2f8a806cd9ffc0da",
+      "table_count": 77,
+      "tables_unchanged": true,
+      "hosts": [
+        {
+          "mode": "preflight",
+          "pid": 17025,
+          "session": "351bc0394e3547788c9d6d5b4e58018b",
+          "normal_shutdown": true,
+          "loaded_python_sources_unchanged": true
+        }
+      ],
+      "screenshots": [
+        {
+          "name": "unready-preflight-reasons",
+          "full": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-hff06hgh/screenshots/final-planning-preflight-unready-preflight-reasons.png",
+          "viewport": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-hff06hgh/screenshots/final-planning-preflight-unready-preflight-reasons-viewport.png",
+          "mode": "preflight",
+          "full_sha256": "02950ba42f3de54fe6e200adda65de12d8e0972c266c8086d713bfe433c108e8",
+          "viewport_sha256": "c4aca59a7d12cb9b42b46caffa4ef70b037dabb6c5f5851b20d881dc5f9d6ce3"
+        },
+        {
+          "name": "preflight-batch-target",
+          "full": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-hff06hgh/screenshots/final-planning-preflight-preflight-batch-target.png",
+          "viewport": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-hff06hgh/screenshots/final-planning-preflight-preflight-batch-target-viewport.png",
+          "mode": "preflight",
+          "full_sha256": "fadeb35e011f63f2d1fc0219336aafeef39aedd389a7994f067e8adb48c6120c",
+          "viewport_sha256": "9a956093e3e28fbb43fc2e7fdedf2609702b42bdddff957c3306fbe361ae7279"
+        },
+        {
+          "name": "preflight-return-context",
+          "full": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-hff06hgh/screenshots/final-planning-preflight-preflight-return-context.png",
+          "viewport": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-hff06hgh/screenshots/final-planning-preflight-preflight-return-context-viewport.png",
+          "mode": "preflight",
+          "full_sha256": "9c9d724ec039baf309719f304c1e37c0c1cb4f7c4bd7437b55bcf049e764fd19",
+          "viewport_sha256": "9c9d724ec039baf309719f304c1e37c0c1cb4f7c4bd7437b55bcf049e764fd19"
+        }
+      ]
+    },
+    {
+      "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-22jx4s1_",
+      "width": 1392,
+      "theme": "light",
+      "cohort": "preflight",
+      "build_id": "b7b4f7c2241d948af6ae121f9940aaccba477ae26b8341b6393cee139e4491cb",
+      "result_sha256": "1220df72c478c10609a2c4f95c87499826ef284657f3628fc7ab1e193753ccc5",
+      "table_count": 77,
+      "tables_unchanged": true,
+      "hosts": [
+        {
+          "mode": "preflight",
+          "pid": 17103,
+          "session": "fdc2fcac817145a0af986f449dae9f7b",
+          "normal_shutdown": true,
+          "loaded_python_sources_unchanged": true
+        }
+      ],
+      "screenshots": [
+        {
+          "name": "unready-preflight-reasons",
+          "full": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-22jx4s1_/screenshots/final-planning-preflight-unready-preflight-reasons.png",
+          "viewport": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-22jx4s1_/screenshots/final-planning-preflight-unready-preflight-reasons-viewport.png",
+          "mode": "preflight",
+          "full_sha256": "29b606fa2a766746589cbd502155e50658ecbd63b9424e89e0659e3f825ffd88",
+          "viewport_sha256": "4753938aa0f32454c3ba4d8bce756b06a35476225791fa9c4484e83052fd896c"
+        },
+        {
+          "name": "preflight-batch-target",
+          "full": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-22jx4s1_/screenshots/final-planning-preflight-preflight-batch-target.png",
+          "viewport": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-22jx4s1_/screenshots/final-planning-preflight-preflight-batch-target-viewport.png",
+          "mode": "preflight",
+          "full_sha256": "fc2f7d3341a16124ddac268b618203876a5e8a44e188148eb530d6aa770823bc",
+          "viewport_sha256": "069cb01470627b7a313223dfe0238794e1573c830af85a1d0407e297fe127389"
+        },
+        {
+          "name": "preflight-return-context",
+          "full": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-22jx4s1_/screenshots/final-planning-preflight-preflight-return-context.png",
+          "viewport": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-22jx4s1_/screenshots/final-planning-preflight-preflight-return-context-viewport.png",
+          "mode": "preflight",
+          "full_sha256": "7e1387b4f7534eb30cc0f3fa7a6f1cdfbba653deaedc0088242becda01bcd23c",
+          "viewport_sha256": "7e1387b4f7534eb30cc0f3fa7a6f1cdfbba653deaedc0088242becda01bcd23c"
+        }
+      ]
+    },
+    {
+      "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-b7m4gj4y",
+      "width": 1392,
+      "theme": "dark",
+      "cohort": "preflight",
+      "build_id": "b7b4f7c2241d948af6ae121f9940aaccba477ae26b8341b6393cee139e4491cb",
+      "result_sha256": "8fe3ea6a32c815b370f1a63b48f0a8079c1d405c14ec393a5cbae48e18d2c91d",
+      "table_count": 77,
+      "tables_unchanged": true,
+      "hosts": [
+        {
+          "mode": "preflight",
+          "pid": 17160,
+          "session": "5ec29efb24434496ad7d45a91d140ffa",
+          "normal_shutdown": true,
+          "loaded_python_sources_unchanged": true
+        }
+      ],
+      "screenshots": [
+        {
+          "name": "unready-preflight-reasons",
+          "full": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-b7m4gj4y/screenshots/final-planning-preflight-unready-preflight-reasons.png",
+          "viewport": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-b7m4gj4y/screenshots/final-planning-preflight-unready-preflight-reasons-viewport.png",
+          "mode": "preflight",
+          "full_sha256": "0275bea1fce4d14908f8e96eaf055cbd900e2a74c03adaca72df35fa77cee3c4",
+          "viewport_sha256": "5bb57f7cdda73e397982eb2086f7e67524bb3462a59e2f23f11fc55b1d09fa07"
+        },
+        {
+          "name": "preflight-batch-target",
+          "full": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-b7m4gj4y/screenshots/final-planning-preflight-preflight-batch-target.png",
+          "viewport": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-b7m4gj4y/screenshots/final-planning-preflight-preflight-batch-target-viewport.png",
+          "mode": "preflight",
+          "full_sha256": "cc6d6f1c0d5e1f079deeeebd4cd7e86c9981fa2dcd8f216a50485a4072c12375",
+          "viewport_sha256": "2d130301b9ddb795e88d3c4d2ae6b73856eb0ab567a56cf601f64cd8166942f1"
+        },
+        {
+          "name": "preflight-return-context",
+          "full": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-b7m4gj4y/screenshots/final-planning-preflight-preflight-return-context.png",
+          "viewport": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-b7m4gj4y/screenshots/final-planning-preflight-preflight-return-context-viewport.png",
+          "mode": "preflight",
+          "full_sha256": "48f7f4da454dcdce76b2582163d283e375e0e8e263c9461ed7ed4d67451f41fb",
+          "viewport_sha256": "48f7f4da454dcdce76b2582163d283e375e0e8e263c9461ed7ed4d67451f41fb"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "action_id": "WBP-RUN-001.dates",
+      "capability_id": "WBP-RUN-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-001.date-guard",
+      "capability_id": "WBP-RUN-001",
+      "B": "not_applicable",
+      "K": "passed",
+      "V": "pending_main_review",
+      "P": "not_run",
+      "observations": [
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-58vtidos/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 1,
+          "request_end": 1,
+          "request_count": 0,
+          "method_counts": {}
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-hff06hgh/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 1,
+          "request_end": 1,
+          "request_count": 0,
+          "method_counts": {}
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-22jx4s1_/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 1,
+          "request_end": 1,
+          "request_count": 0,
+          "method_counts": {}
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-b7m4gj4y/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 1,
+          "request_end": 1,
+          "request_count": 0,
+          "method_counts": {}
+        }
+      ],
+      "B_basis": "本动作仅操作已经载入的浏览器状态，没有新增后端请求；不据此宣称写合同通过。",
+      "P_reason": "已有整链持久性核对，但此原子动作未单列独立刷新或新进程断言。"
+    },
+    {
+      "action_id": "WBP-RUN-001.open-picker",
+      "capability_id": "WBP-RUN-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-001.close-picker",
+      "capability_id": "WBP-RUN-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-001.search",
+      "capability_id": "WBP-RUN-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-001.range-selection",
+      "capability_id": "WBP-RUN-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-002.single",
+      "capability_id": "WBP-RUN-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-002.select-all",
+      "capability_id": "WBP-RUN-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-002.ready-only",
+      "capability_id": "WBP-RUN-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-002.clear",
+      "capability_id": "WBP-RUN-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-002.empty-guard",
+      "capability_id": "WBP-RUN-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-002.filtered",
+      "capability_id": "WBP-RUN-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-002.ready-filter",
+      "capability_id": "WBP-RUN-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-002.paging",
+      "capability_id": "WBP-RUN-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-003.ready-off",
+      "capability_id": "WBP-RUN-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-003.ready-on",
+      "capability_id": "WBP-RUN-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-003.exclude",
+      "capability_id": "WBP-RUN-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-003.auto-assign",
+      "capability_id": "WBP-RUN-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-003.actual-protected",
+      "capability_id": "WBP-RUN-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-004.check",
+      "capability_id": "WBP-RUN-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-004.tasks",
+      "capability_id": "WBP-RUN-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-004.metrics",
+      "capability_id": "WBP-RUN-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-004.reasons",
+      "capability_id": "WBP-RUN-004",
+      "B": "passed",
+      "K": "passed",
+      "V": "pending_main_review",
+      "P": "not_run",
+      "observations": [
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-58vtidos/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 1,
+          "request_end": 3,
+          "request_count": 2,
+          "method_counts": {
+            "POST": 2
+          }
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-hff06hgh/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 1,
+          "request_end": 3,
+          "request_count": 2,
+          "method_counts": {
+            "POST": 2
+          }
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-22jx4s1_/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 1,
+          "request_end": 3,
+          "request_count": 2,
+          "method_counts": {
+            "POST": 2
+          }
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-b7m4gj4y/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 1,
+          "request_end": 3,
+          "request_count": 2,
+          "method_counts": {
+            "POST": 2
+          }
+        }
+      ],
+      "B_basis": "实际浏览器请求与真实 factory/worker、SQLite 写入保留证据相互核对；非采用请求不改正式计划。",
+      "P_reason": "已有整链持久性核对，但此原子动作未单列独立刷新或新进程断言。"
+    },
+    {
+      "action_id": "WBP-RUN-005.batch-link",
+      "capability_id": "WBP-RUN-005",
+      "B": "passed",
+      "K": "passed",
+      "V": "pending_main_review",
+      "P": "not_run",
+      "observations": [
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-58vtidos/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 1,
+          "request_end": 3,
+          "request_count": 2,
+          "method_counts": {
+            "POST": 2
+          }
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-hff06hgh/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 1,
+          "request_end": 3,
+          "request_count": 2,
+          "method_counts": {
+            "POST": 2
+          }
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-22jx4s1_/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 1,
+          "request_end": 3,
+          "request_count": 2,
+          "method_counts": {
+            "POST": 2
+          }
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-b7m4gj4y/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 1,
+          "request_end": 3,
+          "request_count": 2,
+          "method_counts": {
+            "POST": 2
+          }
+        }
+      ],
+      "B_basis": "实际浏览器请求与真实 factory/worker、SQLite 写入保留证据相互核对；非采用请求不改正式计划。",
+      "P_reason": "已有整链持久性核对，但此原子动作未单列独立刷新或新进程断言。"
+    },
+    {
+      "action_id": "WBP-RUN-005.return-context",
+      "capability_id": "WBP-RUN-005",
+      "B": "passed",
+      "K": "passed",
+      "V": "pending_main_review",
+      "P": "not_run",
+      "observations": [
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-58vtidos/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 3,
+          "request_end": 6,
+          "request_count": 3,
+          "method_counts": {
+            "POST": 3
+          }
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-hff06hgh/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 3,
+          "request_end": 6,
+          "request_count": 3,
+          "method_counts": {
+            "POST": 3
+          }
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-22jx4s1_/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 3,
+          "request_end": 6,
+          "request_count": 3,
+          "method_counts": {
+            "POST": 3
+          }
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-b7m4gj4y/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 3,
+          "request_end": 6,
+          "request_count": 3,
+          "method_counts": {
+            "POST": 3
+          }
+        }
+      ],
+      "B_basis": "实际浏览器请求与真实 factory/worker、SQLite 写入保留证据相互核对；非采用请求不改正式计划。",
+      "P_reason": "已有整链持久性核对，但此原子动作未单列独立刷新或新进程断言。"
+    },
+    {
+      "action_id": "WBP-RUN-005.invalidate-check",
+      "capability_id": "WBP-RUN-005",
+      "B": "passed",
+      "K": "passed",
+      "V": "pending_main_review",
+      "P": "not_run",
+      "observations": [
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-58vtidos/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 3,
+          "request_end": 6,
+          "request_count": 3,
+          "method_counts": {
+            "POST": 3
+          }
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-hff06hgh/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 3,
+          "request_end": 6,
+          "request_count": 3,
+          "method_counts": {
+            "POST": 3
+          }
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-22jx4s1_/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 3,
+          "request_end": 6,
+          "request_count": 3,
+          "method_counts": {
+            "POST": 3
+          }
+        },
+        {
+          "report": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-live-b7m4gj4y/final_planning_preflight.json",
+          "mode": "preflight",
+          "request_start": 3,
+          "request_end": 6,
+          "request_count": 3,
+          "method_counts": {
+            "POST": 3
+          }
+        }
+      ],
+      "B_basis": "实际浏览器请求与真实 factory/worker、SQLite 写入保留证据相互核对；非采用请求不改正式计划。",
+      "P_reason": "已有整链持久性核对，但此原子动作未单列独立刷新或新进程断言。"
+    },
+    {
+      "action_id": "WBP-RUN-006.cancel-confirm",
+      "capability_id": "WBP-RUN-006",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-006.confirm",
+      "capability_id": "WBP-RUN-006",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-006.worker-result",
+      "capability_id": "WBP-RUN-006",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-006.recover-run",
+      "capability_id": "WBP-RUN-006",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-007.real-candidate",
+      "capability_id": "WBP-RUN-007",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-RUN-007.no-result",
+      "capability_id": "WBP-RUN-007",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-001.official",
+      "capability_id": "WBP-PLAN-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-001.historical",
+      "capability_id": "WBP-PLAN-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-001.scenario",
+      "capability_id": "WBP-PLAN-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-002.identity",
+      "capability_id": "WBP-PLAN-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-002.stable-identities",
+      "capability_id": "WBP-PLAN-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-002.baseline",
+      "capability_id": "WBP-PLAN-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-002.comparison",
+      "capability_id": "WBP-PLAN-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-003.cancel",
+      "capability_id": "WBP-PLAN-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-003.reason",
+      "capability_id": "WBP-PLAN-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-003.operator",
+      "capability_id": "WBP-PLAN-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-003.confirm",
+      "capability_id": "WBP-PLAN-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-003.recover-receipt",
+      "capability_id": "WBP-PLAN-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-003.stale-conflict",
+      "capability_id": "WBP-PLAN-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-004.reload",
+      "capability_id": "WBP-PLAN-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-004.new-process",
+      "capability_id": "WBP-PLAN-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-004.invalid-reference",
+      "capability_id": "WBP-PLAN-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-004.storage-failure",
+      "capability_id": "WBP-PLAN-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-005.gantt-navigation",
+      "capability_id": "WBP-PLAN-005",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-005.trial-navigation",
+      "capability_id": "WBP-PLAN-005",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-PLAN-005.return-comparison",
+      "capability_id": "WBP-PLAN-005",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-ANA-001.metrics",
+      "capability_id": "WBP-ANA-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-ANA-001.unavailable",
+      "capability_id": "WBP-ANA-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-ANA-001.tradeoffs",
+      "capability_id": "WBP-ANA-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-ANA-002.select-four",
+      "capability_id": "WBP-ANA-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-ANA-002.preview-not-adopted",
+      "capability_id": "WBP-ANA-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-ANA-003.delivery",
+      "capability_id": "WBP-ANA-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-ANA-003.history",
+      "capability_id": "WBP-ANA-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-ANA-003.batch-gantt",
+      "capability_id": "WBP-ANA-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-ANA-004.gantt",
+      "capability_id": "WBP-ANA-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-ANA-004.delay",
+      "capability_id": "WBP-ANA-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-ANA-004.adopt",
+      "capability_id": "WBP-ANA-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-ANA-005.csv",
+      "capability_id": "WBP-ANA-005",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-ANA-005.download-failure",
+      "capability_id": "WBP-ANA-005",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-001.machine",
+      "capability_id": "WBP-GANTT-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-001.operator",
+      "capability_id": "WBP-GANTT-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-001.batch",
+      "capability_id": "WBP-GANTT-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-001.baseline",
+      "capability_id": "WBP-GANTT-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-001.search",
+      "capability_id": "WBP-GANTT-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-001.only-changed",
+      "capability_id": "WBP-GANTT-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-001.expand",
+      "capability_id": "WBP-GANTT-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-001.collapse",
+      "capability_id": "WBP-GANTT-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-002.click",
+      "capability_id": "WBP-GANTT-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-002.keyboard",
+      "capability_id": "WBP-GANTT-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-002.hover",
+      "capability_id": "WBP-GANTT-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-002.conflict-track",
+      "capability_id": "WBP-GANTT-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-003.details",
+      "capability_id": "WBP-GANTT-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-003.resources",
+      "capability_id": "WBP-GANTT-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-003.quantities",
+      "capability_id": "WBP-GANTT-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-003.predecessors",
+      "capability_id": "WBP-GANTT-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-004.batch-focus",
+      "capability_id": "WBP-GANTT-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-004.missing",
+      "capability_id": "WBP-GANTT-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-GANTT-004.trial-link",
+      "capability_id": "WBP-GANTT-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-DELAY-001.metrics",
+      "capability_id": "WBP-DELAY-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-DELAY-001.scope",
+      "capability_id": "WBP-DELAY-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-DELAY-001.unknown",
+      "capability_id": "WBP-DELAY-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-DELAY-002.select-batch",
+      "capability_id": "WBP-DELAY-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-DELAY-002.due-date",
+      "capability_id": "WBP-DELAY-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-DELAY-002.full-batch-finish",
+      "capability_id": "WBP-DELAY-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-DELAY-003.last-operation",
+      "capability_id": "WBP-DELAY-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-DELAY-003.compare",
+      "capability_id": "WBP-DELAY-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-DELAY-004.conflicts",
+      "capability_id": "WBP-DELAY-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-DELAY-004.no-root-cause-claim",
+      "capability_id": "WBP-DELAY-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-001.return-source",
+      "capability_id": "WBP-TRIAL-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-001.shell",
+      "capability_id": "WBP-TRIAL-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-001.theme",
+      "capability_id": "WBP-TRIAL-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-001.load-failure",
+      "capability_id": "WBP-TRIAL-001",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-002.source",
+      "capability_id": "WBP-TRIAL-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-002.catalog-source",
+      "capability_id": "WBP-TRIAL-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-002.selected-status",
+      "capability_id": "WBP-TRIAL-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-002.candidate-source",
+      "capability_id": "WBP-TRIAL-002",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-003.mode",
+      "capability_id": "WBP-TRIAL-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-003.baseline",
+      "capability_id": "WBP-TRIAL-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-003.only-changed",
+      "capability_id": "WBP-TRIAL-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-003.search",
+      "capability_id": "WBP-TRIAL-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-003.expand",
+      "capability_id": "WBP-TRIAL-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-003.escape",
+      "capability_id": "WBP-TRIAL-003",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-004.full-scope",
+      "capability_id": "WBP-TRIAL-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-004.execution",
+      "capability_id": "WBP-TRIAL-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-004.capacity",
+      "capability_id": "WBP-TRIAL-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-004.predecessors",
+      "capability_id": "WBP-TRIAL-004",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-005.cancel",
+      "capability_id": "WBP-TRIAL-005",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-005.resources",
+      "capability_id": "WBP-TRIAL-005",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-005.date",
+      "capability_id": "WBP-TRIAL-005",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-005.save",
+      "capability_id": "WBP-TRIAL-005",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-005.repair-conflict",
+      "capability_id": "WBP-TRIAL-005",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-005.calendar-end",
+      "capability_id": "WBP-TRIAL-005",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-006.lock",
+      "capability_id": "WBP-TRIAL-006",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-006.actuals",
+      "capability_id": "WBP-TRIAL-006",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-006.precedence-conflict",
+      "capability_id": "WBP-TRIAL-006",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-006.valid-point",
+      "capability_id": "WBP-TRIAL-006",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-006.authorization",
+      "capability_id": "WBP-TRIAL-006",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-006.overlap",
+      "capability_id": "WBP-TRIAL-006",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-006.calendar",
+      "capability_id": "WBP-TRIAL-006",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-007.save-scenario",
+      "capability_id": "WBP-TRIAL-007",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-007.cancel",
+      "capability_id": "WBP-TRIAL-007",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-007.reason",
+      "capability_id": "WBP-TRIAL-007",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-007.confirm",
+      "capability_id": "WBP-TRIAL-007",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-007.recover-receipt",
+      "capability_id": "WBP-TRIAL-007",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-007.stale-conflict",
+      "capability_id": "WBP-TRIAL-007",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-008.cancel",
+      "capability_id": "WBP-TRIAL-008",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-008.confirm",
+      "capability_id": "WBP-TRIAL-008",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-009.reset-disposition",
+      "capability_id": "WBP-TRIAL-009",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-010.tabs",
+      "capability_id": "WBP-TRIAL-010",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-010.keyboard",
+      "capability_id": "WBP-TRIAL-010",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-010.empty",
+      "capability_id": "WBP-TRIAL-010",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-011.csv",
+      "capability_id": "WBP-TRIAL-011",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-011.raw",
+      "capability_id": "WBP-TRIAL-011",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-011.print",
+      "capability_id": "WBP-TRIAL-011",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-011.export-failure",
+      "capability_id": "WBP-TRIAL-011",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-012.leave-guard",
+      "capability_id": "WBP-TRIAL-012",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-012.reload",
+      "capability_id": "WBP-TRIAL-012",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-012.new-process",
+      "capability_id": "WBP-TRIAL-012",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-012.stale-write",
+      "capability_id": "WBP-TRIAL-012",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    },
+    {
+      "action_id": "WBP-TRIAL-012.storage-failure",
+      "capability_id": "WBP-TRIAL-012",
+      "B": "not_run",
+      "K": "not_run",
+      "V": "not_run",
+      "P": "not_run",
+      "observations": [],
+      "reason": "本账本未收录该原子动作的完整组合证据；不借用旧原型或单组件通过状态。"
+    }
+  ]
+}

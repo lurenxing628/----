@@ -1,0 +1,395 @@
+{
+  "schema_version": 1,
+  "business_success_evidence": false,
+  "browser": {
+    "path": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/foundation-browser.json",
+    "sha256": "419ad01afc555646d6b0d0b40b077d36cd51e9dbca214a054ef5df149e0fceed"
+  },
+  "cases": [
+    {
+      "state": "1392x924-light",
+      "name": "missing-main",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/static/workbench/app/main.js?v=1789028494",
+      "nav_during_fault": 0,
+      "error": [
+        "工作台资源加载失败或启动超时，请重新加载；若仍失败，请检查本机安装文件。"
+      ],
+      "same_object_retry": false,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/missing-main-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/missing-main.png",
+      "recovered_sha256": "64006e95057162e4deb617465b65794ff9b8c519703e02870fa5dd86ad8df4a9"
+    },
+    {
+      "state": "1392x924-light",
+      "name": "missing-react",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/static/workbench/vendor/react-18.3.1.production.min.js?v=1789028494",
+      "nav_during_fault": 0,
+      "error": [
+        "工作台资源未完整加载，请检查本机安装文件。"
+      ],
+      "same_object_retry": false,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/missing-react-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/missing-react.png",
+      "recovered_sha256": "873343154c407c4a20e0de51d0a59819e00d60139d28fe1724af5359122f03d8"
+    },
+    {
+      "state": "1392x924-light",
+      "name": "malformed-boot",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/workbench",
+      "nav_during_fault": 0,
+      "error": [
+        "工作台启动信息无法读取，请重新打开本机应用。"
+      ],
+      "same_object_retry": false,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/malformed-boot-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/malformed-boot.png",
+      "recovered_sha256": "479fea5ae54e8bd6d5d7b8a233c6e7005b36e24d930eed8a7f2fc7f17290c660"
+    },
+    {
+      "state": "1392x924-light",
+      "name": "workspace-render-throw",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/static/workbench/app/PlanWorkspace.js?v=1789028494",
+      "nav_during_fault": 14,
+      "error": null,
+      "same_object_retry": true,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/workspace-render-throw-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/workspace-render-throw.png",
+      "recovered_sha256": "56fe352cc41dcb2cff0ce2f0f48ad75281874ea50fbbb729775a05187eb67fd0"
+    },
+    {
+      "state": "1392x924-dark",
+      "name": "missing-main",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/static/workbench/app/main.js?v=1789028494",
+      "nav_during_fault": 0,
+      "error": [
+        "工作台资源加载失败或启动超时，请重新加载；若仍失败，请检查本机安装文件。"
+      ],
+      "same_object_retry": false,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/missing-main-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/missing-main.png",
+      "recovered_sha256": "42a98c0d2b1f2ca69b5da41fd143e8d064f3a7e7ecdb9bc1521ec456cdf4b4a8"
+    },
+    {
+      "state": "1392x924-dark",
+      "name": "missing-react",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/static/workbench/vendor/react-18.3.1.production.min.js?v=1789028494",
+      "nav_during_fault": 0,
+      "error": [
+        "工作台资源未完整加载，请检查本机安装文件。"
+      ],
+      "same_object_retry": false,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/missing-react-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/missing-react.png",
+      "recovered_sha256": "16848fffaec97d7c87e388264fe3efe5bfb2381963e30f38bf566c3172d7a425"
+    },
+    {
+      "state": "1392x924-dark",
+      "name": "malformed-boot",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/workbench",
+      "nav_during_fault": 0,
+      "error": [
+        "工作台启动信息无法读取，请重新打开本机应用。"
+      ],
+      "same_object_retry": false,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/malformed-boot-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/malformed-boot.png",
+      "recovered_sha256": "d009e6d2f81d72d4d6101eda63868cb53a44a6b39246388edbcf12ce83475962"
+    },
+    {
+      "state": "1392x924-dark",
+      "name": "workspace-render-throw",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/static/workbench/app/PlanWorkspace.js?v=1789028494",
+      "nav_during_fault": 14,
+      "error": null,
+      "same_object_retry": true,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/workspace-render-throw-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/workspace-render-throw.png",
+      "recovered_sha256": "f935efea22e90c25eeed4d4309d46690e8cca0451e13190b60b49e62d4246b38"
+    },
+    {
+      "state": "1920x1080-light",
+      "name": "missing-main",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/static/workbench/app/main.js?v=1789028494",
+      "nav_during_fault": 0,
+      "error": [
+        "工作台资源加载失败或启动超时，请重新加载；若仍失败，请检查本机安装文件。"
+      ],
+      "same_object_retry": false,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/missing-main-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/missing-main.png",
+      "recovered_sha256": "29dd0262d295f4432452942c39c265fe56a78e27bd7f56bd55af050af5832df9"
+    },
+    {
+      "state": "1920x1080-light",
+      "name": "missing-react",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/static/workbench/vendor/react-18.3.1.production.min.js?v=1789028494",
+      "nav_during_fault": 0,
+      "error": [
+        "工作台资源未完整加载，请检查本机安装文件。"
+      ],
+      "same_object_retry": false,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/missing-react-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/missing-react.png",
+      "recovered_sha256": "9ba6587a33a5df153aa90055fbdc1a8d1341fe935a1ff99cc016c857e77fc726"
+    },
+    {
+      "state": "1920x1080-light",
+      "name": "malformed-boot",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/workbench",
+      "nav_during_fault": 0,
+      "error": [
+        "工作台启动信息无法读取，请重新打开本机应用。"
+      ],
+      "same_object_retry": false,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/malformed-boot-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/malformed-boot.png",
+      "recovered_sha256": "d7c4966953f6046b9bff41121dcbd3a74e265a34a1bcf3f62b077cab54a10804"
+    },
+    {
+      "state": "1920x1080-light",
+      "name": "workspace-render-throw",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/static/workbench/app/PlanWorkspace.js?v=1789028494",
+      "nav_during_fault": 14,
+      "error": null,
+      "same_object_retry": true,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/workspace-render-throw-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/workspace-render-throw.png",
+      "recovered_sha256": "89982f080412083ca76c864121bb35585473aa99ef9b7460de00a4219563d155"
+    },
+    {
+      "state": "1920x1080-dark",
+      "name": "missing-main",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/static/workbench/app/main.js?v=1789028494",
+      "nav_during_fault": 0,
+      "error": [
+        "工作台资源加载失败或启动超时，请重新加载；若仍失败，请检查本机安装文件。"
+      ],
+      "same_object_retry": false,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/missing-main-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/missing-main.png",
+      "recovered_sha256": "24dfe88b5ee75269708a2cbad0763426468f1690ffe0f3c9f5da553ccb47daac"
+    },
+    {
+      "state": "1920x1080-dark",
+      "name": "missing-react",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/static/workbench/vendor/react-18.3.1.production.min.js?v=1789028494",
+      "nav_during_fault": 0,
+      "error": [
+        "工作台资源未完整加载，请检查本机安装文件。"
+      ],
+      "same_object_retry": false,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/missing-react-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/missing-react.png",
+      "recovered_sha256": "dd863ed2e4eca8970f7a8e4c7969ed84eaddc3090093efc887cd81ec4383687f"
+    },
+    {
+      "state": "1920x1080-dark",
+      "name": "malformed-boot",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/workbench",
+      "nav_during_fault": 0,
+      "error": [
+        "工作台启动信息无法读取，请重新打开本机应用。"
+      ],
+      "same_object_retry": false,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/malformed-boot-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/malformed-boot.png",
+      "recovered_sha256": "d4ae9cd7b7076a18af93463adb006ae0f78bd52df85403ce95f42f2fb522dee7"
+    },
+    {
+      "state": "1920x1080-dark",
+      "name": "workspace-render-throw",
+      "status": "passed",
+      "injection_hits": 1,
+      "target": "http://127.0.0.1:53263/static/workbench/app/PlanWorkspace.js?v=1789028494",
+      "nav_during_fault": 14,
+      "error": null,
+      "same_object_retry": true,
+      "injected_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/workspace-render-throw-injected.png",
+      "recovered_screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/workspace-render-throw.png",
+      "recovered_sha256": "190197ddc3e24f6d14df98e29f8fd54af97ce59ab52294e34a3106a5e014d07c"
+    }
+  ],
+  "injection_events": [
+    {
+      "state": "1392x924-light",
+      "kind": "missing-main",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/static/workbench/app/main.js?v=1789028494"
+    },
+    {
+      "state": "1392x924-light",
+      "kind": "missing-react",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/static/workbench/vendor/react-18.3.1.production.min.js?v=1789028494"
+    },
+    {
+      "state": "1392x924-light",
+      "kind": "malformed-boot",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/workbench"
+    },
+    {
+      "state": "1392x924-light",
+      "kind": "malformed-boot",
+      "original_html_sha256": "252310c553743cf27c0473884a890f6ab3d8caf3f13a8a5b3b691f7c6ce2c992",
+      "injected_html_sha256": "c3c6d6c20152bc776502894c52317e6a3a1b3ddde10935674e553657d07619d9"
+    },
+    {
+      "state": "1392x924-light",
+      "kind": "workspace-render-throw",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/static/workbench/app/PlanWorkspace.js?v=1789028494"
+    },
+    {
+      "state": "1392x924-light",
+      "kind": "workspace-render-throw",
+      "original_sha256": "d0b2f2858eec8996a7d2f6cc34054912ab32c4b7ce0c0180cab9d4e6de830913",
+      "injected_sha256": "043fad85eb2b3dc86b5940bc7fa68adf4e9de27894ef55366856fd48529e727c"
+    },
+    {
+      "state": "1392x924-dark",
+      "kind": "missing-main",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/static/workbench/app/main.js?v=1789028494"
+    },
+    {
+      "state": "1392x924-dark",
+      "kind": "missing-react",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/static/workbench/vendor/react-18.3.1.production.min.js?v=1789028494"
+    },
+    {
+      "state": "1392x924-dark",
+      "kind": "malformed-boot",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/workbench"
+    },
+    {
+      "state": "1392x924-dark",
+      "kind": "malformed-boot",
+      "original_html_sha256": "252310c553743cf27c0473884a890f6ab3d8caf3f13a8a5b3b691f7c6ce2c992",
+      "injected_html_sha256": "c3c6d6c20152bc776502894c52317e6a3a1b3ddde10935674e553657d07619d9"
+    },
+    {
+      "state": "1392x924-dark",
+      "kind": "workspace-render-throw",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/static/workbench/app/PlanWorkspace.js?v=1789028494"
+    },
+    {
+      "state": "1392x924-dark",
+      "kind": "workspace-render-throw",
+      "original_sha256": "d0b2f2858eec8996a7d2f6cc34054912ab32c4b7ce0c0180cab9d4e6de830913",
+      "injected_sha256": "043fad85eb2b3dc86b5940bc7fa68adf4e9de27894ef55366856fd48529e727c"
+    },
+    {
+      "state": "1920x1080-light",
+      "kind": "missing-main",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/static/workbench/app/main.js?v=1789028494"
+    },
+    {
+      "state": "1920x1080-light",
+      "kind": "missing-react",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/static/workbench/vendor/react-18.3.1.production.min.js?v=1789028494"
+    },
+    {
+      "state": "1920x1080-light",
+      "kind": "malformed-boot",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/workbench"
+    },
+    {
+      "state": "1920x1080-light",
+      "kind": "malformed-boot",
+      "original_html_sha256": "252310c553743cf27c0473884a890f6ab3d8caf3f13a8a5b3b691f7c6ce2c992",
+      "injected_html_sha256": "c3c6d6c20152bc776502894c52317e6a3a1b3ddde10935674e553657d07619d9"
+    },
+    {
+      "state": "1920x1080-light",
+      "kind": "workspace-render-throw",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/static/workbench/app/PlanWorkspace.js?v=1789028494"
+    },
+    {
+      "state": "1920x1080-light",
+      "kind": "workspace-render-throw",
+      "original_sha256": "d0b2f2858eec8996a7d2f6cc34054912ab32c4b7ce0c0180cab9d4e6de830913",
+      "injected_sha256": "043fad85eb2b3dc86b5940bc7fa68adf4e9de27894ef55366856fd48529e727c"
+    },
+    {
+      "state": "1920x1080-dark",
+      "kind": "missing-main",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/static/workbench/app/main.js?v=1789028494"
+    },
+    {
+      "state": "1920x1080-dark",
+      "kind": "missing-react",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/static/workbench/vendor/react-18.3.1.production.min.js?v=1789028494"
+    },
+    {
+      "state": "1920x1080-dark",
+      "kind": "malformed-boot",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/workbench"
+    },
+    {
+      "state": "1920x1080-dark",
+      "kind": "malformed-boot",
+      "original_html_sha256": "252310c553743cf27c0473884a890f6ab3d8caf3f13a8a5b3b691f7c6ce2c992",
+      "injected_html_sha256": "c3c6d6c20152bc776502894c52317e6a3a1b3ddde10935674e553657d07619d9"
+    },
+    {
+      "state": "1920x1080-dark",
+      "kind": "workspace-render-throw",
+      "injection_hit": 1,
+      "url": "http://127.0.0.1:53263/static/workbench/app/PlanWorkspace.js?v=1789028494"
+    },
+    {
+      "state": "1920x1080-dark",
+      "kind": "workspace-render-throw",
+      "original_sha256": "d0b2f2858eec8996a7d2f6cc34054912ab32c4b7ce0c0180cab9d4e6de830913",
+      "injected_sha256": "043fad85eb2b3dc86b5940bc7fa68adf4e9de27894ef55366856fd48529e727c"
+    }
+  ],
+  "recorded_fault_event_count": 372,
+  "full_fault_events": {
+    "path": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/foundation-browser.json",
+    "sha256": "419ad01afc555646d6b0d0b40b077d36cd51e9dbca214a054ef5df149e0fceed",
+    "json_pointer": "/fault_events"
+  },
+  "protocol": "Boot failure: readable alert plus real reload. Workspace render failure: retain 14-entry navigation and retry the same selected object."
+}

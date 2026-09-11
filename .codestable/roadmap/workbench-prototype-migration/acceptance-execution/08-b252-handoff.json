@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "owner": "E",
+  "purpose": "Four read-view restoration files are verified and frozen for Main/B252 copying.",
+  "source_root": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/source",
+  "source_manifest": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/source-manifest.json",
+  "source_manifest_sha256": "ba451495b7edf2382794236913f3ab3b58574b75a5734e5af7218c957e390ce4",
+  "source_aggregate_sha256": "2d6c6f12a3b2496d791cd9eb6f846b4dd26260facc334d568a68166561cff1d5",
+  "source_files": 6532,
+  "source_bytes": 319481080,
+  "base_source_root": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/source",
+  "base_source_aggregate_sha256": "285d3e6cac2dd44b85d7d6dca0f83e0329a0f67726cf8c88ecf146fcbb983ea9",
+  "source_delta": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/source-delta.json",
+  "delta_only": [
+    "tests/workbench/final_execution_analytics.cjs",
+    "tests/workbench/final_execution_read_reentry.cjs"
+  ],
+  "all_product_files_unchanged_from_base": true,
+  "build_root": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/full-build",
+  "asset_root": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/full-build/static/workbench",
+  "asset_manifest_sha256": "09f624979b2d9db12fa527ad4c62f610d61a7709d2da9df34732ab4840848b66",
+  "build_id": "86bae55877b7574a7dbccad0a61c2f4b714a3105500908d614b531ae31f90a2e",
+  "asset_files": 223,
+  "build_inputs": 315,
+  "target": "chrome109",
+  "four_product_files": {
+    "frontend/workbench/app/FieldAPI.js": "a320d072036113ed505381b9c4e91396ec2608a492236d476719fd4bf7bc6403",
+    "frontend/workbench/app/FieldWorkspace.jsx": "da53e462bbcb47922fc7c508158c7fc2ed51c86ffba35961716e61f2067f42a5",
+    "frontend/workbench/app/CalibrationAPI.js": "b50d402150bc5974dd2f62afc47e3f345c4493e86f2fbf754b7ea572f80d4a97",
+    "frontend/workbench/app/CalibrationWorkspace.jsx": "500efa73b75c9d0b7ad347c10ae4048177fbbfa230f09401c7c8519f26c1b6a6"
+  },
+  "verification": {
+    "junit": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/pytest.xml",
+    "passed": 9,
+    "failed": 0,
+    "seconds": 110.82,
+    "field_proof": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-ob8_k949/read-reentry-proof.json",
+    "calibration_proof": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/aps-workbench-live-ds0d4zps/read-reentry-proof.json",
+    "source_guard": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/reentry-final-01/sealed-pytest-source.json",
+    "loaded_repo_modules": 998,
+    "source_content_and_modes_verified": true,
+    "original_checkout_read_violations": [],
+    "business_tables_unchanged_during_read_reentry": true,
+    "same_browser_and_port_new_pid": true,
+    "unknown_refs_visible_failure_without_substitution": true,
+    "live_expired_tokens_rejected_without_auto_rebind": true,
+    "pending_commands_not_reposted": true
+  },
+  "write_stop": {
+    "four_original_product_files": "stopped",
+    "sealed_source": "stopped",
+    "source_manifest": "stopped",
+    "build_and_assets": "stopped",
+    "owned_test_processes": "finished_normally",
+    "no_further_moving_original_capture_for_B": true
+  },
+  "limits": [
+    "Not a B252 result, final HEAD, or clean-worktree proof.",
+    "The base full group was 51 passed and 2 failed; both failing probes were corrected and passed in this 9-test targeted rerun. Do not label a single full group as 53 passed.",
+    "Main visual acceptance and the complete 69-family atomic evidence reconciliation remain separate."
+  ]
+}

@@ -1,0 +1,935 @@
+{
+  "scope": "H: only five final foundation/navigation/live pytest files, one supplemental owner; no product changes",
+  "proof": "dirty working-tree registry-only verification; no domain API/browser execution or final HEAD binding",
+  "observed_before": {
+    "at": "2026-09-10T13:29:23.657001+00:00",
+    "head": "830a58e69faaa64a39d7a238ba2a0a0cd5c9047c",
+    "python": "3.8.10",
+    "source_files": {
+      "targets": {
+        "tests/workbench/test_final_foundation_navigation.py": {
+          "bytes": 771,
+          "sha256": "ab904970f80225e79ab76fb1ed6cc0ed5b76f622fc41373b8a185fd337c608b0"
+        },
+        "tests/workbench/test_final_foundation_live.py": {
+          "bytes": 3277,
+          "sha256": "6378e6ba86e3dc98c39a86c60c24147a1e4a7f52675068ed7cec521c089eb833"
+        },
+        "tests/workbench/test_final_navigation_host.py": {
+          "bytes": 5084,
+          "sha256": "de7e8d4e8340f13d624ba73d46a193f68e7428a50e6e5f1b820135341b5ee683"
+        },
+        "tests/workbench/test_final_navigation_boot.py": {
+          "bytes": 6866,
+          "sha256": "8fcb2b8aa35e148a34376c10870e1ae26377a2ce290d70f048cf8a0586598af3"
+        },
+        "tests/workbench/test_final_legacy_navigation.py": {
+          "bytes": 13123,
+          "sha256": "172e2c6ceec554ded4e6b2bbc4ee0c7bbf7ded45f4ad46d66a76ce84b49405af"
+        }
+      },
+      "helpers": {
+        "tests/workbench/final_foundation_navigation.cjs": {
+          "bytes": 10932,
+          "sha256": "b65d1f588b4db87e22b0338c222e647163cd5b239617a5cdbf58e8086569d9f9"
+        },
+        "tests/workbench/final_foundation_live.py": {
+          "bytes": 5862,
+          "sha256": "7016c9dca7177432f3467f95f56991184e016d898cab3480679d66f82aed6c52"
+        },
+        "tests/workbench/final_foundation_live_support.py": {
+          "bytes": 9734,
+          "sha256": "c9779fcd63bf2b8d15e6ad1e0be9a65f272758df5b5421fc160203f69b4746d2"
+        },
+        "tests/workbench/final_foundation_host.py": {
+          "bytes": 2639,
+          "sha256": "aaf827122b2835e89b307b458218e8ad42743b50dad0dbaceda4320ea186d548"
+        },
+        "tests/workbench/final_foundation_live.cjs": {
+          "bytes": 5199,
+          "sha256": "7c638e45da8e25d21842b44974a599fa140ecc8005e76193d1b617b0011c3944"
+        },
+        "tests/workbench/final_foundation_live_probe.cjs": {
+          "bytes": 14780,
+          "sha256": "280b90fe94d6544495f9b4ec1dd5426eb733c92974d8650e2feae658b7079881"
+        },
+        "tests/workbench/final_foundation_live_actions.cjs": {
+          "bytes": 12752,
+          "sha256": "a735c9303fd989191abab17008e09e148c27f1fe1b0d4aa1aa016223cec533ae"
+        },
+        "tests/workbench/final_foundation_live_faults.cjs": {
+          "bytes": 7651,
+          "sha256": "69676b2aa1ceb756c7e0538c98a22e0b3e1897c0d1069f44103fb61b96e84318"
+        },
+        "tests/workbench/final_navigation_support.py": {
+          "bytes": 6329,
+          "sha256": "cee7d9b907ceb66bab0a1a6d51baa6871dc3336231486e2d12ac9f8ce0ce9071"
+        },
+        "tests/workbench/final_legacy_navigation_support.py": {
+          "bytes": 1139,
+          "sha256": "d6480c3fb10e2b0a8a59566374b3b1adeec0206ed65c2b4eb3ae207c674248e3"
+        },
+        "tests/workbench/live_environment.py": {
+          "bytes": 6575,
+          "sha256": "32d6f6c29e58260009efa543d42758b3da08edd0e488fbdbdad1a31d05acb5c1"
+        },
+        "tests/workbench/run_live_server.py": {
+          "bytes": 11904,
+          "sha256": "5f9f4a89b5629b7f5b5f48662b777637e519de319820abe1d7a39b107969af51"
+        },
+        "tests/workbench/run_live_server_support.py": {
+          "bytes": 11138,
+          "sha256": "4bb13e5c4131c715fb4db10575df1835fbf2fb5f62170091d8a6d3d3ad8c3b49"
+        },
+        "tests/workbench/plan_read_support.py": {
+          "bytes": 8862,
+          "sha256": "cd4506854d5ec831bd001855f15e5c0c4e6cf51a1b9cbdd5cc7b10743924977c"
+        },
+        "tests/workbench/plan_catalog_support.py": {
+          "bytes": 2883,
+          "sha256": "85f3f651fbbfb916d4a2c8fa10a7aa8b4b83932e86a6fae9d98273098011f70a"
+        }
+      },
+      "products": {
+        "frontend/workbench/app/WorkbenchNavigation.js": {
+          "bytes": 6140,
+          "sha256": "aca7bc323ef80e50146c6189111a51b59521208c6ab3570677de8e7761169799"
+        },
+        "frontend/workbench/app/main.jsx": {
+          "bytes": 10728,
+          "sha256": "ab6d7cafb4690a395323a270ecd04d16d55943a6450b221b6cf5f307b29ba29c"
+        },
+        "frontend/workbench/app/theme.js": {
+          "bytes": 2118,
+          "sha256": "8d8d7f42fe456acea478c8dda00163697e8b955b09e801e0b349dbd4e6684c1e"
+        },
+        "web/routes/workbench/navigation_boot.py": {
+          "bytes": 7990,
+          "sha256": "405adefc94b0280fa6a187400d2277234d140bc349cb37d0ca6ef9cc529f785e"
+        },
+        "web/routes/workbench/pages.py": {
+          "bytes": 5282,
+          "sha256": "b345ad62be25032252612caa3cee009f0e1d0c2c68005846a5fbc7ca565b3ed8"
+        },
+        "web/routes/workbench/legacy_navigation.py": {
+          "bytes": 7830,
+          "sha256": "e99b7a973ee2f802b332e45eb822d0da43b458c16e0a6db1b2dc1d2ae620b69f"
+        },
+        "web/routes/workbench/legacy_navigation_plan.py": {
+          "bytes": 4956,
+          "sha256": "2a5f8b3ea06cddb7f4386385cb27ed0bea3f2f068a02912fe0482dd1a81bbb47"
+        },
+        "web/routes/workbench/legacy_page_contract.py": {
+          "bytes": 3736,
+          "sha256": "f738fd62bd10a7c3aaca974193641f3061b42f37297754598b179e198fc088ad"
+        },
+        "scripts/workbench/build-order.json": {
+          "bytes": 5533,
+          "sha256": "2c167b9da5c713bba0905a3d36c7b3ef5ac2a8ef4d6a82fa826d9f2a8013f2cb"
+        },
+        "scripts/workbench/build.py": {
+          "bytes": 15620,
+          "sha256": "29691fe154a3a622895938e1a08114f35bf012d826e6a445f8a2a6866a0a3c43"
+        },
+        "scripts/workbench/compile.cjs": {
+          "bytes": 2459,
+          "sha256": "cf4b58c1093d5c09f94164305f5fe988c18fdb1e9552d40310606e68fd6424d5"
+        }
+      },
+      "edits": {
+        "tools/test_registry_groups_workbench.py": {
+          "bytes": 57232,
+          "sha256": "96bf5fa8f06d7551ace111d411d92e7f748407da6950877888ce0c1237a47270"
+        },
+        "tests/gate_meta/test_workbench_registry_contract.py": {
+          "bytes": 90953,
+          "sha256": "edaf8173f52b011feb3d1d0ce73deeddfc617c04c603214a5c85948e3d4f5ae0"
+        },
+        "tests/gate_meta/test_workbench_round1_registry_contract.py": {
+          "bytes": 17062,
+          "sha256": "709e2f4037bbcb2b23c461da800ca712e7e57b65c70dc6cde89d11ceea283e53"
+        },
+        "tests/gate_meta/workbench_round1_registry_support.py": {
+          "bytes": 6353,
+          "sha256": "e45c9423bd906b12869d43623f2c6c649c19699c2f8385c8c173414327666764"
+        }
+      }
+    },
+    "target_owners": {
+      "tests/workbench/test_final_foundation_navigation.py": [],
+      "tests/workbench/test_final_foundation_live.py": [],
+      "tests/workbench/test_final_navigation_host.py": [],
+      "tests/workbench/test_final_navigation_boot.py": [],
+      "tests/workbench/test_final_legacy_navigation.py": []
+    },
+    "group_ids": [
+      "quality_gate",
+      "scheduler_config",
+      "scheduler_run_core",
+      "scheduler_analysis_gantt_reports_week_plan",
+      "scheduler_batches_material_resource",
+      "request_services_runtime_error_boundary",
+      "frontend_manual_excel",
+      "ui_layout_presenters_system",
+      "workbench_registry",
+      "workbench_foundation",
+      "workbench_resources",
+      "workbench_process",
+      "workbench_batches",
+      "workbench_plans",
+      "workbench_reports",
+      "workbench_system",
+      "workbench_execution_ledger",
+      "workbench_execution_scheduler",
+      "workbench_field",
+      "workbench_preflight",
+      "workbench_mainmigration",
+      "workbench_run_compute",
+      "workbench_run_jobs",
+      "workbench_calibration",
+      "workbench_trial",
+      "workbench_template_lineage",
+      "workbench_request_lifecycle",
+      "workbench_calibration_adoption",
+      "workbench_trial_adoption",
+      "workbench_dashboard",
+      "workbench_outsourcing",
+      "workbench_zero_duration",
+      "workbench_piece_adoption",
+      "workbench_browser",
+      "workbench_browser_opt_in",
+      "workbench_run_compute_capacity",
+      "workbench_run_jobs_capacity",
+      "workbench_system_platform",
+      "workbench_asset_build",
+      "workbench_run_history_capacity",
+      "workbench_run_candidate_capacity",
+      "workbench_run_baseline_capacity",
+      "workbench_run_adoption_capacity",
+      "workbench_calibration_capacity",
+      "workbench_identity_diagnostics",
+      "workbench_trial_capacity",
+      "workbench_lineage_lookup_capacity",
+      "workbench_dashboard_capacity"
+    ],
+    "group_target_hashes": {
+      "quality_gate": "862db9ef14232ab8bdd565a84b333cc9f86ccb2e3b4b4139380708240d0fca3e",
+      "scheduler_config": "ad910f72cbd233a8133bc528e4b8381fe2c5b33d8aee30515f6125a184d85b1d",
+      "scheduler_run_core": "16de230755e0bb04db0b8fb965b9b8ff11d615fc96033e593213485c1d6a5e2a",
+      "scheduler_analysis_gantt_reports_week_plan": "a202f344482a7858742f69a243c67b34a7ed2c219459450af52faf049ee34378",
+      "scheduler_batches_material_resource": "6ec5c80ce4fd09ce721a72c993078b526092baedc369e239f472c720b9b7aa9c",
+      "request_services_runtime_error_boundary": "4da199ef54db1bcc2790d41ec0bce84b68d93bad6e0f586d30a70591f1fb6e70",
+      "frontend_manual_excel": "0d9cfaaa5f2a3c5580b9667fe49e4b445ba5c7b3966aee7f2b4869c7a181a446",
+      "ui_layout_presenters_system": "865effaff17be28d1dc67730867ccf01c734bbb3f89d54aafd0af31f6e946f81",
+      "workbench_registry": "b000bbed249b0cb6dad583fa15866a6018a49ade7ea2b2f568d41227fa1df210",
+      "workbench_foundation": "dbe5fa26f3e067ee32e017bfa45e22858cc0992231575870b027407245f0f26a",
+      "workbench_resources": "03d8e803dec58f1a370f84e644b4a655e6684501d4ab34961760ab130a5583e5",
+      "workbench_process": "99141045c7ace6d845e83b67840586aaa9e4f7e9458bb54fa896219fa1f1553f",
+      "workbench_batches": "875b99e6eee33b7e341bd30387ed19423badf8926601350fe5c24afe3d3c609d",
+      "workbench_plans": "0b727fd6171a96865e11d5a3a4768e9f93810f732256ab3b203fcb52ab73dbcb",
+      "workbench_reports": "ea9480969a3e41904a96db55ec3d499db5a23a3fcfef10e6fa9a3733eb7781aa",
+      "workbench_system": "be72896d67abedbd7b42a3c6a4e79783af0bd5c6e6660466b3becd03d3bbe643",
+      "workbench_execution_ledger": "c44d34350f54e0ae698275892b0af109e31052c438ebf16dad16d995f924b963",
+      "workbench_execution_scheduler": "38238987f1ca10c7d607c082846a2f65743cde56238761c17be9850f73dacd0a",
+      "workbench_field": "7ce9315d4a1cc3d9025a50943025b8c9fb813cb5415be57a85d3d0bde594a4ff",
+      "workbench_preflight": "336ea89ff394fe43f191c4783a23e280695e16c91568d6da18fa799b34314c5b",
+      "workbench_mainmigration": "7362a2a290141cf28e16afaa74e21ffc6490f15639746798f877c9b68cbf9438",
+      "workbench_run_compute": "3f2e29cb03bcc6f5ed583528131f13b2176506213dbf6667977968fa941c925d",
+      "workbench_run_jobs": "680e7f40eab17cdde24620c3b122d0065d80da65d6a253434cb147584978a147",
+      "workbench_calibration": "c180ae8f341abe63f4b2f4aad4ef0a9c047aa8dc798bccb0ae59ff995de159cf",
+      "workbench_trial": "2724af7e1123c655e0f136b6787bac38a483fc1c0b34cd60a5f4100e18a8075e",
+      "workbench_template_lineage": "b2b977d287dd9cc41ac965e6f4731bfedd58d1e62f950660748ae75bc2b51950",
+      "workbench_request_lifecycle": "fbc32b6832e87e9f568062c8bbb33d7e61749d82369b94707fe5ef003536cbda",
+      "workbench_calibration_adoption": "6f36f904a47069e64e58b8f98acad23db5fb3a90ba7964279ff1ee1449b2c795",
+      "workbench_trial_adoption": "1ca3f7df9a73aa1e4c854e05a7326172cfb7f806fb3c6d141f1e6dc3416ccad8",
+      "workbench_dashboard": "28a861fd36e8feab3c3e0b2130b358b0fd35699535b28595b377e9be03961791",
+      "workbench_outsourcing": "fc25cafeca4812453c0f577c5e5f06b12bc6b8541204985cb6ee4c8d6031647e",
+      "workbench_zero_duration": "cb6f70b115844fc37995405836e426e363ca327ae4a8c9feed34cde760b4fd06",
+      "workbench_piece_adoption": "29d91ba59e4d78773a85dcae6e8b475ed6c7d4145ddde2d902981b9b0db7c9cb",
+      "workbench_browser": "e3726700a806c2da0e22d433f2185ef6eff53ab775ada30926e44921b3e22dc5",
+      "workbench_browser_opt_in": "621e1593f1630f290ba8f0e7fc285fa3a5d091c8b63f2021eeff00c18e577a63",
+      "workbench_run_compute_capacity": "b8ef2ce6daa3e7a0634925320386a36acf2d50e4bd426bd415360de3ec57a451",
+      "workbench_run_jobs_capacity": "d3b5651e6bd42120d8e17ee53b353616e81326d8bcf8ad573e869b065046b179",
+      "workbench_system_platform": "77aa062b4a2833614e3c5421597cbe5b2db8ac9fdeabc14a0b9b58f741988658",
+      "workbench_asset_build": "42f237334fe39975cd69a077593749966fa915a431efe729e53caee89505c9e4",
+      "workbench_run_history_capacity": "98becc8196d3d3f26ca6c1825b74e3c33793672bf085f40f50f77ac55b202fdb",
+      "workbench_run_candidate_capacity": "7ad93ab21b6cffcd6792cd9834606267a51e3f9c3aec28365c5cd0ec6f44b002",
+      "workbench_run_baseline_capacity": "f87e8a78c4bcd71393fa34df5489004b8a3787d63fcd4a3c438bfe402d95ab6e",
+      "workbench_run_adoption_capacity": "1f175de4e2e0b001bec054329608740b8dfcba710ee53d1513782ac7cfd7ba6b",
+      "workbench_calibration_capacity": "5f20ebdaf381a100c0d726ec6e0b7f63b626ccbd5e8e6b02ef7cbd4b129cd3f6",
+      "workbench_identity_diagnostics": "4cb573a5c03c655a4f3deed3766818bfcada60bfd17d2e02d23e470e99055aec",
+      "workbench_trial_capacity": "2993a7e10d53c061a672f6685cbe9be3aac9d7edefe464fb84bab4a35648f8e4",
+      "workbench_lineage_lookup_capacity": "bdad12b3794a1d832d616805a7ecc6abafaa109b869e99b99c17a32361d93944",
+      "workbench_dashboard_capacity": "3e5f33e69b8d693af50c9d9b8599c9b3a1517b1cb6266752a9d40b515fca4cee"
+    },
+    "retained_target_hashes": {
+      "quality_gate": "862db9ef14232ab8bdd565a84b333cc9f86ccb2e3b4b4139380708240d0fca3e",
+      "scheduler_config": "ad910f72cbd233a8133bc528e4b8381fe2c5b33d8aee30515f6125a184d85b1d",
+      "scheduler_run_core": "16de230755e0bb04db0b8fb965b9b8ff11d615fc96033e593213485c1d6a5e2a",
+      "scheduler_analysis_gantt_reports_week_plan": "a202f344482a7858742f69a243c67b34a7ed2c219459450af52faf049ee34378",
+      "scheduler_batches_material_resource": "6ec5c80ce4fd09ce721a72c993078b526092baedc369e239f472c720b9b7aa9c",
+      "request_services_runtime_error_boundary": "4da199ef54db1bcc2790d41ec0bce84b68d93bad6e0f586d30a70591f1fb6e70",
+      "frontend_manual_excel": "0d9cfaaa5f2a3c5580b9667fe49e4b445ba5c7b3966aee7f2b4869c7a181a446",
+      "ui_layout_presenters_system": "865effaff17be28d1dc67730867ccf01c734bbb3f89d54aafd0af31f6e946f81",
+      "workbench_registry": "b000bbed249b0cb6dad583fa15866a6018a49ade7ea2b2f568d41227fa1df210",
+      "workbench_foundation": "dbe5fa26f3e067ee32e017bfa45e22858cc0992231575870b027407245f0f26a",
+      "workbench_resources": "03d8e803dec58f1a370f84e644b4a655e6684501d4ab34961760ab130a5583e5",
+      "workbench_process": "99141045c7ace6d845e83b67840586aaa9e4f7e9458bb54fa896219fa1f1553f",
+      "workbench_batches": "875b99e6eee33b7e341bd30387ed19423badf8926601350fe5c24afe3d3c609d",
+      "workbench_plans": "0b727fd6171a96865e11d5a3a4768e9f93810f732256ab3b203fcb52ab73dbcb",
+      "workbench_reports": "ea9480969a3e41904a96db55ec3d499db5a23a3fcfef10e6fa9a3733eb7781aa",
+      "workbench_system": "be72896d67abedbd7b42a3c6a4e79783af0bd5c6e6660466b3becd03d3bbe643",
+      "workbench_execution_ledger": "c44d34350f54e0ae698275892b0af109e31052c438ebf16dad16d995f924b963",
+      "workbench_execution_scheduler": "38238987f1ca10c7d607c082846a2f65743cde56238761c17be9850f73dacd0a",
+      "workbench_field": "7ce9315d4a1cc3d9025a50943025b8c9fb813cb5415be57a85d3d0bde594a4ff",
+      "workbench_preflight": "336ea89ff394fe43f191c4783a23e280695e16c91568d6da18fa799b34314c5b",
+      "workbench_mainmigration": "7362a2a290141cf28e16afaa74e21ffc6490f15639746798f877c9b68cbf9438",
+      "workbench_run_compute": "3f2e29cb03bcc6f5ed583528131f13b2176506213dbf6667977968fa941c925d",
+      "workbench_run_jobs": "680e7f40eab17cdde24620c3b122d0065d80da65d6a253434cb147584978a147",
+      "workbench_calibration": "c180ae8f341abe63f4b2f4aad4ef0a9c047aa8dc798bccb0ae59ff995de159cf",
+      "workbench_trial": "2724af7e1123c655e0f136b6787bac38a483fc1c0b34cd60a5f4100e18a8075e",
+      "workbench_template_lineage": "b2b977d287dd9cc41ac965e6f4731bfedd58d1e62f950660748ae75bc2b51950",
+      "workbench_request_lifecycle": "fbc32b6832e87e9f568062c8bbb33d7e61749d82369b94707fe5ef003536cbda",
+      "workbench_calibration_adoption": "6f36f904a47069e64e58b8f98acad23db5fb3a90ba7964279ff1ee1449b2c795",
+      "workbench_trial_adoption": "1ca3f7df9a73aa1e4c854e05a7326172cfb7f806fb3c6d141f1e6dc3416ccad8",
+      "workbench_dashboard": "28a861fd36e8feab3c3e0b2130b358b0fd35699535b28595b377e9be03961791",
+      "workbench_outsourcing": "fc25cafeca4812453c0f577c5e5f06b12bc6b8541204985cb6ee4c8d6031647e",
+      "workbench_zero_duration": "cb6f70b115844fc37995405836e426e363ca327ae4a8c9feed34cde760b4fd06",
+      "workbench_piece_adoption": "29d91ba59e4d78773a85dcae6e8b475ed6c7d4145ddde2d902981b9b0db7c9cb",
+      "workbench_browser": "e3726700a806c2da0e22d433f2185ef6eff53ab775ada30926e44921b3e22dc5",
+      "workbench_browser_opt_in": "621e1593f1630f290ba8f0e7fc285fa3a5d091c8b63f2021eeff00c18e577a63",
+      "workbench_run_compute_capacity": "b8ef2ce6daa3e7a0634925320386a36acf2d50e4bd426bd415360de3ec57a451",
+      "workbench_run_jobs_capacity": "d3b5651e6bd42120d8e17ee53b353616e81326d8bcf8ad573e869b065046b179",
+      "workbench_system_platform": "77aa062b4a2833614e3c5421597cbe5b2db8ac9fdeabc14a0b9b58f741988658",
+      "workbench_asset_build": "42f237334fe39975cd69a077593749966fa915a431efe729e53caee89505c9e4",
+      "workbench_run_history_capacity": "98becc8196d3d3f26ca6c1825b74e3c33793672bf085f40f50f77ac55b202fdb",
+      "workbench_run_candidate_capacity": "7ad93ab21b6cffcd6792cd9834606267a51e3f9c3aec28365c5cd0ec6f44b002",
+      "workbench_run_baseline_capacity": "f87e8a78c4bcd71393fa34df5489004b8a3787d63fcd4a3c438bfe402d95ab6e",
+      "workbench_run_adoption_capacity": "1f175de4e2e0b001bec054329608740b8dfcba710ee53d1513782ac7cfd7ba6b",
+      "workbench_calibration_capacity": "5f20ebdaf381a100c0d726ec6e0b7f63b626ccbd5e8e6b02ef7cbd4b129cd3f6",
+      "workbench_identity_diagnostics": "4cb573a5c03c655a4f3deed3766818bfcada60bfd17d2e02d23e470e99055aec",
+      "workbench_trial_capacity": "2993a7e10d53c061a672f6685cbe9be3aac9d7edefe464fb84bab4a35648f8e4",
+      "workbench_lineage_lookup_capacity": "bdad12b3794a1d832d616805a7ecc6abafaa109b869e99b99c17a32361d93944",
+      "workbench_dashboard_capacity": "3e5f33e69b8d693af50c9d9b8599c9b3a1517b1cb6266752a9d40b515fca4cee"
+    },
+    "input_scope_hashes": {
+      "quality_gate": "d7060448f967bc2c6ab3687dcf20badcf1409f43896bb3258b882d83d7689160",
+      "scheduler_config": "d314384ebe454d697fae0d9351e17c5746674a20f28d128b2eba674ae43ff9fa",
+      "scheduler_run_core": "6d9e5de6b6b47f028a86494af13f4f839d30cf3426ff47d300b33aa37592fcf6",
+      "scheduler_analysis_gantt_reports_week_plan": "237013006f64f764fc2a712127232e966e200f0eb716f45a73c1e32243c4da5d",
+      "scheduler_batches_material_resource": "62e675491bcb8105e96159c18f439071d4b7fc4f4f95b1883f0ab3c2881add00",
+      "request_services_runtime_error_boundary": "9f86c0d70fe67ea55aa65bfd6ab2ebfbef69554234b6471eda2964f7c5f53e75",
+      "frontend_manual_excel": "938e5aecad65d5ee4aa707e915c5772474c138997c3aee59c924b7f85fd71792",
+      "ui_layout_presenters_system": "1f0181bd4345bcd1c2f7838dbc3d387c4f9be7b5a89cd11ee1ae625a7c1f8e61",
+      "workbench_registry": "deaae4f5cb2a5470898bb33b0b87aaed0bba412e3d165cf0b8467b65f2028541",
+      "workbench_foundation": "4cb280750efef3f3f67cac33514a2cb97c1a501c25895d6a9c6f45fce4121a7b",
+      "workbench_resources": "90b67ab058266abfcad6f376f1ee2e449bd0b75987ac7c279139ccfbeae0f232",
+      "workbench_process": "e559ae146d2728ed8560d26b3637a1552baa6b6bbb174e74b2fc5371edc9c229",
+      "workbench_batches": "6800a4126cfd2b0ad722d253c572b9756c0df9d1ee453e26c0394f7f9aa1759c",
+      "workbench_plans": "3229f1e6658e3757d879415d07c0c330df503034e7af69671e5f8e3cff493ff8",
+      "workbench_reports": "f78dde43473b85de97430c10ea881a4f0d2bcb1dff5913e6e4fc7468fe588d98",
+      "workbench_system": "6e992d55918d1ded9d8b0a40aaccf42159389e22503920692527e414d2223915",
+      "workbench_execution_ledger": "2b8f1e3bc672a5dd5f0f128ab5396bf1f8448b2ee6a9cae29959717ea62f75b3",
+      "workbench_execution_scheduler": "4b8443246cabb5426c21b5e7a84fa7be7210fff382817e31ceb56326973e74ff",
+      "workbench_field": "17b6314480feec84e1db47dc8f1d983e3025619a0a01f34ad4a39116aa75ac63",
+      "workbench_preflight": "b1801732f6f1189e79e4d5b5dbd54a1b10432accb6e31b9042702e0177d4220b",
+      "workbench_mainmigration": "d4a0c2f25a4bb06fdebda510e68b131b0131b2e624a3b6366e11bafd6f6ffb9e",
+      "workbench_run_compute": "4d9adf66d700e59109b197699cc5ebe2d8f339887c68395c2ea05432d4762655",
+      "workbench_run_jobs": "d9577b5d468fb960ca6fbb6e4cab857d6f12598efeaeed29ec901097215e067f",
+      "workbench_calibration": "14e322b987d7197efdaa1413ba9b2b935736cdfd1e1e7ee7efb46fb975b39946",
+      "workbench_trial": "933cbda15eb650898e3abea188f3384ed093535d817a2e51084481df20a53478",
+      "workbench_template_lineage": "4d9c1bb45e11e2eeb3f43d16cb2b2b6d01243802e409b34043804c9f776eb969",
+      "workbench_request_lifecycle": "17e0d2da0c3f0b7c6140d64467b3c02dbf9a14f135af186d7ba124eb2b124ab2",
+      "workbench_calibration_adoption": "2f72f90217aaed04ec929d10306b73bb2c0f53bd9b52dd0d8dbbffd51524b872",
+      "workbench_trial_adoption": "a227ab262a812ed119bd556b1b26dd31d2283db005a260ce0e478dd96767de73",
+      "workbench_dashboard": "8c9a1c5e955e6cba075c703937cf8aabec487cc079dd293bf21f516b0ed82e18",
+      "workbench_outsourcing": "d5dbdaa483c03c8aad02f3ddbc8699c73e9733929056636d13a57fb4c22908c0",
+      "workbench_zero_duration": "cee5e485a179b9e7b8cb8885629fe5da7a026d829a098acfcdc2d196bf5b592e",
+      "workbench_piece_adoption": "aae21c18b9503cca3b111d9816a5aa301fc2297ceca1dadf5920edf7e162e2b6",
+      "workbench_browser": "e46a28672438e4125fda6b1bfe61af284ab36ee3ccbc244225dc71674cfc880f",
+      "workbench_browser_opt_in": "f8d717e6f2ca1ae40a69935185ea470b35c699e313f208b6ae9dd1b21bfa0605",
+      "workbench_run_compute_capacity": "1a52ea508c806e1be827d6b1ed66219dcfc6e30f40a1a1a8dac7768f21f377a4",
+      "workbench_run_jobs_capacity": "48daa4f9fa555fe1098446ac3de28cf07e2c49582ec4dbde0ebb0ed40eaf87ff",
+      "workbench_system_platform": "8c213e28b1f31c09ffd6821fd840f38a2ac72beef1ae7c1f6a3fb69e73adc1ae",
+      "workbench_asset_build": "1efa1e7717bc18df453d9acdc2f165ab58ca0a8194902d65f0758aa98e297dcb",
+      "workbench_run_history_capacity": "e0d2ebbcd92d5c03f611e6f44228cb3af559678cb61dca42e7e3b5890f2c98ba",
+      "workbench_run_candidate_capacity": "e0d2ebbcd92d5c03f611e6f44228cb3af559678cb61dca42e7e3b5890f2c98ba",
+      "workbench_run_baseline_capacity": "e0d2ebbcd92d5c03f611e6f44228cb3af559678cb61dca42e7e3b5890f2c98ba",
+      "workbench_run_adoption_capacity": "e0d2ebbcd92d5c03f611e6f44228cb3af559678cb61dca42e7e3b5890f2c98ba",
+      "workbench_calibration_capacity": "1efa1e7717bc18df453d9acdc2f165ab58ca0a8194902d65f0758aa98e297dcb",
+      "workbench_identity_diagnostics": "e0d2ebbcd92d5c03f611e6f44228cb3af559678cb61dca42e7e3b5890f2c98ba",
+      "workbench_trial_capacity": "03482ad3b294d6c0d4d432d2d59cad340bdd332bb6261df493050334b11a4ece",
+      "workbench_lineage_lookup_capacity": "9048e9feb66d58d15f61dc334e520c2925e0ce51cec38c29602390d2ab9a33cd",
+      "workbench_dashboard_capacity": "b4d622595da34591a332be8b04a8a4d8c4192f9e09c0b43d561677b889e0247a"
+    },
+    "required_coverage": {
+      "missing": [],
+      "duplicates": [],
+      "unknown": [],
+      "required_target_count": 583,
+      "group_target_count": 583,
+      "group_count": 33,
+      "required_registry_hash": "9fcaf09048aedf041aca8e7b3e4b8460481fb99bbe02dd56b6702d5929a14495",
+      "group_registry_hash": "8158e747f121fe00e7f4758a9c812802a810d7a13b41dd5d689ae32a5adb1763"
+    },
+    "supplemental_coverage": {
+      "missing": [],
+      "duplicates": [],
+      "unknown": [],
+      "required_target_count": 86,
+      "group_target_count": 86,
+      "group_count": 15,
+      "required_registry_hash": "fcd53b485ca4bdc5c240b42bdb460e4ae0783f83dc5de1c177144710c1b82836",
+      "group_registry_hash": "1fb0ad3b222a8f20a68a3c824f6efc9103cc5a060c8c38d29f56eec3a6612117"
+    }
+  },
+  "observed_after": {
+    "at": "2026-09-10T13:32:36.443725+00:00",
+    "head": "830a58e69faaa64a39d7a238ba2a0a0cd5c9047c",
+    "python": "3.8.10",
+    "source_files": {
+      "targets": {
+        "tests/workbench/test_final_foundation_navigation.py": {
+          "bytes": 771,
+          "sha256": "ab904970f80225e79ab76fb1ed6cc0ed5b76f622fc41373b8a185fd337c608b0"
+        },
+        "tests/workbench/test_final_foundation_live.py": {
+          "bytes": 3277,
+          "sha256": "6378e6ba86e3dc98c39a86c60c24147a1e4a7f52675068ed7cec521c089eb833"
+        },
+        "tests/workbench/test_final_navigation_host.py": {
+          "bytes": 5084,
+          "sha256": "de7e8d4e8340f13d624ba73d46a193f68e7428a50e6e5f1b820135341b5ee683"
+        },
+        "tests/workbench/test_final_navigation_boot.py": {
+          "bytes": 6866,
+          "sha256": "8fcb2b8aa35e148a34376c10870e1ae26377a2ce290d70f048cf8a0586598af3"
+        },
+        "tests/workbench/test_final_legacy_navigation.py": {
+          "bytes": 13174,
+          "sha256": "905a653bda26d9e82a0ccd7d29a397ddea82712092e21d44393f2a3a65e0cb49"
+        }
+      },
+      "helpers": {
+        "tests/workbench/final_foundation_navigation.cjs": {
+          "bytes": 10932,
+          "sha256": "b65d1f588b4db87e22b0338c222e647163cd5b239617a5cdbf58e8086569d9f9"
+        },
+        "tests/workbench/final_foundation_live.py": {
+          "bytes": 5862,
+          "sha256": "7016c9dca7177432f3467f95f56991184e016d898cab3480679d66f82aed6c52"
+        },
+        "tests/workbench/final_foundation_live_support.py": {
+          "bytes": 9734,
+          "sha256": "c9779fcd63bf2b8d15e6ad1e0be9a65f272758df5b5421fc160203f69b4746d2"
+        },
+        "tests/workbench/final_foundation_host.py": {
+          "bytes": 2639,
+          "sha256": "aaf827122b2835e89b307b458218e8ad42743b50dad0dbaceda4320ea186d548"
+        },
+        "tests/workbench/final_foundation_live.cjs": {
+          "bytes": 5199,
+          "sha256": "7c638e45da8e25d21842b44974a599fa140ecc8005e76193d1b617b0011c3944"
+        },
+        "tests/workbench/final_foundation_live_probe.cjs": {
+          "bytes": 14780,
+          "sha256": "280b90fe94d6544495f9b4ec1dd5426eb733c92974d8650e2feae658b7079881"
+        },
+        "tests/workbench/final_foundation_live_actions.cjs": {
+          "bytes": 12752,
+          "sha256": "a735c9303fd989191abab17008e09e148c27f1fe1b0d4aa1aa016223cec533ae"
+        },
+        "tests/workbench/final_foundation_live_faults.cjs": {
+          "bytes": 7651,
+          "sha256": "69676b2aa1ceb756c7e0538c98a22e0b3e1897c0d1069f44103fb61b96e84318"
+        },
+        "tests/workbench/final_navigation_support.py": {
+          "bytes": 6329,
+          "sha256": "cee7d9b907ceb66bab0a1a6d51baa6871dc3336231486e2d12ac9f8ce0ce9071"
+        },
+        "tests/workbench/final_legacy_navigation_support.py": {
+          "bytes": 1139,
+          "sha256": "d6480c3fb10e2b0a8a59566374b3b1adeec0206ed65c2b4eb3ae207c674248e3"
+        },
+        "tests/workbench/live_environment.py": {
+          "bytes": 6575,
+          "sha256": "32d6f6c29e58260009efa543d42758b3da08edd0e488fbdbdad1a31d05acb5c1"
+        },
+        "tests/workbench/run_live_server.py": {
+          "bytes": 11904,
+          "sha256": "5f9f4a89b5629b7f5b5f48662b777637e519de319820abe1d7a39b107969af51"
+        },
+        "tests/workbench/run_live_server_support.py": {
+          "bytes": 11138,
+          "sha256": "4bb13e5c4131c715fb4db10575df1835fbf2fb5f62170091d8a6d3d3ad8c3b49"
+        },
+        "tests/workbench/plan_read_support.py": {
+          "bytes": 8862,
+          "sha256": "cd4506854d5ec831bd001855f15e5c0c4e6cf51a1b9cbdd5cc7b10743924977c"
+        },
+        "tests/workbench/plan_catalog_support.py": {
+          "bytes": 2883,
+          "sha256": "85f3f651fbbfb916d4a2c8fa10a7aa8b4b83932e86a6fae9d98273098011f70a"
+        }
+      },
+      "products": {
+        "frontend/workbench/app/WorkbenchNavigation.js": {
+          "bytes": 6140,
+          "sha256": "aca7bc323ef80e50146c6189111a51b59521208c6ab3570677de8e7761169799"
+        },
+        "frontend/workbench/app/main.jsx": {
+          "bytes": 10728,
+          "sha256": "ab6d7cafb4690a395323a270ecd04d16d55943a6450b221b6cf5f307b29ba29c"
+        },
+        "frontend/workbench/app/theme.js": {
+          "bytes": 2118,
+          "sha256": "8d8d7f42fe456acea478c8dda00163697e8b955b09e801e0b349dbd4e6684c1e"
+        },
+        "web/routes/workbench/navigation_boot.py": {
+          "bytes": 7990,
+          "sha256": "405adefc94b0280fa6a187400d2277234d140bc349cb37d0ca6ef9cc529f785e"
+        },
+        "web/routes/workbench/pages.py": {
+          "bytes": 5282,
+          "sha256": "b345ad62be25032252612caa3cee009f0e1d0c2c68005846a5fbc7ca565b3ed8"
+        },
+        "web/routes/workbench/legacy_navigation.py": {
+          "bytes": 8062,
+          "sha256": "e9a34d9a91a3f2939ac6fe48c5a55cdc8a9bfecdf6ad2ac36e2674625c7deda9"
+        },
+        "web/routes/workbench/legacy_navigation_plan.py": {
+          "bytes": 4956,
+          "sha256": "2a5f8b3ea06cddb7f4386385cb27ed0bea3f2f068a02912fe0482dd1a81bbb47"
+        },
+        "web/routes/workbench/legacy_page_contract.py": {
+          "bytes": 3736,
+          "sha256": "f738fd62bd10a7c3aaca974193641f3061b42f37297754598b179e198fc088ad"
+        },
+        "scripts/workbench/build-order.json": {
+          "bytes": 5533,
+          "sha256": "2c167b9da5c713bba0905a3d36c7b3ef5ac2a8ef4d6a82fa826d9f2a8013f2cb"
+        },
+        "scripts/workbench/build.py": {
+          "bytes": 15620,
+          "sha256": "29691fe154a3a622895938e1a08114f35bf012d826e6a445f8a2a6866a0a3c43"
+        },
+        "scripts/workbench/compile.cjs": {
+          "bytes": 2459,
+          "sha256": "cf4b58c1093d5c09f94164305f5fe988c18fdb1e9552d40310606e68fd6424d5"
+        }
+      },
+      "edits": {
+        "tools/test_registry_groups_workbench.py": {
+          "bytes": 57518,
+          "sha256": "9c180651fa4dde81a5d20a430ba8af47908d00615dce62e465f3b38213f812ce"
+        },
+        "tests/gate_meta/test_workbench_registry_contract.py": {
+          "bytes": 94973,
+          "sha256": "462a9983445d2f74b7286d269b6d395a7d9cae3c9fca1e661b4aa49abe8d3893"
+        },
+        "tests/gate_meta/test_workbench_round1_registry_contract.py": {
+          "bytes": 16881,
+          "sha256": "5b4c0624f8d81b5dd9bb1547833c65fa60066c99b27655cdaf4f4a19c69f9b21"
+        },
+        "tests/gate_meta/workbench_round1_registry_support.py": {
+          "bytes": 6980,
+          "sha256": "0e455503b9ca98c65d66dbe4866d6a6b8644981af0f9f648abb2300f7638be81"
+        }
+      }
+    },
+    "target_owners": {
+      "tests/workbench/test_final_foundation_navigation.py": [
+        "workbench_browser"
+      ],
+      "tests/workbench/test_final_foundation_live.py": [
+        "workbench_browser"
+      ],
+      "tests/workbench/test_final_navigation_host.py": [
+        "workbench_browser"
+      ],
+      "tests/workbench/test_final_navigation_boot.py": [
+        "workbench_browser"
+      ],
+      "tests/workbench/test_final_legacy_navigation.py": [
+        "workbench_browser"
+      ]
+    },
+    "group_ids": [
+      "quality_gate",
+      "scheduler_config",
+      "scheduler_run_core",
+      "scheduler_analysis_gantt_reports_week_plan",
+      "scheduler_batches_material_resource",
+      "request_services_runtime_error_boundary",
+      "frontend_manual_excel",
+      "ui_layout_presenters_system",
+      "workbench_registry",
+      "workbench_foundation",
+      "workbench_resources",
+      "workbench_process",
+      "workbench_batches",
+      "workbench_plans",
+      "workbench_reports",
+      "workbench_system",
+      "workbench_execution_ledger",
+      "workbench_execution_scheduler",
+      "workbench_field",
+      "workbench_preflight",
+      "workbench_mainmigration",
+      "workbench_run_compute",
+      "workbench_run_jobs",
+      "workbench_calibration",
+      "workbench_trial",
+      "workbench_template_lineage",
+      "workbench_request_lifecycle",
+      "workbench_calibration_adoption",
+      "workbench_trial_adoption",
+      "workbench_dashboard",
+      "workbench_outsourcing",
+      "workbench_zero_duration",
+      "workbench_piece_adoption",
+      "workbench_browser",
+      "workbench_browser_opt_in",
+      "workbench_run_compute_capacity",
+      "workbench_run_jobs_capacity",
+      "workbench_system_platform",
+      "workbench_asset_build",
+      "workbench_run_history_capacity",
+      "workbench_run_candidate_capacity",
+      "workbench_run_baseline_capacity",
+      "workbench_run_adoption_capacity",
+      "workbench_calibration_capacity",
+      "workbench_identity_diagnostics",
+      "workbench_trial_capacity",
+      "workbench_lineage_lookup_capacity",
+      "workbench_dashboard_capacity"
+    ],
+    "group_target_hashes": {
+      "quality_gate": "862db9ef14232ab8bdd565a84b333cc9f86ccb2e3b4b4139380708240d0fca3e",
+      "scheduler_config": "ad910f72cbd233a8133bc528e4b8381fe2c5b33d8aee30515f6125a184d85b1d",
+      "scheduler_run_core": "16de230755e0bb04db0b8fb965b9b8ff11d615fc96033e593213485c1d6a5e2a",
+      "scheduler_analysis_gantt_reports_week_plan": "a202f344482a7858742f69a243c67b34a7ed2c219459450af52faf049ee34378",
+      "scheduler_batches_material_resource": "6ec5c80ce4fd09ce721a72c993078b526092baedc369e239f472c720b9b7aa9c",
+      "request_services_runtime_error_boundary": "4da199ef54db1bcc2790d41ec0bce84b68d93bad6e0f586d30a70591f1fb6e70",
+      "frontend_manual_excel": "0d9cfaaa5f2a3c5580b9667fe49e4b445ba5c7b3966aee7f2b4869c7a181a446",
+      "ui_layout_presenters_system": "865effaff17be28d1dc67730867ccf01c734bbb3f89d54aafd0af31f6e946f81",
+      "workbench_registry": "b000bbed249b0cb6dad583fa15866a6018a49ade7ea2b2f568d41227fa1df210",
+      "workbench_foundation": "dbe5fa26f3e067ee32e017bfa45e22858cc0992231575870b027407245f0f26a",
+      "workbench_resources": "03d8e803dec58f1a370f84e644b4a655e6684501d4ab34961760ab130a5583e5",
+      "workbench_process": "99141045c7ace6d845e83b67840586aaa9e4f7e9458bb54fa896219fa1f1553f",
+      "workbench_batches": "875b99e6eee33b7e341bd30387ed19423badf8926601350fe5c24afe3d3c609d",
+      "workbench_plans": "0b727fd6171a96865e11d5a3a4768e9f93810f732256ab3b203fcb52ab73dbcb",
+      "workbench_reports": "ea9480969a3e41904a96db55ec3d499db5a23a3fcfef10e6fa9a3733eb7781aa",
+      "workbench_system": "be72896d67abedbd7b42a3c6a4e79783af0bd5c6e6660466b3becd03d3bbe643",
+      "workbench_execution_ledger": "c44d34350f54e0ae698275892b0af109e31052c438ebf16dad16d995f924b963",
+      "workbench_execution_scheduler": "38238987f1ca10c7d607c082846a2f65743cde56238761c17be9850f73dacd0a",
+      "workbench_field": "7ce9315d4a1cc3d9025a50943025b8c9fb813cb5415be57a85d3d0bde594a4ff",
+      "workbench_preflight": "336ea89ff394fe43f191c4783a23e280695e16c91568d6da18fa799b34314c5b",
+      "workbench_mainmigration": "7362a2a290141cf28e16afaa74e21ffc6490f15639746798f877c9b68cbf9438",
+      "workbench_run_compute": "3f2e29cb03bcc6f5ed583528131f13b2176506213dbf6667977968fa941c925d",
+      "workbench_run_jobs": "680e7f40eab17cdde24620c3b122d0065d80da65d6a253434cb147584978a147",
+      "workbench_calibration": "c180ae8f341abe63f4b2f4aad4ef0a9c047aa8dc798bccb0ae59ff995de159cf",
+      "workbench_trial": "2724af7e1123c655e0f136b6787bac38a483fc1c0b34cd60a5f4100e18a8075e",
+      "workbench_template_lineage": "b2b977d287dd9cc41ac965e6f4731bfedd58d1e62f950660748ae75bc2b51950",
+      "workbench_request_lifecycle": "fbc32b6832e87e9f568062c8bbb33d7e61749d82369b94707fe5ef003536cbda",
+      "workbench_calibration_adoption": "6f36f904a47069e64e58b8f98acad23db5fb3a90ba7964279ff1ee1449b2c795",
+      "workbench_trial_adoption": "1ca3f7df9a73aa1e4c854e05a7326172cfb7f806fb3c6d141f1e6dc3416ccad8",
+      "workbench_dashboard": "28a861fd36e8feab3c3e0b2130b358b0fd35699535b28595b377e9be03961791",
+      "workbench_outsourcing": "fc25cafeca4812453c0f577c5e5f06b12bc6b8541204985cb6ee4c8d6031647e",
+      "workbench_zero_duration": "cb6f70b115844fc37995405836e426e363ca327ae4a8c9feed34cde760b4fd06",
+      "workbench_piece_adoption": "29d91ba59e4d78773a85dcae6e8b475ed6c7d4145ddde2d902981b9b0db7c9cb",
+      "workbench_browser": "138806c74a7a4f69c85d74934363a68b408ef8afed43240f93404b18b6802659",
+      "workbench_browser_opt_in": "621e1593f1630f290ba8f0e7fc285fa3a5d091c8b63f2021eeff00c18e577a63",
+      "workbench_run_compute_capacity": "b8ef2ce6daa3e7a0634925320386a36acf2d50e4bd426bd415360de3ec57a451",
+      "workbench_run_jobs_capacity": "d3b5651e6bd42120d8e17ee53b353616e81326d8bcf8ad573e869b065046b179",
+      "workbench_system_platform": "77aa062b4a2833614e3c5421597cbe5b2db8ac9fdeabc14a0b9b58f741988658",
+      "workbench_asset_build": "42f237334fe39975cd69a077593749966fa915a431efe729e53caee89505c9e4",
+      "workbench_run_history_capacity": "98becc8196d3d3f26ca6c1825b74e3c33793672bf085f40f50f77ac55b202fdb",
+      "workbench_run_candidate_capacity": "7ad93ab21b6cffcd6792cd9834606267a51e3f9c3aec28365c5cd0ec6f44b002",
+      "workbench_run_baseline_capacity": "f87e8a78c4bcd71393fa34df5489004b8a3787d63fcd4a3c438bfe402d95ab6e",
+      "workbench_run_adoption_capacity": "1f175de4e2e0b001bec054329608740b8dfcba710ee53d1513782ac7cfd7ba6b",
+      "workbench_calibration_capacity": "5f20ebdaf381a100c0d726ec6e0b7f63b626ccbd5e8e6b02ef7cbd4b129cd3f6",
+      "workbench_identity_diagnostics": "4cb573a5c03c655a4f3deed3766818bfcada60bfd17d2e02d23e470e99055aec",
+      "workbench_trial_capacity": "2993a7e10d53c061a672f6685cbe9be3aac9d7edefe464fb84bab4a35648f8e4",
+      "workbench_lineage_lookup_capacity": "bdad12b3794a1d832d616805a7ecc6abafaa109b869e99b99c17a32361d93944",
+      "workbench_dashboard_capacity": "3e5f33e69b8d693af50c9d9b8599c9b3a1517b1cb6266752a9d40b515fca4cee"
+    },
+    "retained_target_hashes": {
+      "quality_gate": "862db9ef14232ab8bdd565a84b333cc9f86ccb2e3b4b4139380708240d0fca3e",
+      "scheduler_config": "ad910f72cbd233a8133bc528e4b8381fe2c5b33d8aee30515f6125a184d85b1d",
+      "scheduler_run_core": "16de230755e0bb04db0b8fb965b9b8ff11d615fc96033e593213485c1d6a5e2a",
+      "scheduler_analysis_gantt_reports_week_plan": "a202f344482a7858742f69a243c67b34a7ed2c219459450af52faf049ee34378",
+      "scheduler_batches_material_resource": "6ec5c80ce4fd09ce721a72c993078b526092baedc369e239f472c720b9b7aa9c",
+      "request_services_runtime_error_boundary": "4da199ef54db1bcc2790d41ec0bce84b68d93bad6e0f586d30a70591f1fb6e70",
+      "frontend_manual_excel": "0d9cfaaa5f2a3c5580b9667fe49e4b445ba5c7b3966aee7f2b4869c7a181a446",
+      "ui_layout_presenters_system": "865effaff17be28d1dc67730867ccf01c734bbb3f89d54aafd0af31f6e946f81",
+      "workbench_registry": "b000bbed249b0cb6dad583fa15866a6018a49ade7ea2b2f568d41227fa1df210",
+      "workbench_foundation": "dbe5fa26f3e067ee32e017bfa45e22858cc0992231575870b027407245f0f26a",
+      "workbench_resources": "03d8e803dec58f1a370f84e644b4a655e6684501d4ab34961760ab130a5583e5",
+      "workbench_process": "99141045c7ace6d845e83b67840586aaa9e4f7e9458bb54fa896219fa1f1553f",
+      "workbench_batches": "875b99e6eee33b7e341bd30387ed19423badf8926601350fe5c24afe3d3c609d",
+      "workbench_plans": "0b727fd6171a96865e11d5a3a4768e9f93810f732256ab3b203fcb52ab73dbcb",
+      "workbench_reports": "ea9480969a3e41904a96db55ec3d499db5a23a3fcfef10e6fa9a3733eb7781aa",
+      "workbench_system": "be72896d67abedbd7b42a3c6a4e79783af0bd5c6e6660466b3becd03d3bbe643",
+      "workbench_execution_ledger": "c44d34350f54e0ae698275892b0af109e31052c438ebf16dad16d995f924b963",
+      "workbench_execution_scheduler": "38238987f1ca10c7d607c082846a2f65743cde56238761c17be9850f73dacd0a",
+      "workbench_field": "7ce9315d4a1cc3d9025a50943025b8c9fb813cb5415be57a85d3d0bde594a4ff",
+      "workbench_preflight": "336ea89ff394fe43f191c4783a23e280695e16c91568d6da18fa799b34314c5b",
+      "workbench_mainmigration": "7362a2a290141cf28e16afaa74e21ffc6490f15639746798f877c9b68cbf9438",
+      "workbench_run_compute": "3f2e29cb03bcc6f5ed583528131f13b2176506213dbf6667977968fa941c925d",
+      "workbench_run_jobs": "680e7f40eab17cdde24620c3b122d0065d80da65d6a253434cb147584978a147",
+      "workbench_calibration": "c180ae8f341abe63f4b2f4aad4ef0a9c047aa8dc798bccb0ae59ff995de159cf",
+      "workbench_trial": "2724af7e1123c655e0f136b6787bac38a483fc1c0b34cd60a5f4100e18a8075e",
+      "workbench_template_lineage": "b2b977d287dd9cc41ac965e6f4731bfedd58d1e62f950660748ae75bc2b51950",
+      "workbench_request_lifecycle": "fbc32b6832e87e9f568062c8bbb33d7e61749d82369b94707fe5ef003536cbda",
+      "workbench_calibration_adoption": "6f36f904a47069e64e58b8f98acad23db5fb3a90ba7964279ff1ee1449b2c795",
+      "workbench_trial_adoption": "1ca3f7df9a73aa1e4c854e05a7326172cfb7f806fb3c6d141f1e6dc3416ccad8",
+      "workbench_dashboard": "28a861fd36e8feab3c3e0b2130b358b0fd35699535b28595b377e9be03961791",
+      "workbench_outsourcing": "fc25cafeca4812453c0f577c5e5f06b12bc6b8541204985cb6ee4c8d6031647e",
+      "workbench_zero_duration": "cb6f70b115844fc37995405836e426e363ca327ae4a8c9feed34cde760b4fd06",
+      "workbench_piece_adoption": "29d91ba59e4d78773a85dcae6e8b475ed6c7d4145ddde2d902981b9b0db7c9cb",
+      "workbench_browser": "e3726700a806c2da0e22d433f2185ef6eff53ab775ada30926e44921b3e22dc5",
+      "workbench_browser_opt_in": "621e1593f1630f290ba8f0e7fc285fa3a5d091c8b63f2021eeff00c18e577a63",
+      "workbench_run_compute_capacity": "b8ef2ce6daa3e7a0634925320386a36acf2d50e4bd426bd415360de3ec57a451",
+      "workbench_run_jobs_capacity": "d3b5651e6bd42120d8e17ee53b353616e81326d8bcf8ad573e869b065046b179",
+      "workbench_system_platform": "77aa062b4a2833614e3c5421597cbe5b2db8ac9fdeabc14a0b9b58f741988658",
+      "workbench_asset_build": "42f237334fe39975cd69a077593749966fa915a431efe729e53caee89505c9e4",
+      "workbench_run_history_capacity": "98becc8196d3d3f26ca6c1825b74e3c33793672bf085f40f50f77ac55b202fdb",
+      "workbench_run_candidate_capacity": "7ad93ab21b6cffcd6792cd9834606267a51e3f9c3aec28365c5cd0ec6f44b002",
+      "workbench_run_baseline_capacity": "f87e8a78c4bcd71393fa34df5489004b8a3787d63fcd4a3c438bfe402d95ab6e",
+      "workbench_run_adoption_capacity": "1f175de4e2e0b001bec054329608740b8dfcba710ee53d1513782ac7cfd7ba6b",
+      "workbench_calibration_capacity": "5f20ebdaf381a100c0d726ec6e0b7f63b626ccbd5e8e6b02ef7cbd4b129cd3f6",
+      "workbench_identity_diagnostics": "4cb573a5c03c655a4f3deed3766818bfcada60bfd17d2e02d23e470e99055aec",
+      "workbench_trial_capacity": "2993a7e10d53c061a672f6685cbe9be3aac9d7edefe464fb84bab4a35648f8e4",
+      "workbench_lineage_lookup_capacity": "bdad12b3794a1d832d616805a7ecc6abafaa109b869e99b99c17a32361d93944",
+      "workbench_dashboard_capacity": "3e5f33e69b8d693af50c9d9b8599c9b3a1517b1cb6266752a9d40b515fca4cee"
+    },
+    "input_scope_hashes": {
+      "quality_gate": "d7060448f967bc2c6ab3687dcf20badcf1409f43896bb3258b882d83d7689160",
+      "scheduler_config": "d314384ebe454d697fae0d9351e17c5746674a20f28d128b2eba674ae43ff9fa",
+      "scheduler_run_core": "6d9e5de6b6b47f028a86494af13f4f839d30cf3426ff47d300b33aa37592fcf6",
+      "scheduler_analysis_gantt_reports_week_plan": "237013006f64f764fc2a712127232e966e200f0eb716f45a73c1e32243c4da5d",
+      "scheduler_batches_material_resource": "62e675491bcb8105e96159c18f439071d4b7fc4f4f95b1883f0ab3c2881add00",
+      "request_services_runtime_error_boundary": "9f86c0d70fe67ea55aa65bfd6ab2ebfbef69554234b6471eda2964f7c5f53e75",
+      "frontend_manual_excel": "938e5aecad65d5ee4aa707e915c5772474c138997c3aee59c924b7f85fd71792",
+      "ui_layout_presenters_system": "1f0181bd4345bcd1c2f7838dbc3d387c4f9be7b5a89cd11ee1ae625a7c1f8e61",
+      "workbench_registry": "deaae4f5cb2a5470898bb33b0b87aaed0bba412e3d165cf0b8467b65f2028541",
+      "workbench_foundation": "4cb280750efef3f3f67cac33514a2cb97c1a501c25895d6a9c6f45fce4121a7b",
+      "workbench_resources": "90b67ab058266abfcad6f376f1ee2e449bd0b75987ac7c279139ccfbeae0f232",
+      "workbench_process": "e559ae146d2728ed8560d26b3637a1552baa6b6bbb174e74b2fc5371edc9c229",
+      "workbench_batches": "6800a4126cfd2b0ad722d253c572b9756c0df9d1ee453e26c0394f7f9aa1759c",
+      "workbench_plans": "3229f1e6658e3757d879415d07c0c330df503034e7af69671e5f8e3cff493ff8",
+      "workbench_reports": "f78dde43473b85de97430c10ea881a4f0d2bcb1dff5913e6e4fc7468fe588d98",
+      "workbench_system": "6e992d55918d1ded9d8b0a40aaccf42159389e22503920692527e414d2223915",
+      "workbench_execution_ledger": "2b8f1e3bc672a5dd5f0f128ab5396bf1f8448b2ee6a9cae29959717ea62f75b3",
+      "workbench_execution_scheduler": "4b8443246cabb5426c21b5e7a84fa7be7210fff382817e31ceb56326973e74ff",
+      "workbench_field": "17b6314480feec84e1db47dc8f1d983e3025619a0a01f34ad4a39116aa75ac63",
+      "workbench_preflight": "b1801732f6f1189e79e4d5b5dbd54a1b10432accb6e31b9042702e0177d4220b",
+      "workbench_mainmigration": "d4a0c2f25a4bb06fdebda510e68b131b0131b2e624a3b6366e11bafd6f6ffb9e",
+      "workbench_run_compute": "4d9adf66d700e59109b197699cc5ebe2d8f339887c68395c2ea05432d4762655",
+      "workbench_run_jobs": "d9577b5d468fb960ca6fbb6e4cab857d6f12598efeaeed29ec901097215e067f",
+      "workbench_calibration": "14e322b987d7197efdaa1413ba9b2b935736cdfd1e1e7ee7efb46fb975b39946",
+      "workbench_trial": "933cbda15eb650898e3abea188f3384ed093535d817a2e51084481df20a53478",
+      "workbench_template_lineage": "4d9c1bb45e11e2eeb3f43d16cb2b2b6d01243802e409b34043804c9f776eb969",
+      "workbench_request_lifecycle": "17e0d2da0c3f0b7c6140d64467b3c02dbf9a14f135af186d7ba124eb2b124ab2",
+      "workbench_calibration_adoption": "2f72f90217aaed04ec929d10306b73bb2c0f53bd9b52dd0d8dbbffd51524b872",
+      "workbench_trial_adoption": "a227ab262a812ed119bd556b1b26dd31d2283db005a260ce0e478dd96767de73",
+      "workbench_dashboard": "8c9a1c5e955e6cba075c703937cf8aabec487cc079dd293bf21f516b0ed82e18",
+      "workbench_outsourcing": "d5dbdaa483c03c8aad02f3ddbc8699c73e9733929056636d13a57fb4c22908c0",
+      "workbench_zero_duration": "cee5e485a179b9e7b8cb8885629fe5da7a026d829a098acfcdc2d196bf5b592e",
+      "workbench_piece_adoption": "aae21c18b9503cca3b111d9816a5aa301fc2297ceca1dadf5920edf7e162e2b6",
+      "workbench_browser": "e46a28672438e4125fda6b1bfe61af284ab36ee3ccbc244225dc71674cfc880f",
+      "workbench_browser_opt_in": "f8d717e6f2ca1ae40a69935185ea470b35c699e313f208b6ae9dd1b21bfa0605",
+      "workbench_run_compute_capacity": "1a52ea508c806e1be827d6b1ed66219dcfc6e30f40a1a1a8dac7768f21f377a4",
+      "workbench_run_jobs_capacity": "48daa4f9fa555fe1098446ac3de28cf07e2c49582ec4dbde0ebb0ed40eaf87ff",
+      "workbench_system_platform": "8c213e28b1f31c09ffd6821fd840f38a2ac72beef1ae7c1f6a3fb69e73adc1ae",
+      "workbench_asset_build": "1efa1e7717bc18df453d9acdc2f165ab58ca0a8194902d65f0758aa98e297dcb",
+      "workbench_run_history_capacity": "e0d2ebbcd92d5c03f611e6f44228cb3af559678cb61dca42e7e3b5890f2c98ba",
+      "workbench_run_candidate_capacity": "e0d2ebbcd92d5c03f611e6f44228cb3af559678cb61dca42e7e3b5890f2c98ba",
+      "workbench_run_baseline_capacity": "e0d2ebbcd92d5c03f611e6f44228cb3af559678cb61dca42e7e3b5890f2c98ba",
+      "workbench_run_adoption_capacity": "e0d2ebbcd92d5c03f611e6f44228cb3af559678cb61dca42e7e3b5890f2c98ba",
+      "workbench_calibration_capacity": "1efa1e7717bc18df453d9acdc2f165ab58ca0a8194902d65f0758aa98e297dcb",
+      "workbench_identity_diagnostics": "e0d2ebbcd92d5c03f611e6f44228cb3af559678cb61dca42e7e3b5890f2c98ba",
+      "workbench_trial_capacity": "03482ad3b294d6c0d4d432d2d59cad340bdd332bb6261df493050334b11a4ece",
+      "workbench_lineage_lookup_capacity": "9048e9feb66d58d15f61dc334e520c2925e0ce51cec38c29602390d2ab9a33cd",
+      "workbench_dashboard_capacity": "b4d622595da34591a332be8b04a8a4d8c4192f9e09c0b43d561677b889e0247a"
+    },
+    "required_coverage": {
+      "missing": [],
+      "duplicates": [],
+      "unknown": [],
+      "required_target_count": 583,
+      "group_target_count": 583,
+      "group_count": 33,
+      "required_registry_hash": "9fcaf09048aedf041aca8e7b3e4b8460481fb99bbe02dd56b6702d5929a14495",
+      "group_registry_hash": "8158e747f121fe00e7f4758a9c812802a810d7a13b41dd5d689ae32a5adb1763"
+    },
+    "supplemental_coverage": {
+      "missing": [],
+      "duplicates": [],
+      "unknown": [],
+      "required_target_count": 91,
+      "group_target_count": 91,
+      "group_count": 15,
+      "required_registry_hash": "cdfc0bbe236ab46b33566870a37c56d9aabb04be08605d25610f39d2536afc97",
+      "group_registry_hash": "e8cb43414ad473facdc04de870433f60b792672ea28385b64039b38d73794a11"
+    }
+  },
+  "preservation": {
+    "requiredUnchanged": true,
+    "allOldTargetsAndOwnersUnchanged": true,
+    "inputScopeHashesUnchanged": true,
+    "allNewTargetsUniquelySupplemental": true
+  },
+  "concurrent_readonly_drift": {
+    "targets": [
+      {
+        "path": "tests/workbench/test_final_legacy_navigation.py",
+        "before": {
+          "bytes": 13123,
+          "sha256": "172e2c6ceec554ded4e6b2bbc4ee0c7bbf7ded45f4ad46d66a76ce84b49405af"
+        },
+        "after": {
+          "bytes": 13174,
+          "sha256": "905a653bda26d9e82a0ccd7d29a397ddea82712092e21d44393f2a3a65e0cb49"
+        }
+      }
+    ],
+    "helpers": [],
+    "products": [
+      {
+        "path": "web/routes/workbench/legacy_navigation.py",
+        "before": {
+          "bytes": 7830,
+          "sha256": "e99b7a973ee2f802b332e45eb822d0da43b458c16e0a6db1b2dc1d2ae620b69f"
+        },
+        "after": {
+          "bytes": 8062,
+          "sha256": "e9a34d9a91a3f2939ac6fe48c5a55cdc8a9bfecdf6ad2ac36e2674625c7deda9"
+        }
+      }
+    ]
+  },
+  "registration": {
+    "owner": "workbench_browser",
+    "classification": "supplemental",
+    "targets": [
+      "tests/workbench/test_final_foundation_navigation.py",
+      "tests/workbench/test_final_foundation_live.py",
+      "tests/workbench/test_final_navigation_host.py",
+      "tests/workbench/test_final_navigation_boot.py",
+      "tests/workbench/test_final_legacy_navigation.py"
+    ],
+    "helpers_only": [
+      "tests/workbench/final_foundation_navigation.cjs",
+      "tests/workbench/final_foundation_live.py",
+      "tests/workbench/final_foundation_live_support.py",
+      "tests/workbench/final_foundation_host.py",
+      "tests/workbench/final_foundation_live.cjs",
+      "tests/workbench/final_foundation_live_probe.cjs",
+      "tests/workbench/final_foundation_live_actions.cjs",
+      "tests/workbench/final_foundation_live_faults.cjs",
+      "tests/workbench/final_navigation_support.py",
+      "tests/workbench/final_legacy_navigation_support.py",
+      "tests/workbench/live_environment.py",
+      "tests/workbench/run_live_server.py",
+      "tests/workbench/run_live_server_support.py",
+      "tests/workbench/plan_read_support.py",
+      "tests/workbench/plan_catalog_support.py"
+    ],
+    "existing_scope_witnesses": [
+      "frontend/workbench/app/WorkbenchNavigation.js",
+      "frontend/workbench/app/main.jsx",
+      "frontend/workbench/app/theme.js",
+      "web/routes/workbench/navigation_boot.py",
+      "web/routes/workbench/pages.py",
+      "web/routes/workbench/legacy_navigation.py",
+      "web/routes/workbench/legacy_navigation_plan.py",
+      "web/routes/workbench/legacy_page_contract.py",
+      "scripts/workbench/build-order.json",
+      "scripts/workbench/build.py",
+      "scripts/workbench/compile.cjs"
+    ]
+  },
+  "historical_contract": {
+    "required": 582,
+    "supplemental": 85,
+    "rule": "Preserve exact historical counts, original hashes and per-owner target order; filter only seven explicitly reviewed post-R1 targets; no prefix filtering or floating-current-total assertion"
+  },
+  "commands": [
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache CHECKUP_CALLGRAPH=/tmp/aps-task-h-01a08b02/callgraph TMPDIR=/tmp/aps-task-h-01a08b02 .venv/bin/python -B -m pytest -q -p no:cacheprovider --basetemp=/tmp/aps-task-h-foundation-registry-before-v1 --junitxml=/tmp/aps-task-h-foundation-registry-before-v1.xml tests/gate_meta/test_workbench_registry_contract.py tests/gate_meta/test_workbench_round1_registry_contract.py -k 'run_targets_keep_fixed_owners_order_and_gate_classification or completed_busy_block_files_are_fixed_required_scheduler_targets or new_browser_and_capacity_inventory_never_enters_daily_required_targets or heavy_browser_opt_in_platform_and_build_targets_are_not_must_pass_by_registration or completed_dx_browser_keeps_exact_inputs_and_inventory_counts or round1_preserves_every_old_owner_and_target_order'",
+      "chunk_id": "ce3e1b",
+      "wall_time_seconds": 3.120296208,
+      "exit_code": 1,
+      "original_token_count": 1574,
+      "output": "....FF....FF..                                                           [100%]\n=================================== FAILURES ===================================\n_ test_completed_busy_block_files_are_fixed_required_scheduler_targets[tests/algorithm/test_busy_block_native_equivalence.py] _\n\npath = 'tests/algorithm/test_busy_block_native_equivalence.py'\n\n    @pytest.mark.parametrize(\"path\", BUSY_BLOCK_FILES)\n    def test_completed_busy_block_files_are_fixed_required_scheduler_targets(path):\n        assert _has_test_definition(ROOT / path)\n        assert [row[\"group_id\"] for row in test_registry.REQUIRED_REGRESSION_GROUPS\n                if path in row[\"target_paths\"]] == [\"scheduler_run_core\"]\n        expected_tail = (*BUSY_BLOCK_FILES, *ROUND1_ALGORITHM_TESTS, *ROUND1_CANDIDATE_SCHEMA_TESTS)\n>       assert tuple(_groups()[\"scheduler_run_core\"][\"target_paths\"][-len(expected_tail):]) == expected_tail\nE       AssertionError: assert ('tests/algor...rts_final.py') == ('tests/algor..._contract.py')\nE         \nE         At index 0 diff: 'tests/algorithm/test_busy_block_boundaries.py' != 'tests/algorithm/test_busy_block_native_equivalence.py'\nE         Use -v to get more diff\n\ntests/gate_meta/test_workbench_registry_contract.py:519: AssertionError\n_ test_completed_busy_block_files_are_fixed_required_scheduler_targets[tests/algorithm/test_busy_block_boundaries.py] _\n\npath = 'tests/algorithm/test_busy_block_boundaries.py'\n\n    @pytest.mark.parametrize(\"path\", BUSY_BLOCK_FILES)\n    def test_completed_busy_block_files_are_fixed_required_scheduler_targets(path):\n        assert _has_test_definition(ROOT / path)\n        assert [row[\"group_id\"] for row in test_registry.REQUIRED_REGRESSION_GROUPS\n                if path in row[\"target_paths\"]] == [\"scheduler_run_core\"]\n        expected_tail = (*BUSY_BLOCK_FILES, *ROUND1_ALGORITHM_TESTS, *ROUND1_CANDIDATE_SCHEMA_TESTS)\n>       assert tuple(_groups()[\"scheduler_run_core\"][\"target_paths\"][-len(expected_tail):]) == expected_tail\nE       AssertionError: assert ('tests/algor...rts_final.py') == ('tests/algor..._contract.py')\nE         \nE         At index 0 diff: 'tests/algorithm/test_busy_block_boundaries.py' != 'tests/algorithm/test_busy_block_native_equivalence.py'\nE         Use -v to get more diff\n\ntests/gate_meta/test_workbench_registry_contract.py:519: AssertionError\n_ test_heavy_browser_opt_in_platform_and_build_targets_are_not_must_pass_by_registration _\n\n    def test_heavy_browser_opt_in_platform_and_build_targets_are_not_must_pass_by_registration():\n        supplemental = _targets(WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS)\n        assert set(supplemental).isdisjoint(test_registry.iter_required_tests())\n        coverage = test_registry.validate_required_regression_group_coverage(\n            supplemental, groups=WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS)\n        assert coverage[\"missing\"] == coverage[\"unknown\"] == coverage[\"duplicates\"] == []\n        groups = {group[\"group_id\"]: group for group in WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS}\n>       assert groups[\"workbench_run_compute_capacity\"][\"target_paths\"] == (PREFIX + \"test_run_compute_capacity.py\",)\nE       AssertionError: assert ('tests/workb...i_loading.py') == ('tests/workb...capacity.py',)\nE         \nE         Left contains one more item: 'tests/workbench/test_final_capacity_cli_loading.py'\nE         Use -v to get more diff\n\ntests/gate_meta/test_workbench_registry_contract.py:894: AssertionError\n______ test_completed_dx_browser_keeps_exact_inputs_and_inventory_counts _______\n\n    def test_completed_dx_browser_keeps_exact_inputs_and_inventory_counts():\n        groups = {group[\"group_id\"]: group for group in WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS}\n        browser = groups[\"workbench_browser\"]\n        assert browser[\"target_paths\"][-15:] == tuple(PREFIX + name for name in (\n            \"test_dashboard_external_handling_widgets.py\",\n            \"test_du_system_restore_browser.py\", \"test_du_system_restore_contract.py\",\n            \"test_point_frontend.py\", \"test_point_downstream_browser.py\",\n            \"test_el_material_contracts.py\", \"test_point_dense_canvas.py\",\n            \"test_piece_main_browser.py\", \"test_piece_presentation_browser.py\",\n            \"test_ev_piece_fixture_contracts.py\",\n            \"test_plan_scope_caption.py\",\n            \"test_fg_plan_workspace_actions.py\",\n            \"test_piece_downstream_api.py\", \"test_piece_downstream_browser.py\",\n            *ROUND1_SUPPLEMENTAL_FILES[\"workbench_browser\"],\n        ))\n        assert set(DASHBOARD_EXTERNAL_BROWSER_INPUTS) <= set(browser[\"input_file_scopes\"])\n>       assert len(test_registry.iter_required_tests()) == 582\nE       AssertionError: assert 583 == 582\nE        +  where 583 = len(['tests/gate_meta/test_run_quality_gate.py', 'tests/gate_meta/test_no_residual_main_style_regression.py', 'tests/gate_...est_frozen_bundle_contract.py', 'tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py', ...])\nE        +    where ['tests/gate_meta/test_run_quality_gate.py', 'tests/gate_meta/test_no_residual_main_style_regression.py', 'tests/gate_...est_frozen_bundle_contract.py', 'tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py', ...] = <function iter_required_tests at 0x10337c9d0>()\nE        +      where <function iter_required_tests at 0x10337c9d0> = test_registry.iter_required_tests\n\ntests/gate_meta/test_workbench_registry_contract.py:919: AssertionError\n---- generated xml file: /tmp/aps-task-h-foundation-registry-before-v1.xml -----\n=========================== short test summary info ============================\nFAILED tests/gate_meta/test_workbench_registry_contract.py::test_completed_busy_block_files_are_fixed_required_scheduler_targets[tests/algorithm/test_busy_block_native_equivalence.py]\nFAILED tests/gate_meta/test_workbench_registry_contract.py::test_completed_busy_block_files_are_fixed_required_scheduler_targets[tests/algorithm/test_busy_block_boundaries.py]\nFAILED tests/gate_meta/test_workbench_registry_contract.py::test_heavy_browser_opt_in_platform_and_build_targets_are_not_must_pass_by_registration\nFAILED tests/gate_meta/test_workbench_registry_contract.py::test_completed_dx_browser_keeps_exact_inputs_and_inventory_counts\n4 failed, 10 passed, 934 deselected in 2.72s\n",
+      "binding": "before this registry edit; four existing old snapshot failures"
+    },
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache CHECKUP_CALLGRAPH=/tmp/aps-task-h-01a08b02/callgraph TMPDIR=/tmp/aps-task-h-01a08b02 .venv/bin/python -B -m pytest -q -p no:cacheprovider --basetemp=/tmp/aps-task-h-foundation-registry-v1 --junitxml=/tmp/aps-task-h-foundation-registry-v1.xml tests/gate_meta/test_workbench_registry_contract.py tests/gate_meta/test_workbench_round1_registry_contract.py -k 'existing_groups_remain_an_unchanged_prefix or raw_targets_and_group_ids_are_unique or run_targets_keep_fixed_owners_order_and_gate_classification or completed_busy_block_files_are_fixed_required_scheduler_targets or new_browser_and_capacity_inventory_never_enters_daily_required_targets or heavy_browser_opt_in_platform_and_build_targets_are_not_must_pass_by_registration or completed_dx_browser_keeps_exact_inputs_and_inventory_counts or round1_preserves_every_old_owner_and_target_order or reviewed_files_append_to_exact_owner_without_promoting_browser or stable_final_capacity or final_capacity_cli_loading or final_foundation'",
+      "chunk_id": "bc3156",
+      "wall_time_seconds": 7.818066459,
+      "exit_code": 0,
+      "original_token_count": 69,
+      "output": "........................................................................ [ 84%]\n.............                                                            [100%]\n-------- generated xml file: /tmp/aps-task-h-foundation-registry-v1.xml --------\n85 passed, 895 deselected in 7.39s\n",
+      "binding": "registry meta checks only, 85 passed / 895 deselected"
+    },
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache .venv/bin/python -B -m ruff check --no-cache tools/test_registry_groups_workbench.py tests/gate_meta/test_workbench_registry_contract.py tests/gate_meta/test_workbench_round1_registry_contract.py tests/gate_meta/workbench_round1_registry_support.py",
+      "chunk_id": "13189c",
+      "wall_time_seconds": 0.000001,
+      "exit_code": 0,
+      "original_token_count": 5,
+      "output": "All checks passed!\n",
+      "binding": "four H-owned registry/meta/support files"
+    }
+  ],
+  "python38_ast": "PASS",
+  "junit": {
+    "/tmp/aps-task-h-foundation-registry-before-v1.xml": {
+      "sha256": "20325854e1d89f362dd5e23d7f49187ca53510fbb7e747f82d3a669d5e8f85a9",
+      "suites": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "4",
+          "skipped": "0",
+          "tests": "14",
+          "time": "2.720",
+          "timestamp": "2026-09-10T21:21:07.199413+08:00",
+          "hostname": "lurenxingdeMacBook-Air.local"
+        }
+      ]
+    },
+    "/tmp/aps-task-h-foundation-registry-v1.xml": {
+      "sha256": "3ac1239258717a1dc5762ae69136b3c0200c20e62c379b905415968521bad6d2",
+      "suites": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "85",
+          "time": "7.391",
+          "timestamp": "2026-09-10T21:31:46.368825+08:00",
+          "hostname": "lurenxingdeMacBook-Air.local"
+        }
+      ]
+    }
+  },
+  "changes": [
+    "Append five explicit Python pytest targets to existing workbench_browser supplemental owner",
+    "Share historical R1 exclusion list and filter through existing test support module",
+    "Fix only historical snapshot comparisons so known final extensions do not replace the 582/85 contract",
+    "Add unique supplemental owner checks, exact explicit exclusions and 26 input fingerprint invalidation cases"
+  ],
+  "boundaries": [
+    "No product changes, baseline changes, Git writes, browser, build, capacity or full quality gate",
+    "Existing broad browser scopes already cover all listed helpers and probes; input scopes unchanged",
+    "G's changing legacy test and product hashes are observations, not H writes or latest behavior proof",
+    "No other unfinished C/D/E/F tests auto-registered",
+    "Original Main foundation 25 checks/B 92-case snapshot and earlier API runs are not reused as current/final proof",
+    "H v22 fixture test repair is separately recorded in H-v22-fixture-generation-fix-note-20260910.md"
+  ]
+}

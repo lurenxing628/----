@@ -1,0 +1,1657 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-09-10T11:21:12.829298+00:00",
+  "scope": "H read-only preparation; no full gate; no Git writes; no product changes",
+  "repo": "/Users/lurenxing/GitHub/----",
+  "head_at_observation": "de96cd3f681bf4f3b1ca9183f347c56f3de8e73a",
+  "source_hash_timing": "Captured after targeted tools checks; not a pre/post locked-source execution proof.",
+  "python": {
+    "version": "3.8.10 (v3.8.10:3d8993a744, May  3 2021, 09:09:08) \n[Clang 12.0.5 (clang-1205.0.22.9)]",
+    "executable": "/Users/lurenxing/GitHub/----/.venv/bin/python"
+  },
+  "command_plan": [
+    {
+      "display": "python -m ruff --version",
+      "args": [
+        "python",
+        "-m",
+        "ruff",
+        "--version"
+      ],
+      "capture_output": true,
+      "output_policy": "exact"
+    },
+    {
+      "display": "python -m pyright --version",
+      "args": [
+        "python",
+        "-m",
+        "pyright",
+        "--version"
+      ],
+      "capture_output": true,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python -c \"import radon\"",
+      "args": [
+        "python",
+        "-c",
+        "import radon"
+      ],
+      "capture_output": false,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python -m ruff check",
+      "args": [
+        "python",
+        "-m",
+        "ruff",
+        "check"
+      ],
+      "capture_output": false,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean",
+      "args": [
+        "python",
+        "-m",
+        "tools.scan_import_cycles",
+        "--fail-on-new-cycle",
+        "--quiet-when-clean"
+      ],
+      "capture_output": true,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-when-clean",
+      "args": [
+        "python",
+        "-m",
+        "tools.scan_import_cycles",
+        "--include-tests",
+        "--fail-on-new-cycle",
+        "--quiet-when-clean"
+      ],
+      "capture_output": true,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python -m pytest --collect-only -q tests",
+      "args": [
+        "python",
+        "-m",
+        "pytest",
+        "--collect-only",
+        "-q",
+        "tests"
+      ],
+      "capture_output": true,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items",
+      "args": [
+        "python",
+        ".codestable/tools/validate-yaml.py",
+        "--file",
+        ".codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml",
+        "--yaml-only",
+        "--require",
+        "roadmap",
+        "--require",
+        "created",
+        "--require",
+        "items"
+      ],
+      "capture_output": true,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py",
+      "args": [
+        "python",
+        "tools/scan_py38plus_syntax.py",
+        "--fail-on-hit",
+        "scripts/run_quality_gate.py",
+        "tools/quality_gate_shared.py",
+        "tools/scan_aps_three_gap_py38_scope.py",
+        "tests/app_runtime/test_frontend_offline_static_assets.py",
+        "tests/web_pages/test_frontend_ui_language_polish.py",
+        "tests/config/test_config_manual_markdown.py",
+        "tests/web_pages/test_page_manual_registry.py",
+        "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
+        "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
+        "tests/gate_meta/test_run_quality_gate.py"
+      ],
+      "capture_output": true,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python tests/gate_meta/check_quickref_vs_routes.py",
+      "args": [
+        "python",
+        "tests/gate_meta/check_quickref_vs_routes.py"
+      ],
+      "capture_output": false,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python tools/scan_anti_regression_gate.py --base-ref d4589d77",
+      "args": [
+        "python",
+        "tools/scan_anti_regression_gate.py",
+        "--base-ref",
+        "d4589d77"
+      ],
+      "capture_output": true,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python -m pyright -p pyrightconfig.gate.json",
+      "args": [
+        "python",
+        "-m",
+        "pyright",
+        "-p",
+        "pyrightconfig.gate.json"
+      ],
+      "capture_output": false,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python -m pyright -p pyrightconfig.tools.json",
+      "args": [
+        "python",
+        "-m",
+        "pyright",
+        "-p",
+        "pyrightconfig.tools.json"
+      ],
+      "capture_output": false,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77",
+      "args": [
+        "python",
+        "tools/scan_aps_three_gap_py38_scope.py",
+        "--base-ref",
+        "d4589d77"
+      ],
+      "capture_output": true,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python -m pytest -q tests/gate_meta/test_architecture_fitness.py",
+      "args": [
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/gate_meta/test_architecture_fitness.py"
+      ],
+      "capture_output": false,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python scripts/sync_debt_ledger.py check",
+      "args": [
+        "python",
+        "scripts/sync_debt_ledger.py",
+        "check"
+      ],
+      "capture_output": false,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python -m pytest -q tests/app_runtime/test_runtime_probe_resolution.py tests/app_runtime/test_win7_launcher_runtime_paths.py tests/app_runtime/test_runtime_contract_launcher.py tests/app_runtime/test_entrypoint_meta_failure_visible.py tests/app_runtime/test_launcher_observability.py tests/app_runtime/test_runtime_lock_reloader_parent_skip.py tests/app_runtime/test_startup_host_portfile.py tests/app_runtime/test_startup_host_portfile_new_ui.py tests/config/test_plugin_bootstrap_config_failure_visible.py tests/config/test_plugin_bootstrap_injects_config_reader.py tests/app_runtime/test_plugin_bootstrap_telemetry_failure_visible.py tests/app_runtime/test_app_new_ui_secret_key_runtime_ensure.py tests/app_runtime/test_app_new_ui_session_contract.py tests/app_runtime/test_app_new_ui_security_hardening_enabled.py tests/app_runtime/test_app_factory_runtime_env_refresh.py tests/app_runtime/test_runtime_stop_cli.py tests/app_runtime/test_runtime_stop_draining.py",
+      "args": [
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/app_runtime/test_runtime_probe_resolution.py",
+        "tests/app_runtime/test_win7_launcher_runtime_paths.py",
+        "tests/app_runtime/test_runtime_contract_launcher.py",
+        "tests/app_runtime/test_entrypoint_meta_failure_visible.py",
+        "tests/app_runtime/test_launcher_observability.py",
+        "tests/app_runtime/test_runtime_lock_reloader_parent_skip.py",
+        "tests/app_runtime/test_startup_host_portfile.py",
+        "tests/app_runtime/test_startup_host_portfile_new_ui.py",
+        "tests/config/test_plugin_bootstrap_config_failure_visible.py",
+        "tests/config/test_plugin_bootstrap_injects_config_reader.py",
+        "tests/app_runtime/test_plugin_bootstrap_telemetry_failure_visible.py",
+        "tests/app_runtime/test_app_new_ui_secret_key_runtime_ensure.py",
+        "tests/app_runtime/test_app_new_ui_session_contract.py",
+        "tests/app_runtime/test_app_new_ui_security_hardening_enabled.py",
+        "tests/app_runtime/test_app_factory_runtime_env_refresh.py",
+        "tests/app_runtime/test_runtime_stop_cli.py",
+        "tests/app_runtime/test_runtime_stop_draining.py"
+      ],
+      "capture_output": false,
+      "output_policy": "normalized"
+    },
+    {
+      "display": "python tools/check_full_test_debt.py --sharded --shard-count 3",
+      "args": [
+        "python",
+        "tools/check_full_test_debt.py",
+        "--sharded",
+        "--shard-count",
+        "3"
+      ],
+      "capture_output": true,
+      "output_policy": "exact",
+      "env_overlay": {
+        "APS_BROWSER_SMOKE_REQUIRED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
+      }
+    },
+    {
+      "display": "python tools/verify_required_regressions_from_full_test_debt.py",
+      "args": [
+        "python",
+        "tools/verify_required_regressions_from_full_test_debt.py"
+      ],
+      "capture_output": true,
+      "output_policy": "normalized",
+      "env_overlay": {
+        "APS_BROWSER_SMOKE_REQUIRED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  ],
+  "command_plan_count": 19,
+  "command_plan_sha256": "a9ef9378c8dc982a3f7e83a0122937ff193d3c80ed59bce36145789762cff35e",
+  "tool_config_scope_equals_plan_tool_paths": true,
+  "tools_scope_current_hashes": [
+    {
+      "path": "scripts/run_daily_quality_gate.py",
+      "bytes": 30415,
+      "sha256": "ebf59b67983344b7b9883be11ceee9566ab0b253db8f9972d910181082b3487c"
+    },
+    {
+      "path": "scripts/run_quality_gate.py",
+      "bytes": 145718,
+      "sha256": "a3c9322f4fdace5b9e4ea5d79159b3a233bcc5a40091d9ea247cba18ca555dfe"
+    },
+    {
+      "path": "scripts/sync_debt_ledger.py",
+      "bytes": 15800,
+      "sha256": "99ef8dd9d8f15d299bf01b1ab7714b9ca850fb8b72cf303c1802ee39a5352d26"
+    },
+    {
+      "path": "tools/fast_static_precheck.py",
+      "bytes": 10747,
+      "sha256": "fb6c2f3b6a62bd088f6f55fe6bdbee75ec0a44f37c37e36f8643b09ae541799d"
+    },
+    {
+      "path": "tools/git_hook_blocked_paths.py",
+      "bytes": 5256,
+      "sha256": "9948df98a80058665397147cf312403cd182164dde70c20652021ae1331b2f6b"
+    },
+    {
+      "path": "tools/git_hook_cache.py",
+      "bytes": 17101,
+      "sha256": "73e102911b501200b37acc91f93fa1b82a4c1ee1050ca6cc9ae3b6366030c35f"
+    },
+    {
+      "path": "tools/git_hook_checks.py",
+      "bytes": 18405,
+      "sha256": "397990f18d6ff4819d43fd01f147ad42589aa940dd186742c32e2592add4ab8e"
+    },
+    {
+      "path": "tools/check_full_test_debt.py",
+      "bytes": 24943,
+      "sha256": "c0ba823a966232c83eb2ce8c8dc6db48e33f2d62290cb757a02361c580f31222"
+    },
+    {
+      "path": "tools/collect_full_test_debt.py",
+      "bytes": 39171,
+      "sha256": "e66dc3f035c0118be435dc840c7c174ef4ffa933e827bdb19644016b5fcf5dc8"
+    },
+    {
+      "path": "tools/full_test_debt_shards.py",
+      "bytes": 4633,
+      "sha256": "34615cd3cffb48974bc3036dfc148d69f84a06af209f1d2347dd5468aed152e3"
+    },
+    {
+      "path": "tools/benchmark_full_test_debt_shards.py",
+      "bytes": 6093,
+      "sha256": "767b95b801de2c67049b45d28fef7e02a651c552547f981556bec310e0ff6510"
+    },
+    {
+      "path": "tools/verify_required_regressions_from_full_test_debt.py",
+      "bytes": 12383,
+      "sha256": "1ee140585daad05df46f4d30b1bb11120fd0899d2cd8d714742f0c14945703ec"
+    },
+    {
+      "path": "tools/architecture_scan_cache.py",
+      "bytes": 10466,
+      "sha256": "22585b7432bc2bfe88faecd463234ce5099353abb09c4b38056d0fca4f910570"
+    },
+    {
+      "path": "tools/long_gate_full_test_debt.py",
+      "bytes": 1212,
+      "sha256": "57f64494783d4bdcdc96eedbf0b92875451f31e3e31386716aecd99ae6a692e1"
+    },
+    {
+      "path": "tools/long_gate_cache.py",
+      "bytes": 48123,
+      "sha256": "a0fe27df25ee37c3beb29999cee1162f55b5078acd55b99498febec54c27498c"
+    },
+    {
+      "path": "tools/long_gate_collect.py",
+      "bytes": 1948,
+      "sha256": "81757c718ed7efbc9aa50f0fd4d7768fcc7eee101455b93f4d1c708cd46c814f"
+    },
+    {
+      "path": "tools/long_gate_fingerprint.py",
+      "bytes": 43473,
+      "sha256": "1a6a679af079e4878fe59b5c192674b31dbf4bb082797020d73ca93b4ecb5691"
+    },
+    {
+      "path": "tools/long_gate_manifest.py",
+      "bytes": 48076,
+      "sha256": "60c4e8cd3364caf8a680dfac77918a7f3d391a544ade822b40703e02663fdd12"
+    },
+    {
+      "path": "tools/long_gate_paths.py",
+      "bytes": 1983,
+      "sha256": "143b30ebbc6218bc8963c11371806a77a447b366db987ca35ac213af8dc6b364"
+    },
+    {
+      "path": "tools/long_gate_schema.py",
+      "bytes": 6108,
+      "sha256": "60e7d27bfd3934b6923dbcc15d4e835131a8a2507afea8e76e12649ef764059b"
+    },
+    {
+      "path": "tools/long_gate_summary.py",
+      "bytes": 17080,
+      "sha256": "20ce90401d070d4d5decf4cd724c5acf6c088b48337e0df3d6ce38fa8fada72c"
+    },
+    {
+      "path": "tools/quality_gate_entries.py",
+      "bytes": 6318,
+      "sha256": "53e401dd97f8bdaf6a80ccb2837b15318a8aacb241abafb719f0b1655681b90a"
+    },
+    {
+      "path": "tools/quality_gate_ledger.py",
+      "bytes": 33232,
+      "sha256": "2e0488ebd1fe50eb289c7f3837cffb79ea394ed71fcdf7d2e1c4089ecee48780"
+    },
+    {
+      "path": "tools/quality_gate_operations.py",
+      "bytes": 40645,
+      "sha256": "d2ee1e523b952bb6cb58d87b5ea3ae753c6dea81b12936b954ac680501a33c30"
+    },
+    {
+      "path": "tools/quality_gate_scan.py",
+      "bytes": 43398,
+      "sha256": "f9b4c5d49999c9e60ce3913c9190e98835b4de5d3928ac6c80020bb40f495277"
+    },
+    {
+      "path": "tools/quality_gate_shared.py",
+      "bytes": 61214,
+      "sha256": "866f195d8842e02b031d8a42afa358b44df83424182b5269b2b6bd107f17b596"
+    },
+    {
+      "path": "tools/quality_gate_support.py",
+      "bytes": 4861,
+      "sha256": "0cc348b24543195660823cb1b29a7fa6a1d58a4c7973e1c8b73582ee30073a43"
+    },
+    {
+      "path": "tools/scan_anti_regression_gate.py",
+      "bytes": 7137,
+      "sha256": "231d688b4053f7411037dd27644898a47132f77b83857e3715a52a008e6d238d"
+    },
+    {
+      "path": "tools/scan_aps_three_gap_py38_scope.py",
+      "bytes": 2780,
+      "sha256": "36b12c959b9a197d810a429229e4faa685d69136cdae1eb3de10936574af8f1d"
+    },
+    {
+      "path": "tools/scan_dead_code_islands.py",
+      "bytes": 9083,
+      "sha256": "2750edf0f5328eb78aeeb2a5bbc5c2757455cda0c4fcf269c24ec87179023189"
+    },
+    {
+      "path": "tools/import_cycle_analysis.py",
+      "bytes": 20044,
+      "sha256": "4ad206c9c2f7d2e322d74143e654e372808cb4e1c131cd764542fa1b49bf5b50"
+    },
+    {
+      "path": "tools/import_cycle_baseline.py",
+      "bytes": 12888,
+      "sha256": "2b44172b3767cb0d4ffbabe0e86e83ae923c58bb31ef33c9fc096c1c1e27a641"
+    },
+    {
+      "path": "tools/import_cycle_graph.py",
+      "bytes": 17560,
+      "sha256": "6f61a9f3ad2350b5d504416de33215cdea571a5e4c9a565a5d8752978f585c55"
+    },
+    {
+      "path": "tools/scan_import_cycles.py",
+      "bytes": 18860,
+      "sha256": "6ba8dbe75eac8743e753c583e838cd29cb023c2c45fb9873f2ee88eb0eb0297d"
+    },
+    {
+      "path": ".codestable/checkup/scripts/callgraph_call_sites.py",
+      "bytes": 3373,
+      "sha256": "9ecd16ef929a759812bd4cf195df005445dc3f6291fe6607f6610b2465545d8a"
+    },
+    {
+      "path": ".codestable/checkup/scripts/callgraph_dataflow.py",
+      "bytes": 3701,
+      "sha256": "361f824717c235dd3f7b4634f247f6841328d6181ab02e890b3a207768aa762e"
+    },
+    {
+      "path": ".codestable/checkup/scripts/callgraph_extract.py",
+      "bytes": 19257,
+      "sha256": "f09ba6e099eff2b3410d904560efc3248caa93555f909b3af0d848344b0f55eb"
+    },
+    {
+      "path": ".codestable/checkup/scripts/callgraph_function_index.py",
+      "bytes": 5854,
+      "sha256": "6dfebb3447f6ddcc989a5a7130be8862c5311c695b94c7d8b2a7e7b38b3b2954"
+    },
+    {
+      "path": "tools/dead_code_usage/__init__.py",
+      "bytes": 55,
+      "sha256": "66a5f77dd32f1d6c13347cdafd3ea00d0e839b89266b2593864468a4f604d4fb"
+    },
+    {
+      "path": "tools/dead_code_usage/ast_nodes.py",
+      "bytes": 2687,
+      "sha256": "480d07ac0743599160d23b5c7a2a2de1f0304270bf554c7f6fd083bebd0e36de"
+    },
+    {
+      "path": "tools/dead_code_usage/ast_usage.py",
+      "bytes": 22533,
+      "sha256": "b67dcf6a9de4ac5be0abb1f7e84e3072e8911eb18fbe4a718eee6667e354b69c"
+    },
+    {
+      "path": "tools/dead_code_usage/imports.py",
+      "bytes": 4044,
+      "sha256": "9ac678dd46e93020de2aa80eb6a9f36a7777d0c919ab15b5a2171dc3e0c9182b"
+    },
+    {
+      "path": "tools/dead_code_usage/model.py",
+      "bytes": 1648,
+      "sha256": "efa1f83fb1ad023cb4da8590cad700ae2b335b9c7b0c2051bff49cca2e582c81"
+    },
+    {
+      "path": "tools/dead_code_usage/scip_usage.py",
+      "bytes": 10835,
+      "sha256": "5994519626f8c37a35269bb8fcbf150d33ad9dfd13c6b6c2e6c6ed34288726ea"
+    },
+    {
+      "path": "tools/dead_code_usage/scope.py",
+      "bytes": 6409,
+      "sha256": "b70d2b26742994c0bf00b05fa70ef132ab1243534fbe94fd7b07d0185fadb0da"
+    },
+    {
+      "path": "tools/dead_code_usage/type_hints.py",
+      "bytes": 2284,
+      "sha256": "7a33a7e2f489c383a56068cbee6ba4aa3d3da9df7f167ffa9b558e030361de03"
+    },
+    {
+      "path": "tools/scan_py38plus_syntax.py",
+      "bytes": 25707,
+      "sha256": "25db84affe3b7ca32f3dbb6fe8606fc80216f02135339dae913f080dca537e45"
+    },
+    {
+      "path": "tools/test_debt_registry.py",
+      "bytes": 31877,
+      "sha256": "fc40efe037c88783fb277d4af51b8f9d531d696e739cbecf925276f705df50de"
+    },
+    {
+      "path": "tools/test_registry.py",
+      "bytes": 12709,
+      "sha256": "90d84b6bc266f1f8a9be7c432d4276482a7dd2a7d9b90abb1ba84741cf5c7377"
+    },
+    {
+      "path": "tools/test_registry_data.py",
+      "bytes": 26204,
+      "sha256": "c3e7a0ac0c814d51a3a183db6f9ba707128e54a7032392518f237267129d13e9"
+    },
+    {
+      "path": "tools/test_registry_groups_misc.py",
+      "bytes": 13840,
+      "sha256": "d9e97e9ff32b57dd2c38ac018ce03983ce4181087b303ef60c5be677f84c0a5b"
+    },
+    {
+      "path": "tools/test_registry_groups_scheduler.py",
+      "bytes": 29941,
+      "sha256": "94260495a4507513ff39a69f34e9451b9cbc0ecdeb84c5d190a14a74b2c79c32"
+    },
+    {
+      "path": "tools/test_registry_groups_workbench.py",
+      "bytes": 56507,
+      "sha256": "143f58be0a06294a55297bd0fa50e1fdb068fbcfea6b7e9c4ab4855cea8e241d"
+    },
+    {
+      "path": "tests/conftest.py",
+      "bytes": 9941,
+      "sha256": "a1644c8b14d735a97fde4b475349f9d54ec974b63df9c0dbd30116deaa8c9826"
+    },
+    {
+      "path": ".codestable/tools/validate-yaml.py",
+      "bytes": 15978,
+      "sha256": "954fff8282e21836260f333d54882b418a0b79527c48b2d368b82d82880c30bd"
+    },
+    {
+      "path": "tests/config/test_config_manual_markdown.py",
+      "bytes": 29489,
+      "sha256": "ffcfb3d2225854eaafe77589df34e599a8b9a6ec08c8007a9d0709edf50bdbdc"
+    },
+    {
+      "path": "tests/app_runtime/test_frontend_offline_static_assets.py",
+      "bytes": 8452,
+      "sha256": "5a7e083f9e9dec6ebfbe4289c76fbcc389eb50eea8efa4f091cf155d878f2ad5"
+    },
+    {
+      "path": "tests/web_pages/test_page_manual_registry.py",
+      "bytes": 46589,
+      "sha256": "7c220523609be7d44453138d7393b6d5335c9d885909381c069a3743e6c4fbaf"
+    },
+    {
+      "path": "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
+      "bytes": 10254,
+      "sha256": "66f850aa8ced68e23c1a61dc7136f4282e09f570235764b8994afd552daf0c32"
+    },
+    {
+      "path": "tests/operation_execution/test_operation_execution_event_time_contract.py",
+      "bytes": 7406,
+      "sha256": "8385b848b03b3615b37531d2a641ac6d51961f917ae4bcc77e458753a9a16d66"
+    },
+    {
+      "path": "tests/gate_meta/test_scheduler_data_route_error_contract.py",
+      "bytes": 5037,
+      "sha256": "18e02e563472f33be57676d869bbf82527f2abed71907f6fe8856188b52376fc"
+    },
+    {
+      "path": "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
+      "bytes": 17839,
+      "sha256": "aa077826f4b773699566dc32c99983f1116931e3486924c299482dea74c4a41d"
+    }
+  ],
+  "key_sources": [
+    {
+      "path": "scripts/run_quality_gate.py",
+      "bytes": 145718,
+      "sha256": "a3c9322f4fdace5b9e4ea5d79159b3a233bcc5a40091d9ea247cba18ca555dfe"
+    },
+    {
+      "path": "tools/quality_gate_shared.py",
+      "bytes": 61214,
+      "sha256": "866f195d8842e02b031d8a42afa358b44df83424182b5269b2b6bd107f17b596"
+    },
+    {
+      "path": "tools/test_registry.py",
+      "bytes": 12709,
+      "sha256": "90d84b6bc266f1f8a9be7c432d4276482a7dd2a7d9b90abb1ba84741cf5c7377"
+    },
+    {
+      "path": "tools/test_registry_data.py",
+      "bytes": 26204,
+      "sha256": "c3e7a0ac0c814d51a3a183db6f9ba707128e54a7032392518f237267129d13e9"
+    },
+    {
+      "path": "tools/test_registry_groups_misc.py",
+      "bytes": 13840,
+      "sha256": "d9e97e9ff32b57dd2c38ac018ce03983ce4181087b303ef60c5be677f84c0a5b"
+    },
+    {
+      "path": "tools/test_registry_groups_scheduler.py",
+      "bytes": 29941,
+      "sha256": "94260495a4507513ff39a69f34e9451b9cbc0ecdeb84c5d190a14a74b2c79c32"
+    },
+    {
+      "path": "tools/test_registry_groups_workbench.py",
+      "bytes": 56507,
+      "sha256": "143f58be0a06294a55297bd0fa50e1fdb068fbcfea6b7e9c4ab4855cea8e241d"
+    },
+    {
+      "path": "pyrightconfig.gate.json",
+      "bytes": 851,
+      "sha256": "8c7e7f40351235c9e0ca919bdc90f6afbb697e2c1a428fee028c5b437a85b8c1"
+    },
+    {
+      "path": "pyrightconfig.tools.json",
+      "bytes": 3133,
+      "sha256": "513df0a4052bd648c6f6c86438802e65f746a97cc18bcec6314c740e2840b446"
+    },
+    {
+      "path": "tools/import_cycle_baseline.py",
+      "bytes": 12888,
+      "sha256": "2b44172b3767cb0d4ffbabe0e86e83ae923c58bb31ef33c9fc096c1c1e27a641"
+    },
+    {
+      "path": "tools/import_cycle_analysis.py",
+      "bytes": 20044,
+      "sha256": "4ad206c9c2f7d2e322d74143e654e372808cb4e1c131cd764542fa1b49bf5b50"
+    },
+    {
+      "path": "tools/import_cycle_graph.py",
+      "bytes": 17560,
+      "sha256": "6f61a9f3ad2350b5d504416de33215cdea571a5e4c9a565a5d8752978f585c55"
+    },
+    {
+      "path": "tools/scan_import_cycles.py",
+      "bytes": 18860,
+      "sha256": "6ba8dbe75eac8743e753c583e838cd29cb023c2c45fb9873f2ee88eb0eb0297d"
+    }
+  ],
+  "registry": {
+    "required": {
+      "missing": [],
+      "duplicates": [],
+      "unknown": [],
+      "required_target_count": 582,
+      "group_target_count": 582,
+      "group_count": 33,
+      "required_registry_hash": "db3806e40da7b1065623ac4f7800f4896108cad326f974482d9e3acaf099e557",
+      "group_registry_hash": "76cd6dbe0a2e5d4c7c665968caf7fedd1ad508c6c53dfe9890553ab0c386f39a"
+    },
+    "supplemental": {
+      "missing": [],
+      "duplicates": [],
+      "unknown": [],
+      "required_target_count": 85,
+      "group_target_count": 85,
+      "group_count": 15,
+      "required_registry_hash": "0ecd4a57953525c44eca84269e975b16b21058ac116595b615b95a7cf92c2d6e",
+      "group_registry_hash": "53ca1a0399b79ae1614c4796ab3d5005c5fd57975690669b5222bdb9762d3150"
+    },
+    "required_not_tracked_count": 308,
+    "supplemental_not_tracked_count": 85,
+    "raw_required_count": 582,
+    "raw_required_unique_count": 582,
+    "registered_paths_absent": [],
+    "overlap": [],
+    "observed_pending_handoff_only": [
+      "tests/workbench/test_final_planning_browser.py"
+    ],
+    "registration_policy": "Wait for domain frozen handoff; do not auto-register transient additions or removals. Main final_foundation files are pending and not counted."
+  },
+  "protected_state_observed_only": {
+    "staged_paths_raw": ":000000 100644 00000000 3a755494 A\ttests/gate_meta/test_frozen_bundle_contract.py",
+    "staged_binary_patch_sha256": "952a9e734f0c0d73d6c780090ac53a2854134b3523f0a552d3fe362f4f908b7d",
+    "frozen_test": {
+      "path": "tests/gate_meta/test_frozen_bundle_contract.py",
+      "bytes": 10453,
+      "sha256": "c7a02daca9a8bfd7c9f57dcb7374a1031534c8e067f8809a9902dbc650487b2b"
+    }
+  },
+  "historical_reports_not_replayed": [
+    {
+      "path": "output/workbench-migration/verification/round1-20260910/pyright-product-frozen.json",
+      "bytes": 8729,
+      "sha256": "9466989b3bd796d9e98dc8deda72cfdce3b9f8805e07d7a81e1efc22723e8ce2"
+    },
+    {
+      "path": "output/workbench-migration/verification/round1-20260910/imports-product-after.json",
+      "bytes": 2710629,
+      "sha256": "9354286308de00d3fa72cbbdc614b4890537fcd7c0f651f0093b03bdefbe2d72"
+    },
+    {
+      "path": "output/workbench-migration/verification/round1-20260910/imports-with-tests-verified.json",
+      "bytes": 5518164,
+      "sha256": "0e5171450be664817baddf3ab81c9a64e703ffd8fed325189ea7acc96c805bde"
+    },
+    {
+      "path": "output/workbench-migration/verification/round1-20260910/imports-final-summary.json",
+      "bytes": 340,
+      "sha256": "b7f93d2c56c9393a393b84598f3086d11b5a114d62d6b7d2f7b03e4770f34dc8"
+    },
+    {
+      "path": "output/workbench-migration/verification/round1-20260910/final-verification-summary.json",
+      "bytes": 19944,
+      "sha256": "0ef8c4b96335f45ccb92cf82e408d031d7524c1ed0b3b8c9923e47cd472a955a"
+    }
+  ],
+  "historical_product_pyright": {
+    "summary": {
+      "filesAnalyzed": 1161,
+      "errorCount": 0,
+      "warningCount": 15,
+      "informationCount": 0,
+      "timeInSec": 16.498
+    },
+    "diagnostics": [
+      {
+        "path": "core/services/scheduler/__init__.py",
+        "line": 44,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"BatchService\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "path": "core/services/scheduler/__init__.py",
+        "line": 45,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"CalendarService\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "path": "core/services/scheduler/__init__.py",
+        "line": 46,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"ConfigService\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "path": "core/services/scheduler/__init__.py",
+        "line": 47,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"GanttAdjustmentDraftService\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "path": "core/services/scheduler/__init__.py",
+        "line": 48,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"GanttAdjustmentScenarioService\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "path": "core/services/scheduler/__init__.py",
+        "line": 49,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"GanttAdjustmentPublishService\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "path": "core/services/scheduler/__init__.py",
+        "line": 50,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"GanttAdjustmentValidationService\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "path": "core/services/scheduler/__init__.py",
+        "line": 51,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"GanttService\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "path": "core/services/scheduler/__init__.py",
+        "line": 52,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"OperationExecutionFeedbackService\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "path": "core/services/scheduler/__init__.py",
+        "line": 53,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"ResourceDispatchActualRecordService\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "path": "core/services/scheduler/__init__.py",
+        "line": 54,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"ResourceDispatchExecutionService\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "path": "core/services/scheduler/__init__.py",
+        "line": 55,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"ResourceDispatchService\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "path": "core/services/scheduler/__init__.py",
+        "line": 56,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"ScheduleService\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "path": "core/services/scheduler/schedule_orchestrator.py",
+        "line": 6,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"ScheduleOrchestrationOutcome\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/schedule_orchestrator.py",
+          "bytes": 532,
+          "sha256": "0d45aac24ffb8f8e4513c17bbd3381bbeb8d7989dc56ce79b622847bcb8c7a92"
+        }
+      },
+      {
+        "path": "core/services/scheduler/schedule_orchestrator.py",
+        "line": 6,
+        "severity": "warning",
+        "rule": "reportUnsupportedDunderAll",
+        "message": "\"orchestrate_schedule_run\" is specified in __all__ but is not present in module",
+        "current_source": {
+          "path": "core/services/scheduler/schedule_orchestrator.py",
+          "bytes": 532,
+          "sha256": "0d45aac24ffb8f8e4513c17bbd3381bbeb8d7989dc56ce79b622847bcb8c7a92"
+        }
+      }
+    ],
+    "current_source_hashes_do_not_rebind_old_execution": true
+  },
+  "historical_dependency_triage": {
+    "production": {
+      "module_count": 1241,
+      "hard_directory_cycles": [
+        {
+          "members": [
+            ".",
+            "web/bootstrap",
+            "web/routes"
+          ],
+          "edges": [
+            {
+              "source": "app_new_ui",
+              "target": "web.bootstrap.entrypoint",
+              "src": "app_new_ui.py",
+              "line": 5,
+              "extra": 0
+            },
+            {
+              "source": "check_manual_layout",
+              "target": "web.bootstrap.runtime_probe",
+              "src": "check_manual_layout.py",
+              "line": 20,
+              "extra": 0
+            },
+            {
+              "source": "web.bootstrap.factory",
+              "target": "config",
+              "src": "web/bootstrap/factory.py",
+              "line": 16,
+              "extra": 0
+            },
+            {
+              "source": "web.bootstrap.factory",
+              "target": "web.routes.dashboard",
+              "src": "web/bootstrap/factory.py",
+              "line": 31,
+              "extra": 0
+            },
+            {
+              "source": "web.bootstrap.factory",
+              "target": "web.routes.equipment",
+              "src": "web/bootstrap/factory.py",
+              "line": 32,
+              "extra": 0
+            },
+            {
+              "source": "web.bootstrap.factory",
+              "target": "web.routes.excel_demo",
+              "src": "web/bootstrap/factory.py",
+              "line": 33,
+              "extra": 0
+            },
+            {
+              "source": "web.bootstrap.factory",
+              "target": "web.routes.material",
+              "src": "web/bootstrap/factory.py",
+              "line": 34,
+              "extra": 0
+            },
+            {
+              "source": "web.bootstrap.factory",
+              "target": "web.routes.personnel",
+              "src": "web/bootstrap/factory.py",
+              "line": 35,
+              "extra": 0
+            },
+            {
+              "source": "web.bootstrap.factory",
+              "target": "web.routes.process",
+              "src": "web/bootstrap/factory.py",
+              "line": 36,
+              "extra": 0
+            },
+            {
+              "source": "web.bootstrap.factory",
+              "target": "web.routes.reports",
+              "src": "web/bootstrap/factory.py",
+              "line": 37,
+              "extra": 0
+            },
+            {
+              "source": "web.bootstrap.factory",
+              "target": "web.routes.scheduler",
+              "src": "web/bootstrap/factory.py",
+              "line": 30,
+              "extra": 0
+            },
+            {
+              "source": "web.bootstrap.factory",
+              "target": "web.routes.system",
+              "src": "web/bootstrap/factory.py",
+              "line": 38,
+              "extra": 0
+            },
+            {
+              "source": "web.routes.system_runtime_logs",
+              "target": "config",
+              "src": "web/routes/system_runtime_logs.py",
+              "line": 18,
+              "extra": 0
+            }
+          ]
+        }
+      ],
+      "hard_file_cycles": [
+        [
+          "core.models",
+          "core.models.batch",
+          "core.models.batch_material",
+          "core.models.batch_operation",
+          "core.models.calendar",
+          "core.models.config",
+          "core.models.external_group",
+          "core.models.machine",
+          "core.models.machine_downtime",
+          "core.models.material",
+          "core.models.op_type",
+          "core.models.operation_execution_event",
+          "core.models.operation_execution_scope",
+          "core.models.operation_execution_state",
+          "core.models.operation_log",
+          "core.models.operator",
+          "core.models.operator_machine",
+          "core.models.part",
+          "core.models.part_operation",
+          "core.models.resource_team",
+          "core.models.schedule",
+          "core.models.schedule_adjustment",
+          "core.models.schedule_candidate",
+          "core.models.schedule_history",
+          "core.models.supplier",
+          "core.models.system_config",
+          "core.models.system_job_state"
+        ],
+        [
+          "core.services.report",
+          "core.services.report.calculations",
+          "core.services.report.delay_diagnosis_presentation",
+          "core.services.report.downtime_impact",
+          "core.services.report.execution_review",
+          "core.services.report.exporters",
+          "core.services.report.exporters.xlsx",
+          "core.services.report.report_context_filters",
+          "core.services.report.report_engine",
+          "core.services.report.report_plan_helpers",
+          "core.services.report.utilization"
+        ],
+        [
+          "core.algorithms",
+          "core.algorithms.greedy",
+          "core.algorithms.greedy.dispatch",
+          "core.algorithms.greedy.dispatch.sgs",
+          "core.algorithms.greedy.dispatch.sgs_graph",
+          "core.algorithms.greedy.dispatch.sgs_scoring",
+          "core.algorithms.greedy.run_context",
+          "core.algorithms.greedy.scheduler"
+        ],
+        [
+          "core.infrastructure.migrations",
+          "core.infrastructure.migrations.v16",
+          "core.infrastructure.migrations.v18",
+          "core.infrastructure.migrations.v19",
+          "core.infrastructure.migrations.v4"
+        ],
+        [
+          "core.services.personnel",
+          "core.services.personnel.operator_machine_import_helpers",
+          "core.services.personnel.operator_machine_service"
+        ],
+        [
+          "core.services.system",
+          "core.services.system.maintenance",
+          "core.services.system.system_maintenance_service"
+        ],
+        [
+          "core.plugins",
+          "core.plugins.manager"
+        ],
+        [
+          "desktop.gantt",
+          "desktop.gantt.pyqt_poc"
+        ]
+      ],
+      "explicit_hard_file_cycles": [],
+      "unresolved_count": 5,
+      "parse_errors": []
+    },
+    "with_tests": {
+      "module_count": 2571,
+      "hard_directory_scc_count": 1,
+      "hard_file_scc_count": 8,
+      "unresolved_count": 43,
+      "parse_errors": []
+    },
+    "all_43_historical_sites_with_current_source_hashes": [
+      {
+        "file": "core/plugins/manager.py",
+        "line": 176,
+        "context": "lazy",
+        "expression": "spec_from_file_location(module_name)",
+        "current_source": {
+          "path": "core/plugins/manager.py",
+          "bytes": 13122,
+          "sha256": "8f5b10769f2f25f9d841428ade9c1e99820fe13e1f5c95aebfbcf010ea5d866b"
+        }
+      },
+      {
+        "file": "core/services/scheduler/__init__.py",
+        "line": 39,
+        "context": "lazy",
+        "expression": "module_name",
+        "current_source": {
+          "path": "core/services/scheduler/__init__.py",
+          "bytes": 1972,
+          "sha256": "544891a2608c4af6a9ac25e1be8f27a3fc4cb418d150fc31deff1853d2c8c7d0"
+        }
+      },
+      {
+        "file": "core/services/scheduler/config/__init__.py",
+        "line": 22,
+        "context": "lazy",
+        "expression": "module_name",
+        "current_source": {
+          "path": "core/services/scheduler/config/__init__.py",
+          "bytes": 663,
+          "sha256": "79a3bfab59b4f7776cbf8e5301397ccde7d1b22e8585c6fa8df974be90ee298c"
+        }
+      },
+      {
+        "file": "data/repositories/__init__.py",
+        "line": 110,
+        "context": "lazy",
+        "expression": "module_name",
+        "current_source": {
+          "path": "data/repositories/__init__.py",
+          "bytes": 4546,
+          "sha256": "2f4a33eb313741ee55163f9f5e754c375a6fcfb55e84feadaf2171a004b49151"
+        }
+      },
+      {
+        "file": "tests/_scripts_e2e/run_browser_extreme_stress_case.py",
+        "line": 43,
+        "context": "lazy",
+        "expression": "spec_from_file_location('aps_synthetic_case_helpers')",
+        "current_source": {
+          "path": "tests/_scripts_e2e/run_browser_extreme_stress_case.py",
+          "bytes": 22585,
+          "sha256": "73e422b9d450f70aa8e5cdb0377dc37a7d1bfe65fc1579c91a14a8cae0bec9b5"
+        }
+      },
+      {
+        "file": "tests/algorithm/test_optimizer_proof_harness_contract.py",
+        "line": 371,
+        "context": "lazy",
+        "expression": "spec_from_file_location('benchmark_optimizer_proof_harness_script')",
+        "current_source": {
+          "path": "tests/algorithm/test_optimizer_proof_harness_contract.py",
+          "bytes": 14466,
+          "sha256": "9fd84d98048a33f971fc0f003a242e98b2b1f9a3fa41967a4a580bfaef4ea169"
+        }
+      },
+      {
+        "file": "tests/app_runtime/test_app_factory_runtime_env_refresh.py",
+        "line": 52,
+        "context": "lazy",
+        "expression": "module_name",
+        "current_source": {
+          "path": "tests/app_runtime/test_app_factory_runtime_env_refresh.py",
+          "bytes": 3769,
+          "sha256": "295e02239e2f821e7ab308839b2cc0a0417c6c26cf1d1beaba917aaa81d7d03a"
+        }
+      },
+      {
+        "file": "tests/app_runtime/test_launcher_observability.py",
+        "line": 306,
+        "context": "lazy",
+        "expression": "spec_from_file_location(module_name)",
+        "current_source": {
+          "path": "tests/app_runtime/test_launcher_observability.py",
+          "bytes": 14890,
+          "sha256": "31a234a6baf68a058c7c968eed61049ab9e081107e102bc2e1e2eebb22b61480"
+        }
+      },
+      {
+        "file": "tests/app_runtime/test_launcher_observability.py",
+        "line": 342,
+        "context": "lazy",
+        "expression": "spec_from_file_location(module_name)",
+        "current_source": {
+          "path": "tests/app_runtime/test_launcher_observability.py",
+          "bytes": 14890,
+          "sha256": "31a234a6baf68a058c7c968eed61049ab9e081107e102bc2e1e2eebb22b61480"
+        }
+      },
+      {
+        "file": "tests/app_runtime/test_runtime_lock_reloader_parent_skip.py",
+        "line": 77,
+        "context": "lazy",
+        "expression": "module_name",
+        "current_source": {
+          "path": "tests/app_runtime/test_runtime_lock_reloader_parent_skip.py",
+          "bytes": 15870,
+          "sha256": "e0c1061bda0bd7ec416b411aa74fc5b322bf41731eace62e0caeccd006861822"
+        }
+      },
+      {
+        "file": "tests/gantt/test_frappe_gantt_short_task_contract.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')",
+        "current_source": {
+          "path": "tests/gantt/test_frappe_gantt_short_task_contract.py",
+          "bytes": 8389,
+          "sha256": "aeb266262937a162cfac01a9c2320bdf47778c4404705ba31f0c2446c11b7a1b"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_adapter_contract.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_adapter_contract.py",
+          "bytes": 8518,
+          "sha256": "bdf7eea7107af9b691d7ce6f1b83969886a41c926671e17d6e4e3fb286305f6c"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_chain_walk_js_contract.py",
+        "line": 20,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_chain_walk_js_contract.py",
+          "bytes": 9549,
+          "sha256": "293572e23bf1f345d61e2820078824e02c965429f5a3e8515eef1b60358281e4"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_controls_rework_contract.py",
+        "line": 20,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_controls_rework_contract.py",
+          "bytes": 10908,
+          "sha256": "4b7308aa12ffd21f566e1dd7265e498f108cb1016174885ea6d600022c676b82"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_critical_outline_sync.py",
+        "line": 706,
+        "context": "lazy",
+        "expression": "spec_from_file_location('run_complex_case_and_export_gantt')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_critical_outline_sync.py",
+          "bytes": 63964,
+          "sha256": "a47955fca0714e36d028eaf647fe8afc2be6e3a6537bb04283a84dbeb532ed0c"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_critical_outline_sync.py",
+        "line": 789,
+        "context": "lazy",
+        "expression": "spec_from_file_location('run_complex_case_and_export_gantt')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_critical_outline_sync.py",
+          "bytes": 63964,
+          "sha256": "a47955fca0714e36d028eaf647fe8afc2be6e3a6537bb04283a84dbeb532ed0c"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_fix_pack_contract.py",
+        "line": 21,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_fix_pack_contract.py",
+          "bytes": 8493,
+          "sha256": "1e7c338c1dd298653f760b0d2fa337d8243b3b656bc57958b83015eeccf53c31"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_frontend_error_boundary.py",
+        "line": 15,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_frontend_error_boundary.py",
+          "bytes": 10342,
+          "sha256": "228ae6edef211bb109e9d5a5d53b1ed11bd699e5f3ad11b0b995ae281e7a650a"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_load_strip_js_contract.py",
+        "line": 21,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_load_strip_js_contract.py",
+          "bytes": 7435,
+          "sha256": "bedf8ddc2b588f97789c03c2250b6771216277fb5f8cccb2c1ce9c4bad7159f1"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_readonly_mode_contract.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_readonly_mode_contract.py",
+          "bytes": 6950,
+          "sha256": "12778757a502c848721ad0412a2c2cc542eaf5f341a1c07d3d4bb2c7032c20a2"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_task_detail_js_contract.py",
+        "line": 16,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_task_detail_js_contract.py",
+          "bytes": 12466,
+          "sha256": "4f359e13903df0c34a0489eb9e193045a0fd676a8b2633f36203fc449758808f"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_url_persistence.py",
+        "line": 21,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_url_persistence.py",
+          "bytes": 13295,
+          "sha256": "249faf978115d5c3c7338c290b7fd979512efc06f609e606c2d52fe1215da929"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_zoom_contract.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_zoom_contract.py",
+          "bytes": 4029,
+          "sha256": "7aba7e8891255d55368f732505b9332d2716e5b9dd0c4209bff3549c395d1e55"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_zoom_decoration_sync.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_zoom_decoration_sync.py",
+          "bytes": 8533,
+          "sha256": "198826c369e4c6d5d4beb12f2e9973ef3c2764c910aae60e741746083540852d"
+        }
+      },
+      {
+        "file": "tests/gantt/test_gantt_zoom_range_guard.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')",
+        "current_source": {
+          "path": "tests/gantt/test_gantt_zoom_range_guard.py",
+          "bytes": 10984,
+          "sha256": "4cc8d60f37cfece11873d68dca998c5e80ba413121a5b102089cf8bf8aa43618"
+        }
+      },
+      {
+        "file": "tests/gate_meta/check_quickref_vs_routes.py",
+        "line": 58,
+        "context": "lazy",
+        "expression": "spec_from_file_location(module_name)",
+        "current_source": {
+          "path": "tests/gate_meta/check_quickref_vs_routes.py",
+          "bytes": 8541,
+          "sha256": "cae0c3a471249d739c73bf5fc75af469ae1a8533f01f2c993b845f2df4f6a02a"
+        }
+      },
+      {
+        "file": "tests/gate_meta/test_callgraph_receiver_resolution.py",
+        "line": 24,
+        "context": "lazy",
+        "expression": "spec_from_file_location('test_callgraph_extract')",
+        "current_source": {
+          "path": "tests/gate_meta/test_callgraph_receiver_resolution.py",
+          "bytes": 15567,
+          "sha256": "81998b9b520948fcd68c6e58101a13135577dc88d158b22d7b9c41b435692771"
+        }
+      },
+      {
+        "file": "tests/gate_meta/test_check_quickref_vs_routes.py",
+        "line": 26,
+        "context": "lazy",
+        "expression": "spec_from_file_location(module_name)",
+        "current_source": {
+          "path": "tests/gate_meta/test_check_quickref_vs_routes.py",
+          "bytes": 3508,
+          "sha256": "4e66437ff36f2d845ff1093cb976507fa6c611b3521e5d52814729d77e2e8e1a"
+        }
+      },
+      {
+        "file": "tests/gate_meta/test_post_change_check_contract.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('post_change_check_contract')",
+        "current_source": {
+          "path": "tests/gate_meta/test_post_change_check_contract.py",
+          "bytes": 4814,
+          "sha256": "87c0f2d5efceb4e6f932b31de5e4c30e1e13b93863293841a4065e68dd26ade2"
+        }
+      },
+      {
+        "file": "tests/gate_meta/test_run_full_selftest_report_metadata.py",
+        "line": 19,
+        "context": "lazy",
+        "expression": "spec_from_file_location('aps_run_full_selftest')",
+        "current_source": {
+          "path": "tests/gate_meta/test_run_full_selftest_report_metadata.py",
+          "bytes": 25848,
+          "sha256": "98de5ab9f6cc2e5aada27de831b1a021935f316c5a510e430534cab60bf655c7"
+        }
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 267,
+        "context": "lazy",
+        "expression": "old_name",
+        "current_source": {
+          "path": "tests/gate_meta/test_sp05_path_topology_contract.py",
+          "bytes": 24122,
+          "sha256": "2c870f481fb96f3abd8a2cca4eeca9589f25a09420362eed5364325b88e0ed87"
+        }
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 268,
+        "context": "lazy",
+        "expression": "new_name",
+        "current_source": {
+          "path": "tests/gate_meta/test_sp05_path_topology_contract.py",
+          "bytes": 24122,
+          "sha256": "2c870f481fb96f3abd8a2cca4eeca9589f25a09420362eed5364325b88e0ed87"
+        }
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 274,
+        "context": "lazy",
+        "expression": "old_name",
+        "current_source": {
+          "path": "tests/gate_meta/test_sp05_path_topology_contract.py",
+          "bytes": 24122,
+          "sha256": "2c870f481fb96f3abd8a2cca4eeca9589f25a09420362eed5364325b88e0ed87"
+        }
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 275,
+        "context": "lazy",
+        "expression": "new_name",
+        "current_source": {
+          "path": "tests/gate_meta/test_sp05_path_topology_contract.py",
+          "bytes": 24122,
+          "sha256": "2c870f481fb96f3abd8a2cca4eeca9589f25a09420362eed5364325b88e0ed87"
+        }
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 354,
+        "context": "lazy",
+        "expression": "old_name",
+        "current_source": {
+          "path": "tests/gate_meta/test_sp05_path_topology_contract.py",
+          "bytes": 24122,
+          "sha256": "2c870f481fb96f3abd8a2cca4eeca9589f25a09420362eed5364325b88e0ed87"
+        }
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 355,
+        "context": "lazy",
+        "expression": "new_name",
+        "current_source": {
+          "path": "tests/gate_meta/test_sp05_path_topology_contract.py",
+          "bytes": 24122,
+          "sha256": "2c870f481fb96f3abd8a2cca4eeca9589f25a09420362eed5364325b88e0ed87"
+        }
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 359,
+        "context": "lazy",
+        "expression": "old_name",
+        "current_source": {
+          "path": "tests/gate_meta/test_sp05_path_topology_contract.py",
+          "bytes": 24122,
+          "sha256": "2c870f481fb96f3abd8a2cca4eeca9589f25a09420362eed5364325b88e0ed87"
+        }
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 360,
+        "context": "lazy",
+        "expression": "new_name",
+        "current_source": {
+          "path": "tests/gate_meta/test_sp05_path_topology_contract.py",
+          "bytes": 24122,
+          "sha256": "2c870f481fb96f3abd8a2cca4eeca9589f25a09420362eed5364325b88e0ed87"
+        }
+      },
+      {
+        "file": "tests/schedule/route_view/test_scheduler_missing_resource_message.py",
+        "line": 239,
+        "context": "lazy",
+        "expression": "__import__(module_name)",
+        "current_source": {
+          "path": "tests/schedule/route_view/test_scheduler_missing_resource_message.py",
+          "bytes": 12485,
+          "sha256": "0140a59ffcee56c6524f746fc465c9fa52de489096457fc10d1abe87115bce90"
+        }
+      },
+      {
+        "file": "tests/schedule/route_view/test_scheduler_missing_resource_message.py",
+        "line": 286,
+        "context": "lazy",
+        "expression": "__import__(module_name)",
+        "current_source": {
+          "path": "tests/schedule/route_view/test_scheduler_missing_resource_message.py",
+          "bytes": 12485,
+          "sha256": "0140a59ffcee56c6524f746fc465c9fa52de489096457fc10d1abe87115bce90"
+        }
+      },
+      {
+        "file": "tests/schedule/service/test_start_and_rerun_route_resolution.py",
+        "line": 32,
+        "context": "lazy",
+        "expression": "spec_from_file_location(module_name)",
+        "current_source": {
+          "path": "tests/schedule/service/test_start_and_rerun_route_resolution.py",
+          "bytes": 12514,
+          "sha256": "feb30f91a353c4e2b049343a8216c16aa54b3860b92b9fee932dea7634ed467a"
+        }
+      },
+      {
+        "file": "tests/web_pages/test_system_health_route.py",
+        "line": 36,
+        "context": "lazy",
+        "expression": "name",
+        "current_source": {
+          "path": "tests/web_pages/test_system_health_route.py",
+          "bytes": 6939,
+          "sha256": "62f652061cfffaee59bc5755e5e423924cc9c778d78965f7f766eca750c03680"
+        }
+      },
+      {
+        "file": "web/routes/domains/scheduler/scheduler_route_registrar.py",
+        "line": 31,
+        "context": "lazy",
+        "expression": "<JoinedStr>",
+        "current_source": {
+          "path": "web/routes/domains/scheduler/scheduler_route_registrar.py",
+          "bytes": 812,
+          "sha256": "6b99daf72458a609007d18bf757507b4adae8c8af453c5631122e8a4fe17330f"
+        }
+      }
+    ],
+    "frozen_baselines_unchanged_by_H": [
+      {
+        "path": ".codestable/checkup/import_cycles_production_baseline.json",
+        "bytes": 18757,
+        "sha256": "78d0ae16c6a11543d56b94e4e1a20bd1406731e0dd9a2728d164f5ed25fd799d",
+        "scope": "production",
+        "hard_directory_scc_count": 3,
+        "hard_file_scc_count": 9,
+        "unresolved_count": 6
+      },
+      {
+        "path": ".codestable/checkup/import_cycles_with_tests_baseline.json",
+        "bytes": 24493,
+        "sha256": "2878a55393510e524f2259f918142199d187d3097e6a3292e521cf8090571d19",
+        "scope": "production-and-tests",
+        "hard_directory_scc_count": 4,
+        "hard_file_scc_count": 9,
+        "unresolved_count": 44
+      }
+    ]
+  },
+  "executed_observation_command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache CHECKUP_CALLGRAPH=/tmp/aps-task-h-01a08b02/callgraph .venv/bin/python -B -c '\nimport collections, datetime, hashlib, json, pathlib, subprocess, sys\nfrom tools import test_registry as registry\nfrom tools.test_registry_groups_workbench import WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS\nfrom tools.quality_gate_shared import build_quality_gate_command_plan, hash_quality_gate_commands, QUALITY_GATE_TOOL_PATHS\nroot = pathlib.Path.cwd()\nhistorical_root = root / \"output/workbench-migration/verification/round1-20260910\"\ndef hashed_file(path):\n    file = pathlib.Path(path)\n    content = file.read_bytes()\n    return {\"path\": str(file.relative_to(root)), \"bytes\": len(content), \"sha256\": hashlib.sha256(content).hexdigest()}\ndef document(path):\n    return json.loads(pathlib.Path(path).read_text())\ntools_config = document(\"pyrightconfig.tools.json\")\nplan = build_quality_gate_command_plan()\nrequired = registry.iter_required_tests()\nsupplemental = [p for group in WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS for p in group[\"target_paths\"]]\ntracked = set(subprocess.check_output([\"git\", \"ls-files\", \"-z\"], text=True).split(\"\\0\"))\nhistory_names = [\"pyright-product-frozen.json\", \"imports-product-after.json\", \"imports-with-tests-verified.json\", \"imports-final-summary.json\", \"final-verification-summary.json\"]\nreports = {name: document(historical_root / name) for name in history_names}\nproduct_scan = reports[\"imports-product-after.json\"]\ntest_scan = reports[\"imports-with-tests-verified.json\"]\ndiagnostics = []\nfor item in reports[\"pyright-product-frozen.json\"][\"generalDiagnostics\"]:\n    rel = str(pathlib.Path(item[\"file\"]).relative_to(root))\n    diagnostics.append({\"path\": rel, \"line\": item[\"range\"][\"start\"][\"line\"] + 1, \"severity\": item[\"severity\"], \"rule\": item[\"rule\"], \"message\": item[\"message\"], \"current_source\": hashed_file(root / rel)})\nbaseline_rows = []\nfor name in (\"import_cycles_production_baseline.json\", \"import_cycles_with_tests_baseline.json\"):\n    p = root / \".codestable/checkup\" / name\n    value = document(p)\n    baseline_rows.append(dict(hashed_file(p), scope=value[\"scope\"], hard_directory_scc_count=len(value[\"hard_dir_cycles\"]), hard_file_scc_count=len(value[\"hard_file_cycles\"]), unresolved_count=len(value[\"unresolved_dynamic_imports\"])))\ndependency_sites = [dict(row, current_source=hashed_file(root / row[\"file\"])) for row in test_scan[\"unresolved_dynamic_imports\"]]\nkey_sources = [\"scripts/run_quality_gate.py\", \"tools/quality_gate_shared.py\", \"tools/test_registry.py\", \"tools/test_registry_data.py\", \"tools/test_registry_groups_misc.py\", \"tools/test_registry_groups_scheduler.py\", \"tools/test_registry_groups_workbench.py\", \"pyrightconfig.gate.json\", \"pyrightconfig.tools.json\", \"tools/import_cycle_baseline.py\", \"tools/import_cycle_analysis.py\", \"tools/import_cycle_graph.py\", \"tools/scan_import_cycles.py\"]\npayload = {\n    \"schema_version\": 1,\n    \"observed_at\": datetime.datetime.now(datetime.timezone.utc).isoformat(),\n    \"scope\": \"H read-only preparation; no full gate; no Git writes; no product changes\",\n    \"repo\": str(root), \"head_at_observation\": subprocess.check_output([\"git\", \"rev-parse\", \"HEAD\"], text=True).strip(),\n    \"source_hash_timing\": \"Captured after targeted tools checks; not a pre/post locked-source execution proof.\",\n    \"python\": {\"version\": sys.version, \"executable\": sys.executable},\n    \"command_plan\": plan, \"command_plan_count\": len(plan), \"command_plan_sha256\": hash_quality_gate_commands(plan),\n    \"tool_config_scope_equals_plan_tool_paths\": tools_config[\"include\"] == QUALITY_GATE_TOOL_PATHS,\n    \"tools_scope_current_hashes\": [hashed_file(root / p) for p in tools_config[\"include\"]],\n    \"key_sources\": [hashed_file(root / p) for p in key_sources],\n    \"registry\": {\n        \"required\": registry.validate_required_regression_group_coverage(required),\n        \"supplemental\": registry.validate_required_regression_group_coverage(supplemental, groups=WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS),\n        \"required_not_tracked_count\": len(set(required) - tracked),\n        \"supplemental_not_tracked_count\": len(set(supplemental) - tracked),\n        \"raw_required_count\": len(registry.QUALITY_GATE_REQUIRED_TESTS),\n        \"raw_required_unique_count\": len(set(registry.QUALITY_GATE_REQUIRED_TESTS)),\n        \"registered_paths_absent\": [p for p in required + supplemental if not (root / p).is_file()],\n        \"overlap\": sorted(set(required) & set(supplemental)),\n        \"observed_pending_handoff_only\": [\"tests/workbench/test_final_planning_browser.py\"],\n        \"registration_policy\": \"Wait for domain frozen handoff; do not auto-register transient additions or removals. Main final_foundation files are pending and not counted.\"\n    },\n    \"protected_state_observed_only\": {\n        \"staged_paths_raw\": subprocess.check_output([\"git\", \"diff\", \"--cached\", \"--raw\"], text=True).strip(),\n        \"staged_binary_patch_sha256\": hashlib.sha256(subprocess.check_output([\"git\", \"diff\", \"--cached\", \"--binary\"])).hexdigest(),\n        \"frozen_test\": hashed_file(root / \"tests/gate_meta/test_frozen_bundle_contract.py\")\n    },\n    \"historical_reports_not_replayed\": [hashed_file(historical_root / p) for p in history_names],\n    \"historical_product_pyright\": {\"summary\": reports[\"pyright-product-frozen.json\"][\"summary\"], \"diagnostics\": diagnostics, \"current_source_hashes_do_not_rebind_old_execution\": True},\n    \"historical_dependency_triage\": {\n        \"production\": {\"module_count\": product_scan[\"module_count\"], \"hard_directory_cycles\": product_scan[\"hard_dir_cycles\"], \"hard_file_cycles\": product_scan[\"hard_file_cycles\"], \"explicit_hard_file_cycles\": product_scan[\"explicit_hard_file_cycles\"], \"unresolved_count\": len(product_scan[\"unresolved_dynamic_imports\"]), \"parse_errors\": product_scan[\"parse_errors\"]},\n        \"with_tests\": {\"module_count\": test_scan[\"module_count\"], \"hard_directory_scc_count\": len(test_scan[\"hard_dir_cycles\"]), \"hard_file_scc_count\": len(test_scan[\"hard_file_cycles\"]), \"unresolved_count\": len(test_scan[\"unresolved_dynamic_imports\"]), \"parse_errors\": test_scan[\"parse_errors\"]},\n        \"all_43_historical_sites_with_current_source_hashes\": dependency_sites,\n        \"frozen_baselines_unchanged_by_H\": baseline_rows\n    }\n}\nprint(json.dumps(payload, ensure_ascii=False, indent=2))\n'",
+  "completed_targeted_checks": [
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache PYRIGHT_PYTHON_CACHE_DIR=/tmp/aps-task-h-01a08b02/pyright-cache XDG_CACHE_HOME=/tmp/aps-task-h-01a08b02/cache .venv/bin/python -B -m pyright -p pyrightconfig.tools.json --outputjson",
+      "exit_code": 0,
+      "version": "1.1.406",
+      "files_analyzed": 62,
+      "errors": 0,
+      "warnings": 0,
+      "seconds": 2.027
+    },
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache .venv/bin/python -B -c 'import json,subprocess,sys; paths=json.load(open(\"pyrightconfig.tools.json\"))[\"include\"]; print(\"tool_scope_paths=\"+str(len(paths)),flush=True); result=subprocess.run([sys.executable,\"-m\",\"ruff\",\"check\",\"--no-cache\"]+paths); sys.exit(result.returncode)'",
+      "exit_code": 0,
+      "scope_paths": 62,
+      "stdout": "tool_scope_paths=62\nAll checks passed!\n"
+    },
+    {
+      "command": "env NODE_PATH=/Users/lurenxing/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules node -e 'console.log(JSON.stringify({version:process.version,executable:process.execPath,playwright:require.resolve(\"playwright\")}))'",
+      "exit_code": 0,
+      "node_version": "v24.15.0",
+      "executable": "/Users/lurenxing/.local/node-v24.15.0-darwin-arm64/bin/node",
+      "playwright": "/Users/lurenxing/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js",
+      "scope": "Module resolution only; no browser or build launched"
+    }
+  ],
+  "postcommit_readback": {
+    "head_observed": "c00972784ccc129957f650836dd2a423792f7049",
+    "tools_hashes_rechecked": 62,
+    "changed_tool_sources": [],
+    "staged_raw": "",
+    "staged_patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "frozen_test_committed_sha256": "c7a02daca9a8bfd7c9f57dcb7374a1031534c8e067f8809a9902dbc650487b2b",
+    "frozen_test_working_file_sha256": "c7a02daca9a8bfd7c9f57dcb7374a1031534c8e067f8809a9902dbc650487b2b",
+    "h_git_writes": false,
+    "early_isolated_checkout_from_main": "/tmp/aps-workbench-r2-gate-PFwbOz/checkout",
+    "main_report_only_not_rerun_by_h": "test_frozen_bundle_contract.py: 6 passed / 0.67s, clean before and after, Python 3.8.10",
+    "full_gate_status": "Not run; explicitly wait for final frozen HEAD and Main execution window"
+  },
+  "not_applicable_dependency_probes": [
+    {
+      "module": "esbuild",
+      "exit_code": 1,
+      "error": "MODULE_NOT_FOUND",
+      "disposition": "Not an established build prerequisite. Actual source uses pinned standalone Babel 7.29.0."
+    },
+    {
+      "module": "@babel/core",
+      "exit_code": 1,
+      "error": "MODULE_NOT_FOUND",
+      "disposition": "Not an established build prerequisite. Do not install or upgrade dependencies to satisfy this probe."
+    }
+  ]
+}

@@ -1,0 +1,185 @@
+{
+  "task": "H: exact v20 resource-fixture linkage to current v30/v31 metadata",
+  "observed_head": "830a58e69faaa64a39d7a238ba2a0a0cd5c9047c",
+  "proof": "current dirty tree; targeted tests only, not private 405/G04 or final HEAD",
+  "changed_sources": [
+    "tests/workbench/test_resource_schema.py"
+  ],
+  "source_hashes_before": {
+    "tests/workbench/test_resource_schema.py": "bc44aade032dbc7126aced82e01d5560518c347f9690fcb2d20f6c1be3ba784d",
+    "tests/workbench/identity_metadata_support.py": "c155a48b2e93f26c4987ee49d3e1244f01ec3f61052bb29eb50b6168a6b9ab29",
+    "tests/workbench/plan_identity_support.py": "ea6b6d7bb9a438ba39aca6637108ab6ede1f7951a9239d91f26bf87fbd061619",
+    "tests/workbench/resource_entity_support.py": "6bec19d6c74d4883fef1902a6e8e008f5957b2d02ed46722f53c2926f7c0e393",
+    "tests/workbench/execution_ledger_migration_support.py": "ac2a5d1708b3232dde2d1eefb1dc9080a74014c721209059465a1f370e970cca",
+    "tests/workbench/schema29_regression_support.py": "8048672c756c72cf7afe908a135e566cfbfb7ad8f8a28269ba9ddff7ed1dde46",
+    "tests/workbench/legacy_migration_current_support.py": "952b5b47c60622da1da63c81769c2d1abd9ad5d906906769cb66fe9b5674d04a",
+    "tests/_support/sqlite_snapshot.py": "9d420f33f20226ba065f6afa1f304339e519d2f321c79740df2fb4b8f8e86bf1",
+    "tests/workbench/fixtures/schema-v24.sql": "023f7ae15282b1cc0523f218c2b45e1ba6cb4f036d491fe7761cbd8f1f56f03c",
+    "schema.sql": "b939a2d6516925863e6f7f0fb3db32ea83a94e4204a8df8c1f6574953bb17b47",
+    "core/infrastructure/workbench_dashboard_external_schema.py": "64365aab651656f4e01b905b52912895661cef4bba8a070c38ee5c13d3b2b3fd",
+    "core/infrastructure/workbench_outsourcing_schema.py": "eeabe5c7e50e8c5d2320f6311fb5323dd9532246bc8ee8c03f26965a543d80f4",
+    "core/infrastructure/workbench_plan_identity_write_guard.py": "5b94c534db296f66ccb2f2e88ae79909cb82dbc2dfbd64bdbdd25bbbb5305957",
+    "core/infrastructure/workbench_resource_schema.py": "b9b80b9a29559dc6230570125f63d4b53dc1ae70e132391dc8aadee442cb0ed8",
+    "core/infrastructure/migrations/v30.py": "cc71ead04deb39c7cf778ea1e971690d7ea040e05232069501907eee27a3c9a5",
+    "core/infrastructure/migrations/v31.py": "da0a9435582a6fc975638461e9d2824a539dc95bd02b23a8f68eef17f50c1223",
+    "core/infrastructure/migration_state.py": "496f890aadfcfa94e9e8fd517b1fe0c131c039e9b078ed29fff23c48aed30f5e"
+  },
+  "source_hashes_after": {
+    "tests/workbench/test_resource_schema.py": "dbae02d7d89d3179c5fe6b1bb4c50e04c086b50fc6f0684b9c58d911329d8a99",
+    "tests/workbench/identity_metadata_support.py": "c155a48b2e93f26c4987ee49d3e1244f01ec3f61052bb29eb50b6168a6b9ab29",
+    "tests/workbench/plan_identity_support.py": "ea6b6d7bb9a438ba39aca6637108ab6ede1f7951a9239d91f26bf87fbd061619",
+    "tests/workbench/resource_entity_support.py": "6bec19d6c74d4883fef1902a6e8e008f5957b2d02ed46722f53c2926f7c0e393",
+    "tests/workbench/execution_ledger_migration_support.py": "ac2a5d1708b3232dde2d1eefb1dc9080a74014c721209059465a1f370e970cca",
+    "tests/workbench/schema29_regression_support.py": "8048672c756c72cf7afe908a135e566cfbfb7ad8f8a28269ba9ddff7ed1dde46",
+    "tests/workbench/legacy_migration_current_support.py": "952b5b47c60622da1da63c81769c2d1abd9ad5d906906769cb66fe9b5674d04a",
+    "tests/_support/sqlite_snapshot.py": "9d420f33f20226ba065f6afa1f304339e519d2f321c79740df2fb4b8f8e86bf1",
+    "tests/workbench/fixtures/schema-v24.sql": "023f7ae15282b1cc0523f218c2b45e1ba6cb4f036d491fe7761cbd8f1f56f03c",
+    "schema.sql": "b939a2d6516925863e6f7f0fb3db32ea83a94e4204a8df8c1f6574953bb17b47",
+    "core/infrastructure/workbench_dashboard_external_schema.py": "64365aab651656f4e01b905b52912895661cef4bba8a070c38ee5c13d3b2b3fd",
+    "core/infrastructure/workbench_outsourcing_schema.py": "eeabe5c7e50e8c5d2320f6311fb5323dd9532246bc8ee8c03f26965a543d80f4",
+    "core/infrastructure/workbench_plan_identity_write_guard.py": "5b94c534db296f66ccb2f2e88ae79909cb82dbc2dfbd64bdbdd25bbbb5305957",
+    "core/infrastructure/workbench_resource_schema.py": "b9b80b9a29559dc6230570125f63d4b53dc1ae70e132391dc8aadee442cb0ed8",
+    "core/infrastructure/migrations/v30.py": "cc71ead04deb39c7cf778ea1e971690d7ea040e05232069501907eee27a3c9a5",
+    "core/infrastructure/migrations/v31.py": "da0a9435582a6fc975638461e9d2824a539dc95bd02b23a8f68eef17f50c1223",
+    "core/infrastructure/migration_state.py": "496f890aadfcfa94e9e8fd517b1fe0c131c039e9b078ed29fff23c48aed30f5e"
+  },
+  "final_input_hashes_equal": true,
+  "commands": [
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache CHECKUP_CALLGRAPH=/tmp/aps-task-h-01a08b02/callgraph TMPDIR=/tmp/aps-task-h-01a08b02 .venv/bin/python -B -m pytest -q -p no:cacheprovider --basetemp=/tmp/aps-task-h-v20-before-v1 --junitxml=/tmp/aps-task-h-v20-before-v1.xml tests/workbench/test_resource_schema.py::test_real_v20_upgrade_is_additive_preserves_refs_and_matches_fresh_ddl",
+      "chunk_id": "436adc",
+      "wall_time_seconds": 1.531947042,
+      "exit_code": 1,
+      "original_token_count": 781,
+      "output": "F                                                                        [100%]\n=================================== FAILURES ===================================\n____ test_real_v20_upgrade_is_additive_preserves_refs_and_matches_fresh_ddl ____\n\nschema_conn = <sqlite3.Connection object at 0x1046e95d0>\nmem_conn = <sqlite3.Connection object at 0x1046e9990>\ntmp_path = PosixPath('/private/tmp/aps-task-h-v20-before-v1/test_real_v20_upgrade_is_addit0')\nschema_path = '/Users/lurenxing/GitHub/----/schema.sql'\n\n    def test_real_v20_upgrade_is_additive_preserves_refs_and_matches_fresh_ddl(schema_conn, mem_conn, tmp_path, schema_path):\n        ensure_schema_version(schema_conn)\n        schema_conn.commit()\n        fresh = schema_snapshot(schema_conn)\n        conn = load_v24_schema(mem_conn)\n        remove_resources_for_v20(conn)\n        assert RESOURCE_TABLES == RESOURCE_CASES and len(RESOURCE_TABLES) == 10\n        assert get_schema_version(conn) == 20\n        assert not set(NEW_TABLES) & set(schema_snapshot(conn))\n        seed_resources(conn, relations=True)\n        conn.execute(\"UPDATE Operators SET status='inactive'\")\n        conn.execute(\"UPDATE Machines SET status=' Legacy HOLD '\")\n        conn.commit()\n        before, refs = business_snapshot(conn), table_rows(conn, \"WorkbenchEntityRefs\")\n        old_schema, backup_before = schema_snapshot(conn), table_snapshot(conn)\n        assert not set(LEDGER_TABLES + RUN_TABLES + V27_TABLES) & set(before)\n        assert len(refs) == 10\n        path = tmp_path / \"real-v20.db\"\n        copy_to_temp(conn, path)\n        ensure_schema(str(path), schema_path=schema_path, backup_dir=str(tmp_path / \"backups\"))\n        with connect_temp(path) as upgraded:\n            assert get_schema_version(upgraded) == CURRENT_SCHEMA_VERSION\n            after = business_snapshot(upgraded)\n            assert {name: after[name] for name in before} == before\n            from core.infrastructure.workbench_process_workflow_schema import WORKFLOW_TABLES\n            empty_tables = set(NEW_TABLES) | set(WORKFLOW_TABLES + LEDGER_TABLES[1:] + RUN_TABLES + V27_TABLES + V29_EMPTY_TABLES)\n            added_tables = empty_tables | set(IDENTITY_TABLES + LEDGER_TABLES + V29_TABLES)\n>           assert set(after) - set(before) == added_tables\nE           AssertionError: assert {'WorkbenchCa...lStates', ...} == {'WorkbenchCa...dStates', ...}\nE             \nE             Extra items in the left set:\nE             'WorkbenchOutsourcingFacts'\nE             'WorkbenchOutsourcingMembers'\nE             'WorkbenchOutsourcingOperationOrigins'\nE             'WorkbenchDashboardExternalStates'\nE             'WorkbenchDashboardExternalHistory'...\nE             \nE             ...Full output truncated (3 lines hidden), use '-vv' to show\n\ntests/workbench/test_resource_schema.py:80: AssertionError\n------------ generated xml file: /tmp/aps-task-h-v20-before-v1.xml -------------\n=========================== short test summary info ============================\nFAILED tests/workbench/test_resource_schema.py::test_real_v20_upgrade_is_additive_preserves_refs_and_matches_fresh_ddl\n1 failed in 1.14s\n"
+    },
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache CHECKUP_CALLGRAPH=/tmp/aps-task-h-01a08b02/callgraph TMPDIR=/tmp/aps-task-h-01a08b02 .venv/bin/python -B -m pytest -q -p no:cacheprovider --basetemp=/tmp/aps-task-h-v20-full-v1 --junitxml=/tmp/aps-task-h-v20-full-v1.xml tests/workbench/test_resource_schema.py",
+      "exit_code": 0,
+      "output": "........................................................................ [ 49%]\n........................................................................ [ 99%]\n.                                                                        [100%]\n------------- generated xml file: /tmp/aps-task-h-v20-full-v1.xml --------------\n145 passed in 10.54s\n",
+      "binding": "17 explicit input SHA-256 values equal before and after the full-file run"
+    },
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache .venv/bin/python -B -m ruff check --no-cache tests/workbench/test_resource_schema.py",
+      "chunk_id": "1bd103",
+      "wall_time_seconds": 0.000001709,
+      "exit_code": 0,
+      "original_token_count": 5,
+      "output": "All checks passed!\n"
+    },
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache CHECKUP_CALLGRAPH=/tmp/aps-task-h-01a08b02/callgraph TMPDIR=/tmp/aps-task-h-01a08b02 .venv/bin/python -B -m pytest -q -p no:cacheprovider --basetemp=/tmp/aps-task-h-v20-map-guards-v1 --junitxml=/tmp/aps-task-h-v20-map-guards-v1.xml tests/workbench/test_calibration_dashboard_migration.py::test_old_upgrade_metadata_checker_accepts_only_birth_mapping_and_empty_facts tests/workbench/test_dashboard_external_migration.py::test_additive_mapping_assertion_rejects_missing_guessed_typed_or_invented_evidence",
+      "chunk_id": "4e22c1",
+      "wall_time_seconds": 1.326755375,
+      "exit_code": 0,
+      "original_token_count": 45,
+      "output": ".....................                                                    [100%]\n---------- generated xml file: /tmp/aps-task-h-v20-map-guards-v1.xml -----------\n21 passed in 0.93s\n"
+    }
+  ],
+  "junit": {
+    "/tmp/aps-task-h-v20-before-v1.xml": {
+      "sha256": "565fad48371aa03a529e879a7c5c19468b97d21130e7678dcd05c5634eb4e986",
+      "suites": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "1",
+          "skipped": "0",
+          "tests": "1",
+          "time": "1.137",
+          "timestamp": "2026-09-10T21:40:00.065109+08:00",
+          "hostname": "lurenxingdeMacBook-Air.local"
+        }
+      ]
+    },
+    "/tmp/aps-task-h-v20-full-v1.xml": {
+      "sha256": "7b5eb55166b178b0a4ba75450571ee1b1ad52cb6ab0d688848daeb941607297f",
+      "suites": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "145",
+          "time": "10.540",
+          "timestamp": "2026-09-10T21:43:08.621840+08:00",
+          "hostname": "lurenxingdeMacBook-Air.local"
+        }
+      ]
+    },
+    "/tmp/aps-task-h-v20-map-guards-v1.xml": {
+      "sha256": "6394b9620b5a116e52e42e00b4cd08a1db7135205587c4d573e143541dfbc362",
+      "suites": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "21",
+          "time": "0.932",
+          "timestamp": "2026-09-10T21:44:23.163285+08:00",
+          "hostname": "lurenxingdeMacBook-Air.local"
+        }
+      ]
+    }
+  },
+  "python38_ast": "PASS",
+  "preservation": [
+    "Exact after-minus-before table set includes all 4 v30 and 3 v31 tables",
+    "All existing business table column/rowid/value comparisons retained",
+    "Strict shared v29/v30/v31 source mapping, empty facts and foreign key checks retained or added",
+    "Original entity refs, inactive/legacy status values, clocks, fresh-DDL equality, v21 idempotence and full backup snapshots retained",
+    "13 negative cases: 7 absent tables, 2 source-origin corruptions, 1 invented receipt, 2 old row value/type changes and 1 extra table"
+  ],
+  "targeted_readonly_review": [
+    {
+      "path": "tests/workbench/identity_metadata_support.py",
+      "finding": "remove_metadata_for_v19 already has complete v29/v30/v31 missing issue sets; v20 predecessor helper derives only from frozen v24 DDL"
+    },
+    {
+      "path": "tests/workbench/plan_identity_support.py",
+      "finding": "load_v24_schema uses unchanged frozen schema-v24.sql; no current tables inserted into historic SQL"
+    },
+    {
+      "path": "tests/workbench/test_identity_metadata.py",
+      "finding": "v31 tables included via empty_tables; v30 table union and strict v30/v31 source checks already present"
+    },
+    {
+      "path": "tests/workbench/test_process_identity_schema.py",
+      "finding": "v22-only migration contract, not a current-upgrade new-table assertion; no v30/v31 addition appropriate"
+    },
+    {
+      "path": "tests/workbench/test_process_workflow_schema.py",
+      "finding": "earlier separately verified v22 fix delegates to exact current metadata checker"
+    },
+    {
+      "path": "tests/workbench/test_plan_migration_integration.py",
+      "finding": "inspected current union already includes V30_TABLES + V31_TABLES and both mapping checkers"
+    },
+    {
+      "path": "tests/workbench/test_execution_ledger_migration.py",
+      "finding": "inspected current union already includes V30_TABLES + V31_TABLES and both mapping checkers"
+    },
+    {
+      "path": "tests/workbench/test_run_schema_migration.py",
+      "finding": "current table union and missing issue set already include both later generations"
+    },
+    {
+      "path": "tests/workbench/test_calibration_dashboard_migration.py",
+      "finding": "new table union and source/receipt mapping checks already present"
+    }
+  ],
+  "review_boundary": "Read-only followup of explicit shared fixture consumers, not an exhaustive audit of Main's unspecified 18-file private manifest; no additional issue established and no unrelated tests changed",
+  "boundaries": [
+    "No helper edits",
+    "No product, schema or frozen SQL edits",
+    "No Git/index/hooks/private-stage changes",
+    "No browser/build/capacity/full quality gate",
+    "No formatting of Main's future-domain import closure"
+  ],
+  "locator": {
+    "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache CHECKUP_CALLGRAPH=/tmp/aps-task-h-01a08b02/callgraph python3 -m tools.symbol_locator whereis remove_resources_for_v20 --at tests/workbench/identity_metadata_support.py:151",
+    "exit_code": 1,
+    "result": "test helper absent from static index; explicit helper/callsite reads used"
+  }
+}

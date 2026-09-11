@@ -1,0 +1,21 @@
+{
+  "status": "post_verification_passed_run_failed",
+  "checked_utc": "2026-09-10T15:27:04.236Z",
+  "root": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh",
+  "checks": {
+    "f_source": 3632,
+    "b_source": 3632,
+    "f_assets": 223,
+    "b_assets": 223
+  },
+  "raw_api_files": 772,
+  "screenshots": 408,
+  "normal_actual_asset_responses": 51448,
+  "browser_result_sha256": "d13e22fabf989f88eb1a7e2cb5ef6e86b76172520ad40f3de41726d9fda43214",
+  "result_sha256": "083214ff60bf21d65cd9bbbef0f0ef325aab35bc231e9b07d2ef8e5e4d732f8e",
+  "runtime_locks_absent": true,
+  "source_and_asset_bytes_modes_unchanged": true,
+  "complete": false,
+  "final_head_bound": false
+}
+

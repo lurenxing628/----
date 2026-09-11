@@ -1,0 +1,281 @@
+{
+  "schema_version": 1,
+  "owner": "C",
+  "registration_owner": "Main/H",
+  "status": "registration_requested_not_claimed_done",
+  "updated": "2026-09-10T17:35:22.461Z",
+  "files": [
+    {
+      "path": "tests/workbench/detail008_prototype_support.cjs",
+      "change": "new_in_this_continuation",
+      "pytest": false,
+      "bytes": 6451,
+      "mode": 420,
+      "sha256": "e1b4967fd1d108408d1e478343537a60407c1c6e7b827e9093c087c31e28997b"
+    },
+    {
+      "path": "tests/workbench/detail008_prototype_probe.cjs",
+      "change": "new_in_this_continuation",
+      "pytest": false,
+      "bytes": 6236,
+      "mode": 420,
+      "sha256": "05b6cf5024a52209862e99e091dbce5fb7f61ea5882c6a0454878c7581cb3156"
+    },
+    {
+      "path": "tests/workbench/detail008_prototype_links.cjs",
+      "change": "new_in_this_continuation",
+      "pytest": false,
+      "bytes": 8884,
+      "mode": 420,
+      "sha256": "45cb5e793265f569ae0339cbe5dae2770bd9c36d431f1cbf9abe78f5fb254ee2"
+    },
+    {
+      "path": "tests/workbench/detail008_prototype_static.cjs",
+      "change": "new_in_this_continuation",
+      "pytest": false,
+      "bytes": 3532,
+      "mode": 420,
+      "sha256": "caed82c340e04ebf6a5e0c01c8656ee2b1a9004d06a8ab00d86ded1acb96cb25"
+    },
+    {
+      "path": "tests/workbench/final_master_action_ledger_support.py",
+      "change": "new_in_this_continuation",
+      "pytest": false,
+      "bytes": 7368,
+      "mode": 420,
+      "sha256": "a34dbf37892228fd51a7bf92dc3a4f4ccebdd519362bf33a1d00731263fb494a"
+    },
+    {
+      "path": "tests/workbench/test_final_master_action_ledger.py",
+      "change": "new_in_this_continuation",
+      "pytest": true,
+      "bytes": 1869,
+      "mode": 420,
+      "sha256": "327916cb3139feeeea4b343376ab567243865708a2b6c7835153dea2e6feb2d4"
+    },
+    {
+      "path": "tests/workbench/test_final_master_config_trace.py",
+      "change": "new_in_this_continuation",
+      "pytest": true,
+      "bytes": 3380,
+      "mode": 420,
+      "sha256": "aae2c63efc9330b15c6d34b7b8759db6875a74870f31a8052e2ce325bac1ddcf"
+    },
+    {
+      "path": "tests/workbench/final_master_config_preservation_support.py",
+      "change": "new_in_this_continuation",
+      "pytest": false,
+      "bytes": 6375,
+      "mode": 420,
+      "sha256": "8e4ad00ba296c484a8d5f979c674e81920b194938794ddfa118aa84b49e2b130"
+    },
+    {
+      "path": "tests/workbench/test_final_master_config_preservation.py",
+      "change": "new_in_this_continuation",
+      "pytest": true,
+      "bytes": 3269,
+      "mode": 420,
+      "sha256": "e45d8b02668913548fd9e60ff2b9abd387a25766db865113fe8f5105fab3f76c"
+    },
+    {
+      "path": "tests/workbench/final_master_resource_revisions_support.py",
+      "change": "new_in_this_continuation",
+      "pytest": false,
+      "bytes": 2766,
+      "mode": 420,
+      "sha256": "965dbfd9d06c008eafddbffc5e04d1d93c972d8fdf922756b8300dd8d28e4167"
+    },
+    {
+      "path": "tests/workbench/test_final_master_resource_revisions.py",
+      "change": "new_in_this_continuation",
+      "pytest": true,
+      "bytes": 2381,
+      "mode": 420,
+      "sha256": "4f5e7cad6b800ec36db530f6c9882c9951d91255e4e4862d343620a37c88b082"
+    },
+    {
+      "path": "tests/workbench/final_master_config_trace_support.py",
+      "change": "updated_existing_C_test_support",
+      "pytest": false,
+      "bytes": 3740,
+      "mode": 420,
+      "sha256": "e6b3b8698cb6e04a61da768822a2a0739e026c7b0bcdc2a84bc3e7ef7004ee94"
+    },
+    {
+      "path": "tests/workbench/final_master_server_support.py",
+      "change": "updated_existing_C_test_support",
+      "pytest": false,
+      "bytes": 2870,
+      "mode": 420,
+      "sha256": "8a63ca70f3c77c2e0d0a27c3fc7ed394d00cd433eca002492b66a15cba44674e"
+    },
+    {
+      "path": "tests/workbench/final_master_preservation_support.py",
+      "change": "updated_existing_C_test_support",
+      "pytest": false,
+      "bytes": 5111,
+      "mode": 420,
+      "sha256": "a667bb2cc8d497855b25c21aebed040b2a2d9a57af03d4481155c39529d51d50"
+    },
+    {
+      "path": "tests/workbench/test_final_master_acceptance.py",
+      "change": "updated_existing_C_test_support",
+      "pytest": false,
+      "bytes": 8281,
+      "mode": 420,
+      "sha256": "bc98966a24490e25bb620812f971c2fedd396d84eea8305947dfb075da351b54"
+    },
+    {
+      "path": "tests/workbench/final_master_resources.cjs",
+      "change": "updated_existing_C_test_support",
+      "pytest": false,
+      "bytes": 5238,
+      "mode": 420,
+      "sha256": "23dcd5142fff44c926c2ebfdcc29bd68639ac811b1a14ba3b83e78e87568cc5a"
+    },
+    {
+      "path": "tests/workbench/final_master_resource_resume_support.py",
+      "change": "new_or_updated_C_scope_support",
+      "pytest": false,
+      "bytes": 5384,
+      "mode": 420,
+      "sha256": "d914ceaf08e911611898232c41e70a87ee919d2d9d25c718b4a7459bb3dbe794"
+    },
+    {
+      "path": "tests/workbench/final_master_metadata_guard_support.py",
+      "change": "new_or_updated_C_scope_support",
+      "pytest": false,
+      "bytes": 9308,
+      "mode": 420,
+      "sha256": "840bf8381c6e3fde9ee6530de05ce7fde60d5be23db3222024fa8f81a4e581c2"
+    },
+    {
+      "path": "tests/workbench/final_master_process_support.cjs",
+      "change": "new_or_updated_C_scope_support",
+      "pytest": false,
+      "bytes": 2397,
+      "mode": 420,
+      "sha256": "c8bff270b2a329bb428a3fe499ed9a820a32127522cfac89cde57a75a589598f"
+    },
+    {
+      "path": "tests/workbench/final_master_process_resume_support.py",
+      "change": "new_or_updated_C_scope_support",
+      "pytest": false,
+      "bytes": 3106,
+      "mode": 420,
+      "sha256": "38e4b3168ba7dde191f5a89e6dc5e82d64c62fc65da39bdba50c955be23db0f9"
+    },
+    {
+      "path": "tests/workbench/final_master_process_revalidate.cjs",
+      "change": "new_or_updated_C_scope_support",
+      "pytest": false,
+      "bytes": 2258,
+      "mode": 420,
+      "sha256": "d58b61575e2140f5519a095836c571467597383e7a807c7d81f5c034ea27032f"
+    },
+    {
+      "path": "tests/workbench/final_master_lineage_sequence_test.cjs",
+      "change": "new_or_updated_C_scope_support",
+      "pytest": false,
+      "bytes": 1362,
+      "mode": 420,
+      "sha256": "140821f7e831e4f4b822bcb8cc166eba0c9bcaf9fd4f41c7f95edfe435acd017"
+    },
+    {
+      "path": "tests/workbench/test_final_master_typed_lineage.py",
+      "change": "new_or_updated_C_scope_support",
+      "pytest": true,
+      "bytes": 1765,
+      "mode": 420,
+      "sha256": "03b864bc240b034e0bfb0c3d79ccf761c0ba2b73a57897c12b9512e5ee8010fa"
+    },
+    {
+      "path": "tests/workbench/final_master_remaining_controls.cjs",
+      "change": "new_or_updated_C_scope_support",
+      "pytest": false,
+      "bytes": 9925,
+      "mode": 420,
+      "sha256": "d6cc65e3820d16f121a7909b54b8b501bdf39f6d8bb00b1669ff6b4fc5e4a6d7"
+    },
+    {
+      "path": "tests/workbench/final_master_domain_map_support.py",
+      "change": "new_or_updated_C_scope_support",
+      "pytest": false,
+      "bytes": 6013,
+      "mode": 420,
+      "sha256": "6a92a40da9bd4a5bd12e3bd7201ee50810faf4e8ae5a6f7cae8deeca4abef204"
+    },
+    {
+      "path": "tests/workbench/final_master_domain_ledger_support.py",
+      "change": "new_or_updated_C_scope_support",
+      "pytest": false,
+      "bytes": 11125,
+      "mode": 420,
+      "sha256": "58c14f8bdf8af8ec159a030c129b065633464da5dc7cf0951903de413c2ab870"
+    },
+    {
+      "path": "tests/workbench/test_final_master_domain_ledger.py",
+      "change": "new_or_updated_C_scope_support",
+      "pytest": true,
+      "bytes": 2683,
+      "mode": 420,
+      "sha256": "5b10c86b0eadcd691a29ee7ef22e2343f31825ff93a781c98351f447f7f8f9da"
+    },
+    {
+      "path": "tests/workbench/final_master_visual_index_support.py",
+      "change": "new_or_updated_C_scope_support",
+      "pytest": false,
+      "bytes": 5053,
+      "mode": 420,
+      "sha256": "86ab11c01f6eefa54c87389173f6561340896c4a3bbb325efeefe5b6cfdb785a"
+    },
+    {
+      "path": "tests/workbench/batch_widgets_probe.cjs",
+      "change": "Main_authorized_existing_probe_dependency_only",
+      "pytest": false,
+      "bytes": 23666,
+      "mode": 420,
+      "sha256": "adb85b9f6b56daa0e5e8ff683deedd528d38fdc7a21ddc99962ca5651e0a91f2"
+    }
+  ],
+  "scope": "C tests/evidence and explicitly authorized old batch widget compile dependency only; product and global registry unchanged; registration remains Main/H-owned",
+  "pytest_focus_counts": {
+    "test_final_master_action_ledger": 5,
+    "test_final_master_config_trace": 4,
+    "test_final_master_config_preservation": 14,
+    "test_final_master_resource_revisions": 5,
+    "test_final_master_typed_lineage": 7,
+    "test_final_master_domain_ledger": 4
+  },
+  "prototype_policy": "Manual original-prototype probe only; not production acceptance; latest form-collision evidence separately reported",
+  "full_app_scope": "Sealed 2ab72: context20/20, resources224/224+independent preservation/restart, process67/67 through saved oracle revalidation, overview40/40, missing shared controls. Original failures preserved; no repeated completed28 matrix.",
+  "node_assertions": {
+    "final_master_lineage_sequence_test": 9
+  },
+  "current_action_bindings": {
+    "domain": {
+      "denominator": 599,
+      "B": 227,
+      "K": 266,
+      "P_reused": 98,
+      "P_not_applicable": 127
+    },
+    "shared": {
+      "denominator": 50,
+      "B": 46,
+      "K": 46,
+      "P_not_applicable": 46,
+      "pending_scope_decision": 4
+    },
+    "V_passed": 0
+  },
+  "old_batch_widgets": {
+    "path": "tests/workbench/batch_widgets_probe.cjs",
+    "change": "Add real WorkbenchPageContext.jsx to local compile input only",
+    "pytest": "tests/workbench/test_batch_widgets.py::test_batch_components_chrome109",
+    "result": "1 passed in 12.73s; unchanged32cases/40images",
+    "proof_sha256": "3434843e84a3f86fd881a37679d92113c7081da19a861516ba96d5e4491b395a",
+    "report": "old-batch-widgets-fix-note.md"
+  },
+  "main_visual_index": "main-v-minimum-index.json"
+}

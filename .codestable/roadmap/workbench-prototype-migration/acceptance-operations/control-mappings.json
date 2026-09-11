@@ -1,0 +1,1259 @@
+{
+  "schema_version": 1,
+  "note": "Main confirmed all 13 controls remain in the frozen approved scope. Missing controls are implementation gaps, not equivalent or not applicable. Earlier equivalence questions below are superseded by this confirmation. No denominator is reduced.",
+  "completion_proposal": "completion-proposal.md",
+  "mappings": [
+    {
+      "action_id": "WBP-DASH-001.metric-pressure",
+      "original_control": "顶部“资源压力”指标，原例按两台设备峰值 >=90% 计数，并切到交期类别",
+      "prototype_evidence": [
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-views.js",
+          "line": 116
+        }
+      ],
+      "decision_status": "implemented_and_fixed_source_verified",
+      "historical_gap": "当前有真实资源压力表，但没有原资源压力总数指标/点击。风险类别计数不能替代资源压力阈值口径。",
+      "historical_equivalent_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 13
+        },
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 73
+        }
+      ],
+      "implementation_evidence": [
+        {
+          "path": "core/services/workbench/dashboard_resource_metrics.py",
+          "sha256": "450658637d0994b82d5e8740ecadcaca4082d4d5378cfd8c9d81735f31d25b1e"
+        },
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "sha256": "5d943f7d0ab6a9cf7ff1f3c731c2244c7a298c21c86fb240c582e3f85ac8ce82"
+        }
+      ],
+      "browser_evidence": [
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/report.json",
+          "report_sha256": "31af64d6fd732a0e550e02cc3d2ed1c9f108a783be0d0c9b4bd60f1cd36e0cb6",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 54,
+          "response_start": 100,
+          "response_end": 101
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/report.json",
+          "report_sha256": "9e1ac88bed28d8657d1aabb5159e7b081b77b6e943cb79ee3d4839c46958c556",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 54,
+          "response_start": 100,
+          "response_end": 101
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/report.json",
+          "report_sha256": "9df637ca15b201c7621424273c71dfe8df7f8d4ebb162ccb0e8bccf8b7a1bd62",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 54,
+          "response_start": 99,
+          "response_end": 100
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/report.json",
+          "report_sha256": "45492034790af7ce8c261e8872bc5223b4bdcc03d6b6744e0a7e67fcfdd0e890",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 54,
+          "response_start": 96,
+          "response_end": 97
+        }
+      ]
+    },
+    {
+      "action_id": "WBP-DASH-001.metric-pending",
+      "original_control": "顶部“待排批次”总数并切到齐套类别",
+      "prototype_evidence": [
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-views.js",
+          "line": 116
+        }
+      ],
+      "decision_status": "implemented_and_fixed_source_verified",
+      "historical_gap": "当前指标为齐套风险项数；待排批次总数不等于未齐套风险数量，缺真实待排总数入口的等价证据。",
+      "historical_equivalent_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 13
+        },
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 59
+        }
+      ],
+      "implementation_evidence": [
+        {
+          "path": "core/services/workbench/dashboard_analysis.py",
+          "sha256": "dcf8ce0cf2678143e8ec39dd56c7c6bb1577a00a27ce3b531ea86c24d6bf0f2b"
+        },
+        {
+          "path": "frontend/workbench/app/DashboardAnalysisPanels.jsx",
+          "sha256": "59aae6d8efdcab98b769cc9b406d8d00a189d03d7009c0e2dc1c89a90bb7b8a6"
+        }
+      ],
+      "browser_evidence": [
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/report.json",
+          "report_sha256": "31af64d6fd732a0e550e02cc3d2ed1c9f108a783be0d0c9b4bd60f1cd36e0cb6",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 63,
+          "response_start": 104,
+          "response_end": 105
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/report.json",
+          "report_sha256": "9e1ac88bed28d8657d1aabb5159e7b081b77b6e943cb79ee3d4839c46958c556",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 63,
+          "response_start": 104,
+          "response_end": 105
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/report.json",
+          "report_sha256": "9df637ca15b201c7621424273c71dfe8df7f8d4ebb162ccb0e8bccf8b7a1bd62",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 63,
+          "response_start": 103,
+          "response_end": 104
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/report.json",
+          "report_sha256": "45492034790af7ce8c261e8872bc5223b4bdcc03d6b6744e0a7e67fcfdd0e890",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 63,
+          "response_start": 100,
+          "response_end": 101
+        }
+      ]
+    },
+    {
+      "action_id": "WBP-DASH-001.category-select",
+      "original_control": "窄屏“异常类别”下拉",
+      "prototype_evidence": [
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-markup.js",
+          "line": 15
+        },
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-workbench.js",
+          "line": 123
+        }
+      ],
+      "decision_status": "implemented_and_fixed_source_verified",
+      "historical_gap": "当前侧栏按钮可切类别，但没有该下拉。需确认响应式替代等价性或补入口。",
+      "historical_equivalent_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 19
+        }
+      ],
+      "implementation_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardWorkspace.jsx",
+          "sha256": "09e7bb74d1dc1512bff7c480de622ab157b2183e9362a536f9ebe1aaefc942db"
+        }
+      ],
+      "browser_evidence": [
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/report.json",
+          "report_sha256": "31af64d6fd732a0e550e02cc3d2ed1c9f108a783be0d0c9b4bd60f1cd36e0cb6",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 59,
+          "response_start": 102,
+          "response_end": 103
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/report.json",
+          "report_sha256": "9e1ac88bed28d8657d1aabb5159e7b081b77b6e943cb79ee3d4839c46958c556",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 59,
+          "response_start": 102,
+          "response_end": 103
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/report.json",
+          "report_sha256": "9df637ca15b201c7621424273c71dfe8df7f8d4ebb162ccb0e8bccf8b7a1bd62",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 59,
+          "response_start": 101,
+          "response_end": 102
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/report.json",
+          "report_sha256": "45492034790af7ce8c261e8872bc5223b4bdcc03d6b6744e0a7e67fcfdd0e890",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 59,
+          "response_start": 98,
+          "response_end": 99
+        }
+      ]
+    },
+    {
+      "action_id": "WBP-DASH-007.hover-resource",
+      "original_control": "资源时段条显示批次/工序/小时的 hover tooltip",
+      "prototype_evidence": [
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-views.js",
+          "line": 29
+        },
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-views.js",
+          "line": 31
+        }
+      ],
+      "decision_status": "implemented_and_fixed_source_verified",
+      "historical_gap": "当前资源压力表不是按批次的时间条，未找到原 hover 动作。计划甘特可另行检查，不能未经确认自动替代本页。",
+      "historical_equivalent_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 73
+        }
+      ],
+      "implementation_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardTimelineModel.js",
+          "sha256": "ea5859fcd38057f943e46d0c1b1ab95f9e7f060db8513a9b6200f6d1216a459e"
+        },
+        {
+          "path": "frontend/workbench/app/DashboardTimeline.jsx",
+          "sha256": "67eb3199fb72dc0d1bc56b2dcb5a6ec8829aa48c35d2413aeedd1bb6b1988b21"
+        }
+      ],
+      "browser_evidence": [
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/report.json",
+          "report_sha256": "31af64d6fd732a0e550e02cc3d2ed1c9f108a783be0d0c9b4bd60f1cd36e0cb6",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 55,
+          "response_start": 102,
+          "response_end": 102
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/report.json",
+          "report_sha256": "9e1ac88bed28d8657d1aabb5159e7b081b77b6e943cb79ee3d4839c46958c556",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 55,
+          "response_start": 102,
+          "response_end": 102
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/report.json",
+          "report_sha256": "9df637ca15b201c7621424273c71dfe8df7f8d4ebb162ccb0e8bccf8b7a1bd62",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 55,
+          "response_start": 101,
+          "response_end": 101
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/report.json",
+          "report_sha256": "45492034790af7ce8c261e8872bc5223b4bdcc03d6b6744e0a7e67fcfdd0e890",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 55,
+          "response_start": 98,
+          "response_end": 98
+        }
+      ]
+    },
+    {
+      "action_id": "WBP-DASH-007.select-batch",
+      "original_control": "点击批次/资源条后，同页时间条和影响表高亮",
+      "prototype_evidence": [
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-views.js",
+          "line": 31
+        },
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-workbench.js",
+          "line": 101
+        }
+      ],
+      "decision_status": "implemented_and_fixed_source_verified",
+      "historical_gap": "当前可选择风险条目并看真实来源/跨页导航，未找到同页按批次联动高亮。",
+      "historical_equivalent_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 35
+        },
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 64
+        }
+      ],
+      "implementation_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardTimeline.jsx",
+          "sha256": "67eb3199fb72dc0d1bc56b2dcb5a6ec8829aa48c35d2413aeedd1bb6b1988b21"
+        },
+        {
+          "path": "frontend/workbench/app/DashboardAnalysisPanels.jsx",
+          "sha256": "59aae6d8efdcab98b769cc9b406d8d00a189d03d7009c0e2dc1c89a90bb7b8a6"
+        },
+        {
+          "path": "frontend/workbench/app/DashboardWorkspace.jsx",
+          "sha256": "09e7bb74d1dc1512bff7c480de622ab157b2183e9362a536f9ebe1aaefc942db"
+        }
+      ],
+      "browser_evidence": [
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/report.json",
+          "report_sha256": "31af64d6fd732a0e550e02cc3d2ed1c9f108a783be0d0c9b4bd60f1cd36e0cb6",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 56,
+          "response_start": 102,
+          "response_end": 102
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/report.json",
+          "report_sha256": "9e1ac88bed28d8657d1aabb5159e7b081b77b6e943cb79ee3d4839c46958c556",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 56,
+          "response_start": 102,
+          "response_end": 102
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/report.json",
+          "report_sha256": "9df637ca15b201c7621424273c71dfe8df7f8d4ebb162ccb0e8bccf8b7a1bd62",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 56,
+          "response_start": 101,
+          "response_end": 101
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/report.json",
+          "report_sha256": "45492034790af7ce8c261e8872bc5223b4bdcc03d6b6744e0a7e67fcfdd0e890",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 56,
+          "response_start": 98,
+          "response_end": 98
+        }
+      ]
+    },
+    {
+      "action_id": "WBP-DASH-011.downtime-bar",
+      "original_control": "检修窗口条叠在资源时间轴",
+      "prototype_evidence": [
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-views.js",
+          "line": 61
+        }
+      ],
+      "decision_status": "implemented_and_fixed_source_verified",
+      "historical_gap": "当前真实停机窗口及交集表存在，并可跳计划甘特，但本页无检修条。需核对跨页是否满足本动作。",
+      "historical_equivalent_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 54
+        },
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 64
+        }
+      ],
+      "implementation_evidence": [
+        {
+          "path": "core/services/workbench/dashboard_analysis.py",
+          "sha256": "dcf8ce0cf2678143e8ec39dd56c7c6bb1577a00a27ce3b531ea86c24d6bf0f2b"
+        },
+        {
+          "path": "frontend/workbench/app/DashboardTimeline.jsx",
+          "sha256": "67eb3199fb72dc0d1bc56b2dcb5a6ec8829aa48c35d2413aeedd1bb6b1988b21"
+        }
+      ],
+      "browser_evidence": [
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/report.json",
+          "report_sha256": "31af64d6fd732a0e550e02cc3d2ed1c9f108a783be0d0c9b4bd60f1cd36e0cb6",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 60,
+          "response_start": 104,
+          "response_end": 104
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/report.json",
+          "report_sha256": "9e1ac88bed28d8657d1aabb5159e7b081b77b6e943cb79ee3d4839c46958c556",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 60,
+          "response_start": 104,
+          "response_end": 104
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/report.json",
+          "report_sha256": "9df637ca15b201c7621424273c71dfe8df7f8d4ebb162ccb0e8bccf8b7a1bd62",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 60,
+          "response_start": 103,
+          "response_end": 103
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/report.json",
+          "report_sha256": "45492034790af7ce8c261e8872bc5223b4bdcc03d6b6744e0a7e67fcfdd0e890",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 60,
+          "response_start": 100,
+          "response_end": 100
+        }
+      ]
+    },
+    {
+      "action_id": "WBP-DASH-011.plan-task-bar",
+      "original_control": "检修轴上的原计划任务条，可选批次",
+      "prototype_evidence": [
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-views.js",
+          "line": 61
+        }
+      ],
+      "decision_status": "implemented_and_fixed_source_verified",
+      "historical_gap": "真实计划起止/交集表已展示，原计划任务条本页未出现；甘特跳转不能自动认定等价。",
+      "historical_equivalent_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 54
+        },
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 64
+        }
+      ],
+      "implementation_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardTimeline.jsx",
+          "sha256": "67eb3199fb72dc0d1bc56b2dcb5a6ec8829aa48c35d2413aeedd1bb6b1988b21"
+        },
+        {
+          "path": "frontend/workbench/app/DashboardAnalysisPanels.jsx",
+          "sha256": "59aae6d8efdcab98b769cc9b406d8d00a189d03d7009c0e2dc1c89a90bb7b8a6"
+        }
+      ],
+      "browser_evidence": [
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/report.json",
+          "report_sha256": "31af64d6fd732a0e550e02cc3d2ed1c9f108a783be0d0c9b4bd60f1cd36e0cb6",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 61,
+          "response_start": 104,
+          "response_end": 104
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/report.json",
+          "report_sha256": "9e1ac88bed28d8657d1aabb5159e7b081b77b6e943cb79ee3d4839c46958c556",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 61,
+          "response_start": 104,
+          "response_end": 104
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/report.json",
+          "report_sha256": "9df637ca15b201c7621424273c71dfe8df7f8d4ebb162ccb0e8bccf8b7a1bd62",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 61,
+          "response_start": 103,
+          "response_end": 103
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/report.json",
+          "report_sha256": "45492034790af7ce8c261e8872bc5223b4bdcc03d6b6744e0a7e67fcfdd0e890",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 61,
+          "response_start": 100,
+          "response_end": 100
+        }
+      ]
+    },
+    {
+      "action_id": "WBP-DASH-013.candidate-radio",
+      "original_control": "同一批次范围三种预置方案单选",
+      "prototype_evidence": [
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-views.js",
+          "line": 71
+        }
+      ],
+      "decision_status": "implemented_and_fixed_source_verified",
+      "historical_gap": "当前值班台仅运行/候选目录；跨页候选比较可真实选择候选，但未有此动作迁移等价确认。真实候选数量不能强行裁成三份。",
+      "historical_equivalent_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 83
+        },
+        {
+          "path": "frontend/workbench/app/RunCandidateControls.jsx",
+          "line": 27
+        }
+      ],
+      "implementation_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardCandidates.jsx",
+          "sha256": "cde873e131b7f0bb1f0caa1dfc1c481071afe8cda67e63c185b79f770defae5d"
+        },
+        {
+          "path": "frontend/workbench/app/DashboardCandidateComparisonAPI.js",
+          "sha256": "d2c0aae19e6aa3abee3272169ad001b7cdfe0bc30899c7e2525a4740557b089c"
+        }
+      ],
+      "browser_evidence": [
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/report.json",
+          "report_sha256": "31af64d6fd732a0e550e02cc3d2ed1c9f108a783be0d0c9b4bd60f1cd36e0cb6",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 73,
+          "response_start": 114,
+          "response_end": 117
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/report.json",
+          "report_sha256": "31af64d6fd732a0e550e02cc3d2ed1c9f108a783be0d0c9b4bd60f1cd36e0cb6",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 74,
+          "response_start": 117,
+          "response_end": 120
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/report.json",
+          "report_sha256": "31af64d6fd732a0e550e02cc3d2ed1c9f108a783be0d0c9b4bd60f1cd36e0cb6",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 75,
+          "response_start": 120,
+          "response_end": 123
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/report.json",
+          "report_sha256": "9e1ac88bed28d8657d1aabb5159e7b081b77b6e943cb79ee3d4839c46958c556",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 73,
+          "response_start": 114,
+          "response_end": 117
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/report.json",
+          "report_sha256": "9e1ac88bed28d8657d1aabb5159e7b081b77b6e943cb79ee3d4839c46958c556",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 74,
+          "response_start": 117,
+          "response_end": 120
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/report.json",
+          "report_sha256": "9e1ac88bed28d8657d1aabb5159e7b081b77b6e943cb79ee3d4839c46958c556",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 75,
+          "response_start": 120,
+          "response_end": 123
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/report.json",
+          "report_sha256": "9df637ca15b201c7621424273c71dfe8df7f8d4ebb162ccb0e8bccf8b7a1bd62",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 73,
+          "response_start": 113,
+          "response_end": 116
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/report.json",
+          "report_sha256": "9df637ca15b201c7621424273c71dfe8df7f8d4ebb162ccb0e8bccf8b7a1bd62",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 74,
+          "response_start": 116,
+          "response_end": 119
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/report.json",
+          "report_sha256": "9df637ca15b201c7621424273c71dfe8df7f8d4ebb162ccb0e8bccf8b7a1bd62",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 75,
+          "response_start": 119,
+          "response_end": 122
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/report.json",
+          "report_sha256": "45492034790af7ce8c261e8872bc5223b4bdcc03d6b6744e0a7e67fcfdd0e890",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 73,
+          "response_start": 109,
+          "response_end": 112
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/report.json",
+          "report_sha256": "45492034790af7ce8c261e8872bc5223b4bdcc03d6b6744e0a7e67fcfdd0e890",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 74,
+          "response_start": 112,
+          "response_end": 115
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/report.json",
+          "report_sha256": "45492034790af7ce8c261e8872bc5223b4bdcc03d6b6744e0a7e67fcfdd0e890",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 75,
+          "response_start": 115,
+          "response_end": 118
+        }
+      ]
+    },
+    {
+      "action_id": "WBP-DASH-013.benefits-costs",
+      "original_control": "当前/所选方案收益代价：晚交批次、拖期、换型、两设备峰值及差额",
+      "prototype_evidence": [
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-views.js",
+          "line": 72
+        }
+      ],
+      "decision_status": "implemented_and_fixed_source_verified",
+      "historical_gap": "跨页已有真实候选交付指标，未证明原五类比较/差额均存在。不得拿跨度作实际工时/成本，未知需保留。",
+      "historical_equivalent_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 83
+        },
+        {
+          "path": "frontend/workbench/app/RunCandidateControls.jsx",
+          "line": 37
+        },
+        {
+          "path": "frontend/workbench/app/RunCandidateControls.jsx",
+          "line": 57
+        }
+      ],
+      "implementation_evidence": [
+        {
+          "path": "core/services/workbench/dashboard_candidate_comparison.py",
+          "sha256": "d2311c5118c4fc5193b3f5d4661f88e1c7e247f31b9c943edae6f2c60214afab"
+        },
+        {
+          "path": "core/services/workbench/dashboard_candidate_metrics.py",
+          "sha256": "a988c6797548f3755d49e82ae4439373d02e058af80d87bb7c7a73a5d5ad61de"
+        },
+        {
+          "path": "frontend/workbench/app/DashboardCandidatePanels.jsx",
+          "sha256": "fa9d6bb05e253cbb82f7ff86964052d1b44825909fe9a70906a4f84478835c0d"
+        }
+      ],
+      "browser_evidence": [
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/report.json",
+          "report_sha256": "31af64d6fd732a0e550e02cc3d2ed1c9f108a783be0d0c9b4bd60f1cd36e0cb6",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 76,
+          "response_start": 123,
+          "response_end": 123
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/report.json",
+          "report_sha256": "9e1ac88bed28d8657d1aabb5159e7b081b77b6e943cb79ee3d4839c46958c556",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 76,
+          "response_start": 123,
+          "response_end": 123
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/report.json",
+          "report_sha256": "9df637ca15b201c7621424273c71dfe8df7f8d4ebb162ccb0e8bccf8b7a1bd62",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 76,
+          "response_start": 122,
+          "response_end": 122
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/report.json",
+          "report_sha256": "45492034790af7ce8c261e8872bc5223b4bdcc03d6b6744e0a7e67fcfdd0e890",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 76,
+          "response_start": 118,
+          "response_end": 118
+        }
+      ]
+    },
+    {
+      "action_id": "WBP-DASH-013.per-batch-change",
+      "original_control": "逐批原方案/所选方案交期及晚交变化",
+      "prototype_evidence": [
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-views.js",
+          "line": 74
+        }
+      ],
+      "decision_status": "implemented_and_fixed_source_verified",
+      "historical_gap": "本页无逐批比较；跨页明确原始选批清单未提供，不能从可见安排推算完整同范围比较。",
+      "historical_equivalent_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 83
+        },
+        {
+          "path": "frontend/workbench/app/RunCandidateControls.jsx",
+          "line": 54
+        }
+      ],
+      "implementation_evidence": [
+        {
+          "path": "core/services/workbench/dashboard_candidate_comparison.py",
+          "sha256": "d2311c5118c4fc5193b3f5d4661f88e1c7e247f31b9c943edae6f2c60214afab"
+        },
+        {
+          "path": "frontend/workbench/app/DashboardCandidatePanels.jsx",
+          "sha256": "fa9d6bb05e253cbb82f7ff86964052d1b44825909fe9a70906a4f84478835c0d"
+        }
+      ],
+      "browser_evidence": [
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/report.json",
+          "report_sha256": "31af64d6fd732a0e550e02cc3d2ed1c9f108a783be0d0c9b4bd60f1cd36e0cb6",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 77,
+          "response_start": 123,
+          "response_end": 123
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/report.json",
+          "report_sha256": "9e1ac88bed28d8657d1aabb5159e7b081b77b6e943cb79ee3d4839c46958c556",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 77,
+          "response_start": 123,
+          "response_end": 123
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/report.json",
+          "report_sha256": "9df637ca15b201c7621424273c71dfe8df7f8d4ebb162ccb0e8bccf8b7a1bd62",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 77,
+          "response_start": 122,
+          "response_end": 122
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/report.json",
+          "report_sha256": "45492034790af7ce8c261e8872bc5223b4bdcc03d6b6744e0a7e67fcfdd0e890",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 77,
+          "response_start": 118,
+          "response_end": 118
+        }
+      ]
+    },
+    {
+      "action_id": "WBP-DASH-013.summary-dialog",
+      "original_control": "方案摘要窗：晚交、拖期、换型、换设备工序及返回",
+      "prototype_evidence": [
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/dashboard-workbench.js",
+          "line": 49
+        }
+      ],
+      "decision_status": "implemented_and_fixed_source_verified",
+      "historical_gap": "跨页生成资料与指标摘要有部分内容，但本页无原摘要窗，原四项口径尚未逐项证明等价。",
+      "historical_equivalent_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardPanels.jsx",
+          "line": 83
+        },
+        {
+          "path": "frontend/workbench/app/RunCandidateControls.jsx",
+          "line": 45
+        }
+      ],
+      "implementation_evidence": [
+        {
+          "path": "frontend/workbench/app/DashboardCandidatePanels.jsx",
+          "sha256": "fa9d6bb05e253cbb82f7ff86964052d1b44825909fe9a70906a4f84478835c0d"
+        }
+      ],
+      "browser_evidence": [
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con0/operations-1920-light/probe-normal-1920-light/report.json",
+          "report_sha256": "31af64d6fd732a0e550e02cc3d2ed1c9f108a783be0d0c9b4bd60f1cd36e0cb6",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 78,
+          "response_start": 123,
+          "response_end": 123
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con1/operations-1920-dark/probe-normal-1920-dark/report.json",
+          "report_sha256": "9e1ac88bed28d8657d1aabb5159e7b081b77b6e943cb79ee3d4839c46958c556",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 78,
+          "response_start": 123,
+          "response_end": 123
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con2/operations-1392-light/probe-normal-1392-light/report.json",
+          "report_sha256": "9df637ca15b201c7621424273c71dfe8df7f8d4ebb162ccb0e8bccf8b7a1bd62",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 78,
+          "response_start": 122,
+          "response_end": 122
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_main_con3/operations-1392-dark/probe-normal-1392-dark/report.json",
+          "report_sha256": "45492034790af7ce8c261e8872bc5223b4bdcc03d6b6744e0a7e67fcfdd0e890",
+          "execution": "F13-copy-matrix4",
+          "mode": "normal",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 78,
+          "response_start": 118,
+          "response_end": 118
+        }
+      ]
+    },
+    {
+      "action_id": "WBP-SYS-006.type-restore",
+      "original_control": "备份恢复记录的“恢复”类型筛选",
+      "prototype_evidence": [
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/SystemManagementScreen.jsx",
+          "line": 74
+        }
+      ],
+      "decision_status": "implemented_and_fixed_source_verified",
+      "historical_gap": "管理样例仍保留该筛选；本机数据列表只列备份文件，真实恢复过程在原请求结果区。缺本机恢复事件集合的等价筛选证据。",
+      "historical_equivalent_evidence": [
+        {
+          "path": "frontend/workbench/app/SystemMaintenanceRecords.jsx",
+          "line": 5
+        },
+        {
+          "path": "frontend/workbench/app/SystemMaintenanceControls.jsx",
+          "line": 66
+        },
+        {
+          "path": "frontend/workbench/app/SystemLive.jsx",
+          "line": 74
+        }
+      ],
+      "implementation_evidence": [
+        {
+          "path": "core/services/workbench/system_maintenance_records.py",
+          "sha256": "1f6cf3db3413d1741bc0550bde1a4354ca454933b1f48e44572c64a54b5a41ff"
+        },
+        {
+          "path": "frontend/workbench/app/SystemMaintenanceRecords.jsx",
+          "sha256": "336c711890b64372870ca398027f9efa6d2792df0e13278e4a8691c255911daa"
+        }
+      ],
+      "browser_evidence": [
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_restore_0/restore-host/probe-read-controls-1920-light/report.json",
+          "report_sha256": "4d36d0eacd37896431e513ee0edd19fbfbfdb3dfddbfeeb47a1dd5114643c87f",
+          "execution": "F13-copy-matrix4",
+          "mode": "read-controls",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "light",
+          "action_index": 0,
+          "response_start": 5,
+          "response_end": 6
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_restore_1/restore-host/probe-read-controls-1920-dark/report.json",
+          "report_sha256": "88a7f4079030725812541d575e6ab5017733b14ed3671b027c363b12fd284bba",
+          "execution": "F13-copy-matrix4",
+          "mode": "read-controls",
+          "viewport": {
+            "width": 1920,
+            "height": 1080
+          },
+          "theme": "dark",
+          "action_index": 0,
+          "response_start": 5,
+          "response_end": 6
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_restore_2/restore-host/probe-read-controls-1392-light/report.json",
+          "report_sha256": "cad76801b25b75d1fdcb8c95eb9f61d00e92e68fe4ce4b6f11cd95ad59df2599",
+          "execution": "F13-copy-matrix4",
+          "mode": "read-controls",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 0,
+          "response_start": 5,
+          "response_end": 6
+        },
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_restore_3/restore-host/probe-read-controls-1392-dark/report.json",
+          "report_sha256": "e15edc9825ad3c92af467535ee6e1a4cb18ceb9d77d53d940b3e461c320e346a",
+          "execution": "F13-copy-matrix4",
+          "mode": "read-controls",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "dark",
+          "action_index": 0,
+          "response_start": 5,
+          "response_end": 6
+        }
+      ]
+    },
+    {
+      "action_id": "WBP-SYS-006.type-cleanup",
+      "original_control": "备份恢复记录的“清理”类型筛选",
+      "prototype_evidence": [
+        {
+          "path": "frontend/workbench/prototype/ui_kits/workbench/SystemManagementScreen.jsx",
+          "line": 74
+        }
+      ],
+      "decision_status": "implemented_and_fixed_source_verified",
+      "historical_gap": "管理样例仍保留该筛选；本机维护结果有摘要/日志基础，但备份文件表没有清理类型，不把样例待执行条目当真实任务。",
+      "historical_equivalent_evidence": [
+        {
+          "path": "frontend/workbench/app/SystemMaintenanceRecords.jsx",
+          "line": 5
+        },
+        {
+          "path": "frontend/workbench/app/SystemLive.jsx",
+          "line": 98
+        }
+      ],
+      "implementation_evidence": [
+        {
+          "path": "core/services/workbench/system_maintenance_records.py",
+          "sha256": "1f6cf3db3413d1741bc0550bde1a4354ca454933b1f48e44572c64a54b5a41ff"
+        },
+        {
+          "path": "frontend/workbench/app/SystemMaintenanceRecords.jsx",
+          "sha256": "336c711890b64372870ca398027f9efa6d2792df0e13278e4a8691c255911daa"
+        }
+      ],
+      "browser_evidence": [
+        {
+          "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-matrix4-pytest/test_final_operations_real_cle0/maintenance-read-controls/probe-read-controls-1392-light/report.json",
+          "report_sha256": "537cdd70854d4ff64d8815b5a91cc2a3a73811867e3a5aec287f820eee7e9c77",
+          "execution": "F13-copy-matrix4",
+          "mode": "read-controls",
+          "viewport": {
+            "width": 1392,
+            "height": 924
+          },
+          "theme": "light",
+          "action_index": 8,
+          "response_start": 13,
+          "response_end": 14
+        }
+      ]
+    }
+  ]
+}

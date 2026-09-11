@@ -1,0 +1,227 @@
+{
+  "scope": "H: v22 test fixture generation contract only; not product schema or full gate",
+  "observed_head": "830a58e69faaa64a39d7a238ba2a0a0cd5c9047c",
+  "proof": "dirty working-tree targeted tests; not final HEAD",
+  "changed_sources": [
+    "tests/workbench/process_v22_migration_support.py",
+    "tests/workbench/test_process_workflow_schema.py"
+  ],
+  "source_hashes_before": {
+    "tests/workbench/process_v22_migration_support.py": "1e5645310c8b33fcc37ece67fe8cf05bd2c1d9faf0f33de38d382f718ef94b5b",
+    "tests/workbench/test_process_workflow_schema.py": "9a3f639a2e3f6bc41f4da640e2470cbf1a409b69a65e554b7101815088faf9f2",
+    "tests/workbench/legacy_migration_current_support.py": "952b5b47c60622da1da63c81769c2d1abd9ad5d906906769cb66fe9b5674d04a",
+    "tests/workbench/schema29_regression_support.py": "8048672c756c72cf7afe908a135e566cfbfb7ad8f8a28269ba9ddff7ed1dde46",
+    "tests/workbench/fixtures/schema-v24.sql": "023f7ae15282b1cc0523f218c2b45e1ba6cb4f036d491fe7761cbd8f1f56f03c",
+    "schema.sql": "b939a2d6516925863e6f7f0fb3db32ea83a94e4204a8df8c1f6574953bb17b47",
+    "core/infrastructure/workbench_dashboard_external_schema.py": "64365aab651656f4e01b905b52912895661cef4bba8a070c38ee5c13d3b2b3fd",
+    "core/infrastructure/workbench_outsourcing_schema.py": "eeabe5c7e50e8c5d2320f6311fb5323dd9532246bc8ee8c03f26965a543d80f4",
+    "core/infrastructure/workbench_plan_identity_write_guard.py": "5b94c534db296f66ccb2f2e88ae79909cb82dbc2dfbd64bdbdd25bbbb5305957",
+    "core/infrastructure/migrations/v30.py": "cc71ead04deb39c7cf778ea1e971690d7ea040e05232069501907eee27a3c9a5",
+    "core/infrastructure/migrations/v31.py": "da0a9435582a6fc975638461e9d2824a539dc95bd02b23a8f68eef17f50c1223",
+    "core/infrastructure/migration_state.py": "496f890aadfcfa94e9e8fd517b1fe0c131c039e9b078ed29fff23c48aed30f5e"
+  },
+  "source_hashes_after": {
+    "tests/workbench/process_v22_migration_support.py": "69400b86c459303f00d88b2ea6e292bb53c5ae6119e006ae0c32c88b01d3e847",
+    "tests/workbench/test_process_workflow_schema.py": "a1cebbc09332c1fdc627d41751fa65fc0227835e48a105c9900793579e5bbe1c",
+    "tests/workbench/legacy_migration_current_support.py": "952b5b47c60622da1da63c81769c2d1abd9ad5d906906769cb66fe9b5674d04a",
+    "tests/workbench/schema29_regression_support.py": "8048672c756c72cf7afe908a135e566cfbfb7ad8f8a28269ba9ddff7ed1dde46",
+    "tests/workbench/fixtures/schema-v24.sql": "023f7ae15282b1cc0523f218c2b45e1ba6cb4f036d491fe7761cbd8f1f56f03c",
+    "schema.sql": "b939a2d6516925863e6f7f0fb3db32ea83a94e4204a8df8c1f6574953bb17b47",
+    "core/infrastructure/workbench_dashboard_external_schema.py": "64365aab651656f4e01b905b52912895661cef4bba8a070c38ee5c13d3b2b3fd",
+    "core/infrastructure/workbench_outsourcing_schema.py": "eeabe5c7e50e8c5d2320f6311fb5323dd9532246bc8ee8c03f26965a543d80f4",
+    "core/infrastructure/workbench_plan_identity_write_guard.py": "5b94c534db296f66ccb2f2e88ae79909cb82dbc2dfbd64bdbdd25bbbb5305957",
+    "core/infrastructure/migrations/v30.py": "cc71ead04deb39c7cf778ea1e971690d7ea040e05232069501907eee27a3c9a5",
+    "core/infrastructure/migrations/v31.py": "da0a9435582a6fc975638461e9d2824a539dc95bd02b23a8f68eef17f50c1223",
+    "core/infrastructure/migration_state.py": "496f890aadfcfa94e9e8fd517b1fe0c131c039e9b078ed29fff23c48aed30f5e"
+  },
+  "final_run_input_hashes_equal": true,
+  "provider_objects": {
+    "outsourcing": [
+      "WorkbenchOutsourcingOperationOrigins",
+      "WorkbenchOutsourcingReceipts",
+      "WorkbenchOutsourcingMembers",
+      "idx_wb_outsourcing_members_receipt",
+      "WorkbenchOutsourcingFacts",
+      "wb_outsourcing_operation_born",
+      "wb_outsourcing_fact_sequence",
+      "wb_outsourcing_members_sealed",
+      "wb_outsourcing_operationorigins_no_update",
+      "wb_outsourcing_operationorigins_no_delete",
+      "wb_outsourcing_operationorigins_no_replace",
+      "wb_outsourcing_receipts_no_update",
+      "wb_outsourcing_receipts_no_delete",
+      "wb_outsourcing_receipts_no_replace",
+      "wb_outsourcing_members_no_update",
+      "wb_outsourcing_members_no_delete",
+      "wb_outsourcing_members_no_replace",
+      "wb_outsourcing_facts_no_update",
+      "wb_outsourcing_facts_no_delete",
+      "wb_outsourcing_facts_no_replace"
+    ],
+    "plan_write_guard": [
+      "wb_plan_source_ref_insert_guard",
+      "wb_plan_task_ref_insert_guard"
+    ],
+    "dashboard_external": [
+      "WorkbenchDashboardExternalItems",
+      "WorkbenchDashboardExternalStates",
+      "WorkbenchDashboardExternalHistory",
+      "wb_dashboard_external_receipt_insert",
+      "wb_dashboard_external_state_identity",
+      "wb_dashboard_external_items_no_update",
+      "wb_dashboard_external_items_no_delete",
+      "wb_dashboard_external_items_no_replace",
+      "wb_dashboard_external_states_no_delete",
+      "wb_dashboard_external_states_no_replace",
+      "wb_dashboard_external_history_no_update",
+      "wb_dashboard_external_history_no_delete",
+      "wb_dashboard_external_history_no_replace"
+    ]
+  },
+  "junit": {
+    "/tmp/aps-task-h-v22-before-v1.xml": {
+      "sha256": "e337bd6d88b2138b44170f3b1b5583ff27fd3cbcda6e8fa7667927427cc6bbf3",
+      "suites": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "1",
+          "skipped": "0",
+          "tests": "1",
+          "time": "1.443",
+          "timestamp": "2026-09-10T21:23:03.764029+08:00",
+          "hostname": "lurenxingdeMacBook-Air.local"
+        }
+      ]
+    },
+    "/tmp/aps-task-h-v22-fixed-smoke-v1.xml": {
+      "sha256": "85fcc263e66abd9c8caea5dc197fd0e9ab48748bfbb978ae415934c09303d482",
+      "suites": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "1",
+          "time": "1.231",
+          "timestamp": "2026-09-10T21:24:54.668000+08:00",
+          "hostname": "lurenxingdeMacBook-Air.local"
+        }
+      ]
+    },
+    "/tmp/aps-task-h-v22-full-v1.xml": {
+      "sha256": "f17aa8c41ffdfae4551299a5d1c730789330a5316e5b7cdc86946b83c9523685",
+      "suites": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "65",
+          "time": "5.526",
+          "timestamp": "2026-09-10T21:25:55.772865+08:00",
+          "hostname": "lurenxingdeMacBook-Air.local"
+        }
+      ]
+    },
+    "/tmp/aps-task-h-v22-map-guards-v1.xml": {
+      "sha256": "a61a893ddfcec0d936603b58773f20e865451f11ee79d76ef9685e0c9e54871d",
+      "suites": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "21",
+          "time": "1.126",
+          "timestamp": "2026-09-10T21:26:35.258127+08:00",
+          "hostname": "lurenxingdeMacBook-Air.local"
+        }
+      ]
+    },
+    "/tmp/aps-task-h-v22-full-v2.xml": {
+      "sha256": "5a4aa0688fb2dbcdb940c116f2d03c455d3bc7d9b9dec1e29f1565485567b404",
+      "suites": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "65",
+          "time": "6.819",
+          "timestamp": "2026-09-10T21:26:51.945300+08:00",
+          "hostname": "lurenxingdeMacBook-Air.local"
+        }
+      ]
+    }
+  },
+  "python38_ast": "PASS",
+  "commands": [
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache CHECKUP_CALLGRAPH=/tmp/aps-task-h-01a08b02/callgraph TMPDIR=/tmp/aps-task-h-01a08b02 .venv/bin/python -B -m pytest -q -p no:cacheprovider --basetemp=/tmp/aps-task-h-v22-full-v1 --junitxml=/tmp/aps-task-h-v22-full-v1.xml tests/workbench/test_process_workflow_schema.py",
+      "chunk_id": "838316",
+      "wall_time_seconds": 5.924393333,
+      "exit_code": 0,
+      "original_token_count": 45,
+      "output": ".................................................................        [100%]\n------------- generated xml file: /tmp/aps-task-h-v22-full-v1.xml --------------\n65 passed in 5.53s\n",
+      "binding": "before import-order-only correction"
+    },
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache CHECKUP_CALLGRAPH=/tmp/aps-task-h-01a08b02/callgraph TMPDIR=/tmp/aps-task-h-01a08b02 .venv/bin/python -B -m pytest -q -p no:cacheprovider --basetemp=/tmp/aps-task-h-v22-map-guards-v1 --junitxml=/tmp/aps-task-h-v22-map-guards-v1.xml tests/workbench/test_calibration_dashboard_migration.py::test_old_upgrade_metadata_checker_accepts_only_birth_mapping_and_empty_facts tests/workbench/test_dashboard_external_migration.py::test_additive_mapping_assertion_rejects_missing_guessed_typed_or_invented_evidence",
+      "chunk_id": "8bdffd",
+      "wall_time_seconds": 1.5770665419999998,
+      "exit_code": 0,
+      "original_token_count": 45,
+      "output": ".....................                                                    [100%]\n---------- generated xml file: /tmp/aps-task-h-v22-map-guards-v1.xml -----------\n21 passed in 1.13s\n",
+      "binding": "unchanged strict v30/v31 helper negative controls"
+    },
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache .venv/bin/python -B -m ruff check --no-cache tests/workbench/process_v22_migration_support.py tests/workbench/test_process_workflow_schema.py",
+      "chunk_id": "4ae1b8",
+      "wall_time_seconds": 0.000001875,
+      "exit_code": 0,
+      "original_token_count": 5,
+      "output": "All checks passed!\n",
+      "binding": "final two-file source"
+    },
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache CHECKUP_CALLGRAPH=/tmp/aps-task-h-01a08b02/callgraph TMPDIR=/tmp/aps-task-h-01a08b02 .venv/bin/python -B -m pytest -q -p no:cacheprovider --basetemp=/tmp/aps-task-h-v22-full-v2 --junitxml=/tmp/aps-task-h-v22-full-v2.xml tests/workbench/test_process_workflow_schema.py",
+      "chunk_id": "2c26ee",
+      "wall_time_seconds": 7.3291189580000005,
+      "exit_code": 0,
+      "original_token_count": 45,
+      "output": ".................................................................        [100%]\n------------- generated xml file: /tmp/aps-task-h-v22-full-v2.xml --------------\n65 passed in 6.82s\n",
+      "binding": "pre/post 12 explicit file hashes unchanged"
+    }
+  ],
+  "reproduction": {
+    "exit_code": 1,
+    "xml": "/tmp/aps-task-h-v22-before-v1.xml",
+    "result": "1 failed in 1.44s; failure at assert_v22_schema exact issue set before upgrade"
+  },
+  "final_reproduction": {
+    "exit_code": 0,
+    "xml": "/tmp/aps-task-h-v22-fixed-smoke-v1.xml",
+    "result": "1 passed in 1.23s"
+  },
+  "preservation": [
+    "original v22 seed and frozen schema-v24.sql unchanged",
+    "exact complete schema issue set comparison retained",
+    "exact new-table set includes all seven v30/v31 tables",
+    "shared v30 source birth mappings and v31 receipt item mappings checked",
+    "all old tables, rowids, SQLite value types, foreign keys and DDL checked as before",
+    "real migration backup, reopening and second ensure_schema idempotence checked"
+  ],
+  "boundaries": [
+    "No product writes",
+    "No frozen SQL writes",
+    "No Git writes",
+    "No full quality gate",
+    "No rebinding of Main G04 or earlier API evidence"
+  ],
+  "locator": {
+    "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache CHECKUP_CALLGRAPH=/tmp/aps-task-h-01a08b02/callgraph python3 -m tools.symbol_locator whereis assert_v22_schema --at tests/workbench/process_v22_migration_support.py:45",
+    "exit_code": 1,
+    "result": "test helper not in static graph; followed exact source/caller references with rg"
+  }
+}

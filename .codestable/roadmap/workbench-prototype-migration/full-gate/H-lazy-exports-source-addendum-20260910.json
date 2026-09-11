@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "owner": "H",
+  "git_writer": "Main",
+  "kind": "late-source-scope-addendum",
+  "observed_at": "2026-09-10T12:28:52.779392+00:00",
+  "head_at_observation": "f454b3bf7eeab831fd2695b2284fe0f208bb725c",
+  "source_status": "Original dirty worktree; these three files are not yet a final-HEAD proof",
+  "scope_reason": "Main confirmed that the later two scheduler TYPE_CHECKING changes were not in A's original changed-file observation. This separate addendum does not rewrite A's earlier scope.",
+  "files": [
+    {
+      "path": "core/services/scheduler/__init__.py",
+      "kind": "product",
+      "bytes": 2924,
+      "sha256": "c1d8d09a7dfd03b796add0745f2da29de541b54393faf6a39b8333ac01a32693",
+      "matches_verified_H_source": true
+    },
+    {
+      "path": "core/services/scheduler/schedule_orchestrator.py",
+      "kind": "product",
+      "bytes": 665,
+      "sha256": "71091b9b3942edfeb89332acfbf059c8925b65113398615c9c1974891053b14a",
+      "matches_verified_H_source": true
+    },
+    {
+      "path": "tests/gate_meta/test_scheduler_lazy_exports_final.py",
+      "kind": "required-test",
+      "required_owner": "scheduler_run_core",
+      "verified_case_count": 35,
+      "bytes": 7626,
+      "sha256": "9e1360be84d4f7ca75ad0ea5d00b7a6b37b528533cec83df1f74e701e2099153",
+      "matches_verified_H_source": true
+    }
+  ],
+  "prior_validation_evidence": "H-lazy-exports-evidence-20260910.json",
+  "prior_validation_report": "H-lazy-exports-fix-note-20260910.md",
+  "validation_boundary": "This is a fresh three-file SHA-256 comparison only. The earlier 216 tests and Pyright results were not rerun at f454b3; no whole-product or final-HEAD proof is inferred from matching three files.",
+  "companion_registry_changes_already_handed_off": [
+    "tools/test_registry_data.py",
+    "tools/test_registry_groups_scheduler.py",
+    "tests/gate_meta/test_workbench_round1_registry_contract.py"
+  ],
+  "capacity_cli_followup": {
+    "owner": "Main",
+    "path": "scripts/workbench/verify_final_capacity.py",
+    "requested_change": "Move run_managed import after argument parsing inside main, preserving actual arguments/results and keeping --help independent of the test runner",
+    "requested_validation": "Small CLI run and include-tests import-cycle scan",
+    "H_changed_CLI_or_other_capacity_helpers": false,
+    "H_revalidated_Main_CLI_change": false
+  },
+  "helper_intake": [
+    {
+      "owner": "E",
+      "handoff": ".codestable/roadmap/workbench-prototype-migration/acceptance-execution/03-stage-handoff.md",
+      "status": "Stage handoff received; final fixture/test chain remains in progress",
+      "action": "Keep final_execution helper intake pending stable freeze; do not infer final test registration from setup errors or partial passes"
+    },
+    {
+      "owner": "F",
+      "handoff": ".codestable/roadmap/workbench-prototype-migration/acceptance-operations/handoff.md",
+      "status": "Stage handoff received; normal and restore full-entry matrices remain in progress",
+      "action": "Keep final_operations helper intake pending stable freeze; no new target counts or whole-site pass claim"
+    }
+  ],
+  "registry_policy": "Keep the registered stable capacity helper input scopes. Accept further domain helpers only on stable handoff; do not lock unfrozen test targets or floating total counts.",
+  "full_gate": "Not run; await Main's final HEAD and explicit execution notice"
+}

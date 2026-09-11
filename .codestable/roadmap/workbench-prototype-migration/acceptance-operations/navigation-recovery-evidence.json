@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "separate_from_original_13": true,
+  "R14_actions": {
+    "WBP-DASH-014.navigation-confirm": [
+      {
+        "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata0/dashboard-original-object/probe-dashboard-unlocatable-1392-light/report.json",
+        "report_sha256": "f8cc5d1c2b02e6d3f8decfd479fdeb733af1b973c6562b810cfd24af9d9b1413",
+        "execution": "F13-final-delta1",
+        "mode": "dashboard-unlocatable",
+        "viewport": {
+          "width": 1392,
+          "height": 924
+        },
+        "theme": "light",
+        "action_index": 1,
+        "response_start": 17,
+        "response_end": 21
+      },
+      {
+        "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata1/dashboard-original-object/probe-dashboard-unlocatable-1392-dark/report.json",
+        "report_sha256": "27b5f500e0411f01f3aff382b71cc321d3a1f5fcf52e3f82a3e668effc5805b3",
+        "execution": "F13-final-delta1",
+        "mode": "dashboard-unlocatable",
+        "viewport": {
+          "width": 1392,
+          "height": 924
+        },
+        "theme": "dark",
+        "action_index": 1,
+        "response_start": 17,
+        "response_end": 21
+      },
+      {
+        "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata2/dashboard-original-object/probe-dashboard-unlocatable-1920-light/report.json",
+        "report_sha256": "7f1c71d7e0dce44e2198eb385c676a7f0231c86e220acbae3031d89a410e73f8",
+        "execution": "F13-final-delta1",
+        "mode": "dashboard-unlocatable",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "theme": "light",
+        "action_index": 1,
+        "response_start": 17,
+        "response_end": 21
+      },
+      {
+        "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata3/dashboard-original-object/probe-dashboard-unlocatable-1920-dark/report.json",
+        "report_sha256": "7abf944108ec6c623cd4b18063dcced134dcf86eb2454fdc5afebc32e7f234f1",
+        "execution": "F13-final-delta1",
+        "mode": "dashboard-unlocatable",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "theme": "dark",
+        "action_index": 1,
+        "response_start": 17,
+        "response_end": 21
+      }
+    ],
+    "WBP-DASH-014.unlocatable": [
+      {
+        "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata0/dashboard-original-object/probe-dashboard-unlocatable-1392-light/report.json",
+        "report_sha256": "f8cc5d1c2b02e6d3f8decfd479fdeb733af1b973c6562b810cfd24af9d9b1413",
+        "execution": "F13-final-delta1",
+        "mode": "dashboard-unlocatable",
+        "viewport": {
+          "width": 1392,
+          "height": 924
+        },
+        "theme": "light",
+        "action_index": 0,
+        "response_start": 17,
+        "response_end": 17
+      },
+      {
+        "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata1/dashboard-original-object/probe-dashboard-unlocatable-1392-dark/report.json",
+        "report_sha256": "27b5f500e0411f01f3aff382b71cc321d3a1f5fcf52e3f82a3e668effc5805b3",
+        "execution": "F13-final-delta1",
+        "mode": "dashboard-unlocatable",
+        "viewport": {
+          "width": 1392,
+          "height": 924
+        },
+        "theme": "dark",
+        "action_index": 0,
+        "response_start": 17,
+        "response_end": 17
+      },
+      {
+        "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata2/dashboard-original-object/probe-dashboard-unlocatable-1920-light/report.json",
+        "report_sha256": "7f1c71d7e0dce44e2198eb385c676a7f0231c86e220acbae3031d89a410e73f8",
+        "execution": "F13-final-delta1",
+        "mode": "dashboard-unlocatable",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "theme": "light",
+        "action_index": 0,
+        "response_start": 17,
+        "response_end": 17
+      },
+      {
+        "report": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata3/dashboard-original-object/probe-dashboard-unlocatable-1920-dark/report.json",
+        "report_sha256": "7abf944108ec6c623cd4b18063dcced134dcf86eb2454fdc5afebc32e7f234f1",
+        "execution": "F13-final-delta1",
+        "mode": "dashboard-unlocatable",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "theme": "dark",
+        "action_index": 0,
+        "response_start": 17,
+        "response_end": 17
+      }
+    ]
+  },
+  "scope_repairs": [
+    "Dashboard durable scope excludes process snapshot; same-scope bootstrap then original page two",
+    "System durable filters/page/record key exclude process snapshot and backup lease; unique stable-key rebind",
+    "Missing legacy key and same-name replacement never substitute another record; pending config looks up original receipt only"
+  ],
+  "final_execution": {
+    "id": "F13-final-delta1",
+    "source": "F13-source18",
+    "build": "F13-copy-build16",
+    "cases": 21,
+    "xml": "F13-final-delta1-results.xml",
+    "result_root": "F13-final-delta1-pytest",
+    "proof": "F13-final-delta1-source-proof.json",
+    "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+    "asset_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-build16",
+    "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+    "source_aggregate": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+    "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+    "manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+    "source_proof": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-source-proof.json",
+    "junit": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-results.xml"
+  },
+  "proofs": [
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_dashboar0/dashboard-new-process/dashboard-restart-proof.json",
+      "sha256": "278f0db6bafb85aa2a6e5c8f049fc471e1a8cfbf923226b83f7d9d9516123d85",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_dashboar1/dashboard-new-process/dashboard-restart-proof.json",
+      "sha256": "188414520695a3798a5ae8b0ea8e7cf739afe56edf299c35b349d2a48fd17121",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_dashboar2/dashboard-new-process/dashboard-restart-proof.json",
+      "sha256": "dff76c8968f4d920a4de034510f0bb776f4261832baa162d6db8a3ed4cd3ce0b",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_dashboar3/dashboard-new-process/dashboard-restart-proof.json",
+      "sha256": "8cea70d44ebdafcdf6358a80e675311fd76493cca6f0a271e509acfd8bc8476b",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r0/system-recovery-edges/system-recovery-boundary-proof.json",
+      "sha256": "c11415babd308d446c2c1a056162c028182e540615721fca6857080b837c92bd",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r1/system-recovery-edges/system-recovery-boundary-proof.json",
+      "sha256": "5245c225ffa98934bfcfa57839d3b34ca526ea3b3d404b40575c22fb644621f9",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r10/system-new-process/system-record-restart-proof.json",
+      "sha256": "2fc30b9c802f5276c76a65199fdbf15c9606226a8d33104d5bffee60f5cd818a",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r2/system-recovery-edges/system-recovery-boundary-proof.json",
+      "sha256": "e8c0ecaedcb12852458df5dfc032b720189e863bea2f2da39c490eb1d40b12f4",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r3/system-new-process/system-record-restart-proof.json",
+      "sha256": "00254cc6ba35188f92ab1d29bddd19a1997fcc0a958df3c41e0827a68b8e790a",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r4/system-new-process/system-record-restart-proof.json",
+      "sha256": "022d21eda8b6e3c107cb7af9d0a18e7e177244341b24009bab64c1875a354b8b",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r5/system-new-process/system-record-restart-proof.json",
+      "sha256": "e8318f7473002e9c5b33e75fadb0a337abdc3e7ca1c9bd46e220651947f8e61c",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r6/system-new-process/system-record-restart-proof.json",
+      "sha256": "21714abaa470e42e52575b74c84b0c20dcf2a4f0843028f577df923cd3663313",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r7/system-new-process/system-record-restart-proof.json",
+      "sha256": "c03439c3c2b342a88307237b22fd1f316c17971d8fa8223a69e9d85c5514ed2d",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r8/system-new-process/system-record-restart-proof.json",
+      "sha256": "b0da44460b08ecd15466625000d5842f4136412c4437763c67a22f26cfc35f48",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_system_r9/system-new-process/system-record-restart-proof.json",
+      "sha256": "a5f39a46cdc193b751eeba813e79485395a2eb37df9440bc114e74aacdb9c8ca",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata0/dashboard-original-object/unlocatable-readonly-proof.json",
+      "sha256": "6e0c0050daf3fa7bfef2f3fff5e82da0dbc67395d52a4df6673c2c10d32298b6",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata1/dashboard-original-object/unlocatable-readonly-proof.json",
+      "sha256": "8f540ba0a1b7c0c0883fd71f0375b6571cd026452ee54278be4334b274c0c18e",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata2/dashboard-original-object/unlocatable-readonly-proof.json",
+      "sha256": "7cd9ff8fcf453ca873cffbf37806b201cd4143b687d16bdee5985e7581e85c75",
+      "execution": "F13-final-delta1"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-pytest/test_final_operations_unlocata3/dashboard-original-object/unlocatable-readonly-proof.json",
+      "sha256": "9cbdcd7fc217bd1ef4d938eec63e3a2b8a22d6416b8db0395f8daf7b986bdf08",
+      "execution": "F13-final-delta1"
+    }
+  ],
+  "preserved_red": [
+    {
+      "xml": "/private/tmp/aps-final-operations-F.TQejHX/F13-restart-red2-results.xml",
+      "sha256": "d5c6ad28e90a126dbbfef809e9502e1a5bbac848415b7bdb33d0806d090df00f"
+    },
+    {
+      "xml": "/private/tmp/aps-final-operations-F.TQejHX/F13-system-red1-results.xml",
+      "sha256": "45301fa448ac64867909761eab4cd338e42e2eb35a01df537c4fbabffa149e16"
+    }
+  ],
+  "diagnostic_note": "The System red command also contains four later R14 passes; final all-green delta is authoritative for both."
+}

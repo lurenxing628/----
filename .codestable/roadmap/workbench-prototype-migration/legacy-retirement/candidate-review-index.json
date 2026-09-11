@@ -1,0 +1,213 @@
+{
+  "index": [
+    {
+      "path": "web/routes/excel_demo.py",
+      "kind": "template_target_only",
+      "before_sha256": "f1211ec554f83465de7e473ae137fa4511319186d113ad1aea646351abadc91b",
+      "after_sha256": "54c34cc1c7c100e4989ffd61031b815d4c477da1a3c2dc750c538b9ac882640a",
+      "old_template": "excel/demo.html",
+      "new_template": "workbench/legacy_result.html",
+      "line": 57,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "web/routes/personnel_excel_links.py",
+      "kind": "template_target_only",
+      "before_sha256": "72dce5664c30fe198151a0ddcc5927bdeedd4c6cec6fde4b168f48230fbd0516",
+      "after_sha256": "82d3f8f6bcb5835d11056fd5fefc777441e67e62b365a056b9e90ba13d9fa176",
+      "old_template": "personnel/excel_import_operator_machine.html",
+      "new_template": "workbench/legacy_result.html",
+      "line": 100,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "web/routes/personnel_excel_operator_calendar.py",
+      "kind": "template_target_only",
+      "before_sha256": "812dba8731cc4d86f6e4ec6b74506ac84daf4b6c82e34bdf5b5a0868b855511c",
+      "after_sha256": "e482f358b1e46779a204a258e3916a39ad19f8a13fff05ac874b75f489680d76",
+      "old_template": "personnel/excel_import_operator_calendar.html",
+      "new_template": "workbench/legacy_result.html",
+      "line": 112,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "web/routes/personnel_excel_operators.py",
+      "kind": "template_target_only",
+      "before_sha256": "4e1bd6b2a7d7117b1d7522c53037106469b015f5e483d206d0452c68bedb45b5",
+      "after_sha256": "2a9a36aed974d975a970521acb289774c08255d5bdaf3619f0e8ea186143ff54",
+      "old_template": "personnel/excel_import_operator.html",
+      "new_template": "workbench/legacy_result.html",
+      "line": 74,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "web/routes/equipment_excel_links.py",
+      "kind": "template_target_only",
+      "before_sha256": "857f1cf5e868382c4899354976531c9979fcfbf58340cbd23f193bc265270c7d",
+      "after_sha256": "d5a2493d3770e1f0500e10873006d7b6a70e3f538ef1740a2b283e11b028dc77",
+      "old_template": "equipment/excel_import_machine_operator.html",
+      "new_template": "workbench/legacy_result.html",
+      "line": 83,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "web/routes/equipment_excel_machines.py",
+      "kind": "template_target_only",
+      "before_sha256": "183121af2cd65e33e493bea6cedd853b2be3dec600fa4b828ac0921298619e96",
+      "after_sha256": "43b1828ea39c199c5e04f6f58482d1972ffeab9f1a0896079ed98fd81ae34387",
+      "old_template": "equipment/excel_import_machine.html",
+      "new_template": "workbench/legacy_result.html",
+      "line": 164,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "web/routes/process_excel_op_types.py",
+      "kind": "template_target_only",
+      "before_sha256": "bf625e474eb5d8703d0c1318603bbab5538e6e2259498f8521e970cf97824565",
+      "after_sha256": "34ed34a73c1989fae3ace42a74eabf7e63f852076d7877047c30efc44dcb7c28",
+      "old_template": "process/excel_import_op_types.html",
+      "new_template": "workbench/legacy_result.html",
+      "line": 61,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "web/routes/process_excel_part_operation_hours.py",
+      "kind": "template_target_only",
+      "before_sha256": "1808dc248f66610884a0aec48a6814caaa4047aaa95aa37ae79b26cd73fd0628",
+      "after_sha256": "6407fedcbb8e27a261cd161bb15ef4425c687ffe7ad389526fa700608385d178",
+      "old_template": "process/excel_import_part_operation_hours.html",
+      "new_template": "workbench/legacy_result.html",
+      "line": 224,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "web/routes/process_excel_routes.py",
+      "kind": "template_target_only",
+      "before_sha256": "fb269c8ca9e0ec962e144859fae7f305ffb16212585dd7c16deb531947fe46d3",
+      "after_sha256": "df2e73a498be59860793e5b8109ba5efabc8080142fe3c4accc56d467074f73e",
+      "old_template": "process/excel_import_routes.html",
+      "new_template": "workbench/legacy_result.html",
+      "line": 82,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "web/routes/process_excel_suppliers.py",
+      "kind": "template_target_only",
+      "before_sha256": "4c8497fb138741a11b5d69d41bdca654d35a75ae548acb2fba72109e107ab74d",
+      "after_sha256": "d5e1958dfdf30c84a475762ac9d5b58f5897c6a2154609467397aa091b1971d1",
+      "old_template": "process/excel_import_suppliers.html",
+      "new_template": "workbench/legacy_result.html",
+      "line": 63,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "web/routes/domains/scheduler/scheduler_excel_batches.py",
+      "kind": "template_target_only",
+      "before_sha256": "b65242bdc84d4f82e038de984d90071d5bba42523bb85c6911e015544ffd4453",
+      "after_sha256": "f7f5070be43e670a33cbb17fbbeda783aaaf7897704bdd3c774b2e763937ba10",
+      "old_template": "scheduler/excel_import_batches.html",
+      "new_template": "workbench/legacy_result.html",
+      "line": 98,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "web/routes/domains/scheduler/scheduler_excel_calendar.py",
+      "kind": "template_target_only",
+      "before_sha256": "4c8fb478cae984801d985420ac8f194809b633ae227ee58d1bacc3ee5cf31cb5",
+      "after_sha256": "7097e502f656cb8ce4e6b52a01e16a5a14a13cac23cd84e4f30e3d855a11355a",
+      "old_template": "scheduler/excel_import_calendar.html",
+      "new_template": "workbench/legacy_result.html",
+      "line": 86,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "web/routes/domains/scheduler/scheduler_week_plan_print.py",
+      "kind": "template_target_only",
+      "before_sha256": "aec072d0e1de4cb47772bcfd0cf1621248e6b2e68ed0a084e5bf26758140664c",
+      "after_sha256": "162124a242f63643bbfccc6a66a4aa1deadf33debb6afd6795885c796eed4732",
+      "old_template": "scheduler/week_plan_print.html",
+      "new_template": "workbench/print.html",
+      "line": 139,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "web/routes/domains/scheduler/scheduler_config.py",
+      "kind": "template_target_only",
+      "before_sha256": "e74a3ea4c9ff7f190e61e64e980301e78b9a150bb4ce883c703c08c2e9e4ea03",
+      "after_sha256": "d0d0e0033ed2888b700b683e531079ae658d3466f3c1791b561f6d24aa8f7b85",
+      "old_template": "scheduler/config_manual.html",
+      "new_template": "workbench/manual.html",
+      "line": 271,
+      "ast_equal_after_restoring_template_literal": true
+    },
+    {
+      "path": "templates/error.html",
+      "kind": "replace_error_presentation",
+      "before_sha256": "98edd2658436af6cf9abbc621252f8606e5e74dadf2300e30bef86eb2b8c5c44",
+      "after_sha256": "7bfdfe62329daf776b5b447fe41b3313d79ba4f38c18fbc32d0bbd353942b5dd"
+    },
+    {
+      "path": "templates/error_base.html",
+      "kind": "replace_error_presentation",
+      "before_sha256": "094c166f063b83ef4cd1c330eca5181dba8720b738a500863c072b5c524772b1",
+      "after_sha256": "04519caa20506ad4d6c085504078cc73b196d9d0c34edcb9a7b64ef6e512010a"
+    },
+    {
+      "path": "templates/workbench/legacy_base.html",
+      "kind": "new_file",
+      "before_sha256": null,
+      "after_sha256": "e2c31bd7ed39ea31effcea0113b6351d40061882055d5f725e9cb51131325b3a"
+    },
+    {
+      "path": "templates/workbench/legacy_result.html",
+      "kind": "new_file",
+      "before_sha256": null,
+      "after_sha256": "fd60a1987b211b590c0f55e8ea3f5135401a5963d071c81cb18a52d7007b6f40"
+    },
+    {
+      "path": "templates/workbench/legacy_style.html",
+      "kind": "new_file",
+      "before_sha256": null,
+      "after_sha256": "94063dd7f60f7077a6d5bcacccd8d78ef00e00c06a4016fd93f41a3326e3eca9"
+    },
+    {
+      "path": "templates/workbench/manual.html",
+      "kind": "new_file",
+      "before_sha256": null,
+      "after_sha256": "86f0a1c492eb20f1328fdad5ebc7ba3ac09b4215a80a5364829bd6ba2465c945"
+    },
+    {
+      "path": "templates/workbench/print.html",
+      "kind": "new_file",
+      "before_sha256": null,
+      "after_sha256": "b53520121870c08291aa6872fbd49d8d1efa90c2d1c048a06c5524b608674863"
+    },
+    {
+      "path": "templates/workbench/retired.html",
+      "kind": "new_file",
+      "before_sha256": null,
+      "after_sha256": "d795b4fe5902831f5f3965deb6914de24851edbe7d5f20d2dea4cbe55942ce16"
+    },
+    {
+      "path": "web/routes/workbench/legacy_dispatch.py",
+      "kind": "new_file",
+      "before_sha256": null,
+      "after_sha256": "cf3f346977013010f2a5c0e5fada11f70d819f41c41d91266cb6b1b542af9828"
+    },
+    {
+      "path": "web/routes/workbench/legacy_presentation.py",
+      "kind": "new_file",
+      "before_sha256": null,
+      "after_sha256": "4752cbcdacbfd269033fd25c14a18e60454d60ac1c01256ed0982ed40ccd5cbb"
+    }
+  ],
+  "status": "not_applied",
+  "not_included": [
+    "factory/pages/JS registration",
+    "actual navigation helper files already present",
+    "source/asset deletion",
+    "business services and 113 POST handler logic",
+    "schemas and data",
+    "build inputs"
+  ]
+}

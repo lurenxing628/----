@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "binding": "on_disk_hashes_of_loaded_module_paths; not interpreter bytecode attestation",
+  "initial": {
+    "ready_count": 1437,
+    "exit_count": 1445,
+    "changed": [],
+    "loaded_after_ready_count": 8,
+    "full_hashes": {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/foundation-result.json",
+      "sha256": "8e772895329183f60738b3d0bfcd178bc2ae53df3d13471259cbaf614c3285b6",
+      "json_pointer": "/initial_shutdown/final/python_sources"
+    }
+  },
+  "restart": {
+    "ready_count": 1315,
+    "exit_count": 1321,
+    "changed": [],
+    "loaded_after_ready_count": 6,
+    "full_hashes": {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/foundation-result.json",
+      "sha256": "8e772895329183f60738b3d0bfcd178bc2ae53df3d13471259cbaf614c3285b6",
+      "json_pointer": "/restart_shutdown/final/python_sources"
+    }
+  },
+  "cross_process_shared_count": 1321,
+  "cross_process_shared_changes": [],
+  "note": "Lazy modules need not be imported by both workflows. Absence from the shorter restart workflow is not classified as code drift."
+}

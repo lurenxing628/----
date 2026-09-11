@@ -1,0 +1,547 @@
+{
+  "schema_version": 1,
+  "old_build": "69ab1c53713a21acffe9810a3311ddf79538d4adeb1f86955ef272c0463372d8",
+  "new_build": "64b6bfb181a1c4a04c2f3b218de1f8ad9c4a56b306fc3be19e0213899b0bfe77",
+  "registered_input_delta": [
+    {
+      "path": "frontend/workbench/app/PlanWorkspace.jsx",
+      "before": "4b3b06b0abdc33737c7a3f06cf22f918e857b72cceeb42897384842697c4f8e6",
+      "after": "c8e8139f7a1b3215dfceced802cec04102e979dc95172b78b6b3850c9a58db9a"
+    }
+  ],
+  "old": {
+    "root": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-o424z_2k",
+    "body": {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-o424z_2k/screenshots/1392x924-light/real-typing-navigation-back-reload-FAILED.txt",
+      "sha256": "a7253c9db8aec698f232afdbb862c37d92251aa4cd853d92490b25f1094f87b9"
+    },
+    "timeline_text_occurrences": 6,
+    "trusted_keys": [
+      {
+        "state": "1392x924-light",
+        "key": "Meta",
+        "trusted": true,
+        "label": "搜索批次、工序、设备、人员"
+      },
+      {
+        "state": "1392x924-light",
+        "key": "A",
+        "trusted": true,
+        "label": "搜索批次、工序、设备、人员"
+      },
+      {
+        "state": "1392x924-light",
+        "key": "Backspace",
+        "trusted": true,
+        "label": "搜索批次、工序、设备、人员"
+      },
+      {
+        "state": "1392x924-light",
+        "key": "C",
+        "trusted": true,
+        "label": "搜索批次、工序、设备、人员"
+      },
+      {
+        "state": "1392x924-light",
+        "key": "A",
+        "trusted": true,
+        "label": "搜索批次、工序、设备、人员"
+      },
+      {
+        "state": "1392x924-light",
+        "key": "T",
+        "trusted": true,
+        "label": "搜索批次、工序、设备、人员"
+      },
+      {
+        "state": "1392x924-light",
+        "key": "-",
+        "trusted": true,
+        "label": "搜索批次、工序、设备、人员"
+      },
+      {
+        "state": "1392x924-light",
+        "key": "B",
+        "trusted": true,
+        "label": "搜索批次、工序、设备、人员"
+      }
+    ],
+    "observed_final_input": "B",
+    "complete": false
+  },
+  "current": {
+    "root": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0",
+    "contexts": [
+      "1392x924-light",
+      "1392x924-dark",
+      "1920x1080-light",
+      "1920x1080-dark"
+    ],
+    "input_states": [
+      {
+        "state": "1392x924-light",
+        "phase": "normal",
+        "data": "C",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "C",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "C",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "C",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 1,
+            "selection_end": 1
+          }
+        ]
+      },
+      {
+        "state": "1392x924-light",
+        "phase": "normal",
+        "data": "A",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CA",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CA",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CA",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 2,
+            "selection_end": 2
+          }
+        ]
+      },
+      {
+        "state": "1392x924-light",
+        "phase": "normal",
+        "data": "T",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CAT",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CAT",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CAT",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 3,
+            "selection_end": 3
+          }
+        ]
+      },
+      {
+        "state": "1392x924-light",
+        "phase": "normal",
+        "data": "-",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CAT-",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CAT-",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CAT-",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 4,
+            "selection_end": 4
+          }
+        ]
+      },
+      {
+        "state": "1392x924-light",
+        "phase": "normal",
+        "data": "B",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CAT-B",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CAT-B",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CAT-B",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 5,
+            "selection_end": 5
+          }
+        ]
+      },
+      {
+        "state": "1392x924-dark",
+        "phase": "normal",
+        "data": "C",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "C",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "C",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "C",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 1,
+            "selection_end": 1
+          }
+        ]
+      },
+      {
+        "state": "1392x924-dark",
+        "phase": "normal",
+        "data": "A",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CA",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CA",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CA",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 2,
+            "selection_end": 2
+          }
+        ]
+      },
+      {
+        "state": "1392x924-dark",
+        "phase": "normal",
+        "data": "T",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CAT",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CAT",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CAT",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 3,
+            "selection_end": 3
+          }
+        ]
+      },
+      {
+        "state": "1392x924-dark",
+        "phase": "normal",
+        "data": "-",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CAT-",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CAT-",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CAT-",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 4,
+            "selection_end": 4
+          }
+        ]
+      },
+      {
+        "state": "1392x924-dark",
+        "phase": "normal",
+        "data": "B",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CAT-B",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CAT-B",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CAT-B",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 5,
+            "selection_end": 5
+          }
+        ]
+      },
+      {
+        "state": "1920x1080-light",
+        "phase": "normal",
+        "data": "C",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "C",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "C",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "C",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 1,
+            "selection_end": 1
+          }
+        ]
+      },
+      {
+        "state": "1920x1080-light",
+        "phase": "normal",
+        "data": "A",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CA",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CA",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CA",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 2,
+            "selection_end": 2
+          }
+        ]
+      },
+      {
+        "state": "1920x1080-light",
+        "phase": "normal",
+        "data": "T",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CAT",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CAT",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CAT",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 3,
+            "selection_end": 3
+          }
+        ]
+      },
+      {
+        "state": "1920x1080-light",
+        "phase": "normal",
+        "data": "-",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CAT-",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CAT-",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CAT-",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 4,
+            "selection_end": 4
+          }
+        ]
+      },
+      {
+        "state": "1920x1080-light",
+        "phase": "normal",
+        "data": "B",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CAT-B",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CAT-B",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CAT-B",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 5,
+            "selection_end": 5
+          }
+        ]
+      },
+      {
+        "state": "1920x1080-dark",
+        "phase": "normal",
+        "data": "C",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "C",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "C",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "C",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 1,
+            "selection_end": 1
+          }
+        ]
+      },
+      {
+        "state": "1920x1080-dark",
+        "phase": "normal",
+        "data": "A",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CA",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CA",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CA",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 2,
+            "selection_end": 2
+          }
+        ]
+      },
+      {
+        "state": "1920x1080-dark",
+        "phase": "normal",
+        "data": "T",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CAT",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CAT",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CAT",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 3,
+            "selection_end": 3
+          }
+        ]
+      },
+      {
+        "state": "1920x1080-dark",
+        "phase": "normal",
+        "data": "-",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CAT-",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CAT-",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CAT-",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 4,
+            "selection_end": 4
+          }
+        ]
+      },
+      {
+        "state": "1920x1080-dark",
+        "phase": "normal",
+        "data": "B",
+        "input_type": "insertText",
+        "trusted": true,
+        "value_at_event": "CAT-B",
+        "label": "搜索批次、工序、设备、人员",
+        "query": "CAT-B",
+        "original_connected": true,
+        "original_focused": true,
+        "gantt_count": 1,
+        "searchboxes": [
+          {
+            "value": "CAT-B",
+            "label": "搜索批次、工序、设备、人员",
+            "focused": true,
+            "selection_start": 5,
+            "selection_end": 5
+          }
+        ]
+      }
+    ],
+    "typing_cases": [
+      {
+        "state": "1392x924-light",
+        "status": "passed",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/real-typing-navigation-back-reload.png"
+      },
+      {
+        "state": "1392x924-dark",
+        "status": "passed",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/real-typing-navigation-back-reload.png"
+      },
+      {
+        "state": "1920x1080-light",
+        "status": "passed",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/real-typing-navigation-back-reload.png"
+      },
+      {
+        "state": "1920x1080-dark",
+        "status": "passed",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/real-typing-navigation-back-reload.png"
+      }
+    ]
+  },
+  "conclusion": "The only registered product input delta is PlanWorkspace.jsx. Under the same Chromium 109 full application, every typed character accumulates correctly and retains one connected focused input and one Gantt.",
+  "qualification": "Probe corrections are recorded separately. The original interrupted attempt is not promoted to a complete acceptance run."
+}

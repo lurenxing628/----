@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "status": "targeted_unit_passed_not_live_verified",
+  "execution_kind": "Real SQLite schema and existing mixed seed plus WorkbenchTrialService; no Mainhost/browser started",
+  "pytest": {
+    "passed": 10,
+    "deselected_live_matrix": 1
+  },
+  "root": "/private/tmp/aps-final-foundation-B.xYPahs/navigation-unit.A82W1l/pytest/test_navigation_case_plan_uses0/aps-workbench-live-nb_vi1bw",
+  "plan_ref": "17d35c7dd1ededf1770b79c3e4600fb2cb0ef1c2a20284bd",
+  "draft_ref": "5d00808f4d67aab9170ccbe776163eab10825cbc821aa42f",
+  "request_key": "trial-67ba732f8a0b8a94869d66e412ac913b9e975d3246cdd915",
+  "receipt_ref": "03a5072df0fb4a26b9700d728aa2f953",
+  "command_result": "committed",
+  "full_scope": {
+    "range_start": "2026-09-07T08:00:00",
+    "range_end": "2026-09-07T08:15:00"
+  },
+  "task_count": 1,
+  "changed_tables": [
+    "WorkbenchCommandReceipts",
+    "WorkbenchTrialDrafts",
+    "WorkbenchTrialRows"
+  ],
+  "original_rows_preserved": true,
+  "created_before_business_baseline": true,
+  "baseline_not_yet_collected": true,
+  "service": "WorkbenchTrialService.preview_create/create/get",
+  "evidence": {
+    "path": "/private/tmp/aps-final-foundation-B.xYPahs/navigation-unit.A82W1l/pytest/test_navigation_case_plan_uses0/aps-workbench-live-nb_vi1bw/foundation-navigation-seed.json",
+    "sha256": "e241bf19befb6d579cd15454e4892c5a3585f9890075f957c8cffea7b8e79c49"
+  },
+  "preparation_files": [
+    {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/navigation-unit.A82W1l/pytest/test_navigation_case_plan_uses0/aps-workbench-live-nb_vi1bw/foundation-navigation-preparation/business-before.json",
+      "sha256": "6b500d01f49a74e9b82c6991556e66c572a19539fbd053420a1c57dd6b4a7eff"
+    },
+    {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/navigation-unit.A82W1l/pytest/test_navigation_case_plan_uses0/aps-workbench-live-nb_vi1bw/foundation-navigation-preparation/business-after.json",
+      "sha256": "b688b1e5fba59e5dc9fb5cd3ee6ca1f6cfbac2d10cabd7e386c959424a573bd9"
+    },
+    {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/navigation-unit.A82W1l/pytest/test_navigation_case_plan_uses0/aps-workbench-live-nb_vi1bw/foundation-navigation-preparation/source-workspace.json",
+      "sha256": "93202ef26d42f4f931cc8a53e6eedcdbcfd0a389fdcb2f0af86dada5d91f5634"
+    },
+    {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/navigation-unit.A82W1l/pytest/test_navigation_case_plan_uses0/aps-workbench-live-nb_vi1bw/foundation-navigation-preparation/preview.json",
+      "sha256": "d52a8961b5f94fbd57dcfa3f1773f00f2bad57d28a399c26c028d5c4b95cf2a8"
+    },
+    {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/navigation-unit.A82W1l/pytest/test_navigation_case_plan_uses0/aps-workbench-live-nb_vi1bw/foundation-navigation-preparation/request.json",
+      "sha256": "d28f35be49fdc2117adc228090484dab7b66acf3a0c75787f8e86cc8fe0fd688"
+    },
+    {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/navigation-unit.A82W1l/pytest/test_navigation_case_plan_uses0/aps-workbench-live-nb_vi1bw/foundation-navigation-preparation/receipt.json",
+      "sha256": "1ae0da876bd2095089b4c6c81103f55c092ae282613e7d655f5777c930930769"
+    }
+  ],
+  "source_files": [
+    {
+      "path": "/Users/lurenxing/GitHub/----/tests/workbench/final_foundation_live.py",
+      "sha256": "e9299016dd0bb16a24785540d62e707a40aa8467c5dfdbedc9bfdb82e21955c3"
+    },
+    {
+      "path": "/Users/lurenxing/GitHub/----/tests/workbench/final_foundation_live_support.py",
+      "sha256": "8b9e0e1c286f1abc4f66b4e21e88b74c787d5919a85fff7d7e3c2ac16eb049f9"
+    },
+    {
+      "path": "/Users/lurenxing/GitHub/----/tests/workbench/final_foundation_live_nav_cases.py",
+      "sha256": "e38714c61bbbf0d2238b988051ec444f750a16f194ad6c59d1b6326285961be4"
+    },
+    {
+      "path": "/Users/lurenxing/GitHub/----/tests/workbench/final_foundation_navigation_seed.py",
+      "sha256": "2e0ab871a2bba7c0d2deae5a5c6baedb9f6f2913e3aeaf9792cc1ff3f5689f16"
+    },
+    {
+      "path": "/Users/lurenxing/GitHub/----/tests/workbench/test_final_foundation_live.py",
+      "sha256": "e85520f637326fede8bb7a8af584d558aa69b3614df9b7561ea382121a0d3da9"
+    }
+  ],
+  "reference_notice": "Regenerate from the fresh running fixture preparation receipt; never replay these unit references against another database."
+}

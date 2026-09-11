@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "status": "implemented_targeted_46_pass_full_entry_pending",
+  "origin_root": "/Users/lurenxing/GitHub/----",
+  "source_relation": "Post-G05 ANA minimum read-only delta; not a change to old frozen evidence",
+  "files": [
+    {
+      "path": "core/models/workbench_run_analysis.py",
+      "sha256": "d917d9ea5785b15d6d3951061e39f8465314e2e0ce4c3a783a4c26abccf51f52",
+      "bytes": 3711
+    },
+    {
+      "path": "core/services/workbench/run_candidate_analysis.py",
+      "sha256": "f7ca9dd77a39b8ec2a7156d6bfe28aeeb0ef71f6d894a1a0dad39429d30925d0",
+      "bytes": 2820
+    },
+    {
+      "path": "core/services/workbench/run_candidate_history.py",
+      "sha256": "9ff652f88c63734a03f7022fbd2001f001fecef48d12a919867a9b85680ce6fe",
+      "bytes": 5112
+    },
+    {
+      "path": "web/routes/workbench/run_candidates.py",
+      "sha256": "e014db036eaf2a0686ecbed1bca791f8d5bf83f9d8c7de94108df3f6973316d9",
+      "bytes": 5265
+    },
+    {
+      "path": "frontend/workbench/app/RunCandidateAPI.js",
+      "sha256": "ea129318c743c33d28706090e3482848585d5f6a3fcaab8d2dd873788c2d5f89",
+      "bytes": 23298
+    },
+    {
+      "path": "frontend/workbench/app/RunCandidateControls.jsx",
+      "sha256": "c6795e29d227c79272c7a7997a8ded29a4d6532f572c40b0813d5e6f0d131f75",
+      "bytes": 18826
+    },
+    {
+      "path": "frontend/workbench/app/RunCandidateModel.js",
+      "sha256": "b5d702331443ef2c589f079ef1071a8f8791d4727355c14c4b2ae28dfe1b4615",
+      "bytes": 5677
+    },
+    {
+      "path": "frontend/workbench/app/RunCandidateWorkspace.jsx",
+      "sha256": "7e6613664e020332393302189d47bb8f77be541ec2ff607f2a807fc07b01b489",
+      "bytes": 18453
+    },
+    {
+      "path": "frontend/workbench/app/RunCandidateAnalysisAPI.js",
+      "sha256": "e54c4489dd9b47973b11548594a682722f982e3ee02b5987cb2c08f36140c946",
+      "bytes": 10278
+    },
+    {
+      "path": "frontend/workbench/app/RunCandidateAnalysis.jsx",
+      "sha256": "49566e5804df83499b859515906ba78d1c0e4e6743b528845b521ffdf2f437cd",
+      "bytes": 5987
+    }
+  ],
+  "frontend_globals": [
+    {
+      "file": "frontend/workbench/app/RunCandidateAnalysisAPI.js",
+      "provides": [
+        "RunCandidateAnalysisAPI"
+      ],
+      "reads": [
+        "RunCandidateAPI"
+      ],
+      "load_after": [
+        "RunCandidateAPI.js"
+      ]
+    },
+    {
+      "file": "frontend/workbench/app/RunCandidateAnalysis.jsx",
+      "provides": [
+        "RunCandidateAnalysis"
+      ],
+      "reads": [
+        "React",
+        "RunCandidateControls",
+        "RunCandidateModel"
+      ],
+      "load_after": [
+        "RunCandidateControls.jsx",
+        "RunCandidateModel.js"
+      ]
+    }
+  ],
+  "load_before": "RunCandidateWorkspace.jsx",
+  "python_modules": [
+    "core.models.workbench_run_analysis",
+    "core.services.workbench.run_candidate_analysis",
+    "core.services.workbench.run_candidate_history"
+  ],
+  "route_registration": "Existing register_run_candidate_routes in web/routes/workbench/run_candidates.py; no shared registration change needed",
+  "new_paired_tests": [
+    "tests/workbench/test_final_planning_analysis.py",
+    "tests/workbench/test_final_planning_analysis_history.py",
+    "tests/workbench/test_final_planning_analysis_contract.py",
+    "tests/workbench/final_planning_analysis_contract.cjs"
+  ],
+  "verified_tests": {
+    "junit": "/tmp/aps-final-d-ana-service-final.xml",
+    "passed": 46
+  },
+  "protected_H_surfaces": [
+    "run_job_widgets",
+    "run_presentation",
+    "workbench_plain_language",
+    "trial_adoption_history_widgets"
+  ]
+}

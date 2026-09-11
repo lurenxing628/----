@@ -1,0 +1,4999 @@
+{
+  "schema_version": 1,
+  "captured": "2026-09-10",
+  "method": "empty Flask + actual _register_all_blueprints; audit hook rejects file writes/sqlite/socket/process; no app factory/request",
+  "python": "3.8.10",
+  "claims": {
+    "runtime_registered_routes": true,
+    "http_requested": false,
+    "product_app_started": false,
+    "db_connected": false,
+    "retirement_applied": false
+  },
+  "routes": [
+    {
+      "rule": "/",
+      "endpoint": "dashboard.index",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/dashboard.py",
+      "line": 341,
+      "sha256": "01a84939bc04da6a7d8151db98dfd0bc618cd9d3c89fac06f738a82395ec776e",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "dashboard",
+      "context_groups": "P,D,R",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/actual-gantt",
+      "endpoint": "workbench.actual_gantt_workspace",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/actual_gantt.py",
+      "line": 33,
+      "sha256": "9c217bc7726a9a640c32d7b475a7fa2b41f98e5d4c441d8d49b6e62e3e340363",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/actual-gantt/export",
+      "endpoint": "workbench.actual_gantt_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/actual_gantt.py",
+      "line": 43,
+      "sha256": "9c217bc7726a9a640c32d7b475a7fa2b41f98e5d4c441d8d49b6e62e3e340363",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/analytics",
+      "endpoint": "workbench.analytics",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/reports.py",
+      "line": 110,
+      "sha256": "bd004ceb272f1a9f8c441ca1725993a00a4cfb7b7e776f311952247e450b1e0c",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/analytics/export",
+      "endpoint": "workbench.analytics_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/reports.py",
+      "line": 115,
+      "sha256": "bd004ceb272f1a9f8c441ca1725993a00a4cfb7b7e776f311952247e450b1e0c",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/analytics/operations/<operation_ref>",
+      "endpoint": "workbench.analytics_operation",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/reports.py",
+      "line": 120,
+      "sha256": "bd004ceb272f1a9f8c441ca1725993a00a4cfb7b7e776f311952247e450b1e0c",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/calendar/delete",
+      "endpoint": "workbench.calendar_delete",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/calendars.py",
+      "line": 70,
+      "sha256": "ff1a6d2fba68162b2d41261f8fb15f4ba9f94e3d3f7d511300da641c26bf0273",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/calendar/month",
+      "endpoint": "workbench.calendar_month",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/calendars.py",
+      "line": 53,
+      "sha256": "ff1a6d2fba68162b2d41261f8fb15f4ba9f94e3d3f7d511300da641c26bf0273",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/calendar/range/confirm",
+      "endpoint": "workbench.calendar_range_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/calendars.py",
+      "line": 119,
+      "sha256": "ff1a6d2fba68162b2d41261f8fb15f4ba9f94e3d3f7d511300da641c26bf0273",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/calendar/range/preview",
+      "endpoint": "workbench.calendar_range_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/calendars.py",
+      "line": 97,
+      "sha256": "ff1a6d2fba68162b2d41261f8fb15f4ba9f94e3d3f7d511300da641c26bf0273",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/calendar/upsert",
+      "endpoint": "workbench.calendar_upsert",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/calendars.py",
+      "line": 70,
+      "sha256": "ff1a6d2fba68162b2d41261f8fb15f4ba9f94e3d3f7d511300da641c26bf0273",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/calibration",
+      "endpoint": "workbench.calibration_list",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/calibration.py",
+      "line": 88,
+      "sha256": "b413e0077a33d1d42b85b2c392378de94fe0ea90891180257aae67e3f9039a27",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/calibration/<suggestion_ref>",
+      "endpoint": "workbench.calibration_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/calibration.py",
+      "line": 93,
+      "sha256": "b413e0077a33d1d42b85b2c392378de94fe0ea90891180257aae67e3f9039a27",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/calibration/<suggestion_ref>/adopt",
+      "endpoint": "workbench.calibration_adoption_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/calibration_adoption.py",
+      "line": 37,
+      "sha256": "f6b61b26b56eed7a4f0cd36aaecc961330c28e351438d7885ec5595e3b15542b",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/calibration/<suggestion_ref>/adopt-preview",
+      "endpoint": "workbench.calibration_adoption_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/calibration_adoption.py",
+      "line": 26,
+      "sha256": "f6b61b26b56eed7a4f0cd36aaecc961330c28e351438d7885ec5595e3b15542b",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/calibration/<suggestion_ref>/adopt/receipts/<request_key>",
+      "endpoint": "workbench.calibration_adoption_receipt",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/calibration_adoption.py",
+      "line": 47,
+      "sha256": "f6b61b26b56eed7a4f0cd36aaecc961330c28e351438d7885ec5595e3b15542b",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/calibration/export",
+      "endpoint": "workbench.calibration_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/calibration.py",
+      "line": 98,
+      "sha256": "b413e0077a33d1d42b85b2c392378de94fe0ea90891180257aae67e3f9039a27",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/commands/<request_key>",
+      "endpoint": "workbench.command_receipt",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/materials.py",
+      "line": 119,
+      "sha256": "552ff3ce04547a8c88456b966e1605c2e0e8c3ed8dbaf3540ef1dc9e24402b99",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/dashboard",
+      "endpoint": "workbench.dashboard_list",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/dashboard.py",
+      "line": 82,
+      "sha256": "a3c1f4ff0e44b42be2415fba8bda8c421e06ba5dcef9c661bc67388a4d198bdb",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/dashboard/items/<item_ref>",
+      "endpoint": "workbench.dashboard_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/dashboard.py",
+      "line": 87,
+      "sha256": "a3c1f4ff0e44b42be2415fba8bda8c421e06ba5dcef9c661bc67388a4d198bdb",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/dashboard/items/<item_ref>/history",
+      "endpoint": "workbench.dashboard_history",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/dashboard.py",
+      "line": 92,
+      "sha256": "a3c1f4ff0e44b42be2415fba8bda8c421e06ba5dcef9c661bc67388a4d198bdb",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/dashboard/items/<item_ref>/reopen",
+      "endpoint": "workbench.dashboard_reopen",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/dashboard.py",
+      "line": 117,
+      "sha256": "a3c1f4ff0e44b42be2415fba8bda8c421e06ba5dcef9c661bc67388a4d198bdb",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/dashboard/items/<item_ref>/transition",
+      "endpoint": "workbench.dashboard_transition",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/dashboard.py",
+      "line": 112,
+      "sha256": "a3c1f4ff0e44b42be2415fba8bda8c421e06ba5dcef9c661bc67388a4d198bdb",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/<kind>",
+      "endpoint": "workbench.resource_list",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/resources.py",
+      "line": 46,
+      "sha256": "62a2d3d7b9dc04ae08bc70b26bfd5412d12efc856002f4f7a4f78db01300510f",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/<kind>/<ref>",
+      "endpoint": "workbench.resource_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/resources.py",
+      "line": 59,
+      "sha256": "62a2d3d7b9dc04ae08bc70b26bfd5412d12efc856002f4f7a4f78db01300510f",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/<kind>/<ref>/delete",
+      "endpoint": "workbench.resource_delete",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/resources.py",
+      "line": 70,
+      "sha256": "62a2d3d7b9dc04ae08bc70b26bfd5412d12efc856002f4f7a4f78db01300510f",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/<kind>/<ref>/relations",
+      "endpoint": "workbench.resource_relations",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/resource_relations.py",
+      "line": 31,
+      "sha256": "0a9e02c745807fd91cc946f7f8aaf567d52c8a9f890f9c2d723f48d61aee65ba",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/<kind>/<ref>/update",
+      "endpoint": "workbench.resource_update",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/resources.py",
+      "line": 70,
+      "sha256": "62a2d3d7b9dc04ae08bc70b26bfd5412d12efc856002f4f7a4f78db01300510f",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/<kind>/bulk-confirm",
+      "endpoint": "workbench.resource_bulk_delete_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/resource_actions.py",
+      "line": 86,
+      "sha256": "d68d2c4537da6cc12e215a0e62c35df7d17b184230b63838ed1d1f2ba9a188d9",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/<kind>/bulk-preview",
+      "endpoint": "workbench.resource_bulk_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/resource_actions.py",
+      "line": 17,
+      "sha256": "d68d2c4537da6cc12e215a0e62c35df7d17b184230b63838ed1d1f2ba9a188d9",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/<kind>/create",
+      "endpoint": "workbench.resource_create",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/resources.py",
+      "line": 70,
+      "sha256": "62a2d3d7b9dc04ae08bc70b26bfd5412d12efc856002f4f7a4f78db01300510f",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/<kind>/facet-selection",
+      "endpoint": "workbench.resource_table_facet_selection",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/resource_table_queries.py",
+      "line": 160,
+      "sha256": "a4ae49b30cab14ae59d831ecce0bacd66ada05a85c83ac1c9df727c195a51b83",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/<kind>/facets",
+      "endpoint": "workbench.resource_table_facets",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/resource_table_queries.py",
+      "line": 155,
+      "sha256": "a4ae49b30cab14ae59d831ecce0bacd66ada05a85c83ac1c9df727c195a51b83",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/<kind>/query",
+      "endpoint": "workbench.resource_table_query",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/resource_table_queries.py",
+      "line": 94,
+      "sha256": "a4ae49b30cab14ae59d831ecce0bacd66ada05a85c83ac1c9df727c195a51b83",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch",
+      "endpoint": "workbench.batch_list",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 51,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/<ref>",
+      "endpoint": "workbench.batch_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 73,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/<ref>/delete",
+      "endpoint": "workbench.batch_delete",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 94,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/<ref>/operation_update",
+      "endpoint": "workbench.batch_operation_update",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 94,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/<ref>/sync-confirm",
+      "endpoint": "workbench.batch_sync_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 163,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/<ref>/sync-preview",
+      "endpoint": "workbench.batch_sync_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 116,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/<ref>/update",
+      "endpoint": "workbench.batch_update",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 94,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/bulk-confirm",
+      "endpoint": "workbench.batch_bulk_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 163,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/bulk-preview",
+      "endpoint": "workbench.batch_bulk_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 116,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/choices",
+      "endpoint": "workbench.batch_choices",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 83,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/create",
+      "endpoint": "workbench.batch_create",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 94,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/export",
+      "endpoint": "workbench.batch_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/batch_files.py",
+      "line": 110,
+      "sha256": "404db9e12267943afa687fffd31246c3919c96b501ff7ecc779938ab483eda89",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/export-preview",
+      "endpoint": "workbench.batch_export_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batch_files.py",
+      "line": 83,
+      "sha256": "404db9e12267943afa687fffd31246c3919c96b501ff7ecc779938ab483eda89",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/facets",
+      "endpoint": "workbench.batch_facets",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 142,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/import-confirm",
+      "endpoint": "workbench.batch_import_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batch_files.py",
+      "line": 63,
+      "sha256": "404db9e12267943afa687fffd31246c3919c96b501ff7ecc779938ab483eda89",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/import-preview",
+      "endpoint": "workbench.batch_import_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batch_files.py",
+      "line": 37,
+      "sha256": "404db9e12267943afa687fffd31246c3919c96b501ff7ecc779938ab483eda89",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/query",
+      "endpoint": "workbench.batch_query",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 56,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/selection",
+      "endpoint": "workbench.batch_selection",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/batches.py",
+      "line": 61,
+      "sha256": "7622ee3fe8a0a877887a277a9655c56a73fcfce66bb271d2ab01de2a31362dbf",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/batch/template",
+      "endpoint": "workbench.batch_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/batch_files.py",
+      "line": 30,
+      "sha256": "404db9e12267943afa687fffd31246c3919c96b501ff7ecc779938ab483eda89",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/material",
+      "endpoint": "workbench.material_list",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/materials.py",
+      "line": 59,
+      "sha256": "552ff3ce04547a8c88456b966e1605c2e0e8c3ed8dbaf3540ef1dc9e24402b99",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/material/<ref>",
+      "endpoint": "workbench.material_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/materials.py",
+      "line": 71,
+      "sha256": "552ff3ce04547a8c88456b966e1605c2e0e8c3ed8dbaf3540ef1dc9e24402b99",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/material/<ref>/delete",
+      "endpoint": "workbench.material_delete",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/materials.py",
+      "line": 95,
+      "sha256": "552ff3ce04547a8c88456b966e1605c2e0e8c3ed8dbaf3540ef1dc9e24402b99",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/material/<ref>/update",
+      "endpoint": "workbench.material_update",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/materials.py",
+      "line": 95,
+      "sha256": "552ff3ce04547a8c88456b966e1605c2e0e8c3ed8dbaf3540ef1dc9e24402b99",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/material/bulk-confirm",
+      "endpoint": "workbench.material_bulk_delete_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/material_actions.py",
+      "line": 108,
+      "sha256": "ea2fbfc2e0933a2e8c0fb4e80bad88cf577709769662657ee2a6a327320d45ba",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/material/bulk-preview",
+      "endpoint": "workbench.material_bulk_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/material_actions.py",
+      "line": 42,
+      "sha256": "ea2fbfc2e0933a2e8c0fb4e80bad88cf577709769662657ee2a6a327320d45ba",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/material/create",
+      "endpoint": "workbench.material_create",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/materials.py",
+      "line": 95,
+      "sha256": "552ff3ce04547a8c88456b966e1605c2e0e8c3ed8dbaf3540ef1dc9e24402b99",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/part",
+      "endpoint": "workbench.process_list",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/process_reads.py",
+      "line": 54,
+      "sha256": "bec0e8bf4ac099fad67c9b256be07f41748d31995a186d64d254e051b7f4b0c5",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/entities/part/<ref>",
+      "endpoint": "workbench.process_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/process_reads.py",
+      "line": 71,
+      "sha256": "bec0e8bf4ac099fad67c9b256be07f41748d31995a186d64d254e051b7f4b0c5",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/execution/files/confirm",
+      "endpoint": "workbench.field_file_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/execution_files.py",
+      "line": 55,
+      "sha256": "69d54eeb1cb357c1b571d65f286eddc6a0a8a06c92933da3f755e076bb992f43",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/execution/files/errors",
+      "endpoint": "workbench.field_file_errors",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/execution_files.py",
+      "line": 86,
+      "sha256": "69d54eeb1cb357c1b571d65f286eddc6a0a8a06c92933da3f755e076bb992f43",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/execution/files/export",
+      "endpoint": "workbench.field_file_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/execution_files.py",
+      "line": 120,
+      "sha256": "69d54eeb1cb357c1b571d65f286eddc6a0a8a06c92933da3f755e076bb992f43",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/execution/files/preview",
+      "endpoint": "workbench.field_file_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/execution_files.py",
+      "line": 24,
+      "sha256": "69d54eeb1cb357c1b571d65f286eddc6a0a8a06c92933da3f755e076bb992f43",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/execution/files/template",
+      "endpoint": "workbench.field_file_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/execution_files.py",
+      "line": 115,
+      "sha256": "69d54eeb1cb357c1b571d65f286eddc6a0a8a06c92933da3f755e076bb992f43",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/execution/reports/<report_ref>/correct",
+      "endpoint": "workbench.field_report_correct",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/execution.py",
+      "line": 91,
+      "sha256": "bdc0cd6bc313913158e5cd8a4bc38d23b999974516ff6355cfef5abfa2b8b1d2",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/execution/reports/<report_ref>/supplement",
+      "endpoint": "workbench.field_report_supplement",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/execution.py",
+      "line": 86,
+      "sha256": "bdc0cd6bc313913158e5cd8a4bc38d23b999974516ff6355cfef5abfa2b8b1d2",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/execution/tasks",
+      "endpoint": "workbench.field_tasks",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/execution.py",
+      "line": 49,
+      "sha256": "bdc0cd6bc313913158e5cd8a4bc38d23b999974516ff6355cfef5abfa2b8b1d2",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/execution/tasks/<task_ref>",
+      "endpoint": "workbench.field_task",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/execution.py",
+      "line": 54,
+      "sha256": "bdc0cd6bc313913158e5cd8a4bc38d23b999974516ff6355cfef5abfa2b8b1d2",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/execution/tasks/<task_ref>/reports",
+      "endpoint": "workbench.field_report_create",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/execution.py",
+      "line": 81,
+      "sha256": "bdc0cd6bc313913158e5cd8a4bc38d23b999974516ff6355cfef5abfa2b8b1d2",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/exports/<kind>",
+      "endpoint": "workbench.resource_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/resource_file_exports.py",
+      "line": 66,
+      "sha256": "58836c052efdf3ef451485c0b59179ab58e9015753ef80b83e52d97931ffca9a",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/exports/<kind>/preview",
+      "endpoint": "workbench.resource_export_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/resource_file_exports.py",
+      "line": 34,
+      "sha256": "58836c052efdf3ef451485c0b59179ab58e9015753ef80b83e52d97931ffca9a",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/exports/material",
+      "endpoint": "workbench.material_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/material_actions_export.py",
+      "line": 85,
+      "sha256": "f75cf34e6f2f64325c8d3e5d138a8f3b4f28cc74f650bed5f5b5b32cd8c2a880",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/exports/material/preview",
+      "endpoint": "workbench.material_export_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/material_actions_export.py",
+      "line": 52,
+      "sha256": "f75cf34e6f2f64325c8d3e5d138a8f3b4f28cc74f650bed5f5b5b32cd8c2a880",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/imports/<kind>/confirm",
+      "endpoint": "workbench.resource_import_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/resource_actions.py",
+      "line": 86,
+      "sha256": "d68d2c4537da6cc12e215a0e62c35df7d17b184230b63838ed1d1f2ba9a188d9",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/imports/<kind>/preview",
+      "endpoint": "workbench.resource_import_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/resource_actions.py",
+      "line": 54,
+      "sha256": "d68d2c4537da6cc12e215a0e62c35df7d17b184230b63838ed1d1f2ba9a188d9",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/imports/material/confirm",
+      "endpoint": "workbench.material_import_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/material_actions.py",
+      "line": 108,
+      "sha256": "ea2fbfc2e0933a2e8c0fb4e80bad88cf577709769662657ee2a6a327320d45ba",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/imports/material/preview",
+      "endpoint": "workbench.material_import_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/material_actions.py",
+      "line": 74,
+      "sha256": "ea2fbfc2e0933a2e8c0fb4e80bad88cf577709769662657ee2a6a327320d45ba",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/master-overview",
+      "endpoint": "workbench.master_overview_list",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/master_overview.py",
+      "line": 42,
+      "sha256": "e4211df271b97339ae0cf15bd8912c6bd5dd7edbc3ce8d860a077aa38e08cbc4",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/master-overview/entities/<domain>/<ref>",
+      "endpoint": "workbench.master_overview_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/master_overview.py",
+      "line": 53,
+      "sha256": "e4211df271b97339ae0cf15bd8912c6bd5dd7edbc3ce8d860a077aa38e08cbc4",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/master-overview/export",
+      "endpoint": "workbench.master_overview_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/master_overview.py",
+      "line": 77,
+      "sha256": "e4211df271b97339ae0cf15bd8912c6bd5dd7edbc3ce8d860a077aa38e08cbc4",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/master-overview/locate/<domain>/<ref>",
+      "endpoint": "workbench.master_overview_locate",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/master_overview.py",
+      "line": 66,
+      "sha256": "e4211df271b97339ae0cf15bd8912c6bd5dd7edbc3ce8d860a077aa38e08cbc4",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/outsourcing/receipts",
+      "endpoint": "workbench.outsourcing_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/outsourcing.py",
+      "line": 132,
+      "sha256": "41f4ea77a97e3dc8454f2f2a790f330ec5c4a2834856fe8b603171e0cf4814ad",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/outsourcing/receipts",
+      "endpoint": "workbench.outsourcing_receipts",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/outsourcing.py",
+      "line": 97,
+      "sha256": "41f4ea77a97e3dc8454f2f2a790f330ec5c4a2834856fe8b603171e0cf4814ad",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/outsourcing/receipts/<outsourcing_ref>",
+      "endpoint": "workbench.outsourcing_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/outsourcing.py",
+      "line": 102,
+      "sha256": "41f4ea77a97e3dc8454f2f2a790f330ec5c4a2834856fe8b603171e0cf4814ad",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/outsourcing/receipts/<outsourcing_ref>/history",
+      "endpoint": "workbench.outsourcing_history",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/outsourcing.py",
+      "line": 107,
+      "sha256": "41f4ea77a97e3dc8454f2f2a790f330ec5c4a2834856fe8b603171e0cf4814ad",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/outsourcing/receipts/preview",
+      "endpoint": "workbench.outsourcing_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/outsourcing.py",
+      "line": 122,
+      "sha256": "41f4ea77a97e3dc8454f2f2a790f330ec5c4a2834856fe8b603171e0cf4814ad",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/outsourcing/targets",
+      "endpoint": "workbench.outsourcing_targets",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/outsourcing.py",
+      "line": 92,
+      "sha256": "41f4ea77a97e3dc8454f2f2a790f330ec5c4a2834856fe8b603171e0cf4814ad",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/plans",
+      "endpoint": "workbench.plan_list",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/plan_reads.py",
+      "line": 73,
+      "sha256": "d8a1aec3873832f72f780839a2a26e864b497dc5c391923295ec534f95468d0c",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/plans/<plan_ref>",
+      "endpoint": "workbench.plan_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/plan_reads.py",
+      "line": 92,
+      "sha256": "d8a1aec3873832f72f780839a2a26e864b497dc5c391923295ec534f95468d0c",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/plans/<plan_ref>/export",
+      "endpoint": "workbench.plan_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/plan_reads.py",
+      "line": 103,
+      "sha256": "d8a1aec3873832f72f780839a2a26e864b497dc5c391923295ec534f95468d0c",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/plans/<plan_ref>/workspace",
+      "endpoint": "workbench.plan_workspace",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/plan_reads.py",
+      "line": 92,
+      "sha256": "d8a1aec3873832f72f780839a2a26e864b497dc5c391923295ec534f95468d0c",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/process-files/<kind>/confirm",
+      "endpoint": "workbench.process_file_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/process_files.py",
+      "line": 49,
+      "sha256": "e69dc9df4a14bed9960c045fc0645cca8691ce3bf4313d2c584247bafe3ec10f",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/process-files/<kind>/export",
+      "endpoint": "workbench.process_file_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/process_file_exports.py",
+      "line": 68,
+      "sha256": "e69fc6e3aa9328893c1bea4ca803d06a01f62399de33822ea455ca45cefac062",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/process-files/<kind>/export-preview",
+      "endpoint": "workbench.process_file_export_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/process_file_exports.py",
+      "line": 37,
+      "sha256": "e69fc6e3aa9328893c1bea4ca803d06a01f62399de33822ea455ca45cefac062",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/process-files/<kind>/preview",
+      "endpoint": "workbench.process_file_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/process_files.py",
+      "line": 36,
+      "sha256": "e69dc9df4a14bed9960c045fc0645cca8691ce3bf4313d2c584247bafe3ec10f",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/process-files/<kind>/template",
+      "endpoint": "workbench.process_file_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/process_file_exports.py",
+      "line": 93,
+      "sha256": "e69fc6e3aa9328893c1bea4ca803d06a01f62399de33822ea455ca45cefac062",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/process-table/facet-selection/<column>",
+      "endpoint": "workbench.process_facet_selection",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/process_table_reads.py",
+      "line": 28,
+      "sha256": "e4c4e9fbcffa10116d5415f350c6d17c67517b90c7215e612163bd545f1cc1b1",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/process-table/facets/<column>",
+      "endpoint": "workbench.process_facets",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/process_table_reads.py",
+      "line": 28,
+      "sha256": "e4c4e9fbcffa10116d5415f350c6d17c67517b90c7215e612163bd545f1cc1b1",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/process/<ref>/<action>",
+      "endpoint": "workbench.process_stage_command",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/process_writes.py",
+      "line": 55,
+      "sha256": "e34a99cc8558c5dc3b244badeb300a57fea7597837756e2fab625136618333f1",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/process/<ref>/route-preview",
+      "endpoint": "workbench.process_route_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/process_reads.py",
+      "line": 88,
+      "sha256": "bec0e8bf4ac099fad67c9b256be07f41748d31995a186d64d254e051b7f4b0c5",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/process/<ref>/stage-preview",
+      "endpoint": "workbench.process_stage_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/process_writes.py",
+      "line": 23,
+      "sha256": "e34a99cc8558c5dc3b244badeb300a57fea7597837756e2fab625136618333f1",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/process/parts/bulk-confirm",
+      "endpoint": "workbench.process_bulk_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/process_collections.py",
+      "line": 70,
+      "sha256": "dd958ba84cd363975ecf279e1af832c5e6db301d9f4f640457aaa35e1b832903",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/process/parts/bulk-preview",
+      "endpoint": "workbench.process_bulk_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/process_collections.py",
+      "line": 52,
+      "sha256": "dd958ba84cd363975ecf279e1af832c5e6db301d9f4f640457aaa35e1b832903",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/process/parts/create",
+      "endpoint": "workbench.process_create",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/process_collections.py",
+      "line": 31,
+      "sha256": "dd958ba84cd363975ecf279e1af832c5e6db301d9f4f640457aaa35e1b832903",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/reports/<kind>",
+      "endpoint": "workbench.report_catalog",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/reports_catalog.py",
+      "line": 85,
+      "sha256": "e2eaf9940412c8a23af9acbff89d2ad306a4b8e5009a8969cfe739998a5e4018",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/reports/<kind>/export",
+      "endpoint": "workbench.report_catalog_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/reports_catalog.py",
+      "line": 90,
+      "sha256": "e2eaf9940412c8a23af9acbff89d2ad306a4b8e5009a8969cfe739998a5e4018",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/resources/summary",
+      "endpoint": "workbench.resource_summary",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/resources.py",
+      "line": 94,
+      "sha256": "62a2d3d7b9dc04ae08bc70b26bfd5412d12efc856002f4f7a4f78db01300510f",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>",
+      "endpoint": "workbench.run_candidate_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/run_candidates.py",
+      "line": 58,
+      "sha256": "11980a3f1e6a9066a2beb09c4fbb35bdec8361971e0a7d625aef54b27e511474",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>/adopt",
+      "endpoint": "workbench.run_candidate_adopt",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/run_candidate_adoption.py",
+      "line": 37,
+      "sha256": "5e19e4d82b6d7efd033feb41d97ab3b1ee1875ee448f94d99f3c5865aa1c1646",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>/adopt-preview",
+      "endpoint": "workbench.run_candidate_adopt_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/run_candidate_adoption.py",
+      "line": 27,
+      "sha256": "5e19e4d82b6d7efd033feb41d97ab3b1ee1875ee448f94d99f3c5865aa1c1646",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>/baseline",
+      "endpoint": "workbench.run_candidate_baseline",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/run_candidate_baseline.py",
+      "line": 13,
+      "sha256": "22f384f9f018d07eadea9b628cd123bfb1e1a1beea18f6b40aecdb992cc19ef3",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>/export",
+      "endpoint": "workbench.run_candidate_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/run_candidates.py",
+      "line": 67,
+      "sha256": "11980a3f1e6a9066a2beb09c4fbb35bdec8361971e0a7d625aef54b27e511474",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/scheduling/candidates/<candidate_ref>/workspace",
+      "endpoint": "workbench.run_candidate_workspace",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/run_candidates.py",
+      "line": 58,
+      "sha256": "11980a3f1e6a9066a2beb09c4fbb35bdec8361971e0a7d625aef54b27e511474",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/scheduling/preflight",
+      "endpoint": "workbench.scheduling_preflight",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/preflight.py",
+      "line": 36,
+      "sha256": "81fe11d526192aff76c123b13811ad9cb5c6ddd73a573a62753c77f41b440708",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/scheduling/requests/<request_key>",
+      "endpoint": "workbench.get_scheduling_request",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/scheduling_jobs.py",
+      "line": 97,
+      "sha256": "6b50b624789f21bb85ee6881a2a83143087bfa1dccf6e5c4ba0ae6bd0fb964b8",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/scheduling/runs",
+      "endpoint": "workbench.accept_scheduling_run",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/scheduling_jobs.py",
+      "line": 74,
+      "sha256": "6b50b624789f21bb85ee6881a2a83143087bfa1dccf6e5c4ba0ae6bd0fb964b8",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/scheduling/runs",
+      "endpoint": "workbench.run_history_list",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/run_history.py",
+      "line": 21,
+      "sha256": "ccf9a35a16b0cec557034c56bf3ec89f8ac2a483c2434ddac178bd2d1fb74c3b",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/scheduling/runs/<run_ref>",
+      "endpoint": "workbench.get_scheduling_run",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/scheduling_jobs.py",
+      "line": 90,
+      "sha256": "6b50b624789f21bb85ee6881a2a83143087bfa1dccf6e5c4ba0ae6bd0fb964b8",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/scheduling/runs/<run_ref>/candidates",
+      "endpoint": "workbench.run_candidate_list",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/run_candidates.py",
+      "line": 48,
+      "sha256": "11980a3f1e6a9066a2beb09c4fbb35bdec8361971e0a7d625aef54b27e511474",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/scheduling/runs/preview",
+      "endpoint": "workbench.preview_scheduling_run",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/scheduling_jobs.py",
+      "line": 68,
+      "sha256": "6b50b624789f21bb85ee6881a2a83143087bfa1dccf6e5c4ba0ae6bd0fb964b8",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/system/backups",
+      "endpoint": "workbench.system_backups_read",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/system_reads.py",
+      "line": 46,
+      "sha256": "62571d1533e8e162fdfb3d0fec37aaa0a931d7665a15fd66aa209532e527710d",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/system/backups/create",
+      "endpoint": "workbench.system_backup_create",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/system_actions.py",
+      "line": 81,
+      "sha256": "6896cd0bbd81fd8d0f9b27f7d0b1e31109209380d1b06406ceff2ea840fca2b0",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/system/backups/delete",
+      "endpoint": "workbench.system_backup_delete",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/system_actions.py",
+      "line": 81,
+      "sha256": "6896cd0bbd81fd8d0f9b27f7d0b1e31109209380d1b06406ceff2ea840fca2b0",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/system/backups/restore",
+      "endpoint": "workbench.system_backup_restore",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/system_actions.py",
+      "line": 81,
+      "sha256": "6896cd0bbd81fd8d0f9b27f7d0b1e31109209380d1b06406ceff2ea840fca2b0",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/system/config",
+      "endpoint": "workbench.system_config_read",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/system_reads.py",
+      "line": 69,
+      "sha256": "62571d1533e8e162fdfb3d0fec37aaa0a931d7665a15fd66aa209532e527710d",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/system/config/save",
+      "endpoint": "workbench.system_config_save",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/system_actions.py",
+      "line": 17,
+      "sha256": "6896cd0bbd81fd8d0f9b27f7d0b1e31109209380d1b06406ceff2ea840fca2b0",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/system/jobs/<job_ref>",
+      "endpoint": "workbench.system_job_result",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/system_actions.py",
+      "line": 48,
+      "sha256": "6896cd0bbd81fd8d0f9b27f7d0b1e31109209380d1b06406ceff2ea840fca2b0",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/system/logs",
+      "endpoint": "workbench.system_logs_read",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/system_reads.py",
+      "line": 46,
+      "sha256": "62571d1533e8e162fdfb3d0fec37aaa0a931d7665a15fd66aa209532e527710d",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/system/logs/export/csv",
+      "endpoint": "workbench.system_logs_csv",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/system_exports.py",
+      "line": 12,
+      "sha256": "19769cd6c4641adf53bcaa01deab07a979e08653e9cdbb9c29195072c7884df8",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/system/logs/export/zip",
+      "endpoint": "workbench.system_logs_zip",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/system_exports.py",
+      "line": 12,
+      "sha256": "19769cd6c4641adf53bcaa01deab07a979e08653e9cdbb9c29195072c7884df8",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/system/overview",
+      "endpoint": "workbench.system_overview",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/pages.py",
+      "line": 85,
+      "sha256": "9c2b8d84926711ccd088aa2f30262bdcbe9e137bf096320b53caf34c2f19ef99",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/system/results/<request_key>",
+      "endpoint": "workbench.system_result",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/system_actions.py",
+      "line": 31,
+      "sha256": "6896cd0bbd81fd8d0f9b27f7d0b1e31109209380d1b06406ceff2ea840fca2b0",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/templates/<kind>",
+      "endpoint": "workbench.resource_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/resource_file_exports.py",
+      "line": 85,
+      "sha256": "58836c052efdf3ef451485c0b59179ab58e9015753ef80b83e52d97931ffca9a",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/templates/material",
+      "endpoint": "workbench.material_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/material_actions_export.py",
+      "line": 100,
+      "sha256": "f75cf34e6f2f64325c8d3e5d138a8f3b4f28cc74f650bed5f5b5b32cd8c2a880",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/commands/<request_key>",
+      "endpoint": "workbench.trial_receipt",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/trial.py",
+      "line": 98,
+      "sha256": "bb32c6bb73d6139cbe262c3cd2cad7af5c412db22cc77fad1c56065731d54249",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/drafts",
+      "endpoint": "workbench.trial_create",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/trial.py",
+      "line": 64,
+      "sha256": "bb32c6bb73d6139cbe262c3cd2cad7af5c412db22cc77fad1c56065731d54249",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/drafts",
+      "endpoint": "workbench.trial_drafts",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/trial.py",
+      "line": 125,
+      "sha256": "bb32c6bb73d6139cbe262c3cd2cad7af5c412db22cc77fad1c56065731d54249",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/drafts/<draft_ref>",
+      "endpoint": "workbench.trial_read",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/trial.py",
+      "line": 70,
+      "sha256": "bb32c6bb73d6139cbe262c3cd2cad7af5c412db22cc77fad1c56065731d54249",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/drafts/<draft_ref>/change",
+      "endpoint": "workbench.trial_change",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/trial.py",
+      "line": 75,
+      "sha256": "bb32c6bb73d6139cbe262c3cd2cad7af5c412db22cc77fad1c56065731d54249",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/drafts/<draft_ref>/discard",
+      "endpoint": "workbench.trial_discard",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/trial.py",
+      "line": 87,
+      "sha256": "bb32c6bb73d6139cbe262c3cd2cad7af5c412db22cc77fad1c56065731d54249",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/drafts/<draft_ref>/save",
+      "endpoint": "workbench.trial_save",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/trial.py",
+      "line": 81,
+      "sha256": "bb32c6bb73d6139cbe262c3cd2cad7af5c412db22cc77fad1c56065731d54249",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/drafts/preview",
+      "endpoint": "workbench.trial_create_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/trial.py",
+      "line": 44,
+      "sha256": "bb32c6bb73d6139cbe262c3cd2cad7af5c412db22cc77fad1c56065731d54249",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/scenarios",
+      "endpoint": "workbench.trial_scenarios",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/trial.py",
+      "line": 130,
+      "sha256": "bb32c6bb73d6139cbe262c3cd2cad7af5c412db22cc77fad1c56065731d54249",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/scenarios/<scenario_ref>",
+      "endpoint": "workbench.trial_scenario",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/trial.py",
+      "line": 93,
+      "sha256": "bb32c6bb73d6139cbe262c3cd2cad7af5c412db22cc77fad1c56065731d54249",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/scenarios/<scenario_ref>/adopt",
+      "endpoint": "workbench.trial_adopt",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/trial_adoption.py",
+      "line": 43,
+      "sha256": "d62dd9bef0fdcf8f6251bb3fe4cb14805cce25e906f9223e25c94274776375b7",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/scenarios/<scenario_ref>/adopt-preview",
+      "endpoint": "workbench.trial_adopt_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/workbench/trial_adoption.py",
+      "line": 37,
+      "sha256": "d62dd9bef0fdcf8f6251bb3fe4cb14805cce25e906f9223e25c94274776375b7",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/scenarios/<scenario_ref>/adoption-commands/<request_key>",
+      "endpoint": "workbench.trial_adoption_receipt",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/trial_adoption.py",
+      "line": 63,
+      "sha256": "d62dd9bef0fdcf8f6251bb3fe4cb14805cce25e906f9223e25c94274776375b7",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/api/workbench/v1/trial/scenarios/<scenario_ref>/adoption-history",
+      "endpoint": "workbench.trial_adoption_history",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/trial_adoption_history.py",
+      "line": 14,
+      "sha256": "511f65080da371f5ab27f4e3c7e804839e63cdf38e835c64957818a776d7a872",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/",
+      "endpoint": "equipment.list_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/equipment_pages.py",
+      "line": 119,
+      "sha256": "8f8ac235a6e2d8164ee926b8a46fa95715275a635c3bf1d9b84d7270b5f317f4",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/machine",
+      "context_groups": "L,M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/<machine_id>",
+      "endpoint": "equipment.detail_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/equipment_pages.py",
+      "line": 199,
+      "sha256": "8f8ac235a6e2d8164ee926b8a46fa95715275a635c3bf1d9b84d7270b5f317f4",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/machine/detail",
+      "context_groups": "M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/<machine_id>/delete",
+      "endpoint": "equipment.delete_machine",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_pages.py",
+      "line": 279,
+      "sha256": "8f8ac235a6e2d8164ee926b8a46fa95715275a635c3bf1d9b84d7270b5f317f4",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/<machine_id>/downtimes/<int:downtime_id>/cancel",
+      "endpoint": "equipment.cancel_downtime",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_downtimes.py",
+      "line": 86,
+      "sha256": "f399e51108d51fce411c435454729887f55e55abe176b09ded0f643b6f741b05",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/<machine_id>/downtimes/create",
+      "endpoint": "equipment.create_downtime",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_downtimes.py",
+      "line": 67,
+      "sha256": "f399e51108d51fce411c435454729887f55e55abe176b09ded0f643b6f741b05",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/<machine_id>/link/add",
+      "endpoint": "equipment.add_link",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_pages.py",
+      "line": 363,
+      "sha256": "8f8ac235a6e2d8164ee926b8a46fa95715275a635c3bf1d9b84d7270b5f317f4",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/<machine_id>/link/remove",
+      "endpoint": "equipment.remove_link",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_pages.py",
+      "line": 388,
+      "sha256": "8f8ac235a6e2d8164ee926b8a46fa95715275a635c3bf1d9b84d7270b5f317f4",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/<machine_id>/link/update",
+      "endpoint": "equipment.update_link",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_pages.py",
+      "line": 372,
+      "sha256": "8f8ac235a6e2d8164ee926b8a46fa95715275a635c3bf1d9b84d7270b5f317f4",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/<machine_id>/status",
+      "endpoint": "equipment.set_status",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_pages.py",
+      "line": 268,
+      "sha256": "8f8ac235a6e2d8164ee926b8a46fa95715275a635c3bf1d9b84d7270b5f317f4",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/<machine_id>/update",
+      "endpoint": "equipment.update_machine",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_pages.py",
+      "line": 245,
+      "sha256": "8f8ac235a6e2d8164ee926b8a46fa95715275a635c3bf1d9b84d7270b5f317f4",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/bulk/delete",
+      "endpoint": "equipment.bulk_delete",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_pages.py",
+      "line": 328,
+      "sha256": "8f8ac235a6e2d8164ee926b8a46fa95715275a635c3bf1d9b84d7270b5f317f4",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/bulk/status",
+      "endpoint": "equipment.bulk_set_status",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_pages.py",
+      "line": 290,
+      "sha256": "8f8ac235a6e2d8164ee926b8a46fa95715275a635c3bf1d9b84d7270b5f317f4",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/create",
+      "endpoint": "equipment.create_machine",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_pages.py",
+      "line": 171,
+      "sha256": "8f8ac235a6e2d8164ee926b8a46fa95715275a635c3bf1d9b84d7270b5f317f4",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/downtimes/batch",
+      "endpoint": "equipment.downtime_batch_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/equipment_downtimes.py",
+      "line": 15,
+      "sha256": "f399e51108d51fce411c435454729887f55e55abe176b09ded0f643b6f741b05",
+      "policy": "retirement_notice",
+      "proposed_target": "LEG-055",
+      "context_groups": "M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/downtimes/batch/create",
+      "endpoint": "equipment.downtime_batch_create",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_downtimes.py",
+      "line": 35,
+      "sha256": "f399e51108d51fce411c435454729887f55e55abe176b09ded0f643b6f741b05",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/excel/links",
+      "endpoint": "equipment.excel_link_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/equipment_excel_links.py",
+      "line": 101,
+      "sha256": "857f1cf5e868382c4899354976531c9979fcfbf58340cbd23f193bc265270c7d",
+      "policy": "retirement_notice",
+      "proposed_target": "LEG-052",
+      "context_groups": "X",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/excel/links/confirm",
+      "endpoint": "equipment.excel_link_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_excel_links.py",
+      "line": 170,
+      "sha256": "857f1cf5e868382c4899354976531c9979fcfbf58340cbd23f193bc265270c7d",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/excel/links/export",
+      "endpoint": "equipment.excel_link_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/equipment_excel_links.py",
+      "line": 283,
+      "sha256": "857f1cf5e868382c4899354976531c9979fcfbf58340cbd23f193bc265270c7d",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/excel/links/preview",
+      "endpoint": "equipment.excel_link_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_excel_links.py",
+      "line": 114,
+      "sha256": "857f1cf5e868382c4899354976531c9979fcfbf58340cbd23f193bc265270c7d",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/excel/links/template",
+      "endpoint": "equipment.excel_link_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/equipment_excel_links.py",
+      "line": 237,
+      "sha256": "857f1cf5e868382c4899354976531c9979fcfbf58340cbd23f193bc265270c7d",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/excel/machines",
+      "endpoint": "equipment.excel_machine_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/equipment_excel_machines.py",
+      "line": 182,
+      "sha256": "183121af2cd65e33e493bea6cedd853b2be3dec600fa4b828ac0921298619e96",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/machine/import",
+      "context_groups": "X",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/excel/machines/confirm",
+      "endpoint": "equipment.excel_machine_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_excel_machines.py",
+      "line": 292,
+      "sha256": "183121af2cd65e33e493bea6cedd853b2be3dec600fa4b828ac0921298619e96",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/excel/machines/export",
+      "endpoint": "equipment.excel_machine_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/equipment_excel_machines.py",
+      "line": 438,
+      "sha256": "183121af2cd65e33e493bea6cedd853b2be3dec600fa4b828ac0921298619e96",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/excel/machines/preview",
+      "endpoint": "equipment.excel_machine_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/equipment_excel_machines.py",
+      "line": 196,
+      "sha256": "183121af2cd65e33e493bea6cedd853b2be3dec600fa4b828ac0921298619e96",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/equipment/excel/machines/template",
+      "endpoint": "equipment.excel_machine_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/equipment_excel_machines.py",
+      "line": 393,
+      "sha256": "183121af2cd65e33e493bea6cedd853b2be3dec600fa4b828ac0921298619e96",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/excel-demo/",
+      "endpoint": "excel_demo.index",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/excel_demo.py",
+      "line": 88,
+      "sha256": "f1211ec554f83465de7e473ae137fa4511319186d113ad1aea646351abadc91b",
+      "policy": "retirement_notice",
+      "proposed_target": "Excel 演示入口",
+      "context_groups": "X",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/excel-demo/confirm",
+      "endpoint": "excel_demo.confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/excel_demo.py",
+      "line": 144,
+      "sha256": "f1211ec554f83465de7e473ae137fa4511319186d113ad1aea646351abadc91b",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/excel-demo/preview",
+      "endpoint": "excel_demo.preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/excel_demo.py",
+      "line": 101,
+      "sha256": "f1211ec554f83465de7e473ae137fa4511319186d113ad1aea646351abadc91b",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/excel-demo/template",
+      "endpoint": "excel_demo.download_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/excel_demo.py",
+      "line": 215,
+      "sha256": "f1211ec554f83465de7e473ae137fa4511319186d113ad1aea646351abadc91b",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/material/",
+      "endpoint": "material.index",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/material.py",
+      "line": 16,
+      "sha256": "7d0ba1d001d62d68b6662549792bb897ddcc8bba3b16bf4f5733c5622289ebe5",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/material",
+      "context_groups": "M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/material/batches",
+      "endpoint": "material.batch_materials_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/material.py",
+      "line": 101,
+      "sha256": "7d0ba1d001d62d68b6662549792bb897ddcc8bba3b16bf4f5733c5622289ebe5",
+      "policy": "retirement_notice",
+      "proposed_target": "LEG-060",
+      "context_groups": "M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/material/batches/<batch_id>/requirements/add",
+      "endpoint": "material.batch_material_add",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/material.py",
+      "line": 145,
+      "sha256": "7d0ba1d001d62d68b6662549792bb897ddcc8bba3b16bf4f5733c5622289ebe5",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/material/materials",
+      "endpoint": "material.materials_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/material.py",
+      "line": 21,
+      "sha256": "7d0ba1d001d62d68b6662549792bb897ddcc8bba3b16bf4f5733c5622289ebe5",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/material",
+      "context_groups": "L,M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/material/materials/<material_id>/delete",
+      "endpoint": "material.materials_delete",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/material.py",
+      "line": 82,
+      "sha256": "7d0ba1d001d62d68b6662549792bb897ddcc8bba3b16bf4f5733c5622289ebe5",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/material/materials/<material_id>/update",
+      "endpoint": "material.materials_update",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/material.py",
+      "line": 60,
+      "sha256": "7d0ba1d001d62d68b6662549792bb897ddcc8bba3b16bf4f5733c5622289ebe5",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/material/materials/create",
+      "endpoint": "material.materials_create",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/material.py",
+      "line": 38,
+      "sha256": "7d0ba1d001d62d68b6662549792bb897ddcc8bba3b16bf4f5733c5622289ebe5",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/material/requirements/<int:bm_id>/delete",
+      "endpoint": "material.batch_material_delete",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/material.py",
+      "line": 185,
+      "sha256": "7d0ba1d001d62d68b6662549792bb897ddcc8bba3b16bf4f5733c5622289ebe5",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/material/requirements/<int:bm_id>/update",
+      "endpoint": "material.batch_material_update",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/material.py",
+      "line": 164,
+      "sha256": "7d0ba1d001d62d68b6662549792bb897ddcc8bba3b16bf4f5733c5622289ebe5",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/",
+      "endpoint": "personnel.list_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/personnel_pages.py",
+      "line": 89,
+      "sha256": "eba50ece42ef68ec3814638602c5371ab864e45b3211990fc2e15ec061b88e4f",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/operator",
+      "context_groups": "L,M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/<operator_id>",
+      "endpoint": "personnel.detail_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/personnel_pages.py",
+      "line": 140,
+      "sha256": "eba50ece42ef68ec3814638602c5371ab864e45b3211990fc2e15ec061b88e4f",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/operator/detail",
+      "context_groups": "M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/<operator_id>/calendar",
+      "endpoint": "personnel.operator_calendar_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/personnel_calendar_pages.py",
+      "line": 33,
+      "sha256": "ed7aca33a521ea6fa4615bd66d555f2323681746d3557b2b8bdc1b798e1f2b59",
+      "policy": "retirement_notice",
+      "proposed_target": "LEG-056",
+      "context_groups": "D,M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/<operator_id>/calendar/upsert",
+      "endpoint": "personnel.operator_calendar_upsert",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_calendar_pages.py",
+      "line": 75,
+      "sha256": "ed7aca33a521ea6fa4615bd66d555f2323681746d3557b2b8bdc1b798e1f2b59",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/<operator_id>/delete",
+      "endpoint": "personnel.delete_operator",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_pages.py",
+      "line": 176,
+      "sha256": "eba50ece42ef68ec3814638602c5371ab864e45b3211990fc2e15ec061b88e4f",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/<operator_id>/link/add",
+      "endpoint": "personnel.add_link",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_pages.py",
+      "line": 263,
+      "sha256": "eba50ece42ef68ec3814638602c5371ab864e45b3211990fc2e15ec061b88e4f",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/<operator_id>/link/remove",
+      "endpoint": "personnel.remove_link",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_pages.py",
+      "line": 289,
+      "sha256": "eba50ece42ef68ec3814638602c5371ab864e45b3211990fc2e15ec061b88e4f",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/<operator_id>/link/update",
+      "endpoint": "personnel.update_link",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_pages.py",
+      "line": 272,
+      "sha256": "eba50ece42ef68ec3814638602c5371ab864e45b3211990fc2e15ec061b88e4f",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/<operator_id>/status",
+      "endpoint": "personnel.set_status",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_pages.py",
+      "line": 165,
+      "sha256": "eba50ece42ef68ec3814638602c5371ab864e45b3211990fc2e15ec061b88e4f",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/<operator_id>/update",
+      "endpoint": "personnel.update_operator",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_pages.py",
+      "line": 152,
+      "sha256": "eba50ece42ef68ec3814638602c5371ab864e45b3211990fc2e15ec061b88e4f",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/bulk/delete",
+      "endpoint": "personnel.bulk_delete",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_pages.py",
+      "line": 227,
+      "sha256": "eba50ece42ef68ec3814638602c5371ab864e45b3211990fc2e15ec061b88e4f",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/bulk/status",
+      "endpoint": "personnel.bulk_set_status",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_pages.py",
+      "line": 188,
+      "sha256": "eba50ece42ef68ec3814638602c5371ab864e45b3211990fc2e15ec061b88e4f",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/create",
+      "endpoint": "personnel.create_operator",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_pages.py",
+      "line": 122,
+      "sha256": "eba50ece42ef68ec3814638602c5371ab864e45b3211990fc2e15ec061b88e4f",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/links",
+      "endpoint": "personnel.excel_link_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/personnel_excel_links.py",
+      "line": 118,
+      "sha256": "72dce5664c30fe198151a0ddcc5927bdeedd4c6cec6fde4b168f48230fbd0516",
+      "policy": "retirement_notice",
+      "proposed_target": "LEG-052",
+      "context_groups": "X",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/links/confirm",
+      "endpoint": "personnel.excel_link_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_excel_links.py",
+      "line": 175,
+      "sha256": "72dce5664c30fe198151a0ddcc5927bdeedd4c6cec6fde4b168f48230fbd0516",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/links/export",
+      "endpoint": "personnel.excel_link_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/personnel_excel_links.py",
+      "line": 289,
+      "sha256": "72dce5664c30fe198151a0ddcc5927bdeedd4c6cec6fde4b168f48230fbd0516",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/links/preview",
+      "endpoint": "personnel.excel_link_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_excel_links.py",
+      "line": 132,
+      "sha256": "72dce5664c30fe198151a0ddcc5927bdeedd4c6cec6fde4b168f48230fbd0516",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/links/template",
+      "endpoint": "personnel.excel_link_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/personnel_excel_links.py",
+      "line": 243,
+      "sha256": "72dce5664c30fe198151a0ddcc5927bdeedd4c6cec6fde4b168f48230fbd0516",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/operator_calendar",
+      "endpoint": "personnel.excel_operator_calendar_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/personnel_excel_operator_calendar.py",
+      "line": 161,
+      "sha256": "812dba8731cc4d86f6e4ec6b74506ac84daf4b6c82e34bdf5b5a0868b855511c",
+      "policy": "retirement_notice",
+      "proposed_target": "LEG-056",
+      "context_groups": "X",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/operator_calendar/confirm",
+      "endpoint": "personnel.excel_operator_calendar_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_excel_operator_calendar.py",
+      "line": 264,
+      "sha256": "812dba8731cc4d86f6e4ec6b74506ac84daf4b6c82e34bdf5b5a0868b855511c",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/operator_calendar/export",
+      "endpoint": "personnel.excel_operator_calendar_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/personnel_excel_operator_calendar.py",
+      "line": 409,
+      "sha256": "812dba8731cc4d86f6e4ec6b74506ac84daf4b6c82e34bdf5b5a0868b855511c",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/operator_calendar/preview",
+      "endpoint": "personnel.excel_operator_calendar_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_excel_operator_calendar.py",
+      "line": 174,
+      "sha256": "812dba8731cc4d86f6e4ec6b74506ac84daf4b6c82e34bdf5b5a0868b855511c",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/operator_calendar/template",
+      "endpoint": "personnel.excel_operator_calendar_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/personnel_excel_operator_calendar.py",
+      "line": 364,
+      "sha256": "812dba8731cc4d86f6e4ec6b74506ac84daf4b6c82e34bdf5b5a0868b855511c",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/operators",
+      "endpoint": "personnel.excel_operator_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/personnel_excel_operators.py",
+      "line": 105,
+      "sha256": "4e1bd6b2a7d7117b1d7522c53037106469b015f5e483d206d0452c68bedb45b5",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/operator/import",
+      "context_groups": "X",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/operators/confirm",
+      "endpoint": "personnel.excel_operator_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_excel_operators.py",
+      "line": 197,
+      "sha256": "4e1bd6b2a7d7117b1d7522c53037106469b015f5e483d206d0452c68bedb45b5",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/operators/export",
+      "endpoint": "personnel.excel_operator_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/personnel_excel_operators.py",
+      "line": 338,
+      "sha256": "4e1bd6b2a7d7117b1d7522c53037106469b015f5e483d206d0452c68bedb45b5",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/operators/preview",
+      "endpoint": "personnel.excel_operator_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_excel_operators.py",
+      "line": 120,
+      "sha256": "4e1bd6b2a7d7117b1d7522c53037106469b015f5e483d206d0452c68bedb45b5",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/excel/operators/template",
+      "endpoint": "personnel.excel_operator_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/personnel_excel_operators.py",
+      "line": 291,
+      "sha256": "4e1bd6b2a7d7117b1d7522c53037106469b015f5e483d206d0452c68bedb45b5",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/teams",
+      "endpoint": "personnel.teams_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/personnel_teams.py",
+      "line": 18,
+      "sha256": "d3883c25e646bad99f174a96bb74fc64f1342f8bd5164e317c1016bb0c9bb34b",
+      "policy": "retirement_notice",
+      "proposed_target": "LEG-054",
+      "context_groups": "L,M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/teams/<team_id>/delete",
+      "endpoint": "personnel.delete_team",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_teams.py",
+      "line": 66,
+      "sha256": "d3883c25e646bad99f174a96bb74fc64f1342f8bd5164e317c1016bb0c9bb34b",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/teams/<team_id>/update",
+      "endpoint": "personnel.update_team",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_teams.py",
+      "line": 54,
+      "sha256": "d3883c25e646bad99f174a96bb74fc64f1342f8bd5164e317c1016bb0c9bb34b",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/personnel/teams/create",
+      "endpoint": "personnel.create_team",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/personnel_teams.py",
+      "line": 41,
+      "sha256": "d3883c25e646bad99f174a96bb74fc64f1342f8bd5164e317c1016bb0c9bb34b",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/",
+      "endpoint": "process.list_parts",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_parts.py",
+      "line": 61,
+      "sha256": "7b15d70dca71b09cf0c140914aef1da9c048aad97ffb592415d6ce8cd1d7ee05",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/part",
+      "context_groups": "L,M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/op-types",
+      "endpoint": "process.excel_op_type_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_op_types.py",
+      "line": 143,
+      "sha256": "bf625e474eb5d8703d0c1318603bbab5538e6e2259498f8521e970cf97824565",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/op_type/import",
+      "context_groups": "X",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/op-types/confirm",
+      "endpoint": "process.excel_op_type_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_excel_op_types.py",
+      "line": 208,
+      "sha256": "bf625e474eb5d8703d0c1318603bbab5538e6e2259498f8521e970cf97824565",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/op-types/export",
+      "endpoint": "process.excel_op_type_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_op_types.py",
+      "line": 330,
+      "sha256": "bf625e474eb5d8703d0c1318603bbab5538e6e2259498f8521e970cf97824565",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/op-types/preview",
+      "endpoint": "process.excel_op_type_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_excel_op_types.py",
+      "line": 157,
+      "sha256": "bf625e474eb5d8703d0c1318603bbab5538e6e2259498f8521e970cf97824565",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/op-types/template",
+      "endpoint": "process.excel_op_type_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_op_types.py",
+      "line": 284,
+      "sha256": "bf625e474eb5d8703d0c1318603bbab5538e6e2259498f8521e970cf97824565",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/part-operation-hours",
+      "endpoint": "process.excel_part_op_hours_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_part_operation_hours.py",
+      "line": 243,
+      "sha256": "1808dc248f66610884a0aec48a6814caaa4047aaa95aa37ae79b26cd73fd0628",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/part/hours-import",
+      "context_groups": "X",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/part-operation-hours/confirm",
+      "endpoint": "process.excel_part_op_hours_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_excel_part_operation_hours.py",
+      "line": 314,
+      "sha256": "1808dc248f66610884a0aec48a6814caaa4047aaa95aa37ae79b26cd73fd0628",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/part-operation-hours/export",
+      "endpoint": "process.excel_part_op_hours_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_part_operation_hours.py",
+      "line": 445,
+      "sha256": "1808dc248f66610884a0aec48a6814caaa4047aaa95aa37ae79b26cd73fd0628",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/part-operation-hours/preview",
+      "endpoint": "process.excel_part_op_hours_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_excel_part_operation_hours.py",
+      "line": 256,
+      "sha256": "1808dc248f66610884a0aec48a6814caaa4047aaa95aa37ae79b26cd73fd0628",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/part-operation-hours/template",
+      "endpoint": "process.excel_part_op_hours_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_part_operation_hours.py",
+      "line": 399,
+      "sha256": "1808dc248f66610884a0aec48a6814caaa4047aaa95aa37ae79b26cd73fd0628",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/part-operations",
+      "endpoint": "process.excel_part_ops_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_part_operations.py",
+      "line": 20,
+      "sha256": "cb7e98d739879092439fe4eebedaae8f345649e1ca3eaecd0451181665b49a2e",
+      "policy": "retirement_notice",
+      "proposed_target": "工序明细导出旧外壳；保留真实 XLSX",
+      "context_groups": "M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/part-operations/export",
+      "endpoint": "process.excel_part_ops_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_part_operations.py",
+      "line": 31,
+      "sha256": "cb7e98d739879092439fe4eebedaae8f345649e1ca3eaecd0451181665b49a2e",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/routes",
+      "endpoint": "process.excel_routes_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_routes.py",
+      "line": 152,
+      "sha256": "fb269c8ca9e0ec962e144859fae7f305ffb16212585dd7c16deb531947fe46d3",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/part/route-import",
+      "context_groups": "X",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/routes/confirm",
+      "endpoint": "process.excel_routes_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_excel_routes.py",
+      "line": 224,
+      "sha256": "fb269c8ca9e0ec962e144859fae7f305ffb16212585dd7c16deb531947fe46d3",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/routes/export",
+      "endpoint": "process.excel_routes_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_routes.py",
+      "line": 346,
+      "sha256": "fb269c8ca9e0ec962e144859fae7f305ffb16212585dd7c16deb531947fe46d3",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/routes/preview",
+      "endpoint": "process.excel_routes_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_excel_routes.py",
+      "line": 167,
+      "sha256": "fb269c8ca9e0ec962e144859fae7f305ffb16212585dd7c16deb531947fe46d3",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/routes/template",
+      "endpoint": "process.excel_routes_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_routes.py",
+      "line": 300,
+      "sha256": "fb269c8ca9e0ec962e144859fae7f305ffb16212585dd7c16deb531947fe46d3",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/suppliers",
+      "endpoint": "process.excel_supplier_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_suppliers.py",
+      "line": 123,
+      "sha256": "4c8497fb138741a11b5d69d41bdca654d35a75ae548acb2fba72109e107ab74d",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/supplier/import",
+      "context_groups": "X",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/suppliers/confirm",
+      "endpoint": "process.excel_supplier_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_excel_suppliers.py",
+      "line": 226,
+      "sha256": "4c8497fb138741a11b5d69d41bdca654d35a75ae548acb2fba72109e107ab74d",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/suppliers/export",
+      "endpoint": "process.excel_supplier_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_suppliers.py",
+      "line": 380,
+      "sha256": "4c8497fb138741a11b5d69d41bdca654d35a75ae548acb2fba72109e107ab74d",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/suppliers/preview",
+      "endpoint": "process.excel_supplier_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_excel_suppliers.py",
+      "line": 137,
+      "sha256": "4c8497fb138741a11b5d69d41bdca654d35a75ae548acb2fba72109e107ab74d",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/excel/suppliers/template",
+      "endpoint": "process.excel_supplier_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_excel_suppliers.py",
+      "line": 334,
+      "sha256": "4c8497fb138741a11b5d69d41bdca654d35a75ae548acb2fba72109e107ab74d",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/op-types",
+      "endpoint": "process.op_types_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_op_types.py",
+      "line": 17,
+      "sha256": "9b4e3c6b92751c54f22e907a9dd1d9505c6c999acdddd4aa2de1e8c34dfe1a5f",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/op_type",
+      "context_groups": "L,M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/op-types/<op_type_id>",
+      "endpoint": "process.op_type_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_op_types.py",
+      "line": 44,
+      "sha256": "9b4e3c6b92751c54f22e907a9dd1d9505c6c999acdddd4aa2de1e8c34dfe1a5f",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/op_type/detail",
+      "context_groups": "M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/op-types/<op_type_id>/delete",
+      "endpoint": "process.delete_op_type",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_op_types.py",
+      "line": 62,
+      "sha256": "9b4e3c6b92751c54f22e907a9dd1d9505c6c999acdddd4aa2de1e8c34dfe1a5f",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/op-types/<op_type_id>/update",
+      "endpoint": "process.update_op_type",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_op_types.py",
+      "line": 51,
+      "sha256": "9b4e3c6b92751c54f22e907a9dd1d9505c6c999acdddd4aa2de1e8c34dfe1a5f",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/op-types/create",
+      "endpoint": "process.create_op_type",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_op_types.py",
+      "line": 32,
+      "sha256": "9b4e3c6b92751c54f22e907a9dd1d9505c6c999acdddd4aa2de1e8c34dfe1a5f",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/parts/<part_no>",
+      "endpoint": "process.part_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_parts.py",
+      "line": 123,
+      "sha256": "7b15d70dca71b09cf0c140914aef1da9c048aad97ffb592415d6ce8cd1d7ee05",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/part/detail",
+      "context_groups": "M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/parts/<part_no>/delete",
+      "endpoint": "process.delete_part",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_parts.py",
+      "line": 187,
+      "sha256": "7b15d70dca71b09cf0c140914aef1da9c048aad97ffb592415d6ce8cd1d7ee05",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/parts/<part_no>/groups/<group_id>/delete",
+      "endpoint": "process.delete_group",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_parts.py",
+      "line": 296,
+      "sha256": "7b15d70dca71b09cf0c140914aef1da9c048aad97ffb592415d6ce8cd1d7ee05",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/parts/<part_no>/groups/<group_id>/mode",
+      "endpoint": "process.set_group_mode",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_parts.py",
+      "line": 263,
+      "sha256": "7b15d70dca71b09cf0c140914aef1da9c048aad97ffb592415d6ce8cd1d7ee05",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/parts/<part_no>/ops/<int:seq>/hours",
+      "endpoint": "process.update_internal_hours",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_parts.py",
+      "line": 253,
+      "sha256": "7b15d70dca71b09cf0c140914aef1da9c048aad97ffb592415d6ce8cd1d7ee05",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/parts/<part_no>/reparse",
+      "endpoint": "process.reparse_part",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_parts.py",
+      "line": 230,
+      "sha256": "7b15d70dca71b09cf0c140914aef1da9c048aad97ffb592415d6ce8cd1d7ee05",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/parts/<part_no>/update",
+      "endpoint": "process.update_part",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_parts.py",
+      "line": 176,
+      "sha256": "7b15d70dca71b09cf0c140914aef1da9c048aad97ffb592415d6ce8cd1d7ee05",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/parts/bulk/delete",
+      "endpoint": "process.bulk_delete_parts",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_parts.py",
+      "line": 198,
+      "sha256": "7b15d70dca71b09cf0c140914aef1da9c048aad97ffb592415d6ce8cd1d7ee05",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/parts/create",
+      "endpoint": "process.create_part",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_parts.py",
+      "line": 97,
+      "sha256": "7b15d70dca71b09cf0c140914aef1da9c048aad97ffb592415d6ce8cd1d7ee05",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/suppliers",
+      "endpoint": "process.suppliers_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_suppliers.py",
+      "line": 24,
+      "sha256": "7cfe1cbac59fa6f929c6ebd0313977d9b114a112f4b8a75548689adf0c7109d9",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/supplier",
+      "context_groups": "L,M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/suppliers/<supplier_id>",
+      "endpoint": "process.supplier_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/process_suppliers.py",
+      "line": 77,
+      "sha256": "7cfe1cbac59fa6f929c6ebd0313977d9b114a112f4b8a75548689adf0c7109d9",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/supplier/detail",
+      "context_groups": "M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/suppliers/<supplier_id>/delete",
+      "endpoint": "process.delete_supplier",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_suppliers.py",
+      "line": 117,
+      "sha256": "7cfe1cbac59fa6f929c6ebd0313977d9b114a112f4b8a75548689adf0c7109d9",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/suppliers/<supplier_id>/update",
+      "endpoint": "process.update_supplier",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_suppliers.py",
+      "line": 96,
+      "sha256": "7cfe1cbac59fa6f929c6ebd0313977d9b114a112f4b8a75548689adf0c7109d9",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/process/suppliers/create",
+      "endpoint": "process.create_supplier",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/process_suppliers.py",
+      "line": 55,
+      "sha256": "7cfe1cbac59fa6f929c6ebd0313977d9b114a112f4b8a75548689adf0c7109d9",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/reports/",
+      "endpoint": "reports.index",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/reports.py",
+      "line": 19,
+      "sha256": "0e4f24a23448f9c6c70c65c520b91d5a6de253f29d29c2f424a82fb65a6a5589",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "reports/catalog",
+      "context_groups": "P,D,R",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/reports/downtime",
+      "endpoint": "reports.downtime_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/reports.py",
+      "line": 39,
+      "sha256": "0e4f24a23448f9c6c70c65c520b91d5a6de253f29d29c2f424a82fb65a6a5589",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "reports/catalog:downtime",
+      "context_groups": "P,D,R",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/reports/downtime/export",
+      "endpoint": "reports.downtime_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/reports_export_routes.py",
+      "line": 129,
+      "sha256": "6c4f6fb9752b132616f17915ee180dfefa805cd759240272550845d1dfbdddac",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/reports/execution-review",
+      "endpoint": "reports.execution_review_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/reports.py",
+      "line": 34,
+      "sha256": "0e4f24a23448f9c6c70c65c520b91d5a6de253f29d29c2f424a82fb65a6a5589",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "reports/catalog:official-review",
+      "context_groups": "P,D,R",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/reports/execution-review/export",
+      "endpoint": "reports.execution_review_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/reports_export_routes.py",
+      "line": 98,
+      "sha256": "6c4f6fb9752b132616f17915ee180dfefa805cd759240272550845d1dfbdddac",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/reports/overdue",
+      "endpoint": "reports.overdue_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/reports.py",
+      "line": 24,
+      "sha256": "0e4f24a23448f9c6c70c65c520b91d5a6de253f29d29c2f424a82fb65a6a5589",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "reports/catalog:overdue",
+      "context_groups": "P,R",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/reports/overdue/export",
+      "endpoint": "reports.overdue_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/reports_export_routes.py",
+      "line": 28,
+      "sha256": "6c4f6fb9752b132616f17915ee180dfefa805cd759240272550845d1dfbdddac",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/reports/utilization",
+      "endpoint": "reports.utilization_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/reports.py",
+      "line": 29,
+      "sha256": "0e4f24a23448f9c6c70c65c520b91d5a6de253f29d29c2f424a82fb65a6a5589",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "reports/catalog:utilization",
+      "context_groups": "P,D,R",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/reports/utilization/export",
+      "endpoint": "reports.utilization_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/reports_export_routes.py",
+      "line": 56,
+      "sha256": "6c4f6fb9752b132616f17915ee180dfefa805cd759240272550845d1dfbdddac",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/",
+      "endpoint": "scheduler.batches_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_batches.py",
+      "line": 67,
+      "sha256": "63b677484cfaa461029b9b0514d3cd1d1a0c6ae6fab60d55510fe6746d91d33e",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "run",
+      "context_groups": "P,L,X",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/analysis",
+      "endpoint": "scheduler.analysis_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_analysis.py",
+      "line": 71,
+      "sha256": "15f9bf4f6529a4e4553c9aa88ed7da281548917be8ad6442235a2712992b4ef4",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "analysis",
+      "context_groups": "P,D,R",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/batches",
+      "endpoint": "scheduler.batches_manage_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_batches.py",
+      "line": 132,
+      "sha256": "63b677484cfaa461029b9b0514d3cd1d1a0c6ae6fab60d55510fe6746d91d33e",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "batches",
+      "context_groups": "L,M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/batches/<batch_id>",
+      "endpoint": "scheduler.batch_detail",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_batch_detail.py",
+      "line": 382,
+      "sha256": "e0e71a82c21667918cde1bcf1d9b13894141cc5cd9a4488dcdfb1a8931a37a94",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "batches/detail",
+      "context_groups": "P,M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/batches/<batch_id>/delete",
+      "endpoint": "scheduler.delete_batch",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_batches.py",
+      "line": 232,
+      "sha256": "63b677484cfaa461029b9b0514d3cd1d1a0c6ae6fab60d55510fe6746d91d33e",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/batches/<batch_id>/generate-ops",
+      "endpoint": "scheduler.generate_ops",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_batches.py",
+      "line": 401,
+      "sha256": "63b677484cfaa461029b9b0514d3cd1d1a0c6ae6fab60d55510fe6746d91d33e",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/batches/bulk/copy",
+      "endpoint": "scheduler.bulk_copy_batches",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_batches.py",
+      "line": 334,
+      "sha256": "63b677484cfaa461029b9b0514d3cd1d1a0c6ae6fab60d55510fe6746d91d33e",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/batches/bulk/delete",
+      "endpoint": "scheduler.bulk_delete_batches",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_batches.py",
+      "line": 250,
+      "sha256": "63b677484cfaa461029b9b0514d3cd1d1a0c6ae6fab60d55510fe6746d91d33e",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/batches/bulk/update",
+      "endpoint": "scheduler.bulk_update_batches",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_batches.py",
+      "line": 368,
+      "sha256": "63b677484cfaa461029b9b0514d3cd1d1a0c6ae6fab60d55510fe6746d91d33e",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/batches/create",
+      "endpoint": "scheduler.create_batch",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_batches.py",
+      "line": 189,
+      "sha256": "63b677484cfaa461029b9b0514d3cd1d1a0c6ae6fab60d55510fe6746d91d33e",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/calendar",
+      "endpoint": "scheduler.calendar_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_calendar_pages.py",
+      "line": 12,
+      "sha256": "854cb1be8067a5a9c4e15c015e3d3e3f5f9ce685b397cfb93e140a541135a224",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "process/calendar",
+      "context_groups": "D,M",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/calendar/upsert",
+      "endpoint": "scheduler.calendar_upsert",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_calendar_pages.py",
+      "line": 42,
+      "sha256": "854cb1be8067a5a9c4e15c015e3d3e3f5f9ce685b397cfb93e140a541135a224",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/config",
+      "endpoint": "scheduler.config_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_config.py",
+      "line": 315,
+      "sha256": "e74a3ea4c9ff7f190e61e64e980301e78b9a150bb4ce883c703c08c2e9e4ea03",
+      "policy": "retirement_notice",
+      "proposed_target": "LEG-011,018..034",
+      "context_groups": "X",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/config",
+      "endpoint": "scheduler.update_config",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_config.py",
+      "line": 470,
+      "sha256": "e74a3ea4c9ff7f190e61e64e980301e78b9a150bb4ce883c703c08c2e9e4ea03",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/config/default",
+      "endpoint": "scheduler.restore_config_default",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_config.py",
+      "line": 480,
+      "sha256": "e74a3ea4c9ff7f190e61e64e980301e78b9a150bb4ce883c703c08c2e9e4ea03",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/config/manual",
+      "endpoint": "scheduler.config_manual_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_config.py",
+      "line": 244,
+      "sha256": "e74a3ea4c9ff7f190e61e64e980301e78b9a150bb4ce883c703c08c2e9e4ea03",
+      "policy": "restyle_keep_capability",
+      "proposed_target": "workbench/manual (拟新增呈现)",
+      "context_groups": "H",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/config/manual/download",
+      "endpoint": "scheduler.config_manual_download",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_config.py",
+      "line": 289,
+      "sha256": "e74a3ea4c9ff7f190e61e64e980301e78b9a150bb4ce883c703c08c2e9e4ea03",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/config/preset/apply",
+      "endpoint": "scheduler.preset_apply",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_config.py",
+      "line": 361,
+      "sha256": "e74a3ea4c9ff7f190e61e64e980301e78b9a150bb4ce883c703c08c2e9e4ea03",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/config/preset/delete",
+      "endpoint": "scheduler.preset_delete",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_config.py",
+      "line": 412,
+      "sha256": "e74a3ea4c9ff7f190e61e64e980301e78b9a150bb4ce883c703c08c2e9e4ea03",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/config/preset/save",
+      "endpoint": "scheduler.preset_save",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_config.py",
+      "line": 385,
+      "sha256": "e74a3ea4c9ff7f190e61e64e980301e78b9a150bb4ce883c703c08c2e9e4ea03",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/excel/batches",
+      "endpoint": "scheduler.excel_batches_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_excel_batches.py",
+      "line": 139,
+      "sha256": "b65242bdc84d4f82e038de984d90071d5bba42523bb85c6911e015544ffd4453",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "batches/import",
+      "context_groups": "X",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/excel/batches/confirm",
+      "endpoint": "scheduler.excel_batches_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_excel_batches.py",
+      "line": 238,
+      "sha256": "b65242bdc84d4f82e038de984d90071d5bba42523bb85c6911e015544ffd4453",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/excel/batches/export",
+      "endpoint": "scheduler.excel_batches_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_excel_batches.py",
+      "line": 392,
+      "sha256": "b65242bdc84d4f82e038de984d90071d5bba42523bb85c6911e015544ffd4453",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/excel/batches/preview",
+      "endpoint": "scheduler.excel_batches_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_excel_batches.py",
+      "line": 155,
+      "sha256": "b65242bdc84d4f82e038de984d90071d5bba42523bb85c6911e015544ffd4453",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/excel/batches/template",
+      "endpoint": "scheduler.excel_batches_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_excel_batches.py",
+      "line": 347,
+      "sha256": "b65242bdc84d4f82e038de984d90071d5bba42523bb85c6911e015544ffd4453",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/excel/calendar",
+      "endpoint": "scheduler.excel_calendar_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_excel_calendar.py",
+      "line": 138,
+      "sha256": "4c8fb478cae984801d985420ac8f194809b633ae227ee58d1bacc3ee5cf31cb5",
+      "policy": "retirement_notice",
+      "proposed_target": "LEG-058",
+      "context_groups": "X,D",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/excel/calendar/confirm",
+      "endpoint": "scheduler.excel_calendar_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_excel_calendar.py",
+      "line": 220,
+      "sha256": "4c8fb478cae984801d985420ac8f194809b633ae227ee58d1bacc3ee5cf31cb5",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/excel/calendar/export",
+      "endpoint": "scheduler.excel_calendar_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_excel_calendar.py",
+      "line": 388,
+      "sha256": "4c8fb478cae984801d985420ac8f194809b633ae227ee58d1bacc3ee5cf31cb5",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/excel/calendar/preview",
+      "endpoint": "scheduler.excel_calendar_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_excel_calendar.py",
+      "line": 159,
+      "sha256": "4c8fb478cae984801d985420ac8f194809b633ae227ee58d1bacc3ee5cf31cb5",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/excel/calendar/template",
+      "endpoint": "scheduler.excel_calendar_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_excel_calendar.py",
+      "line": 343,
+      "sha256": "4c8fb478cae984801d985420ac8f194809b633ae227ee58d1bacc3ee5cf31cb5",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/gantt",
+      "endpoint": "scheduler.gantt_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_gantt.py",
+      "line": 158,
+      "sha256": "2107ece8837af12f96f6cc7b668153a68af131794b7e959bc344b6c1a5ecc0e6",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "gantt",
+      "context_groups": "P,D,R,U",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/gantt/adjustments/create-draft",
+      "endpoint": "scheduler.create_gantt_adjustment_draft",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_gantt_adjustments.py",
+      "line": 14,
+      "sha256": "4eff122350286f999a7d7eeb725940e3697cf510e4f84f4b97af152390458728",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/gantt/adjustments/discard-draft",
+      "endpoint": "scheduler.discard_gantt_adjustment_draft",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_gantt_adjustments.py",
+      "line": 76,
+      "sha256": "4eff122350286f999a7d7eeb725940e3697cf510e4f84f4b97af152390458728",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/gantt/adjustments/publish-scenario",
+      "endpoint": "scheduler.publish_gantt_adjustment_scenario",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_gantt_adjustments.py",
+      "line": 134,
+      "sha256": "4eff122350286f999a7d7eeb725940e3697cf510e4f84f4b97af152390458728",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/gantt/adjustments/record-resource-change",
+      "endpoint": "scheduler.record_gantt_adjustment_resource_change",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_gantt_adjustments.py",
+      "line": 55,
+      "sha256": "4eff122350286f999a7d7eeb725940e3697cf510e4f84f4b97af152390458728",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/gantt/adjustments/record-time-change",
+      "endpoint": "scheduler.record_gantt_adjustment_time_change",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_gantt_adjustments.py",
+      "line": 33,
+      "sha256": "4eff122350286f999a7d7eeb725940e3697cf510e4f84f4b97af152390458728",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/gantt/adjustments/save-scenario",
+      "endpoint": "scheduler.save_gantt_adjustment_scenario",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_gantt_adjustments.py",
+      "line": 109,
+      "sha256": "4eff122350286f999a7d7eeb725940e3697cf510e4f84f4b97af152390458728",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/gantt/adjustments/validate-simulate",
+      "endpoint": "scheduler.validate_gantt_adjustment",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_gantt_adjustments.py",
+      "line": 92,
+      "sha256": "4eff122350286f999a7d7eeb725940e3697cf510e4f84f4b97af152390458728",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/gantt/data",
+      "endpoint": "scheduler.gantt_data",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_gantt.py",
+      "line": 315,
+      "sha256": "2107ece8837af12f96f6cc7b668153a68af131794b7e959bc344b6c1a5ecc0e6",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/ops/<int:op_id>/update",
+      "endpoint": "scheduler.update_op",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_ops.py",
+      "line": 37,
+      "sha256": "2dbde1cde2719b6d27120615aa273fd9c09876338ff67bef8d7bd59c37badd55",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/ops/update-token/<token>",
+      "endpoint": "scheduler.update_op_by_token",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_ops.py",
+      "line": 44,
+      "sha256": "2dbde1cde2719b6d27120615aa273fd9c09876338ff67bef8d7bd59c37badd55",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch",
+      "endpoint": "scheduler.resource_dispatch_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
+      "line": 216,
+      "sha256": "3b4307a6360622859c92db7f9082932f52c3299f2c3de186ed078a2055089738",
+      "policy": "retirement_notice",
+      "proposed_target": "LEG-068,070",
+      "context_groups": "P,D,R,U",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/data",
+      "endpoint": "scheduler.resource_dispatch_data",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
+      "line": 252,
+      "sha256": "3b4307a6360622859c92db7f9082932f52c3299f2c3de186ed078a2055089738",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/<int:op_id>/actual",
+      "endpoint": "scheduler.resource_dispatch_execution_actual",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 128,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/<int:op_id>/events",
+      "endpoint": "scheduler.resource_dispatch_execution_events",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 61,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/<int:op_id>/finish",
+      "endpoint": "scheduler.resource_dispatch_execution_finish",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 222,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/<int:op_id>/pause",
+      "endpoint": "scheduler.resource_dispatch_execution_pause",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 227,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/<int:op_id>/report-exception",
+      "endpoint": "scheduler.resource_dispatch_execution_report_exception",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 237,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/<int:op_id>/resume",
+      "endpoint": "scheduler.resource_dispatch_execution_resume",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 232,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/<int:op_id>/start",
+      "endpoint": "scheduler.resource_dispatch_execution_start",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 217,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/actual-template",
+      "endpoint": "scheduler.resource_dispatch_actual_template",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 242,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/data",
+      "endpoint": "scheduler.resource_dispatch_execution_data",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 48,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/import",
+      "endpoint": "scheduler.resource_dispatch_actual_import",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 280,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/import/confirm",
+      "endpoint": "scheduler.resource_dispatch_actual_import_confirm",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 293,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/import/preview",
+      "endpoint": "scheduler.resource_dispatch_actual_import_preview",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 267,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/tasks/<task_key>/actual",
+      "endpoint": "scheduler.resource_dispatch_execution_actual_by_task",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 144,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/execution/tasks/<task_key>/events",
+      "endpoint": "scheduler.resource_dispatch_execution_events_by_task",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+      "line": 95,
+      "sha256": "24de35b99ac3ca8b8d7bbd764b0b92b538184a0c7e3f00430ab0698a288d779c",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/resource-dispatch/export",
+      "endpoint": "scheduler.resource_dispatch_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
+      "line": 264,
+      "sha256": "3b4307a6360622859c92db7f9082932f52c3299f2c3de186ed078a2055089738",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/run",
+      "endpoint": "scheduler.run_schedule",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_run.py",
+      "line": 38,
+      "sha256": "e212e850546afc39600711ae765c24025674fafe8746551aaecb9066c677e985",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/simulate",
+      "endpoint": "scheduler.simulate_schedule",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_week_plan.py",
+      "line": 433,
+      "sha256": "00cd6780cc892f6df04d91f75f353686d5b76533d386a74e230133ec4ef4dcfe",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/week-plan",
+      "endpoint": "scheduler.week_plan_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_week_plan.py",
+      "line": 258,
+      "sha256": "00cd6780cc892f6df04d91f75f353686d5b76533d386a74e230133ec4ef4dcfe",
+      "policy": "retirement_notice",
+      "proposed_target": "LEG-009；保留导出/打印链接",
+      "context_groups": "P,D,R",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/week-plan/export",
+      "endpoint": "scheduler.week_plan_export",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_week_plan.py",
+      "line": 370,
+      "sha256": "00cd6780cc892f6df04d91f75f353686d5b76533d386a74e230133ec4ef4dcfe",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/scheduler/week-plan/print",
+      "endpoint": "scheduler.week_plan_print_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/domains/scheduler/scheduler_week_plan_print.py",
+      "line": 106,
+      "sha256": "aec072d0e1de4cb47772bcfd0cf1621248e6b2e68ed0a084e5bf26758140664c",
+      "policy": "restyle_keep_capability",
+      "proposed_target": "workbench/print (拟新增呈现)",
+      "context_groups": "P,D,R,U",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/static/<path:filename>",
+      "endpoint": "static",
+      "methods": [
+        "GET"
+      ],
+      "source": ".venv/lib/python3.8/site-packages/flask/app.py",
+      "line": 502,
+      "sha256": "86ddd0c7d53dcf4235a947cba12edb62125cb9b76993e8b9e1e1eadfb2c394df",
+      "policy": "precise_asset_manifest",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/",
+      "endpoint": "system.index",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/system_backup.py",
+      "line": 74,
+      "sha256": "2fc435498f9774b11e2a1f90c985cbe7dac9d03c06485c0e44394a0edb00f0db",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "system",
+      "context_groups": "S",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/backup",
+      "endpoint": "system.backup_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/system_backup.py",
+      "line": 79,
+      "sha256": "2fc435498f9774b11e2a1f90c985cbe7dac9d03c06485c0e44394a0edb00f0db",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "system/backups",
+      "context_groups": "S",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/backup/cleanup",
+      "endpoint": "system.backup_cleanup",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/system_backup.py",
+      "line": 299,
+      "sha256": "2fc435498f9774b11e2a1f90c985cbe7dac9d03c06485c0e44394a0edb00f0db",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/backup/create",
+      "endpoint": "system.backup_create",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/system_backup.py",
+      "line": 111,
+      "sha256": "2fc435498f9774b11e2a1f90c985cbe7dac9d03c06485c0e44394a0edb00f0db",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/backup/delete",
+      "endpoint": "system.backup_delete",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/system_backup.py",
+      "line": 188,
+      "sha256": "2fc435498f9774b11e2a1f90c985cbe7dac9d03c06485c0e44394a0edb00f0db",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/backup/delete-batch",
+      "endpoint": "system.backup_delete_batch",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/system_backup.py",
+      "line": 219,
+      "sha256": "2fc435498f9774b11e2a1f90c985cbe7dac9d03c06485c0e44394a0edb00f0db",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/backup/restore",
+      "endpoint": "system.backup_restore",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/system_backup.py",
+      "line": 331,
+      "sha256": "2fc435498f9774b11e2a1f90c985cbe7dac9d03c06485c0e44394a0edb00f0db",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/backup/settings",
+      "endpoint": "system.backup_settings",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/system_backup.py",
+      "line": 163,
+      "sha256": "2fc435498f9774b11e2a1f90c985cbe7dac9d03c06485c0e44394a0edb00f0db",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/health",
+      "endpoint": "system.health",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/system_health.py",
+      "line": 15,
+      "sha256": "5795760310447a6794d7f92a8e56ebc89575b9732685c0aa294f7b152a9ebe1d",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/history",
+      "endpoint": "system.history_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/system_history.py",
+      "line": 49,
+      "sha256": "e5f285f6db318eea6d522c2839e66a4fb160fa2371387f379a4d257db1716d6b",
+      "policy": "retirement_notice",
+      "proposed_target": "LEG-075",
+      "context_groups": "P,L",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/logs",
+      "endpoint": "system.logs_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/system_logs.py",
+      "line": 30,
+      "sha256": "3f3e32a9941b40d5b006bd3f4f690195335ae2ff039a45e8ca63c93f28622c49",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "system/operations",
+      "context_groups": "S",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/logs/delete",
+      "endpoint": "system.logs_delete",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/system_logs.py",
+      "line": 105,
+      "sha256": "3f3e32a9941b40d5b006bd3f4f690195335ae2ff039a45e8ca63c93f28622c49",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/logs/delete-batch",
+      "endpoint": "system.logs_delete_batch",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/system_logs.py",
+      "line": 124,
+      "sha256": "3f3e32a9941b40d5b006bd3f4f690195335ae2ff039a45e8ca63c93f28622c49",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/logs/settings",
+      "endpoint": "system.logs_settings",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/system_logs.py",
+      "line": 90,
+      "sha256": "3f3e32a9941b40d5b006bd3f4f690195335ae2ff039a45e8ca63c93f28622c49",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/plugins/toggle",
+      "endpoint": "system.plugin_toggle",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/system_plugins.py",
+      "line": 14,
+      "sha256": "d05144bb4a112c4dd0a1c41839a67beaecd62af4406e517092665c0665f659cc",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/runtime-logs",
+      "endpoint": "system.runtime_logs_page",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/system_runtime_logs.py",
+      "line": 39,
+      "sha256": "7ca83b9765281c299ff87dcf40e701de9cd4f9d7c70a6dce94bf6ffeb1a67f8c",
+      "policy": "redirect_if_equivalent",
+      "proposed_target": "system/runtime",
+      "context_groups": "S",
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/runtime-logs/diagnostic-package",
+      "endpoint": "system.runtime_logs_diagnostic_package",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/system_runtime_logs.py",
+      "line": 89,
+      "sha256": "7ca83b9765281c299ff87dcf40e701de9cd4f9d7c70a6dce94bf6ffeb1a67f8c",
+      "policy": "keep_non_page_get",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/system/runtime/shutdown",
+      "endpoint": "system.runtime_shutdown",
+      "methods": [
+        "POST"
+      ],
+      "source": "web/routes/system_health.py",
+      "line": 30,
+      "sha256": "5795760310447a6794d7f92a8e56ebc89575b9732685c0aa294f7b152a9ebe1d",
+      "policy": "keep_command_contract",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/workbench",
+      "endpoint": "workbench.index",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/pages.py",
+      "line": 75,
+      "sha256": "9c2b8d84926711ccd088aa2f30262bdcbe9e137bf096320b53caf34c2f19ef99",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    },
+    {
+      "rule": "/workbench/trial",
+      "endpoint": "workbench.trial",
+      "methods": [
+        "GET"
+      ],
+      "source": "web/routes/workbench/pages.py",
+      "line": 80,
+      "sha256": "9c2b8d84926711ccd088aa2f30262bdcbe9e137bf096320b53caf34c2f19ef99",
+      "policy": "keep_workbench",
+      "proposed_target": null,
+      "context_groups": null,
+      "implementation_status": "not_run"
+    }
+  ]
+}

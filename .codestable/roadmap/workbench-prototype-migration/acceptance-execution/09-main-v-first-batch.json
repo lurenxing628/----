@@ -1,0 +1,361 @@
+{
+  "schema_version": 1,
+  "owner": "E",
+  "title": "Main V 最小首批索引",
+  "status": "pending_Main_scope_specific_visual_decisions",
+  "fixed_product_source": "/private/tmp/aps-final-e-sealed-read-after-20260911-06/source",
+  "source_aggregate_sha256": "2d6c6f12a3b2496d791cd9eb6f846b4dd26260facc334d568a68166561cff1d5",
+  "same_product_base_source": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/source",
+  "source_equivalence": "sealed06/source-delta.json: only two E CJS probes differ; all product files and build inputs equal sealed03",
+  "build_id": "86bae55877b7574a7dbccad0a61c2f4b714a3105500908d614b531ae31f90a2e",
+  "policy": [
+    "编号 WBP-*.A* 是与 A 建议索引的对照别名，最终原子分母仍须核对；E-READVIEW-* 是补充修复合同，不增加69族。",
+    "图片的action_ids只指可审视表面，不证明点击、数据写入、状态转换或整个复合动作通过。",
+    "11张均核对实际文件SHA和PNG尺寸并已由E目视分类；Main V由Main逐项确认。",
+    "Main已看E06原16图的精确适用范围待Main正式记录，不把16个文件统一记成16项V passed。"
+  ],
+  "priority_order": [
+    "E-V-001",
+    "E-V-002",
+    "E-V-003",
+    "E-V-004",
+    "E-V-005",
+    "E-V-006",
+    "E-V-007",
+    "E-V-008",
+    "E-V-009",
+    "E-V-010",
+    "E-V-011"
+  ],
+  "four_state_representatives": {
+    "1920/light": "E-V-004",
+    "1920/dark": "E-V-010",
+    "1392/light": "E-V-011",
+    "1392/dark": "E-V-007"
+  },
+  "images": [
+    {
+      "id": "E-V-001",
+      "path": "/private/tmp/aps-final-e-visual-supplement-20260911-01/run/aps-workbench-live-qle7x75c/screenshots/1920-light-reports-unknown-original-ref-error-visible.png",
+      "action_ids": [
+        "E-READVIEW-REPORTS-UNKNOWN",
+        "WBP-REPORT-012.A003"
+      ],
+      "visible_claim": "未知工序真实404，红色错误框已滚入视口",
+      "source": "06",
+      "priority": "required_supplement",
+      "main_v": "pending_main_visual_review",
+      "sha256": "e5b4fd324224c18a924911994a65d540c785a179ba65b638be2917f0828641ed",
+      "bytes": 284648,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light"
+    },
+    {
+      "id": "E-V-002",
+      "path": "/private/tmp/aps-final-e-visual-supplement-20260911-01/run/aps-workbench-live-qle7x75c/screenshots/1920-light-review-unknown-original-ref-error-visible.png",
+      "action_ids": [
+        "E-READVIEW-REVIEW-UNKNOWN",
+        "WBP-REVIEW-001.A005"
+      ],
+      "visible_claim": "复盘未知工序真实404，红色错误框已滚入视口",
+      "source": "06",
+      "priority": "required_supplement",
+      "main_v": "pending_main_visual_review",
+      "sha256": "6865a40a3f0a07dbe805415e689964c5110c8cefa2a41d0e4a538668660aaccb",
+      "bytes": 298993,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light"
+    },
+    {
+      "id": "E-V-003",
+      "path": "/private/tmp/aps-final-e-visual-supplement-20260911-01/run/aps-workbench-live-zsvphbqs/screenshots/1920-light-calib-unknown-original-ref-error-visible.png",
+      "action_ids": [
+        "E-READVIEW-CALIB-UNKNOWN"
+      ],
+      "visible_claim": "未知模板真实404，原样本编号保留，错误框在视口",
+      "source": "06",
+      "priority": "required_supplement",
+      "main_v": "pending_main_visual_review",
+      "sha256": "ce7a4a5137efe027480632877950adde5e32c3cf0ec287881bc339e4c0fcf423",
+      "bytes": 242183,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light"
+    },
+    {
+      "id": "E-V-004",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-fnjp23dl/screenshots/1920-light-initial-field-main.png",
+      "action_ids": [
+        "WBP-FIELD-001.A001",
+        "WBP-FIELD-001.A003",
+        "WBP-FIELD-001.A004"
+      ],
+      "visible_claim": "正常五指标、状态计数、未知工时与已知小计",
+      "source": "03",
+      "priority": "fixed_gap_representative",
+      "main_v": "pending_main_visual_review",
+      "sha256": "eeeb12c970e21236e41c5b88db3dddc750dcc9cb542e77d0c8f08eea0e675c44",
+      "bytes": 311052,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light"
+    },
+    {
+      "id": "E-V-005",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-fnjp23dl/screenshots/1920-light-initial-draft-before-navigation.png",
+      "action_ids": [
+        "WBP-FIELD-007.A001",
+        "WBP-FIELD-007.A005",
+        "WBP-FIELD-009.A002",
+        "WBP-FIELD-013.A001"
+      ],
+      "visible_claim": "原任务编辑草稿；这张是切换前，不是切换后恢复过程的图证",
+      "source": "03",
+      "priority": "fixed_gap_representative",
+      "main_v": "pending_main_visual_review",
+      "sha256": "6570f48ec89bb396f4f85252a10847384fa5df4b99e5a378eb9bc32d64824504",
+      "bytes": 254241,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light"
+    },
+    {
+      "id": "E-V-006",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-fnjp23dl/screenshots/1920-light-initial-actual-keyboard-pan.png",
+      "action_ids": [
+        "WBP-FG-010.A002",
+        "WBP-FG-010.A003",
+        "WBP-FG-010.A004",
+        "WBP-FG-010.A006"
+      ],
+      "visible_claim": "手动缩放、实际刻度和水平视口结果；A004按刻度显示解释，不虚构独立开关",
+      "source": "03",
+      "priority": "fixed_gap_representative",
+      "main_v": "pending_main_visual_review",
+      "sha256": "5fae83b4d0eab7a724a485924a71595e56d12af926f485e955e2f66ddf75a826",
+      "bytes": 274641,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light"
+    },
+    {
+      "id": "E-V-007",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-pjdnlczw/screenshots/1392-dark-initial-chain-final.png",
+      "action_ids": [
+        "WBP-FG-011.A001",
+        "WBP-FG-011.A003",
+        "WBP-FG-011.A004",
+        "WBP-FG-011.A005",
+        "WBP-FG-012.A006"
+      ],
+      "visible_claim": "目视确认为整版全局链：四节点、工艺/设备/人员三类边理由、已选任务和筛选内4/4计数。不是对象关联模式截图。",
+      "source": "03",
+      "priority": "four_state_representative",
+      "main_v": "pending_main_visual_review",
+      "sha256": "9ff607d7b9a49e6321ed5f1891b68c366d499323e218975cdabfab599eaed059",
+      "bytes": 236098,
+      "viewport": [
+        1392,
+        924
+      ],
+      "theme": "dark"
+    },
+    {
+      "id": "E-V-008",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-jxowptso/screenshots/1920-light-initial-calibration-summary.png",
+      "action_ids": [
+        "WBP-CALIB-001.A001",
+        "WBP-CALIB-001.A002",
+        "WBP-CALIB-002.A003",
+        "WBP-CALIB-002.A004"
+      ],
+      "visible_claim": "表头排序和列宽变化后结果；列筛选弹层已关闭，不算弹层展开V",
+      "source": "03",
+      "priority": "fixed_gap_representative",
+      "main_v": "pending_main_visual_review",
+      "sha256": "c3b8cdc6e99bcce674bee17c8be912ee07e497e058ab06cfdc959d9696e507af",
+      "bytes": 178191,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light"
+    },
+    {
+      "id": "E-V-009",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-jxowptso/screenshots/1920-light-initial-calibration-original-part-readonly.png",
+      "action_ids": [
+        "WBP-CALIB-003.A001",
+        "WBP-CALIB-003.A002"
+      ],
+      "visible_claim": "从校准P1进入的统一零件详情，原模板定位、只读维护保护",
+      "source": "03",
+      "priority": "fixed_gap_representative",
+      "main_v": "pending_main_visual_review",
+      "sha256": "d4d3d44b55dde3d1c734e55a84d45de4ffce0e38ba83b9212a422a93579522d0",
+      "bytes": 221179,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "light"
+    },
+    {
+      "id": "E-V-010",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-jxowptso/screenshots/1920-dark-initial-adoption-receipt-viewport.png",
+      "action_ids": [
+        "WBP-CALIB-004.A004",
+        "WBP-CALIB-006.A003",
+        "WBP-CALIB-006.A004"
+      ],
+      "visible_claim": "已提交的原采用锁定回执；不证明未展示的导入保护流程",
+      "source": "03",
+      "priority": "four_state_representative",
+      "main_v": "pending_main_visual_review",
+      "sha256": "84ca19e291ab8d30e63d5d55e00477058b365b8560b3093c2aefc4458318e118",
+      "bytes": 275193,
+      "viewport": [
+        1920,
+        1080
+      ],
+      "theme": "dark"
+    },
+    {
+      "id": "E-V-011",
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-e_qv_gk0/screenshots/1392-light-review-charts.png",
+      "action_ids": [
+        "WBP-REVIEW-006.A001",
+        "WBP-REVIEW-006.A002",
+        "WBP-REVIEW-006.A003",
+        "WBP-REVIEW-006.A004",
+        "WBP-SCOPE-006.A002",
+        "WBP-SCOPE-006.A003"
+      ],
+      "visible_claim": "可见累计趋势点/图表数据、完工偏差分布、未确认老化、资源工时；本帧未显示中位数/P90数值或悬停tooltip，不扩成整个复合动作V。",
+      "source": "03",
+      "priority": "four_state_representative",
+      "main_v": "pending_main_visual_review",
+      "sha256": "7f99eb8534fc22f33b067d933576da37cfe5f8df5559d11be40da401bd09c260",
+      "bytes": 171324,
+      "viewport": [
+        1392,
+        924
+      ],
+      "theme": "light"
+    }
+  ],
+  "supplement_proof": "/private/tmp/aps-final-e-visual-supplement-20260911-01/run/visual-index.json",
+  "supplement_source_guard": "/private/tmp/aps-final-e-visual-supplement-20260911-01/run/sealed-source-proof.json",
+  "state_corrections": [
+    {
+      "scope": "E06/reentry-final-01",
+      "file_pattern": "1392-dark-field-final / 1392-dark-*-read-reentry-final",
+      "actual": "未知任务引用失败；不能映射为正常恢复页或正常五指标。",
+      "basis": "Main实际V及本轮真404行为"
+    },
+    {
+      "scope": "E06/reentry-final-01",
+      "file_pattern": "calib/reports/review unknown-original-ref 与对应 final",
+      "actual": "未知ref已被拒绝，原图的错误详情在视口下方。可用表格布局V不等于未知ref错误已V。",
+      "replacement_ids": [
+        "E-V-001",
+        "E-V-002",
+        "E-V-003"
+      ]
+    },
+    {
+      "path": "/private/tmp/aps-final-e-sealed-read-after-20260911-03/all-final-01/aps-workbench-live-fnjp23dl/screenshots/1392-dark-initial-field-viewport.png",
+      "actual": "目视为正在读取计划/现场任务的加载态，没有正常五指标。",
+      "applicable": "仅加载态布局，不当正常列表V。"
+    },
+    {
+      "scope": "new read-reentry probe family tags",
+      "actual": "该probe中的WBP-FIELD-014分组标签不作为计划/实际时间线证据；按具体action内容映射read-view补充合同，禁止仅按旧标签计通过。"
+    }
+  ],
+  "precise_capture_gaps": [
+    {
+      "action_ids": [
+        "WBP-FIELD-013.A002"
+      ],
+      "scene": "切另一任务后返回原任务的已恢复草稿",
+      "states": [
+        "1920/light",
+        "1920/dark",
+        "1392/light",
+        "1392/dark"
+      ],
+      "status": "no_dedicated_after_switch_capture_in_current_E_evidence",
+      "available": "E-V-005是切换前；K已实际核对恢复，不能把图名当恢复后的帧。Main可决定同一表面代表V是否适用。"
+    },
+    {
+      "action_ids": [
+        "WBP-CALIB-002.A003"
+      ],
+      "scene": "校准列值筛选弹层保持展开",
+      "states": [
+        "1920/light",
+        "1920/dark",
+        "1392/light",
+        "1392/dark"
+      ],
+      "status": "no_open_popup_capture_in_current_full_main_E_evidence",
+      "available": "表头筛选的真实HTTP/K已通过；E-V-008是关闭弹层后的排序/列宽结果。"
+    },
+    {
+      "action_ids": [
+        "WBP-CALIB-003.A002"
+      ],
+      "scene": "由校准入口打开的统一零件详情",
+      "states": [
+        "1920/dark",
+        "1392/light",
+        "1392/dark"
+      ],
+      "status": "only_1920_light_capture_available_in_current_E_proof",
+      "available": "E-V-009；其他owner的同一详情表面是否可复用由Main决定。"
+    },
+    {
+      "action_ids": [
+        "WBP-FIELD-001.A001",
+        "WBP-FIELD-001.A003"
+      ],
+      "scene": "正常五指标与状态计数1392dark",
+      "states": [
+        "1392/dark"
+      ],
+      "status": "known_candidate_is_loading_not_normal",
+      "available": "E-V-004提供1920light；该1392dark候选不能作为正常状态，其他候选待逐图核对。"
+    },
+    {
+      "action_ids": [
+        "WBP-FG-012.A002",
+        "WBP-FG-012.A003"
+      ],
+      "scene": "版本/内容不符导致的前端关键链拒绝",
+      "states": [
+        "1920/light",
+        "1920/dark",
+        "1392/light",
+        "1392/dark"
+      ],
+      "status": "backend_rejection_evidence_does_not_supply_full_main_error_frame",
+      "available": "原引擎/API拒绝证据不冒充K/V；E-V-006仅显示混合共同/分件输入的不支持原因。"
+    }
+  ],
+  "remaining_scope": "这是先交Main的11张小列表，不是69族全部图片清单，也不是所有图片同族四态完成；随后继续B/K/P原子映射。"
+}

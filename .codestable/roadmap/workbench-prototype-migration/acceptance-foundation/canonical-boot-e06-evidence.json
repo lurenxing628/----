@@ -1,0 +1,520 @@
+{
+  "schema_version": 1,
+  "status": "passed_bound_E06_snapshot_not_final_HEAD",
+  "root": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9",
+  "package": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv",
+  "source_manifest_sha256": "ba451495b7edf2382794236913f3ab3b58574b75a5734e5af7218c957e390ce4",
+  "source_aggregate_sha256": "2d6c6f12a3b2496d791cd9eb6f846b4dd26260facc334d568a68166561cff1d5",
+  "build_id": "86bae55877b7574a7dbccad0a61c2f4b714a3105500908d614b531ae31f90a2e",
+  "asset_manifest_sha256": "09f624979b2d9db12fa527ad4c62f610d61a7709d2da9df34732ab4840848b66",
+  "source_files_verified": 6532,
+  "physical_asset_files_verified": 224,
+  "build_inputs_verified": 315,
+  "test_snapshot_sha256": "06ad141125f5bd09672ea60dcebb6d19b9c292d6f8296989127bacb73266be61",
+  "cases": 252,
+  "passed": 252,
+  "canonical": 212,
+  "boot_fault_contracts": 40,
+  "original_pages_retained": 24,
+  "pids": {
+    "initial": 54621,
+    "restart": 57034,
+    "browser": 54641
+  },
+  "same_url": "http://127.0.0.1:51071",
+  "guards": {
+    "initial_shutdown": {
+      "pid": 54621,
+      "loaded_modules": 1103,
+      "observed_python_sources": 1105,
+      "sqlite_connections": 1183,
+      "violations": 0,
+      "locks_released": true,
+      "normal_exit": true
+    },
+    "restart_shutdown": {
+      "pid": 57034,
+      "loaded_modules": 1054,
+      "observed_python_sources": 1056,
+      "sqlite_connections": 79,
+      "violations": 0,
+      "locks_released": true,
+      "normal_exit": true
+    }
+  },
+  "business_tables": 77,
+  "unchanged_tables_across_restart": 75,
+  "old_rows_preserved": true,
+  "get_reads_zero_writes": true,
+  "startup_plugin_log_appended": 1,
+  "normal_errors": 0,
+  "external_requests": 0,
+  "raw_api_files_verified": 772,
+  "screenshots_verified": 408,
+  "actual_normal_asset_responses_verified": 51684,
+  "unique_actual_normal_assets": 219,
+  "reports_new_pid": [
+    {
+      "state": "1392x924-light",
+      "page_id": 10,
+      "request_file": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9/foundation-responses/79147.json",
+      "request_sha256": "44e628f5d407b846a6f82b0f674af08bdd3fb98da50c53b365ea35209a52f5f1",
+      "status": 200,
+      "plan_ref": "706a14f9180938cc61c97139af8c43ce77915a7faa2fe184",
+      "scope": {
+        "batch_ref": "7823365aea504f45a3b9ec317461dc73db89424f7e68ed39",
+        "focus": "all",
+        "kind": "execution_analysis",
+        "plan_finish_date_from": "2026-09-07",
+        "plan_finish_date_to": "2026-09-07",
+        "plan_ref": "706a14f9180938cc61c97139af8c43ce77915a7faa2fe184",
+        "query": "CAT-B",
+        "resource_ref": null,
+        "resource_type": null,
+        "source": "production"
+      },
+      "caption": {
+        "reference": "706a14f9180938cc61c97139af8c43ce77915a7faa2fe184",
+        "name": "adopted label",
+        "label": "报表计划",
+        "status": "当前正式采用",
+        "version": "正式 v3",
+        "range": "计划完工 2026-09-07 至 2026-09-07"
+      },
+      "fresh_get_without_old_token": true,
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9/screenshots/1392x924-light/reports-explicit-plan-cohort--same_tab_same_port_new_host_pid.png"
+    },
+    {
+      "state": "1392x924-dark",
+      "page_id": 72,
+      "request_file": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9/foundation-responses/80479.json",
+      "request_sha256": "ba258556c1e48534b34df34fab2272d23c134466d93ed9d51fb8d1c4a1c27ed9",
+      "status": 200,
+      "plan_ref": "706a14f9180938cc61c97139af8c43ce77915a7faa2fe184",
+      "scope": {
+        "batch_ref": "7823365aea504f45a3b9ec317461dc73db89424f7e68ed39",
+        "focus": "all",
+        "kind": "execution_analysis",
+        "plan_finish_date_from": "2026-09-07",
+        "plan_finish_date_to": "2026-09-07",
+        "plan_ref": "706a14f9180938cc61c97139af8c43ce77915a7faa2fe184",
+        "query": "CAT-B",
+        "resource_ref": null,
+        "resource_type": null,
+        "source": "production"
+      },
+      "caption": {
+        "reference": "706a14f9180938cc61c97139af8c43ce77915a7faa2fe184",
+        "name": "adopted label",
+        "label": "报表计划",
+        "status": "当前正式采用",
+        "version": "正式 v3",
+        "range": "计划完工 2026-09-07 至 2026-09-07"
+      },
+      "fresh_get_without_old_token": true,
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9/screenshots/1392x924-dark/reports-explicit-plan-cohort--same_tab_same_port_new_host_pid.png"
+    },
+    {
+      "state": "1920x1080-light",
+      "page_id": 134,
+      "request_file": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9/foundation-responses/81811.json",
+      "request_sha256": "1f9505892e2fe884ebb11f15a9ec5706dbd76d2b9f66256ee0c3011eb3330c16",
+      "status": 200,
+      "plan_ref": "706a14f9180938cc61c97139af8c43ce77915a7faa2fe184",
+      "scope": {
+        "batch_ref": "7823365aea504f45a3b9ec317461dc73db89424f7e68ed39",
+        "focus": "all",
+        "kind": "execution_analysis",
+        "plan_finish_date_from": "2026-09-07",
+        "plan_finish_date_to": "2026-09-07",
+        "plan_ref": "706a14f9180938cc61c97139af8c43ce77915a7faa2fe184",
+        "query": "CAT-B",
+        "resource_ref": null,
+        "resource_type": null,
+        "source": "production"
+      },
+      "caption": {
+        "reference": "706a14f9180938cc61c97139af8c43ce77915a7faa2fe184",
+        "name": "adopted label",
+        "label": "报表计划",
+        "status": "当前正式采用",
+        "version": "正式 v3",
+        "range": "计划完工 2026-09-07 至 2026-09-07"
+      },
+      "fresh_get_without_old_token": true,
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9/screenshots/1920x1080-light/reports-explicit-plan-cohort--same_tab_same_port_new_host_pid.png"
+    },
+    {
+      "state": "1920x1080-dark",
+      "page_id": 196,
+      "request_file": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9/foundation-responses/83143.json",
+      "request_sha256": "22e893b5e23fdebf3c1c3178c68d67101121394601624840fed37bb22e54dc46",
+      "status": 200,
+      "plan_ref": "706a14f9180938cc61c97139af8c43ce77915a7faa2fe184",
+      "scope": {
+        "batch_ref": "7823365aea504f45a3b9ec317461dc73db89424f7e68ed39",
+        "focus": "all",
+        "kind": "execution_analysis",
+        "plan_finish_date_from": "2026-09-07",
+        "plan_finish_date_to": "2026-09-07",
+        "plan_ref": "706a14f9180938cc61c97139af8c43ce77915a7faa2fe184",
+        "query": "CAT-B",
+        "resource_ref": null,
+        "resource_type": null,
+        "source": "production"
+      },
+      "caption": {
+        "reference": "706a14f9180938cc61c97139af8c43ce77915a7faa2fe184",
+        "name": "adopted label",
+        "label": "报表计划",
+        "status": "当前正式采用",
+        "version": "正式 v3",
+        "range": "计划完工 2026-09-07 至 2026-09-07"
+      },
+      "fresh_get_without_old_token": true,
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9/screenshots/1920x1080-dark/reports-explicit-plan-cohort--same_tab_same_port_new_host_pid.png"
+    }
+  ],
+  "copy_rebuilt": false,
+  "product_or_asset_changes": [],
+  "result_sha256": "476f1774a9d8f92e0568f97e2253b715da8670d22d4abeb1c64c44e7371dd70b",
+  "browser_sha256": "6abee5ab7f117d4624a43af0f8c76102d6f5d272f4d67046400d9abb85546f7a",
+  "source_manifest_is_final_HEAD": false,
+  "clean_worktree_proof": false,
+  "formal_5000_executed": false,
+  "e_source_rechecked_after_run": false,
+  "post_verification_basis": "B owned files against saved copied E SHA/mode; moving original inputs are not used",
+  "previous_attempt": {
+    "root": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh",
+    "passed": 216,
+    "total": 252,
+    "browser_sha256_unchanged": "d13e22fabf989f88eb1a7e2cb5ef6e86b76172520ad40f3de41726d9fda43214",
+    "current_corresponding_36_passed": [
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-light",
+        "name": "trial-base-scope-preview--direct_url",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-light",
+        "name": "trial-base-scope-preview--copy_url_new_tab",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-light",
+        "name": "trial-base-scope-preview--same_tab_f5",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-light",
+        "name": "trial-existing-real-draft--direct_url",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-light",
+        "name": "trial-existing-real-draft--copy_url_new_tab",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-light",
+        "name": "trial-existing-real-draft--same_tab_f5",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-dark",
+        "name": "trial-base-scope-preview--direct_url",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-dark",
+        "name": "trial-base-scope-preview--copy_url_new_tab",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-dark",
+        "name": "trial-base-scope-preview--same_tab_f5",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-dark",
+        "name": "trial-existing-real-draft--direct_url",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-dark",
+        "name": "trial-existing-real-draft--copy_url_new_tab",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-dark",
+        "name": "trial-existing-real-draft--same_tab_f5",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-light",
+        "name": "trial-base-scope-preview--direct_url",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-light",
+        "name": "trial-base-scope-preview--copy_url_new_tab",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-light",
+        "name": "trial-base-scope-preview--same_tab_f5",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-light",
+        "name": "trial-existing-real-draft--direct_url",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-light",
+        "name": "trial-existing-real-draft--copy_url_new_tab",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-light",
+        "name": "trial-existing-real-draft--same_tab_f5",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-dark",
+        "name": "trial-base-scope-preview--direct_url",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-dark",
+        "name": "trial-base-scope-preview--copy_url_new_tab",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-dark",
+        "name": "trial-base-scope-preview--same_tab_f5",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-dark",
+        "name": "trial-existing-real-draft--direct_url",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-dark",
+        "name": "trial-existing-real-draft--copy_url_new_tab",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-dark",
+        "name": "trial-existing-real-draft--same_tab_f5",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-light",
+        "name": "reports-explicit-plan-cohort--same_tab_same_port_new_host_pid",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-light",
+        "name": "trial-base-scope-preview--same_tab_same_port_new_host_pid",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-light",
+        "name": "trial-existing-real-draft--same_tab_same_port_new_host_pid",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-dark",
+        "name": "reports-explicit-plan-cohort--same_tab_same_port_new_host_pid",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-dark",
+        "name": "trial-base-scope-preview--same_tab_same_port_new_host_pid",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1392x924-dark",
+        "name": "trial-existing-real-draft--same_tab_same_port_new_host_pid",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-light",
+        "name": "reports-explicit-plan-cohort--same_tab_same_port_new_host_pid",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-light",
+        "name": "trial-base-scope-preview--same_tab_same_port_new_host_pid",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-light",
+        "name": "trial-existing-real-draft--same_tab_same_port_new_host_pid",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-dark",
+        "name": "reports-explicit-plan-cohort--same_tab_same_port_new_host_pid",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-dark",
+        "name": "trial-base-scope-preview--same_tab_same_port_new_host_pid",
+        "old_status": "failed",
+        "new_status": "passed"
+      },
+      {
+        "kind": "canonical_navigation",
+        "state": "1920x1080-dark",
+        "name": "trial-existing-real-draft--same_tab_same_port_new_host_pid",
+        "old_status": "failed",
+        "new_status": "passed"
+      }
+    ],
+    "different_fresh_fixture": true,
+    "history_not_rewritten": true
+  },
+  "visual_samples": [
+    {
+      "state": "1392x924-light",
+      "name": "reports-explicit-plan-cohort--same_tab_same_port_new_host_pid",
+      "kind": "canonical_navigation",
+      "file": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9/screenshots/1392x924-light/reports-explicit-plan-cohort--same_tab_same_port_new_host_pid.png",
+      "sha256": "07c3009cfbaf529d3a8d2a55b5213228c0abf3b7d5bb664847dc9436341bbc8d",
+      "width": 1392,
+      "height": 924,
+      "pixel": {
+        "distinct_colors": 468,
+        "samples": 18762,
+        "variance": 674.0007834331991
+      }
+    },
+    {
+      "state": "1920x1080-dark",
+      "name": "reports-explicit-plan-cohort--same_tab_same_port_new_host_pid",
+      "kind": "canonical_navigation",
+      "file": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9/screenshots/1920x1080-dark/reports-explicit-plan-cohort--same_tab_same_port_new_host_pid.png",
+      "sha256": "c94ad116ee89d337b90929fe423ac07a93a255c20da6733e92ade00459376bb4",
+      "width": 1920,
+      "height": 1080,
+      "pixel": {
+        "distinct_colors": 470,
+        "samples": 32760,
+        "variance": 642.2227204064313
+      }
+    },
+    {
+      "state": "1392x924-dark",
+      "name": "trial-existing-real-draft--direct_url",
+      "kind": "canonical_navigation",
+      "file": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9/screenshots/1392x924-dark/trial-existing-real-draft--direct_url.png",
+      "sha256": "a9873c88d90fd3b6be4458d04aa4d3a890a3c704dd8ebc514b1b1204d42a237f",
+      "width": 1392,
+      "height": 924,
+      "pixel": {
+        "distinct_colors": 471,
+        "samples": 18762,
+        "variance": 909.8422173550337
+      }
+    },
+    {
+      "state": "1920x1080-light",
+      "name": "trial-existing-real-draft--same_tab_same_port_new_host_pid",
+      "kind": "canonical_navigation",
+      "file": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9/screenshots/1920x1080-light/trial-existing-real-draft--same_tab_same_port_new_host_pid.png",
+      "sha256": "b8fc8035a0bf4c78f3d4fe95a464aa9347b5a4781b226ef5dde72d88948eb654",
+      "width": 1920,
+      "height": 1080,
+      "pixel": {
+        "distinct_colors": 534,
+        "samples": 32760,
+        "variance": 459.2487830684622
+      }
+    }
+  ],
+  "visual_review_scope": "B manually inspected these four images only; geometry/pixel checks cover the recorded cases; not all 408 manually reviewed and not Main V approval.",
+  "case_ledger": {
+    "file": "/private/tmp/aps-final-foundation-B.xYPahs/E06-copy-C1frJv/fixtures/aps-workbench-live-e3pcktu9/foundation-browser.json",
+    "sha256": "6abee5ab7f117d4624a43af0f8c76102d6f5d272f4d67046400d9abb85546f7a",
+    "unique_case_count": 252,
+    "categories": {
+      "positive_navigation": 96,
+      "actual_http400_recovery": 96,
+      "actual_domain404_same_object_retry": 20,
+      "injected_boot_error_contract": 40
+    }
+  },
+  "scope_limit": "Canonical navigation and boot contracts only. Domain workflows are not inferred, and old legacy92 is not added as a same-snapshot344 proof."
+}

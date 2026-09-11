@@ -1,0 +1,91 @@
+{
+  "source": "/private/tmp/aps-final-d-source-p003-Z3GYfe",
+  "source_aggregate": "36fdf014043289cdcf552872a6d40b65bd91ffb179208ca9f0b9f4c45bfdcdba",
+  "files": [
+    {
+      "path": "core/services/workbench/plan_process_order.py",
+      "bytes": 6859,
+      "sha256": "d8d15ce7674b32d55547bc6116bf4211446d0e2f33f5d4fb5fa2a31de6cdd4ab",
+      "mode": "0644",
+      "main_sha256": "d8d15ce7674b32d55547bc6116bf4211446d0e2f33f5d4fb5fa2a31de6cdd4ab"
+    },
+    {
+      "path": "core/services/workbench/plan_projection.py",
+      "bytes": 11807,
+      "sha256": "15e8bc41813d9df8e3facbbb9b75cceb2e504207487fa0df76fadeabe7f1f3ac",
+      "mode": "0644",
+      "main_sha256": "15e8bc41813d9df8e3facbbb9b75cceb2e504207487fa0df76fadeabe7f1f3ac"
+    },
+    {
+      "path": "core/services/workbench/plan_workspace_dto.py",
+      "bytes": 2563,
+      "sha256": "daef1e07c95afde87266ef1f2d217f2f3a25193225476c90791cef3f3fcc26ca",
+      "mode": "0644",
+      "main_sha256": "daef1e07c95afde87266ef1f2d217f2f3a25193225476c90791cef3f3fcc26ca"
+    },
+    {
+      "path": "frontend/workbench/app/PlanProcessOrder.js",
+      "bytes": 3998,
+      "sha256": "347eeaad1f70a33162195893a0a1f3774a5f32e791e906161b746927790c0b28",
+      "mode": "0644",
+      "main_sha256": "347eeaad1f70a33162195893a0a1f3774a5f32e791e906161b746927790c0b28"
+    },
+    {
+      "path": "frontend/workbench/app/PlanContract.js",
+      "bytes": 28973,
+      "sha256": "a2c3dbf7d925ca71cbef15bef49be19aeb8a096addd4dc8cac6e87bba2f3b5ef",
+      "mode": "0644",
+      "main_sha256": "a2c3dbf7d925ca71cbef15bef49be19aeb8a096addd4dc8cac6e87bba2f3b5ef"
+    },
+    {
+      "path": "frontend/workbench/app/PlanDetailsUI.jsx",
+      "bytes": 14767,
+      "sha256": "8cfefc2122ab4578bae0aab1e5b9d48570f262addbb438805b0fa24884a93924",
+      "mode": "0644",
+      "main_sha256": "8cfefc2122ab4578bae0aab1e5b9d48570f262addbb438805b0fa24884a93924"
+    },
+    {
+      "path": "frontend/workbench/app/PlanWorkspace.jsx",
+      "bytes": 12232,
+      "sha256": "b2012f797a58b23ea88aed2a68543616537968128a0ce2d771f1fb2811eb909b",
+      "mode": "0644",
+      "main_sha256": "b2012f797a58b23ea88aed2a68543616537968128a0ce2d771f1fb2811eb909b"
+    },
+    {
+      "path": "frontend/workbench/app/PlanGantt.jsx",
+      "bytes": 15319,
+      "sha256": "03d921bf2be7f9facbcfd5c79b53634b27d18ecddc52f3673306e1d2ce3866c7",
+      "mode": "0644",
+      "main_sha256": "03d921bf2be7f9facbcfd5c79b53634b27d18ecddc52f3673306e1d2ce3866c7"
+    },
+    {
+      "path": "frontend/workbench/app/TrialContract.js",
+      "bytes": 12408,
+      "sha256": "afc962a7c4c325c9ab161f4093559574c83b93280c3600f9f66097f9931432b8",
+      "mode": "0644",
+      "main_sha256": "afc962a7c4c325c9ab161f4093559574c83b93280c3600f9f66097f9931432b8"
+    },
+    {
+      "path": "frontend/workbench/app/TrialWorkspace.jsx",
+      "bytes": 14007,
+      "sha256": "bbbee0c5d025687951d96521903c77acc5676f543f12058cd9de937be52d5c6c",
+      "mode": "0644",
+      "main_sha256": "bbbee0c5d025687951d96521903c77acc5676f543f12058cd9de937be52d5c6c"
+    },
+    {
+      "path": "frontend/workbench/app/TrialCatalog.jsx",
+      "bytes": 9565,
+      "sha256": "be739e13d5b983170a38d0c62a87366615fbb7c2ffaa00c7e0d53eb874000806",
+      "mode": "0644",
+      "main_sha256": "be739e13d5b983170a38d0c62a87366615fbb7c2ffaa00c7e0d53eb874000806"
+    },
+    {
+      "path": "frontend/workbench/app/SchedulingWorkspace.jsx",
+      "bytes": 6608,
+      "sha256": "48425ec31bdd2b5b34df7f2cf493fe5713bcecc62f86da68d88fc1f52fb05c2c",
+      "mode": "0644",
+      "main_sha256": "48425ec31bdd2b5b34df7f2cf493fe5713bcecc62f86da68d88fc1f52fb05c2c"
+    }
+  ],
+  "main_changed": []
+}

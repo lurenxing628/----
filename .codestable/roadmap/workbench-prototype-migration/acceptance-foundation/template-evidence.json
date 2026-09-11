@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "separate_from_manifest_inputs": true,
+  "templates": [
+    {
+      "source": "templates/workbench/index.html",
+      "frozen": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/full-build/templates/workbench/index.html",
+      "bytes": 2096,
+      "sha256": "3db613d6debca730117e12423ae80e60b9fcd72f953282eb6b82c1b55a6bd960"
+    },
+    {
+      "source": "templates/workbench/recovery.html",
+      "frozen": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/full-build/templates/workbench/recovery.html",
+      "bytes": 10846,
+      "sha256": "72b904efa4ab70fdcaeb754f48e348566559a85601a985143cfeddc7e66efc6f"
+    },
+    {
+      "source": "templates/workbench/unavailable.html",
+      "frozen": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/full-build/templates/workbench/unavailable.html",
+      "bytes": 274,
+      "sha256": "997a92cfe989b2620fe2d639831342b14116339a8dfc7ad22816896ae292f516"
+    }
+  ],
+  "initial_tree_hashes": {
+    "templates/workbench/index.html": "3db613d6debca730117e12423ae80e60b9fcd72f953282eb6b82c1b55a6bd960",
+    "templates/workbench/recovery.html": "72b904efa4ab70fdcaeb754f48e348566559a85601a985143cfeddc7e66efc6f",
+    "templates/workbench/unavailable.html": "997a92cfe989b2620fe2d639831342b14116339a8dfc7ad22816896ae292f516"
+  },
+  "restart_tree_hashes": {
+    "templates/workbench/index.html": "3db613d6debca730117e12423ae80e60b9fcd72f953282eb6b82c1b55a6bd960",
+    "templates/workbench/recovery.html": "72b904efa4ab70fdcaeb754f48e348566559a85601a985143cfeddc7e66efc6f",
+    "templates/workbench/unavailable.html": "997a92cfe989b2620fe2d639831342b14116339a8dfc7ad22816896ae292f516"
+  },
+  "initial_asset_tree_unchanged": true,
+  "restart_asset_tree_unchanged": true,
+  "result": {
+    "path": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/foundation-result.json",
+    "sha256": "8e772895329183f60738b3d0bfcd178bc2ae53df3d13471259cbaf614c3285b6"
+  }
+}

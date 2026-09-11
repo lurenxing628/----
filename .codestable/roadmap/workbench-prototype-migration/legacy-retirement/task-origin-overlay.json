@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "phase": "D-P003 navigation-only overlay after V4 factory acceptance",
+  "root": "/private/tmp/aps-g-task-origin-overlay-0qAhvm",
+  "parent_candidate_aggregate_sha256": "e74e6dce3c8a196433692084dbdc4d94f3f9c4b79e952bc352c0e7ed8714b85b",
+  "parent_candidate_modified": false,
+  "covered_by_parent_factory_acceptance": false,
+  "files": [
+    {
+      "path": "web/routes/workbench/navigation_boot.py",
+      "before_sha256": "405adefc94b0280fa6a187400d2277234d140bc349cb37d0ca6ef9cc529f785e",
+      "after_sha256": "c62efce8731a28d33142525ace378582b7b2183c300fe0e7c8b3c052bc4b43f0",
+      "before_bytes": 7990,
+      "after_bytes": 8761
+    },
+    {
+      "path": "tests/workbench/test_final_navigation_boot.py",
+      "before_sha256": "8fcb2b8aa35e148a34376c10870e1ae26377a2ce290d70f048cf8a0586598af3",
+      "after_sha256": "53a03b7468e1e865ef095aab898a04cf47d91e41d4d56eaac94c52ee64fc746e",
+      "before_bytes": 6866,
+      "after_bytes": 12776
+    }
+  ],
+  "protocol": {
+    "path": ".codestable/roadmap/workbench-prototype-migration/acceptance-planning/p003-minimum-protocol.md",
+    "sha256": "d95f47007b61b387c2ea390676c7319fc296b7c4c8c412d63d4b6a1abc199fae",
+    "approval": "Explicit latest Main/user approval supersedes the proposal document pending-status header."
+  },
+  "schema": {
+    "envelope": {
+      "version": 1,
+      "view": "trial"
+    },
+    "task_origin_required_exact_keys": [
+      "plan_ref",
+      "operation_ref",
+      "task_ref"
+    ],
+    "permanent_ref_pattern": "^[0-9a-f]{48}$",
+    "context_variants": [
+      {
+        "required": [
+          "base",
+          "task_origin"
+        ],
+        "optional": [
+          "scope"
+        ],
+        "base_exact_keys": [
+          "plan_ref"
+        ],
+        "equality": "base.plan_ref == task_origin.plan_ref",
+        "scope": "unchanged existing trial display scope"
+      },
+      {
+        "required": [
+          "draft_ref",
+          "task_origin"
+        ],
+        "optional": []
+      }
+    ],
+    "rejects": [
+      "partial or extra task_origin keys",
+      "candidate_ref base with task_origin",
+      "scenario_ref with task_origin",
+      "different base.plan_ref",
+      "mixed base and draft_ref",
+      "task_origin without base/draft",
+      "scope added to draft navigation",
+      "unknown keys and duplicate JSON keys"
+    ],
+    "when_absent": "Existing behavior unchanged, including candidate base, scenario_ref and draft_ref",
+    "read_only": true,
+    "writable_ticket_issued": false,
+    "draft_source_checks_deferred_to": "D: after real read require data.base.plan_ref equality and a unique operation_ref plus source_task_ref match, then use only the matched draft task_ref."
+  },
+  "verification": {
+    "pytest_passed": 51,
+    "pytest_failed": 0,
+    "navigation_tests": 20,
+    "new_task_origin_tests": 8,
+    "normal_conftest": true,
+    "ruff": "passed",
+    "pyright": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "original_navigation_tests_ast_equal": true,
+    "unchanged_other_navigation_functions": {
+      "_invalid": true,
+      "_object": true,
+      "_unique_object": true,
+      "_invalid_constant": true,
+      "_query_value": true,
+      "_plan_context": true,
+      "_explicit_times": true,
+      "_calendar_context": true,
+      "_resource_context": true,
+      "_part_context": true,
+      "_batch_context": true,
+      "_report_context": true,
+      "_context": true,
+      "read_navigation": true
+    },
+    "production_imports_ast_equal": true,
+    "logs": {
+      "navigation-regressions.log": {
+        "path": "/private/tmp/aps-g-task-origin-overlay-0qAhvm/navigation-regressions.log",
+        "sha256": "702c6d5a44fb31ec48517e9c81091b150049693ccb55be96b9316e8516da9832",
+        "bytes": 99
+      },
+      "ruff.log": {
+        "path": "/private/tmp/aps-g-task-origin-overlay-0qAhvm/ruff.log",
+        "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+        "bytes": 19
+      },
+      "pyright.log": {
+        "path": "/private/tmp/aps-g-task-origin-overlay-0qAhvm/pyright.log",
+        "sha256": "75b8a9e0b8300d8fbd30350a7c466cb163ea481e3971ae2a0a8aa710cf80fc5f",
+        "bytes": 191
+      }
+    },
+    "scope": "Main dirty-worktree targeted parsing/legacy regression; not a new frozen factory/browser acceptance"
+  },
+  "symbols": {
+    "_invalid": 31,
+    "_object": 35,
+    "_unique_object": 40,
+    "_invalid_constant": 49,
+    "_query_value": 53,
+    "_plan_context": 69,
+    "_explicit_times": 75,
+    "_calendar_context": 81,
+    "_resource_context": 91,
+    "_part_context": 112,
+    "_batch_context": 122,
+    "_report_context": 132,
+    "_trial_task_origin": 148,
+    "_trial_context": 165,
+    "_context": 175,
+    "read_navigation": 197
+  },
+  "not_changed": [
+    "core/models/workbench_trial.py",
+    "Main pages/JS",
+    "D process_order/TrialContract/TrialWorkspace",
+    "legacy dispatcher mount",
+    "V4 frozen source or raw evidence"
+  ],
+  "patch_application_check": {
+    "passed": true,
+    "path": "/private/tmp/aps-g-task-origin-overlay-0qAhvm/application-check",
+    "scope": "Two-file application and postimage hash check only, not a runnable/factory source snapshot."
+  },
+  "patch_path": "task-origin-overlay.patch"
+}

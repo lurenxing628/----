@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "status": "unit_verified_not_live_verified",
+  "revision": "trial-initial-history-observation",
+  "execution": {
+    "groups": [
+      "canonical",
+      "boot"
+    ],
+    "case_kinds": {
+      "canonical_navigation": 212,
+      "boot_contract_fault": 40
+    },
+    "total_cases": 252,
+    "restart_pages": 24,
+    "navigation_seed": true,
+    "browser_timeout_seconds": 1800
+  },
+  "test_snapshot": {
+    "sha256": "06ad141125f5bd09672ea60dcebb6d19b9c292d6f8296989127bacb73266be61",
+    "files": {
+      "tests/workbench/final_foundation_live.py": "88e76262ab9e6220b46d2a2e74bd83cc3c9c1448c7595cb90332d5556cc29495",
+      "tests/workbench/final_foundation_live_support.py": "70d203dc0cbcd3282ed3682e97dfd83221b3b8b4c8b640fce1f936ef45f2d482",
+      "tests/workbench/final_foundation_live_source_guard.py": "482891d6a467f8259093236c0bb080fe91d7bc6b25f68a22fab1ebba79b19def",
+      "tests/workbench/final_foundation_live_nav_cases.py": "bee2fe4d27f53b38b50df6a95f5891eea46395180e0b9d2e4c20672c1b87b8a2",
+      "tests/workbench/final_foundation_navigation_seed.py": "a2ec4cc29816c0e3a6e16a33e8537443e5b80bf0b4f40a5ba14686a380280f22",
+      "tests/workbench/test_final_foundation_live.py": "15a9e51574262bf411eb1d83b18ea3d541fba663ece072cdd3cc26c3b038545c",
+      "tests/workbench/final_foundation_live.cjs": "946da48018498621ae261b2ad2d4241b31f962fa41f9be6d07a5aa3c3624312c",
+      "tests/workbench/final_foundation_live_probe.cjs": "a8daefd045740d47f7f162e3392ddb1fff8170b028e4165721365336f9325b7d",
+      "tests/workbench/final_foundation_live_actions.cjs": "a735c9303fd989191abab17008e09e148c27f1fe1b0d4aa1aa016223cec533ae",
+      "tests/workbench/final_foundation_live_faults.cjs": "4be957e0cc0a39f61718b513ac0dab4d4caf1adb689149db84f111512ba1bee0",
+      "tests/workbench/final_foundation_live_boot_cases.cjs": "bf17d5e3b84704ebba588249bd550d0b77d01d65acc212a70c6b20173a5564b3",
+      "tests/workbench/final_foundation_live_navigation.cjs": "3dc02c683cf33e1e2d349d3bc211a7e692229058d71605486bee4fef4624c65f"
+    },
+    "ownership": "B tests only; not the original F test snapshot"
+  },
+  "browser_executed": false,
+  "supersedes_test_snapshot_sha256": "ea5f795e8b58ac16dcf21435b2858f1115ec872b2416aa1995290ac548884b16",
+  "affected_owned_paths": [
+    "tests/workbench/final_foundation_live_navigation.cjs",
+    "tests/workbench/test_final_foundation_live.py"
+  ],
+  "reason": "Main WorkbenchNavigation.read consumes an explicit URL boot context without first writing history. Trial's initial canonical direct/copy/reload can legitimately leave history.state null. The prior probe unconditionally dereferenced current.route.view.",
+  "implementation": "Record missing trial history explicitly without fabricating it; still require server boot equals URL, the actual page-specific DTO scope/identity and visible caption. Existing history must match; non-trial missing history still fails.",
+  "regression_checks": [
+    "missing trial history is allowed but remains unmodified",
+    "missing non-trial history is rejected",
+    "present matching trial history is verified",
+    "wrong persisted trial identity is rejected"
+  ],
+  "unit_verification": {
+    "pytest": "24 passed, 1 deselected in 4.03s",
+    "ruff": "All checks passed",
+    "pyright": "0 errors, 0 warnings, 0 informations",
+    "cjs_syntax_files": 6,
+    "browser_executed": false
+  },
+  "previous_live_root": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh",
+  "previous_live_snapshot_untouched": true,
+  "product_changed": false,
+  "f_source_changed": false,
+  "historical_92_unchanged": true,
+  "run_state": "Wait for current ea5f full 252 run and its restart evidence before deciding the next fresh run"
+}
+

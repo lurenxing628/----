@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "status": "unit_verified_not_live_verified",
+  "date": "2026-09-10",
+  "test_snapshot_sha256": "ea5f795e8b58ac16dcf21435b2858f1115ec872b2416aa1995290ac548884b16",
+  "browser_executed": false,
+  "main_factory_host_executed": false,
+  "commands": [
+    {
+      "command": ".venv/bin/python -B -m pytest tests/workbench/test_final_foundation_live.py -k 'not main_shell_real' --basetemp=/private/tmp/aps-final-foundation-B.xYPahs/group-entry-unit-final-20260910 -q -p no:cacheprovider",
+      "cwd": "/Users/lurenxing/GitHub/----",
+      "returncode": 0,
+      "stdout_summary": "24 passed, 1 deselected in 4.74s"
+    },
+    {
+      "command": ".venv/bin/python -B -m ruff check tests/workbench/final_foundation_live.py tests/workbench/final_foundation_live_support.py tests/workbench/final_foundation_live_nav_cases.py tests/workbench/final_foundation_live_source_guard.py tests/workbench/final_foundation_navigation_seed.py tests/workbench/test_final_foundation_live.py",
+      "returncode": 0,
+      "stdout_summary": "All checks passed!"
+    },
+    {
+      "command": ".venv/bin/python -B -m pyright tests/workbench/final_foundation_live.py tests/workbench/final_foundation_live_support.py tests/workbench/final_foundation_live_nav_cases.py tests/workbench/final_foundation_live_source_guard.py tests/workbench/final_foundation_navigation_seed.py tests/workbench/test_final_foundation_live.py",
+      "returncode": 0,
+      "stdout_summary": "0 errors, 0 warnings, 0 informations",
+      "runtime_notice": "Pyright printed an available-version notice; no dependency was installed or updated"
+    },
+    {
+      "command": ".venv/bin/python -B tests/workbench/final_foundation_live.py --groups canonical,boot --describe-groups",
+      "returncode": 0,
+      "result": "252 cases, 24 restart pages, navigation_seed=true, browser_executed=false"
+    }
+  ],
+  "tests": {
+    "prebuilt_copy": 4,
+    "real_service_preparation_and_case_schema": 6,
+    "boot_mutation_builder": 1,
+    "group_denominators": 5,
+    "rejected_group_arguments": 4,
+    "unguarded_original_tree_refusal": 1,
+    "frozen_copy_cli_without_host": 1,
+    "source_guard_subprocess": 1,
+    "cjs_syntax_and_pure_contracts": 1,
+    "total": 24
+  },
+  "source_guard_subprocess": {
+    "blocked_operations": [
+      "original source read",
+      "source symlink escaping frozen copy",
+      "frozen source write",
+      "original-root SQLite connection"
+    ],
+    "blocked": 4,
+    "original_database_created": false,
+    "source_modules_from_copy": true
+  },
+  "cjs": {
+    "syntax_files": 6,
+    "unknown_ref_request_contracts": 5,
+    "boot_definitions": 10,
+    "boot_mutations": 10,
+    "missing_or_duplicate_boot_rejected": 2
+  },
+  "private_unit_preparation_root": "/private/tmp/aps-final-foundation-B.xYPahs/group-entry-unit-final-20260910/test_navigation_case_plan_uses0/aps-workbench-live-16r8ah1v",
+  "unit_context": "Flask unit fixture with the real schema/mixed seed/TrialService; not the Main factory or managed host. References will be regenerated from the live fixture's real receipt.",
+  "not_verified": [
+    "252 browser cases",
+    "new host wrapper integration against a complete F snapshot",
+    "new actual page/context same-port restart",
+    "whole-repository full gate",
+    "final HEAD",
+    "clean-worktree proof",
+    "native Win7"
+  ],
+  "historical_92_unchanged": true,
+  "source_gate": "Await the Main/F complete frozen source path and matching actual build; no original-tree browser execution and no performance window"
+}
+

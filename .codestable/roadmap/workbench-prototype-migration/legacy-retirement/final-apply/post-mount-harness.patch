@@ -1,0 +1,42 @@
+*** Begin Patch
+*** Update File: harness/factory_runtime.py
+@@
+         self.source_guard = FrozenSourceGuard(self.source, Path(__file__).resolve().parent, manifest)
+         self.source_guard.restrict_sys_path()
+         enforce_private_writes(self.root, self.source_guard)
+-        # app.py invokes the real create_app at import, with all paths set first.
+-        module = importlib.import_module("app")
++        self.original = None
++        self.install_calls = 0
++        if candidate:
++            from web.routes.workbench import legacy_dispatch
++            original_install = legacy_dispatch.install_legacy_retirement
++
++            def capture_install(app):
++                self.install_calls += 1
++                self.original = dict(app.view_functions)
++                return original_install(app)
++
++            legacy_dispatch.install_legacy_retirement = capture_install
++        try:
++            module = importlib.import_module("app")
++        finally:
++            if candidate:
++                legacy_dispatch.install_legacy_retirement = original_install
+         self.app = module.app
+         self.path = self.app.config["DATABASE_PATH"]
+-        self.original = dict(self.app.view_functions)
+         self.candidate = candidate
+         if candidate:
+-            from web.routes.workbench.legacy_dispatch import install_legacy_retirement
+-            install_legacy_retirement(self.app)
++            from web.routes.workbench.legacy_page_contract import PAGE_POLICIES
++            assert self.install_calls == 1 and self.original is not None, "Factory must install retirement exactly once."
++            assert self.app.extensions.get("workbench.legacy_pages") == tuple(PAGE_POLICIES)
++        else:
++            assert "workbench.legacy_pages" not in self.app.extensions, "Baseline must remain unmounted."
++            self.original = dict(self.app.view_functions)
+         self.client = self.app.test_client()
+         self.responses = []
+         self.state_counter = 0
+*** End Patch

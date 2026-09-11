@@ -1,0 +1,134 @@
+*** Begin Patch
+*** Update File: web/routes/workbench/navigation_boot.py
+@@
+         _invalid("报表目录展开状态必须为布尔值。")
+ 
+ 
++def _trial_task_origin(context):
++    _object(context, ("base", "scope", "draft_ref", "task_origin"), ("task_origin",))
++    origin = context["task_origin"]
++    keys = ("plan_ref", "operation_ref", "task_ref")
++    _object(origin, keys, keys)
++    for key in keys:
++        reference(origin[key])
++    target = {key: value for key, value in context.items() if key != "task_origin"}
++    if set(target) == {"draft_ref"}:
++        reference(target["draft_ref"])
++        return
++    create_input(target)
++    _explicit_times(target.get("scope", {}))
++    if target["base"] != {"plan_ref": origin["plan_ref"]}:
++        _invalid("原任务定位必须使用同一原计划，不能改用候选或其他计划。")
++
++
+ def _trial_context(context):
+-    if set(context) in ({"draft_ref"}, {"scenario_ref"}):
++    if "task_origin" in context:
++        _trial_task_origin(context)
++    elif set(context) in ({"draft_ref"}, {"scenario_ref"}):
+         reference(next(iter(context.values())))
+     else:
+         create_input(context)
+*** Update File: tests/workbench/test_final_navigation_boot.py
+@@
+ 
+ from werkzeug.datastructures import MultiDict
+ 
+-from core.models.workbench_command import canonical_json
+-from tests.workbench.final_navigation_support import INVALID_CONTEXTS, REF, VALID_CONTEXTS, nav_args
++from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
++from core.models.workbench_trial import create_input
++from tests.workbench.final_navigation_support import END, INVALID_CONTEXTS, REF, START, VALID_CONTEXTS, nav_args
+ from web.routes.workbench.navigation_boot import (
+     EMPTY_CONTEXT_VIEWS,
+     SUPPORTED_VIEWS,
+@@
+         self.assertEqual(result["context"]["plan_ref"], unknown)
+ 
+ 
++class TrialTaskOriginNavigationTests(unittest.TestCase):
++    def origin(self):
++        return {"plan_ref": REF, "operation_ref": "b" * 48, "task_ref": "c" * 48}
++
++    def test_same_plan_and_draft_targets_preserve_exact_values_without_writes(self):
++        origin = self.origin()
++        contexts = ({"base": {"plan_ref": REF}, "task_origin": origin},
++                    {"base": {"plan_ref": REF}, "scope": {"range_start": START, "range_end": END,
++                     "query": "same plan display", "batch_refs": ["d" * 48]}, "task_origin": origin},
++                    {"draft_ref": "e" * 48, "task_origin": origin})
++        for context in contexts:
++            args = nav_args("trial", context)
++            before = copy.deepcopy(context), list(args.items(multi=True))
++            with self.subTest(context=context), patch("sqlite3.connect", side_effect=AssertionError("navigation must not open a DB")):
++                result = read_navigation("trial", args)
++            self.assertEqual(result, {"version": 1, "view": "trial", "context": context})
++            self.assertEqual((context, list(args.items(multi=True))), before)
++            assert result is not None
++            self.assertEqual(read_navigation("trial", MultiDict({"nav": canonical_json(result)})), result)
++
++    def test_origin_requires_exactly_three_keys(self):
++        origin = self.origin()
++        invalid = [None, [], "task", False, {}, {**origin, "ticket": REF}, {**origin, "scenario_ref": REF}]
++        invalid.extend({key: value} for key, value in origin.items())
++        invalid.extend({key: value for key, value in origin.items() if key != missing} for missing in origin)
++        for value in invalid:
++            for target in ({"base": {"plan_ref": REF}}, {"draft_ref": "e" * 48}):
++                with self.subTest(origin=value, target=target), self.assertRaises(WorkbenchNavigationInvalid):
++                    read_navigation("trial", nav_args("trial", {**target, "task_origin": value}))
++
++    def test_every_origin_ref_uses_the_existing_permanent_ref_format(self):
++        for key in self.origin():
++            for value in (None, False, 48, [], {}, "", "a" * 47, "a" * 49, "A" * 48, "g" * 48, REF + " ", "latest"):
++                origin = {**self.origin(), key: value}
++                with self.subTest(key=key, value=value), self.assertRaises(WorkbenchNavigationInvalid):
++                    read_navigation("trial", nav_args("trial", {"draft_ref": "e" * 48, "task_origin": origin}))
++
++    def test_candidate_scenario_different_base_and_ambiguous_targets_are_rejected(self):
++        targets = ({}, {"base": {"candidate_ref": REF}}, {"base": {"plan_ref": "d" * 48}},
++                   {"scenario_ref": REF}, {"draft_ref": "e" * 48, "scenario_ref": REF},
++                   {"base": {"plan_ref": REF}, "draft_ref": "e" * 48},
++                   {"base": {"plan_ref": REF, "candidate_ref": "d" * 48}},
++                   {"base": {"plan_ref": REF}, "ticket": REF}, {"draft_ref": "e" * 48, "scope": {}},
++                   {"draft_ref": None}, {"base": None})
++        for target in targets:
++            with self.subTest(target=target), self.assertRaises(WorkbenchNavigationInvalid):
++                read_navigation("trial", nav_args("trial", {**target, "task_origin": self.origin()}))
++
++    def test_origin_does_not_loosen_existing_display_scope_or_other_views(self):
++        for scope in ({"range_start": START}, {"range_start": None, "range_end": None},
++                      {"range_start": END, "range_end": START}, {"query": "x" * 201}, {"task_ref": REF}):
++            with self.subTest(scope=scope), self.assertRaises(WorkbenchNavigationInvalid):
++                read_navigation("trial", nav_args("trial", {"base": {"plan_ref": REF}, "scope": scope, "task_origin": self.origin()}))
++        for view in ("gantt", "reports", "process", "dashboard"):
++            with self.subTest(view=view), self.assertRaises(WorkbenchNavigationInvalid):
++                read_navigation(view, nav_args(view, {"task_origin": self.origin()}))
++
++    def test_duplicate_origin_and_nested_reference_keys_are_rejected(self):
++        origin = canonical_json(self.origin())
++        base = '"draft_ref":"' + "e" * 48 + '"'
++        bodies = ('{"version":1,"view":"trial","context":{' + base + ',"task_origin":' + origin + ',"task_origin":' + origin + '}}',
++                  '{"version":1,"view":"trial","context":{' + base + ',"task_origin":' + origin[:-1] + ',"plan_ref":"' + REF + '"}}}')
++        for body in bodies:
++            with self.subTest(body=body), self.assertRaises(WorkbenchNavigationInvalid):
++                read_navigation("trial", MultiDict({"nav": body}))
++
++    def test_origin_is_navigation_only_not_a_create_command_extension(self):
++        context = {"base": {"plan_ref": REF}, "task_origin": self.origin()}
++        with patch("web.routes.workbench.navigation_boot.create_input", wraps=create_input) as validate:
++            self.assertIsNotNone(read_navigation("trial", nav_args("trial", context)))
++        validate.assert_called_once_with({"base": {"plan_ref": REF}})
++        with self.assertRaises(WorkbenchCommandRejected):
++            create_input(context)
++        with patch("web.routes.workbench.navigation_boot.create_input", side_effect=AssertionError("draft navigation is not create")):
++            self.assertIsNotNone(read_navigation("trial", nav_args("trial", {"draft_ref": "e" * 48, "task_origin": self.origin()})))
++
++    def test_without_origin_candidate_and_saved_scenario_inputs_stay_valid(self):
++        for context in ({"base": {"candidate_ref": REF}}, {"scenario_ref": REF}, {"draft_ref": REF}):
++            with self.subTest(context=context):
++                self.assertEqual(read_navigation("trial", nav_args("trial", context)),
++                                 {"version": 1, "view": "trial", "context": context})
++
++
+ if __name__ == "__main__":
+     unittest.main(verbosity=2)
+*** End Patch

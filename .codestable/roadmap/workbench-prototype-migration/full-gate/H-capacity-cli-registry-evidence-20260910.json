@@ -1,0 +1,2178 @@
+{
+  "schema_version": 1,
+  "owner": "H",
+  "scope": "Register one approved supplemental capacity CLI guard; no CLI/product changes by H",
+  "before_targets": [
+    {
+      "group_id": "quality_gate",
+      "target_paths": [
+        "tests/gate_meta/test_run_quality_gate.py",
+        "tests/gate_meta/test_anti_regression_gate.py",
+        "tests/gate_meta/test_no_residual_main_style_regression.py",
+        "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "tests/gate_meta/test_quality_gate_scan_contract.py",
+        "tests/gate_meta/test_codestable_tools_contract.py",
+        "tests/gate_meta/test_codestable_architecture_contract.py",
+        "tests/gate_meta/test_symbol_locator_contract.py",
+        "tests/gate_meta/test_dead_code_usage_graph_contract.py",
+        "tests/gate_meta/test_dead_code_usage_graph_scope_contract.py",
+        "tests/gate_meta/test_run_full_selftest_report_metadata.py",
+        "tests/gate_meta/test_callgraph_receiver_resolution.py",
+        "tests/gate_meta/test_import_cycle_scanner.py",
+        "tests/gate_meta/test_import_cycle_baseline.py",
+        "tests/gate_meta/test_check_full_test_debt.py",
+        "tests/gate_meta/test_full_test_debt_registry_contract.py",
+        "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py",
+        "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
+        "tests/app_runtime/test_fast_static_precheck.py",
+        "tests/gate_meta/test_git_hook_checks.py",
+        "tests/gate_meta/test_benchmark_full_test_debt_shards.py",
+        "tests/gate_meta/test_long_gate_cli_controls.py",
+        "tests/gate_meta/test_long_gate_quickref_cache.py",
+        "tests/gate_meta/test_round1_import_resolver.py"
+      ]
+    },
+    {
+      "group_id": "scheduler_config",
+      "target_paths": [
+        "tests/config/test_scheduler_config_route_contract.py",
+        "tests/config/test_config_field_spec_contract.py",
+        "tests/config/test_scheduler_config_manual_url_normalization.py",
+        "tests/config/test_config_service_active_preset_custom_sync.py",
+        "tests/config/test_config_snapshot_strict_numeric.py",
+        "tests/config/test_config_snapshot_projection_sync.py",
+        "tests/config/test_scheduler_config_spec_sync_contract.py",
+        "tests/config/test_config_service_component_contract.py",
+        "tests/config/test_config_service_relaxed_missing_visible.py",
+        "tests/config/test_apply_preset_adjusted_marks_custom.py",
+        "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py"
+      ]
+    },
+    {
+      "group_id": "scheduler_run_core",
+      "target_paths": [
+        "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
+        "tests/schedule/route_view/test_scheduler_route_registration_contract.py",
+        "tests/web_pages/test_history_summary_parser.py",
+        "tests/algorithm/test_due_exclusive_consistency.py",
+        "tests/calendar_maintenance/test_freeze_window_bounds.py",
+        "tests/schedule/summary/test_scheduler_bp_result_summary_guard.py",
+        "tests/schedule/service/test_schedule_orchestrator_contract.py",
+        "tests/schedule/summary/test_schedule_summary_observability.py",
+        "tests/schedule/summary/test_schedule_summary_deep_review_degradations.py",
+        "tests/schedule/summary/test_scheduler_summary_public_projection_deep_review.py",
+        "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_deep_review_contract.py",
+        "tests/schedule/service/test_schedule_params_direct_call_contract.py",
+        "tests/algorithm/test_scheduler_objective_labels.py",
+        "tests/algorithm/test_objective_projection_contract.py",
+        "tests/algorithm/test_schedule_summary_contract.py",
+        "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
+        "tests/schedule/route_view/test_scheduler_missing_resource_message.py",
+        "tests/schedule/route_view/test_route_version_normalizers_contract.py",
+        "tests/models_domain/test_strict_parse_blank_required.py",
+        "tests/models_domain/test_schedule_resource_filter.py",
+        "tests/models_domain/test_yesno_normalization_contract.py",
+        "tests/algorithm/test_optimizer_seed_results_contract.py",
+        "tests/algorithm/test_optimizer_seed_boundary_contract.py",
+        "tests/algorithm/test_optimizer_runtime_seam_contract.py",
+        "tests/algorithm/test_optimizer_outcome_type_contract.py",
+        "tests/algorithm/test_optimizer_search_report_contract.py",
+        "tests/algorithm/test_optimizer_public_summary_projection_contract.py",
+        "tests/algorithm/test_optimizer_proof_harness_contract.py",
+        "tests/algorithm/test_optimizer_candidate_profile_contract.py",
+        "tests/algorithm/test_optimizer_candidate_fingerprint_contract.py",
+        "tests/algorithm/test_optimizer_graph_ready_candidate_contract.py",
+        "tests/algorithm/test_optimizer_benchmark_ratchet_gate.py",
+        "tests/algorithm/test_optimizer_ratchet_baseline_lifecycle.py",
+        "tests/algorithm/test_optimizer_quality_matrix_contract.py",
+        "tests/algorithm/test_optimizer_profile_predecode_dedup.py",
+        "tests/algorithm/test_optimizer_profile_budget.py",
+        "tests/algorithm/test_incomplete_batch_metrics_contract.py",
+        "tests/algorithm/test_incomplete_batch_optimizer_contract.py",
+        "tests/algorithm/test_incomplete_metrics_public_projection.py",
+        "tests/algorithm/test_ready_date_resource_calendar_lower_bound.py",
+        "tests/algorithm/test_sgs_slot_reuse_contract.py",
+        "tests/algorithm/test_sgs_slot_reuse_equivalence.py",
+        "tests/schedule/service/test_unselected_execution_resource_guardrails.py",
+        "tests/schedule/service/test_unselected_execution_resource_fail_closed.py",
+        "tests/schedule/service/test_unselected_execution_resource_snapshot.py",
+        "tests/schedule/service/test_unselected_execution_feedback_continuity.py",
+        "tests/schedule/service/test_schedule_seed_metadata_helper_contract.py",
+        "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+        "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
+        "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py",
+        "tests/algorithm/test_localsearch_batch_order_actuator.py",
+        "tests/schedule/service/test_schedule_input_collector_contract.py",
+        "tests/schedule/service/test_schedule_input_collector_legacy_compat.py",
+        "tests/schedule/service/test_schedule_service_missing_resource_source_case_insensitive.py",
+        "tests/schedule/service/test_schedule_service_reschedulable_contract.py",
+        "tests/schedule/service/test_schedule_params_read_failure_visible.py",
+        "tests/schedule/service/test_schedule_service_strict_snapshot_guard.py",
+        "tests/config/test_schedule_config_snapshot_optional_guard.py",
+        "tests/schedule/service/test_schedule_service_facade_delegation.py",
+        "tests/schedule/service/test_schedule_persistence_reject_empty_actionable_schedule.py",
+        "tests/schedule/service/test_schedule_persistence_reschedulable_contract.py",
+        "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py",
+        "tests/schedule/summary/test_schedule_summary_cfg_snapshot_contract.py",
+        "tests/schedule/summary/test_schedule_summary_algo_warnings_union.py",
+        "tests/schedule/summary/test_schedule_summary_invalid_due_and_unscheduled_counts.py",
+        "tests/schedule/summary/test_schedule_summary_freeze_state_contract.py",
+        "tests/schedule/summary/test_schedule_summary_overdue_warning_append_fallback.py",
+        "tests/schedule/summary/test_schedule_summary_v11_contract.py",
+        "tests/schedule/summary/test_schedule_summary_merge_context_degraded_code.py",
+        "tests/schedule/summary/test_schedule_summary_input_fallback_contract.py",
+        "tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py",
+        "tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py",
+        "tests/scheduler_graph/test_scheduler_graph_report_mode_service_contract.py",
+        "tests/algorithm/test_sgs_scoring_fallback_unscorable.py",
+        "tests/candidate/test_scheduler_candidate_runner_contract.py",
+        "tests/candidate/test_scheduler_candidate_persistence_contract.py",
+        "tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py",
+        "tests/schedule/route_view/test_scheduler_run_view_result_contract.py",
+        "tests/schedule/service/test_schedule_template_lookup_contract.py",
+        "tests/resource_dispatch/test_scheduler_resource_dispatch_smoke.py",
+        "tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py",
+        "tests/schedule/route_view/test_scheduler_plan_identity_evidence_link_contract.py",
+        "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
+        "tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py",
+        "tests/operation_execution/test_operation_execution_event_foundation.py",
+        "tests/operation_execution/test_operation_execution_event_sequence_contract.py",
+        "tests/operation_execution/test_operation_execution_event_time_contract.py",
+        "tests/operation_execution/test_operation_execution_state_revision.py",
+        "tests/operation_execution/test_operation_execution_state_flow.py",
+        "tests/operation_execution/test_scheduler_reschedule_execution_facts.py",
+        "tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py",
+        "tests/schedule/service/test_op_seq_loud_contract.py",
+        "tests/schedule/summary/test_meta_bool_state_parity_contract.py",
+        "tests/candidate/test_baseline_missing_or_failed_four_state_parity.py",
+        "tests/resource_dispatch/test_resource_dispatch_task_card_schedule_missing_contract.py",
+        "tests/algorithm/test_busy_block_native_equivalence.py",
+        "tests/algorithm/test_busy_block_boundaries.py",
+        "tests/algorithm/test_sgs_explicit_piece_scope.py",
+        "tests/candidate/test_scheduler_candidate_schema_contract.py",
+        "tests/gate_meta/test_scheduler_lazy_exports_final.py"
+      ]
+    },
+    {
+      "group_id": "scheduler_analysis_gantt_reports_week_plan",
+      "target_paths": [
+        "tests/scheduler_analysis/test_scheduler_analysis_route_contract.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_read_context.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_observability.py",
+        "tests/scheduler_analysis/test_analysis_page_version_default_latest.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_vm_legacy_summary_bridge.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_viewmodel_split.py",
+        "tests/candidate/test_scheduler_week_plan_summary_observability.py",
+        "tests/gantt/test_gantt_page_version_default_latest.py",
+        "tests/gantt/test_gantt_default_version_span.py",
+        "tests/gantt/test_gantt_adapter_contract.py",
+        "tests/gantt/test_gantt_adjustment_draft_model.py",
+        "tests/gantt/test_gantt_adjustment_validate_simulate.py",
+        "tests/gantt/test_gantt_draft_save_and_preview.py",
+        "tests/gantt/test_gantt_scenario_publish.py",
+        "tests/web_pages/test_scenario_preview_secondary_outputs.py",
+        "tests/gantt/test_frappe_gantt_short_task_contract.py",
+        "tests/gantt/test_gantt_readonly_mode_contract.py",
+        "tests/gantt/test_gantt_zoom_contract.py",
+        "tests/gantt/test_gantt_zoom_decoration_sync.py",
+        "tests/gantt/test_gantt_zoom_range_guard.py",
+        "tests/gantt/test_gantt_task_labels_contract.py",
+        "tests/gantt/test_gantt_task_detail_panel_contract.py",
+        "tests/gantt/test_gantt_task_detail_js_contract.py",
+        "tests/gantt/test_gantt_url_persistence.py",
+        "tests/gantt/test_gantt_frontend_error_boundary.py",
+        "tests/web_pages/test_reports_page_version_default_latest.py",
+        "tests/scheduler_analysis/test_report_context_filters_contract.py",
+        "tests/scheduler_analysis/test_batch_list_pushdown_contract.py",
+        "tests/web_pages/test_report_plan_filter_js_contract.py",
+        "tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py",
+        "tests/scheduler_analysis/test_report_export_size_mode_selection.py",
+        "tests/scheduler_analysis/test_report_export_large_scope_rejects_need_async.py",
+        "tests/operation_execution/test_execution_review_identity_guard.py",
+        "tests/web_pages/test_reports_workbench_backlink_contract.py",
+        "tests/web_pages/test_reports_workbench_navigation_contract.py",
+        "tests/web_pages/test_reports_workbench_navigation_publish_contract.py",
+        "tests/schedule/route_view/test_scheduler_navigation_unknown_plan_role_contract.py",
+        "tests/schedule/route_view/test_scheduler_historical_plan_label_contract.py",
+        "tests/web_pages/test_web_silent_fallback_contract.py",
+        "tests/scheduler_analysis/test_plan_vs_actual_review.py",
+        "tests/resource_dispatch/test_resource_dispatch_site_records_frontend_contract.py",
+        "tests/resource_dispatch/test_resource_dispatch_workbench_lane_contract.py",
+        "tests/operation_execution/test_operation_execution_feedback_routes.py",
+        "tests/operation_execution/test_operation_execution_feedback_guard_routes.py",
+        "tests/operation_execution/test_operation_execution_exception_feedback.py",
+        "tests/operation_execution/test_operation_execution_exception_plan_guard.py",
+        "tests/operation_execution/test_operation_execution_exception_surfaces.py",
+        "tests/operation_execution/test_operation_execution_scope_read_contract.py",
+        "tests/gantt/test_gantt_adjustment_publish_execution_revision.py",
+        "tests/resource_dispatch/test_resource_dispatch_actual_records.py",
+        "tests/resource_dispatch/test_resource_dispatch_actual_task_key_frontend_contract.py",
+        "tests/resource_dispatch/test_resource_dispatch_actual_import.py",
+        "tests/resource_dispatch/test_resource_dispatch_actual_import_plan_guard.py",
+        "tests/web_pages/test_aps_workbench_context_propagation_contract.py",
+        "tests/web_pages/test_dashboard_workbench_contract.py",
+        "tests/web_pages/test_dashboard_overdue_count_tolerance.py",
+        "tests/schedule/route_view/test_scheduler_workbench_link_execution_review_contract.py",
+        "tests/schedule/route_view/test_scheduler_workbench_link_guardrails_contract.py",
+        "tests/schedule/route_view/test_scheduler_workbench_link_matrix_contract.py",
+        "tests/schedule/route_view/test_scheduler_workbench_link_targets_contract.py",
+        "tests/resource_dispatch/test_resource_dispatch_result_status_label_contract.py",
+        "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
+        "tests/web_pages/test_scheduler_plan_role_arg_contract.py",
+        "tests/candidate/test_week_plan_filename_uses_normalized_version.py",
+        "tests/gantt/test_gantt_degradation_surface.py",
+        "tests/schedule/route_view/test_scheduler_result_navigation_contract.py",
+        "tests/gantt/test_gantt_contract_snapshot.py",
+        "tests/gantt/test_gantt_critical_chain_unavailable.py",
+        "tests/gantt/test_gantt_critical_chain_provider.py",
+        "tests/gantt/test_gantt_critical_chain_cache_snapshot.py",
+        "tests/gantt/test_gantt_critical_chain_cache_transactions.py",
+        "tests/scheduler_analysis/test_report_calendar_capacity_intersections.py",
+        "tests/gantt/test_gantt_critical_chain_scope_contract.py",
+        "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py",
+        "tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py",
+        "tests/candidate/test_scheduler_candidate_analysis_contract.py",
+        "tests/candidate/test_scheduler_candidate_analysis_links_contract.py",
+        "tests/candidate/test_scheduler_candidate_display_contract.py",
+        "tests/candidate/test_scheduler_candidate_plain_language.py",
+        "tests/candidate/test_scheduler_candidate_plan_query_contract.py",
+        "tests/candidate/test_scheduler_candidate_reports_contract.py",
+        "tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py",
+        "tests/candidate/test_scheduler_candidate_summary_contract.py",
+        "tests/candidate/test_scheduler_candidate_week_plan_contract.py",
+        "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py",
+        "tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_contract.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_error_contract.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_graph_score_contract.py",
+        "tests/algorithm/test_skill_rank_mapping.py",
+        "tests/schedule/service/test_schedule_service_input_merge_context_contract.py"
+      ]
+    },
+    {
+      "group_id": "scheduler_batches_material_resource",
+      "target_paths": [
+        "tests/schedule/route_view/test_scheduler_batches_degraded_visible.py",
+        "tests/schedule/route_view/test_scheduler_batch_template_warning_surface.py",
+        "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
+        "tests/resource_dispatch/test_resource_dispatch_bad_time_rows_surface_degraded.py",
+        "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
+        "tests/resource_dispatch/test_resource_dispatch_public_output_contract.py",
+        "tests/resource_dispatch/test_resource_dispatch_viewmodel_public_output_contract.py",
+        "tests/resource_dispatch/test_resource_dispatch_task_id_encoding.py",
+        "tests/resource_dispatch/test_resource_dispatch_overdue_summary_formats.py",
+        "tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
+        "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py"
+      ]
+    },
+    {
+      "group_id": "request_services_runtime_error_boundary",
+      "target_paths": [
+        "tests/web_pages/test_request_services_contract.py",
+        "tests/web_pages/test_factory_request_lifecycle_observability.py",
+        "tests/web_pages/test_system_request_services_contract.py",
+        "tests/calendar_maintenance/test_maintenance_window_mutex.py",
+        "tests/migration_db/test_database_high_version_failfast.py",
+        "tests/migration_db/test_migration_schema_contract.py",
+        "tests/migration_db/test_migrations.py",
+        "tests/operation_execution/test_operation_execution_migration_v16_contract.py",
+        "tests/operation_execution/test_operation_execution_migration_v18_contract.py",
+        "tests/operation_execution/test_operation_execution_migration_v19_contract.py",
+        "tests/web_pages/test_error_field_label_source.py",
+        "tests/gate_meta/test_scheduler_data_route_error_contract.py",
+        "tests/app_runtime/test_safe_next_url_hardening.py",
+        "tests/app_runtime/test_safe_next_url_observability.py",
+        "tests/app_runtime/test_fixed_file_security.py",
+        "tests/app_runtime/test_validate_dist_runtime_identity.py",
+        "tests/gate_meta/test_win7_networkx_package_contract.py",
+        "tests/gate_meta/test_frozen_bundle_contract.py",
+        "tests/web_pages/test_system_runtime_log_reader.py",
+        "tests/web_pages/test_error_boundary_contract.py",
+        "tests/web_pages/test_diagnostic_package_security.py",
+        "tests/migration_db/test_backup_integrity_check_contract.py",
+        "tests/migration_db/test_restore_pre_snapshot_failure_contract.py",
+        "tests/app_runtime/test_backup_create_integrity_error_message.py",
+        "tests/material/test_material_repo_stock_qty_loud_contract.py",
+        "tests/material/test_material_finite_quantity_contract.py"
+      ]
+    },
+    {
+      "group_id": "frontend_manual_excel",
+      "target_paths": [
+        "tests/excel_data_io/test_excel_import_hardening.py",
+        "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
+        "tests/excel_data_io/test_excel_conversion_output_contract.py",
+        "tests/excel_data_io/test_excel_hidden_payload_contract.py",
+        "tests/app_runtime/test_frontend_offline_static_assets.py",
+        "tests/excel_data_io/test_excel_renamed_column_conflicts.py",
+        "tests/excel_data_io/test_import_execution_stats_source_row_num.py"
+      ]
+    },
+    {
+      "group_id": "ui_layout_presenters_system",
+      "target_paths": [
+        "tests/web_pages/test_system_history_route_contract.py",
+        "tests/app_runtime/test_ui_browser_geometry_env.py",
+        "tests/app_runtime/test_ui_geometry_html_contract.py",
+        "tests/gate_meta/test_scan_py38plus_syntax.py",
+        "tests/gate_meta/test_architecture_fitness.py",
+        "tests/web_pages/test_workbench_nav_entry_contract.py",
+        "tests/web_pages/test_print_css_contract.py",
+        "tests/web_pages/test_css_token_source_contract.py",
+        "tests/web_pages/test_label_single_source_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_registry",
+      "target_paths": [
+        "tests/gate_meta/test_workbench_registry_contract.py",
+        "tests/gate_meta/test_workbench_cache_environment.py",
+        "tests/workbench/test_fe04_shared_service_dependency_contract.py",
+        "tests/gate_meta/test_workbench_round1_registry_contract.py",
+        "tests/workbench/test_round1_execution_dependency_contract.py",
+        "tests/workbench/test_round1_plan_query_dependency_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_foundation",
+      "target_paths": [
+        "tests/workbench/test_entry.py",
+        "tests/workbench/test_identity_metadata.py",
+        "tests/workbench/test_identity_replacements.py",
+        "tests/workbench/test_identity_key_codec.py",
+        "tests/workbench/test_commands.py",
+        "tests/workbench/test_read_context.py",
+        "tests/workbench/test_write_context.py",
+        "tests/workbench/test_foundation_dependency_scope.py",
+        "tests/workbench/test_transport.py",
+        "tests/workbench/test_theme.py"
+      ]
+    },
+    {
+      "group_id": "workbench_resources",
+      "target_paths": [
+        "tests/workbench/test_resource_schema.py",
+        "tests/workbench/test_resource_entities.py",
+        "tests/workbench/test_resource_relations.py",
+        "tests/workbench/test_resource_catalogs.py",
+        "tests/workbench/test_resource_metrics.py",
+        "tests/workbench/test_resource_calendar_summary.py",
+        "tests/workbench/test_resource_api.py",
+        "tests/workbench/test_resource_table_queries.py",
+        "tests/workbench/test_resource_table_api.py",
+        "tests/workbench/test_resource_table_scale.py",
+        "tests/workbench/test_resource_transport.py",
+        "tests/workbench/test_resource_files.py",
+        "tests/workbench/test_resource_file_codec.py",
+        "tests/workbench/test_resource_file_api.py",
+        "tests/workbench/test_resource_file_scale.py",
+        "tests/workbench/test_resource_file_calendar_connection.py",
+        "tests/workbench/test_resource_bulk.py",
+        "tests/workbench/test_column_export_scope.py",
+        "tests/workbench/test_calendars.py",
+        "tests/workbench/test_calendar_api.py",
+        "tests/workbench/test_operator_qualification.py",
+        "tests/workbench/test_operator_shift_calendar.py",
+        "tests/workbench/test_suppliers.py",
+        "tests/workbench/test_supplier_capabilities.py",
+        "tests/workbench/test_material_queries.py",
+        "tests/workbench/test_material_query_scale.py",
+        "tests/workbench/test_material_commands.py",
+        "tests/workbench/test_material_api.py",
+        "tests/workbench/test_material_actions_api.py",
+        "tests/workbench/test_material_files.py",
+        "tests/workbench/test_material_bulk.py",
+        "tests/workbench/test_resource_table_domain_pairing.py",
+        "tests/workbench/test_fe01_resource_static_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_process",
+      "target_paths": [
+        "tests/workbench/test_process_identity_schema.py",
+        "tests/workbench/test_process_identity_performance.py",
+        "tests/workbench/test_process_workflow_schema.py",
+        "tests/workbench/test_process_workflow_state.py",
+        "tests/workbench/test_process_queries.py",
+        "tests/workbench/test_process_read_api.py",
+        "tests/workbench/test_process_readiness.py",
+        "tests/workbench/test_process_table.py",
+        "tests/workbench/test_process_table_api.py",
+        "tests/workbench/test_process_part_actions.py",
+        "tests/workbench/test_process_collection_api.py",
+        "tests/workbench/test_process_collection_api_transactions.py",
+        "tests/workbench/test_process_route_preview.py",
+        "tests/workbench/test_process_route_confirm.py",
+        "tests/workbench/test_process_stage_commands.py",
+        "tests/workbench/test_process_stage_api.py",
+        "tests/workbench/test_process_batch_gate.py",
+        "tests/workbench/test_process_file_codec.py",
+        "tests/workbench/test_process_file_route.py",
+        "tests/workbench/test_process_file_route_apply.py",
+        "tests/workbench/test_process_file_hours_preview.py",
+        "tests/workbench/test_process_file_hours_apply.py",
+        "tests/workbench/test_process_file_hours_roundtrip.py",
+        "tests/workbench/test_process_file_hours_scale.py",
+        "tests/workbench/test_process_file_api_exports.py",
+        "tests/workbench/test_process_file_api_imports.py",
+        "tests/workbench/test_process_file_api_parameters.py",
+        "tests/workbench/test_process_file_api_transactions.py",
+        "tests/workbench/test_process_file_api_scale.py",
+        "tests/workbench/test_process_quota_protection.py",
+        "tests/workbench/test_process_quota_protection_excel.py",
+        "tests/workbench/test_process_quota_protection_routes.py",
+        "tests/workbench/test_process_quota_protection_transactions.py",
+        "tests/workbench/test_process_quota_protection_stage_regressions.py",
+        "tests/workbench/test_process_quota_protection_file_receipts.py",
+        "tests/workbench/test_process_quota_protection_file_receipt_failures.py",
+        "tests/workbench/test_merged_cycle_projection.py",
+        "tests/workbench/test_merged_cycle_projection_api.py",
+        "tests/workbench/test_eu_process_fixture_contracts.py",
+        "tests/workbench/test_round1_process_contract.py",
+        "tests/workbench/test_round1_process_boundaries.py"
+      ]
+    },
+    {
+      "group_id": "workbench_batches",
+      "target_paths": [
+        "tests/workbench/test_batch_commands.py",
+        "tests/workbench/test_batch_actions.py",
+        "tests/workbench/test_batch_files.py",
+        "tests/workbench/test_batch_execution_ledger_projection.py",
+        "tests/workbench/test_batch_execution_ledger_guards.py",
+        "tests/workbench/test_batch_execution_ledger_atomic.py",
+        "tests/workbench/test_batch_execution_ledger_boundaries.py",
+        "tests/workbench/test_batch_round1_boundaries.py"
+      ]
+    },
+    {
+      "group_id": "workbench_plans",
+      "target_paths": [
+        "tests/workbench/test_plan_baseline.py",
+        "tests/workbench/test_plan_catalog.py",
+        "tests/workbench/test_plan_calendar.py",
+        "tests/workbench/test_plan_calendar_runtime_dates.py",
+        "tests/workbench/test_plan_delivery.py",
+        "tests/workbench/test_plan_delivery_scale.py",
+        "tests/workbench/test_plan_occupancy.py",
+        "tests/workbench/test_plan_page.py",
+        "tests/workbench/test_plan_persistent_identity.py",
+        "tests/workbench/test_plan_public_projection.py",
+        "tests/workbench/test_plan_runtime_dates.py",
+        "tests/workbench/test_plan_workspace_projections.py",
+        "tests/workbench/test_plan_query_api.py",
+        "tests/workbench/test_plan_export_api.py",
+        "tests/workbench/test_plan_transport.py",
+        "tests/workbench/test_official_plan_persistence.py",
+        "tests/workbench/test_plan_adoption_baseline.py",
+        "tests/workbench/test_plan_adoption_baseline_api.py",
+        "tests/workbench/test_plan_adoption_baseline_integrity.py",
+        "tests/workbench/test_round1_plan_contract_boundaries.py",
+        "tests/workbench/test_round1_plan_contract_projections.py"
+      ]
+    },
+    {
+      "group_id": "workbench_reports",
+      "target_paths": [
+        "tests/workbench/test_report_read.py",
+        "tests/workbench/test_report_export.py",
+        "tests/workbench/test_report_boundaries.py",
+        "tests/workbench/test_report_execution_ledger_read.py",
+        "tests/workbench/test_report_execution_ledger_identity.py",
+        "tests/workbench/test_report_execution_ledger_export.py",
+        "tests/workbench/test_report_execution_ledger_boundaries.py",
+        "tests/workbench/test_report_execution_ledger_scale.py",
+        "tests/workbench/test_round1_analytics_contract.py",
+        "tests/workbench/test_round1_report_export_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_system",
+      "target_paths": [
+        "tests/workbench/test_system_maintenance_api.py",
+        "tests/workbench/test_system_maintenance_restore.py",
+        "tests/workbench/test_system_maintenance_failures.py",
+        "tests/workbench/test_master_overview_reads.py",
+        "tests/workbench/test_master_overview_boundaries.py",
+        "tests/workbench/test_system_restore_host.py",
+        "tests/workbench/test_system_restore_host_drain.py",
+        "tests/workbench/test_system_restore_host_recovery.py",
+        "tests/workbench/test_system_restore_entrypoint.py",
+        "tests/workbench/test_system_restore_entrypoint_fail_closed.py",
+        "tests/workbench/test_system_restore_entrypoint_recovery.py",
+        "tests/workbench/test_du_system_restore_view.py",
+        "tests/workbench/test_round1_host_boundaries.py",
+        "tests/workbench/test_round1_runtime_observation.py"
+      ]
+    },
+    {
+      "group_id": "workbench_execution_ledger",
+      "target_paths": [
+        "tests/workbench/test_execution_ledger.py",
+        "tests/workbench/test_execution_ledger_contracts.py",
+        "tests/workbench/test_execution_ledger_commands.py",
+        "tests/workbench/test_execution_ledger_constraints.py",
+        "tests/workbench/test_execution_ledger_legacy.py",
+        "tests/workbench/test_execution_ledger_scope.py",
+        "tests/workbench/test_execution_ledger_source_integrity.py",
+        "tests/workbench/test_execution_ledger_scale.py",
+        "tests/workbench/test_round1_execution_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_execution_scheduler",
+      "target_paths": [
+        "tests/workbench/test_scheduler_execution_ledger.py",
+        "tests/workbench/test_scheduler_execution_ledger_guards.py",
+        "tests/workbench/test_scheduler_execution_ledger_snapshot.py",
+        "tests/workbench/test_scheduler_execution_ledger_scale.py"
+      ]
+    },
+    {
+      "group_id": "workbench_field",
+      "target_paths": [
+        "tests/workbench/test_field_workspace_api.py",
+        "tests/workbench/test_field_files_api.py",
+        "tests/workbench/test_field_files_codec.py",
+        "tests/workbench/test_actual_gantt_api.py",
+        "tests/workbench/test_point_downstream_api.py",
+        "tests/workbench/test_round1_field_piece_files.py",
+        "tests/workbench/test_round1_field_piece_files_codec.py",
+        "tests/workbench/test_round1_field_piece_files_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_preflight",
+      "target_paths": [
+        "tests/workbench/test_preflight_api.py",
+        "tests/workbench/test_preflight_ledger.py",
+        "tests/workbench/test_preflight_capacity.py",
+        "tests/workbench/test_preflight_run_status.py"
+      ]
+    },
+    {
+      "group_id": "workbench_mainmigration",
+      "target_paths": [
+        "tests/workbench/test_execution_ledger_migration.py",
+        "tests/workbench/test_run_schema_migration.py",
+        "tests/workbench/test_plan_migration_integration.py",
+        "tests/workbench/test_migration_pages_fixture.py",
+        "tests/workbench/test_trial_lineage_migration.py",
+        "tests/workbench/test_lineage_lookup_migration.py",
+        "tests/workbench/test_calibration_dashboard_migration.py",
+        "tests/workbench/test_outsourcing_identity_migration.py",
+        "tests/workbench/test_dashboard_external_migration.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_compute",
+      "target_paths": [
+        "tests/workbench/test_run_compute.py",
+        "tests/workbench/test_run_compute_contracts.py",
+        "tests/workbench/test_run_compute_execution.py",
+        "tests/workbench/test_run_compute_integration.py",
+        "tests/workbench/test_run_compute_readonly.py",
+        "tests/workbench/test_round1_run_boundaries_input.py",
+        "tests/workbench/test_round1_run_boundaries_compute.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_jobs",
+      "target_paths": [
+        "tests/workbench/test_run_jobs.py",
+        "tests/workbench/test_run_jobs_schema.py",
+        "tests/workbench/test_run_jobs_api.py",
+        "tests/workbench/test_run_jobs_atomic.py",
+        "tests/workbench/test_run_jobs_concurrency.py",
+        "tests/workbench/test_run_jobs_recovery.py",
+        "tests/workbench/test_run_jobs_restart.py",
+        "tests/workbench/test_run_runtime.py",
+        "tests/workbench/test_run_runtime_lock.py",
+        "tests/workbench/test_run_runtime_recovery.py",
+        "tests/workbench/test_run_runtime_lifecycle.py",
+        "tests/workbench/test_run_entrypoint.py",
+        "tests/workbench/test_run_history_queries.py",
+        "tests/workbench/test_run_history_snapshots.py",
+        "tests/workbench/test_run_history_integrity.py",
+        "tests/workbench/test_run_history_api.py",
+        "tests/workbench/test_run_candidate_queries.py",
+        "tests/workbench/test_run_candidate_boundaries.py",
+        "tests/workbench/test_run_candidate_exports.py",
+        "tests/workbench/test_run_candidate_api.py",
+        "tests/workbench/test_run_candidate_baseline_api.py",
+        "tests/workbench/test_run_candidate_baseline_queries.py",
+        "tests/workbench/test_run_candidate_baseline_integrity.py",
+        "tests/workbench/test_run_candidate_adoption.py",
+        "tests/workbench/test_run_candidate_adoption_resources.py",
+        "tests/workbench/test_run_candidate_adoption_atomic.py",
+        "tests/workbench/test_run_candidate_adoption_boundaries.py",
+        "tests/workbench/test_run_candidate_adoption_api.py",
+        "tests/workbench/test_run_adoption_host.py",
+        "tests/workbench/test_round1_run_boundaries_models.py",
+        "tests/workbench/test_round1_run_boundaries_candidates.py"
+      ]
+    },
+    {
+      "group_id": "workbench_calibration",
+      "target_paths": [
+        "tests/workbench/test_calibration_method.py",
+        "tests/workbench/test_calibration_integrity.py",
+        "tests/workbench/test_calibration_routes.py"
+      ]
+    },
+    {
+      "group_id": "workbench_trial",
+      "target_paths": [
+        "tests/workbench/test_trial_lifecycle.py",
+        "tests/workbench/test_trial_validation.py",
+        "tests/workbench/test_trial_atomic.py",
+        "tests/workbench/test_trial_api_schema.py",
+        "tests/workbench/test_trial_edges.py",
+        "tests/workbench/test_trial_catalog.py",
+        "tests/workbench/test_ep_trial_fixture_contracts.py",
+        "tests/workbench/test_trial_predecessor_labels.py",
+        "tests/workbench/test_fe02_trial_static_contract.py",
+        "tests/workbench/test_round1_trial_boundaries.py"
+      ]
+    },
+    {
+      "group_id": "workbench_template_lineage",
+      "target_paths": [
+        "tests/workbench/test_template_lineage_schema.py",
+        "tests/workbench/test_template_lineage_writes.py",
+        "tests/workbench/test_template_lineage_integrity.py",
+        "tests/workbench/test_template_lineage_calibration.py",
+        "tests/workbench/test_legacy_batch_lineage_copy.py"
+      ]
+    },
+    {
+      "group_id": "workbench_request_lifecycle",
+      "target_paths": [
+        "tests/workbench/test_request_lifecycle_registration.py",
+        "tests/workbench/test_request_lifecycle_http.py",
+        "tests/workbench/test_request_lifecycle_errors.py",
+        "tests/workbench/test_request_lifecycle_maintenance.py",
+        "tests/workbench/test_request_lifecycle_runtime.py",
+        "tests/workbench/test_request_lifecycle_factory.py",
+        "tests/workbench/test_fe03_request_ticket_contract.py",
+        "tests/workbench/test_fe03_request_package_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_calibration_adoption",
+      "target_paths": [
+        "tests/workbench/test_calibration_adoption.py",
+        "tests/workbench/test_calibration_adoption_schema.py",
+        "tests/workbench/test_calibration_adoption_drift.py",
+        "tests/workbench/test_calibration_adoption_transactions.py",
+        "tests/workbench/test_calibration_adoption_routes.py",
+        "tests/workbench/test_calibration_adoption_host.py"
+      ]
+    },
+    {
+      "group_id": "workbench_trial_adoption",
+      "target_paths": [
+        "tests/workbench/test_trial_adoption.py",
+        "tests/workbench/test_trial_adoption_validation.py",
+        "tests/workbench/test_trial_adoption_boundaries.py",
+        "tests/workbench/test_trial_adoption_atomic.py",
+        "tests/workbench/test_trial_adoption_raw.py",
+        "tests/workbench/test_trial_adoption_restart.py",
+        "tests/workbench/test_trial_adoption_api.py",
+        "tests/workbench/test_trial_adoption_host.py",
+        "tests/workbench/test_trial_adoption_history.py",
+        "tests/workbench/test_trial_adoption_history_api.py",
+        "tests/workbench/test_trial_adoption_history_boundaries.py"
+      ]
+    },
+    {
+      "group_id": "workbench_dashboard",
+      "target_paths": [
+        "tests/workbench/test_dashboard_schema.py",
+        "tests/workbench/test_dashboard_reads.py",
+        "tests/workbench/test_dashboard_candidates.py",
+        "tests/workbench/test_dashboard_commands.py",
+        "tests/workbench/test_dashboard_atomic.py",
+        "tests/workbench/test_dashboard_api.py",
+        "tests/workbench/test_dashboard_host_connection.py",
+        "tests/workbench/test_dashboard_legacy.py",
+        "tests/workbench/test_dashboard_external_reads.py",
+        "tests/workbench/test_dashboard_external_identity.py",
+        "tests/workbench/test_dashboard_external_snapshot.py",
+        "tests/workbench/test_dashboard_external_handling_schema.py",
+        "tests/workbench/test_dashboard_external_handling_commands.py",
+        "tests/workbench/test_dashboard_external_handling_atomic.py",
+        "tests/workbench/test_dashboard_external_handling_identity.py",
+        "tests/workbench/test_dashboard_external_handling_api.py"
+      ]
+    },
+    {
+      "group_id": "workbench_outsourcing",
+      "target_paths": [
+        "tests/workbench/test_outsourcing_facts.py",
+        "tests/workbench/test_outsourcing_identity.py",
+        "tests/workbench/test_outsourcing_schema.py",
+        "tests/workbench/test_outsourcing_atomic.py",
+        "tests/workbench/test_outsourcing_api.py",
+        "tests/workbench/test_outsourcing_targets_labels.py",
+        "tests/workbench/test_round1_outsourcing_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_zero_duration",
+      "target_paths": [
+        "tests/workbench/test_zero_duration_contract.py",
+        "tests/workbench/test_zero_duration_calendar.py",
+        "tests/workbench/test_zero_duration_boundaries.py",
+        "tests/workbench/test_ea_zero_duration_chain.py",
+        "tests/workbench/test_ea_zero_duration_boundaries.py",
+        "tests/workbench/test_ea_zero_duration_constraints.py",
+        "tests/workbench/test_point_public_contract.py",
+        "tests/workbench/test_point_adoption_host.py"
+      ]
+    },
+    {
+      "group_id": "workbench_piece_adoption",
+      "target_paths": [
+        "tests/workbench/test_piece_adoption.py",
+        "tests/workbench/test_piece_adoption_boundaries.py",
+        "tests/workbench/test_piece_adoption_execution.py",
+        "tests/workbench/test_piece_adoption_persistence.py",
+        "tests/workbench/test_piece_chain_input.py",
+        "tests/workbench/test_piece_chain_end_to_end.py",
+        "tests/workbench/test_piece_chain_execution.py",
+        "tests/workbench/test_piece_chain_external.py",
+        "tests/workbench/test_piece_chain_boundaries.py",
+        "tests/workbench/test_piece_presentation.py",
+        "tests/workbench/test_piece_production_connection.py",
+        "tests/workbench/test_round1_piece_point_chain.py",
+        "tests/workbench/test_round1_piece_point_constraints.py",
+        "tests/workbench/test_round1_piece_point_evidence.py",
+        "tests/workbench/test_round1_piece_point_protection.py"
+      ]
+    },
+    {
+      "group_id": "workbench_browser",
+      "target_paths": [
+        "tests/workbench/test_live_browser.py",
+        "tests/workbench/test_resource_live_browser.py",
+        "tests/workbench/test_resource_readiness.py",
+        "tests/workbench/test_resource_details_widgets.py",
+        "tests/workbench/test_resource_detail_layout.py",
+        "tests/workbench/test_resource_file_widgets.py",
+        "tests/workbench/test_resource_navigation_context.py",
+        "tests/workbench/test_resource_table_header_widgets.py",
+        "tests/workbench/test_process_live_browser.py",
+        "tests/workbench/test_process_widgets.py",
+        "tests/workbench/test_process_actions_widgets.py",
+        "tests/workbench/test_process_detail_files.py",
+        "tests/workbench/test_process_readiness_browser.py",
+        "tests/workbench/test_process_stage_widgets.py",
+        "tests/workbench/test_batch_transport.py",
+        "tests/workbench/test_batch_widgets.py",
+        "tests/workbench/test_plan_ui.py",
+        "tests/workbench/test_master_overview_browser.py",
+        "tests/workbench/test_preflight_browser.py",
+        "tests/workbench/test_actual_gantt_ui.py",
+        "tests/workbench/test_be_preflight_actual_surfaces.py",
+        "tests/workbench/test_report_ledger_widgets.py",
+        "tests/workbench/test_report_widgets.py",
+        "tests/workbench/test_system_config_saved.py",
+        "tests/workbench/test_system_maintenance_widgets.py",
+        "tests/workbench/test_workbench_plain_language.py",
+        "tests/workbench/test_workspace_primitive_styles.py",
+        "tests/workbench/test_run_job_widgets.py",
+        "tests/workbench/test_run_candidate_widgets.py",
+        "tests/workbench/test_run_history_widgets.py",
+        "tests/workbench/test_run_live_server.py",
+        "tests/workbench/test_run_presentation.py",
+        "tests/workbench/test_run_baseline_widgets.py",
+        "tests/workbench/test_calibration_widgets.py",
+        "tests/workbench/test_run_adoption_widgets.py",
+        "tests/workbench/test_calibration_lineage_ui.py",
+        "tests/workbench/test_trial_widgets.py",
+        "tests/workbench/test_calibration_adoption_widgets.py",
+        "tests/workbench/test_trial_adoption_widgets.py",
+        "tests/workbench/test_trial_export_widgets.py",
+        "tests/workbench/test_dashboard_widgets.py",
+        "tests/workbench/test_plan_adoption_baseline_browser.py",
+        "tests/workbench/test_trial_adoption_history_widgets.py",
+        "tests/workbench/test_process_quota_widgets.py",
+        "tests/workbench/test_outsourcing_widgets.py",
+        "tests/workbench/test_dashboard_external_handling_widgets.py",
+        "tests/workbench/test_du_system_restore_browser.py",
+        "tests/workbench/test_du_system_restore_contract.py",
+        "tests/workbench/test_point_frontend.py",
+        "tests/workbench/test_point_downstream_browser.py",
+        "tests/workbench/test_el_material_contracts.py",
+        "tests/workbench/test_point_dense_canvas.py",
+        "tests/workbench/test_piece_main_browser.py",
+        "tests/workbench/test_piece_presentation_browser.py",
+        "tests/workbench/test_ev_piece_fixture_contracts.py",
+        "tests/workbench/test_plan_scope_caption.py",
+        "tests/workbench/test_fg_plan_workspace_actions.py",
+        "tests/workbench/test_piece_downstream_api.py",
+        "tests/workbench/test_piece_downstream_browser.py",
+        "tests/workbench/test_round1_field_piece_files_browser.py"
+      ]
+    },
+    {
+      "group_id": "workbench_browser_opt_in",
+      "target_paths": [
+        "tests/workbench/test_migrated_process_batch_browser.py",
+        "tests/workbench/test_process_stage_live_browser.py",
+        "tests/workbench/test_modal_focus_browser.py",
+        "tests/workbench/test_az_contrast_modal_scroll.py",
+        "tests/workbench/test_asset_browser_globals.py",
+        "tests/workbench/test_ed_material_process_browser.py",
+        "tests/workbench/test_el_material_browser.py",
+        "tests/workbench/test_reports_review_browser.py",
+        "tests/workbench/test_merged_cycle_ui.py",
+        "tests/workbench/test_secondary_copy_contrast.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_compute_capacity",
+      "target_paths": [
+        "tests/workbench/test_run_compute_capacity.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_jobs_capacity",
+      "target_paths": [
+        "tests/workbench/test_run_jobs_capacity.py"
+      ]
+    },
+    {
+      "group_id": "workbench_system_platform",
+      "target_paths": [
+        "tests/workbench/test_system_reads.py"
+      ]
+    },
+    {
+      "group_id": "workbench_asset_build",
+      "target_paths": [
+        "tests/workbench/test_assets_build.py",
+        "tests/workbench/test_asset_script_scopes.py",
+        "tests/workbench/test_pending_build_sources.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_history_capacity",
+      "target_paths": [
+        "tests/workbench/test_run_history_capacity.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_candidate_capacity",
+      "target_paths": [
+        "tests/workbench/test_run_candidate_capacity.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_baseline_capacity",
+      "target_paths": [
+        "tests/workbench/test_run_candidate_baseline_capacity.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_adoption_capacity",
+      "target_paths": [
+        "tests/workbench/test_run_candidate_adoption_capacity.py"
+      ]
+    },
+    {
+      "group_id": "workbench_calibration_capacity",
+      "target_paths": [
+        "tests/workbench/test_calibration_scale.py"
+      ]
+    },
+    {
+      "group_id": "workbench_identity_diagnostics",
+      "target_paths": [
+        "tests/workbench/test_plan_identity_insert_collision.py"
+      ]
+    },
+    {
+      "group_id": "workbench_trial_capacity",
+      "target_paths": [
+        "tests/workbench/test_trial_scale.py"
+      ]
+    },
+    {
+      "group_id": "workbench_lineage_lookup_capacity",
+      "target_paths": [
+        "tests/workbench/test_lineage_lookup_budget.py"
+      ]
+    },
+    {
+      "group_id": "workbench_dashboard_capacity",
+      "target_paths": [
+        "tests/workbench/test_dashboard_capacity.py"
+      ]
+    }
+  ],
+  "after_targets": [
+    {
+      "group_id": "quality_gate",
+      "target_paths": [
+        "tests/gate_meta/test_run_quality_gate.py",
+        "tests/gate_meta/test_anti_regression_gate.py",
+        "tests/gate_meta/test_no_residual_main_style_regression.py",
+        "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "tests/gate_meta/test_quality_gate_scan_contract.py",
+        "tests/gate_meta/test_codestable_tools_contract.py",
+        "tests/gate_meta/test_codestable_architecture_contract.py",
+        "tests/gate_meta/test_symbol_locator_contract.py",
+        "tests/gate_meta/test_dead_code_usage_graph_contract.py",
+        "tests/gate_meta/test_dead_code_usage_graph_scope_contract.py",
+        "tests/gate_meta/test_run_full_selftest_report_metadata.py",
+        "tests/gate_meta/test_callgraph_receiver_resolution.py",
+        "tests/gate_meta/test_import_cycle_scanner.py",
+        "tests/gate_meta/test_import_cycle_baseline.py",
+        "tests/gate_meta/test_check_full_test_debt.py",
+        "tests/gate_meta/test_full_test_debt_registry_contract.py",
+        "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py",
+        "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
+        "tests/app_runtime/test_fast_static_precheck.py",
+        "tests/gate_meta/test_git_hook_checks.py",
+        "tests/gate_meta/test_benchmark_full_test_debt_shards.py",
+        "tests/gate_meta/test_long_gate_cli_controls.py",
+        "tests/gate_meta/test_long_gate_quickref_cache.py",
+        "tests/gate_meta/test_round1_import_resolver.py"
+      ]
+    },
+    {
+      "group_id": "scheduler_config",
+      "target_paths": [
+        "tests/config/test_scheduler_config_route_contract.py",
+        "tests/config/test_config_field_spec_contract.py",
+        "tests/config/test_scheduler_config_manual_url_normalization.py",
+        "tests/config/test_config_service_active_preset_custom_sync.py",
+        "tests/config/test_config_snapshot_strict_numeric.py",
+        "tests/config/test_config_snapshot_projection_sync.py",
+        "tests/config/test_scheduler_config_spec_sync_contract.py",
+        "tests/config/test_config_service_component_contract.py",
+        "tests/config/test_config_service_relaxed_missing_visible.py",
+        "tests/config/test_apply_preset_adjusted_marks_custom.py",
+        "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py"
+      ]
+    },
+    {
+      "group_id": "scheduler_run_core",
+      "target_paths": [
+        "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
+        "tests/schedule/route_view/test_scheduler_route_registration_contract.py",
+        "tests/web_pages/test_history_summary_parser.py",
+        "tests/algorithm/test_due_exclusive_consistency.py",
+        "tests/calendar_maintenance/test_freeze_window_bounds.py",
+        "tests/schedule/summary/test_scheduler_bp_result_summary_guard.py",
+        "tests/schedule/service/test_schedule_orchestrator_contract.py",
+        "tests/schedule/summary/test_schedule_summary_observability.py",
+        "tests/schedule/summary/test_schedule_summary_deep_review_degradations.py",
+        "tests/schedule/summary/test_scheduler_summary_public_projection_deep_review.py",
+        "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_deep_review_contract.py",
+        "tests/schedule/service/test_schedule_params_direct_call_contract.py",
+        "tests/algorithm/test_scheduler_objective_labels.py",
+        "tests/algorithm/test_objective_projection_contract.py",
+        "tests/algorithm/test_schedule_summary_contract.py",
+        "tests/schedule/route_view/test_scheduler_user_visible_messages.py",
+        "tests/schedule/route_view/test_scheduler_missing_resource_message.py",
+        "tests/schedule/route_view/test_route_version_normalizers_contract.py",
+        "tests/models_domain/test_strict_parse_blank_required.py",
+        "tests/models_domain/test_schedule_resource_filter.py",
+        "tests/models_domain/test_yesno_normalization_contract.py",
+        "tests/algorithm/test_optimizer_seed_results_contract.py",
+        "tests/algorithm/test_optimizer_seed_boundary_contract.py",
+        "tests/algorithm/test_optimizer_runtime_seam_contract.py",
+        "tests/algorithm/test_optimizer_outcome_type_contract.py",
+        "tests/algorithm/test_optimizer_search_report_contract.py",
+        "tests/algorithm/test_optimizer_public_summary_projection_contract.py",
+        "tests/algorithm/test_optimizer_proof_harness_contract.py",
+        "tests/algorithm/test_optimizer_candidate_profile_contract.py",
+        "tests/algorithm/test_optimizer_candidate_fingerprint_contract.py",
+        "tests/algorithm/test_optimizer_graph_ready_candidate_contract.py",
+        "tests/algorithm/test_optimizer_benchmark_ratchet_gate.py",
+        "tests/algorithm/test_optimizer_ratchet_baseline_lifecycle.py",
+        "tests/algorithm/test_optimizer_quality_matrix_contract.py",
+        "tests/algorithm/test_optimizer_profile_predecode_dedup.py",
+        "tests/algorithm/test_optimizer_profile_budget.py",
+        "tests/algorithm/test_incomplete_batch_metrics_contract.py",
+        "tests/algorithm/test_incomplete_batch_optimizer_contract.py",
+        "tests/algorithm/test_incomplete_metrics_public_projection.py",
+        "tests/algorithm/test_ready_date_resource_calendar_lower_bound.py",
+        "tests/algorithm/test_sgs_slot_reuse_contract.py",
+        "tests/algorithm/test_sgs_slot_reuse_equivalence.py",
+        "tests/schedule/service/test_unselected_execution_resource_guardrails.py",
+        "tests/schedule/service/test_unselected_execution_resource_fail_closed.py",
+        "tests/schedule/service/test_unselected_execution_resource_snapshot.py",
+        "tests/schedule/service/test_unselected_execution_feedback_continuity.py",
+        "tests/schedule/service/test_schedule_seed_metadata_helper_contract.py",
+        "tests/algorithm/test_optimizer_grasp_ig_candidate_construction_contract.py",
+        "tests/algorithm/test_optimizer_business_neighborhood_registry_contract.py",
+        "tests/algorithm/test_optimizer_vns_sa_local_search_contract.py",
+        "tests/algorithm/test_localsearch_batch_order_actuator.py",
+        "tests/schedule/service/test_schedule_input_collector_contract.py",
+        "tests/schedule/service/test_schedule_input_collector_legacy_compat.py",
+        "tests/schedule/service/test_schedule_service_missing_resource_source_case_insensitive.py",
+        "tests/schedule/service/test_schedule_service_reschedulable_contract.py",
+        "tests/schedule/service/test_schedule_params_read_failure_visible.py",
+        "tests/schedule/service/test_schedule_service_strict_snapshot_guard.py",
+        "tests/config/test_schedule_config_snapshot_optional_guard.py",
+        "tests/schedule/service/test_schedule_service_facade_delegation.py",
+        "tests/schedule/service/test_schedule_persistence_reject_empty_actionable_schedule.py",
+        "tests/schedule/service/test_schedule_persistence_reschedulable_contract.py",
+        "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py",
+        "tests/schedule/summary/test_schedule_summary_cfg_snapshot_contract.py",
+        "tests/schedule/summary/test_schedule_summary_algo_warnings_union.py",
+        "tests/schedule/summary/test_schedule_summary_invalid_due_and_unscheduled_counts.py",
+        "tests/schedule/summary/test_schedule_summary_freeze_state_contract.py",
+        "tests/schedule/summary/test_schedule_summary_overdue_warning_append_fallback.py",
+        "tests/schedule/summary/test_schedule_summary_v11_contract.py",
+        "tests/schedule/summary/test_schedule_summary_merge_context_degraded_code.py",
+        "tests/schedule/summary/test_schedule_summary_input_fallback_contract.py",
+        "tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py",
+        "tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py",
+        "tests/scheduler_graph/test_scheduler_graph_report_mode_service_contract.py",
+        "tests/algorithm/test_sgs_scoring_fallback_unscorable.py",
+        "tests/candidate/test_scheduler_candidate_runner_contract.py",
+        "tests/candidate/test_scheduler_candidate_persistence_contract.py",
+        "tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py",
+        "tests/schedule/route_view/test_scheduler_run_view_result_contract.py",
+        "tests/schedule/service/test_schedule_template_lookup_contract.py",
+        "tests/resource_dispatch/test_scheduler_resource_dispatch_smoke.py",
+        "tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py",
+        "tests/schedule/route_view/test_scheduler_plan_identity_evidence_link_contract.py",
+        "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
+        "tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py",
+        "tests/operation_execution/test_operation_execution_event_foundation.py",
+        "tests/operation_execution/test_operation_execution_event_sequence_contract.py",
+        "tests/operation_execution/test_operation_execution_event_time_contract.py",
+        "tests/operation_execution/test_operation_execution_state_revision.py",
+        "tests/operation_execution/test_operation_execution_state_flow.py",
+        "tests/operation_execution/test_scheduler_reschedule_execution_facts.py",
+        "tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py",
+        "tests/schedule/service/test_op_seq_loud_contract.py",
+        "tests/schedule/summary/test_meta_bool_state_parity_contract.py",
+        "tests/candidate/test_baseline_missing_or_failed_four_state_parity.py",
+        "tests/resource_dispatch/test_resource_dispatch_task_card_schedule_missing_contract.py",
+        "tests/algorithm/test_busy_block_native_equivalence.py",
+        "tests/algorithm/test_busy_block_boundaries.py",
+        "tests/algorithm/test_sgs_explicit_piece_scope.py",
+        "tests/candidate/test_scheduler_candidate_schema_contract.py",
+        "tests/gate_meta/test_scheduler_lazy_exports_final.py"
+      ]
+    },
+    {
+      "group_id": "scheduler_analysis_gantt_reports_week_plan",
+      "target_paths": [
+        "tests/scheduler_analysis/test_scheduler_analysis_route_contract.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_read_context.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_observability.py",
+        "tests/scheduler_analysis/test_analysis_page_version_default_latest.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_vm_legacy_summary_bridge.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_viewmodel_split.py",
+        "tests/candidate/test_scheduler_week_plan_summary_observability.py",
+        "tests/gantt/test_gantt_page_version_default_latest.py",
+        "tests/gantt/test_gantt_default_version_span.py",
+        "tests/gantt/test_gantt_adapter_contract.py",
+        "tests/gantt/test_gantt_adjustment_draft_model.py",
+        "tests/gantt/test_gantt_adjustment_validate_simulate.py",
+        "tests/gantt/test_gantt_draft_save_and_preview.py",
+        "tests/gantt/test_gantt_scenario_publish.py",
+        "tests/web_pages/test_scenario_preview_secondary_outputs.py",
+        "tests/gantt/test_frappe_gantt_short_task_contract.py",
+        "tests/gantt/test_gantt_readonly_mode_contract.py",
+        "tests/gantt/test_gantt_zoom_contract.py",
+        "tests/gantt/test_gantt_zoom_decoration_sync.py",
+        "tests/gantt/test_gantt_zoom_range_guard.py",
+        "tests/gantt/test_gantt_task_labels_contract.py",
+        "tests/gantt/test_gantt_task_detail_panel_contract.py",
+        "tests/gantt/test_gantt_task_detail_js_contract.py",
+        "tests/gantt/test_gantt_url_persistence.py",
+        "tests/gantt/test_gantt_frontend_error_boundary.py",
+        "tests/web_pages/test_reports_page_version_default_latest.py",
+        "tests/scheduler_analysis/test_report_context_filters_contract.py",
+        "tests/scheduler_analysis/test_batch_list_pushdown_contract.py",
+        "tests/web_pages/test_report_plan_filter_js_contract.py",
+        "tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py",
+        "tests/scheduler_analysis/test_report_export_size_mode_selection.py",
+        "tests/scheduler_analysis/test_report_export_large_scope_rejects_need_async.py",
+        "tests/operation_execution/test_execution_review_identity_guard.py",
+        "tests/web_pages/test_reports_workbench_backlink_contract.py",
+        "tests/web_pages/test_reports_workbench_navigation_contract.py",
+        "tests/web_pages/test_reports_workbench_navigation_publish_contract.py",
+        "tests/schedule/route_view/test_scheduler_navigation_unknown_plan_role_contract.py",
+        "tests/schedule/route_view/test_scheduler_historical_plan_label_contract.py",
+        "tests/web_pages/test_web_silent_fallback_contract.py",
+        "tests/scheduler_analysis/test_plan_vs_actual_review.py",
+        "tests/resource_dispatch/test_resource_dispatch_site_records_frontend_contract.py",
+        "tests/resource_dispatch/test_resource_dispatch_workbench_lane_contract.py",
+        "tests/operation_execution/test_operation_execution_feedback_routes.py",
+        "tests/operation_execution/test_operation_execution_feedback_guard_routes.py",
+        "tests/operation_execution/test_operation_execution_exception_feedback.py",
+        "tests/operation_execution/test_operation_execution_exception_plan_guard.py",
+        "tests/operation_execution/test_operation_execution_exception_surfaces.py",
+        "tests/operation_execution/test_operation_execution_scope_read_contract.py",
+        "tests/gantt/test_gantt_adjustment_publish_execution_revision.py",
+        "tests/resource_dispatch/test_resource_dispatch_actual_records.py",
+        "tests/resource_dispatch/test_resource_dispatch_actual_task_key_frontend_contract.py",
+        "tests/resource_dispatch/test_resource_dispatch_actual_import.py",
+        "tests/resource_dispatch/test_resource_dispatch_actual_import_plan_guard.py",
+        "tests/web_pages/test_aps_workbench_context_propagation_contract.py",
+        "tests/web_pages/test_dashboard_workbench_contract.py",
+        "tests/web_pages/test_dashboard_overdue_count_tolerance.py",
+        "tests/schedule/route_view/test_scheduler_workbench_link_execution_review_contract.py",
+        "tests/schedule/route_view/test_scheduler_workbench_link_guardrails_contract.py",
+        "tests/schedule/route_view/test_scheduler_workbench_link_matrix_contract.py",
+        "tests/schedule/route_view/test_scheduler_workbench_link_targets_contract.py",
+        "tests/resource_dispatch/test_resource_dispatch_result_status_label_contract.py",
+        "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
+        "tests/web_pages/test_scheduler_plan_role_arg_contract.py",
+        "tests/candidate/test_week_plan_filename_uses_normalized_version.py",
+        "tests/gantt/test_gantt_degradation_surface.py",
+        "tests/schedule/route_view/test_scheduler_result_navigation_contract.py",
+        "tests/gantt/test_gantt_contract_snapshot.py",
+        "tests/gantt/test_gantt_critical_chain_unavailable.py",
+        "tests/gantt/test_gantt_critical_chain_provider.py",
+        "tests/gantt/test_gantt_critical_chain_cache_snapshot.py",
+        "tests/gantt/test_gantt_critical_chain_cache_transactions.py",
+        "tests/scheduler_analysis/test_report_calendar_capacity_intersections.py",
+        "tests/gantt/test_gantt_critical_chain_scope_contract.py",
+        "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py",
+        "tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py",
+        "tests/candidate/test_scheduler_candidate_analysis_contract.py",
+        "tests/candidate/test_scheduler_candidate_analysis_links_contract.py",
+        "tests/candidate/test_scheduler_candidate_display_contract.py",
+        "tests/candidate/test_scheduler_candidate_plain_language.py",
+        "tests/candidate/test_scheduler_candidate_plan_query_contract.py",
+        "tests/candidate/test_scheduler_candidate_reports_contract.py",
+        "tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py",
+        "tests/candidate/test_scheduler_candidate_summary_contract.py",
+        "tests/candidate/test_scheduler_candidate_week_plan_contract.py",
+        "tests/scheduler_graph/test_scheduler_graph_on_mode_contract.py",
+        "tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_contract.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_error_contract.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_graph_score_contract.py",
+        "tests/algorithm/test_skill_rank_mapping.py",
+        "tests/schedule/service/test_schedule_service_input_merge_context_contract.py"
+      ]
+    },
+    {
+      "group_id": "scheduler_batches_material_resource",
+      "target_paths": [
+        "tests/schedule/route_view/test_scheduler_batches_degraded_visible.py",
+        "tests/schedule/route_view/test_scheduler_batch_template_warning_surface.py",
+        "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
+        "tests/resource_dispatch/test_resource_dispatch_bad_time_rows_surface_degraded.py",
+        "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
+        "tests/resource_dispatch/test_resource_dispatch_public_output_contract.py",
+        "tests/resource_dispatch/test_resource_dispatch_viewmodel_public_output_contract.py",
+        "tests/resource_dispatch/test_resource_dispatch_task_id_encoding.py",
+        "tests/resource_dispatch/test_resource_dispatch_overdue_summary_formats.py",
+        "tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
+        "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py"
+      ]
+    },
+    {
+      "group_id": "request_services_runtime_error_boundary",
+      "target_paths": [
+        "tests/web_pages/test_request_services_contract.py",
+        "tests/web_pages/test_factory_request_lifecycle_observability.py",
+        "tests/web_pages/test_system_request_services_contract.py",
+        "tests/calendar_maintenance/test_maintenance_window_mutex.py",
+        "tests/migration_db/test_database_high_version_failfast.py",
+        "tests/migration_db/test_migration_schema_contract.py",
+        "tests/migration_db/test_migrations.py",
+        "tests/operation_execution/test_operation_execution_migration_v16_contract.py",
+        "tests/operation_execution/test_operation_execution_migration_v18_contract.py",
+        "tests/operation_execution/test_operation_execution_migration_v19_contract.py",
+        "tests/web_pages/test_error_field_label_source.py",
+        "tests/gate_meta/test_scheduler_data_route_error_contract.py",
+        "tests/app_runtime/test_safe_next_url_hardening.py",
+        "tests/app_runtime/test_safe_next_url_observability.py",
+        "tests/app_runtime/test_fixed_file_security.py",
+        "tests/app_runtime/test_validate_dist_runtime_identity.py",
+        "tests/gate_meta/test_win7_networkx_package_contract.py",
+        "tests/gate_meta/test_frozen_bundle_contract.py",
+        "tests/web_pages/test_system_runtime_log_reader.py",
+        "tests/web_pages/test_error_boundary_contract.py",
+        "tests/web_pages/test_diagnostic_package_security.py",
+        "tests/migration_db/test_backup_integrity_check_contract.py",
+        "tests/migration_db/test_restore_pre_snapshot_failure_contract.py",
+        "tests/app_runtime/test_backup_create_integrity_error_message.py",
+        "tests/material/test_material_repo_stock_qty_loud_contract.py",
+        "tests/material/test_material_finite_quantity_contract.py"
+      ]
+    },
+    {
+      "group_id": "frontend_manual_excel",
+      "target_paths": [
+        "tests/excel_data_io/test_excel_import_hardening.py",
+        "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
+        "tests/excel_data_io/test_excel_conversion_output_contract.py",
+        "tests/excel_data_io/test_excel_hidden_payload_contract.py",
+        "tests/app_runtime/test_frontend_offline_static_assets.py",
+        "tests/excel_data_io/test_excel_renamed_column_conflicts.py",
+        "tests/excel_data_io/test_import_execution_stats_source_row_num.py"
+      ]
+    },
+    {
+      "group_id": "ui_layout_presenters_system",
+      "target_paths": [
+        "tests/web_pages/test_system_history_route_contract.py",
+        "tests/app_runtime/test_ui_browser_geometry_env.py",
+        "tests/app_runtime/test_ui_geometry_html_contract.py",
+        "tests/gate_meta/test_scan_py38plus_syntax.py",
+        "tests/gate_meta/test_architecture_fitness.py",
+        "tests/web_pages/test_workbench_nav_entry_contract.py",
+        "tests/web_pages/test_print_css_contract.py",
+        "tests/web_pages/test_css_token_source_contract.py",
+        "tests/web_pages/test_label_single_source_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_registry",
+      "target_paths": [
+        "tests/gate_meta/test_workbench_registry_contract.py",
+        "tests/gate_meta/test_workbench_cache_environment.py",
+        "tests/workbench/test_fe04_shared_service_dependency_contract.py",
+        "tests/gate_meta/test_workbench_round1_registry_contract.py",
+        "tests/workbench/test_round1_execution_dependency_contract.py",
+        "tests/workbench/test_round1_plan_query_dependency_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_foundation",
+      "target_paths": [
+        "tests/workbench/test_entry.py",
+        "tests/workbench/test_identity_metadata.py",
+        "tests/workbench/test_identity_replacements.py",
+        "tests/workbench/test_identity_key_codec.py",
+        "tests/workbench/test_commands.py",
+        "tests/workbench/test_read_context.py",
+        "tests/workbench/test_write_context.py",
+        "tests/workbench/test_foundation_dependency_scope.py",
+        "tests/workbench/test_transport.py",
+        "tests/workbench/test_theme.py"
+      ]
+    },
+    {
+      "group_id": "workbench_resources",
+      "target_paths": [
+        "tests/workbench/test_resource_schema.py",
+        "tests/workbench/test_resource_entities.py",
+        "tests/workbench/test_resource_relations.py",
+        "tests/workbench/test_resource_catalogs.py",
+        "tests/workbench/test_resource_metrics.py",
+        "tests/workbench/test_resource_calendar_summary.py",
+        "tests/workbench/test_resource_api.py",
+        "tests/workbench/test_resource_table_queries.py",
+        "tests/workbench/test_resource_table_api.py",
+        "tests/workbench/test_resource_table_scale.py",
+        "tests/workbench/test_resource_transport.py",
+        "tests/workbench/test_resource_files.py",
+        "tests/workbench/test_resource_file_codec.py",
+        "tests/workbench/test_resource_file_api.py",
+        "tests/workbench/test_resource_file_scale.py",
+        "tests/workbench/test_resource_file_calendar_connection.py",
+        "tests/workbench/test_resource_bulk.py",
+        "tests/workbench/test_column_export_scope.py",
+        "tests/workbench/test_calendars.py",
+        "tests/workbench/test_calendar_api.py",
+        "tests/workbench/test_operator_qualification.py",
+        "tests/workbench/test_operator_shift_calendar.py",
+        "tests/workbench/test_suppliers.py",
+        "tests/workbench/test_supplier_capabilities.py",
+        "tests/workbench/test_material_queries.py",
+        "tests/workbench/test_material_query_scale.py",
+        "tests/workbench/test_material_commands.py",
+        "tests/workbench/test_material_api.py",
+        "tests/workbench/test_material_actions_api.py",
+        "tests/workbench/test_material_files.py",
+        "tests/workbench/test_material_bulk.py",
+        "tests/workbench/test_resource_table_domain_pairing.py",
+        "tests/workbench/test_fe01_resource_static_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_process",
+      "target_paths": [
+        "tests/workbench/test_process_identity_schema.py",
+        "tests/workbench/test_process_identity_performance.py",
+        "tests/workbench/test_process_workflow_schema.py",
+        "tests/workbench/test_process_workflow_state.py",
+        "tests/workbench/test_process_queries.py",
+        "tests/workbench/test_process_read_api.py",
+        "tests/workbench/test_process_readiness.py",
+        "tests/workbench/test_process_table.py",
+        "tests/workbench/test_process_table_api.py",
+        "tests/workbench/test_process_part_actions.py",
+        "tests/workbench/test_process_collection_api.py",
+        "tests/workbench/test_process_collection_api_transactions.py",
+        "tests/workbench/test_process_route_preview.py",
+        "tests/workbench/test_process_route_confirm.py",
+        "tests/workbench/test_process_stage_commands.py",
+        "tests/workbench/test_process_stage_api.py",
+        "tests/workbench/test_process_batch_gate.py",
+        "tests/workbench/test_process_file_codec.py",
+        "tests/workbench/test_process_file_route.py",
+        "tests/workbench/test_process_file_route_apply.py",
+        "tests/workbench/test_process_file_hours_preview.py",
+        "tests/workbench/test_process_file_hours_apply.py",
+        "tests/workbench/test_process_file_hours_roundtrip.py",
+        "tests/workbench/test_process_file_hours_scale.py",
+        "tests/workbench/test_process_file_api_exports.py",
+        "tests/workbench/test_process_file_api_imports.py",
+        "tests/workbench/test_process_file_api_parameters.py",
+        "tests/workbench/test_process_file_api_transactions.py",
+        "tests/workbench/test_process_file_api_scale.py",
+        "tests/workbench/test_process_quota_protection.py",
+        "tests/workbench/test_process_quota_protection_excel.py",
+        "tests/workbench/test_process_quota_protection_routes.py",
+        "tests/workbench/test_process_quota_protection_transactions.py",
+        "tests/workbench/test_process_quota_protection_stage_regressions.py",
+        "tests/workbench/test_process_quota_protection_file_receipts.py",
+        "tests/workbench/test_process_quota_protection_file_receipt_failures.py",
+        "tests/workbench/test_merged_cycle_projection.py",
+        "tests/workbench/test_merged_cycle_projection_api.py",
+        "tests/workbench/test_eu_process_fixture_contracts.py",
+        "tests/workbench/test_round1_process_contract.py",
+        "tests/workbench/test_round1_process_boundaries.py"
+      ]
+    },
+    {
+      "group_id": "workbench_batches",
+      "target_paths": [
+        "tests/workbench/test_batch_commands.py",
+        "tests/workbench/test_batch_actions.py",
+        "tests/workbench/test_batch_files.py",
+        "tests/workbench/test_batch_execution_ledger_projection.py",
+        "tests/workbench/test_batch_execution_ledger_guards.py",
+        "tests/workbench/test_batch_execution_ledger_atomic.py",
+        "tests/workbench/test_batch_execution_ledger_boundaries.py",
+        "tests/workbench/test_batch_round1_boundaries.py"
+      ]
+    },
+    {
+      "group_id": "workbench_plans",
+      "target_paths": [
+        "tests/workbench/test_plan_baseline.py",
+        "tests/workbench/test_plan_catalog.py",
+        "tests/workbench/test_plan_calendar.py",
+        "tests/workbench/test_plan_calendar_runtime_dates.py",
+        "tests/workbench/test_plan_delivery.py",
+        "tests/workbench/test_plan_delivery_scale.py",
+        "tests/workbench/test_plan_occupancy.py",
+        "tests/workbench/test_plan_page.py",
+        "tests/workbench/test_plan_persistent_identity.py",
+        "tests/workbench/test_plan_public_projection.py",
+        "tests/workbench/test_plan_runtime_dates.py",
+        "tests/workbench/test_plan_workspace_projections.py",
+        "tests/workbench/test_plan_query_api.py",
+        "tests/workbench/test_plan_export_api.py",
+        "tests/workbench/test_plan_transport.py",
+        "tests/workbench/test_official_plan_persistence.py",
+        "tests/workbench/test_plan_adoption_baseline.py",
+        "tests/workbench/test_plan_adoption_baseline_api.py",
+        "tests/workbench/test_plan_adoption_baseline_integrity.py",
+        "tests/workbench/test_round1_plan_contract_boundaries.py",
+        "tests/workbench/test_round1_plan_contract_projections.py"
+      ]
+    },
+    {
+      "group_id": "workbench_reports",
+      "target_paths": [
+        "tests/workbench/test_report_read.py",
+        "tests/workbench/test_report_export.py",
+        "tests/workbench/test_report_boundaries.py",
+        "tests/workbench/test_report_execution_ledger_read.py",
+        "tests/workbench/test_report_execution_ledger_identity.py",
+        "tests/workbench/test_report_execution_ledger_export.py",
+        "tests/workbench/test_report_execution_ledger_boundaries.py",
+        "tests/workbench/test_report_execution_ledger_scale.py",
+        "tests/workbench/test_round1_analytics_contract.py",
+        "tests/workbench/test_round1_report_export_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_system",
+      "target_paths": [
+        "tests/workbench/test_system_maintenance_api.py",
+        "tests/workbench/test_system_maintenance_restore.py",
+        "tests/workbench/test_system_maintenance_failures.py",
+        "tests/workbench/test_master_overview_reads.py",
+        "tests/workbench/test_master_overview_boundaries.py",
+        "tests/workbench/test_system_restore_host.py",
+        "tests/workbench/test_system_restore_host_drain.py",
+        "tests/workbench/test_system_restore_host_recovery.py",
+        "tests/workbench/test_system_restore_entrypoint.py",
+        "tests/workbench/test_system_restore_entrypoint_fail_closed.py",
+        "tests/workbench/test_system_restore_entrypoint_recovery.py",
+        "tests/workbench/test_du_system_restore_view.py",
+        "tests/workbench/test_round1_host_boundaries.py",
+        "tests/workbench/test_round1_runtime_observation.py"
+      ]
+    },
+    {
+      "group_id": "workbench_execution_ledger",
+      "target_paths": [
+        "tests/workbench/test_execution_ledger.py",
+        "tests/workbench/test_execution_ledger_contracts.py",
+        "tests/workbench/test_execution_ledger_commands.py",
+        "tests/workbench/test_execution_ledger_constraints.py",
+        "tests/workbench/test_execution_ledger_legacy.py",
+        "tests/workbench/test_execution_ledger_scope.py",
+        "tests/workbench/test_execution_ledger_source_integrity.py",
+        "tests/workbench/test_execution_ledger_scale.py",
+        "tests/workbench/test_round1_execution_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_execution_scheduler",
+      "target_paths": [
+        "tests/workbench/test_scheduler_execution_ledger.py",
+        "tests/workbench/test_scheduler_execution_ledger_guards.py",
+        "tests/workbench/test_scheduler_execution_ledger_snapshot.py",
+        "tests/workbench/test_scheduler_execution_ledger_scale.py"
+      ]
+    },
+    {
+      "group_id": "workbench_field",
+      "target_paths": [
+        "tests/workbench/test_field_workspace_api.py",
+        "tests/workbench/test_field_files_api.py",
+        "tests/workbench/test_field_files_codec.py",
+        "tests/workbench/test_actual_gantt_api.py",
+        "tests/workbench/test_point_downstream_api.py",
+        "tests/workbench/test_round1_field_piece_files.py",
+        "tests/workbench/test_round1_field_piece_files_codec.py",
+        "tests/workbench/test_round1_field_piece_files_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_preflight",
+      "target_paths": [
+        "tests/workbench/test_preflight_api.py",
+        "tests/workbench/test_preflight_ledger.py",
+        "tests/workbench/test_preflight_capacity.py",
+        "tests/workbench/test_preflight_run_status.py"
+      ]
+    },
+    {
+      "group_id": "workbench_mainmigration",
+      "target_paths": [
+        "tests/workbench/test_execution_ledger_migration.py",
+        "tests/workbench/test_run_schema_migration.py",
+        "tests/workbench/test_plan_migration_integration.py",
+        "tests/workbench/test_migration_pages_fixture.py",
+        "tests/workbench/test_trial_lineage_migration.py",
+        "tests/workbench/test_lineage_lookup_migration.py",
+        "tests/workbench/test_calibration_dashboard_migration.py",
+        "tests/workbench/test_outsourcing_identity_migration.py",
+        "tests/workbench/test_dashboard_external_migration.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_compute",
+      "target_paths": [
+        "tests/workbench/test_run_compute.py",
+        "tests/workbench/test_run_compute_contracts.py",
+        "tests/workbench/test_run_compute_execution.py",
+        "tests/workbench/test_run_compute_integration.py",
+        "tests/workbench/test_run_compute_readonly.py",
+        "tests/workbench/test_round1_run_boundaries_input.py",
+        "tests/workbench/test_round1_run_boundaries_compute.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_jobs",
+      "target_paths": [
+        "tests/workbench/test_run_jobs.py",
+        "tests/workbench/test_run_jobs_schema.py",
+        "tests/workbench/test_run_jobs_api.py",
+        "tests/workbench/test_run_jobs_atomic.py",
+        "tests/workbench/test_run_jobs_concurrency.py",
+        "tests/workbench/test_run_jobs_recovery.py",
+        "tests/workbench/test_run_jobs_restart.py",
+        "tests/workbench/test_run_runtime.py",
+        "tests/workbench/test_run_runtime_lock.py",
+        "tests/workbench/test_run_runtime_recovery.py",
+        "tests/workbench/test_run_runtime_lifecycle.py",
+        "tests/workbench/test_run_entrypoint.py",
+        "tests/workbench/test_run_history_queries.py",
+        "tests/workbench/test_run_history_snapshots.py",
+        "tests/workbench/test_run_history_integrity.py",
+        "tests/workbench/test_run_history_api.py",
+        "tests/workbench/test_run_candidate_queries.py",
+        "tests/workbench/test_run_candidate_boundaries.py",
+        "tests/workbench/test_run_candidate_exports.py",
+        "tests/workbench/test_run_candidate_api.py",
+        "tests/workbench/test_run_candidate_baseline_api.py",
+        "tests/workbench/test_run_candidate_baseline_queries.py",
+        "tests/workbench/test_run_candidate_baseline_integrity.py",
+        "tests/workbench/test_run_candidate_adoption.py",
+        "tests/workbench/test_run_candidate_adoption_resources.py",
+        "tests/workbench/test_run_candidate_adoption_atomic.py",
+        "tests/workbench/test_run_candidate_adoption_boundaries.py",
+        "tests/workbench/test_run_candidate_adoption_api.py",
+        "tests/workbench/test_run_adoption_host.py",
+        "tests/workbench/test_round1_run_boundaries_models.py",
+        "tests/workbench/test_round1_run_boundaries_candidates.py"
+      ]
+    },
+    {
+      "group_id": "workbench_calibration",
+      "target_paths": [
+        "tests/workbench/test_calibration_method.py",
+        "tests/workbench/test_calibration_integrity.py",
+        "tests/workbench/test_calibration_routes.py"
+      ]
+    },
+    {
+      "group_id": "workbench_trial",
+      "target_paths": [
+        "tests/workbench/test_trial_lifecycle.py",
+        "tests/workbench/test_trial_validation.py",
+        "tests/workbench/test_trial_atomic.py",
+        "tests/workbench/test_trial_api_schema.py",
+        "tests/workbench/test_trial_edges.py",
+        "tests/workbench/test_trial_catalog.py",
+        "tests/workbench/test_ep_trial_fixture_contracts.py",
+        "tests/workbench/test_trial_predecessor_labels.py",
+        "tests/workbench/test_fe02_trial_static_contract.py",
+        "tests/workbench/test_round1_trial_boundaries.py"
+      ]
+    },
+    {
+      "group_id": "workbench_template_lineage",
+      "target_paths": [
+        "tests/workbench/test_template_lineage_schema.py",
+        "tests/workbench/test_template_lineage_writes.py",
+        "tests/workbench/test_template_lineage_integrity.py",
+        "tests/workbench/test_template_lineage_calibration.py",
+        "tests/workbench/test_legacy_batch_lineage_copy.py"
+      ]
+    },
+    {
+      "group_id": "workbench_request_lifecycle",
+      "target_paths": [
+        "tests/workbench/test_request_lifecycle_registration.py",
+        "tests/workbench/test_request_lifecycle_http.py",
+        "tests/workbench/test_request_lifecycle_errors.py",
+        "tests/workbench/test_request_lifecycle_maintenance.py",
+        "tests/workbench/test_request_lifecycle_runtime.py",
+        "tests/workbench/test_request_lifecycle_factory.py",
+        "tests/workbench/test_fe03_request_ticket_contract.py",
+        "tests/workbench/test_fe03_request_package_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_calibration_adoption",
+      "target_paths": [
+        "tests/workbench/test_calibration_adoption.py",
+        "tests/workbench/test_calibration_adoption_schema.py",
+        "tests/workbench/test_calibration_adoption_drift.py",
+        "tests/workbench/test_calibration_adoption_transactions.py",
+        "tests/workbench/test_calibration_adoption_routes.py",
+        "tests/workbench/test_calibration_adoption_host.py"
+      ]
+    },
+    {
+      "group_id": "workbench_trial_adoption",
+      "target_paths": [
+        "tests/workbench/test_trial_adoption.py",
+        "tests/workbench/test_trial_adoption_validation.py",
+        "tests/workbench/test_trial_adoption_boundaries.py",
+        "tests/workbench/test_trial_adoption_atomic.py",
+        "tests/workbench/test_trial_adoption_raw.py",
+        "tests/workbench/test_trial_adoption_restart.py",
+        "tests/workbench/test_trial_adoption_api.py",
+        "tests/workbench/test_trial_adoption_host.py",
+        "tests/workbench/test_trial_adoption_history.py",
+        "tests/workbench/test_trial_adoption_history_api.py",
+        "tests/workbench/test_trial_adoption_history_boundaries.py"
+      ]
+    },
+    {
+      "group_id": "workbench_dashboard",
+      "target_paths": [
+        "tests/workbench/test_dashboard_schema.py",
+        "tests/workbench/test_dashboard_reads.py",
+        "tests/workbench/test_dashboard_candidates.py",
+        "tests/workbench/test_dashboard_commands.py",
+        "tests/workbench/test_dashboard_atomic.py",
+        "tests/workbench/test_dashboard_api.py",
+        "tests/workbench/test_dashboard_host_connection.py",
+        "tests/workbench/test_dashboard_legacy.py",
+        "tests/workbench/test_dashboard_external_reads.py",
+        "tests/workbench/test_dashboard_external_identity.py",
+        "tests/workbench/test_dashboard_external_snapshot.py",
+        "tests/workbench/test_dashboard_external_handling_schema.py",
+        "tests/workbench/test_dashboard_external_handling_commands.py",
+        "tests/workbench/test_dashboard_external_handling_atomic.py",
+        "tests/workbench/test_dashboard_external_handling_identity.py",
+        "tests/workbench/test_dashboard_external_handling_api.py"
+      ]
+    },
+    {
+      "group_id": "workbench_outsourcing",
+      "target_paths": [
+        "tests/workbench/test_outsourcing_facts.py",
+        "tests/workbench/test_outsourcing_identity.py",
+        "tests/workbench/test_outsourcing_schema.py",
+        "tests/workbench/test_outsourcing_atomic.py",
+        "tests/workbench/test_outsourcing_api.py",
+        "tests/workbench/test_outsourcing_targets_labels.py",
+        "tests/workbench/test_round1_outsourcing_contract.py"
+      ]
+    },
+    {
+      "group_id": "workbench_zero_duration",
+      "target_paths": [
+        "tests/workbench/test_zero_duration_contract.py",
+        "tests/workbench/test_zero_duration_calendar.py",
+        "tests/workbench/test_zero_duration_boundaries.py",
+        "tests/workbench/test_ea_zero_duration_chain.py",
+        "tests/workbench/test_ea_zero_duration_boundaries.py",
+        "tests/workbench/test_ea_zero_duration_constraints.py",
+        "tests/workbench/test_point_public_contract.py",
+        "tests/workbench/test_point_adoption_host.py"
+      ]
+    },
+    {
+      "group_id": "workbench_piece_adoption",
+      "target_paths": [
+        "tests/workbench/test_piece_adoption.py",
+        "tests/workbench/test_piece_adoption_boundaries.py",
+        "tests/workbench/test_piece_adoption_execution.py",
+        "tests/workbench/test_piece_adoption_persistence.py",
+        "tests/workbench/test_piece_chain_input.py",
+        "tests/workbench/test_piece_chain_end_to_end.py",
+        "tests/workbench/test_piece_chain_execution.py",
+        "tests/workbench/test_piece_chain_external.py",
+        "tests/workbench/test_piece_chain_boundaries.py",
+        "tests/workbench/test_piece_presentation.py",
+        "tests/workbench/test_piece_production_connection.py",
+        "tests/workbench/test_round1_piece_point_chain.py",
+        "tests/workbench/test_round1_piece_point_constraints.py",
+        "tests/workbench/test_round1_piece_point_evidence.py",
+        "tests/workbench/test_round1_piece_point_protection.py"
+      ]
+    },
+    {
+      "group_id": "workbench_browser",
+      "target_paths": [
+        "tests/workbench/test_live_browser.py",
+        "tests/workbench/test_resource_live_browser.py",
+        "tests/workbench/test_resource_readiness.py",
+        "tests/workbench/test_resource_details_widgets.py",
+        "tests/workbench/test_resource_detail_layout.py",
+        "tests/workbench/test_resource_file_widgets.py",
+        "tests/workbench/test_resource_navigation_context.py",
+        "tests/workbench/test_resource_table_header_widgets.py",
+        "tests/workbench/test_process_live_browser.py",
+        "tests/workbench/test_process_widgets.py",
+        "tests/workbench/test_process_actions_widgets.py",
+        "tests/workbench/test_process_detail_files.py",
+        "tests/workbench/test_process_readiness_browser.py",
+        "tests/workbench/test_process_stage_widgets.py",
+        "tests/workbench/test_batch_transport.py",
+        "tests/workbench/test_batch_widgets.py",
+        "tests/workbench/test_plan_ui.py",
+        "tests/workbench/test_master_overview_browser.py",
+        "tests/workbench/test_preflight_browser.py",
+        "tests/workbench/test_actual_gantt_ui.py",
+        "tests/workbench/test_be_preflight_actual_surfaces.py",
+        "tests/workbench/test_report_ledger_widgets.py",
+        "tests/workbench/test_report_widgets.py",
+        "tests/workbench/test_system_config_saved.py",
+        "tests/workbench/test_system_maintenance_widgets.py",
+        "tests/workbench/test_workbench_plain_language.py",
+        "tests/workbench/test_workspace_primitive_styles.py",
+        "tests/workbench/test_run_job_widgets.py",
+        "tests/workbench/test_run_candidate_widgets.py",
+        "tests/workbench/test_run_history_widgets.py",
+        "tests/workbench/test_run_live_server.py",
+        "tests/workbench/test_run_presentation.py",
+        "tests/workbench/test_run_baseline_widgets.py",
+        "tests/workbench/test_calibration_widgets.py",
+        "tests/workbench/test_run_adoption_widgets.py",
+        "tests/workbench/test_calibration_lineage_ui.py",
+        "tests/workbench/test_trial_widgets.py",
+        "tests/workbench/test_calibration_adoption_widgets.py",
+        "tests/workbench/test_trial_adoption_widgets.py",
+        "tests/workbench/test_trial_export_widgets.py",
+        "tests/workbench/test_dashboard_widgets.py",
+        "tests/workbench/test_plan_adoption_baseline_browser.py",
+        "tests/workbench/test_trial_adoption_history_widgets.py",
+        "tests/workbench/test_process_quota_widgets.py",
+        "tests/workbench/test_outsourcing_widgets.py",
+        "tests/workbench/test_dashboard_external_handling_widgets.py",
+        "tests/workbench/test_du_system_restore_browser.py",
+        "tests/workbench/test_du_system_restore_contract.py",
+        "tests/workbench/test_point_frontend.py",
+        "tests/workbench/test_point_downstream_browser.py",
+        "tests/workbench/test_el_material_contracts.py",
+        "tests/workbench/test_point_dense_canvas.py",
+        "tests/workbench/test_piece_main_browser.py",
+        "tests/workbench/test_piece_presentation_browser.py",
+        "tests/workbench/test_ev_piece_fixture_contracts.py",
+        "tests/workbench/test_plan_scope_caption.py",
+        "tests/workbench/test_fg_plan_workspace_actions.py",
+        "tests/workbench/test_piece_downstream_api.py",
+        "tests/workbench/test_piece_downstream_browser.py",
+        "tests/workbench/test_round1_field_piece_files_browser.py"
+      ]
+    },
+    {
+      "group_id": "workbench_browser_opt_in",
+      "target_paths": [
+        "tests/workbench/test_migrated_process_batch_browser.py",
+        "tests/workbench/test_process_stage_live_browser.py",
+        "tests/workbench/test_modal_focus_browser.py",
+        "tests/workbench/test_az_contrast_modal_scroll.py",
+        "tests/workbench/test_asset_browser_globals.py",
+        "tests/workbench/test_ed_material_process_browser.py",
+        "tests/workbench/test_el_material_browser.py",
+        "tests/workbench/test_reports_review_browser.py",
+        "tests/workbench/test_merged_cycle_ui.py",
+        "tests/workbench/test_secondary_copy_contrast.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_compute_capacity",
+      "target_paths": [
+        "tests/workbench/test_run_compute_capacity.py",
+        "tests/workbench/test_final_capacity_cli_loading.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_jobs_capacity",
+      "target_paths": [
+        "tests/workbench/test_run_jobs_capacity.py"
+      ]
+    },
+    {
+      "group_id": "workbench_system_platform",
+      "target_paths": [
+        "tests/workbench/test_system_reads.py"
+      ]
+    },
+    {
+      "group_id": "workbench_asset_build",
+      "target_paths": [
+        "tests/workbench/test_assets_build.py",
+        "tests/workbench/test_asset_script_scopes.py",
+        "tests/workbench/test_pending_build_sources.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_history_capacity",
+      "target_paths": [
+        "tests/workbench/test_run_history_capacity.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_candidate_capacity",
+      "target_paths": [
+        "tests/workbench/test_run_candidate_capacity.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_baseline_capacity",
+      "target_paths": [
+        "tests/workbench/test_run_candidate_baseline_capacity.py"
+      ]
+    },
+    {
+      "group_id": "workbench_run_adoption_capacity",
+      "target_paths": [
+        "tests/workbench/test_run_candidate_adoption_capacity.py"
+      ]
+    },
+    {
+      "group_id": "workbench_calibration_capacity",
+      "target_paths": [
+        "tests/workbench/test_calibration_scale.py"
+      ]
+    },
+    {
+      "group_id": "workbench_identity_diagnostics",
+      "target_paths": [
+        "tests/workbench/test_plan_identity_insert_collision.py"
+      ]
+    },
+    {
+      "group_id": "workbench_trial_capacity",
+      "target_paths": [
+        "tests/workbench/test_trial_scale.py"
+      ]
+    },
+    {
+      "group_id": "workbench_lineage_lookup_capacity",
+      "target_paths": [
+        "tests/workbench/test_lineage_lookup_budget.py"
+      ]
+    },
+    {
+      "group_id": "workbench_dashboard_capacity",
+      "target_paths": [
+        "tests/workbench/test_dashboard_capacity.py"
+      ]
+    }
+  ],
+  "previous_targets_preserved": true,
+  "new_target": "tests/workbench/test_final_capacity_cli_loading.py",
+  "new_target_owner": "workbench_run_compute_capacity",
+  "new_target_classification": "supplemental",
+  "required": {
+    "missing": [],
+    "duplicates": [],
+    "unknown": [],
+    "required_target_count": 583,
+    "group_target_count": 583,
+    "group_count": 33,
+    "required_registry_hash": "9fcaf09048aedf041aca8e7b3e4b8460481fb99bbe02dd56b6702d5929a14495",
+    "group_registry_hash": "8158e747f121fe00e7f4758a9c812802a810d7a13b41dd5d689ae32a5adb1763"
+  },
+  "supplemental": {
+    "missing": [],
+    "duplicates": [],
+    "unknown": [],
+    "required_target_count": 86,
+    "group_target_count": 86,
+    "group_count": 15,
+    "required_registry_hash": "fcd53b485ca4bdc5c240b42bdb460e4ae0783f83dc5de1c177144710c1b82836",
+    "group_registry_hash": "1fb0ad3b222a8f20a68a3c824f6efc9103cc5a060c8c38d29f56eec3a6612117"
+  },
+  "observed_head": "830a58e69faaa64a39d7a238ba2a0a0cd5c9047c",
+  "source_sha256": {
+    "tools/test_registry_groups_workbench.py": "96bf5fa8f06d7551ace111d411d92e7f748407da6950877888ce0c1237a47270",
+    "tests/gate_meta/test_workbench_registry_contract.py": "edaf8173f52b011feb3d1d0ce73deeddfc617c04c603214a5c85948e3d4f5ae0",
+    "tests/gate_meta/test_workbench_round1_registry_contract.py": "709e2f4037bbcb2b23c461da800ca712e7e57b65c70dc6cde89d11ceea283e53",
+    "scripts/workbench/verify_final_capacity.py": "b4f3353c48cf44e4430f8630393dc1addbffee2ac27e1aaa47f84aa3cb132272",
+    "tests/workbench/test_final_capacity_cli_loading.py": "612f4d240ea8a230502dbe91a1e6f8dfe8375bef30adbf31a1cc5e6b656d0466"
+  },
+  "Main_CLI_and_test_unchanged_by_H": true,
+  "pytest": {
+    "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache CHECKUP_CALLGRAPH=/tmp/aps-task-h-01a08b02/callgraph TMPDIR=/tmp/aps-task-h-01a08b02 .venv/bin/python -B -m pytest -q -p no:cacheprovider --basetemp=/tmp/aps-task-h-cli-registry-v1 --junitxml=/tmp/aps-task-h-cli-registry-v1.xml tests/workbench/test_final_capacity_cli_loading.py tests/gate_meta/test_workbench_registry_contract.py tests/gate_meta/test_workbench_round1_registry_contract.py -k 'test_help_and_invalid_arguments_do_not_import_test_executor or test_valid_cli_delegates_exact_arguments_without_changing_thresholds or stable_final_capacity or final_capacity_cli_loading or round1_preserves_every_old_owner_and_target_order'",
+    "returncode": 0,
+    "passed": 28,
+    "deselected": 923,
+    "seconds": 2.09,
+    "xml": {
+      "path": "/tmp/aps-task-h-cli-registry-v1.xml",
+      "sha256": "37e15a17d5b6ec61eadd6ed51bdd983c24bceb08faaec2da057c487c4b342d87",
+      "attributes": {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "28",
+        "time": "2.085",
+        "timestamp": "2026-09-10T20:39:55.561040+08:00",
+        "hostname": "lurenxingdeMacBook-Air.local"
+      }
+    }
+  },
+  "ruff": {
+    "command": "env PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-task-h-01a08b02/pycache .venv/bin/python -B -m ruff check --no-cache tools/test_registry_groups_workbench.py tests/gate_meta/test_workbench_round1_registry_contract.py tests/gate_meta/test_workbench_registry_contract.py",
+    "returncode": 0
+  },
+  "include_tests_import_scan": {
+    "command": [
+      "/Users/lurenxing/GitHub/----/.venv/bin/python",
+      "-B",
+      "-m",
+      "tools.scan_import_cycles",
+      "--json",
+      "--fail-on-new-cycle",
+      "--include-tests"
+    ],
+    "returncode": 0,
+    "stderr": "",
+    "stdout_sha256": "56591c68614df4033f1507b4ccd3da533219d63248b1d8d3e3e60eb88583faed",
+    "scope": "production-and-tests",
+    "modules": 2625,
+    "hard_dir_count": 1,
+    "hard_file_count": 8,
+    "unresolved": [
+      {
+        "file": "core/plugins/manager.py",
+        "line": 176,
+        "context": "lazy",
+        "expression": "spec_from_file_location(module_name)"
+      },
+      {
+        "file": "core/services/scheduler/__init__.py",
+        "line": 39,
+        "context": "lazy",
+        "expression": "module_name"
+      },
+      {
+        "file": "core/services/scheduler/config/__init__.py",
+        "line": 22,
+        "context": "lazy",
+        "expression": "module_name"
+      },
+      {
+        "file": "data/repositories/__init__.py",
+        "line": 110,
+        "context": "lazy",
+        "expression": "module_name"
+      },
+      {
+        "file": "tests/_scripts_e2e/run_browser_extreme_stress_case.py",
+        "line": 43,
+        "context": "lazy",
+        "expression": "spec_from_file_location('aps_synthetic_case_helpers')"
+      },
+      {
+        "file": "tests/algorithm/test_optimizer_proof_harness_contract.py",
+        "line": 371,
+        "context": "lazy",
+        "expression": "spec_from_file_location('benchmark_optimizer_proof_harness_script')"
+      },
+      {
+        "file": "tests/app_runtime/test_app_factory_runtime_env_refresh.py",
+        "line": 52,
+        "context": "lazy",
+        "expression": "module_name"
+      },
+      {
+        "file": "tests/app_runtime/test_launcher_observability.py",
+        "line": 306,
+        "context": "lazy",
+        "expression": "spec_from_file_location(module_name)"
+      },
+      {
+        "file": "tests/app_runtime/test_launcher_observability.py",
+        "line": 342,
+        "context": "lazy",
+        "expression": "spec_from_file_location(module_name)"
+      },
+      {
+        "file": "tests/app_runtime/test_runtime_lock_reloader_parent_skip.py",
+        "line": 77,
+        "context": "lazy",
+        "expression": "module_name"
+      },
+      {
+        "file": "tests/gantt/test_frappe_gantt_short_task_contract.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_adapter_contract.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_chain_walk_js_contract.py",
+        "line": 20,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_controls_rework_contract.py",
+        "line": 20,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_critical_outline_sync.py",
+        "line": 706,
+        "context": "lazy",
+        "expression": "spec_from_file_location('run_complex_case_and_export_gantt')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_critical_outline_sync.py",
+        "line": 789,
+        "context": "lazy",
+        "expression": "spec_from_file_location('run_complex_case_and_export_gantt')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_fix_pack_contract.py",
+        "line": 21,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_frontend_error_boundary.py",
+        "line": 15,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_load_strip_js_contract.py",
+        "line": 21,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_readonly_mode_contract.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_task_detail_js_contract.py",
+        "line": 16,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_url_persistence.py",
+        "line": 21,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_zoom_contract.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_zoom_decoration_sync.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')"
+      },
+      {
+        "file": "tests/gantt/test_gantt_zoom_range_guard.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('regression_gantt_critical_outline_sync')"
+      },
+      {
+        "file": "tests/gate_meta/check_quickref_vs_routes.py",
+        "line": 58,
+        "context": "lazy",
+        "expression": "spec_from_file_location(module_name)"
+      },
+      {
+        "file": "tests/gate_meta/test_callgraph_receiver_resolution.py",
+        "line": 24,
+        "context": "lazy",
+        "expression": "spec_from_file_location('test_callgraph_extract')"
+      },
+      {
+        "file": "tests/gate_meta/test_check_quickref_vs_routes.py",
+        "line": 26,
+        "context": "lazy",
+        "expression": "spec_from_file_location(module_name)"
+      },
+      {
+        "file": "tests/gate_meta/test_post_change_check_contract.py",
+        "line": 14,
+        "context": "lazy",
+        "expression": "spec_from_file_location('post_change_check_contract')"
+      },
+      {
+        "file": "tests/gate_meta/test_run_full_selftest_report_metadata.py",
+        "line": 19,
+        "context": "lazy",
+        "expression": "spec_from_file_location('aps_run_full_selftest')"
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 267,
+        "context": "lazy",
+        "expression": "old_name"
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 268,
+        "context": "lazy",
+        "expression": "new_name"
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 274,
+        "context": "lazy",
+        "expression": "old_name"
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 275,
+        "context": "lazy",
+        "expression": "new_name"
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 354,
+        "context": "lazy",
+        "expression": "old_name"
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 355,
+        "context": "lazy",
+        "expression": "new_name"
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 359,
+        "context": "lazy",
+        "expression": "old_name"
+      },
+      {
+        "file": "tests/gate_meta/test_sp05_path_topology_contract.py",
+        "line": 360,
+        "context": "lazy",
+        "expression": "new_name"
+      },
+      {
+        "file": "tests/schedule/route_view/test_scheduler_missing_resource_message.py",
+        "line": 239,
+        "context": "lazy",
+        "expression": "__import__(module_name)"
+      },
+      {
+        "file": "tests/schedule/route_view/test_scheduler_missing_resource_message.py",
+        "line": 286,
+        "context": "lazy",
+        "expression": "__import__(module_name)"
+      },
+      {
+        "file": "tests/schedule/service/test_start_and_rerun_route_resolution.py",
+        "line": 32,
+        "context": "lazy",
+        "expression": "spec_from_file_location(module_name)"
+      },
+      {
+        "file": "tests/web_pages/test_system_health_route.py",
+        "line": 36,
+        "context": "lazy",
+        "expression": "name"
+      },
+      {
+        "file": "web/routes/domains/scheduler/scheduler_route_registrar.py",
+        "line": 31,
+        "context": "lazy",
+        "expression": "<JoinedStr>"
+      }
+    ],
+    "parse_errors": [],
+    "baseline_sha256": "2878a55393510e524f2259f918142199d187d3097e6a3292e521cf8090571d19",
+    "comparison": {
+      "baseline_missing": false,
+      "new_dir": [],
+      "new_file": [],
+      "new_dir_edges": [],
+      "new_file_edges": [],
+      "new_unresolved_dynamic_imports": []
+    }
+  },
+  "baseline_matches_before_CLI_fix": true,
+  "scanner_observation_code": "\nimport dataclasses,hashlib,json,subprocess,sys\nfrom pathlib import Path\nfrom tools.import_cycle_baseline import compare_with_baseline,default_baseline_path,baseline_scope\nrecords=[]\nfor include in (True,):\n    args=[sys.executable,\"-B\",\"-m\",\"tools.scan_import_cycles\",\"--json\",\"--fail-on-new-cycle\"]\n    if include: args.append(\"--include-tests\")\n    proc=subprocess.run(args,capture_output=True,text=True)\n    if proc.returncode not in (0,1): raise RuntimeError(proc.stderr or proc.stdout)\n    value=json.loads(proc.stdout)\n    path=default_baseline_path(str(Path.cwd()),include)\n    comparison=compare_with_baseline(path,value,expected_scope=baseline_scope(include))\n    records.append({\"command\":args,\"returncode\":proc.returncode,\"stderr\":proc.stderr,\"stdout_sha256\":hashlib.sha256(proc.stdout.encode()).hexdigest(),\"scope\":baseline_scope(include),\"modules\":value[\"module_count\"],\"hard_dir_count\":len(value[\"hard_dir_cycles\"]),\"hard_file_count\":len(value[\"hard_file_cycles\"]),\"unresolved\":value[\"unresolved_dynamic_imports\"],\"parse_errors\":value[\"parse_errors\"],\"baseline_sha256\":hashlib.sha256(Path(path).read_bytes()).hexdigest(),\"comparison\":dataclasses.asdict(comparison)})\nprint(json.dumps(records,ensure_ascii=False,default=lambda value:sorted(value)))\n",
+  "proof_boundary": "Fresh scoped tests and import scan in dirty worktree only. Stub delegation is not business evidence. Main owns actual small CLI result and its hashes. Original 5000-capacity proof is neither rewritten nor rebound to this HEAD. No full gate.",
+  "original_capacity_evidence_modified": false,
+  "full_gate_run": false,
+  "git_writes_by_H": false
+}

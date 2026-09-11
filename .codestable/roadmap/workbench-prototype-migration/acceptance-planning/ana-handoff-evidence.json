@@ -1,0 +1,3149 @@
+{
+  "schema_version": 1,
+  "status": "frozen_delta_handoff_not_final_merged_gate",
+  "source_root": "/private/tmp/aps-final-d-source-ana-7Pj1pV/source",
+  "sample_parent": "/private/tmp/aps-final-d-source-ana-7Pj1pV",
+  "source_manifest": {
+    "path": "/private/tmp/aps-final-d-source-ana-7Pj1pV/source-manifest.json",
+    "sha256": "85ddf9a762566a886f46fb83c73175a9e923b542677bce4392723910c4a685f8",
+    "aggregate_sha256": "bc0c24d7c8da520153163659cb75ae8c4a02962e86dacdd7150c6e27c6019bbd",
+    "files": 3993
+  },
+  "product_binding": {
+    "path": "/Users/lurenxing/GitHub/----/.codestable/roadmap/workbench-prototype-migration/acceptance-planning/ana-product-binding.json",
+    "sha256": "36b62d51bbf2f2c373260df267bca921397135ad28b9c929fe8901d57e5529e8",
+    "all_ten_files_match_tested_frozen_source": true
+  },
+  "assets": {
+    "build_id": "22aa6cfc89dc6be4b80afdd8b502a1096e6eba01c6622fb1ca7c7908955a17c3",
+    "file_count": 225,
+    "input_count": 317,
+    "manifest_sha256": "e5bd179fb2d14a1bdb4baa035ae4370f14029692a687183c6ddd9dcf5de45add",
+    "build_order_sha256": "bc14072b31ebe13fcad015c08afb176108465fc14557b4af217071c01ccc6bb3"
+  },
+  "test_result": {
+    "existing_single_plus_running_matrix_completed": 16,
+    "junit": [
+      "/tmp/aps-final-d-ana-main-two.xml",
+      "/tmp/aps-final-d-ana-matrix.xml"
+    ],
+    "targeted_service_regression_passed": 46,
+    "candidate_widget_regression": {
+      "passed": 1,
+      "checks": 228,
+      "variants": 4,
+      "downloads": 24
+    },
+    "host_phases_normal_closed": 20,
+    "new_tests_after_convergence_order": false
+  },
+  "path_conventions": {
+    "sample_root": "sample_parent/directory",
+    "browser_report": "final_planning_<mode>.json",
+    "host_report": "final_planning_server-<mode>.json",
+    "database_before": "sessions/<session>/business-before.json",
+    "database_after": "sessions/<session>/business-after.json",
+    "result": "sample.result_file"
+  },
+  "samples": [
+    {
+      "directory": "aps-workbench-live-3l6in_ru",
+      "cohort": "actions",
+      "build_record_sha256": "3ea443f2ed71f518b62cd83920b4114b71a10dc68f785a115fd4ab9ed266251f",
+      "result_file": "final_planning_result.json",
+      "result_sha256": "4f74f32f3bbdada4bd7db8e2398cc9509bc20104e6e90de994b158474a88dbc9",
+      "phases": [
+        {
+          "mode": "actions",
+          "pid": 78046,
+          "session": "3489d0b3b4f84d768227dbbbc32523b6",
+          "normal_shutdown": true,
+          "report_sha256": "cb2d43dcca5d7d7570055dde11eee76dccd78caa6f748affd3afaf601b5130f2",
+          "host_report_sha256": "344eb3c8dafb8543645a90029dd4701589bc46959fba57118cd813ceed1628c9",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "f97a881dfd8119c1c0d3c17650f985f9dfef5350c5b5be011d50f3e91b0b33ab",
+          "loaded_module_count": 1127,
+          "before_sha256": "aaf2bc584c4e638f3116472361151527c3955056f96e72bbbe1a15bbe4dc753a",
+          "after_sha256": "47adf07852469a6d6492ce8756598a848f6255dc4ed220480a71fc36de031565"
+        },
+        {
+          "mode": "restart",
+          "pid": 78883,
+          "session": "0f8a18c42143439b8c44bba4882b527c",
+          "normal_shutdown": true,
+          "report_sha256": "651fa90ddf2b63b5b2753270cae3d73af5f701bc1e3a3e8500dc343b471e43e5",
+          "host_report_sha256": "cb479e7c50ee1250eef8a420d8034158d58c4da2117fb26d90e3a91bf07ecf0a",
+          "source_proof_file": "final_planning_source-restart.json",
+          "source_proof_sha256": "fc97b6114d5b607ec26d134e4e86dc17f450f8f1e560968093211820bc2819ed",
+          "loaded_module_count": 1117,
+          "before_sha256": "44b1b82b9868f2ad260ffc42fe92a4fa2e0dd056afd64d2f93213c9eb332616d",
+          "after_sha256": "44b1b82b9868f2ad260ffc42fe92a4fa2e0dd056afd64d2f93213c9eb332616d"
+        }
+      ],
+      "width": 1920,
+      "theme": "dark"
+    },
+    {
+      "directory": "aps-workbench-live-752eh_wp",
+      "cohort": "readonly",
+      "build_record_sha256": "12939d7dc4e37108a7ddde121985df89685d8f24bd86fefe17cb87d86cacf1c6",
+      "result_file": "final_planning_readonly_result.json",
+      "result_sha256": "c6e0618359c1801deab17c0ba33ba990f20339a7eb5fd036840050ab7ddd3c28",
+      "phases": [
+        {
+          "mode": "readonly",
+          "pid": 81313,
+          "session": "77fad63b24d64c4aa383b8162fdc3d1a",
+          "normal_shutdown": true,
+          "report_sha256": "8c5f26687126cc1f0683acba8ed22e3a81985efa424fbbd1e1628329b83462f1",
+          "host_report_sha256": "c9a5e216e3941795d390710887e3e9ded0d707e12b1d629d1726516a1fcb4eba",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "4c2a9e4a55ae39d8113b5b5f5f3fe2bde22c2481df5bbeedc8cdd8522935984b",
+          "loaded_module_count": 1119,
+          "before_sha256": "d410d5258837e6244900744f7760505fd72b113da00a26c504c9279c47f59bb9",
+          "after_sha256": "d410d5258837e6244900744f7760505fd72b113da00a26c504c9279c47f59bb9"
+        }
+      ],
+      "width": 1392,
+      "theme": "dark"
+    },
+    {
+      "directory": "aps-workbench-live-7sydym6v",
+      "cohort": "candidate-source",
+      "build_record_sha256": "60180f70ea1f5b4a1110921ccac16501e4cba8873fccaaf0def5152ffe8073a9",
+      "result_file": "final_planning_candidate-source_result.json",
+      "result_sha256": "486bf576712caaea59c9eb9af4b4f8f57c9f0350e16b33e417c2a6eea3c2384c",
+      "phases": [
+        {
+          "mode": "candidate-source",
+          "pid": 80846,
+          "session": "c397ac29f76a4d83bf719a8cd125ffd9",
+          "normal_shutdown": true,
+          "report_sha256": "7676d8daa67ff7625637b13a33d26448c74db7192a03ddc26b3e98f01485987b",
+          "host_report_sha256": "2946af42974647481f15e61b96f9694a9a0632d0ec2c577045290a37c8c4fc65",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "f97a881dfd8119c1c0d3c17650f985f9dfef5350c5b5be011d50f3e91b0b33ab",
+          "loaded_module_count": 1127,
+          "before_sha256": "68fb468be05cfccd4851d2a7b5d25267a2d0231a76c5d6c124ea5010d402957e",
+          "after_sha256": "d3852295bedf3c99bac819ef1ef1366fdaec4b5963b22353647d90171d10e795"
+        }
+      ],
+      "width": 1392,
+      "theme": "light"
+    },
+    {
+      "directory": "aps-workbench-live-85j5nexb",
+      "cohort": "preflight",
+      "build_record_sha256": "9c70baf54a3f41fb0d02b954578b31f07cc851d807517a5374e03fda74319f63",
+      "result_file": "final_planning_preflight_result.json",
+      "result_sha256": "48af18ed8a28f519d6b4afe7dcd26780dccf836dac58d6018f83b18640ae9402",
+      "phases": [
+        {
+          "mode": "preflight",
+          "pid": 81435,
+          "session": "d2a0e9862e9d41c9ba133756c92042e2",
+          "normal_shutdown": true,
+          "report_sha256": "f3ef2ef9b5c5af7f4a3cfccbb7eaab5e19f4412ce6f08257eea884e4528534f6",
+          "host_report_sha256": "4407b0ff7aae2816b20a072027ce61aa385eb12550dc884d9277f7b62c69e551",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "4c2a9e4a55ae39d8113b5b5f5f3fe2bde22c2481df5bbeedc8cdd8522935984b",
+          "loaded_module_count": 1119,
+          "before_sha256": "fb581a320d708188b5a2cb6443957fe32db0fcb738d727dfe5c70afed2994d04",
+          "after_sha256": "fb581a320d708188b5a2cb6443957fe32db0fcb738d727dfe5c70afed2994d04"
+        }
+      ],
+      "width": 1920,
+      "theme": "dark"
+    },
+    {
+      "directory": "aps-workbench-live-_403yse2",
+      "cohort": "preflight",
+      "build_record_sha256": "cb04e4d18f4592f758a80dc1b298806843dee2399fbc4535f48534f73057e303",
+      "result_file": "final_planning_preflight_result.json",
+      "result_sha256": "69e1819ac62e4426260e890c4fd094d21d23b7b8cc28075503fb4ddcc4a27854",
+      "phases": [
+        {
+          "mode": "preflight",
+          "pid": 81355,
+          "session": "80b1237e1559498b88e6c5c8f043dc16",
+          "normal_shutdown": true,
+          "report_sha256": "d9b294357b8f5c20aa07bb7ce4c643272d9f0fa5c4f02107cfd407ebd9f11e42",
+          "host_report_sha256": "08cbae7d37bd6af81a4029cfebd281afbf2e7fc6a84739d749b857a16a25c8ea",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "4c2a9e4a55ae39d8113b5b5f5f3fe2bde22c2481df5bbeedc8cdd8522935984b",
+          "loaded_module_count": 1119,
+          "before_sha256": "553306a7e58ae17c7129c04c59ee4a0d45ec160ef285ae458f64a0e07802e900",
+          "after_sha256": "553306a7e58ae17c7129c04c59ee4a0d45ec160ef285ae458f64a0e07802e900"
+        }
+      ],
+      "width": 1920,
+      "theme": "light"
+    },
+    {
+      "directory": "aps-workbench-live-b2iuou00",
+      "cohort": "actions",
+      "build_record_sha256": "df545bf906c68184ed6d33550b48d53e0187922172f8827cda06c0d75ef6ee19",
+      "result_file": "final_planning_result.json",
+      "result_sha256": "21e1dc5594a47ecfd95b23608ec81a7c55df97fdc6da4834e2988c09a3d78155",
+      "phases": [
+        {
+          "mode": "actions",
+          "pid": 79684,
+          "session": "57ca8312b28a4412a2ddebc280a968c3",
+          "normal_shutdown": true,
+          "report_sha256": "d6137877a2e49fe21428b0826fc50f5811cfa06077e54854f64129850fcd52f5",
+          "host_report_sha256": "57051f91d680596c25e867cc3ca2f4692424463d68630f8debed411663f2e5b0",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "f97a881dfd8119c1c0d3c17650f985f9dfef5350c5b5be011d50f3e91b0b33ab",
+          "loaded_module_count": 1127,
+          "before_sha256": "ff91d8709391473d3fb447a3522c0c98d7c96c281c857bf9ebfa88a050207e5b",
+          "after_sha256": "cbd44e97c935a96f6ddfb0f2b00bb6acd9fdef6967892c6f27822b3c36363ab3"
+        },
+        {
+          "mode": "restart",
+          "pid": 80381,
+          "session": "38fdd4100a3d4b2b8f0e5b76d5447bb2",
+          "normal_shutdown": true,
+          "report_sha256": "4e559fc6598c41ba96e57384f452e7d821550a542f171f213da5eb9866519f62",
+          "host_report_sha256": "c06de07b21ba6c733e178f3558635a9517d8eea96e82910c131f5ba4a26cd224",
+          "source_proof_file": "final_planning_source-restart.json",
+          "source_proof_sha256": "fc97b6114d5b607ec26d134e4e86dc17f450f8f1e560968093211820bc2819ed",
+          "loaded_module_count": 1117,
+          "before_sha256": "b7f017a3f10411ef26172bf5083bb45d53ea7f8eba7d308024d7223ea5e348a0",
+          "after_sha256": "b7f017a3f10411ef26172bf5083bb45d53ea7f8eba7d308024d7223ea5e348a0"
+        }
+      ],
+      "width": 1392,
+      "theme": "dark"
+    },
+    {
+      "directory": "aps-workbench-live-d30y1oi4",
+      "cohort": "preflight",
+      "build_record_sha256": "1d0219d8a2c6f76f01d369c8e38f5a16fd5c8bea718dd86d4712701ca6159976",
+      "result_file": "final_planning_preflight_result.json",
+      "result_sha256": "408d35c457cf32a14385d2efacbc2a7a5a606aa388c550cc562bbf4691154369",
+      "phases": [
+        {
+          "mode": "preflight",
+          "pid": 81471,
+          "session": "a8e3458fc17e4e50b090c538733ca3a6",
+          "normal_shutdown": true,
+          "report_sha256": "773eed2d94cacf61a3d1b722d0a6ecd51ae4e4f0888da7b666cc74a0c6c2ace0",
+          "host_report_sha256": "03ca324b94b17c54123b7c3abe3ef763a4793c45a78e081433f9913284acf0da",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "4c2a9e4a55ae39d8113b5b5f5f3fe2bde22c2481df5bbeedc8cdd8522935984b",
+          "loaded_module_count": 1119,
+          "before_sha256": "14dbed68936cb46fc3a3fba4e61f1953a9622cf7ea35350b89d563255b0316ef",
+          "after_sha256": "14dbed68936cb46fc3a3fba4e61f1953a9622cf7ea35350b89d563255b0316ef"
+        }
+      ],
+      "width": 1392,
+      "theme": "light"
+    },
+    {
+      "directory": "aps-workbench-live-g848tnx2",
+      "cohort": "candidate-source",
+      "build_record_sha256": "4b31ff4fc0aa957ef5a1414a5bf04b2c268b57476679bb4a9648415072cbcac4",
+      "result_file": "final_planning_candidate-source_result.json",
+      "result_sha256": "76f86b65a3ac7419f2fbee4e100d536aa282566d2ce1479fcd80fd9eab9dcf2a",
+      "phases": [
+        {
+          "mode": "candidate-source",
+          "pid": 80501,
+          "session": "b2ad31d87f234e1b98701d71004bf9c9",
+          "normal_shutdown": true,
+          "report_sha256": "1234d1590bd0baf0ec3733e3c9043131f7f2b8316ffef12237355961731ee411",
+          "host_report_sha256": "40c18446970e63ea693385508b87420cb8e566708b869663f4622e651e90d3a5",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "f97a881dfd8119c1c0d3c17650f985f9dfef5350c5b5be011d50f3e91b0b33ab",
+          "loaded_module_count": 1127,
+          "before_sha256": "9e366339335cf1b303e45690c0bbb28986e4656c19fdf44e3ee3ef6c782099ed",
+          "after_sha256": "8933f6cd7ea1aefa20fe7060b5ea7cb5065aa6da681bd7f28382fe6b4e99ac21"
+        }
+      ],
+      "width": 1920,
+      "theme": "light"
+    },
+    {
+      "directory": "aps-workbench-live-hfvl2chk",
+      "cohort": "candidate-source",
+      "build_record_sha256": "d5ba3eae4394adf1a63a521705f64bfa142b13ee11d5ba39499e10f2dd998fdf",
+      "result_file": "final_planning_candidate-source_result.json",
+      "result_sha256": "72720e3da877b606e58b9ac61dac4277a534ec8f4ee43048333a9709ce45f6c9",
+      "phases": [
+        {
+          "mode": "candidate-source",
+          "pid": 80950,
+          "session": "9dc5893a99af4f7fa4ae14b22eb432d9",
+          "normal_shutdown": true,
+          "report_sha256": "b6f53c265402b20bed8530f8eb9de1f2f259db04bd0227084a5953ae8c2b1dc4",
+          "host_report_sha256": "f275dbf4daf77d505836aa9becf9671dd73d9232ace636cc66ca8b0d3ed772e8",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "f97a881dfd8119c1c0d3c17650f985f9dfef5350c5b5be011d50f3e91b0b33ab",
+          "loaded_module_count": 1127,
+          "before_sha256": "83ba20678321794634a408a67d91dcaa267f9b6797771ae8be0077b33b8a6070",
+          "after_sha256": "5e76e80113b3e394669e2dbeb3485d73375bc8947d9c77a2817b95f2b80a9d16"
+        }
+      ],
+      "width": 1392,
+      "theme": "dark"
+    },
+    {
+      "directory": "aps-workbench-live-i6plff73",
+      "cohort": "readonly",
+      "build_record_sha256": "f330e25c2301c41c459682f3106b6410171fc5bb623ff2b10b8ae9240ed184d6",
+      "result_file": "final_planning_readonly_result.json",
+      "result_sha256": "5f346cbf8aa61da12664705e1a09c24145dd6c2a86c0b4900af300dabf2048f2",
+      "phases": [
+        {
+          "mode": "readonly",
+          "pid": 81196,
+          "session": "abfa150f6a034d40add81da0e492dd82",
+          "normal_shutdown": true,
+          "report_sha256": "22b9a0273a4dca89ea7a1321eda027abb93ef7397f952b556b9957737da31a04",
+          "host_report_sha256": "70336d771c13130e803c300e6549f9cea435471bf9d1442cdfe15027d6f03ef8",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "4c2a9e4a55ae39d8113b5b5f5f3fe2bde22c2481df5bbeedc8cdd8522935984b",
+          "loaded_module_count": 1119,
+          "before_sha256": "d615b4b43ec7acbd6673716c92724628ba035a85a28bcd25b6968974e92ce323",
+          "after_sha256": "d615b4b43ec7acbd6673716c92724628ba035a85a28bcd25b6968974e92ce323"
+        }
+      ],
+      "width": 1920,
+      "theme": "dark"
+    },
+    {
+      "directory": "aps-workbench-live-jipthbfz",
+      "cohort": "readonly",
+      "build_record_sha256": "f98f258b15dca025fab8b960504d9829ee269f7ead042f25725809416b63e309",
+      "result_file": "final_planning_readonly_result.json",
+      "result_sha256": "4bebeaa0a68c52cc21c245cadc4e320087ab9d287d1655df17c357b084f18cf2",
+      "phases": [
+        {
+          "mode": "readonly",
+          "pid": 81145,
+          "session": "2de563b43d3d40de94ebfe56e6700dd2",
+          "normal_shutdown": true,
+          "report_sha256": "9350de699c5c86c5fef8e17bef739428fa0be1a75c13b749c9bff915d02cdee5",
+          "host_report_sha256": "44d5b49db0a1f48a1e3ff23ab5905d72b4fc561a155bc5f7d80eb86fc2d138b7",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "4c2a9e4a55ae39d8113b5b5f5f3fe2bde22c2481df5bbeedc8cdd8522935984b",
+          "loaded_module_count": 1119,
+          "before_sha256": "bc2ba379d0b3fc8d34ca3d057dfe62bdb083673d1112f2f81aac67e1095f6d7d",
+          "after_sha256": "bc2ba379d0b3fc8d34ca3d057dfe62bdb083673d1112f2f81aac67e1095f6d7d"
+        }
+      ],
+      "width": 1920,
+      "theme": "light"
+    },
+    {
+      "directory": "aps-workbench-live-jknngfiw",
+      "cohort": "actions",
+      "build_record_sha256": "790ff6022bb985b423234a1e23ab20ace205e648dac9bd108d4fe913e964ecf0",
+      "result_file": "final_planning_result.json",
+      "result_sha256": "2c2db1f9d9f349d30d2f67f4e703e56e2610e13b856cc8f914255057eab37892",
+      "phases": [
+        {
+          "mode": "actions",
+          "pid": 79009,
+          "session": "71cb070bde9942158e16d6eb4154672c",
+          "normal_shutdown": true,
+          "report_sha256": "db16f9b6b55c3018a92cb7cfcee0f014e55736fedc44865edec8036a41ae6601",
+          "host_report_sha256": "25ca3cd739010d41c00f12289ddb9279bf660e81c46044e498082a088a21588e",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "f97a881dfd8119c1c0d3c17650f985f9dfef5350c5b5be011d50f3e91b0b33ab",
+          "loaded_module_count": 1127,
+          "before_sha256": "ad58446fd951579d5cf5e797159287ab7c9a21c69e9e0d93f17ef100b406724c",
+          "after_sha256": "ab247b6fbca43c29d371d60c8942ca54989b12284773dcd9ac9000ab79c14b5a"
+        },
+        {
+          "mode": "restart",
+          "pid": 79574,
+          "session": "e275b5d7a4454723974e279f0b07b535",
+          "normal_shutdown": true,
+          "report_sha256": "c378ec21a8f2558377d7d20ccc5449afbff27ca3385bdccde825c5aa5bed8524",
+          "host_report_sha256": "c18898aacdc6a7fcbf3319d28385bc0899799c2d73eb7bb2d2a5ad1fb8a1c86b",
+          "source_proof_file": "final_planning_source-restart.json",
+          "source_proof_sha256": "fc97b6114d5b607ec26d134e4e86dc17f450f8f1e560968093211820bc2819ed",
+          "loaded_module_count": 1117,
+          "before_sha256": "4a74004470b4f721db43dd21cfec545985bde55376ef25ca3d9915589a143da3",
+          "after_sha256": "4a74004470b4f721db43dd21cfec545985bde55376ef25ca3d9915589a143da3"
+        }
+      ],
+      "width": 1392,
+      "theme": "light"
+    },
+    {
+      "directory": "aps-workbench-live-ldain7rm",
+      "cohort": "preflight",
+      "build_record_sha256": "79c76362e50e38f7f7f2e468850cde82bae26d0097bec60e18833d4f7d8abed4",
+      "result_file": "final_planning_preflight_result.json",
+      "result_sha256": "4e6f278aad5455058f4b092318a1895e3399030baf4267bae129c7822bc03c13",
+      "phases": [
+        {
+          "mode": "preflight",
+          "pid": 81525,
+          "session": "f313c78e36a74180aa188763a040beee",
+          "normal_shutdown": true,
+          "report_sha256": "349106868c99ab845c6f3318c8d2840f78f4c784844539b09e8c886a0fee0d90",
+          "host_report_sha256": "c11c9fb80761903e9708ade84ac2b520e698b46fff9d7c999b67efc032384677",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "4c2a9e4a55ae39d8113b5b5f5f3fe2bde22c2481df5bbeedc8cdd8522935984b",
+          "loaded_module_count": 1119,
+          "before_sha256": "6245dc91b6eb6a52224d715d30181a0870409ab056366d6313ae397ca2ac6f61",
+          "after_sha256": "6245dc91b6eb6a52224d715d30181a0870409ab056366d6313ae397ca2ac6f61"
+        }
+      ],
+      "width": 1392,
+      "theme": "dark"
+    },
+    {
+      "directory": "aps-workbench-live-s7ybn7co",
+      "cohort": "readonly",
+      "build_record_sha256": "dff302d75fedf1b7fcba146276bfe5a0db247613b885d2e8b2d58dd694912414",
+      "result_file": "final_planning_readonly_result.json",
+      "result_sha256": "e9985ac3f3442a7e94fb7f017b1ed7c9ea1508651bad848f1091b12e285562f6",
+      "phases": [
+        {
+          "mode": "readonly",
+          "pid": 81275,
+          "session": "e4bd585e15764cafb424cccbdde61a1f",
+          "normal_shutdown": true,
+          "report_sha256": "d84d0a78138571b7f9dc71807b5f64ff694d3b1dcacfec0e90f7492431b34190",
+          "host_report_sha256": "5c9fb611c828c6f2e3f248c98bca424e57980eec9a10cad89ceef50f1429b1a5",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "4c2a9e4a55ae39d8113b5b5f5f3fe2bde22c2481df5bbeedc8cdd8522935984b",
+          "loaded_module_count": 1119,
+          "before_sha256": "e2c287b7528bfc554be36c66fee75fea96d40da2dace0e9965dbe7f0ebae3fbc",
+          "after_sha256": "e2c287b7528bfc554be36c66fee75fea96d40da2dace0e9965dbe7f0ebae3fbc"
+        }
+      ],
+      "width": 1392,
+      "theme": "light"
+    },
+    {
+      "directory": "aps-workbench-live-ta8lmvyn",
+      "cohort": "actions",
+      "build_record_sha256": "c0d053316470112d753cb1f844710907977c1378a9fb49be22f4525fdf45f7ed",
+      "result_file": "final_planning_result.json",
+      "result_sha256": "c952ad3bb7cc4f177f4bca7fcd62e51690b1c4203baee70034337902556c2ad3",
+      "phases": [
+        {
+          "mode": "actions",
+          "pid": 75305,
+          "session": "c45c264eaf5f4c4eab1ae4c75c58b3ee",
+          "normal_shutdown": true,
+          "report_sha256": "0aae958b896f6d077d3fdbe664d34e53d368053e1ecede6fa77b695967b10f44",
+          "host_report_sha256": "1915c46f462724af094171c5a59050fe7c9da6db421c42975923407b057a8792",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "f97a881dfd8119c1c0d3c17650f985f9dfef5350c5b5be011d50f3e91b0b33ab",
+          "loaded_module_count": 1127,
+          "before_sha256": "20b0713e58716aadcd25af082b3641d140cf63b86d03aaa2b30ff20545512616",
+          "after_sha256": "e257834cfa2874d93dad8853d1630473cfa786eeeaef6ccbcc75f4d92f48c178"
+        },
+        {
+          "mode": "restart",
+          "pid": 76105,
+          "session": "74a4eaa806174fad9dc3efef53e95230",
+          "normal_shutdown": true,
+          "report_sha256": "532d38b872c466558b83ca439141d102569cafc216d6c3480804639e35379b04",
+          "host_report_sha256": "c5e4d5916c1608e0b88cb5217b8c8b9e019d637eb3c20c416837ce8ce830e574",
+          "source_proof_file": "final_planning_source-restart.json",
+          "source_proof_sha256": "fc97b6114d5b607ec26d134e4e86dc17f450f8f1e560968093211820bc2819ed",
+          "loaded_module_count": 1117,
+          "before_sha256": "1284051d068e81286b013ea351af8eed33dcd4a75dceaa2874d72c8c3cd10b22",
+          "after_sha256": "1284051d068e81286b013ea351af8eed33dcd4a75dceaa2874d72c8c3cd10b22"
+        }
+      ],
+      "width": 1920,
+      "theme": "light"
+    },
+    {
+      "directory": "aps-workbench-live-zv7z5t47",
+      "cohort": "candidate-source",
+      "build_record_sha256": "981fef221d1142ee0e128f6b593ae30b535bc62162d42399f832543607410a1c",
+      "result_file": "final_planning_candidate-source_result.json",
+      "result_sha256": "65c04dd5fba6803d3e2ae9733aa6b00c25712cec72e4517a0ac060e1fd7729cc",
+      "phases": [
+        {
+          "mode": "candidate-source",
+          "pid": 80715,
+          "session": "c907e1c9669a471baceba6b0a555a20f",
+          "normal_shutdown": true,
+          "report_sha256": "fa72eb4fd32b2bec1ab10444a048ee3d1e287ec641e506019a14c50522df915a",
+          "host_report_sha256": "7de019756738fe024b7afe2ba859b74ce318f086fe7c1bab00953d158d43bb3b",
+          "source_proof_file": "final_planning_source-first.json",
+          "source_proof_sha256": "f97a881dfd8119c1c0d3c17650f985f9dfef5350c5b5be011d50f3e91b0b33ab",
+          "loaded_module_count": 1127,
+          "before_sha256": "f582b3d79b18c1e268ccd64ccecbac4c5d8f30199814c130ffefc62931f75d3a",
+          "after_sha256": "f94bd16143b6fbf3d6d57997a7050ac601e48b729a351891a0a701a93a786054"
+        }
+      ],
+      "width": 1920,
+      "theme": "dark"
+    }
+  ],
+  "K": {
+    "denominator": 146,
+    "passed": 141,
+    "not_run": [
+      "WBP-DELAY-004.conflicts",
+      "WBP-GANTT-002.conflict-track",
+      "WBP-RUN-007.no-result",
+      "WBP-TRIAL-007.stale-conflict",
+      "WBP-TRIAL-011.export-failure"
+    ],
+    "cohorts": {
+      "actions": {
+        "samples": [
+          0,
+          5,
+          11,
+          14
+        ],
+        "passed_actions": [
+          "WBP-ANA-001.metrics",
+          "WBP-ANA-001.tradeoffs",
+          "WBP-ANA-001.unavailable",
+          "WBP-ANA-002.preview-not-adopted",
+          "WBP-ANA-002.select-four",
+          "WBP-ANA-003.batch-gantt",
+          "WBP-ANA-003.delivery",
+          "WBP-ANA-003.history",
+          "WBP-ANA-004.adopt",
+          "WBP-ANA-004.delay",
+          "WBP-ANA-004.gantt",
+          "WBP-ANA-005.csv",
+          "WBP-ANA-005.download-failure",
+          "WBP-DELAY-001.metrics",
+          "WBP-DELAY-001.scope",
+          "WBP-DELAY-002.due-date",
+          "WBP-DELAY-002.full-batch-finish",
+          "WBP-DELAY-002.select-batch",
+          "WBP-DELAY-003.compare",
+          "WBP-DELAY-003.last-operation",
+          "WBP-DELAY-004.no-root-cause-claim",
+          "WBP-GANTT-001.baseline",
+          "WBP-GANTT-001.batch",
+          "WBP-GANTT-001.collapse",
+          "WBP-GANTT-001.expand",
+          "WBP-GANTT-001.machine",
+          "WBP-GANTT-001.only-changed",
+          "WBP-GANTT-001.operator",
+          "WBP-GANTT-001.search",
+          "WBP-GANTT-002.click",
+          "WBP-GANTT-002.hover",
+          "WBP-GANTT-002.keyboard",
+          "WBP-GANTT-003.details",
+          "WBP-GANTT-003.predecessors",
+          "WBP-GANTT-003.quantities",
+          "WBP-GANTT-003.resources",
+          "WBP-GANTT-004.batch-focus",
+          "WBP-GANTT-004.missing",
+          "WBP-GANTT-004.trial-link",
+          "WBP-PLAN-001.historical",
+          "WBP-PLAN-001.official",
+          "WBP-PLAN-001.scenario",
+          "WBP-PLAN-002.baseline",
+          "WBP-PLAN-002.comparison",
+          "WBP-PLAN-002.identity",
+          "WBP-PLAN-002.stable-identities",
+          "WBP-PLAN-003.cancel",
+          "WBP-PLAN-003.confirm",
+          "WBP-PLAN-003.operator",
+          "WBP-PLAN-003.reason",
+          "WBP-PLAN-003.recover-receipt",
+          "WBP-PLAN-004.new-process",
+          "WBP-PLAN-004.reload",
+          "WBP-PLAN-004.storage-failure",
+          "WBP-PLAN-005.gantt-navigation",
+          "WBP-PLAN-005.return-comparison",
+          "WBP-PLAN-005.trial-navigation",
+          "WBP-RUN-001.close-picker",
+          "WBP-RUN-001.dates",
+          "WBP-RUN-001.open-picker",
+          "WBP-RUN-001.range-selection",
+          "WBP-RUN-001.search",
+          "WBP-RUN-002.clear",
+          "WBP-RUN-002.empty-guard",
+          "WBP-RUN-002.filtered",
+          "WBP-RUN-002.paging",
+          "WBP-RUN-002.ready-filter",
+          "WBP-RUN-002.ready-only",
+          "WBP-RUN-002.select-all",
+          "WBP-RUN-002.single",
+          "WBP-RUN-003.actual-protected",
+          "WBP-RUN-003.auto-assign",
+          "WBP-RUN-003.exclude",
+          "WBP-RUN-003.ready-off",
+          "WBP-RUN-003.ready-on",
+          "WBP-RUN-004.check",
+          "WBP-RUN-004.metrics",
+          "WBP-RUN-004.tasks",
+          "WBP-RUN-006.cancel-confirm",
+          "WBP-RUN-006.confirm",
+          "WBP-RUN-006.recover-run",
+          "WBP-RUN-006.worker-result",
+          "WBP-RUN-007.real-candidate",
+          "WBP-TRIAL-001.load-failure",
+          "WBP-TRIAL-001.return-source",
+          "WBP-TRIAL-001.shell",
+          "WBP-TRIAL-001.theme",
+          "WBP-TRIAL-002.catalog-source",
+          "WBP-TRIAL-002.selected-status",
+          "WBP-TRIAL-002.source",
+          "WBP-TRIAL-003.baseline",
+          "WBP-TRIAL-003.escape",
+          "WBP-TRIAL-003.expand",
+          "WBP-TRIAL-003.mode",
+          "WBP-TRIAL-003.only-changed",
+          "WBP-TRIAL-003.search",
+          "WBP-TRIAL-004.capacity",
+          "WBP-TRIAL-004.execution",
+          "WBP-TRIAL-004.full-scope",
+          "WBP-TRIAL-004.predecessors",
+          "WBP-TRIAL-005.calendar-end",
+          "WBP-TRIAL-005.cancel",
+          "WBP-TRIAL-005.date",
+          "WBP-TRIAL-005.repair-conflict",
+          "WBP-TRIAL-005.resources",
+          "WBP-TRIAL-005.save",
+          "WBP-TRIAL-006.actuals",
+          "WBP-TRIAL-006.authorization",
+          "WBP-TRIAL-006.calendar",
+          "WBP-TRIAL-006.lock",
+          "WBP-TRIAL-006.overlap",
+          "WBP-TRIAL-006.precedence-conflict",
+          "WBP-TRIAL-006.valid-point",
+          "WBP-TRIAL-007.cancel",
+          "WBP-TRIAL-007.confirm",
+          "WBP-TRIAL-007.reason",
+          "WBP-TRIAL-007.recover-receipt",
+          "WBP-TRIAL-007.save-scenario",
+          "WBP-TRIAL-008.cancel",
+          "WBP-TRIAL-008.confirm",
+          "WBP-TRIAL-009.reset-disposition",
+          "WBP-TRIAL-010.empty",
+          "WBP-TRIAL-010.keyboard",
+          "WBP-TRIAL-010.tabs",
+          "WBP-TRIAL-011.csv",
+          "WBP-TRIAL-011.print",
+          "WBP-TRIAL-011.raw",
+          "WBP-TRIAL-012.leave-guard",
+          "WBP-TRIAL-012.new-process",
+          "WBP-TRIAL-012.reload",
+          "WBP-TRIAL-012.stale-write",
+          "WBP-TRIAL-012.storage-failure"
+        ]
+      },
+      "readonly": {
+        "samples": [
+          1,
+          9,
+          10,
+          13
+        ],
+        "passed_actions": [
+          "WBP-DELAY-001.unknown",
+          "WBP-PLAN-004.invalid-reference"
+        ]
+      },
+      "candidate-source": {
+        "samples": [
+          2,
+          7,
+          8,
+          15
+        ],
+        "passed_actions": [
+          "WBP-ANA-001.metrics",
+          "WBP-ANA-001.tradeoffs",
+          "WBP-ANA-001.unavailable",
+          "WBP-ANA-002.select-four",
+          "WBP-ANA-003.batch-gantt",
+          "WBP-ANA-003.delivery",
+          "WBP-ANA-004.gantt",
+          "WBP-PLAN-003.stale-conflict",
+          "WBP-RUN-001.close-picker",
+          "WBP-RUN-001.dates",
+          "WBP-RUN-001.open-picker",
+          "WBP-RUN-001.range-selection",
+          "WBP-RUN-001.search",
+          "WBP-RUN-002.clear",
+          "WBP-RUN-002.empty-guard",
+          "WBP-RUN-002.filtered",
+          "WBP-RUN-002.paging",
+          "WBP-RUN-002.ready-filter",
+          "WBP-RUN-002.ready-only",
+          "WBP-RUN-002.select-all",
+          "WBP-RUN-002.single",
+          "WBP-RUN-003.actual-protected",
+          "WBP-RUN-003.auto-assign",
+          "WBP-RUN-003.exclude",
+          "WBP-RUN-003.ready-off",
+          "WBP-RUN-003.ready-on",
+          "WBP-RUN-004.check",
+          "WBP-RUN-004.metrics",
+          "WBP-RUN-004.tasks",
+          "WBP-RUN-006.cancel-confirm",
+          "WBP-RUN-006.confirm",
+          "WBP-RUN-006.recover-run",
+          "WBP-RUN-006.worker-result",
+          "WBP-RUN-007.real-candidate",
+          "WBP-TRIAL-002.candidate-source"
+        ]
+      },
+      "preflight": {
+        "samples": [
+          3,
+          4,
+          6,
+          12
+        ],
+        "passed_actions": [
+          "WBP-RUN-001.date-guard",
+          "WBP-RUN-004.reasons",
+          "WBP-RUN-005.batch-link",
+          "WBP-RUN-005.invalidate-check",
+          "WBP-RUN-005.return-context"
+        ]
+      }
+    }
+  },
+  "P": {
+    "passed": 57,
+    "not_applicable": 31,
+    "not_run": 58,
+    "verified_actions": [
+      "WBP-ANA-001.metrics",
+      "WBP-ANA-001.tradeoffs",
+      "WBP-ANA-001.unavailable",
+      "WBP-ANA-003.batch-gantt",
+      "WBP-ANA-003.delivery",
+      "WBP-ANA-003.history",
+      "WBP-ANA-004.adopt",
+      "WBP-GANTT-001.search",
+      "WBP-GANTT-002.click",
+      "WBP-GANTT-002.keyboard",
+      "WBP-GANTT-003.details",
+      "WBP-GANTT-003.quantities",
+      "WBP-GANTT-004.trial-link",
+      "WBP-PLAN-001.historical",
+      "WBP-PLAN-001.official",
+      "WBP-PLAN-001.scenario",
+      "WBP-PLAN-002.stable-identities",
+      "WBP-PLAN-003.confirm",
+      "WBP-PLAN-003.operator",
+      "WBP-PLAN-003.reason",
+      "WBP-PLAN-003.stale-conflict",
+      "WBP-PLAN-004.invalid-reference",
+      "WBP-PLAN-004.new-process",
+      "WBP-PLAN-004.reload",
+      "WBP-PLAN-005.return-comparison",
+      "WBP-PLAN-005.trial-navigation",
+      "WBP-RUN-001.dates",
+      "WBP-RUN-001.range-selection",
+      "WBP-RUN-002.single",
+      "WBP-RUN-005.invalidate-check",
+      "WBP-RUN-005.return-context",
+      "WBP-RUN-006.confirm",
+      "WBP-RUN-006.worker-result",
+      "WBP-TRIAL-002.catalog-source",
+      "WBP-TRIAL-002.source",
+      "WBP-TRIAL-004.full-scope",
+      "WBP-TRIAL-005.calendar-end",
+      "WBP-TRIAL-005.date",
+      "WBP-TRIAL-005.repair-conflict",
+      "WBP-TRIAL-005.resources",
+      "WBP-TRIAL-005.save",
+      "WBP-TRIAL-006.authorization",
+      "WBP-TRIAL-006.calendar",
+      "WBP-TRIAL-006.overlap",
+      "WBP-TRIAL-006.precedence-conflict",
+      "WBP-TRIAL-006.valid-point",
+      "WBP-TRIAL-007.confirm",
+      "WBP-TRIAL-007.reason",
+      "WBP-TRIAL-007.save-scenario",
+      "WBP-TRIAL-008.confirm",
+      "WBP-TRIAL-009.reset-disposition",
+      "WBP-TRIAL-011.csv",
+      "WBP-TRIAL-011.print",
+      "WBP-TRIAL-011.raw",
+      "WBP-TRIAL-012.new-process",
+      "WBP-TRIAL-012.reload",
+      "WBP-TRIAL-012.stale-write"
+    ],
+    "verified_observations": {
+      "WBP-ANA-001.metrics": [
+        {
+          "sample": 0,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 0,
+          "mode": "restart",
+          "field": "reopened_candidate_analysis",
+          "basis": "同一原候选的完整分析数据在新 PID 下与原值相等。"
+        },
+        {
+          "sample": 5,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 5,
+          "mode": "restart",
+          "field": "reopened_candidate_analysis",
+          "basis": "同一原候选的完整分析数据在新 PID 下与原值相等。"
+        },
+        {
+          "sample": 11,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 11,
+          "mode": "restart",
+          "field": "reopened_candidate_analysis",
+          "basis": "同一原候选的完整分析数据在新 PID 下与原值相等。"
+        },
+        {
+          "sample": 14,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 14,
+          "mode": "restart",
+          "field": "reopened_candidate_analysis",
+          "basis": "同一原候选的完整分析数据在新 PID 下与原值相等。"
+        }
+      ],
+      "WBP-ANA-001.tradeoffs": [
+        {
+          "sample": 0,
+          "mode": "restart",
+          "field": "reopened_candidate_analysis",
+          "basis": "同一原候选的完整分析数据在新 PID 下与原值相等。"
+        },
+        {
+          "sample": 5,
+          "mode": "restart",
+          "field": "reopened_candidate_analysis",
+          "basis": "同一原候选的完整分析数据在新 PID 下与原值相等。"
+        },
+        {
+          "sample": 11,
+          "mode": "restart",
+          "field": "reopened_candidate_analysis",
+          "basis": "同一原候选的完整分析数据在新 PID 下与原值相等。"
+        },
+        {
+          "sample": 14,
+          "mode": "restart",
+          "field": "reopened_candidate_analysis",
+          "basis": "同一原候选的完整分析数据在新 PID 下与原值相等。"
+        }
+      ],
+      "WBP-ANA-001.unavailable": [
+        {
+          "sample": 0,
+          "mode": "restart",
+          "field": "reopened_candidate_analysis",
+          "basis": "同一原候选的完整分析数据在新 PID 下与原值相等。"
+        },
+        {
+          "sample": 5,
+          "mode": "restart",
+          "field": "reopened_candidate_analysis",
+          "basis": "同一原候选的完整分析数据在新 PID 下与原值相等。"
+        },
+        {
+          "sample": 11,
+          "mode": "restart",
+          "field": "reopened_candidate_analysis",
+          "basis": "同一原候选的完整分析数据在新 PID 下与原值相等。"
+        },
+        {
+          "sample": 14,
+          "mode": "restart",
+          "field": "reopened_candidate_analysis",
+          "basis": "同一原候选的完整分析数据在新 PID 下与原值相等。"
+        }
+      ],
+      "WBP-ANA-003.batch-gantt": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "field": "analysis_gantt_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "field": "analysis_gantt_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "field": "analysis_gantt_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "field": "analysis_gantt_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        }
+      ],
+      "WBP-ANA-003.delivery": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "field": "analysis_delivery_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "field": "analysis_delivery_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "field": "analysis_delivery_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "field": "analysis_delivery_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        }
+      ],
+      "WBP-ANA-003.history": [
+        {
+          "sample": 0,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 0,
+          "mode": "actions",
+          "field": "analysis_history_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 5,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "field": "analysis_history_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 11,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "field": "analysis_history_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 14,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "field": "analysis_history_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        }
+      ],
+      "WBP-ANA-004.adopt": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "55f111e70dd94ff6908973515ce4646a"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "0e8ca51f613748eba87e5f1ae7d999b4"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "50bb960e363f4e65bde7f79ef38df37a"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "b7c4f5484700407bb83c607e26b25558"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-GANTT-001.search": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "field": "formal_search_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "field": "formal_search_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "field": "formal_search_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "field": "formal_search_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        }
+      ],
+      "WBP-GANTT-002.click": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "field": "formal_selected_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "field": "formal_selected_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "field": "formal_selected_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "field": "formal_selected_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        }
+      ],
+      "WBP-GANTT-002.keyboard": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "field": "formal_keyboard_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "field": "formal_keyboard_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "field": "formal_keyboard_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "field": "formal_keyboard_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        }
+      ],
+      "WBP-GANTT-003.details": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "field": "formal_selected_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "field": "formal_selected_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "field": "formal_selected_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "field": "formal_selected_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        }
+      ],
+      "WBP-GANTT-003.quantities": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "field": "formal_selected_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "field": "formal_selected_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "field": "formal_selected_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "field": "formal_selected_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        }
+      ],
+      "WBP-GANTT-004.trial-link": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "436ab43333b248619e7703a3407a824c"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 0,
+          "mode": "actions",
+          "field": "task_origin",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "9be7ae110d364751ac5bb047091ae992"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "field": "task_origin",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "234dc2b29fcb44b180d455a955b8e318"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "field": "task_origin",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "c347277ca9ad42899581156e372842bd"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "field": "task_origin",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        }
+      ],
+      "WBP-PLAN-001.historical": [
+        {
+          "sample": 0,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 5,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 11,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 14,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        }
+      ],
+      "WBP-PLAN-001.official": [
+        {
+          "sample": 0,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 5,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 11,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 14,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        }
+      ],
+      "WBP-PLAN-001.scenario": [
+        {
+          "sample": 0,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 5,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 11,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 14,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        }
+      ],
+      "WBP-PLAN-002.stable-identities": [
+        {
+          "sample": 0,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 5,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 11,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 14,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        }
+      ],
+      "WBP-PLAN-003.confirm": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "55f111e70dd94ff6908973515ce4646a"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "0e8ca51f613748eba87e5f1ae7d999b4"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "50bb960e363f4e65bde7f79ef38df37a"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "b7c4f5484700407bb83c607e26b25558"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-PLAN-003.operator": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "55f111e70dd94ff6908973515ce4646a"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "0e8ca51f613748eba87e5f1ae7d999b4"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "50bb960e363f4e65bde7f79ef38df37a"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "b7c4f5484700407bb83c607e26b25558"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-PLAN-003.reason": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "55f111e70dd94ff6908973515ce4646a"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "0e8ca51f613748eba87e5f1ae7d999b4"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "50bb960e363f4e65bde7f79ef38df37a"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 92,
+          "request_end": 97,
+          "receipt_refs": [
+            "b7c4f5484700407bb83c607e26b25558"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-PLAN-003.stale-conflict": [
+        {
+          "sample": 2,
+          "mode": "candidate-source",
+          "field": "candidate_stale_preview",
+          "basis": "创建真实草稿后，原候选预览409；原行保留、正式计划未变，非采用成功的替代。"
+        },
+        {
+          "sample": 7,
+          "mode": "candidate-source",
+          "field": "candidate_stale_preview",
+          "basis": "创建真实草稿后，原候选预览409；原行保留、正式计划未变，非采用成功的替代。"
+        },
+        {
+          "sample": 8,
+          "mode": "candidate-source",
+          "field": "candidate_stale_preview",
+          "basis": "创建真实草稿后，原候选预览409；原行保留、正式计划未变，非采用成功的替代。"
+        },
+        {
+          "sample": 15,
+          "mode": "candidate-source",
+          "field": "candidate_stale_preview",
+          "basis": "创建真实草稿后，原候选预览409；原行保留、正式计划未变，非采用成功的替代。"
+        }
+      ],
+      "WBP-PLAN-004.invalid-reference": [
+        {
+          "sample": 1,
+          "mode": "readonly",
+          "field": "expected_rejected_documents",
+          "basis": "同一无效定位在实际F5仍拒绝，未恢复另一计划。"
+        },
+        {
+          "sample": 9,
+          "mode": "readonly",
+          "field": "expected_rejected_documents",
+          "basis": "同一无效定位在实际F5仍拒绝，未恢复另一计划。"
+        },
+        {
+          "sample": 10,
+          "mode": "readonly",
+          "field": "expected_rejected_documents",
+          "basis": "同一无效定位在实际F5仍拒绝，未恢复另一计划。"
+        },
+        {
+          "sample": 13,
+          "mode": "readonly",
+          "field": "expected_rejected_documents",
+          "basis": "同一无效定位在实际F5仍拒绝，未恢复另一计划。"
+        }
+      ],
+      "WBP-PLAN-004.new-process": [
+        {
+          "sample": 0,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 5,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 11,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 14,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        }
+      ],
+      "WBP-PLAN-004.reload": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "action_id": "WBP-PLAN-004.reload",
+          "basis": "该动作自身已执行 F5 并核对原计划/场景引用与完整任务，不泛化到其他控件。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "action_id": "WBP-PLAN-004.reload",
+          "basis": "该动作自身已执行 F5 并核对原计划/场景引用与完整任务，不泛化到其他控件。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "action_id": "WBP-PLAN-004.reload",
+          "basis": "该动作自身已执行 F5 并核对原计划/场景引用与完整任务，不泛化到其他控件。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "action_id": "WBP-PLAN-004.reload",
+          "basis": "该动作自身已执行 F5 并核对原计划/场景引用与完整任务，不泛化到其他控件。"
+        }
+      ],
+      "WBP-PLAN-005.return-comparison": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "field": "candidate_scope_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "field": "candidate_scope_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "field": "candidate_scope_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "field": "candidate_scope_recovery",
+          "basis": "实际同一来源、具体选择或读取范围的往返/F5断言，不借整链重启代替。"
+        }
+      ],
+      "WBP-PLAN-005.trial-navigation": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "436ab43333b248619e7703a3407a824c"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "9be7ae110d364751ac5bb047091ae992"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "234dc2b29fcb44b180d455a955b8e318"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "c347277ca9ad42899581156e372842bd"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-RUN-001.dates": [
+        {
+          "sample": 3,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 4,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 6,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 12,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        }
+      ],
+      "WBP-RUN-001.range-selection": [
+        {
+          "sample": 3,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 4,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 6,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 12,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        }
+      ],
+      "WBP-RUN-002.single": [
+        {
+          "sample": 3,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 4,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 6,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 12,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        }
+      ],
+      "WBP-RUN-005.invalidate-check": [
+        {
+          "sample": 3,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 4,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 6,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 12,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        }
+      ],
+      "WBP-RUN-005.return-context": [
+        {
+          "sample": 3,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 4,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 6,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        },
+        {
+          "sample": 12,
+          "mode": "preflight",
+          "field": "preflight_return",
+          "basis": "实际09-11至09-23及原Z-D-01永久批次引用的往返恢复；不是中间设置值的历史归档，也不声称独立重启。"
+        }
+      ],
+      "WBP-RUN-006.confirm": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 24,
+          "request_end": 31,
+          "receipt_refs": [
+            "1941e482a4bf494e85b7751bc2d33cb5"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 24,
+          "request_end": 31,
+          "receipt_refs": [
+            "f908e66f66384d64acaf955a1151e210"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 24,
+          "request_end": 31,
+          "receipt_refs": [
+            "af063e6bd2c8433aa43b88a3edba9abe"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 24,
+          "request_end": 31,
+          "receipt_refs": [
+            "bc8c85f9afba4a9cac13b9cf80a5de91"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-RUN-006.worker-result": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 24,
+          "request_end": 31,
+          "receipt_refs": [
+            "1941e482a4bf494e85b7751bc2d33cb5"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 24,
+          "request_end": 31,
+          "receipt_refs": [
+            "f908e66f66384d64acaf955a1151e210"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 24,
+          "request_end": 31,
+          "receipt_refs": [
+            "af063e6bd2c8433aa43b88a3edba9abe"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 24,
+          "request_end": 31,
+          "receipt_refs": [
+            "bc8c85f9afba4a9cac13b9cf80a5de91"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-002.catalog-source": [
+        {
+          "sample": 0,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 5,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 11,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 14,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        }
+      ],
+      "WBP-TRIAL-002.source": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "436ab43333b248619e7703a3407a824c"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "9be7ae110d364751ac5bb047091ae992"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "234dc2b29fcb44b180d455a955b8e318"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "c347277ca9ad42899581156e372842bd"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-004.full-scope": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "436ab43333b248619e7703a3407a824c"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "9be7ae110d364751ac5bb047091ae992"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "234dc2b29fcb44b180d455a955b8e318"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 131,
+          "request_end": 155,
+          "receipt_refs": [
+            "c347277ca9ad42899581156e372842bd"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-005.calendar-end": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 167,
+          "request_end": 171,
+          "receipt_refs": [
+            "d287122495834ba7adc23905dfe01a3e",
+            "b7058527b74d4ded9351ba3eca53eb4e"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 167,
+          "request_end": 171,
+          "receipt_refs": [
+            "12cde51f52d2449db273d04709487020",
+            "1564a7d451cd4ba1bf6ab98b2e512780"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 167,
+          "request_end": 171,
+          "receipt_refs": [
+            "56ec743130b24f4ea7d3e4c1ebed21dc",
+            "712dece2e0b94b729ca0705e04f8cbcc"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 167,
+          "request_end": 171,
+          "receipt_refs": [
+            "bb83d73cd56947ed8b76871d09f7866a",
+            "c1af4db13b674a00b9f0e86faddeb0e5"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-005.date": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "62447f07352f466ab57921425b2418e2"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "b4503ca31aee4fd88ada222650cc8276"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "c80dd0244b464145ad3a289b8d06c0f6"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "12ae8ad821184dbfbf6b77a72009e450"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-005.repair-conflict": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 182,
+          "request_end": 186,
+          "receipt_refs": [
+            "00b666b711234aaea1d800cae153f7a3",
+            "ad3e1f599daf462da59338a84211ed36"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 182,
+          "request_end": 186,
+          "receipt_refs": [
+            "b6007552067b42ce93fbd6c09c776c28",
+            "f545047d7d8c498db1445ef2f391c81f"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 182,
+          "request_end": 186,
+          "receipt_refs": [
+            "ba87f3b369744a5ba0e98fa51c81ddbe",
+            "3994ec5602d1430a88128d8c5ba1bac6"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 182,
+          "request_end": 186,
+          "receipt_refs": [
+            "8e07c8cc23c24f16ada8e6de0cad9be4",
+            "21bf49ddafd7487b81d1031f83a7119d"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-005.resources": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "62447f07352f466ab57921425b2418e2"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "b4503ca31aee4fd88ada222650cc8276"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "c80dd0244b464145ad3a289b8d06c0f6"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "12ae8ad821184dbfbf6b77a72009e450"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-005.save": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "62447f07352f466ab57921425b2418e2"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "b4503ca31aee4fd88ada222650cc8276"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "c80dd0244b464145ad3a289b8d06c0f6"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "12ae8ad821184dbfbf6b77a72009e450"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-006.authorization": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 155,
+          "request_end": 159,
+          "receipt_refs": [
+            "474ec57213cd4c89be9cde0bd6ba7789",
+            "065aab5311114e94b95e72fcb157d0da"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 155,
+          "request_end": 159,
+          "receipt_refs": [
+            "211b3405c37b43f29525e551662362ca",
+            "8add8544502c47d6b60e9ef71ef7aef5"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 155,
+          "request_end": 159,
+          "receipt_refs": [
+            "c45d6481b779414e9c98247bc6456165",
+            "2aa542433e4842c0bff9b1c6c87b48b1"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 155,
+          "request_end": 159,
+          "receipt_refs": [
+            "64273a878df9445782d0f94795b1edae",
+            "7dc26740824f4e3696eba410d132a2f0"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-006.calendar": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 163,
+          "request_end": 167,
+          "receipt_refs": [
+            "e75d7c20932244a1b77159c8da36596c",
+            "651b4a1f6408478badf9d6d2709f99c5"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 163,
+          "request_end": 167,
+          "receipt_refs": [
+            "0a85626b61df4be7ac5acb2448d90ab3",
+            "9ca4e7bc457b4b68a8db8f56160febfa"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 163,
+          "request_end": 167,
+          "receipt_refs": [
+            "d77c29b7498b4adcb3f595309198be84",
+            "fbfc22aea126494e8ef3c2204e63ad4a"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 163,
+          "request_end": 167,
+          "receipt_refs": [
+            "6153184455ee42abae56bb00aaea4005",
+            "91b74d402fda45c2a1cde305c0bcedc1"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-006.overlap": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 159,
+          "request_end": 163,
+          "receipt_refs": [
+            "dd968a35bcf348babeaaeafd0a2f931a",
+            "ec8fc6bfe7ab4c65ba209f1a3a7e3e0d"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 159,
+          "request_end": 163,
+          "receipt_refs": [
+            "3d53e290905f4bfc8cbd82503c48bc5c",
+            "a2a28658165a401990b5b8f8170aa7c0"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 159,
+          "request_end": 163,
+          "receipt_refs": [
+            "212d93a3d8184f868a2452c526028b4f",
+            "5c267da09bde462c8e21504400c871db"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 159,
+          "request_end": 163,
+          "receipt_refs": [
+            "cb07261115b1484da78e2ac208fb4fd5",
+            "61149dfb26ba4fbe85d24dda3ee4ce63"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-006.precedence-conflict": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "62447f07352f466ab57921425b2418e2"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "b4503ca31aee4fd88ada222650cc8276"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "c80dd0244b464145ad3a289b8d06c0f6"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 180,
+          "request_end": 182,
+          "receipt_refs": [
+            "12ae8ad821184dbfbf6b77a72009e450"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-006.valid-point": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 182,
+          "request_end": 186,
+          "receipt_refs": [
+            "00b666b711234aaea1d800cae153f7a3",
+            "ad3e1f599daf462da59338a84211ed36"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 182,
+          "request_end": 186,
+          "receipt_refs": [
+            "b6007552067b42ce93fbd6c09c776c28",
+            "f545047d7d8c498db1445ef2f391c81f"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 182,
+          "request_end": 186,
+          "receipt_refs": [
+            "ba87f3b369744a5ba0e98fa51c81ddbe",
+            "3994ec5602d1430a88128d8c5ba1bac6"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 182,
+          "request_end": 186,
+          "receipt_refs": [
+            "8e07c8cc23c24f16ada8e6de0cad9be4",
+            "21bf49ddafd7487b81d1031f83a7119d"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-007.confirm": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 188,
+          "request_end": 194,
+          "receipt_refs": [
+            "2153ee03bebc4b4ca9eb98b110331100"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 188,
+          "request_end": 194,
+          "receipt_refs": [
+            "23c0b13dede84d418ac3c7f782485d0d"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 188,
+          "request_end": 194,
+          "receipt_refs": [
+            "72544708c7ea41cdadbbf64063dfcb02"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 188,
+          "request_end": 194,
+          "receipt_refs": [
+            "d91ce76bd05d4d17a2067b0afad25ec5"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-007.reason": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 188,
+          "request_end": 194,
+          "receipt_refs": [
+            "2153ee03bebc4b4ca9eb98b110331100"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 188,
+          "request_end": 194,
+          "receipt_refs": [
+            "23c0b13dede84d418ac3c7f782485d0d"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 188,
+          "request_end": 194,
+          "receipt_refs": [
+            "72544708c7ea41cdadbbf64063dfcb02"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 188,
+          "request_end": 194,
+          "receipt_refs": [
+            "d91ce76bd05d4d17a2067b0afad25ec5"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-007.save-scenario": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 186,
+          "request_end": 188,
+          "receipt_refs": [
+            "543a21ec93744d5288f4b6d911f0afc9"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 186,
+          "request_end": 188,
+          "receipt_refs": [
+            "54795763ba45459a84b783bec5758e38"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 186,
+          "request_end": 188,
+          "receipt_refs": [
+            "4a9361d98e8d43bf86c11aa53765d2e3"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 186,
+          "request_end": 188,
+          "receipt_refs": [
+            "26e24277779d420abb2d98a7f192c72a"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-008.confirm": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 205,
+          "request_end": 216,
+          "receipt_refs": [
+            "6214433ab8e547edaf02a83bc3df344b",
+            "c59ae2dfcf0745f7b79c346587dcf9fe"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 205,
+          "request_end": 216,
+          "receipt_refs": [
+            "4ae463fa2eb140a9b53671004c3d763b",
+            "77aa6507250c46d69a5c13c9291e87e2"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 205,
+          "request_end": 216,
+          "receipt_refs": [
+            "188f3723987042f5866aaf1001f8d57a",
+            "b141e1b9231e4fd6abffe2efd55ec9c1"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 205,
+          "request_end": 216,
+          "receipt_refs": [
+            "ab0e91532acb410f8531f90da88a0f2e",
+            "7bb93167f4714ce1b2e71fe613e09a6d"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-009.reset-disposition": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 205,
+          "request_end": 216,
+          "receipt_refs": [
+            "6214433ab8e547edaf02a83bc3df344b",
+            "c59ae2dfcf0745f7b79c346587dcf9fe"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 205,
+          "request_end": 216,
+          "receipt_refs": [
+            "4ae463fa2eb140a9b53671004c3d763b",
+            "77aa6507250c46d69a5c13c9291e87e2"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 205,
+          "request_end": 216,
+          "receipt_refs": [
+            "188f3723987042f5866aaf1001f8d57a",
+            "b141e1b9231e4fd6abffe2efd55ec9c1"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 205,
+          "request_end": 216,
+          "receipt_refs": [
+            "ab0e91532acb410f8531f90da88a0f2e",
+            "7bb93167f4714ce1b2e71fe613e09a6d"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-011.csv": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 186,
+          "request_end": 188,
+          "receipt_refs": [
+            "543a21ec93744d5288f4b6d911f0afc9"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 186,
+          "request_end": 188,
+          "receipt_refs": [
+            "54795763ba45459a84b783bec5758e38"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 186,
+          "request_end": 188,
+          "receipt_refs": [
+            "4a9361d98e8d43bf86c11aa53765d2e3"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 186,
+          "request_end": 188,
+          "receipt_refs": [
+            "26e24277779d420abb2d98a7f192c72a"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-011.print": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "field": "native_print",
+          "basis": "原生打印事件与原恢复记录保持；已有PDF仍与原SHA相符，不新增打印测试。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "field": "native_print",
+          "basis": "原生打印事件与原恢复记录保持；已有PDF仍与原SHA相符，不新增打印测试。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "field": "native_print",
+          "basis": "原生打印事件与原恢复记录保持；已有PDF仍与原SHA相符，不新增打印测试。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "field": "native_print",
+          "basis": "原生打印事件与原恢复记录保持；已有PDF仍与原SHA相符，不新增打印测试。"
+        }
+      ],
+      "WBP-TRIAL-011.raw": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 186,
+          "request_end": 188,
+          "receipt_refs": [
+            "543a21ec93744d5288f4b6d911f0afc9"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 186,
+          "request_end": 188,
+          "receipt_refs": [
+            "54795763ba45459a84b783bec5758e38"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 186,
+          "request_end": 188,
+          "receipt_refs": [
+            "4a9361d98e8d43bf86c11aa53765d2e3"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 186,
+          "request_end": 188,
+          "receipt_refs": [
+            "26e24277779d420abb2d98a7f192c72a"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        }
+      ],
+      "WBP-TRIAL-012.new-process": [
+        {
+          "sample": 0,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 5,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 11,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        },
+        {
+          "sample": 14,
+          "mode": "restart",
+          "basis": "实际新进程按原永久引用打开并核对，见动作原始断言；不声称新浏览器自动选择。"
+        }
+      ],
+      "WBP-TRIAL-012.reload": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "action_id": "WBP-TRIAL-012.reload",
+          "basis": "该动作自身已执行 F5 并核对原计划/场景引用与完整任务，不泛化到其他控件。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "action_id": "WBP-TRIAL-012.reload",
+          "basis": "该动作自身已执行 F5 并核对原计划/场景引用与完整任务，不泛化到其他控件。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "action_id": "WBP-TRIAL-012.reload",
+          "basis": "该动作自身已执行 F5 并核对原计划/场景引用与完整任务，不泛化到其他控件。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "action_id": "WBP-TRIAL-012.reload",
+          "basis": "该动作自身已执行 F5 并核对原计划/场景引用与完整任务，不泛化到其他控件。"
+        }
+      ],
+      "WBP-TRIAL-012.stale-write": [
+        {
+          "sample": 0,
+          "mode": "actions",
+          "request_start": 172,
+          "request_end": 180,
+          "receipt_refs": [
+            "95ee51fc155f46a0926a79f880b183d5",
+            "bc0392cf465c425fb530616405a766f8"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 0,
+          "mode": "actions",
+          "field": "trial_stale_write",
+          "basis": "409 前后全部77表及schema的无损JSON字节相等；原草稿未被旧票据覆盖，未保存编辑器不宣称持久化。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "request_start": 172,
+          "request_end": 180,
+          "receipt_refs": [
+            "5750922cd06b49bab096e0b4983d0b22",
+            "ec504bb6acbb42aebcf400668624230a"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 5,
+          "mode": "actions",
+          "field": "trial_stale_write",
+          "basis": "409 前后全部77表及schema的无损JSON字节相等；原草稿未被旧票据覆盖，未保存编辑器不宣称持久化。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "request_start": 172,
+          "request_end": 180,
+          "receipt_refs": [
+            "c11c063562f944f9915197613d267976",
+            "64619f39e03d4079b0e55ae55b337822"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 11,
+          "mode": "actions",
+          "field": "trial_stale_write",
+          "basis": "409 前后全部77表及schema的无损JSON字节相等；原草稿未被旧票据覆盖，未保存编辑器不宣称持久化。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "request_start": 172,
+          "request_end": 180,
+          "receipt_refs": [
+            "c146b25c4f104917b7e96897b2fab73b",
+            "ebe0076a26fa4f1183ea337d94f84e85"
+          ],
+          "basis": "该动作区间的原成功命令回执在首轮结束与新进程结束逐列相等；后续显式恢复的暂时调整不冒充最终排程。"
+        },
+        {
+          "sample": 14,
+          "mode": "actions",
+          "field": "trial_stale_write",
+          "basis": "409 前后全部77表及schema的无损JSON字节相等；原草稿未被旧票据覆盖，未保存编辑器不宣称持久化。"
+        }
+      ]
+    },
+    "not_applicable_groups": [
+      {
+        "actions": [
+          "WBP-RUN-001.date-guard",
+          "WBP-RUN-001.open-picker",
+          "WBP-RUN-001.close-picker",
+          "WBP-RUN-001.search",
+          "WBP-RUN-002.empty-guard",
+          "WBP-RUN-002.filtered",
+          "WBP-RUN-002.ready-filter",
+          "WBP-RUN-002.paging"
+        ],
+        "reason": "输入错误、选择器显隐及其临时筛选/分页，不承诺保存这些瞬态；日期和真实选择的恢复另行列证。"
+      },
+      {
+        "actions": [
+          "WBP-RUN-004.check",
+          "WBP-RUN-004.tasks",
+          "WBP-RUN-004.metrics",
+          "WBP-RUN-004.reasons"
+        ],
+        "reason": "预检是随输入失效的只读检查，不保存旧检查结果；受理运行本身另以原运行和回执证明。"
+      },
+      {
+        "actions": [
+          "WBP-RUN-006.cancel-confirm",
+          "WBP-PLAN-003.cancel",
+          "WBP-TRIAL-005.cancel",
+          "WBP-TRIAL-007.cancel",
+          "WBP-TRIAL-008.cancel",
+          "WBP-TRIAL-012.leave-guard"
+        ],
+        "reason": "取消窗和未提交编辑器仅属内存状态，冻结合同不承诺保存取消内容；取消不等于确认写入。"
+      },
+      {
+        "actions": [
+          "WBP-GANTT-001.machine",
+          "WBP-GANTT-001.operator",
+          "WBP-GANTT-001.batch",
+          "WBP-GANTT-001.baseline",
+          "WBP-GANTT-001.only-changed",
+          "WBP-GANTT-001.expand",
+          "WBP-GANTT-001.collapse",
+          "WBP-GANTT-002.hover",
+          "WBP-GANTT-002.conflict-track"
+        ],
+        "reason": "冻结合同将 PLAN_UI 归为 UI/MEM；分组、叠轨、基线显隐和悬停不产生独立持久记录。选中任务与搜索恢复不在本不适用组。"
+      },
+      {
+        "actions": [
+          "WBP-TRIAL-003.expand",
+          "WBP-TRIAL-003.escape"
+        ],
+        "reason": "冻结合同明确 expanded 仅 MEM；本组不豁免试调模式、基线、仅变更、搜索和页签的 LS 恢复。"
+      },
+      {
+        "actions": [
+          "WBP-ANA-005.download-failure",
+          "WBP-TRIAL-011.export-failure"
+        ],
+        "reason": "失败提示不应生成成功文件或持久结果，本身不承诺重启恢复；本 P 不适用不代表失败分支 K 已通过。"
+      }
+    ],
+    "unverified_required": [
+      "WBP-ANA-002.preview-not-adopted",
+      "WBP-ANA-002.select-four",
+      "WBP-ANA-004.delay",
+      "WBP-ANA-004.gantt",
+      "WBP-ANA-005.csv",
+      "WBP-DELAY-001.metrics",
+      "WBP-DELAY-001.scope",
+      "WBP-DELAY-001.unknown",
+      "WBP-DELAY-002.due-date",
+      "WBP-DELAY-002.full-batch-finish",
+      "WBP-DELAY-002.select-batch",
+      "WBP-DELAY-003.compare",
+      "WBP-DELAY-003.last-operation",
+      "WBP-DELAY-004.conflicts",
+      "WBP-DELAY-004.no-root-cause-claim",
+      "WBP-GANTT-003.predecessors",
+      "WBP-GANTT-003.resources",
+      "WBP-GANTT-004.batch-focus",
+      "WBP-GANTT-004.missing",
+      "WBP-PLAN-002.baseline",
+      "WBP-PLAN-002.comparison",
+      "WBP-PLAN-002.identity",
+      "WBP-PLAN-003.recover-receipt",
+      "WBP-PLAN-004.storage-failure",
+      "WBP-PLAN-005.gantt-navigation",
+      "WBP-RUN-002.clear",
+      "WBP-RUN-002.ready-only",
+      "WBP-RUN-002.select-all",
+      "WBP-RUN-003.actual-protected",
+      "WBP-RUN-003.auto-assign",
+      "WBP-RUN-003.exclude",
+      "WBP-RUN-003.ready-off",
+      "WBP-RUN-003.ready-on",
+      "WBP-RUN-005.batch-link",
+      "WBP-RUN-006.recover-run",
+      "WBP-RUN-007.no-result",
+      "WBP-RUN-007.real-candidate",
+      "WBP-TRIAL-001.load-failure",
+      "WBP-TRIAL-001.return-source",
+      "WBP-TRIAL-001.shell",
+      "WBP-TRIAL-001.theme",
+      "WBP-TRIAL-002.candidate-source",
+      "WBP-TRIAL-002.selected-status",
+      "WBP-TRIAL-003.baseline",
+      "WBP-TRIAL-003.mode",
+      "WBP-TRIAL-003.only-changed",
+      "WBP-TRIAL-003.search",
+      "WBP-TRIAL-004.capacity",
+      "WBP-TRIAL-004.execution",
+      "WBP-TRIAL-004.predecessors",
+      "WBP-TRIAL-006.actuals",
+      "WBP-TRIAL-006.lock",
+      "WBP-TRIAL-007.recover-receipt",
+      "WBP-TRIAL-007.stale-conflict",
+      "WBP-TRIAL-010.empty",
+      "WBP-TRIAL-010.keyboard",
+      "WBP-TRIAL-010.tabs",
+      "WBP-TRIAL-012.storage-failure"
+    ],
+    "boundary": "Only the cited original references/receipts/restore markers are covered. Trial mode/baseline/only-changed/search and result-tab LS recovery are not waived. Remaining P gaps are handed to Main; no new replay loop is started."
+  },
+  "V": {
+    "new_ANA_status": "pending_main_review",
+    "existing_images_only": [
+      {
+        "sample": 0,
+        "action_ids": [
+          "WBP-ANA-001.metrics",
+          "WBP-ANA-001.unavailable",
+          "WBP-ANA-001.tradeoffs"
+        ],
+        "scene": "candidate-four-metrics-and-unknown",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-3l6in_ru/screenshots/final-planning-actions-candidate-four-metrics-and-unknown.png",
+        "full_sha256": "7e3211653eabd82717e31f6dce59fe0a81c78353a438c167fe4e1ba0ef8373ea",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-3l6in_ru/screenshots/final-planning-actions-candidate-four-metrics-and-unknown-viewport.png",
+        "viewport_sha256": "c6942cb8a507bb48377d8580ea16a7c54fa52567cce67f21dcd96bb909f6b5ea",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 0,
+        "action_ids": [
+          "WBP-ANA-003.delivery"
+        ],
+        "scene": "candidate-batch-before-after",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-3l6in_ru/screenshots/final-planning-actions-candidate-batch-before-after.png",
+        "full_sha256": "021751b626337c40f38b16d5c039f092cf4bd98424d3c763e87922cfc0c4d804",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-3l6in_ru/screenshots/final-planning-actions-candidate-batch-before-after-viewport.png",
+        "viewport_sha256": "016374295f334427b6cc9ddfc98af0e2f5438e5471095a0bdfac1120601e6faa",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 0,
+        "action_ids": [
+          "WBP-ANA-003.batch-gantt"
+        ],
+        "scene": "candidate-batch-exact-gantt",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-3l6in_ru/screenshots/final-planning-actions-candidate-batch-exact-gantt.png",
+        "full_sha256": "4d26ae053fc085e4378e75109c02b18e4a50f69e20d55216096b1dfa87f8cf82",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-3l6in_ru/screenshots/final-planning-actions-candidate-batch-exact-gantt-viewport.png",
+        "viewport_sha256": "6d1f4eb79d91af9253c88b7c7d348a05d559f2a4a90fd2b95558d35c415d1e99",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 0,
+        "action_ids": [
+          "WBP-ANA-003.history"
+        ],
+        "scene": "candidate-adoption-history-original",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-3l6in_ru/screenshots/final-planning-actions-candidate-adoption-history-original.png",
+        "full_sha256": "aeac7638491092a2d986e1e4ccbe768b4c16d77b8c084903e813a76f21a18178",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-3l6in_ru/screenshots/final-planning-actions-candidate-adoption-history-original-viewport.png",
+        "viewport_sha256": "8667595fdacc322d0c75480f323ce1d49f77c162c5fb221f7937a9edb1ab0f01",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 5,
+        "action_ids": [
+          "WBP-ANA-001.metrics",
+          "WBP-ANA-001.unavailable",
+          "WBP-ANA-001.tradeoffs"
+        ],
+        "scene": "candidate-four-metrics-and-unknown",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-b2iuou00/screenshots/final-planning-actions-candidate-four-metrics-and-unknown.png",
+        "full_sha256": "89e09f2e7223c3b0881af0e3cfe91539bc4a6c4b8abf36b3c01da6624c5fd568",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-b2iuou00/screenshots/final-planning-actions-candidate-four-metrics-and-unknown-viewport.png",
+        "viewport_sha256": "8891dad68755a7041c5b35ae085e909944d18cac742856554e7f67a2e7feec66",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 5,
+        "action_ids": [
+          "WBP-ANA-003.delivery"
+        ],
+        "scene": "candidate-batch-before-after",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-b2iuou00/screenshots/final-planning-actions-candidate-batch-before-after.png",
+        "full_sha256": "52e46fb5624ed81ff4c3430b7e441db09165f472114a94460b06eb630098fb2c",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-b2iuou00/screenshots/final-planning-actions-candidate-batch-before-after-viewport.png",
+        "viewport_sha256": "65884598366a2e183d7ed7f6e7b1231b2c057bdbd1a197ce1472b1b503857382",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 5,
+        "action_ids": [
+          "WBP-ANA-003.batch-gantt"
+        ],
+        "scene": "candidate-batch-exact-gantt",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-b2iuou00/screenshots/final-planning-actions-candidate-batch-exact-gantt.png",
+        "full_sha256": "12190fd82563f3a8fd410e83cd5e415a0a556589ade5d597136dd79f5e6f2517",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-b2iuou00/screenshots/final-planning-actions-candidate-batch-exact-gantt-viewport.png",
+        "viewport_sha256": "9d0cb939c27c6cf72059bc23cffacf04287808f59cd7279f2c14293221c01eef",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 5,
+        "action_ids": [
+          "WBP-ANA-003.history"
+        ],
+        "scene": "candidate-adoption-history-original",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-b2iuou00/screenshots/final-planning-actions-candidate-adoption-history-original.png",
+        "full_sha256": "561fccf6ef123d44cbc7f047133738cefc3d4f01417df271ecf1d4c31b7bc1a8",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-b2iuou00/screenshots/final-planning-actions-candidate-adoption-history-original-viewport.png",
+        "viewport_sha256": "155448165c45f0c726129d7036b70baa733cebe5dc1c5c01985736c702e33613",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 11,
+        "action_ids": [
+          "WBP-ANA-001.metrics",
+          "WBP-ANA-001.unavailable",
+          "WBP-ANA-001.tradeoffs"
+        ],
+        "scene": "candidate-four-metrics-and-unknown",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-jknngfiw/screenshots/final-planning-actions-candidate-four-metrics-and-unknown.png",
+        "full_sha256": "21d7a82a0541e2a05620d324bef45aa44b1737d7af1030eeaff676410bff9aff",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-jknngfiw/screenshots/final-planning-actions-candidate-four-metrics-and-unknown-viewport.png",
+        "viewport_sha256": "e9c7a18cf94f0951e41454752f3763aec39b63389e42104cdecef15e2cd0f94c",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 11,
+        "action_ids": [
+          "WBP-ANA-003.delivery"
+        ],
+        "scene": "candidate-batch-before-after",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-jknngfiw/screenshots/final-planning-actions-candidate-batch-before-after.png",
+        "full_sha256": "082db174493ed69d0c8dbb21d3face54e5c52a47c6115e389d1569fabde03fe4",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-jknngfiw/screenshots/final-planning-actions-candidate-batch-before-after-viewport.png",
+        "viewport_sha256": "46e5abd85cadb8e6353be7c0e2492e8de801eaa21c230f36b4231f27402078a7",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 11,
+        "action_ids": [
+          "WBP-ANA-003.batch-gantt"
+        ],
+        "scene": "candidate-batch-exact-gantt",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-jknngfiw/screenshots/final-planning-actions-candidate-batch-exact-gantt.png",
+        "full_sha256": "6a473ce83f9d25620255fa7d4b20aebc88d14c801c9a62a27151d8ffc54bb979",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-jknngfiw/screenshots/final-planning-actions-candidate-batch-exact-gantt-viewport.png",
+        "viewport_sha256": "d02a52b679c3f8a4bc27ecd28da7e5231efd5e97f7b8d1d47839610e5f91ac06",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 11,
+        "action_ids": [
+          "WBP-ANA-003.history"
+        ],
+        "scene": "candidate-adoption-history-original",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-jknngfiw/screenshots/final-planning-actions-candidate-adoption-history-original.png",
+        "full_sha256": "173a6bd50677ec4a51868067494ac5a1c132a8b8c30aa43711819d75598460cf",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-jknngfiw/screenshots/final-planning-actions-candidate-adoption-history-original-viewport.png",
+        "viewport_sha256": "b00747982ca8e67785c823a927afa9655cc64a2ba3ea654132b5cabd9d51adf9",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 14,
+        "action_ids": [
+          "WBP-ANA-001.metrics",
+          "WBP-ANA-001.unavailable",
+          "WBP-ANA-001.tradeoffs"
+        ],
+        "scene": "candidate-four-metrics-and-unknown",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-ta8lmvyn/screenshots/final-planning-actions-candidate-four-metrics-and-unknown.png",
+        "full_sha256": "e42ed394188be6c633de8eda1ccc7990779624b9b9da68a3d49fb94302aa6954",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-ta8lmvyn/screenshots/final-planning-actions-candidate-four-metrics-and-unknown-viewport.png",
+        "viewport_sha256": "5b1c0ea78a8b983381a04258478e816283a370a40438cf88d899c65f6da86699",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 14,
+        "action_ids": [
+          "WBP-ANA-003.delivery"
+        ],
+        "scene": "candidate-batch-before-after",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-ta8lmvyn/screenshots/final-planning-actions-candidate-batch-before-after.png",
+        "full_sha256": "57f1b7e8db260bbeee4dda9399848f8a55bf7b65032104ebfaac2e8bbfda6cc0",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-ta8lmvyn/screenshots/final-planning-actions-candidate-batch-before-after-viewport.png",
+        "viewport_sha256": "a22561ba091b9a3d8e84050ab44c2eabba972c084ca68d9629c01b7a56d46068",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 14,
+        "action_ids": [
+          "WBP-ANA-003.batch-gantt"
+        ],
+        "scene": "candidate-batch-exact-gantt",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-ta8lmvyn/screenshots/final-planning-actions-candidate-batch-exact-gantt.png",
+        "full_sha256": "c2e6ad47e82dea7648e19713f63e4682467606d603a2a1781839ca18587ea443",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-ta8lmvyn/screenshots/final-planning-actions-candidate-batch-exact-gantt-viewport.png",
+        "viewport_sha256": "b77238d3a4dcacfe2cd5bd43c011de3a44f27fa167605205d811ba27fa1bf736",
+        "V": "pending_main_review"
+      },
+      {
+        "sample": 14,
+        "action_ids": [
+          "WBP-ANA-003.history"
+        ],
+        "scene": "candidate-adoption-history-original",
+        "full": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-ta8lmvyn/screenshots/final-planning-actions-candidate-adoption-history-original.png",
+        "full_sha256": "b372897c0c37831796ed97e418409fcd83442d244c2892f531604d65d4f993cd",
+        "viewport": "/private/tmp/aps-final-d-source-ana-7Pj1pV/aps-workbench-live-ta8lmvyn/screenshots/final-planning-actions-candidate-adoption-history-original-viewport.png",
+        "viewport_sha256": "9c976be6bf2cb1c301adcc4d569d9a40d543671bed94f67ff344c9ea97ba6ffc",
+        "V": "pending_main_review"
+      }
+    ],
+    "prior_P003_decision": {
+      "path": "/Users/lurenxing/GitHub/----/.codestable/roadmap/workbench-prototype-migration/round2-main-v-D-p003.json",
+      "sha256": "3b336969b115b73c8587fd969a56db9c300c004ca5d2735628582b40a3f1aa7a",
+      "actions": [
+        "WBP-GANTT-003.predecessors",
+        "WBP-GANTT-004.trial-link"
+      ],
+      "scope": "Original P003 frozen source only; no promotion to new ANA or merged E delta."
+    }
+  },
+  "limits": [
+    "No E06/G05 historical proof overwritten.",
+    "The ActualGantt producer delta is not included; Main binds it in the next explicit merged freeze.",
+    "No new full matrix, full gate, 344, 5000 or screenshot collection starts after the convergence instruction.",
+    "B for ANA combines real read-only service/route regression and full-entry preservation evidence; whole-chain table retention alone is not claimed as a per-GET raw SQLite-file proof."
+  ]
+}

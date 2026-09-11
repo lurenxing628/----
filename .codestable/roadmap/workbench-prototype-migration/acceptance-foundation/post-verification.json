@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "root": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0",
+  "all_checks_passed": true,
+  "normal_asset_finished_responses": 2532,
+  "normal_asset_captured_responses": 2532,
+  "normal_font_captures": 12,
+  "raw_api_files_verified": 232,
+  "screenshot_files_verified": 108,
+  "render_fault_originals_match_manifest": 4,
+  "frozen_templates_verified": 3,
+  "source": "saved browser requests and actual response hashes; no new HTTP fetch; product sources were not reinterpreted after release"
+}

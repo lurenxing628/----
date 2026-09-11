@@ -1,0 +1,125 @@
+{
+  "binding": "post-run on-disk hashes of Task E changed files; not a clean HEAD proof",
+  "sources": [
+    {
+      "path": "frontend/workbench/app/FieldWorkspace.jsx",
+      "sha256": "349735d03ba71f397fa2520e8de21387d084e886d1e03045a759d405bf9f9739"
+    },
+    {
+      "path": "frontend/workbench/app/ActualGanttWorkspace.jsx",
+      "sha256": "fc98d8da3b56cef575185eabb8a1558a45ffd09e6f991c691780aa79222902ee"
+    },
+    {
+      "path": "frontend/workbench/app/ReportWorkspace.jsx",
+      "sha256": "cf51cde02ef9083fa8b1807534273164acfcbaa8884040094e7a1697efa6531d"
+    },
+    {
+      "path": "frontend/workbench/app/ReviewWorkspace.jsx",
+      "sha256": "9bf33eebab190e1c57c7edcebf52fc4786c5de29b35369ca31772a65a30845b6"
+    },
+    {
+      "path": "frontend/workbench/app/CalibrationWorkspace.jsx",
+      "sha256": "d02a112ff2577b738bab9b87660a136b90f722b00bb0552bd302ea0c666d8319"
+    },
+    {
+      "path": "tests/workbench/field_workspace_probe_harness.cjs",
+      "sha256": "1c43f934de3aff2c2a2426cf079b42a976d657525d97d14b77525870008ac34d"
+    },
+    {
+      "path": "tests/workbench/test_actual_gantt_browser.cjs",
+      "sha256": "cd46210baea47b1b58b8cd71a4682634ed3f1c26b690dcea9b61e279cc2d6340"
+    },
+    {
+      "path": "tests/workbench/be_surface_browser.cjs",
+      "sha256": "fc14aef93508d84d921d83fe0be59ad6d7b821274bbf02d75c8bcf407578c81b"
+    },
+    {
+      "path": "tests/workbench/report_widgets_probe.cjs",
+      "sha256": "07867edbe994d45e7463a44ce5f6a040e227c32d74b57b4e0e12309706a8cfef"
+    },
+    {
+      "path": "tests/workbench/test_report_ledger_widgets.cjs",
+      "sha256": "4b6dc41eaa148af0c86de7386c22daa231d475624c9a074d0535666ef3907a21"
+    },
+    {
+      "path": "tests/workbench/calibration_widgets_probe.cjs",
+      "sha256": "65a6c874f49981bcfaa68bf754a037182cdc93833123870bbadcb481093d59da"
+    },
+    {
+      "path": "tests/workbench/calibration_lineage_ui_probe.cjs",
+      "sha256": "5135f070d4b9ed90e62d70edc5e7f2537aafbc5f7d1e1bc2187372ac84adcdb7"
+    },
+    {
+      "path": "tests/workbench/calibration_adoption_widgets_probe.cjs",
+      "sha256": "e28e955a4840e345698035eb950766b36e7143d20df1852c922948ba21827599"
+    },
+    {
+      "path": "tests/workbench/process_quota_widgets_probe.cjs",
+      "sha256": "4f6604efa077c21e6575681a6098da2dc9fbe4fb128a15f8e7682aa8d48183fa"
+    },
+    {
+      "path": "tests/workbench/final_execution_actual.cjs",
+      "sha256": "c750a6871e6c167e4c64c771f2a1668a4cdbeab9cf330b979da53631dbb7fe05"
+    },
+    {
+      "path": "tests/workbench/final_execution_browser_support.cjs",
+      "sha256": "e3c89c864341a7e9928284a2c6124c31b9c60bb1f4a8a9c0285ac953f4b2a351"
+    },
+    {
+      "path": "tests/workbench/final_execution_calibration.cjs",
+      "sha256": "2cc2c64a9e206204a84d6c17f9fce4945facb540fe297809d7a3473ffd26e15b"
+    },
+    {
+      "path": "tests/workbench/final_execution_cases.py",
+      "sha256": "0767f98d33bfd84096ccd3d1848ad02ca2bd4472090603fdbd5d994a828ce91d"
+    },
+    {
+      "path": "tests/workbench/final_execution_field.cjs",
+      "sha256": "298d7cf247fc68eda6923ada446e3ed09e83cdb2bcbafe6e69265a10c9af0a66"
+    },
+    {
+      "path": "tests/workbench/final_execution_field_files.cjs",
+      "sha256": "8fbc18f7aa30d69c0adc4d661ab2b37fb72c8f0933cc69bed07a8dfa3ddb9610"
+    },
+    {
+      "path": "tests/workbench/final_execution_fileedit.py",
+      "sha256": "9ec2b58ce91e744a5d1fd444eaa068d02999c06cb6a3bc936cfb3178af707717"
+    },
+    {
+      "path": "tests/workbench/final_execution_host.py",
+      "sha256": "5b9b877f9819b67323353830e56fd361f9cc9e9a0d5dace86a3f159f9dc839bb"
+    },
+    {
+      "path": "tests/workbench/final_execution_reports.cjs",
+      "sha256": "6f1db6437e96a696cd9ee7dae5d92c2b0fee6551b955f079561456781b76bd45"
+    },
+    {
+      "path": "tests/workbench/final_execution_seed.py",
+      "sha256": "f282d7876d40a381f2e6fdf58fbaebd66ec58ddd02df5b4db1f29027e7369fc4"
+    },
+    {
+      "path": "tests/workbench/final_execution_support.py",
+      "sha256": "67e117060e4f35900642a644a7e3902e19ecdf2fc1013b61380bd29432bca983"
+    },
+    {
+      "path": "tests/workbench/final_execution_wire.py",
+      "sha256": "3d36fe53ec8f150616cd65ded8b7fedc00cdcbec02753e7449f90b3fca8f08e9"
+    },
+    {
+      "path": "tests/workbench/test_final_execution_backend.py",
+      "sha256": "e5d66f356de5a7faee6e2a1efb71efa7f22496381d414d8b9f620468c1cdb0b3"
+    },
+    {
+      "path": "tests/workbench/test_final_execution_browser.py",
+      "sha256": "80c1f468f65f1be5845f9d0bcfe33503d66f04ae73242005375f31bc34d90a5e"
+    },
+    {
+      "path": "tests/workbench/test_final_execution_calibration.py",
+      "sha256": "c0d914ff8cbf98885f2642502a4128aad19cfd3ebe42951f62196c059bb0822d"
+    },
+    {
+      "path": "tests/workbench/test_final_execution_reports.py",
+      "sha256": "afe5227ec2441a2e5613c17f61fbf8a7db6d0e8e968f739dcd58a14b7019efa4"
+    }
+  ]
+}

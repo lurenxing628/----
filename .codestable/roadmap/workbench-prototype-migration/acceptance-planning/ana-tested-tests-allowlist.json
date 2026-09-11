@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "status": "tested_fixed_source_delta_only_not_a_new_test_run",
+  "source_root": "/private/tmp/aps-final-d-source-ana-7Pj1pV/source",
+  "source_manifest": "/private/tmp/aps-final-d-source-ana-7Pj1pV/source-manifest.json",
+  "source_aggregate_sha256": "bc0c24d7c8da520153163659cb75ae8c4a02962e86dacdd7150c6e27c6019bbd",
+  "product_binding": {
+    "path": ".codestable/roadmap/workbench-prototype-migration/acceptance-planning/ana-product-binding.json",
+    "sha256": "36b62d51bbf2f2c373260df267bca921397135ad28b9c929fe8901d57e5529e8",
+    "modified": false
+  },
+  "counts": {
+    "already_listed_paired_test_files": 4,
+    "additional_probe_helper_files": 9,
+    "total_exact_copy_files": 13
+  },
+  "files": [
+    {
+      "path": "tests/workbench/test_final_planning_analysis.py",
+      "sha256": "5d0ae3116748464236231adc86e8e875e6da054952fc0873ec8ee59de8ef8bf6",
+      "bytes": 8002,
+      "mode": 420,
+      "role": "already_listed_paired_test",
+      "reason": "Already listed in the immutable ANA product binding.",
+      "versus_original_959": "not_in_959"
+    },
+    {
+      "path": "tests/workbench/test_final_planning_analysis_history.py",
+      "sha256": "de141ea39797f4b271f71996639a72cffee70e92a803f148991f52819419641e",
+      "bytes": 4892,
+      "mode": 420,
+      "role": "already_listed_paired_test",
+      "reason": "Already listed in the immutable ANA product binding.",
+      "versus_original_959": "not_in_959"
+    },
+    {
+      "path": "tests/workbench/test_final_planning_analysis_contract.py",
+      "sha256": "017590272d94812d74edf4b32924c7a8bc8a5796a31bcada3c4904e5be7db10c",
+      "bytes": 1806,
+      "mode": 420,
+      "role": "already_listed_paired_test",
+      "reason": "Already listed in the immutable ANA product binding.",
+      "versus_original_959": "not_in_959"
+    },
+    {
+      "path": "tests/workbench/final_planning_analysis_contract.cjs",
+      "sha256": "d6086302b9d3cc2e1557664376900a7f97a668fa1a87ffbebb9b982db8058ecb",
+      "bytes": 2561,
+      "mode": 420,
+      "role": "already_listed_paired_test",
+      "reason": "Already listed in the immutable ANA product binding.",
+      "versus_original_959": "not_in_959"
+    },
+    {
+      "path": "tests/workbench/final_planning_analysis_actions.cjs",
+      "sha256": "a590fcef84003fb8ee7c8d74d75732d2e4cf5ecdbfb12038f0714f46aae6ecac",
+      "bytes": 11730,
+      "mode": 420,
+      "role": "necessary_test_probe_or_helper",
+      "reason": "New ANA full-entry read, history, original-batch, F5 and new-PID checks.",
+      "versus_original_959": "not_in_959"
+    },
+    {
+      "path": "tests/workbench/final_planning_browser.cjs",
+      "sha256": "d6386f9e65de7bda57753fea182d7a9e5c9e3564c74f201d361de01c238e5898",
+      "bytes": 12365,
+      "mode": 420,
+      "role": "necessary_test_probe_or_helper",
+      "reason": "Loads ANA actions; wires the real second tab and exact expected-error evidence.",
+      "versus_original_959": "changed"
+    },
+    {
+      "path": "tests/workbench/final_planning_database_probe.py",
+      "sha256": "955e585ff542a2883eb7f882baf6d73252f95db42bc760ee83ceb5929adfe615",
+      "bytes": 2268,
+      "mode": 420,
+      "role": "necessary_test_probe_or_helper",
+      "reason": "Required by the tested stale-write probe for query-only full-table and schema witnesses.",
+      "versus_original_959": "not_in_959"
+    },
+    {
+      "path": "tests/workbench/final_planning_download_failure.cjs",
+      "sha256": "e823da17f52e74cdf5d3df2d00c00acdd1e9fd2273e40a191b2c5c7f28acd954",
+      "bytes": 2529,
+      "mode": 420,
+      "role": "necessary_test_probe_or_helper",
+      "reason": "Required by the tested run-actions path for the existing candidate HTTP export negative.",
+      "versus_original_959": "not_in_959"
+    },
+    {
+      "path": "tests/workbench/final_planning_plan_actions.cjs",
+      "sha256": "d278f794067abb07d3d439345348d7da042fa762248e340a06f381fd107b118e",
+      "bytes": 9753,
+      "mode": 420,
+      "role": "necessary_test_probe_or_helper",
+      "reason": "Tested formal task selection and search F5 recovery markers.",
+      "versus_original_959": "changed"
+    },
+    {
+      "path": "tests/workbench/final_planning_run_actions.cjs",
+      "sha256": "b0b0210e749dd87c52d03a9797322a70528d11f197ad9ca3236e1d44a54de6ac",
+      "bytes": 14744,
+      "mode": 420,
+      "role": "necessary_test_probe_or_helper",
+      "reason": "Calls the new ANA leaves and tested candidate export failure helper.",
+      "versus_original_959": "changed"
+    },
+    {
+      "path": "tests/workbench/final_planning_stale_write.cjs",
+      "sha256": "060ecc59dbdcaf8ee9316c2774b55f44cfdcd31b6f66258568572a71f774f6ae",
+      "bytes": 4408,
+      "mode": 420,
+      "role": "necessary_test_probe_or_helper",
+      "reason": "Required by trial-actions; real two-tab stale-write with retained input and no-write proof.",
+      "versus_original_959": "not_in_959"
+    },
+    {
+      "path": "tests/workbench/final_planning_trial_actions.cjs",
+      "sha256": "29bd1216e6388da134effaa7b28d7e96b294e78ed60f18f5e44cdc0f1c451073",
+      "bytes": 11897,
+      "mode": 420,
+      "role": "necessary_test_probe_or_helper",
+      "reason": "Calls the tested stale-write helper; preserves the full-entry action chain.",
+      "versus_original_959": "changed"
+    },
+    {
+      "path": "tests/workbench/test_run_candidate_widgets.cjs",
+      "sha256": "798bffcb08fffdc679a1ebde45ed6870c166df53f96b75749028c45c7913b09b",
+      "bytes": 27769,
+      "mode": 420,
+      "role": "necessary_test_probe_or_helper",
+      "reason": "Loads RunCandidateAnalysisAPI and RunCandidateAnalysis before RunCandidateWorkspace; capability probes use the complete new adapter.",
+      "versus_original_959": "not_in_959"
+    }
+  ],
+  "existing_runner_dependencies_not_overrides": [
+    {
+      "path": "tests/workbench/test_run_candidate_widgets.py",
+      "sha256": "4c0e55213d6bbfb8ba61974c0392790860df8d02adebac50f56e0c3aae547137",
+      "bytes": 3827,
+      "copy": false,
+      "note": "Unchanged from the prior D frozen source; listed for dependency identity, not authorization to roll back Main or H changes."
+    },
+    {
+      "path": "tests/workbench/test_run_candidate_widgets_support.py",
+      "sha256": "8522e1d176b257dced5a64ee09692a956a745210a67a3b48a65e2c06b668f01f",
+      "bytes": 9304,
+      "copy": false,
+      "note": "Unchanged from the prior D frozen source; listed for dependency identity, not authorization to roll back Main or H changes."
+    },
+    {
+      "path": "tests/workbench/test_final_planning_browser.py",
+      "sha256": "3f1175e56a56ed7e2f8afc4b3b7a69cbd10651b30f62bc66d8eb0100de541925",
+      "bytes": 5505,
+      "copy": false,
+      "note": "Unchanged from the prior D frozen source; listed for dependency identity, not authorization to roll back Main or H changes."
+    },
+    {
+      "path": "tests/workbench/final_planning_probe_support.cjs",
+      "sha256": "04815e197c3ba746efc7fd7f6e8023f46216691636e906986c4a01403b9b1a80",
+      "bytes": 6247,
+      "copy": false,
+      "note": "Unchanged from the prior D frozen source; listed for dependency identity, not authorization to roll back Main or H changes."
+    },
+    {
+      "path": "tests/workbench/final_planning_seed.py",
+      "sha256": "f42e88cafd34317cf449f5fa7afe2278cbd45b47448c40c682583aa0a0d70c39",
+      "bytes": 2784,
+      "copy": false,
+      "note": "Unchanged from the prior D frozen source; listed for dependency identity, not authorization to roll back Main or H changes."
+    },
+    {
+      "path": "tests/workbench/final_planning_server.py",
+      "sha256": "14373410df6f558f07356690964d6810b155cc29f6e65eecd53919aabf4ad05c",
+      "bytes": 1228,
+      "copy": false,
+      "note": "Unchanged from the prior D frozen source; listed for dependency identity, not authorization to roll back Main or H changes."
+    },
+    {
+      "path": "tests/workbench/final_planning_source_guard.py",
+      "sha256": "14f3873a2ab69ee4b105847cbd8969232725471ff26233a480ecda54f039a175",
+      "bytes": 1587,
+      "copy": false,
+      "note": "Unchanged from the prior D frozen source; listed for dependency identity, not authorization to roll back Main or H changes."
+    },
+    {
+      "path": "tests/workbench/final_planning_build.cjs",
+      "sha256": "98e0d2d196ca73c6352292f13de3c87aff5b4126f460d64f33a9d624263c6c99",
+      "bytes": 2922,
+      "copy": false,
+      "note": "Unchanged from the prior D frozen source; listed for dependency identity, not authorization to roll back Main or H changes."
+    }
+  ],
+  "existing_test_evidence": {
+    "service_and_contract": {
+      "junit": "/tmp/aps-final-d-ana-service-final.xml",
+      "passed": 46
+    },
+    "candidate_widget": {
+      "junit": "/tmp/aps-final-d-ana-candidate-widget.xml",
+      "passed": 1,
+      "variants": 4,
+      "checks": 228,
+      "downloads": 24
+    },
+    "full_entry": {
+      "junit": [
+        "/tmp/aps-final-d-ana-main-two.xml",
+        "/tmp/aps-final-d-ana-matrix.xml"
+      ],
+      "passed": 16,
+      "normal_host_phases": 20
+    },
+    "source_bound_handoff": {
+      "path": ".codestable/roadmap/workbench-prototype-migration/acceptance-planning/ana-handoff-evidence.json",
+      "sha256": "f7cf9d4662c742394881e39346b19c94a9ac4dc052a6f99eb7b5dd5d30228fec"
+    }
+  },
+  "limits": [
+    "Only these 13 fixed-source files are the ANA test delta; product 10 and shared build-order are outside this test-only list.",
+    "The untouched 959 capsule and prior proof bytes are not rewritten. Main records later additions as a separate exact overlay receipt.",
+    "New 5K/LS probes under preparation in the moving workspace are NOT included or described as tested; in particular do not copy the currently edited seed/server in place of their fixed ANA versions.",
+    "No H-owned run_job_widgets, run_presentation, workbench_plain_language, or trial_adoption_history_widgets surfaces are authorized here.",
+    "No tests, build, host, Git write, or production database operation was performed to prepare this allowlist."
+  ]
+}

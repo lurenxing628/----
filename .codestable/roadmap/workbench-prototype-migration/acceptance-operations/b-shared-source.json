@@ -1,0 +1,19 @@
+{
+  "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+  "asset_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-build16",
+  "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+  "manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+  "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+  "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+  "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+  "read_only_copy_source": true,
+  "new_delta_junit": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-results.xml",
+  "new_delta_source_proof": "/private/tmp/aps-final-operations-F.TQejHX/F13-final-delta1-source-proof.json",
+  "B252_executed_by_F": false,
+  "previous_source9": {
+    "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source9",
+    "not_for_new_B_matrix": true,
+    "left_untouched": true
+  },
+  "B_test_only_sha256": "ea5f795e8b58ac16dcf21435b2858f1115ec872b2416aa1995290ac548884b16"
+}

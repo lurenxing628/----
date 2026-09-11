@@ -1,0 +1,1137 @@
+{
+  "schema_version": 1,
+  "status": "captured_not_Main_V",
+  "execution": "F-visual-supplement",
+  "source": {
+    "source": "F13-source18",
+    "build": "F13-copy-build16",
+    "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+    "asset_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-copy-build16",
+    "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+    "source_aggregate": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+    "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+    "manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325"
+  },
+  "original_209_screenshots_unchanged": true,
+  "original_55_delta_order_unchanged": true,
+  "original_228_actions_unchanged": true,
+  "runs": [
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/result.json",
+      "sha256": "45f21c2796fcfb80374ba1bae351fb472abe2127be5e983aa0865980ca7195a3"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-receipt-run1/result.json",
+      "sha256": "d985996a58c7b2389a1fb7eae0b83eae82b42642e882315b20d63abc48494124"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-domain-receipt-run1/result.json",
+      "sha256": "b86159ad647bbcec5319e4e3b43dc9fcf922a2f3b0fbc450171c8c48381dc820"
+    }
+  ],
+  "case_count": 4,
+  "passed_case_count": 4,
+  "screenshot_count": 20,
+  "processes": [
+    {
+      "status": "passed",
+      "pid": 57831,
+      "report": {
+        "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/report.json",
+        "sha256": "ee9576dcfca6a83b5a9e4a1216159bd669bcf823d0c8040adb169e2cb5aea4dd"
+      },
+      "process_evidence": {
+        "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/process-evidence.json",
+        "sha256": "e6deaa6b25dfaf68a0e53f51f495216a40752331156ccd8f773efba35b966a6e"
+      },
+      "loaded_module_count": 1113,
+      "violations": [],
+      "retained_tables": [
+        "Batches",
+        "BatchOperations",
+        "Schedule",
+        "ScheduleHistory",
+        "BatchMaterials",
+        "MachineDowntimes",
+        "OperationExecutionEvents",
+        "WorkbenchProductionReports",
+        "WorkbenchOutsourcingFacts",
+        "SystemConfig"
+      ],
+      "expected_fixture_history_rows": 2,
+      "expected_outsourcing_facts": 0,
+      "backup_files_unchanged_during_probe": true,
+      "created_backup": null,
+      "existing_backups_unchanged": false
+    },
+    {
+      "status": "passed",
+      "pid": 57872,
+      "report": {
+        "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/report.json",
+        "sha256": "db455fc94a9f4f7e02cb0fe941d8b4b597e02ea8590520dd2a195644dcf889de"
+      },
+      "process_evidence": {
+        "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/process-evidence.json",
+        "sha256": "85d081c958f52a1d348dac139595bd9a3ed40f36680034525ebeb9bedabb7f88"
+      },
+      "loaded_module_count": 1114,
+      "violations": [],
+      "retained_tables": [
+        "Batches",
+        "BatchOperations",
+        "Schedule",
+        "ScheduleHistory",
+        "BatchMaterials",
+        "MachineDowntimes",
+        "OperationExecutionEvents",
+        "WorkbenchProductionReports",
+        "WorkbenchOutsourcingFacts",
+        "SystemConfig"
+      ],
+      "expected_fixture_history_rows": 0,
+      "expected_outsourcing_facts": 0,
+      "backup_files_unchanged_during_probe": true,
+      "created_backup": null,
+      "existing_backups_unchanged": false
+    },
+    {
+      "status": "passed",
+      "pid": 59144,
+      "report": {
+        "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-receipt-run1/probe-1392-dark/report.json",
+        "sha256": "367ea57843c6f9eef6cfedc3cc5b6e1316775cc089737825a9c6970b5b42847f"
+      },
+      "process_evidence": {
+        "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-receipt-run1/process-evidence.json",
+        "sha256": "d872faa79148139397799fdbfbf7dd98b64f35fe4aae34441fbf0652897dd4cc"
+      },
+      "loaded_module_count": 1114,
+      "violations": [],
+      "retained_tables": [
+        "Batches",
+        "BatchOperations",
+        "Schedule",
+        "ScheduleHistory",
+        "BatchMaterials",
+        "MachineDowntimes",
+        "OperationExecutionEvents",
+        "WorkbenchProductionReports",
+        "WorkbenchOutsourcingFacts",
+        "SystemConfig",
+        "WorkbenchDashboardHistory",
+        "WorkbenchDashboardExternalHistory"
+      ],
+      "expected_fixture_history_rows": 0,
+      "expected_outsourcing_facts": 0,
+      "backup_files_unchanged_during_probe": false,
+      "created_backup": {
+        "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-receipt-run1/backups/aps_backup_20260911_011200_manual_33906abf5200.db",
+        "sha256": "d5cf6f5bf3c898253b8a12a65daf9e22d83341425f7342c6a5bf3edc13e59dfe"
+      },
+      "existing_backups_unchanged": true
+    },
+    {
+      "status": "passed",
+      "pid": 62149,
+      "report": {
+        "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-domain-receipt-run1/probe-1920-light/report.json",
+        "sha256": "9b901c2aa396ab3887cecffb81a786c79bfdc9f67665da0fe3e6b6b427bc44bb"
+      },
+      "process_evidence": {
+        "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-domain-receipt-run1/process-evidence.json",
+        "sha256": "81fca9dd700c0a6884e4f6d397825751671090f2c220b7813b579a87b91b04d4"
+      },
+      "loaded_module_count": 1113,
+      "violations": [],
+      "retained_tables": [
+        "Batches",
+        "BatchOperations",
+        "Schedule",
+        "ScheduleHistory",
+        "BatchMaterials",
+        "MachineDowntimes",
+        "OperationExecutionEvents",
+        "WorkbenchProductionReports",
+        "SystemConfig",
+        "WorkbenchDashboardExternalHistory"
+      ],
+      "expected_fixture_history_rows": 1,
+      "expected_outsourcing_facts": 1,
+      "backup_files_unchanged_during_probe": true,
+      "created_backup": null,
+      "existing_backups_unchanged": false
+    }
+  ],
+  "harness": [
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-harness/dashboard.cjs",
+      "sha256": "4292c4d562c41a63c91b26fe9e83a43f73c1efdfaab420ffe0be6043e99ca6ad"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-harness/probe.cjs",
+      "sha256": "b0a12c6c8be9bb93ea14196a44730cb0f7f0e3ce4eb5760bb900b961526620b9"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-harness/run.py",
+      "sha256": "7199089f584a9b6861e0db125cb9bf4bdff7d30f4bad47752166cdd18c73d4a2"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-harness/system.cjs",
+      "sha256": "bc18643437c934fc309a9619cabee33a17552354ce4d86742062b36e05f53212"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-receipt-harness/probe.cjs",
+      "sha256": "36664d93ce3f44b0ad3b292fc836b04090a827a7b8a897b70d9fad2df8361b1f"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-receipt-harness/run.py",
+      "sha256": "068d30ca992389278606db149c6caf0302849250cfb0bfae92b534392ea4a3e3"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-domain-receipt-harness/probe.cjs",
+      "sha256": "8e8a2b9fc3cfe3c8dbb4110d0d8d028a3341b979bc205ec7ce5c731b700a4a97"
+    },
+    {
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-domain-receipt-harness/run.py",
+      "sha256": "9b7077bbf3976f5ae944b8596a2b42f544f7846bb83627373f6da72e55f22512"
+    }
+  ],
+  "source18_files_checked": 3672,
+  "build16_assets_checked": 223,
+  "screenshots": [
+    {
+      "id": "F-ADD-01",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/handling-validation-retained-draft.png",
+      "sha256": "a1b210e58b4ca9087a2cd959b0d0681fead4a655e5f45f68827d07cc06111116",
+      "bytes": 159435,
+      "viewport": {
+        "width": 1392,
+        "height": 924
+      },
+      "theme": "light",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-DASH-003.reject-invalid",
+          "WBP-DASH-003.retain-failed-draft"
+        ],
+        "visible_scope": "handling-validation-retained-draft",
+        "limits": "",
+        "subject_geometry": {
+          "x": 406,
+          "y": 20,
+          "width": 580,
+          "height": 884,
+          "text": "登记条目处置\n请填写原因和本次核实备注。\nB1 · F operations fixture\n风险仍在\n待分析\n目标处置状态\n待分析\n跟进中\n待验证\n已关闭\n责任人\n责任期限\n完成时间\n处置行动\n原因 / 核实备注\n具体完成结果\n可核对凭据\n凭据文字尚未核验为附件。处置状态不改报工事实，关闭不删除风险。\n关闭窗口\n提交处置",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/report.json",
+          "sha256": "ee9576dcfca6a83b5a9e4a1216159bd669bcf823d0c8040adb169e2cb5aea4dd"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N01"
+      ]
+    },
+    {
+      "id": "F-ADD-02",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/handling-close-incomplete.png",
+      "sha256": "75af15b2872a1ea5e49c1b06e4fc578b76b4ff8b82ddc2ddf752be129ff208f1",
+      "bytes": 167069,
+      "viewport": {
+        "width": 1392,
+        "height": 924
+      },
+      "theme": "light",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-DASH-004.reject-incomplete"
+        ],
+        "visible_scope": "handling-close-incomplete",
+        "limits": "",
+        "subject_geometry": {
+          "x": 406,
+          "y": 20,
+          "width": 580,
+          "height": 884,
+          "text": "登记条目处置\n关闭须填写完成时间、具体结果和可核对凭据。\nB1 · F operations fixture\n风险仍在\n跟进中\n目标处置状态\n待分析\n跟进中\n待验证\n已关闭\n责任人\n责任期限\n完成时间\n处置行动\n原因 / 核实备注\n具体完成结果\n可核对凭据\n凭据文字尚未核验为附件。处置状态不改报工事实，关闭不删除风险。\n关闭窗口\n提交处置",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/report.json",
+          "sha256": "ee9576dcfca6a83b5a9e4a1216159bd669bcf823d0c8040adb169e2cb5aea4dd"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N02"
+      ]
+    },
+    {
+      "id": "F-ADD-03",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/reopen-reason-required.png",
+      "sha256": "2be08b152c880725d26285f71d9afaebe5493a97b21d482fabf975c33f01221b",
+      "bytes": 188968,
+      "viewport": {
+        "width": 1392,
+        "height": 924
+      },
+      "theme": "light",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-DASH-005.open-reopen",
+          "WBP-DASH-005.require-reason",
+          "WBP-DASH-005.confirm-reopen",
+          "WBP-DASH-005.cancel-reopen"
+        ],
+        "visible_scope": "reopen-reason-required",
+        "limits": "确认按钮可见但本轮不执行重开；正向 K 仍引用既有生命周期。",
+        "subject_geometry": {
+          "x": 406,
+          "y": 108.21875,
+          "width": 580,
+          "height": 707.5546875,
+          "text": "独立重开处置\n请填写独立重开原因。\nB1 · F operations fixture\n风险仍在\n已关闭\n重开后转为跟进中，本轮完成字段清空；旧完成时间、结果和凭据保留在历史。\n重开原因\n处置状态\n已关闭\n责任人\nF planner\n责任期限\n2026-09-11\n处置行动\nF verify material and machine arrangement\n原因 / 核实备注\nF original facts verified\n完成时间\n2026-09-10T11:00:17\n具体完成结果\nF production supervisor signed coordination result\n可核对凭据\nF-20260910-acceptance-record\n已核验附件引用\n未关联已核验附件\n凭据文字尚未核验为附件。处置状态不改报工事实，关闭不删除风险。\n关闭窗口\n确认独立重开",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/report.json",
+          "sha256": "ee9576dcfca6a83b5a9e4a1216159bd669bcf823d0c8040adb169e2cb5aea4dd"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N03"
+      ]
+    },
+    {
+      "id": "F-ADD-04",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/handling-filter-empty.png",
+      "sha256": "2742c6eb2f6c014508467d3e92554e1872ab25f5006187eae8ddcd5d4ff2d8df",
+      "bytes": 173872,
+      "viewport": {
+        "width": 1392,
+        "height": 924
+      },
+      "theme": "light",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-DASH-002.status-verification",
+          "WBP-DASH-002.status-new",
+          "WBP-DASH-002.status-closed"
+        ],
+        "visible_scope": "handling-filter-empty",
+        "limits": "实际筛选为待验证；其他无结果筛选只共享相同空表布局，不代表其像素已查看。",
+        "subject_geometry": {
+          "x": 264,
+          "y": 88,
+          "width": 1104,
+          "height": 911.0078125,
+          "text": "计划员值班台\n正式采用方案 · 当前正式\n数据截至 2026-09-11 01:07:48 · 工厂本地时间\n交期风险\n1\n已关闭处置 1 项\n资源压力\n1\n≥90% · 同范围日峰值\n执行偏差\n2\n已关闭处置 0 项\n外协回厂\n未知\n待回厂 0 · 超期 0 · 待确认 0\n停机影响\n2\n已关闭处置 0 项\n齐套缺口\n1\n已关闭处置 0 项\n待排批次\n3\n本机待排批次池\n需要关注\n全部风险\n风险与处置分别核对\n交期风险\n已读取 · 1 项风险\n执行偏差\n已读取 · 2 项风险\n外协回厂\n已读取 · 总风险未知\n停机影响\n已读取 · 2 项风险\n齐套缺口\n已读取 · 1 项风险\n候选方案\n已读取 · 目录不计风险\n交期风险\n已读取 · 1 项风险\n异常类别\n全部风险\n交期风险\n执行偏差\n外协回厂\n停机影响\n齐套缺口\n候选方案\n处置清单\n影响分析\n方案对比\n处置历史\n条目搜索\n处置状态\n全部状态\n未关闭\n待分析\n跟进中\n待验证\n已关闭\n排序\n对象\n风险类别\n处置状态\n责任期限\n当前筛选没有条目。\n0 项 · 第 1 / 1 页\n每页 \n10\n20\n50\n100\n正式计划 / 执行记录 / 资源日历 / 齐套事实 / 外协登记\n风险与处置独立 · 外协回厂不等于工序完工",
+          "fully_in_viewport": false
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/report.json",
+          "sha256": "ee9576dcfca6a83b5a9e4a1216159bd669bcf823d0c8040adb169e2cb5aea4dd"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N04"
+      ]
+    },
+    {
+      "id": "F-ADD-05",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/actual-deviation-table.png",
+      "sha256": "36d5167577f41a963b90f46a92509c6e5c80ecad01e2bb4c3371d6dd24b971db",
+      "bytes": 191683,
+      "viewport": {
+        "width": 1392,
+        "height": 924
+      },
+      "theme": "light",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-DASH-008.deviation-table"
+        ],
+        "visible_scope": "actual-deviation-table",
+        "limits": "",
+        "subject_geometry": {
+          "x": 542,
+          "y": 520.9375,
+          "width": 776,
+          "height": 170.3984375,
+          "text": "工序执行事实与定额对照\n批次 / 工序\t定额加工小时\t有效加工小时\t超耗判断\t现场记录\nB1 · Turning\t1 h\t未知 h\t无法评估\t\n现场报工\n现场实际\n\nFQ1 · Turning\t0.75 h\t未知 h\t无法评估\t\n现场报工\n现场实际",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/report.json",
+          "sha256": "ee9576dcfca6a83b5a9e4a1216159bd669bcf823d0c8040adb169e2cb5aea4dd"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N05"
+      ]
+    },
+    {
+      "id": "F-ADD-06",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/actual-field-report-destination.png",
+      "sha256": "aef3c05a1fe089e4da05f65eb13d68013b9468230b0e3328d7d292b7d4ac9636",
+      "bytes": 192512,
+      "viewport": {
+        "width": 1392,
+        "height": 924
+      },
+      "theme": "light",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-DASH-008.field-report-navigation"
+        ],
+        "visible_scope": "actual-field-report-destination",
+        "limits": "",
+        "subject_geometry": {
+          "x": 264,
+          "y": 88,
+          "width": 1104,
+          "height": 704.5,
+          "text": "现场记录\n正式采用方案\n返回\n报工文件\n搜索批次或工序\n计划完工起日\n计划完工止日\n全部 2\n待报工 2\n已登记开工 0\n部分完成 0\n已暂停 0\n异常 0\n已完工 0\n待报工2\n已登记开工0\n部分完成0\n已完工0\n累计实报工时0 h\n批次 / 工序\t计划设备 / 人员\t计划开工 / 完工\t累计完成 / 计划应做\t执行剩余\t状态\t操作\nB1\nRun fixture part · 1 Turning\n共同工序\n\tLathe\nOperator\n\t2026-09-09 08:00:00\n2026-09-09 10:00:00\n\t0 / 未知\n批次 未知 件\n旧计划未记录原数量证据\n\t2\t待报工\n资料待补\n\t\n 0 次\n\nB1 · 1 Turning · 共同工序\n待报工\n计划应做 未知 件 · 批次 未知 件 · 旧计划未记录原数量证据\n作业时间线\n新增本次报工\n实际甘特\n报工编号\t本次数量\t实际开工\t本次完工\t有效工时(h)\t实际设备 / 人员\t备注\t操作\n暂无逐次报工\n\nFQ1\nRun fixture part · 1 Turning\n共同工序\n\tLathe\nOperator\n\t2026-09-09 10:00:00\n2026-09-09 10:45:00\n\t0 / 未知\n批次 未知 件\n旧计划未记录原数量证据\n\t3\t待报工\n资料待补\n\t\n 0 次\n共 2 道工序 · 第 1 / 1 页\n每页\n10\n20\n50\n100",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/report.json",
+          "sha256": "ee9576dcfca6a83b5a9e4a1216159bd669bcf823d0c8040adb169e2cb5aea4dd"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N06"
+      ]
+    },
+    {
+      "id": "F-ADD-07",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/actual-no-independent-candidate.png",
+      "sha256": "12e9481a19313d05dcc9fad21ac353f7df9c1ea223672147e83ca12be26ea13f",
+      "bytes": 168484,
+      "viewport": {
+        "width": 1392,
+        "height": 924
+      },
+      "theme": "light",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-DASH-014.no-independent-candidate"
+        ],
+        "visible_scope": "actual-no-independent-candidate",
+        "limits": "",
+        "subject_geometry": {
+          "x": 542,
+          "y": 465.5625,
+          "width": 776,
+          "height": 75.3984375,
+          "text": "本问题尚无独立候选结果\n\n未借用其他问题的候选作为本问题结论。\n\n查看现有候选方案",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/report.json",
+          "sha256": "ee9576dcfca6a83b5a9e4a1216159bd669bcf823d0c8040adb169e2cb5aea4dd"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N07"
+      ]
+    },
+    {
+      "id": "F-ADD-08",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/actual-comparison-destination.png",
+      "sha256": "43b7c91f826b8912828b913801537bf660f22043110cb627b72b59558c6fe484",
+      "bytes": 197989,
+      "viewport": {
+        "width": 1392,
+        "height": 924
+      },
+      "theme": "light",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-DASH-008.actual-comparison-navigation"
+        ],
+        "visible_scope": "actual-comparison-destination",
+        "limits": "",
+        "subject_geometry": {
+          "x": 264,
+          "y": 88,
+          "width": 1104,
+          "height": 737.5,
+          "text": "现场实际甘特\n正式采用方案 · 数据截至 2026-09-11 01:07:49\n计划甘特\n现场报工\n回来源\n计划完工日\n至\n资源\n全部计划或实际资源\n人员 · Operator\n设备 · Lathe\n批次\n应用范围\n整道已完工\n0\n已报工 · 未整道完工\n0\n待报工\n2\n平均整道完工偏差\n未核实\n设备\n人员\n批次\n1 组 · 2 / 2 道工序\n晚期\n全部工序 (2)\n已完晚 (0)\n到期未确认完成 (2)\n剩余安排预计晚 (0)\n导出 CSV\n原计划基线\n实际报工\n已有剩余安排\n关键链\n只看选中\n详情\n自动\n刻度 12 小时\n设备 / 工序\n工厂本地时间 · 连续跨夜\n2026-09-09\n12:00:00\n2026-09-10\n00:00:00\n2026-09-10\n12:00:00\nLathe\n2 道工序 · 0 次报工 · 实报工时未知\nB1 · 1 Turning · 共同工序\n待报工 · 已知 0 / 计划 未知\n本设备暂无报工\n到期未确认完成\n本设备暂无报工\nB1 · 1 Turning · 共同工序\n执行剩余 2 件\n待续排\n待续排 · 2 件\nFQ1 · 1 Turning · 共同工序\n待报工 · 已知 0 / 计划 未知\n本设备暂无报工\n到期未确认完成\n本设备暂无报工\nFQ1 · 1 Turning · 共同工序\n执行剩余 3 件\n待续排\n待续排 · 3 件\n2026-09-09 08:00:00\n2026-09-11 02:00:00",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/report.json",
+          "sha256": "ee9576dcfca6a83b5a9e4a1216159bd669bcf823d0c8040adb169e2cb5aea4dd"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N08"
+      ]
+    },
+    {
+      "id": "F-ADD-09",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/outsourcing-edit-required-fields.png",
+      "sha256": "55602086aa292c281f650e4d961d660e78e1a430de5b6be5e9aff5043a34c6d5",
+      "bytes": 216178,
+      "viewport": {
+        "width": 1392,
+        "height": 924
+      },
+      "theme": "light",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-DASH-009.open-registration",
+          "WBP-DASH-010.reject-missing-sent",
+          "WBP-DASH-010.reject-missing-planned",
+          "WBP-DASH-010.reject-reverse",
+          "WBP-DASH-010.reject-state-time"
+        ],
+        "visible_scope": "outsourcing-edit-required-fields",
+        "limits": "实际触发缺少实际发出；其他客户端校验消息共用同一表单和错误区，其既有 K 不变。",
+        "subject_geometry": {
+          "x": 406,
+          "y": 16,
+          "width": 580,
+          "height": 892,
+          "text": "新建外协登记\n请填写有效的工厂本地日期和时间。\n单工序\n合并发出\n选择\t工序 / 名称\t批次 / 供应商\t登记情况\n\tXB1-20\nHeat treatment\n\tXB1 · External production part\nHeat treatment supplier\n\t可登记\n\tXB1-30\nHeat treatment\n\tXB1 · External production part\nHeat treatment supplier\n\t可登记\n\tXB1-10\nHeat treatment\n\tXB1 · External production part\nHeat treatment supplier\n\t可登记\n3 项 · 第 1 / 1 页\n已选 1 道\nXB1-10 · Heat treatment\n实际发出\n计划回厂\n实际回厂\n确认状态\n在途\n已回厂\n待确认\n声明人\n清空实际回厂\n本次核实 / 更正原因\n取消\n预览核对",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/report.json",
+          "sha256": "ee9576dcfca6a83b5a9e4a1216159bd669bcf823d0c8040adb169e2cb5aea4dd"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N09"
+      ]
+    },
+    {
+      "id": "F-ADD-10",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/outsourcing-server-date-rejection.png",
+      "sha256": "a4665da27801f03bd17eb3d454dd526c95e3fd044065bfe74253c8bf00fde4e7",
+      "bytes": 219485,
+      "viewport": {
+        "width": 1392,
+        "height": 924
+      },
+      "theme": "light",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-DASH-010.reject-future-sent",
+          "WBP-DASH-010.reject-future-return"
+        ],
+        "visible_scope": "outsourcing-server-date-rejection",
+        "limits": "实际触发未来发出；未来回厂使用相同服务端错误区，旧分支 K 保留。",
+        "subject_geometry": {
+          "x": 406,
+          "y": 16,
+          "width": 580,
+          "height": 892,
+          "text": "新建外协登记\n实际发出和实际回厂不能晚于服务端当前时点。\n单工序\n合并发出\n选择\t工序 / 名称\t批次 / 供应商\t登记情况\n\tXB1-20\nHeat treatment\n\tXB1 · External production part\nHeat treatment supplier\n\t可登记\n\tXB1-30\nHeat treatment\n\tXB1 · External production part\nHeat treatment supplier\n\t可登记\n\tXB1-10\nHeat treatment\n\tXB1 · External production part\nHeat treatment supplier\n\t可登记\n3 项 · 第 1 / 1 页\n已选 1 道\nXB1-10 · Heat treatment\n实际发出\n计划回厂\n实际回厂\n确认状态\n在途\n已回厂\n待确认\n声明人\n清空实际回厂\n本次核实 / 更正原因\n取消\n预览核对",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/dashboard/probe-1392-light/report.json",
+          "sha256": "ee9576dcfca6a83b5a9e4a1216159bd669bcf823d0c8040adb169e2cb5aea4dd"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N10"
+      ]
+    },
+    {
+      "id": "F-ADD-11",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/backup-create-confirmation.png",
+      "sha256": "9b47a8bce410c26d5be7cfd9fae2162a0d609da02441f88dfbdd65af7f395823",
+      "bytes": 201892,
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-SYS-008.create"
+        ],
+        "visible_scope": "backup-create-confirmation",
+        "limits": "仅打开并取消；创建行为由既有 B/K/P 证明。",
+        "subject_geometry": {
+          "x": 670,
+          "y": 445.0234375,
+          "width": 580,
+          "height": 189.9453125,
+          "text": "创建备份\n\n创建本机数据库备份。结果以外置维护记录为准。\n\n取消\n确认创建",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/report.json",
+          "sha256": "db455fc94a9f4f7e02cb0fe941d8b4b597e02ea8590520dd2a195644dcf889de"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N11"
+      ]
+    },
+    {
+      "id": "F-ADD-12",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/backup-delete-confirmation.png",
+      "sha256": "dae7c0ced939f935a318718c632044f2d25593295d7a0a905a709ef0e96182cb",
+      "bytes": 255400,
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-SYS-010.confirm",
+          "WBP-SYS-010.cancel"
+        ],
+        "visible_scope": "backup-delete-confirmation",
+        "limits": "风险确认已勾选，确认按钮可见；仅取消，不执行删除。",
+        "subject_geometry": {
+          "x": 670,
+          "y": 396.0859375,
+          "width": 580,
+          "height": 287.828125,
+          "text": "删除所选备份\n\naps_backup_20260911_010751_F_selected_source.db\n文件修改时间 2026-09-11 01:07:51 · 1306624 字节\n文件存在，尚无本次完整性校验证据。\n\n仅删除此备份文件，删除后不能撤销。\n\n我已核对所选文件与操作影响\n取消\n确认删除",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/report.json",
+          "sha256": "db455fc94a9f4f7e02cb0fe941d8b4b597e02ea8590520dd2a195644dcf889de"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N12"
+      ]
+    },
+    {
+      "id": "F-ADD-13",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/config-invalid-field.png",
+      "sha256": "173d1b7e20b8a8c0218122dcd3a9bea5ec724fdf9183eabe054f663b10b32148",
+      "bytes": 198264,
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-SYS-017.invalid-fields"
+        ],
+        "visible_scope": "config-invalid-field",
+        "limits": "",
+        "subject_geometry": {
+          "x": 284,
+          "y": 343.2421875,
+          "width": 1592,
+          "height": 736.84375,
+          "text": "本机自动维护配置\n备份策略\n自动备份\n关闭\n正式配置\n已存值：关闭\n备份检查间隔\n分钟\n请输入 1 至 1440 的整数。\n缺省值，尚未保存\n清理过期备份\n关闭\n正式配置\n已存值：关闭\n备份保留时间\n天\n1 至 365 天\n缺省值，尚未保存\n备份清理检查间隔\n分钟\n1 至 1440 分钟\n缺省值，尚未保存\n操作日志策略\n清理操作日志\n关闭\n正式配置\n已存值：关闭\n操作日志保留时间\n天\n1 至 365 天\n缺省值，尚未保存\n日志清理检查间隔\n分钟\n1 至 1440 分钟\n缺省值，尚未保存\n有未保存修改\n放弃草稿\n保存维护配置\n\n配置校验未通过，请修正标出的字段。\n\n生效范围与自动维护规则",
+          "fully_in_viewport": false
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/report.json",
+          "sha256": "db455fc94a9f4f7e02cb0fe941d8b4b597e02ea8590520dd2a195644dcf889de"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N13"
+      ]
+    },
+    {
+      "id": "F-ADD-14",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/config-discard-confirmation.png",
+      "sha256": "56872cc5e6677a72944f0b96a2502957ca0c0204fd0929f78a8f3712ec85ee92",
+      "bytes": 202383,
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-SYS-017.discard-confirm",
+          "WBP-SYS-017.discard-cancel"
+        ],
+        "visible_scope": "config-discard-confirmation",
+        "limits": "",
+        "subject_geometry": {
+          "x": 670,
+          "y": 445.0234375,
+          "width": 580,
+          "height": 189.9453125,
+          "text": "放弃当前草稿并重新读取？\n\n未保存修改将被丢弃，不会写入业务配置。\n\n保留草稿\n放弃并重读",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/report.json",
+          "sha256": "db455fc94a9f4f7e02cb0fe941d8b4b597e02ea8590520dd2a195644dcf889de"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N14"
+      ]
+    },
+    {
+      "id": "F-ADD-15",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/config-live-rules-expanded.png",
+      "sha256": "e45587104d6007e89fb6912562b6f50a28b3b43eaf607583d972dce1165b687a",
+      "bytes": 210865,
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-SYS-019.scope",
+          "WBP-SYS-019.request-trigger"
+        ],
+        "visible_scope": "config-live-rules-expanded",
+        "limits": "",
+        "subject_geometry": {
+          "x": 284,
+          "y": 986.4375,
+          "width": 1592,
+          "height": 93.796875,
+          "text": "生效范围与自动维护规则\n\n自动维护由正常访问请求触发检查，检查间隔不保证指定时刻执行。操作日志清理不清空运行文件日志。\n\n主题、每页条数、紧凑行距属于页面偏好，不写入业务配置。",
+          "fully_in_viewport": false
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/report.json",
+          "sha256": "db455fc94a9f4f7e02cb0fe941d8b4b597e02ea8590520dd2a195644dcf889de"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N15"
+      ]
+    },
+    {
+      "id": "F-ADD-16",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/system-noncompact-log-rows.png",
+      "sha256": "2ad648bd61052ccb2efe919731bfa50412b044ed643ba8a5c105779d25da5f14",
+      "bytes": 478291,
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-SYS-015.compact"
+        ],
+        "visible_scope": "system-noncompact-log-rows",
+        "limits": "实际偏好为非紧凑；只代表行高，不代表 compact 产生数据库写入。",
+        "subject_geometry": {
+          "x": 284,
+          "y": -252.7578125,
+          "width": 1592,
+          "height": 1407.15625,
+          "text": "运行日志与操作记录\n搜索\n记录类型\n全部\n运行日志\n操作记录\n记录状态\n全部\n已记录\n日志来源\n全部\naps.log\naps_error.log\nlauncher.log\n操作记录\n日志级别\n全部\nINFO\nWARNING\nWARN\nERROR\nDEBUG\nCRITICAL\nUNKNOWN\n开始日期\n结束日期\n查询\n导出窗口 CSV\n脱敏诊断 ZIP\n\n先读取各来源最近窗口，再按条件筛选；不是全历史日志。记录状态不代表业务执行成功。\n\naps_error.log · 窗口内暂无记录\n最近 200 条 · 读取 0 条 · 未报告窗口截断\naps.log · 可读取\n最近 200 条 · 读取 22 条 · 未报告窗口截断\nlauncher.log · 来源不存在\n最近 200 条 · 数量未知 · 未报告窗口截断\n操作记录 · 可读取\n最近 500 条 · 读取 32 条 · 未报告窗口截断\n工厂本地时间 · 数据截至 2026-09-11 01:07:55\n工厂本地时间\t类型\t状态\t级别\t摘要 / 来源\t详情\n2026-09-11 01:07:53\t运行日志\t已记录\tWARNING\t\n2026-09-11 01:07:53 [WARNING] web.bootstrap.factory [static_versioning.py:41]: 静态资源版本号读取失败，已使用原始 URL：workbench/app/DashboardTimeline.js（[Errno 2] No such file or directory: '[本机路径]'）\naps.log\n\t\n\n2026-09-11 01:07:53\t运行日志\t已记录\tWARNING\t\n2026-09-11 01:07:53 [WARNING] web.bootstrap.factory [static_versioning.py:41]: 静态资源版本号读取失败，已使用原始 URL：workbench/app/DashboardAnalysisPanels.js（[Errno 2] No such file or directory: '[本机路径]'）\naps.log\n\t\n\n2026-09-11 01:07:53\t运行日志\t已记录\tWARNING\t\n2026-09-11 01:07:53 [WARNING] web.bootstrap.factory [static_versioning.py:41]: 静态资源版本号读取失败，已使用原始 URL：workbench/app/ProcessReadView.js（[Errno 2] No such file or directory: '[本机路径]'）\naps.log\n\t\n\n2026-09-11 01:07:53\t运行日志\t已记录\tWARNING\t\n2026-09-11 01:07:53 [WARNING] web.bootstrap.factory [static_versioning.py:41]: 静态资源版本号读取失败，已使用原始 URL：workbench/app/DashboardAnalysisAPI.js（[Errno 2] No such file or directory: '[本机路径]'）\naps.log\n\t\n\n2026-09-11 01:07:53\t运行日志\t已记录\tWARNING\t\n2026-09-11 01:07:53 [WARNING] web.bootstrap.factory [static_versioning.py:41]: 静态资源版本号读取失败，已使用原始 URL：workbench/app/WorkbenchBoundary.js（[Errno 2] No such file or directory: '[本机路径]'）\naps.log\n\t\n\n2026-09-11 01:07:53\t运行日志\t已记录\tWARNING\t\n2026-09-11 01:07:53 [WARNING] web.bootstrap.factory [static_versioning.py:41]: 静态资源版本号读取失败，已使用原始 URL：workbench/app/WorkbenchCaption.js（[Errno 2] No such file or directory: '[本机路径]'）\naps.log\n\t\n\n2026-09-11 01:07:53\t运行日志\t已记录\tWARNING\t\n2026-09-11 01:07:53 [WARNING] web.bootstrap.factory [static_versioning.py:41]: 静态资源版本号读取失败，已使用原始 URL：workbench/app/DashboardTimelineModel.js（[Errno 2] No such file or directory: '[本机路径]'）\naps.log\n\t\n\n2026-09-11 01:07:53\t运行日志\t已记录\tWARNING\t\n2026-09-11 01:07:53 [WARNING] web.bootstrap.factory [static_versioning.py:41]: 静态资源版本号读取失败，已使用原始 URL：workbench/app/PlanProcessOrder.js（[Errno 2] No such file or directory: '[本机路径]'）\naps.log\n\t\n\n2026-09-11 01:07:53\t运行日志\t已记录\tWARNING\t\n2026-09-11 01:07:53 [WARNING] web.bootstrap.factory [static_versioning.py:41]: 静态资源版本号读取失败，已使用原始 URL：workbench/app/DashboardCandidates.js（[Errno 2] No such file or directory: '[本机路径]'）\naps.log\n\t\n\n2026-09-11 01:07:53\t运行日志\t已记录\tWARNING\t\n2026-09-11 01:07:53 [WARNING] web.bootstrap.factory [static_versioning.py:41]: 静态资源版本号读取失败，已使用原始 URL：workbench/app/DashboardCandidateComparisonAPI.js（[Errno 2] No such file or directory: '[本机路径]'）\naps.log\n\t\n当前范围共 54 条\n每页\n10 条\n25 条\n50 条\n1 / 6",
+          "fully_in_viewport": false
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/report.json",
+          "sha256": "db455fc94a9f4f7e02cb0fe941d8b4b597e02ea8590520dd2a195644dcf889de"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N16"
+      ]
+    },
+    {
+      "id": "F-ADD-17",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/config-sample-skipped-rule-expanded.png",
+      "sha256": "34991a8d1df1260118f1c70defc80ce7e025a08fc8e2f15c36dc4cf5132ce83f",
+      "bytes": 239882,
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-SYS-019.skipped"
+        ],
+        "visible_scope": "config-sample-skipped-rule-expanded",
+        "limits": "管理样例规则正文可见；不是实时发生了一次 skipped 事件。",
+        "subject_geometry": {
+          "x": 284,
+          "y": 880.9375,
+          "width": 1040,
+          "height": 154.984375,
+          "text": "生效范围与自动维护规则\n当前编辑\n独立管理样例\n触发方式\n由访问请求触发检查\n日志清理对象\n操作记录，不含运行文件日志\n\n备份与清理由访问请求触发，不是后台定时任务。间隔为检查周期，不保证指定时刻执行；正常退出时的备份也受自动备份开关控制。\n\n日志清理只针对操作记录，不清空运行文件日志。备份失败时跳过本轮备份清理，保留策略不能删除全部近期副本。",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run2/system/probe-1920-dark/report.json",
+          "sha256": "db455fc94a9f4f7e02cb0fe941d8b4b597e02ea8590520dd2a195644dcf889de"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N17"
+      ]
+    },
+    {
+      "id": "F-ADD-18",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-receipt-run1/probe-1392-dark/backup-file-operation-receipt.png",
+      "sha256": "4ea3d9aa3afb00e6dec15017104a93d50d0a2758cf662681a9274d48d3931808",
+      "bytes": 202781,
+      "viewport": {
+        "width": 1392,
+        "height": 924
+      },
+      "theme": "dark",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-SYS-008.receipt",
+          "WBP-SYS-010.receipt"
+        ],
+        "visible_scope": "真实创建成功回执，展开维护阶段",
+        "limits": "直接证据为创建成功；删除成功使用同一 Outcome file_operation 分支，仅操作文案、代码、记录号、文件名和阶段数据不同，不声称已看到删除成功图片。",
+        "subject_geometry": {
+          "x": 284,
+          "y": 355.2421875,
+          "width": 1064,
+          "height": 348.3359375,
+          "text": "创建备份\n核实原请求\n确认结果\n\n原请求：system-41056f0a65789b8a3d01794b89a61df95ebee1dbaa57e266\n\n已完成 · 备份已创建并通过本次完整性检查；尚未进行恢复演练。 · backup_verified\n\n外置维护记录：bb37eeca519e4866b6f5c58d734efb9a · 2026-09-11 01:12:00\n业务审计：已留存\n\n目标文件：aps_backup_20260911_011200_manual_33906abf5200.db\n\n维护阶段\n\n2026-09-11 01:12:00 · 已受理\n\n2026-09-11 01:12:00 · 检查中\n\n2026-09-11 01:12:00 · 检查中\n\n2026-09-11 01:12:00 · 已完成",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-receipt-run1/probe-1392-dark/report.json",
+          "sha256": "367ea57843c6f9eef6cfedc3cc5b6e1316775cc089737825a9c6970b5b42847f"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N18"
+      ]
+    },
+    {
+      "id": "F-ADD-19",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-domain-receipt-run1/probe-1920-light/handling-confirmed-receipt.png",
+      "sha256": "77fc4e64844cd945c4b119e0651d2ae515f3980b878eaca7c25d3a559cc23602",
+      "bytes": 273344,
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "light",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-DASH-003.submit",
+          "WBP-DASH-004.close",
+          "WBP-DASH-005.confirm-reopen"
+        ],
+        "visible_scope": "handling-confirmed-receipt",
+        "limits": "真实确认保存后的核实弹窗，不用编辑表单或历史表代替。",
+        "subject_geometry": {
+          "x": 670,
+          "y": 238.6796875,
+          "width": 580,
+          "height": 602.6328125,
+          "text": "处置请求核实\n处置回执已确认。\n已确认：处置与历史已保存。\n\nB1 · F operations fixture\n\n原请求 dashboard-14dbe85c92d3ed767ce8e197bbe7cb8de97c1a86bf5cf516\n\n回执 01c088252f694f148d0efe9cffc5259a\n\n处置状态\n跟进中\n责任人\nF planner\n责任期限\n2026-09-11\n处置行动\nF verify material and machine arrangement\n原因 / 核实备注\nF original facts verified\n完成时间\n未填写\n具体完成结果\n未填写\n可核对凭据\n未填写\n已核验附件引用\n未关联已核验附件\n完成核实并刷新\n关闭窗口",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-domain-receipt-run1/probe-1920-light/report.json",
+          "sha256": "9b901c2aa396ab3887cecffb81a786c79bfdc9f67665da0fe3e6b6b427bc44bb"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N19"
+      ]
+    },
+    {
+      "id": "F-ADD-20",
+      "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-domain-receipt-run1/probe-1920-light/outsourcing-confirmed-receipt.png",
+      "sha256": "93a49f1abf9c716204c2644f813bf1a665f379b93008da632aa33aaf8795f33c",
+      "bytes": 268626,
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "light",
+      "execution": "F-visual-supplement",
+      "source_root": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18",
+      "source_manifest": "/private/tmp/aps-final-operations-F.TQejHX/F13-source18-manifest.json",
+      "source_manifest_sha256": "0afe4432126fff8ad474abae9b90b42377c067115bd478f45876d7675712e02f",
+      "source_aggregate_sha256": "e5d57c7785aed192c1cb15cc11277150621fb9eb5ff6159078aeb171cca6fee7",
+      "build_id": "5b4327b9c68a2f7e69c0df01f34df2c2087fd0c9968418e93a7d11150866c480",
+      "build_manifest_sha256": "ac0e08e56a509627ddd6f220ee29e81895de6aa5ea90004a822fc2f9f521a325",
+      "delta_index": null,
+      "main_review": {
+        "status": "not_reviewed_by_Main"
+      },
+      "supplement_observation": {
+        "representative_for": [
+          "WBP-DASH-010.save",
+          "WBP-DASH-010.correct",
+          "WBP-DASH-010.original-receipt"
+        ],
+        "visible_scope": "outsourcing-confirmed-receipt",
+        "limits": "真实确认保存后的核实弹窗，不用编辑表单或历史表代替。",
+        "subject_geometry": {
+          "x": 670,
+          "y": 245.6796875,
+          "width": 580,
+          "height": 588.6328125,
+          "text": "外协登记回执\nXB1 · External production part\nHeat treatment supplier · 单工序 · 1 道工序\nXB1-10 · Heat treatment\n实际发出\n2026-09-07 09:00:17\n计划回厂\n2026-09-09 12:00:00\n实际回厂\n未回厂\n确认状态\n在途\n已确认：外协登记已保存，回厂不等于工序完工。\n原请求\noutsourcing-d4123659e4d464fce31888e9dfe8c84510f91ff95cf4fc1e\n声明人\nF shipping clerk\n核实原因\nF dispatch handover verified\n系统记录人\nlurenxing\n确认时间\n2026-09-11 01:21:47\n外协回执已确认。\n完成核实并刷新",
+          "fully_in_viewport": true
+        },
+        "report": {
+          "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-domain-receipt-run1/probe-1920-light/report.json",
+          "sha256": "9b901c2aa396ab3887cecffb81a786c79bfdc9f67665da0fe3e6b6b427bc44bb"
+        },
+        "F_viewed_image": true
+      },
+      "state_ids": [
+        "N20"
+      ]
+    }
+  ],
+  "failed_attempt": {
+    "path": "/private/tmp/aps-final-operations-F.TQejHX/F-visual-supplement-run1",
+    "included_in_acceptance": false,
+    "reason": "Independent harness waited for /field instead of actual /execution/tasks endpoint; product destination rendered normally. Corrected in accepted run2; no product edits."
+  },
+  "limits": [
+    "仅 Main 实际看图后可签 V。",
+    "4 个新进程均正常关闭，无浏览器或服务保持运行。",
+    "Dashboard 首例仅在独立库做 following/closed 两次必要前置登记；未执行重开。",
+    "确认框场景仅取消；文件回执例只真实创建一个新备份，未删除或恢复任何备份。",
+    "独立领域回执例在另一个测试库做一次 following 和一次外协物流保存；未改变报工/正式计划表。",
+    "管理样例规则图不证明运行时曾发生 skipped 事件。",
+    "本轮不运行全量门禁，不声称 clean-worktree proof。"
+  ]
+}

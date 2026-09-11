@@ -1,0 +1,496 @@
+{
+  "schema_version": 3,
+  "date": "2026-09-10",
+  "scope": "Current private real-factory acceptance; historical prototype-only records are nested below.",
+  "current_evidence": "factory-verification.json",
+  "current_report": "factory-acceptance.md",
+  "subsequent_navigation_overlay": "task-origin-overlay.json",
+  "subsequent_overlay_included_in_factory_acceptance": false,
+  "current_root": "/private/tmp/aps-g-retirement-candidate-u8YnDE",
+  "current_source_aggregate_sha256": "e74e6dce3c8a196433692084dbdc4d94f3f9c4b79e952bc352c0e7ed8714b85b",
+  "counts": {
+    "pytest": 46,
+    "source_guard_negative_tests": 2,
+    "import_pairs": 12,
+    "page_get_and_head": 51,
+    "nonpage_get_and_head": 39,
+    "post_empty_form_requests_per_variant": 113,
+    "report_date_http_candidate": 26,
+    "report_date_http_baseline": 24,
+    "message_paths": 3
+  },
+  "worktree_proof": "dirty targeted frozen-source proof, not clean-worktree or full-gate proof",
+  "not_verified": [
+    "matching final browser build and frontend execution",
+    "Main production factory mount",
+    "old asset removal and absence in a release payload",
+    "stage 17 or 18 full acceptance",
+    "113 complete business transactions or every import mode combination",
+    "full quality gate and clean-worktree proof",
+    "Win7 runtime",
+    "D1 code/data rollback exercise"
+  ],
+  "previous_pre_factory_stage": {
+    "schema_version": 2,
+    "date": "2026-09-10",
+    "scope": "Approved navigation parser and real unmounted legacy GET conversion; 24-file candidate patch not applied. No claim of site 17/retirement 18 completion.",
+    "python": "CPython 3.8.10 via .venv/bin/python",
+    "head_at_check": "830a58e69faaa64a39d7a238ba2a0a0cd5c9047c",
+    "staged_files_at_check": [],
+    "owned_git_status": "8 product/test/support files and legacy-retirement directory untracked",
+    "worktree_proof": "dirty targeted evidence only, not clean-worktree or full gate proof",
+    "counts": {
+      "registered_routes": 356,
+      "legacy_options": 81,
+      "templates": 73,
+      "legacy_static": 59,
+      "manifest_assets": 210,
+      "valid_navigation_context_vectors": 22,
+      "invalid_navigation_context_vectors": 52,
+      "navigation_views": 15,
+      "navigation_parser_test_methods": 12,
+      "legacy_navigation_sqlite_test_methods": 18,
+      "draft_sample_tests": 15,
+      "private_candidate_http_tests": 5,
+      "candidate_patch_targets": 24,
+      "template_target_only_python_files": 14
+    },
+    "commands": [
+      {
+        "command": "env PYTHONDONTWRITEBYTECODE=1 CHECKUP_CALLGRAPH=/tmp/aps-g-navigation-callgraph python3 -m tools.symbol_locator whereis resolve_version_or_latest",
+        "exit_code": 0,
+        "result": "core/services/scheduler/version_resolution.py:39-85; private graph rebuilt 2026-09-10 21:11; 5 callers / 3 callees"
+      },
+      {
+        "command": "env PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest --noconftest -p no:cacheprovider tests/workbench/test_final_navigation_boot.py tests/workbench/test_final_legacy_navigation.py -q",
+        "exit_code": 0,
+        "result": "30 passed in 2.84s = parser 12 + real private SQLite/ref conversion 18; project conftest intentionally not loaded"
+      },
+      {
+        "command": "env PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/roadmap/workbench-prototype-migration/legacy-retirement/draft-tests/test_dispatch_samples.py",
+        "exit_code": 0,
+        "result": "15 tests OK in 0.113s; synthetic Flask/presentation contracts only"
+      },
+      {
+        "command": "env PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/roadmap/workbench-prototype-migration/legacy-retirement/draft-tests/test_candidate_http.py",
+        "exit_code": 0,
+        "result": "5 tests OK in 1.869s; private Flask normal dispatcher install, real old parsers, real personnel XLSX preview/stale rejection/confirmed persistence/reopen, real print/manual and original manual download bytes"
+      },
+      {
+        "command": "env PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright web/routes/workbench/navigation_boot.py web/routes/workbench/legacy_page_contract.py web/routes/workbench/legacy_navigation_plan.py web/routes/workbench/legacy_navigation.py tests/workbench/test_final_navigation_boot.py tests/workbench/final_navigation_support.py tests/workbench/test_final_legacy_navigation.py tests/workbench/final_legacy_navigation_support.py",
+        "exit_code": 0,
+        "result": "0 errors, 0 warnings, 0 informations"
+      },
+      {
+        "command": "env PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check --no-cache web/routes/workbench/navigation_boot.py web/routes/workbench/legacy_page_contract.py web/routes/workbench/legacy_navigation_plan.py web/routes/workbench/legacy_navigation.py tests/workbench/test_final_navigation_boot.py tests/workbench/final_navigation_support.py tests/workbench/test_final_legacy_navigation.py tests/workbench/final_legacy_navigation_support.py .codestable/roadmap/workbench-prototype-migration/legacy-retirement/draft-payload/web/routes/workbench .codestable/roadmap/workbench-prototype-migration/legacy-retirement/draft-tests",
+        "exit_code": 0,
+        "result": "All checks passed"
+      }
+    ],
+    "source_hashes": {
+      "web/routes/workbench/navigation_boot.py": "405adefc94b0280fa6a187400d2277234d140bc349cb37d0ca6ef9cc529f785e",
+      "web/routes/workbench/legacy_page_contract.py": "f738fd62bd10a7c3aaca974193641f3061b42f37297754598b179e198fc088ad",
+      "web/routes/workbench/legacy_navigation_plan.py": "a8f822fa82bb681ab87dc361ee9eec2c34a5821861cf17cdbe1b9887a69b8bba",
+      "web/routes/workbench/legacy_navigation.py": "ad4646bf3cb852e501b712a765793e3ff3e6416183f796d603799b0750ad85c1",
+      "tests/workbench/test_final_navigation_boot.py": "8fcb2b8aa35e148a34376c10870e1ae26377a2ce290d70f048cf8a0586598af3",
+      "tests/workbench/final_navigation_support.py": "cee7d9b907ceb66bab0a1a6d51baa6871dc3336231486e2d12ac9f8ce0ce9071",
+      "tests/workbench/test_final_legacy_navigation.py": "905a653bda26d9e82a0ccd7d29a397ddea82712092e21d44393f2a3a65e0cb49",
+      "tests/workbench/final_legacy_navigation_support.py": "d6480c3fb10e2b0a8a59566374b3b1adeec0206ed65c2b4eb3ae207c674248e3"
+    },
+    "product_symbols": {
+      "web/routes/workbench/navigation_boot.py": {
+        "WorkbenchNavigationInvalid": 27,
+        "_invalid": 31,
+        "_object": 35,
+        "_unique_object": 40,
+        "_invalid_constant": 49,
+        "_query_value": 53,
+        "_plan_context": 69,
+        "_explicit_times": 75,
+        "_calendar_context": 81,
+        "_resource_context": 91,
+        "_part_context": 112,
+        "_batch_context": 122,
+        "_report_context": 132,
+        "_trial_context": 148,
+        "_context": 156,
+        "read_navigation": 178
+      },
+      "web/routes/workbench/legacy_page_contract.py": {
+        "LegacyNavigationInvalid": 64,
+        "LegacyGetRequest": 69,
+        "LegacyDownloadLink": 76,
+        "LegacyGetDecision": 82,
+        "retired": 93,
+        "unique_query": 98
+      },
+      "web/routes/workbench/legacy_navigation_plan.py": {
+        "ResolvedLegacyPlan": 30,
+        "_scenario": 37,
+        "resolve_legacy_plan": 45,
+        "report_dates": 67,
+        "resource_filter": 82,
+        "gantt_context": 86,
+        "invalid_plan_input": 100
+      },
+      "web/routes/workbench/legacy_navigation.py": {
+        "build_legacy_destination": 53,
+        "_redirect": 63,
+        "_unsupported": 69,
+        "_detail": 74,
+        "_download_links": 98,
+        "_plan_page": 111,
+        "_resolve": 138,
+        "resolve_legacy_get": 156
+      },
+      "tests/workbench/test_final_navigation_boot.py": {
+        "NavigationBootTests": 20
+      },
+      "tests/workbench/final_navigation_support.py": {
+        "nav_args": 13
+      },
+      "tests/workbench/test_final_legacy_navigation.py": {
+        "LegacyNavigationTests": 22
+      },
+      "tests/workbench/final_legacy_navigation_support.py": {
+        "prepare_database": 12,
+        "legacy": 25,
+        "token_app": 30
+      }
+    },
+    "candidate_payload_hashes": {
+      "draft-payload/templates/error.html": "7bfdfe62329daf776b5b447fe41b3313d79ba4f38c18fbc32d0bbd353942b5dd",
+      "draft-payload/templates/error_base.html": "04519caa20506ad4d6c085504078cc73b196d9d0c34edcb9a7b64ef6e512010a",
+      "draft-payload/templates/workbench/legacy_base.html": "e2c31bd7ed39ea31effcea0113b6351d40061882055d5f725e9cb51131325b3a",
+      "draft-payload/templates/workbench/legacy_result.html": "fd60a1987b211b590c0f55e8ea3f5135401a5963d071c81cb18a52d7007b6f40",
+      "draft-payload/templates/workbench/legacy_style.html": "94063dd7f60f7077a6d5bcacccd8d78ef00e00c06a4016fd93f41a3326e3eca9",
+      "draft-payload/templates/workbench/manual.html": "86f0a1c492eb20f1328fdad5ebc7ba3ac09b4215a80a5364829bd6ba2465c945",
+      "draft-payload/templates/workbench/print.html": "b53520121870c08291aa6872fbd49d8d1efa90c2d1c048a06c5524b608674863",
+      "draft-payload/templates/workbench/retired.html": "d795b4fe5902831f5f3965deb6914de24851edbe7d5f20d2dea4cbe55942ce16",
+      "draft-payload/web/routes/workbench/legacy_dispatch.py": "cf3f346977013010f2a5c0e5fada11f70d819f41c41d91266cb6b1b542af9828",
+      "draft-payload/web/routes/workbench/legacy_presentation.py": "4752cbcdacbfd269033fd25c14a18e60454d60ac1c01256ed0982ed40ccd5cbb"
+    },
+    "candidate_patch_sha256": "a6c1a20dce70b241046b09ecfcd349fd7c8dddb7a6f00ee0ea644d916fabd0e2",
+    "candidate_index_sha256": "8e4fbad3b665f3e81be9fb6835df31ebaec2d90acc74b4f32a323cc0b29106fa",
+    "candidate_integrity": {
+      "all_24_preimages_verified": true,
+      "generated_patch_equal_saved_patch": true,
+      "generated_index_equal_saved_index": true,
+      "all_14_restored_template_literals_ast_equal": true,
+      "no_application": true
+    },
+    "protected_current_hashes": {
+      ".codestable/roadmap/workbench-prototype-migration/workbench-capabilities.json": "0cad8e05a5adbadacf0c2ecef1e56f38bb4c97e6948c1dc5a2fc847bcec1ffb2",
+      ".codestable/roadmap/workbench-prototype-migration/legacy-option-disposition.md": "04a5cbc28b0b1353031806bdcfb233cc63a6608e62dd5c4bd078c21253dcfb19",
+      "tests/gate_meta/test_frozen_bundle_contract.py": "c7a02daca9a8bfd7c9f57dcb7374a1031534c8e067f8809a9902dbc650487b2b"
+    },
+    "retention_evidence": [
+      "query_only SQLite accepts old GET mapping; full iterdump unchanged; traced no DML; outer transaction stays active",
+      "permanent plan ref roundtrip checks exact version/requested role/scenario, missing identity not repaired; stored ref survives reopened connection and added later version",
+      "all 113 old POST and 39 nonpage GET functions unchanged by normal install; 12 result render helpers keep original AST except template literal",
+      "real personnel XLSX preview and stale baseline leave DB unchanged; confirmed import persists source values and permanent operator ref after new connection",
+      "real print GET leaves DB unchanged; actual manual download payload is byte-identical to static/docs/scheduler_manual.md",
+      "planning206 and original81 hashes unchanged; option matrix remains 81 rows with no blanket B/K/V/P pass"
+    ],
+    "preservation": {
+      "frozen_planning_206_sha256": "0cad8e05a5adbadacf0c2ecef1e56f38bb4c97e6948c1dc5a2fc847bcec1ffb2",
+      "original_81_disposition_sha256": "04a5cbc28b0b1353031806bdcfb233cc63a6608e62dd5c4bd078c21253dcfb19",
+      "frozen_bundle_test_sha256": "c7a02daca9a8bfd7c9f57dcb7374a1031534c8e067f8809a9902dbc650487b2b",
+      "git_note": "G performed no Git writes/reverts. At the final recorded check HEAD=830a58e69faaa64a39d7a238ba2a0a0cd5c9047c and the index was empty; the 8 owned product/test files and retirement directory were untracked. Other existing dirty files were preserved.",
+      "archive_note": "Only earlier backup directory/manifest reads; no archive rehash/extraction/restore by G. The current tests created and closed private temporary SQLite databases; production DB and original preview host were not touched."
+    },
+    "not_verified": [
+      "Main pages/boot/JS actual factory HTML and browser navigation acceptance",
+      "Remaining 11 XLSX domain full transaction/rollback cases and all-113 business acceptance",
+      "All-81 B/K/V/P and site17/retirement18",
+      "Asset exclusion from a production candidate tree and negative legacy-UI absence",
+      "Final full quality gate on a clean committed candidate",
+      "Code rollback and D1/new-data recovery drills",
+      "Win7 packaging, physical machine and release"
+    ],
+    "known_failed_attempts": [
+      {
+        "kind": "static analysis",
+        "result": "Initial Pyright reported 3 Optional subscripts in new tests; explicit non-None assertions added and rerun clean"
+      },
+      {
+        "kind": "contract review",
+        "result": "Shared backend scope accepted explicit null dates but target JS rejected them; nav now requires omitted or real paired times, with negative regression vectors"
+      },
+      {
+        "kind": "inventory tooling",
+        "result": "Unmatched shell globs / guessed file paths corrected from actual inventory; .DS_Store caused initial UTF-8 parse failure and was retained as non-HTML metadata; one excessive JSON stdout was truncated and rerun with narrowed fields"
+      },
+      {
+        "kind": "concurrent source update",
+        "result": "Main reported c0097278 hooks briefly stashed/restored tracked dirty files; actual navigation filename WorkbenchNavigation.js was reread; no product bug inferred from read drift"
+      },
+      "Read-only guessed paths/glob misses during targeted exploration; corrected to actual files, no source corruption",
+      "One draft test import-order Ruff error corrected by Ruff import formatter; final all pass",
+      "Initial private manual download test emitted ResourceWarning because the test did not close its response; test now closes it and final run has no warning"
+    ],
+    "processes": "All G tool commands completed. Private SQLite connections/responses/temp directories closed by tests. No server/browser/build/gate process left running.",
+    "capacity_source": "User/Main reported formal same-resource capacity PASS (20000 rows, admission 122.728285375s, runtime 121.342296s, 1472 input hashes stable); not rerun or independently attested by G.",
+    "previous_parser_only_stage": {
+      "schema_version": 1,
+      "date": "2026-09-10",
+      "scope": "G navigation boot helper + retirement preparation only",
+      "python": "3.8.10",
+      "head_at_check": "8c89efdff33a9d277cadf2fbcff0a1ff300c9407",
+      "worktree_proof": "dirty/unbound; owned product/test files untracked; no Git writes by G",
+      "counts": {
+        "registered_routes": 356,
+        "legacy_options": 81,
+        "templates": 73,
+        "legacy_static": 59,
+        "manifest_assets": 210,
+        "valid_navigation_context_vectors": 22,
+        "invalid_navigation_context_vectors": 52
+      },
+      "commands": [
+        {
+          "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-g-navigation-pycache CHECKUP_CALLGRAPH=/tmp/aps-g-navigation-callgraph .venv/bin/python -m tools.symbol_locator whereis canonical_json",
+          "exit_code": 0,
+          "result": "private static graph rebuilt; core/models/workbench_command.py:27-28"
+        },
+        {
+          "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-g-navigation-pycache CHECKUP_CALLGRAPH=/tmp/aps-g-navigation-callgraph .venv/bin/python -m tools.symbol_locator callers canonical_json",
+          "exit_code": 0,
+          "result": "53 confident callers + 1 reported ambiguous; no shared graph writes"
+        },
+        {
+          "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-g-navigation-pycache CHECKUP_CALLGRAPH=/tmp/aps-g-navigation-callgraph .venv/bin/python -m tools.symbol_locator whereis plan_reference",
+          "exit_code": 0,
+          "result": "core/models/workbench_plan_scope.py:21-24"
+        },
+        {
+          "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-g-navigation-pycache .venv/bin/python -m unittest tests.workbench.test_final_navigation_boot -v",
+          "exit_code": 0,
+          "result": "11 tests OK; final run 0.005s"
+        },
+        {
+          "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-g-navigation-pycache .venv/bin/python -m pytest --noconftest -p no:cacheprovider tests/workbench/test_final_navigation_boot.py -q",
+          "exit_code": 0,
+          "result": "11 passed in 0.14s; explicit parser-only scope, project conftest not loaded"
+        },
+        {
+          "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-g-navigation-pycache .venv/bin/python -m pyright web/routes/workbench/navigation_boot.py tests/workbench/test_final_navigation_boot.py tests/workbench/final_navigation_support.py",
+          "exit_code": 0,
+          "result": "0 errors, 0 warnings; no dependency update"
+        },
+        {
+          "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-g-navigation-pycache .venv/bin/python -m ruff check --no-cache web/routes/workbench/navigation_boot.py tests/workbench/test_final_navigation_boot.py tests/workbench/final_navigation_support.py",
+          "exit_code": 0,
+          "result": "All checks passed"
+        },
+        {
+          "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=/tmp/aps-g-retirement-pycache .venv/bin/python .codestable/roadmap/workbench-prototype-migration/legacy-retirement/draft-tests/test_dispatch_samples.py",
+          "exit_code": 0,
+          "result": "12 tests OK, final run 0.070s; synthetic Flask/template samples only, not B/K/V/P"
+        }
+      ],
+      "source_hashes": {
+        "web/routes/workbench/navigation_boot.py": "ec47fccf0f5dde2969cd9d40c35bb30e0f253671cfe9710a2eea62bb7ae0ccb6",
+        "tests/workbench/test_final_navigation_boot.py": "f887dd56e42e874e1d5883422e5adaca982380f294ffd96720a551d1fe8ffbf6",
+        "tests/workbench/final_navigation_support.py": "d3c4434b5e7bd59b99a9d8516d2a94b273a7e10ce08512d6369eb478e8aa1292",
+        "frontend/workbench/app/WorkbenchNavigation.js": "d9522d8cea6f3e8a320c499d01971a83a06bacf426b33cf355cf480daa850405",
+        "frontend/workbench/app/main.jsx": "8eddecbbfcfa32b7b826dd644d2a21f600e09eb60d3b6a38c5ca28fac65e3cc9",
+        "web/routes/workbench/pages.py": "d6b810f3babab80d69847419b79f16cac406d70cfcd1e420ddfcb8a61975cf18",
+        ".codestable/roadmap/workbench-prototype-migration/workbench-capabilities.json": "0cad8e05a5adbadacf0c2ecef1e56f38bb4c97e6948c1dc5a2fc847bcec1ffb2",
+        ".codestable/roadmap/workbench-prototype-migration/legacy-option-disposition.md": "04a5cbc28b0b1353031806bdcfb233cc63a6608e62dd5c4bd078c21253dcfb19",
+        "tests/gate_meta/test_frozen_bundle_contract.py": "c7a02daca9a8bfd7c9f57dcb7374a1031534c8e067f8809a9902dbc650487b2b"
+      },
+      "product_symbols": {
+        "WorkbenchNavigationInvalid": 27,
+        "_invalid": 31,
+        "_object": 35,
+        "_unique_object": 40,
+        "_invalid_constant": 49,
+        "_query_value": 53,
+        "_plan_context": 69,
+        "_explicit_times": 75,
+        "_calendar_context": 81,
+        "_resource_context": 91,
+        "_part_context": 112,
+        "_batch_context": 122,
+        "_report_context": 132,
+        "_trial_context": 148,
+        "_context": 156,
+        "read_navigation": 178
+      },
+      "owned_git_status": [
+        "?? tests/workbench/final_navigation_support.py",
+        "?? tests/workbench/test_final_navigation_boot.py",
+        "?? web/routes/workbench/navigation_boot.py"
+      ],
+      "staged_files_at_check": [],
+      "patch_preimages": [
+        {
+          "path": "web/routes/excel_demo.py",
+          "matches": true,
+          "actual_sha256": "f1211ec554f83465de7e473ae137fa4511319186d113ad1aea646351abadc91b",
+          "expected_sha256": "f1211ec554f83465de7e473ae137fa4511319186d113ad1aea646351abadc91b"
+        },
+        {
+          "path": "web/routes/personnel_excel_links.py",
+          "matches": true,
+          "actual_sha256": "72dce5664c30fe198151a0ddcc5927bdeedd4c6cec6fde4b168f48230fbd0516",
+          "expected_sha256": "72dce5664c30fe198151a0ddcc5927bdeedd4c6cec6fde4b168f48230fbd0516"
+        },
+        {
+          "path": "web/routes/personnel_excel_operator_calendar.py",
+          "matches": true,
+          "actual_sha256": "812dba8731cc4d86f6e4ec6b74506ac84daf4b6c82e34bdf5b5a0868b855511c",
+          "expected_sha256": "812dba8731cc4d86f6e4ec6b74506ac84daf4b6c82e34bdf5b5a0868b855511c"
+        },
+        {
+          "path": "web/routes/personnel_excel_operators.py",
+          "matches": true,
+          "actual_sha256": "4e1bd6b2a7d7117b1d7522c53037106469b015f5e483d206d0452c68bedb45b5",
+          "expected_sha256": "4e1bd6b2a7d7117b1d7522c53037106469b015f5e483d206d0452c68bedb45b5"
+        },
+        {
+          "path": "web/routes/equipment_excel_links.py",
+          "matches": true,
+          "actual_sha256": "857f1cf5e868382c4899354976531c9979fcfbf58340cbd23f193bc265270c7d",
+          "expected_sha256": "857f1cf5e868382c4899354976531c9979fcfbf58340cbd23f193bc265270c7d"
+        },
+        {
+          "path": "web/routes/equipment_excel_machines.py",
+          "matches": true,
+          "actual_sha256": "183121af2cd65e33e493bea6cedd853b2be3dec600fa4b828ac0921298619e96",
+          "expected_sha256": "183121af2cd65e33e493bea6cedd853b2be3dec600fa4b828ac0921298619e96"
+        },
+        {
+          "path": "web/routes/process_excel_op_types.py",
+          "matches": true,
+          "actual_sha256": "bf625e474eb5d8703d0c1318603bbab5538e6e2259498f8521e970cf97824565",
+          "expected_sha256": "bf625e474eb5d8703d0c1318603bbab5538e6e2259498f8521e970cf97824565"
+        },
+        {
+          "path": "web/routes/process_excel_part_operation_hours.py",
+          "matches": true,
+          "actual_sha256": "1808dc248f66610884a0aec48a6814caaa4047aaa95aa37ae79b26cd73fd0628",
+          "expected_sha256": "1808dc248f66610884a0aec48a6814caaa4047aaa95aa37ae79b26cd73fd0628"
+        },
+        {
+          "path": "web/routes/process_excel_routes.py",
+          "matches": true,
+          "actual_sha256": "fb269c8ca9e0ec962e144859fae7f305ffb16212585dd7c16deb531947fe46d3",
+          "expected_sha256": "fb269c8ca9e0ec962e144859fae7f305ffb16212585dd7c16deb531947fe46d3"
+        },
+        {
+          "path": "web/routes/process_excel_suppliers.py",
+          "matches": true,
+          "actual_sha256": "4c8497fb138741a11b5d69d41bdca654d35a75ae548acb2fba72109e107ab74d",
+          "expected_sha256": "4c8497fb138741a11b5d69d41bdca654d35a75ae548acb2fba72109e107ab74d"
+        },
+        {
+          "path": "web/routes/domains/scheduler/scheduler_excel_batches.py",
+          "matches": true,
+          "actual_sha256": "b65242bdc84d4f82e038de984d90071d5bba42523bb85c6911e015544ffd4453",
+          "expected_sha256": "b65242bdc84d4f82e038de984d90071d5bba42523bb85c6911e015544ffd4453"
+        },
+        {
+          "path": "web/routes/domains/scheduler/scheduler_excel_calendar.py",
+          "matches": true,
+          "actual_sha256": "4c8fb478cae984801d985420ac8f194809b633ae227ee58d1bacc3ee5cf31cb5",
+          "expected_sha256": "4c8fb478cae984801d985420ac8f194809b633ae227ee58d1bacc3ee5cf31cb5"
+        },
+        {
+          "path": "web/routes/domains/scheduler/scheduler_week_plan_print.py",
+          "matches": true,
+          "actual_sha256": "aec072d0e1de4cb47772bcfd0cf1621248e6b2e68ed0a084e5bf26758140664c",
+          "expected_sha256": "aec072d0e1de4cb47772bcfd0cf1621248e6b2e68ed0a084e5bf26758140664c"
+        },
+        {
+          "path": "templates/error.html",
+          "matches": true,
+          "actual_sha256": "98edd2658436af6cf9abbc621252f8606e5e74dadf2300e30bef86eb2b8c5c44",
+          "expected_sha256": "98edd2658436af6cf9abbc621252f8606e5e74dadf2300e30bef86eb2b8c5c44"
+        },
+        {
+          "path": "templates/error_base.html",
+          "matches": true,
+          "actual_sha256": "094c166f063b83ef4cd1c330eca5181dba8720b738a500863c072b5c524772b1",
+          "expected_sha256": "094c166f063b83ef4cd1c330eca5181dba8720b738a500863c072b5c524772b1"
+        },
+        {
+          "path": "templates/workbench/legacy_base.html",
+          "matches": true,
+          "actual_sha256": null,
+          "expected_sha256": null
+        },
+        {
+          "path": "templates/workbench/legacy_result.html",
+          "matches": true,
+          "actual_sha256": null,
+          "expected_sha256": null
+        },
+        {
+          "path": "templates/workbench/legacy_style.html",
+          "matches": true,
+          "actual_sha256": null,
+          "expected_sha256": null
+        },
+        {
+          "path": "templates/workbench/print.html",
+          "matches": true,
+          "actual_sha256": null,
+          "expected_sha256": null
+        },
+        {
+          "path": "templates/workbench/retired.html",
+          "matches": true,
+          "actual_sha256": null,
+          "expected_sha256": null
+        },
+        {
+          "path": "web/routes/workbench/legacy_dispatch.py",
+          "matches": true,
+          "actual_sha256": null,
+          "expected_sha256": null
+        }
+      ],
+      "candidate_patch_sha256": "dfcb6037af76c2db43095ed9e0805bbf22e7e2a213bc5f6a35651b507ef8f292",
+      "preservation": {
+        "frozen_planning_206_sha256": "0cad8e05a5adbadacf0c2ecef1e56f38bb4c97e6948c1dc5a2fc847bcec1ffb2",
+        "original_81_disposition_sha256": "04a5cbc28b0b1353031806bdcfb233cc63a6608e62dd5c4bd078c21253dcfb19",
+        "frozen_bundle_test_sha256": "c7a02daca9a8bfd7c9f57dcb7374a1031534c8e067f8809a9902dbc650487b2b",
+        "git_note": "Initial sole staged file was committed by Main in c0097278. At this later check the index is empty. G did not stage, commit, reset, checkout, delete source or clear caches.",
+        "archive_note": "G read only backup directory and manifest metadata; supplied archive SHA not recomputed, no extraction/restore/DB access."
+      },
+      "known_failed_attempts": [
+        {
+          "kind": "static analysis",
+          "result": "Initial Pyright reported 3 Optional subscripts in new tests; explicit non-None assertions added and rerun clean"
+        },
+        {
+          "kind": "contract review",
+          "result": "Shared backend scope accepted explicit null dates but target JS rejected them; nav now requires omitted or real paired times, with negative regression vectors"
+        },
+        {
+          "kind": "inventory tooling",
+          "result": "Unmatched shell globs / guessed file paths corrected from actual inventory; .DS_Store caused initial UTF-8 parse failure and was retained as non-HTML metadata; one excessive JSON stdout was truncated and rerun with narrowed fields"
+        },
+        {
+          "kind": "concurrent source update",
+          "result": "Main reported c0097278 hooks briefly stashed/restored tracked dirty files; actual navigation filename WorkbenchNavigation.js was reread; no product bug inferred from read drift"
+        }
+      ],
+      "not_verified": [
+        "Main pages/root HTTP 400 integration and browser URL consumption",
+        "51 old page adapters actually mounted",
+        "legacy version/role/context to permanent refs converter",
+        "12 real XLSX preview/confirm domain chains after template replacement",
+        "new manual presentation",
+        "candidate old UI asset removal",
+        "all-site step17",
+        "rollback R1-R4 and new-data protection drill",
+        "full quality gate or clean-worktree proof",
+        "Win7 packaging, machine validation, release"
+      ],
+      "capacity_source": "User/Main reported formal same-resource capacity PASS (20000 rows, admission 122.728285375s, runtime 121.342296s, 1472 input hashes stable); not rerun or independently attested by G."
+    }
+  }
+}

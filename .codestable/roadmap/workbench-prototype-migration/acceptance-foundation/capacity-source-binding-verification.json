@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "kind": "capacity-source-binding-file-validation",
+  "date": "2026-09-11",
+  "status": "passed_file_contracts_not_formal",
+  "code_files": {
+    "tests/workbench/final_capacity_binding.py": "b10af534f90882b59f14eafbb5d63b24647390a6ef7a5306f689f850cbcc1d2a",
+    "tests/workbench/final_capacity_probe.py": "0556c85817a2bc443e38a428d520cbd64e8b1d57a3bd6ea39cfd1536adcf0dea",
+    "tests/workbench/final_capacity_server.py": "3d8beceb5056e21e4c8cebcaabdf93a7965f0ad774dc48b479f93b3a0853d3fb",
+    "tests/workbench/test_final_capacity_source_binding.py": "1f8849a6521826394897b1ef8ceeb9da1811bdcf8f7119c4e85b9aeb51deb521"
+  },
+  "unchanged_reused_guards": {
+    "tests/workbench/final_foundation_live_source_guard.py": "482891d6a467f8259093236c0bb080fe91d7bc6b25f68a22fab1ebba79b19def",
+    ".codestable/roadmap/workbench-prototype-migration/legacy-retirement/factory-tests/source_guard.py": "5682aef21a813a12e01cd66bdad06fc06a2441934900c7fe9d109523e2ae7616",
+    ".codestable/roadmap/workbench-prototype-migration/legacy-retirement/factory-tests/source_binding.py": "beb621e9611f742252102f5d04a6df60321787fd1f84586e6c84b3ffc4f0bffe",
+    ".codestable/roadmap/workbench-prototype-migration/legacy-retirement/factory-tests/source_inventory.py": "277ec8d8ada3e7d119472e18638b0299fe1716fa2d1934178697060207be9f24"
+  },
+  "verification": {
+    "junit": "/private/tmp/aps-capacity-binding-B.P2d5HX/g-capture-final.xml",
+    "junit_sha256": "8ed9f20107e055487e205586b68ab695a154033a4266b4a2e3bf0384a680b93a",
+    "passed": 56,
+    "new_binding_tests": 32,
+    "deselected": 7,
+    "selection": "not seed_retains and not full_payload",
+    "elapsed_seconds": 10.4,
+    "ruff": "passed",
+    "pyright": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "fixture_manifest": "G source_binding.py capture; private small real files"
+  },
+  "registration_request": {
+    "new_unique_owner": "workbench_run_compute_capacity",
+    "new_test_file": "tests/workbench/test_final_capacity_source_binding.py",
+    "existing_groups": [
+      "workbench_run_compute_capacity",
+      "workbench_run_jobs_capacity"
+    ],
+    "additional_input_file_scopes": [
+      "tests/workbench/final_capacity_binding.py",
+      "tests/workbench/final_foundation_live_source_guard.py",
+      ".codestable/roadmap/workbench-prototype-migration/legacy-retirement/factory-tests/source_guard.py",
+      ".codestable/roadmap/workbench-prototype-migration/legacy-retirement/factory-tests/source_binding.py",
+      ".codestable/roadmap/workbench-prototype-migration/legacy-retirement/factory-tests/source_inventory.py"
+    ],
+    "additional_environment_keys": [
+      "FACTORY_SOURCE_MANIFEST",
+      "WORKBENCH_CAPACITY_EXPECTED_SOURCE_ROOT",
+      "WORKBENCH_CAPACITY_FORBIDDEN_ORIGIN",
+      "WORKBENCH_CAPACITY_MANIFEST_SHA256"
+    ],
+    "registry_modified": false
+  },
+  "unchanged_comparison": {
+    "baseline_source": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/source",
+    "byte_equal_paths": [
+      "tests/workbench/final_capacity_sources.py",
+      "tests/workbench/test_final_capacity_inputs.py",
+      "tests/workbench/final_capacity_support.py",
+      "tests/workbench/final_capacity_observation.py"
+    ],
+    "ast_equal_functions": [
+      "tests/workbench/final_capacity_probe.py::accept_and_poll",
+      "tests/workbench/final_capacity_probe.py::read_all_candidates",
+      "tests/workbench/final_capacity_probe.py::_verify_managed"
+    ]
+  },
+  "boundaries": {
+    "main_cli_modified": false,
+    "product_modified": false,
+    "g_guard_modified": false,
+    "foundation_guard_modified": false,
+    "performance_parameters_modified": false,
+    "managed_host_started": false,
+    "browser_started": false,
+    "formal_5000_started": false,
+    "final_head_proof": false,
+    "clean_worktree_proof": false,
+    "old_1472_result_changed": false,
+    "nonexistent_common_root_scope_added": false
+  }
+}

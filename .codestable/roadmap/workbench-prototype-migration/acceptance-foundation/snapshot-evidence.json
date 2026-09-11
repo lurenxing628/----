@@ -1,0 +1,283 @@
+{
+  "schema_version": 1,
+  "root": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0",
+  "complete": true,
+  "final_head_bound": false,
+  "source_binding": "unchanged_snapshot_not_final_HEAD",
+  "build": {
+    "build_id": "64b6bfb181a1c4a04c2f3b218de1f8ad9c4a56b306fc3be19e0213899b0bfe77",
+    "files": 215,
+    "inputs": 307,
+    "manifest": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/full-build/static/workbench/asset-manifest.json",
+    "manifest_sha256": "74fe03d0d4ab2115d1c06c0c4649d524efc52dcddd8ff8f14c9ba2d2c9a2aa91",
+    "templates": [
+      {
+        "source": "templates/workbench/index.html",
+        "frozen": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/full-build/templates/workbench/index.html",
+        "bytes": 2096,
+        "sha256": "3db613d6debca730117e12423ae80e60b9fcd72f953282eb6b82c1b55a6bd960"
+      },
+      {
+        "source": "templates/workbench/recovery.html",
+        "frozen": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/full-build/templates/workbench/recovery.html",
+        "bytes": 10846,
+        "sha256": "72b904efa4ab70fdcaeb754f48e348566559a85601a985143cfeddc7e66efc6f"
+      },
+      {
+        "source": "templates/workbench/unavailable.html",
+        "frozen": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/full-build/templates/workbench/unavailable.html",
+        "bytes": 274,
+        "sha256": "997a92cfe989b2620fe2d639831342b14116339a8dfc7ad22816896ae292f516"
+      }
+    ],
+    "command": null,
+    "global_build": false,
+    "prebuilt_asset_root": "/private/tmp/aps-round2-keyfix-build.gT7e6l/static/workbench"
+  },
+  "source_changes": [],
+  "source_tree_paths": 1494,
+  "counts": {
+    "first_view": {
+      "total": 56,
+      "passed": 56
+    },
+    "interaction": {
+      "total": 16,
+      "passed": 16
+    },
+    "fault": {
+      "total": 16,
+      "passed": 16
+    },
+    "host_restart": {
+      "total": 4,
+      "passed": 4
+    }
+  },
+  "summary": {
+    "cases": 92,
+    "failed": 0,
+    "screenshots": 108,
+    "production_responses": 156
+  },
+  "browser_version": "109.0.5414.46",
+  "normal_errors": [],
+  "external_requests": [],
+  "host_restart": {
+    "before_pid": 77281,
+    "after_pid": 77652,
+    "same_origin": "http://127.0.0.1:53263",
+    "browser_pid": 77285,
+    "pages_preserved": [
+      {
+        "state": "1392x924-light",
+        "alive": true,
+        "saved": {
+          "url": "http://127.0.0.1:53263/workbench?view=gantt",
+          "route": {
+            "view": "gantt",
+            "context": {
+              "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+              "query": "CAT-B"
+            },
+            "key": 20,
+            "scroll": {
+              "windowTop": 360,
+              "windowLeft": 0,
+              "mainTop": 0,
+              "mainLeft": 0
+            }
+          },
+          "theme": "light",
+          "scroll": {
+            "mainTop": 0,
+            "mainLeft": 0,
+            "windowTop": 360,
+            "windowLeft": 0
+          },
+          "caption": {
+            "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+          },
+          "query": "CAT-B"
+        }
+      },
+      {
+        "state": "1392x924-dark",
+        "alive": true,
+        "saved": {
+          "url": "http://127.0.0.1:53263/workbench?view=gantt",
+          "route": {
+            "view": "gantt",
+            "context": {
+              "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+              "query": "CAT-B"
+            },
+            "key": 20,
+            "scroll": {
+              "windowTop": 360,
+              "windowLeft": 0,
+              "mainTop": 0,
+              "mainLeft": 0
+            }
+          },
+          "theme": "dark",
+          "scroll": {
+            "mainTop": 0,
+            "mainLeft": 0,
+            "windowTop": 360,
+            "windowLeft": 0
+          },
+          "caption": {
+            "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+          },
+          "query": "CAT-B"
+        }
+      },
+      {
+        "state": "1920x1080-light",
+        "alive": true,
+        "saved": {
+          "url": "http://127.0.0.1:53263/workbench?view=gantt",
+          "route": {
+            "view": "gantt",
+            "context": {
+              "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+              "query": "CAT-B"
+            },
+            "key": 20,
+            "scroll": {
+              "windowTop": 360,
+              "windowLeft": 0,
+              "mainTop": 0,
+              "mainLeft": 0
+            }
+          },
+          "theme": "light",
+          "scroll": {
+            "mainTop": 0,
+            "mainLeft": 0,
+            "windowTop": 360,
+            "windowLeft": 0
+          },
+          "caption": {
+            "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+          },
+          "query": "CAT-B"
+        }
+      },
+      {
+        "state": "1920x1080-dark",
+        "alive": true,
+        "saved": {
+          "url": "http://127.0.0.1:53263/workbench?view=gantt",
+          "route": {
+            "view": "gantt",
+            "context": {
+              "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+              "query": "CAT-B"
+            },
+            "key": 20,
+            "scroll": {
+              "windowTop": 360,
+              "windowLeft": 0,
+              "mainTop": 0,
+              "mainLeft": 0
+            }
+          },
+          "theme": "dark",
+          "scroll": {
+            "mainTop": 0,
+            "mainLeft": 0,
+            "windowTop": 360,
+            "windowLeft": 0
+          },
+          "caption": {
+            "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+          },
+          "query": "CAT-B"
+        }
+      }
+    ]
+  },
+  "shutdowns": [
+    {
+      "pid": 77281,
+      "returncode": 0,
+      "runtime_closed": true,
+      "pending": [],
+      "assets_unchanged": true,
+      "isolation_violations": [],
+      "events": [
+        "launcher_locks_acquired",
+        "factory_schema_ready",
+        "real_runtime_ready",
+        "http_stopped",
+        "runtime_shutdown_joined",
+        "exit_backup_complete_under_lock",
+        "launcher_locks_released"
+      ]
+    },
+    {
+      "pid": 77652,
+      "returncode": 0,
+      "runtime_closed": true,
+      "pending": [],
+      "assets_unchanged": true,
+      "isolation_violations": [],
+      "events": [
+        "launcher_locks_acquired",
+        "factory_schema_ready",
+        "real_runtime_ready",
+        "http_stopped",
+        "runtime_shutdown_joined",
+        "exit_backup_complete_under_lock",
+        "launcher_locks_released"
+      ]
+    }
+  ],
+  "retention": {
+    "original_rows_preserved": true,
+    "first_reads_zero_writes": true,
+    "restart_reads_zero_writes": true,
+    "unchanged_table_count": 75,
+    "startup_audit_appended": [
+      {
+        "id": 2,
+        "module": "plugins",
+        "action": "load"
+      }
+    ],
+    "source": [
+      "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/sessions/68c13f7dfdaa4d5dbdd7dacccb278335",
+      "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/sessions/34da3ef08ff047078f4bec48f41c014b"
+    ]
+  },
+  "evidence": {
+    "result": {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/foundation-result.json",
+      "sha256": "8e772895329183f60738b3d0bfcd178bc2ae53df3d13471259cbaf614c3285b6"
+    },
+    "browser": {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/foundation-browser.json",
+      "sha256": "419ad01afc555646d6b0d0b40b077d36cd51e9dbca214a054ef5df149e0fceed"
+    },
+    "source_before": {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/foundation-sources-before.json",
+      "sha256": "333734f41e40e6f9725dc1cbcbf2bdf83b9e014a0e15c7b04704045735558ba1"
+    },
+    "source_after": {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/foundation-sources-after.json",
+      "sha256": "333734f41e40e6f9725dc1cbcbf2bdf83b9e014a0e15c7b04704045735558ba1"
+    }
+  },
+  "excludes": [
+    "final HEAD or clean-worktree proof",
+    "F/G new unmounted leaves",
+    "C/D/E/F domain business workflow acceptance",
+    "native Windows 7 execution"
+  ]
+}

@@ -1,0 +1,112 @@
+{
+  "status": "37_passed_five_assigned_failures_closed",
+  "scope": "G05 E 已确认阻断项与对应 point/piece 下游定点回归；不是最终整仓门禁",
+  "write_stop": true,
+  "source_root": "/private/tmp/aps-final-e-g05-producer-fix-20260911-01/source",
+  "source_manifest": "/private/tmp/aps-final-e-g05-producer-fix-20260911-01/source-manifest.json",
+  "source_manifest_sha256": "2431c75f2fb7570f212c2c914033e7e42ecd8ffbde24776ad4d91f0b29eca2c5",
+  "source_aggregate_sha256": "aaf0883aabf62860e7ade06b1fc907bbceaaab7f8e8c5498f912e773887a2a66",
+  "source_files": 4901,
+  "source_bytes": 103691408,
+  "public_baseline": {
+    "manifest": "/private/tmp/aps-G05-failure-baseline-NEJgZ8/manifest.json",
+    "sha256": "ac34f31052f6593d4c4127f33fa4d027d4d14ac034a401d48dfaae48f03db859",
+    "tracked_files": 4898,
+    "tracked_bytes": 103665475,
+    "copy_proof": "/private/tmp/aps-final-e-g05-baseline-20260911-01/copy-proof.json",
+    "main_private_was_not_modified": true,
+    "product_delta": ["frontend/workbench/app/ActualGanttWorkspace.jsx"]
+  },
+  "asset_root": "/private/tmp/aps-final-e-g05-producer-fix-20260911-01/build-01/full-build/static/workbench",
+  "asset_manifest_sha256": "fe9577ba19a5453fe50a7845fe32fdcc2deef584f93fa1733990d70306520618",
+  "build_id": "f2f2323d760c5f2c7ed6a4d50f4356e701219326ff612aefb22b0eb8017272c2",
+  "asset_payloads": 223,
+  "build_inputs": 315,
+  "asset_pairing_note": "source_root/static 保留 G05 原封存资产供旧 widget 使用；本次新完整构建在 asset_root。Main 集成新资产使用这个独立目录，不覆写任何 E 封存源。",
+  "integration_files": [
+    {"path": "frontend/workbench/app/ActualGanttWorkspace.jsx", "sha256": "1783dcd7493b06e210881935b1f31aff3bb1870bda15d272df3ec12d954b1e6e"},
+    {"path": "tests/workbench/test_actual_gantt_browser.cjs", "sha256": "07a6a9df1b7fec89783788d871a02134cc31fad99137b795def2e56b6d4ba6a0"},
+    {"path": "tests/workbench/calibration_lineage_ui_probe.cjs", "sha256": "d3d8586a393ed613c4de40ceb786b06dd48942ef94cbebef1f278911d2d2cb7b"},
+    {"path": "tests/workbench/calibration_adoption_widgets_probe.cjs", "sha256": "cf55ab4feeb969dfa4d54f65ab3ea0d264714984af8fbcbe3fa903dab538c56a"},
+    {"path": "tests/workbench/point_downstream_browser.cjs", "sha256": "0bb48ce6a8be5d9b1afc79eb6c892978da1417c7915432d99f0fa7ee402b2f01"},
+    {"path": "tests/workbench/test_point_downstream_api.py", "sha256": "fde520e6d49d95c16315fcadaf02f68cc09d3989df0a9c3cfdb14242e9a0ffe8"},
+    {"path": "tests/workbench/test_point_downstream_browser.py", "sha256": "edab38b9db8b91e19ac7280ef21d4a01c076041b35dd644f1e1d2094836bce82"}
+  ],
+  "integration_file_policy": "以上 1 产品 + 6 测试文件与原树本轮成品逐项 SHA 相同。只按此白名单接入，不打包原树全部未提交内容或未完成统计草稿。",
+  "root_causes": [
+    {
+      "failure": "test_actual_gantt_browser",
+      "kind": "test_driver",
+      "cause": "scrollIntoView 后输入框位于固定页头下，后续点击的自动滚动会按合同关闭日期弹层；fullPage 截图也会扰动打开状态。",
+      "fix": "先真实滚回顶部并聚焦、等待布局；仅弹层截图使用当前 viewport，截图前后均断言仍打开，保留颜色、选日、全部原布局和 CSV 断言。"
+    },
+    {
+      "failure": "test_chrome109_real_lineage_ui / test_calibration_adoption_widgets",
+      "kind": "test_selector_and_error_collection",
+      "cause": "一行已含查看零件和查看建议两个按钮，旧 button 选择器歧义；未处理的响应等待遮蔽原 strict-mode 错误。不是旧 token 断言问题。",
+      "fix": "精确匹配查看建议按钮，并用 Promise.all 关联点击和响应等待、保留 runner_error；不减原采用/锁定/来源/下载断言。"
+    },
+    {
+      "failure": "test_real_main_point_downstream_chrome109 两个变体",
+      "kind": "product_producer_scope_serialization",
+      "cause": "source=production 合法。Actual 用 batch_ids=[] 表示不限批次，重入后把此数组原样交 Field，被 Field 显式非空批次合同拒绝。",
+      "real_http_error": {"status": 400, "code": "invalid_input", "message": "批次范围须为明确的非空批次号列表。"},
+      "product_location": "frontend/workbench/app/ActualGanttWorkspace.jsx:171",
+      "fix": "仅 navigate('field') 的 destinationScope 将空数组改为省略；非空批次、source、plan/task/operation、日期、资源、query 和 return_to 原 Actual 上下文不改。Field 后端与共享控件未改。"
+    }
+  ],
+  "regression": {
+    "junit": "/private/tmp/aps-final-e-g05-producer-fix-20260911-01/targeted-01/pytest.xml",
+    "passed": 37,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "seconds": 174.83,
+    "targets": [
+      "tests/workbench/test_actual_gantt_ui.py::test_actual_gantt_browser",
+      "tests/workbench/test_calibration_lineage_ui.py::test_chrome109_real_lineage_ui",
+      "tests/workbench/test_calibration_adoption_widgets.py::test_calibration_adoption_widgets",
+      "tests/workbench/test_point_downstream_browser.py",
+      "tests/workbench/test_point_downstream_api.py",
+      "tests/workbench/test_piece_downstream_api.py",
+      "tests/workbench/test_piece_downstream_browser.py"
+    ],
+    "retained_assertions": "两个 point 变体各四状态/8截图、点和报工身份、计划点/时间线、Enter/Space、CSV、真实像素以及所有正常 API=200；新增非空批次来回、原 view/计划/任务/query、原库快照不变。",
+    "new_negative_boundaries": "Field 显式 [] / 字符串 / 对象 / 非字符串成员 / null 仍真实400且全表不变；Actual producer 不吞坏类型，也不改变计划甘特目标或 return_to 的原数组。",
+    "static_check": "Ruff --no-cache：两份 point Python 测试与封存 runner 通过；完整构建 Chrome109 target 通过。",
+    "same_version_full_matrix_repeated": false,
+    "final_full_gate_run_by_E": false
+  },
+  "source_guards": {
+    "pytest_proof": "/private/tmp/aps-final-e-g05-producer-fix-20260911-01/targeted-01/sealed-pytest-source.json",
+    "build_proof": "/private/tmp/aps-final-e-g05-producer-fix-20260911-01/build-01/sealed-build-source.json",
+    "content_and_modes_verified": true,
+    "loaded_modules": 1083,
+    "read_violations": [],
+    "dependencies": "仅 .venv 链接原 Python3.8 解释器及第三方；业务 import 来自自己的 source，原树/公共固定副本/Main private 回读被 guard 拒绝。",
+    "runner": "/private/tmp/aps-final-e-g05-producer-fix-20260911-01/source/tests/workbench/final_execution_source_binding.py",
+    "runner_sha256": "4f09e774f6454cd4ec145963b0a6fd384a612c788ddcd4057f88832abeff6ac1",
+    "runner_note": "封存 runner 与三个 G guard helper 是复现支撑，不属于上面七项产品/测试接入白名单；当前原树 copier 可生成已声明 delta，不应覆盖此封存 runner。"
+  },
+  "history_kept": [
+    {"root": "/private/tmp/aps-final-e-g05-baseline-20260911-01/baseline-01", "result": "5 failed；其中两个 point 尚停在未接 .venv 的环境错误，不能冒称此轮已复现原400"},
+    {"root": "/private/tmp/aps-final-e-g05-testfix-20260911-01/run-01", "result": "3 passed / 2 point原400 failed，G05产品不变"},
+    {"root": "/private/tmp/aps-final-e-g05-point-diagnostic-20260911-01/run-01", "result": "2 failed；捕获原400完整正文，没有吞错，产品未变"},
+    {"root": "/private/tmp/aps-final-e-sealed-read-after-20260911-06", "result": "原E06源码、资产及证据保留不改；此次另建G05 delta"}
+  ],
+  "delta_chain": [
+    "/private/tmp/aps-final-e-g05-testfix-20260911-01/source-delta.json",
+    "/private/tmp/aps-final-e-g05-point-diagnostic-20260911-01/source-delta.json",
+    "/private/tmp/aps-final-e-g05-producer-fix-20260911-01/source-delta.json"
+  ],
+  "main_visual_reuse": {
+    "index": "/Users/lurenxing/GitHub/----/.codestable/roadmap/workbench-prototype-migration/round2-main-v-E-readview.json",
+    "sha256": "4fd2866e947e651b8e5227cb63094a50ed8f6be0b1a3b8710f68a2c1793b9db0",
+    "policy": "仅复用Main已签的27个精确可见表面，不升级整族V。此次产品差异不改JSX布局/样式，只改导航参数；不追加补图。"
+  },
+  "remaining_assigned_code_blockers": [],
+  "remaining_coordination": ["Main统一冻结后的单次最终门禁", "既有B/K/P/V按精确动作映射，不以本37项替代69族全部验收"],
+  "no_git_or_original_database_changes": true,
+  "owned_processes_finished": true,
+  "clean_worktree_proof": false
+}

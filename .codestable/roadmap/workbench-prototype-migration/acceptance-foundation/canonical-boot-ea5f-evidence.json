@@ -1,0 +1,723 @@
+{
+  "schema_version": 1,
+  "status": "failed_preserved",
+  "scope": "intermediate F13-source9 b7b4 full-source snapshot, B owned copy, ea5f tests, not final HEAD",
+  "root": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh",
+  "source_copy_proof": {
+    "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/provenance/copy-proof.json",
+    "sha256": "06a005e9d00e56ac7a5cfd232765bd6f5cdfd367cb2f4404783d13f2028a2551"
+  },
+  "source_root": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/source",
+  "asset_root": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/prebuilt/static/workbench",
+  "source_aggregate_sha256": "5dd296f23cda9993c3560cf8b1d11d1baf5ae8bb6fe84b138fdbedc7424e6be1",
+  "build_id": "b7b4f7c2241d948af6ae121f9940aaccba477ae26b8341b6393cee139e4491cb",
+  "manifest_sha256": "db6535e80339d7dec33c802696327aae3fad2e64ec288da85409830cf0e13b4b",
+  "test_snapshot_sha256": "ea5f795e8b58ac16dcf21435b2858f1115ec872b2416aa1995290ac548884b16",
+  "execution": {
+    "groups": [
+      "canonical",
+      "boot"
+    ],
+    "case_kinds": {
+      "canonical_navigation": 212,
+      "boot_contract_fault": 40
+    },
+    "total_cases": 252,
+    "restart_pages": 24,
+    "navigation_seed": true,
+    "browser_timeout_seconds": 1800
+  },
+  "actual": {
+    "cases": 252,
+    "passed": 216,
+    "failed": 36,
+    "groups": {
+      "canonical_navigation": {
+        "total": 212,
+        "passed": 176,
+        "failed": 36
+      },
+      "boot_contract_fault": {
+        "total": 40,
+        "passed": 40,
+        "failed": 0
+      }
+    },
+    "browser_version": "109.0.5414.46",
+    "screenshots": 408,
+    "raw_api_files": 772,
+    "normal_production_responses": 468,
+    "normal_errors": [
+      {
+        "state": "1392x924-light",
+        "page_id": 10,
+        "kind": "http",
+        "status": 409
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 10,
+        "kind": "console"
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 72,
+        "kind": "http",
+        "status": 409
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 72,
+        "kind": "console"
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 134,
+        "kind": "http",
+        "status": 409
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 134,
+        "kind": "console"
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 196,
+        "kind": "http",
+        "status": 409
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 196,
+        "kind": "console"
+      }
+    ],
+    "external_requests": []
+  },
+  "probe_failures": {
+    "count": 32,
+    "reason": "The ea5f probe unconditionally dereferenced null initial trial history; immutable old result remains failed",
+    "cases": [
+      {
+        "state": "1392x924-light",
+        "page_id": 13,
+        "name": "trial-base-scope-preview--direct_url",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-light/trial-base-scope-preview--direct_url-FAILED.png"
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 15,
+        "name": "trial-base-scope-preview--copy_url_new_tab",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-light/trial-base-scope-preview--copy_url_new_tab-FAILED.png"
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 13,
+        "name": "trial-base-scope-preview--same_tab_f5",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-light/trial-base-scope-preview--same_tab_f5-FAILED.png"
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 16,
+        "name": "trial-existing-real-draft--direct_url",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-light/trial-existing-real-draft--direct_url-FAILED.png"
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 18,
+        "name": "trial-existing-real-draft--copy_url_new_tab",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-light/trial-existing-real-draft--copy_url_new_tab-FAILED.png"
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 16,
+        "name": "trial-existing-real-draft--same_tab_f5",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-light/trial-existing-real-draft--same_tab_f5-FAILED.png"
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 75,
+        "name": "trial-base-scope-preview--direct_url",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-dark/trial-base-scope-preview--direct_url-FAILED.png"
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 77,
+        "name": "trial-base-scope-preview--copy_url_new_tab",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-dark/trial-base-scope-preview--copy_url_new_tab-FAILED.png"
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 75,
+        "name": "trial-base-scope-preview--same_tab_f5",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-dark/trial-base-scope-preview--same_tab_f5-FAILED.png"
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 78,
+        "name": "trial-existing-real-draft--direct_url",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-dark/trial-existing-real-draft--direct_url-FAILED.png"
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 80,
+        "name": "trial-existing-real-draft--copy_url_new_tab",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-dark/trial-existing-real-draft--copy_url_new_tab-FAILED.png"
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 78,
+        "name": "trial-existing-real-draft--same_tab_f5",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-dark/trial-existing-real-draft--same_tab_f5-FAILED.png"
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 137,
+        "name": "trial-base-scope-preview--direct_url",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-light/trial-base-scope-preview--direct_url-FAILED.png"
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 139,
+        "name": "trial-base-scope-preview--copy_url_new_tab",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-light/trial-base-scope-preview--copy_url_new_tab-FAILED.png"
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 137,
+        "name": "trial-base-scope-preview--same_tab_f5",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-light/trial-base-scope-preview--same_tab_f5-FAILED.png"
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 140,
+        "name": "trial-existing-real-draft--direct_url",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-light/trial-existing-real-draft--direct_url-FAILED.png"
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 142,
+        "name": "trial-existing-real-draft--copy_url_new_tab",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-light/trial-existing-real-draft--copy_url_new_tab-FAILED.png"
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 140,
+        "name": "trial-existing-real-draft--same_tab_f5",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-light/trial-existing-real-draft--same_tab_f5-FAILED.png"
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 199,
+        "name": "trial-base-scope-preview--direct_url",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-dark/trial-base-scope-preview--direct_url-FAILED.png"
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 201,
+        "name": "trial-base-scope-preview--copy_url_new_tab",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-dark/trial-base-scope-preview--copy_url_new_tab-FAILED.png"
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 199,
+        "name": "trial-base-scope-preview--same_tab_f5",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-dark/trial-base-scope-preview--same_tab_f5-FAILED.png"
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 202,
+        "name": "trial-existing-real-draft--direct_url",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-dark/trial-existing-real-draft--direct_url-FAILED.png"
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 204,
+        "name": "trial-existing-real-draft--copy_url_new_tab",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-dark/trial-existing-real-draft--copy_url_new_tab-FAILED.png"
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 202,
+        "name": "trial-existing-real-draft--same_tab_f5",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-dark/trial-existing-real-draft--same_tab_f5-FAILED.png"
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 13,
+        "name": "trial-base-scope-preview--same_tab_same_port_new_host_pid",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-light/trial-base-scope-preview--same_tab_same_port_new_host_pid-FAILED.png"
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 16,
+        "name": "trial-existing-real-draft--same_tab_same_port_new_host_pid",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-light/trial-existing-real-draft--same_tab_same_port_new_host_pid-FAILED.png"
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 75,
+        "name": "trial-base-scope-preview--same_tab_same_port_new_host_pid",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-dark/trial-base-scope-preview--same_tab_same_port_new_host_pid-FAILED.png"
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 78,
+        "name": "trial-existing-real-draft--same_tab_same_port_new_host_pid",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-dark/trial-existing-real-draft--same_tab_same_port_new_host_pid-FAILED.png"
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 137,
+        "name": "trial-base-scope-preview--same_tab_same_port_new_host_pid",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-light/trial-base-scope-preview--same_tab_same_port_new_host_pid-FAILED.png"
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 140,
+        "name": "trial-existing-real-draft--same_tab_same_port_new_host_pid",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-light/trial-existing-real-draft--same_tab_same_port_new_host_pid-FAILED.png"
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 199,
+        "name": "trial-base-scope-preview--same_tab_same_port_new_host_pid",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-dark/trial-base-scope-preview--same_tab_same_port_new_host_pid-FAILED.png"
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 202,
+        "name": "trial-existing-real-draft--same_tab_same_port_new_host_pid",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-dark/trial-existing-real-draft--same_tab_same_port_new_host_pid-FAILED.png"
+      }
+    ],
+    "correction_test_snapshot_sha256": "06ad141125f5bd09672ea60dcebb6d19b9c292d6f8296989127bacb73266be61",
+    "correction_browser_verified": false
+  },
+  "product_failures": {
+    "count": 4,
+    "code": "snapshot_stale",
+    "ticket_kind": "read-only snapshot_ref; not a command or write token",
+    "request_method": "GET",
+    "request_path": "/api/workbench/v1/analytics",
+    "request_body": null,
+    "reason": "读取范围已失效，请重新刷新；未自动切换到新数据。",
+    "command_ticket_fields_present": false,
+    "history_fields": [
+      "history.state.workbench.context.scope",
+      "history.state.workbench.context.topic",
+      "history.state.workbench.context.snapshot_ref",
+      "history.state.workbench.context.table.snapshot_ref"
+    ],
+    "source_links": [
+      {
+        "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/source/frontend/workbench/app/ReportWorkspace.jsx",
+        "sha256": "3ff23a639135f2a2dcba522799432b19663892b2eaafa703855966832c8795e8",
+        "lines": [
+          9,
+          27
+        ]
+      },
+      {
+        "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/source/web/routes/workbench/reports.py",
+        "sha256": "bd004ceb272f1a9f8c441ca1725993a00a4cfb7b7e776f311952247e450b1e0c",
+        "lines": [
+          25,
+          36,
+          72,
+          87,
+          128
+        ]
+      },
+      {
+        "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/source/web/routes/workbench/read_context.py",
+        "sha256": "5d89eb0d56824a7c0f5764749c1216ea29cf311a481de4fb756f5d95ebfac9cd",
+        "lines": [
+          12,
+          24
+        ]
+      },
+      {
+        "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/source/web/public_token_registry.py",
+        "sha256": "293ff16c927bbc3bb86ff9c47e98eb093827b52e3f908b8eb8edde0b67fc8a9e",
+        "lines": [
+          47,
+          134
+        ]
+      },
+      {
+        "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/source/frontend/workbench/app/WorkbenchNavigation.js",
+        "sha256": "aca7bc323ef80e50146c6189111a51b59521208c6ab3570677de8e7761169799",
+        "lines": [
+          32,
+          36
+        ]
+      }
+    ],
+    "responses": [
+      {
+        "state": "1392x924-light",
+        "page_id": 10,
+        "file": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-responses/78791.json",
+        "sha256": "c04969fa07a8b72f17a2d13b5f52ffd04d77dc1542c5fb801f22d95190b087a5",
+        "status": 409,
+        "code": "snapshot_stale",
+        "reason": "读取范围已失效，请重新刷新；未自动切换到新数据。",
+        "query_fields": [
+          "source",
+          "plan_ref",
+          "plan_finish_date_from",
+          "plan_finish_date_to",
+          "batch_ref",
+          "query",
+          "focus",
+          "topic",
+          "page",
+          "size",
+          "sort",
+          "direction",
+          "snapshot_ref"
+        ]
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 72,
+        "file": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-responses/80117.json",
+        "sha256": "d3fa43071cf0dcd06c5f453c0d8619b7593a1918b22d2e690e5e0ed3bd132ba1",
+        "status": 409,
+        "code": "snapshot_stale",
+        "reason": "读取范围已失效，请重新刷新；未自动切换到新数据。",
+        "query_fields": [
+          "source",
+          "plan_ref",
+          "plan_finish_date_from",
+          "plan_finish_date_to",
+          "batch_ref",
+          "query",
+          "focus",
+          "topic",
+          "page",
+          "size",
+          "sort",
+          "direction",
+          "snapshot_ref"
+        ]
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 134,
+        "file": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-responses/81443.json",
+        "sha256": "3fe0a5159b546e489ec58f4f7193125a735259ab99a4928de195b4e2d50e12c6",
+        "status": 409,
+        "code": "snapshot_stale",
+        "reason": "读取范围已失效，请重新刷新；未自动切换到新数据。",
+        "query_fields": [
+          "source",
+          "plan_ref",
+          "plan_finish_date_from",
+          "plan_finish_date_to",
+          "batch_ref",
+          "query",
+          "focus",
+          "topic",
+          "page",
+          "size",
+          "sort",
+          "direction",
+          "snapshot_ref"
+        ]
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 196,
+        "file": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-responses/82769.json",
+        "sha256": "0ccef8594130afae3599eddd4e495c6f132e28eb15484b52487e7abaf69a5d9b",
+        "status": 409,
+        "code": "snapshot_stale",
+        "reason": "读取范围已失效，请重新刷新；未自动切换到新数据。",
+        "query_fields": [
+          "source",
+          "plan_ref",
+          "plan_finish_date_from",
+          "plan_finish_date_to",
+          "batch_ref",
+          "query",
+          "focus",
+          "topic",
+          "page",
+          "size",
+          "sort",
+          "direction",
+          "snapshot_ref"
+        ]
+      }
+    ],
+    "cases": [
+      {
+        "state": "1392x924-light",
+        "page_id": 10,
+        "name": "reports-explicit-plan-cohort--same_tab_same_port_new_host_pid",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-light/reports-explicit-plan-cohort--same_tab_same_port_new_host_pid-FAILED.png"
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 72,
+        "name": "reports-explicit-plan-cohort--same_tab_same_port_new_host_pid",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1392x924-dark/reports-explicit-plan-cohort--same_tab_same_port_new_host_pid-FAILED.png"
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 134,
+        "name": "reports-explicit-plan-cohort--same_tab_same_port_new_host_pid",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-light/reports-explicit-plan-cohort--same_tab_same_port_new_host_pid-FAILED.png"
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 196,
+        "name": "reports-explicit-plan-cohort--same_tab_same_port_new_host_pid",
+        "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/screenshots/1920x1080-dark/reports-explicit-plan-cohort--same_tab_same_port_new_host_pid-FAILED.png"
+      }
+    ],
+    "owner": "E, coordinated by Main; product not edited by B; no in-place snapshot edits"
+  },
+  "restart": {
+    "old_pid": 22346,
+    "new_pid": 25308,
+    "browser_pid": 22380,
+    "same_origin": "http://127.0.0.1:63894",
+    "original_pages": 24,
+    "identities": [
+      {
+        "state": "1392x924-light",
+        "page_id": 1,
+        "context_id": 1,
+        "alive": true
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 4,
+        "context_id": 2,
+        "alive": true
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 7,
+        "context_id": 3,
+        "alive": true
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 10,
+        "context_id": 4,
+        "alive": true
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 13,
+        "context_id": 5,
+        "alive": true
+      },
+      {
+        "state": "1392x924-light",
+        "page_id": 16,
+        "context_id": 6,
+        "alive": true
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 63,
+        "context_id": 46,
+        "alive": true
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 66,
+        "context_id": 47,
+        "alive": true
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 69,
+        "context_id": 48,
+        "alive": true
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 72,
+        "context_id": 49,
+        "alive": true
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 75,
+        "context_id": 50,
+        "alive": true
+      },
+      {
+        "state": "1392x924-dark",
+        "page_id": 78,
+        "context_id": 51,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 125,
+        "context_id": 91,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 128,
+        "context_id": 92,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 131,
+        "context_id": 93,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 134,
+        "context_id": 94,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 137,
+        "context_id": 95,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-light",
+        "page_id": 140,
+        "context_id": 96,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 187,
+        "context_id": 136,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 190,
+        "context_id": 137,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 193,
+        "context_id": 138,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 196,
+        "context_id": 139,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 199,
+        "context_id": 140,
+        "alive": true
+      },
+      {
+        "state": "1920x1080-dark",
+        "page_id": 202,
+        "context_id": 141,
+        "alive": true
+      }
+    ]
+  },
+  "hosts": [
+    {
+      "pid": 22346,
+      "returncode": 0,
+      "closed": true,
+      "pending": [],
+      "assets_unchanged": true,
+      "isolation_violations": [],
+      "source_guard_violations": [],
+      "loaded_project_modules": 1101,
+      "source_guard_file": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-source-guard-host-22346.json",
+      "session_final": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/sessions/6316e97fd24249e69bf7724c2ae44a92/server-final.json"
+    },
+    {
+      "pid": 25308,
+      "returncode": 0,
+      "closed": true,
+      "pending": [],
+      "assets_unchanged": true,
+      "isolation_violations": [],
+      "source_guard_violations": [],
+      "loaded_project_modules": 1052,
+      "source_guard_file": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-source-guard-host-25308.json",
+      "session_final": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/sessions/f8746d2d83304342a3ac14431b890f9b/server-final.json"
+    }
+  ],
+  "retention": {
+    "original_rows_preserved": true,
+    "first_reads_zero_writes": true,
+    "restart_reads_zero_writes": true,
+    "unchanged_tables": 75,
+    "startup_audit_appended": 1,
+    "allowed_startup_action": "plugins/load plus corresponding sqlite_sequence",
+    "sessions": [
+      "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/sessions/6316e97fd24249e69bf7724c2ae44a92",
+      "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/sessions/f8746d2d83304342a3ac14431b890f9b"
+    ]
+  },
+  "navigation_preparation": {
+    "kind": "real TrialService single draft before the business baseline",
+    "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-navigation-seed.json",
+    "sha256": "ca4bfeae4313d1b837842ff01e32400b5fd62e4b281876d09d9867c952830b9f",
+    "command_receipt": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-navigation-preparation/receipt.json"
+  },
+  "templates": [
+    {
+      "source": "templates/workbench/index.html",
+      "frozen": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/full-build/templates/workbench/index.html",
+      "bytes": 2096,
+      "sha256": "3db613d6debca730117e12423ae80e60b9fcd72f953282eb6b82c1b55a6bd960"
+    },
+    {
+      "source": "templates/workbench/recovery.html",
+      "frozen": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/full-build/templates/workbench/recovery.html",
+      "bytes": 10846,
+      "sha256": "72b904efa4ab70fdcaeb754f48e348566559a85601a985143cfeddc7e66efc6f"
+    },
+    {
+      "source": "templates/workbench/unavailable.html",
+      "frozen": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/full-build/templates/workbench/unavailable.html",
+      "bytes": 1802,
+      "sha256": "e21c36c389594bf61e9de7eaf3b037011e642f883620dbcbb6f4a347cdfc447d"
+    }
+  ],
+  "source_changes": [],
+  "source_binding": "unchanged_snapshot_not_final_HEAD",
+  "final_head_bound": false,
+  "complete": false,
+  "raw_reports": [
+    {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-result.json",
+      "sha256": "083214ff60bf21d65cd9bbbef0f0ef325aab35bc231e9b07d2ef8e5e4d732f8e"
+    },
+    {
+      "path": "/private/tmp/aps-final-foundation-B.xYPahs/F13-source9-copy-jNxcdz/fixtures/aps-workbench-live-if1sqobh/foundation-browser.json",
+      "sha256": "d13e22fabf989f88eb1a7e2cb5ef6e86b76172520ad40f3de41726d9fda43214"
+    }
+  ],
+  "next": "Keep V2 tests waiting for E fix plus a new complete source/build snapshot, then fresh owned copy and full 252. No old-snapshot blind rerun; no performance5000 now.",
+  "historical_92_unchanged": true,
+  "manual_visual_qa": {
+    "reviewed": 2,
+    "scope": "1392 light report restart failure and real draft direct URL",
+    "all_screenshots_manually_reviewed": false
+  }
+}
+

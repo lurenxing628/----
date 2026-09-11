@@ -1,0 +1,3162 @@
+{
+  "schema_version": 1,
+  "scope": "Unmodified real Main application responses only",
+  "browser": {
+    "path": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/foundation-browser.json",
+    "sha256": "419ad01afc555646d6b0d0b40b077d36cd51e9dbca214a054ef5df149e0fceed"
+  },
+  "case_count": 76,
+  "production_response_count": 156,
+  "api_response_source": {
+    "path": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/foundation-browser.json",
+    "sha256": "419ad01afc555646d6b0d0b40b077d36cd51e9dbca214a054ef5df149e0fceed",
+    "json_pointer": "/api_responses",
+    "filter": "phase == normal; each entry retains raw response file and sha256"
+  },
+  "cases": [
+    {
+      "index": 0,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-process",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-process.png",
+      "screenshot_sha256": "12238b1c9f88254d23292df615bdd3f1d376e2e7f60a8122be7b78f49adee3db"
+    },
+    {
+      "index": 1,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-batches",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-batches.png",
+      "screenshot_sha256": "995dce42df430809304246c2d43051beb53933249babe8dd089e81e90488fb08"
+    },
+    {
+      "index": 2,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-run",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-run.png",
+      "screenshot_sha256": "50cb97cbbc2494287e56eb362365a974865c99b5b716f582f1249835a56e5c72"
+    },
+    {
+      "index": 3,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-analysis",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-analysis.png",
+      "screenshot_sha256": "36dc5b997d2c0d4bd0567e6e71ba2dba50726cd0eca3906cf6acfaa99c2dd974"
+    },
+    {
+      "index": 4,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-trial",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-trial.png",
+      "screenshot_sha256": "78faceaaf500726bb279d586959945e483d601c05cf9b757a0d65b8f8965eb69"
+    },
+    {
+      "index": 5,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-gantt",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-gantt.png",
+      "screenshot_sha256": "69b0257963798cb1c22a1f99d79895c8428e7acfac9c009e4ecdfd759045aa35"
+    },
+    {
+      "index": 6,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-field",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-field.png",
+      "screenshot_sha256": "2d6600d66710391009dae2520309c77b186afac645f0d2b09895adc8bec104df"
+    },
+    {
+      "index": 7,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-fieldgantt",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-fieldgantt.png",
+      "screenshot_sha256": "29b5ff0379a3aae0803d4f32e4c14b1d6f9a0334c2ffaa794b42a2600be0460d"
+    },
+    {
+      "index": 8,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-review",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-review.png",
+      "screenshot_sha256": "d22fca8d76d979b7763f4a4a176642a9527f46a6b8c6134de19b704d53e7d2ba"
+    },
+    {
+      "index": 9,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-reports",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-reports.png",
+      "screenshot_sha256": "b9529e76484e96085be36f3f81e43215561192692b28490b31996ee5d7409018"
+    },
+    {
+      "index": 10,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-calib",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-calib.png",
+      "screenshot_sha256": "e244665087b703333adea7e9dcdbd5e9f79e4f44fe452de881f76a088885c64a"
+    },
+    {
+      "index": 11,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-dashboard",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-dashboard.png",
+      "screenshot_sha256": "98db169a64c46ef9fbedd1912d53f32eddc90b638a9d27927b072cd22632d7f1"
+    },
+    {
+      "index": 12,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-basedata",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-basedata.png",
+      "screenshot_sha256": "6ec1119e63d2ce1dfaf77d7d5987ac28dd0ba8369d8c5c375a3d665d340eb5d0"
+    },
+    {
+      "index": 13,
+      "state": "1392x924-light",
+      "kind": "first_view",
+      "name": "first-system",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/first-system.png",
+      "screenshot_sha256": "9f8884999e21397fe7e25bf61646c0d967b10bbfa8cd07b7f216336f051f1b6b"
+    },
+    {
+      "index": 14,
+      "state": "1392x924-light",
+      "kind": "interaction",
+      "name": "catalog-official-caption",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/catalog-official-caption.png",
+      "screenshot_sha256": "7d47473ccc208f6e076ca36dc48bdc863a60a2bae39924b4fcaeab1ceafbb2c1"
+    },
+    {
+      "index": 15,
+      "state": "1392x924-light",
+      "kind": "interaction",
+      "name": "delivery-risk-parent-navigation",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/delivery-risk-parent-navigation.png",
+      "screenshot_sha256": "f686781856acd2e4d3523a664f3445ffdcb92b3f0c2a053d05477bbfa2ce5b6c"
+    },
+    {
+      "index": 16,
+      "state": "1392x924-light",
+      "kind": "interaction",
+      "name": "real-typing-navigation-back-reload",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/real-typing-navigation-back-reload.png",
+      "screenshot_sha256": "198a9115be9630ecf6cdabfa2e89be73b8205a7a8aa4e5e86010953ecf7e6dca"
+    },
+    {
+      "index": 17,
+      "state": "1392x924-light",
+      "kind": "interaction",
+      "name": "theme-keyboard-focus-and-explicit-refresh",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/theme-keyboard-focus-and-explicit-refresh.png",
+      "screenshot_sha256": "d056ba3c609dbd76eb57baa806d9a49cd06005895253c694bc5f48514d16c072"
+    },
+    {
+      "index": 22,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-process",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-process.png",
+      "screenshot_sha256": "4f25e93505575d73939e0c493e7061aca20fe1ba92e9a3602a0f6f9c0e568895"
+    },
+    {
+      "index": 23,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-batches",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-batches.png",
+      "screenshot_sha256": "51725785af5b1fa4924869a83e3493a0846980a8dffe4b448123807dd5df364c"
+    },
+    {
+      "index": 24,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-run",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-run.png",
+      "screenshot_sha256": "892d69f52c0641fb9a2dc37a83e2be95b1bc18bc7c68d044167eadc8c51519eb"
+    },
+    {
+      "index": 25,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-analysis",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-analysis.png",
+      "screenshot_sha256": "9993c0dd90b190f027b63d856df17c80b051367347953b840b547be577032784"
+    },
+    {
+      "index": 26,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-trial",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-trial.png",
+      "screenshot_sha256": "395ee86263bb160589e563f19040cb8984761989395e469c03993932459c8e49"
+    },
+    {
+      "index": 27,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-gantt",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-gantt.png",
+      "screenshot_sha256": "3da924fdad9532288499327c17e2f804316fda4a46247297cdb001b9d86e870b"
+    },
+    {
+      "index": 28,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-field",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-field.png",
+      "screenshot_sha256": "d8c978c4fbfe1d19a203b5d260f3b6fc2e65e8b01bcd1e0035fd1d4daa976e82"
+    },
+    {
+      "index": 29,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-fieldgantt",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-fieldgantt.png",
+      "screenshot_sha256": "ddbfc0577279fbd9e733a818ebf28fb432232d233b6e39104948d661d4f6bf14"
+    },
+    {
+      "index": 30,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-review",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-review.png",
+      "screenshot_sha256": "f288e5bf7048e6d219c70eb161cfb58c6df99dde3313eaf538b44bdca3671e26"
+    },
+    {
+      "index": 31,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-reports",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-reports.png",
+      "screenshot_sha256": "d0561e28f2f32ea2040ba5c63890d2998a373758f04aea5c39fd5d52cb49a2e7"
+    },
+    {
+      "index": 32,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-calib",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-calib.png",
+      "screenshot_sha256": "7f8c16905cf0f130f6ff77e6131a347b93197e0e2e424cf510fc176421defe13"
+    },
+    {
+      "index": 33,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-dashboard",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-dashboard.png",
+      "screenshot_sha256": "0ceb52cc5140103e725a4d3a07b5fa3d88c783d039bd15cf462553c91a8869d7"
+    },
+    {
+      "index": 34,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-basedata",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-basedata.png",
+      "screenshot_sha256": "eef141e15ead2c7b8124e1a10a3e5122b030aea8b51bfb788072ba942df70fa2"
+    },
+    {
+      "index": 35,
+      "state": "1392x924-dark",
+      "kind": "first_view",
+      "name": "first-system",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/first-system.png",
+      "screenshot_sha256": "cc225286350a145802d5dd0d68bc7aa28f7b9cc890b8fab9ba898774017dd71b"
+    },
+    {
+      "index": 36,
+      "state": "1392x924-dark",
+      "kind": "interaction",
+      "name": "catalog-official-caption",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/catalog-official-caption.png",
+      "screenshot_sha256": "a6271df6e96cd5b2cc2209a44aa3833af2fb1b5903b1a5277b2b778823bb029a"
+    },
+    {
+      "index": 37,
+      "state": "1392x924-dark",
+      "kind": "interaction",
+      "name": "delivery-risk-parent-navigation",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/delivery-risk-parent-navigation.png",
+      "screenshot_sha256": "8d7ad3812ff352cd769b8d4b692fc783b443c280cd4d5208d61610e22b79c49e"
+    },
+    {
+      "index": 38,
+      "state": "1392x924-dark",
+      "kind": "interaction",
+      "name": "real-typing-navigation-back-reload",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/real-typing-navigation-back-reload.png",
+      "screenshot_sha256": "cb4477090cfa5a227f7d0334c2a34088b3db324f26fedae7c849f4de3478c646"
+    },
+    {
+      "index": 39,
+      "state": "1392x924-dark",
+      "kind": "interaction",
+      "name": "theme-keyboard-focus-and-explicit-refresh",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/theme-keyboard-focus-and-explicit-refresh.png",
+      "screenshot_sha256": "6214827c4081a5f64893f1eaec6b0ead27e93bcef16fe208988441571dfbcd20"
+    },
+    {
+      "index": 44,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-process",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-process.png",
+      "screenshot_sha256": "c68083f8683d6b89a3f9ebf7ca476b459b47f7503a8184bc5700a1c08bdc1fd7"
+    },
+    {
+      "index": 45,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-batches",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-batches.png",
+      "screenshot_sha256": "ce62cd8d4667f746d7840cc52fc6c3cdd436856c52a7644ae8a4819c5ee0fd12"
+    },
+    {
+      "index": 46,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-run",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-run.png",
+      "screenshot_sha256": "8397c97dbee676df7e28b20c9e3bb8569e6d3b4b662a3d928fd095b76d83e2c8"
+    },
+    {
+      "index": 47,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-analysis",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-analysis.png",
+      "screenshot_sha256": "b34cde4f4a5e5d1c3e988b61bfdd395eef16f226e6d8a26c6c228a520c3c5ffc"
+    },
+    {
+      "index": 48,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-trial",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-trial.png",
+      "screenshot_sha256": "b5817afd6ec85a29f53a9df67f10759690dd507f7fe9c11061b0d4a8e97c28ee"
+    },
+    {
+      "index": 49,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-gantt",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-gantt.png",
+      "screenshot_sha256": "f559e91050ea76b6e1881b5a3acae0346dc995a269f04a3dd297d31d6d0de997"
+    },
+    {
+      "index": 50,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-field",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-field.png",
+      "screenshot_sha256": "8a5d7a13450e613d6c8736c45e7ca34f65a87ac857a5d6a5dc8d01544f1cd6ac"
+    },
+    {
+      "index": 51,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-fieldgantt",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-fieldgantt.png",
+      "screenshot_sha256": "6ef6eb8ff627672405317340d957686e517c5efaae6e56093c9f1c1944ac5b37"
+    },
+    {
+      "index": 52,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-review",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-review.png",
+      "screenshot_sha256": "8b3f6a9a8f582b1b95e880f5970bb2b3bf16d0734f742f47f1473a8ffe996bd5"
+    },
+    {
+      "index": 53,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-reports",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-reports.png",
+      "screenshot_sha256": "b91ffa63a002787283ad99a28f2649d74ca9c8d89d76b5ed3f013346a285bcc6"
+    },
+    {
+      "index": 54,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-calib",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-calib.png",
+      "screenshot_sha256": "cad98e462ce4893b68bdf7547d89ff481886e6823a380f5ad62446aa8458b035"
+    },
+    {
+      "index": 55,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-dashboard",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-dashboard.png",
+      "screenshot_sha256": "6c59ecaf7505b29d5b9007ea81a771f67445e397632182f4ec2052bb3d526b48"
+    },
+    {
+      "index": 56,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-basedata",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-basedata.png",
+      "screenshot_sha256": "3a2fec4c1d32854d1c999f615d5799898328a126ba1df53bdfc203f9ae716c5f"
+    },
+    {
+      "index": 57,
+      "state": "1920x1080-light",
+      "kind": "first_view",
+      "name": "first-system",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/first-system.png",
+      "screenshot_sha256": "ab6fd8eb8188e649160a1ae9d540dafe080fd99cdb3ba67849c205a6a2574c76"
+    },
+    {
+      "index": 58,
+      "state": "1920x1080-light",
+      "kind": "interaction",
+      "name": "catalog-official-caption",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/catalog-official-caption.png",
+      "screenshot_sha256": "288402161f1dfc65c86e2a5dabb58040e3bd944c06189c7d8c973d97766e824b"
+    },
+    {
+      "index": 59,
+      "state": "1920x1080-light",
+      "kind": "interaction",
+      "name": "delivery-risk-parent-navigation",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/delivery-risk-parent-navigation.png",
+      "screenshot_sha256": "8e04fa4183b784b7838afba53945ab7cfe7248416b776e416c2fc18a567fc352"
+    },
+    {
+      "index": 60,
+      "state": "1920x1080-light",
+      "kind": "interaction",
+      "name": "real-typing-navigation-back-reload",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/real-typing-navigation-back-reload.png",
+      "screenshot_sha256": "8b8867ac37b628c3dbee8b9015584832be452da24a478bd51bab94ac7cc5035d"
+    },
+    {
+      "index": 61,
+      "state": "1920x1080-light",
+      "kind": "interaction",
+      "name": "theme-keyboard-focus-and-explicit-refresh",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/theme-keyboard-focus-and-explicit-refresh.png",
+      "screenshot_sha256": "09c44fe0085f53f90bbd7b8f2914c1cfd05b315c730e7ef5584b276f56546758"
+    },
+    {
+      "index": 66,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-process",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-process.png",
+      "screenshot_sha256": "ae4747940209223d13a9c68628c426ef480e0a0d9cfe1d8b382af0bc3e7299e3"
+    },
+    {
+      "index": 67,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-batches",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-batches.png",
+      "screenshot_sha256": "404ab282153876abea3023f0c5d06c743306c760075632b5e35d3edbba926ff8"
+    },
+    {
+      "index": 68,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-run",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-run.png",
+      "screenshot_sha256": "12c40d6bb4690d32b62e3b58396c7d098ac74380aba4d7aa641986b91602c0fa"
+    },
+    {
+      "index": 69,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-analysis",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-analysis.png",
+      "screenshot_sha256": "9add8ca1cd71b01d933d8d8c6c41dc4c6b139309b7790f3f6f386d378318da94"
+    },
+    {
+      "index": 70,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-trial",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-trial.png",
+      "screenshot_sha256": "54b690f765ffcafe42950be76bf03a28d08776487990b08a32eac87a6973d8ec"
+    },
+    {
+      "index": 71,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-gantt",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-gantt.png",
+      "screenshot_sha256": "0d8ebcf8b516b2817bb327d9bcbf5ca812c96bc455d550afb89dc65e82367c31"
+    },
+    {
+      "index": 72,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-field",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-field.png",
+      "screenshot_sha256": "331aae99925b38d2f8a6be1f87ec1fd42436ca982f998e1354f9ab512b0cb179"
+    },
+    {
+      "index": 73,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-fieldgantt",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-fieldgantt.png",
+      "screenshot_sha256": "c9f6cf06ad340d51d985d1e957ad22962302b29ad0c2b6788e9500d9f0d6252d"
+    },
+    {
+      "index": 74,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-review",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-review.png",
+      "screenshot_sha256": "65e8277006811c0c9fd00327fbd0a47e64fc65e0b5a2df4e82e7858048c2cfeb"
+    },
+    {
+      "index": 75,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-reports",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-reports.png",
+      "screenshot_sha256": "e9e85ab49648bd5c8e12c3e1c804cf0a208798f1d2d3a37289d4115eec83e5d1"
+    },
+    {
+      "index": 76,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-calib",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-calib.png",
+      "screenshot_sha256": "e90199707db1aa1166b00c67dfe194e351be717a7eaa4e2dbd28215ff0d272a9"
+    },
+    {
+      "index": 77,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-dashboard",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-dashboard.png",
+      "screenshot_sha256": "be1673fdedaf0e119f4062e9a0da47b0beef0f2bb81f84fc00145ed053d587ad"
+    },
+    {
+      "index": 78,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-basedata",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-basedata.png",
+      "screenshot_sha256": "bbf67cfa04aaa34c7c1718b8884b90390b12a87da7b379e8474cb23474a0d4eb"
+    },
+    {
+      "index": 79,
+      "state": "1920x1080-dark",
+      "kind": "first_view",
+      "name": "first-system",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/first-system.png",
+      "screenshot_sha256": "bed55bac74f45401e4e6670d7be1ea29d392e5b78a2912d30a8424385c5d8879"
+    },
+    {
+      "index": 80,
+      "state": "1920x1080-dark",
+      "kind": "interaction",
+      "name": "catalog-official-caption",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/catalog-official-caption.png",
+      "screenshot_sha256": "a6adf2008994bf0149af743523388f77bfe43e049743e0d8c5b9fed6ccd665f3"
+    },
+    {
+      "index": 81,
+      "state": "1920x1080-dark",
+      "kind": "interaction",
+      "name": "delivery-risk-parent-navigation",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/delivery-risk-parent-navigation.png",
+      "screenshot_sha256": "a8c2f06b643852c495b4b98650b8b7acb9b51234551dbf0a0d78a2c334c2694a"
+    },
+    {
+      "index": 82,
+      "state": "1920x1080-dark",
+      "kind": "interaction",
+      "name": "real-typing-navigation-back-reload",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/real-typing-navigation-back-reload.png",
+      "screenshot_sha256": "51229759b3d48a856d307ba048b48129344b27e3d46f46fadf41f1e05a125002"
+    },
+    {
+      "index": 83,
+      "state": "1920x1080-dark",
+      "kind": "interaction",
+      "name": "theme-keyboard-focus-and-explicit-refresh",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/theme-keyboard-focus-and-explicit-refresh.png",
+      "screenshot_sha256": "822bb5d32680fdd45da9a5c91e4d7f3b48e603fafd8381e1b4fbe52eaf269cf0"
+    },
+    {
+      "index": 88,
+      "state": "1392x924-light",
+      "kind": "host_restart",
+      "name": "same-page-context-after-host-restart",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-light/same-page-context-after-host-restart.png",
+      "screenshot_sha256": "91f540b4e5960dbf0b2591693fb62e27acfcfe92ae9e524407c7f3112a76ac3c"
+    },
+    {
+      "index": 89,
+      "state": "1392x924-dark",
+      "kind": "host_restart",
+      "name": "same-page-context-after-host-restart",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1392x924-dark/same-page-context-after-host-restart.png",
+      "screenshot_sha256": "2644a7034bb5aff798dd4ce39a56d217a8df2f63fdf069dd6641a5eaa1df84b4"
+    },
+    {
+      "index": 90,
+      "state": "1920x1080-light",
+      "kind": "host_restart",
+      "name": "same-page-context-after-host-restart",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-light/same-page-context-after-host-restart.png",
+      "screenshot_sha256": "21ddd640329c52766a159a1ae56ac53bb0740e06aa67221cb7b676eb1172b80d"
+    },
+    {
+      "index": 91,
+      "state": "1920x1080-dark",
+      "kind": "host_restart",
+      "name": "same-page-context-after-host-restart",
+      "status": "passed",
+      "screenshot": "/private/tmp/aps-final-foundation-B.xYPahs/aps-workbench-live-2y19rdw0/screenshots/1920x1080-dark/same-page-context-after-host-restart.png",
+      "screenshot_sha256": "32115a1c2e7cbc0e917483b9324678bca669894cdc56ca0952d6beb49bd2cc9c"
+    }
+  ],
+  "trusted_typing": [
+    {
+      "state": "1392x924-light",
+      "typed": [
+        {
+          "state": "1392x924-light",
+          "phase": "normal",
+          "key": "C",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "",
+          "selection_start": 0,
+          "selection_end": 0
+        },
+        {
+          "state": "1392x924-light",
+          "phase": "normal",
+          "key": "A",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "C",
+          "selection_start": 1,
+          "selection_end": 1
+        },
+        {
+          "state": "1392x924-light",
+          "phase": "normal",
+          "key": "T",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "CA",
+          "selection_start": 2,
+          "selection_end": 2
+        },
+        {
+          "state": "1392x924-light",
+          "phase": "normal",
+          "key": "-",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "CAT",
+          "selection_start": 3,
+          "selection_end": 3
+        },
+        {
+          "state": "1392x924-light",
+          "phase": "normal",
+          "key": "B",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "CAT-",
+          "selection_start": 4,
+          "selection_end": 4
+        }
+      ],
+      "saved": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "nZVRTwcw1J9dEb-lHupbYppr-0k4W_5A"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "reloaded": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "nZVRTwcw1J9dEb-lHupbYppr-0k4W_5A"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1392x924-dark",
+      "typed": [
+        {
+          "state": "1392x924-dark",
+          "phase": "normal",
+          "key": "C",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "",
+          "selection_start": 0,
+          "selection_end": 0
+        },
+        {
+          "state": "1392x924-dark",
+          "phase": "normal",
+          "key": "A",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "C",
+          "selection_start": 1,
+          "selection_end": 1
+        },
+        {
+          "state": "1392x924-dark",
+          "phase": "normal",
+          "key": "T",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "CA",
+          "selection_start": 2,
+          "selection_end": 2
+        },
+        {
+          "state": "1392x924-dark",
+          "phase": "normal",
+          "key": "-",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "CAT",
+          "selection_start": 3,
+          "selection_end": 3
+        },
+        {
+          "state": "1392x924-dark",
+          "phase": "normal",
+          "key": "B",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "CAT-",
+          "selection_start": 4,
+          "selection_end": 4
+        }
+      ],
+      "saved": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "7w6Y5pLl48DkcR_lvHKQ1Ic7xC_BYC_D"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "reloaded": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "7w6Y5pLl48DkcR_lvHKQ1Ic7xC_BYC_D"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-light",
+      "typed": [
+        {
+          "state": "1920x1080-light",
+          "phase": "normal",
+          "key": "C",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "",
+          "selection_start": 0,
+          "selection_end": 0
+        },
+        {
+          "state": "1920x1080-light",
+          "phase": "normal",
+          "key": "A",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "C",
+          "selection_start": 1,
+          "selection_end": 1
+        },
+        {
+          "state": "1920x1080-light",
+          "phase": "normal",
+          "key": "T",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "CA",
+          "selection_start": 2,
+          "selection_end": 2
+        },
+        {
+          "state": "1920x1080-light",
+          "phase": "normal",
+          "key": "-",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "CAT",
+          "selection_start": 3,
+          "selection_end": 3
+        },
+        {
+          "state": "1920x1080-light",
+          "phase": "normal",
+          "key": "B",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "CAT-",
+          "selection_start": 4,
+          "selection_end": 4
+        }
+      ],
+      "saved": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "Zq5gungl87rHqWx6zLUEMmlFX2mnDsz5"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "reloaded": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "Zq5gungl87rHqWx6zLUEMmlFX2mnDsz5"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-dark",
+      "typed": [
+        {
+          "state": "1920x1080-dark",
+          "phase": "normal",
+          "key": "C",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "",
+          "selection_start": 0,
+          "selection_end": 0
+        },
+        {
+          "state": "1920x1080-dark",
+          "phase": "normal",
+          "key": "A",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "C",
+          "selection_start": 1,
+          "selection_end": 1
+        },
+        {
+          "state": "1920x1080-dark",
+          "phase": "normal",
+          "key": "T",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "CA",
+          "selection_start": 2,
+          "selection_end": 2
+        },
+        {
+          "state": "1920x1080-dark",
+          "phase": "normal",
+          "key": "-",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "CAT",
+          "selection_start": 3,
+          "selection_end": 3
+        },
+        {
+          "state": "1920x1080-dark",
+          "phase": "normal",
+          "key": "B",
+          "trusted": true,
+          "label": "搜索批次、工序、设备、人员",
+          "value_before": "CAT-",
+          "selection_start": 4,
+          "selection_end": 4
+        }
+      ],
+      "saved": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "4HPZPL8Qo6UuyldS5044Asb4_Fj2iAr6"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "reloaded": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "4HPZPL8Qo6UuyldS5044Asb4_Fj2iAr6"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    }
+  ],
+  "input_states": [
+    {
+      "state": "1392x924-light",
+      "phase": "normal",
+      "data": "C",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "C",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "C",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "C",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 1,
+          "selection_end": 1
+        }
+      ]
+    },
+    {
+      "state": "1392x924-light",
+      "phase": "normal",
+      "data": "A",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CA",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CA",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CA",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 2,
+          "selection_end": 2
+        }
+      ]
+    },
+    {
+      "state": "1392x924-light",
+      "phase": "normal",
+      "data": "T",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CAT",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CAT",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CAT",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 3,
+          "selection_end": 3
+        }
+      ]
+    },
+    {
+      "state": "1392x924-light",
+      "phase": "normal",
+      "data": "-",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CAT-",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CAT-",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CAT-",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 4,
+          "selection_end": 4
+        }
+      ]
+    },
+    {
+      "state": "1392x924-light",
+      "phase": "normal",
+      "data": "B",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CAT-B",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CAT-B",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CAT-B",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 5,
+          "selection_end": 5
+        }
+      ]
+    },
+    {
+      "state": "1392x924-dark",
+      "phase": "normal",
+      "data": "C",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "C",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "C",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "C",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 1,
+          "selection_end": 1
+        }
+      ]
+    },
+    {
+      "state": "1392x924-dark",
+      "phase": "normal",
+      "data": "A",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CA",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CA",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CA",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 2,
+          "selection_end": 2
+        }
+      ]
+    },
+    {
+      "state": "1392x924-dark",
+      "phase": "normal",
+      "data": "T",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CAT",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CAT",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CAT",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 3,
+          "selection_end": 3
+        }
+      ]
+    },
+    {
+      "state": "1392x924-dark",
+      "phase": "normal",
+      "data": "-",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CAT-",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CAT-",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CAT-",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 4,
+          "selection_end": 4
+        }
+      ]
+    },
+    {
+      "state": "1392x924-dark",
+      "phase": "normal",
+      "data": "B",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CAT-B",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CAT-B",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CAT-B",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 5,
+          "selection_end": 5
+        }
+      ]
+    },
+    {
+      "state": "1920x1080-light",
+      "phase": "normal",
+      "data": "C",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "C",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "C",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "C",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 1,
+          "selection_end": 1
+        }
+      ]
+    },
+    {
+      "state": "1920x1080-light",
+      "phase": "normal",
+      "data": "A",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CA",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CA",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CA",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 2,
+          "selection_end": 2
+        }
+      ]
+    },
+    {
+      "state": "1920x1080-light",
+      "phase": "normal",
+      "data": "T",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CAT",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CAT",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CAT",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 3,
+          "selection_end": 3
+        }
+      ]
+    },
+    {
+      "state": "1920x1080-light",
+      "phase": "normal",
+      "data": "-",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CAT-",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CAT-",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CAT-",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 4,
+          "selection_end": 4
+        }
+      ]
+    },
+    {
+      "state": "1920x1080-light",
+      "phase": "normal",
+      "data": "B",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CAT-B",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CAT-B",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CAT-B",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 5,
+          "selection_end": 5
+        }
+      ]
+    },
+    {
+      "state": "1920x1080-dark",
+      "phase": "normal",
+      "data": "C",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "C",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "C",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "C",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 1,
+          "selection_end": 1
+        }
+      ]
+    },
+    {
+      "state": "1920x1080-dark",
+      "phase": "normal",
+      "data": "A",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CA",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CA",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CA",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 2,
+          "selection_end": 2
+        }
+      ]
+    },
+    {
+      "state": "1920x1080-dark",
+      "phase": "normal",
+      "data": "T",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CAT",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CAT",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CAT",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 3,
+          "selection_end": 3
+        }
+      ]
+    },
+    {
+      "state": "1920x1080-dark",
+      "phase": "normal",
+      "data": "-",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CAT-",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CAT-",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CAT-",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 4,
+          "selection_end": 4
+        }
+      ]
+    },
+    {
+      "state": "1920x1080-dark",
+      "phase": "normal",
+      "data": "B",
+      "input_type": "insertText",
+      "trusted": true,
+      "value_at_event": "CAT-B",
+      "label": "搜索批次、工序、设备、人员",
+      "query": "CAT-B",
+      "original_connected": true,
+      "original_focused": true,
+      "gantt_count": 1,
+      "searchboxes": [
+        {
+          "value": "CAT-B",
+          "label": "搜索批次、工序、设备、人员",
+          "focused": true,
+          "selection_start": 5,
+          "selection_end": 5
+        }
+      ]
+    }
+  ],
+  "scroll_actions": [
+    {
+      "state": "1392x924-light",
+      "before": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "nZVRTwcw1J9dEb-lHupbYppr-0k4W_5A"
+          },
+          "key": 18,
+          "scroll": {}
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 0,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "after": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "nZVRTwcw1J9dEb-lHupbYppr-0k4W_5A"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1392x924-light",
+      "before": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 0,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 0,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "after": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1392x924-dark",
+      "before": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "7w6Y5pLl48DkcR_lvHKQ1Ic7xC_BYC_D"
+          },
+          "key": 18,
+          "scroll": {}
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 0,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "after": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "7w6Y5pLl48DkcR_lvHKQ1Ic7xC_BYC_D"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1392x924-dark",
+      "before": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 0,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 0,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "after": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-light",
+      "before": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "Zq5gungl87rHqWx6zLUEMmlFX2mnDsz5"
+          },
+          "key": 18,
+          "scroll": {}
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 0,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "after": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "Zq5gungl87rHqWx6zLUEMmlFX2mnDsz5"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-light",
+      "before": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 0,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 0,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "after": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-dark",
+      "before": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "4HPZPL8Qo6UuyldS5044Asb4_Fj2iAr6"
+          },
+          "key": 18,
+          "scroll": {}
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 0,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "after": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "4HPZPL8Qo6UuyldS5044Asb4_Fj2iAr6"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-dark",
+      "before": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 0,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 0,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "after": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    }
+  ],
+  "restoration_observations": [
+    {
+      "state": "1392x924-light",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "nZVRTwcw1J9dEb-lHupbYppr-0k4W_5A"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "nZVRTwcw1J9dEb-lHupbYppr-0k4W_5A"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1392x924-light",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "nZVRTwcw1J9dEb-lHupbYppr-0k4W_5A"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "nZVRTwcw1J9dEb-lHupbYppr-0k4W_5A"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1392x924-light",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "nZVRTwcw1J9dEb-lHupbYppr-0k4W_5A"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "nZVRTwcw1J9dEb-lHupbYppr-0k4W_5A"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1392x924-dark",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "7w6Y5pLl48DkcR_lvHKQ1Ic7xC_BYC_D"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "7w6Y5pLl48DkcR_lvHKQ1Ic7xC_BYC_D"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1392x924-dark",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "7w6Y5pLl48DkcR_lvHKQ1Ic7xC_BYC_D"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "7w6Y5pLl48DkcR_lvHKQ1Ic7xC_BYC_D"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1392x924-dark",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "7w6Y5pLl48DkcR_lvHKQ1Ic7xC_BYC_D"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "7w6Y5pLl48DkcR_lvHKQ1Ic7xC_BYC_D"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-light",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "Zq5gungl87rHqWx6zLUEMmlFX2mnDsz5"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "Zq5gungl87rHqWx6zLUEMmlFX2mnDsz5"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-light",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "Zq5gungl87rHqWx6zLUEMmlFX2mnDsz5"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "Zq5gungl87rHqWx6zLUEMmlFX2mnDsz5"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-light",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "Zq5gungl87rHqWx6zLUEMmlFX2mnDsz5"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "Zq5gungl87rHqWx6zLUEMmlFX2mnDsz5"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-dark",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "4HPZPL8Qo6UuyldS5044Asb4_Fj2iAr6"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "4HPZPL8Qo6UuyldS5044Asb4_Fj2iAr6"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-dark",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "4HPZPL8Qo6UuyldS5044Asb4_Fj2iAr6"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "4HPZPL8Qo6UuyldS5044Asb4_Fj2iAr6"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-dark",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "4HPZPL8Qo6UuyldS5044Asb4_Fj2iAr6"
+          },
+          "key": 18,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B",
+            "snapshot_ref": "4HPZPL8Qo6UuyldS5044Asb4_Fj2iAr6"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1392x924-light",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1392x924-dark",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-light",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "light",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    },
+    {
+      "state": "1920x1080-dark",
+      "expected": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      },
+      "actual": {
+        "url": "http://127.0.0.1:53263/workbench?view=gantt",
+        "route": {
+          "view": "gantt",
+          "context": {
+            "plan_ref": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+            "query": "CAT-B"
+          },
+          "key": 20,
+          "scroll": {
+            "windowTop": 360,
+            "windowLeft": 0,
+            "mainTop": 0,
+            "mainLeft": 0
+          }
+        },
+        "theme": "dark",
+        "scroll": {
+          "mainTop": 0,
+          "mainLeft": 0,
+          "windowTop": 360,
+          "windowLeft": 0
+        },
+        "caption": {
+          "reference": "2569aceeff902d1e2c0c9f35ead55e9a6b0e291596afdc48",
+          "text": "当前方案\nadopted label\n当前正式\n正式 v3\n计划时间范围：2026-09-07 08:00:00 → 2026-09-07 08:15:00（不含结束时刻）"
+        },
+        "query": "CAT-B"
+      }
+    }
+  ],
+  "fonts": [
+    {
+      "state": "1392x924-light",
+      "bytes": 15044440,
+      "sha256": "c3c0e7bbcec69ee4765a53831c7be310acaca1ec1b408974ca4f4c73c1aa400c",
+      "body_capture": "same browser response, CDP 32 MiB per-resource buffer"
+    },
+    {
+      "state": "1392x924-light",
+      "bytes": 15044440,
+      "sha256": "c3c0e7bbcec69ee4765a53831c7be310acaca1ec1b408974ca4f4c73c1aa400c",
+      "body_capture": "same browser response, CDP 32 MiB per-resource buffer"
+    },
+    {
+      "state": "1392x924-dark",
+      "bytes": 15044440,
+      "sha256": "c3c0e7bbcec69ee4765a53831c7be310acaca1ec1b408974ca4f4c73c1aa400c",
+      "body_capture": "same browser response, CDP 32 MiB per-resource buffer"
+    },
+    {
+      "state": "1392x924-dark",
+      "bytes": 15044440,
+      "sha256": "c3c0e7bbcec69ee4765a53831c7be310acaca1ec1b408974ca4f4c73c1aa400c",
+      "body_capture": "same browser response, CDP 32 MiB per-resource buffer"
+    },
+    {
+      "state": "1920x1080-light",
+      "bytes": 15044440,
+      "sha256": "c3c0e7bbcec69ee4765a53831c7be310acaca1ec1b408974ca4f4c73c1aa400c",
+      "body_capture": "same browser response, CDP 32 MiB per-resource buffer"
+    },
+    {
+      "state": "1920x1080-light",
+      "bytes": 15044440,
+      "sha256": "c3c0e7bbcec69ee4765a53831c7be310acaca1ec1b408974ca4f4c73c1aa400c",
+      "body_capture": "same browser response, CDP 32 MiB per-resource buffer"
+    },
+    {
+      "state": "1920x1080-dark",
+      "bytes": 15044440,
+      "sha256": "c3c0e7bbcec69ee4765a53831c7be310acaca1ec1b408974ca4f4c73c1aa400c",
+      "body_capture": "same browser response, CDP 32 MiB per-resource buffer"
+    },
+    {
+      "state": "1920x1080-dark",
+      "bytes": 15044440,
+      "sha256": "c3c0e7bbcec69ee4765a53831c7be310acaca1ec1b408974ca4f4c73c1aa400c",
+      "body_capture": "same browser response, CDP 32 MiB per-resource buffer"
+    },
+    {
+      "state": "1392x924-light",
+      "bytes": 15044440,
+      "sha256": "c3c0e7bbcec69ee4765a53831c7be310acaca1ec1b408974ca4f4c73c1aa400c",
+      "body_capture": "same browser response, CDP 32 MiB per-resource buffer"
+    },
+    {
+      "state": "1392x924-dark",
+      "bytes": 15044440,
+      "sha256": "c3c0e7bbcec69ee4765a53831c7be310acaca1ec1b408974ca4f4c73c1aa400c",
+      "body_capture": "same browser response, CDP 32 MiB per-resource buffer"
+    },
+    {
+      "state": "1920x1080-light",
+      "bytes": 15044440,
+      "sha256": "c3c0e7bbcec69ee4765a53831c7be310acaca1ec1b408974ca4f4c73c1aa400c",
+      "body_capture": "same browser response, CDP 32 MiB per-resource buffer"
+    },
+    {
+      "state": "1920x1080-dark",
+      "bytes": 15044440,
+      "sha256": "c3c0e7bbcec69ee4765a53831c7be310acaca1ec1b408974ca4f4c73c1aa400c",
+      "body_capture": "same browser response, CDP 32 MiB per-resource buffer"
+    }
+  ],
+  "normal_errors": [],
+  "external_requests": []
+}

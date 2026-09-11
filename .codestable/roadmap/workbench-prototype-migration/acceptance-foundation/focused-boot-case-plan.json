@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "status": "executable_unit_verified_not_live_verified",
+  "group": "boot",
+  "matrix": [
+    "1392x924-light",
+    "1392x924-dark",
+    "1920x1080-light",
+    "1920x1080-dark"
+  ],
+  "expected_cases": 40,
+  "cases": [
+    {
+      "id": "boot-null",
+      "mode": "replace-boot",
+      "value": null
+    },
+    {
+      "id": "boot-array",
+      "mode": "replace-boot",
+      "value": []
+    },
+    {
+      "id": "messages-null",
+      "mode": "replace-messages",
+      "value": null
+    },
+    {
+      "id": "messages-object",
+      "mode": "replace-messages",
+      "value": {}
+    },
+    {
+      "id": "messages-string",
+      "mode": "replace-messages",
+      "value": "not-an-array"
+    },
+    {
+      "id": "messages-item-null",
+      "mode": "replace-messages",
+      "value": [
+        null
+      ]
+    },
+    {
+      "id": "messages-missing-category",
+      "mode": "replace-messages",
+      "value": [
+        {
+          "message": "fixture message"
+        }
+      ]
+    },
+    {
+      "id": "messages-missing-message",
+      "mode": "replace-messages",
+      "value": [
+        {
+          "category": "info"
+        }
+      ]
+    },
+    {
+      "id": "messages-category-number",
+      "mode": "replace-messages",
+      "value": [
+        {
+          "category": 1,
+          "message": "fixture message"
+        }
+      ]
+    },
+    {
+      "id": "messages-message-number",
+      "mode": "replace-messages",
+      "value": [
+        {
+          "category": "info",
+          "message": 1
+        }
+      ]
+    }
+  ],
+  "assertions": [
+    "Inject exactly one actual boot script; record original/injected HTML SHA and a real handler hit",
+    "Readable alert and reload link, not blank pixels; early Main bootstrap does not require synthetic 14-entry navigation",
+    "Remove injection and click the actual reload link; recover full Main shell and cross-page navigation"
+  ],
+  "business_success_evidence": false,
+  "browser_executed": false,
+  "legal_messages_ownership": "Main/G: real legacy POST redirect, escaped text, independent dismissal, clear on navigation, unknown category neutral. B does not substitute injected faults for this business evidence."
+}
+

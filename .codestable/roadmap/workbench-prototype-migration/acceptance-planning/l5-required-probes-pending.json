@@ -1,0 +1,225 @@
+{
+  "schema_version": 1,
+  "status": "not_run_waiting_for_Main_unified_frozen_window",
+  "source_root": "/Users/lurenxing/GitHub/----",
+  "tested_ANA_allowlist": {
+    "path": ".codestable/roadmap/workbench-prototype-migration/acceptance-planning/ana-tested-tests-allowlist.json",
+    "sha256": "26704ec3f4fb3932e16e2fafd818518faced0e68c7ea7628401f796a1c876e64",
+    "mixed_with_this_delta": false
+  },
+  "files": [
+    {
+      "path": "tests/workbench/final_planning_seed.py",
+      "bytes": 2932,
+      "sha256": "a3583e7356f80ca50a81277ffb38362ee4fa6fdc58a475596a877c27bf3deed0",
+      "mode": 420,
+      "base_ana_sha256": "f42e88cafd34317cf449f5fa7afe2278cbd45b47448c40c682583aa0a0d70c39"
+    },
+    {
+      "path": "tests/workbench/final_planning_server.py",
+      "bytes": 1549,
+      "sha256": "ac2e80317393beccf59195e279bf02fe2d206da50afe1ccf3a8c78c30b379c13",
+      "mode": 420,
+      "base_ana_sha256": "14373410df6f558f07356690964d6810b155cc29f6e65eecd53919aabf4ad05c"
+    },
+    {
+      "path": "tests/workbench/final_planning_browser.cjs",
+      "bytes": 12708,
+      "sha256": "e370a8383b2efffeca479f38d7bcf9200ed83c7a7f3e1aad5fb243fe4c349018",
+      "mode": 420,
+      "base_ana_sha256": "d6386f9e65de7bda57753fea182d7a9e5c9e3564c74f201d361de01c238e5898"
+    },
+    {
+      "path": "tests/workbench/final_planning_required_seed.py",
+      "bytes": 3474,
+      "sha256": "d652d5d8720618232b18a34523b7d0944a4df47c5d759af37c56a41fcf3cb6f8",
+      "mode": 420,
+      "base_ana_sha256": null
+    },
+    {
+      "path": "tests/workbench/final_planning_required_actions.cjs",
+      "bytes": 7926,
+      "sha256": "d72bc9d125fd33594ff71457423cbe2e22c94d7870f94a4d1688a9787e0c31e4",
+      "mode": 420,
+      "base_ana_sha256": null
+    },
+    {
+      "path": "tests/workbench/final_planning_required_stale.cjs",
+      "bytes": 7266,
+      "sha256": "364c3748b106dadf85a8128e193d778fa66adb14bbd6072667ceea532e037799",
+      "mode": 420,
+      "base_ana_sha256": null
+    },
+    {
+      "path": "tests/workbench/test_final_planning_required.py",
+      "bytes": 2778,
+      "sha256": "6c3238b3adeaa0439562a7baba887c88de96e27ac44a6b5c33e51f0cf13653ed",
+      "mode": 420,
+      "base_ana_sha256": null
+    }
+  ],
+  "test_target": "tests/workbench/test_final_planning_required.py::test_required_planning_branches_on_real_persistent_inputs",
+  "cases": [
+    {
+      "case": "readonly",
+      "action_ids": [
+        "WBP-RUN-007.no-result",
+        "WBP-GANTT-002.conflict-track",
+        "WBP-TRIAL-011.export-failure"
+      ],
+      "checks": [
+        "Real service admission, actual worker fact-drift failure persisted before host startup; no hand-authored run record.",
+        "Original B1 and B2 official rows overlap by 0.25 hours in the persisted fixture; actual occupancy response and separate DOM tracks must agree.",
+        "One intercepted createObjectURL call delegates null to the original native Chromium API, catches its actual TypeError, restores the API, and explicitly retries; no offline substitute or mocked business DTO.",
+        "The read-only case uses only GET from the browser and compares all persisted tables before and after."
+      ]
+    },
+    {
+      "case": "stale",
+      "action_ids": [
+        "WBP-TRIAL-007.stale-conflict"
+      ],
+      "checks": [
+        "Real admission and worker result produce a complete candidate, then real trial create/save produce the original scenario before startup.",
+        "The original page obtains a valid scenario preview; another real page performs new preflight, run, worker completion and candidate adoption.",
+        "The old scenario POST must return 409 snapshot_stale and committed=false; all tables and schema must be byte-equal in canonical snapshots around the rejection.",
+        "F5 keeps the original scenario, request key, reason and operator; re-preview remains blocked, with no substitution of the newer plan."
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "width": 1920,
+      "theme": "light"
+    },
+    {
+      "width": 1920,
+      "theme": "dark"
+    },
+    {
+      "width": 1392,
+      "theme": "light"
+    },
+    {
+      "width": 1392,
+      "theme": "dark"
+    }
+  ],
+  "static_checks": {
+    "python38_ast": {
+      "files": 4,
+      "status": "passed"
+    },
+    "node_check": {
+      "files": 3,
+      "status": "passed"
+    },
+    "ruff": {
+      "files": 4,
+      "status": "passed"
+    },
+    "pytest": "not_run",
+    "build": "not_run",
+    "application_host": "not_started"
+  },
+  "source_judgment": {
+    "fixed_source_root": "/private/tmp/aps-final-d-source-ana-7Pj1pV/source",
+    "bounded_product_checks": [
+      {
+        "path": "frontend/workbench/app/RunJobControls.jsx",
+        "fixed_sha256": "5158912d4677a586017f898b215072daba8f655ea2d8de2bddddc93bff33fd4f",
+        "matches_observed_worktree": true
+      },
+      {
+        "path": "frontend/workbench/app/SchedulingWorkspace.jsx",
+        "fixed_sha256": "48425ec31bdd2b5b34df7f2cf493fe5713bcecc62f86da68d88fc1f52fb05c2c",
+        "matches_observed_worktree": true
+      },
+      {
+        "path": "frontend/workbench/app/PlanDetailsUI.jsx",
+        "fixed_sha256": "8cfefc2122ab4578bae0aab1e5b9d48570f262addbb438805b0fa24884a93924",
+        "matches_observed_worktree": true
+      },
+      {
+        "path": "frontend/workbench/app/PlanGantt.jsx",
+        "fixed_sha256": "03d921bf2be7f9facbcfd5c79b53634b27d18ecddc52f3673306e1d2ce3866c7",
+        "matches_observed_worktree": true
+      },
+      {
+        "path": "frontend/workbench/app/PlanGanttModel.js",
+        "fixed_sha256": "57d86aa11b330b87924634eaaf71e6bfdacfd53ae90a0d7aa9e5518fa0099b3d",
+        "matches_observed_worktree": true
+      },
+      {
+        "path": "frontend/workbench/app/TrialGantt.jsx",
+        "fixed_sha256": "4aa3119ed88a3f292492c0d074d51113e3a2acffd65ae6419377c4f7754c62ac",
+        "matches_observed_worktree": true
+      },
+      {
+        "path": "frontend/workbench/app/TrialResults.jsx",
+        "fixed_sha256": "fc03c488239b352dadbcdc20c427d984cbd04e6e9aa99947d358dd40d7fe32cc",
+        "matches_observed_worktree": true
+      },
+      {
+        "path": "frontend/workbench/app/TrialAdoptionHistoryState.js",
+        "fixed_sha256": "54b2d8c77cb6c31cdafe072025ed89ccbc3c98ae7da4e94d80e245d5a942b8f7",
+        "matches_observed_worktree": true
+      },
+      {
+        "path": "frontend/workbench/app/TrialControls.jsx",
+        "fixed_sha256": "74fc9132df6e032267b965ab027c006ae8bddf5a4ef5b75be1d9a7576bc4a505",
+        "matches_observed_worktree": true
+      },
+      {
+        "path": "core/services/workbench/trial_adoption.py",
+        "fixed_sha256": "8dc2658811d0d622765db4021efcf077c11d33a8d0620c6a70287128082e503d",
+        "matches_observed_worktree": true
+      },
+      {
+        "path": "core/services/workbench/trial_adoption_validation.py",
+        "fixed_sha256": "adc210a6e18da99a6cc5fb8f5bd9b0332790ab5fff8b1d839075dd3a859c641f",
+        "matches_observed_worktree": true
+      },
+      {
+        "path": "frontend/workbench/app/TrialAdoptionState.js",
+        "fixed_sha256": "86a93adfe12a227f547e52bad1f3dae554d692c0c5a5b7faf38150cb088d2055",
+        "matches_observed_worktree": true
+      }
+    ],
+    "scope": "Only the five known K gaps and explicitly promised trial view-state recovery; not a review of the 141 passed actions."
+  },
+  "product_fixes_pending_Main_confirmation": [
+    {
+      "blocks": [
+        "WBP-DELAY-004.conflicts"
+      ],
+      "paths": [
+        "frontend/workbench/app/PlanDetailsUI.jsx",
+        "frontend/workbench/app/PlanWorkspace.jsx"
+      ],
+      "change": "Read-only conflict details from the current occupancy projection; caller enables the detail only on the delay view. No new backend fact, root-cause inference, or write contract."
+    },
+    {
+      "blocks": [
+        "WBP-TRIAL-003.mode",
+        "WBP-TRIAL-003.baseline",
+        "WBP-TRIAL-003.only-changed",
+        "WBP-TRIAL-003.search",
+        "WBP-TRIAL-010.tabs",
+        "WBP-TRIAL-010.keyboard"
+      ],
+      "paths": [
+        "frontend/workbench/app/TrialViewState.js",
+        "frontend/workbench/app/TrialGantt.jsx",
+        "frontend/workbench/app/TrialResults.jsx"
+      ],
+      "change": "Proposed new view-only LS leaf keyed by original draft or scenario identity, consumed by the two existing views. Do not store write tokens, suppress storage errors, or remove existing history-state recovery. Main owns shared build-order and fixture loading integration."
+    }
+  ],
+  "limits": [
+    "These are test source preparations, not executed evidence or product fixes.",
+    "The two product gaps require approval before implementation and their own bounded probes after the contract is agreed.",
+    "The old ANA binding, 959 capsule, all old evidence and all P statuses remain unchanged.",
+    "No new full matrix, application host, build, Git write or production database operation was run."
+  ]
+}

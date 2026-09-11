@@ -1,0 +1,1154 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-10",
+  "stage": "G private factory acceptance after SELECT layer and directory-cycle extraction",
+  "root": "/private/tmp/aps-g-retirement-candidate-u8YnDE",
+  "head_at_final_read": "21134f739c192aca45cee9356d13138f1c658953",
+  "worktree_proof": "dirty targeted frozen-source proof, not clean-worktree or full-gate proof",
+  "manifests": {
+    "candidate": {
+      "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/candidate-manifest.json",
+      "bytes": 808058,
+      "sha256": "0e84e65358636f8a5141ca91cc367043687b0dbcf6c2939fd954c916b634cf74",
+      "aggregate_sha256": "e74e6dce3c8a196433692084dbdc4d94f3f9c4b79e952bc352c0e7ed8714b85b",
+      "files": 3927,
+      "total_bytes": 92948312,
+      "python_files": 2681,
+      "scope": {
+        "mode": "repo-code-local-assets-and-tests",
+        "roots": [
+          "assets",
+          "audit",
+          "core",
+          "data",
+          "desktop",
+          "docs",
+          "frontend",
+          "installer",
+          "plugins",
+          "scripts",
+          "static",
+          "templates",
+          "tests",
+          "tools",
+          "vendor",
+          "web"
+        ],
+        "discovered_python_roots": [
+          "audit",
+          "core",
+          "data",
+          "desktop",
+          "docs",
+          "plugins",
+          "scripts",
+          "tests",
+          "tools",
+          "web"
+        ],
+        "owned_import_roots": [
+          "app",
+          "app_new_ui",
+          "audit",
+          "check_manual_layout",
+          "config",
+          "core",
+          "data",
+          "desktop",
+          "docs",
+          "plugins",
+          "scripts",
+          "tests",
+          "tools",
+          "validate_dist_exe",
+          "verify_manual_styles",
+          "web"
+        ],
+        "excluded_runtime_data_roots": [
+          "backups",
+          "db",
+          "evidence",
+          "logs",
+          "output",
+          "reports",
+          "templates_excel",
+          "tmp"
+        ],
+        "excluded_parts": [
+          ".DS_Store",
+          ".git",
+          ".pytest_cache",
+          ".ruff_cache",
+          "__pycache__",
+          "node_modules"
+        ],
+        "extra_paths": [
+          ".codestable/roadmap/workbench-prototype-migration/workbench-capabilities.json",
+          ".codestable/roadmap/workbench-prototype-migration/legacy-option-disposition.md",
+          ".codestable/checkup/import_cycles_production_baseline.json",
+          ".codestable/checkup/import_cycles_with_tests_baseline.json",
+          "开发文档/技术债务治理台账.md"
+        ],
+        "absent_declared_asset_roots": []
+      },
+      "static_missing_modules": [],
+      "unparsed_python": [],
+      "content_and_modes_after_runs_verified": true
+    },
+    "baseline": {
+      "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/baseline-manifest.json",
+      "bytes": 806521,
+      "sha256": "db1ed5a3f6d13d05d5d6fbfbf23f1f370118bd615c17d1108ac575325a611a11",
+      "aggregate_sha256": "a2920c5e43ab655f5b8e82897df3f4a8af3b25e8eeebc66d484afcd072b4240f",
+      "files": 3919,
+      "total_bytes": 92926072,
+      "python_files": 2679,
+      "scope": {
+        "mode": "repo-code-local-assets-and-tests",
+        "roots": [
+          "assets",
+          "audit",
+          "core",
+          "data",
+          "desktop",
+          "docs",
+          "frontend",
+          "installer",
+          "plugins",
+          "scripts",
+          "static",
+          "templates",
+          "tests",
+          "tools",
+          "vendor",
+          "web"
+        ],
+        "discovered_python_roots": [
+          "audit",
+          "core",
+          "data",
+          "desktop",
+          "docs",
+          "plugins",
+          "scripts",
+          "tests",
+          "tools",
+          "web"
+        ],
+        "owned_import_roots": [
+          "app",
+          "app_new_ui",
+          "audit",
+          "check_manual_layout",
+          "config",
+          "core",
+          "data",
+          "desktop",
+          "docs",
+          "plugins",
+          "scripts",
+          "tests",
+          "tools",
+          "validate_dist_exe",
+          "verify_manual_styles",
+          "web"
+        ],
+        "excluded_runtime_data_roots": [
+          "backups",
+          "db",
+          "evidence",
+          "logs",
+          "output",
+          "reports",
+          "templates_excel",
+          "tmp"
+        ],
+        "excluded_parts": [
+          ".DS_Store",
+          ".git",
+          ".pytest_cache",
+          ".ruff_cache",
+          "__pycache__",
+          "node_modules"
+        ],
+        "extra_paths": [
+          ".codestable/roadmap/workbench-prototype-migration/workbench-capabilities.json",
+          ".codestable/roadmap/workbench-prototype-migration/legacy-option-disposition.md",
+          ".codestable/checkup/import_cycles_production_baseline.json",
+          ".codestable/checkup/import_cycles_with_tests_baseline.json",
+          "开发文档/技术债务治理台账.md"
+        ],
+        "absent_declared_asset_roots": []
+      },
+      "static_missing_modules": [],
+      "unparsed_python": [],
+      "content_and_modes_after_runs_verified": true
+    }
+  },
+  "source_files": {
+    "core/services/report/date_input.py": {
+      "sha256": "09cbdd505aeb05cdd07996288af073bc7e19c59a0ce749f15bcdf09bc565f0a0",
+      "bytes": 1330,
+      "main_matches_snapshot": true,
+      "symbols": {
+        "validate_ymd_date": 11,
+        "validate_explicit_report_date_range": 24
+      }
+    },
+    "core/services/workbench/legacy_navigation_queries.py": {
+      "sha256": "d29482a6953b5d4937feaafb5258b43114c2f2b70c58d5c6dcae30590564f429",
+      "bytes": 5102,
+      "main_matches_snapshot": true,
+      "symbols": {
+        "LegacyNavigationSourceMissing": 20,
+        "LegacyEntityReference": 25,
+        "LegacyPlanBinding": 31,
+        "LegacyNavigationQueries": 37
+      }
+    },
+    "web/routes/report_plan_preview.py": {
+      "sha256": "c61a6c21c6708ca3c944b4638310e8e7d48e5fb51088ed40e85de2dd6b9c528c",
+      "bytes": 3798,
+      "main_matches_snapshot": true,
+      "symbols": {
+        "default_date_range": 19,
+        "request_scenario_id": 25,
+        "default_plan_resolution": 29,
+        "page_plan_resolution": 35,
+        "page_date_range_or_version_span": 44,
+        "export_date_range_or_version_span": 66,
+        "report_export_filters": 84
+      }
+    },
+    "web/routes/workbench/navigation_boot.py": {
+      "sha256": "405adefc94b0280fa6a187400d2277234d140bc349cb37d0ca6ef9cc529f785e",
+      "bytes": 7990,
+      "main_matches_snapshot": true,
+      "symbols": {
+        "WorkbenchNavigationInvalid": 27,
+        "_invalid": 31,
+        "_object": 35,
+        "_unique_object": 40,
+        "_invalid_constant": 49,
+        "_query_value": 53,
+        "_plan_context": 69,
+        "_explicit_times": 75,
+        "_calendar_context": 81,
+        "_resource_context": 91,
+        "_part_context": 112,
+        "_batch_context": 122,
+        "_report_context": 132,
+        "_trial_context": 148,
+        "_context": 156,
+        "read_navigation": 178
+      }
+    },
+    "web/routes/workbench/legacy_page_contract.py": {
+      "sha256": "f738fd62bd10a7c3aaca974193641f3061b42f37297754598b179e198fc088ad",
+      "bytes": 3736,
+      "main_matches_snapshot": true,
+      "symbols": {
+        "LegacyNavigationInvalid": 64,
+        "LegacyGetRequest": 69,
+        "LegacyDownloadLink": 76,
+        "LegacyGetDecision": 82,
+        "retired": 93,
+        "unique_query": 98
+      }
+    },
+    "web/routes/workbench/legacy_navigation.py": {
+      "sha256": "63f3f6c92d8a1e57d93902ca7f28eb728e91fe35b9e71075884b875c02ca67cf",
+      "bytes": 8301,
+      "main_matches_snapshot": true,
+      "symbols": {
+        "build_legacy_destination": 53,
+        "_redirect": 63,
+        "_unsupported": 69,
+        "_detail": 74,
+        "_download_links": 98,
+        "_plan_page": 111,
+        "_resolve": 138,
+        "resolve_legacy_get": 156
+      }
+    },
+    "web/routes/workbench/legacy_navigation_plan.py": {
+      "sha256": "4a75f6c88e78cb0189c9f0804c0ba9ed431fadfca4086ab4ab522a4d4c8abe00",
+      "bytes": 4228,
+      "main_matches_snapshot": true,
+      "symbols": {
+        "ResolvedLegacyPlan": 27,
+        "_scenario": 34,
+        "resolve_legacy_plan": 42,
+        "report_dates": 59,
+        "resource_filter": 74,
+        "gantt_context": 78,
+        "invalid_plan_input": 92
+      }
+    },
+    "tests/workbench/test_final_navigation_boot.py": {
+      "sha256": "8fcb2b8aa35e148a34376c10870e1ae26377a2ce290d70f048cf8a0586598af3",
+      "bytes": 6866,
+      "main_matches_snapshot": true,
+      "symbols": {
+        "NavigationBootTests": 20
+      }
+    },
+    "tests/workbench/final_navigation_support.py": {
+      "sha256": "cee7d9b907ceb66bab0a1a6d51baa6871dc3336231486e2d12ac9f8ce0ce9071",
+      "bytes": 6329,
+      "main_matches_snapshot": true,
+      "symbols": {
+        "nav_args": 13
+      }
+    },
+    "tests/workbench/test_final_legacy_navigation.py": {
+      "sha256": "efbf34f05ce8b834b6cfeaa5c6b93a6a45dac01b57bc1427875f3a49109d0c37",
+      "bytes": 13808,
+      "main_matches_snapshot": true,
+      "symbols": {
+        "LegacyNavigationTests": 22
+      }
+    },
+    "tests/workbench/final_legacy_navigation_support.py": {
+      "sha256": "d6480c3fb10e2b0a8a59566374b3b1adeec0206ed65c2b4eb3ae207c674248e3",
+      "bytes": 1139,
+      "main_matches_snapshot": true,
+      "symbols": {
+        "prepare_database": 12,
+        "legacy": 25,
+        "token_app": 30
+      }
+    },
+    "tests/workbench/test_final_legacy_navigation_layering.py": {
+      "sha256": "6ebf323e625b987692379f939dee46f82699cb1156c14121161b66335e2917f7",
+      "bytes": 4902,
+      "main_matches_snapshot": true,
+      "symbols": {
+        "LegacyNavigationLayeringTests": 17
+      }
+    },
+    "tests/workbench/test_final_legacy_report_dates.py": {
+      "sha256": "9d09c6f6c96268346d0eefcaa6959622730a6a6142a48a1181c9b2ea1c0c94a8",
+      "bytes": 6785,
+      "main_matches_snapshot": true,
+      "symbols": {
+        "LegacyReportDateTests": 16
+      }
+    }
+  },
+  "patch": {
+    "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/applied-review.patch",
+    "bytes": 34716,
+    "sha256": "a6c1a20dce70b241046b09ecfcd349fd7c8dddb7a6f00ee0ea644d916fabd0e2"
+  },
+  "patch_index": {
+    "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/applied-review-index.json",
+    "bytes": 9273,
+    "sha256": "8e4fbad3b665f3e81be9fb6835df31ebaec2d90acc74b4f32a323cc0b29106fa"
+  },
+  "harness_sha256": {
+    "factory_import_worker.py": "6a87175c1786896049fd143bd70abb55391230fcd861af5e9eb9ed416f74c7f3",
+    "factory_messages_worker.py": "a0b22feccde139d8fa4d72de21f76a7e9de12f4e5d1108c08a2bf46414e64ebd",
+    "factory_report_worker.py": "351af07c7d9914c0b0007444ccef33ea7298a6ff71f36e8947ec415b263cb49d",
+    "factory_routes_worker.py": "374ac2e0c48697a4d47dd39827598ee27bd49ee9eb6e468dbef4fadc24115b94",
+    "factory_runtime.py": "e265ea8aa7c805920db5a73202422a891fb4ca84ade89bd8b617687bc1d4750a",
+    "frozen_pytest_worker.py": "4e3a6d894afe3c78738772ec1aa0e2e0a0066223aa799dd4a7f9cb0b9f001c1e",
+    "import_cases.py": "df95f3a085e088feaf114c9f8cd4f595a32f1af8ae9b1c7ebbcdec6d9fcb529f",
+    "run_factory_imports.py": "05453b61b16f946927417cd354e26084b347f6db33971dadb9fb7034fbc10fa7",
+    "run_factory_matrix.py": "4d8c02b2b32e9a30e53ba15072415176e8e2237f43dbdb53409bfee964af3984",
+    "source_binding.py": "beb621e9611f742252102f5d04a6df60321787fd1f84586e6c84b3ffc4f0bffe",
+    "source_guard.py": "5682aef21a813a12e01cd66bdad06fc06a2441934900c7fe9d109523e2ae7616",
+    "source_inventory.py": "277ec8d8ada3e7d119472e18638b0299fe1716fa2d1934178697060207be9f24",
+    "test_source_guard.py": "6b98a89e31637a73edcb159ae264cac09b41021a5c6cc93417146c8bc8ab162d"
+  },
+  "suites": {
+    "candidate_imports": {
+      "source_aggregate_sha256": "e74e6dce3c8a196433692084dbdc4d94f3f9c4b79e952bc352c0e7ed8714b85b",
+      "source_unchanged_before_after": true,
+      "scripts_sha256": {
+        "factory_routes_worker.py": "374ac2e0c48697a4d47dd39827598ee27bd49ee9eb6e468dbef4fadc24115b94",
+        "factory_messages_worker.py": "a0b22feccde139d8fa4d72de21f76a7e9de12f4e5d1108c08a2bf46414e64ebd",
+        "source_inventory.py": "277ec8d8ada3e7d119472e18638b0299fe1716fa2d1934178697060207be9f24",
+        "run_factory_imports.py": "05453b61b16f946927417cd354e26084b347f6db33971dadb9fb7034fbc10fa7",
+        "source_guard.py": "5682aef21a813a12e01cd66bdad06fc06a2441934900c7fe9d109523e2ae7616",
+        "import_cases.py": "df95f3a085e088feaf114c9f8cd4f595a32f1af8ae9b1c7ebbcdec6d9fcb529f",
+        "run_factory_matrix.py": "4d8c02b2b32e9a30e53ba15072415176e8e2237f43dbdb53409bfee964af3984",
+        "frozen_pytest_worker.py": "4e3a6d894afe3c78738772ec1aa0e2e0a0066223aa799dd4a7f9cb0b9f001c1e",
+        "factory_import_worker.py": "6a87175c1786896049fd143bd70abb55391230fcd861af5e9eb9ed416f74c7f3",
+        "test_source_guard.py": "6b98a89e31637a73edcb159ae264cac09b41021a5c6cc93417146c8bc8ab162d",
+        "factory_runtime.py": "e265ea8aa7c805920db5a73202422a891fb4ca84ade89bd8b617687bc1d4750a",
+        "source_binding.py": "beb621e9611f742252102f5d04a6df60321787fd1f84586e6c84b3ffc4f0bffe",
+        "factory_report_worker.py": "351af07c7d9914c0b0007444ccef33ea7298a6ff71f36e8947ec415b263cb49d"
+      },
+      "cases": [
+        {
+          "case": "demo",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-demo/result.json",
+          "error": null
+        },
+        {
+          "case": "operators",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-operators/result.json",
+          "error": null
+        },
+        {
+          "case": "operator_links",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-operator_links/result.json",
+          "error": null
+        },
+        {
+          "case": "machine_links",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-machine_links/result.json",
+          "error": null
+        },
+        {
+          "case": "machines",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-machines/result.json",
+          "error": null
+        },
+        {
+          "case": "op_types",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-op_types/result.json",
+          "error": null
+        },
+        {
+          "case": "suppliers",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-suppliers/result.json",
+          "error": null
+        },
+        {
+          "case": "routes",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-routes/result.json",
+          "error": null
+        },
+        {
+          "case": "hours",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-hours/result.json",
+          "error": null
+        },
+        {
+          "case": "batches",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-batches/result.json",
+          "error": null
+        },
+        {
+          "case": "calendar",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-calendar/result.json",
+          "error": null
+        },
+        {
+          "case": "operator_calendar",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-operator_calendar/result.json",
+          "error": null
+        }
+      ],
+      "passed": true,
+      "evidence": {
+        "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/V4-candidate-imports.json",
+        "bytes": 3990,
+        "sha256": "772be3d47ab60fc036211786eefa6e098347a35909e95d7075067e4d74617e25"
+      }
+    },
+    "candidate_matrix": {
+      "source_aggregate_sha256": "e74e6dce3c8a196433692084dbdc4d94f3f9c4b79e952bc352c0e7ed8714b85b",
+      "source_unchanged_before_after": true,
+      "scripts_sha256": {
+        "factory_routes_worker.py": "374ac2e0c48697a4d47dd39827598ee27bd49ee9eb6e468dbef4fadc24115b94",
+        "factory_messages_worker.py": "a0b22feccde139d8fa4d72de21f76a7e9de12f4e5d1108c08a2bf46414e64ebd",
+        "source_inventory.py": "277ec8d8ada3e7d119472e18638b0299fe1716fa2d1934178697060207be9f24",
+        "run_factory_imports.py": "05453b61b16f946927417cd354e26084b347f6db33971dadb9fb7034fbc10fa7",
+        "source_guard.py": "5682aef21a813a12e01cd66bdad06fc06a2441934900c7fe9d109523e2ae7616",
+        "import_cases.py": "df95f3a085e088feaf114c9f8cd4f595a32f1af8ae9b1c7ebbcdec6d9fcb529f",
+        "run_factory_matrix.py": "4d8c02b2b32e9a30e53ba15072415176e8e2237f43dbdb53409bfee964af3984",
+        "frozen_pytest_worker.py": "4e3a6d894afe3c78738772ec1aa0e2e0a0066223aa799dd4a7f9cb0b9f001c1e",
+        "factory_import_worker.py": "6a87175c1786896049fd143bd70abb55391230fcd861af5e9eb9ed416f74c7f3",
+        "test_source_guard.py": "6b98a89e31637a73edcb159ae264cac09b41021a5c6cc93417146c8bc8ab162d",
+        "factory_runtime.py": "e265ea8aa7c805920db5a73202422a891fb4ca84ade89bd8b617687bc1d4750a",
+        "source_binding.py": "beb621e9611f742252102f5d04a6df60321787fd1f84586e6c84b3ffc4f0bffe",
+        "factory_report_worker.py": "351af07c7d9914c0b0007444ccef33ea7298a6ff71f36e8947ec415b263cb49d"
+      },
+      "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-matrix/result.json",
+      "returncode": 0,
+      "passed": true,
+      "counts": {
+        "pages_get_and_head": 51,
+        "nonpage_get_and_head": 39,
+        "posts": 113
+      },
+      "error": null,
+      "evidence": {
+        "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/V4-candidate-matrix.json",
+        "bytes": 1674,
+        "sha256": "152bbda6849623125b3d9a490f0bf98633a25f8587080703ae995482768a62a8"
+      }
+    },
+    "baseline_imports": {
+      "source_aggregate_sha256": "a2920c5e43ab655f5b8e82897df3f4a8af3b25e8eeebc66d484afcd072b4240f",
+      "source_unchanged_before_after": true,
+      "scripts_sha256": {
+        "factory_routes_worker.py": "374ac2e0c48697a4d47dd39827598ee27bd49ee9eb6e468dbef4fadc24115b94",
+        "factory_messages_worker.py": "a0b22feccde139d8fa4d72de21f76a7e9de12f4e5d1108c08a2bf46414e64ebd",
+        "source_inventory.py": "277ec8d8ada3e7d119472e18638b0299fe1716fa2d1934178697060207be9f24",
+        "run_factory_imports.py": "05453b61b16f946927417cd354e26084b347f6db33971dadb9fb7034fbc10fa7",
+        "source_guard.py": "5682aef21a813a12e01cd66bdad06fc06a2441934900c7fe9d109523e2ae7616",
+        "import_cases.py": "df95f3a085e088feaf114c9f8cd4f595a32f1af8ae9b1c7ebbcdec6d9fcb529f",
+        "run_factory_matrix.py": "4d8c02b2b32e9a30e53ba15072415176e8e2237f43dbdb53409bfee964af3984",
+        "frozen_pytest_worker.py": "4e3a6d894afe3c78738772ec1aa0e2e0a0066223aa799dd4a7f9cb0b9f001c1e",
+        "factory_import_worker.py": "6a87175c1786896049fd143bd70abb55391230fcd861af5e9eb9ed416f74c7f3",
+        "test_source_guard.py": "6b98a89e31637a73edcb159ae264cac09b41021a5c6cc93417146c8bc8ab162d",
+        "factory_runtime.py": "e265ea8aa7c805920db5a73202422a891fb4ca84ade89bd8b617687bc1d4750a",
+        "source_binding.py": "beb621e9611f742252102f5d04a6df60321787fd1f84586e6c84b3ffc4f0bffe",
+        "factory_report_worker.py": "351af07c7d9914c0b0007444ccef33ea7298a6ff71f36e8947ec415b263cb49d"
+      },
+      "cases": [
+        {
+          "case": "demo",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-demo/result.json",
+          "error": null
+        },
+        {
+          "case": "operators",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-operators/result.json",
+          "error": null
+        },
+        {
+          "case": "operator_links",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-operator_links/result.json",
+          "error": null
+        },
+        {
+          "case": "machine_links",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-machine_links/result.json",
+          "error": null
+        },
+        {
+          "case": "machines",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-machines/result.json",
+          "error": null
+        },
+        {
+          "case": "op_types",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-op_types/result.json",
+          "error": null
+        },
+        {
+          "case": "suppliers",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-suppliers/result.json",
+          "error": null
+        },
+        {
+          "case": "routes",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-routes/result.json",
+          "error": null
+        },
+        {
+          "case": "hours",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-hours/result.json",
+          "error": null
+        },
+        {
+          "case": "batches",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-batches/result.json",
+          "error": null
+        },
+        {
+          "case": "calendar",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-calendar/result.json",
+          "error": null
+        },
+        {
+          "case": "operator_calendar",
+          "returncode": 0,
+          "passed": true,
+          "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-operator_calendar/result.json",
+          "error": null
+        }
+      ],
+      "passed": true,
+      "evidence": {
+        "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/V4-baseline-imports.json",
+        "bytes": 3978,
+        "sha256": "1988831b50bf259451d29aab5ab9bbc76942c8c0a4bf84503e3184864f857b3c"
+      }
+    },
+    "baseline_matrix": {
+      "source_aggregate_sha256": "a2920c5e43ab655f5b8e82897df3f4a8af3b25e8eeebc66d484afcd072b4240f",
+      "source_unchanged_before_after": true,
+      "scripts_sha256": {
+        "factory_routes_worker.py": "374ac2e0c48697a4d47dd39827598ee27bd49ee9eb6e468dbef4fadc24115b94",
+        "factory_messages_worker.py": "a0b22feccde139d8fa4d72de21f76a7e9de12f4e5d1108c08a2bf46414e64ebd",
+        "source_inventory.py": "277ec8d8ada3e7d119472e18638b0299fe1716fa2d1934178697060207be9f24",
+        "run_factory_imports.py": "05453b61b16f946927417cd354e26084b347f6db33971dadb9fb7034fbc10fa7",
+        "source_guard.py": "5682aef21a813a12e01cd66bdad06fc06a2441934900c7fe9d109523e2ae7616",
+        "import_cases.py": "df95f3a085e088feaf114c9f8cd4f595a32f1af8ae9b1c7ebbcdec6d9fcb529f",
+        "run_factory_matrix.py": "4d8c02b2b32e9a30e53ba15072415176e8e2237f43dbdb53409bfee964af3984",
+        "frozen_pytest_worker.py": "4e3a6d894afe3c78738772ec1aa0e2e0a0066223aa799dd4a7f9cb0b9f001c1e",
+        "factory_import_worker.py": "6a87175c1786896049fd143bd70abb55391230fcd861af5e9eb9ed416f74c7f3",
+        "test_source_guard.py": "6b98a89e31637a73edcb159ae264cac09b41021a5c6cc93417146c8bc8ab162d",
+        "factory_runtime.py": "e265ea8aa7c805920db5a73202422a891fb4ca84ade89bd8b617687bc1d4750a",
+        "source_binding.py": "beb621e9611f742252102f5d04a6df60321787fd1f84586e6c84b3ffc4f0bffe",
+        "factory_report_worker.py": "351af07c7d9914c0b0007444ccef33ea7298a6ff71f36e8947ec415b263cb49d"
+      },
+      "result": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-matrix/result.json",
+      "returncode": 0,
+      "passed": true,
+      "counts": {
+        "pages_get_and_head": 51,
+        "nonpage_get_and_head": 39,
+        "posts": 113
+      },
+      "error": null,
+      "evidence": {
+        "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/V4-baseline-matrix.json",
+        "bytes": 1673,
+        "sha256": "f1d6232ce4d2d489bdc0b21f249b068de202611cde6744b00d73139983372d1e"
+      }
+    }
+  },
+  "method_comparison": {
+    "post_status_content_type_mismatches": [],
+    "post_json_mismatches": [],
+    "nonpage_status_content_type_mismatches": [],
+    "both_get_business_states_unchanged": true,
+    "http_5xx": 0,
+    "post_scope": "113 real empty-form requests per variant, not 113 complete business transactions"
+  },
+  "focused_results": {
+    "V4-pytest": {
+      "evidence": {
+        "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-pytest/result.json",
+        "bytes": 205673,
+        "sha256": "2becd965d723e38f8dbc5beb18aa5e2755617fc94bae11d0ffbc7a751218b1ea"
+      },
+      "passed": true,
+      "loaded_module_count": 1006,
+      "exit_code": 0,
+      "source_sha256": "e74e6dce3c8a196433692084dbdc4d94f3f9c4b79e952bc352c0e7ed8714b85b",
+      "tests": [
+        "tests/workbench/test_final_navigation_boot.py",
+        "tests/workbench/test_final_legacy_navigation.py",
+        "tests/workbench/test_final_legacy_navigation_layering.py",
+        "tests/workbench/test_final_legacy_report_dates.py",
+        "tests/gate_meta/test_architecture_fitness.py::test_routes_do_not_execute_sql_directly",
+        "tests/gate_meta/test_architecture_fitness.py::test_routes_do_not_import_repository",
+        "tests/gate_meta/test_architecture_fitness.py::test_services_do_not_import_flask_request"
+      ],
+      "source_content_and_modes_verified": true
+    },
+    "V4-candidate-reports": {
+      "evidence": {
+        "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-candidate-reports/result.json",
+        "bytes": 241321,
+        "sha256": "0aa5061a3c6ee688d09ab87476caa76e170f5d9e53bc0961d1762ce8d0dee54e"
+      },
+      "passed": true,
+      "loaded_module_count": 1043,
+      "source_binding": {
+        "manifest": "/private/tmp/aps-g-retirement-candidate-u8YnDE/candidate-manifest.json",
+        "aggregate_sha256": "e74e6dce3c8a196433692084dbdc4d94f3f9c4b79e952bc352c0e7ed8714b85b",
+        "origin_root": "/Users/lurenxing/GitHub/----",
+        "sys_path": [
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/source/vendor",
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/source",
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/harness",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python38.zip",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/lib-dynload",
+          "/Users/lurenxing/GitHub/----/.venv/lib/python3.8/site-packages",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages"
+        ],
+        "dependency_roots": [
+          "/Library/Frameworks/Python.framework/Versions/3.8",
+          "/Users/lurenxing/GitHub/----/.venv/lib/python3.8/site-packages",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages"
+        ],
+        "static_inventory": {
+          "missing_repo_modules": [],
+          "unparsed_python": [],
+          "python_files": 2681
+        },
+        "owned_import_roots": [
+          "app",
+          "app_new_ui",
+          "audit",
+          "check_manual_layout",
+          "config",
+          "core",
+          "data",
+          "desktop",
+          "docs",
+          "plugins",
+          "scripts",
+          "tests",
+          "tools",
+          "validate_dist_exe",
+          "verify_manual_styles",
+          "web"
+        ],
+        "source_content_and_modes_verified": true
+      },
+      "presentation": {
+        "print_cases": 2,
+        "identity_warning": true,
+        "manual_source_bytes_equal": true,
+        "manual_download_sha256": "156d8ad024e1edb204864ef96f4a2621a8627bcf9204d8675f4b01d2b94bef89",
+        "browser_rendering_verified": false
+      },
+      "business_state_unchanged": true,
+      "source": "/private/tmp/aps-g-retirement-candidate-u8YnDE/source",
+      "report_date_request_count": 26
+    },
+    "V4-baseline-reports": {
+      "evidence": {
+        "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-baseline-reports/result.json",
+        "bytes": 240678,
+        "sha256": "352d09ba265b91861da254a19bfeb4769edac0cf1beff8837c47470664cc7903"
+      },
+      "passed": true,
+      "loaded_module_count": 1037,
+      "source_binding": {
+        "manifest": "/private/tmp/aps-g-retirement-candidate-u8YnDE/baseline-manifest.json",
+        "aggregate_sha256": "a2920c5e43ab655f5b8e82897df3f4a8af3b25e8eeebc66d484afcd072b4240f",
+        "origin_root": "/Users/lurenxing/GitHub/----",
+        "sys_path": [
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/baseline/vendor",
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/baseline",
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/harness",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python38.zip",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/lib-dynload",
+          "/Users/lurenxing/GitHub/----/.venv/lib/python3.8/site-packages",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages"
+        ],
+        "dependency_roots": [
+          "/Library/Frameworks/Python.framework/Versions/3.8",
+          "/Users/lurenxing/GitHub/----/.venv/lib/python3.8/site-packages",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages"
+        ],
+        "static_inventory": {
+          "missing_repo_modules": [],
+          "unparsed_python": [],
+          "python_files": 2679
+        },
+        "owned_import_roots": [
+          "app",
+          "app_new_ui",
+          "audit",
+          "check_manual_layout",
+          "config",
+          "core",
+          "data",
+          "desktop",
+          "docs",
+          "plugins",
+          "scripts",
+          "tests",
+          "tools",
+          "validate_dist_exe",
+          "verify_manual_styles",
+          "web"
+        ],
+        "source_content_and_modes_verified": true
+      },
+      "presentation": {
+        "print_cases": 2,
+        "identity_warning": true,
+        "manual_source_bytes_equal": true,
+        "manual_download_sha256": "156d8ad024e1edb204864ef96f4a2621a8627bcf9204d8675f4b01d2b94bef89",
+        "browser_rendering_verified": false
+      },
+      "business_state_unchanged": true,
+      "source": "/private/tmp/aps-g-retirement-candidate-u8YnDE/baseline",
+      "report_date_request_count": 24
+    },
+    "V4-messages-normal": {
+      "evidence": {
+        "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-messages-normal/result.json",
+        "bytes": 217059,
+        "sha256": "ca5b149129e57b3a5c25df0fcf773ce332c91f66c04abf5838e788236a04156b"
+      },
+      "passed": true,
+      "loaded_module_count": 1039,
+      "source_binding": {
+        "manifest": "/private/tmp/aps-g-retirement-candidate-u8YnDE/candidate-manifest.json",
+        "aggregate_sha256": "e74e6dce3c8a196433692084dbdc4d94f3f9c4b79e952bc352c0e7ed8714b85b",
+        "origin_root": "/Users/lurenxing/GitHub/----",
+        "sys_path": [
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/source/vendor",
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/source",
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/harness",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python38.zip",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/lib-dynload",
+          "/Users/lurenxing/GitHub/----/.venv/lib/python3.8/site-packages",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages"
+        ],
+        "dependency_roots": [
+          "/Library/Frameworks/Python.framework/Versions/3.8",
+          "/Users/lurenxing/GitHub/----/.venv/lib/python3.8/site-packages",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages"
+        ],
+        "static_inventory": {
+          "missing_repo_modules": [],
+          "unparsed_python": [],
+          "python_files": 2681
+        },
+        "owned_import_roots": [
+          "app",
+          "app_new_ui",
+          "audit",
+          "check_manual_layout",
+          "config",
+          "core",
+          "data",
+          "desktop",
+          "docs",
+          "plugins",
+          "scripts",
+          "tests",
+          "tools",
+          "validate_dist_exe",
+          "verify_manual_styles",
+          "web"
+        ],
+        "source_content_and_modes_verified": true
+      },
+      "mode": "normal",
+      "source": "actual equipment.update_machine transaction; no inserted test flash",
+      "committed_value_retained": true,
+      "old_get_canonical_identity_same": true,
+      "message_once": true,
+      "browser_execution_verified": false
+    },
+    "V4-messages-invalid-navigation": {
+      "evidence": {
+        "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-messages-invalid-navigation/result.json",
+        "bytes": 217177,
+        "sha256": "98c6dee99a2ca812e9090ed188a2a5d9caabc09c1507e7f692b9c33aaaebe7ce"
+      },
+      "passed": true,
+      "loaded_module_count": 1039,
+      "source_binding": {
+        "manifest": "/private/tmp/aps-g-retirement-candidate-u8YnDE/candidate-manifest.json",
+        "aggregate_sha256": "e74e6dce3c8a196433692084dbdc4d94f3f9c4b79e952bc352c0e7ed8714b85b",
+        "origin_root": "/Users/lurenxing/GitHub/----",
+        "sys_path": [
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/source/vendor",
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/source",
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/harness",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python38.zip",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/lib-dynload",
+          "/Users/lurenxing/GitHub/----/.venv/lib/python3.8/site-packages",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages"
+        ],
+        "dependency_roots": [
+          "/Library/Frameworks/Python.framework/Versions/3.8",
+          "/Users/lurenxing/GitHub/----/.venv/lib/python3.8/site-packages",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages"
+        ],
+        "static_inventory": {
+          "missing_repo_modules": [],
+          "unparsed_python": [],
+          "python_files": 2681
+        },
+        "owned_import_roots": [
+          "app",
+          "app_new_ui",
+          "audit",
+          "check_manual_layout",
+          "config",
+          "core",
+          "data",
+          "desktop",
+          "docs",
+          "plugins",
+          "scripts",
+          "tests",
+          "tools",
+          "validate_dist_exe",
+          "verify_manual_styles",
+          "web"
+        ],
+        "source_content_and_modes_verified": true
+      },
+      "mode": "invalid-navigation",
+      "source": "actual equipment.update_machine transaction; no inserted test flash",
+      "committed_value_retained": true,
+      "old_get_canonical_identity_same": true,
+      "message_once": true,
+      "browser_execution_verified": false
+    },
+    "V4-messages-missing-assets": {
+      "evidence": {
+        "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/runs/V4-messages-missing-assets/result.json",
+        "bytes": 217202,
+        "sha256": "c4740bb82116571e17bad21bdf67523db102e7b57e6493bc138122da84c6c115"
+      },
+      "passed": true,
+      "loaded_module_count": 1039,
+      "source_binding": {
+        "manifest": "/private/tmp/aps-g-retirement-candidate-u8YnDE/candidate-manifest.json",
+        "aggregate_sha256": "e74e6dce3c8a196433692084dbdc4d94f3f9c4b79e952bc352c0e7ed8714b85b",
+        "origin_root": "/Users/lurenxing/GitHub/----",
+        "sys_path": [
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/source/vendor",
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/source",
+          "/private/tmp/aps-g-retirement-candidate-u8YnDE/harness",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python38.zip",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/lib-dynload",
+          "/Users/lurenxing/GitHub/----/.venv/lib/python3.8/site-packages",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages"
+        ],
+        "dependency_roots": [
+          "/Library/Frameworks/Python.framework/Versions/3.8",
+          "/Users/lurenxing/GitHub/----/.venv/lib/python3.8/site-packages",
+          "/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages"
+        ],
+        "static_inventory": {
+          "missing_repo_modules": [],
+          "unparsed_python": [],
+          "python_files": 2681
+        },
+        "owned_import_roots": [
+          "app",
+          "app_new_ui",
+          "audit",
+          "check_manual_layout",
+          "config",
+          "core",
+          "data",
+          "desktop",
+          "docs",
+          "plugins",
+          "scripts",
+          "tests",
+          "tools",
+          "validate_dist_exe",
+          "verify_manual_styles",
+          "web"
+        ],
+        "source_content_and_modes_verified": true
+      },
+      "mode": "missing-assets",
+      "source": "actual equipment.update_machine transaction; no inserted test flash",
+      "committed_value_retained": true,
+      "old_get_canonical_identity_same": true,
+      "message_once": true,
+      "browser_execution_verified": false
+    }
+  },
+  "pytest": {
+    "passed": 46,
+    "failed": 0,
+    "normal_conftest": true,
+    "no_xfail_override": true,
+    "evidence": {
+      "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/V4-pytest.log",
+      "bytes": 131,
+      "sha256": "e6359f1fa4e4e08cabb1e181e91c76b1ce2e7b028927b76da42f9d012e2fd565"
+    }
+  },
+  "local_static": {
+    "ruff": "passed for 13 owned source/test files and all factory harness Python",
+    "pyright": {
+      "files": 13,
+      "errors": 0,
+      "warnings": 0
+    },
+    "source_guard_negative_tests": {
+      "passed": 2,
+      "failed": 0
+    }
+  },
+  "cycles": {
+    "production": {
+      "exit_code": 0,
+      "fail_on_new_cycle": true,
+      "unchanged_baseline": true,
+      "evidence": {
+        "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/V4-production-cycles.log",
+        "bytes": 13239,
+        "sha256": "abd0ca16eb525af7693e9784d60255bafae71f93419089e72cc0a610cd6e5dfc"
+      }
+    },
+    "with-tests": {
+      "exit_code": 0,
+      "fail_on_new_cycle": true,
+      "unchanged_baseline": true,
+      "evidence": {
+        "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/V4-with-tests-cycles.log",
+        "bytes": 17859,
+        "sha256": "a293d0d7e6e0bfb812c848d8e7aa93ccf2419a787b417150eb280983f7e952b9"
+      }
+    }
+  },
+  "baseline_hashes": {
+    "import_cycles_production_baseline.json": "78d0ae16c6a11543d56b94e4e1a20bd1406731e0dd9a2728d164f5ed25fd799d",
+    "import_cycles_with_tests_baseline.json": "2878a55393510e524f2259f918142199d187d3097e6a3292e521cf8090571d19"
+  },
+  "date_extraction_ast": {
+    "moved_function_ast_equal": {
+      "validate_ymd_date": true,
+      "validate_explicit_report_date_range": true
+    },
+    "retained_function_ast_equal": {
+      "default_date_range": true,
+      "request_scenario_id": true,
+      "default_plan_resolution": true,
+      "page_plan_resolution": true,
+      "page_date_range_or_version_span": true,
+      "export_date_range_or_version_span": true,
+      "report_export_filters": true
+    }
+  },
+  "browser": {
+    "build_id": "67229ad0b232830132f049095e8c8c8b80ba29296df7b3668a128af1ebec5c78",
+    "asset_manifest_sha256": "3db78a5ed8323076f0472d4012ee60eb2b8ebde9e3b5094978709dfda6cd5c44",
+    "input_count": 302,
+    "drift_count": 49,
+    "output_drift": [],
+    "eligible_for_browser_acceptance": false,
+    "evidence": {
+      "path": "/private/tmp/aps-g-retirement-candidate-u8YnDE/V4-asset-source-binding.json",
+      "bytes": 12399,
+      "sha256": "6b7b8651d47d64029de288b02a10c4709defd2092e8b259133e0109a1d943ef7"
+    }
+  },
+  "preserved_prior_roots": [
+    "/private/tmp/aps-g-retirement-candidate-CzTalo",
+    "/private/tmp/aps-g-retirement-candidate-FtCvUw",
+    "/private/tmp/aps-g-retirement-candidate-WQooWU"
+  ],
+  "not_verified": [
+    "matching final browser build and frontend execution",
+    "Main production factory mount",
+    "old asset removal and absence in a release payload",
+    "stage 17 or 18 full acceptance",
+    "113 complete business transactions or every import mode combination",
+    "full quality gate and clean-worktree proof",
+    "Win7 runtime",
+    "D1 code/data rollback exercise"
+  ],
+  "preservation": {
+    "production_data_touched": false,
+    "original_preview_touched": false,
+    "main_factory_pages_js_modified_by_G": false,
+    "git_stage_commit_reset_by_G": false,
+    "old_assets_deleted": false,
+    "normal_database_services_and_transactions_retained": true
+  },
+  "snapshot_lineage": {
+    "v3_origin_root": "/private/tmp/aps-g-retirement-candidate-WQooWU",
+    "v3_origin_aggregate_sha256": "8863c896ef00ee6dc1f8042d696390914d2648e547971a36b395e94030c55b0c",
+    "v4_derivation": "Copied all 3918 V3 baseline files and verified their hashes/modes, added one normal-conftest ledger fact, then applied the original 24-target patch only in source.",
+    "added_source_fact": {
+      "path": "开发文档/技术债务治理台账.md",
+      "sha256": "417cc9a398fc0ab847511471434ce5864138f252774683c5336b6088787625cd"
+    },
+    "patch_preimages_verified": 24,
+    "patch_postimages_verified": 24
+  },
+  "known_failed_attempts": [
+    {
+      "stage": "old Cz R1/R2",
+      "status": "preserved historical partial-source evidence",
+      "details": "Initial SQLite URI bytes guard, datetime evidence serialization, cold ScheduleConfig fixture initialization and wrong confirm-form field scope were harness/fixture issues. Old baseline reproduced cold config behavior. Both R3 import variants then passed 12/12; old broad source-closure claim is not reused."
+    },
+    {
+      "stage": "V3 direct scanner invocation",
+      "path": "/private/tmp/aps-g-retirement-candidate-WQooWU/before-production-cycles.log",
+      "details": "Direct file invocation lacked the tools package import root; rerun through -m used the normal scanner and reproduced the new directory cycle."
+    },
+    {
+      "stage": "V3 before extraction",
+      "path": "/private/tmp/aps-g-retirement-candidate-WQooWU/before-production-cycles-module.log",
+      "details": "exit 1: new directory SCC .|web/bootstrap|web/routes|web/routes/workbench. Both final normal scopes exit 0 against unchanged old baselines."
+    },
+    {
+      "stage": "V3 report R1",
+      "path": "/private/tmp/aps-g-retirement-candidate-WQooWU/runs/V3-candidate-reports/result.json",
+      "details": "The exact-maximum date fixture missed all seeded plan rows; original export correctly refused empty data. Corrected fixture covers the plan and includes real downtime. Product behavior unchanged."
+    },
+    {
+      "stage": "V3 pytest R1",
+      "path": "/private/tmp/aps-g-retirement-candidate-WQooWU/V3-pytest.log",
+      "details": "Write guard blocked pytest's default /dev/null log destination. The harness now points the log into its own runtime directory without relaxing the guard."
+    },
+    {
+      "stage": "V3 pytest R2",
+      "path": "/private/tmp/aps-g-retirement-candidate-WQooWU/V3-R2-pytest.log",
+      "details": "Normal conftest required a non-Python ledger omitted from the declared snapshot. V4 adds that original ledger as an explicit source fact. No noconftest/xfail bypass; final 46 tests passed."
+    },
+    {
+      "stage": "V4 copy preparation",
+      "details": "A source-copy check rejected an incomplete rsync copy before any accepted manifest/run. Copy was completed, all 3918 inherited files rechecked, then all 24 patch preimages/postimages verified before final capture."
+    }
+  ],
+  "registry_observation": {
+    "path": "tools/test_registry_groups_workbench.py",
+    "observed_tests": [
+      "test_final_navigation_boot.py",
+      "test_final_legacy_navigation.py",
+      "test_final_legacy_navigation_layering.py",
+      "test_final_legacy_report_dates.py"
+    ],
+    "group": "WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS/workbench_browser",
+    "required_by_default": false,
+    "G_modified_registry": false,
+    "note": "Registration is not gate execution. Main owns final gate selection and dependency-source binding, including the new core report leaf and old web compatibility module."
+  },
+  "source_scope_correction": {
+    "top_level_common_exists": false,
+    "actual_common_module": "core/services/common/overdue_calculations.py",
+    "sha256": "bf485f4b96359ff999d77c58df50a0fb07dd5b2860f067aff0c6b78603a1d713",
+    "note": "This core/services/common file was already in the original 3554-file snapshot. The initial agreement that top-level common was omitted was incorrect. V2+ add static inventory for all discovered owned Python roots; the guard checks every module file and namespace, not only core/data/web/tests."
+  }
+}
