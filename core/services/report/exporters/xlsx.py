@@ -102,6 +102,20 @@ _EXECUTION_REVIEW_HEADERS = [
 ]
 
 
+def _append_summary_row(ws, values: List[Any], *, write_only: bool) -> None:
+    if len(values) == 2 and values[0] in ("计划引用", "范围快照"):
+        cells = [WriteOnlyCell(ws, value=_sanitize_export_cell(values[0])),
+                 WriteOnlyCell(ws, value=values[1])]
+        cells[1].data_type = "s"
+        for cell in cells:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+        ws.append(cells)
+    elif write_only:
+        _append_write_only_row(ws, values)
+    else:
+        _append_row(ws, values)
+
+
 def _append_summary_sheet(wb, summary_rows: Optional[List[List[Any]]], *, write_only: bool) -> None:
     rows = list(summary_rows or [])
     if not rows:
@@ -110,7 +124,7 @@ def _append_summary_sheet(wb, summary_rows: Optional[List[List[Any]]], *, write_
         ws = wb.create_sheet("查询摘要")
         _append_write_only_row(ws, ["项目", "内容"], is_header=True)
         for row in rows:
-            _append_write_only_row(ws, row)
+            _append_summary_row(ws, row, write_only=True)
         return
 
     if (
@@ -127,7 +141,7 @@ def _append_summary_sheet(wb, summary_rows: Optional[List[List[Any]]], *, write_
         ws = wb.create_sheet("查询摘要")
     _append_row(ws, ["项目", "内容"])
     for row in rows:
-        _append_row(ws, row)
+        _append_summary_row(ws, row, write_only=False)
     ws.freeze_panes = "A2"
     ws.column_dimensions["A"].width = 18
     ws.column_dimensions["B"].width = 42

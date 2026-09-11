@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any, Dict, Optional
 
 from core.infrastructure.errors import ValidationError
 from core.services.report import ReportEngine
-from core.services.report.date_range_limits import ensure_report_date_range_within_limit
+from core.services.report.date_input import validate_explicit_report_date_range
+from core.services.report.date_input import validate_ymd_date as validate_ymd_date
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED
 from core.services.scheduler.schedule_result_view_context import default_plan_resolution_dict
 from web.routes.domains.scheduler.scheduler_plan_context_token import request_scenario_id_from_args
@@ -15,30 +16,6 @@ def default_date_range(days: int = 7):
     end_d = date.today()
     start_d = end_d - timedelta(days=max(0, int(days) - 1))
     return start_d.isoformat(), end_d.isoformat()
-
-
-def validate_ymd_date(raw: str, field: str) -> str:
-    text = (raw or "").strip()
-    if not text:
-        raise ValidationError("缺少开始日期或结束日期。", field="日期范围")
-
-    text = text.replace("/", "-")
-    try:
-        datetime.strptime(text, "%Y-%m-%d")
-    except ValueError as exc:
-        raise ValidationError("日期格式不正确，请按 2026-03-13 或 2026/03/13 这样的格式填写。", field=field) from exc
-    return text
-
-
-def validate_explicit_report_date_range(start_raw: str, end_raw: str):
-    start_text = validate_ymd_date(start_raw, field="开始日期")
-    end_text = validate_ymd_date(end_raw, field="结束日期")
-    start_date = datetime.strptime(start_text, "%Y-%m-%d").date()
-    end_date = datetime.strptime(end_text, "%Y-%m-%d").date()
-    if end_date < start_date:
-        raise ValidationError("结束日期不能早于开始日期", field="结束日期")
-    ensure_report_date_range_within_limit(start_date, end_date, field="日期范围")
-    return start_text, end_text
 
 
 def request_scenario_id(args: Any) -> Optional[str]:

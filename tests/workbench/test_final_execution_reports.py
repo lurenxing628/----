@@ -2,8 +2,13 @@
 
 import json
 import shutil
+from io import BytesIO
 from pathlib import Path
 
+import openpyxl
+import pytest
+
+from core.services.report.exporters import xlsx
 from tests.workbench.final_execution_cases import final_e_runtime as final_e_runtime
 from tests.workbench.final_execution_support import restart_preserved, serving
 from tests.workbench.live_environment import write_json
@@ -38,3 +43,46 @@ def test_full_main_reports_all_download_bytes_scope_sql_and_real_restart(final_e
         write_json(host.root / "final-reports-proof.json", {"initial_cases": report["cases"], "restart_cases": restarted["cases"],
             "wire_sql_proof": proof, "strict_changed_tables": [], "old_rows_preserved": True,
             "private_full_build": ready["assets"]["build_id"], "restart_audit": restart_audit})
+
+
+@pytest.mark.parametrize("write_only", (False, True), ids=("normal", "write-only"))
+@pytest.mark.parametrize("prefix", ("-", "="), ids=("minus", "equals"))
+def test_report_xlsx_reference_metadata_preserves_literal_text(tmp_path, write_only, prefix):
+    references = {"计划引用": prefix + "plan-ref", "范围快照": prefix + "snapshot-ref"}
+    formula = "=1+1"
+    options = {"summary_rows": [list(item) for item in references.items()] + [["备注", formula]],
+               "write_only": write_only}
+    exporters = (
+        ("overdue", lambda: xlsx.export_overdue_xlsx([{"batch_id": formula}], **options), "超期清单", "B2"),
+        ("utilization", lambda: xlsx.export_utilization_xlsx([{"machine_id": formula}], [], **options), "设备负荷", "A2"),
+        ("downtime", lambda: xlsx.export_downtime_impact_xlsx([{"machine_id": formula}], **options), "停机影响", "A2"),
+        ("review", lambda: xlsx.export_execution_review_xlsx([{"batch_id_label": formula}], **options), "计划和现场实际", "A2"),
+    )
+    for name, export, sheet_name, address in exporters:
+        stream = export()
+        try:
+            raw = stream.read()
+        finally:
+            stream.close()
+        (tmp_path / (name + ".xlsx")).write_bytes(raw)
+        workbook = openpyxl.load_workbook(BytesIO(raw), read_only=True, data_only=False)
+        try:
+            summary = {row[0].value: row[1] for row in workbook["查询摘要"].iter_rows()
+                       if row and row[0].value in set(references) | {"备注"}}
+            ordinary = workbook[sheet_name][address]
+            formulas = [cell.coordinate for sheet in workbook for row in sheet.iter_rows()
+                        for cell in row if cell.data_type == "f"]
+            evidence = {"exporter": name, "write_only": write_only, "prefix": prefix, "expected": references,
+                        "summary": {label: {"value": cell.value, "data_type": cell.data_type}
+                                    for label, cell in summary.items()},
+                        "ordinary_data": {"value": ordinary.value, "data_type": ordinary.data_type}, "formulas": formulas}
+            write_json(tmp_path / (name + ".json"), evidence)
+            for label, expected in references.items():
+                assert summary[label].value.encode("utf-8") == expected.encode("utf-8"), (name, label)
+                assert summary[label].data_type == "s"
+            assert summary["备注"].value == "'" + formula
+            assert summary["备注"].data_type == "s"
+            assert ordinary.value == "'" + formula and ordinary.data_type == "s"
+            assert formulas == []
+        finally:
+            workbook.close()
