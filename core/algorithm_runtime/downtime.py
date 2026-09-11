@@ -43,7 +43,7 @@ class SegmentOverlapIndex:
     - len() 返回原始段数（含无效段），与旧 _max_shift_count 的口径一致。
     """
 
-    __slots__ = ("_segments", "_starts", "_prefix_max_ends", "_scanned_once", "_covered_starts", "_covered_ends")
+    __slots__ = ("_segments", "_starts", "_prefix_max_ends", "_scanned_once", "_covered_starts", "_covered_ends", "_append_native")
 
     def __init__(self, segments: Optional[Sequence[Tuple[datetime, datetime]]]) -> None:
         self._segments = segments or ()
@@ -52,6 +52,7 @@ class SegmentOverlapIndex:
         self._scanned_once = False
         self._covered_starts: Optional[Sequence[datetime]] = None
         self._covered_ends: Sequence[datetime] = ()
+        self._append_native: Optional[bool] = None if type(segments) is tuple else False
 
     def __len__(self) -> int:
         return len(self._segments)
@@ -92,6 +93,51 @@ class SegmentOverlapIndex:
         self._prefix_max_ends = tuple(accumulate(ends, max))
         return starts
 
+    def with_appended_segment(
+        self, snapshot: Tuple[Tuple[datetime, datetime], ...],
+    ) -> Optional[SegmentOverlapIndex]:
+        """Derive a new immutable index only from a verified sorted native append."""
+        if not self._can_append_snapshot(snapshot):
+            return None
+        start, end = snapshot[-1]
+        derived = SegmentOverlapIndex(snapshot)
+        derived._starts = self._starts
+        derived._prefix_max_ends = self._prefix_max_ends
+        derived._covered_starts = self._covered_starts
+        derived._covered_ends = self._covered_ends
+        derived._append_native = True
+        if end > start:
+            derived._starts = tuple(self._starts or ()) + (start,)
+            previous_end = self._prefix_max_ends[-1] if self._prefix_max_ends else end
+            derived._prefix_max_ends = tuple(self._prefix_max_ends) + (max(previous_end, end),)
+            derived._append_covered_segment(start, end)
+        return derived
+
+    def _can_append_snapshot(self, snapshot: Tuple[Tuple[datetime, datetime], ...]) -> bool:
+        if (self._starts is None or type(snapshot) is not tuple
+                or len(snapshot) != len(self._segments) + 1 or not _plain_segment(snapshot[-1])):
+            return False
+        if self._append_native is None:
+            self._append_native = all(_plain_segment(segment) for segment in self._segments)
+        if not self._append_native:
+            return False
+        if not all(map(operator.is_, snapshot, self._segments)):
+            prefix = snapshot[:-1]
+            if not all(_plain_segment(segment) for segment in prefix) or prefix != self._segments:
+                return False
+        start, end = snapshot[-1]
+        return end <= start or not self._starts or start >= self._starts[-1]
+
+    def _append_covered_segment(self, start: datetime, end: datetime) -> None:
+        if self._covered_starts is None:
+            return
+        if self._covered_ends and start <= self._covered_ends[-1]:
+            if end > self._covered_ends[-1]:
+                self._covered_ends = tuple(self._covered_ends[:-1]) + (end,)
+        else:
+            self._covered_starts = tuple(self._covered_starts) + (start,)
+            self._covered_ends = tuple(self._covered_ends) + (end,)
+
     def covered_end(self, instant: datetime) -> Optional[datetime]:
         """End of the continuous occupied block containing this instant.
 
@@ -115,6 +161,11 @@ class SegmentOverlapIndex:
         if index >= 0 and instant < self._covered_ends[index]:
             return self._covered_ends[index]
         return None
+
+
+def _plain_segment(segment: Tuple[datetime, datetime]) -> bool:
+    return (type(segment) is tuple and len(segment) == 2
+            and all(type(value) is datetime and value.tzinfo is None for value in segment))
 
 
 def _drop_invalid_segments(

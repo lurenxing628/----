@@ -96,6 +96,14 @@ def parse_required_int(
     min_value: Optional[int] = None,
     reject_integer_float: bool = False,
 ) -> int:
+    # Outside this exact range, the legacy float round-trip can change integers.
+    if (
+        type(value) is int
+        and -(1 << 53) <= value <= (1 << 53)
+        and min_value is None
+        and reject_integer_float is False
+    ):
+        return value
     if is_blank_input(value):
         _raise_blank_required(field)
     return _ensure_min_int(

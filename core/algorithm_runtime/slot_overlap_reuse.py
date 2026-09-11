@@ -22,7 +22,8 @@ class SlotOverlapReuse:
         key = (kind, resource_id)
         entry = self._entries.get(key)
         if entry is None or entry[0] != snapshot:
-            index = SegmentOverlapIndex(snapshot)
+            derived = entry[1].with_appended_segment(snapshot) if entry is not None else None
+            index = derived if derived is not None else SegmentOverlapIndex(snapshot)
             self._entries[key] = (snapshot, index)
         else:
             index = entry[1]

@@ -10,6 +10,7 @@ from core.services.common.normalize import to_str_or_blank
 
 from .calendar_admin import CalendarAdmin
 from .calendar_engine import CalendarEngine, DayPolicy
+from .calendar_native_timing import make_native_method_guard
 
 
 class CalendarService:
@@ -244,12 +245,13 @@ class CalendarService:
         """Constant native policy span; adapted or instrumented timing stays legacy."""
         if type(self) is not CalendarService or type(self._engine) is not CalendarEngine:
             return None
-        for name, original in _NATIVE_SERVICE_TIMING.items():
-            if getattr(getattr(self, name), "__func__", None) is not original:
-                return None
-        for name, original in _NATIVE_ENGINE_TIMING.items():
-            if getattr(getattr(self._engine, name), "__func__", None) is not original:
-                return None
+        if not _NATIVE_METHODS_UNCHANGED(self):
+            for name, original in _NATIVE_SERVICE_TIMING.items():
+                if getattr(getattr(self, name), "__func__", None) is not original:
+                    return None
+            for name, original in _NATIVE_ENGINE_TIMING.items():
+                if getattr(getattr(self._engine, name), "__func__", None) is not original:
+                    return None
         policy = self._engine.policy_for_datetime(dt, operator_id=operator_id)
         if policy.date_str != dt.date().isoformat() or not policy.is_priority_allowed(priority):
             return None
@@ -268,3 +270,4 @@ _NATIVE_SERVICE_TIMING = {name: getattr(CalendarService, name) for name in
 _NATIVE_ENGINE_TIMING = {name: getattr(CalendarEngine, name) for name in
                          ("get_efficiency", "adjust_to_working_time", "add_working_hours",
                           "policy_for_datetime", "_policy_for_datetime", "_policy_for_date")}
+_NATIVE_METHODS_UNCHANGED = make_native_method_guard(CalendarService)

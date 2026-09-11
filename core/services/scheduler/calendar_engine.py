@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
@@ -19,6 +20,13 @@ from .operator_shift_calendar import OperatorShiftCalendar
 # 约 291 万天（datetime.max）处会抛裸 OverflowError，isfinite/非负守卫拦不住有限
 # 正巨值（如录入笔误 9999999），故与既有 NaN/Inf/负数守卫对称地补一条量级上界。
 MAX_CALENDAR_DAYS = 36500.0
+_NORMAL_PRIORITY = BatchPriority.NORMAL.value
+_ALLOWED_FLAG = YesNo.YES.value
+
+
+@lru_cache(maxsize=4096)
+def _native_date_isoformat(value: date) -> str:
+    return value.isoformat()
 
 
 @dataclass
@@ -49,14 +57,18 @@ class DayPolicy:
         self._window_end = self._window_start + timedelta(hours=float(self.shift_hours or 0.0))
 
     def is_priority_allowed(self, priority: Optional[str]) -> bool:
+        if priority is None or (type(priority) is str and priority == _NORMAL_PRIORITY):
+            return self.allow_normal == _ALLOWED_FLAG
+        if type(priority) is str and priority in ("urgent", "critical"):
+            return self.allow_urgent == _ALLOWED_FLAG
         # 防御：priority 可能大小写不一致/非字符串/空值
-        p = str(priority or BatchPriority.NORMAL.value).strip().lower()
+        p = str(priority or _NORMAL_PRIORITY).strip().lower()
         if p not in BATCH_PRIORITY_VALUES:
-            p = BatchPriority.NORMAL.value
-        if p == BatchPriority.NORMAL.value:
-            return self.allow_normal == YesNo.YES.value
+            p = _NORMAL_PRIORITY
+        if p == _NORMAL_PRIORITY:
+            return self.allow_normal == _ALLOWED_FLAG
         # urgent / critical 归并到 allow_urgent
-        return self.allow_urgent == YesNo.YES.value
+        return self.allow_urgent == _ALLOWED_FLAG
 
     def work_window(self) -> Tuple[datetime, datetime]:
         start = self._window_start
@@ -100,6 +112,9 @@ class CalendarEngine:
 
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
+        # Only native strings bypass the general NaN/custom-object checks.
+        if type(value) is str:
+            return value.strip() or None
         return normalize_text(value)
 
     def _default_for_date(self, date_str: str) -> WorkCalendar:
@@ -221,7 +236,8 @@ class CalendarEngine:
         - 当某日班次跨到次日（shift_end <= shift_start / shift_hours 跨日）时，
           次日凌晨的时间点应归属到“前一天”的工作窗内。
         """
-        today_str = dt.date().isoformat()
+        today = dt.date()
+        today_str = _native_date_isoformat(today) if type(today) is date else today.isoformat()
         p_today = self._policy_for_date(today_str, operator_id=operator_id)
         start_today, end_today = p_today.work_window()
         if start_today <= dt < end_today:

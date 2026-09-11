@@ -37,7 +37,11 @@ class _ScoringResources(NamedTuple):
 
 
 def _parse_due_date(value: Any, *, strict_mode: bool = False) -> Optional[date]:
-    return parse_optional_date(value, field="due_date") if strict_mode else parse_date(value)
+    if strict_mode:
+        if value is None or type(value) is date:
+            return value
+        return parse_optional_date(value, field="due_date")
+    return parse_date(value)
 
 
 def _dispatch_key(
