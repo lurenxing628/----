@@ -1,6 +1,6 @@
 """route 级测试：首页 hero 失败态独立门控 failed_run_applies_to_current_view（fusion-dashboard-cockpit 决策 1）。
 
-5 场景钉死（经 ctx 捕获 workbench_summary.hero，hero 渲染在 s3，本步只验 route 计算门控）：
+5 场景钉死（真实 WSGI 生命周期内捕获保留控制器的 workbench_summary.hero；不渲染退役首页）：
 1. 当前正式位置 + result_status=failed → 显失败 hero；
 2. 看历史旧版本（workbench_version≠最新）的失败结果 → 不显失败 hero；
 3. 预览/对比（非 plain plan context）的失败结果 → 不显失败 hero；
@@ -16,12 +16,13 @@ from __future__ import annotations
 
 import importlib
 import sys
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 
 from core.infrastructure.database import ensure_schema
 from core.models.schedule_history import ScheduleHistory
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
+from tests._support.schedule_retirement import capture_schedule_context, initialize_read_fixture
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
@@ -43,7 +44,9 @@ def _build_app(tmp_path, monkeypatch):
         if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
             sys.modules.pop(name, None)
     ensure_schema(str(test_db), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
-    return importlib.import_module("app").create_app()
+    app = importlib.import_module("app").create_app()
+    initialize_read_fixture(app)
+    return app
 
 
 def _adopted_official_context() -> Dict[str, Any]:
@@ -115,11 +118,9 @@ def _capture_home_hero(
     monkeypatch.setattr(request_services_mod, "BatchService", _StubBatchService)
     monkeypatch.setattr(request_services_mod, "ScheduleHistoryQueryService", _make_history_service(records))
     monkeypatch.setattr(route_mod, "_plan_resolution_context", lambda _services, _version: dict(plan_ctx))
-    monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
-
-    with app.test_request_context(path):
-        app.preprocess_request()
-        ctx = cast(Dict[str, Any], route_mod.index())
+    ctx = capture_schedule_context(
+        app.test_client(), endpoint="dashboard.index", path=path, template="dashboard.html",
+    )
     return ctx["workbench_summary"]["hero"]
 
 

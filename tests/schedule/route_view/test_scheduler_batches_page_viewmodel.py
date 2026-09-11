@@ -1,4 +1,4 @@
-"""回归测试：排产批次页 viewmodel 与 /scheduler/ 路由——build_batches_filter_state/build_batch_rows 维持默认 pending、空状态、only_ready 筛选与中文公共标签口径，页面据状态决定是否显示排产/勾选控件并渲染配置降级提示，build_latest_schedule_history_panel_state 对未知或缺失的 strategy/mode/metrics 抛 ScheduleHistoryDisplayValueError 而不泄露原始坏值，且路由确实经 build_scheduler_batches_page_view_model 出渲染数据。"""
+"""批次过滤、运行表单和公开摘要保持原业务契约；真实服务投影与退役 GET 分开核对，不恢复旧 HTML。"""
 
 from __future__ import annotations
 
@@ -12,11 +12,19 @@ from types import SimpleNamespace
 from typing import Any, Optional, Tuple
 
 import pytest
+from werkzeug.datastructures import MultiDict
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.scheduler.config.config_service import ConfigService
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
+from tests._support.schedule_retirement import (
+    assert_retired_scope,
+    capture_schedule_context,
+    initialize_read_fixture,
+    projection_text,
+)
+from web.routes.helpers.form_values import form_toggle_bool
 from web.viewmodels.scheduler_batches_page import (
     ScheduleHistoryDisplayValueError,
     build_batch_rows,
@@ -81,7 +89,9 @@ def _build_app(tmp_path, monkeypatch):
 
     _copy_schema_template(test_db)
     app_mod = importlib.import_module("app")
-    return app_mod.create_app(), str(test_db)
+    app = app_mod.create_app()
+    initialize_read_fixture(app)
+    return app, str(test_db)
 
 
 def _with_db(db_path: str):
@@ -153,16 +163,16 @@ def _delete_config_keys(db_path: str, keys) -> None:
         conn.close()
 
 
-def _select_markup(body: str, select_id: str) -> str:
-    start = body.index(f'<select id="{select_id}"')
-    end = body.index("</select>", start)
-    return body[start:end]
-
-
-def _assert_checkbox_before_hidden(body: str, *, field_name: str, checkbox_id: str, hidden_value: str) -> None:
-    checkbox_index = body.index(f'id="{checkbox_id}"')
-    hidden_index = body.index(f'type="hidden" name="{field_name}" value="{hidden_value}"', checkbox_index)
-    assert checkbox_index < hidden_index
+def _batches_context(app, path="/scheduler/") -> dict:
+    """Capture actual retained business inputs, then check the public retirement."""
+    client = app.test_client()
+    context = capture_schedule_context(
+        client, endpoint="scheduler.batches_page", path=path, template="scheduler/batches.html",
+    )
+    body = assert_retired_scope(client, path, message="未忽略条件后跳转")
+    for retired_control in ("jsRunScheduleForm", "js-batch-check", "js-select-all", "jsSelectedCount"):
+        assert retired_control not in body
+    return context
 
 
 def _batch_obj(
@@ -277,35 +287,25 @@ def test_batches_page_defaults_to_pending_status_and_renders_pending_rows(tmp_pa
     _insert_batch(db_path, batch_id="B-PENDING", status="pending")
     _insert_batch(db_path, batch_id="B-SCHEDULED", status="scheduled")
 
-    response = app.test_client().get("/scheduler/")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "B-PENDING" in body
-    assert "B-SCHEDULED" not in body
-    assert 'value="pending" selected' in body
-    assert "js-batch-check" in body
-    assert "js-select-all" in body
+    context = _batches_context(app)
+    assert [row["batch_id"] for row in context["batches"]] == ["B-PENDING"]
+    assert context["status"] == "pending"
+    assert context["pager"]["total"] == 1
+    assert [option.toggle.name for option in context["run_options"]] == ["enforce_ready", "strict_mode"]
 
 
 def test_batches_page_renders_run_option_toggle_fields(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_batch(db_path, batch_id="B-PENDING", status="pending")
 
-    response = app.test_client().get("/scheduler/")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert 'id="jsRunScheduleForm"' in body
-    assert 'id="runEnforceReady"' in body
-    assert 'name="enforce_ready"' in body
-    assert 'id="runStrictMode"' in body
-    assert 'name="strict_mode"' in body
-    assert 'type="checkbox"' in body
-    assert 'type="hidden" name="enforce_ready" value="no"' in body
-    assert 'type="hidden" name="strict_mode" value="no"' in body
-    _assert_checkbox_before_hidden(body, field_name="enforce_ready", checkbox_id="runEnforceReady", hidden_value="no")
-    _assert_checkbox_before_hidden(body, field_name="strict_mode", checkbox_id="runStrictMode", hidden_value="no")
+    context = _batches_context(app)
+    ready, strict = [option.toggle for option in context["run_options"]]
+    assert (ready.id, ready.name) == ("runEnforceReady", "enforce_ready")
+    assert (strict.id, strict.name) == ("runStrictMode", "strict_mode")
+    for toggle in (ready, strict):
+        assert toggle.value == "yes" and toggle.hidden_value == "no"
+        assert form_toggle_bool(MultiDict([(toggle.name, toggle.value), (toggle.name, toggle.hidden_value)]), toggle.name)
+        assert not form_toggle_bool(MultiDict([(toggle.name, toggle.hidden_value)]), toggle.name)
 
 
 def test_batches_page_empty_status_lists_all_statuses_without_run_controls(tmp_path, monkeypatch) -> None:
@@ -313,20 +313,10 @@ def test_batches_page_empty_status_lists_all_statuses_without_run_controls(tmp_p
     _insert_batch(db_path, batch_id="B-PENDING", status="pending")
     _insert_batch(db_path, batch_id="B-SCHEDULED", status="scheduled")
 
-    response = app.test_client().get("/scheduler/?status=")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "B-PENDING" in body
-    assert "B-SCHEDULED" in body
-    assert "批次列表" in body
-    assert "选择批次并执行排产" not in body
-    assert '<option value="" selected>（全部）</option>' in _select_markup(body, "schedulerBatchesStatusFilter")
-    assert "js-batch-check" not in body
-    assert "js-select-all" not in body
-    assert "jsSelectedCount" not in body
-    assert 'formaction="/scheduler/simulate"' not in body
-    assert "排产开始时间" not in body
+    context = _batches_context(app, "/scheduler/?status=")
+    assert {row["batch_id"] for row in context["batches"]} == {"B-PENDING", "B-SCHEDULED"}
+    assert context["status"] == ""
+    assert context["pager"]["total"] == 2
 
 
 def test_batches_page_non_pending_status_hides_run_controls(tmp_path, monkeypatch) -> None:
@@ -337,18 +327,11 @@ def test_batches_page_non_pending_status_hides_run_controls(tmp_path, monkeypatc
     _insert_batch(db_path, batch_id="B-COMPLETED", status="completed")
     _insert_batch(db_path, batch_id="B-CANCELLED", status="cancelled")
 
-    response = app.test_client().get("/scheduler/?status=scheduled")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "B-SCHEDULED" in body
-    assert "B-PENDING" not in body
-    assert '<option value="scheduled" selected>已排</option>' in _select_markup(body, "schedulerBatchesStatusFilter")
-    assert "js-batch-check" not in body
-    assert "js-select-all" not in body
-    assert "jsSelectedCount" not in body
-    assert 'formaction="/scheduler/simulate"' not in body
-    assert "排产开始时间" not in body
+    context = _batches_context(app, "/scheduler/?status=scheduled")
+    assert [row["batch_id"] for row in context["batches"]] == ["B-SCHEDULED"]
+    assert context["status"] == "scheduled"
+    assert context["batches"][0]["status_label"] == "已排"
+    assert context["pager"]["total"] == 1
 
 
 def test_batches_page_only_ready_filter_connects_to_visible_rows(tmp_path, monkeypatch) -> None:
@@ -357,28 +340,22 @@ def test_batches_page_only_ready_filter_connects_to_visible_rows(tmp_path, monke
     _insert_batch(db_path, batch_id="B-READY", ready_status="yes")
     _insert_batch(db_path, batch_id="B-NO", ready_status="no")
 
-    response = app.test_client().get("/scheduler/?only_ready=yes")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "B-READY" in body
-    assert "B-PARTIAL" not in body
-    assert "B-NO" not in body
-    assert 'value="yes" selected' in body
-    assert "齐套" in body
+    context = _batches_context(app, "/scheduler/?only_ready=yes")
+    assert [row["batch_id"] for row in context["batches"]] == ["B-READY"]
+    assert context["only_ready"] == "yes"
+    assert context["batches"][0]["ready_status_label"] == "齐套"
+    assert context["pager"]["total"] == 1
 
 
 def test_batches_page_empty_filtered_result_uses_filter_specific_message(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_batch(db_path, batch_id="B-SCHEDULED", status="scheduled")
 
-    response = app.test_client().get("/scheduler/")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "B-SCHEDULED" not in body
-    assert "当前筛选条件下暂无批次数据，可以调整状态或齐套条件" in body
-    assert "aps-empty-state" in body
+    context = _batches_context(app)
+    assert context["batches"] == []
+    assert context["status"] == "pending"
+    assert context["only_ready"] == ""
+    assert context["pager"]["total"] == 0
 
 
 def test_batches_page_renders_config_degraded_public_messages(tmp_path, monkeypatch) -> None:
@@ -393,10 +370,9 @@ def test_batches_page_renders_config_degraded_public_messages(tmp_path, monkeypa
         ),
     )
 
-    response = app.test_client().get("/scheduler/")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
+    context = _batches_context(app)
+    body = projection_text(context["config_notice_items"], context["current_config_display_items"])
+    assert context["current_config_state"]["degraded"] is True
     assert "当前配置有 " in body
     assert "个需要复核的修正项" in body
     assert "平时不直接显示的设置需要检查" in body
@@ -409,28 +385,24 @@ def test_batches_page_renders_config_degraded_public_messages(tmp_path, monkeypa
 def test_batches_page_without_latest_history_renders_empty_history_message(tmp_path, monkeypatch) -> None:
     app, _db_path = _build_app(tmp_path, monkeypatch)
 
-    response = app.test_client().get("/scheduler/")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "aps-empty-state" in body
-    assert "还没有排过产" in body
-    assert "排产后这里会显示最近一次排产结果。" in body
-    assert 'aps-summary-value">v' not in body
+    context = _batches_context(app)
+    assert context["latest_history"] is None
+    assert context["latest_summary"] is None
+    assert context["latest_head_items"] == ()
+    assert context["latest_metric_items"] == ()
+    assert context["latest_metrics"] is None
 
 
 def test_batches_page_latest_summary_parse_failed_renders_history_and_warning(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_history(db_path, version=7, result_summary="{invalid json")
 
-    response = app.test_client().get("/scheduler/")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "最近一次排产快照" in body
-    assert 'aps-latest-schedule-label">版本' in body
-    assert 'aps-latest-schedule-value">v7' in body
-    assert "还没有排过产" not in body
+    context = _batches_context(app)
+    body = projection_text(context["latest_head_items"], context["latest_notice_items"])
+    assert context["latest_history"]["version"] == 7
+    assert context["latest_summary"] is None
+    assert context["latest_summary_display"]["summary_parse_state"]["parse_failed"] is True
+    assert "版本" in body and "v7" in body
     assert "当前版本的排产摘要读取失败，页面仅展示基础历史信息。" in body
     assert "{invalid json" not in body
 
@@ -457,16 +429,13 @@ def test_batches_page_degrades_unknown_latest_history_display_value(
         },
     )
 
-    response = app.test_client().get("/scheduler/")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
+    context = _batches_context(app)
+    body = projection_text(context["latest_head_items"], context["latest_notice_items"])
     assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看这次排产的提醒摘要。" in body
-    assert 'aps-latest-schedule-value">v9' in body
-    assert "B-PENDING" in body
-    assert "jsRunScheduleForm" in body
-    assert "jsSelectedCount" in body
-    assert "batchesTable" in body
+    assert context["latest_history"]["version"] == 9 and "v9" in body
+    assert context["latest_metrics"] is None and context["latest_metric_items"] == ()
+    assert [row["batch_id"] for row in context["batches"]] == ["B-PENDING"]
+    assert [option.toggle.name for option in context["run_options"]] == ["enforce_ready", "strict_mode"]
     assert "abc" not in body
 
 
@@ -488,13 +457,12 @@ def test_batches_page_degrades_unknown_latest_history_strategy_without_raw_value
         },
     )
 
-    response = app.test_client().get("/scheduler/")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
+    context = _batches_context(app)
+    body = projection_text(context["latest_head_items"], context["latest_notice_items"], context["latest_meta_items"])
     assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看这次排产的提醒摘要。" in body
-    assert 'aps-latest-schedule-value">v10' in body
-    assert "B-PENDING" in body
+    assert context["latest_history"]["version"] == 10 and "v10" in body
+    assert context["latest_strategy_label"] == "-"
+    assert [row["batch_id"] for row in context["batches"]] == ["B-PENDING"]
     assert "future_strategy" not in body
 
 
@@ -632,15 +600,12 @@ def test_batches_page_latest_algo_config_snapshot_renders_public_snapshot_state(
         },
     )
 
-    response = app.test_client().get("/scheduler/")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert 'aps-latest-schedule-value">v8' in body
-    assert "自动补设备人员" in body
-    assert 'aps-summary-value">已关闭' in body
-    assert "保存补齐资源" in body
-    assert 'aps-summary-value">已启用' in body
+    context = _batches_context(app)
+    items = {item.label: item.value for item in context["latest_meta_items"]}
+    assert context["latest_history"]["version"] == 8
+    assert "v8" in projection_text(context["latest_head_items"])
+    assert items["自动补设备人员"] == "已关闭"
+    assert context["latest_auto_assign_persist_state"]["label"] == "已启用"
 
 
 def test_scheduler_batches_route_uses_page_view_model(tmp_path, monkeypatch) -> None:
@@ -676,15 +641,11 @@ def test_scheduler_batches_route_uses_page_view_model(tmp_path, monkeypatch) -> 
 
     monkeypatch.setattr(route_mod, "build_scheduler_batches_page_view_model", recording_builder)
 
-    response = app.test_client().get("/scheduler/")
-
-    assert response.status_code == 200
-    body = response.get_data(as_text=True)
+    context = _batches_context(app)
 
     assert len(calls) == 1
     assert calls[0]["filter_state"].status == "pending"
     assert calls[0]["batches"][0]["batch_id"] == "B-PENDING"
     assert calls[0]["config_panel"].current_config_state
     assert calls[0]["latest_panel"].latest_history is None
-    assert "SENTINEL-FROM-VM" in body
-    assert "B-PENDING" not in body
+    assert [row["batch_id"] for row in context["batches"]] == ["SENTINEL-FROM-VM"]

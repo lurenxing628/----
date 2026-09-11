@@ -4,12 +4,25 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from urllib.parse import unquote
 
 from core.services.scheduler.schedule_plan_option_display import public_plan_role_options
-from tests.web_pages.reports_workbench_backlink_helpers import _client, _html_for, _xlsx_sheet_rows
+from tests._support.schedule_retirement import (
+    assert_retired_scope,
+    capture_schedule_context,
+    initialize_read_fixture,
+    projection_text,
+)
+from tests.web_pages.reports_workbench_backlink_helpers import _client as _fixture_client
+from tests.web_pages.reports_workbench_backlink_helpers import _xlsx_sheet_rows
 from web.viewmodels.scheduler_reports_workbench import build_report_context
+
+
+def _client():
+    """Keep the existing v12 plan fixture; settle startup defaults before reads."""
+    client = _fixture_client()
+    initialize_read_fixture(client.application)
+    return client
 
 
 def _seed_newer_executable_version(version: int) -> None:
@@ -53,52 +66,47 @@ def _seed_newer_executable_version(version: int) -> None:
         conn.close()
 
 
-def _assert_context_plan_label(html: str, expected: str) -> None:
-    pattern = (
-        r'<span class="aps-context-label">\s*方案\s*</span>\s*'
-        r'<span class="aps-context-value">\s*' + re.escape(expected) + r"\s*</span>"
-    )
-    assert re.search(pattern, html), html
-    wrong_pattern = (
-        r'<span class="aps-context-label">\s*方案\s*</span>\s*'
-        r'<span class="aps-context-value">\s*正式采用方案\s*</span>'
-    )
-    assert not re.search(wrong_pattern, html), html
+def _assert_context_plan_label(context: dict, expected: str) -> None:
+    """The real v12 resolution must stay historical after v13 is persisted."""
+    plan = context["plan_resolution"]
+    assert plan["version"] == 12 and context["version"] == 12
+    assert plan["source_table"] == "schedule" and plan["scenario_id"] is None
+    assert plan["user_label"] == expected
+    assert plan["plan_identity"]["is_superseded_by_newer_version"] is True
+    assert not plan["can_write_feedback"] and not plan["can_dispatch"]
 
 
-def _assert_selected_plan_option_label(html: str, expected: str) -> None:
-    selected_option = re.search(
-        r'<option value="adopted"[^>]*selected[^>]*>\s*(.*?)\s*</option>',
-        html,
-        re.S,
-    )
-    assert selected_option, html
-    option_text = re.sub(r"\s+", "", selected_option.group(1))
-    assert expected in option_text, selected_option.group(0)
-    assert "正式采用方案·正式采用方案" not in re.sub(r"\s+", "", html)
+def _assert_selected_plan_option_label(options, expected: str) -> None:
+    """Inspect the actual public option values, not a removed select element."""
+    selected, = [option for option in options if option["role"] == "adopted"]
+    assert selected["display_text"] == expected
+    assert "正式采用方案·正式采用方案" not in projection_text(options)
 
 
 def test_gantt_page_labels_superseded_adopted_version_as_historical() -> None:
     client = _client()
     _seed_newer_executable_version(13)
 
-    html = _html_for(
-        client,
-        "/scheduler/gantt?view=machine&version=12&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06",
+    path = "/scheduler/gantt?view=machine&version=12&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06"
+    context = capture_schedule_context(
+        client, endpoint="scheduler.gantt_page", path=path, template="scheduler/gantt.html",
     )
-
-    _assert_context_plan_label(html, "历史正式方案（已被新版本替代）")
-    _assert_selected_plan_option_label(html, "历史正式方案（已被新版本替代）")
+    _assert_context_plan_label(context, "历史正式方案（已被新版本替代）")
+    _assert_selected_plan_option_label(context["plan_role_options"], "历史正式方案（已被新版本替代）")
+    assert_retired_scope(client, path, message="未忽略条件后跳转")
 
 
 def test_week_plan_page_labels_superseded_adopted_version_as_historical() -> None:
     client = _client()
     _seed_newer_executable_version(13)
 
-    html = _html_for(client, "/scheduler/week-plan?version=12&plan_role=adopted&week_start=2026-05-06")
-
-    _assert_context_plan_label(html, "历史正式方案（已被新版本替代）")
-    _assert_selected_plan_option_label(html, "历史正式方案（已被新版本替代）")
+    path = "/scheduler/week-plan?version=12&plan_role=adopted&week_start=2026-05-06"
+    context = capture_schedule_context(
+        client, endpoint="scheduler.week_plan_page", path=path, template="scheduler/week_plan.html",
+    )
+    _assert_context_plan_label(context, "历史正式方案（已被新版本替代）")
+    _assert_selected_plan_option_label(context["plan_role_options"], "历史正式方案（已被新版本替代）")
+    assert_retired_scope(client, path)
 
 
 def test_week_plan_export_labels_superseded_adopted_version_as_historical() -> None:
@@ -132,36 +140,49 @@ def test_reports_index_labels_superseded_adopted_version_as_historical() -> None
     client = _client()
     _seed_newer_executable_version(13)
 
-    html = _html_for(
-        client,
-        "/reports/?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06",
+    path = "/reports/?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06"
+    context = capture_schedule_context(
+        client, endpoint="reports.index", path=path, template="reports/index.html",
     )
-
-    assert "这是历史正式方案，只能查看" in html
-    assert "复盘正式方案" not in html
-    assert "查看计划和现场实际" in html
+    workbench = context["reports_workbench"]
+    assert workbench["context"]["version"] == 12
+    assert workbench["context"]["plan_role_label"] == "历史正式方案（已被新版本替代）"
+    assert workbench["context"]["can_write_feedback"] is False
+    public = projection_text(workbench["entry_cards"], workbench["workbench_links"])
+    assert "历史版本、模拟预览和对比参考方案只能查看" in public
+    assert "复盘正式方案" not in public
+    assert "查看计划和现场实际" in public
+    assert_retired_scope(client, path)
 
 
 def test_resource_dispatch_labels_superseded_adopted_option_as_historical() -> None:
     client = _client()
     _seed_newer_executable_version(13)
 
-    html = _html_for(
-        client,
-        "/scheduler/resource-dispatch?version=12&plan_role=adopted"
-        "&period_preset=week&query_date=2026-05-06&start_date=2026-05-06&end_date=2026-05-06",
+    path = ("/scheduler/resource-dispatch?version=12&plan_role=adopted"
+            "&period_preset=week&query_date=2026-05-06&start_date=2026-05-06&end_date=2026-05-06")
+    context = capture_schedule_context(
+        client, endpoint="scheduler.resource_dispatch_page", path=path, template="scheduler/resource_dispatch.html",
     )
-
-    _assert_selected_plan_option_label(html, "历史正式方案（已被新版本替代）")
+    assert context["filters"]["version"] == 12
+    assert context["filters"]["can_write_feedback"] is False
+    _assert_selected_plan_option_label(context["plan_role_options"], "历史正式方案（已被新版本替代）")
+    assert_retired_scope(client, path)
 
 
 def test_report_filter_option_labels_superseded_adopted_version_as_historical() -> None:
     client = _client()
     _seed_newer_executable_version(13)
 
-    html = _html_for(client, "/reports/overdue?version=12&plan_role=adopted")
-
-    _assert_selected_plan_option_label(html, "历史正式方案（已被新版本替代）")
+    path = "/reports/overdue?version=12&plan_role=adopted"
+    context = capture_schedule_context(
+        client, endpoint="reports.overdue_page", path=path, template="reports/overdue.html",
+    )
+    assert context["version"] == 12
+    assert context["selected_plan_role"] == "adopted"
+    _assert_selected_plan_option_label(context["plan_options"], "历史正式方案（已被新版本替代）")
+    body = assert_retired_scope(client, path)
+    assert "/reports/overdue/export" in body
 
 
 def test_public_plan_role_options_use_historical_label_without_duplicate_candidate() -> None:

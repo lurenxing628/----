@@ -14,6 +14,12 @@ from flask import Flask, g
 from core.services.scheduler.config.config_service import ConfigService
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
+from tests._support.schedule_retirement import (
+    assert_retired_scope,
+    capture_schedule_context,
+    initialize_read_fixture,
+    projection_text,
+)
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 
@@ -64,7 +70,9 @@ def _build_real_app(tmp_path, monkeypatch):
 
     ensure_schema(str(test_db), logger=None, schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=None)
     app_mod = importlib.import_module("app")
-    return app_mod.create_app(), str(test_db)
+    app = app_mod.create_app()
+    initialize_read_fixture(app)
+    return app, str(test_db)
 
 
 def _mutate_scheduler_config(db_path: str, *, delete_keys=()) -> None:
@@ -225,10 +233,14 @@ def test_scheduler_batches_page_renders_provenance_and_hidden_degraded_html(tmp_
     )
     client = app.test_client()
 
-    response = client.get("/scheduler/")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "当前配置状态" in body
+    context = capture_schedule_context(
+        client, endpoint="scheduler.batches_page", path="/scheduler/", template="scheduler/batches.html",
+    )
+    assert context["current_config_state"]["degraded"] is True
+    assert context["current_config_state"]["provenance_missing"] is True
+    assert context["current_config_state"]["baseline_label"] == "基线未记录"
+    body = projection_text(context["current_config_display_items"], context["current_config_notice_items"],
+                           context["config_notice_items"])
     assert "基线未记录" in body
     assert "auto_assign_persist" not in body
+    assert_retired_scope(client, "/scheduler/", message="未忽略条件后跳转")

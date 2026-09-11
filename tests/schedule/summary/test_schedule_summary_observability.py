@@ -1,4 +1,4 @@
-"""守护排产摘要(result_summary)的可观测性：首页/排产页/系统历史页/排产分析页遇到非法 JSON 摘要时记录带 version 与 source 的 warning 并保持页面 200 可用、保留最近快照；同时这些页面与分析 viewmodel 必须接受已预解析的 dict 摘要，正确投影 overdue_count、告警去重预览、降级提示与趋势行。"""
+"""摘要可观测性：真实服务投影保留 version/source 告警、预解析 dict 和历史原值；退役 GET 单独核对。"""
 
 from __future__ import annotations
 
@@ -11,6 +11,13 @@ from typing import Any, Dict, List, cast
 from core.infrastructure.database import ensure_schema, get_connection
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
+from tests._support.schedule_retirement import (
+    assert_redirect_navigation,
+    assert_retired_scope,
+    capture_schedule_context,
+    initialize_read_fixture,
+    projection_text,
+)
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
@@ -37,7 +44,9 @@ def _build_app(tmp_path, monkeypatch):
 
     ensure_schema(str(test_db), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
     app_mod = importlib.import_module("app")
-    return app_mod.create_app(), str(test_db)
+    app = app_mod.create_app()
+    initialize_read_fixture(app)
+    return app, str(test_db)
 
 
 
@@ -86,10 +95,10 @@ def test_dashboard_logs_warning_when_latest_result_summary_is_invalid(tmp_path, 
     client = app.test_client()
     warnings = _capture_warning_logs(app, monkeypatch)
 
-    resp = client.get("/")
-
-    assert resp.status_code == 200
+    context = capture_schedule_context(client, endpoint="dashboard.index", path="/", template="dashboard.html")
+    assert context["workbench_summary"]["latest_plan"]["version"] == "1"
     assert any("首页 排产摘要 解析失败（version=1" in item for item in warnings)
+    assert_redirect_navigation(client, "/", view="dashboard", context={})
 
 
 
@@ -99,15 +108,15 @@ def test_scheduler_batches_keeps_latest_history_when_summary_is_invalid(tmp_path
     client = app.test_client()
     warnings = _capture_warning_logs(app, monkeypatch)
 
-    resp = client.get("/scheduler/")
-    body = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert "最近一次排产快照" in body
-    assert 'aps-latest-schedule-label">版本' in body
-    assert 'aps-latest-schedule-value">v2' in body
-    assert "还没有排过产" not in body
+    context = capture_schedule_context(
+        client, endpoint="scheduler.batches_page", path="/scheduler/", template="scheduler/batches.html",
+    )
+    assert context["latest_history"]["version"] == 2
+    assert context["latest_history"]["result_summary"] == "{invalid json"
+    assert context["latest_summary"] is None
+    assert "v2" in projection_text(context["latest_head_items"])
     assert any("排产页 排产摘要 解析失败（version=2" in item for item in warnings)
+    assert_retired_scope(client, "/scheduler/", message="未忽略条件后跳转")
 
 
 
@@ -118,14 +127,14 @@ def test_system_history_logs_warning_for_selected_and_list_summary_parse_failure
     client = app.test_client()
     warnings = _capture_warning_logs(app, monkeypatch)
 
-    resp = client.get("/system/history?version=3")
-    body = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert "版本详情：v3" in body
-    assert "最近排产记录" in body
+    path = "/system/history?version=3"
+    context = capture_schedule_context(client, endpoint="system.history_page", path=path, template="system/history.html")
+    assert context["selected"]["version"] == 3
+    assert {item["version"] for item in context["items"]} == {3, 4}
+    assert context["selected_summary"] is None
     assert any("排产历史页 排产摘要 解析失败（version=3, source=selected" in item for item in warnings)
     assert any("排产历史页 排产摘要 解析失败（version=4, source=list" in item for item in warnings)
+    assert_retired_scope(client, path, message="未忽略条件后跳转")
 
 
 
@@ -135,11 +144,17 @@ def test_scheduler_analysis_logs_warning_for_selected_and_trend_summary_parse_fa
     client = app.test_client()
     warnings = _capture_warning_logs(app, monkeypatch)
 
-    resp = client.get("/scheduler/analysis?version=5")
-
-    assert resp.status_code == 200
+    path = "/scheduler/analysis?version=5"
+    context = capture_schedule_context(client, endpoint="scheduler.analysis_page", path=path, template="scheduler/analysis.html")
+    assert context["selected"]["version"] == 5
     assert any("排产分析页 排产摘要 解析失败（version=5, source=selected" in item for item in warnings)
     assert any("排产分析页 排产摘要 解析失败（version=5, source=trend" in item for item in warnings)
+    conn = get_connection(db_path)
+    try:
+        ref = conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='official' AND version=5 AND active=1").fetchone()[0]
+    finally:
+        conn.close()
+    assert_redirect_navigation(client, path, view="analysis", context={"plan_ref": ref})
 
 
 def test_dashboard_accepts_preparsed_result_summary_dict(tmp_path, monkeypatch) -> None:
@@ -175,11 +190,7 @@ def test_dashboard_accepts_preparsed_result_summary_dict(tmp_path, monkeypatch) 
     monkeypatch.setattr(request_services_mod, "BatchService", _StubBatchService)
     monkeypatch.setattr(request_services_mod, "ScheduleHistoryQueryService", _StubHistoryService)
     monkeypatch.setattr(route_mod, "_plan_resolution_context", lambda _services, _version: _current_official_plan_context())
-    monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
-
-    with app.test_request_context("/"):
-        app.preprocess_request()
-        ctx = cast(Dict[str, Any], route_mod.index())
+    ctx = capture_schedule_context(app.test_client(), endpoint="dashboard.index", path="/", template="dashboard.html")
 
     # fusion-dashboard-cockpit：latest_summary / overdue_count 两个 render kwarg 退役，
     # 「预解析 result_summary dict 被消费、超期数算出 3」的可观察证据迁到 workbench_summary
@@ -191,7 +202,6 @@ def test_scheduler_batches_accepts_preparsed_result_summary_dict(tmp_path, monke
     app, _db_path = _build_app(tmp_path, monkeypatch)
 
     import web.bootstrap.request_services as request_services_mod
-    import web.routes.domains.scheduler.scheduler_batches as route_mod
 
     summary = {"warnings": ["告警一", "告警二", "告警一"]}
 
@@ -259,11 +269,9 @@ def test_scheduler_batches_accepts_preparsed_result_summary_dict(tmp_path, monke
     monkeypatch.setattr(request_services_mod, "BatchService", _StubBatchService)
     monkeypatch.setattr(request_services_mod, "ConfigService", _StubConfigService)
     monkeypatch.setattr(request_services_mod, "ScheduleHistoryQueryService", _StubHistoryService)
-    monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
-
-    with app.test_request_context("/scheduler/"):
-        app.preprocess_request()
-        ctx = cast(Dict[str, Any], route_mod.batches_page())
+    ctx = capture_schedule_context(
+        app.test_client(), endpoint="scheduler.batches_page", path="/scheduler/", template="scheduler/batches.html",
+    )
 
     assert ctx["latest_summary"] == summary
     assert ctx["latest_warning_preview"] == []
@@ -276,7 +284,6 @@ def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_m
     app, _db_path = _build_app(tmp_path, monkeypatch)
 
     import web.bootstrap.request_services as request_services_mod
-    import web.routes.domains.scheduler.scheduler_batches as route_mod
 
     summary = {
         "warnings": ["告警一"],
@@ -382,11 +389,9 @@ def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_m
     monkeypatch.setattr(request_services_mod, "BatchService", _StubBatchService)
     monkeypatch.setattr(request_services_mod, "ConfigService", _StubConfigService)
     monkeypatch.setattr(request_services_mod, "ScheduleHistoryQueryService", _StubHistoryService)
-    monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
-
-    with app.test_request_context("/scheduler/"):
-        app.preprocess_request()
-        ctx = cast(Dict[str, Any], route_mod.batches_page())
+    ctx = capture_schedule_context(
+        app.test_client(), endpoint="scheduler.batches_page", path="/scheduler/", template="scheduler/batches.html",
+    )
 
     assert ctx["current_config_state"]["state"] == "degraded"
     assert ctx["current_config_state"]["degraded"] is True
@@ -406,7 +411,6 @@ def test_system_history_accepts_preparsed_result_summary_dict(tmp_path, monkeypa
     app, _db_path = _build_app(tmp_path, monkeypatch)
 
     import web.bootstrap.request_services as request_services_mod
-    import web.routes.system_history as route_mod
 
     summary = {"algo": {"metrics": {"overdue_count": 1}}}
 
@@ -432,11 +436,9 @@ def test_system_history_accepts_preparsed_result_summary_dict(tmp_path, monkeypa
             return [_StubHistoryItem(3)]
 
     monkeypatch.setattr(request_services_mod, "ScheduleHistoryQueryService", _StubHistoryService)
-    monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
-
-    with app.test_request_context("/system/history?version=3"):
-        app.preprocess_request()
-        ctx = cast(Dict[str, Any], route_mod.history_page())
+    ctx = capture_schedule_context(
+        app.test_client(), endpoint="system.history_page", path="/system/history?version=3", template="system/history.html",
+    )
 
     assert ctx["selected_summary"] == summary
     items = cast(List[Dict[str, Any]], ctx["items"])

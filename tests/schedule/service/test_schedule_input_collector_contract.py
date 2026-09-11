@@ -4,6 +4,8 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Dict, List
 
+from tests._support.sqlite_snapshot import stored_state
+
 
 def test_schedule_input_collector_contract(schema_conn) -> None:
     from core.services.common.build_outcome import BuildOutcome
@@ -28,6 +30,8 @@ def test_schedule_input_collector_contract(schema_conn) -> None:
             (2, 'B001_20', 'B001', 20, '工序B', 'internal', 'MC001', 'OP001', NULL, 1, 0, NULL, 'scheduled'),
             (3, 'B001_30', 'B001', 30, '工序C', 'internal', 'MC001', 'OP001', NULL, 1, 0, NULL, 'completed'),
             (4, 'B001_40', 'B001', 40, '外协D', 'external', NULL, NULL, 'SUP001', 0, 0, 2, 'skipped');
+        INSERT INTO ScheduleHistory(version, strategy, batch_count, op_count, result_status, result_summary)
+        VALUES (5, 'priority_first', 1, 2, 'success', '{}');
         INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
         VALUES
             (501, 1, 'MC001', 'OP001', '2025-12-31 08:00:00', '2025-12-31 09:00:00', 'unlocked', 5),
@@ -190,7 +194,15 @@ def test_schedule_input_collector_contract(schema_conn) -> None:
             ),
         ]
     )
-    svc.history_repo.get_latest_version = lambda: 5  # type: ignore[assignment]
+    assert svc.history_repo.get_latest_version() == 5
+    task_scopes = conn.execute(
+        "SELECT r.source_key, p.version FROM WorkbenchTaskRefs t "
+        "JOIN WorkbenchPlanSourceRefs r ON r.ref=t.row_ref "
+        "JOIN WorkbenchPlanSourceRefs p ON p.ref=t.plan_ref "
+        "WHERE p.kind='official' AND p.version=5 ORDER BY r.source_key"
+    ).fetchall()
+    assert [tuple(row) for row in task_scopes] == [("501", 5), ("502", 5)]
+    before = stored_state(conn)
 
     try:
         collected = collect_schedule_run_input(
@@ -211,6 +223,7 @@ def test_schedule_input_collector_contract(schema_conn) -> None:
             build_resource_pool_fn=_build_resource_pool,
             extend_downtime_map_for_resource_pool_fn=_extend_downtime_map_for_resource_pool,
         )
+        assert stored_state(conn) == before
     finally:
         conn.close()
 

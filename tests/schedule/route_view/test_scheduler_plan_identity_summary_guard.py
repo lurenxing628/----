@@ -9,17 +9,25 @@ from urllib.parse import urlparse
 
 from core.infrastructure.database import get_connection
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, SchedulePlanQueryService
-from tests.web_pages.reports_workbench_backlink_helpers import (
-    _client,
-    _html_for,
-    _parser_for,
-    _visible_text,
+from tests._support.schedule_retirement import (
+    assert_retired_scope,
+    capture_schedule_context,
+    initialize_read_fixture,
+    projection_text,
 )
+from tests.web_pages.reports_workbench_backlink_helpers import _client as _fixture_client
 from web.routes.dashboard import (
     _summary_overdue_count,
     _summary_payload_dict,
     _workbench_summary_parse_state,
 )
+
+
+def _client():
+    """Use the existing real plan fixture with startup defaults already persisted."""
+    client = _fixture_client()
+    initialize_read_fixture(client.application)
+    return client
 
 
 def _replace_latest_result_summary(raw_summary: str) -> None:
@@ -31,62 +39,88 @@ def _replace_latest_result_summary(raw_summary: str) -> None:
         conn.close()
 
 
-def _assert_no_path_links(parser, paths: Set[str]) -> None:
-    assert not [
-        link
-        for link in parser.links
-        if urlparse(link["href"]).path in paths
-    ]
+def _assert_no_path_links(value, paths: Set[str]) -> None:
+    """No enabled link in the actual public projection may bypass the guard."""
+    if isinstance(value, dict):
+        url = value.get("url") or value.get("href")
+        if url and not value.get("disabled"):
+            assert urlparse(url).path not in paths
+        for item in value.values():
+            _assert_no_path_links(item, paths)
+    elif isinstance(value, (tuple, list)):
+        for item in value:
+            _assert_no_path_links(item, paths)
+
+
+def _dashboard_projection(client, path):
+    """Keep retained summary semantics separate from non-equivalent old GETs."""
+    context = capture_schedule_context(client, endpoint="dashboard.index", path=path, template="dashboard.html")
+    assert_retired_scope(client, path)
+    return context["workbench_summary"]
+
+
+def _dashboard_text(workbench):
+    """Select only the purpose-built display fields, without altering values."""
+    return projection_text(workbench["hero"], workbench["risk_cards"], workbench["summary_stats"])
+
+
+def _rejected_dashboard(client, path, *, status=400, message="原计划身份、日期或筛选无效"):
+    """The current adapter rejects bad identity/scope instead of selecting latest."""
+    body = assert_retired_scope(client, path, status=status, message=message)
+    assert "ValueError" not in body and "Traceback" not in body
+    assert "已回到" not in body
+    assert "/scheduler/gantt" not in body and "/reports/execution-review" not in body
+    return body
 
 
 def _assert_bad_summary_dashboard(client) -> None:
-    dashboard = _parser_for(
+    dashboard = _dashboard_projection(
         client,
         "/?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06"
         "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT",
     )
-    dashboard_text = _visible_text(dashboard)
+    dashboard_text = _dashboard_text(dashboard)
 
     assert "当前排产摘要读取失败" in dashboard_text
     assert "页面仅展示基础历史信息" in dashboard_text
     assert "超期批次需要先看" not in dashboard_text
     assert "资源负荷偏高" not in dashboard_text
+    assert dashboard["latest_plan"]["version"] == "12"
+    assert dashboard["latest_plan"]["can_write_feedback"] is False
     _assert_no_path_links(dashboard, {"/reports/execution-review"})
 
 
 def _assert_bad_summary_dispatch(client) -> None:
-    dispatch_html = _html_for(
-        client,
-        "/scheduler/resource-dispatch?scope_type=machine&machine_id=M-RPT"
-        "&period_preset=custom&date_from=2026-05-06&date_to=2026-05-06"
-        "&version=12&plan_role=adopted&batch_id=B-RPT",
+    path = ("/scheduler/resource-dispatch?scope_type=machine&machine_id=M-RPT"
+            "&period_preset=custom&date_from=2026-05-06&date_to=2026-05-06"
+            "&version=12&plan_role=adopted&batch_id=B-RPT")
+    dispatch = capture_schedule_context(
+        client, endpoint="scheduler.resource_dispatch_page", path=path, template="scheduler/resource_dispatch.html",
     )
-
+    dispatch_html = projection_text(dispatch["plan_identity"])
     assert "当前排产摘要读取失败" in dispatch_html
     assert "页面仅展示基础历史信息" in dispatch_html
-    assert 'href="/reports/execution-review' not in dispatch_html
-    assert "data-actual-record-url-template=" not in dispatch_html
-    assert "data-actual-template-url=" not in dispatch_html
-    assert "data-actual-import-url=" not in dispatch_html
+    assert dispatch["filters"]["version"] == 12
+    assert dispatch["plan_identity"]["can_write_feedback"] is False
+    assert dispatch["execution_review_link"]["disabled"] is True
+    for key in ("actual_record_url_template", "actual_template_url", "actual_import_url"):
+        assert dispatch[key] is None
+    assert_retired_scope(client, path)
 
 
 def _assert_bad_summary_review(client) -> None:
-    review = _parser_for(
-        client,
-        "/reports/execution-review?version=12&date_from=2026-05-06&date_to=2026-05-06",
+    path = "/reports/execution-review?version=12&date_from=2026-05-06&date_to=2026-05-06"
+    review = capture_schedule_context(
+        client, endpoint="reports.execution_review_page", path=path, template="reports/execution_review.html",
     )
-    review_text = _visible_text(review)
+    review_text = projection_text(review["report_plan_status"])
 
     assert "当前排产摘要读取失败" in review_text
     assert "页面仅展示基础历史信息" in review_text
     assert "当前方案只能查看，不能写现场记录。" not in review_text
-    assert "查看现场记录入口" not in review_text
-    assert not [
-        link
-        for link in review.links
-        if link["text"] == "查看现场记录入口"
-        and urlparse(link["href"]).path == "/scheduler/resource-dispatch"
-    ]
+    assert review["version"] == 12
+    _assert_no_path_links(review["report_links"], {"/scheduler/resource-dispatch"})
+    assert_retired_scope(client, path)
 
 
 def test_dashboard_preparsed_summary_still_obeys_plan_identity_guardrail() -> None:
@@ -232,48 +266,20 @@ def test_empty_schedule_detail_history_is_not_current_writable_official_plan() -
 def test_dashboard_invalid_plan_identity_is_visible_gap_instead_of_500() -> None:
     client = _client()
 
-    for path in (
-        "/?version=12&plan_role=bad_role",
-        "/?version=12&plan_role=adopted&scenario_id=missing-scenario",
+    for path, message in (
+        ("/?version=12&plan_role=bad_role", "原计划角色无效，未改用采用方案"),
+        ("/?version=12&plan_role=adopted&scenario_id=missing-scenario", "原计划身份、日期或筛选无效"),
     ):
-        parser = _parser_for(client, path)
-        text = _visible_text(parser)
-
-        assert "计划工作台" in text
-        assert "当前请求不可用" in text
-        assert "已回到正式采用方案" in text
-        assert "ValueError" not in text
-        assert not [
-            link
-            for link in parser.links
-            if urlparse(link["href"]).path in {"/reports/execution-review", "/scheduler/resource-dispatch", "/scheduler/gantt"}
-        ]
+        text = _rejected_dashboard(client, path, message=message)
+        assert "bad_role" not in text and "missing-scenario" not in text
 
 
 def test_dashboard_missing_requested_version_is_visible_gap_instead_of_no_history() -> None:
     client = _client()
 
-    parser = _parser_for(client, "/?version=999")
-    text = _visible_text(parser)
-    analysis_links = [
-        link["href"]
-        for link in parser.links
-        if link["href"].startswith("/scheduler/analysis")
-    ]
-
-    assert "计划工作台" in text
-    assert "当前请求不可用" in text
-    assert "请求的排产版本 v999 不存在" in text
-    assert "已回到最新排产版本" in text
+    text = _rejected_dashboard(client, "/?version=999", status=404, message="页面不存在或已被删除")
     assert "数据库里还没有排产历史" not in text
-    assert analysis_links
-    assert any("version=12" in href for href in analysis_links)
-    assert not any("version=999" in href for href in analysis_links)
-    assert not [
-        link
-        for link in parser.links
-        if urlparse(link["href"]).path in {"/reports/execution-review", "/scheduler/resource-dispatch", "/scheduler/gantt"}
-    ]
+    assert "/scheduler/analysis" not in text
 
 
 def test_dashboard_recent_schedule_metrics_do_not_turn_missing_values_into_zero() -> None:
@@ -282,8 +288,8 @@ def test_dashboard_recent_schedule_metrics_do_not_turn_missing_values_into_zero(
         '{"overdue_batches":{"count":0},"algo":{"metrics":{"total_tardiness_hours":"","makespan_hours":null,"machine_util_avg":""}}}'
     )
 
-    parser = _parser_for(client, "/?version=12&plan_role=adopted")
-    text = _visible_text(parser)
+    workbench = _dashboard_projection(client, "/?version=12&plan_role=adopted")
+    text = _dashboard_text(workbench)
 
     # fusion-dashboard-cockpit：「当前查看排产」卡 recent_metrics 退役，设备利用率缺失态护卫
     # 迁到 7 格体检表「资源负荷」格——缺失值仍诚实显「数据不足」而非伪装成 0。
@@ -299,12 +305,13 @@ def test_dashboard_missing_overdue_count_is_data_gap_not_zero() -> None:
         '{"algo":{"metrics":{"total_tardiness_hours":0,"makespan_hours":0,"machine_util_avg":0.4}}}'
     )
 
-    parser = _parser_for(client, "/?version=12&plan_role=adopted")
-    text = _visible_text(parser)
+    workbench = _dashboard_projection(client, "/?version=12&plan_role=adopted")
+    text = _dashboard_text(workbench)
 
     assert "排产摘要缺少超期批次数" in text
     assert "超期批次 0" not in text
     assert "数据不足" in text
+    assert workbench["summary_stats"]["overdue_count_value"] == "数据不足"
 
 
 def test_dashboard_invalid_overdue_count_is_data_gap_not_zero() -> None:
@@ -314,12 +321,13 @@ def test_dashboard_invalid_overdue_count_is_data_gap_not_zero() -> None:
             f'{{"overdue_batches":{{"count":{raw_count}}},"algo":{{"metrics":{{"total_tardiness_hours":0,"makespan_hours":0,"machine_util_avg":0.4}}}}}}'
         )
 
-        parser = _parser_for(client, "/?version=12&plan_role=adopted")
-        text = _visible_text(parser)
+        workbench = _dashboard_projection(client, "/?version=12&plan_role=adopted")
+        text = _dashboard_text(workbench)
 
         assert "首页暂时不能展示准确数量" in text
         assert "超期批次 0" not in text
         assert "数据不足" in text
+        assert workbench["summary_stats"]["overdue_count_value"] == "数据不足"
 
 
 def test_dashboard_recent_schedule_metrics_reject_bool_utilization_without_hiding_real_zero() -> None:
@@ -328,8 +336,8 @@ def test_dashboard_recent_schedule_metrics_reject_bool_utilization_without_hidin
         '{"overdue_batches":{"count":0},"algo":{"metrics":{"total_tardiness_hours":0,"makespan_hours":0,"machine_util_avg":false}}}'
     )
 
-    parser = _parser_for(client, "/?version=12&plan_role=adopted")
-    text = _visible_text(parser)
+    workbench = _dashboard_projection(client, "/?version=12&plan_role=adopted")
+    text = _dashboard_text(workbench)
 
     # bool 利用率 → 资源负荷格诚实显「数据不足」，不伪装成 0.0%
     assert "当前摘要里没有可安全展示的设备平均利用率" in text
@@ -338,8 +346,8 @@ def test_dashboard_recent_schedule_metrics_reject_bool_utilization_without_hidin
     _replace_latest_result_summary(
         '{"overdue_batches":{"count":0},"algo":{"metrics":{"total_tardiness_hours":0,"makespan_hours":0,"machine_util_avg":0}}}'
     )
-    parser = _parser_for(client, "/?version=12&plan_role=adopted")
-    text = _visible_text(parser)
+    workbench = _dashboard_projection(client, "/?version=12&plan_role=adopted")
+    text = _dashboard_text(workbench)
 
     # 真实 0 利用率 → 资源负荷格显「0.0%」而非被当成缺失（不隐藏真零）；
     # 拖期/总工期已随 recent_metrics 退役离开首页（不再断言其文案）。
@@ -351,28 +359,23 @@ def test_dashboard_missing_requested_version_keeps_request_gap_when_latest_summa
     client = _client()
     _replace_latest_result_summary("{bad-json")
 
-    parser = _parser_for(client, "/?version=999")
-    text = _visible_text(parser)
-
-    assert "当前请求不可用" in text
-    assert "请求的排产版本 v999 不存在" in text
-    assert "当前排产摘要读取失败" in text
+    text = _rejected_dashboard(client, "/?version=999", status=404, message="页面不存在或已被删除")
+    conn = get_connection(os.environ["APS_DB_PATH"])
+    try:
+        identity = SchedulePlanQueryService(conn).resolve_plan(12, ROLE_ADOPTED).to_dict()["plan_identity"]
+        assert identity["result_summary_parse_failed"] is True
+        assert conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=12").fetchone()[0] == "{bad-json"
+    finally:
+        conn.close()
     assert "数据库里还没有排产历史" not in text
 
 
 def test_dashboard_invalid_requested_version_is_visible_gap() -> None:
     client = _client()
 
-    parser = _parser_for(client, "/?version=abc")
-    text = _visible_text(parser)
-
-    assert "当前请求不可用" in text
-    # 非数字版本不回显原始 raw（避免 ?version=op_id 把内部字段名渲染进可见文本）：用通用文案，
-    # raw 本身不出现在页面；用户仍能从回退胶囊看到实际生效的 v12。
-    assert "请求的排产版本不是有效数字" in text
+    text = _rejected_dashboard(client, "/?version=abc")
     assert "abc" not in text
-    # 版本回显从被删 stat-grid「当前查看版本」卡迁到壳层胶囊（回退最新版本 v12）
-    assert "v12" in text
+    assert "v12" not in text
     assert "数据库里还没有排产历史" not in text
 
 
@@ -381,11 +384,7 @@ def test_dashboard_invalid_version_does_not_echo_internal_token_into_visible_tex
     # 经 plan_identity_error→data_gap evidence→hero.evidence_text 链路，回显会让 op_id 现身页面。
     client = _client()
 
-    parser = _parser_for(client, "/?version=op_id")
-    text = _visible_text(parser)
-
-    assert "当前请求不可用" in text
-    assert "请求的排产版本不是有效数字" in text
+    text = _rejected_dashboard(client, "/?version=op_id")
     assert "op_id" not in text  # 内部字段名不得因回显用户输入而外显
 
 
@@ -405,14 +404,10 @@ def test_summary_overdue_count_flags_count_items_inconsistency() -> None:
 
 
 def test_dashboard_invalid_date_arg_does_not_echo_internal_token_into_visible_text() -> None:
-    # ?date_from=op_id 等非法日期形字段：不得经 WorkbenchLink context_summary（"date_from ～ date_to"）
-    # 渲染进可见文本（禁外显内部身份）。非法日期在路由入口 _valid_date_arg 被丢弃。
+    # 非法日期不能被忽略后扩大范围，也不能回显内部字段名。
     client = _client()
 
-    parser = _parser_for(client, "/?version=12&plan_role=adopted&date_from=op_id&date_to=2026-05-06")
-    text = _visible_text(parser)
-
-    assert "执行排产" in text  # 页面正常渲染（非空兜底，避免空断言假绿）
+    text = _rejected_dashboard(client, "/?version=12&plan_role=adopted&date_from=op_id&date_to=2026-05-06")
     assert "op_id" not in text
 
 
@@ -449,12 +444,11 @@ def test_dashboard_superseded_official_plan_does_not_fake_empty_site_facts() -> 
     finally:
         conn.close()
 
-    parser = _parser_for(client, "/?version=12&plan_role=adopted")
-    text = _visible_text(parser)
-
-    # 版本回显归胶囊（v12），不再有 stat-grid「当前查看版本」卡
-    assert "v12" in text
-    assert "v13" not in text
+    workbench = _dashboard_projection(client, "/?version=12&plan_role=adopted")
+    text = _dashboard_text(workbench)
+    assert workbench["latest_plan"]["version"] == "12"
+    assert workbench["latest_plan"]["is_superseded_by_newer_version"] is True
+    assert workbench["latest_plan"]["can_write_feedback"] is False
     assert "现场情况" in text
     assert "今日计划或现场事实暂时读不到" in text
     assert "现场情况 暂未发现" not in text

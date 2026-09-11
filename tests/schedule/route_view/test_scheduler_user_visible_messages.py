@@ -19,7 +19,9 @@ from core.infrastructure.errors import ValidationError
 from core.services.scheduler.summary.schedule_summary import build_result_summary
 from core.shared.field_labels import display_field_label
 from tests._support.excel_templates import point_env_at_shared
+from tests._support.gantt_retirement import _business_state
 from tests._support.paths import REPO_ROOT
+from tests._support.schedule_retirement import initialize_read_fixture
 from web.routes.domains.scheduler import scheduler_config as scheduler_config_route
 from web.routes.domains.scheduler.scheduler_user_messages import scheduler_user_visible_app_error_message
 from web.viewmodels.scheduler_run_view_result import build_run_schedule_view_result
@@ -61,7 +63,9 @@ def _build_app(tmp_path, monkeypatch):
 
     sys.modules.pop("app", None)
     app_mod = importlib.import_module("app")
-    return app_mod.create_app()
+    app = app_mod.create_app()
+    initialize_read_fixture(app)
+    return app
 
 
 def test_schedule_params_normalization_warnings_are_user_facing_chinese() -> None:
@@ -189,10 +193,13 @@ def test_scheduler_version_validation_message_is_user_facing_chinese(tmp_path, m
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
+    before = _business_state(client)
     analysis_resp = client.get("/scheduler/analysis?version=abc")
     analysis_html = analysis_resp.get_data(as_text=True)
     assert analysis_resp.status_code == 400
-    assert VERSION_ERROR_MESSAGE in analysis_html
+    assert "原计划身份、日期或筛选无效，未改选对象或扩大范围。" in analysis_html
+    assert "Location" not in analysis_resp.headers
+    assert "abc" not in analysis_html
     assert "version 不合法" not in analysis_html
     assert "期望整数" not in analysis_html
 
@@ -201,19 +208,28 @@ def test_scheduler_version_validation_message_is_user_facing_chinese(tmp_path, m
     assert gantt_resp.status_code == 400
     assert gantt_payload["error"]["message"] == VERSION_ERROR_MESSAGE
     assert "期望整数" not in gantt_payload["error"]["message"]
+    assert _business_state(client) == before
 
 
 def test_mixed_internal_field_message_is_mapped_to_chinese_field_label(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
+    before = _business_state(client)
     resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02&offset=abc")
     body = resp.get_data(as_text=True)
 
-    assert resp.status_code == 400
-    assert "偏移周数填写不正确，请检查后重试。" in body
+    assert resp.status_code == 410
+    assert "未忽略条件后跳转" in body
+    assert "Location" not in resp.headers
+    assert "abc" not in body
     assert "offset 不合法" not in body
     assert ">offset<" not in body
+
+    current = client.get("/scheduler/gantt?week_start=2026-03-02&offset_weeks=abc")
+    assert current.status_code == 400
+    assert "原计划身份、日期或筛选无效，未改选对象或扩大范围。" in current.get_data(as_text=True)
+    assert "Location" not in current.headers
 
     data_resp = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02&offset=abc")
     payload = data_resp.get_json()
@@ -222,6 +238,7 @@ def test_mixed_internal_field_message_is_mapped_to_chinese_field_label(tmp_path,
     assert payload["error"]["message"] == "偏移周数填写不正确，请检查后重试。"
     assert payload["error"]["details"]["field"] == "偏移周数"
     assert "offset" not in json.dumps(payload["error"], ensure_ascii=False)
+    assert _business_state(client) == before
 
 
 def test_error_handler_hides_english_internal_message(tmp_path, monkeypatch) -> None:

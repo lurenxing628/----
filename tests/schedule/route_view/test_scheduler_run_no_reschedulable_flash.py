@@ -1,11 +1,16 @@
-"""回归测试：当 ScheduleService.run_schedule 抛 ValidationError(无可重排工序) 时，POST /scheduler/run 跟随重定向后应返回 200 并在正式排产页面回显该业务错误提示，绝不误报“排产完成（版本…”。"""
+"""无可重排 POST 保留错误 flash 和原数据；退役 GET 不得被当成排产成功。"""
 
 from __future__ import annotations
+
+from tests._support.gantt_retirement import _business_state
+from tests._support.schedule_retirement import initialize_read_fixture
 
 
 def test_scheduler_run_no_reschedulable_flash(app_client, monkeypatch) -> None:
     from core.infrastructure.errors import ValidationError
     from core.services.scheduler.schedule_service import ScheduleService
+
+    calls = []
 
     def _fake_run_schedule(
         self,
@@ -18,18 +23,31 @@ def test_scheduler_run_no_reschedulable_flash(app_client, monkeypatch) -> None:
         run_time_budget_seconds=None,
         strict_mode=False,
     ):
+        calls.append((list(batch_ids), start_dt, simulate))
         raise ValidationError("所选批次没有可重排工序，本次未执行排产。", field="排产")
 
     monkeypatch.setattr(ScheduleService, "run_schedule", _fake_run_schedule)
 
     client = app_client
+    initialize_read_fixture(client.application)
+    before = _business_state(client)
     resp = client.post(
         "/scheduler/run",
         data={"batch_ids": ["B001"], "start_dt": "2026-01-01 08:00:00"},
-        follow_redirects=True,
+        follow_redirects=False,
     )
-    body = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200, f"/scheduler/run follow_redirects 后应返回 200：{resp.status_code}"
-    assert "所选批次没有可重排工序，本次未执行排产。" in body, "正式排产页面未展示业务错误提示"
-    assert "排产完成（版本" not in body, "正式排产页面不应误报成功"
+    assert resp.status_code == 302
+    assert resp.headers["Location"] == "/scheduler/"
+    assert calls == [(["B001"], "2026-01-01 08:00:00", False)]
+    with client.session_transaction() as session:
+        messages = list(session.get("_flashes", []))
+    assert ("error", "所选批次没有可重排工序，本次未执行排产。") in messages
+    assert not any("排产完成（版本" in message for _category, message in messages)
+    landing = client.get(resp.headers["Location"])
+    assert landing.status_code == 410
+    landing_body = landing.get_data(as_text=True)
+    assert "未忽略条件后跳转" in landing_body
+    assert "所选批次没有可重排工序，本次未执行排产。" in landing_body
+    assert "排产完成（版本" not in landing_body
+    assert "Location" not in landing.headers
+    assert _business_state(client) == before

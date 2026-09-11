@@ -18,6 +18,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py",
         ),
         "input_file_scopes": (
+            "tests/_support/schedule_retirement.py",
             "web/routes/domains/scheduler/scheduler_batches.py",
             "web/routes/domains/scheduler/scheduler_batch_detail.py",
             "web/routes/domains/scheduler/scheduler_excel_batches*.py",
