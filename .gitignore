@@ -256,3 +256,68 @@ docs/v2/panorama.js
 .coverage.*
 coverage.json
 htmlcov/
+
+# 本地前端设计资料，不纳入版本控制
+/前端设计/
+
+# Local-only checks for the excluded prototype tree, not product regression tests.
+/tests/field-gantt-chains.cjs
+/tests/field-gantt-focus-boundaries.cjs
+/tests/field-gantt-plan-a.cjs
+/tests/workbench-base-radius.cjs
+/tests/workbench-batches-style.cjs
+/tests/workbench-chart-radius.cjs
+/tests/workbench-gantt-main-style.cjs
+/tests/workbench-gantt-theme.cjs
+/tests/workbench-native-radius.cjs
+/tests/workbench-native-style.cjs
+/tests/workbench-timebars-contrast.cjs
+/tests/workbench-timebars-style.cjs
+/tests/workbench-workspace-surfaces.cjs
+
+# One-run evidence index generators bound to specific local temporary roots.
+/tests/workbench/final_execution_acceptance_index.cjs
+/tests/workbench/final_execution_acceptance_analytics.cjs
+/tests/workbench/final_execution_acceptance_calibration.cjs
+/tests/workbench/final_execution_acceptance_field.cjs
+/tests/workbench/final_master_visual_index_support.py
+
+# Obsolete bundle absent from the current asset manifest; retain current payloads.
+/static/workbench/assets/foundation-c6054c2ae97a14f0.js
+
+# Raw fixture copies and DOM dumps; retain formal summaries and reproduction inputs.
+/.codestable/features/2026-09-10-dashboard-external-migration/evidence/typed-raw-ddl.json
+/.codestable/features/2026-09-10-dashboard-external-migration/evidence/fixture-v31.db
+/.codestable/features/2026-09-10-dashboard-external-migration/evidence/backups/aps_backup_20260910_113718_before_migrate_v30_to_v31.db
+/.codestable/issues/2026-09-08-analysis-surface-continuity/evidence/before-surfaces.json
+/.codestable/issues/2026-09-08-analysis-surface-continuity/evidence/*-measurements.json
+/.codestable/issues/2026-09-08-field-gantt-surfaces/evidence/*-measurements.json
+/.codestable/issues/2026-09-08-field-gantt-surfaces/evidence/other-pages-supplemental.json
+/.codestable/issues/2026-09-08-gantt-boundary-theme/evidence/field-regression-outputs.json
+/.codestable/issues/2026-09-08-gantt-boundary-theme/evidence/gantt-boundaries.json
+/.codestable/issues/2026-09-08-gantt-boundary-theme/evidence/original-adjacency.json
+/.codestable/issues/2026-09-09-system-maintenance-navigation/evidence/before.json
+/.codestable/issues/2026-09-09-system-maintenance-navigation/evidence/navigation-measurements.json
+
+# JUnit reports and pytest aliases from completed local acceptance runs.
+/.codestable/issues/2026-09-10-fe-static-integration/pytest-source-tmp/
+/.codestable/issues/2026-09-10-fe-static-integration/pytest-tmp/
+/.codestable/features/2026-09-09-workbench-calibration-adoption/test-results.xml
+/.codestable/features/2026-09-09-workbench-dashboard/dashboard-tests.xml
+/.codestable/features/2026-09-10-dashboard-external-migration/*-tests.xml
+/.codestable/issues/2026-09-08-incomplete-batch-objective/targeted-tests.xml
+/.codestable/issues/2026-09-10-ea-zero-duration/*.xml
+/.codestable/issues/2026-09-10-ee-zero-duration/*.xml
+/.codestable/issues/2026-09-10-fe-static-integration/*.xml
+/.codestable/issues/2026-09-10-fe-static-integration/fh-fe02-evidence/regression-verified.xml
+/.codestable/issues/2026-09-10-round1-batch/*.xml
+/.codestable/issues/2026-09-10-round1-execution-contract/*.xml
+/.codestable/refactors/2026-09-08-optimizer-candidate-efficiency/*-tests.xml
+
+# Raw viewport captures; retain narrative findings, hashes and acceptance matrices.
+/.codestable/issues/2026-09-08-analysis-surface-continuity/evidence/*.png
+/.codestable/issues/2026-09-08-field-gantt-surfaces/evidence/*.png
+/.codestable/issues/2026-09-08-gantt-boundary-theme/evidence/*.png
+/.codestable/issues/2026-09-08-workbench-visual-language/evidence/*.png
+/.codestable/issues/2026-09-09-system-maintenance-navigation/evidence/*.png
+/.codestable/issues/2026-09-10-ee-zero-duration/browser/*/*.png
