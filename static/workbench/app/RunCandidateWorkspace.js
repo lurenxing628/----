@@ -378,8 +378,6 @@
       rows: result.warnings
     }), /*#__PURE__*/React.createElement(C.ErrorBox, {
       error: analysisRead.error
-    }), analysis && /*#__PURE__*/React.createElement(Analysis.Overview, {
-      data: analysis
     }), /*#__PURE__*/React.createElement("div", {
       className: "rc-heading"
     }, /*#__PURE__*/React.createElement("div", {
@@ -504,7 +502,9 @@
     }))), !['delivery', 'history'].includes(tab) && /*#__PURE__*/React.createElement(C.Detail, {
       task: chosen,
       onClose: () => setSelected(null)
-    }))));
+    })), analysis && /*#__PURE__*/React.createElement(Analysis.Overview, {
+      data: analysis
+    })));
   }
   function RunCandidateWorkspace(props) {
     const adapter = React.useMemo(() => props.adapter || window.RunCandidateAnalysisAPI.create(), [props.adapter]);

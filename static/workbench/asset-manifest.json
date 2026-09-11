@@ -8923,7 +8923,7 @@
     },
     {
       "path": "workbench/app/RunCandidateWorkspace.js",
-      "sha256": "9d1a42e2ebd8177873d46ae6ac0c9304498b0d041420d051572ddc7b957faea9",
+      "sha256": "ef561fd2dcac842716721e80f26be57e354dc3fe2fdaa5076df654b37cf84c66",
       "bytes": 24809,
       "mime": "application/javascript",
       "dependencies": [
@@ -9004,7 +9004,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/RunCandidateWorkspace.jsx",
-              "sha256": "7e6613664e020332393302189d47bb8f77be541ec2ff607f2a807fc07b01b489"
+              "sha256": "519abc5758fe750aeedba1839d43a58ed745182915534940ed3545f3e81a42a2"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -9013,7 +9013,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/RunCandidateWorkspace.jsx",
-          "sha256": "7e6613664e020332393302189d47bb8f77be541ec2ff607f2a807fc07b01b489"
+          "sha256": "519abc5758fe750aeedba1839d43a58ed745182915534940ed3545f3e81a42a2"
         }
       ]
     },
@@ -14014,7 +14014,7 @@
     },
     {
       "path": "frontend/workbench/app/RunCandidateWorkspace.jsx",
-      "sha256": "7e6613664e020332393302189d47bb8f77be541ec2ff607f2a807fc07b01b489"
+      "sha256": "519abc5758fe750aeedba1839d43a58ed745182915534940ed3545f3e81a42a2"
     },
     {
       "path": "frontend/workbench/app/RunHistoryAPI.js",
@@ -14853,5 +14853,5 @@
       "workbench/prototype/ui_kits/workbench/workbench-ui.css"
     ]
   },
-  "build_id": "47ced597296282600fcb7a2ae8015791257290584b2552a475104f140dfed411"
+  "build_id": "7175f2b1dfee7a583f9f3d43a43f88e3999f6fb2757fdda4ec5647430e161621"
 }
