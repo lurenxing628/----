@@ -9,6 +9,7 @@ import sys
 
 import pytest
 
+from tests.gate_meta.workbench_round1_registry_support import POST_ROUND1_TARGETS
 from tools import long_gate_fingerprint as fingerprint_mod
 from tools import long_gate_manifest as manifest_mod
 from tools import quality_gate_shared
@@ -137,17 +138,29 @@ def test_full_test_debt_manifest_tracks_runtime_and_shard_inputs():
 
 
 def test_required_groups_cover_required_registry():
-    coverage = validate_required_regression_group_coverage(iter_required_tests())
+    required = iter_required_tests()
+    groups = iter_required_regression_groups()
+    coverage = validate_required_regression_group_coverage(required)
 
     assert coverage["missing"] == []
     assert coverage["duplicates"] == []
     assert coverage["unknown"] == []
-    assert coverage["required_target_count"] == len(iter_required_tests())
-    assert coverage["group_target_count"] == len(iter_required_tests())
-    # Final delivered piece and predecessor targets; registration is not execution proof.
+    assert coverage["required_target_count"] == len(required)
+    assert coverage["group_target_count"] == len(required)
+    # Historical 582 plus reviewed final registrations; this is not execution proof.
     assert coverage["group_count"] == 33
-    assert coverage["required_target_count"] == 582
-    assert [group["group_id"] for group in iter_required_regression_groups()][-9:] == [
+    final_required = (
+        ("tests/gate_meta/test_scheduler_lazy_exports_final.py", "scheduler_run_core"),
+        ("tests/workbench/test_final_planning_analysis.py", "workbench_run_jobs"),
+        ("tests/workbench/test_final_planning_analysis_history.py", "workbench_run_jobs"),
+        ("tests/workbench/test_final_planning_analysis_contract.py", "workbench_run_jobs"),
+    )
+    assert [path for path in required if path in POST_ROUND1_TARGETS] == [path for path, _owner in final_required]
+    assert len([path for path in required if path not in POST_ROUND1_TARGETS]) == 582
+    assert coverage["required_target_count"] == 582 + len(final_required)
+    for path, owner in final_required:
+        assert [group["group_id"] for group in groups if path in group["target_paths"]] == [owner]
+    assert [group["group_id"] for group in groups][-9:] == [
         "workbench_trial", "workbench_template_lineage", "workbench_request_lifecycle",
         "workbench_calibration_adoption", "workbench_trial_adoption", "workbench_dashboard",
         "workbench_outsourcing", "workbench_zero_duration", "workbench_piece_adoption",

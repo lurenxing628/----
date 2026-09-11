@@ -3,6 +3,8 @@
 import os
 import sqlite3
 
+from tests._support.migration_schema_helpers import load_legacy_migration_schema
+
 
 def test_migrate_v2_unify_workcalendar_day_type(tmp_path, schema_path):
     """
@@ -21,9 +23,7 @@ def test_migrate_v2_unify_workcalendar_day_type(tmp_path, schema_path):
     # 1) 初始化一个“已是 v1 的库”：SchemaVersion=1，并写入一条 weekend
     conn0 = sqlite3.connect(test_db)
     try:
-        with open(schema_path, "r", encoding="utf-8") as f:
-            conn0.executescript(f.read())
-        conn0.execute("UPDATE SchemaVersion SET version=1 WHERE id=1")
+        load_legacy_migration_schema(conn0, version=1)
         conn0.execute(
             """
             INSERT OR REPLACE INTO WorkCalendar (date, day_type, shift_hours, efficiency, allow_normal, allow_urgent, remark)
@@ -47,6 +47,11 @@ def test_migrate_v2_unify_workcalendar_day_type(tmp_path, schema_path):
         row = conn.execute("SELECT day_type FROM WorkCalendar WHERE date='2026-01-25'").fetchone()
         got = row["day_type"] if isinstance(row, sqlite3.Row) else (row[0] if row else None)
         assert got == "holiday", f"预期 day_type=holiday，实际 {got}"
+        preserved = conn.execute(
+            "SELECT date, shift_hours, efficiency, allow_normal, allow_urgent, remark "
+            "FROM WorkCalendar WHERE date='2026-01-25'"
+        ).fetchone()
+        assert (str(preserved[0]), *tuple(preserved)[1:]) == ("2026-01-25", 0, 1.0, "no", "no", "old weekend")
 
         rowv = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
         v = int(rowv["version"] if isinstance(rowv, sqlite3.Row) else rowv[0])

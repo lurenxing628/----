@@ -1,0 +1,1401 @@
+{
+  "schema_version": 1,
+  "scope": "Task D scheduling25 + trial12",
+  "source_inventory": ".codestable/roadmap/workbench-prototype-migration/workbench-capabilities.json",
+  "frozen_planning_unchanged": true,
+  "capability_count": 37,
+  "action_count": 146,
+  "status_policy": "本表只定义动作分母。结果来自本轮 report 的对应 action_id；历史原型 passed 不迁入，未跑保持 not_run，截图生成不等于 Main V 审视通过。",
+  "capabilities": [
+    {
+      "capability_id": "WBP-RUN-001",
+      "title": "计划窗口与批次选择器",
+      "actions": [
+        {
+          "action_id": "WBP-RUN-001.dates",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-001.date-guard",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-001.open-picker",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-001.close-picker",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-001.search",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-001.range-selection",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-RUN-002",
+      "title": "批次选择动作",
+      "actions": [
+        {
+          "action_id": "WBP-RUN-002.single",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-002.select-all",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-002.ready-only",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-002.clear",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-002.empty-guard",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-002.filtered",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-002.ready-filter",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-002.paging",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-RUN-003",
+      "title": "真实排产规则",
+      "actions": [
+        {
+          "action_id": "WBP-RUN-003.ready-off",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-003.ready-on",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-003.exclude",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-003.auto-assign",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-003.actual-protected",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-RUN-004",
+      "title": "预检结果",
+      "actions": [
+        {
+          "action_id": "WBP-RUN-004.check",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-004.tasks",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-004.metrics",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-004.reasons",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-RUN-005",
+      "title": "补齐与批次往返",
+      "actions": [
+        {
+          "action_id": "WBP-RUN-005.batch-link",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-005.return-context",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-005.invalidate-check",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-RUN-006",
+      "title": "真实受管排产",
+      "actions": [
+        {
+          "action_id": "WBP-RUN-006.cancel-confirm",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-006.confirm",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-006.worker-result",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-006.recover-run",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-RUN-007",
+      "title": "候选结果入口",
+      "actions": [
+        {
+          "action_id": "WBP-RUN-007.real-candidate",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-RUN-007.no-result",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-PLAN-001",
+      "title": "真实方案目录",
+      "actions": [
+        {
+          "action_id": "WBP-PLAN-001.official",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-001.historical",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-001.scenario",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-PLAN-002",
+      "title": "计划身份与基线",
+      "actions": [
+        {
+          "action_id": "WBP-PLAN-002.identity",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-002.stable-identities",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-002.baseline",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-002.comparison",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-PLAN-003",
+      "title": "候选正式采用",
+      "actions": [
+        {
+          "action_id": "WBP-PLAN-003.cancel",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-003.reason",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-003.operator",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-003.confirm",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-003.recover-receipt",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-003.stale-conflict",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-PLAN-004",
+      "title": "恢复及失败边界",
+      "actions": [
+        {
+          "action_id": "WBP-PLAN-004.reload",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-004.new-process",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-004.invalid-reference",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-004.storage-failure",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-PLAN-005",
+      "title": "方案跨页导航",
+      "actions": [
+        {
+          "action_id": "WBP-PLAN-005.gantt-navigation",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-005.trial-navigation",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-PLAN-005.return-comparison",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-ANA-001",
+      "title": "比较指标与证据",
+      "actions": [
+        {
+          "action_id": "WBP-ANA-001.metrics",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-ANA-001.unavailable",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-ANA-001.tradeoffs",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-ANA-002",
+      "title": "候选比较与状态",
+      "actions": [
+        {
+          "action_id": "WBP-ANA-002.select-four",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-ANA-002.preview-not-adopted",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-ANA-003",
+      "title": "批次及采用记录",
+      "actions": [
+        {
+          "action_id": "WBP-ANA-003.delivery",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-ANA-003.history",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-ANA-003.batch-gantt",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-ANA-004",
+      "title": "比较工作区导航",
+      "actions": [
+        {
+          "action_id": "WBP-ANA-004.gantt",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-ANA-004.delay",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-ANA-004.adopt",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-ANA-005",
+      "title": "比较导出",
+      "actions": [
+        {
+          "action_id": "WBP-ANA-005.csv",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-ANA-005.download-failure",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-GANTT-001",
+      "title": "甘特查看控制",
+      "actions": [
+        {
+          "action_id": "WBP-GANTT-001.machine",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-001.operator",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-001.batch",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-001.baseline",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-001.search",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-001.only-changed",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-001.expand",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-001.collapse",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-GANTT-002",
+      "title": "真实工序条与点",
+      "actions": [
+        {
+          "action_id": "WBP-GANTT-002.click",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-002.keyboard",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-002.hover",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-002.conflict-track",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-GANTT-003",
+      "title": "任务详情与关系",
+      "actions": [
+        {
+          "action_id": "WBP-GANTT-003.details",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-003.resources",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-003.quantities",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-003.predecessors",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-GANTT-004",
+      "title": "批次定位与试调",
+      "actions": [
+        {
+          "action_id": "WBP-GANTT-004.batch-focus",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-004.missing",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-GANTT-004.trial-link",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-DELAY-001",
+      "title": "交付风险汇总",
+      "actions": [
+        {
+          "action_id": "WBP-DELAY-001.metrics",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-DELAY-001.scope",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-DELAY-001.unknown",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-DELAY-002",
+      "title": "逐批交付",
+      "actions": [
+        {
+          "action_id": "WBP-DELAY-002.select-batch",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-DELAY-002.due-date",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-DELAY-002.full-batch-finish",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-DELAY-003",
+      "title": "末工序与比较导航",
+      "actions": [
+        {
+          "action_id": "WBP-DELAY-003.last-operation",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-DELAY-003.compare",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-DELAY-004",
+      "title": "风险证据边界",
+      "actions": [
+        {
+          "action_id": "WBP-DELAY-004.conflicts",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-DELAY-004.no-root-cause-claim",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-TRIAL-001",
+      "title": "试调外壳及返回",
+      "actions": [
+        {
+          "action_id": "WBP-TRIAL-001.return-source",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-001.shell",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-001.theme",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-001.load-failure",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-TRIAL-002",
+      "title": "来源及目录",
+      "actions": [
+        {
+          "action_id": "WBP-TRIAL-002.source",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-002.catalog-source",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-002.selected-status",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-002.candidate-source",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-TRIAL-003",
+      "title": "试调甘特控制",
+      "actions": [
+        {
+          "action_id": "WBP-TRIAL-003.mode",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-003.baseline",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-003.only-changed",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-003.search",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-003.expand",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-003.escape",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-TRIAL-004",
+      "title": "工序及资源依据",
+      "actions": [
+        {
+          "action_id": "WBP-TRIAL-004.full-scope",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-004.execution",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-004.capacity",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-004.predecessors",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-TRIAL-005",
+      "title": "真实工序试调",
+      "actions": [
+        {
+          "action_id": "WBP-TRIAL-005.cancel",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-005.resources",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-005.date",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-005.save",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-005.repair-conflict",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-005.calendar-end",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-TRIAL-006",
+      "title": "约束和保护",
+      "actions": [
+        {
+          "action_id": "WBP-TRIAL-006.lock",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-006.actuals",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-006.precedence-conflict",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-006.valid-point",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-006.authorization",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-006.overlap",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-006.calendar",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-TRIAL-007",
+      "title": "场景保存与正式采用",
+      "actions": [
+        {
+          "action_id": "WBP-TRIAL-007.save-scenario",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-007.cancel",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-007.reason",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-007.confirm",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-007.recover-receipt",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-007.stale-conflict",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-TRIAL-008",
+      "title": "放弃草稿",
+      "actions": [
+        {
+          "action_id": "WBP-TRIAL-008.cancel",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-008.confirm",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-TRIAL-009",
+      "title": "原型重置语义处置",
+      "actions": [
+        {
+          "action_id": "WBP-TRIAL-009.reset-disposition",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-TRIAL-010",
+      "title": "结果及记录页签",
+      "actions": [
+        {
+          "action_id": "WBP-TRIAL-010.tabs",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-010.keyboard",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-010.empty",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-TRIAL-011",
+      "title": "导出与打印",
+      "actions": [
+        {
+          "action_id": "WBP-TRIAL-011.csv",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-011.raw",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-011.print",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-011.export-failure",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    },
+    {
+      "capability_id": "WBP-TRIAL-012",
+      "title": "恢复与未保存保护",
+      "actions": [
+        {
+          "action_id": "WBP-TRIAL-012.leave-guard",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-012.reload",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-012.new-process",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-012.stale-write",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        },
+        {
+          "action_id": "WBP-TRIAL-012.storage-failure",
+          "status": "not_run",
+          "B": "not_run",
+          "K": "not_run",
+          "V": "not_run",
+          "P": "not_run"
+        }
+      ]
+    }
+  ]
+}

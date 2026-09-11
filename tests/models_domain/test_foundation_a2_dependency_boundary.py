@@ -275,11 +275,27 @@ def test_migration_callers_use_the_approved_one_way_imports() -> None:
         "core/infrastructure/migration_operation_execution_contract.py",
         "core/infrastructure/migration_runner.py",
         "core/infrastructure/migration_state.py",
-        "web/bootstrap/factory.py",
+        "web/bootstrap/launcher_shutdown.py",
     ):
         imports = _module_imports(rel_path)
         assert not any(module.endswith("migrations.common") for _level, module, _names in imports), rel_path
         assert any(module.endswith("migration_common") for _level, module, _names in imports), rel_path
+
+    shutdown_imports = _module_imports("web/bootstrap/launcher_shutdown.py")
+    assert any(
+        level == 0 and module == "core.infrastructure.migration_common" and "fallback_log" in names
+        for level, module, names in shutdown_imports
+    )
+    factory_imports = _module_imports("web/bootstrap/factory.py")
+    assert not any(
+        module.endswith(("migrations.common", "migration_common"))
+        for _level, module, _names in factory_imports
+    )
+    assert any(
+        level == 1 and module == "launcher_shutdown"
+        and {"read_exit_backup_enabled", "run_exit_backup"}.issubset(names)
+        for level, module, names in factory_imports
+    )
 
 
 def test_a2_hard_directory_scc_is_absent() -> None:

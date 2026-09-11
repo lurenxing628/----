@@ -324,6 +324,11 @@ QUALITY_GATE_GUARD_TESTS = (*QUALITY_GATE_GUARD_TESTS, *WORKBENCH_REQUIRED_TESTS
 QUALITY_GATE_REQUIRED_TESTS = (QUALITY_GATE_SELFTEST_PATH, *QUALITY_GATE_GUARD_TESTS)
 
 TEST_ONLY_HELPER_IMPACT = {
+    "tests/_support/migration_schema_helpers.py": (
+        "tests/algorithm/test_schedule_persistence_auto_assign_contract.py",
+        "tests/calendar_maintenance/test_migrate_v2_unify_workcalendar_day_type.py",
+        "tests/excel_data_io/test_sanitize_batch_dates_single_digit.py",
+    ),
     "tests/gate_meta/long_gate_cache_helpers.py": (
         "tests/gate_meta/test_long_gate_debt_ledger_cache.py",
         "tests/gate_meta/test_long_gate_required_regression_cache.py",

@@ -19,6 +19,7 @@ from core.services.scheduler.run.schedule_persistence import (
     persist_schedule,
 )
 from core.services.scheduler.schedule_service import ScheduleService
+from tests._support.migration_schema_helpers import load_legacy_migration_schema
 from tests._support.paths import REPO_ROOT
 
 
@@ -547,7 +548,7 @@ def test_schedule_unique_migration_creates_index_and_preserves_rows(tmp_path: Pa
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     try:
-        _load_schema(conn)
+        load_legacy_migration_schema(conn, version=6)
         _seed_common(
             conn,
             [
@@ -566,8 +567,10 @@ def test_schedule_unique_migration_creates_index_and_preserves_rows(tmp_path: Pa
                 (1, "MC_A", "OP_A", "2026-01-02 08:00:00", "2026-01-02 09:00:00", "unlocked", 32),
             ],
         )
-        conn.execute("DROP INDEX IF EXISTS idx_schedule_version_op_unique")
-        conn.execute("UPDATE SchemaVersion SET version=6 WHERE id=1")
+        assert conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_schedule_version_op_unique'"
+        ).fetchone() is None
+        before_rows = [tuple(row) for row in conn.execute("SELECT * FROM Schedule ORDER BY id")]
         conn.commit()
     finally:
         conn.close()
@@ -600,6 +603,7 @@ def test_schedule_unique_migration_creates_index_and_preserves_rows(tmp_path: Pa
             (2, 31),
             (1, 32),
         ]
+        assert [tuple(row) for row in conn.execute("SELECT * FROM Schedule ORDER BY id")] == before_rows
 
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(

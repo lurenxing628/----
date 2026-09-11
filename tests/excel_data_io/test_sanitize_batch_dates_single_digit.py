@@ -3,6 +3,8 @@
 import os
 import sqlite3
 
+from tests._support.migration_schema_helpers import load_legacy_migration_schema
+
 
 def test_sanitize_batch_dates_single_digit(tmp_path, schema_path):
     """
@@ -22,9 +24,7 @@ def test_sanitize_batch_dates_single_digit(tmp_path, schema_path):
     conn0 = sqlite3.connect(test_db)
     try:
         conn0.execute("PRAGMA foreign_keys = OFF;")
-        with open(schema_path, "r", encoding="utf-8") as f:
-            conn0.executescript(f.read())
-        conn0.execute("UPDATE SchemaVersion SET version=0 WHERE id=1")
+        load_legacy_migration_schema(conn0, version=0)
         conn0.execute("INSERT INTO Parts (part_no, part_name) VALUES (?, ?)", ("P1", "Part1"))
         conn0.execute(
             "INSERT INTO Batches (batch_id, part_no, part_name, quantity, due_date) VALUES (?, ?, ?, ?, ?)",
@@ -52,6 +52,10 @@ def test_sanitize_batch_dates_single_digit(tmp_path, schema_path):
         else:
             due_text = str(due)
         assert due_text == "2026-01-01", f"预期 due_date='2026-01-01'，实际 {due!r}"
+        preserved = conn.execute(
+            "SELECT batch_id, part_no, part_name, quantity FROM Batches WHERE batch_id=?", ("B001",)
+        ).fetchone()
+        assert tuple(preserved) == ("B001", "P1", "Part1", 1)
 
         # 附加断言：缺整表被补齐后，应继续迁移到当前版本
         rowv = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
