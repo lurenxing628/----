@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import subprocess
@@ -705,16 +704,6 @@ function applyPayload(barElement, payload) {
 """
 
 
-def _preview_bootstrap() -> str:
-    module_path = REPO_ROOT / "tests" / "_scripts_e2e" / "run_complex_case_and_export_gantt.py"
-    spec = importlib.util.spec_from_file_location("run_complex_case_and_export_gantt", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load preview helper from {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.build_preview_client_bootstrap("tasks", "calendarDays", "criticalChain")
-
-
 def _run_node_json(code: str) -> dict:
     completed = subprocess.run(
         ["node", "-"],
@@ -786,16 +775,6 @@ def _gantt_help_js() -> str:
 
 def _gantt_boot_js() -> str:
     return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_boot.js"))
-
-
-def _load_preview_module():
-    module_path = REPO_ROOT / "tests" / "_scripts_e2e" / "run_complex_case_and_export_gantt.py"
-    spec = importlib.util.spec_from_file_location("run_complex_case_and_export_gantt", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load preview helper from {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def test_outline_helper_contract_and_adapter_binding() -> None:
