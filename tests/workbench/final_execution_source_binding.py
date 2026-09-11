@@ -1,10 +1,12 @@
 """Capture a full source copy and run Task E with G's strict source guard."""
 
 import argparse
+import hashlib
 import importlib
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -43,9 +45,13 @@ def seal(parent):
 def derive(base_manifest, parent, overrides):
     base = json.loads(base_manifest.read_text(encoding="utf-8"))
     base_source, parent = Path(base["root"]).resolve(), parent.resolve()
-    allowed = {"tests/workbench/final_execution_analytics.cjs", "tests/workbench/final_execution_read_reentry.cjs"}
+    allowed = {"tests/workbench/final_execution_analytics.cjs", "tests/workbench/final_execution_read_reentry.cjs",
+               "tests/workbench/test_actual_gantt_browser.cjs", "tests/workbench/calibration_lineage_ui_probe.cjs",
+               "tests/workbench/calibration_adoption_widgets_probe.cjs", "tests/workbench/point_downstream_browser.cjs",
+               "tests/workbench/test_point_downstream_api.py", "tests/workbench/test_point_downstream_browser.py",
+               "frontend/workbench/app/ActualGanttWorkspace.jsx"}
     if not overrides or set(overrides) - allowed or len(overrides) != len(set(overrides)):
-        raise ValueError("Only the two declared Task E probe corrections may differ from this sealed base")
+        raise ValueError("Only the explicitly authorized Task E source delta may differ from this sealed base")
     parent.mkdir(parents=True, exist_ok=False)
     source, manifest = parent / "source", parent / "source-manifest.json"
     command = [sys.executable, "-B", str(base_source / HELPERS / "source_binding.py")]
@@ -57,9 +63,15 @@ def derive(base_manifest, parent, overrides):
     subprocess.run(command + ["check", str(source), str(base_manifest)], check=True)
     for name in overrides:
         shutil.copy2(str(REPO / name), str(source / name))
+    dependency_root = Path(sys.prefix).resolve()
+    (source / ".venv").symlink_to(dependency_root, target_is_directory=True)
     extras = [item for row in base["files"] for item in ("--extra", row["path"])]
     subprocess.run(command + ["capture", str(source), str(manifest), "--origin", base["origin_root"]] + extras, check=True)
     current = json.loads(manifest.read_text(encoding="utf-8"))
+    if base.get("additional_forbidden_source_roots"):
+        current["additional_forbidden_source_roots"] = base["additional_forbidden_source_roots"]
+    current["dependency_links"] = {".venv": str(dependency_root)}
+    manifest.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     before, after = ({row["path"]: row for row in value["files"]} for value in (base, current))
     changed = {name for name in set(before) | set(after) if before.get(name) != after.get(name)}
     if changed != set(overrides):
@@ -67,11 +79,72 @@ def derive(base_manifest, parent, overrides):
     subprocess.run(command + ["check", str(base_source), str(base_manifest)], check=True)
     subprocess.run(command + ["check", str(source), str(manifest)], check=True)
     shutil.copytree(str(source / HELPERS), str(parent / "factory-tests"))
+    product_changes = sorted(name for name in changed if not name.startswith("tests/"))
     delta = {"base_manifest": str(base_manifest), "base_aggregate_sha256": base["aggregate_sha256"],
-             "aggregate_sha256": current["aggregate_sha256"], "all_product_files_unchanged": True,
+             "aggregate_sha256": current["aggregate_sha256"], "all_product_files_unchanged": not product_changes,
+             "authorized_product_changes": product_changes,
+             "dependency_links": current["dependency_links"],
              "changes": [{"before": before[name], "after": after[name]} for name in sorted(changed)]}
     (parent / "source-delta.json").write_text(json.dumps(delta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"source": str(source), "manifest": str(manifest), **delta}), flush=True)
+
+
+def copy_failure(manifest, expected_sha256, parent):
+    raw = manifest.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != expected_sha256:
+        raise ValueError("The public failed-source manifest differs from the supplied SHA-256")
+    baseline = json.loads(raw)
+    original, parent = Path(baseline["root"]).resolve(), parent.resolve()
+    source = parent / "source"
+    parent.mkdir(parents=True, exist_ok=False)
+    for row in baseline["entries"]:
+        relative = Path(row["path"])
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("Source manifest path must remain inside its declared root")
+        item, copied = original / relative, source / relative
+        data = item.read_bytes()
+        if (hashlib.sha256(data).hexdigest(), len(data), stat.S_IMODE(item.stat().st_mode)) != (row["sha256"], row["bytes"], row["mode"]):
+            raise RuntimeError("The immutable failed source changed: " + str(relative))
+        copied.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(item), str(copied))
+        if copied.read_bytes() != data or stat.S_IMODE(copied.stat().st_mode) != row["mode"]:
+            raise RuntimeError("Failed-source copy content or modes differ: " + str(relative))
+    guard_source = Path("/private/tmp/aps-final-e-sealed-read-after-20260911-06/source")
+    guard_manifest = json.loads((guard_source.parent / "source-manifest.json").read_text(encoding="utf-8"))
+    declared = {row["path"]: row for row in guard_manifest["files"]}
+    additions = []
+    for name in ("source_guard.py", "source_binding.py", "source_inventory.py"):
+        relative = (HELPERS / name).as_posix()
+        item, target = guard_source / relative, source / relative
+        if hashlib.sha256(item.read_bytes()).hexdigest() != declared[relative]["sha256"]:
+            raise RuntimeError("The sealed G source helper changed")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(item), str(target))
+        additions.append(relative)
+    runner = "tests/workbench/final_execution_source_binding.py"
+    shutil.copy2(str(Path(__file__).resolve()), str(source / runner))
+    command = [sys.executable, "-B", str(source / HELPERS / "source_binding.py")]
+    extras = [part for relative in [row["path"] for row in baseline["entries"]] + additions for part in ("--extra", relative)]
+    result = parent / "source-manifest.json"
+    subprocess.run(command + ["capture", str(source), str(result), "--origin", str(REPO)] + extras, check=True)
+    current = json.loads(result.read_text(encoding="utf-8"))
+    current["additional_forbidden_source_roots"] = [str(original), baseline["source"]]
+    result.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    subprocess.run(command + ["check", str(source), str(result)], check=True)
+    for row in baseline["entries"]:
+        item = original / row["path"]
+        if (hashlib.sha256(item.read_bytes()).hexdigest(), item.stat().st_size, stat.S_IMODE(item.stat().st_mode)) != (row["sha256"], row["bytes"], row["mode"]):
+            raise RuntimeError("The public failed source changed while being copied")
+    if manifest.read_bytes() != raw:
+        raise RuntimeError("The public source manifest changed while being copied")
+    shutil.copytree(str(source / HELPERS), str(parent / "factory-tests"))
+    proof = {"public_manifest": str(manifest.resolve()), "public_manifest_sha256": expected_sha256,
+             "source": str(source), "files": baseline["file_count"], "bytes": baseline["bytes"],
+             "public_files_sha256_and_modes_verified_before_after": True,
+             "product_delta": [], "test_harness_additions": additions, "test_harness_replaced": [runner],
+             "aggregate_sha256": current["aggregate_sha256"]}
+    (parent / "copy-proof.json").write_text(json.dumps(proof, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(proof), flush=True)
 
 
 def install_guard():
@@ -84,9 +157,6 @@ def install_guard():
         raise RuntimeError("Task E must execute from its declared sealed source copy")
     harness = REPO.parent / "factory-tests"
     rows = {row["path"]: row for row in value["files"]}
-    import hashlib
-    import stat
-
     for filename in ("source_guard.py", "source_binding.py", "source_inventory.py"):
         path = harness / filename
         data = path.read_bytes()
@@ -98,11 +168,16 @@ def install_guard():
     guard = importlib.import_module("source_guard").FrozenSourceGuard(REPO, harness, manifest)
     guard.restrict_sys_path()
     violations = []
+    forbidden = [Path(path).resolve() for path in value.get("additional_forbidden_source_roots", [])]
 
     def audit(event, args):
         if event in ("open", "os.listdir", "os.scandir"):
             try:
                 guard.check_read(args[0])
+                if args[0] is not None and not isinstance(args[0], int):
+                    path = Path(os.fsdecode(args[0])).resolve()
+                    if any(path == root or root in path.parents for root in forbidden) and not guard.dependency(path):
+                        raise PermissionError("External fixed-source fallback blocked: " + str(path))
             except PermissionError as error:
                 violations.append({"event": event, "error": str(error)})
                 raise
@@ -160,6 +235,10 @@ def main():
     delta.add_argument("base_manifest", type=Path)
     delta.add_argument("parent", type=Path)
     delta.add_argument("overrides", nargs="+")
+    failure = sub.add_parser("copy-failure")
+    failure.add_argument("manifest", type=Path)
+    failure.add_argument("expected_sha256")
+    failure.add_argument("parent", type=Path)
     execute = sub.add_parser("run")
     execute.add_argument("manifest", type=Path)
     execute.add_argument("output", type=Path)
@@ -170,6 +249,9 @@ def main():
         return 0
     if args.mode == "derive":
         derive(args.base_manifest, args.parent, args.overrides)
+        return 0
+    if args.mode == "copy-failure":
+        copy_failure(args.manifest, args.expected_sha256, args.parent)
         return 0
     return run(args.manifest, args.output, args.tests)
 

@@ -5,8 +5,12 @@ from typing import Any, Dict, Optional
 
 from core.infrastructure.errors import ValidationError
 from core.services.report import ReportEngine
-from core.services.report.date_input import validate_explicit_report_date_range
-from core.services.report.date_input import validate_ymd_date as validate_ymd_date
+from core.services.report.date_input import (
+    validate_explicit_report_date_range,
+)
+from core.services.report.date_input import (
+    validate_ymd_date as validate_ymd_date,
+)
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED
 from core.services.scheduler.schedule_result_view_context import default_plan_resolution_dict
 from web.routes.domains.scheduler.scheduler_plan_context_token import request_scenario_id_from_args

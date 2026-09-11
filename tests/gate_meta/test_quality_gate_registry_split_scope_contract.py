@@ -22,6 +22,9 @@ REPORT_CHAIN_SCOPES = {
     "web/routes/reports*.py",
     "core/services/report/**/*.py",
     "tests/web_pages/reports_workbench_backlink_helpers.py",
+    "tests/gantt/fixtures/schema_v12.sql",
+    "tests/gantt/fixtures/schema_v13.sql",
+    "tests/gantt/fixtures/schema_v16.sql",
 }
 
 GEOMETRY_SPLIT_SCOPES = {
