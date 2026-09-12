@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from tools import benchmark_full_test_debt_shards as benchmark
-from tools.full_test_debt_shards import split_nodeids
+from tools.full_test_debt_shards import classify_nodeid, split_nodeids
 
 
 def test_optimizer_matrix_fixture_is_not_split_between_serial_and_parallel() -> None:
@@ -26,6 +26,17 @@ def test_algorithm_comparison_modules_run_in_one_serial_shard() -> None:
     serial, parallel = split_nodeids(nodes, 3)
     assert serial == nodes
     assert parallel == [[], [], []]
+
+
+def test_graph_repair_multiround_matrix_cases_stay_serial() -> None:
+    # Two cases drive the end-to-end and quality-matrix runners, which raise under xdist.
+    module = "tests/algorithm/test_graph_repair_multiround.py::"
+    nodes = [module + "test_improving_elite_retains_its_unvisited_tail_with_bounded_visits",
+             module + "test_tiny_changeover_keeps_distinct_parents_and_consumes_shared_variant_tails"]
+    assert [classify_nodeid(node) for node in nodes] == ["serial", "serial"]
+    serial, parallel = split_nodeids(nodes, 2)
+    assert serial == nodes
+    assert parallel == [[], []]
 
 
 def test_build_distribution_reports_serial_and_parallel_counts(tmp_path: Path) -> None:

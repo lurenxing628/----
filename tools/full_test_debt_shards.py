@@ -36,6 +36,8 @@ SERIAL_FILE_PATTERNS: Tuple[str, ...] = (
     "tests/algorithm/test_optimizer_graph_ready_v2_long_run_contract.py",
     "tests/algorithm/test_optimizer_benchmark_timing_contract.py",
     "tests/algorithm/test_optimizer_benchmark_ratchet_gate.py",
+    # Drives the end-to-end and quality-matrix runners, which refuse to start under xdist.
+    "tests/algorithm/test_graph_repair_multiround.py",
 )
 
 SERIAL_EXACT_PATHS = frozenset(iter_startup_regressions())
