@@ -2,6 +2,14 @@ roadmap: scheduler-global-optimizer
 created: 2026-06-26
 
 items:
+  - slug: optimizer-quality-efficiency-20260912
+    description: 完成2026-09-12已授权算法能力和效率清单，含独立量尺、并行实现及统一实测
+    depends_on: [optimizer-integration-auto-selection]
+    status: done
+    feature: 2026-09-12-algorithm-capability-efficiency
+    minimal_loop: false
+    notes: A-K实施与定向验收完成，最终20+8及native20通过、两次5000工序容量通过；详见2026-09-12-quality-efficiency.md。按用户要求停止追加长跑，最终整仓门禁未完成，不升级历史ALNS状态，不声称clean/full proof。
+
   - slug: optimizer-proof-harness
     description: 建立 tiny oracle、lower bound、best-known 和不写 tracked evidence 的 benchmark check 模式
     depends_on: []

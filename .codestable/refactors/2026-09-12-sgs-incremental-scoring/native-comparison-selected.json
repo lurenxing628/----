@@ -1,0 +1,50 @@
+[
+  {
+    "batches": 100,
+    "enabled": false,
+    "operations": 1000,
+    "payload_sha256": "5e9ccc8d99bab376be275834d2647e5452f33723cea06ed2a91ba251683628d5",
+    "resource_pairs": 3,
+    "reuse": {
+      "hits": 0,
+      "misses": 0
+    },
+    "seconds": 1.423750917
+  },
+  {
+    "batches": 100,
+    "enabled": true,
+    "operations": 1000,
+    "payload_sha256": "5e9ccc8d99bab376be275834d2647e5452f33723cea06ed2a91ba251683628d5",
+    "resource_pairs": 3,
+    "reuse": {
+      "hits": 0,
+      "misses": 30
+    },
+    "seconds": 1.461090375
+  },
+  {
+    "batches": 100,
+    "enabled": false,
+    "operations": 1000,
+    "payload_sha256": "b6e4167446418e62846ee8973df93be27472c234fea1afb71d1bb7aca4888ff6",
+    "resource_pairs": 100,
+    "reuse": {
+      "hits": 0,
+      "misses": 0
+    },
+    "seconds": 0.8514148340000003
+  },
+  {
+    "batches": 100,
+    "enabled": true,
+    "operations": 1000,
+    "payload_sha256": "b6e4167446418e62846ee8973df93be27472c234fea1afb71d1bb7aca4888ff6",
+    "resource_pairs": 100,
+    "reuse": {
+      "hits": 49500,
+      "misses": 1000
+    },
+    "seconds": 0.6308546660000003
+  }
+]

@@ -1,0 +1,170 @@
+[
+  {
+    "batches": 100,
+    "decoder_invocations": 1,
+    "enabled": false,
+    "operations": 1000,
+    "payload_sha256": "04d8e65c97d9aacba8fcfbae0cb84ba7cf43dc57986e98f3bcf3a7c8831dc1ac",
+    "repeat": 0,
+    "resource_pairs": 1,
+    "reuse": {
+      "hits": 0,
+      "misses": 0
+    },
+    "seconds": 4.608101958
+  },
+  {
+    "batches": 100,
+    "decoder_invocations": 1,
+    "enabled": false,
+    "operations": 1000,
+    "payload_sha256": "04d8e65c97d9aacba8fcfbae0cb84ba7cf43dc57986e98f3bcf3a7c8831dc1ac",
+    "repeat": 1,
+    "resource_pairs": 1,
+    "reuse": {
+      "hits": 0,
+      "misses": 0
+    },
+    "seconds": 4.560490332999999
+  },
+  {
+    "batches": 100,
+    "decoder_invocations": 1,
+    "enabled": true,
+    "operations": 1000,
+    "payload_sha256": "04d8e65c97d9aacba8fcfbae0cb84ba7cf43dc57986e98f3bcf3a7c8831dc1ac",
+    "repeat": 0,
+    "resource_pairs": 1,
+    "reuse": {
+      "hits": 0,
+      "misses": 0
+    },
+    "seconds": 4.7109929579999985
+  },
+  {
+    "batches": 100,
+    "decoder_invocations": 1,
+    "enabled": true,
+    "operations": 1000,
+    "payload_sha256": "04d8e65c97d9aacba8fcfbae0cb84ba7cf43dc57986e98f3bcf3a7c8831dc1ac",
+    "repeat": 1,
+    "resource_pairs": 1,
+    "reuse": {
+      "hits": 0,
+      "misses": 0
+    },
+    "seconds": 4.633009542000002
+  },
+  {
+    "batches": 100,
+    "decoder_invocations": 1,
+    "enabled": false,
+    "operations": 1000,
+    "payload_sha256": "5e9ccc8d99bab376be275834d2647e5452f33723cea06ed2a91ba251683628d5",
+    "repeat": 0,
+    "resource_pairs": 3,
+    "reuse": {
+      "hits": 0,
+      "misses": 0
+    },
+    "seconds": 1.4005915830000006
+  },
+  {
+    "batches": 100,
+    "decoder_invocations": 1,
+    "enabled": false,
+    "operations": 1000,
+    "payload_sha256": "5e9ccc8d99bab376be275834d2647e5452f33723cea06ed2a91ba251683628d5",
+    "repeat": 1,
+    "resource_pairs": 3,
+    "reuse": {
+      "hits": 0,
+      "misses": 0
+    },
+    "seconds": 1.4142016250000005
+  },
+  {
+    "batches": 100,
+    "decoder_invocations": 1,
+    "enabled": true,
+    "operations": 1000,
+    "payload_sha256": "5e9ccc8d99bab376be275834d2647e5452f33723cea06ed2a91ba251683628d5",
+    "repeat": 0,
+    "resource_pairs": 3,
+    "reuse": {
+      "hits": 33330,
+      "misses": 16873
+    },
+    "seconds": 5.270911417000001
+  },
+  {
+    "batches": 100,
+    "decoder_invocations": 1,
+    "enabled": true,
+    "operations": 1000,
+    "payload_sha256": "5e9ccc8d99bab376be275834d2647e5452f33723cea06ed2a91ba251683628d5",
+    "repeat": 1,
+    "resource_pairs": 3,
+    "reuse": {
+      "hits": 33330,
+      "misses": 16873
+    },
+    "seconds": 5.204627915999996
+  },
+  {
+    "batches": 100,
+    "decoder_invocations": 1,
+    "enabled": false,
+    "operations": 1000,
+    "payload_sha256": "b6e4167446418e62846ee8973df93be27472c234fea1afb71d1bb7aca4888ff6",
+    "repeat": 0,
+    "resource_pairs": 100,
+    "reuse": {
+      "hits": 0,
+      "misses": 0
+    },
+    "seconds": 0.865815750000003
+  },
+  {
+    "batches": 100,
+    "decoder_invocations": 1,
+    "enabled": false,
+    "operations": 1000,
+    "payload_sha256": "b6e4167446418e62846ee8973df93be27472c234fea1afb71d1bb7aca4888ff6",
+    "repeat": 1,
+    "resource_pairs": 100,
+    "reuse": {
+      "hits": 0,
+      "misses": 0
+    },
+    "seconds": 0.9081516250000021
+  },
+  {
+    "batches": 100,
+    "decoder_invocations": 1,
+    "enabled": true,
+    "operations": 1000,
+    "payload_sha256": "b6e4167446418e62846ee8973df93be27472c234fea1afb71d1bb7aca4888ff6",
+    "repeat": 0,
+    "resource_pairs": 100,
+    "reuse": {
+      "hits": 49500,
+      "misses": 991
+    },
+    "seconds": 0.6902079159999985
+  },
+  {
+    "batches": 100,
+    "decoder_invocations": 1,
+    "enabled": true,
+    "operations": 1000,
+    "payload_sha256": "b6e4167446418e62846ee8973df93be27472c234fea1afb71d1bb7aca4888ff6",
+    "repeat": 1,
+    "resource_pairs": 100,
+    "reuse": {
+      "hits": 49500,
+      "misses": 991
+    },
+    "seconds": 0.710647833000003
+  }
+]

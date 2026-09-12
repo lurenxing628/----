@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: scheduler-global-optimizer
 status: active
 created: 2026-06-26
-last_reviewed: 2026-07-01
+last_reviewed: 2026-09-12
 tags: [scheduler, optimizer, global-search, graph-ready, alns, benchmark, python38, win7]
 related_requirements:
   - candidate-comparison-business-view
@@ -1200,6 +1200,8 @@ v1 已完成链路是：
     - **关于 batch_order/SGS 的 `op_id<=0` 处理差异（已评估，不单独立 issue）**：`batch_order` 落位（improve 默认重排）对 `op_id<=0` 无校验，SGS 经 `ready_queue` 对 `op_id<=0` fail-loud，二者写法不一致。但承上——主键自增必正整数、排产工序全从库查、生产无内存构造工序，两条路径在真实数据流下都遇不到 `op_id<=0`，该差异同样不可达，**不单独立 issue**。`_build_internal_result`（`core/algorithms/greedy/internal_operation.py:211`）的 `op.id or 0` 也是对不可达输入的防御，保留无害；真要消除可在引擎层把 `op.id` 收紧为 `parse_required_int` 统一 fail-loud，但优先级低、且属排产引擎范围，不在本 item。
 
 ## 8. 变更日志
+
+- 2026-09-12：用户在当前代码全面研究后明确授权“全部都做，多并发 agent 全力全速推进”。本轮实施清单、模块归属、接口与验证合同见 [质量与效率实施计划](2026-09-12-quality-efficiency.md)。保留既有路线项目的状态，不用本次有限图邻域改进冒充所有历史 ALNS 条目完成。预算、公平候选覆盖、插空增量换型、稀缺资源、增量评分、目标生成、工序剩余负担、忙段闭包、图准备、快照复用和评测量尺分别验证，主线程统一集成。
 
 - 2026-07-01：审阅并落档“剪枝策略包”路线图口径。明确不新增独立 `pruning-algorithm` item，不把分支定界 / 束搜索做成生产主线；新增 §2 剪枝策略包定位、§4.1.1 `OptimizationPruningReport` 合同，补模块 E/F 的剪枝职责、GraphReady v2 修补剪枝报告、多算法对比门禁、图桥接约束和 item 19-28 的剪枝 / repair / trace / 归因边界。items 状态不变：19-21 仍为 in_progress，22-28 仍为 planned。
 - 2026-06-26：创建 roadmap。基于本地调用链、9 个只读 Sub Agent、Exa 深研和现有 CodeStable 路线整理；本阶段明确不引入 OR-Tools，主线为 proof harness + public 边界修复 + GRASP/IG + VNS/SA + ALNS with SGS repair。

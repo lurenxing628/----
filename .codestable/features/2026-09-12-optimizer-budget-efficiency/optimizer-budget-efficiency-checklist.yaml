@@ -1,0 +1,34 @@
+feature: 2026-09-12-optimizer-budget-efficiency
+created: 2026-09-12
+steps:
+  - action: 统一外层总 deadline 与候选分配，并把准备耗时计入。
+    exit_signal: 方案状态保真、剩余份额回收和边界停止的局部合同通过。
+    status: done
+  - action: 使用实际完成且可比较的严格改善事件和实测耗时调整后续份额。
+    exit_signal: 48个预算及runner测试通过，未知样本中性、未试候选最低份额和原deadline保持。
+    status: done
+  - action: 保留正式基线并为图候选及后续搜索保留阶段时间。
+    exit_signal: 真实 SGS 受控时钟下 graph/repair 得到调用，单次超时不再开新解码。
+    status: done
+  - action: 在可证明的原生快照范围内去重 multi-start，并接不干预执行的原生计数。
+    exit_signal: 原生两种 SGS 的 12 次解码变 3 次且分数/指纹相同，变更和异常边界通过。
+    status: done
+  - action: 按职责拆分达到门槛的文件/函数并完成局部静态检查。
+    exit_signal: 本项文件官方复杂度和体量扫描为空，Ruff/Pyright/Python3.8语法通过。
+    status: done
+  - action: 用CalendarService初始化时登记的独立原生证书断开去重helper硬加载环。
+    exit_signal: 31个去重合同和61个C联合合同通过，正式cycle门禁exit0且未修改债务基线。
+    status: done
+checks:
+  - item: 总预算、阶段份额、准备耗时、边界和原生计数。
+    source: tests/algorithm/test_optimizer_shared_budget.py
+    status: passed
+  - item: 真实主循环去重及不伪造指纹评估次数。
+    source: tests/algorithm/test_optimizer_multi_start_budget_integration.py
+    status: passed
+  - item: 参数/输入/资源/seed/图/日历/事务变化与非原生回调不合并。
+    source: tests/algorithm/test_optimizer_multi_start_decision_dedup.py
+    status: passed
+  - item: 既有合同合跑与本项官方静态结构检查。
+    source: optimizer-budget-efficiency-acceptance.md
+    status: passed

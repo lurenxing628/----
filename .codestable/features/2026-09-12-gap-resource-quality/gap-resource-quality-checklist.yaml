@@ -1,0 +1,34 @@
+feature: 2026-09-12-gap-resource-quality
+created: 2026-09-12
+steps:
+  - action: 运行态记录真实插槽邻居并计算增量换型。
+    exit_signal: 两种dispatch模式均实现换型4到2，既有末尾守卫不变。
+    status: done
+  - action: 从显式资格建立有限待排需求并只比较同完工同换型的组合。
+    exit_signal: 两种dispatch模式均实现同序工期2小时到1小时，可变证据与失败退休合同通过。
+    status: done
+  - action: 真实解码器、固定种子、piece、旧路径与官方局部结构检查。
+    exit_signal: 含中性比较、全剥夺收紧和原生工序类型读取的134项定向测试通过，完整shift_pool历史排程恢复，Ruff和Pyright通过。
+    status: done
+checks:
+  - item: 插空换型与同时间事件顺序。
+    source: tests/algorithm/test_gap_resource_quality.py
+    status: passed
+  - item: 稀缺资源、固定种子、piece前置与工作量。
+    source: tests/algorithm/test_gap_resource_quality.py
+    status: passed
+  - item: 资格、原地修改证据失效、整数身份与需求退休。
+    source: tests/algorithm/test_resource_demand_contract.py
+    status: passed
+  - item: 既有末尾、自动分配、窗口归因与评分执行合同。
+    source: gap-resource-quality-acceptance.md
+    status: passed
+  - item: Ruff、Pyright、Python3.8语法、官方局部复杂度和文件大小。
+    source: gap-resource-quality-acceptance.md
+    status: passed
+  - item: 中性提示免认证、延后认证拒绝旧证据与公共penalties合同。
+    source: tests/algorithm/test_resource_demand_neutral_comparison.py
+    status: passed
+  - item: 部分剩余不计阻塞、机人全剥夺保护、历史baseline完整向量与排程恢复。
+    source: tests/algorithm/test_resource_demand_total_blocking.py
+    status: passed

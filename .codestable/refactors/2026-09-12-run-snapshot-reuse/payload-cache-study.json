@@ -1,0 +1,27 @@
+{
+  "kind": "archived_source_bound_profile_review_not_new_timing",
+  "profile": "/Users/lurenxing/GitHub/----/output/workbench-migration/performance/20260912-native-timing/raw/selected-profile-5000/aps-workbench-live-bdc4tjgp/sessions/939b943ad59f4c0a8a5dbfbc9135b1ac/managed-engine.pstats",
+  "profile_sha256": "2fbcb87b9297170c17d443786ccabc7366967b8afe4cc712d0adecfb729a2375",
+  "profile_total_self_seconds": 164.2486335840002,
+  "prechange_run_compute_sha256": "0cdc2c3c13189632b54f3dd90814763cc0946a4ab2fb89964f8bf8391a03c35e",
+  "prechange_run_compute_matches_HEAD": true,
+  "functions": {
+    "full_facts_fingerprint": {
+      "calls": 1,
+      "self_seconds": 0.044595678,
+      "cumulative_seconds": 0.10212504200000001
+    },
+    "build_validated_schedule_payload": {
+      "calls": 5,
+      "self_seconds": 0.024221385,
+      "cumulative_seconds": 0.29205604100000004
+    },
+    "validate_candidate": {
+      "calls": 4,
+      "self_seconds": 0.00233096,
+      "cumulative_seconds": 0.252475916
+    }
+  },
+  "all_five_payload_validations_percent_upper_bound": 0.17781337635946692,
+  "payload_cache_disposition": "Not implemented: all five calls together cost less than 0.18 percent; a selected-only cache would need new immutable-content proof across summary generation. All existing validators remain."
+}

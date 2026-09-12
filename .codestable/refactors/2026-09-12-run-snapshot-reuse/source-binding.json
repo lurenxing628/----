@@ -1,0 +1,14 @@
+{
+  "kind": "scoped_dirty_worktree_source_hashes",
+  "head": "afc0551ed15ac0d8aceca63f1d950ebe8f9b0e8b",
+  "files": {
+    "core/services/workbench/run_compute.py": "f60abb56348c52ac39d1f06cceea06f2d19bc06e6322134c01e1ccab471db786",
+    "core/services/workbench/run_worker.py": "2add47b44381613eada37175ef3c2d48e25c2750be564a694f136fbfb04e1649",
+    "tests/workbench/test_run_snapshot_reuse.py": "50d634464085e5fb7a36c5ad552afbfe52394b930a008b87d066cb7ed6fb4b39",
+    "tests/workbench/test_run_entrypoint.py": "40db544172ea18e3a1a5b5b6ce0498f1ae45451e87f078729b373902af8e05e5",
+    "tests/workbench/run_runtime_support.py": "254109658db870d22f56514ba62b46d81bfb85ebafb62fa5db7582fa5a22f232",
+    "tests/workbench/test_run_jobs_concurrency.py": "95b57c59ebce5b9e12dac145dd4f0e9d39aeda2e513953bd93f8257eb260d243",
+    "tests/workbench/system_restore_entrypoint_process_support.py": "9b01d662222df5947d51321ba075ba964efa8db70be0786d4d690bfe3afc8a05",
+    "tests/workbench/final_capacity_observation.py": "bade29fa011f08eee4a8c9c26a26594673862d2e128ce22ce9892cb7e3789e5f"
+  }
+}

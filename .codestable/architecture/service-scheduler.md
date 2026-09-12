@@ -5,7 +5,7 @@ scope: core/services/scheduler 排产调度模块的内部结构现状——对�
 summary: 排产巨型模块系统地图，记录子包/业务族/主链及 A1/A3 解耦后的单向依赖；区分目录 SCC、父包感知文件 SCC 与纯显式文件 SCC
 status: current
 created: 2026-06-28
-last_reviewed: 2026-07-13
+last_reviewed: 2026-09-13
 tags: [scheduler, core, service, 排产, architecture]
 depends_on: []
 implements: []
@@ -15,6 +15,7 @@ implements: []
 
 > 状态:CodeStable 现状地图(只记现状,不含改进方案;治理路径见后续 roadmap / refactor)
 > 锚点根目录:`core/services/scheduler/`
+> 2026-09-12 本次只增补 §10 的算法合同；前文规模、引用计数及 SCC 数字保留各自历史统计口径，未重新普查，不代表本次源码规模。
 
 ## 1. 定位与规模
 
@@ -199,3 +200,51 @@ core/services/scheduler/
 - `.codestable/refactors/2026-07-10-scheduler-a1-dependency-decoupling/` —— A1 scan/design/checklist/apply 证据。
 - `.codestable/architecture/ui-gantt.md` —— 甘特图结果查看页面(前端职责/缩放/只读边界),与本文档的后端 service 视角互补。
 - `core/services/scheduler/__init__.py` —— 本模块对外 13 个 Service 的惰性门面。
+
+## 10. 算法能力与效率合同（2026-09-12 增补）
+
+本节对应已进入当前工作区的实现，记录调度内部的职责和边界。模块测试、完整入口对照与最终门禁是不同证据；验收状态统一见 `.codestable/features/2026-09-12-algorithm-capability-efficiency/algorithm-capability-efficiency-acceptance.md`，本节不声明最终 HEAD 的 clean-worktree proof。实施与定向验收已完成，最终整仓门禁按用户要求未追加完成；稳定证据见[最终记录](../../evidence/algorithm-capability-efficiency/2026-09-13-final/README.md)。
+
+### 10.1 候选总预算与搜索阶段
+
+`run_candidate_comparison` 的所有候选共用同一个 monotonic 总截止时间。每个未运行方案从剩余总时间中取得显式份额；图准备也消耗该份额，未使用时间继续留在总池。预算组件仅用同目标、完整成功方案的实际改善和有限耗时调整下一份额，并为其他未试候选保留至少半个均分份额；未知观测保持中性，不预测下一候选收益。SGS 不能自行延长截止时间。`SearchBudget` 是冻结的候选预算合同，`optimize_schedule(..., search_budget=None)` 接受它，并同时受配置的单次优化上限约束。首次正式基线先于可选搜索；多起点、warm-start、非图构造具有阶段截点，给后续阶段保留机会，图阶段沿用自身 repair 预留。
+
+每次启动可选正式解码前检查 `now >= deadline`。已开始的 SGS 允许完成，下一次解码停止，准备耗尽份额的方案记录为 skipped。阶段份额耗尽记录 `reserved_for_later_phases`，不冒充整个优化超时。公开 `assigned_time_budget_ms` 与配置预算分开；预算诊断只通过白名单投影准备耗时、优化额度和超时等聚合字段。原生真实解码计数留在内部 search report，不进入该公共投影。
+
+代码锚点：`run/schedule_candidate_runner.py:167`、`run/optimizer_search_budget.py:15`、`run/optimizer_search_budget.py:54`、`run/optimizer_deadline_guard.py:9`、`contracts/optimizer_budget_projection.py:15`。原生多起点去重在 `run/optimizer_multi_start_dedup.py:167`：只有完整、成功的原生决策与输入/日历/事务证据一致时省去重复解码；每个策略仍进行原参数校验和排序构造，自定义对象或方法不套用该证明。
+
+### 10.2 真实插入位置与稀缺资源
+
+`MachineTypeState` 归 `algorithm_runtime` 所有，保留原 dict 尾工种接口，同时维护真实时间邻接工种。时隙找到后按实际前后邻居计算换型增量，避免用机器尾工种评价早期插空。`ResourceDemand` 记录当前未完成需求，成功、失败、跳过与图阻塞的退休由运行态统一负责；只在合法资源组合的实际完工时间和换型增量均相同时比较稀缺占用。提示只计会完全剥夺其他待排工序全部合格组合的选择；不更改资格池、固定资源、工时或已有种子，也不把换型次数升级成顺序相关 setup 时长模型。exact SimpleNamespace的工序类型读取直接访问当前原生字段，不缓存mutable字段；一般对象与潜在回调仍保留原入口时序。
+
+代码锚点：`core/algorithm_runtime/resource_quality.py:16`、`core/algorithm_runtime/resource_quality.py:75`、`core/algorithm_runtime/resource_quality.py:95`、`core/algorithm_runtime/resource_demand.py:153`、`core/algorithm_runtime/run_state.py:189`。运行态向派工暴露内容证书，算法层仍单向依赖 `algorithm_runtime`，不反向依赖 scheduler service。
+
+### 10.3 SGS 评分与时隙复用
+
+`NativeSgsReuse` 属于一次 SGS 运行，只缓存成功的固定机人评分；新建缓存要求当前 ready 集合中机器和人员均独占，并且至少有两个可比较的固定资源候选。自动分配且无固定机人组合的输入跳过无收益缓存并用普通占用时间轴；首次helper导入前的模型覆盖、动态getter和自定义metaclass不会被认作原生证书。已有条目只有输入、批次进度、前置完成、资源占用、插入邻居与日历政策等相关内容一致才可复用。`OwnedTimeline` / `OwnedSegments` 由运行态维护可验证变更，普通借入容器仍按实际内容检查；同长度修改、方法覆盖、自定义输入或回调不能借用原生证书。
+
+评分估算可以在选中后交给正式 dispatch，但正式执行仍重验适用证书；证书不成立便重新估算，不复用错误。日历实现通过中立注册入口提供原生政策证书，避免 `algorithm_runtime` 反向 import service。交期字符串解析仅缓存 exact `str` 的成功结果，按 strict mode 区分，最多 4096 条；无效输入和自定义转换仍按原入口暴露错误。
+
+代码锚点：`core/algorithms/greedy/dispatch/sgs_reuse.py:168`、`core/algorithms/greedy/dispatch/sgs_reuse.py:341`、`core/algorithm_runtime/owned_timeline.py:11`、`core/algorithm_runtime/sgs_estimate_reuse.py:10`、`calendar_sgs_certificate.py:11`、`core/algorithms/greedy/dispatch/sgs_scoring.py:45`。跨设备、人员、停机的连续忙段仅在原生索引与恒定日历窗口认证后合并跳过；任意真实空隙、工作窗边界和自定义行为都限制该快路径，见 `core/algorithm_runtime/busy_block_skip.py:12`、`:50`。
+
+### 10.4 图候选、目标特征和修补
+
+GraphReady profile显式接收四个正式目标，保留既有v1基线；batch_workload_v1基础排序和operation_successor_v1增强排序明确并存，通过feature basis选择各自指标。增强特征按真实后继唯一计量负担、按前置最长路径和毛日历计算释放偏移；基础启发只在明确子行中保存，不覆盖顶层正确工量。piece 菱形汇合不能重复累加工量，合并外协按现有身份规则去重，冻结 seed 的完成时间进入释放条件但不重复加入待排负担；必要的 piece 图缺失时明确报错。停机后净窗口与毛容量预算仍分别表达，没有改变毛容量或跨日效率的既有业务语义。
+
+正式 elite repair 默认最多 3 轮，`max_rounds` 严格正整数并封顶 8；轮数、候选总额和同一deadline继续限制搜索，真实未耗尽尾部可在有限轮数内继续。批次顺序、关键块/空档导出的工序优先序以及单工序合格机人选择交错生成，`RepairDecision` 只承载决策，不承载新排程时间。每个候选由真实 SGS 解码，固定维度、资格、DAG 和种子继续受约束；只有严格改善且输出指纹不同的结果才能生成新 elite。下一轮优先强化改进并保留未探索旧elite；top_k按不同已解码parent计槽，同parent的所有basis变体共享该槽和每次最多8个邻域决策，避免重复父排程挤占探索名额。候选家族先保留代表，并按实际解码成本预留；原总预算与60候选上限不变。成功延期和真正预算耗尽分别计数。通用 GRASP/IG 和局搜对 GraphReady 仍保持 §4 的跳过边界，新增图邻域属于 GraphReady 自己的正式阶段。
+
+代码锚点：`run/optimizer_graph_ready_profiles.py:105`、`run/optimizer_graph_ready_workload.py:14`、`run/optimizer_graph_ready_v2_features.py:43`、`run/optimizer_graph_ready_repair_contract.py:23`、`run/optimizer_graph_ready_repair.py:161`、`run/optimizer_graph_ready_repair_decisions.py:13`、`run/optimizer_graph_ready_repair_portfolio.py:90`。
+
+### 10.5 图准备复用与工作台只读快照
+
+图影响计数先证明全图每节点至多一个后继，再使用 O(N+E) 反向动态规划；一般 DAG 使用真实弱连通分量中的位集合精确去重，不能简单累加菱形后继。联合评分只做一次指标合法化，同时产出精确整数 bonus 和原排序 key。comparison 内可缓存权重无关的健康/ready/资源匹配模板；缓存键保留模式与指标模式，每个候选的可变容器独立复制，指标和权重仍重新验证。该缓存不跨排产运行使用。
+
+工作台组合入口在已有 `candidate_read_snapshot` 内连续 prepare 后立刻 compute，中间不向调用者暴露 prepared 对象，因此只扫描一次完整事实指纹。公开独立 `compute_prepared_candidate_run` 仍重新扫描全部事实并拒绝 stale 输入，共享计算体要求活动的 query_only 事务。原 worker 私有数据库快照、最终事实复核与持久化边界保留；每个候选和选中结果的 payload 校验也保留，没有加入结果缓存或可复用的新鲜度 token。
+
+代码锚点：`graph/impact_counts.py:10`、`graph/scoring.py:107`、`run/schedule_graph_cached_projection.py:40`、`core/services/workbench/run_compute.py:22`、`core/services/workbench/run_compute.py:70`、`core/services/workbench/run_compute.py:83`、`core/services/workbench/run_worker.py:64`。
+
+## 变更日志
+
+- 2026-09-13：归并最终共享parent/basis额度、基础与增强特征、全剥夺提示及原生回调边界；实施和定向验收完成，最终整仓门禁未完成，见统一验收。未更新历史规模/SCC统计。
+
+- 2026-09-12：增补 §10 当前算法预算、资源选择、SGS/图准备复用、正式图修补与只读快照合同，并链接本轮统一验收；未刷新历史规模或 SCC 统计。
