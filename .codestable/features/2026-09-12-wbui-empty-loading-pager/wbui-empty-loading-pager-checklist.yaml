@@ -1,0 +1,44 @@
+feature: 2026-09-12-wbui-empty-loading-pager
+roadmap: workbench-ui-refinement
+roadmap_item: wbui-empty-loading-pager
+created: 2026-09-12
+steps:
+- id: shared-controls
+  name: 按已批准的修订合同实现共享控件与必要消费。
+  action: 按已批准的修订合同实现共享控件与必要消费。
+  exit_signal: 新控件无领域API和业务规则变更，消费者接口保持明确。
+  status: done
+- id: scoped-validation
+  name: 完成源编译与真实Chromium109针对性验证。
+  action: 完成源编译与真实Chromium109针对性验证。
+  exit_signal: 探针通过并记录源哈希与实际交互。
+  status: done
+- id: final-integration
+  name: 与领域工作区和统一构建集成并补最终证据。
+  action: 与领域工作区和统一构建集成并补最终证据。
+  exit_signal: 主线程完成当前build_id的浏览器验证与质量门禁。
+  status: done
+  evidence: 18bc最终构建与全站60/8/4矩阵、域内原流程补验已通过，见 .codestable/roadmap/workbench-ui-refinement/acceptance-20260912.md；完整质量门禁结论独立保留在checks待验项。
+checks:
+- id: shared-list-contract
+  name: 分页遵守领域档位，游标不伪造总数，筛选空态提供恢复动作
+  item: sizes由消费者显式传入；cursor只提供前后动作；filtered必须有恢复入口。
+  source: 名词契约
+  status: passed
+  evidence: acceptance所列11项共享控件真实交互合同已通过；领域分页档位与cursor边界保留。
+- id: scoped-validation
+  name: 源编译与Chromium109控件、布局和导航局部验证
+  item: 核对现有3个pytest入口通过记录及源码、CSS和交互证据。
+  source: 验收场景
+  status: passed
+  evidence: wbui-empty-loading-pager-acceptance.md
+- id: final-build-gate
+  name: 主线程最终构建、全工作区浏览器验收与全仓质量门禁
+  item: 最终build_id与源码绑定，统一浏览器及全仓门禁由主线程收口。
+  source: 流程级约束
+  status: pending
+  evidence: "本轮范围收尾：evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json；build_id=e6964b9a4bc1c3e7855de1b0b677b0a402ba8063292a55f0778f9697c2f75043；completed-with-validation-limit；原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  full_gate_status: "failed"
+  closed_per_user: true
+  closure_reason: "用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  validation_limit: "原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。"

@@ -1,0 +1,49 @@
+slug: wbui-run-stepper
+status: "done"
+final_evidence: "本轮范围收尾：evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json；build_id=e6964b9a4bc1c3e7855de1b0b677b0a402ba8063292a55f0778f9697c2f75043；completed-with-validation-limit；原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+completion_scope: "completed-with-validation-limit"
+feature: 2026-09-12-wbui-run-stepper
+roadmap: workbench-ui-refinement
+roadmap_item: wbui-run-stepper
+steps:
+- id: stepper
+  description: 步骤主操作与检查失效提示
+  status: done
+  name: 步骤主操作与检查失效提示
+- id: run-presentation
+  description: 阶段耗时、批次交期优先级、主操作
+  status: done
+  name: 阶段耗时、批次交期优先级、主操作
+- id: shared-contracts
+  description: 样式迁移、格式、分页、引用与无障碍
+  status: done
+  name: 样式迁移、格式、分页、引用与无障碍
+- id: verification
+  description: 针对性测试及统一构建证据交接
+  status: done
+  name: 针对性测试及统一构建证据交接
+  evidence: "本地针对性测试已有结果，详见local-validation；presentation-final-v6.log另记录整壳局部入口1 passed，JSON为compile.global_build=false。早期本步骤尚含统一构建证据交接，当时暂记in_progress，不以该轮局部通过替代主线程收口。；18bc最终构建与全站60/8/4矩阵、域内原流程补验已通过，见 .codestable/roadmap/workbench-ui-refinement/acceptance-20260912.md；完整质量门禁结论独立保留在checks待验项。\n本轮范围收尾：evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json；build_id=e6964b9a4bc1c3e7855de1b0b677b0a402ba8063292a55f0778f9697c2f75043；completed-with-validation-limit；原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+checks:
+- id: contract
+  name: 可验证合同与范围守护
+  description: 主操作跟随选范围、检查和计算步骤；参数变化使检查失效；不改变pending、原请求键、正式采用及领域分页合同。
+  source: wbui-run-stepper-design.md
+  status: passed
+  evidence: 三时区步骤/耗时/参数失效/整数合同已通过；最终run-picker交互通过，5000工序与20000候选任务运行容量复验通过。
+- id: local-validation
+  name: 局部验证及源码证据
+  description: acceptance记录三时区模型、Chrome109源编译、预检/采用/历史3项pytest及最终候选1项pytest通过；运行容量和统一整壳尚未全部收口。
+  source: wbui-run-stepper-acceptance.md
+  status: passed
+  evidence: wbui-run-stepper-acceptance.md；候选源码复验aps-run-candidate-widgets-11v_vibm的232项动作/24份下载通过，运行容量结果见 evidence/workbench-ui/2026-09-12-final/domains/aps-run-job-widgets-8enijucn/run-job-widgets.json，历史快照和后续整壳结果分别保留。
+- id: final-build-gate
+  name: 最终统一构建与完整质量门禁
+  description: 在主线程最终source/build_id上重跑完整工作台验收与整仓质量门禁；本轮元数据规范化不代替终验。
+  source: 主线程最终构建、工作台矩阵与质量门禁记录
+  status: pending
+  evidence: "本轮范围收尾：evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json；build_id=e6964b9a4bc1c3e7855de1b0b677b0a402ba8063292a55f0778f9697c2f75043；completed-with-validation-limit；原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  full_gate_status: "failed"
+  closed_per_user: true
+  closure_reason: "用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  validation_limit: "原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。"
+created: '2026-09-12'

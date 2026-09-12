@@ -1,0 +1,45 @@
+feature: 2026-09-12-wbui-plan-center-first-screen
+created: 2026-09-12
+steps:
+- action: 核对当前合同并实现默认选择和目录折叠。
+  exit_signal: 显式上下文不可覆盖，目录保持游标语义。
+  status: done
+  id: step-1
+  name: 核对当前合同并实现默认选择和目录折叠。
+  evidence: /tmp/aps-wbui-plan-selection-lifecycle-20260912/aps-wbui-plan-first-screen-7xgkde40/result.json；6组选择生命周期与6个首屏场景通过，保留显式上下文、目录游标和选择恢复边界，未升级为最终整壳验收。
+- action: 优化甘特顺序、条形文案、图例和数据时点。
+  exit_signal: 首屏布局落地，点语义和as_of保持。
+  status: done
+  id: step-2
+  name: 优化甘特顺序、条形文案、图例和数据时点。
+  evidence: 同一plan-selection-lifecycle首屏结果覆盖目录折叠、批次首行、图例、服务器as_of和显式失败；早期plan-ui-dvktoe3p/plan-ui-result.json另有51场景509断言，保留其plan-ui-component-mock与后续样式收紧前的边界。
+- action: 执行定向测试并记录源码和集成验收边界。
+  exit_signal: 模型与当前源码编译通过，浏览器实测有明确结果。
+  status: done
+  id: step-3
+  name: 执行定向测试并记录源码和集成验收边界。
+  evidence: "/tmp/aps-wbui-plan-selection-lifecycle-20260912/full-range-green.xml 和首屏JSON证明浏览器及Chrome109编译通过；早期该轮未找到具名模型测试的原始通过日志，当时该组合步骤暂记in_progress，最终整壳与总门禁也不代填。；18bc最终构建与全站60/8/4矩阵、域内原流程补验已通过，见 .codestable/roadmap/workbench-ui-refinement/acceptance-20260912.md；完整质量门禁结论独立保留在checks待验项。\n本轮范围收尾：evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json；build_id=e6964b9a4bc1c3e7855de1b0b677b0a402ba8063292a55f0778f9697c2f75043；completed-with-validation-limit；原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+checks:
+- item: 默认计划与上下文保留合同。
+  source: tests/workbench/test_wbui_plan_gantt_models.cjs
+  status: passed
+  id: check-1
+  name: 默认计划与上下文保留合同。
+  evidence: PlanSelectionModel显式上下文/唯一正式计划合同已通过。
+- item: 当前源码浏览器交互及首屏几何。
+  source: wbui-plan-center-first-screen-acceptance.md
+  status: passed
+  id: check-2
+  name: 当前源码浏览器交互及首屏几何。
+  evidence: 最终60页中的analysis/gantt/delay共12个G3首屏全部通过；既有领域交互见acceptance。
+- id: final-build-gate
+  name: 最终统一构建与完整质量门禁
+  description: 最终source/build_id与完整工作台矩阵、整仓质量门禁由主线程统一收口。
+  status: pending
+  evidence: "本轮范围收尾：evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json；build_id=e6964b9a4bc1c3e7855de1b0b677b0a402ba8063292a55f0778f9697c2f75043；completed-with-validation-limit；原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  full_gate_status: "failed"
+  closed_per_user: true
+  closure_reason: "用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  validation_limit: "原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。"
+roadmap: workbench-ui-refinement
+roadmap_item: wbui-plan-center-first-screen

@@ -1,0 +1,52 @@
+feature: 2026-09-12-wbui-a11y-sweep
+created: 2026-09-12
+roadmap: workbench-ui-refinement
+roadmap_item: wbui-a11y-sweep
+steps:
+- id: shared
+  name: 共享Button原因呈现
+  title: 共享Button原因呈现
+  status: done
+  evidence: wbui-a11y-sweep-acceptance.md；shared-controls-result.json 中 inline-disabled-reason-linked 与 long-reason-wraps-inside-narrow-action-cell 通过，为共享组件源码fixture证据。
+- id: tables
+  name: 各域表格语义及引用收纳
+  title: 各域表格语义及引用收纳
+  status: done
+  evidence: acceptance已索引54c40205历史矩阵的80次表格观测，caption和missingScope缺项为0；全域最终绑定由主线程收口。；18bc最终构建与全站60/8/4矩阵、域内原流程补验已通过，见 .codestable/roadmap/workbench-ui-refinement/acceptance-20260912.md；完整质量门禁结论独立保留在checks待验项。
+- id: virtual-gantt
+  name: 虚拟甘特键盘定位完整集合
+  title: 虚拟甘特键盘定位完整集合
+  status: done
+  evidence: evidence/workbench-ui/2026-09-12-final/actual-keyboard/result.json；Chromium109合成组件真实遍历65 marks，passed=true、errors=[]，不代表生产数据库验证。
+checks:
+- id: semantics
+  name: 浏览器表格名称和scope实际检查
+  title: 浏览器表格名称和scope实际检查
+  status: passed
+  evidence: evidence/workbench-ui/2026-09-12-final/browser-18bc/report.json：80次表格观测有caption且missingScope均空；54次业务禁用说明可见并关联辅助描述；不将分页禁用状态混为业务原因。
+- id: reasons
+  name: 禁用原因可见且可访问
+  title: 禁用原因可见且可访问
+  status: passed
+  evidence: /var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-workbench-shared-controls-iraw_adm/shared-controls-result.json；就地原因关联和窄操作列长原因换行两项通过，仅证明受测共享Button合同，不声称全部禁用按钮有原因。
+- id: keyboard
+  name: 甘特首尾及视口外对象键盘可达
+  title: 甘特首尾及视口外对象键盘可达
+  status: passed
+  evidence: evidence/workbench-ui/2026-09-12-final/actual-keyboard/result.json；65 marks、Home/End、四方向键、Tab退出和DTO不变均通过；fixture与源码哈希边界见acceptance。
+- id: focus
+  name: 弹窗和详情焦点返回无回归
+  title: 弹窗和详情焦点返回无回归
+  status: passed
+  evidence: 同一 shared-controls-result.json 的 detail-focus-layout-and-return、automatic-preview-does-not-move-focus-or-scroll 和 modal-owner-confirmation-cancel-and-continue-once
+    通过；仅证明受测共享组件入口。
+- id: final-build-gate
+  name: 主线程最终构建、全工作区浏览器验收与全仓质量门禁
+  item: 最终build_id与源码绑定，统一浏览器及全仓门禁由主线程收口。
+  source: 流程级约束
+  status: pending
+  evidence: "本轮范围收尾：evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json；build_id=e6964b9a4bc1c3e7855de1b0b677b0a402ba8063292a55f0778f9697c2f75043；completed-with-validation-limit；原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  full_gate_status: "failed"
+  closed_per_user: true
+  closure_reason: "用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  validation_limit: "原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。"

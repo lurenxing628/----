@@ -1,0 +1,31 @@
+feature: 2026-09-12-wbui-header-controls
+steps:
+- id: global-controls
+  action: 接入实例标签帮助主题动作和统一密度偏好
+  exit_signal: 来源字段已接线且主题和密度错误可见
+  status: done
+  name: 接入实例标签帮助主题动作和统一密度偏好
+- id: page-title
+  action: 按明确导航上下文显示排产历史子页标题
+  exit_signal: 普通计划和排产历史标题合同通过
+  status: done
+  name: 按明确导航上下文显示排产历史子页标题
+- id: integrated-browser
+  action: 最终构建验证帮助草稿确认与顶栏布局
+  exit_signal: 无双重离开提示且1280和1366顶栏不重叠
+  status: done
+  name: 最终构建验证帮助草稿确认与顶栏布局
+  evidence: 18bc最终构建与全站60/8/4矩阵、域内原流程补验已通过，见 .codestable/roadmap/workbench-ui-refinement/acceptance-20260912.md；完整质量门禁结论独立保留在checks待验项。
+checks:
+- id: source-compile
+  description: main.jsx使用现有Babel独立编译通过
+  status: passed
+  name: main.jsx使用现有Babel独立编译通过
+- id: final-build
+  description: 整壳主题帮助密度实际点击与几何验证
+  status: "passed"
+  name: 整壳主题帮助密度实际点击与几何验证
+  evidence: "本轮范围收尾：evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json；build_id=e6964b9a4bc1c3e7855de1b0b677b0a402ba8063292a55f0778f9697c2f75043；completed-with-validation-limit；原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+roadmap: workbench-ui-refinement
+roadmap_item: wbui-header-controls
+created: '2026-09-12'

@@ -1,0 +1,46 @@
+feature: 2026-09-12-wbui-table-density-noise
+created: 2026-09-12
+roadmap: workbench-ui-refinement
+roadmap_item: wbui-table-density-noise
+steps:
+- id: preference
+  name: 统一密度偏好及显式失败状态
+  title: 统一密度偏好及显式失败状态
+  status: done
+  evidence: frontend/workbench/app/WorkbenchDensity.js 已实现默认密度、非法值和存储失败提示，以及storage/pageshow同步；源码哈希与54c40205历史manifest一致，批次表4组密度切换已留存。这里只回填实现状态。
+- id: consumers
+  name: 顶栏与系统入口同步及各表按令牌呈现
+  title: 顶栏与系统入口同步及各表按令牌呈现
+  status: done
+  evidence: 历史导航首轮result.json与54c40205矩阵证明受测顶栏/批次表切换；尚不能用这部分观测替代系统入口与各表的完整同步合同。；18bc最终构建与全站60/8/4矩阵、域内原流程补验已通过，见 .codestable/roadmap/workbench-ui-refinement/acceptance-20260912.md；完整质量门禁结论独立保留在checks待验项。
+- id: semantics
+  name: 报表与现场降噪保留部分未知语义
+  title: 报表与现场降噪保留部分未知语义
+  status: done
+  evidence: 报表NoFeedback/部分未知的局部探针已通过；本轮对账发现FieldFilters.jsx存在四项重复状态统计，主线程已修正，等待新构建及完整Field回归结果后回填，不能据报表结果提前标整个步骤完成。；18bc最终构建与全站60/8/4矩阵、域内原流程补验已通过，见 .codestable/roadmap/workbench-ui-refinement/acceptance-20260912.md；完整质量门禁结论独立保留在checks待验项。
+checks:
+- id: preference-contract
+  name: 默认值持久化跨窗口及存储失败合同
+  title: 默认值持久化跨窗口及存储失败合同
+  status: passed
+  evidence: evidence/workbench-ui/2026-09-12-final/contracts-18bc.json 与 density-entry-18bc/report.json：具名偏好合同和两个真实入口/两种刷新状态通过。
+- id: geometry
+  name: 双密度字号不变且操作仍可达
+  title: 双密度字号不变且操作仍可达
+  status: passed
+  evidence: evidence/workbench-ui/2026-09-12-final/browser-54c40205/report.json 的densities为4组批次表抽样，字号均13px、行高129到121，G1/actionHit均true；仅证明该历史构建的受测列表。
+- id: unknowns
+  name: 无现场和部分缺失不混淆
+  title: 无现场和部分缺失不混淆
+  status: passed
+  evidence: /tmp/aps-wbui-implementation-20260912/reports-1280-final-v2/report-ui-result.json；4组报表源码组件探针通过，零现场单横幅、合法0保留、部分缺失显示未知及已知小计，errors/external为空；compile_global_build=false，样式资源仍绑定历史02bd429d构建。
+- id: final-build-gate
+  name: 主线程最终构建、全工作区浏览器验收与全仓质量门禁
+  item: 最终build_id与源码绑定，统一浏览器及全仓门禁由主线程收口。
+  source: 流程级约束
+  status: pending
+  evidence: "本轮范围收尾：evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json；build_id=e6964b9a4bc1c3e7855de1b0b677b0a402ba8063292a55f0778f9697c2f75043；completed-with-validation-limit；原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  full_gate_status: "failed"
+  closed_per_user: true
+  closure_reason: "用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  validation_limit: "原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。"

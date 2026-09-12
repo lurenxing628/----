@@ -5,7 +5,7 @@ scope: 工作台离线外壳、领域服务、受管运行及恢复边界
 summary: 真实业务工作区已挂载，逐项终验与旧入口退役仍在收口
 status: current
 created: 2026-09-09
-last_reviewed: 2026-09-10
+last_reviewed: 2026-09-13
 tags: [workbench, flask, offline, win7]
 depends_on: [ARCHITECTURE]
 implements: [workbench-foundation-read-loop, workbench-production-workflows]
@@ -15,7 +15,7 @@ implements: [workbench-foundation-read-loop, workbench-production-workflows]
 
 ## 当前边界
 
-`/workbench` 和 `/workbench/trial` 已挂载 14 个侧栏工作区及上下文内的交付风险视图。主数据、工艺、批次、候选生成和采用、正式计划、试调、执行台账、实际甘特、复盘报表、工时校准、值班台和系统维护均通过真实领域服务接线，不再是仅系统只读的初始阶段。本文件描述当前源码，不替代逐动作验收。旧默认入口和旧资产尚未退役；全站与容量终验通过后才执行退役。Win7 打包、真机和最终发布被本轮明确排除，不记为通过。
+`/workbench` 和 `/workbench/trial` 支持15个视图，侧栏12项；计划甘特/交付风险及报表/复盘通过页内页签组织，旧URL和精确上下文仍保留。主数据、工艺、批次、候选生成和采用、正式计划、试调、执行台账、实际甘特、复盘报表、工时校准、值班台和系统维护均通过真实领域服务接线。本文件描述当前源码，不替代逐动作验收。旧入口退役与Win7打包、真机和最终发布由迁移路线图管理，本次界面质量整改不替其签发通过结论。
 
 ## 职责
 
@@ -31,6 +31,17 @@ implements: [workbench-foundation-read-loop, workbench-production-workflows]
 HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同源领域API -> 校验实际消费字段 -> 展示数据。读请求有时限，卸载或切换工作区取消旧读取。错误显示重试，不静默读取样例。主题偏好与业务状态分开。
 
 系统概况的`snapshot_ref`只标识本次只读响应。新增物料列表/详情的快照则绑定筛选、排序、当前资料修订和读取时点；分页复用原引用时若数据或范围变化，明确返回`snapshot_stale`，不自动刷新。它仍不是永久实体身份。
+
+## 界面共享层
+
+- 应用样式集中在`frontend/workbench/app/styles/`，由`build-order.json`显式登记，按基础令牌、布局、共享控件和工作区域顺序进入资产清单。原型依赖先加载，应用层负责当前界面；静态样式不再由工作区组件反复插入。视口预算、表内双向滚动、吸顶表头与固定关键/操作列共同保证长表可用。`WorkbenchScrollShadows`在壳层挂载一次，按实际遮挡给表格框打`data-overflow-left/right`，固定列只在遮住其他列时显示滚动阴影；表头`word-break: keep-all`不在中文词内折行。顶栏是唯一可见页面标题，工作区重复的`h2`以`wb-page-title`视觉隐藏、副标题以`wb-page-context`作上下文行；工作区根统一`padding: 0`，灰底加白卡，KPI 条统一四格，甘特滚动框按行数自适应到上限。间距字面量按`--space-1..6`接线，行高有`--wb-line-*`三档，圆角统一`--wb-radius-control`。
+- `WorkbenchFormat`区分工厂本地日期文本与带时区的实际时刻；空值和非法值分开处理，显示层不另加业务取值范围。`number/percent/hours`接受`{ digits, trim }`：trim 保留录入精度（最多 digits 位），录入类工时、报工累计与候选对比指标用它而不是 1 位摘要；-0 归零显示。报工时间经`FieldContract.date`保留秒。`WorkbenchTerms`统一界面术语，`WorkbenchReferences`把完整引用与诊断收纳到可展开区域，保留原始内容；值班台来源只折叠诊断码、`*_ref/*_key`与完整十六进制引用，`business_code`、`kind`等业务字段保持可见。
+- `ResourceControls`和`WorkbenchControls/WorkbenchListControls`提供字段错误、空态、分页、弹窗与详情。`Button`的禁用原因分`inline`与`tooltip`两种呈现，表格操作列和工具栏用 tooltip（title 加视觉隐藏说明），表单与页面级主动作保持 inline；`Issues`把相同消息合并为一行并标注条数。分页档位由领域消费者明确给出，游标模式不虚构总数。详情按业务条目更换内容并管理焦点；只读自动预览可显式保持原焦点。密度由`WorkbenchDensity`共享订阅和保存，切换行距时保持字号和数据不变，保存失败明确显示。
+- `WorkbenchGuards`按owner和作用域登记未保存输入及待核实命令；`WorkbenchGuardHost`通过共享Modal呈现确认，避免核心守卫反向依赖UI。导航、同文档前进后退和编辑器关闭都查询同一守卫，拒绝时保留URL、页面和输入；确认框不再次拦截自己，待核实业务请求不被当成可放弃草稿。`locked`只来自待核实命令，目录弹窗或重读资料等UI忙碌态不得传入；确认等待期间受保护条目全部保存或卸载时，守卫自动放行并关闭空确认框。
+- `PlanSelectionModel`只在没有明确或恢复上下文时选取唯一可读的当前正式计划。选中计划或候选后目录可收起并重新展开；从候选目录切换对象后归还展开入口焦点，外部进入不抢焦点。`ActualGanttWindow`仅计算显示窗口和命中区域，按时间中心与可见时长恢复刷新/跨宽度视窗，保留原`axis_span/as_of`、点工序和真实持续时长。
+- `FieldDraftModel/FieldEditorFields`仅为新建报工生成可清除的建议，并限制“上一条”的来源与复制字段。保存继续必须经过成功回执、重新读取和新的可写上下文；补齐、更正、保留草稿和未知结果继续沿原事务恢复链。任务详情位于列表滚动框之外，避免编辑器被表格高度预算裁切。
+
+界面验收通过独立的`ui_refinement_capture.cjs`采集当前构建、源码、模板和探针哈希，覆盖15视图、双尺寸、双主题及关键交互。`ui_refinement_gate.py`拒绝缺项、陈旧证据和最终豁免；daily gate以`--workbench-ui-evidence`显式接入，不改变原有浏览器测试的默认执行政策。局部组件、完整页面和最终HEAD门禁证据分别记录。
 
 ## 已接后端
 
@@ -73,6 +84,16 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 所有资源本地交付，不新增目标运行时或依赖。编译使用Chrome109支持的对象展开，避免多个独立脚本生成同名Babel全局辅助函数。系统的文件打开/保存窗口继续由操作系统负责，页面内触发按钮及状态提示使用工作台样式。
 
 ## 验证边界
+
+2026-09-12界面质量层补充：
+
+- `navigation_metadata.py`提供导航分组/视图别名，`pages.py`下发`nav_groups/view_aliases/help_url`。菜单显示集合与15视图可达集合分别验证；帮助复用现有只读手册路由，壳层通过`WorkbenchNavigation.helpUrl`附加`src=当前视图URL`，手册页据此渲染返回链接。计划中心页签条由`WorkbenchNavigation.historyView`判定，在排产历史上下文中隐藏；报表/复盘页签切换（`preferSaved`）整体恢复目标页签自己保存的上下文（范围、主题、分页、选中、滚动），只有首次进入才沿用当前范围与返回来源；两个页签各自保留范围是验收锁定的既有设计。
+- `app/styles/`按令牌、外壳、控件与领域样式显式排序发布。原型导入快照仍核对哈希，应用CSS同样登记来源/输入/发布字节。JSX不再通过runtime style块改变层叠顺序。
+- `WorkbenchGuards`管理按owner登记的未保存内容和命令锁定；`WorkbenchGuardHost`单独负责共享Modal呈现，避免classic-script依赖环。导航、历史前进后退、编辑器关闭与外部离开遵守同一退出决定，拒绝时保留URL/页面/草稿。
+- `WorkbenchListControls`区分页码与游标分页，档位由既有领域API决定；`WorkbenchDetailPanel`统一用户主动打开后的焦点与返回，自动预览不夺走首屏。共享Field负责字段说明与首错聚焦，错误编号保留在可展开的诊断区域。
+- `WorkbenchFormat`区分工厂本地文本和带时区时刻，超大整数字符串单独无损分组；`WorkbenchTerms`统一同义业务术语。格式层不新增领域取值约束，不把未知补零。
+- `WorkbenchDensity`只保存本机显示偏好。计划默认选择不覆盖明确来源，实际甘特显示窗口与服务器数据范围分离；报工继续操作只在原回执确认并取得新写入上下文后启动。
+- 独立工作台截图/几何/交互工具通过daily gate显式参数运行；默认旧浏览器manual/CI政策保留。每份证据绑定实际源码与build_id，不借用旧截图为新版本作证。
 
 前期专项测试及双尺寸双主题浏览器证据继续保留，当前最终全站逐动作验收仍在进行，不能将旧局部通过重记为最终快照通过。5000同资源工序、四个完整候选的正式隔离测量已通过，受理到终态122.728285375秒低于原180秒目标，重启后引用及结果相同；该证据只绑定当时冻结快照，不自动覆盖最终HEAD。
 

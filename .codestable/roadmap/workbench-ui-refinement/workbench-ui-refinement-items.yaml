@@ -1,0 +1,274 @@
+roadmap: workbench-ui-refinement
+created: 2026-09-12
+
+items:
+  - slug: wbui-css-layer-table-frame
+    description: 建立应用自有 CSS 层并接进构建与清单，以批次表吸顶表头加固定操作列作为首个消费者
+    depends_on: []
+    status: "done"
+    feature: 2026-09-12-wbui-css-layer-table-frame
+    minimal_loop: true
+    notes: 验收信号：1366×768 批次管理不横滚可见操作列，表头吸顶；三处清单合同测试放开 workbench/app/styles/ 前缀
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-ui-baseline-gate
+    description: 落地验证协议：基线截图工具适配工作台、几何断言 G1–G6 进 daily gate、应用 CSS 层样式测试
+    depends_on: []
+    status: "done"
+    feature: 2026-09-12-wbui-ui-baseline-gate
+    minimal_loop: false
+    notes: 改动前先冻结并采集；G1–G6及局部断言逐条绑定修复owner，最终验收无豁免
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-tokens-states
+    description: 补 z 阶梯与严重度别名令牌、字号整数化、消息条语义色走令牌并补徽标、未选中单选空心样式、active 与表格行 focus 态、圆角令牌名收一
+    depends_on: [wbui-css-layer-table-frame]
+    status: "done"
+    feature: 2026-09-12-wbui-tokens-states
+    minimal_loop: false
+    notes: 起点 main.jsx:59-61、WorkbenchControlStyles.jsx:267-269、plana.css / basedata.css / index.inline.css 半像素字号
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-viewport-budget
+    description: 落地视口合同：侧栏项高与组标题尺寸、去序号字符、1280 断点、主数据总览筛选行裁切与实体卡溢出、值班台 1280 溢出、产能链图 1280 卡片重叠（仅修重叠）
+    depends_on: [wbui-css-layer-table-frame]
+    status: "done"
+    feature: 2026-09-12-wbui-viewport-budget
+    minimal_loop: false
+    notes: 验收信号：几何断言 G2 与 G4 在 1366×768 与 1280×720 全部通过；用户已指定不重排基础资料首屏
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-nav-boot-groups
+    description: 导航分组由 pages.py 下发 nav_groups / view_aliases，值班台置顶、主数据总览并入数据准备、图标去重，main.jsx 改读启动信息，导航合同测试改为派生
+    depends_on: []
+    status: "done"
+    feature: 2026-09-12-wbui-nav-boot-groups
+    minimal_loop: false
+    notes: 分组按已批准默认值；独立锁定15视图可达性，本条不合并视图
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-header-controls
+    description: 顶栏主题切换改动作语义、补帮助入口 help_url、显示实例标签、页头标题随子页内容变化
+    depends_on: []
+    status: "done"
+    feature: 2026-09-12-wbui-header-controls
+    minimal_loop: false
+    notes: 复用现有只读手册URL，保持下载与返回合同
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-plan-center-first-screen
+    description: 计划中心三页自动选中当前正式计划、目录收起为下拉、甘特首行进首屏、图例补齐、条形第一行改批次号、加今日线
+    depends_on: []
+    status: "done"
+    feature: 2026-09-12-wbui-plan-center-first-screen
+    minimal_loop: false
+    notes: 验收信号：几何断言 G3 通过；无当前正式时保留目录展开态
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-detail-panel
+    description: 实现 WorkbenchDetailPanel 并接入值班台条目详情、报表与复盘工序详情，主数据总览侧栏改用同一组件，点详情后面板在视口内且焦点移入
+    depends_on: [wbui-css-layer-table-frame]
+    status: "done"
+    feature: 2026-09-12-wbui-detail-panel
+    minimal_loop: false
+    notes: 值班台"完整来源依据"JSON 转结构化字段表随本条去掉
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-run-stepper
+    description: 执行排产页三步条与主按钮跟随步骤、候选页只保留采用方案为实心、排产阶段中文文案加已耗时、预检参数变更提示重检、批次选择器补交期与优先级
+    depends_on: []
+    status: "done"
+    feature: 2026-09-12-wbui-run-stepper
+    minimal_loop: false
+    notes: 不做排产取消（需要运行时支持）
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-actual-gantt-window
+    description: 现场实际甘特默认窗口对齐计划或最近报工区间、条形最小宽 4px、放大以选中项或数据中心为锚、适应全部覆盖计划基线
+    depends_on: []
+    status: "done"
+    feature: 2026-09-12-wbui-actual-gantt-window
+    minimal_loop: false
+    notes: 只调整显示窗口，保留axis_span/as_of及点工序语义，不改DTO
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-field-validation
+    description: 抽出 ResourceControls.Field，批次/外协/日历/报工表单统一字段级校验，提交失败聚焦首个错误，去掉 ErrorBox 与 Issues 重复渲染，新增批次三必填即时标记
+    depends_on: []
+    status: "done"
+    feature: 2026-09-12-wbui-field-validation
+    minimal_loop: false
+    notes: 起点 ResourceControls.jsx:32,36 与 BatchControls.jsx:10-13
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-field-report-fastpath
+    description: 报工编辑器时间字段默认值、保存并继续、复制上一条、保存后自动重读
+    depends_on: [wbui-field-validation, wbui-dirty-guard]
+    status: "done"
+    feature: 2026-09-12-wbui-field-report-fastpath
+    minimal_loop: false
+    notes: 只给新建可清除建议；保留补齐/更正/草稿，确认成功并重读新write_context后继续
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-empty-loading-pager
+    description: 实现 EmptyState 与 Pager 并接入全部列表页，区分无数据与筛选无结果，按既有接口档位统一呈现与量词，支持页码和游标两种模式
+    depends_on: [wbui-css-layer-table-frame]
+    status: "done"
+    feature: 2026-09-12-wbui-empty-loading-pager
+    minimal_loop: false
+    notes: 替换 8 处独立 Pager 与 14 个 *-empty 类
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-format-module
+    description: 实现 WorkbenchFormat 替换内联日期与数字格式化，修 ProcessStageEditor 时区偏移与 SystemLive 斜杠日期，利用率统一百分数
+    depends_on: []
+    status: "done"
+    feature: 2026-09-12-wbui-format-module
+    minimal_loop: false
+    notes: 空值返回未知，格式非法抛错不兜底
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-terms-and-ids
+    description: 落地 WorkbenchTerms 术语表替换字面量，内部引用/请求键/规则码收进 details.wb-ref，契约词改为计划员能行动的说法
+    depends_on: [wbui-format-module]
+    status: "done"
+    feature: 2026-09-12-wbui-terms-and-ids
+    minimal_loop: false
+    notes: 术语按已批准默认值；验收信号：几何断言 G6 通过
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-table-density-noise
+    description: 表头图标按规则收敛、表头文字改中性色、全局紧凑密度偏好 aps_density、报表与复盘无现场数据时用横幅代替逐格未知、现场记录去重复统计条
+    depends_on: [wbui-css-layer-table-frame]
+    status: "done"
+    feature: 2026-09-12-wbui-table-density-noise
+    minimal_loop: false
+    notes: 密度只改行高与内边距，不改字号
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-dirty-guard
+    description: 实现 WorkbenchGuards，navigate 与共享 Modal 在有未保存草稿时二次确认，接入试调/批次/工艺/报工编辑器
+    depends_on: []
+    status: "done"
+    feature: 2026-09-12-wbui-dirty-guard
+    minimal_loop: false
+    notes: 确认框复用共享 Modal，不用原生 confirm
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-a11y-sweep
+    description: 表格补 caption 与 scope、Button 禁用原因可见化、虚拟列表表头去 aria-hidden、aria-label 去哈希、Canvas 键盘可遍历全部色块
+    depends_on: []
+    status: "done"
+    feature: 2026-09-12-wbui-a11y-sweep
+    minimal_loop: false
+    notes: 与 wbui-terms-and-ids 有交集，后做的只补差
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-system-page-polish
+    description: 系统管理自检表收进折叠区、导出按钮文案去 JSON、维护恢复页去裸错误码补回工作台入口、读取失败文案改为无法读取维护状态
+    depends_on: []
+    status: "done"
+    feature: 2026-09-12-wbui-system-page-polish
+    minimal_loop: false
+    notes: 不改恢复流程的保守语义，只改呈现
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-view-tabs-merge
+    description: 报表中心与执行复盘、选择排产方案与甘特/交付风险合并为入口加页内页签，旧 view 值保持有效，侧栏减到 12 项
+    depends_on: [wbui-nav-boot-groups]
+    status: "done"
+    feature: 2026-09-12-wbui-view-tabs-merge
+    minimal_loop: false
+    notes: 用户已批准；菜单12项与15视图URL/context可达性分别验收
+
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-prototype-css-cleanup
+    description: 先量再删原型 CSS 不再渲染的选择器与相应 important，断点归一 1280/1366/1600，剩余 *Styles.jsx 全部迁入应用 CSS 层
+    depends_on: [wbui-tokens-states, wbui-viewport-budget]
+    status: "done"
+    feature: 2026-09-12-wbui-prototype-css-cleanup
+    minimal_loop: false
+    notes: 涉及前端设计导入快照，按主文档 4.1 原型层修改流程走；建议最后做
+    evidence: "见 acceptance-20260912.md 第 3 节与 evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json：e696 构建 60 页面 / 8 交互 / 4 密度矩阵与 daily gate 通过；完整门禁 16491 passed / 1 failed，唯一失败为 KB 显示旧预期，已修正并单模块复测通过；用户决定不再重跑完整门禁，此项不构成全仓全绿证明"
+    completion_scope: "completed-with-validation-limit"
+    full_gate_status: "failed"
+  - slug: wbui-r2-table-scroll-shadows
+    description: 第二轮：固定列滚动阴影模块、表头 keep-all、主数据/报工列宽预算、可排序表头与折叠开关去链接蓝
+    depends_on: [wbui-css-layer-table-frame]
+    status: "done"
+    feature: 2026-09-13-wbui-style-round2
+    minimal_loop: false
+    notes: 批次表列宽因几何门禁 G1 需横向溢出而未压缩
+    evidence: "见 features/2026-09-13-wbui-style-round2/wbui-style-round2-implementation.md 验证表"
+  - slug: wbui-r2-shell-title-container-kpi
+    description: 第二轮：页内重复标题视觉隐藏并统一上下文行、容器左边缘统一 264、整页白卡改灰底白卡、KPI 条统一、单按钮灰带并入标题行
+    depends_on: [wbui-viewport-budget]
+    status: "done"
+    feature: 2026-09-13-wbui-style-round2
+    minimal_loop: false
+    notes: 页内 h2 保留在 DOM，heading 角色断言不受影响
+    evidence: "见 features/2026-09-13-wbui-style-round2/wbui-style-round2-implementation.md 验证表"
+  - slug: wbui-r2-empty-height-reason-copy
+    description: 第二轮：甘特与处置清单高度跟内容走、表格与工具栏禁用原因改 tooltip、Issues 合并重复条目、任务详情单一空态
+    depends_on: [wbui-a11y-sweep]
+    status: "done"
+    feature: 2026-09-13-wbui-style-round2
+    minimal_loop: false
+    notes: 表单底部与页面级主动作的原因仍 inline
+    evidence: "见 features/2026-09-13-wbui-style-round2/wbui-style-round2-implementation.md 验证表"
+  - slug: wbui-r2-token-wiring
+    description: 第二轮：间距精确匹配接 --space-1..6、gap/margin 半步值收敛、行高令牌、圆角别名统一、1350→1366、删除 --wb-content-min
+    depends_on: [wbui-tokens-states]
+    status: "done"
+    feature: 2026-09-13-wbui-style-round2
+    minimal_loop: false
+    notes: padding 的 6/10/14 与 15 种非精确行高保留字面量，待专项收敛
+    evidence: "见 features/2026-09-13-wbui-style-round2/wbui-style-round2-implementation.md 第 4 节"
+  - slug: wbui-r2-controls-business-selectors
+    description: 第二轮：20-controls.css 业务类名迁回页面样式文件、主按钮背景改主色令牌
+    depends_on: [wbui-prototype-css-cleanup]
+    status: "dropped"
+    feature: null
+    minimal_loop: false
+    notes: 样式层合同只允许 !important 出现在 20-controls.css，迁出需放弃护甲并逐条重验原型级联；主按钮深色对比度不足 AA，保留现有映射。理由见 features/2026-09-13-wbui-style-round2 第 5 节
+

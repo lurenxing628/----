@@ -1,0 +1,329 @@
+{
+  "browser": "109.0.5414.46",
+  "scope": "Original prototype entry against frozen before/current CSS; not production live workspaces",
+  "source_manifest_sha256": "88d53f86809b3dc50d635c6eafbccb445ae7907939c215283e0fe1aa4c8a2453",
+  "source_files": 114,
+  "baseline_manifest_sha256": "4dc9f0fedb74fc8782a371163c7c510f7d5071c849f0af2099951266449c66fc",
+  "variants": [
+    {
+      "version": "before",
+      "theme": "light",
+      "dashboard": [
+        {
+          "selector": ".nav-item",
+          "count": 14,
+          "sizes": [
+            "13.5px",
+            "13.5px",
+            "13.5px",
+            "13.5px",
+            "13.5px",
+            "13.5px",
+            "13.5px",
+            "13.5px"
+          ]
+        },
+        {
+          "selector": ".hdr-pill",
+          "count": 1,
+          "sizes": [
+            "12.5px"
+          ]
+        },
+        {
+          "selector": "#aps-decision .d-metric-value",
+          "count": 5,
+          "sizes": [
+            "24px",
+            "24px",
+            "24px",
+            "24px",
+            "24px"
+          ]
+        },
+        {
+          "selector": "#aps-decision .d-case-title",
+          "count": 0,
+          "sizes": []
+        },
+        {
+          "selector": ".fr-pend",
+          "count": 0,
+          "sizes": []
+        },
+        {
+          "selector": ".rest-state",
+          "count": 0,
+          "sizes": []
+        }
+      ],
+      "selfcheck": {
+        "tag": "SECTION",
+        "tableBox": {
+          "x": 284,
+          "y": 751.8359375,
+          "width": 952,
+          "height": 356,
+          "top": 751.8359375,
+          "right": 1236,
+          "bottom": 1107.8359375,
+          "left": 284
+        },
+        "box": {
+          "x": 284,
+          "y": 664.2421875,
+          "width": 952,
+          "height": 443.59375,
+          "top": 664.2421875,
+          "right": 1236,
+          "bottom": 1107.8359375,
+          "left": 284
+        },
+        "text": "页面环境自检\n\n检查时间 2026/9/12 13:52:16 · 不代表数据库或备份健康\n\n检查项\n\t\n结果\n\t\n检查范围\n\n页面运行依赖\t可用\tReact 与 ReactDOM 已加载；只代表当前页面可渲染。\n本地脚本引用\t可用\t页面声明的脚本均为本地引用；不等于逐文件完整性或离线交付验收。\n工作台组件\t可用\t指标、表格与操作组件已加载。\n本地图标\t可用\t页面使用的本地 Lucide 图标已加载。\n系统管理样式\t可用\t系统管理样式标记已生效；未进行像素或布局验收。\n管理资源模型\t可用\t当前环境与固定管理样例分开；本机运行数据尚未读取。\n本地文件导出\t可用\t浏览器提供本地文件导出 API；是否保存以浏览器下载结果为准。\n主题控制\t可用\t主题值与宿主切换回调已接入。"
+      },
+      "errors": [],
+      "external": []
+    },
+    {
+      "version": "before",
+      "theme": "dark",
+      "dashboard": [
+        {
+          "selector": ".nav-item",
+          "count": 14,
+          "sizes": [
+            "13.5px",
+            "13.5px",
+            "13.5px",
+            "13.5px",
+            "13.5px",
+            "13.5px",
+            "13.5px",
+            "13.5px"
+          ]
+        },
+        {
+          "selector": ".hdr-pill",
+          "count": 1,
+          "sizes": [
+            "12.5px"
+          ]
+        },
+        {
+          "selector": "#aps-decision .d-metric-value",
+          "count": 5,
+          "sizes": [
+            "24px",
+            "24px",
+            "24px",
+            "24px",
+            "24px"
+          ]
+        },
+        {
+          "selector": "#aps-decision .d-case-title",
+          "count": 0,
+          "sizes": []
+        },
+        {
+          "selector": ".fr-pend",
+          "count": 0,
+          "sizes": []
+        },
+        {
+          "selector": ".rest-state",
+          "count": 0,
+          "sizes": []
+        }
+      ],
+      "selfcheck": {
+        "tag": "SECTION",
+        "tableBox": {
+          "x": 284,
+          "y": 751.8359375,
+          "width": 952,
+          "height": 356,
+          "top": 751.8359375,
+          "right": 1236,
+          "bottom": 1107.8359375,
+          "left": 284
+        },
+        "box": {
+          "x": 284,
+          "y": 664.2421875,
+          "width": 952,
+          "height": 443.59375,
+          "top": 664.2421875,
+          "right": 1236,
+          "bottom": 1107.8359375,
+          "left": 284
+        },
+        "text": "页面环境自检\n\n检查时间 2026/9/12 13:52:21 · 不代表数据库或备份健康\n\n检查项\n\t\n结果\n\t\n检查范围\n\n页面运行依赖\t可用\tReact 与 ReactDOM 已加载；只代表当前页面可渲染。\n本地脚本引用\t可用\t页面声明的脚本均为本地引用；不等于逐文件完整性或离线交付验收。\n工作台组件\t可用\t指标、表格与操作组件已加载。\n本地图标\t可用\t页面使用的本地 Lucide 图标已加载。\n系统管理样式\t可用\t系统管理样式标记已生效；未进行像素或布局验收。\n管理资源模型\t可用\t当前环境与固定管理样例分开；本机运行数据尚未读取。\n本地文件导出\t可用\t浏览器提供本地文件导出 API；是否保存以浏览器下载结果为准。\n主题控制\t可用\t主题值与宿主切换回调已接入。"
+      },
+      "errors": [],
+      "external": []
+    },
+    {
+      "version": "after",
+      "theme": "light",
+      "dashboard": [
+        {
+          "selector": ".nav-item",
+          "count": 14,
+          "sizes": [
+            "14px",
+            "14px",
+            "14px",
+            "14px",
+            "14px",
+            "14px",
+            "14px",
+            "14px"
+          ]
+        },
+        {
+          "selector": ".hdr-pill",
+          "count": 1,
+          "sizes": [
+            "13px"
+          ]
+        },
+        {
+          "selector": "#aps-decision .d-metric-value",
+          "count": 5,
+          "sizes": [
+            "22px",
+            "22px",
+            "22px",
+            "22px",
+            "22px"
+          ]
+        },
+        {
+          "selector": "#aps-decision .d-case-title",
+          "count": 0,
+          "sizes": []
+        },
+        {
+          "selector": ".fr-pend",
+          "count": 0,
+          "sizes": []
+        },
+        {
+          "selector": ".rest-state",
+          "count": 0,
+          "sizes": []
+        }
+      ],
+      "selfcheck": {
+        "tag": "DETAILS",
+        "open": false,
+        "tableBox": {
+          "x": 284,
+          "y": 731.984375,
+          "width": 952,
+          "height": 356,
+          "top": 731.984375,
+          "right": 1236,
+          "bottom": 1087.984375,
+          "left": 284
+        },
+        "box": {
+          "x": 284,
+          "y": 664.2421875,
+          "width": 952,
+          "height": 45.1484375,
+          "top": 664.2421875,
+          "right": 1236,
+          "bottom": 709.390625,
+          "left": 284
+        },
+        "text": "页面环境自检"
+      },
+      "errors": [],
+      "external": []
+    },
+    {
+      "version": "after",
+      "theme": "dark",
+      "dashboard": [
+        {
+          "selector": ".nav-item",
+          "count": 14,
+          "sizes": [
+            "14px",
+            "14px",
+            "14px",
+            "14px",
+            "14px",
+            "14px",
+            "14px",
+            "14px"
+          ]
+        },
+        {
+          "selector": ".hdr-pill",
+          "count": 1,
+          "sizes": [
+            "13px"
+          ]
+        },
+        {
+          "selector": "#aps-decision .d-metric-value",
+          "count": 5,
+          "sizes": [
+            "22px",
+            "22px",
+            "22px",
+            "22px",
+            "22px"
+          ]
+        },
+        {
+          "selector": "#aps-decision .d-case-title",
+          "count": 0,
+          "sizes": []
+        },
+        {
+          "selector": ".fr-pend",
+          "count": 0,
+          "sizes": []
+        },
+        {
+          "selector": ".rest-state",
+          "count": 0,
+          "sizes": []
+        }
+      ],
+      "selfcheck": {
+        "tag": "DETAILS",
+        "open": false,
+        "tableBox": {
+          "x": 284,
+          "y": 731.984375,
+          "width": 952,
+          "height": 356,
+          "top": 731.984375,
+          "right": 1236,
+          "bottom": 1087.984375,
+          "left": 284
+        },
+        "box": {
+          "x": 284,
+          "y": 664.2421875,
+          "width": 952,
+          "height": 45.1484375,
+          "top": 664.2421875,
+          "right": 1236,
+          "bottom": 709.390625,
+          "left": 284
+        },
+        "text": "页面环境自检"
+      },
+      "errors": [],
+      "external": []
+    }
+  ],
+  "probe_path": "/tmp/aps-wbui-implementation-20260912/prototype-cleanup-browser.cjs",
+  "artifacts_root": "/tmp/aps-wbui-implementation-20260912/prototype-cleanup-browser"
+}

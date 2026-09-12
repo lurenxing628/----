@@ -1,0 +1,1022 @@
+{
+  "scope": "source prototype CSS cleanup; no static build or app modification",
+  "files": [
+    {
+      "source": "前端设计/ui_kits/workbench/basedata.css",
+      "sha256_before": "feb2945b2117b1b13cb5a5939235c70cd26da076964e1811e00406e6b3022430",
+      "sha256_after": "23de5a36bf7404f8d3fd144959619fe9947f523215745b36c8f04a8707e22457",
+      "bytes_before": 47215,
+      "bytes_after": 48720,
+      "deleted": [],
+      "typography": {
+        "17px → --font-size-4": 2,
+        "13px → --font-size-2": 20,
+        "12px → --font-size-1": 17,
+        "13.5px → --font-size-3": 6,
+        "14px → --font-size-3": 9,
+        "16px → --font-size-4": 2,
+        "12.5px → --font-size-2": 22,
+        "11.5px → --font-size-1": 4,
+        "9px → --font-size-1": 1,
+        "11px → --font-size-1": 11,
+        "28px → --font-size-kpi": 1,
+        "15px → --font-size-3": 2,
+        "10.5px → --font-size-1": 2,
+        "14.5px → --font-size-3": 1,
+        "10px → --font-size-1": 2
+      },
+      "inverse_text_colors": 8,
+      "desktop_breakpoints": [
+        {
+          "before": 1080,
+          "after": 1280
+        }
+      ]
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/batch-workbench.css",
+      "sha256_before": "16cd43d8ae6a9d6b56a9da99b730161ce1459d57ada53c1f5fc1ade4fdf10df2",
+      "sha256_after": "24034052c219684264cdb836e1aae3ae4a37542b7f9b514827129088cf843c94",
+      "bytes_before": 9253,
+      "bytes_after": 9434,
+      "deleted": [
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 39,
+          "selector": ".batch-workbench .batch-delete-icon",
+          "scope": [],
+          "property": "width",
+          "removed": "width: 28px;",
+          "winner_line": 153,
+          "winner_value": " 30px",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 40,
+          "selector": ".batch-workbench .batch-delete-icon",
+          "scope": [],
+          "property": "height",
+          "removed": "height: 28px;",
+          "winner_line": 153,
+          "winner_value": " 30px",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        }
+      ],
+      "typography": {
+        "12px → --font-size-1": 6,
+        "13px → --font-size-2": 6,
+        "17px → --font-size-4": 2,
+        "22px → --font-size-5": 1
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": []
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/dashboard-workbench.css",
+      "sha256_before": "431ac6901097b2e31802019f7a3adda0477f3aff8306e8be83cd8c67a5060587",
+      "sha256_after": "78191ef1a5ec8b4c558f7f037d356895c9519dd89f026bd3b6cffd6406d2d565",
+      "bytes_before": 23762,
+      "bytes_after": 24104,
+      "deleted": [
+        {
+          "kind": "uncreated-selector",
+          "source_line": 51,
+          "selector": "#aps-decision .d-case-title",
+          "scope": [],
+          "removed": "#aps-decision .d-case-title {display:block;font-size:13px;line-height:1.6;font-weight:600;overflow-wrap:anywhere;}",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 83,
+          "selector": "#aps-decision .d-right",
+          "scope": [],
+          "removed": "#aps-decision .d-right {text-align:right;}",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 146,
+          "selector": "#aps-decision .d-no-candidates",
+          "scope": [],
+          "removed": "#aps-decision .d-no-candidates {padding:13px 0;font-size:12px;color:var(--d-muted);}",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 129,
+          "selector": "#aps-decision .d-record",
+          "scope": [],
+          "property": "grid-template-columns",
+          "removed": "grid-template-columns:82px minmax(0,1fr);",
+          "winner_line": 166,
+          "winner_value": "108px minmax(0,1fr)",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 201,
+          "selector": "#aps-decision .d-case-title",
+          "scope": [
+            "media (max-width:600px)"
+          ],
+          "removed": "#aps-decision .d-case-title {font-size:12px;}",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 125,
+          "selector": "#aps-decision .d-option-top",
+          "scope": [],
+          "property": "align-items",
+          "removed": "align-items:center;",
+          "winner_line": 225,
+          "winner_value": "flex-start",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        }
+      ],
+      "typography": {
+        "22px → --font-size-5": 1,
+        "17px → --font-size-4": 2,
+        "14px → --font-size-3": 2,
+        "12px → --font-size-1": 31,
+        "27px → --font-size-kpi": 1,
+        "13px → --font-size-2": 10,
+        "20px → --font-size-5": 1,
+        "16px → --font-size-4": 1
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": [
+        {
+          "before": 1050,
+          "after": 1280
+        }
+      ]
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/datepicker/aps-datepicker.css",
+      "sha256_before": "9c379baa2c9683925d5ee8e07a4eeaf379b47b96edf9713bde176f526c8f296e",
+      "sha256_after": "6d5959690ed0697c1a46eb49e92b9b90ac0b8efef37694adc245b227d983b6bc",
+      "bytes_before": 8717,
+      "bytes_after": 8841,
+      "deleted": [],
+      "typography": {
+        "14px → --font-size-3": 1,
+        "11px → --font-size-1": 1,
+        "13px → --font-size-2": 3
+      },
+      "inverse_text_colors": 3,
+      "desktop_breakpoints": []
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/execution-analysis-shared.css",
+      "sha256_before": "88b616b39340198496a9310e1352af8b65874bd16aa8e3039ad336eba20c7a21",
+      "sha256_after": "8d16c07d66332e35533e95a740733a9aac48760a9c83ef4e9222ed5d59ca600b",
+      "bytes_before": 7427,
+      "bytes_after": 7637,
+      "deleted": [],
+      "typography": {
+        "12px → --font-size-1": 12,
+        "13px → --font-size-2": 3
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": [
+        {
+          "before": 1050,
+          "after": 1280
+        }
+      ]
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/execution-review.css",
+      "sha256_before": "9be0637c7528ab956c3c349d4cb2d59f4ebc99b5325ab5bc3aa78c7ba93fb45b",
+      "sha256_after": "fb715fb0fa9184691e65f6648e8ad964f3e3f963f91ffa28d5b85a3406272af9",
+      "bytes_before": 9622,
+      "bytes_after": 9930,
+      "deleted": [],
+      "typography": {
+        "22px → --font-size-5": 1,
+        "17px → --font-size-4": 1,
+        "12px → --font-size-1": 11,
+        "14px → --font-size-3": 1,
+        "13px → --font-size-2": 7,
+        "15px → --font-size-3": 1
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": [
+        {
+          "before": 1392,
+          "after": 1366
+        },
+        {
+          "before": 1024,
+          "after": 1280
+        }
+      ]
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/field-gantt-viewport.css",
+      "sha256_before": "58a010a0ee7e4274467324c3d718d6fe5e2f2a5ece3c8f216fd47250590f3c34",
+      "sha256_after": "f9249dd3a5449594fa3c77d6571bdccaaf9c45ef8f79ec8a6f839ab2e35f5234",
+      "bytes_before": 1336,
+      "bytes_after": 1378,
+      "deleted": [],
+      "typography": {
+        "12px → --font-size-1": 3
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": []
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/field-gantt.css",
+      "sha256_before": "d54435911318fabf946ea56b6f1ff55e36ab146e292791538aa78cbface88133",
+      "sha256_after": "843c8d567d956db933831a6a2a83e27c1d267bbbe273f57b2a813751be318e7e",
+      "bytes_before": 22138,
+      "bytes_after": 22708,
+      "deleted": [
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 8,
+          "selector": ".fg-scope .gb-board",
+          "scope": [],
+          "property": "max-height",
+          "removed": "max-height: 640px;",
+          "winner_line": 8,
+          "winner_value": " calc(100vh - 300px)",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        }
+      ],
+      "typography": {
+        "12px → --font-size-1": 30,
+        "13px → --font-size-2": 10,
+        "15px → --font-size-3": 1,
+        "14px → --font-size-3": 1
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": [
+        {
+          "before": 1080,
+          "after": 1280
+        }
+      ]
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/field-reporting.css",
+      "sha256_before": "1f5f80227471c345faccde3c7c0b72ab3b91b692172dc2244156721fdc152c47",
+      "sha256_after": "2e797ba0a4557e44f0e552d2a92badb62addb4f67cd04ade74578d68afbd8706",
+      "bytes_before": 40633,
+      "bytes_after": 41135,
+      "deleted": [
+        {
+          "kind": "uncreated-selector",
+          "source_line": 91,
+          "selector": "#aps-reporting .r-task-summary",
+          "scope": [],
+          "removed": "#aps-reporting .r-task-summary {padding-bottom: 14px; border-bottom: 1px solid var(--r-line); margin-bottom: 15px;}",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 92,
+          "selector": "#aps-reporting .r-task-summary strong",
+          "scope": [],
+          "removed": "#aps-reporting .r-task-summary strong {font-size: 14px;}",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 144,
+          "selector": "#aps-reporting .apsdp-pop",
+          "scope": [],
+          "property": "z-index",
+          "removed": "z-index: 4000;",
+          "winner_line": 215,
+          "winner_value": " 60",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 270,
+          "selector": "#aps-reporting .r-form-summary",
+          "scope": [],
+          "removed": "#aps-reporting .r-form-summary {display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:9px;color:var(--r-muted);font-size:12px;}",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        }
+      ],
+      "typography": {
+        "22px → --font-size-5": 1,
+        "17px → --font-size-4": 2,
+        "13px → --font-size-2": 22,
+        "12px → --font-size-1": 27,
+        "24px → --font-size-5": 1,
+        "14px → --font-size-3": 4,
+        "16px → --font-size-4": 1
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": []
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/gantt-board.css",
+      "sha256_before": "0cc64e9ee9f757ae4993b420197b1a6adaf813afee1cdd86a5b29809eb5f3ae8",
+      "sha256_after": "b2d7382ebfd3fbd79cccd6a77c79596918d4c16c6b41df06369efaa4bafbb895",
+      "bytes_before": 21507,
+      "bytes_after": 21976,
+      "deleted": [],
+      "typography": {
+        "10.5px → --font-size-1": 3,
+        "12px → --font-size-1": 9,
+        "16px → --font-size-4": 1,
+        "11px → --font-size-1": 7,
+        "12.5px → --font-size-2": 4,
+        "9.5px → --font-size-1": 2,
+        "13.5px → --font-size-3": 1,
+        "17px → --font-size-4": 1,
+        "9px → --font-size-1": 1,
+        "13px → --font-size-2": 1,
+        "11.5px → --font-size-1": 1
+      },
+      "inverse_text_colors": 3,
+      "desktop_breakpoints": []
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/index.html",
+      "sha256_before": "935941ad163b35d7de3fe441b2bdf843f59b530fb97dbdd7c75386a484561dfe",
+      "sha256_after": "9c4953da55aa0f99937d520ecfa0cd0992c66b85fe85f6c22e9e1d4fd85440b3",
+      "bytes_before": 32703,
+      "bytes_after": 30651,
+      "deleted": [
+        {
+          "kind": "uncreated-selector",
+          "source_line": 108,
+          "selector": ".rest-head",
+          "scope": [],
+          "removed": ".rest-head { margin: 22px 0 12px; font-size: 16px; font-weight: 600; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 118,
+          "selector": ".rest-top",
+          "scope": [],
+          "removed": ".rest-top { margin-bottom: 8px; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 120,
+          "selector": ".rest-impact",
+          "scope": [],
+          "removed": ".rest-impact { margin: 6px 0 0; font-size: 14px; line-height: 1.6; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 121,
+          "selector": ".rest-evidence",
+          "scope": [],
+          "removed": ".rest-evidence { margin: 4px 0 0; font-size: 13px; color: var(--ui-muted); line-height: 1.6; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 123,
+          "selector": ".rest-state",
+          "scope": [],
+          "removed": ".rest-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; flex-shrink: 0; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 124,
+          "selector": ".rest-state-dot",
+          "scope": [],
+          "removed": ".rest-state-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 256,
+          "selector": ".fr-section-head",
+          "scope": [],
+          "removed": ".fr-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin: 4px 0 12px; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 257,
+          "selector": ".fr-section-head h4",
+          "scope": [],
+          "removed": ".fr-section-head h4 { margin: 0; font-size: 16px; font-weight: 600; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 258,
+          "selector": ".fr-section-head .fr-meta",
+          "scope": [],
+          "removed": ".fr-section-head .fr-meta { font-size: 12px; color: var(--ui-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 259,
+          "selector": ".fr-pend-list",
+          "scope": [],
+          "removed": ".fr-pend-list { display: flex; flex-direction: column; gap: 10px; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 260,
+          "selector": ".fr-pend",
+          "scope": [],
+          "removed": ".fr-pend { display: flex; align-items: center; gap: 18px; padding: 13px 16px; border: 1px solid var(--ui-border); border-left: 4px solid var(--ui-border); border-radius: var(--wb-radius-surface); background: var(--ui-surface-muted); box-shadow: var(--ui-shadow-sm); }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 261,
+          "selector": ".fr-pend.tone-success",
+          "scope": [],
+          "removed": ".fr-pend.tone-success { border-left-color: var(--ui-success); }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 262,
+          "selector": ".fr-pend.tone-notice",
+          "scope": [],
+          "removed": ".fr-pend.tone-notice { border-left-color: var(--ui-info-border); }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 263,
+          "selector": ".fr-pend.tone-warning",
+          "scope": [],
+          "removed": ".fr-pend.tone-warning { border-left-color: var(--ui-warning); }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 264,
+          "selector": ".fr-pend.tone-danger",
+          "scope": [],
+          "removed": ".fr-pend.tone-danger { border-left-color: var(--ui-danger); }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 265,
+          "selector": ".fr-pend-lead",
+          "scope": [],
+          "removed": ".fr-pend-lead { flex: none; width: 86px; padding-right: 18px; border-right: 1px solid var(--ui-border); display: flex; flex-direction: column; gap: 3px; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 266,
+          "selector": ".fr-pend-exp",
+          "scope": [],
+          "removed": ".fr-pend-exp { font-size: 12px; font-weight: 700; color: var(--ui-muted); }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 267,
+          "selector": ".fr-pend-time",
+          "scope": [],
+          "removed": ".fr-pend-time { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 268,
+          "selector": ".fr-pend-over",
+          "scope": [],
+          "removed": ".fr-pend-over { font-size: 11.5px; font-weight: 700; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 269,
+          "selector": ".fr-pend-body",
+          "scope": [],
+          "removed": ".fr-pend-body { flex: 1 1 auto; min-width: 0; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 270,
+          "selector": ".fr-pend-top",
+          "scope": [],
+          "removed": ".fr-pend-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 271,
+          "selector": ".fr-pend-body h4",
+          "scope": [],
+          "removed": ".fr-pend-body h4 { margin: 0; font-size: 14.5px; font-weight: 600; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 272,
+          "selector": ".fr-pend-note",
+          "scope": [],
+          "removed": ".fr-pend-note { margin: 5px 0 0; font-size: 12.5px; color: var(--ui-muted); line-height: 1.6; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 273,
+          "selector": ".fr-pend-actions",
+          "scope": [],
+          "removed": ".fr-pend-actions { flex: none; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 274,
+          "selector": ".fr-empty",
+          "scope": [],
+          "removed": ".fr-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 26px; border: 1px dashed var(--ui-border); border-radius: var(--wb-radius-surface); background: var(--ui-card-bg); color: var(--ui-muted); text-align: center; font-size: 12.5px; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 275,
+          "selector": ".fr-empty strong",
+          "scope": [],
+          "removed": ".fr-empty strong { color: var(--ui-success); font-size: 14px; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 288,
+          "selector": ".fr-calc",
+          "scope": [],
+          "removed": ".fr-calc { border: 0; background: transparent; padding: 0; font-family: inherit; font-size: 11.5px; font-weight: 700; color: var(--ui-primary); cursor: pointer; font-variant-numeric: tabular-nums; white-space: nowrap; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 289,
+          "selector": ".fr-calc:hover",
+          "scope": [],
+          "removed": ".fr-calc:hover { text-decoration: underline; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 296,
+          "selector": ".fr-pend",
+          "scope": [
+            "media (max-width: 1080px)"
+          ],
+          "removed": ".fr-pend { flex-wrap: wrap; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        },
+        {
+          "kind": "uncreated-selector",
+          "source_line": 297,
+          "selector": ".fr-pend-actions",
+          "scope": [
+            "media (max-width: 1080px)"
+          ],
+          "removed": ".fr-pend-actions { width: 100%; justify-content: flex-start; }",
+          "evidence": "No producer in either imported prototype script closure or current production app; explicit retired roots, not dynamic status suffixes."
+        }
+      ],
+      "typography": {
+        "15px → --font-size-3": 4,
+        "11px → --font-size-1": 9,
+        "13.5px → --font-size-3": 4,
+        "18px → --font-size-4": 1,
+        "13px → --font-size-2": 9,
+        "12px → --font-size-1": 14,
+        "12.5px → --font-size-2": 8,
+        "14px → --font-size-3": 2,
+        "22px → --font-size-5": 1,
+        "16px → --font-size-4": 1,
+        "10px → --font-size-1": 2,
+        "19px → --font-size-4": 2,
+        "11.5px → --font-size-1": 5,
+        "15.5px → --font-size-4": 1,
+        "28px → --font-size-kpi": 1,
+        "17px → --font-size-4": 1
+      },
+      "inverse_text_colors": 3,
+      "desktop_breakpoints": [
+        {
+          "before": 1080,
+          "after": 1280
+        }
+      ]
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/master-data-overview.css",
+      "sha256_before": "6d353ed4a10934bd413b3bbf0a433bfc6ae2895f9f3087c036f9158d9f5c8959",
+      "sha256_after": "cd5b7a7117506bebf41bf73537062f3502c3eaa23c5021064cd8c7cb7b970d05",
+      "bytes_before": 7286,
+      "bytes_after": 7552,
+      "deleted": [],
+      "typography": {
+        "13px → --font-size-2": 5,
+        "22px → --font-size-5": 1,
+        "20px → --font-size-5": 1,
+        "12px → --font-size-1": 10,
+        "17px → --font-size-4": 1,
+        "14px → --font-size-3": 1
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": [
+        {
+          "before": 1560,
+          "after": 1600
+        }
+      ]
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/operations-workspaces.css",
+      "sha256_before": "8f2ab8f0792f27ae480abe44c2fc884d4ab2729736d9ebdb73302cf889720105",
+      "sha256_after": "a418387bf630414234d9dad9152f3010f11a5e6c8077d2f2f2bdadabb558332d",
+      "bytes_before": 1115,
+      "bytes_after": 1129,
+      "deleted": [],
+      "typography": {
+        "15px → --font-size-3": 1
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": []
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/plan-workbench.css",
+      "sha256_before": "6deff7fd99036d18acf64b24ab43fe89c5582492b56834efccd0b41c3b69fef8",
+      "sha256_after": "58160abef270a901a397d4b23c63c4a7e6ce1a2f0943863208379ba36164b148",
+      "bytes_before": 7409,
+      "bytes_after": 7808,
+      "deleted": [],
+      "typography": {
+        "13px → --font-size-2": 12,
+        "12px → --font-size-1": 3,
+        "17px → --font-size-4": 5,
+        "14px → --font-size-3": 3,
+        "18px → --font-size-4": 1
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": [
+        {
+          "before": 1500,
+          "after": 1366
+        },
+        {
+          "before": 1100,
+          "after": 1280
+        }
+      ]
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/plana.css",
+      "sha256_before": "177436ef2591f5e18b571742ae5b019f53faaf9fdb58a1486c066ad606fbf22a",
+      "sha256_after": "c72ed0b0aa2e3dd839db977fec1315a77445c7c445dd7f799fc9e99d3e500b44",
+      "bytes_before": 63641,
+      "bytes_after": 65105,
+      "deleted": [
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 404,
+          "selector": ".plana .linkbtn",
+          "scope": [],
+          "property": "border",
+          "removed": "border: 0;",
+          "winner_line": 679,
+          "winner_value": " 0",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 404,
+          "selector": ".plana .linkbtn",
+          "scope": [],
+          "property": "background",
+          "removed": "background: none;",
+          "winner_line": 679,
+          "winner_value": " transparent",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 404,
+          "selector": ".plana .linkbtn",
+          "scope": [],
+          "property": "font-family",
+          "removed": "font-family: inherit;",
+          "winner_line": 679,
+          "winner_value": " inherit",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 404,
+          "selector": ".plana .linkbtn",
+          "scope": [],
+          "property": "font-size",
+          "removed": "font-size: 13px;",
+          "winner_line": 679,
+          "winner_value": " 12.5px",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 404,
+          "selector": ".plana .linkbtn",
+          "scope": [],
+          "property": "font-weight",
+          "removed": "font-weight: 600;",
+          "winner_line": 679,
+          "winner_value": " 600",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 404,
+          "selector": ".plana .linkbtn",
+          "scope": [],
+          "property": "color",
+          "removed": "color: var(--ui-muted);",
+          "winner_line": 679,
+          "winner_value": " var(--kit-link)",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 404,
+          "selector": ".plana .linkbtn",
+          "scope": [],
+          "property": "cursor",
+          "removed": "cursor: pointer;",
+          "winner_line": 679,
+          "winner_value": " pointer",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 404,
+          "selector": ".plana .linkbtn",
+          "scope": [],
+          "property": "padding",
+          "removed": "padding: 0 2px;",
+          "winner_line": 679,
+          "winner_value": " 0",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 406,
+          "selector": ".plana .linkbtn:hover",
+          "scope": [],
+          "property": "text-decoration",
+          "removed": "text-decoration: underline;",
+          "winner_line": 680,
+          "winner_value": " underline",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 149,
+          "selector": ".plana .ready-note",
+          "scope": [],
+          "property": "color",
+          "removed": "color: var(--ui-muted);",
+          "winner_line": 765,
+          "winner_value": " var(--ui-success-text)",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 754,
+          "selector": ".plana .conf.hi",
+          "scope": [],
+          "property": "color",
+          "removed": "color: var(--ui-success);",
+          "winner_line": 806,
+          "winner_value": " var(--ui-success-text)",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 755,
+          "selector": ".plana .conf.lo",
+          "scope": [],
+          "property": "color",
+          "removed": "color: var(--ui-warning);",
+          "winner_line": 807,
+          "winner_value": " var(--ui-warning-text)",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        },
+        {
+          "kind": "shadowed-declaration",
+          "source_line": 756,
+          "selector": ".plana .conf.none",
+          "scope": [],
+          "property": "color",
+          "removed": "color: var(--ui-danger);",
+          "winner_line": 808,
+          "winner_value": " var(--ui-danger-text)",
+          "evidence": "Later declaration for exact same selector/property/context wins; no stronger priority in deleted declaration; target Chrome 109 supports winner value."
+        }
+      ],
+      "typography": {
+        "11px → --font-size-1": 10,
+        "13.5px → --font-size-3": 11,
+        "11.5px → --font-size-1": 18,
+        "25px → --font-size-kpi": 1,
+        "12.5px → --font-size-2": 16,
+        "14px → --font-size-3": 5,
+        "12px → --font-size-1": 17,
+        "16px → --font-size-4": 2,
+        "13px → --font-size-2": 22,
+        "15px → --font-size-3": 3,
+        "10.5px → --font-size-1": 5,
+        "17px → --font-size-4": 5,
+        "21px → --font-size-5": 1,
+        "10px → --font-size-1": 5,
+        "14.5px → --font-size-3": 1
+      },
+      "inverse_text_colors": 8,
+      "desktop_breakpoints": [
+        {
+          "before": 1000,
+          "after": 1280
+        }
+      ]
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/report-workbench.css",
+      "sha256_before": "fae6dc40d9be9370a12a58dfc2d2f09d48d1d547d224b193e2260e247970d4d6",
+      "sha256_after": "d299d17249421f2aecd437a56580756ee27f3a9c58a76b5083d669e827f3b500",
+      "bytes_before": 8576,
+      "bytes_after": 8926,
+      "deleted": [],
+      "typography": {
+        "22px → --font-size-5": 1,
+        "17px → --font-size-4": 1,
+        "12px → --font-size-1": 13,
+        "13px → --font-size-2": 8,
+        "14px → --font-size-3": 2
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": [
+        {
+          "before": 1000,
+          "after": 1280
+        }
+      ]
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/system-workbench.css",
+      "sha256_before": "95ae1f6d44eb6ab4abedf0f6ec0cc1c2e2c5481b8fb55b30e1ca3700f301b461",
+      "sha256_after": "35b51f9c4e893935c2aa14ddcbeeb2b2ec3bd012143714bca8b4cc9e9b52ccc8",
+      "bytes_before": 13605,
+      "bytes_after": 14067,
+      "deleted": [],
+      "typography": {
+        "22px → --font-size-5": 1,
+        "17px → --font-size-4": 1,
+        "14px → --font-size-3": 7,
+        "12px → --font-size-1": 16,
+        "13px → --font-size-2": 7,
+        "16px → --font-size-4": 1
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": [
+        {
+          "before": 1450,
+          "after": 1366
+        },
+        {
+          "before": 1000,
+          "after": 1280
+        }
+      ]
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/trial-sample.css",
+      "sha256_before": "a7800aee30e7ced0bc99756b60ef699beb18d50dfc11d4ded5e6426820b620be",
+      "sha256_after": "3212ce5357ce592709264f158f57d35b9d8146ebe5516c6bb40135c20b2c9cba",
+      "bytes_before": 20917,
+      "bytes_after": 21713,
+      "deleted": [],
+      "typography": {
+        "22px → --font-size-5": 1,
+        "17px → --font-size-4": 1,
+        "14px → --font-size-3": 2,
+        "15px → --font-size-3": 1,
+        "11px → --font-size-1": 2,
+        "13.5px → --font-size-3": 1,
+        "10px → --font-size-1": 1,
+        "18px → --font-size-4": 1,
+        "12px → --font-size-1": 27,
+        "13px → --font-size-2": 18,
+        "19px → --font-size-4": 1,
+        "16px → --font-size-4": 1
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": [
+        {
+          "before": 1400,
+          "after": 1366
+        },
+        {
+          "before": 1100,
+          "after": 1280
+        }
+      ]
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/workbench-ui.css",
+      "sha256_before": "6d78f7f5e00d2fe9d9e67f627bf143a5605085e1aee1bca0f8dcfdda4d4fc4af",
+      "sha256_after": "5cbc2f0853b2d792098d6b84fdbe98d69d55538f4412a8a8c0b324420cd7e365",
+      "bytes_before": 9247,
+      "bytes_after": 9387,
+      "deleted": [],
+      "typography": {
+        "13px → --font-size-2": 4,
+        "22px → --font-size-5": 1,
+        "12px → --font-size-1": 4,
+        "24px → --font-size-5": 1
+      },
+      "inverse_text_colors": 0,
+      "desktop_breakpoints": []
+    }
+  ],
+  "retired_roots": {
+    "ui_kits/workbench/index.html": [
+      "rest-head",
+      "rest-top",
+      "rest-impact",
+      "rest-evidence",
+      "rest-state",
+      "rest-state-dot",
+      "fr-section-head",
+      "fr-meta",
+      "fr-pend-list",
+      "fr-pend",
+      "fr-pend-lead",
+      "fr-pend-exp",
+      "fr-pend-time",
+      "fr-pend-over",
+      "fr-pend-body",
+      "fr-pend-top",
+      "fr-pend-note",
+      "fr-pend-actions",
+      "fr-empty",
+      "fr-calc"
+    ],
+    "ui_kits/workbench/dashboard-workbench.css": [
+      "d-case-title",
+      "d-no-candidates",
+      "d-right"
+    ],
+    "ui_kits/workbench/field-reporting.css": [
+      "r-task-summary",
+      "r-form-summary"
+    ]
+  },
+  "preserved": [
+    "Dynamic tone/state classes",
+    "Original Gantt and native-radius contract selectors",
+    "Existing production and prototype consumers",
+    "Sub-1000px datepicker/modal/phone rules",
+    "Approved foundation hub radius exceptions",
+    "Print/coarse-pointer/reduced-motion behavior"
+  ],
+  "font_policy": "Nearest existing 12/13/14/17/22/28 token; ties round up; keep family/weight/line-height",
+  "color_policy": "Only text color #fff/#ffffff maps to ui-text-inverse; both themes resolve that token to #ffffff",
+  "totals": {
+    "files": 19,
+    "deleted_rules": 37,
+    "deleted_shadowed_declarations": 19,
+    "deleted_important": 0,
+    "typography_declarations": 698,
+    "inverse_text_colors": 25
+  },
+  "coordinated_changes": [
+    {
+      "source": "前端设计/ui_kits/workbench/gantt-theme.css",
+      "sha256_before": "391d20fe38baa5226c38f2a4136b6842356be8c4a0171996ac35e394399d730a",
+      "sha256_after": "5ea2bfdea8a811cdd23df04905e171478203152edecb233b265fb35e9a8c52b7",
+      "note": "Gantt control radius aliases the same workbench control radius; group/bar remain independent graphics tokens."
+    },
+    {
+      "source": "前端设计/ui_kits/workbench/SystemManagementScreen.jsx",
+      "sha256_before": "1201a72fb66dd6aeda8084837ee505f0db4e774d728dfc7a04f91320556217b3",
+      "sha256_after": "d602082a6419ee4b4a7dc52fe9032ef7aa982ab1831285042f9f6ec570650238",
+      "note": "System owner coordination: prototype SMOverview environment check defaults to collapsed details; diagnostic/time conversion unchanged."
+    }
+  ]
+}

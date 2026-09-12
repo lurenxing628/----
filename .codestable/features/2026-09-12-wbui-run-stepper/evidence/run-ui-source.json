@@ -1,0 +1,124 @@
+{
+  "scope": "wbui-run-stepper source implementation, before final integrated build",
+  "build_id": null,
+  "clean_worktree_proof": false,
+  "head": "afc0551ed15ac0d8aceca63f1d950ebe8f9b0e8b",
+  "sources": [
+    {
+      "path": "frontend/workbench/app/PreflightAPI.js",
+      "sha256": "9a9c4bbba3af11db2fa0fb8c43abd9c7eb9ff0fd61e7d2eab7358d644e5f66b2"
+    },
+    {
+      "path": "frontend/workbench/app/PreflightBatchPicker.jsx",
+      "sha256": "bdafefabb3e7e4f6308373fbdc1dd7bf4cec2b1c8f68608d1b557cd83edce2bd"
+    },
+    {
+      "path": "frontend/workbench/app/PreflightContract.js",
+      "sha256": "6c533c09b2ebe665050441a23afd38e0bd7a148d69ece2f90389418fce591985"
+    },
+    {
+      "path": "frontend/workbench/app/PreflightControls.jsx",
+      "sha256": "7e7aa8797636d7ef9b1156f4b0bebfcf7a648526314c4132c3a5420bd7072525"
+    },
+    {
+      "path": "frontend/workbench/app/PreflightWorkspace.jsx",
+      "sha256": "35ba6ad2707793701f049eeba29f9d0e52489058c78240c19fe6d6200238b3d5"
+    },
+    {
+      "path": "frontend/workbench/app/RunAdoptionAPI.js",
+      "sha256": "d6533101715084aff9582d423cd320577793db3496793e3cfac08971bb1cc0c6"
+    },
+    {
+      "path": "frontend/workbench/app/RunAdoptionAction.jsx",
+      "sha256": "5ed599ace158d107da79422c30ddb6d4bcedc54788e8eddaee69c3c14d8a1563"
+    },
+    {
+      "path": "frontend/workbench/app/RunAdoptionControls.jsx",
+      "sha256": "3a7d1abf8f0764c8266007b7ee30d7a573daf37720cbc0d12f4fadecdeef3918"
+    },
+    {
+      "path": "frontend/workbench/app/RunBaselineAPI.js",
+      "sha256": "8c14f1eb762dd9d170bcd749b9d7c39b48710bb58a534ef7a6ce182120c5b81f"
+    },
+    {
+      "path": "frontend/workbench/app/RunBaselineControls.jsx",
+      "sha256": "3acf94740eda1dd85f0608fe195cf1280d9a8190c570b5f61fc3fd566ca08c58"
+    },
+    {
+      "path": "frontend/workbench/app/RunBaselineModel.js",
+      "sha256": "33ea3c64f9a98081ce5c597eea009994acbdfa4ae2d9bed1c6650c455ad12ca2"
+    },
+    {
+      "path": "frontend/workbench/app/RunCandidateAPI.js",
+      "sha256": "ea129318c743c33d28706090e3482848585d5f6a3fcaab8d2dd873788c2d5f89"
+    },
+    {
+      "path": "frontend/workbench/app/RunCandidateAnalysis.jsx",
+      "sha256": "b756ba2adfa25c41e55a9be7c145d107c7ab8df7e6841be7391e10266dfc6119"
+    },
+    {
+      "path": "frontend/workbench/app/RunCandidateAnalysisAPI.js",
+      "sha256": "e54c4489dd9b47973b11548594a682722f982e3ee02b5987cb2c08f36140c946"
+    },
+    {
+      "path": "frontend/workbench/app/RunCandidateControls.jsx",
+      "sha256": "bce01be4ca2b1879e89219174fbe0b08ce1a594c1f8cf2a192b54ae0ccdd4c16"
+    },
+    {
+      "path": "frontend/workbench/app/RunCandidateGantt.jsx",
+      "sha256": "21c19d8c2490e70a8e80f029e925142617e868605cc6ba67a1f589ea1a4ae9a0"
+    },
+    {
+      "path": "frontend/workbench/app/RunCandidateModel.js",
+      "sha256": "909ce4f4490f1e68cbf6086ef52d53c828ab953f743617829a0bd4d1585c2331"
+    },
+    {
+      "path": "frontend/workbench/app/RunCandidateWorkspace.jsx",
+      "sha256": "aa76b1dc82c052ee8bc3aaba9369672ce932105e2f0d19b8f6aa9550cf4dca4a"
+    },
+    {
+      "path": "frontend/workbench/app/RunHistoryAPI.js",
+      "sha256": "ae3fddf208ad8f23c52ea6be52c9b49e554ebc884e98d12e31158c42edf5cbdb"
+    },
+    {
+      "path": "frontend/workbench/app/RunHistoryControls.jsx",
+      "sha256": "6691c515e9d8dc81040b519652c4ea97e42c97008818b81556caf09d5c49bdb3"
+    },
+    {
+      "path": "frontend/workbench/app/RunHistoryWorkspace.jsx",
+      "sha256": "34e992d8d2e57874412923510fd97b3665757dd9ce3b1185641ab00e12ec1b61"
+    },
+    {
+      "path": "frontend/workbench/app/RunJobAPI.js",
+      "sha256": "aaaa3035daac9dd627d0f04b95e1578163e4ae54276fd4761246c5b160ab824a"
+    },
+    {
+      "path": "frontend/workbench/app/RunJobControls.jsx",
+      "sha256": "3751dda84fea1d9028fb3c84fe6edb189d9da18faebb762cfc50cbbf89a3e4c0"
+    },
+    {
+      "path": "frontend/workbench/app/RunJobPanel.jsx",
+      "sha256": "567606b0491775320676087718f292e092677207f1debb8f9f19078c3694dcc1"
+    },
+    {
+      "path": "frontend/workbench/app/RunPresentation.js",
+      "sha256": "cabd623f0690551f37e76f34477e715d97aeb421d8a6d9f6d95dcd25fff09606"
+    },
+    {
+      "path": "frontend/workbench/app/SchedulingWorkspace.jsx",
+      "sha256": "5014344998f8360298062b5b39420858d0bc0c4c3ec4dd72c4965ffd874a4a62"
+    },
+    {
+      "path": "frontend/workbench/app/styles/34-run.css",
+      "sha256": "c2a9cfdc86fa876ff2687fee8fe1d278dfaaf3cba1fed5a377693689a0374289"
+    },
+    {
+      "path": "tests/workbench/run_ui_source.cjs",
+      "sha256": "da12499b18067f96112830384ad330b207d963cf548aec2acdc13cd47bacfdf2"
+    },
+    {
+      "path": "tests/workbench/test_run_ui_refinement.cjs",
+      "sha256": "606df20691bf30af888013d44085e6aabaa81b549a022d012e5e9508ce258548"
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+feature: 2026-09-12-wbui-dirty-guard
+created: 2026-09-12
+roadmap: workbench-ui-refinement
+roadmap_item: wbui-dirty-guard
+steps:
+- id: guards
+  name: 实现 owner 守卫、确认宿主、外部离开保护
+  title: 实现 owner 守卫、确认宿主、外部离开保护
+  status: done
+- id: editors
+  name: 接入 Process 与 Trial 未提交编辑及已有命令锁定
+  title: 接入 Process 与 Trial 未提交编辑及已有命令锁定
+  status: done
+- id: verification
+  name: 独立合同与浏览器验证并记录集成边界
+  title: 独立合同与浏览器验证并记录集成边界
+  status: done
+  evidence: wbui-dirty-guard-acceptance.md；独立守卫11场景通过，Process/Stage/Trial局部补验日志 evidence/workbench-ui/2026-09-12-final/process-trial-final.log 为5 passed，保留记录中的54c40205构建边界。
+checks:
+- id: scope
+  name: 无变更、多编辑器、作用域、取消及锁定语义
+  title: 无变更、多编辑器、作用域、取消及锁定语义
+  status: passed
+  evidence: /var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-dirty-guard-81ycdr2o/dirty-guard-result.json；11场景全部通过，global_build与database_access均为false。
+- id: modal
+  name: 确认框自身免守卫并保留焦点
+  title: 确认框自身免守卫并保留焦点
+  status: passed
+  evidence: 同一 dirty-guard-result.json 的scope-cancel、escape-without-recursion、modal-footer-and-escape场景通过；errors/external为空。
+- id: navigation
+  name: 导航 owner 证明 popstate 拒绝时 URL 页面草稿一致
+  title: 导航 owner 证明 popstate 拒绝时 URL 页面草稿一致
+  status: passed
+  evidence: 最终56项合同集合中的真实主壳BatchForms拒绝/允许后退；独立history多步返回3项随UI gate通过。
+- id: final-build-gate
+  name: 主线程最终构建、全工作区浏览器验收与全仓质量门禁
+  item: 最终build_id与源码绑定，统一浏览器及全仓门禁由主线程收口。
+  source: 流程级约束
+  status: pending
+  evidence: "本轮范围收尾：evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json；build_id=e6964b9a4bc1c3e7855de1b0b677b0a402ba8063292a55f0778f9697c2f75043；completed-with-validation-limit；原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  full_gate_status: "failed"
+  closed_per_user: true
+  closure_reason: "用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  validation_limit: "原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。"

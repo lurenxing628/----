@@ -1,0 +1,96 @@
+{
+  "scope": "dirty-worktree isolated system component and read-only restore validation",
+  "source_sha256": {
+    "frontend/workbench/app/SystemLive.jsx": "5aa59959af816edc291b0c3cadc95e8a3c2b73b6c5a54446d0207e52a2f5b665",
+    "frontend/workbench/app/SystemMaintenanceControls.jsx": "63a7984e8426197cd9d1daf335a59cc0f4751291da95252f687c8368e3073dd1",
+    "frontend/workbench/app/SystemMaintenanceRecords.jsx": "faf2adba1dedb8594caea483b1fa1e1608695be221c1f62cf756fbf16805d8b2",
+    "frontend/workbench/app/SystemRestorePanel.jsx": "1025882a74589fc65132aef50a1e39e13f2d6e3fa2965708baeac40be42954ea",
+    "frontend/workbench/app/SystemRestoreStatus.js": "e61e67fe9e80654a81aab970b626fcb7b4d66681367a3c01714851e2be8c7b35",
+    "frontend/workbench/app/styles/37-system.css": "86c8db8dd315a596b00ab7184858bd79bfc593f2230263dfdbc4f81665749d7c",
+    "templates/workbench/recovery.html": "8a8f8eb00be524db061b17db08bcac5ba4c76cc6992705651b826ce6f5ac7cb8"
+  },
+  "component_report": "/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-system-caption-source-vtuf3k8n/system-maintenance-ui-result.json",
+  "component_summary": {
+    "browser": "109.0.5414.46",
+    "cases": 95,
+    "variants": [
+      {
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "theme": "light"
+      },
+      {
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "theme": "dark"
+      },
+      {
+        "viewport": {
+          "width": 1392,
+          "height": 924
+        },
+        "theme": "light"
+      },
+      {
+        "viewport": {
+          "width": 1392,
+          "height": 924
+        },
+        "theme": "dark"
+      }
+    ],
+    "errors": [],
+    "external": [],
+    "dialogs": [],
+    "screenshots": 41
+  },
+  "compiled_source_sha256": {
+    "WorkbenchFormat.js": "eaae4257172b6af1fb77bb2f42c99e37b66fd0231eb3e789de35fe56b017adc4",
+    "WorkbenchReferences.jsx": "96111d3ef9279ba355c7c97aa257aa238fc1c67b34bc4c37dd4884dc55697b2a",
+    "ResourceControls.jsx": "1109b610a054690c85c3991122cacc6e8f8a32e8a1266d1d8a0a8d2747d1b36d",
+    "WorkbenchListControls.jsx": "6fcaec9057ec3c17f2a3cc20b76a9d24510bfaa4760417b90c03eecea9fb8280",
+    "SystemRestoreStatus.js": "e61e67fe9e80654a81aab970b626fcb7b4d66681367a3c01714851e2be8c7b35",
+    "SystemMaintenanceAPI.js": "cd7a14f5e5910be94027b36860fd6fcac3071ab3a80099da80b63c5558f1e62c",
+    "SystemMaintenanceControls.jsx": "63a7984e8426197cd9d1daf335a59cc0f4751291da95252f687c8368e3073dd1",
+    "SystemRestorePanel.jsx": "1025882a74589fc65132aef50a1e39e13f2d6e3fa2965708baeac40be42954ea",
+    "SystemMaintenanceRecords.jsx": "faf2adba1dedb8594caea483b1fa1e1608695be221c1f62cf756fbf16805d8b2",
+    "SystemMaintenanceConfig.jsx": "33b8a296f188c4c8459209aa6290e366a92941b3707c2563f93bd64d41edb484",
+    "SystemMaintenanceWorkspace.jsx": "ddf27641fc1c5c4ee89196fc7ccf4cae69e2131cde442fab15aaec63bf65ef59",
+    "SystemLive.jsx": "5aa59959af816edc291b0c3cadc95e8a3c2b73b6c5a54446d0207e52a2f5b665"
+  },
+  "style_source_sha256": {
+    "00-tokens.css": "9532e03b9e05f8948c060d8e36ab222ace0f9c209430f7b075f56cf57c058211",
+    "21-table-frame.css": "7eacf1e4363f418e96e2c5a3c78477fa5de5578635009f553cc927c6d5b5b780",
+    "22-shared-controls.css": "bc421e76d23d8c8b9c86cadcd6f66015e010840593093da9544e57fa1221dfb3",
+    "37-system.css": "86c8db8dd315a596b00ab7184858bd79bfc593f2230263dfdbc4f81665749d7c"
+  },
+  "new_contract_cases": [
+    {
+      "name": "environment-details-collapsed-and-utc-instant-localized",
+      "variant": "polish",
+      "passed": true
+    },
+    {
+      "name": "failed-host-read-is-unknown-not-confirmed-stop-and-keeps-read-lock",
+      "variant": "polish",
+      "passed": true
+    }
+  ],
+  "production_build_id": null,
+  "logs": [
+    "/tmp/wbui-system-final-targeted.log",
+    "/tmp/wbui-system-restore-browser.log",
+    "/tmp/wbui-system-components-test.log",
+    "/tmp/wbui-system-caption-targeted.log",
+    "/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-system-caption-source-vtuf3k8n/stdout.log",
+    "/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-system-caption-source-vtuf3k8n/stderr.log"
+  ],
+  "note": "Final caption/scope source overlay reused a prior temporary-backend DTO, with 95 passing browser cases; current pytest factory collection was blocked by an unrelated scheduler ImportError. Full valid static dependency graph is retained before current source overlays. No final production build proof.",
+  "prior_component_report": "/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-system-maintenance-widgets-ey1dkpgr/system-maintenance-ui-result.json",
+  "prior_component_baseline_manifest_sha256": "3cca3271de78b65d87dbdf5f0ad681d7bc78215b73432c2e8d1e7ca65bc391a1",
+  "caption_and_scope_verified": true
+}

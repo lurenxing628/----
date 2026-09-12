@@ -1,0 +1,46 @@
+feature: 2026-09-12-wbui-actual-gantt-window
+created: 2026-09-12
+steps:
+- action: 核对 axis_span 并实现纯前端默认窗口及缩放锚。
+  exit_signal: 完整并集保留，恢复状态优先。
+  status: done
+  id: step-1
+  name: 核对 axis_span 并实现纯前端默认窗口及缩放锚。
+  evidence: wbui-actual-gantt-window-acceptance.md；actual-gantt-ui-bmxop0bq/result.json 已记录默认窗口、A到B范围切换及适应全部；这是源码组件证据。
+- action: 统一 DOM 和 canvas 最小4px命中，不扩大时长。
+  exit_signal: 点语义保持，短时段可选择。
+  status: done
+  id: step-2
+  name: 统一 DOM 和 canvas 最小4px命中，不扩大时长。
+  evidence: /var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/actual-gantt-ui-bmxop0bq/result.json；短报工4px命中与真实着色宽度分别记录，errors/external为空。
+- action: 执行定向模型、浏览器并记录验收。
+  exit_signal: 针对测试通过，未完成集成明确记录。
+  status: done
+  id: step-3
+  name: 执行定向模型、浏览器并记录验收。
+  evidence: wbui-actual-gantt-window-acceptance.md；局部实际甘特探针和 evidence/workbench-ui/2026-09-12-final/actual-keyboard/result.json 已留存，后者为65 marks的合成组件键盘验证，不替代最终整站门禁。
+checks:
+- item: 视窗、锚点、命中与DTO不可变。
+  source: tests/workbench/test_wbui_plan_gantt_models.cjs
+  status: passed
+  id: check-1
+  name: 视窗、锚点、命中与DTO不可变。
+  evidence: actual-window/、actual-keyboard/ 与 actual-final-point.log；W.capture/restoreZoom/restoreLeft
+    合同已通过。
+- item: 当前源码Chrome109实际甘特回归。
+  source: wbui-actual-gantt-window-acceptance.md
+  status: passed
+  id: check-2
+  name: 当前源码Chrome109实际甘特回归。
+  evidence: 实际甘特 API/10000条视窗与键盘3项通过；真实主壳报工点/缩放/重载/刷新2项通过。
+- id: final-build-gate
+  name: 最终统一构建与完整质量门禁
+  description: 最终source/build_id与完整工作台矩阵、整仓质量门禁由主线程统一收口。
+  status: pending
+  evidence: "本轮范围收尾：evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json；build_id=e6964b9a4bc1c3e7855de1b0b677b0a402ba8063292a55f0778f9697c2f75043；completed-with-validation-limit；原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  full_gate_status: "failed"
+  closed_per_user: true
+  closure_reason: "用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+  validation_limit: "原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。"
+roadmap: workbench-ui-refinement
+roadmap_item: wbui-actual-gantt-window

@@ -1,0 +1,51 @@
+feature: 2026-09-12-wbui-field-report-fastpath
+roadmap: workbench-ui-refinement
+roadmap_item: wbui-field-report-fastpath
+created: 2026-09-12
+steps:
+  - id: draft-contract
+    name: 建立建议、复制、继续条件和输入校验合同
+    action: 建立建议、复制、继续条件和输入校验合同
+    exit_signal: 8组输入和草稿合同通过，未知和身份边界保持。
+    status: done
+  - id: editor-workspace
+    name: 编辑器、自动重读、缓存草稿守卫与共享控件集成
+    action: 编辑器、自动重读、缓存草稿守卫与共享控件集成
+    exit_signal: 真实临时库7个浏览器场景通过，详情与编辑器独立可见。
+    status: done
+  - id: verification
+    name: 定向合同测试与组件编译并记录验收证据
+    action: 定向合同测试与组件编译并记录验收证据
+    exit_signal: 26项既有接口测试通过，Field脚本Chrome109编译通过，证据已归档。
+    status: done
+checks:
+  - id: ledger-input-boundary
+    name: 未知、零值、时间与工时、补齐和复制身份边界。
+    item: 未知、零值、时间与工时、补齐和复制身份边界。
+    source: tests/workbench/test_field_fastpath.cjs
+    status: passed
+  - id: completion-continuation
+    name: 保存后重读、fresh token、pending与失败分支。
+    item: 保存后重读、fresh token、pending与失败分支。
+    source: /tmp/aps-wbui-field-fastpath-20260912-12/field-fastpath.json
+    status: passed
+  - id: component-compile
+    name: 11个Field脚本Chrome109编译及独立浏览器运行。
+    item: 11个Field脚本Chrome109编译及独立浏览器运行。
+    source: tests/workbench/test_field_fastpath.cjs
+    status: passed
+  - id: scoped-browser
+    name: 草稿确认、两尺寸双主题、caption/th.scope和编辑器可见。
+    item: 草稿确认、两尺寸双主题、caption/th.scope和编辑器可见。
+    source: /tmp/aps-wbui-field-fastpath-20260912-12/field-fastpath.json
+    status: passed
+  - id: unified-browser
+    name: 主线程最终build_id统一工作台与质量门禁。
+    item: 主线程最终build_id统一工作台与质量门禁。
+    source: wbui-field-report-fastpath-acceptance.md
+    status: pending
+    evidence: "本轮范围收尾：evidence/workbench-ui/2026-09-12-final/final-gate-results-e696.json；build_id=e6964b9a4bc1c3e7855de1b0b677b0a402ba8063292a55f0778f9697c2f75043；completed-with-validation-limit；原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+    full_gate_status: "failed"
+    closed_per_user: true
+    closure_reason: "用户明确要求不再重跑完整门禁，原话：“整你完整门禁还跑干嘛，就失败一个小问题也花一个小时去跑？”。本轮按原full真实失败、唯一KB显示旧测试预期的完整模块复测通过，以及daily/UI实际结果收尾；关闭的是完整门禁重跑要求，不是将失败改成通过，也不代表用户签发全仓通过。"
+    validation_limit: "原完整门禁exit2；pytest 16503项中16491 passed、1 failed、11 skipped。唯一失败为KB旧测试显示预期；仅helper修正后完整受影响模块1 passed / 7.20s。daily=passed；UI=passed；未取得全仓全绿证明。"
