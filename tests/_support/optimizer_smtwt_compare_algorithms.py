@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-import subprocess
-from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from tests._support.optimizer_benchmark_grading import smtwt_overdue_case
 from tests._support.optimizer_benchmark_loaders import load_smtwt_instances, moore_hodgson_min_tardy
+from tests._support.optimizer_compare_algorithms_provenance import (
+    MEASUREMENT,
+    capture_source,
+    machine_metadata,
+    require_serial_workers,
+    source_binding,
+)
 from tests._support.optimizer_smtwt_compare_common import (
     DEFAULT_SMTWT_PROFILES,
     SMTWT_COMPARE_SCHEMA_VERSION,
@@ -36,6 +41,8 @@ def build_smtwt_algorithm_comparison(
     time_budget_seconds: int = 1,
     workers: int = 1,
 ) -> Dict[str, Any]:
+    require_serial_workers(workers)
+    source_before = capture_source(Path.cwd())
     normalized_profiles = normalize_profiles(profiles)
     rows = _build_rows(
         profiles=normalized_profiles,
@@ -45,7 +52,7 @@ def build_smtwt_algorithm_comparison(
         time_budget_seconds=int(time_budget_seconds),
         workers=int(workers),
     )
-    return _payload(
+    payload = _payload(
         rows=rows,
         profiles=normalized_profiles,
         sizes=sizes,
@@ -53,6 +60,15 @@ def build_smtwt_algorithm_comparison(
         limit_per_size=limit_per_size,
         workers=int(workers),
     )
+    source_after = capture_source(Path.cwd())
+    payload.update({
+        "source_before": source_before, "source_after": source_after,
+        "git_commit": source_after["head"],
+        "dirty_worktree": not source_before["worktree_clean"] or not source_after["worktree_clean"],
+        "proof_binding_status": source_binding(source_before, source_after),
+        "measurement": dict(MEASUREMENT), "machine": machine_metadata(),
+    })
+    return payload
 
 
 def _build_rows(
@@ -71,10 +87,8 @@ def _build_rows(
         limit_per_size=limit_per_size,
         time_budget_seconds=time_budget_seconds,
     )
-    if int(workers) <= 1 or len(tasks) <= 1:
-        return _flatten(_run_case_task(task) for task in tasks)
-    with ProcessPoolExecutor(max_workers=min(int(workers), len(tasks))) as executor:
-        return _flatten(executor.map(_run_case_task, tasks))
+    require_serial_workers(workers)
+    return _flatten(_run_case_task(task) for task in tasks)
 
 
 def _build_tasks(
@@ -108,8 +122,13 @@ def _flatten(chunks: Any) -> List[Dict[str, Any]]:
 def _run_case_profiles(*, instance: Any, seed: int, profiles: Tuple[str, ...], time_budget_seconds: int) -> List[Dict[str, Any]]:
     case = smtwt_overdue_case(instance)
     optimum = moore_hodgson_min_tardy(instance.processing_times, instance.due_dates)
-    context = build_case_context(case=case, time_budget_seconds=time_budget_seconds)
-    rows = [_run_profile(profile=profile, context=context, optimum=optimum, seed=seed) for profile in profiles if profile != "portfolio_all"]
+    rows = []
+    for profile in profiles:
+        if profile == "portfolio_all":
+            continue
+        # Rebuild each baseline inside that algorithm's own clock and budget.
+        context = build_case_context(case=case, time_budget_seconds=time_budget_seconds)
+        rows.append(_run_profile(profile=profile, context=context, optimum=optimum, seed=seed))
     if "portfolio_all" in profiles:
         rows.append(portfolio_row(rows, seed=seed, optimum=optimum))
     attach_case_comparisons(rows)
@@ -138,14 +157,10 @@ def _payload(
     limit_per_size: Optional[int],
     workers: int,
 ) -> Dict[str, Any]:
-    dirty_worktree = _dirty_worktree(Path.cwd())
     return {
         "schema_version": SMTWT_COMPARE_SCHEMA_VERSION,
         "status": "passed" if rows and all(row.get("status") == "passed" for row in rows) else "failed",
         "generated_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
-        "git_commit": _git_commit(Path.cwd()),
-        "dirty_worktree": dirty_worktree,
-        "proof_binding_status": "unbound_dirty_worktree" if dirty_worktree else "clean_worktree",
         "case_group": "smtwt_overdue",
         "objective_name": SMTWT_OBJECTIVE_NAME,
         "sizes": [int(item) for item in sizes],
@@ -166,21 +181,6 @@ def _payload(
         "summary": summarize_rows(rows),
         "pairwise_vs_graph_ready_v2": pairwise_vs(rows, subject="graph_ready_v2_no_repair"),
     }
-
-
-def _git_commit(repo_root: Path) -> str:
-    try:
-        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(repo_root), text=True).strip()
-    except (OSError, subprocess.CalledProcessError):
-        return "unknown"
-
-
-def _dirty_worktree(repo_root: Path) -> bool:
-    try:
-        out = subprocess.check_output(["git", "status", "--short"], cwd=str(repo_root), text=True)
-    except (OSError, subprocess.CalledProcessError):
-        return True
-    return bool(out.strip())
 
 
 __all__ = ["DEFAULT_SMTWT_PROFILES", "build_smtwt_algorithm_comparison"]

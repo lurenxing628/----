@@ -6,6 +6,26 @@ import json
 from pathlib import Path
 
 from tools import benchmark_full_test_debt_shards as benchmark
+from tools.full_test_debt_shards import split_nodeids
+
+
+def test_optimizer_matrix_fixture_is_not_split_between_serial_and_parallel() -> None:
+    matrix = "tests/algorithm/test_optimizer_quality_matrix_contract.py::"
+    nodes = [matrix + "test_real_matrix_minimum_coverage_feasibility_and_provenance",
+             matrix + "test_large_real_runtime_regression_fails_and_tolerant_noise_passes"]
+    serial, parallel = split_nodeids(nodes, 3)
+    assert serial == nodes
+    assert parallel == [[], [], []]
+
+
+def test_algorithm_comparison_modules_run_in_one_serial_shard() -> None:
+    modules = ("compare_algorithms_contract", "smtwt_compare_algorithms_contract",
+               "graph_ready_v2_long_run_contract", "benchmark_timing_contract",
+               "end_to_end_matrix_contract", "end_to_end_snapshot_contract", "benchmark_ratchet_gate")
+    nodes = ["tests/algorithm/test_optimizer_" + name + ".py::test_real_case" for name in modules]
+    serial, parallel = split_nodeids(nodes, 3)
+    assert serial == nodes
+    assert parallel == [[], [], []]
 
 
 def test_build_distribution_reports_serial_and_parallel_counts(tmp_path: Path) -> None:

@@ -3,14 +3,14 @@ from __future__ import annotations
 import math
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
-from tests._support.benchmark_parallel import DEFAULT_BENCHMARK_WORKERS
 from tests._support.optimizer_compare_algorithms import (
     POSTHOC_UPPER_BOUND_SEMANTICS,
     SAME_BUDGET_SEMANTICS,
     build_algorithm_comparison,
 )
+from tests._support.optimizer_compare_algorithms_provenance import COMPARE_SCHEMA_VERSION
 
-GRAPH_READY_V2_LONG_RUN_SCHEMA_VERSION = 1
+GRAPH_READY_V2_LONG_RUN_SCHEMA_VERSION = COMPARE_SCHEMA_VERSION
 GRAPH_READY_V2_NO_REPAIR_PROFILE = "graph_ready_v2_no_repair"
 PORTFOLIO_ALL_PROFILE = "portfolio_all"
 PORTFOLIO_ALL_WIN_LOSS_STATUS = "not_comparable"
@@ -28,7 +28,7 @@ def build_graph_ready_v2_long_run(
     *,
     seeds: int = 10,
     profiles: Sequence[str] = DEFAULT_GRAPH_READY_V2_LONG_RUN_PROFILES,
-    workers: int = DEFAULT_BENCHMARK_WORKERS,
+    workers: int = 1,
 ) -> Dict[str, Any]:
     seed_count = int(seeds)
     if seed_count < 10:
@@ -42,6 +42,8 @@ def build_graph_ready_v2_long_run(
         "git_commit": comparison.get("git_commit"),
         "dirty_worktree": bool(comparison.get("dirty_worktree")),
         "proof_binding_status": comparison.get("proof_binding_status"),
+        "source_before": comparison["source_before"], "source_after": comparison["source_after"],
+        "measurement": comparison["measurement"], "machine": comparison["machine"],
         "command": "build_graph_ready_v2_long_run",
         "command_args": {
             "profiles": list(comparison.get("algorithm_profiles") or list(profiles)),

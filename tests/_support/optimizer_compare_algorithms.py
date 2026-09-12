@@ -2,51 +2,49 @@
 
 from __future__ import annotations
 
-import math
 import random
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from core.algorithms import SortStrategy
 from core.algorithms.greedy.algo_stats import snapshot_algo_stats
-from core.services.scheduler.run.optimizer_candidate_fingerprint import build_candidate_fingerprint
 from core.services.scheduler.run.optimizer_candidate_profile import derive_grasp_ig_limits
 from core.services.scheduler.run.optimizer_grasp_ig_candidates import run_grasp_ig_candidates
 from core.services.scheduler.run.optimizer_local_search import run_local_search
 from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
-from tests._support.benchmark_git_state import (
-    dirty_worktree,
-    git_commit,
-    proof_binding_status,
-)
-from tests._support.benchmark_parallel import (
-    DEFAULT_BENCHMARK_WORKERS,
-    parallel_map_ordered,
-    positive_worker_count,
+from tests._support.optimizer_compare_algorithms_provenance import (
+    COMPARE_SCHEMA_VERSION,
+    MEASUREMENT,
+    capture_source,
+    machine_metadata,
+    require_serial_workers,
+    source_binding,
 )
 from tests._support.optimizer_compare_algorithms_report import (
     compare_to_algorithm_baseline,
     summarize_comparison_rows,
 )
+from tests._support.optimizer_compare_algorithms_rows import (
+    _attach_comparisons,
+    _comparison,
+    _portfolio_row,
+    _row_from_candidate,
+)
 from tests._support.optimizer_graph_ready_benchmark import (
     BASE_BATCH_ORDER,
     OBJECTIVE_NAME,
     START_DT,
-    BenchmarkClock,
     _baseline_candidate,
-    _result_order,
     _schedule_with_scheduler,
     _scheduler,
-    _score_list,
     graph_ready_benchmark_batches,
     graph_ready_benchmark_operations,
-    run_graph_ready_real_sgs_case,
 )
-from tests._support.optimizer_graph_ready_v2_benchmark import run_graph_ready_v2_real_sgs_case
+from tests._support.optimizer_graph_ready_repair_benchmark import run_production_repair_case
 from tests._support.optimizer_reference_diagnostics import build_reference_diagnostics
 
-COMPARE_SCHEMA_VERSION = 1
 COMPARE_CASE_GROUP = "graph_ready"
 COMPARE_CASE_SLUG = "graph-ready-weight-grid-real-sgs"
 POSTHOC_UPPER_BOUND_SEMANTICS = "posthoc_upper_bound"
@@ -62,21 +60,25 @@ DEFAULT_ALGORITHM_PROFILES = (
 )
 
 
-def build_algorithm_comparison(*, profiles: Sequence[str], seeds: int, workers: int = DEFAULT_BENCHMARK_WORKERS) -> Dict[str, Any]:
+def build_algorithm_comparison(*, profiles: Sequence[str], seeds: int, workers: int = 1) -> Dict[str, Any]:
     normalized_profiles = _normalize_profiles(profiles)
-    worker_count = positive_worker_count(workers)
+    worker_count = require_serial_workers(workers)
+    source_before = capture_source(Path.cwd())
     all_rows: List[Dict[str, Any]] = []
     seed_tasks = [(seed, normalized_profiles) for seed in range(int(seeds))]
-    for seed_rows in parallel_map_ordered(_run_seed_profiles_task, seed_tasks, workers=worker_count):
+    for seed_rows in map(_run_seed_profiles_task, seed_tasks):
         all_rows.extend(seed_rows)
-    repo_dirty = dirty_worktree(Path.cwd())
+    source_after = capture_source(Path.cwd())
+    binding = source_binding(source_before, source_after)
     payload = {
         "schema_version": COMPARE_SCHEMA_VERSION,
         "status": "passed" if all_rows and all(row.get("status") == "passed" for row in all_rows) else "failed",
         "generated_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
-        "git_commit": git_commit(Path.cwd()),
-        "dirty_worktree": repo_dirty,
-        "proof_binding_status": proof_binding_status(dirty_worktree=repo_dirty),
+        "git_commit": source_after["head"],
+        "dirty_worktree": not source_before["worktree_clean"] or not source_after["worktree_clean"],
+        "proof_binding_status": binding,
+        "source_before": source_before, "source_after": source_after,
+        "measurement": dict(MEASUREMENT), "machine": machine_metadata(),
         "command": "build_algorithm_comparison",
         "command_args": {"profiles": list(normalized_profiles), "seeds": int(seeds), "workers": worker_count},
         "case_group": COMPARE_CASE_GROUP,
@@ -144,6 +146,7 @@ def _baseline_setup() -> Tuple[Any, List[Any], Dict[str, Any], Dict[str, Any]]:
 
 
 def _baseline_row(*, seed: int) -> Dict[str, Any]:
+    started = time.perf_counter()
     _scheduler_obj, _operations, _batches, baseline = _baseline_setup()
     return _row_from_candidate(
         candidate=baseline,
@@ -155,39 +158,43 @@ def _baseline_row(*, seed: int) -> Dict[str, Any]:
         accepted_candidates=1,
         candidate_rejections={},
         status="passed",
+        runtime_ms=(time.perf_counter() - started) * 1000.0,
     )
 
 
 def _graph_ready_v1_row(*, seed: int) -> Dict[str, Any]:
-    row = dict(run_graph_ready_real_sgs_case(seed=seed))
-    row.update(
-        {
-            "schema_version": COMPARE_SCHEMA_VERSION,
-            "algorithm_profile": "graph_ready_v1",
-            "algorithm_version": "graph_ready_weight_grid_v1",
-            "comparison_semantics": SAME_BUDGET_SEMANTICS,
-            "case_group": COMPARE_CASE_GROUP,
-            "case_slug": COMPARE_CASE_SLUG,
-            "accepted_candidates": int(row.get("accepted_distinct_candidates") or 0),
-            "comparison_reference_status": "reference_diagnostics_attached",
-        }
-    )
-    return row
+    return _graph_ready_row(seed=seed, v2=False, with_repair=False)
 
 
 def _graph_ready_v2_row(*, seed: int, with_repair: bool) -> Dict[str, Any]:
-    row = dict(run_graph_ready_v2_real_sgs_case(seed=seed, with_repair=with_repair))
-    row["comparison_reference_status"] = "reference_diagnostics_attached"
-    row["comparison_semantics"] = SAME_BUDGET_SEMANTICS
+    return _graph_ready_row(seed=seed, v2=True, with_repair=with_repair)
+
+
+def _graph_ready_row(*, seed: int, v2: bool, with_repair: bool) -> Dict[str, Any]:
+    production = run_production_repair_case(seed=seed, enabled=with_repair, v2=v2)
+    best, state = production["best"], production["state"]
+    row = _row_from_candidate(
+        candidate=best, profile=production["profile"],
+        version="graph_ready_v2_objective_features_v2" if v2 else "graph_ready_weight_grid_v1",
+        seed=seed, evaluated_candidates=int(state.evaluated_candidates),
+        distinct_candidates=len(state.candidate_fingerprints), accepted_candidates=int(state.accepted_candidates),
+        candidate_rejections=dict(state.rejection_summary), status="passed",
+        candidate_output_fingerprints=sorted(state.candidate_fingerprints),
+        accepted_output_fingerprints=sorted(state.accepted_fingerprints),
+        runtime_ms=production["runtime_ms"],
+    )
+    row["repair_scope"] = "production_core"
+    row["repair"] = production["repair"]
+    row["max_candidates"] = production["max_candidates"]
     return row
 
 
 def _local_search_row(*, seed: int) -> Dict[str, Any]:
+    started = time.perf_counter()
     scheduler, operations, batches, baseline = _baseline_setup()
-    state = _state(profile="local_search", seed=seed)
+    state = _state(profile="local_search", seed=seed, started=started)
     state.mark_candidate_evaluated(baseline, origin="baseline")
     state.mark_candidate_accepted(baseline, origin="baseline")
-    clock = BenchmarkClock()
     attempts: List[Dict[str, Any]] = []
     trace: List[Dict[str, Any]] = []
     best = run_local_search(
@@ -195,7 +202,7 @@ def _local_search_row(*, seed: int) -> Dict[str, Any]:
         best=baseline,
         version=int(seed),
         time_budget_seconds=1,
-        deadline=1001.0,
+        deadline=started + 1.0,
         scheduler=scheduler,
         algo_ops_to_schedule=operations,
         batches=batches,
@@ -210,10 +217,10 @@ def _local_search_row(*, seed: int) -> Dict[str, Any]:
         attempts=attempts,
         improvement_trace=trace,
         optimizer_algo_stats=snapshot_algo_stats(scheduler),
-        t_begin=1000.0,
+        t_begin=started,
         readiness_gate_enabled=False,
         strict_mode=True,
-        clock=clock,
+        clock=time.perf_counter,
         rng_factory=random.Random,
         schedule_fn=_schedule_with_scheduler,
         graph_ready_context=None,
@@ -232,15 +239,16 @@ def _local_search_row(*, seed: int) -> Dict[str, Any]:
         candidate_output_fingerprints=sorted(state.candidate_fingerprints),
         accepted_output_fingerprints=sorted(state.accepted_fingerprints),
         status="passed",
+        runtime_ms=(time.perf_counter() - started) * 1000.0,
     )
 
 
 def _grasp_ig_row(*, seed: int) -> Dict[str, Any]:
+    started = time.perf_counter()
     scheduler, operations, batches, baseline = _baseline_setup()
-    state = _state(profile="grasp_ig", seed=seed)
+    state = _state(profile="grasp_ig", seed=seed, started=started)
     state.mark_candidate_evaluated(baseline, origin="baseline")
     state.mark_candidate_accepted(baseline, origin="baseline")
-    clock = BenchmarkClock()
     attempts: List[Dict[str, Any]] = []
     trace: List[Dict[str, Any]] = []
     best = run_grasp_ig_candidates(
@@ -263,15 +271,15 @@ def _grasp_ig_row(*, seed: int) -> Dict[str, Any]:
         batch_order_enabled=True,
         resource_pool=None,
         objective_name=OBJECTIVE_NAME,
-        deadline=1001.0,
+        deadline=started + 1.0,
         attempts=attempts,
         improvement_trace=trace,
         optimizer_algo_stats=snapshot_algo_stats(scheduler),
-        t_begin=1000.0,
+        t_begin=started,
         readiness_gate_enabled=False,
         strict_mode=True,
         graph_ready_context=None,
-        clock=clock,
+        clock=time.perf_counter,
         rng_factory=random.Random,
         schedule_fn=_schedule_with_scheduler,
         search_report_state=state,
@@ -288,400 +296,22 @@ def _grasp_ig_row(*, seed: int) -> Dict[str, Any]:
         candidate_output_fingerprints=sorted(state.candidate_fingerprints),
         accepted_output_fingerprints=sorted(state.accepted_fingerprints),
         status="passed",
+        runtime_ms=(time.perf_counter() - started) * 1000.0,
     )
 
 
-def _state(*, profile: str, seed: int) -> OptimizationSearchReportState:
+def _state(*, profile: str, seed: int, started: float) -> OptimizationSearchReportState:
     return OptimizationSearchReportState(
         algorithm_profile=profile,
         seed=int(seed),
         time_budget_seconds=1,
         objective_name=OBJECTIVE_NAME,
-        started_at=1000.0,
+        started_at=started,
         candidate_profile={"acceptance": "improve_only"},
         strict_mode=True,
     )
 
 
-def _row_from_candidate(
-    *,
-    candidate: Dict[str, Any],
-    profile: str,
-    version: str,
-    seed: int,
-    evaluated_candidates: int,
-    distinct_candidates: int,
-    accepted_candidates: int,
-    candidate_rejections: Dict[str, Any],
-    status: str,
-    candidate_output_fingerprints: Optional[Sequence[str]] = None,
-    accepted_output_fingerprints: Optional[Sequence[str]] = None,
-) -> Dict[str, Any]:
-    summary = candidate.get("summary")
-    best_output_fingerprint = _candidate_output_fingerprint(candidate)
-    candidate_fingerprints = _fingerprints_or_default(candidate_output_fingerprints, best_output_fingerprint)
-    accepted_fingerprints = _fingerprints_or_default(accepted_output_fingerprints, best_output_fingerprint)
-    return {
-        "schema_version": COMPARE_SCHEMA_VERSION,
-        "case_group": COMPARE_CASE_GROUP,
-        "case_slug": COMPARE_CASE_SLUG,
-        "algorithm_profile": profile,
-        "algorithm_version": version,
-        "seed": int(seed),
-        "time_budget_seconds": 1,
-        "comparison_semantics": SAME_BUDGET_SEMANTICS,
-        "objective_name": OBJECTIVE_NAME,
-        "objective_score": _score_list(candidate.get("score")),
-        "failed_ops": int(getattr(summary, "failed_ops", 0) or 0),
-        "runtime_ms": int(candidate.get("runtime_ms") or 0),
-        "evaluated_candidates": int(evaluated_candidates),
-        "distinct_candidates": len(candidate_fingerprints),
-        "accepted_candidates": int(accepted_candidates),
-        "accepted_distinct_candidates": len(accepted_fingerprints),
-        "candidate_rejections": dict(candidate_rejections or {}),
-        "best_origin": str(candidate.get("candidate_origin") or profile),
-        "candidate_origin": str(candidate.get("candidate_origin") or profile),
-        "best_order": _result_order(candidate.get("results")),
-        "best_output_fingerprint": best_output_fingerprint,
-        "candidate_output_fingerprints": candidate_fingerprints,
-        "accepted_output_fingerprints": accepted_fingerprints,
-        "comparison_reference_status": "reference_diagnostics_attached",
-        "status": status,
-    }
-
-
-def _fingerprints_or_default(values: Optional[Sequence[str]], default: str) -> List[str]:
-    out = sorted({str(item) for item in list(values or []) if str(item)})
-    return out or [str(default)]
-
-
-def _portfolio_row(rows: Sequence[Dict[str, Any]], *, seed: int) -> Dict[str, Any]:
-    if not rows:
-        raise ValueError("portfolio_all requires at least one source row")
-    invalid_sources = _invalid_score_sources(rows)
-    failed_sources = _failed_sources(rows)
-    shape_mismatch_sources = _shape_mismatch_sources(rows)
-    invalid_time_budget_sources = _invalid_time_budget_sources(rows)
-    eligible_rows = _eligible_portfolio_rows(rows)
-    best = min(eligible_rows, key=lambda row: _score_tuple(row.get("objective_score"))) if eligible_rows else {}
-    candidate_fingerprints = _output_fingerprint_union(rows, field="candidate_output_fingerprints")
-    accepted_fingerprints = _output_fingerprint_union(rows, field="accepted_output_fingerprints")
-    source_profiles = [str(row.get("algorithm_profile") or "") for row in rows]
-    source_time_budgets = {
-        str(row.get("algorithm_profile") or ""): _valid_time_budget_seconds(row)
-        for row in rows
-    }
-    total_time_budget = sum(value for value in source_time_budgets.values() if value is not None)
-    return {
-        "schema_version": COMPARE_SCHEMA_VERSION,
-        "case_group": COMPARE_CASE_GROUP,
-        "case_slug": COMPARE_CASE_SLUG,
-        "algorithm_profile": "portfolio_all",
-        "algorithm_version": "posthoc_same_seed_v1",
-        "seed": int(seed),
-        "time_budget_seconds": int(total_time_budget),
-        "comparison_semantics": POSTHOC_UPPER_BOUND_SEMANTICS,
-        "source_algorithm_profiles": source_profiles,
-        "source_time_budget_seconds_by_profile": source_time_budgets,
-        "source_time_budget_seconds_total": int(total_time_budget),
-        "objective_name": OBJECTIVE_NAME,
-        "objective_score": list(best.get("objective_score") or []),
-        "failed_ops": int(best.get("failed_ops") or 0),
-        "runtime_ms": sum(int(row.get("runtime_ms") or 0) for row in rows),
-        "evaluated_candidates": sum(int(row.get("evaluated_candidates") or 0) for row in rows),
-        "distinct_candidates": len(candidate_fingerprints),
-        "accepted_candidates": len(accepted_fingerprints),
-        "accepted_distinct_candidates": len(accepted_fingerprints),
-        "candidate_rejections": _merge_rejections(rows),
-        "best_origin": f"{best.get('algorithm_profile')}:{best.get('best_origin')}" if best else "",
-        "candidate_origin": f"portfolio_all:{best.get('algorithm_profile')}" if best else "portfolio_all:no_eligible_source",
-        "best_order": list(best.get("best_order") or []),
-        "best_output_fingerprint": str(best.get("best_output_fingerprint") or ""),
-        "candidate_output_fingerprints": candidate_fingerprints,
-        "accepted_output_fingerprints": accepted_fingerprints,
-        "comparison_reference_status": "reference_diagnostics_attached",
-        "invalid_objective_score_sources": invalid_sources,
-        "failed_source_profiles": failed_sources,
-        "objective_score_shape_mismatch_sources": shape_mismatch_sources,
-        "invalid_time_budget_sources": invalid_time_budget_sources,
-        "status": "failed"
-        if invalid_sources or failed_sources or shape_mismatch_sources or invalid_time_budget_sources or not eligible_rows
-        else "passed",
-    }
-
-
-def _merge_rejections(rows: Sequence[Dict[str, Any]]) -> Dict[str, int]:
-    merged: Dict[str, int] = {}
-    for row in rows:
-        for key, value in (row.get("candidate_rejections") or {}).items():
-            merged[str(key)] = merged.get(str(key), 0) + int(value or 0)
-    return merged
-
-
-def _attach_comparisons(rows: List[Dict[str, Any]]) -> None:
-    baseline = _find_profile(rows, "greedy")
-    graph_ready_v1 = _find_profile(rows, "graph_ready_v1")
-    portfolio = _find_profile(rows, "portfolio_all")
-    for row in rows:
-        row["comparison_to_current_baseline"] = _comparison(row, baseline, label="current_baseline")
-        row["comparison_to_graph_ready_v1"] = _comparison(row, graph_ready_v1, label="graph_ready_v1")
-        row["comparison_to_portfolio_best"] = _comparison(row, portfolio, label="portfolio_best")
-
-
-def _find_profile(rows: Sequence[Dict[str, Any]], profile: str) -> Optional[Dict[str, Any]]:
-    for row in rows:
-        if row.get("algorithm_profile") == profile:
-            return dict(row)
-    return None
-
-
-def _comparison(row: Dict[str, Any], reference: Optional[Dict[str, Any]], *, label: str) -> Dict[str, Any]:
-    if reference is None:
-        actual = _valid_score_tuple(row.get("objective_score"))
-        return {
-            "reference": label,
-            "baseline_algorithm_profile": None,
-            "baseline_value": [],
-            "actual_value": list(actual or ()),
-            "primary_delta": None,
-            "status": "not_comparable",
-            "reason": "missing_reference_algorithm",
-        }
-    if row.get("status") != "passed":
-        return {
-            "reference": label,
-            "baseline_algorithm_profile": reference.get("algorithm_profile"),
-            "baseline_value": list(_valid_score_tuple(reference.get("objective_score")) or ()),
-            "actual_value": list(_valid_score_tuple(row.get("objective_score")) or ()),
-            "primary_delta": None,
-            "status": "not_comparable",
-            "reason": "actual_status_not_passed",
-        }
-    if row.get("comparison_semantics") == POSTHOC_UPPER_BOUND_SEMANTICS:
-        actual = _valid_score_tuple(row.get("objective_score"))
-        baseline = _valid_score_tuple(reference.get("objective_score"))
-        return {
-            "reference": label,
-            "baseline_algorithm_profile": reference.get("algorithm_profile"),
-            "baseline_value": list(baseline or ()),
-            "actual_value": list(actual or ()),
-            "primary_delta": None,
-            "status": "not_comparable",
-            "reason": "actual_is_posthoc_upper_bound",
-        }
-    if reference.get("comparison_semantics") == POSTHOC_UPPER_BOUND_SEMANTICS:
-        actual = _valid_score_tuple(row.get("objective_score"))
-        baseline = _valid_score_tuple(reference.get("objective_score"))
-        return {
-            "reference": label,
-            "baseline_algorithm_profile": reference.get("algorithm_profile"),
-            "baseline_value": list(baseline or ()),
-            "actual_value": list(actual or ()),
-            "primary_delta": None,
-            "status": "not_comparable",
-            "reason": "reference_is_posthoc_upper_bound",
-        }
-    if reference.get("status") != "passed":
-        return {
-            "reference": label,
-            "baseline_algorithm_profile": reference.get("algorithm_profile"),
-            "baseline_value": list(_valid_score_tuple(reference.get("objective_score")) or ()),
-            "actual_value": list(_valid_score_tuple(row.get("objective_score")) or ()),
-            "primary_delta": None,
-            "status": "not_comparable",
-            "reason": "reference_status_not_passed",
-        }
-    actual = _valid_score_tuple(row.get("objective_score"))
-    baseline = _valid_score_tuple(reference.get("objective_score"))
-    if actual is None:
-        return {
-            "reference": label,
-            "baseline_algorithm_profile": reference.get("algorithm_profile"),
-            "baseline_value": list(baseline or ()),
-            "actual_value": [],
-            "primary_delta": None,
-            "status": "not_comparable",
-            "reason": "invalid_actual_objective_score",
-        }
-    if baseline is None:
-        return {
-            "reference": label,
-            "baseline_algorithm_profile": reference.get("algorithm_profile"),
-            "baseline_value": [],
-            "actual_value": list(actual),
-            "primary_delta": None,
-            "status": "not_comparable",
-            "reason": "invalid_reference_objective_score",
-        }
-    if len(actual) != len(baseline):
-        return {
-            "reference": label,
-            "baseline_algorithm_profile": reference.get("algorithm_profile"),
-            "baseline_value": list(baseline),
-            "actual_value": list(actual),
-            "primary_delta": None,
-            "status": "not_comparable",
-            "reason": "objective_score_shape_mismatch",
-        }
-    budget_mismatch = _time_budget_mismatch(row, reference)
-    if budget_mismatch is not None:
-        reason, actual_budget, baseline_budget = budget_mismatch
-        return {
-            "reference": label,
-            "baseline_algorithm_profile": reference.get("algorithm_profile"),
-            "baseline_value": list(baseline),
-            "actual_value": list(actual),
-            "primary_delta": None,
-            "status": "not_comparable",
-            "reason": reason,
-            "actual_time_budget_seconds": actual_budget,
-            "baseline_time_budget_seconds": baseline_budget,
-        }
-    status = "same"
-    if actual < baseline:
-        status = "improved"
-    elif actual > baseline:
-        status = "degraded"
-    return {
-        "reference": label,
-        "baseline_algorithm_profile": reference.get("algorithm_profile"),
-        "baseline_value": list(baseline),
-        "actual_value": list(actual),
-        "primary_delta": _first_changed_delta(actual, baseline),
-        "status": status,
-    }
-
-
-def _score_tuple(value: Any) -> Tuple[float, ...]:
-    score = _valid_score_tuple(value)
-    return score if score is not None else (float("inf"),)
-
-
-def _valid_score_tuple(value: Any) -> Optional[Tuple[float, ...]]:
-    if not isinstance(value, (list, tuple)):
-        return None
-    if not value:
-        return None
-    score: List[float] = []
-    for item in value:
-        if isinstance(item, bool) or not isinstance(item, (int, float)):
-            return None
-        number = float(item)
-        if not math.isfinite(number):
-            return None
-        score.append(number)
-    return tuple(score)
-
-
-def _valid_time_budget_seconds(row: Dict[str, Any]) -> Optional[int]:
-    value = row.get("time_budget_seconds")
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    number = float(value)
-    if not math.isfinite(number) or number < 0 or int(number) != number:
-        return None
-    return int(number)
-
-
-def _time_budget_mismatch(row: Dict[str, Any], reference: Dict[str, Any]) -> Optional[Tuple[str, Optional[int], Optional[int]]]:
-    actual_budget = _valid_time_budget_seconds(row)
-    baseline_budget = _valid_time_budget_seconds(reference)
-    if actual_budget is None:
-        return "missing_actual_time_budget_seconds", actual_budget, baseline_budget
-    if baseline_budget is None:
-        return "missing_reference_time_budget_seconds", actual_budget, baseline_budget
-    if actual_budget != baseline_budget:
-        return "time_budget_mismatch", actual_budget, baseline_budget
-    return None
-
-
-def _eligible_portfolio_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    expected_len = _expected_score_length(rows)
-    if expected_len is None:
-        return []
-    return [
-        row
-        for row in rows
-        if row.get("status") == "passed"
-        and (score := _valid_score_tuple(row.get("objective_score"))) is not None
-        and len(score) == expected_len
-    ]
-
-
-def _expected_score_length(rows: Sequence[Dict[str, Any]]) -> Optional[int]:
-    lengths = [
-        len(score)
-        for row in rows
-        if row.get("status") == "passed" and (score := _valid_score_tuple(row.get("objective_score"))) is not None
-    ]
-    return max(lengths) if lengths else None
-
-
-def _invalid_score_sources(rows: Sequence[Dict[str, Any]]) -> List[str]:
-    return [
-        str(row.get("algorithm_profile") or "")
-        for row in rows
-        if _valid_score_tuple(row.get("objective_score")) is None
-    ]
-
-
-def _failed_sources(rows: Sequence[Dict[str, Any]]) -> List[str]:
-    return [
-        str(row.get("algorithm_profile") or "")
-        for row in rows
-        if row.get("status") != "passed"
-    ]
-
-
-def _shape_mismatch_sources(rows: Sequence[Dict[str, Any]]) -> List[str]:
-    expected_len = _expected_score_length(rows)
-    if expected_len is None:
-        return []
-    return [
-        str(row.get("algorithm_profile") or "")
-        for row in rows
-        if (score := _valid_score_tuple(row.get("objective_score"))) is not None
-        and len(score) != expected_len
-    ]
-
-
-def _invalid_time_budget_sources(rows: Sequence[Dict[str, Any]]) -> List[str]:
-    return [
-        str(row.get("algorithm_profile") or "")
-        for row in rows
-        if _valid_time_budget_seconds(row) is None
-    ]
-
-
-def _first_changed_delta(actual: Tuple[float, ...], baseline: Tuple[float, ...]) -> float:
-    for actual_item, baseline_item in zip(actual, baseline):
-        delta = float(actual_item) - float(baseline_item)
-        if abs(delta) > 1e-9:
-            return delta
-    return 0.0
-
-
-def _candidate_output_fingerprint(candidate: Dict[str, Any]) -> str:
-    return build_candidate_fingerprint(
-        candidate,
-        objective_name=OBJECTIVE_NAME,
-        parent_fingerprint=None,
-        seen_output_fingerprints=set(),
-    ).output_fingerprint
-
-
-def _output_fingerprint_union(rows: Sequence[Dict[str, Any]], *, field: str) -> List[str]:
-    fingerprints = set()
-    for row in rows:
-        added = False
-        for item in list(row.get(field) or []):
-            text = str(item or "").strip()
-            if text:
-                fingerprints.add(text)
-                added = True
-        if not added and row.get("best_output_fingerprint"):
-            fingerprints.add(str(row["best_output_fingerprint"]))
-    return sorted(fingerprints)
 
 
 __all__ = [

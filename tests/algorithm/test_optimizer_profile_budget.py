@@ -23,8 +23,8 @@ def test_profile_families_interleave_before_cap(cap):
     profiles, truncated, _reason = graph_ready_v2_profiles(max_candidate_profiles=cap, seed=3)
     assert profiles[0].formula_version == "graph_ready_v1"
     assert profiles[1].formula_version.startswith("graph_ready_v2")
-    assert len(profiles) == min(cap, 19)
-    assert truncated == (cap < 19)
+    assert len(profiles) == min(cap, 29)
+    assert truncated == (cap < 29)
     assert [profile.profile_order for profile in profiles] == list(range(len(profiles)))
 
 
@@ -58,8 +58,13 @@ def test_time_reservation_reaches_repair_under_short_real_sgs_budget():
     assert [repair for _time, repair in starts[:2]] == [False, False]
     assert any(repair for _time, repair in starts)
     assert all(start < 1.0 for start, _repair in starts)
-    assert _efficiency(result)["stop_reason"] == "repair_time_reservation"
-    assert result["repair"]["repair_evaluated_candidates"] >= 1
+    efficiency = _efficiency(result)
+    assert efficiency["stop_reason"] == "measured_repair_family_time_reservation"
+    assert efficiency["profile_decodes"] == efficiency["profile_cost_samples"] == 2
+    assert efficiency["mean_profile_cost_ms"] == pytest.approx(200)
+    assert efficiency["repair_family_representatives"] == 3
+    assert efficiency["cost_aware_reserved_repair_time_ms"] == pytest.approx(600)
+    assert result["repair"]["repair_evaluated_candidates"] == 3
 
 
 def test_profile_construction_crossing_deadline_never_starts_sgs(monkeypatch):
@@ -111,10 +116,10 @@ def test_no_elite_reclaims_soft_reservations_and_disabled_repair_reserves_nothin
 def test_disabled_repair_still_prunes_profiles_without_reporting_fake_evaluations():
     result = run_production_repair_case(enabled=False, clock=lambda: 0.0)
     report = _efficiency(result)
-    assert report["considered_profiles"] == 19
+    assert report["considered_profiles"] == 29
     assert report["predecode_pruned_profiles"] > 0
-    assert report["profile_decodes"] == len(result["calls"]) < 19
-    assert report["profile_decodes"] + report["predecode_pruned_profiles"] == 19
+    assert report["profile_decodes"] == len(result["calls"]) < 29
+    assert report["profile_decodes"] + report["predecode_pruned_profiles"] == 29
     assert result["repair"]["repair_status"] == "not_run"
     assert result["repair"]["repair_evaluated_candidates"] == 0
 
@@ -163,8 +168,69 @@ def test_strict_and_nonstrict_decode_failures_count_started_sgs_only():
         raise ValidationError("controlled decode failure", field="schedule")
 
     result = run_production_repair_case(clock=lambda: 0.0, schedule_fn=schedule, strict_mode=False)
-    assert _efficiency(result)["profile_decodes"] == len(result["calls"]) == 19
+    assert _efficiency(result)["profile_decodes"] == len(result["calls"]) == 29
     assert _efficiency(result)["predecode_pruned_profiles"] == 0
     assert result["best"] is result["baseline"]
     with pytest.raises(ValidationError, match="controlled decode failure"):
         run_production_repair_case(clock=lambda: 0.0, schedule_fn=schedule, strict_mode=True)
+
+
+def test_cost_reservation_uses_measured_average_and_actual_family_count():
+    now = [0.0]
+    budget = GraphReadySearchBudget(limits=EliteRepairLimits(), deadline=1.0, clock=lambda: now[0])
+    budget.profile_decodes = 2
+    budget.record_profile_cost(0.08)
+    budget.record_profile_cost(0.12)
+    now[0] = 0.65  # Before the existing 0.75 profile cutoff.
+    assert budget.available(has_elite=True, repair_family_count=1)
+    assert not budget.available(has_elite=True, repair_family_count=3)
+    report = budget.summary()
+    assert report["stop_reason"] == "measured_repair_family_time_reservation"
+    assert report["mean_profile_cost_ms"] == pytest.approx(100)
+    assert report["estimated_repair_family_time_ms"] == pytest.approx(300)
+    assert budget.deadline == 1.0 and budget.max_candidates == 60
+
+
+def test_cost_reservation_obeys_neighbor_candidate_and_local_time_limits():
+    now = [0.0]
+    limits = EliteRepairLimits(max_candidates=9, max_neighbors_per_elite=1, time_budget_ms=5)
+    budget = GraphReadySearchBudget(limits=limits, deadline=1.0, clock=lambda: now[0])
+    budget.profile_decodes = 2
+    budget.record_profile_cost(0.1)
+    now[0] = 0.7
+    assert budget.available(has_elite=True, repair_family_count=3)
+    report = budget.summary()
+    assert report["repair_family_representatives"] == 1
+    assert report["estimated_repair_family_time_ms"] == pytest.approx(100)
+    assert report["cost_aware_reserved_repair_time_ms"] == pytest.approx(5)
+    budget.profile_decodes = 9
+    assert not budget.available(has_elite=True, repair_family_count=3)
+    assert budget.stop_reason == "candidate_budget"
+
+
+def test_no_elite_or_disabled_repair_does_not_spend_profile_time_on_family_reservation():
+    now = [0.0]
+    limits = EliteRepairLimits()
+    budget = GraphReadySearchBudget(limits=limits, deadline=1.0, clock=lambda: now[0])
+    budget.record_profile_cost(0.2)
+    now[0] = 0.7
+    assert budget.available(has_elite=False, repair_family_count=3)
+    off = GraphReadySearchBudget(limits=EliteRepairLimits(enabled=False), deadline=1.0, clock=lambda: 0.0)
+    off.record_profile_cost(0.2)
+    assert off.available(has_elite=True, repair_family_count=3)
+    assert off.summary()["repair_family_representatives"] == 0
+
+
+@pytest.mark.parametrize("duration", [-1.0, float("inf"), float("nan"), True])
+def test_cost_reservation_rejects_invalid_elapsed_time(duration):
+    budget = GraphReadySearchBudget(limits=EliteRepairLimits(), deadline=1.0, clock=lambda: 0.0)
+    with pytest.raises(ValueError, match="finite and nonnegative"):
+        budget.record_profile_cost(duration)
+
+
+def test_zero_clock_samples_do_not_invent_cost_or_trigger_adaptive_reservation():
+    budget = GraphReadySearchBudget(limits=EliteRepairLimits(), deadline=1.0, clock=lambda: 0.0)
+    budget.record_profile_cost(0.0)
+    assert budget.available(has_elite=True, repair_family_count=3)
+    assert budget.summary()["profile_cost_samples"] == 0
+    assert budget.summary()["mean_profile_cost_ms"] is None

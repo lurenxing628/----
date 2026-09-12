@@ -8,8 +8,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from core.algorithms import GreedyScheduler
 from core.services.scheduler.run.optimizer_proof_oracle import _ContinuousCalendar, _default_config
 from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from tests._support.optimizer_compare_algorithms_provenance import COMPARE_SCHEMA_VERSION
 
-SMTWT_COMPARE_SCHEMA_VERSION = 1
+SMTWT_COMPARE_SCHEMA_VERSION = COMPARE_SCHEMA_VERSION
 SMTWT_OBJECTIVE_NAME = "min_overdue"
 POSTHOC_UPPER_BOUND_SEMANTICS = "posthoc_upper_bound"
 SAME_BUDGET_SEMANTICS = "same_budget_algorithm"
@@ -49,7 +50,7 @@ def make_report_state(*, profile: str, seed: int, context: Dict[str, Any]) -> Op
         seed=int(seed),
         time_budget_seconds=int(context["time_budget_seconds"]),
         objective_name=SMTWT_OBJECTIVE_NAME,
-        started_at=1000.0,
+        started_at=context["started_at"],
         candidate_profile={"acceptance": "improve_only"},
         strict_mode=True,
     )
@@ -113,12 +114,3 @@ def mean(values: Any) -> float:
         if not isinstance(item, bool) and isinstance(item, (int, float)) and math.isfinite(float(item))
     ]
     return round(sum(items) / len(items), 6) if items else 0.0
-
-
-class BenchmarkClock:
-    def __init__(self) -> None:
-        self.now = 1000.0
-
-    def __call__(self) -> float:
-        self.now += 0.01
-        return self.now

@@ -1,14 +1,21 @@
 from __future__ import annotations
 
-import json
 import math
-import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.services.scheduler.run.optimizer_graph_ready_profiles import graph_ready_weight_profile_summary
 from core.services.scheduler.run.optimizer_proof_harness import run_optimizer_proof_harness
+from tests._support.optimizer_benchmark_ratchet_io import (
+    RATCHET_MEASUREMENT,
+    RATCHET_SCHEMA_VERSION,
+    load_baseline,
+    snapshot_protocol_failures,
+    write_baseline_file,
+)
+from tests._support.optimizer_compare_algorithms_provenance import capture_source, machine_metadata, source_binding
 from tests._support.optimizer_graph_ready_benchmark import (
     GRAPH_READY_FLEXIBLE_MACHINE_CASE_GROUP,
     GRAPH_READY_FLEXIBLE_MACHINE_CASE_SLUG,
@@ -18,30 +25,38 @@ from tests._support.optimizer_graph_ready_benchmark import (
     run_graph_ready_real_sgs_case,
 )
 
-RATCHET_SCHEMA_VERSION = 1
 DEFAULT_BASELINE = Path(".codestable/roadmap/scheduler-global-optimizer/benchmark-ratchet-baseline.json")
 
 
 def build_light_ratchet_snapshot(*, repo_root: Path) -> Dict[str, Any]:
-    commit_before = _git_commit(repo_root)
-    dirty_before = _dirty_worktree(repo_root)
+    source_before = capture_source(repo_root)
+    started = time.perf_counter()
     proof = run_optimizer_proof_harness(require_optimal=True)["public"]
+    proof_runtime_ms = (time.perf_counter() - started) * 1000.0
     rows = [_proof_case_row(case) for case in proof.get("cases") or []]
     rows.append(run_graph_ready_real_sgs_case(seed=0))
-    rows.append(run_graph_ready_flexible_machine_metric_case())
-    commit_after = _git_commit(repo_root)
-    dirty_after = _dirty_worktree(repo_root)
+    metric_started = time.perf_counter()
+    metric = run_graph_ready_flexible_machine_metric_case()
+    metric.update(runtime_ms=(time.perf_counter() - metric_started) * 1000.0, runtime_scope="whole_metric_case")
+    rows.append(metric)
+    profile_summary = graph_ready_weight_profile_summary()
+    runtime_ms = (time.perf_counter() - started) * 1000.0
+    source_after = capture_source(repo_root)
     return {
         "schema_version": RATCHET_SCHEMA_VERSION,
         "generated_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
-        "git_commit": commit_after,
-        "git_commit_before": commit_before,
-        "dirty_worktree": dirty_before or dirty_after or commit_before != commit_after,
+        "git_commit": source_after["head"],
+        "git_commit_before": source_before["head"],
+        "dirty_worktree": not source_before["worktree_clean"] or not source_after["worktree_clean"],
+        "proof_binding_status": source_binding(source_before, source_after),
+        "source_before": source_before, "source_after": source_after,
+        "measurement": dict(RATCHET_MEASUREMENT), "machine": machine_metadata(),
+        "runtime_ms": runtime_ms, "proof_harness_runtime_ms": proof_runtime_ms,
         "tier": "light",
         "status": "passed" if proof.get("status") == "passed" and _rows_pass(rows) else "failed",
         "case_count": len(rows),
         "cases": rows,
-        "graph_ready_optimization": graph_ready_weight_profile_summary(),
+        "graph_ready_optimization": profile_summary,
     }
 
 
@@ -51,6 +66,13 @@ def compare_to_baseline(actual: Dict[str, Any], baseline: Dict[str, Any]) -> Dic
     actual_rows = {_case_key(row): row for row in actual_cases}
     baseline_rows = {_case_key(row): row for row in baseline_cases}
     failures = _worktree_proof_failures(actual, baseline)
+    failures.extend(snapshot_protocol_failures(actual, label="actual"))
+    failures.extend(snapshot_protocol_failures(baseline, label="baseline"))
+    if actual.get("machine") != baseline.get("machine"):
+        failures.append({"reason": "machine_mismatch"})
+    actual_runtime, baseline_runtime = _valid_float(actual.get("runtime_ms")), _valid_float(baseline.get("runtime_ms"))
+    if actual_runtime is not None and baseline_runtime is not None and actual_runtime > baseline_runtime * 3.0 + 250.0:
+        failures.append({"reason": "runtime_regressed", "actual_runtime_ms": actual_runtime, "baseline_runtime_ms": baseline_runtime})
     failures.extend(_case_collection_failures(actual, actual_cases, baseline, baseline_cases))
     failures.extend(_missing_case_failures(actual_rows, baseline_rows))
     failures.extend(_matching_row_failures(actual_cases, baseline_rows))
@@ -64,22 +86,23 @@ def compare_to_baseline(actual: Dict[str, Any], baseline: Dict[str, Any]) -> Dic
     }
 
 
-def load_baseline(path: Path) -> Optional[Dict[str, Any]]:
-    if not path.exists():
-        return None
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def write_baseline(path: Path, snapshot: Dict[str, Any]) -> None:
+def write_baseline(path: Path, snapshot: Dict[str, Any], *, repo_root: Optional[Path] = None) -> None:
     failures = baseline_update_failures(snapshot)
     if failures:
         raise ValueError("invalid benchmark baseline: " + ", ".join(failures))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    previous = load_baseline(path)
+    if previous is not None:
+        preflight = snapshot_protocol_failures(previous, label="baseline")
+        if preflight:
+            raise ValueError("invalid benchmark baseline: " + ", ".join(item["reason"] for item in preflight))
+        comparison = compare_to_baseline(snapshot, previous)
+        if comparison["status"] != "passed":
+            raise ValueError("invalid benchmark baseline: baseline update would bless a regression or invalid evidence")
+    write_baseline_file(path, snapshot, repo_root=repo_root or Path(__file__).resolve().parents[2])
 
 
 def baseline_update_failures(snapshot: Dict[str, Any]) -> List[str]:
-    failures = []
+    failures = [item["reason"] for item in snapshot_protocol_failures(snapshot, label="actual")]
     if snapshot.get("dirty_worktree") is not False:
         failures.append("baseline_requires_clean_worktree")
     commit = str(snapshot.get("git_commit") or "")
@@ -113,8 +136,8 @@ def _proof_case_row(case: Dict[str, Any]) -> Dict[str, Any]:
         "schema_version": RATCHET_SCHEMA_VERSION,
         "case_group": "tiny",
         "case_slug": str(case.get("case_slug") or ""),
-        "algorithm_profile": "graph_ready",
-        "candidate_origin": "graph_ready_weight_grid",
+        "algorithm_profile": "greedy",
+        "candidate_origin": "greedy_with_exact_oracle",
         "seed": 0,
         "time_budget_seconds": 0,
         "objective_name": str(case.get("objective_name") or "min_overdue"),
@@ -123,7 +146,8 @@ def _proof_case_row(case: Dict[str, Any]) -> Dict[str, Any]:
         "gap_to_oracle_pct": gap_to_oracle,
         "objective_score_matched": bool(case.get("objective_score_matched")),
         "failed_ops": int(counts.get("failed_ops") or 0),
-        "runtime_ms": 0,
+        "runtime_ms": None,
+        "runtime_scope": "shared_proof_harness",
         "distinct_candidates": 0,
         "same_fingerprint_rejections": 0,
         "candidate_rejections": {},
@@ -177,6 +201,8 @@ def _proof_binding_status(actual: Dict[str, Any], baseline: Dict[str, Any]) -> s
     if actual.get("dirty_worktree") is True or baseline.get("dirty_worktree") is True:
         return "unbound_dirty_worktree"
     if actual.get("dirty_worktree") is False and baseline.get("dirty_worktree") is False:
+        if snapshot_protocol_failures(actual, label="actual") or snapshot_protocol_failures(baseline, label="baseline"):
+            return "unbound_invalid_evidence"
         return "clean_worktree"
     return "unknown_worktree_state"
 
@@ -424,19 +450,3 @@ def _score_map(value: Any) -> Dict[str, float]:
         str(key): float(item)
         for key, item in value.items()
     }
-
-
-def _git_commit(repo_root: Path) -> str:
-    try:
-        out = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(repo_root), text=True)
-    except Exception:
-        return "unknown"
-    return out.strip()
-
-
-def _dirty_worktree(repo_root: Path) -> bool:
-    try:
-        out = subprocess.check_output(["git", "status", "--short"], cwd=str(repo_root), text=True)
-    except Exception:
-        return True
-    return bool(out.strip())

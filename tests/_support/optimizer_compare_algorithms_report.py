@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-COMPARE_SCHEMA_VERSION = 1
+from tests._support.optimizer_compare_algorithms_provenance import COMPARE_SCHEMA_VERSION, MEASUREMENT, source_binding
+
 _KEY_TEXT_FIELDS = ("case_group", "case_slug", "algorithm_profile", "algorithm_version")
 _Key = Tuple[str, str, str, str, int]
 
@@ -51,12 +53,21 @@ def compare_to_algorithm_baseline(
     baseline: Dict[str, Any],
     *,
     require_clean_proof: bool = True,
+    runtime_ratio: float = 3.0,
+    runtime_slack_ms: float = 250.0,
 ) -> Dict[str, Any]:
+    for name, value, minimum in (("runtime_ratio", runtime_ratio, 1.0), ("runtime_slack_ms", runtime_slack_ms, 0.0)):
+        if type(value) not in (int, float) or not math.isfinite(value) or value < minimum:
+            raise ValueError("invalid " + name)
     actual_raw_rows = actual.get("rows") or []
     baseline_raw_rows = baseline.get("rows") or []
     actual_rows, actual_key_failures = _rows_by_key(actual_raw_rows, label="actual")
     baseline_rows, baseline_key_failures = _rows_by_key(baseline_raw_rows, label="baseline")
     failures: List[Dict[str, Any]] = []
+    for label, payload in (("actual", actual), ("baseline", baseline)):
+        failures.extend(_measurement_failures(payload, label=label))
+    if actual.get("machine") != baseline.get("machine"):
+        failures.append({"reason": "machine_mismatch"})
     failures.extend(actual_key_failures)
     failures.extend(baseline_key_failures)
     proof_binding_status = _proof_binding_status(actual, baseline)
@@ -72,6 +83,12 @@ def compare_to_algorithm_baseline(
     for key in sorted(set(actual_rows) - set(baseline_rows)):
         failures.append({"reason": "missing_baseline_row", "key": list(key)})
     for key in sorted(set(actual_rows).intersection(baseline_rows)):
+        for label, rows in (("actual", actual_rows), ("baseline", baseline_rows)):
+            if rows[key].get("status") != "passed":
+                failures.append({"reason": label + "_row_not_passed", "key": list(key)})
+        if not actual_rows[key].get("objective_name") or actual_rows[key].get("objective_name") != baseline_rows[key].get("objective_name"):
+            failures.append({"reason": "objective_name_mismatch", "key": list(key)})
+        failures.extend(_runtime_failures(key, actual_rows[key], baseline_rows[key], runtime_ratio, runtime_slack_ms))
         actual_score = _score_tuple(actual_rows[key].get("objective_score"))
         baseline_score = _score_tuple(baseline_rows[key].get("objective_score"))
         if actual_score is None:
@@ -112,7 +129,59 @@ def compare_to_algorithm_baseline(
         "allowed_new_algorithm_rows": allowed_new,
         "proof_binding_status": proof_binding_status,
         "require_clean_proof": bool(require_clean_proof),
+        "claim": "algorithm_snapshot_comparison_not_full_quality_gate_proof",
     }
+
+
+def _measurement_failures(payload: Dict[str, Any], *, label: str) -> List[Dict[str, Any]]:
+    if payload.get("schema_version") != COMPARE_SCHEMA_VERSION or any(
+        field not in payload for field in ("measurement", "source_before", "source_after", "machine")
+    ):
+        return [{"reason": label + "_migration_required", "required_schema_version": COMPARE_SCHEMA_VERSION}]
+    failures = []
+    if payload.get("measurement") != MEASUREMENT:
+        failures.append({"reason": label + "_measurement_mismatch"})
+    if not isinstance(payload.get("machine"), dict) or not payload["machine"]:
+        failures.append({"reason": label + "_machine_unknown"})
+    if payload.get("status") != "passed":
+        failures.append({"reason": label + "_snapshot_not_passed"})
+    before, after = payload["source_before"], payload["source_after"]
+    for receipt in (before, after):
+        if not _valid_source_receipt(receipt):
+            return failures + [{"reason": label + "_source_unknown"}]
+    if any(before[key] != after[key] for key in ("head", "source_sha256")):
+        failures.append({"reason": label + "_source_changed_during_run"})
+    dirty = not before["worktree_clean"] or not after["worktree_clean"]
+    if payload.get("dirty_worktree") is not dirty or payload.get("git_commit") != after["head"]:
+        failures.append({"reason": label + "_source_metadata_mismatch"})
+    if payload.get("proof_binding_status") != source_binding(before, after):
+        failures.append({"reason": label + "_proof_binding_mismatch"})
+    return failures
+
+
+def _valid_source_receipt(receipt: Any) -> bool:
+    if not isinstance(receipt, dict):
+        return False
+    for field, size in (("head", 40), ("source_sha256", 64), ("diff_sha256", 64)):
+        if re.fullmatch("[0-9a-f]{" + str(size) + "}", str(receipt.get(field, ""))) is None:
+            return False
+    status = receipt.get("status_porcelain")
+    return (isinstance(status, list) and all(isinstance(item, str) and item for item in status)
+            and type(receipt.get("worktree_clean")) is bool and receipt["worktree_clean"] == (not status)
+            and all(isinstance(receipt.get(field), str) and receipt[field] for field in ("repo_root", "branch")))
+
+
+def _runtime_failures(key, actual, baseline, ratio, slack):
+    failures = []
+    values = []
+    for label, row in (("actual", actual), ("baseline", baseline)):
+        value = row.get("runtime_ms")
+        if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+            failures.append({"reason": label + "_runtime_unknown", "key": list(key)})
+        values.append(value)
+    if not failures and values[0] > values[1] * ratio + slack:
+        failures.append({"reason": "runtime_regressed", "key": list(key), "actual_runtime_ms": values[0], "baseline_runtime_ms": values[1]})
+    return failures
 
 
 def _comparison_status(row: Dict[str, Any], field: str) -> str:

@@ -20,6 +20,7 @@ from tests._support.optimizer_quality_matrix_cases import (
     json_hash,
     scheduler_config,
 )
+from tests._support.optimizer_quality_matrix_input_guard import MatrixInputGuard
 from tests._support.optimizer_quality_matrix_schedule import audit_schedule, schedule_payload
 
 DEFAULT_RUN_CONFIG = {"seed": 0, "time_budget_seconds": 10.0, "max_candidates": 60,
@@ -57,6 +58,7 @@ def run_case(scenario, objective, config=None):
             "machine_downtimes": env["downtime"], "seed_results": [], "dispatch_mode": "sgs",
             "dispatch_rule": "slack", "resource_pool": env["resource_pool"], "readiness_gate_enabled": False,
         }
+        guard = MatrixInputGuard(scheduler, env, shared)
         started = perf_counter()
         results, summary, strategy, params = scheduler.schedule(
             **shared, strategy_params={}, batch_order_override=list(env["batches"]), graph_ready_context=env["graph"])
@@ -66,8 +68,13 @@ def run_case(scenario, objective, config=None):
                     "metrics": metrics, "score": (float(summary.failed_ops),) + objective_score(objective, metrics),
                     "order": list(env["batches"]), "dispatch_mode": "sgs", "dispatch_rule": "slack",
                     "candidate_origin": "baseline", "runtime_ms": baseline_ms, "algo_stats": {}}
-        best, counters, repair, improve_ms = _improve(scheduler, env, baseline, shared, objective, config)
-        before, after = schedule_payload(baseline), schedule_payload(best)
+        guard.check_source()
+        before = schedule_payload(baseline)
+        best, counters, repair, improve_ms = _improve(scheduler, env, baseline, shared, objective, config, guard)
+        guard.check_source()
+        if schedule_payload(baseline) != before:
+            raise ValueError("same-environment baseline changed during optimization")
+        after = schedule_payload(best)
         errors = []
         for label, payload in (("baseline", before), ("improved", after)):
             try:
@@ -88,18 +95,17 @@ def run_case(scenario, objective, config=None):
         }
 
 
-def _improve(scheduler, env, baseline, shared, objective, config):
+def _improve(scheduler, env, baseline, shared, objective, config, guard):
     counts = {"baseline_decode_count": 1, "graph_decode_count": 0, "repair_decode_count": 0}
 
     def decode(actual_scheduler, **kwargs):
-        if actual_scheduler is not scheduler or scheduler.calendar is not env["calendar"]:
-            raise ValueError("same-environment scheduler/calendar mismatch")
-        if any(kwargs[key] != value for key, value in shared.items()):
-            raise ValueError("same-environment schedule inputs changed")
+        guard.check_decode(actual_scheduler, kwargs)
         profile = kwargs["strategy_params"]["graph_ready_profile"]
         counter = "repair_decode_count" if profile["candidate_policy"] == "elite_repair" else "graph_decode_count"
         counts[counter] += 1
-        return scheduler.schedule(**kwargs)
+        result = scheduler.schedule(**kwargs)
+        guard.check_source()
+        return result
 
     started = perf_counter()
     state = OptimizationSearchReportState(

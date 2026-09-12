@@ -142,9 +142,9 @@ def _portfolio_base(*, best: Dict[str, Any], seed: int, optimum: int) -> Dict[st
     }
 
 
-def _portfolio_totals(rows: Sequence[Dict[str, Any]], *, accepted_fingerprints: Sequence[str]) -> Dict[str, int]:
+def _portfolio_totals(rows: Sequence[Dict[str, Any]], *, accepted_fingerprints: Sequence[str]) -> Dict[str, Any]:
     return {
-        "runtime_ms": sum(int(row.get("runtime_ms") or 0) for row in rows),
+        "runtime_ms": sum(float(row.get("runtime_ms") or 0) for row in rows),
         "evaluated_candidates": sum(int(row.get("evaluated_candidates") or 0) for row in rows),
         "distinct_candidates": len(_output_fingerprint_union(rows, field="candidate_output_fingerprints")),
         "accepted_candidates": len(accepted_fingerprints),
@@ -181,6 +181,7 @@ def _summary_for_profile(rows: Sequence[Dict[str, Any]], profile: str) -> Dict[s
     return {
         "algorithm_profile": profile,
         "case_count": len(profile_rows),
+        "mean_runtime_ms": mean(row.get("runtime_ms") for row in profile_rows),
         "mean_overdue_gap_to_opt": mean(row.get("overdue_gap_to_opt") for row in valid_gap_rows)
         if valid_gap_rows
         else None,

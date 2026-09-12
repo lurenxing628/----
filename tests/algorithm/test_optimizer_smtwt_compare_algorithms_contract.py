@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -603,7 +604,8 @@ def test_smtwt_summary_does_not_turn_missing_overdue_count_into_zero() -> None:
 
 
 def test_smtwt_repaired_candidate_state_keeps_origin_and_fingerprint_aligned() -> None:
-    context = {"case": SimpleNamespace(slug="case", objective_name="min_overdue"), "time_budget_seconds": 1}
+    context = {"case": SimpleNamespace(slug="case", objective_name="min_overdue"), "time_budget_seconds": 1,
+               "started_at": time.perf_counter()}
     candidate = {
         "results": [SimpleNamespace(op_id=1, batch_id="B1", seq=1)],
         "summary": SimpleNamespace(success=True, total_ops=1, scheduled_ops=1, failed_ops=0),
@@ -642,21 +644,11 @@ def test_smtwt_repaired_candidate_state_keeps_origin_and_fingerprint_aligned() -
     assert row["accepted_distinct_candidates"] == len(row["accepted_output_fingerprints"])
 
 
-def test_smtwt_proof_check_keeps_dirty_result_unbound() -> None:
-    strict = _proof_check({"dirty_worktree": True, "proof_binding_status": "unbound_dirty_worktree"}, allow_dirty=False)
-    allowed = _proof_check({"dirty_worktree": True, "proof_binding_status": "unbound_dirty_worktree"}, allow_dirty=True)
-
-    assert strict == {
-        "status": "failed",
-        "reason": "dirty_actual_worktree",
-        "proof_binding_status": "unbound_dirty_worktree",
-    }
-    assert allowed == {
-        "status": "passed",
-        "proof_binding_status": "unbound_dirty_worktree",
-        "require_clean_proof": False,
-    }
-
+def test_smtwt_proof_check_rejects_legacy_metadata_even_when_dirty_is_allowed() -> None:
+    for allowed in (False, True):
+        result = _proof_check({"dirty_worktree": True, "proof_binding_status": "unbound_dirty_worktree"}, allow_dirty=allowed)
+        assert result["status"] == "failed"
+        assert result["reason"] == "actual_migration_required"
 
 def test_smtwt_compare_script_summary_only_omits_rows() -> None:
     repo_root = Path(__file__).resolve().parents[2]

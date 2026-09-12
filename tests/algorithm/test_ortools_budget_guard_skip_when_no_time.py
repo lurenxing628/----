@@ -1,4 +1,4 @@
-"""回归测试：optimize_schedule 在 improve 模式下，当 time.time 显示剩余预算 remaining<1 秒时跳过 OR-Tools warm-start（try_solve_bottleneck_batch_order 被打桩成调用即失败），改走旧贪心路径仍返回完整 OptimizationOutcome（results/summary/used_strategy=priority_first/used_params/best_order/best_score/algo_mode/objective/time_budget 等字段齐全）。"""
+"""剩余预算不足一秒时跳过 OR-Tools，同时保留已取得的正式基线。"""
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -36,8 +36,8 @@ class _FakeTime:
 
     def __call__(self) -> float:
         self.calls += 1
-        # 第一次用于 t_begin；之后全部返回 2.0，让 deadline(=1.0) 已过期
-        return 0.0 if self.calls == 1 else 2.0
+        # 第一次用于 t_begin；之后剩 0.25 秒，仍可开始正式基线，不能启动最少一秒的 warm-start。
+        return 0.0 if self.calls == 1 else 0.75
 
 
 def test_ortools_budget_guard_skip_when_no_time() -> None:
@@ -53,10 +53,10 @@ def test_ortools_budget_guard_skip_when_no_time() -> None:
 
     ob.try_solve_bottleneck_batch_order = _boom
 
-    # 打桩 time.time：制造 remaining<1 的场景
-    orig_time = so.time.time
+    # 默认预算使用 monotonic；按同一时钟制造 remaining<1。
+    orig_time = so.time.monotonic
     fake_time = _FakeTime()
-    so.time.time = fake_time
+    so.time.monotonic = fake_time
 
     try:
         batch = SimpleNamespace(
@@ -138,4 +138,4 @@ def test_ortools_budget_guard_skip_when_no_time() -> None:
     finally:
         # 还原 monkeypatch
         ob.try_solve_bottleneck_batch_order = orig_try_solve
-        so.time.time = orig_time
+        so.time.monotonic = orig_time

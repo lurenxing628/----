@@ -26,7 +26,8 @@ class _StubCalendar:
 
 
 class _DeterministicClock:
-    def __init__(self, *, start: float = 1000.0, step: float = 0.05):
+    # Enumerate the full allowlist here; elapsed-work budget boundaries have separate tests.
+    def __init__(self, *, start: float = 1000.0, step: float = 0.0):
         self._now = float(start)
         self._step = float(step)
 
@@ -42,7 +43,7 @@ def test_improve_dispatch_modes() -> None:
     import core.services.scheduler.schedule_optimizer_steps as schedule_optimizer_steps
 
     original_scheduler_cls = schedule_optimizer.GreedyScheduler
-    original_time_optimizer = schedule_optimizer.time.time
+    original_time_optimizer = schedule_optimizer.time.monotonic
     original_time_steps = schedule_optimizer_steps.time.time
 
     class _RecordingScheduler:
@@ -131,7 +132,7 @@ def test_improve_dispatch_modes() -> None:
 
     schedule_optimizer.GreedyScheduler = _RecordingScheduler
     clock = _DeterministicClock()
-    schedule_optimizer.time.time = clock.time
+    schedule_optimizer.time.monotonic = clock.time
     schedule_optimizer_steps.time.time = clock.time
     try:
         cfg = SimpleNamespace(
@@ -237,7 +238,7 @@ def test_improve_dispatch_modes() -> None:
         )
     finally:
         schedule_optimizer.GreedyScheduler = original_scheduler_cls
-        schedule_optimizer.time.time = original_time_optimizer
+        schedule_optimizer.time.monotonic = original_time_optimizer
         schedule_optimizer_steps.time.time = original_time_steps
 
     call_modes = sorted({x["dispatch_mode"] for x in expanded_calls})

@@ -266,7 +266,8 @@ def _run_local_search_once(
         best=best,
         version=42,
         time_budget_seconds=1,
-        deadline=1000.005,
+        # One round reads the clock on entry and immediately before decoding.
+        deadline=1000.015,
         scheduler=SimpleNamespace(_last_algo_stats={"fallback_counts": {}, "param_fallbacks": {}}),
         algo_ops_to_schedule=[
             SimpleNamespace(id=row.op_id, batch_id=row.batch_id, seq=row.seq) for row in best["results"]
@@ -496,7 +497,7 @@ def test_vns_switches_neighborhood_even_without_search_report_state() -> None:
         best=best,
         version=42,
         time_budget_seconds=1,
-        deadline=1000.0015,
+        deadline=1000.0035,
         scheduler=SimpleNamespace(_last_algo_stats={"fallback_counts": {}, "param_fallbacks": {}}),
         algo_ops_to_schedule=[],
         batches=batches,

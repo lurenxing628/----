@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from time import perf_counter
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -24,6 +25,7 @@ BASE_BATCH_ORDER = ["B_LONG", "B_MED", "B_SHORT_A", "B_SHORT_B"]
 
 
 class BenchmarkClock:
+    """Explicit test stub only; public benchmark runners use perf_counter."""
     def __init__(self) -> None:
         self.now = 1000.0
 
@@ -193,7 +195,9 @@ def run_graph_ready_flexible_machine_metric_case() -> Dict[str, Any]:
     return row
 
 
-def run_graph_ready_real_sgs_case(*, seed: int = 0) -> Dict[str, Any]:
+def run_graph_ready_real_sgs_case(*, seed: int = 0, clock=None) -> Dict[str, Any]:
+    clock = perf_counter if clock is None else clock
+    started = clock()
     scheduler = _scheduler()
     operations = graph_ready_benchmark_operations()
     batches = graph_ready_benchmark_batches()
@@ -203,7 +207,7 @@ def run_graph_ready_real_sgs_case(*, seed: int = 0) -> Dict[str, Any]:
         seed=int(seed),
         time_budget_seconds=1,
         objective_name=OBJECTIVE_NAME,
-        started_at=1000.0,
+        started_at=started,
         candidate_profile={"acceptance": "improve_only"},
         strict_mode=True,
     )
@@ -227,15 +231,15 @@ def run_graph_ready_real_sgs_case(*, seed: int = 0) -> Dict[str, Any]:
         dispatch_rule_cfg="slack",
         resource_pool=None,
         objective_name=OBJECTIVE_NAME,
-        deadline=2000.0,
+        deadline=started + 1.0,
         attempts=attempts,
         improvement_trace=improvement_trace,
         optimizer_algo_stats=snapshot_algo_stats(scheduler),
-        t_begin=1000.0,
+        t_begin=started,
         readiness_gate_enabled=False,
         strict_mode=True,
         graph_ready_context=graph_ready_benchmark_context(),
-        clock=BenchmarkClock(),
+        clock=clock,
         schedule_fn=_schedule_with_scheduler,
         search_report_state=state,
     )
@@ -248,7 +252,9 @@ def run_graph_ready_real_sgs_case(*, seed: int = 0) -> Dict[str, Any]:
         best=best,
         state=state,
         graph_attempts=graph_attempts,
+        runtime_ms=(clock() - started) * 1000.0,
     )
+    row["clock_scope"] = "time.perf_counter" if clock is perf_counter else "test_injected_clock"
     row["status"] = "passed" if _row_passes(row) else "failed"
     return row
 
@@ -313,6 +319,7 @@ def _default_config() -> Any:
 
 
 def _baseline_candidate(*, scheduler: GreedyScheduler, operations: List[Any], batches: Dict[str, Any]) -> Dict[str, Any]:
+    started = perf_counter()
     results, summary, strategy, params = scheduler.schedule(
         operations=operations,
         batches=batches,
@@ -325,7 +332,7 @@ def _baseline_candidate(*, scheduler: GreedyScheduler, operations: List[Any], ba
         seed_results=[],
         strict_mode=True,
     )
-    metrics = compute_metrics(results, batches)
+    metrics = compute_metrics(results, batches, expected_operations=operations, seed_results=(), failure_details=summary.failure_details)
     return {
         "results": results,
         "summary": summary,
@@ -338,7 +345,7 @@ def _baseline_candidate(*, scheduler: GreedyScheduler, operations: List[Any], ba
         "score": (float(summary.failed_ops),) + objective_score(OBJECTIVE_NAME, metrics),
         "algo_stats": snapshot_algo_stats(scheduler),
         "candidate_origin": "baseline",
-        "runtime_ms": 0,
+        "runtime_ms": (perf_counter() - started) * 1000.0,
     }
 
 
@@ -353,6 +360,7 @@ def _benchmark_row(
     best: Dict[str, Any],
     state: OptimizationSearchReportState,
     graph_attempts: Sequence[Dict[str, Any]],
+    runtime_ms: float,
 ) -> Dict[str, Any]:
     baseline_score = _score_list(baseline.get("score"))
     best_score = _score_list(best.get("score"))
@@ -374,7 +382,7 @@ def _benchmark_row(
         "baseline_failed_ops": baseline_failed_ops,
         "oracle_status": "not_run",
         "gap_to_oracle_pct": None,
-        "runtime_ms": int(best.get("runtime_ms") or 0),
+        "runtime_ms": runtime_ms,
         "candidate_profile_count": int(efficiency["configured_profiles"]),
         "decoded_profile_count": len(graph_attempts),
         "predecode_pruned_profiles": int(efficiency["predecode_pruned_profiles"]),

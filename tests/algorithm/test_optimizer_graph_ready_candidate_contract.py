@@ -56,6 +56,9 @@ from tests._support.optimizer_graph_ready_v2_benchmark import (
 
 _START = datetime(2026, 1, 1, 8, 0, 0)
 _OBJECTIVE = "min_overdue"
+_FORMULA_VERSIONS = [
+    "graph_ready_v1", "graph_ready_v2_objective_features_v2", "graph_ready_v2_operation_successor_v1",
+]
 
 
 class _Clock:
@@ -777,7 +780,7 @@ def test_graph_ready_v2_merged_external_group_counts_group_total_once_for_remain
 
     assert enriched[1]["remaining_work_hours"] == 74.0
     assert enriched[2]["remaining_work_hours"] == 74.0
-    assert enriched[3]["remaining_work_hours"] == 74.0
+    assert enriched[3]["remaining_work_hours"] == 2.0
     assert enriched[1]["residual_capacity_start_offset_hours"] == 0.0
     assert enriched[2]["residual_capacity_start_offset_hours"] == 0.0
     assert enriched[3]["residual_capacity_start_offset_hours"] == 72.0
@@ -1184,7 +1187,7 @@ def test_graph_ready_v2_remaining_work_sums_only_schedulable_batch_operations() 
 
     assert set(enriched) == {1, 2}
     assert enriched[1]["remaining_work_hours"] == 7.0
-    assert enriched[2]["remaining_work_hours"] == 7.0
+    assert enriched[2]["remaining_work_hours"] == 5.0
 
 
 def test_graph_ready_v2_duplicate_normalized_metric_ids_fail_loud() -> None:
@@ -1296,7 +1299,8 @@ def test_graph_ready_production_candidate_construction_uses_v2_without_profile_o
     graph_profile = state.candidate_profile["graph_ready_optimization"]
     assert best is not None
     assert graph_profile["candidate_policy"] == "objective_aware_portfolio"
-    assert graph_profile["effective_candidate_profile_count"] >= 10
+    assert graph_profile["effective_candidate_profile_count"] == 29
+    assert graph_profile["weight_profile_slugs"] == graph_ready_v2_profile_summary()["weight_profile_slugs"]
     assert any(attempt["candidate_origin"] == GRAPH_READY_V2_GENERATED_ORIGIN for attempt in attempts)
     assert any(str(attempt["weight_profile_slug"]).startswith("v2_") for attempt in attempts)
 
@@ -1461,7 +1465,8 @@ def test_graph_ready_v2_missing_due_date_keeps_v2_production_candidates_even_in_
                         and attempt.get("weight_profile_slug") in configured]
     decoded = {attempt["weight_profile_slug"] for attempt in profile_attempts}
     pruned = {item["profile_slug"] for item in efficiency["equivalent_profiles"]}
-    assert efficiency["configured_profiles"] == efficiency["considered_profiles"] == len(configured) == 19
+    assert efficiency["configured_profiles"] == efficiency["considered_profiles"] == len(configured) == 29
+    assert graph_profile["weight_profile_slugs"] == graph_ready_v2_profile_summary()["weight_profile_slugs"]
     assert efficiency["unvisited_profiles"] == efficiency["construction_rejected_profiles"] == efficiency["skipped_before_decode"] == 0
     assert len(profile_attempts) == efficiency["profile_decodes"]
     assert efficiency["profile_decodes"] + efficiency["predecode_pruned_profiles"] == efficiency["considered_profiles"]
@@ -1699,8 +1704,8 @@ def test_graph_ready_production_optimizer_path_passes_v2_candidate_construction(
     assert captured["algo_mode"] == "improve"
     assert captured["graph_ready_context"]["enabled"] is True
     assert graph_profile["candidate_policy"] == "objective_aware_portfolio"
-    assert graph_profile["effective_candidate_profile_count"] >= 10
-    assert any(str(slug).startswith("v2_") for slug in graph_profile["weight_profile_slugs"])
+    assert graph_profile["effective_candidate_profile_count"] == 29
+    assert graph_profile["weight_profile_slugs"] == graph_ready_v2_profile_summary()["weight_profile_slugs"]
 
 
 def test_graph_ready_v2_priority_normalization_is_translation_invariant() -> None:
@@ -1748,11 +1753,12 @@ def test_graph_ready_v2_formula_portfolio_keeps_distinct_ready_orders() -> None:
             metrics_by_op_id=metrics_by_op_id,
             profile=profile,
         )["graph_priority_key_by_op_id"]
-        orders[profile.formula_slug] = tuple(sorted(metrics_by_op_id, key=lambda op_id: keys[op_id]))
+        orders[profile.slug] = tuple(sorted(metrics_by_op_id, key=lambda op_id: keys[op_id]))
 
     assert truncated is False
     assert reason is None
-    assert len(orders) == 10
+    assert len(orders) == 20
+    assert set(orders) == {profile.slug for profile in profiles if profile.formula_version.startswith("graph_ready_v2")}
     assert len(set(orders.values())) >= 6
 
 
@@ -1840,11 +1846,16 @@ def test_graph_ready_v2_due_budget_and_remaining_burden_do_not_fallback_to_old_f
     assert tuple(sorted(burden_keys, key=lambda op_id: burden_keys[op_id])) == (2, 1)
 
 
-def test_graph_ready_v2_profile_count_contract_is_nineteen_before_baseline() -> None:
+def test_graph_ready_v2_profile_count_contract_keeps_baseline_and_successor_families() -> None:
     summary = graph_ready_v2_profile_summary(max_candidate_profiles=60)
 
-    assert summary["configured_candidate_profile_count"] == 19
-    assert summary["effective_candidate_profile_count"] == 19
+    assert summary["configured_candidate_profile_count"] == 29
+    assert summary["effective_candidate_profile_count"] == len(set(summary["weight_profile_slugs"])) == 29
+    assert summary["formula_versions"] == _FORMULA_VERSIONS
+    assert summary["feature_bases"] == ["batch_workload_v1", "operation_successor_v1"]
+    assert summary["weight_profile_slugs"][:4] == [
+        "balanced", "v2_seeded_micro_perturbation", "v2_edd", "v2_successor_seeded_micro_perturbation",
+    ]
 
 
 def test_graph_ready_v2_profiles_include_named_candidate_families() -> None:
@@ -1863,6 +1874,19 @@ def test_graph_ready_v2_profiles_include_named_candidate_families() -> None:
     assert by_slug["v2_graph_due_hybrid"].formula_slug == "graph_due_hybrid"
     assert by_slug["v2_bottleneck_due_gated"].formula_slug == "bottleneck_due_gated"
     assert by_slug["v2_seeded_micro_perturbation"].formula_slug == "micro_perturbation"
+    legacy = {slug: profile for slug, profile in by_slug.items()
+              if profile.formula_version == "graph_ready_v2_objective_features_v2"}
+    successor = {slug: profile for slug, profile in by_slug.items()
+                 if profile.formula_version == "graph_ready_v2_operation_successor_v1"}
+    assert len(legacy) == len(successor) == 10
+    assert set(successor) == {"v2_successor_" + slug[3:] for slug in legacy}
+    for slug, profile in legacy.items():
+        enhanced = successor["v2_successor_" + slug[3:]]
+        assert profile.feature_basis == "batch_workload_v1"
+        assert enhanced.feature_basis == "operation_successor_v1"
+        assert enhanced.formula_slug == profile.formula_slug
+        assert enhanced.raw_weights == profile.raw_weights
+        assert enhanced.jitter_seed == profile.jitter_seed
 
 
 def test_graph_ready_v2_runs_real_sgs_and_keeps_repair_attribution_separate() -> None:
@@ -1875,7 +1899,8 @@ def test_graph_ready_v2_runs_real_sgs_and_keeps_repair_attribution_separate() ->
     assert no_repair["algorithm_profile"] == "graph_ready_v2_no_repair"
     assert with_repair["algorithm_profile"] == "graph_ready_v2_with_repair"
     assert no_repair["best_origin"] == "graph_ready_v2_generated"
-    assert no_repair["formula_versions"] == ["graph_ready_v1", "graph_ready_v2_objective_features_v2"]
+    assert no_repair["formula_versions"] == _FORMULA_VERSIONS
+    assert no_repair["algorithm_version"] == "baseline_and_successor_portfolio_v1"
     assert no_repair["comparison_to_graph_ready_v1"]["status"] == "improved"
     assert v1["oracle_status"] == "not_run"
     assert v1["gap_to_oracle_pct"] is None
@@ -1889,7 +1914,7 @@ def test_graph_ready_v2_runs_real_sgs_and_keeps_repair_attribution_separate() ->
     assert with_repair["repair_evaluated_candidates"] > 0
     for row in (no_repair, with_repair):
         efficiency = row["profile_efficiency"]
-        assert efficiency["configured_profiles"] == efficiency["considered_profiles"] == row["candidate_profile_count"] == 19
+        assert efficiency["configured_profiles"] == efficiency["considered_profiles"] == row["candidate_profile_count"] == 29
         assert efficiency["considered_profiles"] == sum(efficiency[key] for key in (
             "profile_decodes", "predecode_pruned_profiles", "construction_rejected_profiles", "skipped_before_decode"))
         assert row["decoded_profile_count"] == efficiency["profile_decodes"]
@@ -1914,7 +1939,7 @@ def test_graph_ready_v2_row_status_rejects_v1_origin_or_non_improvement() -> Non
 
 
 @pytest.mark.parametrize("field,value", [
-    ("configured_profiles", 18), ("considered_profiles", 18), ("profile_decodes", 0),
+    ("configured_profiles", 28), ("considered_profiles", 28), ("profile_decodes", 0),
     ("predecode_pruned_profiles", 100), ("construction_rejected_profiles", 1),
     ("skipped_before_decode", 1), ("unvisited_profiles", 1),
 ])
@@ -1930,6 +1955,11 @@ def test_graph_ready_v2_row_status_requires_family_coverage_and_total_budget() -
     assert _v2_row_passes(row)
     missing_family = dict(row, covered_profile_slugs=[slug for slug in row["covered_profile_slugs"] if not slug.startswith("v2_")])
     assert not _v2_row_passes(missing_family)
+    replaced_identity = dict(row)
+    for field in ("configured_profile_slugs", "covered_profile_slugs"):
+        replaced_identity[field] = ["v2_successor_unknown" if slug == "v2_successor_edd" else slug for slug in row[field]]
+    assert not _v2_row_passes(replaced_identity)
+    assert not _v2_row_passes(dict(row, formula_versions=_FORMULA_VERSIONS[:-1]))
     overspent = dict(row, max_candidates=row["evaluated_candidates"] - 2)
     assert not _v2_row_passes(overspent)
 
@@ -2197,7 +2227,7 @@ def test_graph_ready_v2_public_projection_keeps_diagnostic_profile_fields() -> N
 
     assert graph_ready["candidate_policy"] == "objective_aware_portfolio"
     assert graph_ready["max_candidate_profiles"] == 60
-    assert graph_ready["effective_candidate_profile_count"] >= 10
+    assert graph_ready["effective_candidate_profile_count"] == 29
     assert graph_ready["normalization_version"] == "rank_percentile_v1"
-    assert graph_ready["formula_versions"] == ["graph_ready_v1", "graph_ready_v2_objective_features_v2"]
+    assert graph_ready["formula_versions"] == _FORMULA_VERSIONS
     assert "candidate_construction" not in public_text

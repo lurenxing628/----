@@ -426,6 +426,8 @@ def test_candidate_trial_mode_locks_sort_dispatch_mode_and_dispatch_rule_to_curr
 
 
 def test_candidate_runner_skips_not_started_candidates_after_global_deadline() -> None:
+    now = [0.0]
+
     def prepare_graph(schedule_input):
         return SimpleNamespace(
             graph_analysis_public=None,
@@ -435,6 +437,7 @@ def test_candidate_runner_skips_not_started_candidates_after_global_deadline() -
         )
 
     def optimize(**kwargs):
+        now[0] = 2.0
         return _outcome("baseline", score=(0, 0, 10), tardiness=10.0)
 
     outcome = run_candidate_comparison(
@@ -444,7 +447,7 @@ def test_candidate_runner_skips_not_started_candidates_after_global_deadline() -
         weight_count=3,
         run_time_budget_seconds=1,
         selection_policy="score_only",
-        clock=_StepClock([0, 0, 2, 2, 2, 2, 2]),
+        clock=lambda: now[0],
     )
 
     assert outcome.completed_count == 1

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, List, Optional
 
 from core.algorithms import GreedyScheduler, SortStrategy
@@ -18,6 +19,7 @@ from tests._support.optimizer_smtwt_compare_common import (
 
 
 def build_case_context(*, case: Any, time_budget_seconds: int) -> Dict[str, Any]:
+    started = time.perf_counter()
     operations = [_operation_object(op) for op in case.operations]
     batches = batch_objects(case)
     scheduler = make_scheduler()
@@ -29,11 +31,14 @@ def build_case_context(*, case: Any, time_budget_seconds: int) -> Dict[str, Any]
         "scheduler": scheduler,
         "baseline": baseline,
         "time_budget_seconds": int(time_budget_seconds),
+        "started_at": started,
+        "deadline": started + int(time_budget_seconds),
         "base_order": [batch.batch_id for batch in case.batches],
     }
 
 
 def baseline_candidate(*, scheduler: GreedyScheduler, operations: List[Any], batches: Dict[str, Any], case: Any) -> Dict[str, Any]:
+    started = time.perf_counter()
     results, summary, strategy, params = scheduler.schedule(
         operations=operations,
         batches=batches,
@@ -53,7 +58,8 @@ def baseline_candidate(*, scheduler: GreedyScheduler, operations: List[Any], bat
         batches=batches,
         objective_name=case.objective_name,
         origin="baseline",
-        runtime_ms=0,
+        runtime_ms=(time.perf_counter() - started) * 1000.0,
+        operations=operations,
     )
 
 
@@ -67,9 +73,10 @@ def candidate_payload(
     batches: Dict[str, Any],
     objective_name: str,
     origin: str,
-    runtime_ms: int,
+    runtime_ms: float,
+    operations: List[Any],
 ) -> Dict[str, Any]:
-    metrics = compute_metrics(results, batches)
+    metrics = compute_metrics(results, batches, expected_operations=operations, seed_results=(), failure_details=summary.failure_details)
     return {
         "results": results,
         "summary": summary,
@@ -82,7 +89,7 @@ def candidate_payload(
         "algo_stats": {},
         "resource_pool": {},
         "candidate_origin": origin,
-        "runtime_ms": int(runtime_ms),
+        "runtime_ms": float(runtime_ms),
     }
 
 
@@ -108,7 +115,7 @@ def row_from_candidate(
             "optimal_overdue_count": int(optimum),
             "overdue_gap_to_opt": int(overdue - int(optimum)),
             "failed_ops": failed_ops,
-            "runtime_ms": int(candidate.get("runtime_ms") or 0),
+            "runtime_ms": (time.perf_counter() - context["started_at"]) * 1000.0,
             "evaluated_candidates": _state_number(state, "evaluated_candidates", 1),
             "distinct_candidates": _distinct_count(state),
             "accepted_candidates": _state_number(state, "accepted_candidates", 1),

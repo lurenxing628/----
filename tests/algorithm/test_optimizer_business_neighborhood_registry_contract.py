@@ -397,7 +397,8 @@ def test_local_search_sgs_path_uses_dispatch_rule_move_and_report() -> None:
         best=best,
         version=11,
         time_budget_seconds=1,
-        deadline=1000.0,
+        # Allow one move and its explicit pre-decode deadline check.
+        deadline=1000.03,
         scheduler=SimpleNamespace(_last_algo_stats={"fallback_counts": {}, "param_fallbacks": {}}),
         algo_ops_to_schedule=[],
         batches={

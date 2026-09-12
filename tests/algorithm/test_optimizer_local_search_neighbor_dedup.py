@@ -372,7 +372,8 @@ def test_local_search_keeps_distinct_rejected_neighbor_origins(monkeypatch):
         best=best,
         version=1,
         time_budget_seconds=1,
-        deadline=1000.05,
+        # Leave room for repeated rejections plus the pre-decode clock checks.
+        deadline=1000.08,
         scheduler=cast(Any, SimpleNamespace(_last_algo_stats={"fallback_counts": {}, "param_fallbacks": {}})),
         algo_ops_to_schedule=[],
         batches={},

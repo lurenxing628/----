@@ -33,13 +33,13 @@ def _local_search_row(*, context: Dict[str, Any], optimum: int, seed: int) -> Di
     state = _seeded_state(profile="local_search", context=context, seed=seed)
     attempts: List[Dict[str, Any]] = []
     trace: List[Dict[str, Any]] = []
-    t_begin = time.perf_counter()
+    t_begin = context["started_at"]
     best = run_local_search(
         algo_mode="improve",
         best=context["baseline"],
         version=int(seed),
         time_budget_seconds=int(context["time_budget_seconds"]),
-        deadline=t_begin + int(context["time_budget_seconds"]),
+        deadline=context["deadline"],
         scheduler=context["scheduler"],
         algo_ops_to_schedule=context["operations"],
         batches=context["batches"],
@@ -71,7 +71,7 @@ def _grasp_ig_row(*, context: Dict[str, Any], optimum: int, seed: int) -> Dict[s
     state = _seeded_state(profile="grasp_ig", context=context, seed=seed)
     attempts: List[Dict[str, Any]] = []
     trace: List[Dict[str, Any]] = []
-    t_begin = time.perf_counter()
+    t_begin = context["started_at"]
     best = run_grasp_ig_candidates(
         algo_mode="improve",
         best=context["baseline"],
@@ -91,7 +91,7 @@ def _grasp_ig_row(*, context: Dict[str, Any], optimum: int, seed: int) -> Dict[s
         valid_dispatch_rules=[context["case"].dispatch_rule],
         resource_pool=None,
         objective_name=SMTWT_OBJECTIVE_NAME,
-        deadline=t_begin + int(context["time_budget_seconds"]),
+        deadline=context["deadline"],
         attempts=attempts,
         improvement_trace=trace,
         optimizer_algo_stats=snapshot_algo_stats(context["scheduler"]),

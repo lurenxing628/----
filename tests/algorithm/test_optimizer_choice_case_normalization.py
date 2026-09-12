@@ -24,7 +24,7 @@ class _StubCalendar:
 
 
 class _DeterministicClock:
-    def __init__(self, *, start: float = 1000.0, step: float = 0.01):
+    def __init__(self, *, start: float = 1000.0, step: float = 0.0):
         self._now = float(start)
         self._step = float(step)
 
@@ -40,7 +40,7 @@ def test_optimizer_choice_case_normalization() -> None:
     import core.services.scheduler.schedule_optimizer_steps as schedule_optimizer_steps
 
     original_scheduler_cls = schedule_optimizer.GreedyScheduler
-    original_time_optimizer = schedule_optimizer.time.time
+    original_time_optimizer = schedule_optimizer.time.monotonic
     original_time_steps = schedule_optimizer_steps.time.time
     original_local_search = schedule_optimizer._run_local_search
     original_ortools = schedule_optimizer._run_ortools_warmstart
@@ -82,7 +82,7 @@ def test_optimizer_choice_case_normalization() -> None:
 
     schedule_optimizer.GreedyScheduler = _RecordingScheduler
     clock = _DeterministicClock()
-    schedule_optimizer.time.time = clock.time
+    schedule_optimizer.time.monotonic = clock.time
     schedule_optimizer_steps.time.time = clock.time
     schedule_optimizer._run_local_search = lambda **kwargs: kwargs.get("best")
     schedule_optimizer._run_ortools_warmstart = lambda **kwargs: kwargs.get("best")
@@ -133,7 +133,7 @@ def test_optimizer_choice_case_normalization() -> None:
         )
     finally:
         schedule_optimizer.GreedyScheduler = original_scheduler_cls
-        schedule_optimizer.time.time = original_time_optimizer
+        schedule_optimizer.time.monotonic = original_time_optimizer
         schedule_optimizer_steps.time.time = original_time_steps
         schedule_optimizer._run_local_search = original_local_search
         schedule_optimizer._run_ortools_warmstart = original_ortools

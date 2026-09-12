@@ -20,7 +20,11 @@ from tests._support.optimizer_quality_matrix_cases import (
     case_environment,
     fixture_data,
 )
-from tests._support.optimizer_quality_matrix_compare import compare_quality_matrices, validate_snapshot
+from tests._support.optimizer_quality_matrix_compare import (
+    compare_quality_matrices,
+    compare_quality_only,
+    validate_snapshot,
+)
 from tests._support.optimizer_quality_matrix_io import read_snapshot, update_baseline, write_diagnostic
 from tests._support.optimizer_quality_matrix_provenance import proof_binding
 from tests._support.optimizer_quality_matrix_schedule import audit_schedule
@@ -51,6 +55,15 @@ def test_real_matrix_minimum_coverage_feasibility_and_provenance(matrix):
         assert len(matrix[key]["source_sha256"]) == 64
     assert matrix["proof_binding"] == proof_binding(matrix["source_before"], matrix["source_after"])
     assert "not_optimality" in matrix["claim"]
+
+
+def test_real_matrix_does_not_regress_against_formal_historical_baseline(matrix):
+    baseline_path = REPO_ROOT / "tests" / "fixtures" / "optimizer_quality_matrix_baseline.json"
+    assert baseline_path.is_file(), "missing formal historical optimizer quality matrix baseline"
+    baseline = read_snapshot(baseline_path)
+    assert baseline["proof_binding"] == "clean_matrix_run_not_full_quality_gate", "historical baseline must come from a clean measured run"
+    comparison = compare_quality_only(baseline, matrix)
+    assert comparison["status"] == "passed", comparison
 
 
 def test_real_production_repair_and_sgs_are_called_without_test_clock():
@@ -368,3 +381,108 @@ def test_different_stable_revisions_across_measurements_remain_comparable(matrix
     actual["proof_binding"] = proof_binding(actual["source_before"], actual["source_after"])
     validate_snapshot(actual)
     assert compare_quality_matrices(matrix, actual)["status"] == "passed"
+
+
+def _input_guard_case(scenario="medium_shift_pool", reverse_allowed=None):
+    from tests._support.optimizer_quality_matrix_input_guard import MatrixInputGuard
+
+    data = fixture_data(scenario)
+    if reverse_allowed is not None:
+        data["resource_pool"]["machines_by_operator"]["O0"] = reverse_allowed
+    env = {"data": data, "graph": {}, "calendar": object(), "downtime": data["downtime"],
+           "operations": [SimpleNamespace(**op) for op in data["operations"]],
+           "batches": {row["batch_id"]: SimpleNamespace(**row) for row in data["batches"]},
+           "resource_pool": data["resource_pool"]}
+    scheduler = SimpleNamespace(calendar=env["calendar"], config=SimpleNamespace(objective="min_overdue", seed=0))
+    shared = {"operations": env["operations"], "batches": env["batches"], "resource_pool": env["resource_pool"],
+              "machine_downtimes": env["downtime"], "seed_results": [], "start_dt": datetime(2026, 1, 5, 8)}
+    guard = MatrixInputGuard(scheduler, env, shared)
+    kwargs = copy.deepcopy(shared)
+    kwargs["strategy_params"] = {"graph_ready_profile": {"candidate_origin": "graph_ready_v2_repaired",
+                                                         "candidate_policy": "elite_repair"}}
+    return guard, scheduler, env, shared, kwargs
+
+
+def test_input_guard_allows_copied_and_inherited_qualified_resource_decisions():
+    guard, scheduler, env, shared, kwargs = _input_guard_case()
+    original = copy.deepcopy(shared)
+    for op in kwargs["operations"][:2]:
+        op.machine_id, op.operator_id = "M0", "O0"
+    kwargs["strategy_params"]["graph_ready_profile"]["weight_profile_slug"] = "v2_repair_critical_block_swap"
+    guard.check_decode(scheduler, kwargs)
+    guard.check_source()
+    assert env["operations"] == original["operations"] and shared == original
+
+
+@pytest.mark.parametrize("field", ("id", "seq", "source", "op_code", "op_type_id", "op_type_name", "batch_id", "unit_hours", "setup_hours"))
+def test_input_guard_rejects_nonresource_operation_fact_changes(field):
+    guard, scheduler, _env, _shared, kwargs = _input_guard_case()
+    op = kwargs["operations"][0]
+    old = getattr(op, field)
+    setattr(op, field, old + 1 if isinstance(old, (int, float)) else old + "_changed")
+    with pytest.raises(ValueError, match="operation fact"):
+        guard.check_decode(scheduler, kwargs)
+
+
+@pytest.mark.parametrize("mutation", ("drop", "duplicate", "reorder", "extra_field", "boolean_identity"))
+def test_input_guard_rejects_operation_shape_changes(mutation):
+    guard, scheduler, _env, _shared, kwargs = _input_guard_case()
+    ops = kwargs["operations"]
+    actions = {"drop": lambda: ops.pop(), "duplicate": lambda: ops.__setitem__(1, ops[0]),
+               "reorder": lambda: ops.reverse(), "extra_field": lambda: setattr(ops[0], "new_fact", 1),
+               "boolean_identity": lambda: setattr(ops[0], "id", True)}
+    actions[mutation]()
+    with pytest.raises(ValueError, match="operation"):
+        guard.check_decode(scheduler, kwargs)
+
+
+@pytest.mark.parametrize("machine,operator", (("MX", "O0"), ("M0", "O2")))
+def test_input_guard_rejects_resources_outside_original_qualification(machine, operator):
+    guard, scheduler, _env, _shared, kwargs = _input_guard_case()
+    kwargs["operations"][0].machine_id, kwargs["operations"][0].operator_id = machine, operator
+    with pytest.raises(ValueError, match="original"):
+        guard.check_decode(scheduler, kwargs)
+
+
+@pytest.mark.parametrize("mutation", ("fixed", "origin", "policy", "pool", "facts", "config"))
+def test_input_guard_rejects_fixed_resources_nonrepair_and_shared_mutation(mutation):
+    guard, scheduler, env, shared, kwargs = _input_guard_case("tiny" if mutation == "fixed" else "medium_shift_pool")
+    actions = {"fixed": lambda: setattr(kwargs["operations"][0], "machine_id", "M1"),
+               "origin": lambda: kwargs["strategy_params"]["graph_ready_profile"].update(candidate_origin="graph_ready_v2_generated"),
+               "policy": lambda: kwargs["strategy_params"]["graph_ready_profile"].update(candidate_policy="weight_grid"),
+               "pool": lambda: shared["resource_pool"]["operators_by_machine"]["M0"].append("OX"),
+               "facts": lambda: setattr(env["operations"][0], "unit_hours", 999),
+               "config": lambda: setattr(scheduler.config, "seed", 1)}
+    if mutation in {"origin", "policy"}:
+        kwargs["operations"][0].machine_id, kwargs["operations"][0].operator_id = "M0", "O0"
+    actions[mutation]()
+    with pytest.raises(ValueError, match="same-environment"):
+        guard.check_decode(scheduler, kwargs)
+
+
+def test_input_guard_rejects_candidate_resource_pool_self_qualification():
+    guard, scheduler, _env, _shared, kwargs = _input_guard_case()
+    kwargs["resource_pool"]["operators_by_machine"]["M0"].append("OX")
+    kwargs["operations"][0].machine_id, kwargs["operations"][0].operator_id = "M0", "OX"
+    with pytest.raises(ValueError, match="schedule inputs"):
+        guard.check_decode(scheduler, kwargs)
+
+
+@pytest.mark.parametrize("reverse_allowed", ([], ["M2"]))
+def test_input_guard_checks_reverse_operator_machine_qualification(reverse_allowed):
+    guard, scheduler, _env, _shared, kwargs = _input_guard_case(reverse_allowed=reverse_allowed)
+    kwargs["operations"][0].machine_id, kwargs["operations"][0].operator_id = "M0", "O0"
+    with pytest.raises(ValueError, match="original operator pool"):
+        guard.check_decode(scheduler, kwargs)
+
+
+def test_input_guard_catches_baseline_mutation_outside_candidate_decode(monkeypatch):
+    from tests._support import optimizer_quality_matrix as runner
+
+    def mutate_baseline(_scheduler, _env, baseline, *_args):
+        baseline["score"] = (99.0,) * len(baseline["score"])
+        return baseline, {}, {}, 1.0
+
+    monkeypatch.setattr(runner, "_improve", mutate_baseline)
+    with pytest.raises(ValueError, match="baseline changed"):
+        runner.run_case("tiny", "min_overdue")

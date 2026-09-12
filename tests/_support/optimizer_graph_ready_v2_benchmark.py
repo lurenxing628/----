@@ -42,12 +42,13 @@ def run_graph_ready_v2_real_sgs_case(*, seed: int = 0, with_repair: bool = False
         raise AssertionError("graph-ready v2 benchmark did not return a best candidate")
     repair_info = production["repair"]
     graph_attempts = [attempt for attempt in attempts if str(attempt.get("tag") or "").startswith("graph_ready:")]
-    row = _benchmark_row(seed=seed, baseline=baseline, best=best, state=state, graph_attempts=graph_attempts)
+    row = _benchmark_row(seed=seed, baseline=baseline, best=best, state=state, graph_attempts=graph_attempts,
+                         runtime_ms=production["runtime_ms"])
     v1_reference_score = _score_list(run_graph_ready_real_sgs_case(seed=seed).get("objective_score"))
     row.update(
         {
             "algorithm_profile": profile_name,
-            "algorithm_version": "graph_ready_v2_objective_features_v2",
+            "algorithm_version": str(profile_summary["objective_candidate_version"]),
             "candidate_origin": str(best.get("candidate_origin") or ""),
             "best_origin": str(state.best_origin or best.get("candidate_origin") or ""),
             "accepted_candidates": int(state.accepted_candidates),
@@ -89,6 +90,7 @@ def _benchmark_row(
     best: Dict[str, Any],
     state: OptimizationSearchReportState,
     graph_attempts: List[Dict[str, Any]],
+    runtime_ms: float,
 ) -> Dict[str, Any]:
     baseline_score = _score_list(baseline.get("score"))
     best_score = _score_list(best.get("score"))
@@ -113,7 +115,7 @@ def _benchmark_row(
         "oracle_status": "not_run",
         "oracle_scope": "not_available_for_graph_ready_v2_real_sgs_case",
         "gap_to_oracle_pct": None,
-        "runtime_ms": int(best.get("runtime_ms") or 0),
+        "runtime_ms": runtime_ms,
         "candidate_profile_count": int(efficiency["configured_profiles"]),
         "decoded_profile_count": len(profile_attempts),
         "predecode_pruned_profiles": int(efficiency["predecode_pruned_profiles"]),
@@ -167,14 +169,20 @@ def _profile_coverage_passes(row: Dict[str, Any]) -> bool:
     unrun = sum(int(efficiency[key]) for key in ("construction_rejected_profiles", "skipped_before_decode", "unvisited_profiles"))
     actual_decodes = int(row["decoded_profile_count"]) + int(row["repair_evaluated_candidates"])
     configured_slugs = set(row["configured_profile_slugs"])
+    expected = graph_ready_v2_profile_summary(
+        max_candidate_profiles=60, seed=int(row["seed"]), objective_name=row["objective_name"],
+    )
     # Coverage includes proven aliases; evaluations count only actual SGS calls.
     return (
-        configured == considered == int(row["candidate_profile_count"]) == len(configured_slugs) == 19
+        configured == considered == int(row["candidate_profile_count"]) == len(configured_slugs)
+        == expected["effective_candidate_profile_count"]
+        and row["configured_profile_slugs"] == expected["weight_profile_slugs"]
+        and row["formula_versions"] == expected["formula_versions"]
+        and row["algorithm_version"] == expected["objective_candidate_version"]
         and unrun == 0
         and 0 < decoded == int(row["decoded_profile_count"])
         and decoded + int(efficiency["predecode_pruned_profiles"]) == considered
         and configured_slugs == set(row["covered_profile_slugs"])
-        and "balanced" in configured_slugs and "v2_edd" in configured_slugs
         and int(row["evaluated_candidates"]) == actual_decodes + 1
         and actual_decodes <= int(row["max_candidates"])
     )

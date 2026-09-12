@@ -15,6 +15,7 @@ from tests._support.optimizer_compare_algorithms import (
     build_algorithm_comparison,
     compare_to_algorithm_baseline,
 )
+from tests._support.optimizer_compare_algorithms_provenance import COMPARE_SCHEMA_VERSION, MEASUREMENT
 from tests._support.optimizer_compare_algorithms_report import summarize_comparison_rows
 
 
@@ -23,7 +24,15 @@ def _repo_root() -> Path:
 
 
 def _minimal_compare_payload(*, dirty_worktree: bool) -> dict:
+    source = {"head": "a" * 40, "source_sha256": "b" * 64, "diff_sha256": "c" * 64,
+              "repo_root": str(_repo_root()), "branch": "fixture", "worktree_clean": not dirty_worktree,
+              "status_porcelain": [" M fixture.py"] if dirty_worktree else []}
     return {
+        "schema_version": COMPARE_SCHEMA_VERSION,
+        "measurement": dict(MEASUREMENT), "machine": {"node": "fixture"},
+        "source_before": dict(source), "source_after": dict(source),
+        "git_commit": source["head"],
+        "proof_binding_status": "unbound_dirty_worktree" if dirty_worktree else "clean_worktree",
         "status": "passed",
         "dirty_worktree": bool(dirty_worktree),
         "rows": [
@@ -34,6 +43,7 @@ def _minimal_compare_payload(*, dirty_worktree: bool) -> dict:
                 "algorithm_version": "baseline_v1",
                 "seed": 0,
                 "time_budget_seconds": 1,
+                "runtime_ms": 1.0, "objective_name": "min_overdue", "status": "passed",
                 "objective_score": [0.0, 1.0],
             }
         ],
@@ -49,7 +59,7 @@ def test_algorithm_comparison_matrix_consumes_reference_diagnostics_and_uses_ful
     by_profile = {str(row["algorithm_profile"]): row for row in rows}
 
     assert payload["status"] == "passed"
-    assert payload["command_args"]["workers"] == 10
+    assert payload["command_args"]["workers"] == 1
     assert payload["ratchet_key_fields"] == [
         "case_group",
         "case_slug",
@@ -486,20 +496,14 @@ def test_algorithm_comparison_baseline_can_report_dirty_functional_check_as_unbo
 
 
 def test_algorithm_comparison_proof_check_keeps_dirty_output_unbound() -> None:
-    strict = _proof_check({"dirty_worktree": True, "proof_binding_status": "unbound_dirty_worktree"}, allow_dirty=False)
-    allowed = _proof_check({"dirty_worktree": True, "proof_binding_status": "unbound_dirty_worktree"}, allow_dirty=True)
-
-    assert strict == {
-        "status": "failed",
-        "reason": "dirty_actual_worktree",
-        "proof_binding_status": "unbound_dirty_worktree",
-    }
-    assert allowed == {
-        "status": "passed",
-        "proof_binding_status": "unbound_dirty_worktree",
-        "require_clean_proof": False,
-    }
-
+    snapshot = _minimal_compare_payload(dirty_worktree=True)
+    strict = _proof_check(snapshot, allow_dirty=False)
+    allowed = _proof_check(snapshot, allow_dirty=True)
+    assert strict["status"] == "failed"
+    assert strict["reason"] == "dirty_actual_worktree"
+    assert allowed["status"] == "passed"
+    assert allowed["proof_binding_status"] == "unbound_dirty_worktree"
+    assert allowed["require_clean_proof"] is False
 
 def test_algorithm_comparison_baseline_rejects_missing_v2_rows() -> None:
     baseline = build_algorithm_comparison(profiles=["greedy", "graph_ready_v1"], seeds=1)
@@ -537,7 +541,7 @@ def test_algorithm_comparison_script_no_write_runs_requested_profiles() -> None:
 
     payload = json.loads(out)
     assert payload["comparison"]["status"] == "passed"
-    assert payload["comparison"]["command_args"]["workers"] == 10
+    assert payload["comparison"]["command_args"]["workers"] == 1
     assert payload["comparison"]["proof_binding_status"] in {"clean_worktree", "unbound_dirty_worktree"}
     assert payload["proof_check"]["status"] == "passed"
     assert "graph_ready_v1" in out

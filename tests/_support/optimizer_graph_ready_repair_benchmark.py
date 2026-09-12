@@ -22,20 +22,22 @@ from tests._support.optimizer_graph_ready_benchmark import (
 
 def run_production_repair_case(*, seed: int = 0, enabled: bool = True, limits=None, max_candidates: int = 60,
                                time_budget_seconds: float = 1.0, clock=perf_counter, schedule_fn=None,
-                               case=None, strict_mode=True, keep_report=True) -> Dict[str, Any]:
-    scheduler = _scheduler()
+                               case=None, strict_mode=True, keep_report=True, v2=True) -> Dict[str, Any]:
+    started = clock()
     start_dt = START_DT
     base_order = list(BASE_BATCH_ORDER)
-    started = clock()
     if case is None:
+        scheduler = _scheduler()
         operations, batches, context = graph_ready_benchmark_operations(), graph_ready_benchmark_batches(), graph_ready_benchmark_context()
         baseline = _baseline_candidate(scheduler=scheduler, operations=operations, batches=batches)
     else:
         operations, batches, context = case["operations"], case["batches"], case["graph_context"]
-        baseline, scheduler = case["baseline"], case["scheduler"]
+        from tests._support.optimizer_smtwt_compare_context import baseline_candidate
+        scheduler = case["scheduler"]
+        baseline = baseline_candidate(scheduler=scheduler, operations=operations, batches=batches, case=case["case"])
         start_dt, base_order = case["case"].start_dt, list(case["base_order"])
-    profile = "graph_ready_v2_with_repair" if enabled else "graph_ready_v2_no_repair"
-    state = OptimizationSearchReportState(algorithm_profile=profile, seed=seed, time_budget_seconds=1,
+    profile = ("graph_ready_v2_with_repair" if enabled else "graph_ready_v2_no_repair") if v2 else "graph_ready_v1"
+    state = OptimizationSearchReportState(algorithm_profile=profile, seed=seed, time_budget_seconds=time_budget_seconds,
                                           objective_name=OBJECTIVE_NAME, started_at=started, strict_mode=strict_mode,
                                           candidate_profile={"acceptance": "improve_only"})
     state.mark_candidate_accepted(baseline, origin="baseline")
@@ -47,7 +49,7 @@ def run_production_repair_case(*, seed: int = 0, enabled: bool = True, limits=No
         calls.append(kwargs)
         return (schedule_fn or _schedule_with_scheduler)(scheduler, **kwargs)
 
-    optimization = {"candidate_policy": "objective_aware_portfolio", "max_candidate_profiles": max_candidates,
+    optimization = {"candidate_policy": "objective_aware_portfolio" if v2 else "weight_grid", "max_candidate_profiles": max_candidates,
                     "elite_repair": dict({"enabled": enabled}, **(limits or {}))}
     best = run_graph_ready_candidates(
         algo_mode="improve", best=baseline, version=seed, scheduler=scheduler,
@@ -60,14 +62,15 @@ def run_production_repair_case(*, seed: int = 0, enabled: bool = True, limits=No
         clock=clock, schedule_fn=schedule, search_report_state=state if keep_report else None,
         candidate_construction={"graph_ready_optimization": optimization},
     )
-    runtime_ms = int((clock() - started) * 1000)
+    runtime_ms = (clock() - started) * 1000.0
     if keep_report:
         report = state.candidate_profile["graph_ready_optimization"].get("elite_repair", {})
     else:
         report = next((attempt["elite_repair"] for attempt in attempts if "elite_repair" in attempt), {})
     return {"best": best, "baseline": baseline, "state": state, "repair": report, "attempts": attempts,
             "calls": calls, "trace": trace, "runtime_ms": runtime_ms, "profile": profile, "seed": seed,
-            "time_budget_seconds": time_budget_seconds, "max_candidates": max_candidates}
+            "time_budget_seconds": time_budget_seconds, "max_candidates": max_candidates,
+            "clock_scope": "time.perf_counter" if clock is perf_counter else "test_injected_clock"}
 
 
 def repair_comparison(*, seeds: int = 10, case=None, time_budget_seconds=1) -> Dict[str, Any]:

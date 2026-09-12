@@ -22,6 +22,7 @@ REPO_ROOT = find_repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tests._scripts_e2e.benchmark_optimizer_compare_algorithms import _proof_check  # noqa: E402
 from tests._support.optimizer_smtwt_compare_algorithms import (  # noqa: E402
     DEFAULT_SMTWT_PROFILES,
     build_smtwt_algorithm_comparison,
@@ -35,7 +36,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seeds", type=int, default=1, help="seed count")
     parser.add_argument("--limit-per-size", type=int, default=None, help="optional debug limit per size")
     parser.add_argument("--time-budget", type=int, default=1, help="time budget seconds for improve algorithms")
-    parser.add_argument("--workers", type=int, default=10, help="parallel worker process count")
+    parser.add_argument("--workers", type=int, choices=(1,), default=1, help="must be 1 for wall-clock comparisons")
     parser.add_argument(
         "--allow-dirty-proof",
         action="store_true",
@@ -92,20 +93,6 @@ def _printable_payload(payload: dict, *, summary_only: bool) -> dict:
     return out
 
 
-def _proof_check(payload: dict, *, allow_dirty: bool) -> dict:
-    if payload.get("dirty_worktree") is True and not allow_dirty:
-        return {
-            "status": "failed",
-            "reason": "dirty_actual_worktree",
-            "proof_binding_status": payload.get("proof_binding_status") or "unbound_dirty_worktree",
-        }
-    if payload.get("dirty_worktree") is True:
-        return {
-            "status": "passed",
-            "proof_binding_status": payload.get("proof_binding_status") or "unbound_dirty_worktree",
-            "require_clean_proof": False,
-        }
-    return {"status": "passed", "proof_binding_status": payload.get("proof_binding_status") or "clean_worktree"}
 
 
 if __name__ == "__main__":

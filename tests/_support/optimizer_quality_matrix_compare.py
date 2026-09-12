@@ -152,25 +152,50 @@ def _validate_score(payload, objective):
         finite_number(value, "objective score")
 
 
-def compare_quality_matrices(baseline, actual, runtime_ratio=3.0, runtime_slack_ms=250.0):
-    finite_number(runtime_ratio, "runtime_ratio", 1.0)
-    finite_number(runtime_slack_ms, "runtime_slack_ms")
+def _snapshot_comparison_failures(baseline, actual):
     failures = []
     for label, snapshot in (("baseline", baseline), ("actual", actual)):
         try:
             validate_snapshot(snapshot)
         except (ValueError, TypeError, KeyError) as exc:
             failures.append(label + ": " + str(exc))
+    return failures
+
+
+def _quality_comparison_failures(baseline, actual):
+    failures = []
+    for key in ("config", "measurement"):
+        if baseline[key] != actual[key]:
+            failures.append(key + " mismatch; quality comparison requires the same fixture and budget")
+    base_rows = {row["case_id"]: row for row in baseline["cases"]}
+    for row in actual["cases"]:
+        before = base_rows[row["case_id"]]
+        for role in ("baseline", "improved"):
+            if tuple(row[role]["objective_score"]) > tuple(before[role]["objective_score"]):
+                failures.append(row["case_id"] + ": " + role + " objective regressed")
+    return failures
+
+
+def compare_quality_only(baseline, actual):
+    """Compare validated historical quality across hosts; never claim runtime proof."""
+    failures = _snapshot_comparison_failures(baseline, actual)
     if not failures:
-        for key in ("config", "machine", "measurement"):
-            if baseline[key] != actual[key]:
-                failures.append(key + " mismatch; runtime comparison requires same environment and budget")
+        failures.extend(_quality_comparison_failures(baseline, actual))
+    return {"status": "failed" if failures else "passed", "failures": failures,
+            "claim": "quality_only_not_runtime_or_clean_quality_gate_proof"}
+
+
+def compare_quality_matrices(baseline, actual, runtime_ratio=3.0, runtime_slack_ms=250.0):
+    finite_number(runtime_ratio, "runtime_ratio", 1.0)
+    finite_number(runtime_slack_ms, "runtime_slack_ms")
+    failures = _snapshot_comparison_failures(baseline, actual)
+    if not failures:
+        failures.extend(_quality_comparison_failures(baseline, actual))
+        if baseline["machine"] != actual["machine"]:
+            failures.append("machine mismatch; runtime comparison requires same environment and budget")
         base_rows = {row["case_id"]: row for row in baseline["cases"]}
         for row in actual["cases"]:
             before = base_rows[row["case_id"]]
-            for role in ("baseline", "improved"):
-                if tuple(row[role]["objective_score"]) > tuple(before[role]["objective_score"]):
-                    failures.append(row["case_id"] + ": " + role + " objective regressed")
             for key in ("baseline_runtime_ms", "improve_runtime_ms", "runtime_ms"):
                 if row[key] > before[key] * runtime_ratio + runtime_slack_ms:
                     failures.append(row["case_id"] + ": " + key + " regressed")

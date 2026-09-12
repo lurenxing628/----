@@ -257,6 +257,25 @@ def test_equivalent_v2_alias_can_supply_an_elite_without_relabeling_decode():
         assert elite["profile"].formula_version.startswith("graph_ready_v2")
 
 
+def test_profile_cost_samples_exclude_equivalent_predecode_cache_hits():
+    inputs = _inputs()
+    now = [0.0]
+    inputs["clock"] = lambda: now[0]
+
+    def schedule(scheduler, **kwargs):
+        result = _schedule_with_scheduler(scheduler, **kwargs)
+        now[0] += 0.001
+        return result
+
+    search = _search(inputs, schedule_fn=schedule)
+    for profile in graph_ready_v2_profiles(max_candidate_profiles=60)[0]:
+        search.evaluate(profile=profile, order=list(BASE_BATCH_ORDER))
+    report = search.budget.summary()
+    assert search.report["predecode_pruned_profiles"] > 0
+    assert report["profile_cost_samples"] == report["profile_decodes"]
+    assert report["mean_profile_cost_ms"] == pytest.approx(1.0)
+
+
 def test_a18_evaluation_receives_real_operations_seed_and_summary_details(monkeypatch):
     from core.services.scheduler.run import optimizer_graph_ready_candidates as candidates
     original = candidates.compute_metrics

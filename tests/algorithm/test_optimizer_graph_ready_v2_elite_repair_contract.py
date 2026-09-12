@@ -7,7 +7,12 @@ import json
 import pytest
 
 from core.infrastructure.errors import ValidationError
+from core.services.scheduler.run import optimizer_graph_ready_candidate_payload as payload
 from core.services.scheduler.run import optimizer_graph_ready_candidates as candidates
+from core.services.scheduler.run.optimizer_graph_ready_profiles import (
+    graph_ready_v2_profile_summary,
+    graph_ready_v2_profiles,
+)
 from tests._support.optimizer_graph_ready_benchmark import _schedule_with_scheduler
 from tests._support.optimizer_graph_ready_repair_benchmark import run_production_repair_case
 
@@ -16,9 +21,26 @@ def _is_repair(kwargs):
     return kwargs["strategy_params"]["graph_ready_profile"]["candidate_origin"] == "graph_ready_v2_repaired"
 
 
+def _assert_complete_profile_coverage(result):
+    expected = graph_ready_v2_profile_summary(max_candidate_profiles=result["max_candidates"], seed=result["seed"])
+    profile = result["state"].candidate_profile["graph_ready_optimization"]
+    efficiency = profile["profile_efficiency"]
+    decoded = {call["strategy_params"]["graph_ready_profile"]["weight_profile_slug"]
+               for call in result["calls"] if not _is_repair(call)}
+    pruned = {item["profile_slug"] for item in efficiency["equivalent_profiles"]}
+    assert profile["weight_profile_slugs"] == expected["weight_profile_slugs"]
+    assert efficiency["configured_profiles"] == efficiency["considered_profiles"] == expected["effective_candidate_profile_count"]
+    assert efficiency["profile_decodes"] == len(decoded)
+    assert efficiency["predecode_pruned_profiles"] == len(pruned)
+    assert not decoded.intersection(pruned)
+    assert decoded.union(pruned) == set(expected["weight_profile_slugs"])
+    assert efficiency["unvisited_profiles"] == efficiency["construction_rejected_profiles"] == efficiency["skipped_before_decode"] == 0
+    return efficiency
+
+
 def test_production_repair_uses_formal_decode_metrics_objective_and_search_report(monkeypatch):
     calls = {"metrics": 0, "score": 0}
-    metrics_fn, score_fn = candidates.compute_metrics, candidates.objective_score
+    metrics_fn, score_fn = candidates.compute_metrics, payload.objective_score
 
     def metrics(*args, **kwargs):
         calls["metrics"] += 1
@@ -29,7 +51,7 @@ def test_production_repair_uses_formal_decode_metrics_objective_and_search_repor
         return score_fn(*args, **kwargs)
 
     monkeypatch.setattr(candidates, "compute_metrics", metrics)
-    monkeypatch.setattr(candidates, "objective_score", score)
+    monkeypatch.setattr(payload, "objective_score", score)
     result = run_production_repair_case()
     report = result["repair"]
     actual = [call for call in result["calls"] if _is_repair(call)]
@@ -48,7 +70,7 @@ def test_production_repair_uses_formal_decode_metrics_objective_and_search_repor
 
 
 def test_top_k_and_neighbor_caps_are_reported():
-    result = run_production_repair_case(limits={"top_k": 1, "max_neighbors_per_elite": 2})
+    result = run_production_repair_case(limits={"top_k": 1, "max_neighbors_per_elite": 2, "max_rounds": 1})
     report = result["repair"]
     assert report["selected_elites"] == 1
     assert report["eligible_elites"] > 1
@@ -60,7 +82,7 @@ def test_top_k_and_neighbor_caps_are_reported():
 def test_remaining_candidate_budget_is_shared_with_reserved_repair():
     result = run_production_repair_case(max_candidates=19, clock=lambda: 0.0)
     assert len(result["calls"]) == 19
-    efficiency = result["state"].candidate_profile["graph_ready_optimization"]["profile_efficiency"]
+    efficiency = _assert_complete_profile_coverage(result)
     report = result["repair"]
     assert efficiency["configured_profiles"] == efficiency["considered_profiles"] == 19
     assert efficiency["profile_decodes"] + efficiency["predecode_pruned_profiles"] == 19
@@ -82,8 +104,10 @@ def test_profile_cap_keeps_family_coverage_or_reports_no_elite(cap):
         assert report["selected_elites"] == report["repair_evaluated_candidates"] == 0
     else:
         profiles = [call["strategy_params"]["graph_ready_profile"] for call in result["calls"] if not _is_repair(call)]
-        assert profiles[0]["formula_version"] == "graph_ready_v1"
-        assert profiles[1]["formula_version"].startswith("graph_ready_v2")
+        assert (profiles[0]["weight_profile_slug"], profiles[0]["formula_version"]) == ("balanced", "graph_ready_v1")
+        assert (profiles[1]["weight_profile_slug"], profiles[1]["formula_version"], profiles[1]["feature_basis"]) == (
+            "v2_seeded_micro_perturbation", "graph_ready_v2_objective_features_v2", "batch_workload_v1",
+        )
         assert report["selected_elites"] > 0
         assert 0 < report["repair_evaluated_candidates"] <= report["repair_candidate_budget"]
         assert report["repair_skipped_by_budget"] > 0
@@ -122,7 +146,9 @@ def test_global_deadline_blocks_all_repairs():
     assert result["repair"]["repair_time_budget_ms"] == 0
     assert result["repair"]["repair_evaluated_candidates"] == 0
     assert result["state"].deadline_reached
-    assert result["repair"]["selected_elites"] > 0
+    # The v2 decode exhausted the budget; do not build unused neighborhoods.
+    assert result["repair"]["selected_elites"] == 0
+    assert result["repair"]["repair_stop_reason"] == "time_budget"
     assert all(not _is_repair(call) for call in result["calls"])
     assert len(result["calls"]) <= result["max_candidates"]
     assert result["best"]["score"] <= result["baseline"]["score"]
@@ -151,8 +177,7 @@ def test_budget_spent_during_construction_does_not_start_sgs(monkeypatch):
 def test_repaired_origin_requires_matching_explicit_decision():
     from dataclasses import replace
 
-    from core.services.scheduler.run.optimizer_graph_ready_profiles import graph_ready_v2_profiles
-    profile = graph_ready_v2_profiles(max_candidate_profiles=60)[0][9]
+    profile = next(item for item in graph_ready_v2_profiles(max_candidate_profiles=60)[0] if item.slug == "v2_edd")
     repaired = replace(profile, candidate_origin="graph_ready_v2_repaired", candidate_policy="elite_repair")
     for cur, order, repair_order in ((profile, ["A"], ["A"]), (repaired, ["A"], None), (repaired, ["A"], ["B"])):
         with pytest.raises(ValidationError):
@@ -164,8 +189,13 @@ def test_duplicate_decisions_pruned_before_decode():
     report = result["repair"]
     pruning = report["repair_pruning_report"]
     assert pruning["duplicate_decision_pruned"] == report["repair_pruned_candidates"] > 0
-    orders = [tuple(call["batch_order_override"]) for call in result["calls"] if _is_repair(call)]
-    assert len(orders) == len(set(orders)) == report["repair_evaluated_candidates"]
+    # A repair decision also retains its feature basis for the next neighborhood.
+    # Without a cross-basis certificate, only the same basis and full inputs deduplicate.
+    decisions = [(call["strategy_params"]["graph_ready_profile"]["feature_basis"], tuple(call["batch_order_override"]),
+                  tuple(sorted(call["graph_ready_context"]["graph_priority_key_by_op_id"].items())),
+                  tuple((op.id, op.machine_id, op.operator_id) for op in call["operations"]))
+                 for call in result["calls"] if _is_repair(call)]
+    assert len(decisions) == len(set(decisions)) == report["repair_evaluated_candidates"]
 
 
 def test_same_decoded_output_rejected_even_without_report_state():
@@ -215,10 +245,10 @@ def test_decode_failure_is_rejected_or_fail_loud(strict):
 
 def test_disabled_repair_keeps_production_profile_search():
     result = run_production_repair_case(enabled=False, clock=lambda: 0.0)
-    efficiency = result["state"].candidate_profile["graph_ready_optimization"]["profile_efficiency"]
-    assert efficiency["configured_profiles"] == efficiency["considered_profiles"] == 19
-    assert efficiency["profile_decodes"] + efficiency["predecode_pruned_profiles"] == 19
-    assert efficiency["profile_decodes"] == len(result["calls"]) < 19
+    efficiency = _assert_complete_profile_coverage(result)
+    assert efficiency["configured_profiles"] == efficiency["considered_profiles"] == 29
+    assert efficiency["profile_decodes"] + efficiency["predecode_pruned_profiles"] == 29
+    assert efficiency["profile_decodes"] == len(result["calls"]) < 29
     assert len(result["calls"]) <= result["max_candidates"]
     assert efficiency["reserved_repair_candidates"] == efficiency["reserved_repair_time_ms"] == 0
     assert result["repair"]["repair_status"] == "not_run"
@@ -288,7 +318,6 @@ def test_formal_repair_sgs_keeps_fixed_seed_and_precedence():
     from datetime import timedelta
 
     from core.algorithms import ScheduleResult, SortStrategy
-    from core.services.scheduler.run.optimizer_graph_ready_profiles import graph_ready_v2_profiles
     from core.services.scheduler.run.optimizer_graph_ready_v2_features import enrich_graph_ready_v2_metrics
     from tests._support.optimizer_graph_ready_benchmark import (
         BASE_BATCH_ORDER,
@@ -310,7 +339,7 @@ def test_formal_repair_sgs_keeps_fixed_seed_and_precedence():
     context["successor_op_ids_by_op_id"].update({99: {1}, 1: {2}})
     metrics = enrich_graph_ready_v2_metrics(context["node_metrics_by_op_id"], operations=operations,
                                              batches=batches, start_dt=START_DT, seed_results=[seed])
-    profile = graph_ready_v2_profiles(max_candidate_profiles=60)[0][9]
+    profile = next(item for item in graph_ready_v2_profiles(max_candidate_profiles=60)[0] if item.slug == "v2_edd")
     profile = replace(profile, candidate_origin="graph_ready_v2_repaired", candidate_policy="elite_repair")
     order = list(reversed(BASE_BATCH_ORDER))
     result = candidates.evaluate_graph_ready_candidate(
