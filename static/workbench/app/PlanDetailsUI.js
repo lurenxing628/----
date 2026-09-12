@@ -124,7 +124,7 @@
       "data-plan-inspector": true
     }, /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h2", null, "\u4EFB\u52A1\u8BE6\u60C5"), !task ? /*#__PURE__*/React.createElement("div", {
       className: "plan-empty"
-    }, "\u5C1A\u672A\u9009\u4E2D\u4EFB\u52A1") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, "\u5C1A\u672A\u9009\u4E2D\u4EFB\u52A1\u3002\u9009\u4E2D\u7518\u7279\u4E2D\u7684\u5B89\u6392\u540E\uFF0C\u8FD9\u91CC\u663E\u793A\u5DE5\u827A\u524D\u540E\u5E8F\u3001\u521D\u59CB\u8BA1\u5212\u5BF9\u7167\u3001\u4EA4\u4ED8\u98CE\u9669\u548C\u8D44\u6E90\u5360\u7528\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "plan-muted",
       style: {
         marginTop: 9
@@ -160,7 +160,7 @@
     }) : /*#__PURE__*/React.createElement(Button, {
       icon: "square-pen",
       reason: "\u8BD5\u8C03\u5165\u53E3\u672A\u63A5\u5165\uFF0C\u5F53\u524D\u53EA\u80FD\u67E5\u770B\u8BA1\u5212\u3002"
-    }, "\u8C03\u6574\u6B64\u5DE5\u5E8F")))), /*#__PURE__*/React.createElement(Relations, {
+    }, "\u8C03\u6574\u6B64\u5DE5\u5E8F")))), task && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Relations, {
       data: data,
       selected: selected,
       onRelated: onRelated
@@ -190,7 +190,7 @@
     }, "\u5F53\u524D\u4EA4\u4ED8\u98CE\u9669\u5C5E\u4E8E\u6240\u9009\u8BA1\u5212\uFF0C\u672A\u6838\u5B9E\u521D\u59CB\u8BA1\u5212\u7684\u4EA4\u4ED8\u98CE\u9669\u3002") : risk ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Facts, {
       items: [['判定', /*#__PURE__*/React.createElement("span", {
         className: risk.risk === 'overdue' ? 'plan-danger' : ''
-      }, riskLabel[risk.risk])], ['交期', risk.due_date || '未记录'], ['计划完工', M.timeLabel(risk.planned_finish)], ['超期时长', risk.delay_hours === null ? '无法核实' : M.number(risk.delay_hours) + ' h'], ['未排工序', M.number(risk.unscheduled_operation_count)]]
+      }, riskLabel[risk.risk])], ['交期', risk.due_date || '未记录'], ['计划完工', M.timeLabel(risk.planned_finish)], [window.WorkbenchTerms.delay_hours, risk.delay_hours === null ? '未知' : window.WorkbenchFormat.hours(risk.delay_hours, 2)], ['未排工序', M.number(risk.unscheduled_operation_count)]]
     }), risk.partial_planned_finish && /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, "\u5DF2\u5B89\u6392\u90E8\u5206\u7684\u7ED3\u675F\u65F6\u95F4\uFF1A", M.timeLabel(risk.partial_planned_finish), "\uFF0C\u4E0D\u4EE3\u8868\u6279\u6B21\u5B8C\u5DE5\u3002"), risk.issues.length > 0 && /*#__PURE__*/React.createElement("p", {
@@ -211,7 +211,7 @@
       }, M.number(row.overlap_hours), " h")]]
     }), /*#__PURE__*/React.createElement(Issues, {
       issues: row.issues
-    })))));
+    }))))));
   }
   function conflictRows(data) {
     const projection = data.projections.occupancy,
@@ -288,33 +288,37 @@
     }, M.timeLabel(scope.range_start), " \u81F3 ", M.timeLabel(scope.range_end), "\uFF08\u4E0D\u542B\u7ED3\u675F\uFF09", data.scope.range_start !== null ? ' · 当前读取切片，不代表整份计划' : ' · 完整计划读取范围', /*#__PURE__*/React.createElement("div", null, "\u4EC5\u5217\u6240\u9009\u8BA1\u5212\u5728\u8BE5\u8303\u56F4\u7684\u8D44\u6E90\u5B89\u6392\u91CD\u53E0\uFF0C\u4E0D\u4EE3\u8868\u7B49\u5F85\u3001\u505C\u673A\u3001\u7F3A\u6599\u6216\u5EF6\u671F\u539F\u56E0\u3002"), !known && /*#__PURE__*/React.createElement("div", null, projection.state === 'partial' ? '部分资料无法核实。' : '资源依据不可完整核实。', "\u4EE5\u4E0B\u4EC5\u5217\u5DF2\u6838\u5B9E\u7247\u6BB5\uFF0C\u672A\u77E5\u90E8\u5206\u4E0D\u8BA1\u4E3A\u96F6\u3002")), /*#__PURE__*/React.createElement(Issues, {
       issues: projection.issues
     }), rows.length ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-      className: "plan-projection-table"
+      className: "plan-projection-table wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
+      className: "wb-table",
       "aria-label": "\u8D44\u6E90\u91CD\u53E0\u660E\u7EC6"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['资源', '开始（含）', '结束（不含）', '并行工序'].map(label => /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u8D44\u6E90\u91CD\u53E0\u660E\u7EC6"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['资源', '开始（含）', '结束（不含）', '并行工序'].map((label, index) => /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: index === 0 ? 'wb-col-key' : undefined,
       key: label
     }, label)))), /*#__PURE__*/React.createElement("tbody", null, rows.slice(current * 20, current * 20 + 20).map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.resource_ref + ':' + row.start + ':' + row.end
-    }, /*#__PURE__*/React.createElement("td", null, row.label || labels.get(row.resource_ref) || '资源名称未记录', /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-key"
+    }, row.label || labels.get(row.resource_ref) || '资源名称未记录', /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
-    }, M.kindLabels[row.kind])), /*#__PURE__*/React.createElement("td", null, M.timeLabel(row.start)), /*#__PURE__*/React.createElement("td", null, M.timeLabel(row.end)), /*#__PURE__*/React.createElement("td", null, row.concurrent_operations)))))), /*#__PURE__*/React.createElement("div", {
-      className: "plan-pager"
-    }, /*#__PURE__*/React.createElement("span", null, "\u5DF2\u6838\u5B9E\u8D44\u6E90\u91CD\u53E0\u7247\u6BB5 \xB7 ", rows.length, " \u6BB5"), /*#__PURE__*/React.createElement("span", {
-      className: "plan-actions"
-    }, /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": "\u91CD\u53E0\u660E\u7EC6\u4E0A\u4E00\u9875",
-      disabled: current === 0,
-      onClick: () => setPage(current - 1)
-    }), /*#__PURE__*/React.createElement("span", null, current + 1, " / ", Math.ceil(rows.length / 20)), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": "\u91CD\u53E0\u660E\u7EC6\u4E0B\u4E00\u9875",
-      disabled: (current + 1) * 20 >= rows.length,
-      onClick: () => setPage(current + 1)
-    })))) : /*#__PURE__*/React.createElement("p", {
-      className: "plan-muted",
-      role: "status"
-    }, empty));
+    }, M.kindLabels[row.kind])), /*#__PURE__*/React.createElement("td", null, M.timeLabel(row.start)), /*#__PURE__*/React.createElement("td", null, M.timeLabel(row.end)), /*#__PURE__*/React.createElement("td", null, row.concurrent_operations)))))), /*#__PURE__*/React.createElement(window.WorkbenchControls.Pager, {
+      label: "\u91CD\u53E0\u660E\u7EC6",
+      page: current + 1,
+      pages: Math.ceil(rows.length / 20),
+      total: rows.length,
+      size: 20,
+      sizes: [20],
+      unit: "\u6BB5",
+      onPage: next => setPage(next - 1)
+    })) : /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
+      kind: "empty",
+      title: empty
+    }));
   }
   function ProjectionTables({
     data,
@@ -344,32 +348,43 @@
     }, tab === 'risk' ? '按所选计划的完整批次安排判定，不代表实际完工或发货。' : tab === 'load' ? '只统计所选计划在此时间范围内的安排；占用率 = 日历内已占时间 / 可用时间。设备有空闲时间不代表人员已就绪。' : '只列出所选时间范围内的可工作时段；普通件、急件能否安排及效率分别记录。', projection.state !== 'available' && /*#__PURE__*/React.createElement("span", null, " \xB7 ", projection.state === 'partial' ? '部分资料无法核实' : '无法核实')), /*#__PURE__*/React.createElement(Issues, {
       issues: projection.issues || []
     }), /*#__PURE__*/React.createElement("div", {
-      className: "plan-projection-table"
+      className: "plan-projection-table wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
+      className: "wb-table",
       "aria-label": tab === 'risk' ? '交付风险列表' : tab === 'load' ? '资源负荷列表' : '资源日历列表'
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, (tab === 'risk' ? ['批次 / 零件', '交期', '计划完工', '交付风险', '未排工序', '证据'] : tab === 'load' ? ['资源', '安排 h', '已占 h', '可用 h', '重叠 h', '日历内占用率'] : ['资源', '可用 h', '普通有效 h', '急件有效 h', '窗口', '证据']).map(label => /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, tab === 'risk' ? '交付风险列表' : tab === 'load' ? '资源负荷列表' : '资源日历列表'), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, (tab === 'risk' ? ['批次 / 零件', '交期', '计划完工', '交付风险', '未排工序', '证据'] : tab === 'load' ? ['资源', '安排 h', '已占 h', '可用 h', '重叠 h', '日历内占用率'] : ['资源', '可用 h', '普通有效 h', '急件有效 h', '窗口', '证据']).map((label, index) => /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: index === 0 ? 'wb-col-key' : undefined,
       key: label
     }, label)))), /*#__PURE__*/React.createElement("tbody", null, visible.map(row => tab === 'risk' ? /*#__PURE__*/React.createElement("tr", {
       key: row.batch_ref
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-key"
+    }, /*#__PURE__*/React.createElement(Button, {
       className: "linkbtn",
       onClick: () => onBatch(row.batch_id)
     }, row.batch_id), /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
-    }, row.part_no || '图号未记录', " \xB7 ", row.part_label || '名称未记录')), /*#__PURE__*/React.createElement("td", null, row.due_date || '未记录'), /*#__PURE__*/React.createElement("td", null, M.timeLabel(row.planned_finish), row.partial_planned_finish && /*#__PURE__*/React.createElement("div", {
+    }, row.part_no || '图号未记录', " \xB7 ", row.part_label || '名称未记录')), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.date(row.due_date)), /*#__PURE__*/React.createElement("td", null, M.timeLabel(row.planned_finish), row.partial_planned_finish && /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
     }, "\u5DF2\u5B89\u6392\u90E8\u5206\u7ED3\u675F\u4E8E\uFF1A", M.timeLabel(row.partial_planned_finish))), /*#__PURE__*/React.createElement("td", {
       className: row.risk === 'overdue' ? 'plan-danger' : ''
     }, riskLabel[row.risk], row.delay_hours !== null && /*#__PURE__*/React.createElement("div", null, M.number(row.delay_hours), " h")), /*#__PURE__*/React.createElement("td", null, row.unscheduled_operation_count), /*#__PURE__*/React.createElement("td", null, issueText(row.issues) || '当前工序安排已覆盖')) : /*#__PURE__*/React.createElement("tr", {
       key: row.resource_ref
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-key"
+    }, /*#__PURE__*/React.createElement(Button, {
       className: "linkbtn",
       onClick: () => onResource(labels.get(row.resource_ref) || '')
     }, row.label || labels.get(row.resource_ref) || '名称未记录'), /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
     }, M.kindLabels[row.kind])), tab === 'load' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, M.number(row.arranged_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.occupied_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.available_hours)), /*#__PURE__*/React.createElement("td", {
       className: row.has_overlap ? 'plan-danger' : ''
-    }, M.number(row.overlap_hours)), /*#__PURE__*/React.createElement("td", null, row.utilization === null ? '无法核实' : /*#__PURE__*/React.createElement(React.Fragment, null, M.number(row.utilization * 100), "%", /*#__PURE__*/React.createElement("span", {
+    }, M.number(row.overlap_hours)), /*#__PURE__*/React.createElement("td", null, row.utilization === null ? '未知' : /*#__PURE__*/React.createElement(React.Fragment, null, window.WorkbenchFormat.percent(row.utilization), /*#__PURE__*/React.createElement("span", {
       className: "plan-meter"
     }, /*#__PURE__*/React.createElement("i", {
       style: {
@@ -380,25 +395,19 @@
     }, issueText(row.issues)))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, M.number(row.available_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.normal_effective_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.urgent_effective_hours)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(CalendarWindows, {
       windows: row.windows
     })), /*#__PURE__*/React.createElement("td", null, issueText(row.issues) || '已读取真实日历')))), !visible.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
-      colSpan: 6,
-      className: "plan-empty"
-    }, projection.state === 'available' ? '所选时间范围内没有记录。' : '资料未记录或无法核实。'))))), /*#__PURE__*/React.createElement("div", {
-      className: "plan-pager"
-    }, /*#__PURE__*/React.createElement("span", null, "\u6240\u9009\u65F6\u95F4\u8303\u56F4 \xB7 ", rows.length, " \u9879"), /*#__PURE__*/React.createElement("span", {
-      className: "plan-actions"
-    }, /*#__PURE__*/React.createElement(Button, {
-      className: "btn plan-icon",
-      icon: "chevron-left",
-      "aria-label": "\u5206\u6790\u4E0A\u4E00\u9875",
-      disabled: page === 0,
-      onClick: () => setPage(page - 1)
-    }), /*#__PURE__*/React.createElement("span", null, page + 1, " / ", Math.max(1, Math.ceil(rows.length / 20))), /*#__PURE__*/React.createElement(Button, {
-      className: "btn plan-icon",
-      icon: "chevron-right",
-      "aria-label": "\u5206\u6790\u4E0B\u4E00\u9875",
-      disabled: (page + 1) * 20 >= rows.length,
-      onClick: () => setPage(page + 1)
-    }))));
+      colSpan: 6
+    }, /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
+      kind: "empty",
+      title: projection.state === 'available' ? '所选时间范围内没有记录。' : '资料未记录或无法核实。'
+    })))))), /*#__PURE__*/React.createElement(window.WorkbenchControls.Pager, {
+      label: "\u5206\u6790",
+      page: page + 1,
+      pages: Math.max(1, Math.ceil(rows.length / 20)),
+      total: rows.length,
+      size: 20,
+      sizes: [20],
+      onPage: next => setPage(next - 1)
+    }));
   }
   window.PlanDetailsUI = {
     TaskDetail,

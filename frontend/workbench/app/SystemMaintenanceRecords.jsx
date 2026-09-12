@@ -23,7 +23,7 @@
     </form>;
   }
   function Sources({ data, kind }) {
-    if (kind === 'backups') return data.sources.map((item, index) => <p className="sm-note" key={index}>{item.message} · {item.code}</p>);
+    if (kind === 'backups') return data.sources.map((item, index) => <div key={index}><p className="sm-note">{item.message}</p>{item.code && <window.WorkbenchReference label="来源核对代码" value={item.code} />}</div>);
     const labels = { available: '可读取', empty: '窗口内暂无记录', missing: '来源不存在', error: '来源读取失败' };
     return <div className="sm-log-sources" aria-label="日志读取窗口" style={{ borderBottom: '1px solid var(--ui-border)', paddingBottom: 12, marginBottom: 12 }}>
       <p className="sm-note">先读取各来源最近窗口，再按条件筛选；不是全历史日志。记录状态不代表业务执行成功。</p>
@@ -40,8 +40,8 @@
     React.useEffect(() => { const previous = document.activeElement; ref.current.focus(); return () => { if (previous && previous.isConnected) previous.focus(); }; }, []);
     return <section className="sm-detail" role="region" aria-label={kind === 'logs' ? '日志详情' : file ? '备份详情' : '维护事件详情'} tabIndex={-1} ref={ref} onKeyDown={event => { if (event.key === 'Escape') onClose(); }}>
       <div className="sm-section-head"><h3 style={{ overflowWrap: 'anywhere', minWidth: 0 }}>{kind === 'logs' ? '日志详情' : file ? row.filename : row.summary}</h3><C.Button icon="x" aria-label="关闭详情" onClick={onClose} /></div>
-      <div className="sm-detail-meta"><time>{row.time ? row.time.replace('T', ' ') : '时间未识别'}</time><span>{types[row.type]}</span><span>{kind === 'logs' ? row.file + ' · ' + row.level + ' · 已记录' : file ? '未校验 · ' + row.size_bytes + ' 字节' : states[row.status]}</span></div>
-      {event && <p className="sm-note">{{ external_maintenance_journal: '外置维护记录', operation_audit: '操作审计', latest_job_state_only: '仅最近任务状态' }[row.event_source]} · {row.event_ref}</p>}
+      <div className="sm-detail-meta"><time>{row.time ? window.WorkbenchFormat.dateTime(row.time) : '时间未识别'}</time><span>{types[row.type]}</span><span>{kind === 'logs' ? row.file + ' · ' + row.level + ' · 已记录' : file ? '未校验 · ' + row.size_bytes + ' 字节' : states[row.status]}</span></div>
+      {event && <><p className="sm-note">{{ external_maintenance_journal: '外置维护记录', operation_audit: '操作审计', latest_job_state_only: '仅最近任务状态' }[row.event_source]}</p><window.WorkbenchReference label="维护事件编号" value={row.event_ref} /></>}
       <p style={{ overflowWrap: 'anywhere' }}>{row.summary}</p><pre style={{ fontSize: 13 }}>{row.body}</pre>
       {row.content_truncated && <p className="sm-tone-warning">本条详情已截断，不是完整原始内容。</p>}
       {file && <><p className="sm-note">备份文件存在不代表已校验通过或可以恢复。</p><div className="sm-actions">
@@ -115,20 +115,19 @@
         : '原选择记录未通过当前返回页的唯一身份核对，未自动替换为其他记录。'}<C.Button icon="x" onClick={() => setSelected(null)}>清除原选择</C.Button></p>}
       {kind === 'backups' && data && A.blocked(data, 'create') && <p className="sm-note">文件动作禁用：{A.blocked(data, 'create')}</p>}
       {request.loading && <p className="sm-note" role="status">正在读取{kind === 'logs' ? '日志窗口' : '备份清单'}…</p>}
-      {data && <><Sources data={data} kind={kind} /><div className="sm-meta">工厂本地时间 · 数据截至 {payload.meta.as_of.replace('T', ' ')}</div>
-        {data.rows.length ? <div className="wb-table-shell" style={{ overflowX: 'auto' }}><table className={'wb-table sm-table sm-record-table sm-' + kind + '-table'}>
-          <thead><tr><th>工厂本地时间</th><th>类型</th><th>状态</th>{kind === 'logs' && <th>级别</th>}<th>{kind === 'logs' ? '摘要 / 来源' : '文件'}</th>{kind === 'backups' && <th>大小</th>}<th>详情</th></tr></thead>
+      {data && <><Sources data={data} kind={kind} /><div className="sm-meta">工厂本地时间 · 数据截至 {window.WorkbenchFormat.dateTime(payload.meta.as_of)}</div>
+        {data.rows.length ? <div className="wb-table-shell wb-table-frame" data-sticky-head="true" data-sticky-actions="true"><table className={'wb-table sm-table sm-record-table sm-' + kind + '-table'}>
+          <caption className="wb-visually-hidden">{kind === 'logs' ? '已读取窗口内的运行日志与操作记录' : '备份文件及恢复、清理事件'}</caption>
+          <thead><tr><th scope="col" className="wb-col-key">工厂本地时间</th><th scope="col">类型</th><th scope="col">状态</th>{kind === 'logs' && <th scope="col">级别</th>}<th scope="col">{kind === 'logs' ? '摘要 / 来源' : '文件'}</th>{kind === 'backups' && <th scope="col">大小</th>}<th scope="col" className="wb-col-actions">详情</th></tr></thead>
           <tbody>{data.rows.map(row => <tr key={row.key} data-record-kind={row.record_kind} tabIndex={0} aria-label={'查看详情 ' + row.summary} aria-expanded={!!selected && selected.key === row.key} style={{ cursor: 'pointer' }}
             onClick={() => setSelected(row)} onKeyDown={event => { if (event.target === event.currentTarget && ['Enter', ' '].includes(event.key)) { event.preventDefault(); setSelected(row); } }}>
-            <td><time className="sm-time">{row.time ? row.time.replace('T', ' ') : '时间未识别'}</time></td><td>{types[row.type]}</td>
+            <td className="wb-col-key"><time className="sm-time">{row.time ? window.WorkbenchFormat.dateTime(row.time) : '时间未识别'}</time></td><td>{types[row.type]}</td>
             <td><span className="sm-status sm-tone-neutral">{kind === 'logs' ? '已记录' : states[row.status]}</span></td>{kind === 'logs' && <td><span className={'sm-level sm-level-' + row.level}>{row.level}</span></td>}
             <td><div className="sm-summary"><strong style={{ fontSize: 14 }}>{row.summary}</strong>{kind === 'logs' && <small>{row.file}{row.content_truncated ? ' · 详情已截断' : ''}</small>}</div></td>
-            {kind === 'backups' && <td style={{ textAlign: 'right' }}>{row.record_kind === 'backup_file' ? (row.size_bytes / 1024).toFixed(1) + ' KB' : '事件记录'}</td>}
-            <td><C.Button icon="chevron-right" className="mini" aria-label={'查看详情 ' + row.summary} onClick={event => { event.stopPropagation(); setSelected(row); }} /></td>
-          </tr>)}</tbody></table></div> : <SMUnavailable title="当前筛选下暂无记录">{kind === 'logs' ? '仅限已读取的日志窗口；来源缺失和读取失败另行列出。' : '仅限已读取的备份文件、恢复事件和清理记录。'}</SMUnavailable>}
-        <div className="sm-pager"><span className="sm-meta">当前范围共 {data.page.total} 条</span><div className="sm-actions"><label className="sm-inline-label">每页<select aria-label="每页数量" value={pageSize} onChange={event => onPageSize(Number(event.target.value))}>{[10, 25, 50].map(size => <option key={size} value={size}>{size} 条</option>)}</select></label>
-          <C.Button icon="chevron-left" aria-label="上一页" disabled={data.page.number <= 1} onClick={() => changePage(page - 1)} /><span className="sm-page-number">{data.page.number} / {data.page.pages}</span>
-          <C.Button icon="chevron-right" aria-label="下一页" disabled={data.page.number >= data.page.pages} onClick={() => changePage(page + 1)} /></div></div>
+            {kind === 'backups' && <td style={{ textAlign: 'right' }}>{row.record_kind === 'backup_file' ? window.WorkbenchFormat.number(row.size_bytes / 1024, { digits: 1 }) + ' KB' : '事件记录'}</td>}
+            <td className="wb-col-actions"><C.Button icon="chevron-right" className="mini" aria-label={'查看详情 ' + row.summary} onClick={event => { event.stopPropagation(); setSelected(row); }} /></td>
+          </tr>)}</tbody></table></div> : <window.WorkbenchListControls.EmptyState kind={Object.values(filters).some(Boolean) ? 'filtered' : 'empty'} title="当前筛选下暂无记录" hint={kind === 'logs' ? '仅限已读取的日志窗口；来源缺失和读取失败另行列出。' : '仅限已读取的备份文件、恢复事件和清理记录。'} action={Object.values(filters).some(Boolean) ? <C.Button onClick={() => { setDraft({ ...emptyFilters }); apply(emptyFilters); }}>清除筛选</C.Button> : undefined} />}
+        <div className="sm-pager"><window.WorkbenchListControls.Pager page={data.page} sizes={[10, 25, 50]} unit="条" onSize={onPageSize} onPage={changePage} busy={request.loading} label="" sizeLabel="每页数量" /></div>
         {selected && <Detail key={selected.key} row={selected} kind={kind} data={data} reason={writeReason} onAction={ask} onDownload={downloadBackup} downloadBusy={downloadBusy} onClose={() => setSelected(null)} />}
       </>}
       {confirm && <C.Confirm {...confirm} reason={writeReason || A.blocked(data, confirm.action)} onClose={() => setConfirm(null)} onConfirm={() => {

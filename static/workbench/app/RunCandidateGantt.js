@@ -149,7 +149,7 @@
         if (item) choose(item);
       },
       onKeyDown: event => {
-        if (!['Enter', ' ', 'Home', 'End', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+        if (!row.items.length || !['Enter', ' ', 'Home', 'End', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
         event.preventDefault();
         const index = row.items.findIndex(i => row.baseline ? i.segment.row_ref === (baselineSelected && baselineSelected.segment && baselineSelected.segment.row_ref) : i.task.row_ref === (selected && selected.row_ref));
         const next = event.key === 'Home' ? 0 : event.key === 'End' ? row.items.length - 1 : ['Enter', ' '].includes(event.key) ? Math.max(0, index) : Math.max(0, Math.min(row.items.length - 1, index + (event.key === 'ArrowLeft' ? -1 : 1)));
@@ -167,18 +167,38 @@
       height = 44,
       first = Math.max(0, Math.floor(top / height) - 3),
       end = Math.min(tasks.length, first + 16);
+    const head = React.useRef(null);
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "rc-muted"
     }, tasks.length, " \u9053", planned ? '安排' : '未安排工序'), /*#__PURE__*/React.createElement("div", {
+      className: "rc-virtual-table",
+      role: "table",
+      "aria-label": planned ? '候选任务安排' : '候选未安排明细',
+      "aria-rowcount": tasks.length + 1,
+      "aria-colcount": 5
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "rc-list-head",
+      ref: head,
+      role: "rowgroup"
+    }, /*#__PURE__*/React.createElement("div", {
       className: "rc-list-row rc-muted",
-      "aria-hidden": "true"
-    }, /*#__PURE__*/React.createElement("span", null, "\u6279\u6B21 / \u96F6\u4EF6"), /*#__PURE__*/React.createElement("span", null, "\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("span", null, planned ? '开始 / 结束' : '状态 / 原因'), /*#__PURE__*/React.createElement("span", null, planned ? '设备 / 人员' : '生成时执行'), /*#__PURE__*/React.createElement("span", null, "\u8BE6\u60C5")), /*#__PURE__*/React.createElement("div", {
+      role: "row",
+      "aria-rowindex": 1
+    }, ['批次 / 零件', '工序', planned ? '开始 / 结束' : '状态 / 原因', planned ? '设备 / 人员' : '生成时执行', '详情'].map(label => /*#__PURE__*/React.createElement("span", {
+      role: "columnheader",
+      key: label
+    }, label)))), /*#__PURE__*/React.createElement("div", {
       className: "rc-list",
       "data-candidate-task-list": true,
-      role: "region",
-      "aria-label": planned ? '候选任务安排' : '候选未安排明细',
-      onScroll: e => setTop(e.currentTarget.scrollTop)
+      role: "rowgroup",
+      tabIndex: 0,
+      "aria-label": planned ? '候选任务安排滚动区' : '候选未安排明细滚动区',
+      onScroll: e => {
+        setTop(e.currentTarget.scrollTop);
+        if (head.current) head.current.scrollLeft = e.currentTarget.scrollLeft;
+      }
     }, /*#__PURE__*/React.createElement("div", {
+      role: "presentation",
       style: {
         height: tasks.length * height,
         position: 'relative',
@@ -189,6 +209,8 @@
       className: "rc-list-row",
       "data-row-ref": t.row_ref || undefined,
       "data-operation-ref": t.operation_ref,
+      role: "row",
+      "aria-rowindex": first + i + 2,
       "aria-selected": selected && (t.row_ref ? selected.row_ref === t.row_ref : selected.operation_ref === t.operation_ref),
       style: {
         position: 'absolute',
@@ -197,21 +219,27 @@
         right: 0
       }
     }, /*#__PURE__*/React.createElement("span", {
+      role: "cell",
       title: (t.batch_label || '未记录') + '\n' + (t.part_label || '未记录')
     }, t.batch_label || '未记录', /*#__PURE__*/React.createElement("small", null, t.part_label || '未记录')), /*#__PURE__*/React.createElement("span", {
+      role: "cell",
       title: M.number(t.sequence) + ' ' + (t.process_label || '未记录') + '\n' + M.pieceLabel(t)
     }, M.pieceLabel(t), /*#__PURE__*/React.createElement("small", null, M.number(t.sequence), " ", t.process_label || '未记录')), /*#__PURE__*/React.createElement("span", {
+      role: "cell",
       title: planned ? M.title(t) : t.reason.message
     }, planned ? /*#__PURE__*/React.createElement(React.Fragment, null, M.timeLabel(t.start), /*#__PURE__*/React.createElement("small", null, window.PointContract.isPoint(t) ? '时间点 · 0 h · 不占用资源' : M.timeLabel(t.end))) : t.reason.message), /*#__PURE__*/React.createElement("span", {
+      role: "cell",
       title: planned ? (t.machine && t.machine.label || '未记录') + '\n' + (t.operator && t.operator.label || '未记录') : ''
-    }, planned ? /*#__PURE__*/React.createElement(React.Fragment, null, t.machine && t.machine.label || '设备未记录', /*#__PURE__*/React.createElement("small", null, t.operator && t.operator.label || '人员未记录')) : t.execution_at_generation ? M.executionValue(t.execution_at_generation.execution_state) : '未记录'), /*#__PURE__*/React.createElement(Button, {
+    }, planned ? /*#__PURE__*/React.createElement(React.Fragment, null, t.machine && t.machine.label || '未记录', /*#__PURE__*/React.createElement("small", null, t.operator && t.operator.label || '未记录')) : t.execution_at_generation ? M.executionValue(t.execution_at_generation.execution_state) : '未记录'), /*#__PURE__*/React.createElement("span", {
+      role: "cell"
+    }, /*#__PURE__*/React.createElement(Button, {
       icon: "search",
       className: "mini",
-      "aria-label": '工序详情 ' + (t.row_ref || t.operation_ref),
+      "aria-label": '工序详情 ' + (t.batch_label || '批次未记录') + ' ' + M.number(t.sequence) + ' ' + (t.process_label || '工序未记录') + ' ' + M.pieceLabel(t),
       onClick: () => onSelect(t)
-    }, "\u8BE6\u60C5")))), !tasks.length && /*#__PURE__*/React.createElement("div", {
-      className: "rc-empty"
-    }, "\u5F53\u524D\u9884\u89C8\u6CA1\u6709\u5339\u914D\u8BB0\u5F55\u3002")));
+    }, "\u8BE6\u60C5"))))))), !tasks.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      title: "\u5F53\u524D\u9884\u89C8\u6CA1\u6709\u5339\u914D\u8BB0\u5F55"
+    }));
   }
   function RunCandidateGantt({
     data,
@@ -283,11 +311,7 @@
       ref: host,
       className: "rc-gantt",
       "aria-label": "\u5019\u9009\u7518\u7279\u9884\u89C8"
-    }, /*#__PURE__*/React.createElement(window.PointGantt.Styles, null), /*#__PURE__*/React.createElement("style", null, `
-      .rc-gantt{min-width:0}.rc-gantt .rc-axis{height:40px;overflow:hidden;border-bottom:1px solid var(--ui-border);position:relative;margin-left:156px}.rc-gantt .rc-tick{position:absolute;top:0;white-space:nowrap;color:var(--ui-info-muted);font-size:10px;line-height:18px;border-left:1px solid var(--ui-border);padding-left:4px}
-      .rc-gantt .rc-scroll{height:310px;overflow:auto;position:relative;border-bottom:1px solid var(--ui-border);outline-offset:-2px}.rc-gantt .rc-lane{position:absolute;left:0;right:0;border-bottom:1px solid var(--ui-border);height:48px}.rc-gantt .rc-lane-label{position:sticky;left:0;width:156px;height:47px;padding:7px 8px;background:var(--ui-surface);border-right:1px solid var(--ui-border);z-index:2;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rc-gantt .rc-lane-label small{white-space:nowrap}.rc-gantt .rc-bar-space{position:absolute;left:156px;top:0;height:48px}
-      .rc-gantt .rc-overview{width:100%;height:32px;border-bottom:1px solid var(--ui-border)}.run-candidate-workspace .rc-tooltip{position:fixed;pointer-events:none;z-index:10030;max-width:350px;max-height:calc(100vh - 16px);overflow:auto;padding:10px 12px;border:1px solid var(--ui-border);border-radius:4px;background:var(--ui-surface);color:var(--ui-text);white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.6;box-shadow:0 3px 12px #0002}
-    `), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement(window.PointGantt.Styles, null), /*#__PURE__*/React.createElement("div", {
       className: "rc-heading"
     }, /*#__PURE__*/React.createElement("div", {
       role: "group",
@@ -348,7 +372,11 @@
       style: {
         left: t.x - scroll.left
       }
-    }, t.label.slice(5, 10), /*#__PURE__*/React.createElement("br", null), t.label.slice(11)))), /*#__PURE__*/React.createElement("div", {
+    }, window.WorkbenchFormat.dateTime(t.label, {
+      seconds: true
+    }).slice(5, 10), /*#__PURE__*/React.createElement("br", null), window.WorkbenchFormat.dateTime(t.label, {
+      seconds: true
+    }).slice(11)))), /*#__PURE__*/React.createElement("div", {
       ref: owner,
       className: "rc-scroll",
       "data-candidate-gantt-scroll": true,

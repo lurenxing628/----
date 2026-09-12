@@ -4,15 +4,19 @@
   const geometry = window.PlanGanttModel;
   const {
     instant,
-    timeLabel,
     wire,
     visibleItems,
     visibleRows,
     ticks
   } = geometry;
-  const number = value => value === null || value === undefined ? '未知' : typeof value === 'string' ? value : value.toLocaleString('zh-CN', {
-    maximumFractionDigits: 3
+  const timeLabel = value => window.WorkbenchFormat.dateTime(value);
+  // The candidate DTO preserves integers above MAX_SAFE_INTEGER as exact decimal text.
+  // Comparison metrics keep up to three decimals; a one-decimal summary would make distinct candidates look identical.
+  const number = value => typeof value === 'string' ? window.WorkbenchFormat.integerText(value) : window.WorkbenchFormat.number(value, {
+    digits: 3,
+    trim: true
   });
+  const percent = value => typeof value === 'string' ? window.WorkbenchFormat.integerText(value + '00') + '%' : window.WorkbenchFormat.percent(value);
   const signedChange = value => value === 0 ? '不变' : (value > 0 ? '增加 ' : '减少 ') + number(Math.abs(value));
   const kindLabels = {
     machine: '设备',
@@ -20,8 +24,8 @@
     batch: '批次'
   };
   const metricLabels = {
-    overdue_count: '超期批次',
-    total_tardiness_hours: '总拖期 h',
+    overdue_count: window.WorkbenchTerms.overdue_count,
+    total_tardiness_hours: window.WorkbenchTerms.total_tardiness_hours + ' h',
     makespan_hours: '安排跨度 h',
     changeover_count: '换型次数',
     weighted_tardiness_hours: '加权拖期 h',
@@ -53,7 +57,7 @@
     incomplete: '不完整',
     piece: '件',
     batch: '批'
-  })[v] || number(v);
+  })[v] || (typeof v === 'string' ? v : number(v));
   const pieceLabel = t => t.piece_id === null ? (t.data_gaps || []).some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : '分件 ' + t.piece_id;
   const searchText = t => [t.row_ref, t.operation_ref, t.batch_ref, t.batch_label, t.part_label, t.sequence, t.process_label, pieceLabel(t), t.machine && t.machine.label, t.operator && t.operator.label, t.reason && t.reason.message].filter(v => v != null).join(' ').toLocaleLowerCase();
   const matching = (tasks, query) => {
@@ -65,7 +69,7 @@
     label: t.batch_label
   } : t[mode];
   function title(t) {
-    return [t.batch_label || '批次未记录', number(t.sequence) + ' · ' + (t.process_label || '工序未记录'), pieceLabel(t), '本工序目标量：' + number(t.quantity) + ' · 生成时整批量：' + number(t.batch_quantity), timeLabel(t.start) + ' 至 ' + timeLabel(t.end), window.PointContract.isPoint(t) ? '时间点 · 0 h · 不占用资源' : null, '设备：' + (t.machine && t.machine.label || '未记录'), '人员：' + (t.operator && t.operator.label || '未记录'), '行引用：' + t.row_ref].filter(Boolean).join('\n');
+    return [t.batch_label || '批次未记录', number(t.sequence) + ' · ' + (t.process_label || '工序未记录'), pieceLabel(t), '本工序目标量：' + number(t.quantity) + ' · 生成时整批量：' + number(t.batch_quantity), timeLabel(t.start) + ' 至 ' + timeLabel(t.end), window.PointContract.isPoint(t) ? '时间点 · 0 h · 不占用资源' : null, '设备：' + (t.machine && t.machine.label || '未记录'), '人员：' + (t.operator && t.operator.label || '未记录')].filter(Boolean).join('\n');
   }
   function push(heap, item) {
     let i = heap.length;
@@ -172,6 +176,7 @@
     wire,
     timeLabel,
     number,
+    percent,
     signedChange,
     visibleItems,
     visibleRows,

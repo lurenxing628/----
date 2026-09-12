@@ -2,7 +2,7 @@
   'use strict';
   const { Button } = window.ReportControls;
   const text = value => value == null ? '未知' : Array.isArray(value) ? value.join('；') : String(value);
-  const time = value => value ? value.replace('T', ' ') : '未确认';
+  const time = value => value ? window.WorkbenchFormat.dateTime(value) : '未确认';
   function CellText({ value, label }) {
     if (typeof value !== 'string' || value.length <= 80) return value;
     return <details className="rw-cell-text"><summary aria-label={'展开' + label} title={'展开或收起' + label}><span className="rw-cell-preview">{value}</span><window.ReportControls.Icon name="chevron-down" /></summary></details>;
@@ -11,16 +11,19 @@
   function status(row) { return <span className={row.finish_late ? 'rw-danger' : row.late_open ? 'rw-warning' : row.complete ? 'rw-success' : 'rw-muted'}>{row.execution_label}</span>; }
   function Table({ data, onDetail, onLocate, busy, primary }) {
     const { DataTable } = window.APSWorkbenchUI;
+    const empty = window.ReportEvidence.noFeedback(data.summary);
+    const actual = value => window.ReportEvidence.actualValue(value, empty);
+    const actualTime = value => value == null && empty ? actual(value) : time(value);
     let columns;
     const detail = row => <Button className="rw-icon-button" icon="search" aria-label={'查看工序 ' + row.operation_label} disabled={busy || !row.operation_ref} onClick={() => onDetail(row.operation_ref)} />;
     if (data.topic === 'delivery') columns = [
       { key: 'batch_label', title: '批次 / 工序', width: 185, render: row => stack(row.batch_label, row.operation_label) },
       { key: 'planned_end', title: '计划开工 / 完工', width: 165, render: row => stack(time(row.planned_start), time(row.planned_end)) },
-      { key: 'confirmed_finish', title: '实际开工 / 整道完工', width: 165, render: row => stack(time(row.actual_start), time(row.confirmed_finish)) },
+      { key: 'confirmed_finish', title: '实际开工 / 整道完工', width: 165, render: row => stack(actualTime(row.actual_start), actualTime(row.confirmed_finish)) },
       { key: 'execution_label', title: '执行情况 / 到期', width: 170, render: row => stack(status(row), row.unclosed ? '到期未确认完成' : row.due ? '到期已确认完成' : '计划尚未到期') },
-      { key: 'finish_deviation_minutes', title: '整道完工偏差', width: 118, render: row => row.finish_deviation_minutes == null ? '尚不可比较' : <span className={row.finish_late ? 'rw-danger' : ''}>{row.finish_deviation_minutes > 0 ? '+' : ''}{row.finish_deviation_minutes} 分钟</span> },
-      { key: 'known_completed_quantity', title: '已知累计数量', width: 145, render: row => stack(text(row.known_completed_quantity), '数量未知 ' + row.unknown_record_count + ' 条') },
-      { key: 'effective_processing_hours', title: '有效工时 / 已知小计', width: 145, render: row => stack(text(row.effective_processing_hours), text(row.known_effective_processing_hours)) },
+      { key: 'finish_deviation_minutes', title: '整道完工偏差', width: 118, render: row => row.finish_deviation_minutes == null ? empty ? actual(null) : '尚不可比较' : <span className={row.finish_late ? 'rw-danger' : ''}>{row.finish_deviation_minutes > 0 ? '+' : ''}{row.finish_deviation_minutes} 分钟</span> },
+      { key: 'known_completed_quantity', title: '已知累计数量', width: 145, render: row => stack(actual(row.known_completed_quantity), row.unknown_record_count > 0 ? '数量未知 ' + row.unknown_record_count + ' 条' : null) },
+      { key: 'effective_processing_hours', title: '有效工时 / 已知小计', width: 145, render: row => stack(actual(row.effective_processing_hours), actual(row.known_effective_processing_hours)) },
       { key: 'action', title: '详情', width: 66, render: detail }
     ];
     else if (data.topic === 'records') columns = [
@@ -47,21 +50,24 @@
       render: row => <Button className="rw-icon-button" icon="chart-gantt" aria-label={'定位实际甘特 ' + (row.report_no || row.event_label)} disabled={busy} onClick={() => onLocate(row)} /> });
     const visible = columns.filter(column => column.key !== 'action' || typeof onDetail === 'function');
     const fixedWidth = visible.every(column => typeof column.width === 'number') ? visible.reduce((sum, column) => sum + column.width, 0) : 0;
-    return data.rows.length ? <div className={'rw-table-scroll' + (primary ? ' rw-primary-table' : '')} tabIndex={primary ? 0 : undefined} role={primary ? 'region' : undefined} aria-label={primary ? '报表结果表格' : undefined}><DataTable className={['machines', 'people'].includes(data.topic) ? 'rw-resource-table' : 'rw-table'}
+    return data.rows.length ? <window.ReportEvidence.TableFrame className={primary ? 'rw-primary-table' : ''} caption={data.topic === 'records' ? '逐次报工与旧现场事件' : '当前范围报表结果'}
+      actionColumn={visible.findIndex(column => ['action', 'locate'].includes(column.key))} tabIndex={0} role="region" aria-label={primary ? '报表结果表格' : '报表明细表格'}><DataTable className={['machines', 'people'].includes(data.topic) ? 'rw-resource-table' : 'rw-table'}
+      aria-label={data.topic === 'records' ? '逐次报工与旧现场事件' : '当前筛选范围的' + ({ delivery: '工序完成情况', quality: '数据完整性', machines: '设备工时', people: '人员工时' }[data.topic] || '报表结果')}
       columns={visible.map(column => ({ ...column, width: fixedWidth ? column.width / fixedWidth * 100 + '%' : column.width, sortable: false, filterable: false }))}
-      rows={data.rows.map((row, index) => ({ ...row, _key: (row.operation_ref || row.resource_ref || row.batch_ref || 'row') + ':' + (row.projection_index == null ? index : row.projection_index) }))} rowKey="_key" /></div> : <p className="rw-empty" role="status">当前筛选没有结果。</p>;
+      rows={data.rows.map((row, index) => ({ ...row, _key: (row.operation_ref || row.resource_ref || row.batch_ref || 'row') + ':' + (row.projection_index == null ? index : row.projection_index) }))} rowKey="_key" /></window.ReportEvidence.TableFrame> : <window.WorkbenchListControls.EmptyState kind="empty" title="当前筛选没有结果" hint="调整计划完工日期、批次或搜索条件后重新查询。" />;
   }
   function Metrics({ summary: s, topic }) {
     const { MetricStrip, Metric } = window.APSWorkbenchUI;
-    const pct = value => value == null ? '未知' : (value * 100).toFixed(1) + '%';
+    const empty = window.ReportEvidence.noFeedback(s), actual = value => window.ReportEvidence.actualValue(value, empty);
+    const pct = value => value == null ? actual(value) : window.WorkbenchFormat.percent(value);
     const values = topic === 'delivery' ? [
       ['到期工序完成率', pct(s.completion_rate), s.confirmed_due + ' 已确认 / ' + s.due + ' 已到期'],
       ['到期工序按时完成率', pct(s.on_time_rate), s.due_on_time + ' 按时 / ' + s.due + ' 已到期'],
       ['超时未确认完成', s.late_open, '不等于未生产', s.late_open ? 'warning' : undefined],
-      ['完工偏差中位数', text(s.median_finish_minutes), '样本 ' + s.finish_sample + ' 道 · P90 ' + text(s.p90_finish_minutes) + ' 分钟']
+      ['完工偏差中位数', actual(s.median_finish_minutes), s.finish_sample ? '样本 ' + s.finish_sample + ' 道 · P90 ' + text(s.p90_finish_minutes) + ' 分钟' : '暂无已确认完工样本']
     ] : [['范围内工序', s.operations, s.reported_operations + ' 道有反馈；' + s.unreported + ' 道暂无反馈'],
       ['逐次报工', s.production_reports, '旧现场事件 ' + s.events + ' 条'], ['全部记录', s.records, '旧事件与逐次报工合计，不含额外修订次数'],
-      ['有效加工工时', text(s.effective_processing_hours), '已知小计 ' + text(s.known_effective_processing_hours) + '；未知 ' + s.unknown_hour_events + ' 条']];
+      ['有效加工工时', actual(s.effective_processing_hours), empty ? '暂无现场工时记录' : '已知小计 ' + text(s.known_effective_processing_hours) + '；未知 ' + s.unknown_hour_events + ' 条']];
     return <MetricStrip columns={4} className="rw-metrics">{values.map(([label, value, helper, tone]) => <Metric key={label} label={label} value={value} helper={helper} tone={tone} />)}</MetricStrip>;
   }
   window.ReportTable = { Table, Metrics, text, time };

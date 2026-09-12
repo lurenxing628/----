@@ -104,7 +104,9 @@
         top: (first + i) * 76
       },
       "aria-selected": !!chosen && chosen.row_ref === s.row_ref
-    }, /*#__PURE__*/React.createElement("div", null, M.timeLabel(s.start), " \u81F3 ", M.timeLabel(s.end), !s.interval_comparable && ' · 起止不可比较'), /*#__PURE__*/React.createElement("div", null, "\u8BBE\u5907 ", s.machine && s.machine.label || '未记录', " \xB7 \u4EBA\u5458 ", s.operator && s.operator.label || '未记录', " \xB7 \u8D77\u6B62\u8DE8\u5EA6 ", M.number(s.elapsed_hours), " h"), /*#__PURE__*/React.createElement("small", null, "\u521D\u59CB\u8BA1\u5212\u884C\u5F15\u7528 ", s.row_ref, s.data_gaps.map(g => ' · ' + g.message).join(''))))), !row.baseline_segments.length && /*#__PURE__*/React.createElement("div", null, "\u521D\u59CB\u8BA1\u5212\u6CA1\u6709\u8BE5\u5DE5\u5E8F\u5B89\u6392\u3002"));
+    }, /*#__PURE__*/React.createElement("div", null, M.timeLabel(s.start), " \u81F3 ", M.timeLabel(s.end), !s.interval_comparable && ' · 起止不可比较'), /*#__PURE__*/React.createElement("div", null, "\u8BBE\u5907 ", s.machine && s.machine.label || '未记录', " \xB7 \u4EBA\u5458 ", s.operator && s.operator.label || '未记录', " \xB7 \u8D77\u6B62\u8DE8\u5EA6 ", M.number(s.elapsed_hours), " h"), /*#__PURE__*/React.createElement("small", null, s.data_gaps.map(g => g.message).join(' · ')), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      value: s.row_ref
+    })))), !row.baseline_segments.length && /*#__PURE__*/React.createElement("div", null, "\u521D\u59CB\u8BA1\u5212\u6CA1\u6709\u8BE5\u5DE5\u5E8F\u5B89\u6392\u3002"));
   }
   function Detail({
     row,
@@ -117,11 +119,15 @@
       className: "rb-detail",
       role: "region",
       "aria-label": "\u521D\u59CB\u8BA1\u5212\u5DE5\u5E8F\u5BF9\u7167"
-    }, /*#__PURE__*/React.createElement("strong", null, row.batch_label || '批次未记录', " \xB7 ", M.number(row.sequence), " ", row.process_label || '工序未记录', " \xB7 ", B.statusLabels[row.status]), /*#__PURE__*/React.createElement("div", {
-      className: "rb-reference"
-    }, "\u5DE5\u5E8F\u5F15\u7528 ", row.operation_ref), c ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u5019\u9009\u5B89\u6392\uFF1A", M.timeLabel(c.start), " \u81F3 ", M.timeLabel(c.end), " \xB7 \u8BBE\u5907 ", c.machine && c.machine.label || '未记录', " \xB7 \u4EBA\u5458 ", c.operator && c.operator.label || '未记录'), /*#__PURE__*/React.createElement("div", {
-      className: "rb-reference"
-    }, "\u5019\u9009\u884C\u5F15\u7528 ", c.row_ref), !workspace.tasks.some(t => t.row_ref === c.row_ref) && /*#__PURE__*/React.createElement("div", null, "\u8BE5\u5019\u9009\u5B89\u6392\u4E0D\u5728\u5F53\u524D\u5019\u9009\u9884\u89C8\u8303\u56F4\uFF1B\u6B64\u5904\u4FDD\u7559\u5B8C\u6574\u5BF9\u7167\u3002")) : /*#__PURE__*/React.createElement("div", null, "\u5019\u9009\u6CA1\u6709\u5B89\u6392\u6B64\u5DE5\u5E8F\uFF1B\u672A\u6392\u4E0D\u4EE3\u8868\u6539\u5584\u3002"), /*#__PURE__*/React.createElement(Segments, {
+    }, /*#__PURE__*/React.createElement("strong", null, row.batch_label || '批次未记录', " \xB7 ", M.number(row.sequence), " ", row.process_label || '工序未记录', " \xB7 ", B.statusLabels[row.status]), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '工序编号': row.operation_ref
+      }
+    }), c ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u5019\u9009\u5B89\u6392\uFF1A", M.timeLabel(c.start), " \u81F3 ", M.timeLabel(c.end), " \xB7 \u8BBE\u5907 ", c.machine && c.machine.label || '未记录', " \xB7 \u4EBA\u5458 ", c.operator && c.operator.label || '未记录'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '候选安排编号': c.row_ref
+      }
+    }), !workspace.tasks.some(t => t.row_ref === c.row_ref) && /*#__PURE__*/React.createElement("div", null, "\u8BE5\u5019\u9009\u5B89\u6392\u4E0D\u5728\u5F53\u524D\u5019\u9009\u9884\u89C8\u8303\u56F4\uFF1B\u6B64\u5904\u4FDD\u7559\u5B8C\u6574\u5BF9\u7167\u3002")) : /*#__PURE__*/React.createElement("div", null, "\u5019\u9009\u6CA1\u6709\u5B89\u6392\u6B64\u5DE5\u5E8F\uFF1B\u672A\u6392\u4E0D\u4EE3\u8868\u6539\u5584\u3002"), /*#__PURE__*/React.createElement(Segments, {
       key: row.operation_ref,
       row: row,
       chosen: segment
@@ -170,7 +176,7 @@
     }, M.number(r.sequence), " ", r.process_label || '未记录'), /*#__PURE__*/React.createElement("span", null, B.statusLabels[r.status]), /*#__PURE__*/React.createElement("span", null, r.baseline_segments.length, " \u6BB5", r.execution_affected && ' · 执行影响'), /*#__PURE__*/React.createElement(Button, {
       icon: "search",
       className: "mini",
-      "aria-label": '初始计划对照 ' + r.operation_ref,
+      "aria-label": '初始计划对照 ' + (r.batch_label || '批次未记录') + ' ' + M.number(r.sequence) + ' ' + (r.process_label || '工序未记录'),
       onClick: () => onChoose({
         comparison: r,
         segment: null
@@ -191,12 +197,7 @@
     React.useEffect(() => {
       if (chosen) setOpen(true);
     }, [chosen]);
-    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("style", null, `
-      .rc-gantt .rb-toggle{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:12px;margin:0}.rc-gantt .rb-toggle input{width:14px;height:14px;min-height:14px;padding:0;margin:0;accent-color:var(--ui-primary)}
-      .rc-gantt .rb-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--ui-info-muted);padding:4px 0}.rb-legend span{display:inline-flex;align-items:center;gap:5px}.rb-legend i{display:inline-block;width:22px;height:9px;background:var(--wb-gantt-primary-fill);border:1px solid var(--wb-gantt-primary-edge)}.rb-legend .rb-before{height:5px;background:transparent;border:1px dashed var(--ui-text)}.rb-legend .rb-selected{border:2px solid var(--wb-gantt-gold)}
-      .rc-gantt .rb-panel{border-bottom:1px solid var(--ui-border);font-size:12px;min-width:0}.rb-panel summary{cursor:pointer;padding:6px 0}.rb-panel small{display:block}.rc-gantt .rb-list{max-height:240px;overflow:auto;position:relative;border-block:1px solid var(--ui-border)}.rc-gantt .rb-row{position:absolute;left:0;right:0;height:40px;display:grid;grid-template-columns:minmax(80px,1fr) minmax(120px,1.5fr) 108px 120px 36px;align-items:center;gap:8px;padding:0 5px;border-bottom:1px solid var(--ui-border)}.rb-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rb-row[aria-selected=true]{outline:1px solid var(--wb-gantt-gold);outline-offset:-1px}
-      .rc-gantt .rb-detail{padding:8px 0;line-height:1.7;overflow-wrap:anywhere}.rc-gantt .rb-reference{font-size:10px;color:var(--ui-info-muted)}.rc-gantt .rb-segments{max-height:180px;overflow:auto;border-block:1px solid var(--ui-border);margin:6px 0}.rc-gantt .rb-segment{position:absolute;left:0;right:0;height:76px;border-bottom:1px solid var(--ui-border);padding:4px 6px;overflow:auto}.rb-segment[aria-selected=true]{border-left:2px solid var(--wb-gantt-gold)}
-    `), state.enabled && /*#__PURE__*/React.createElement(React.Fragment, null, state.busy && /*#__PURE__*/React.createElement("div", {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, state.enabled && /*#__PURE__*/React.createElement(React.Fragment, null, state.busy && /*#__PURE__*/React.createElement("div", {
       className: "rc-muted",
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u53D7\u7406\u65F6\u521D\u59CB\u8BA1\u5212\u3002"), state.error && /*#__PURE__*/React.createElement("div", {

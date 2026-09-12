@@ -102,7 +102,7 @@
     function objectLabel(item) {
       const task = tasks.get(item.operation_ref);
       if (task) return task.batch_id + ' · ' + task.sequence + ' ' + task.label + (task.piece_id ? ' · ' + task.piece_id : '');
-      return item.batch_id || batches.get(item.batch_ref) || item.operation_ref || item.batch_ref || '';
+      return item.batch_id || batches.get(item.batch_ref) || '对象信息未完整记录';
     }
     return /*#__PURE__*/React.createElement("div", {
       className: "pf-alert"
@@ -117,69 +117,22 @@
       className: "pf-reason-list"
     }, Array.from(groups, ([code, items]) => /*#__PURE__*/React.createElement("div", {
       key: code
-    }, items.map((item, index) => /*#__PURE__*/React.createElement("p", {
+    }, items.map((item, index) => /*#__PURE__*/React.createElement("div", {
+      className: "pf-reason-item",
       key: index,
       "data-reason-code": item.code,
       "data-operation-ref": item.operation_ref,
       "data-batch-ref": item.batch_ref
-    }, objectLabel(item) && /*#__PURE__*/React.createElement("strong", null, objectLabel(item), "\uFF1A "), item.message)))))));
+    }, objectLabel(item) && /*#__PURE__*/React.createElement("strong", null, objectLabel(item), "\uFF1A "), item.message, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '原因编号': item.code,
+        '工序编号': item.operation_ref,
+        '批次编号': item.batch_ref
+      }
+    }))))))));
   }
   function Styles() {
-    return /*#__PURE__*/React.createElement("style", null, `
-      .plana.preflight-workspace {padding:0;max-width:none;width:100%;min-width:0;color:var(--ui-text);letter-spacing:0}
-      .preflight-workspace * {box-sizing:border-box;letter-spacing:0}
-      .preflight-workspace h2 {font-size:18px;line-height:1.5;margin:0}
-      .preflight-workspace h3 {font-size:15px;line-height:1.5;margin:0 0 12px}
-      .preflight-workspace .pf-heading,.preflight-workspace .pf-tools,.preflight-workspace .pf-window {display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-      .preflight-workspace .pf-heading {justify-content:space-between;padding-bottom:16px}
-      .preflight-workspace .pf-window {padding:14px 0;border-top:1px solid var(--ui-border);border-bottom:1px solid var(--ui-border)}
-      .preflight-workspace .pf-window label {display:flex;align-items:center;gap:8px}
-      .preflight-workspace input[type=date] {width:156px;min-width:0}
-      .preflight-workspace .pf-muted,.preflight-workspace .pf-note {color:var(--ui-info-muted);font-size:12px;line-height:1.7}
-      .preflight-workspace .pf-metrics {margin:0;padding:18px 0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-bottom:1px solid var(--ui-border)}
-      .preflight-workspace .pf-metrics>div {min-width:0;padding:0 14px;border-left:1px solid var(--ui-border)}
-      .preflight-workspace .pf-metrics>div:first-child {border-left:0;padding-left:0}
-      .preflight-workspace dt {font-size:12px;color:var(--ui-info-muted);overflow-wrap:anywhere}
-      .preflight-workspace dd {margin:8px 0 0;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
-      .preflight-workspace .pf-body {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:26px;padding:20px 0;border-bottom:1px solid var(--ui-border)}
-      .preflight-workspace .pf-body>section {min-width:0}
-      .preflight-workspace .pf-body>section+section {padding-left:26px;border-left:1px solid var(--ui-border)}
-      .preflight-workspace .pf-rows {display:grid;grid-auto-rows:minmax(78px,auto)}
-      .preflight-workspace .pf-rule,.preflight-workspace .pf-check {min-height:58px;display:grid;grid-template-columns:minmax(0,1fr) 200px;gap:10px;align-items:center;border-top:1px solid var(--ui-border);padding:9px 0}
-      .preflight-workspace .pf-rule strong,.preflight-workspace .pf-check strong {font-size:13px}
-      .preflight-workspace .pf-rule.pf-note {display:block}
-      .preflight-workspace .pf-check {grid-template-columns:minmax(0,1fr) 110px}
-      .preflight-workspace .pf-check p {margin:3px 0 0;font-size:12px;line-height:1.6;color:var(--ui-info-muted)}
-      .preflight-workspace .pf-check>span {justify-self:end;max-width:110px;white-space:normal}
-      .preflight-workspace .pf-segment {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:200px;min-height:32px;border:1px solid var(--ui-border);border-radius:5px;background:var(--ui-surface-muted)}
-      .preflight-workspace .pf-segment label {position:relative;min-width:0;cursor:pointer}
-      .preflight-workspace .pf-segment input {position:absolute;opacity:0!important;width:1px!important;height:1px!important;min-width:0;min-height:0;padding:0;margin:0;border:0}
-      .preflight-workspace .pf-segment span {display:flex;align-items:center;justify-content:center;min-height:30px;padding:4px;font-size:12px;color:var(--ui-info-muted);border-radius:4px}
-      .preflight-workspace .pf-segment .selected span {background:var(--ui-surface);color:var(--ui-text);box-shadow:0 1px 3px #0002;font-weight:600}
-      .preflight-workspace .pf-segment input:focus-visible+span {outline:2px solid var(--ui-primary);outline-offset:2px}
-      .preflight-workspace .pf-segment input:disabled+span {opacity:.5;cursor:not-allowed}
-      .preflight-workspace .pf-picker {padding:16px 0;border-bottom:1px solid var(--ui-border);background:var(--ui-surface-muted)}
-      .preflight-workspace .pf-picker-row {display:grid;grid-template-columns:22px minmax(110px,1fr) minmax(100px,2fr) 80px 90px;align-items:center;gap:12px;min-height:40px;border-top:1px solid var(--ui-border);padding:7px 10px;font-size:13px}
-      .preflight-workspace .pf-picker-row>* {min-width:0;overflow-wrap:anywhere}
-      .preflight-workspace .pf-picker-row input {width:15px;height:15px}
-      .preflight-workspace .pf-picker-list {margin:12px 0;max-height:360px;overflow:auto}
-      .preflight-workspace .pf-tools {padding:6px 0}
-      .preflight-workspace .pf-tools input[type=search] {width:260px;max-width:100%;min-width:0}
-      .preflight-workspace .pf-tools select {width:92px}
-      .preflight-workspace .pf-detail {padding:14px 0;border-bottom:1px solid var(--ui-border)}
-      .preflight-workspace .pf-detail summary {cursor:pointer;font-size:13px;font-weight:600}
-      .preflight-workspace .pf-results {max-height:340px;overflow:auto;margin-top:12px}
-      .preflight-workspace table {width:100%;table-layout:fixed}
-      .preflight-workspace th,.preflight-workspace td {white-space:normal!important;overflow-wrap:anywhere;vertical-align:top}
-      .preflight-workspace .pf-results p {margin:2px 0;font-size:12px;line-height:1.6}
-      .preflight-workspace .pf-alert {padding:12px 14px;margin:14px 0;border-left:3px solid var(--ui-warning);background:var(--ui-surface-muted);font-size:13px;line-height:1.7;overflow-wrap:anywhere}
-      .preflight-workspace .pf-reasons {margin-top:6px}.preflight-workspace .pf-reasons summary {cursor:pointer}
-      .preflight-workspace .pf-reason-list {max-height:240px;overflow:auto;margin-top:8px}.preflight-workspace .pf-reason-list p {margin:4px 0}
-      .preflight-workspace .pf-footer {display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 0;flex-wrap:wrap}
-      .preflight-workspace button {max-width:100%;white-space:normal}
-      @media(max-width:1100px) {.preflight-workspace .pf-body{gap:18px}.preflight-workspace .pf-body>section+section{padding-left:18px}.preflight-workspace .pf-rule{grid-template-columns:minmax(0,1fr) 180px}.preflight-workspace .pf-segment{width:180px}}
-      @media(max-width:760px) {.preflight-workspace .pf-body{grid-template-columns:minmax(0,1fr)}.preflight-workspace .pf-body>section+section{padding-left:0;border-left:0}.preflight-workspace .pf-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.preflight-workspace .pf-picker-row{grid-template-columns:22px minmax(0,1fr) minmax(0,1fr)}.preflight-workspace .pf-picker-row>span:nth-last-child(-n+2){display:none}.preflight-workspace .pf-window label{flex-wrap:wrap}}
-    `);
+    return null;
   }
   window.PreflightControls = {
     Button,

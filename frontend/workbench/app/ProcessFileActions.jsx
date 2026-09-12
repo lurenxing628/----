@@ -29,11 +29,7 @@
     if (data && importing) checkedPreview.current = data;
     const controlsDisabled = disabled || locked || done || busy;
     React.useEffect(() => () => { alive.current = false; if (abort.current) abort.current.abort(); }, []);
-    React.useEffect(() => {
-      if (!dirty && !receiptError) return undefined;
-      const warn = event => { event.preventDefault(); event.returnValue = ''; };
-      window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
-    }, [dirty, !!receiptError]);
+    window.WorkbenchGuards.useDirtyGuard({ dirty, locked: visible.locked, message: label + '导入文件尚未保存或原请求仍待核实。' });
     React.useEffect(() => {
       if (!done || kind === 'hours' || notified.current === command.result.receipt_ref) return;
       notified.current = command.result.receipt_ref;

@@ -108,9 +108,7 @@
       <div className="rc-heading"><div className="rc-tools"><h2>{view === 'delay' ? '候选交付风险' : view === 'gantt' ? '候选甘特' : '候选排产结果'}</h2><span className="rc-muted">已保存的候选方案</span></div><div className="rc-tools">
         {onNavigate && <C.Button icon="chevron-left" onClick={() => onNavigate('run', { ...returnContext(initialContext.return_run_context), ...(runRef ? { run_ref: runRef } : {}) })}>返回运行页</C.Button>}
         {onNavigate && initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && <C.Button icon="chevron-left" onClick={() => onNavigate('analysis', returnContext(initialContext.return_plan_context))}>返回正式方案</C.Button>}
-        {onNavigate && <C.Button icon="circle-alert" disabled={!shown || read.busy} onClick={() => onNavigate(view === 'delay' ? 'analysis' : 'delay', remembered)}>{view === 'delay' ? '返回比较' : '交付风险'}</C.Button>}
-        {onNavigate && view !== 'gantt' && <C.Button icon="chart-gantt" disabled={!shown || read.busy} onClick={() => onNavigate('gantt', remembered)}>查看甘特</C.Button>}
-        {typeof renderAdoption === 'function' ? renderAdoption(candidateRef) : <C.Button icon="check" reason="正式采用入口未接入，请先核对完整候选方案。">采用方案</C.Button>}
+        {typeof renderAdoption === 'function' ? renderAdoption(candidateRef) : <C.Button icon="check" className="btn primary" reasonDisplay="inline" reason="正式采用入口未接入，请先核对完整候选方案。">采用方案</C.Button>}
         {typeof renderTrial === 'function' ? renderTrial({ candidateRef, scope, query, disabled: !shown || read.busy || invalid }) :
           <C.Button icon="square-pen" reason="试调入口未接入，请先核对完整候选方案。">试调</C.Button>}
         <C.Button icon="refresh-cw" aria-label="刷新指定候选来源" disabled={invalid || !runRef && !candidateRef} busy={read.busy || directory.busy} onClick={reload} /></div></div>
@@ -134,8 +132,9 @@
         {rangeOpen && <form className="rc-range" onSubmit={rangeSubmit}><label>开始（包含）<input type="datetime-local" step="1" aria-label="候选读取开始" value={range.start} onChange={e => setRange({ ...range, start: e.target.value })} /></label>
           <label>结束（不含）<input type="datetime-local" step="1" aria-label="候选读取结束" value={range.end} onChange={e => setRange({ ...range, end: e.target.value })} /></label>
           <C.Button icon="check" type="submit">应用范围</C.Button><C.Button icon="chart-gantt" onClick={() => { setScope({}); setRange({ start: '', end: '' }); setRangeError(null); }}>完整候选</C.Button></form>}
-        <C.ErrorBox error={rangeError} /><div className="rc-scope"><span>读取范围：{scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束）' : '全部时间'}{scope.batch_ref && ' · 指定批次 ' + scope.batch_ref}
+        <C.ErrorBox error={rangeError} /><div className="rc-scope"><span>读取范围：{scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束）' : '全部时间'}{scope.batch_ref && ' · 指定批次'}
           {' · 安排 ' + shown.task_count + ' / 候选共 ' + shown.candidate_task_count + ' 道 · 未安排 ' + (shown.unplanned_operation_count === null ? '未知（未记录）' : shown.unplanned_operation_count + ' 道')}</span>
+          {scope.batch_ref && <window.WorkbenchReference entries={{ '筛选批次编号': scope.batch_ref }} />}
           <details><summary>范围与导出口径</summary><div>时间筛选按重叠读取，保留每道安排完整起止；未安排项没有时间区间，仍随范围保留。搜索仅影响预览和明细，不改变导出范围。导出当前读取范围全部安排与未安排记录。</div></details></div>
         {view === 'delay' && <C.Delivery data={shown.delivery_risks} onLast={lastOperation} />}
         <div className="rc-main" style={['delivery', 'history'].includes(tab) ? { gridTemplateColumns: 'minmax(0,1fr)' } : undefined}><div><window.RunCandidateGantt data={shown} query={query} selected={chosen} onSelect={select} />

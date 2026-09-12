@@ -2,12 +2,13 @@
   'use strict';
   const C = window.APSMasterOverviewContract, { Button, ErrorBox } = window.ResourceControls;
   const { Tabs, Pager } = window.MasterOverviewTable;
-  function MasterOverviewDetail({ result, selected, section, onSection, onPage, onLocate, onMaintain, onBack, navigation, loading, error, panelRef }) {
+  function MasterOverviewDetail({ result, selected, section, onSection, onPage, onLocate, onMaintain, onBack, navigation, loading, error, triggerRef, autoFocus = true }) {
     const data = result && result.data, entity = data && data.entity;
-    return <aside className="mo-detail" aria-label="主数据实体详情" tabIndex={-1} ref={panelRef}>
-      <Button className="mo-link" icon="chevron-left" onClick={onBack} disabled={!selected}>返回清单</Button>
+    if (!selected) return null;
+    return <window.WorkbenchDetailPanel title="主数据实体详情" subtitle={entity ? entity.business_code + ' · ' + (entity.label || '名称未填') : '正在核对所选记录'} detailKey={selected.key || selected.entity_ref} onClose={onBack} triggerRef={triggerRef} autoFocus={autoFocus}><div className="mo-detail">
+      <Button className="mo-link" icon="chevron-left" onClick={onBack}>返回清单</Button>
       <ErrorBox error={error} />
-      {loading && <p role="status" className="mo-muted">正在核对实体详情…</p>}
+      {loading && <window.WorkbenchListControls.EmptyState kind="loading" title="正在核对实体详情…" />}
       {entity ? <><div className="mo-detail-head"><div><p className="mo-muted">{C.cell(entity, 'domain')} · {entity.business_code}</p><h3>{entity.label || '名称未填'}</h3></div>
         <Button className="btn mo-icon" icon="arrow-right" aria-label="定位当前实体" reason={entity.target.unavailable_reason || (!navigation ? '维护导航尚未接入。' : '')} onClick={() => onMaintain(entity.target)} /></div>
         <p className="mo-muted"><span className="mo-status" data-status={entity.status}>{C.statuses[entity.status]}</span> · 已填 {entity.filled_fields} / {entity.checked_fields} 个检查字段</p>
@@ -20,10 +21,10 @@
             : <ul className="mo-detail-list">{data.rows.map((item, index) => <li key={(item.issue_ref || item.key) + ':' + index}>{section === 'relations' ? <>
               <p className="mo-muted">{item.relation}</p><button type="button" className="mo-link" onClick={() => item.domain === 'batch' ? onMaintain(item.target) : onLocate({ domain: item.domain, entity_ref: item.ref })}
                 disabled={item.domain === 'batch' && !navigation}><strong>{item.business_code} · {item.label}</strong></button><p className="mo-source">{item.source}</p></>
-              : <><strong>{item.title}</strong><p>{item.evidence}</p><p className="mo-source">{item.rule}</p><Button className="mo-link" icon="arrow-right" reason={item.target.unavailable_reason || (!navigation ? '维护导航尚未接入。' : '')} onClick={() => onMaintain(item.target)}>{item.action}</Button></>}</li>)}</ul>}
+              : <><strong>{item.title}</strong><p>{item.evidence}</p><window.WorkbenchReference entries={{ '检查规则': item.rule }} /><Button className="mo-link" icon="arrow-right" reasonDisplay="inline" reason={item.target.unavailable_reason || (!navigation ? '维护导航尚未接入。' : '')} onClick={() => onMaintain(item.target)}>{item.action}</Button></>}</li>)}</ul>}
         </div><Pager detail page={data.page} disabled={loading} onPage={onPage} />
       </> : !loading && !error && <p className="mo-muted">暂无可查看的实体。</p>}
-    </aside>;
+    </div></window.WorkbenchDetailPanel>;
   }
   window.MasterOverviewDetail = MasterOverviewDetail;
 })();

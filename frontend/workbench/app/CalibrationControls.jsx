@@ -18,36 +18,7 @@
     return state.identity === identity ? state : { result: null, error: null, busy: enabled };
   }
   function Styles() {
-    return <style>{`
-      .calibration-live{min-width:0;color:var(--ui-text);background:transparent;letter-spacing:0}
-      .calibration-live h2{font-size:22px;line-height:30px;margin:0}.calibration-live h3{font-size:16px;line-height:24px;margin:0}
-      .calibration-live p{margin:8px 0;line-height:20px}.ca-muted{color:var(--ui-info-muted)}
-      .ca-heading,.ca-tools,.ca-page{display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap;min-width:0}
-      .ca-heading{justify-content:space-between;padding-bottom:12px}.ca-tools{padding:12px 0;border-top:1px solid var(--ui-border)}
-      .ca-tools label,.ca-page label{display:flex;align-items:center;gap:8px;min-width:0;font-size:13px}
-      .ca-tools .ca-search{flex:1 1 280px;max-width:480px}.ca-search input{width:100%}
-      .ca-tools select{max-width:175px}.ca-tools .ca-check{white-space:nowrap}.ca-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-      .ca-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--ui-border);border-bottom:1px solid var(--ui-border);margin-bottom:12px}
-      .ca-metric{padding:12px 16px;border-right:1px solid var(--ui-border)}.ca-metric:first-child{padding-left:0}.ca-metric:last-child{border-right:0}
-      .ca-metric span{display:block;font-size:12px;color:var(--ui-info-muted)}.ca-metric strong{display:block;font-size:24px;line-height:32px;font-weight:600;font-variant-numeric:tabular-nums}
-      .ca-note{padding:8px 12px;border-left:2px solid var(--ui-warning-text);background:var(--ui-surface-muted);font-size:13px;overflow-wrap:anywhere}
-      .ca-table-scroll{overflow:auto;max-height:560px;max-height:min(560px,54vh);border-top:1px solid var(--ui-border);border-bottom:1px solid var(--ui-border)}
-      .ca-table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:13px;background:transparent}
-      .ca-table th,.ca-table td{padding:10px 12px;border-bottom:1px solid var(--ui-border);text-align:left;overflow-wrap:anywhere;vertical-align:middle}
-      .ca-table th{position:sticky;top:0;background:var(--ui-surface-muted);font-weight:500;z-index:1}
-      .ca-table tbody tr:last-child td{border-bottom:0}.ca-table tr[data-selected=true]{background:var(--ui-info-bg)}
-      .ca-table .ca-number{font-variant-numeric:tabular-nums}.ca-table .ca-business{width:29%}.ca-table .ca-op{width:18%}
-      .ca-table .ca-small{width:10%}.ca-table .ca-action{width:60px}.ca-table button{max-width:100%}
-      .ca-table td small{display:block;color:var(--ui-info-muted);line-height:18px}.ca-page{justify-content:flex-end;padding:10px 0}
-      .ca-page>span:first-child{margin-right:auto;font-size:13px}.ca-empty{padding:36px 12px;text-align:center;color:var(--ui-info-muted)}
-      .ca-detail{border-top:1px solid var(--ui-border);padding:16px 0;min-width:0;scroll-margin-top:72px}.ca-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0}
-      .ca-facts div{min-width:0}.ca-facts dt{font-size:12px;color:var(--ui-info-muted)}.ca-facts dd{margin:4px 0;overflow-wrap:anywhere;font-size:13px}
-      .ca-evidence{border-top:1px solid var(--ui-border);padding:8px 0;min-width:0;font-size:13px;overflow-wrap:anywhere}
-      .ca-evidence summary{white-space:normal}.ca-evidence details{margin:8px 0 8px 16px}.ca-evidence pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/20px var(--font-family);color:var(--ui-text)}
-      .ca-sample-group{padding-top:12px;min-width:0}.ca-sample-group h4{font-size:13px;line-height:20px;margin:0 0 8px}
-      .ca-refs{display:grid;grid-template-columns:140px minmax(0,1fr);gap:6px 12px;margin:10px 0}.ca-refs dt{color:var(--ui-info-muted)}.ca-refs dd{margin:0;overflow-wrap:anywhere}
-      @media(max-width:1000px){.ca-facts{grid-template-columns:repeat(2,minmax(0,1fr))}.ca-tools .ca-search{max-width:none}.ca-table{min-width:760px}}
-    `}</style>;
+    return null;
   }
   function Filters({ value, onChange, disabled }) {
     const [query, setQuery] = React.useState(value.query);
@@ -64,30 +35,28 @@
     </form>;
   }
   function Page({ page, onChange, disabled, label = '' }) {
-    return <div className="ca-page"><span aria-live="polite">共 {page.total} 项 · 第 {page.number} / {Math.max(1, page.total_pages)} 页</span>
-      <label>每页<select aria-label={label + '每页数量'} value={page.size} disabled={disabled} onChange={event => onChange({ size: Number(event.target.value), page: 1 })}>
-        {Array.from(new Set([10, 20, 50, page.size])).sort((a, b) => a - b).map(size => <option key={size} value={size}>{size}</option>)}</select></label>
-      <Button icon="chevron-left" aria-label={label + '上一页'} disabled={disabled || page.number <= 1} onClick={() => onChange({ page: page.number - 1 })} />
-      <Button icon="chevron-right" aria-label={label + '下一页'} disabled={disabled || page.number >= page.total_pages} onClick={() => onChange({ page: page.number + 1 })} /></div>;
+    return <window.WorkbenchListControls.Pager page={page.number} pages={Math.max(1, page.total_pages)} total={page.total} size={page.size}
+      sizes={Array.from(new Set([10, 20, 50, page.size])).sort((a, b) => a - b)} disabled={disabled} label={label}
+      onPage={number => onChange({ page: number })} onSize={size => onChange({ size, page: 1 })} />;
   }
   function Table({ rows, selected, onSelect, onPart, disabled, canView, scope, adapter, onSort, onFilter, widths, onResize, total }) {
     const columns = [['part_no', '图号 / 零件', 240], ['operation_label', '工序 / 来源', 210], ['old_unit_hours', '原定额 h/件', 155],
       ['suggested_unit_hours', '建议 h/件', 140], ['sample_count', '有效样本', 125], ['absolute_deviation_percent', '偏差', 125], ['status', '状态', 125]];
     const width = (key, value) => widths[key] || value;
-    return <div className="ca-table-scroll"><table className="ca-table" aria-label="校准明细" style={{ minWidth: 60 + columns.reduce((sum, [key, , value]) => sum + width(key, value), 0) }}><thead><tr>
-      {columns.map(([key, title, value]) => <th key={key} style={{ width: width(key, value) }} aria-sort={scope.sort === key ? scope.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
+    return <div className="ca-table-scroll wb-table-frame" tabIndex={0} role="region" aria-label="校准明细滚动区域"><table className="ca-table" aria-label="校准明细" style={{ minWidth: 60 + columns.reduce((sum, [key, , value]) => sum + width(key, value), 0) }}><caption className="wb-visually-hidden">当前筛选范围的校准建议；建议不直接修改已有批次定额。</caption><thead><tr>
+      {columns.map(([key, title, value]) => <th key={key} scope="col" style={{ width: width(key, value) }} aria-sort={scope.sort === key ? scope.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
         <window.ResourceTableHeader column={{ key, title }} kind="calibration" scope={scope} adapter={adapter} sort={scope.sort} direction={scope.direction} sortActive
           onSort={onSort} onFilter={rule => onFilter(key, rule)} filter={scope.column_filters[key]} matchingCount={total}
           width={width(key, value)} onResize={value => onResize(key, Math.min(16384, value))} disabled={disabled} scopeTransform={window.CalibrationAPI.facetScope} />
-      </th>)}<th className="ca-action">详情</th>
+      </th>)}<th scope="col" className="ca-action">详情</th>
     </tr></thead><tbody>{rows.map(row => <tr key={row.suggestion_ref} data-ref={row.suggestion_ref} data-selected={selected === row.suggestion_ref}>
       <td><Button className="lnk" aria-label={'查看零件 ' + row.part_no} disabled={disabled || !canView || row.capabilities.view !== true || typeof onPart !== 'function'}
         onClick={() => onPart(row)}>{row.part_no}</Button><small>{row.part_name}</small></td><td>{row.sequence} · {row.operation_label}<small>{source(row.source)}</small></td>
       <td className="ca-number">{text(row.old_unit_hours, '未提供')}</td><td className="ca-number">{text(row.suggested_unit_hours, '暂无建议')}</td><td className="ca-number">{row.sample_count}</td>
       <td className="ca-number" style={{ color: row.over_20_percent ? 'var(--ui-danger-text)' : 'var(--ui-info-muted)' }}>{row.deviation_percent === null ? '未计算' : (row.deviation_percent > 0 ? '+' : '') + row.deviation_percent + '%'}</td>
       <td>{row.status === 'insufficient_data' ? '数据不足' : '待复核'}</td><td><Button icon="arrow-right" className="mini" aria-label={'查看 ' + row.part_no + ' ' + row.sequence + ' ' + row.operation_label}
-        disabled={disabled} reason={canView && row.capabilities.view === true ? '' : '查看权限尚未确认，暂不能打开。'} onClick={() => onSelect(row.suggestion_ref)} /></td>
-    </tr>)}</tbody></table>{!rows.length && <div className="ca-empty" role="status">当前筛选没有记录。</div>}</div>;
+        disabled={disabled} reasonDisplay="tooltip" reason={canView && row.capabilities.view === true ? '' : '查看权限尚未确认，暂不能打开。'} onClick={() => onSelect(row.suggestion_ref)} /></td>
+    </tr>)}</tbody></table>{!rows.length && <window.WorkbenchListControls.EmptyState kind="empty" title="当前筛选没有记录" hint="调整图号、工序来源或建议状态后重新查询。" />}</div>;
   }
   window.CalibrationControls = { Button, Icon, ErrorBox, Styles, Filters, Page, Table, useRead, text, hours, source, writeReason };
 })();

@@ -298,16 +298,10 @@
     }, "\u8FD4\u56DE\u8FD0\u884C\u9875"), onNavigate && initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-left",
       onClick: () => onNavigate('analysis', returnContext(initialContext.return_plan_context))
-    }, "\u8FD4\u56DE\u6B63\u5F0F\u65B9\u6848"), onNavigate && /*#__PURE__*/React.createElement(C.Button, {
-      icon: "circle-alert",
-      disabled: !shown || read.busy,
-      onClick: () => onNavigate(view === 'delay' ? 'analysis' : 'delay', remembered)
-    }, view === 'delay' ? '返回比较' : '交付风险'), onNavigate && view !== 'gantt' && /*#__PURE__*/React.createElement(C.Button, {
-      icon: "chart-gantt",
-      disabled: !shown || read.busy,
-      onClick: () => onNavigate('gantt', remembered)
-    }, "\u67E5\u770B\u7518\u7279"), typeof renderAdoption === 'function' ? renderAdoption(candidateRef) : /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u8FD4\u56DE\u6B63\u5F0F\u65B9\u6848"), typeof renderAdoption === 'function' ? renderAdoption(candidateRef) : /*#__PURE__*/React.createElement(C.Button, {
       icon: "check",
+      className: "btn primary",
+      reasonDisplay: "inline",
       reason: "\u6B63\u5F0F\u91C7\u7528\u5165\u53E3\u672A\u63A5\u5165\uFF0C\u8BF7\u5148\u6838\u5BF9\u5B8C\u6574\u5019\u9009\u65B9\u6848\u3002"
     }, "\u91C7\u7528\u65B9\u6848"), typeof renderTrial === 'function' ? renderTrial({
       candidateRef,
@@ -444,7 +438,11 @@
       error: rangeError
     }), /*#__PURE__*/React.createElement("div", {
       className: "rc-scope"
-    }, /*#__PURE__*/React.createElement("span", null, "\u8BFB\u53D6\u8303\u56F4\uFF1A", scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束）' : '全部时间', scope.batch_ref && ' · 指定批次 ' + scope.batch_ref, ' · 安排 ' + shown.task_count + ' / 候选共 ' + shown.candidate_task_count + ' 道 · 未安排 ' + (shown.unplanned_operation_count === null ? '未知（未记录）' : shown.unplanned_operation_count + ' 道')), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u8303\u56F4\u4E0E\u5BFC\u51FA\u53E3\u5F84"), /*#__PURE__*/React.createElement("div", null, "\u65F6\u95F4\u7B5B\u9009\u6309\u91CD\u53E0\u8BFB\u53D6\uFF0C\u4FDD\u7559\u6BCF\u9053\u5B89\u6392\u5B8C\u6574\u8D77\u6B62\uFF1B\u672A\u5B89\u6392\u9879\u6CA1\u6709\u65F6\u95F4\u533A\u95F4\uFF0C\u4ECD\u968F\u8303\u56F4\u4FDD\u7559\u3002\u641C\u7D22\u4EC5\u5F71\u54CD\u9884\u89C8\u548C\u660E\u7EC6\uFF0C\u4E0D\u6539\u53D8\u5BFC\u51FA\u8303\u56F4\u3002\u5BFC\u51FA\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u5168\u90E8\u5B89\u6392\u4E0E\u672A\u5B89\u6392\u8BB0\u5F55\u3002"))), view === 'delay' && /*#__PURE__*/React.createElement(C.Delivery, {
+    }, /*#__PURE__*/React.createElement("span", null, "\u8BFB\u53D6\u8303\u56F4\uFF1A", scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束）' : '全部时间', scope.batch_ref && ' · 指定批次', ' · 安排 ' + shown.task_count + ' / 候选共 ' + shown.candidate_task_count + ' 道 · 未安排 ' + (shown.unplanned_operation_count === null ? '未知（未记录）' : shown.unplanned_operation_count + ' 道')), scope.batch_ref && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '筛选批次编号': scope.batch_ref
+      }
+    }), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u8303\u56F4\u4E0E\u5BFC\u51FA\u53E3\u5F84"), /*#__PURE__*/React.createElement("div", null, "\u65F6\u95F4\u7B5B\u9009\u6309\u91CD\u53E0\u8BFB\u53D6\uFF0C\u4FDD\u7559\u6BCF\u9053\u5B89\u6392\u5B8C\u6574\u8D77\u6B62\uFF1B\u672A\u5B89\u6392\u9879\u6CA1\u6709\u65F6\u95F4\u533A\u95F4\uFF0C\u4ECD\u968F\u8303\u56F4\u4FDD\u7559\u3002\u641C\u7D22\u4EC5\u5F71\u54CD\u9884\u89C8\u548C\u660E\u7EC6\uFF0C\u4E0D\u6539\u53D8\u5BFC\u51FA\u8303\u56F4\u3002\u5BFC\u51FA\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u5168\u90E8\u5B89\u6392\u4E0E\u672A\u5B89\u6392\u8BB0\u5F55\u3002"))), view === 'delay' && /*#__PURE__*/React.createElement(C.Delivery, {
       data: shown.delivery_risks,
       onLast: lastOperation
     }), /*#__PURE__*/React.createElement("div", {

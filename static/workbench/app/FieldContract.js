@@ -14,12 +14,15 @@
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
   const nullable = value => value === null || Number.isFinite(value) && value >= 0;
   const time = value => value === null || typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(value);
+  const validTime = value => typeof value === 'string' && time(value) && Number.isFinite(Date.parse(value + 'Z')) && new Date(value + 'Z').toISOString().slice(0, 19) === value;
   const quantityReasons = {
     plan_target_not_recorded: '旧计划未记录原数量证据',
     plan_target_unavailable: '原计划数量证据不可用',
     plan_target_invalid: '原计划数量证据无效'
   };
-  const quantity = value => value == null ? '未知' : String(value);
+  const quantity = value => window.WorkbenchFormat.number(value, {
+    digits: 0
+  });
   const pieceLabel = value => value.piece_id === null ? '共同工序' : '分件 ' + value.piece_id;
   function planQuantity(value) {
     const valid = n => Number.isSafeInteger(n) && n >= 0;
@@ -60,22 +63,35 @@
     return Object.fromEntries(fields.map(key => [key, record && record[key] != null ? String(record[key]) : '']).concat([['reason', ''], ['declared_operator', '']]));
   }
   function input(value, record, action) {
-    const result = {};
+    const result = {},
+      errors = [];
+    const bad = (path, message) => errors.push({
+      path,
+      message
+    });
     fields.forEach(key => {
       let v = value[key];
       if (['completed_quantity', 'effective_processing_hours'].includes(key)) {
-        if (v !== '' && (!Number.isFinite(Number(v)) || Number(v) < 0 || key === 'completed_quantity' && !Number.isSafeInteger(Number(v)))) throw C.failure('数量必须为非负整数，工时必须为有限非负数。');
+        if (v !== '' && (!Number.isFinite(Number(v)) || Number(v) < 0 || key === 'completed_quantity' && !Number.isSafeInteger(Number(v)))) bad(key, key === 'completed_quantity' ? '数量必须为非负整数。' : '工时必须为有限非负数。');
         v = v === '' ? null : Number(v);
-      } else if (key === 'actual_start' || key === 'actual_end') v = v ? v.length === 16 ? v + ':00' : v : null;else if (key.endsWith('_ref')) v = v || null;
+      } else if (key === 'actual_start' || key === 'actual_end') {
+        v = v ? v.length === 16 ? v + ':00' : v : null;
+        if (v !== null && !validTime(v)) bad(key, '请填写有效的工厂本地日期和时间，未知时请清空。');
+      } else if (key.endsWith('_ref')) v = v || null;
       if (!record || v !== record[key]) result[key] = v;
     });
     if (record) {
-      if (!value.reason.trim()) throw C.failure('请填写补齐或更正原因。');
+      if (!value.reason.trim()) bad('reason', '请填写补齐或更正原因。');
       if (!Object.keys(result).length) throw C.failure('内容没有变化。');
       result.original_revision_ref = record.revision_ref;
       result.reason = value.reason.trim();
     } else result.source = 'manual';
-    if (action === 'supplement' && Object.keys(result).some(key => fields.includes(key) && record[key] !== null && record[key] !== '' && result[key] !== record[key])) throw C.failure('补齐不能修改已知事实，请使用明确更正。');
+    if (action === 'supplement') fields.filter(key => Object.prototype.hasOwnProperty.call(result, key) && record[key] !== null && record[key] !== '' && result[key] !== record[key]).forEach(key => bad(key, '补齐不能修改已知事实，请使用明确更正。'));
+    const start = value.actual_start ? Date.parse(value.actual_start + 'Z') : NaN,
+      end = value.actual_end ? Date.parse(value.actual_end + 'Z') : NaN;
+    if (Number.isFinite(start) && Number.isFinite(end) && start > end) bad('actual_end', '本次实际完工不能早于实际开工。');
+    if (Number.isFinite(start) && Number.isFinite(end) && end >= start && value.effective_processing_hours !== '' && Number(value.effective_processing_hours) > (end - start) / 3600000) bad('effective_processing_hours', '有效工时不能超过本次实际起止跨度。');
+    if (errors.length) throw C.failure('请核对标记的报工字段。', errors);
     result.declared_operator = value.declared_operator.trim();
     return result;
   }
@@ -91,8 +107,11 @@
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  const display = value => value === null || value === undefined || value === '' ? '待补' : String(value);
-  const date = value => value ? value.replace('T', ' ') : '待补';
+  const display = value => value === null || value === undefined || value === '' ? '未知' : String(value);
+  // Report times are second-precision facts (see the time pattern and step="1" inputs); never drop the seconds.
+  const date = value => window.WorkbenchFormat.dateTime(value, {
+    seconds: true
+  });
   window.FieldContract = {
     states,
     fields,
@@ -109,6 +128,7 @@
     quantity,
     pieceLabel,
     planQuantity,
-    quantityReasons
+    quantityReasons,
+    validTime
   };
 })();

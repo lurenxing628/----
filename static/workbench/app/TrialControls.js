@@ -6,9 +6,11 @@
     Icon,
     Modal
   } = window.ResourceControls;
-  const timeLabel = v => v ? String(v).replace('T', ' ') : '未记录';
-  const number = v => v === null || v === undefined ? '不可评估' : typeof v === 'number' ? v.toLocaleString('zh-CN', {
-    maximumFractionDigits: 2
+  const timeLabel = v => v ? window.WorkbenchFormat.dateTime(v, {
+    seconds: true
+  }) : '未记录';
+  const number = v => v === null || v === undefined ? '不可评估' : typeof v === 'number' ? window.WorkbenchFormat.number(v, {
+    digits: Number.isInteger(v) ? 0 : 2
   }) : String(v);
   const sourceLabel = identity => (identity.display_name || '原排产候选') + (identity.plan_ref && identity.version ? ' · v' + identity.version : '');
   const statusLabel = v => ({
@@ -30,12 +32,10 @@
   function ErrorBox({
     error
   }) {
-    return error ? /*#__PURE__*/React.createElement("div", {
-      className: "tt-error",
-      role: "alert"
-    }, error.message || String(error), Array.isArray(error.fields) && error.fields.map((r, i) => /*#__PURE__*/React.createElement("div", {
-      key: i
-    }, r.message))) : null;
+    return error ? /*#__PURE__*/React.createElement(window.WorkbenchError, {
+      error: error,
+      fields: Array.isArray(error.fields) ? error.fields : []
+    }) : null;
   }
   function Pager({
     page,
@@ -44,52 +44,19 @@
     label = '记录'
   }) {
     const pages = page.pages === undefined ? Math.ceil(page.total / page.size) : page.pages;
-    const input = React.useRef(null),
-      [jump, setJump] = React.useState(page.number);
-    React.useEffect(() => {
-      setJump(page.number);
-    }, [page.number]);
-    function apply() {
-      if (input.current.reportValidity()) onPage(Number(jump));
-    }
-    return /*#__PURE__*/React.createElement("div", {
-      className: "tt-pager"
-    }, /*#__PURE__*/React.createElement("span", null, page.total, " \u9879 \xB7 \u7B2C ", page.number, " / ", Math.max(pages, 1), " \u9875"), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": label + '上一页',
-      disabled: busy || page.number <= 1,
-      onClick: () => onPage(page.number - 1)
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": label + '下一页',
-      disabled: busy || page.number >= pages,
-      onClick: () => onPage(page.number + 1)
-    }), pages > 2 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("input", {
-      ref: input,
-      type: "number",
-      required: true,
-      min: "1",
-      max: pages,
-      step: "1",
-      value: jump,
-      "aria-label": label + '页码',
-      disabled: busy,
-      style: {
-        width: 66
+    return /*#__PURE__*/React.createElement(window.WorkbenchControls.Pager, {
+      page: {
+        ...page,
+        pages: Math.max(pages, 1)
       },
-      onChange: e => setJump(e.target.value),
-      onKeyDown: e => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          apply();
-        }
-      }
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "arrow-right",
-      "aria-label": '跳转' + label + '页',
-      disabled: busy,
-      onClick: apply
-    })));
+      label: label,
+      unit: "\u9879",
+      onPage: onPage,
+      busy: busy,
+      showPageJump: pages > 2,
+      jumpLabel: label + '页码',
+      jumpActionLabel: '跳转' + label + '页'
+    });
   }
   function Tabs({
     value,
@@ -132,7 +99,10 @@
     }, /*#__PURE__*/React.createElement("table", {
       className: "tt-table",
       "aria-label": label
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, columns.map(c => /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, label), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, columns.map(c => /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       key: c[0]
     }, c[0])))), /*#__PURE__*/React.createElement("tbody", null, rows.slice((page - 1) * size, page * size).map((row, i) => /*#__PURE__*/React.createElement("tr", {
       key: row.change_ref || row.row_ref || row.resource_ref || i
@@ -161,7 +131,7 @@
       label: "\u7EA6\u675F\u95EE\u9898",
       columns: [['级别', r => r.severity === 'warning' ? '提示' : '阻断'], ['问题', r => r.message], ['关联', r => r.task_ref && onSelect ? /*#__PURE__*/React.createElement(Button, {
         icon: "arrow-right",
-        "aria-label": '定位问题工序 ' + r.code,
+        "aria-label": "\u5B9A\u4F4D\u95EE\u9898\u5DE5\u5E8F",
         onClick: () => onSelect(r.task_ref)
       }, "\u5DE5\u5E8F") : '整体']]
     });

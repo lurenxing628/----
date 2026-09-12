@@ -65,32 +65,12 @@
     const current = opened && opened.identity === identity && !disabled;
     return <span ref={holder} className="wb-resource-th" data-column-key={column.key} data-sort-direction={sorted ? direction : undefined}
       style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0, width: '100%', position: 'relative', paddingRight: 5, boxSizing: 'border-box' }}>
-      <style>{`
-        .wb-resource-th { user-select: none; }
-        .wb-resource-th .wb-th-sort-shell { min-width: 0; flex: 1 1 auto; }
-        .wb-resource-th .wb-th-sort-shell > span { display: flex !important; width: 100%; min-width: 0; }
-        .wb-resource-th .wb-th-sort { display: flex; align-items: center; gap: 3px; height: 30px; width: 100%; min-width: 0; border: 0; border-radius: 4px; padding: 0; background: transparent; color: inherit; font: inherit; }
-        .wb-resource-th .wb-th-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .wb-resource-th .wb-th-sort-glyph { width: 10px; flex: none; display: flex; flex-direction: column; }
-        .wb-resource-th .wb-th-sort-glyph svg { display: block; width: 10px; height: 7px; }
-        .wb-resource-th .wb-th-filter { width: 20px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 4px; color: var(--ui-info-muted); background: transparent; }
-        .wb-resource-th .wb-th-filter[aria-pressed="true"] { color: var(--ui-info-text); background: var(--ui-info-bg); }
-        .wb-resource-th :is(.wb-th-filter,.wb-th-sort):hover:not(:disabled) { background: var(--ui-surface-muted); }
-        .wb-resource-th :is(.wb-th-filter,.wb-th-sort):disabled { color: var(--ui-info-muted); opacity: .55; }
-        .wb-resource-th .wb-th-resize { position: absolute; right: -7px; top: -8px; bottom: -8px; width: 9px; touch-action: none; cursor: col-resize; }
-        .wb-resource-th .wb-th-resize::after { content: ''; position: absolute; right: 4px; top: 22%; bottom: 22%; width: 1px; background: transparent; }
-        .wb-resource-th .wb-th-resize:is(:hover,:focus-visible,[data-dragging="true"])::after { background: var(--ui-primary); }
-        .wb-resource-th .wb-th-resize[aria-disabled="true"] { cursor: default; }
-        .wb-resource-th .wb-th-resize:focus-visible { outline: 1px solid var(--ui-primary); outline-offset: -1px; }
-        .wb-resource-table-filter .wb-table-facet-option:hover { background: var(--ui-surface-muted); }
-        .wb-resource-table-filter .wb-table-facet-option input { width: 16px; height: 16px; padding: 0; }
-      `}</style>
+      {null}
       <span className="wb-th-sort-shell"><Button className="wb-th-sort" disabled={disabled || typeof onSort !== 'function'}
         title={column.title + '：' + (next === 'asc' ? '升序' : next === 'desc' ? '降序' : '恢复默认顺序')} aria-label={column.title + '排序'}
         style={{ justifyContent: column.numeric ? 'flex-end' : 'flex-start' }} onClick={event => { event.stopPropagation(); onSort(column.key, next); }}>
-        <span className="wb-th-title">{column.title}</span><span className="wb-th-sort-glyph" aria-hidden="true">
-          <span style={{ transform: 'rotate(180deg)', opacity: sorted && direction === 'asc' ? 1 : .3 }}><Icon name="chevron-down" /></span>
-          <span style={{ opacity: sorted && direction === 'desc' ? 1 : .3 }}><Icon name="chevron-down" /></span></span>
+        <span className="wb-th-title">{column.title}</span>{sorted && <span className="wb-th-sort-glyph" aria-hidden="true">
+          <span style={direction === 'asc' ? { transform: 'rotate(180deg)' } : undefined}><Icon name="chevron-down" /></span></span>}
       </Button></span>
       <Button className="wb-th-filter" icon="search" disabled={disabled || typeof onFilter !== 'function'} aria-label={'筛选' + column.title}
         aria-haspopup="dialog" aria-expanded={!!current} aria-pressed={filtered} title={'筛选' + column.title + (filtered ? '（已筛选）' : '')}

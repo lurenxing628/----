@@ -71,7 +71,7 @@
             <span className="tb-spacer" style={{ flex: 1 }} /><Button icon="calendar-days" className="btn cal-batch" disabled={blocked || !data || request.loading}
               reason={source && source !== 'production' ? '当前不是生产数据，不能维护。' : ''} onClick={() => open({ mode: 'range' })}>批量维护</Button>
           </div>
-          {request.loading && <p role="status">正在读取工作日历…</p>}
+          {request.loading && <window.WorkbenchControls.EmptyState kind="loading" title="正在读取工作日历…" />}
           {data && <div className="cal-grid">{['一', '二', '三', '四', '五', '六', '日'].map(day => <div className="cal-wd" key={day}>{day}</div>)}
             {data.cells.map((cell, index) => {
               if (!cell) return <div key={'empty-' + index} className="cal-cell empty" />;
@@ -88,7 +88,7 @@
           <div><span className="sw rest" />调休 / 加班</div><div><span className="sw we" />周末（默认非工作）</div></div>
           <h3>默认规则</h3><p>未单独配置的日期：周一至周五按 8 小时、效率 100%，普通件 / 急件均可排产；周末默认不排产。</p>
           <h3>规则来源</h3><p>本页维护全局日历。人员专属日历与班次仍单独生效，不会在此清除。</p>
-          {data && <p>本机数据截至 {data.as_of.replace('T', ' ')}</p>}</div>
+          {data && <p>本机数据截至 {window.WorkbenchFormat.dateTime(data.as_of)}</p>}</div>
       </div>
       {dialog && dialog.mode === 'view' && <Modal title={dialog.day.date + ' · 日历详情'} icon="calendar-days" onClose={close}
         footer={<><Button onClick={close}>关闭</Button><Button icon="square-pen" onClick={() => open({ ...dialog, mode: 'day' })}>维护此日</Button></>}>
@@ -96,8 +96,8 @@
       {dialog && dialog.mode === 'day' && <window.CalendarDayDialog adapter={adapter} day={dialog.day} source={dialog.source} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
       {dialog && dialog.mode === 'range' && <window.CalendarRangeDialog adapter={adapter} month={month} source={source} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
       {orphan && <Modal title="工作日历操作回执" icon="history" locked={command.locked} onClose={close} footer={<Button disabled={command.locked} onClick={close}>关闭</Button>}>
-        <div className="modal-b form scroll"><p>原请求：{command.intent && command.intent.request_key || '本机待核实记录无法读取'}</p>
-          {command.intent && <p>{command.intent.action === 'confirm' ? '批量日历维护' : command.intent.ref}</p>}
+        <div className="modal-b form scroll">{command.intent ? <><p>{command.intent.action === 'confirm' ? '批量日历维护' : '日期配置维护'}</p>
+          <window.WorkbenchReference entries={{ '请求编号': command.intent.request_key, '日期编号': command.intent.ref }} /></> : <p>本机待核实记录无法读取</p>}
           <window.ResourceForms.Feedback command={command} />{command.phase === 'done' && <RefreshResult state={refreshState} onRefresh={refresh} />}</div></Modal>}
     </section>;
   }

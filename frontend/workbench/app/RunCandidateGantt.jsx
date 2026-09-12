@@ -52,7 +52,7 @@
       onMouseMove={event => { const item = hit(event); onHover(item ? { text: row.baseline ? B.title(item) : M.title(item.task), x: event.clientX, y: event.clientY } : null); }} onMouseLeave={() => onHover(null)}
       onClick={event => { const item = hit(event); if (item) choose(item); }}
       onKeyDown={event => {
-        if (!['Enter', ' ', 'Home', 'End', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+        if (!row.items.length || !['Enter', ' ', 'Home', 'End', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
         event.preventDefault(); const index = row.items.findIndex(i => row.baseline ? i.segment.row_ref === (baselineSelected && baselineSelected.segment && baselineSelected.segment.row_ref) : i.task.row_ref === (selected && selected.row_ref));
         const next = event.key === 'Home' ? 0 : event.key === 'End' ? row.items.length - 1 : ['Enter', ' '].includes(event.key) ? Math.max(0, index) : Math.max(0, Math.min(row.items.length - 1, index + (event.key === 'ArrowLeft' ? -1 : 1)));
         choose(row.items[next]);
@@ -60,18 +60,20 @@
   }
   function TaskList({ tasks, selected, onSelect, planned }) {
     const [top, setTop] = React.useState(0), height = 44, first = Math.max(0, Math.floor(top / height) - 3), end = Math.min(tasks.length, first + 16);
+    const head = React.useRef(null);
     return <><div className="rc-muted">{tasks.length} 道{planned ? '安排' : '未安排工序'}</div>
-      <div className="rc-list-row rc-muted" aria-hidden="true"><span>批次 / 零件</span><span>工序</span><span>{planned ? '开始 / 结束' : '状态 / 原因'}</span><span>{planned ? '设备 / 人员' : '生成时执行'}</span><span>详情</span></div>
-      <div className="rc-list" data-candidate-task-list role="region" aria-label={planned ? '候选任务安排' : '候选未安排明细'} onScroll={e => setTop(e.currentTarget.scrollTop)}>
-        <div style={{ height: tasks.length * height, position: 'relative', minWidth: 720 }}>
+      <div className="rc-virtual-table" role="table" aria-label={planned ? '候选任务安排' : '候选未安排明细'} aria-rowcount={tasks.length + 1} aria-colcount={5}>
+      <div className="rc-list-head" ref={head} role="rowgroup"><div className="rc-list-row rc-muted" role="row" aria-rowindex={1}>{['批次 / 零件', '工序', planned ? '开始 / 结束' : '状态 / 原因', planned ? '设备 / 人员' : '生成时执行', '详情'].map(label => <span role="columnheader" key={label}>{label}</span>)}</div></div>
+      <div className="rc-list" data-candidate-task-list role="rowgroup" tabIndex={0} aria-label={planned ? '候选任务安排滚动区' : '候选未安排明细滚动区'} onScroll={e => { setTop(e.currentTarget.scrollTop); if (head.current) head.current.scrollLeft = e.currentTarget.scrollLeft; }}>
+        <div role="presentation" style={{ height: tasks.length * height, position: 'relative', minWidth: 720 }}>
           {tasks.slice(first, end).map((t, i) => <div key={t.row_ref || t.operation_ref} className="rc-list-row" data-row-ref={t.row_ref || undefined} data-operation-ref={t.operation_ref}
-            aria-selected={selected && (t.row_ref ? selected.row_ref === t.row_ref : selected.operation_ref === t.operation_ref)} style={{ position: 'absolute', top: (first + i) * height, left: 0, right: 0 }}>
-            <span title={(t.batch_label || '未记录') + '\n' + (t.part_label || '未记录')}>{t.batch_label || '未记录'}<small>{t.part_label || '未记录'}</small></span>
-            <span title={M.number(t.sequence) + ' ' + (t.process_label || '未记录') + '\n' + M.pieceLabel(t)}>{M.pieceLabel(t)}<small>{M.number(t.sequence)} {t.process_label || '未记录'}</small></span>
-            <span title={planned ? M.title(t) : t.reason.message}>{planned ? <>{M.timeLabel(t.start)}<small>{window.PointContract.isPoint(t) ? '时间点 · 0 h · 不占用资源' : M.timeLabel(t.end)}</small></> : t.reason.message}</span>
-            <span title={planned ? (t.machine && t.machine.label || '未记录') + '\n' + (t.operator && t.operator.label || '未记录') : ''}>{planned ? <>{t.machine && t.machine.label || '设备未记录'}<small>{t.operator && t.operator.label || '人员未记录'}</small></> : t.execution_at_generation ? M.executionValue(t.execution_at_generation.execution_state) : '未记录'}</span>
-            <Button icon="search" className="mini" aria-label={'工序详情 ' + (t.row_ref || t.operation_ref)} onClick={() => onSelect(t)}>详情</Button></div>)}
-        </div>{!tasks.length && <div className="rc-empty">当前预览没有匹配记录。</div>}</div></>;
+            role="row" aria-rowindex={first + i + 2} aria-selected={selected && (t.row_ref ? selected.row_ref === t.row_ref : selected.operation_ref === t.operation_ref)} style={{ position: 'absolute', top: (first + i) * height, left: 0, right: 0 }}>
+            <span role="cell" title={(t.batch_label || '未记录') + '\n' + (t.part_label || '未记录')}>{t.batch_label || '未记录'}<small>{t.part_label || '未记录'}</small></span>
+            <span role="cell" title={M.number(t.sequence) + ' ' + (t.process_label || '未记录') + '\n' + M.pieceLabel(t)}>{M.pieceLabel(t)}<small>{M.number(t.sequence)} {t.process_label || '未记录'}</small></span>
+            <span role="cell" title={planned ? M.title(t) : t.reason.message}>{planned ? <>{M.timeLabel(t.start)}<small>{window.PointContract.isPoint(t) ? '时间点 · 0 h · 不占用资源' : M.timeLabel(t.end)}</small></> : t.reason.message}</span>
+            <span role="cell" title={planned ? (t.machine && t.machine.label || '未记录') + '\n' + (t.operator && t.operator.label || '未记录') : ''}>{planned ? <>{t.machine && t.machine.label || '未记录'}<small>{t.operator && t.operator.label || '未记录'}</small></> : t.execution_at_generation ? M.executionValue(t.execution_at_generation.execution_state) : '未记录'}</span>
+            <span role="cell"><Button icon="search" className="mini" aria-label={'工序详情 ' + (t.batch_label || '批次未记录') + ' ' + M.number(t.sequence) + ' ' + (t.process_label || '工序未记录') + ' ' + M.pieceLabel(t)} onClick={() => onSelect(t)}>详情</Button></span></div>)}
+        </div></div></div>{!tasks.length && <window.WorkbenchListControls.EmptyState title="当前预览没有匹配记录" />}</>;
   }
   function RunCandidateGantt({ data, query, selected, onSelect }) {
     const [mode, setMode] = React.useState('machine'), [zoom, setZoom] = React.useState(1), [viewport, setViewport] = React.useState(600);
@@ -98,11 +100,7 @@
     function pan(left) { if (owner.current) owner.current.scrollLeft = Math.max(0, Math.min(width - viewport, left)); }
     const visible = M.visibleRows(model.rows, scroll.top - 48, scroll.top + 384);
     const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, scroll.left, viewport);
-    return <section ref={host} className="rc-gantt" aria-label="候选甘特预览"><window.PointGantt.Styles /><style>{`
-      .rc-gantt{min-width:0}.rc-gantt .rc-axis{height:40px;overflow:hidden;border-bottom:1px solid var(--ui-border);position:relative;margin-left:156px}.rc-gantt .rc-tick{position:absolute;top:0;white-space:nowrap;color:var(--ui-info-muted);font-size:10px;line-height:18px;border-left:1px solid var(--ui-border);padding-left:4px}
-      .rc-gantt .rc-scroll{height:310px;overflow:auto;position:relative;border-bottom:1px solid var(--ui-border);outline-offset:-2px}.rc-gantt .rc-lane{position:absolute;left:0;right:0;border-bottom:1px solid var(--ui-border);height:48px}.rc-gantt .rc-lane-label{position:sticky;left:0;width:156px;height:47px;padding:7px 8px;background:var(--ui-surface);border-right:1px solid var(--ui-border);z-index:2;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rc-gantt .rc-lane-label small{white-space:nowrap}.rc-gantt .rc-bar-space{position:absolute;left:156px;top:0;height:48px}
-      .rc-gantt .rc-overview{width:100%;height:32px;border-bottom:1px solid var(--ui-border)}.run-candidate-workspace .rc-tooltip{position:fixed;pointer-events:none;z-index:10030;max-width:350px;max-height:calc(100vh - 16px);overflow:auto;padding:10px 12px;border:1px solid var(--ui-border);border-radius:4px;background:var(--ui-surface);color:var(--ui-text);white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.6;box-shadow:0 3px 12px #0002}
-    `}</style><div className="rc-heading"><div role="group" className="rc-tabs" aria-label="候选甘特维度">{Object.entries(M.kindLabels).map(([key, label]) =>
+    return <section ref={host} className="rc-gantt" aria-label="候选甘特预览"><window.PointGantt.Styles /><div className="rc-heading"><div role="group" className="rc-tabs" aria-label="候选甘特维度">{Object.entries(M.kindLabels).map(([key, label]) =>
       <Button key={key} aria-pressed={mode === key} onClick={() => setMode(key)}>{label}</Button>)}</div>
       <div className="rc-tools"><BC.Toggle state={baseline} /><Button icon="minus" aria-label="缩小候选时间轴" disabled={zoom <= 1} onClick={() => setZoom(z => Math.max(1, z / 2))} />
         <input type="range" aria-label="候选时间轴缩放" min="1" max="128" step="1" value={zoom} style={{ width: 100 }} onChange={e => setZoom(Number(e.target.value))} />
@@ -111,7 +109,7 @@
       <BC.Panel state={baseline} rows={model.comparisons || []} chosen={chosen} onChoose={selectBaseline} workspace={data} />
       <div className="rc-muted">{model.groupCount} 组 · {model.rows.length} 轨 · 重叠拆轨（不等同于业务冲突结论） · 外协独立色</div>
       {model.start !== null && <div className="rc-heading rc-muted"><span>{M.timeLabel(M.wire(model.start))}</span><span>{M.timeLabel(M.wire(model.end))}</span></div>}
-      <div className="rc-axis">{tickRows.map(t => <span key={t.at} className="rc-tick" style={{ left: t.x - scroll.left }}>{t.label.slice(5, 10)}<br />{t.label.slice(11)}</span>)}</div>
+      <div className="rc-axis">{tickRows.map(t => <span key={t.at} className="rc-tick" style={{ left: t.x - scroll.left }}>{window.WorkbenchFormat.dateTime(t.label, { seconds: true }).slice(5, 10)}<br />{window.WorkbenchFormat.dateTime(t.label, { seconds: true }).slice(11)}</span>)}</div>
       <div ref={owner} className="rc-scroll" data-candidate-gantt-scroll role="region" aria-label="候选时间安排" tabIndex={0}
         onScroll={e => { setScroll({ left: e.currentTarget.scrollLeft, top: e.currentTarget.scrollTop }); setHover(null); }}>
         <div style={{ position: 'relative', width: width + labelWidth, height: Math.max(288, model.height) }}>

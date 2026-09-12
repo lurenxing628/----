@@ -9,6 +9,7 @@ from flask import Blueprint, current_app, g, get_flashed_messages, jsonify, rend
 
 from .assets import WorkbenchAssetsUnavailable, read_asset_manifest
 from .navigation_boot import WorkbenchNavigationInvalid, read_navigation
+from .navigation_metadata import VIEW_ALIASES, VIEW_TITLES, navigation_groups
 
 bp = Blueprint("workbench", __name__)
 
@@ -40,15 +41,6 @@ def _register_api_response_boundary(state):
     state.app.after_request(normalize_read_failure)
 
 
-VIEW_TITLES = {
-    "dashboard": "值班台", "process": "基础资料", "batches": "批次管理", "run": "执行排产",
-    "analysis": "选择排产方案", "gantt": "设备 / 人员 / 批次甘特", "delay": "交付风险",
-    "field": "现场记录", "fieldgantt": "现场实际甘特", "review": "执行复盘",
-    "reports": "报表中心", "calib": "工时定额校准", "basedata": "主数据总览", "system": "系统管理",
-    "trial": "方案试调",
-}
-
-
 def _unavailable(message: str, status: int):
     response = current_app.make_response((render_template("workbench/unavailable.html", message=message), status))
     response.headers["Cache-Control"] = "no-store"
@@ -78,6 +70,9 @@ def _host(view: str):
                           "field", "fieldgantt", "run", "calib", "trial", "dashboard", "delay"],
         "entry_url": url_for("workbench.index"),
         "trial_url": url_for("workbench.trial"),
+        "nav_groups": navigation_groups(),
+        "view_aliases": dict(VIEW_ALIASES),
+        "help_url": url_for("scheduler.config_manual_page"),
         "overview_url": url_for("workbench.system_overview"),
         "instance_label": current_app.config.get("WORKBENCH_INSTANCE_LABEL", "本机数据"),
     }

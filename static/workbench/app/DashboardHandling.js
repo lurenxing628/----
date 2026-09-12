@@ -41,15 +41,20 @@
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: 'dy-note ' + (s.phase === 'confirmed' ? 'success' : 'warning'),
       role: "status"
-    }, s.phase === 'confirmed' ? '已确认：' + (s.receipt.result === 'unchanged' ? '无变化，未重复增加历史。' : '处置与历史已保存。') : s.phase === 'rejected' ? '本次明确未写入。' : '结果尚未确认，仅查询原请求。'), /*#__PURE__*/React.createElement("p", null, s.subject), /*#__PURE__*/React.createElement("div", {
-      className: "dy-evidence"
-    }, /*#__PURE__*/React.createElement("p", null, "\u539F\u8BF7\u6C42 ", s.request_key), s.phase === 'confirmed' && /*#__PURE__*/React.createElement("p", null, "\u56DE\u6267 ", s.receipt.receipt_ref)), /*#__PURE__*/React.createElement(P.Facts, {
+    }, s.phase === 'confirmed' ? '已确认：' + (s.receipt.result === 'unchanged' ? '无变化，未重复增加历史。' : '处置与历史已保存。') : s.phase === 'rejected' ? '本次明确未写入。' : '结果尚未确认，仅查询原请求。'), /*#__PURE__*/React.createElement("p", null, s.subject), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '原请求编号': s.request_key,
+        '回执编号': s.phase === 'confirmed' ? s.receipt.receipt_ref : null
+      }
+    }), /*#__PURE__*/React.createElement(P.Facts, {
       handling: s.phase === 'confirmed' ? s.receipt.data.handling : C.expected(s)
     }), s.phase === 'pending' ? /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       icon: "refresh-cw",
       busy: command.busy,
       onClick: command.lookup
     }, "\u67E5\u8BE2\u539F\u56DE\u6267") : /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       icon: "check",
       onClick: onFinish
     }, "\u5B8C\u6210\u6838\u5B9E\u5E76\u5237\u65B0"));
@@ -88,9 +93,11 @@
       locked: command.busy,
       onClose: onClose,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
+        reasonDisplay: "inline",
         onClick: onClose,
         disabled: command.busy
       }, saved && saved.phase === 'pending' ? '关闭并保留请求' : '关闭窗口'), !saved && /*#__PURE__*/React.createElement(Button, {
+        reasonDisplay: "inline",
         icon: "check",
         className: "btn primary",
         busy: command.busy,

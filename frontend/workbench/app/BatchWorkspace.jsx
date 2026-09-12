@@ -66,6 +66,8 @@
     const [opened, setOpened] = React.useState(() => deferred ? null : initial.opened);
     const [dialog, setDialog] = React.useState(null), [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false);
     const [revision, setRevision] = React.useState(0), [sort, setSort] = React.useState(initial.sort), [bulk, setBulk] = React.useState({ priority: '', due_date: '', remark: '' });
+    const bulkGuard = window.WorkbenchGuards.useDirtyGuard({ dirty: !!dialog && dialog.type === 'bulk' && Object.values(bulk).some(Boolean),
+      locked: !!dialog && dialog.type === 'bulk' && busy, message: '批量修改条件尚未确认，离开会放弃本次修改。' });
     React.useEffect(() => { alive.current = true; return () => { alive.current = false; serial.current++; }; }, [adapter]);
     const list = S.useQuery(async signal => {
       if (typeof adapter.list !== 'function') throw C.failure('批次服务尚未接入。');
@@ -79,7 +81,12 @@
       !!data && !list.loading && !list.error && !initial.error && !deferred && command.phase === 'idle' && !busy && !dialog
       && list.result.meta.source === 'production' && (!opened || data.entities.some(row => row.ref === opened)));
     function filter(patch) { setScope(current => ({ ...current, ...patch, page: 1, snapshot_ref: undefined })); }
+    function clearFilters() { setQuery(''); filter({ query: '', status: undefined, ready_status: undefined, column_filters: {}, focus: undefined, batch_ids: undefined }); }
     function close() { if (command.locked || !command.reset()) return; setDialog(null); setError(null); }
+    async function closeBulk(detail) {
+      if (busy) return;
+      if (detail && detail.guardConfirmed === true && detail.guardOwner === bulkGuard || await window.WorkbenchGuards.confirmLeave({ owner: bulkGuard })) close();
+    }
     function committed(receipt) {
       const deleted = receipt.data.deleted_refs || [];
       if (deleted.length) { setSelected(current => current.filter(ref => !deleted.includes(ref))); if (deleted.includes(opened)) setOpened(null); }
@@ -119,7 +126,7 @@
         {command.phase === 'done' && <Button onClick={() => { committed(command.result); command.reset(); }}>重读已确认结果</Button>}</div>}
       {opened ? <window.BatchDetail adapter={adapter} batchRef={opened} revision={revision} onBack={() => setOpened(null)} onEdit={openEditor} onDelete={deletion} disabled={blocked}
         onOperation={(entity, operation) => { command.reset(); setDialog({ type: 'operation', entity, operation }); }} onSync={(entity, strict, snapshot) => preview('sync', { strict_mode: strict }, entity, snapshot)} /> : <>
-        <form className="toolbar" onSubmit={event => { event.preventDefault(); if (!blocked) filter({ query }); }}><h2>批次列表</h2>
+        <form className="toolbar" onSubmit={event => { event.preventDefault(); if (!blocked) filter({ query }); }}><h2 className="wb-page-title">批次列表</h2>
           <label className="search"><input type="search" aria-label="搜索批次号、图号、零件名" placeholder="搜索批次号、图号、零件名…" value={query} disabled={blocked} onChange={event => setQuery(event.target.value)} /></label>
           <Button type="submit" icon="search" disabled={blocked}>搜索</Button><Button icon="filter" disabled={blocked} onClick={() => setDialog({ type: 'filters' })}>筛选</Button>
           <Button icon="refresh-cw" aria-label="刷新批次列表" disabled={blocked} onClick={() => filter({})} /><span className="tb-spacer" />
@@ -130,12 +137,12 @@
         <div className="toolbar">{[['status', B.statuses], ['ready_status', B.ready]].map(([key]) => scope[key] && <Button key={key} icon="x" disabled={blocked} onClick={() => filter({ [key]: undefined })}>{B.label(key, scope[key])}</Button>)}
           {Object.keys(scope.column_filters).length > 0 && <span>列筛选 {Object.keys(scope.column_filters).length} 项</span>}
           {(scope.focus || scope.batch_ids) && <span>已定位{scope.focus === 'gaps' ? '工序缺项' : scope.focus === 'unready' ? '未齐套' : '指定批次'}</span>}
-          <Button icon="x" disabled={blocked} onClick={() => filter({ status: undefined, ready_status: undefined, column_filters: {}, focus: undefined, batch_ids: undefined })}>清除全部筛选</Button>
+          <Button icon="x" disabled={blocked} onClick={clearFilters}>清除全部筛选</Button>
           {onNav && <Button icon="arrow-left" disabled={blocked} onClick={() => typeof returnTarget === 'string' ? onNav(returnTarget) : onNav(returnTarget.view, returnTarget.context)}>{returnView === 'dashboard' ? '返回值班台' : '返回排产'}</Button>}</div>
-        <ErrorBox error={list.error} />{list.error && <Button icon="refresh-cw" disabled={blocked} onClick={() => filter({})}>重试读取批次</Button>}
+        {data && data.entities.length > 0 && <ErrorBox error={list.error} />}
         <window.BatchTable rows={data ? data.entities : []} scope={scope} selected={selected} setSelected={setSelected} onOpen={setOpened} onDelete={deletion}
-          onSort={sortBy} onFilter={field => setDialog({ type: 'column', field, scope: { ...scope, snapshot_ref: snapshot } })} loading={list.loading} disabled={blocked || list.loading} />
-        {data && <window.ResourceTables.Pager page={data.page} disabled={blocked || list.loading} onSize={size => filter({ size })} onPage={page => setScope(current => ({ ...current, page, snapshot_ref: snapshot }))} />}
+          onSort={sortBy} onFilter={field => setDialog({ type: 'column', field, scope: { ...scope, snapshot_ref: snapshot } })} onClear={clearFilters} onRetry={() => filter({})} error={list.error} loading={list.loading} disabled={blocked || list.loading} />
+        {data && <window.WorkbenchControls.Pager page={data.page} sizes={Array.from(new Set([20, 50, 100, data.page.size])).sort((a, b) => a - b)} unit="个批次" label="" sizeLabel="每页条数" showPageJump disabled={blocked || list.loading} onSize={size => filter({ size })} onPage={page => setScope(current => ({ ...current, page, snapshot_ref: snapshot }))} />}
         <div className="toolbar"><span>已选 {selected.length} 个批次{selected.some(ref => !data || !data.entities.some(row => row.ref === ref)) ? ' · 含非当前页记录' : ''}</span>
           <Button onClick={selectFiltered} disabled={blocked || !snapshot}>全选当前筛选</Button><Button icon="x" disabled={blocked || !selected.length} onClick={() => setSelected([])}>清除选择</Button>
           <Button icon="square-pen" disabled={blocked || !selected.length} onClick={() => setDialog({ type: 'bulk' })}>批量修改</Button>
@@ -154,7 +161,7 @@
         {[['status', '状态', B.statuses], ['ready_status', '齐套显示', B.ready]].map(([key, label, options]) => <Field label={label} key={key}><select value={scope[key] || ''} onChange={event => filter({ [key]: event.target.value || undefined })}>
           <option value="">全部</option>{options.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>)}
       </div></Modal>}
-      {dialog && dialog.type === 'bulk' && <Modal title="批量修改批次" icon="square-pen" locked={busy} onClose={close} footer={<><Button onClick={close} disabled={busy}>取消</Button>
+      {dialog && dialog.type === 'bulk' && <Modal title="批量修改批次" icon="square-pen" guardOwner={bulkGuard} locked={busy} onClose={closeBulk} footer={<><Button onClick={closeBulk} disabled={busy}>取消</Button>
         <Button icon="check" disabled={busy} onClick={() => preview('bulk', { action: 'update', refs: selected, patch: Object.fromEntries(Object.entries(bulk).filter(([, value]) => value !== '')) })}>预览变更</Button></>}>
         <div className="modal-b form batch-fields"><Field label="批量优先级"><select value={bulk.priority} onChange={event => setBulk({ ...bulk, priority: event.target.value })}><option value="">不修改</option>{B.priority.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>
           <Field label="批量交期"><input type="date" value={bulk.due_date} onChange={event => setBulk({ ...bulk, due_date: event.target.value })} /></Field><Field label="批量备注"><input value={bulk.remark} onChange={event => setBulk({ ...bulk, remark: event.target.value })} /></Field><ErrorBox error={error} /></div>

@@ -21,7 +21,7 @@
       {frozen && <small>原 key 已绑定以上场景及确认内容，不可修改后复用。</small>}</div>;
   }
   function Records({ value, saved, result }) {
-    return <details className="ta-records"><summary>原身份与回执记录</summary><div>原场景编号：{value.scenario_ref}</div>
+    return <details className="ta-records wb-ref"><summary>编号与保存记录</summary><div>原场景编号：{value.scenario_ref}</div>
       {value.draft_ref && <div>原草稿编号：{value.draft_ref}</div>}{value.baseline && value.baseline.plan_ref && <div>原正式基线编号：{value.baseline.plan_ref}</div>}
       {saved && <div>原请求编号：{saved.request_key}</div>}{result && <><div>回执编号：{result.receipt_ref}</div><div>新正式方案编号：{result.data.official_plan.plan_ref}</div></>}</details>;
   }
@@ -56,25 +56,7 @@
       </div></Modal>;
   }
   function Styles() {
-    return <style>{`
-      .plana.trial-adoption-action{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:100%;width:auto;padding:0;min-width:0;color:var(--ui-text);letter-spacing:0}
-      .trial-adoption-action *{box-sizing:border-box;letter-spacing:0}.trial-adoption-action .modal-bg{z-index:1100}
-      .trial-adoption-action .modal.lg{width:760px;max-width:calc(100vw - 48px);max-height:calc(100vh - 48px);display:flex;flex-direction:column;min-width:0;color:var(--ui-text);background:var(--ui-card-bg)}
-      .trial-adoption-action .modal-head,.trial-adoption-action .modal-f{flex-shrink:0}.trial-adoption-action .modal-f{gap:8px;padding:14px 20px}
-      .trial-adoption-action .ta-body{padding:16px 22px;overflow:auto;min-height:0;max-height:65vh;font-size:13px;line-height:1.7;color:var(--ui-text)}
-      .trial-adoption-action .ta-scope{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;padding:12px 0;margin:0;border-bottom:1px solid var(--ui-border)}
-      .trial-adoption-action dt,.trial-adoption-action small,.trial-adoption-action .ta-note{color:var(--ui-info-muted);font-size:12px}
-      .trial-adoption-action dd{margin:3px 0 0;overflow-wrap:anywhere;color:var(--ui-text)}.trial-adoption-action .ta-fields{display:grid;gap:12px;padding:12px 0}
-      .trial-adoption-action .field{min-width:0;margin:0;display:grid;gap:5px}.trial-adoption-action .field label{color:var(--ui-text)}
-      .trial-adoption-action .field input,.trial-adoption-action textarea{width:100%;min-width:0;color:var(--ui-text);background:var(--ui-card-bg);font:inherit;border:1px solid var(--ui-border);border-radius:4px;padding:8px 10px}
-      .trial-adoption-action textarea{resize:vertical;min-height:84px;max-height:220px}.trial-adoption-action .ta-consent{display:flex;gap:9px;align-items:flex-start;color:var(--ui-text);line-height:1.7}
-      .trial-adoption-action .ta-consent input{flex:none;width:16px;height:16px;margin-top:4px;accent-color:var(--ui-info-text)}
-      .trial-adoption-action .ta-notice{padding:10px 12px;margin:8px 0;border-left:3px solid var(--ui-warning);background:var(--ui-surface-muted);overflow-wrap:anywhere}
-      .trial-adoption-action .ta-records{padding-top:10px;color:var(--ui-info-muted);font-size:12px;overflow-wrap:anywhere}.trial-adoption-action .ta-result{color:var(--ui-success-text);padding:10px 0}
-      .trial-adoption-action .ta-result p{color:var(--ui-info-muted);font-size:12px;margin:4px 0}.trial-adoption-action button{white-space:normal;max-width:100%}
-      .trial-adoption-action .ta-inline{font-size:12px;color:var(--ui-info-muted);max-width:460px;overflow-wrap:anywhere}
-      @media(max-width:600px){.trial-adoption-action .ta-body{padding:12px}.trial-adoption-action .ta-scope{grid-template-columns:1fr}.trial-adoption-action .modal-f{padding:12px}}
-    `}</style>;
+    return null;
   }
   window.TrialAdoptionControls = { Button, Dialog, Styles };
 })();

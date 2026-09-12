@@ -77,23 +77,30 @@
     }, /*#__PURE__*/React.createElement("table", {
       className: "rm-table",
       "aria-label": "\u96F6\u4EF6\u64CD\u4F5C\u9884\u68C0"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "零件操作预检"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: '8%'
       }
     }, "\u884C\u53F7"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: '18%'
       }
     }, "\u96F6\u4EF6 / \u7ED3\u679C"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: '32%'
       }
     }, "\u539F\u8BB0\u5F55"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: '32%'
       }
     }, "\u4FEE\u6539\u540E"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: '10%'
       }

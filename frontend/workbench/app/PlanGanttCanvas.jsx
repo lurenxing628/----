@@ -45,7 +45,9 @@
         if (!row.before && painted > 60) {
           ctx.save(); ctx.beginPath(); ctx.rect(Math.max(0, x + inset + 3), y, Math.max(0, Math.min(w, x + barWidth - inset) - Math.max(0, x + inset + 3) - 3), height); ctx.clip();
           ctx.fillStyle = colors.text; ctx.font = '11px sans-serif';
-          ctx.fillText(M.pieceLabel(item.task), Math.max(3, x + inset + 4), y + 16); ctx.restore();
+          ctx.fillText(item.task.batch_id, Math.max(3, x + inset + 4), y + 16);
+          if (painted > 100) ctx.fillText(item.task.sequence + ' ' + item.task.process_label + ' · ' + M.pieceLabel(item.task), Math.max(3, x + inset + 4), y + 31);
+          ctx.restore();
         }
       }
     }, [items, selectedRef, width, left, viewport, risks]);

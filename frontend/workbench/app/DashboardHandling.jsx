@@ -16,9 +16,9 @@
     const s = command.saved;
     return <><div className={'dy-note ' + (s.phase === 'confirmed' ? 'success' : 'warning')} role="status">
       {s.phase === 'confirmed' ? '已确认：' + (s.receipt.result === 'unchanged' ? '无变化，未重复增加历史。' : '处置与历史已保存。') : s.phase === 'rejected' ? '本次明确未写入。' : '结果尚未确认，仅查询原请求。'}</div>
-      <p>{s.subject}</p><div className="dy-evidence"><p>原请求 {s.request_key}</p>{s.phase === 'confirmed' && <p>回执 {s.receipt.receipt_ref}</p>}</div>
+      <p>{s.subject}</p><window.WorkbenchReference entries={{ '原请求编号': s.request_key, '回执编号': s.phase === 'confirmed' ? s.receipt.receipt_ref : null }} />
       <P.Facts handling={s.phase === 'confirmed' ? s.receipt.data.handling : C.expected(s)} />
-      {s.phase === 'pending' ? <Button icon="refresh-cw" busy={command.busy} onClick={command.lookup}>查询原回执</Button> : <Button icon="check" onClick={onFinish}>完成核实并刷新</Button>}</>;
+      {s.phase === 'pending' ? <Button reasonDisplay="inline" icon="refresh-cw" busy={command.busy} onClick={command.lookup}>查询原回执</Button> : <Button reasonDisplay="inline" icon="check" onClick={onFinish}>完成核实并刷新</Button>}</>;
   }
   function Handling({ item, command, onClose, onFinish }) {
     const [draft, setDraft] = React.useState(() => item ? draftFor(item) : null), [error, setError] = React.useState(null);
@@ -28,8 +28,8 @@
     const action = reopen ? 'reopen' : 'transition', context = item && item.write_context;
     const disabledReason = !context || context.capabilities[action] !== true ? '没有有效处置能力，请明确刷新条目。' : '';
     return <Modal title={saved ? '处置请求核实' : reopen ? '独立重开处置' : '登记条目处置'} icon={reopen ? 'refresh-cw' : 'square-pen'} locked={command.busy} onClose={onClose}
-      footer={<><Button onClick={onClose} disabled={command.busy}>{saved && saved.phase === 'pending' ? '关闭并保留请求' : '关闭窗口'}</Button>
-        {!saved && <Button icon="check" className="btn primary" busy={command.busy} reason={disabledReason || (command.storageError ? '恢复记录尚未核实' : '')} onClick={submit}>{reopen ? '确认独立重开' : '提交处置'}</Button>}</>}>
+      footer={<><Button reasonDisplay="inline" onClick={onClose} disabled={command.busy}>{saved && saved.phase === 'pending' ? '关闭并保留请求' : '关闭窗口'}</Button>
+        {!saved && <Button reasonDisplay="inline" icon="check" className="btn primary" busy={command.busy} reason={disabledReason || (command.storageError ? '恢复记录尚未核实' : '')} onClick={submit}>{reopen ? '确认独立重开' : '提交处置'}</Button>}</>}>
       <div className="dy-dialog-body"><ErrorBox error={error || command.error || command.storageError} />{command.notice && <div className="dy-note">{command.notice}</div>}
         {saved ? <Receipt command={command} onFinish={onFinish} /> : item && <><h3>{item.subject}</h3><div className="dy-tools"><P.Risk risk={item.risk} /><P.Status handling={item.handling} /></div>
           {reopen ? <><div className="dy-note">重开后转为跟进中，本轮完成字段清空；旧完成时间、结果和凭据保留在历史。</div><label className="dy-form">重开原因<textarea aria-label="重开原因" value={draft.reason} maxLength={4000} onChange={e => update('reason', e.target.value)} /></label><P.Facts handling={item.handling} /></> : <form className="dy-form" onSubmit={e => { e.preventDefault(); submit(); }}>

@@ -38,7 +38,7 @@
       rejected: '拒绝'
     }[row.action]), /*#__PURE__*/React.createElement("td", null, row.errors.length ? row.errors.join('；') : row.input && /*#__PURE__*/React.createElement("div", null, B.fields.filter(key => key in row.input.fields).map(key => /*#__PURE__*/React.createElement("div", {
       key: key
-    }, names[key], "\uFF1A", B.label(key, row.before && row.before.fields[key]), " \u2192 ", B.label(key, row.input.fields[key]))))));
+    }, names[key], "\uFF1A", window.BatchControls.display(key, row.before && row.before.fields[key]), " \u2192 ", window.BatchControls.display(key, row.input.fields[key]))))));
   }
   function BatchFiles({
     adapter,
@@ -95,7 +95,7 @@
         if (action === 'template') saveDownload(await adapter.downloadTemplate(), 'batches-template.xlsx');else if (action === 'preview') {
           const result = await adapter.importPreview(file, mode, scope, snapshot);
           const data = result && result.data;
-          if (!data || data.operation !== 'batch.import_confirm' || data.mode !== mode || !Array.isArray(data.rows) || !Array.isArray(data.deleted) || typeof data.can_confirm !== 'boolean' || data.can_confirm && (!data.write_context || !B.context(data.write_context))) throw C.failure('文件预览协议不完整。');
+          if (!data || data.operation !== 'batch.import_confirm' || data.mode !== mode || !Array.isArray(data.rows) || !Array.isArray(data.deleted) || typeof data.can_confirm !== 'boolean' || data.can_confirm && (!data.write_context || !B.context(data.write_context))) throw C.failure('文件预览资料不完整，请重新读取。');
           if (alive.current && id === serial.current) setPreview(data);
         } else {
           const result = await adapter.exportPreview(selection, {
@@ -176,12 +176,21 @@
         setError(null);
         serial.current++;
       }
-    }))), /*#__PURE__*/React.createElement("p", null, "\u65B0\u5EFA\u6279\u6B21\u4E0D\u81EA\u52A8\u751F\u6210\u5DE5\u5E8F\uFF1B\u5DF2\u6709\u6279\u6B21\u7684\u7A7A\u5355\u5143\u683C\u4E0D\u8986\u76D6\u3002\u786E\u8BA4\u524D\u4E0D\u4F1A\u65B0\u589E\u3001\u66F4\u65B0\u6216\u5220\u9664\u6279\u6B21\u3002"), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, preview.count, " \u884C \xB7 ", preview.can_confirm ? '可确认，整批原子保存' : '存在拒绝行，本批不会写入'), /*#__PURE__*/React.createElement("div", {
-      className: "batch-preview"
+    }))), /*#__PURE__*/React.createElement("p", null, "\u65B0\u5EFA\u6279\u6B21\u4E0D\u81EA\u52A8\u751F\u6210\u5DE5\u5E8F\uFF1B\u5DF2\u6709\u6279\u6B21\u7684\u7A7A\u5355\u5143\u683C\u4E0D\u8986\u76D6\u3002\u786E\u8BA4\u524D\u4E0D\u4F1A\u65B0\u589E\u3001\u66F4\u65B0\u6216\u5220\u9664\u6279\u6B21\u3002"), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, preview.count, " \u884C \xB7 ", preview.can_confirm ? '全部核对通过，一起保存' : '存在拒绝行，本批不会写入'), /*#__PURE__*/React.createElement("div", {
+      className: "batch-preview wb-table-frame",
+      "data-sticky-head": true
     }, /*#__PURE__*/React.createElement("table", {
-      className: "tbl",
+      className: "tbl wb-table",
       "aria-label": "\u6279\u6B21\u5BFC\u5165\u9884\u89C8"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u884C\u53F7 / \u6279\u6B21"), /*#__PURE__*/React.createElement("th", null, "\u64CD\u4F5C"), /*#__PURE__*/React.createElement("th", null, "\u6838\u5BF9\u5185\u5BB9"))), /*#__PURE__*/React.createElement("tbody", null, preview.rows.map(row => /*#__PURE__*/React.createElement(PreviewRow, {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u6279\u6B21\u5BFC\u5165\u9884\u89C8"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u884C\u53F7 / \u6279\u6B21"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u64CD\u4F5C"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u6838\u5BF9\u5185\u5BB9"))), /*#__PURE__*/React.createElement("tbody", null, preview.rows.map(row => /*#__PURE__*/React.createElement(PreviewRow, {
       key: row.row,
       row: row
     }))))), preview.deleted.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", null, "\u5C06\u5220\u9664\u7684\u5168\u90E8\u6279\u6B21"), preview.deleted.map(row => /*#__PURE__*/React.createElement("div", {

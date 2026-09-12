@@ -221,7 +221,7 @@
       className: "wb-control-popup",
       style: {
         position: 'fixed',
-        zIndex: 10020,
+        zIndex: 'var(--wb-z-popup)',
         ...position
       },
       role: opened.type === 'select' ? undefined : 'dialog',

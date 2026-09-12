@@ -114,10 +114,14 @@
     data,
     kind
   }) {
-    if (kind === 'backups') return data.sources.map((item, index) => /*#__PURE__*/React.createElement("p", {
-      className: "sm-note",
+    if (kind === 'backups') return data.sources.map((item, index) => /*#__PURE__*/React.createElement("div", {
       key: index
-    }, item.message, " \xB7 ", item.code));
+    }, /*#__PURE__*/React.createElement("p", {
+      className: "sm-note"
+    }, item.message), item.code && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      label: "\u6765\u6E90\u6838\u5BF9\u4EE3\u7801",
+      value: item.code
+    })));
     const labels = {
       available: '可读取',
       empty: '窗口内暂无记录',
@@ -198,13 +202,16 @@
       onClick: onClose
     })), /*#__PURE__*/React.createElement("div", {
       className: "sm-detail-meta"
-    }, /*#__PURE__*/React.createElement("time", null, row.time ? row.time.replace('T', ' ') : '时间未识别'), /*#__PURE__*/React.createElement("span", null, types[row.type]), /*#__PURE__*/React.createElement("span", null, kind === 'logs' ? row.file + ' · ' + row.level + ' · 已记录' : file ? '未校验 · ' + row.size_bytes + ' 字节' : states[row.status])), event && /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("time", null, row.time ? window.WorkbenchFormat.dateTime(row.time) : '时间未识别'), /*#__PURE__*/React.createElement("span", null, types[row.type]), /*#__PURE__*/React.createElement("span", null, kind === 'logs' ? row.file + ' · ' + row.level + ' · 已记录' : file ? '未校验 · ' + row.size_bytes + ' 字节' : states[row.status])), event && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "sm-note"
     }, {
       external_maintenance_journal: '外置维护记录',
       operation_audit: '操作审计',
       latest_job_state_only: '仅最近任务状态'
-    }[row.event_source], " \xB7 ", row.event_ref), /*#__PURE__*/React.createElement("p", {
+    }[row.event_source]), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      label: "\u7EF4\u62A4\u4E8B\u4EF6\u7F16\u53F7",
+      value: row.event_ref
+    })), /*#__PURE__*/React.createElement("p", {
       style: {
         overflowWrap: 'anywhere'
       }
@@ -440,14 +447,31 @@
       kind: kind
     }), /*#__PURE__*/React.createElement("div", {
       className: "sm-meta"
-    }, "\u5DE5\u5382\u672C\u5730\u65F6\u95F4 \xB7 \u6570\u636E\u622A\u81F3 ", payload.meta.as_of.replace('T', ' ')), data.rows.length ? /*#__PURE__*/React.createElement("div", {
-      className: "wb-table-shell",
-      style: {
-        overflowX: 'auto'
-      }
+    }, "\u5DE5\u5382\u672C\u5730\u65F6\u95F4 \xB7 \u6570\u636E\u622A\u81F3 ", window.WorkbenchFormat.dateTime(payload.meta.as_of)), data.rows.length ? /*#__PURE__*/React.createElement("div", {
+      className: "wb-table-shell wb-table-frame",
+      "data-sticky-head": "true",
+      "data-sticky-actions": "true"
     }, /*#__PURE__*/React.createElement("table", {
       className: 'wb-table sm-table sm-record-table sm-' + kind + '-table'
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u5DE5\u5382\u672C\u5730\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", null, "\u7C7B\u578B"), /*#__PURE__*/React.createElement("th", null, "\u72B6\u6001"), kind === 'logs' && /*#__PURE__*/React.createElement("th", null, "\u7EA7\u522B"), /*#__PURE__*/React.createElement("th", null, kind === 'logs' ? '摘要 / 来源' : '文件'), kind === 'backups' && /*#__PURE__*/React.createElement("th", null, "\u5927\u5C0F"), /*#__PURE__*/React.createElement("th", null, "\u8BE6\u60C5"))), /*#__PURE__*/React.createElement("tbody", null, data.rows.map(row => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, kind === 'logs' ? '已读取窗口内的运行日志与操作记录' : '备份文件及恢复、清理事件'), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-key"
+    }, "\u5DE5\u5382\u672C\u5730\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u7C7B\u578B"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u72B6\u6001"), kind === 'logs' && /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u7EA7\u522B"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, kind === 'logs' ? '摘要 / 来源' : '文件'), kind === 'backups' && /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5927\u5C0F"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-actions"
+    }, "\u8BE6\u60C5"))), /*#__PURE__*/React.createElement("tbody", null, data.rows.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.key,
       "data-record-kind": row.record_kind,
       tabIndex: 0,
@@ -463,9 +487,11 @@
           setSelected(row);
         }
       }
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("time", {
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-key"
+    }, /*#__PURE__*/React.createElement("time", {
       className: "sm-time"
-    }, row.time ? row.time.replace('T', ' ') : '时间未识别')), /*#__PURE__*/React.createElement("td", null, types[row.type]), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+    }, row.time ? window.WorkbenchFormat.dateTime(row.time) : '时间未识别')), /*#__PURE__*/React.createElement("td", null, types[row.type]), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
       className: "sm-status sm-tone-neutral"
     }, kind === 'logs' ? '已记录' : states[row.status])), kind === 'logs' && /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
       className: 'sm-level sm-level-' + row.level
@@ -479,7 +505,11 @@
       style: {
         textAlign: 'right'
       }
-    }, row.record_kind === 'backup_file' ? (row.size_bytes / 1024).toFixed(1) + ' KB' : '事件记录'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(C.Button, {
+    }, row.record_kind === 'backup_file' ? window.WorkbenchFormat.number(row.size_bytes / 1024, {
+      digits: 1
+    }) + ' KB' : '事件记录'), /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-actions"
+    }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-right",
       className: "mini",
       "aria-label": '查看详情 ' + row.summary,
@@ -487,36 +517,30 @@
         event.stopPropagation();
         setSelected(row);
       }
-    }))))))) : /*#__PURE__*/React.createElement(SMUnavailable, {
-      title: "\u5F53\u524D\u7B5B\u9009\u4E0B\u6682\u65E0\u8BB0\u5F55"
-    }, kind === 'logs' ? '仅限已读取的日志窗口；来源缺失和读取失败另行列出。' : '仅限已读取的备份文件、恢复事件和清理记录。'), /*#__PURE__*/React.createElement("div", {
+    }))))))) : /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: Object.values(filters).some(Boolean) ? 'filtered' : 'empty',
+      title: "\u5F53\u524D\u7B5B\u9009\u4E0B\u6682\u65E0\u8BB0\u5F55",
+      hint: kind === 'logs' ? '仅限已读取的日志窗口；来源缺失和读取失败另行列出。' : '仅限已读取的备份文件、恢复事件和清理记录。',
+      action: Object.values(filters).some(Boolean) ? /*#__PURE__*/React.createElement(C.Button, {
+        onClick: () => {
+          setDraft({
+            ...emptyFilters
+          });
+          apply(emptyFilters);
+        }
+      }, "\u6E05\u9664\u7B5B\u9009") : undefined
+    }), /*#__PURE__*/React.createElement("div", {
       className: "sm-pager"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "sm-meta"
-    }, "\u5F53\u524D\u8303\u56F4\u5171 ", data.page.total, " \u6761"), /*#__PURE__*/React.createElement("div", {
-      className: "sm-actions"
-    }, /*#__PURE__*/React.createElement("label", {
-      className: "sm-inline-label"
-    }, "\u6BCF\u9875", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u6BCF\u9875\u6570\u91CF",
-      value: pageSize,
-      onChange: event => onPageSize(Number(event.target.value))
-    }, [10, 25, 50].map(size => /*#__PURE__*/React.createElement("option", {
-      key: size,
-      value: size
-    }, size, " \u6761")))), /*#__PURE__*/React.createElement(C.Button, {
-      icon: "chevron-left",
-      "aria-label": "\u4E0A\u4E00\u9875",
-      disabled: data.page.number <= 1,
-      onClick: () => changePage(page - 1)
-    }), /*#__PURE__*/React.createElement("span", {
-      className: "sm-page-number"
-    }, data.page.number, " / ", data.page.pages), /*#__PURE__*/React.createElement(C.Button, {
-      icon: "chevron-right",
-      "aria-label": "\u4E0B\u4E00\u9875",
-      disabled: data.page.number >= data.page.pages,
-      onClick: () => changePage(page + 1)
-    }))), selected && /*#__PURE__*/React.createElement(Detail, {
+    }, /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: data.page,
+      sizes: [10, 25, 50],
+      unit: "\u6761",
+      onSize: onPageSize,
+      onPage: changePage,
+      busy: request.loading,
+      label: "",
+      sizeLabel: "\u6BCF\u9875\u6570\u91CF"
+    })), selected && /*#__PURE__*/React.createElement(Detail, {
       key: selected.key,
       row: selected,
       kind: kind,

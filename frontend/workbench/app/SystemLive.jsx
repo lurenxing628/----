@@ -5,7 +5,10 @@ function SystemLive({ boot, theme, initialContext }) {
   const [loading, setLoading] = React.useState(true), [revision, refresh] = React.useReducer(value => value + 1, 0);
   const [start] = React.useState(() => window.SystemMaintenanceAPI.pageContext(initialContext));
   const [source, setSource] = React.useState(start.source), [tab, setTab] = React.useState(start.tab);
-  const [notice, setNotice] = React.useState(''), [pageSize, setPageSize] = React.useState(start.page_size), [compact, setCompact] = React.useState(true);
+  const [notice, setNotice] = React.useState(''), [pageSize, setPageSize] = React.useState(start.page_size);
+  const [density, setDensity] = React.useState(() => window.WorkbenchDensity.get());
+  React.useEffect(() => window.WorkbenchDensity.subscribe(setDensity), []);
+  const compact = density.density === 'compact', setCompact = value => window.WorkbenchDensity.set(value ? 'compact' : 'comfortable');
   const [recordContexts, setRecordContexts] = React.useState(start.records);
   const recordContext = React.useCallback((kind, value) => setRecordContexts(previous => JSON.stringify(previous[kind]) === JSON.stringify(value) ? previous : { ...previous, [kind]: value }), []);
   const [readSuspended, setReadSuspended] = React.useState(true);
@@ -33,7 +36,7 @@ function SystemLive({ boot, theme, initialContext }) {
   const onTab = next => { setTab(next); setNotice(''); document.getElementById('sm-tab-' + next).focus(); };
   const exportDiagnostic = () => {
     try { window.APSWorkbenchTransport.downloadJSON('aps-system-diagnostic.json', { instance: boot.instance_label,
-      page_check: local, system: payload }); setNotice('已生成本次诊断 JSON 并交给浏览器下载。'); }
+      page_check: local, system: payload }); setNotice('已生成本次诊断文件并交给浏览器下载。'); }
     catch (problem) { setNotice('诊断导出失败：' + problem.message); }
   };
   const exportSampleLogs = filters => {
@@ -46,13 +49,13 @@ function SystemLive({ boot, theme, initialContext }) {
   const ready = local.checks.filter(item => item.status === 'available').length;
   const stateLabel = state => ({ available: '可读取', empty: '暂无记录', partial: '需核对', missing: '目录不存在', error: '读取失败', not_read: '未读取' }[state] || '未知');
   return <div className={'sm-workbench' + (compact ? ' sm-compact' : '')} data-source={source} data-live="true">
-    <header className="sm-header"><div><h2>系统管理</h2><p>本机备份恢复、日志与自动维护</p></div><div className="sm-actions">
+    <header className="sm-header"><div><h2 className="wb-page-title">系统管理</h2><p className="wb-page-context">本机备份恢复、日志与自动维护</p></div><div className="sm-actions">
       <ControlButton className="sm-button sm-icon-button" size="sm" title="重新读取本机状态" aria-label="重新检查" disabled={loading || !current || readSuspended} onClick={() => { refresh(); setNotice(''); }}><SMIcon name="refresh-cw" /></ControlButton>
-      <SMExport disabled={!payload || loading || !current || readSuspended} onClick={exportDiagnostic}>导出当前诊断 JSON</SMExport>
+      <SMExport disabled={!payload || loading || !current || readSuspended} onClick={exportDiagnostic}>导出诊断文件</SMExport>
     </div></header>
     <div className="sm-source-bar"><fieldset className="sm-choice"><legend>数据来源</legend>{[['current', '本机数据'], ['sample', '管理样例']].map(([value, label]) => <label key={value}>
       <input type="radio" name="sm-source" value={value} checked={source === value} onChange={() => { setSource(value); setNotice(''); }} />{label}</label>)}</fieldset>
-      <span className="sm-source-note">{current ? boot.instance_label + (payload ? ' · 数据截至 ' + payload.meta.as_of.replace('T', ' ') : ' · 尚未完成读取') : '独立管理样例 · 不写入本机数据'}</span></div>
+      <span className="sm-source-note">{current ? boot.instance_label + (payload ? ' · 数据截至 ' + window.WorkbenchFormat.dateTime(payload.meta.as_of) : ' · 尚未完成读取') : '独立管理样例 · 不写入本机数据'}</span></div>
     <MetricStrip columns={4} className="sm-metrics"><Metric label="当前页面检查" value={ready + ' / ' + local.checks.length} helper="仅页面依赖与资源" />
       <Metric label="本机数据接入" value={!current ? '演示模式' : readSuspended ? '读取已暂停' : loading ? '读取中' : error ? '读取失败' : payload ? '已连接' : '未读取'} helper={current ? readSuspended ? '先核实原维护请求' : '来自本机服务' : '独立固定样例'} tone={error && current ? 'danger' : undefined} />
       <Metric label="数据库状态" value={current && data ? stateLabel(data.database.state) : '未知'} helper="尚未执行完整性检查" tone={current && data && data.database.state === 'error' ? 'danger' : undefined} />
@@ -80,15 +83,12 @@ function SystemLive({ boot, theme, initialContext }) {
 }
 
 function SystemLiveOverview({ data, report, onTab }) {
-  const { DataTable } = window.APSWorkbenchUI;
   const backup = data.backups, logs = data.logs, config = data.config;
   const entries = [
     { tab: 'backups', title: '备份与恢复', icon: 'folder-open', status: backup.count == null ? '备份信息待核对' : backup.count + ' 个备份文件 · 未校验', description: backup.message },
     { tab: 'logs', title: '运行日志', icon: 'history', status: logs.operation_record_count == null ? '操作记录数量未知' : logs.operation_record_count + ' 条操作记录', description: logs.message },
     { tab: 'config', title: '自动维护策略', icon: 'square-pen', status: config.values ? '自动备份' + (config.values.auto_backup_enabled === 'yes' ? '已启用' : '已关闭') : '配置读取失败', description: config.message }
   ];
-  const columns = [{ key: 'label', title: '检查项' }, { key: 'status', title: '结果', render: row => <SMStatus state={row.status} /> }, { key: 'detail', title: '检查范围' }]
-    .map(column => ({ ...column, sortable: false, filterable: false }));
   return <div className="sm-overview-layout"><section className="sm-section sm-maintenance"><div className="sm-section-head"><h3>本机维护事项</h3><span className="sm-meta">备份、日志与维护策略</span></div>
     {entries.map(item => <button key={item.tab} type="button" className="sm-work-row" data-sm-destination={item.tab} title={'查看' + item.title} aria-label={'查看' + item.title}
       aria-describedby={'sm-work-summary-' + item.tab} onClick={() => onTab(item.tab)}><span className="sm-work-icon"><SMIcon name={item.icon} /></span>
@@ -97,11 +97,15 @@ function SystemLiveOverview({ data, report, onTab }) {
         <span className="sm-work-description">{item.description}</span></span></span><span className="sm-work-arrow" aria-hidden="true"><SMIcon name="chevron-right" /></span></button>)}
     <details className="sm-rules"><summary>最近自动维护结果</summary>{data.maintenance.jobs.map(job => <p key={job.kind}>
       {{ auto_backup: '自动备份', auto_backup_cleanup: '备份清理', auto_log_cleanup: '操作日志清理' }[job.kind]}：
-      {job.last_run_time ? job.last_run_time.replace('T', ' ') : '暂无可确认的执行时间'} · {job.result ? ({ completed: '已记录完成', failed: '失败', partial: '部分异常', skipped: '已跳过', invalid: '结果异常', unknown: '结果待核对', not_recorded: '未留存结果' }[job.result.status]) : '未读取结果'}
+      {job.last_run_time ? window.WorkbenchFormat.dateTime(job.last_run_time) : '暂无可确认的执行时间'} · {job.result ? ({ completed: '已记录完成', failed: '失败', partial: '部分异常', skipped: '已跳过', invalid: '结果异常', unknown: '结果待核对', not_recorded: '未留存结果' }[job.result.status]) : '未读取结果'}
     </p>)}</details>
-  </section><section className="sm-section sm-environment"><div className="sm-section-head"><div><h3>页面环境自检</h3>
-    <p className="sm-meta">检查时间 {new Date(report.checkedAt).toLocaleString('zh-CN', { hour12: false })} · 不代表数据库或备份健康</p></div></div>
-    <DataTable className="sm-table sm-check-table" columns={columns} rows={report.checks} rowKey="id" /></section></div>;
+  </section><details className="sm-section sm-environment"><summary>页面环境自检<span className="sm-meta">{report.checks.filter(item => item.status === 'available').length} / {report.checks.length} 项可用</span></summary>
+    <p className="sm-meta">检查时间 {window.WorkbenchFormat.instant(report.checkedAt)} · 不代表数据库或备份健康</p>
+    <div className="wb-table-shell wb-table-frame" data-sticky-head><table className="wb-table sm-table sm-check-table">
+      <caption className="wb-visually-hidden">当前页面环境自检，不代表数据库或备份健康</caption>
+      <thead><tr><th scope="col">检查项</th><th scope="col">结果</th><th scope="col">检查范围</th></tr></thead>
+      <tbody>{report.checks.map(item => <tr key={item.id}><th scope="row">{item.label}</th><td><SMStatus state={item.status} /></td><td>{item.detail}</td></tr>)}</tbody>
+    </table></div></details></div>;
 }
 
 function SystemLiveFiles({ kind, data, pageSize, onPageSize }) {
@@ -113,10 +117,10 @@ function SystemLiveFiles({ kind, data, pageSize, onPageSize }) {
   const entries = data.files, pages = Math.max(1, Math.ceil(entries.length / pageSize)), current = Math.min(page, pages);
   const rows = entries.slice((current - 1) * pageSize, current * pageSize);
   const columns = [
-    { key: 'modified_at', title: '文件修改时间', width: 176, nowrap: true, render: row => row.modified_at.replace('T', ' ') },
+    { key: 'modified_at', title: '文件修改时间', width: 176, nowrap: true, render: row => window.WorkbenchFormat.dateTime(row.modified_at) },
     { key: 'filename', title: kind === 'backups' ? '备份文件' : '日志文件', width: 'auto' },
     { key: 'status', title: '检查状态', width: 104, render: () => <SMStatus state="unverified" /> },
-    { key: 'size_bytes', title: '大小', width: 120, align: 'right', nowrap: true, render: row => (row.size_bytes / 1024).toFixed(1) + ' KB' },
+    { key: 'size_bytes', title: '大小', width: 120, align: 'right', nowrap: true, render: row => window.WorkbenchFormat.number(row.size_bytes / 1024, { digits: 1 }) + ' KB' },
     { key: 'detail', title: '详情', width: 60, render: row => <ControlButton size="sm" className="sm-button sm-icon-button" title="查看文件信息" aria-label={'查看文件信息 ' + row.filename}
       aria-controls="system-live-file-detail" aria-expanded={!!selected && selected.filename === row.filename} onClick={event => { opener.current = event.currentTarget; setSelected(row); }}><SMIcon name="chevron-right" /></ControlButton> }
   ].map(column => ({ ...column, sortable: false, filterable: false }));
@@ -127,13 +131,11 @@ function SystemLiveFiles({ kind, data, pageSize, onPageSize }) {
         <SMDisabled key={label} label={label} reason="该操作的维护接口尚未迁移，当前只读文件信息。" />)}</div></div>
     <p className="sm-note">{data.message}{kind === 'logs' && data.operation_record_count != null ? ' 当前共有 ' + data.operation_record_count + ' 条操作记录。' : ''}</p>
     {data.error && <p role="alert" className="sm-error">{data.error.message}</p>}
-    {entries.length ? <DataTable className="sm-table sm-record-table" columns={columns} rows={rows} rowKey="filename" /> : <SMUnavailable title={data.state === 'empty' ? '暂无文件' : '文件信息不可用'}>{data.message}</SMUnavailable>}
+    {entries.length ? <DataTable className="sm-table sm-record-table" columns={columns} rows={rows} rowKey="filename" /> : <window.WorkbenchListControls.EmptyState kind={data.state === 'empty' ? 'empty' : 'error'} title={data.state === 'empty' ? '暂无文件' : '文件信息不可用'} hint={data.message} action={data.state !== 'empty' ? <a href="/workbench?view=system">重新进入系统管理</a> : undefined} />}
     <div className="sm-pager"><span className="sm-meta">已读取 {entries.length} 个文件{data.count != null ? ' · 目录共 ' + data.count + ' 个' : ' · 总数尚不能确认'}</span>
-      <div className="sm-actions"><label className="sm-inline-label">每页<select name="sm-page-size" value={pageSize} onChange={event => { onPageSize(Number(event.target.value)); setPage(1); }}>{[10, 25, 50].map(size => <option key={size} value={size}>{size} 条</option>)}</select></label>
-        <ControlButton className="sm-button sm-icon-button" size="sm" aria-label="上一页" disabled={current <= 1} onClick={() => setPage(current - 1)}><SMIcon name="chevron-left" /></ControlButton>
-        <span className="sm-page-number">{current} / {pages}</span><ControlButton className="sm-button sm-icon-button" size="sm" aria-label="下一页" disabled={current >= pages} onClick={() => setPage(current + 1)}><SMIcon name="chevron-right" /></ControlButton></div></div>
+      <window.WorkbenchListControls.Pager page={current} pages={pages} total={entries.length} size={pageSize} sizes={[10, 25, 50]} unit="条" label="" onPage={setPage} onSize={size => { onPageSize(size); setPage(1); }} /></div>
     {selected && <section className="sm-detail" id="system-live-file-detail" ref={detail} tabIndex="-1" aria-label="本机文件信息" onKeyDown={event => { if (event.key === 'Escape') close(); }}><div className="sm-section-head"><h3 style={{overflowWrap:'anywhere',minWidth:0}}>{selected.filename}</h3><ControlButton size="sm" aria-label="关闭文件信息" onClick={close}><SMIcon name="x" /></ControlButton></div>
-      <p>修改时间 {selected.modified_at.replace('T', ' ')} · {selected.size_bytes} 字节</p><p>仅查看文件信息，尚未读取或校验文件内容。</p></section>}
+      <p>修改时间 {window.WorkbenchFormat.dateTime(selected.modified_at)} · {selected.size_bytes} 字节</p><p>仅查看文件信息，尚未读取或校验文件内容。</p></section>}
   </section>;
 }
 

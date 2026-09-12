@@ -90,9 +90,11 @@
       onClick: refresh
     })), !A.ref(runRef) ? /*#__PURE__*/React.createElement("p", {
       role: "alert"
-    }, "\u8FD0\u884C\u6765\u6E90\u65E0\u6548\uFF0C\u672A\u5207\u6362\u5230\u5176\u4ED6\u8FD0\u884C\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
-      className: "rj-identity"
-    }, "\u6307\u5B9A\u8FD0\u884C\uFF1A", runRef), error && /*#__PURE__*/React.createElement("div", {
+    }, "\u8FD0\u884C\u6765\u6E90\u65E0\u6548\uFF0C\u672A\u5207\u6362\u5230\u5176\u4ED6\u8FD0\u884C\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '指定运行': runRef
+      }
+    }), error && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
       role: "alert"
     }, error), record && /*#__PURE__*/React.createElement(U.Record, {
@@ -112,11 +114,7 @@
   }) {
     return /*#__PURE__*/React.createElement("div", {
       className: "scheduling-navigation"
-    }, children, /*#__PURE__*/React.createElement("style", null, `
-      .scheduling-navigation{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 10px;margin-bottom:16px;background:var(--ui-surface-muted);border-bottom:1px solid var(--ui-border);min-width:0;color:var(--ui-text)}
-      .scheduling-navigation .btn[aria-pressed="true"]{color:var(--ui-primary-text,var(--ui-text));background:var(--ui-surface-selected,var(--ui-surface));border-color:var(--ui-border-strong,var(--ui-border))}
-      .scheduling-navigation .scheduling-source{font-size:12px;color:var(--ui-info-muted);margin-left:auto}
-    `));
+    }, children);
   }
   function RunWorkspace({
     onNavigate,
@@ -124,26 +122,29 @@
   }) {
     const api = useRunAdapter(onNavigate),
       specified = initialContext && Object.prototype.hasOwnProperty.call(initialContext, 'run_ref');
-    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Navigation, null, /*#__PURE__*/React.createElement(U.Button, {
+    const history = /*#__PURE__*/React.createElement(U.Button, {
       icon: "history",
       onClick: () => onNavigate('analysis', {
         source: 'run_history'
       })
-    }, "\u6392\u4EA7\u8BB0\u5F55"), specified && /*#__PURE__*/React.createElement(U.Button, {
+    }, "\u6392\u4EA7\u8BB0\u5F55");
+    // The preflight page carries 排产记录 in its own heading; only the specified-run view keeps the navigation strip.
+    return specified ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Navigation, null, history, /*#__PURE__*/React.createElement(U.Button, {
       icon: "plus",
       onClick: () => onNavigate('run', {})
-    }, "\u65B0\u5EFA\u6392\u4EA7\u8303\u56F4")), specified ? /*#__PURE__*/React.createElement(ReadRun, {
+    }, "\u65B0\u5EFA\u6392\u4EA7\u8303\u56F4")), /*#__PURE__*/React.createElement(ReadRun, {
       key: initialContext.run_ref,
       runRef: initialContext.run_ref,
       api: api
-    }) : /*#__PURE__*/React.createElement(window.PreflightWorkspace, {
+    })) : /*#__PURE__*/React.createElement(window.PreflightWorkspace, {
       initialContext: initialContext,
       onNavigate: onNavigate,
+      actions: history,
       renderRunPanel: data => /*#__PURE__*/React.createElement(window.RunJobPanel, {
         preflight: data,
         adapter: api
       })
-    }));
+    });
   }
   function PlanCenterWorkspace({
     view,

@@ -14,6 +14,22 @@
     failed: '计算失败',
     interrupted: '运行中断'
   };
+  function Progress({
+    run
+  }) {
+    const [now, setNow] = React.useState(Date.now);
+    React.useEffect(() => {
+      if (run.finished_at) return undefined;
+      const timer = setInterval(() => {
+        if (!document.hidden) setNow(Date.now());
+      }, 1000);
+      return () => clearInterval(timer);
+    }, [run.run_ref, run.finished_at]);
+    return /*#__PURE__*/React.createElement("p", {
+      className: "rj-progress",
+      "data-run-progress": true
+    }, /*#__PURE__*/React.createElement("strong", null, window.RunPresentation.stage(run)), /*#__PURE__*/React.createElement("span", null, "\u5DF2\u8017\u65F6 ", window.RunPresentation.elapsed(run, now)));
+  }
   function Status({
     run
   }) {
@@ -81,24 +97,22 @@
       preview: preview
     }), /*#__PURE__*/React.createElement("div", {
       className: "rj-notice"
-    }, "\u4EC5\u8BA1\u7B97\u5E76\u4FDD\u5B58\u5019\u9009\uFF0C\u4E0D\u66FF\u6362\u6B63\u5F0F\u8BA1\u5212\u3002\u65E5\u5386\u53EF\u884C\u6027\u5C1A\u672A\u9A8C\u8BC1\uFF0C\u6700\u7EC8\u7ED3\u679C\u4EE5\u672C\u6B21\u8BA1\u7B97\u8BB0\u5F55\u4E3A\u51C6\u3002"), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6279\u6B21\u7F16\u53F7 \xB7 ", values.length, " \u6279"), /*#__PURE__*/React.createElement("ol", {
+    }, "\u4EC5\u8BA1\u7B97\u5E76\u4FDD\u5B58\u5019\u9009\uFF0C\u4E0D\u66FF\u6362\u6B63\u5F0F\u8BA1\u5212\u3002\u65E5\u5386\u53EF\u884C\u6027\u5C1A\u672A\u9A8C\u8BC1\uFF0C\u6700\u7EC8\u7ED3\u679C\u4EE5\u672C\u6B21\u8BA1\u7B97\u8BB0\u5F55\u4E3A\u51C6\u3002"), /*#__PURE__*/React.createElement("details", {
+      className: "wb-ref"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u6279\u6B21\u5185\u90E8\u7F16\u53F7 \xB7 ", values.length, " \u6279"), /*#__PURE__*/React.createElement("ol", {
       className: "rj-refs",
       start: (page - 1) * 20 + 1
     }, values.slice((page - 1) * 20, page * 20).map(value => /*#__PURE__*/React.createElement("li", {
       key: value
-    }, value))), /*#__PURE__*/React.createElement("div", {
-      className: "rj-tools"
-    }, /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": "\u8303\u56F4\u4E0A\u4E00\u9875",
-      disabled: page === 1,
-      onClick: () => setPage(page - 1)
-    }), /*#__PURE__*/React.createElement("span", null, page, " / ", pages), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": "\u8303\u56F4\u4E0B\u4E00\u9875",
-      disabled: page === pages,
-      onClick: () => setPage(page + 1)
-    }))), !!preview.warnings.length && /*#__PURE__*/React.createElement(Reasons, {
+    }, value))), /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: page,
+      pages: pages,
+      total: values.length,
+      size: 20,
+      unit: "\u6279",
+      label: "\u8303\u56F4",
+      onPage: setPage
+    })), !!preview.warnings.length && /*#__PURE__*/React.createElement(Reasons, {
       rows: preview.warnings
     })));
   }
@@ -167,52 +181,62 @@
       className: "rj-muted",
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u5DF2\u4FDD\u5B58\u5019\u9009\u3002"), catalog && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-      className: "rj-table"
+      className: "rj-table wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
+      className: "wb-table",
       "aria-label": "\u5DF2\u4FDD\u5B58\u5019\u9009"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u5019\u9009"), /*#__PURE__*/React.createElement("th", null, "\u72B6\u6001"), /*#__PURE__*/React.createElement("th", null, "\u5DF2\u4FDD\u5B58\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("th", null, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, catalog.candidates.map(row => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u5DF2\u4FDD\u5B58\u5019\u9009"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-key"
+    }, "\u5019\u9009"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u72B6\u6001"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5DF2\u4FDD\u5B58\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-actions"
+    }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, catalog.candidates.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.candidate_ref,
       "data-candidate-ref": row.candidate_ref
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-key"
+    }, /*#__PURE__*/React.createElement("div", {
       className: "rj-name"
     }, /*#__PURE__*/React.createElement("span", null, row.label || '生成时未记录名称', selected.has(row.candidate_ref) && /*#__PURE__*/React.createElement("span", {
       className: "rj-selected"
-    }, "\u672C\u6B21\u9009\u4E2D")), /*#__PURE__*/React.createElement("details", {
-      className: "rj-id"
-    }, /*#__PURE__*/React.createElement("summary", {
-      "aria-label": '候选记录编号 ' + row.candidate_ref
-    }, "\u7F16\u53F7"), /*#__PURE__*/React.createElement("code", null, row.candidate_ref)))), /*#__PURE__*/React.createElement("td", null, {
+    }, "\u672C\u6B21\u9009\u4E2D")), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      value: row.candidate_ref
+    }))), /*#__PURE__*/React.createElement("td", null, {
       completed: '已完成',
       partial: '部分完成',
       failed: '失败',
       skipped: '已跳过'
-    }[row.status], row.completeness === 'unknown' && /*#__PURE__*/React.createElement("small", null, "\u5B8C\u6574\u6027\u5C1A\u672A\u786E\u8BA4")), /*#__PURE__*/React.createElement("td", null, row.task_count), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+    }[row.status], row.completeness === 'unknown' && /*#__PURE__*/React.createElement("small", null, "\u5B8C\u6574\u6027\u5C1A\u672A\u786E\u8BA4")), /*#__PURE__*/React.createElement("td", null, row.task_count), /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-actions"
+    }, /*#__PURE__*/React.createElement(Button, {
       icon: "eye",
       className: "mini",
+      reasonDisplay: "tooltip",
       reason: canOpen ? '' : '候选详情页面尚未接入，暂不能预览。',
       onClick: () => api.openCandidate({
         candidate_ref: row.candidate_ref,
         run_ref: row.run_ref
       })
-    }, "\u8BE6\u60C5"))))))), catalog.page.total > 20 && /*#__PURE__*/React.createElement("div", {
-      className: "rj-tools"
-    }, /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": "\u5019\u9009\u4E0A\u4E00\u9875",
-      disabled: busy || catalog.page.number === 1,
-      onClick: () => setQuery({
-        page: catalog.page.number - 1,
+    }, "\u8BE6\u60C5"))))))), catalog.page.total > 20 && /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: catalog.page,
+      size: 20,
+      unit: "\u9879",
+      label: "\u5019\u9009",
+      busy: busy,
+      onPage: page => setQuery({
+        page,
         snapshot_ref: catalog.snapshot_ref
       })
-    }), /*#__PURE__*/React.createElement("span", null, catalog.page.number, " / ", Math.max(1, Math.ceil(catalog.page.total / 20))), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": "\u5019\u9009\u4E0B\u4E00\u9875",
-      disabled: busy || !catalog.page.has_more,
-      onClick: () => setQuery({
-        page: catalog.page.number + 1,
-        snapshot_ref: catalog.snapshot_ref
-      })
-    }))));
+    })));
   }
   function Record({
     run,
@@ -231,13 +255,22 @@
       run: run
     }) : /*#__PURE__*/React.createElement("span", {
       role: "status"
-    }, "\u6B63\u5728\u6838\u5B9E\u539F\u8BF7\u6C42")), (intent || run) && /*#__PURE__*/React.createElement("details", {
-      className: "rj-identity"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u8BB0\u5F55\u7F16\u53F7"), intent && /*#__PURE__*/React.createElement("div", null, "\u8BF7\u6C42\u7F16\u53F7\uFF1A", intent.request_key), run && /*#__PURE__*/React.createElement("div", null, "\u8FD0\u884C\u7F16\u53F7\uFF1A", run.run_ref)), run && !verified && /*#__PURE__*/React.createElement("p", {
+    }, "\u6B63\u5728\u6838\u5B9E\u539F\u8BF7\u6C42")), (intent || run) && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        ...(intent ? {
+          '请求编号': intent.request_key
+        } : {}),
+        ...(run ? {
+          '运行编号': run.run_ref
+        } : {})
+      }
+    }), run && !verified && /*#__PURE__*/React.createElement("p", {
       className: "rj-muted"
-    }, "\u4EE5\u4E0B\u4E3A\u4E0A\u6B21\u5DF2\u6838\u5B9E\u7ED3\u679C\uFF0C\u672C\u6B21\u67E5\u8BE2\u5C1A\u672A\u786E\u8BA4\u3002"), run && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, "\u4EE5\u4E0B\u4E3A\u4E0A\u6B21\u5DF2\u6838\u5B9E\u7ED3\u679C\uFF0C\u672C\u6B21\u67E5\u8BE2\u5C1A\u672A\u786E\u8BA4\u3002"), run && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Progress, {
+      run: run
+    }), /*#__PURE__*/React.createElement("div", {
       className: "rj-tools rj-muted"
-    }, /*#__PURE__*/React.createElement("span", null, "\u53D7\u7406\uFF1A", run.accepted_at.replace('T', ' ')), run.started_at && /*#__PURE__*/React.createElement("span", null, "\u5F00\u59CB\uFF1A", run.started_at.replace('T', ' ')), run.finished_at && /*#__PURE__*/React.createElement("span", null, "\u7ED3\u675F\uFF1A", run.finished_at.replace('T', ' '))), run.recovery_required && /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("span", null, "\u53D7\u7406\uFF1A", window.WorkbenchFormat.dateTime(run.accepted_at)), run.started_at && /*#__PURE__*/React.createElement("span", null, "\u5F00\u59CB\uFF1A", window.WorkbenchFormat.dateTime(run.started_at)), run.finished_at && /*#__PURE__*/React.createElement("span", null, "\u7ED3\u675F\uFF1A", window.WorkbenchFormat.dateTime(run.finished_at))), run.recovery_required && /*#__PURE__*/React.createElement("p", {
       className: "rj-notice"
     }, "\u672C\u673A\u6B63\u5728\u6838\u5BF9\u539F\u6267\u884C\u8BB0\u5F55\uFF0C\u7ED3\u679C\u5C1A\u672A\u786E\u5B9A\uFF0C\u6CA1\u6709\u91CD\u65B0\u8BA1\u7B97\u3002"), run.error && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
@@ -252,28 +285,7 @@
     }, paused ? '页面不可见，已暂停查询；返回后继续核实原运行。' : checking ? '正在查询原运行记录。' : '等待下一次查询，不会重复提交排产。'));
   }
   function Styles() {
-    return /*#__PURE__*/React.createElement("style", null, `
-      .plana.run-job-panel{padding:0;max-width:none;width:100%;min-width:0;color:var(--ui-text);font-size:13px;letter-spacing:0}
-      .run-job-panel *{box-sizing:border-box;letter-spacing:0}
-      .run-job-panel h2{font-size:16px;line-height:1.5;margin:0}.run-job-panel h3{font-size:14px;line-height:1.5;margin:0}
-      .run-job-panel .rj-heading,.run-job-panel .rj-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
-      .run-job-panel .rj-heading{justify-content:space-between;padding:8px 0}.run-job-panel .rj-tools{padding:6px 0}
-      .run-job-panel .rj-record{border-top:1px solid var(--ui-border);margin-top:10px;padding-bottom:8px}
-      .run-job-panel .rj-muted{color:var(--ui-info-muted);font-size:12px;line-height:1.7}
-      .run-job-panel .rj-notice{padding:10px 12px;margin:10px 0;border-left:3px solid var(--ui-warning);background:var(--ui-surface-muted);line-height:1.7;overflow-wrap:anywhere}
-      .run-job-panel .rj-scope{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:0;padding:12px 0;border-top:1px solid var(--ui-border);border-bottom:1px solid var(--ui-border)}
-      .run-job-panel dt{font-size:12px;color:var(--ui-info-muted)}.run-job-panel dd{margin:5px 0 0;overflow-wrap:anywhere}
-      .run-job-panel .rj-identity{overflow-wrap:anywhere;font-size:12px;line-height:1.8;color:var(--ui-info-muted);font-variant-numeric:tabular-nums}
-      .run-job-panel .rj-name{display:flex;align-items:baseline;gap:8px 16px;flex-wrap:wrap;min-width:0}.run-job-panel .rj-id{font-size:12px;color:var(--ui-info-muted);min-width:0}.run-job-panel .rj-id[open]{flex-basis:100%}.run-job-panel .rj-id code{display:block;overflow-wrap:anywhere;font-size:12px;color:var(--ui-text)}.run-job-panel .rj-id summary,.run-job-panel .rj-identity summary{margin:0}
-      .run-job-panel .pill.ok{color:var(--ui-success-text);background:var(--ui-success-bg)}.run-job-panel .pill.warn{color:var(--ui-warning-text);background:var(--ui-warning-bg)}
-      .run-job-panel .rj-table{width:100%;overflow:auto}.run-job-panel table{width:100%;table-layout:fixed;border-collapse:collapse}
-      .run-job-panel th,.run-job-panel td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--ui-border);white-space:normal!important;overflow-wrap:anywhere;vertical-align:middle}
-      .run-job-panel th:first-child{width:48%}.run-job-panel th{font-size:12px;color:var(--ui-info-muted)}
-      .run-job-panel small{display:block;font-size:11px;line-height:1.7;color:var(--ui-info-muted)}.run-job-panel .rj-selected{margin-left:8px;color:var(--ui-success-text);font-size:12px}
-      .run-job-panel button{max-width:100%;white-space:normal}.run-job-panel .rj-refs{padding-left:26px;font-size:12px;line-height:1.8;overflow-wrap:anywhere}
-      .run-job-panel summary{cursor:pointer;font-weight:600;margin:10px 0}.run-job-panel.rj-confirm{padding:16px 22px;max-height:65vh;overflow:auto}
-      @media(max-width:600px){.run-job-panel th:first-child{width:42%}.run-job-panel th,.run-job-panel td{padding:8px 4px}.run-job-panel.rj-confirm{padding:12px}}
-    `);
+    return null;
   }
   window.RunJobControls = {
     Button,

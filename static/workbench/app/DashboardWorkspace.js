@@ -207,7 +207,11 @@
       onClick: () => setOutsourcing(null)
     }, "\u8FD4\u56DE\u539F\u503C\u73ED\u53F0\u6761\u76EE")), /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
-    }, outsourcing.outsourcing_ref ? '原登记引用 ' + outsourcing.outsourcing_ref : '外协物流登记概览', " \xB7 \u7269\u6D41\u767B\u8BB0\u4E0D\u66FF\u4EE3\u98CE\u9669\u5904\u7F6E\u3002"), typeof window.OutsourcingWorkspace === 'function' ? /*#__PURE__*/React.createElement(window.OutsourcingWorkspace, {
+    }, "\u5916\u534F\u7269\u6D41\u767B\u8BB0\u6982\u89C8 \xB7 \u7269\u6D41\u767B\u8BB0\u4E0D\u66FF\u4EE3\u98CE\u9669\u5904\u7F6E\u3002"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '原登记编号': outsourcing.outsourcing_ref
+      }
+    }), typeof window.OutsourcingWorkspace === 'function' ? /*#__PURE__*/React.createElement(window.OutsourcingWorkspace, {
       outsourcingRef: outsourcing.outsourcing_ref,
       onUpdated: () => setRegistrationChanged(true)
     }) : /*#__PURE__*/React.createElement("div", {
@@ -222,7 +226,11 @@
       "aria-busy": list.loading
     }, /*#__PURE__*/React.createElement(window.DashboardStyles, null), /*#__PURE__*/React.createElement("header", {
       className: "dy-heading"
-    }, /*#__PURE__*/React.createElement("h2", null, "\u8BA1\u5212\u5458\u503C\u73ED\u53F0"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+      className: "wb-page-title"
+    }, "\u8BA1\u5212\u5458\u503C\u73ED\u53F0"), /*#__PURE__*/React.createElement("div", {
+      className: "dy-context wb-page-context"
+    }, /*#__PURE__*/React.createElement("span", null, comparing ? comparisonState.caption ? comparisonState.caption.name + ' · ' + comparisonState.caption.status : '尚未核实所选候选方案' : data ? data.plan ? data.plan.display_name + ' · 当前正式' : data.categories.delivery.state === 'no_official_plan' ? '当前无正式计划' : '正式计划未能读取' : '正式计划未加载'), /*#__PURE__*/React.createElement("span", null, data ? '数据截至 ' + window.WorkbenchFormat.dateTime(data.as_of) + ' · 工厂本地时间' : '数据尚未读取'))), /*#__PURE__*/React.createElement("div", {
       className: "dy-tools"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
@@ -233,9 +241,7 @@
     }), command.saved && /*#__PURE__*/React.createElement(Button, {
       icon: "history",
       onClick: () => setDialog(true)
-    }, command.saved.phase === 'confirmed' ? '查看已确认回执' : '核实原处置请求'))), /*#__PURE__*/React.createElement("div", {
-      className: "dy-context"
-    }, /*#__PURE__*/React.createElement("span", null, comparing ? comparisonState.caption ? comparisonState.caption.name + ' · ' + comparisonState.caption.status : '尚未核实所选持久候选' : data ? data.plan ? data.plan.display_name + ' · 当前正式' : data.categories.delivery.state === 'no_official_plan' ? '当前无正式计划' : '正式计划未能读取' : '正式计划未加载'), /*#__PURE__*/React.createElement("span", null, data ? '数据截至 ' + data.as_of.replace('T', ' ') + ' · 工厂本地时间' : '数据尚未读取')), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, command.saved.phase === 'confirmed' ? '查看已确认回执' : '核实原处置请求'))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: command.storageError
     }), command.storageError && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
@@ -288,6 +294,7 @@
       tabIndex: activeTab === key ? 0 : -1,
       onClick: () => setTab(key),
       onKeyDown: e => {
+        if (e.altKey || e.ctrlKey || e.metaKey) return;
         let next;
         if (e.key === 'ArrowRight') next = (index + 1) % tabKeys.length;
         if (e.key === 'ArrowLeft') next = (index + tabKeys.length - 1) % tabKeys.length;
@@ -309,10 +316,10 @@
     }), list.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: reload
-    }, "\u660E\u786E\u91CD\u8BFB\u5F53\u524D\u7B5B\u9009"), list.loading && /*#__PURE__*/React.createElement("div", {
-      className: "dy-empty",
-      role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u771F\u5B9E\u98CE\u9669\u3001\u8D44\u6E90\u4E0E\u5019\u9009\u76EE\u5F55"), external && /*#__PURE__*/React.createElement(P.ExternalRegistration, {
+    }, "\u660E\u786E\u91CD\u8BFB\u5F53\u524D\u7B5B\u9009"), list.loading && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "loading",
+      title: "\u6B63\u5728\u8BFB\u53D6\u771F\u5B9E\u98CE\u9669\u3001\u8D44\u6E90\u4E0E\u5019\u9009\u76EE\u5F55"
+    }), external && /*#__PURE__*/React.createElement(P.ExternalRegistration, {
       summary: currentSummary,
       onUpdated: reload
     }), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(P.Gaps, {
@@ -320,14 +327,21 @@
       selected: q.category
     }), external && /*#__PURE__*/React.createElement(P.ExternalHandlingState, {
       summary: currentSummary
-    }), handlingAvailable && activeTab === 'items' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(P.Filters, {
+    }), handlingAvailable && activeTab === 'items' && /*#__PURE__*/React.createElement("div", {
+      className: item ? 'wb-detail-layout dy-detail-layout' : ''
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(P.Filters, {
       query: q,
       busy: list.loading,
       onChange: change
     }), /*#__PURE__*/React.createElement(P.List, {
       data: data,
       selected: selected,
-      onSelect: choose
+      onSelect: choose,
+      query: q,
+      onClear: () => change({
+        query: '',
+        status: 'all'
+      })
     }), /*#__PURE__*/React.createElement(P.Pager, {
       page: data.page,
       busy: list.loading,
@@ -339,11 +353,12 @@
       })
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: detail.error
-    }), detail.loading && /*#__PURE__*/React.createElement("div", {
-      role: "status",
-      className: "dy-empty"
-    }, "\u6B63\u5728\u8BFB\u53D6\u539F\u6761\u76EE\u8BE6\u60C5"), item && /*#__PURE__*/React.createElement(P.Detail, {
+    }), detail.loading && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "loading",
+      title: "\u6B63\u5728\u8BFB\u53D6\u539F\u6761\u76EE\u8BE6\u60C5"
+    })), item && /*#__PURE__*/React.createElement(P.Detail, {
       item: item,
+      onClose: () => choose(null),
       onHandle: () => setDialog(true),
       onHistory: () => setTab('records'),
       navigate: navigate,
@@ -437,7 +452,9 @@
     } catch (error) {
       return /*#__PURE__*/React.createElement("div", {
         className: "plana dashboard-live"
-      }, /*#__PURE__*/React.createElement(window.DashboardStyles, null), /*#__PURE__*/React.createElement("h2", null, "\u8BA1\u5212\u5458\u503C\u73ED\u53F0"), /*#__PURE__*/React.createElement(ErrorBox, {
+      }, /*#__PURE__*/React.createElement(window.DashboardStyles, null), /*#__PURE__*/React.createElement("h2", {
+        className: "wb-page-title"
+      }, "\u8BA1\u5212\u5458\u503C\u73ED\u53F0"), /*#__PURE__*/React.createElement(ErrorBox, {
         error: error
       }));
     }

@@ -30,24 +30,36 @@
     onHover,
     canvasPainted = false
   }) {
-    const x = (mark.start - model.start) / (model.end - model.start) * width,
-      size = (mark.end - mark.start) / (model.end - model.start) * width;
+    const box = window.ActualGanttWindow.markBox(mark, model, width),
+      {
+        x,
+        size
+      } = box;
     const kind = {
       actual: 'act',
       plan: 'plan',
       remaining: 'remaining'
     }[mark.kind];
     const title = M.markTitle(mark, row.item, model.labels);
+    function atPointer(event) {
+      const track = event.currentTarget.closest('.fg-track').getBoundingClientRect();
+      return window.ActualGanttWindow.hitMark(M.marks(row), model, width, 0, event.clientX - track.left, event.clientY - track.top);
+    }
     function hover(event) {
       if (!event) {
+        onHover(null);
+        return;
+      }
+      const target = event.type === 'focus' ? mark : atPointer(event);
+      if (!target) {
         onHover(null);
         return;
       }
       const rect = event.currentTarget.getBoundingClientRect();
       onHover({
         item: row.item,
-        report: mark.report,
-        title,
+        report: target.report,
+        title: M.markTitle(target, row.item, model.labels),
         x: rect.right,
         y: rect.top
       });
@@ -75,21 +87,33 @@
       "data-actual-mark": mark.kind,
       "data-report-ref": mark.report && mark.report.report_ref,
       "data-task-ref": row.item.task.task_ref,
+      "data-duration-ms": mark.end - mark.start,
+      "data-duration-width": size,
       style: {
-        left: x,
-        width: size,
+        left: box.hitLeft,
+        width: box.hitWidth,
         top: mark.y,
         height: mark.height
       },
       title: title,
       "aria-label": title,
       "aria-pressed": selected === row.item.task.task_ref,
-      onClick: () => onSelect(row.item, mark.report),
+      onClick: event => {
+        const target = event.detail === 0 ? mark : atPointer(event);
+        if (target) onSelect(row.item, target.report);
+      },
       onMouseEnter: hover,
+      onMouseMove: hover,
       onMouseLeave: () => onHover(null),
       onFocus: hover,
       onBlur: () => onHover(null)
-    }, size >= 55 && mark.kind !== 'plan' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, mark.report ? mark.report.report_no : '剩余 ' + M.number(row.item.execution.remaining_quantity) + ' 件'), size >= 150 && /*#__PURE__*/React.createElement("span", null, mark.report ? M.number(mark.report.completed_quantity) + ' 件 · ' + M.number(mark.report.effective_processing_hours) + 'h' : M.time(row.item.execution.remaining_plan.start))));
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "fg-mark-face",
+      style: {
+        left: box.faceLeft,
+        width: size
+      }
+    }, size >= 55 && mark.kind !== 'plan' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, mark.report ? mark.report.report_no : '剩余 ' + M.number(row.item.execution.remaining_quantity) + ' 件'), size >= 150 && /*#__PURE__*/React.createElement("span", null, mark.report ? M.number(mark.report.completed_quantity) + ' 件 · ' + M.number(mark.report.effective_processing_hours) + 'h' : M.time(row.item.execution.remaining_plan.start)))));
   }
   function ChainLines({
     chain,

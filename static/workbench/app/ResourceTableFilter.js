@@ -328,7 +328,7 @@
       "aria-labelledby": id,
       style: {
         position: 'fixed',
-        zIndex: 10040,
+        zIndex: 'var(--wb-z-popup)',
         padding: 8,
         display: 'flex',
         flexDirection: 'column',

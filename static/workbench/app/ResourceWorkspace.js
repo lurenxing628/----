@@ -202,6 +202,7 @@
       icon: icon,
       transfer: name === 'openImport' ? 'import' : name === 'openExport' ? 'export' : undefined,
       disabled: disabled || loading,
+      reasonDisplay: "tooltip",
       reason: typeof adapter[name] !== 'function' || typeof adapter.supports === 'function' && !adapter.supports(name, config.kind) ? label + '向导尚未接入。' : !ready ? '请先读取当前范围。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : '',
       onClick: () => onExternal(name)
     }, label)), /*#__PURE__*/React.createElement(Button, {
@@ -603,7 +604,7 @@
     const editorEntity = detail.result && detail.result.data;
     const editorReady = dialog && (dialog.action === 'create' || editorEntity);
     return /*#__PURE__*/React.createElement("div", {
-      className: "plana",
+      className: "plana resource-workspace",
       "data-resource-workspace": "true"
     }, /*#__PURE__*/React.createElement(Rail, {
       node: node,
@@ -685,11 +686,9 @@
       selected: selected,
       ready: !!data,
       onClearSelection: () => setSelected([])
-    }), /*#__PURE__*/React.createElement(ErrorBox, {
+    }), data && data.entities.length > 0 && /*#__PURE__*/React.createElement(ErrorBox, {
       error: list.error
-    }), list.loading && /*#__PURE__*/React.createElement("p", {
-      role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6", config.label, "\u2026"), data && /*#__PURE__*/React.createElement(Issues, {
+    }), data && /*#__PURE__*/React.createElement(Issues, {
       issues: list.result.warnings
     }), /*#__PURE__*/React.createElement(Tables, {
       key: node,
@@ -706,6 +705,14 @@
       adapter: adapter,
       scope: scope,
       matchingCount: data && data.page.total,
+      onRetry: refresh,
+      onClear: () => filter({
+        query: '',
+        column_filters: {},
+        ...(config.kind === 'op_type' ? {} : {
+          status: ''
+        })
+      }),
       onOpen: ref => open('view', ref),
       onDelete: ref => open('delete', ref),
       sort: scope.sort,

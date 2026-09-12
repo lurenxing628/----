@@ -7,10 +7,18 @@
       Button,
       ErrorBox,
       Issues,
-      Modal
+      Modal,
+      Field,
+      focusFirstInvalid
     } = window.ResourceControls;
+  const {
+    EmptyState
+  } = window.WorkbenchListControls;
+  const formPaths = ['sent', 'planned', 'returned', 'confirmedState', 'declared_operator', 'reason'];
   const value = v => v === null || v === undefined || v === '' ? '未填写' : typeof v === 'object' ? '原值格式待核实' : String(v);
-  const when = v => v ? value(v).replace('T', ' ') : '未回厂';
+  const when = v => window.WorkbenchFormat.dateTime(v, {
+    seconds: true
+  });
   function Pager({
     page,
     busy,
@@ -18,26 +26,15 @@
     onSize,
     label
   }) {
-    return /*#__PURE__*/React.createElement("div", {
-      className: "os-pager"
-    }, /*#__PURE__*/React.createElement("span", null, page.total, " \u9879 \xB7 \u7B2C ", page.number, " / ", Math.max(1, page.pages), " \u9875"), onSize && /*#__PURE__*/React.createElement("label", null, "\u6BCF\u9875", /*#__PURE__*/React.createElement("select", {
-      "aria-label": label + '每页数量',
-      value: page.size,
+    return /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: page,
+      sizes: [2, 10, 20, 50, 100].concat(page.size).filter((v, i, all) => all.indexOf(v) === i).sort((a, b) => a - b),
+      label: label,
+      sizeLabel: label + '每页数量',
       disabled: busy,
-      onChange: e => onSize(Number(e.target.value))
-    }, [2, 10, 20, 50, 100].concat(page.size).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b).map(n => /*#__PURE__*/React.createElement("option", {
-      key: n
-    }, n)))), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": label + '上一页',
-      disabled: busy || page.number <= 1,
-      onClick: () => onPage(page.number - 1)
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": label + '下一页',
-      disabled: busy || page.number >= page.pages,
-      onClick: () => onPage(page.number + 1)
-    }));
+      onPage: onPage,
+      onSize: onSize
+    });
   }
   function Target({
     target
@@ -61,7 +58,7 @@
       className: "os-facts"
     }, C.fields.map(k => /*#__PURE__*/React.createElement("div", {
       key: k
-    }, /*#__PURE__*/React.createElement("dt", null, C.labels[k]), /*#__PURE__*/React.createElement("dd", null, before && before[k] !== facts[k] && /*#__PURE__*/React.createElement("del", null, k === 'confirmedState' ? C.states[before[k]] : when(before[k])), /*#__PURE__*/React.createElement("span", null, k === 'confirmedState' ? C.states[facts[k]] : when(facts[k]))))));
+    }, /*#__PURE__*/React.createElement("dt", null, C.labels[k]), /*#__PURE__*/React.createElement("dd", null, before && before[k] !== facts[k] && /*#__PURE__*/React.createElement("del", null, k === 'confirmedState' ? C.states[before[k]] : k === 'returned' && before[k] === null ? '未回厂' : when(before[k])), /*#__PURE__*/React.createElement("span", null, k === 'confirmedState' ? C.states[facts[k]] : k === 'returned' && facts[k] === null ? '未回厂' : when(facts[k]))))));
   }
   function TargetPicker({
     api,
@@ -133,31 +130,53 @@
       onClick: reset
     })), /*#__PURE__*/React.createElement(ErrorBox, {
       error: read.error
-    }), read.loading && /*#__PURE__*/React.createElement("div", {
-      className: "os-empty",
-      role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u771F\u5B9E\u5916\u534F\u5DE5\u5E8F"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-      className: "os-scroll os-pick-scroll"
+    }), read.loading && /*#__PURE__*/React.createElement(EmptyState, {
+      kind: "loading",
+      title: "\u6B63\u5728\u8BFB\u53D6\u771F\u5B9E\u5916\u534F\u5DE5\u5E8F"
+    }), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "os-scroll os-pick-scroll wb-table-shell wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
-      className: "os-pick-table"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u9009\u62E9"), /*#__PURE__*/React.createElement("th", null, "\u5DE5\u5E8F / \u540D\u79F0"), /*#__PURE__*/React.createElement("th", null, "\u6279\u6B21 / \u4F9B\u5E94\u5546"), /*#__PURE__*/React.createElement("th", null, "\u767B\u8BB0\u60C5\u51B5"))), /*#__PURE__*/React.createElement("tbody", null, data.items.map((r, index) => {
+      className: "os-pick-table wb-table"
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u53EF\u767B\u8BB0\u7684\u771F\u5B9E\u5916\u534F\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-key"
+    }, "\u9009\u62E9"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-key os-operation-key"
+    }, "\u5DE5\u5E8F / \u540D\u79F0"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u6279\u6B21 / \u4F9B\u5E94\u5546"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-actions"
+    }, "\u767B\u8BB0\u60C5\u51B5"))), /*#__PURE__*/React.createElement("tbody", null, data.items.map((r, index) => {
       const chosen = selected.some(s => s.operation_ref === r.operation_ref),
         first = selected[0];
       const other = mode === 'merged' && first && (first.batch_ref !== r.batch_ref || first.supplier_ref !== r.supplier_ref);
       return /*#__PURE__*/React.createElement("tr", {
         key: r.operation_ref || index,
         "data-target-ref": r.operation_ref,
-        "data-selected": chosen
-      }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+        "data-selected": chosen,
+        "aria-selected": chosen
+      }, /*#__PURE__*/React.createElement("td", {
+        className: "wb-col-key"
+      }, /*#__PURE__*/React.createElement("input", {
         type: mode === 'single' ? 'radio' : 'checkbox',
         name: "os-member",
         "aria-label": '选择工序 ' + value(r.business_code),
         checked: chosen,
         disabled: disabled || !r.can_register || !!other || !chosen && selected.length >= 200,
         onChange: e => choose(r, e.target.checked)
-      })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, value(r.business_code)), /*#__PURE__*/React.createElement("div", null, value(r.label))), /*#__PURE__*/React.createElement("td", null, r.batch ? (r.batch.business_code || '批次编号未知') + ' · ' + (r.batch.label || '批次名称未知') : '批次名称未知', /*#__PURE__*/React.createElement("div", {
+      })), /*#__PURE__*/React.createElement("td", {
+        className: "wb-col-key os-operation-key"
+      }, /*#__PURE__*/React.createElement("b", null, value(r.business_code)), /*#__PURE__*/React.createElement("div", null, value(r.label))), /*#__PURE__*/React.createElement("td", null, r.batch ? (r.batch.business_code || '批次编号未知') + ' · ' + (r.batch.label || '批次名称未知') : '批次名称未知', /*#__PURE__*/React.createElement("div", {
         className: "os-muted"
-      }, r.supplier && r.supplier.label || '供应商名称未知')), /*#__PURE__*/React.createElement("td", null, r.outsourcing_ref ? /*#__PURE__*/React.createElement(Button, {
+      }, r.supplier && r.supplier.label || '供应商名称未知')), /*#__PURE__*/React.createElement("td", {
+        className: "wb-col-actions"
+      }, r.outsourcing_ref ? /*#__PURE__*/React.createElement(Button, {
         className: "mini",
         icon: "arrow-right",
         disabled: disabled,
@@ -165,9 +184,11 @@
       }, "\u6253\u5F00\u539F\u767B\u8BB0") : r.can_register ? other ? '不同批次 / 供应商' : '可登记' : '不可登记', /*#__PURE__*/React.createElement(Issues, {
         issues: r.issues
       })));
-    }))), !data.items.length && /*#__PURE__*/React.createElement("div", {
-      className: "os-empty"
-    }, "\u6CA1\u6709\u53EF\u8BFB\u53D6\u7684\u5916\u534F\u5DE5\u5E8F\u3002")), /*#__PURE__*/React.createElement(Pager, {
+    })))), !data.items.length && /*#__PURE__*/React.createElement(EmptyState, {
+      kind: "empty",
+      title: "\u6CA1\u6709\u53EF\u8BFB\u53D6\u7684\u5916\u534F\u5DE5\u5E8F",
+      hint: "\u53EF\u5237\u65B0\u5DE5\u5E8F\u5217\u8868\uFF0C\u6216\u8FD4\u56DE\u8D44\u6E90\u8D44\u6599\u6838\u5BF9\u5916\u534F\u5DE5\u827A\u3002"
+    }), /*#__PURE__*/React.createElement(Pager, {
       page: data.page,
       label: "\u5DE5\u5E8F",
       busy: disabled || read.loading,
@@ -190,20 +211,30 @@
   function FormFields({
     draft,
     update,
-    disabled
+    disabled,
+    error
   }) {
     return /*#__PURE__*/React.createElement("div", {
       className: "os-form"
-    }, ['sent', 'planned', 'returned'].map(k => /*#__PURE__*/React.createElement("label", {
-      key: k
-    }, C.labels[k], /*#__PURE__*/React.createElement("input", {
+    }, ['sent', 'planned', 'returned'].map(k => /*#__PURE__*/React.createElement(Field, {
+      key: k,
+      label: C.labels[k],
+      path: k,
+      error: error,
+      required: k !== 'returned'
+    }, /*#__PURE__*/React.createElement("input", {
       type: "datetime-local",
       step: "1",
       "aria-label": C.labels[k],
       value: draft[k],
       disabled: disabled,
       onChange: e => update(k, e.target.value)
-    }))), /*#__PURE__*/React.createElement("label", null, "\u786E\u8BA4\u72B6\u6001", /*#__PURE__*/React.createElement("select", {
+    }))), /*#__PURE__*/React.createElement(Field, {
+      label: "\u786E\u8BA4\u72B6\u6001",
+      path: "confirmedState",
+      error: error,
+      required: true
+    }, /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u5916\u534F\u786E\u8BA4\u72B6\u6001",
       value: draft.confirmedState,
       disabled: disabled,
@@ -211,7 +242,12 @@
     }, Object.entries(C.states).map(([k, label]) => /*#__PURE__*/React.createElement("option", {
       key: k,
       value: k
-    }, label)))), /*#__PURE__*/React.createElement("label", null, "\u58F0\u660E\u4EBA", /*#__PURE__*/React.createElement("input", {
+    }, label)))), /*#__PURE__*/React.createElement(Field, {
+      label: "\u58F0\u660E\u4EBA",
+      path: "declared_operator",
+      error: error,
+      required: true
+    }, /*#__PURE__*/React.createElement("input", {
       type: "text",
       "aria-label": "\u5916\u534F\u58F0\u660E\u4EBA",
       maxLength: 200,
@@ -224,9 +260,13 @@
       icon: "x",
       disabled: disabled || !draft.returned,
       onClick: () => update('returned', '')
-    }, "\u6E05\u7A7A\u5B9E\u9645\u56DE\u5382")), /*#__PURE__*/React.createElement("label", {
-      className: "wide"
-    }, "\u672C\u6B21\u6838\u5B9E / \u66F4\u6B63\u539F\u56E0", /*#__PURE__*/React.createElement("textarea", {
+    }, "\u6E05\u7A7A\u5B9E\u9645\u56DE\u5382")), /*#__PURE__*/React.createElement(Field, {
+      label: "\u672C\u6B21\u6838\u5B9E / \u66F4\u6B63\u539F\u56E0",
+      path: "reason",
+      error: error,
+      required: true,
+      full: true
+    }, /*#__PURE__*/React.createElement("textarea", {
       "aria-label": "\u5916\u534F\u6838\u5B9E\u539F\u56E0",
       maxLength: 2000,
       value: draft.reason,
@@ -246,11 +286,15 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: 'os-note ' + (done ? 'success' : 'warning'),
       role: "status"
-    }, done ? '已确认：外协登记已保存，回厂不等于工序完工。' : v.phase === 'rejected' ? '本次明确未写入。' : '结果尚未确认，仅查询原请求。'), /*#__PURE__*/React.createElement("dl", {
-      className: "os-facts"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u539F\u8BF7\u6C42"), /*#__PURE__*/React.createElement("dd", {
+    }, done ? '已确认：外协登记已保存，回厂不等于工序完工。' : v.phase === 'rejected' ? '本次明确未写入。' : '结果尚未确认，仅查询原请求。'), /*#__PURE__*/React.createElement("div", {
       "data-original-key": true
-    }, v.request_key)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u58F0\u660E\u4EBA"), /*#__PURE__*/React.createElement("dd", null, v.input.declared_operator)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6838\u5B9E\u539F\u56E0"), /*#__PURE__*/React.createElement("dd", null, v.input.reason)), done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7CFB\u7EDF\u8BB0\u5F55\u4EBA"), /*#__PURE__*/React.createElement("dd", null, v.receipt.data.local_operator)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u786E\u8BA4\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, when(v.receipt.data.confirmed_at))))));
+    }, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '原请求编号': v.request_key
+      }
+    })), /*#__PURE__*/React.createElement("dl", {
+      className: "os-facts"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u58F0\u660E\u4EBA"), /*#__PURE__*/React.createElement("dd", null, v.input.declared_operator)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6838\u5B9E\u539F\u56E0"), /*#__PURE__*/React.createElement("dd", null, v.input.reason)), done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7CFB\u7EDF\u8BB0\u5F55\u4EBA"), /*#__PURE__*/React.createElement("dd", null, v.receipt.data.local_operator)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u786E\u8BA4\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, when(v.receipt.data.confirmed_at))))));
   }
   function Editor({
     api,
@@ -275,7 +319,11 @@
       [error, setError] = React.useState(null),
       [busy, setBusy] = React.useState(false);
     const alive = React.useRef(false),
-      running = React.useRef(false);
+      running = React.useRef(false),
+      formRef = React.useRef(null),
+      errorRef = React.useRef(null),
+      initialDraft = React.useRef(JSON.stringify(draft)),
+      editorId = React.useId();
     React.useEffect(() => {
       alive.current = true;
       return () => {
@@ -284,6 +332,25 @@
     }, []);
     const locked = busy || command.busy,
       saved = command.saved;
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({
+      owner: 'outsourcing-' + editorId,
+      dirty: !saved && (selected.length > 0 || JSON.stringify(draft) !== initialDraft.current),
+      locked: command.busy,
+      message: '外协登记有尚未保存的填写内容。'
+    });
+    async function close() {
+      if (!locked && (await window.WorkbenchGuards.confirmLeave({
+        owner: guardOwner
+      }))) onClose();
+    }
+    async function openExisting(ref) {
+      if (!locked && (await window.WorkbenchGuards.confirmLeave({
+        owner: guardOwner
+      }))) onOpen(ref);
+    }
+    React.useEffect(() => {
+      if (error && !focusFirstInvalid(formRef.current) && errorRef.current) errorRef.current.focus();
+    }, [error]);
     function update(k, v) {
       setDraft(d => ({
         ...d,
@@ -319,7 +386,7 @@
       onClick: onFinish
     }, "\u5B8C\u6210\u6838\u5B9E\u5E76\u5237\u65B0")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
       disabled: locked,
-      onClick: onClose
+      onClick: close
     }, "\u53D6\u6D88"), preview ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
       icon: "square-pen",
       disabled: locked,
@@ -341,13 +408,19 @@
       title: saved ? '外协登记回执' : item ? '核实 / 更正外协登记' : '新建外协登记',
       icon: "truck",
       onClose: onClose,
+      guardOwner: guardOwner,
       locked: locked,
       footer: footer
     }, /*#__PURE__*/React.createElement("div", {
-      className: "os-dialog-body"
+      className: "os-dialog-body",
+      ref: formRef
+    }, /*#__PURE__*/React.createElement("div", {
+      tabIndex: -1,
+      ref: errorRef
     }, /*#__PURE__*/React.createElement(ErrorBox, {
-      error: command.storageError || error || command.error
-    }), saved ? /*#__PURE__*/React.createElement(Pending, {
+      error: command.storageError || error || command.error,
+      excludePaths: saved || preview ? [] : formPaths
+    })), saved ? /*#__PURE__*/React.createElement(Pending, {
       command: command
     }) : preview ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Target, {
       target: preview.data.target
@@ -369,12 +442,13 @@
       onSelect: setSelected,
       onMode: v => update('kind', v),
       disabled: locked,
-      onOpen: onOpen,
+      onOpen: openExisting,
       batchRef: batchRef
     }), /*#__PURE__*/React.createElement(FormFields, {
       draft: draft,
       update: update,
-      disabled: locked
+      disabled: locked,
+      error: error
     })), command.notice && /*#__PURE__*/React.createElement("div", {
       className: "os-note",
       role: "status"

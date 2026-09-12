@@ -87,6 +87,10 @@
       [checking, setChecking] = React.useState(false),
       [error, setError] = React.useState(''),
       [notice, setNotice] = React.useState('');
+    window.WorkbenchGuards.useDirtyGuard({
+      dirty: !saved && (!!draft.reason || !!draft.declared_operator),
+      message: '场景正式采用的原因或声明人尚未提交。'
+    });
     const [revision, refresh] = React.useReducer(v => v + 1, 0);
     const mounted = React.useRef(false),
       lock = React.useRef(false),

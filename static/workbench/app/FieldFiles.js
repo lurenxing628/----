@@ -109,11 +109,22 @@
     }, label, " ", /*#__PURE__*/React.createElement("b", null, preview.summary[key] || 0)))), /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, preview.can_confirm ? '预检通过，尚未写入报工。' : preview.summary.rejected ? '预检未通过，未写入任何报工。' : '没有可导入的实际记录，未写入报工。'), /*#__PURE__*/React.createElement("div", {
-      className: "field-scroll"
+      className: "field-scroll wb-table-frame",
+      "data-sticky-head": true,
+      tabIndex: "0",
+      "aria-label": "\u6587\u4EF6\u9884\u68C0\u8868\u683C\u6EDA\u52A8\u533A"
     }, /*#__PURE__*/React.createElement("table", {
-      className: "field-table",
+      className: "field-table wb-table",
       "aria-label": "\u6587\u4EF6\u9010\u884C\u9884\u68C0"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Excel \u884C\u53F7"), /*#__PURE__*/React.createElement("th", null, "\u5904\u7406\u7ED3\u679C"), /*#__PURE__*/React.createElement("th", null, "\u95EE\u9898"))), /*#__PURE__*/React.createElement("tbody", null, preview.rows.map((row, index) => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u5F53\u524D\u6587\u4EF6\u9010\u884C\u9884\u68C0\u7ED3\u679C"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "Excel \u884C\u53F7"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5904\u7406\u7ED3\u679C"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u95EE\u9898"))), /*#__PURE__*/React.createElement("tbody", null, preview.rows.map((row, index) => /*#__PURE__*/React.createElement("tr", {
       key: index
     }, /*#__PURE__*/React.createElement("td", null, row.row_number || row.row), /*#__PURE__*/React.createElement("td", null, {
       create: '新增',

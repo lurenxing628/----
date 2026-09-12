@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const C = window.RunCandidateControls, M = window.RunCandidateModel;
-  const labels = { overdue_count: '预计晚交批数', total_tardiness_hours: '总拖期 h', changed_operation_count: '调整工序', machine_change_count: '换设备数' };
+  const labels = { overdue_count: window.WorkbenchTerms.overdue_count, total_tardiness_hours: window.WorkbenchTerms.total_tardiness_hours + ' h', changed_operation_count: '调整工序', machine_change_count: '换设备数' };
   function Value({ metric }) {
     return <>{metric.value === null ? '未知' : M.number(metric.value)}{metric.value === null && <small>已知小计 {M.number(metric.known_subtotal)} · 待核实 {metric.unknown_count} / {metric.total_count}</small>}
       {metric.reason && <details><summary>依据不足</summary><small>{metric.reason.message}</small></details>}</>;
@@ -26,7 +26,7 @@
   function Batches({ data, onBatch, onLast }) {
     const [page, setPage] = React.useState(1), pages = Math.max(1, Math.ceil(data.batches.length / 20)), current = Math.min(page, pages);
     return <section aria-label="候选批次交付对照"><div className="rc-heading"><h3>批次交付对照</h3><span className="rc-muted">完整受理批次 · 候选减受理基线</span></div>
-      <div className="rc-table"><table aria-label="候选批次交付对照"><thead><tr>{['批次 / 零件', '交付截至日', '基准完工', '预览完工', '拖期变化 h', '甘特定位'].map(label => <th key={label}>{label}</th>)}</tr></thead>
+      <div className="rc-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="候选批次交付对照"><caption className="wb-visually-hidden">候选批次交付对照</caption><thead><tr>{['批次 / 零件', '交付截至日', '基准完工', '预览完工', '拖期变化 h', '甘特定位'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{data.batches.slice((current - 1) * 20, current * 20).map(row => <tr key={row.batch_ref} data-analysis-batch={row.batch_ref}>
           <td>{row.batch_id}<small>{row.part_label || '名称未记录'}</small></td><td>{row.after.due_date || '未记录'}</td>
           <td><Finish row={row.before} /></td><td><Finish row={row.after} /></td><td>{row.delay_delta_hours === null ? '未知' : M.signedChange(row.delay_delta_hours)}</td>
@@ -38,11 +38,11 @@
   function History({ data, onPlan }) {
     const [page, setPage] = React.useState(1), pages = Math.max(1, Math.ceil(data.items.length / 20)), current = Math.min(page, pages);
     return <section aria-label="候选采用记录"><h3>采用记录 · {data.total}</h3>
-      {!data.total ? <p className="rc-muted" role="status">此候选尚无已持久保存的采用记录。</p> : <div className="rc-table"><table aria-label="候选采用记录"><thead><tr>{['原正式计划', '采用时间', '声明人 / 本机账号', '原因', '原回执', '操作'].map(label => <th key={label}>{label}</th>)}</tr></thead>
+      {!data.total ? <p className="rc-muted" role="status">此候选尚无已持久保存的采用记录。</p> : <div className="rc-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="候选采用记录"><caption className="wb-visually-hidden">候选采用记录</caption><thead><tr>{['原正式计划', '采用时间', '声明人 / 本机账号', '原因', '原回执', '操作'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{data.items.slice((current - 1) * 20, current * 20).map(row => <tr key={row.receipt_ref} data-adoption-receipt={row.receipt_ref}>
-          <td>{row.official_plan.label}<small>{row.row_count} 道安排</small></td><td>{row.adoption ? M.timeLabel(row.adoption.adopted_at) : '本地时间未核实'}<small>{row.committed_at_utc}</small></td>
+          <td>{row.official_plan.label}<small>{row.row_count} 道安排</small></td><td>{row.adoption ? M.timeLabel(row.adoption.adopted_at) : '本地时间未核实'}<small>回执保存：{window.WorkbenchFormat.instant(row.committed_at_utc)}</small></td>
           <td>{row.adoption ? <>{row.adoption.declared_operator}<small>{row.adoption.application_operator}</small></> : '未核实'}</td><td>{row.adoption ? row.adoption.reason : '未核实'}</td>
-          <td><details><summary>回执编号</summary><code>{row.receipt_ref}</code></details><C.Reasons rows={row.evidence_gaps} /></td>
+          <td><window.WorkbenchReference value={row.receipt_ref} label="回执编号" /><C.Reasons rows={row.evidence_gaps} /></td>
           <td><C.Button icon="chart-gantt" disabled={!row.can_open || !onPlan} title={row.evidence_gaps.map(gap => gap.message).join(' ')}
             aria-label={'打开原采用计划 v' + row.official_plan.version} onClick={() => onPlan(row.official_plan)}>打开原计划</C.Button></td>
         </tr>)}</tbody></table></div>}<C.Pager page={current} pages={pages} onPage={setPage} label="候选采用记录" /></section>;

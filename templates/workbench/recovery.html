@@ -49,23 +49,24 @@
         <div><dt>业务审计</dt><dd>{{ '维护记录报告已留存；当前数据库内容仍需重启后读取' if operation and operation.audit_persisted else '未确认留存' }}</dd></div>
         <div><dt>软件状态</dt><dd>业务操作已停用，须核实结果并重启整个软件</dd></div>
       </dl>
-      {% if operation %}<p class="muted">当前显示结果的原请求：<code>{{ operation.request_key }}</code> · 更新时间 {{ operation.updated_at.replace('T', ' ') }}</p>{% endif %}
+      {% if operation %}<p class="muted">更新时间 {{ operation.updated_at.replace('T', ' ') }}</p>{% endif %}
       {% if operation and host.request_key != operation.request_key %}<p class="muted">这条记录不能代表当前数据库状态，也不会解除软件的维护停止状态。</p>{% endif %}
-      <div class="actions"><form action="/workbench" method="get"><input type="hidden" name="reference" value="{{ reference }}"><input type="hidden" name="kind" value="{{ kind }}"><button type="submit" name="download" value="diagnostic">导出维护诊断</button></form></div>
+      <div class="actions"><form action="/workbench" method="get"><input type="hidden" name="reference" value="{{ reference }}"><input type="hidden" name="kind" value="{{ kind }}"><button type="submit" name="download" value="diagnostic">导出维护诊断</button></form><a href="/workbench?view=system">返回工作台</a></div>
+      <p class="muted">返回入口会重新核实维护状态；需要重启或核查时仍停留在维护页。</p>
     </section>
     <section aria-label="按标识查询"><h2>查询维护结果</h2><form action="/workbench" method="get">
       <fieldset style="margin-top:12px"><legend>标识类型</legend><label><input type="radio" name="kind" value="request"{% if kind == 'request' %} checked{% endif %}>原请求标识</label><label><input type="radio" name="kind" value="job"{% if kind == 'job' %} checked{% endif %}>维护记录编号</label></fieldset>
       <div class="query"><label class="field"><span>查询标识</span><input id="reference" type="text" name="reference" value="{{ reference }}" maxlength="128" autocomplete="off" spellcheck="false"></label><button type="submit">查询维护结果</button></div>
       <p class="muted" id="local-note">查询只读取维护记录，不会更换请求标识重新执行。</p>
     </form></section>
-    {% if operation %}<details><summary>维护阶段与核对信息</summary><p>维护记录编号：<code>{{ operation.job_ref }}</code> · 结果代码：<code>{{ operation.code }}</code></p>
+    {% if operation %}<details><summary>维护阶段与核对信息</summary><p>原请求：<code>{{ operation.request_key }}</code></p><p>维护记录编号：<code>{{ operation.job_ref }}</code> · 结果代码：<code>{{ operation.code }}</code></p>
       {% for step in operation.history %}<p>{{ step.time.replace('T', ' ') }} · {{ labels[step.state] }}</p>{% endfor %}
       {% for label, field in [('所选备份 SHA-256', 'target_sha256'), ('保护副本 SHA-256', 'protection_sha256'), ('维护结束数据库 SHA-256', 'database_after_sha256')] %}<p>{{ label }}：<code>{{ operation.get(field) or '未确认' }}</code></p>{% endfor %}
       <p>上述指纹来自维护记录，本页面没有重新打开或校验数据库。数据库内旧回执可能已被恢复覆盖。</p>
     </details>{% endif %}
     <section aria-label="最近维护记录"><h2>最近维护记录</h2><p class="muted">最多列出最近 20 条，不代表全部历史。</p>
       {% if history_error %}<p role="alert" class="warning">{{ history_error }}</p>
-      {% elif rows %}<div class="table-scroll"><table><thead><tr><th>工厂本地时间</th><th>维护状态</th><th>目标文件</th><th>操作</th></tr></thead><tbody>
+      {% elif rows %}<div class="table-scroll"><table><caption>最近维护记录（最多 20 条）</caption><thead><tr><th scope="col">工厂本地时间</th><th scope="col">维护状态</th><th scope="col">目标文件</th><th scope="col">操作</th></tr></thead><tbody>
         {% for row in rows %}<tr><td>{{ row.updated_at.replace('T', ' ') }}</td><td>{{ labels[row.state] }}</td><td>{{ row.filename or '尚未记录目标文件' }}</td><td><a href="/workbench?kind=request&amp;reference={{ row.request_key|urlencode }}">查看原结果</a></td></tr>{% endfor %}
       </tbody></table></div>{% else %}<p>外置目录未列出维护记录。不能因此认定没有执行过操作或可以继续使用。</p>{% endif %}
     </section>

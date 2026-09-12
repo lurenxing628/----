@@ -10,7 +10,7 @@
     const names = { quantity: '数量', due_date: '交期', priority: '优先级', ready_status: '齐套', ready_date: '齐套日期', remark: '备注' };
     return <tr><td>{row.row} · {row.business_code}</td><td>{({ create: '新增', update: '更新', skipped: '跳过', rejected: '拒绝' })[row.action]}</td>
       <td>{row.errors.length ? row.errors.join('；') : row.input && <div>{B.fields.filter(key => key in row.input.fields).map(key =>
-        <div key={key}>{names[key]}：{B.label(key, row.before && row.before.fields[key])} → {B.label(key, row.input.fields[key])}</div>)}</div>}</td></tr>;
+        <div key={key}>{names[key]}：{window.BatchControls.display(key, row.before && row.before.fields[key])} → {window.BatchControls.display(key, row.input.fields[key])}</div>)}</div>}</td></tr>;
   }
   function BatchFiles({ adapter, mode: operation, scope, selected, snapshot, command, onClose, onCommitted, disabled }) {
     const [mode, setMode] = React.useState('overwrite'), [file, setFile] = React.useState(null), [preview, setPreview] = React.useState(null);
@@ -34,7 +34,7 @@
           const result = await adapter.importPreview(file, mode, scope, snapshot);
           const data = result && result.data;
           if (!data || data.operation !== 'batch.import_confirm' || data.mode !== mode || !Array.isArray(data.rows) || !Array.isArray(data.deleted)
-              || typeof data.can_confirm !== 'boolean' || data.can_confirm && (!data.write_context || !B.context(data.write_context))) throw C.failure('文件预览协议不完整。');
+              || typeof data.can_confirm !== 'boolean' || data.can_confirm && (!data.write_context || !B.context(data.write_context))) throw C.failure('文件预览资料不完整，请重新读取。');
           if (alive.current && id === serial.current) setPreview(data);
         } else {
           const result = await adapter.exportPreview(selection, { ...scope, snapshot_ref: snapshot }, selected);
@@ -56,7 +56,7 @@
           <option value="overwrite">已有批次就更新，没有的就新增</option><option value="append">只新增没有的批次（已有的跳过）</option><option value="replace">先清空全部批次，再按表格重导</option>
         </select></window.BatchControls.Field><window.BatchControls.Field label="选择 Excel 文件"><input type="file" accept=".xlsx" disabled={locked} onChange={event => { setFile(event.target.files[0] || null); setPreview(null); setError(null); serial.current++; }} /></window.BatchControls.Field></div>
         <p>新建批次不自动生成工序；已有批次的空单元格不覆盖。确认前不会新增、更新或删除批次。</p>
-        {preview && <><p>{preview.count} 行 · {preview.can_confirm ? '可确认，整批原子保存' : '存在拒绝行，本批不会写入'}</p><div className="batch-preview"><table className="tbl" aria-label="批次导入预览"><thead><tr><th>行号 / 批次</th><th>操作</th><th>核对内容</th></tr></thead><tbody>
+        {preview && <><p>{preview.count} 行 · {preview.can_confirm ? '全部核对通过，一起保存' : '存在拒绝行，本批不会写入'}</p><div className="batch-preview wb-table-frame" data-sticky-head><table className="tbl wb-table" aria-label="批次导入预览"><caption className="wb-visually-hidden">批次导入预览</caption><thead><tr><th scope="col">行号 / 批次</th><th scope="col">操作</th><th scope="col">核对内容</th></tr></thead><tbody>
           {preview.rows.map(row => <PreviewRow key={row.row} row={row} />)}
         </tbody></table></div>{preview.deleted.length > 0 && <div><h3>将删除的全部批次</h3>{preview.deleted.map(row => <div key={row.entity_ref}>{row.before.business_code} · {row.before.operations.length} 道工序{row.errors.length ? ' · ' + row.errors.join('；') : ''}</div>)}</div>}
           <Issues issues={preview.warnings} /><Button onClick={() => setPreview(null)} disabled={locked}>返回核对文件</Button></>}

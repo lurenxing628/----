@@ -23,11 +23,11 @@
       style={{ left: (item.start - model.start) / (model.end - model.start) * width, width: size }}
       onClick={() => onSelect(task, item.baseline)}
       onMouseEnter={event => onHover({ task, before: item.baseline, x: event.clientX, y: event.clientY })} onMouseLeave={() => onHover(null)}>
-      <span className="plan-bar-face" style={{ padding: !item.baseline && size >= 28 ? 2 : 0, borderWidth: size < 4 ? 0 : 1 }}>{!item.baseline && size >= 28 && <><strong>{M.pieceLabel(task)}</strong>
-        {size >= 75 && <small>{task.batch_id} · {task.sequence} {task.process_label}</small>}</>}</span>
+      <span className="plan-bar-face" style={{ padding: !item.baseline && size >= 28 ? 2 : 0, borderWidth: size < 4 ? 0 : 1 }}>{!item.baseline && size >= 28 && <><strong>{task.batch_id}</strong>
+        {size >= 75 && <small>{task.sequence} {task.process_label} · {M.pieceLabel(task)}</small>}</>}</span>
     </button>;
   }
-  function PlanGantt({ data, selected, onSelect, query, onQuery, disabled = false }) {
+  function PlanGantt({ data, asOf, selected, onSelect, query, onQuery, disabled = false }) {
     const [mode, setMode] = React.useState('machine'), [baseline, setBaseline] = React.useState(false), [zoom, setZoom] = React.useState(1);
     const [changedOnly, setChangedOnly] = React.useState(false), [expanded, setExpanded] = React.useState(false);
     const [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 440 }), [hover, setHover] = React.useState(null);
@@ -38,6 +38,8 @@
     const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
     const before = data.projections.baseline, showBaseline = before.state === 'available';
     const ticks = M.ticks(model.start, model.end, width, position.left, viewport);
+    const today = M.instant(asOf.slice(0, 10) + 'T00:00:00'), now = M.instant(asOf);
+    const timeX = at => (at - model.start) / (model.end - model.start) * width;
     const visibleRows = M.visibleRows(model.rows, Math.max(0, position.top - 90), position.top + position.height + 90);
     const rangeStart = model.start + position.left / width * (model.end - model.start);
     const rangeEnd = model.start + (position.left + viewport) / width * (model.end - model.start);
@@ -125,7 +127,7 @@
           <div className="plan-board-inner" style={{ width: labelWidth + width, height: model.height + 52 }}>
             <div className="plan-axis"><div className="plan-corner">{M.kindLabels[mode]} / 工序<small className="plan-muted" style={{ display: 'block' }}>{model.groupCount}组 · 工厂本地时间</small></div>
               <div className="plan-ticks" style={{ width }}>{ticks.map(tick => <div className="plan-tick" key={tick.at} style={{ left: tick.x }}>
-                {tick.label.slice(0, 10)}<small>{tick.label.slice(11)}</small></div>)}</div></div>
+                {M.timeLabel(tick.label).slice(0, 10)}<small>{M.timeLabel(tick.label).slice(11)}</small></div>)}</div></div>
             {visibleRows.map(row => {
               const items = row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd);
               return <div key={row.key} className={'plan-lane' + (row.before ? ' baseline' : '')} style={{ top: row.top + 52, height: row.height, width: labelWidth + width }}>
@@ -136,12 +138,18 @@
                 </div>
               </div>;
             })}
-            {!model.rows.length && <div className="plan-empty" style={{ position: 'sticky', left: 0, width: position.width }}>{changedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划跨度保持不变。' : '该读取范围没有安排。'}</div>}
+            {[['today', today, '今日零点（按数据日期）'], ['as-of', now, '数据时点']].filter(([, at]) => at >= model.start && at <= model.end).map(([kind, at, label]) =>
+              <i key={kind} className={'plan-time-line ' + kind} data-plan-time-line={kind} data-time-value={M.wire(at)} aria-label={label + ' ' + M.timeLabel(M.wire(at))} title={label + ' ' + M.timeLabel(M.wire(at))}
+                style={{ left: labelWidth + timeX(at), top: 52, height: model.height }} />)}
+            {!model.rows.length && <div style={{ position: 'sticky', left: 0, width: position.width }}><window.WorkbenchControls.EmptyState kind={query || changedOnly ? 'filtered' : 'empty'} title={changedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划跨度保持不变。' : '该读取范围没有安排。'}
+              action={query || changedOnly ? <Button onClick={() => { onQuery(''); setChangedOnly(false); }}>清除筛选</Button> : undefined} /></div>}
           </div>
         </div>
         <div className="plan-footer"><span data-plan-search-count>{model.tasks.length} / {data.task_count} 道安排</span>
-          <span className="plan-legend"><i className="plan-swatch" />安排</span><span className="plan-legend"><i className="plan-swatch critical" />超期 / 资源重叠</span>
-          {baseline && <span className="plan-legend"><i className="plan-swatch before" />初始基线</span>}
+          <span className="plan-legend"><i className="plan-swatch" />安排</span><span className="plan-legend"><i className="plan-swatch success" />已核实准时</span>
+          <span className="plan-legend"><i className="plan-swatch critical" />预计超期</span><span className="plan-legend"><i className="plan-swatch conflict" />资源重叠</span>
+          <span className="plan-legend"><i className="plan-swatch before" />初始基线</span><span className="plan-legend"><i className="plan-swatch point" />零时长点</span>
+          <span className="plan-legend"><i className="plan-swatch today" />今日 / 数据时点</span>
           <span className="plan-actions"><Button className="btn plan-icon" icon="chevron-left" aria-label="上一匹配任务" disabled={currentIndex <= 0} onClick={() => move(-1)} />
             <span>{currentIndex < 0 ? '未选任务' : '第 ' + (currentIndex + 1) + ' 道匹配'}</span><Button className="btn plan-icon" icon="chevron-right" aria-label="下一匹配任务" disabled={!model.tasks.length || currentIndex >= model.tasks.length - 1} onClick={() => move(1)} /></span>
         </div>

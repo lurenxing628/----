@@ -3,7 +3,7 @@
   const U = window.TrialControls;
   function Summary({ data }) {
     const c = data.comparison;
-    return <div className="tt-summary">{[[c.late_count, '预计晚交批次'], [c.total_delay_hours, '总拖期 h'], [c.changed_operations, '调整工序'], [c.moved_operations, '换设备工序']].map(([value, label]) =>
+    return <div className="tt-summary">{[[c.late_count, window.WorkbenchTerms.overdue_count], [c.total_delay_hours, window.WorkbenchTerms.total_tardiness_hours + ' h'], [c.changed_operations, '调整工序'], [c.moved_operations, '换设备工序']].map(([value, label]) =>
       <div key={label}><span>{label}</span><strong>{U.number(value)}</strong></div>)}<div><span>换型次数</span><strong>{c.changeovers === null ? '未评估' : U.number(c.changeovers)}</strong></div></div>;
   }
   function Calendar({ resource }) {

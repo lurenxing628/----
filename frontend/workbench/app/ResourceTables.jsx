@@ -2,7 +2,8 @@
   'use strict';
   const C = window.APSResourceContract;
   const { Button, Status, Relation } = window.ResourceControls;
-  const cell = (entity, key) => entity.fields[key] == null ? <span className="muted">未知</span> : String(entity.fields[key]);
+  const cell = (entity, key) => entity.fields[key] == null ? <span className="muted">未知</span> : typeof entity.fields[key] === 'number'
+    ? window.WorkbenchFormat.number(entity.fields[key], { digits: 1 }) : String(entity.fields[key]);
   const columns = {
     material: [
       { key: 'spec', title: '规格', render: entity => cell(entity, 'spec') },
@@ -44,7 +45,7 @@
     ];
   }
   function ResourceTables({ kind, category, entities, source, selected = [], onSelect, onOpen, onDelete, disabled = false, headerDisabled = disabled,
-    loading = false, error, adapter, scope, matchingCount, sort = 'business_code', direction = 'asc', sortActive = true, onSort, onColumnFilter }) {
+    loading = false, error, onRetry, onClear, adapter, scope, matchingCount, sort = 'business_code', direction = 'asc', sortActive = true, onSort, onColumnFilter }) {
     const selectAll = React.useRef(null), all = entities.length > 0 && entities.every(item => selected.includes(item.ref));
     const table = React.useRef(null), [widths, setWidths] = React.useState(null);
     React.useEffect(() => { if (selectAll.current) selectAll.current.indeterminate = !all && entities.some(item => selected.includes(item.ref)); }, [all, entities, selected]);
@@ -61,40 +62,33 @@
       table.current.querySelectorAll('thead th[data-column]').forEach(cell => { current[cell.dataset.column] = cell.getBoundingClientRect().width; });
       setWidths({ ...current, [key]: Math.max(56, width) });
     }
-    return <div className="card wb-table-frame"><div className="card-scroll wb-table-shell"><table ref={table} className="tbl wb-table" aria-label={C.resourceName(kind, opCategory) + '列表'}
+    const filtered = !!(scope && (scope.query || scope.status || Object.keys(scope.column_filters || {}).length));
+    return <div className="card"><div className="wb-table-frame wb-table-shell" data-sticky-head data-sticky-actions style={{ '--wb-table-min': '850px' }}><table ref={table} className="tbl wb-table" aria-label={C.resourceName(kind, opCategory) + '列表'}
       style={widths ? { width: Object.values(widths).reduce((sum, width) => sum + width, 0), minWidth: 0 } : undefined} aria-busy={loading}>
-      <thead><tr><th className="cbx" data-column="__selection" style={widths ? { width: widths.__selection } : undefined}><input ref={selectAll} type="checkbox" aria-label="全选当前页" checked={all} disabled={disabled || !entities.length} onChange={event => {
+      <caption className="wb-visually-hidden">{C.resourceName(kind, opCategory)}列表，编号与操作列固定。</caption>
+      <thead><tr><th scope="col" className="cbx" data-column="__selection" style={widths ? { width: widths.__selection } : undefined}><input ref={selectAll} type="checkbox" aria-label="全选当前页" checked={all} disabled={disabled || !entities.length} onChange={event => {
         const visible = new Set(entities.map(item => item.ref));
         onSelect(event.target.checked ? Array.from(new Set(selected.concat(Array.from(visible)))) : selected.filter(ref => !visible.has(ref)));
       }} /></th>
-        {cols.map(col => <th key={col.key} data-column={col.key} className={col.numeric ? 'r' : ''} style={{ width: widths ? widths[col.key] : col.width }} aria-sort={sortActive && sort === col.key ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
+        {cols.map(col => <th key={col.key} scope="col" data-column={col.key} className={col.key === 'business_code' ? 'wb-col-key' : col.numeric ? 'r' : ''} style={{ width: widths ? widths[col.key] : col.width }} aria-sort={sortActive && sort === col.key ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
           <window.ResourceTableHeader column={col} kind={kind} scope={scope} adapter={adapter} matchingCount={matchingCount}
             sort={sort} direction={direction} sortActive={sortActive} onSort={onSort} filter={scope && scope.column_filters && scope.column_filters[col.key] || null} onFilter={rule => onColumnFilter(col.key, rule)}
             width={widths ? widths[col.key] : col.width} onResize={width => resize(col.key, width)} disabled={headerDisabled} />
         </th>)}
-        <th className="actcol" data-column="__actions" style={{ width: widths ? widths.__actions : 216 }}>操作</th></tr></thead>
+        <th scope="col" className="actcol wb-col-actions" data-column="__actions" style={{ width: widths ? widths.__actions : 216 }}>操作</th></tr></thead>
       <tbody>{entities.map(entity => <tr key={entity.ref}><td className="cbx"><input type="checkbox" aria-label={'选择 ' + entity.business_code + ' ' + entity.label} checked={selected.includes(entity.ref)} disabled={disabled}
         onChange={event => onSelect(event.target.checked ? selected.concat(entity.ref) : selected.filter(ref => ref !== entity.ref))} /></td>
-        {cols.map(col => <td key={col.key} className={col.numeric ? 'r' : ''} style={{ overflowWrap: 'anywhere', whiteSpace: 'normal' }}>{col.render(entity)}
+        {cols.map(col => <td key={col.key} className={col.key === 'business_code' ? 'wb-col-key' : col.numeric ? 'r' : ''} style={{ overflowWrap: 'anywhere', whiteSpace: 'normal' }}>{col.render(entity)}
           {col.key === 'label' && entity.issues.some(issue => issue.scope !== 'collection') && <span className="muted" style={{ display: 'block', fontSize: 12 }}>待核对 {entity.issues.filter(issue => issue.scope !== 'collection').length} 项</span>}</td>)}
-        <td className="actcol"><div className="rowact" style={{ minWidth: 192 }}>
+        <td className="actcol wb-col-actions"><div className="rowact">
           <Button className="mini" icon="search" disabled={disabled} onClick={() => onOpen(entity.ref)}>{kind === 'op_type' ? entity.fields.category === 'internal' ? '查看绑定' : entity.fields.category === 'external' ? '查看供应商' : '查看/编辑' : '查看/编辑'}</Button>
-          <Button className="mini danger" icon="minus" reason={disabled ? '正在处理，请稍候。' : C.blocked(entity.write_context, kind, 'delete', source)} onClick={() => onDelete(entity.ref)}>删除</Button>
-        </div></td></tr>)}{!entities.length && <tr><td colSpan={cols.length + 2} className="muted" style={{ textAlign: 'center', padding: 28 }}>{loading ? '正在读取资料…' : error ? '列表读取失败，请重新读取。' : '当前条件下没有资料。'}</td></tr>}</tbody>
+          <Button className="mini danger" icon="minus" reasonDisplay="inline" reason={disabled ? '正在处理，请稍候。' : C.blocked(entity.write_context, kind, 'delete', source)} onClick={() => onDelete(entity.ref)}>删除</Button>
+        </div></td></tr>)}{!entities.length && <tr><td colSpan={cols.length + 2}><window.WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty'} error={error}
+          action={error ? <Button onClick={onRetry}>重新读取</Button> : filtered ? <Button onClick={onClear}>清除筛选</Button> : undefined} /></td></tr>}</tbody>
     </table></div></div>;
   }
   function Pager({ page, onPage, onSize, disabled }) {
-    const [jump, setJump] = React.useState(String(page.number));
-    React.useEffect(() => setJump(String(page.number)), [page.number]);
-    const totalPages = Math.max(1, page.pages);
-    return <form className="pager" style={{ flexWrap: 'wrap' }} onSubmit={event => { event.preventDefault(); const next = Number(jump); if (!disabled && Number.isInteger(next) && next >= 1 && next <= totalPages) onPage(next); }}>
-      <span>共 {page.total} 条</span><label className="field"><select aria-label="每页条数" value={page.size} disabled={disabled} onChange={event => onSize(Number(event.target.value))}>
-        {Array.from(new Set([20, 50, 100, page.size])).sort((a, b) => a - b).map(size => <option key={size} value={size}>{size} 条 / 页</option>)}</select></label>
-      <span className="grow" /><Button className="pg" icon="chevron-left" aria-label="上一页" reason={page.number <= 1 ? '已经是第一页。' : ''} disabled={disabled} onClick={() => onPage(page.number - 1)} />
-      <span>第 {page.number} / {totalPages} 页</span><Button className="pg" icon="chevron-right" aria-label="下一页" reason={page.number >= totalPages ? '已经是最后一页。' : ''} disabled={disabled} onClick={() => onPage(page.number + 1)} />
-      <label className="field"><input aria-label="跳转页码" type="number" min="1" max={totalPages} step="1" value={jump} disabled={disabled} onChange={event => setJump(event.target.value)} style={{ width: 74, textAlign: 'right' }} /></label>
-      <Button type="submit" disabled={disabled} reason={!Number.isInteger(Number(jump)) || Number(jump) < 1 || Number(jump) > totalPages ? '请输入有效页码。' : ''}>跳转</Button>
-    </form>;
+    return <window.WorkbenchControls.Pager page={page} sizes={Array.from(new Set([20, 50, 100, page.size])).sort((a, b) => a - b)} unit="项" label="" sizeLabel="每页条数" showPageJump onPage={onPage} onSize={onSize} disabled={disabled} />;
   }
   ResourceTables.Pager = Pager;
   window.ResourceTables = ResourceTables;

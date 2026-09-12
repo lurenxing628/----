@@ -1,6 +1,7 @@
 (function () {
   'use strict';
 
+  // Axis numbers encode factory-local wall-clock fields; UTC extraction must not shift them to the browser timezone.
   const U = window.TrialControls,
     wall = value => Date.parse(value + 'Z');
   const pieceLabel = t => t.piece_id === null ? '共同工序' : '分件 ' + t.piece_id;
@@ -217,7 +218,7 @@
       className: "tt-ticks"
     }, [0, 1, 2, 3].map(i => /*#__PURE__*/React.createElement("span", {
       key: i
-    }, new Date(bounds.start + (bounds.end - bounds.start) * i / 3).toISOString().slice(5, 16).replace('T', ' '))))), visible.map((r, i) => /*#__PURE__*/React.createElement(React.Fragment, {
+    }, U.timeLabel(new Date(bounds.start + (bounds.end - bounds.start) * i / 3).toISOString().slice(0, 19)).slice(5, 16))))), visible.map((r, i) => /*#__PURE__*/React.createElement(React.Fragment, {
       key: r.t.task_ref + ':' + r.ghost
     }, (i === 0 || visible[i - 1].group !== r.group) && /*#__PURE__*/React.createElement("div", {
       className: "tt-group"

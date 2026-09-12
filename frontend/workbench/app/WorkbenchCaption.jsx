@@ -32,17 +32,7 @@
     </div>;
   }
   function Styles() {
-    return <style>{`
-      .operations-shell .top-header { min-height:64px; height:auto; gap:12px; flex-wrap:wrap; }
-      .operations-shell .top-title { flex:0 1 auto; min-width:0; overflow-wrap:anywhere; }
-      .operations-shell .cap-rich { flex:1 1 260px; min-width:0; }
-      .operations-shell .wb-current-plan { display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; font-size:12px; line-height:20px; }
-      .operations-shell .wb-current-plan strong { font-size:12px; }
-      .operations-shell .wb-current-name, .operations-shell .wb-current-range { min-width:0; max-width:100%; overflow-wrap:anywhere; }
-      .operations-shell .header-controls { flex:0 0 auto; margin-left:auto; }
-      .operations-shell .wb-render-failure { padding:24px 0; }
-      @media(max-width:760px) { .operations-shell .cap-rich.wb-current-plan { flex-basis:100%; order:3; } }
-    `}</style>;
+    return null;
   }
   window.WorkbenchCaption = { Provider, Caption, Styles, useCaption };
 })();

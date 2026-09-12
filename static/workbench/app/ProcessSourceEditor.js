@@ -144,7 +144,15 @@
         width: '100%',
         tableLayout: 'fixed'
       }
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u7F16\u53F7"), /*#__PURE__*/React.createElement("th", null, "\u540D\u79F0"), /*#__PURE__*/React.createElement("th", null, "\u9009\u62E9"))), /*#__PURE__*/React.createElement("tbody", null, data.entities.map(row => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, title + '选项'), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u7F16\u53F7"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u540D\u79F0"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u9009\u62E9"))), /*#__PURE__*/React.createElement("tbody", null, data.entities.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.ref
     }, /*#__PURE__*/React.createElement("td", null, row.business_code), /*#__PURE__*/React.createElement("td", null, row.label), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
       icon: "check",
@@ -342,23 +350,31 @@
         minWidth: 950,
         tableLayout: 'fixed'
       }
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "工序归属明细"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 150
       }
     }, "\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 160
       }
     }, "\u5DE5\u79CD"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 160
       }
     }, "\u5F52\u5C5E"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 190
       }
-    }, "\u4F9B\u5E94\u5546"), /*#__PURE__*/React.createElement("th", null, "\u6838\u5BF9 / \u786E\u8BA4\u8BB0\u5F55"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map(row => {
+    }, "\u4F9B\u5E94\u5546"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u6838\u5BF9 / \u786E\u8BA4\u8BB0\u5F55"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map(row => {
       const current = draft[row.ref] || row,
         inactive = row.status !== 'active',
         cycle = current.source === row.source && P.groupCycle(row, entity.external_groups);

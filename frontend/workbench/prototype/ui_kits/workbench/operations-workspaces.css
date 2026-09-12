@@ -19,7 +19,7 @@
 @media (max-width: 600px) {
   .operations-shell .page-content { padding: 14px 10px; }
   .operations-shell .top-header { padding: 0 10px; }
-  .operations-shell .top-title { font-size: 15px; }
+  .operations-shell .top-title { font-size: var(--font-size-3); }
   .operations-shell .header-controls { gap: 6px; }
   .operations-shell .hdr-pill { padding: 0 8px; }
 }

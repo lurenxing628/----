@@ -16,6 +16,21 @@
       status: ['pending', 'scheduled', 'processing']
     }
   });
+  function DueDate({
+    value
+  }) {
+    try {
+      return /*#__PURE__*/React.createElement("span", null, "\u4EA4\u671F\uFF1A", window.WorkbenchFormat.date(value));
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error;
+      return /*#__PURE__*/React.createElement("span", null, "\u4EA4\u671F\u539F\u503C\u5F85\u6838\u5BF9", /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+        entries: {
+          '原交期': value,
+          '格式说明': error.message
+        }
+      }));
+    }
+  }
   function PreflightBatchPicker({
     adapter,
     selected,
@@ -174,11 +189,20 @@
       icon: "refresh-cw",
       disabled: disabled || loading || selecting,
       onClick: () => filter({})
-    }, "\u91CD\u8BFB\u6279\u6B21"), loading || selecting ? /*#__PURE__*/React.createElement("p", {
-      role: "status"
-    }, selecting ? '正在核对全部选择范围…' : '正在读取批次…') : data && !visible.length ? /*#__PURE__*/React.createElement("p", {
-      role: "status"
-    }, "\u5F53\u524D\u7B5B\u9009\u6CA1\u6709\u5F85\u6392\u6279\u6B21\u3002") : null, !loading && data && /*#__PURE__*/React.createElement("div", {
+    }, "\u91CD\u8BFB\u6279\u6B21"), loading || selecting ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "loading",
+      title: selecting ? '正在核对全部选择范围' : '正在读取批次'
+    }) : data && !visible.length ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "filtered",
+      title: "\u5F53\u524D\u7B5B\u9009\u6CA1\u6709\u5F85\u6392\u6279\u6B21",
+      hint: "\u8C03\u6574\u5173\u952E\u8BCD\u6216\u9F50\u5957\u7B5B\u9009\u540E\u518D\u8BD5\u3002",
+      action: /*#__PURE__*/React.createElement(Button, {
+        onClick: () => {
+          setQuery('');
+          setScope(baseScope());
+        }
+      }, "\u6E05\u9664\u7B5B\u9009")
+    }) : null, !loading && data && /*#__PURE__*/React.createElement("div", {
       className: "pf-picker-list"
     }, visible.map(row => /*#__PURE__*/React.createElement("label", {
       className: "pf-picker-row",
@@ -189,37 +213,24 @@
       checked: chosen.has(row.ref),
       disabled: busy,
       onChange: () => toggle(row.ref)
-    }), /*#__PURE__*/React.createElement("strong", null, row.business_code), /*#__PURE__*/React.createElement("span", null, row.relationships.part_no, " \xB7 ", row.label), /*#__PURE__*/React.createElement("span", null, row.relationships.operation_count, " \u9053\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("span", null, window.APSBatchContract.label('ready_status', row.fields.ready_status))))), data && /*#__PURE__*/React.createElement("div", {
-      className: "pf-tools"
-    }, /*#__PURE__*/React.createElement("span", null, "\u5171 ", data.page.total, " \u6279 \xB7 \u7B2C ", data.page.number, " / ", data.page.pages, " \u9875"), /*#__PURE__*/React.createElement("label", null, "\u6BCF\u9875", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u6279\u6B21\u6BCF\u9875\u6761\u6570",
-      value: scope.size,
-      disabled: busy,
-      onChange: event => filter({
-        size: Number(event.target.value)
-      })
-    }, [20, 50, 100].map(size => /*#__PURE__*/React.createElement("option", {
-      key: size,
-      value: size
-    }, size)))), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": "\u6279\u6B21\u4E0A\u4E00\u9875",
-      disabled: busy || data.page.number <= 1,
-      onClick: () => setScope(old => ({
+    }), /*#__PURE__*/React.createElement("strong", null, row.business_code), /*#__PURE__*/React.createElement("span", null, row.relationships.part_no, " \xB7 ", row.label), /*#__PURE__*/React.createElement("span", null, row.relationships.operation_count, " \u9053\u5DE5\u5E8F"), /*#__PURE__*/React.createElement(DueDate, {
+      value: row.fields.due_date
+    }), /*#__PURE__*/React.createElement("span", null, "\u4F18\u5148\u7EA7\uFF1A", window.APSBatchContract.label('priority', row.fields.priority)), /*#__PURE__*/React.createElement("span", null, window.APSBatchContract.label('ready_status', row.fields.ready_status))))), data && /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: data.page,
+      size: scope.size,
+      sizes: [20, 50, 100],
+      unit: "\u6279",
+      label: "\u6279\u6B21",
+      busy: busy,
+      onSize: size => filter({
+        size
+      }),
+      onPage: page => setScope(old => ({
         ...old,
-        page: old.page - 1,
+        page,
         snapshot_ref: snapshot
       }))
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": "\u6279\u6B21\u4E0B\u4E00\u9875",
-      disabled: busy || data.page.number >= data.page.pages,
-      onClick: () => setScope(old => ({
-        ...old,
-        page: old.page + 1,
-        snapshot_ref: snapshot
-      }))
-    })));
+    }));
   }
   window.PreflightBatchPicker = PreflightBatchPicker;
 })();

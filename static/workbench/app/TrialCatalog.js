@@ -106,7 +106,23 @@
     }, /*#__PURE__*/React.createElement("table", {
       className: "tt-table",
       "aria-label": "\u8BD5\u8C03\u76EE\u5F55"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u540D\u79F0"), /*#__PURE__*/React.createElement("th", null, "\u539F\u6765\u6E90"), /*#__PURE__*/React.createElement("th", null, "\u72B6\u6001"), /*#__PURE__*/React.createElement("th", null, "\u5B89\u6392"), /*#__PURE__*/React.createElement("th", null, "\u66F4\u65B0\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", null, "\u672C\u673A\u64CD\u4F5C\u8005"), /*#__PURE__*/React.createElement("th", null, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, read.result.data.items.map(r => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "试调目录"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u540D\u79F0"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u539F\u6765\u6E90"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u72B6\u6001"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5B89\u6392"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u66F4\u65B0\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u672C\u673A\u64CD\u4F5C\u8005"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, read.result.data.items.map(r => /*#__PURE__*/React.createElement("tr", {
       key: r.detail_target,
       "data-trial-ref": r.open_target.draft_ref || r.open_target.scenario_ref
     }, /*#__PURE__*/React.createElement("td", null, r.display_name), /*#__PURE__*/React.createElement("td", null, r.base_display_name), /*#__PURE__*/React.createElement("td", null, U.statusLabel(r.status)), /*#__PURE__*/React.createElement("td", null, r.task_count), /*#__PURE__*/React.createElement("td", null, U.timeLabel(r.updated_at)), /*#__PURE__*/React.createElement("td", null, r.local_operator), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(U.Button, {
@@ -261,6 +277,17 @@
       base,
       scope: initialScope
     };
+    const baseline = React.useRef(initialBase || null);
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({
+      dirty: JSON.stringify(base) !== JSON.stringify(baseline.current),
+      locked: commands.busy || !!commands.key,
+      message: '新建试调的来源选择或确认尚未提交。'
+    });
+    async function close(detail) {
+      if (detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner || (await window.WorkbenchGuards.confirmLeave({
+        owner: guardOwner
+      }))) onClose();
+    }
     const read = S.useRead(signal => A.preview(input, signal), [JSON.stringify(input), epoch], inspect && !!base);
     function select(value, title) {
       setBase(value);
@@ -272,16 +299,21 @@
     return /*#__PURE__*/React.createElement(U.Modal, {
       title: "\u4ECE\u539F\u6765\u6E90\u521B\u5EFA\u8BD5\u8C03",
       icon: "square-pen",
-      onClose: onClose,
-      locked: commands.busy,
+      onClose: close,
+      guardOwner: guardOwner,
+      locked: commands.busy || !!commands.key,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(U.Button, {
         icon: "x",
-        disabled: commands.busy,
-        onClick: onClose
+        disabled: commands.busy || !!commands.key,
+        onClick: close
       }, "\u53D6\u6D88"), onExisting && /*#__PURE__*/React.createElement(U.Button, {
         icon: "folder-open",
-        disabled: commands.busy,
-        onClick: onExisting
+        disabled: commands.busy || !!commands.key,
+        onClick: async () => {
+          if (await window.WorkbenchGuards.confirmLeave({
+            owner: guardOwner
+          })) onExisting();
+        }
       }, "\u6253\u5F00\u5DF2\u6709\u8349\u7A3F"), /*#__PURE__*/React.createElement(U.Button, {
         icon: "refresh-cw",
         disabled: !base || commands.busy,

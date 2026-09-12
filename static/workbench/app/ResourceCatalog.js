@@ -8,8 +8,13 @@
     Modal,
     Button,
     ErrorBox,
-    Issues
+    Issues,
+    focusFirstInvalid
   } = window.ResourceControls;
+  const {
+    EmptyState,
+    Pager
+  } = window.WorkbenchListControls;
   const Editor = window.ResourceCatalogEditor;
   const initialScope = () => ({
     query: '',
@@ -94,27 +99,49 @@
       onClick: () => onOpen('create')
     }, "\u65B0\u589E", M.names[kind])), /*#__PURE__*/React.createElement(ErrorBox, {
       error: list.error
-    }), list.loading && /*#__PURE__*/React.createElement("p", {
-      role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u76EE\u5F55\u2026"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Issues, {
+    }), list.loading && /*#__PURE__*/React.createElement(EmptyState, {
+      kind: "loading",
+      title: "\u6B63\u5728\u8BFB\u53D6\u76EE\u5F55"
+    }), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Issues, {
       issues: list.result.warnings
-    }), /*#__PURE__*/React.createElement("table", {
-      className: "tbl rc-list"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u7F16\u53F7 / \u540D\u79F0"), /*#__PURE__*/React.createElement("th", null, "\u72B6\u6001"), /*#__PURE__*/React.createElement("th", null, kind === 'machine_group' ? '关联设备' : '关联人员'), kind === 'shift_profile' && /*#__PURE__*/React.createElement("th", null, "\u8F6E\u6362\u5929\u6570"), /*#__PURE__*/React.createElement("th", null, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, data.entities.map(entity => /*#__PURE__*/React.createElement("tr", {
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "wb-table-frame rc-list-scroll",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
+    }, /*#__PURE__*/React.createElement("table", {
+      className: "tbl wb-table rc-list"
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, M.names[kind], "\u76EE\u5F55"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-key"
+    }, "\u7F16\u53F7 / \u540D\u79F0"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u72B6\u6001"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, kind === 'machine_group' ? '关联设备' : '关联人员'), kind === 'shift_profile' && /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u8F6E\u6362\u5929\u6570"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-actions"
+    }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, data.entities.map(entity => /*#__PURE__*/React.createElement("tr", {
       key: entity.ref
     }, /*#__PURE__*/React.createElement("td", {
-      className: "rc-wrap"
+      className: "rc-wrap wb-col-key"
     }, /*#__PURE__*/React.createElement("b", null, entity.business_code), /*#__PURE__*/React.createElement("div", null, entity.label)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
       className: 'pill ' + (entity.status === 'active' ? 'ok' : entity.status === 'inactive' ? 'off' : 'warn')
     }, /*#__PURE__*/React.createElement("span", {
       className: "dot"
-    }), entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '未知')), /*#__PURE__*/React.createElement("td", null, M.memberCount(kind, entity) === null ? '未读取' : M.memberCount(kind, entity)), kind === 'shift_profile' && /*#__PURE__*/React.createElement("td", null, entity.fields.cycle_days), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
+    }), entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '未知')), /*#__PURE__*/React.createElement("td", null, M.memberCount(kind, entity) === null ? '未读取' : M.memberCount(kind, entity)), kind === 'shift_profile' && /*#__PURE__*/React.createElement("td", null, entity.fields.cycle_days), /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-actions"
+    }, /*#__PURE__*/React.createElement("div", {
       className: "rowact"
     }, /*#__PURE__*/React.createElement(Button, {
       className: "mini",
       icon: "square-pen",
       "aria-label": '编辑 ' + entity.business_code,
       disabled: disabled,
+      reasonDisplay: "tooltip",
       reason: C.blocked(entity.write_context, kind, 'update', list.result.meta.source),
       onClick: () => onOpen('update', entity.ref)
     }), /*#__PURE__*/React.createElement(Button, {
@@ -122,34 +149,35 @@
       icon: "minus",
       "aria-label": '删除 ' + entity.business_code,
       disabled: disabled,
+      reasonDisplay: "tooltip",
       reason: C.blocked(entity.write_context, kind, 'delete', list.result.meta.source),
       onClick: () => onOpen('delete', entity.ref)
-    }))))), !data.entities.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
-      colSpan: kind === 'shift_profile' ? 5 : 4,
-      className: "muted"
-    }, "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u76EE\u5F55\u8BB0\u5F55\u3002")))), /*#__PURE__*/React.createElement("div", {
-      className: "pager"
-    }, /*#__PURE__*/React.createElement("span", null, "\u5171 ", data.page.total, " \u6761 \xB7 \u7B2C ", data.page.number, " / ", Math.max(1, data.page.pages), " \u9875"), /*#__PURE__*/React.createElement("span", {
-      className: "grow"
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": "\u76EE\u5F55\u4E0A\u4E00\u9875",
-      disabled: disabled || scope.page <= 1,
-      onClick: () => setScope({
+    })))))))), !data.entities.length && /*#__PURE__*/React.createElement(EmptyState, {
+      kind: scope.query || scope.status ? 'filtered' : 'empty',
+      title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u76EE\u5F55\u8BB0\u5F55",
+      hint: "\u53EF\u6E05\u9664\u641C\u7D22\u548C\u72B6\u6001\u7B5B\u9009\u540E\u67E5\u770B\u5168\u90E8\u76EE\u5F55\u3002",
+      action: scope.query || scope.status ? /*#__PURE__*/React.createElement(Button, {
+        disabled: disabled,
+        onClick: () => {
+          setSearch('');
+          filter({
+            query: '',
+            status: ''
+          });
+        }
+      }, "\u6E05\u9664\u7B5B\u9009") : undefined
+    }), /*#__PURE__*/React.createElement(Pager, {
+      page: data.page,
+      sizes: [20],
+      unit: "\u6761",
+      label: "\u76EE\u5F55",
+      disabled: disabled || list.loading,
+      onPage: page => setScope({
         ...scope,
-        page: scope.page - 1,
+        page,
         snapshot_ref: list.result.meta.snapshot_ref
       })
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": "\u76EE\u5F55\u4E0B\u4E00\u9875",
-      disabled: disabled || scope.page >= data.page.pages,
-      onClick: () => setScope({
-        ...scope,
-        page: scope.page + 1,
-        snapshot_ref: list.result.meta.snapshot_ref
-      })
-    }))));
+    })));
   }
   function ResourceCatalog({
     kind,
@@ -162,8 +190,7 @@
     const [busy, setBusy] = React.useState(false),
       [error, setError] = React.useState(null),
       [review, setReview] = React.useState(null);
-    const [discard, setDiscard] = React.useState(null),
-      [lastReceipt, setLastReceipt] = React.useState(null),
+    const [lastReceipt, setLastReceipt] = React.useState(null),
       [needsReview, setNeedsReview] = React.useState(false);
     const command = S.useCommand(adapter),
       generation = React.useRef(0),
@@ -181,6 +208,15 @@
       done = command.phase === 'done';
     const locked = command.locked || busy,
       showList = !editor && !command.locked && !done;
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({
+      owner: 'resource-catalog-' + formId,
+      dirty: !!(editor && editor.action !== 'delete' && !done && JSON.stringify(editor.draft) !== JSON.stringify(M.draft(editor.base))),
+      locked: command.locked,
+      message: '资源目录有尚未保存的修改。'
+    });
+    React.useEffect(() => {
+      if (error || command.error) focusFirstInvalid(root.current);
+    }, [error, command.error]);
     const list = S.useQuery(async signal => C.query(await adapter.list(kind, scope, signal), 'list'), [adapter, kind, scope], validKind && showList);
     React.useEffect(() => {
       const selector = done ? '.modal-f button:not(:disabled)' : 'input:not(:disabled):not([readonly]),select:not(:disabled)';
@@ -236,7 +272,6 @@
       setEditor(null);
       setReview(null);
       setError(null);
-      setDiscard(null);
       setNeedsReview(false);
       if (target === 'close') finish();else setScope(current => ({
         ...current,
@@ -244,12 +279,11 @@
         snapshot_ref: undefined
       }));
     }
-    function requestClose(target = 'close') {
+    async function requestClose(target = 'close', options = {}) {
       if (locked) return;
-      if (editor && editor.action !== 'delete' && !done && JSON.stringify(editor.draft) !== JSON.stringify(M.draft(editor.base))) {
-        setDiscard(target);
-        return;
-      }
+      if (!(options.guardConfirmed && options.guardOwner === guardOwner) && !(await window.WorkbenchGuards.confirmLeave({
+        owner: guardOwner
+      }))) return;
       back(target);
     }
     function change(key, value) {
@@ -277,7 +311,7 @@
     const reason = editor ? needsReview ? '资料已变化，请重新读取并核对。' : review ? '请先核对最新资料。' : C.blocked(editor.context, kind, editor.action, editor.source) : '';
     async function submit(event) {
       event.preventDefault();
-      if (locked || done || !editor || reason || discard) return;
+      if (locked || done || !editor || reason) return;
       try {
         const input = editor.action === 'delete' ? {} : M.input(kind, editor.draft, editor.base);
         setError(null);
@@ -295,45 +329,13 @@
       className: "plana resource-catalog",
       "data-resource-catalog": kind,
       ref: root
-    }, /*#__PURE__*/React.createElement("style", null, `
-        .resource-catalog .modal.lg { width:min(860px,100%); }
-        .resource-catalog .modal-b.scroll { max-height:min(65vh,690px); padding-bottom:18px; }
-        .resource-catalog .rc-toolbar { flex-wrap:wrap; gap:8px; margin-bottom:14px; }
-        .resource-catalog .rc-toolbar .search { flex:1 1 180px; min-width:120px; max-width:270px; }
-        .resource-catalog .rc-toolbar .field { min-width:130px; }
-        .resource-catalog .rc-toolbar .field select { height:32px; }
-        .resource-catalog table.tbl { min-width:0; width:100%; table-layout:fixed; }
-        .resource-catalog .rc-list th:first-child { width:40%; }
-        .resource-catalog .rc-list th:last-child { width:112px; }
-        .resource-catalog .rc-wrap { overflow-wrap:anywhere; }
-        .resource-catalog .rc-error { color:var(--ui-danger-text); }
-        .resource-catalog .rc-pattern { margin-top:20px; border-top:1px solid var(--ui-border); padding-top:14px; }
-        .resource-catalog .rc-section-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
-        .resource-catalog .rc-section-head h3 { font-size:14px; margin:0; flex:1; }
-        .resource-catalog .rc-pattern-table th { width:22%; }
-        .resource-catalog .rc-pattern-table th:first-child { width:12%; }
-        .resource-catalog .rc-pattern-table th:last-child { width:18%; }
-        .resource-catalog .rc-pattern-table td.field { display:table-cell; }
-        .resource-catalog .rc-pattern-table .field input, .resource-catalog .rc-pattern-table select { padding-left:6px; padding-right:6px; min-width:0; height:32px; }
-        .resource-catalog .rc-pattern-table select { padding-right:24px; }
-        .resource-catalog .rc-note { display:block; margin-top:12px; }
-        .resource-catalog .rc-facts { overflow-wrap:anywhere; }
-        .resource-catalog .rc-list td, .resource-catalog .rc-pattern-table td { vertical-align:middle; }
-        .resource-catalog .rc-list .rowact { gap:8px; }
-        .resource-catalog .rc-list .mini { width:30px; height:30px; padding:0; flex:none; }
-        .resource-catalog .rc-list .mini svg { width:18px; height:18px; flex:none; }
-        .resource-catalog .rc-pattern-table td { padding:8px 6px; }
-      `), /*#__PURE__*/React.createElement(Modal, {
+    }, /*#__PURE__*/React.createElement(Modal, {
       title: title,
       icon: kind === 'shift_profile' ? 'clock-3' : 'folder-open',
       locked: locked,
-      onClose: () => requestClose(),
-      footer: discard ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
-        onClick: () => setDiscard(null)
-      }, "\u7EE7\u7EED\u7F16\u8F91"), /*#__PURE__*/React.createElement(Button, {
-        icon: "x",
-        onClick: () => back(discard)
-      }, "\u653E\u5F03\u4FEE\u6539")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
+      guardOwner: guardOwner,
+      onClose: options => requestClose('close', options),
+      footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         onClick: () => requestClose(),
         reason: locked ? '操作尚未核实，请保留当前页面。' : ''
       }, lastReceipt || done ? '完成并返回' : '关闭'), editor && !done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
@@ -371,22 +373,24 @@
       kind: kind,
       editor: editor,
       error: error || command.error,
-      disabled: locked || !!discard,
-      onChange: change
-    })), discard && /*#__PURE__*/React.createElement("div", {
-      className: "match-note rc-note",
-      role: "alert"
-    }, "\u6709\u5C1A\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\u3002\u786E\u8BA4\u653E\u5F03\u540E\u624D\u4F1A\u79BB\u5F00\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: error
+      disabled: locked,
+      onChange: change,
+      onValidationError: setError
+    })), /*#__PURE__*/React.createElement(ErrorBox, {
+      error: error,
+      excludePaths: editor && !done && editor.action !== 'delete' ? Editor.fieldPaths : []
     }), /*#__PURE__*/React.createElement(ResourceForms.Feedback, {
-      command: command
-    }), command.intent && command.locked && /*#__PURE__*/React.createElement("p", {
-      className: "rc-wrap muted"
-    }, "\u539F\u8BF7\u6C42\uFF1A", command.intent.request_key), editor && !done && !command.locked && /*#__PURE__*/React.createElement("div", {
+      command: command,
+      excludePaths: editor && !done && editor.action !== 'delete' ? Editor.fieldPaths : []
+    }), command.intent && command.locked && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '请求编号': command.intent.request_key
+      }
+    }), editor && !done && !command.locked && /*#__PURE__*/React.createElement("div", {
       className: "rc-pattern"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      disabled: busy || !!discard,
+      disabled: busy,
       onClick: () => {
         setReview(null);
         load(editor.action, editor.ref, true);
@@ -400,7 +404,7 @@
       entity: review.data
     }) : /*#__PURE__*/React.createElement("p", null, "\u5F53\u524D\u76EE\u5F55\u5171\u6709 ", review.data.page.total, " \u6761\u3002"), /*#__PURE__*/React.createElement(Button, {
       icon: "check",
-      disabled: locked || !!discard,
+      disabled: locked,
       onClick: acceptReview
     }, "\u5DF2\u6838\u5BF9\uFF0C\u7EE7\u7EED\u7F16\u8F91"))))));
   }

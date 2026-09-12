@@ -93,7 +93,7 @@
       {selected.length > 0 && <Button icon="x" aria-label="清除所有选择" onClick={onClearSelection} disabled={disabled}>清除选择</Button>}
       <span className="tb-spacer" /><div className="wb-actions">
       {[['openImport', 'file-input', '导入'], ['openExport', 'file-output', '导出'], ['openBulk', 'minus', '批量删除']].map(([name, icon, label]) => <Button key={name} icon={icon} transfer={name === 'openImport' ? 'import' : name === 'openExport' ? 'export' : undefined}
-        disabled={disabled || loading} reason={typeof adapter[name] !== 'function' || typeof adapter.supports === 'function' && !adapter.supports(name, config.kind) ? label + '向导尚未接入。' : !ready ? '请先读取当前范围。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : ''}
+        disabled={disabled || loading} reasonDisplay="tooltip" reason={typeof adapter[name] !== 'function' || typeof adapter.supports === 'function' && !adapter.supports(name, config.kind) ? label + '向导尚未接入。' : !ready ? '请先读取当前范围。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : ''}
         onClick={() => onExternal(name)}>{label}</Button>)}
       <Button icon="plus" className="btn primary wb-action wb-primary" reason={createReason} disabled={disabled} onClick={onCreate}>新增{config.label}</Button></div>
     </form>;
@@ -266,7 +266,7 @@
     }
     const editorEntity = detail.result && detail.result.data;
     const editorReady = dialog && (dialog.action === 'create' || editorEntity);
-    return <div className="plana" data-resource-workspace="true">
+    return <div className="plana resource-workspace" data-resource-workspace="true">
       <Rail node={node} counts={counts} onNode={navigate} onNavigate={onNavigate} disabled={blocked || !!dialog} />
       <section className="content">
         <ErrorBox error={navigationError} />
@@ -281,10 +281,11 @@
             {selected.length > 0 && <p className="muted" aria-live="polite">已选择 <b data-resource-selection-count>{selected.length}</b> 条{data && selected.some(ref => !data.entities.some(row => row.ref === ref)) && <> · <span>含非当前页记录</span></>}</p>}
             <Toolbar config={config} scope={scope} onFilter={filter} loading={list.loading} disabled={blocked} onRefresh={refresh} onCreate={() => open('create')}
               createReason={C.blocked(data && data.create_context, config.kind, 'create', list.result && list.result.meta.source)} onExternal={openExternal} adapter={adapter} selected={selected} ready={!!data} onClearSelection={() => setSelected([])} />
-            <ErrorBox error={list.error} />{list.loading && <p role="status">正在读取{config.label}…</p>}
+            {data && data.entities.length > 0 && <ErrorBox error={list.error} />}
             {data && <Issues issues={list.result.warnings} />}
             <Tables key={node} kind={config.kind} category={config.category} entities={data ? data.entities : []} source={list.result && list.result.meta.source} selected={selected} onSelect={setSelected}
               disabled={blocked || list.loading} headerDisabled={blocked} loading={list.loading} error={list.error} adapter={adapter} scope={scope} matchingCount={data && data.page.total}
+              onRetry={refresh} onClear={() => filter({ query: '', column_filters: {}, ...(config.kind === 'op_type' ? {} : { status: '' }) })}
               onOpen={ref => open('view', ref)} onDelete={ref => open('delete', ref)} sort={scope.sort} direction={scope.direction} sortActive={sortActive} onSort={sortColumn} onColumnFilter={columnFilter} />
             {data && <Tables.Pager page={data.page} disabled={blocked || list.loading} onPage={changePage} onSize={size => filter({ size })} />}
           </>}

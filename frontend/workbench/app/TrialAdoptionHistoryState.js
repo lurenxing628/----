@@ -29,7 +29,7 @@
     url.searchParams.set('view', 'gantt');
     history.pushState({ workbench: { view: 'gantt', context: { plan_ref: planRef }, key: entry.key + 1 } }, '', url.pathname + url.search);
     window.dispatchEvent(new PopStateEvent('popstate'));
-    window.scrollTo(0, 0);
+    // The shell restores scrolling only after its history guard accepts the new entry.
   }
   window.TrialAdoptionHistoryState = { restore, remember, initialTab, openPlan };
 })();

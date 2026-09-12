@@ -156,11 +156,7 @@
     const title = label || ({ date: '选择日期', time: '选择时间', month: '选择月份', 'datetime-local': '选择日期和时间' })[type];
     return <div className="wb-date-picker" data-picker-type={type} data-picker-view={pickerView} style={{ width: 336, maxWidth: '100%', minWidth: 0 }}
       onKeyDown={event => { if (event.key === 'Enter' && event.target.tagName === 'INPUT' && event.target.closest('.wb-picker-fields')) { event.preventDefault(); event.stopPropagation(); confirm(); } }}>
-      <style>{`
-        .wb-date-picker[data-picker-view="months"]:not([data-picker-type="month"]) .wb-picker-grid { height: 250px; grid-template-rows: repeat(4,minmax(0,1fr)); }
-        .wb-date-picker[data-picker-view="months"]:not([data-picker-type="month"]) .wb-picker-day { height: 100%; min-height: 0; max-height: none; }
-        .wb-date-picker[data-picker-view="months"] .wb-picker-day[data-view-month="true"]:not([aria-selected="true"]) { border-color: var(--ui-border); }
-      `}</style>
+
       <div className="wb-popup-header"><strong id={id} style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{title}</strong>
         <NavButton icon="x" name="关闭日期时间选择" onClick={onClose} /></div>
       {hasDate && <><div className="wb-picker-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

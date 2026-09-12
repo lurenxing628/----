@@ -8,6 +8,15 @@
     ErrorBox,
     Issues
   } = window.ResourceControls;
+  // Quotas are shown as entered (up to four decimals); a one-decimal summary would hide non-zero unit hours.
+  const ENTERED_HOURS = {
+      digits: 4,
+      trim: true
+    },
+    ENTERED_DAYS = {
+      digits: 1,
+      trim: true
+    };
   function BatchDetail({
     adapter,
     batchRef,
@@ -56,7 +65,9 @@
       onClick: () => onDelete(entity)
     }, "\u5220\u9664\u6279\u6B21")), /*#__PURE__*/React.createElement("div", {
       className: "batch-readiness"
-    }, /*#__PURE__*/React.createElement("span", null, "\u56FE\u53F7\uFF1A", entity.relationships.part_no, " \xB7 ", entity.label), /*#__PURE__*/React.createElement("span", null, "\u6570\u91CF\uFF1A", B.label('', entity.fields.quantity)), /*#__PURE__*/React.createElement("span", null, "\u72B6\u6001\uFF1A", B.label('status', entity.status)), /*#__PURE__*/React.createElement("span", null, "\u5DE5\u5E8F\u5168\u90E8\u5B8C\u6210\uFF1A", entity.all_operations_complete ? '是' : '否')), /*#__PURE__*/React.createElement(Issues, {
+    }, /*#__PURE__*/React.createElement("span", null, "\u56FE\u53F7\uFF1A", entity.relationships.part_no, " \xB7 ", entity.label), /*#__PURE__*/React.createElement("span", null, "\u6570\u91CF\uFF1A", window.WorkbenchFormat.number(entity.fields.quantity, {
+      digits: 0
+    })), /*#__PURE__*/React.createElement("span", null, "\u72B6\u6001\uFF1A", B.label('status', entity.status)), /*#__PURE__*/React.createElement("span", null, "\u5DE5\u5E8F\u5168\u90E8\u5B8C\u6210\uFF1A", entity.all_operations_complete ? '是' : '否')), /*#__PURE__*/React.createElement(Issues, {
       issues: entity.issues
     })), /*#__PURE__*/React.createElement("section", {
       className: "batch-band"
@@ -71,19 +82,32 @@
       reason: reason('update')
     }, "\u7F16\u8F91\u57FA\u7840\u4FE1\u606F")), /*#__PURE__*/React.createElement("div", {
       className: "batch-readiness"
-    }, /*#__PURE__*/React.createElement("span", null, "\u4EA4\u671F\uFF1A", B.label('', entity.fields.due_date)), /*#__PURE__*/React.createElement("span", null, "\u4F18\u5148\u7EA7\uFF1A", B.label('priority', entity.fields.priority)), /*#__PURE__*/React.createElement("span", null, "\u9F50\u5957\u663E\u793A\uFF1A", B.label('ready_status', entity.fields.ready_status)), /*#__PURE__*/React.createElement("span", null, "\u9F50\u5957\u65E5\u671F\uFF1A", B.label('', entity.fields.ready_date)), /*#__PURE__*/React.createElement("span", null, "\u5907\u6CE8\uFF1A", B.label('', entity.fields.remark))), entity.materials.count > 0 && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u7269\u6599\u9F50\u5957\u539F\u8BB0\u5F55 \xB7 ", entity.materials.count, " \u9879"), /*#__PURE__*/React.createElement("div", {
-      className: "card-scroll"
+    }, /*#__PURE__*/React.createElement("span", null, "\u4EA4\u671F\uFF1A", window.WorkbenchFormat.date(entity.fields.due_date)), /*#__PURE__*/React.createElement("span", null, "\u4F18\u5148\u7EA7\uFF1A", B.label('priority', entity.fields.priority)), /*#__PURE__*/React.createElement("span", null, "\u9F50\u5957\u663E\u793A\uFF1A", B.label('ready_status', entity.fields.ready_status)), /*#__PURE__*/React.createElement("span", null, "\u9F50\u5957\u65E5\u671F\uFF1A", window.WorkbenchFormat.date(entity.fields.ready_date)), /*#__PURE__*/React.createElement("span", null, "\u5907\u6CE8\uFF1A", B.label('', entity.fields.remark))), entity.materials.count > 0 && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u7269\u6599\u9F50\u5957\u539F\u8BB0\u5F55 \xB7 ", entity.materials.count, " \u9879"), /*#__PURE__*/React.createElement("div", {
+      className: "wb-table-frame",
+      "data-sticky-head": true
     }, /*#__PURE__*/React.createElement("table", {
-      className: "tbl",
+      className: "tbl wb-table",
       style: {
         minWidth: 640
       },
       "aria-label": "\u6279\u6B21\u7269\u6599\u9F50\u5957"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u7269\u6599"), /*#__PURE__*/React.createElement("th", null, "\u9700\u6C42\u91CF"), /*#__PURE__*/React.createElement("th", null, "\u5230\u6599\u91CF"), /*#__PURE__*/React.createElement("th", null, "\u5355\u4F4D"), /*#__PURE__*/React.createElement("th", null, "\u9F50\u5957\u8BB0\u5F55"))), /*#__PURE__*/React.createElement("tbody", null, entity.materials.requirements.map(row => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u6279\u6B21\u7269\u6599\u9F50\u5957"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u7269\u6599"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u9700\u6C42\u91CF"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5230\u6599\u91CF"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5355\u4F4D"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u9F50\u5957\u8BB0\u5F55"))), /*#__PURE__*/React.createElement("tbody", null, entity.materials.requirements.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.material_ref
     }, /*#__PURE__*/React.createElement("td", null, row.business_code, " \xB7 ", row.label, /*#__PURE__*/React.createElement(Issues, {
       issues: row.issues
-    })), /*#__PURE__*/React.createElement("td", null, B.label('', row.required_quantity)), /*#__PURE__*/React.createElement("td", null, B.label('', row.available_quantity)), /*#__PURE__*/React.createElement("td", null, row.unit || '未填写'), /*#__PURE__*/React.createElement("td", null, B.label('ready_status', row.ready_status))))))))), /*#__PURE__*/React.createElement("section", {
+    })), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.number(row.required_quantity)), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.number(row.available_quantity)), /*#__PURE__*/React.createElement("td", null, row.unit || '未填写'), /*#__PURE__*/React.createElement("td", null, B.label('ready_status', row.ready_status))))))))), /*#__PURE__*/React.createElement("section", {
       className: "batch-band"
     }, /*#__PURE__*/React.createElement("h3", null, "\u2461 \u6309\u5DE5\u827A\u6A21\u677F\u540C\u6B65\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
@@ -102,30 +126,44 @@
     }, /*#__PURE__*/React.createElement("span", null, "\u5DE5\u5E8F\u603B\u6570\uFF1A", entity.operations.length), /*#__PURE__*/React.createElement("span", null, "\u81EA\u5236\uFF1A", entity.operations.filter(op => op.source === 'internal').length), /*#__PURE__*/React.createElement("span", null, "\u5916\u534F\uFF1A", entity.operations.filter(op => op.source === 'external').length), /*#__PURE__*/React.createElement("span", null, "\u5DF2\u5B8C\u5DE5\uFF1A", entity.relationships.completed_count), /*#__PURE__*/React.createElement("span", null, "\u5F85\u8865\u9F50\uFF1A", entity.relationships.gap_count))), /*#__PURE__*/React.createElement("section", {
       className: "batch-band"
     }, /*#__PURE__*/React.createElement("h3", null, "\u2463 \u6279\u6B21\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("div", {
-      className: "card-scroll wb-table-frame"
+      className: "wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
-      className: "tbl",
+      className: "tbl wb-table",
       style: {
         minWidth: 1060
       },
       "aria-label": "\u6279\u6B21\u5DE5\u5E8F"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['工序编码', '工序', '工种', '归属', '资源补充', '完工', '操作'].map((name, index) => /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u6279\u6B21\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['工序编码', '工序', '工种', '归属', '资源补充', '完工', '操作'].map((name, index) => /*#__PURE__*/React.createElement("th", {
       key: name,
+      scope: "col",
+      className: index === 0 ? 'wb-col-key' : index === 6 ? 'wb-col-actions' : undefined,
       style: {
         width: [160, 80, 130, 80, 330, 100, 130][index]
       }
     }, name)))), /*#__PURE__*/React.createElement("tbody", null, entity.operations.map(op => /*#__PURE__*/React.createElement("tr", {
       key: op.ref
-    }, /*#__PURE__*/React.createElement("td", null, op.business_code), /*#__PURE__*/React.createElement("td", null, op.sequence), /*#__PURE__*/React.createElement("td", null, op.label), /*#__PURE__*/React.createElement("td", null, op.source === 'internal' ? '自制' : op.source === 'external' ? '外协' : '未归类'), /*#__PURE__*/React.createElement("td", null, op.source === 'internal' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, op.resources.machine ? op.resources.machine.label : '设备未选', " \xB7 ", op.resources.operator ? op.resources.operator.label : '人员未选'), /*#__PURE__*/React.createElement("div", null, "\u6362\u578B ", B.label('', op.setup_hours), " / \u5355\u4EF6 ", B.label('', op.unit_hours), " \u5C0F\u65F6")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, op.resources.supplier ? op.resources.supplier.label : '供应商未选'), /*#__PURE__*/React.createElement("div", null, op.external_group && op.external_group.merge_mode === 'merged' ? '整组 ' + B.label('', op.external_group.total_days) : '本序 ' + B.label('', op.external_days), " \u5929")), /*#__PURE__*/React.createElement(Issues, {
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-key"
+    }, op.business_code), /*#__PURE__*/React.createElement("td", null, op.sequence), /*#__PURE__*/React.createElement("td", null, op.label), /*#__PURE__*/React.createElement("td", null, op.source === 'internal' ? '自制' : op.source === 'external' ? '外协' : '未归类'), /*#__PURE__*/React.createElement("td", null, op.source === 'internal' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, op.resources.machine ? op.resources.machine.label : '设备未选', " \xB7 ", op.resources.operator ? op.resources.operator.label : '人员未选'), /*#__PURE__*/React.createElement("div", null, "\u6362\u578B ", window.WorkbenchFormat.hours(op.setup_hours, ENTERED_HOURS), " / \u5355\u4EF6 ", window.WorkbenchFormat.hours(op.unit_hours, ENTERED_HOURS))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, op.resources.supplier ? op.resources.supplier.label : '供应商未选'), /*#__PURE__*/React.createElement("div", null, op.external_group && op.external_group.merge_mode === 'merged' ? '整组 ' + window.WorkbenchFormat.number(op.external_group.total_days, ENTERED_DAYS) : '本序 ' + window.WorkbenchFormat.number(op.external_days, ENTERED_DAYS), " \u5929")), /*#__PURE__*/React.createElement(Issues, {
       issues: op.issues
-    })), /*#__PURE__*/React.createElement("td", null, op.completed ? '已完工' : op.status === 'processing' ? '加工中' : op.status === 'skipped' ? '已跳过' : '未完工'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+    })), /*#__PURE__*/React.createElement("td", null, op.completed ? '已完工' : op.status === 'processing' ? '加工中' : op.status === 'skipped' ? '已跳过' : '未完工'), /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-actions"
+    }, /*#__PURE__*/React.createElement(Button, {
       icon: "square-pen",
+      reasonDisplay: "inline",
       onClick: () => onOperation(entity, op),
       disabled: disabled || !op.editable,
       reason: reason('operation_update')
     }, "\u8865\u5145\u8D44\u6599")))), !entity.operations.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
       colSpan: 7
-    }, "\u5C1A\u672A\u751F\u6210\u5DE5\u5E8F")))))));
+    }, /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
+      kind: "empty",
+      title: "\u5C1A\u672A\u751F\u6210\u5DE5\u5E8F"
+    }))))))));
   }
   window.BatchDetail = BatchDetail;
 })();

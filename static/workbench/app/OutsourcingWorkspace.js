@@ -9,6 +9,9 @@
       ErrorBox,
       Issues
     } = window.ResourceControls;
+  const {
+    EmptyState
+  } = window.WorkbenchListControls;
   function Records({
     api,
     selected,
@@ -61,10 +64,10 @@
       onClick: onClose
     }))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: read.error
-    }), read.loading && /*#__PURE__*/React.createElement("div", {
-      className: "os-empty",
-      role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u539F\u767B\u8BB0\u548C\u540C\u4E00\u5FEB\u7167\u5386\u53F2"), item && /*#__PURE__*/React.createElement("div", {
+    }), read.loading && /*#__PURE__*/React.createElement(EmptyState, {
+      kind: "loading",
+      title: "\u6B63\u5728\u8BFB\u53D6\u539F\u767B\u8BB0\u548C\u540C\u4E00\u5FEB\u7167\u5386\u53F2"
+    }), item && /*#__PURE__*/React.createElement("div", {
       "data-outsourcing-detail": item.outsourcing_ref
     }, /*#__PURE__*/React.createElement(P.Target, {
       target: item.target
@@ -90,7 +93,11 @@
       before: h.before
     }), /*#__PURE__*/React.createElement("p", null, h.reason), /*#__PURE__*/React.createElement("div", {
       className: "os-muted"
-    }, "\u7CFB\u7EDF\u8BB0\u5F55\u4EBA ", h.local_operator, " \xB7 \u5386\u53F2\u5F15\u7528 ", h.fact_ref))), /*#__PURE__*/React.createElement(P.Pager, {
+    }, "\u7CFB\u7EDF\u8BB0\u5F55\u4EBA ", h.local_operator), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '历史编号': h.fact_ref
+      }
+    }))), /*#__PURE__*/React.createElement(P.Pager, {
       page: data.history.page,
       label: "\u5916\u534F\u5386\u53F2",
       busy: read.loading,
@@ -199,33 +206,62 @@
       })
     }, command.saved.phase === 'confirmed' ? '查看已确认外协回执' : '核实原外协请求'))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: read.error
-    }), read.loading && /*#__PURE__*/React.createElement("div", {
-      className: "os-empty",
-      role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u5916\u534F\u771F\u5B9E\u767B\u8BB0"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }), read.loading && /*#__PURE__*/React.createElement(EmptyState, {
+      kind: "loading",
+      title: "\u6B63\u5728\u8BFB\u53D6\u5916\u534F\u771F\u5B9E\u767B\u8BB0"
+    }), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "os-muted"
     }, "\u6570\u636E\u622A\u81F3 ", P.when(result.meta.as_of), " \xB7 \u5DE5\u5382\u672C\u5730\u65F6\u95F4"), /*#__PURE__*/React.createElement("div", {
-      className: "os-scroll"
+      className: "os-scroll os-register-scroll wb-table-shell wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
-      className: "os-table"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u6279\u6B21 / \u6210\u5458"), /*#__PURE__*/React.createElement("th", null, "\u4F9B\u5E94\u5546 / \u72B6\u6001"), /*#__PURE__*/React.createElement("th", null, "\u5B9E\u9645\u53D1\u51FA"), /*#__PURE__*/React.createElement("th", null, "\u8BA1\u5212 / \u5B9E\u9645\u56DE\u5382"), /*#__PURE__*/React.createElement("th", null, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, data.items.map(r => /*#__PURE__*/React.createElement("tr", {
+      className: "os-table wb-table"
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u5916\u534F\u53D1\u51FA\u4E0E\u56DE\u5382\u767B\u8BB0"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-key"
+    }, "\u6279\u6B21 / \u6210\u5458"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u4F9B\u5E94\u5546 / \u72B6\u6001"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5B9E\u9645\u53D1\u51FA"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u8BA1\u5212 / \u5B9E\u9645\u56DE\u5382"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-actions"
+    }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, data.items.map(r => /*#__PURE__*/React.createElement("tr", {
       key: r.outsourcing_ref,
       "data-outsourcing-ref": r.outsourcing_ref,
-      "data-selected": selected === r.outsourcing_ref
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, P.value(r.target.batch.business_code), " \xB7 ", P.value(r.target.batch.label)), /*#__PURE__*/React.createElement("div", {
+      "data-selected": selected === r.outsourcing_ref,
+      "aria-selected": selected === r.outsourcing_ref
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-key"
+    }, /*#__PURE__*/React.createElement("b", null, P.value(r.target.batch.business_code), " \xB7 ", P.value(r.target.batch.label)), /*#__PURE__*/React.createElement("div", {
       className: "os-muted"
     }, r.target.kind === 'merged' ? '合并发出' : '单工序', " \xB7 ", r.target.operations.map(o => P.value(o.business_code)).join('、'))), /*#__PURE__*/React.createElement("td", null, P.value(r.target.supplier.label), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: 'os-state ' + (r.overdue ? 'danger' : !r.awaiting_return ? 'success' : r.confirmedState === 'awaiting_confirmation' ? 'warning' : '')
     }, r.overdue ? '超期未回 · ' : '', C.states[r.confirmedState]))), /*#__PURE__*/React.createElement("td", null, P.when(r.sent)), /*#__PURE__*/React.createElement("td", null, P.when(r.planned), /*#__PURE__*/React.createElement("div", {
       className: "os-muted"
-    }, P.when(r.returned))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+    }, r.returned === null ? '未回厂' : P.when(r.returned))), /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-actions"
+    }, /*#__PURE__*/React.createElement(Button, {
       className: "mini",
       icon: "search",
       "aria-label": '查看外协登记 ' + r.target.operations.map(o => P.value(o.business_code)).join('、'),
       onClick: () => open(r.outsourcing_ref)
-    }, "\u8BE6\u60C5"))))))), !data.items.length && /*#__PURE__*/React.createElement("div", {
-      className: "os-empty"
-    }, data.page.total ? '当前页没有登记。' : '当前筛选没有外协登记。'), /*#__PURE__*/React.createElement(P.Pager, {
+    }, "\u8BE6\u60C5"))))))), !data.items.length && /*#__PURE__*/React.createElement(EmptyState, {
+      kind: q.status === 'all' ? 'empty' : 'filtered',
+      title: data.page.total ? '当前页没有登记' : '当前筛选没有外协登记',
+      hint: "\u53EF\u4EE5\u8C03\u6574\u7B5B\u9009\u67E5\u770B\u5DF2\u6709\u767B\u8BB0\uFF0C\u4E5F\u53EF\u5728\u6709\u771F\u5B9E\u5916\u534F\u5DE5\u5E8F\u65F6\u65B0\u5EFA\u767B\u8BB0\u3002",
+      action: q.status !== 'all' ? /*#__PURE__*/React.createElement(Button, {
+        disabled: read.loading,
+        onClick: () => change({
+          status: 'all'
+        })
+      }, "\u67E5\u770B\u5168\u90E8\u767B\u8BB0") : undefined
+    }), /*#__PURE__*/React.createElement(P.Pager, {
       page: data.page,
       label: "\u5916\u534F\u767B\u8BB0",
       busy: read.loading,

@@ -1,9 +1,9 @@
 (function () {
   'use strict';
   const C = window.APSResourceContract;
-  const { Button, ErrorBox, Issues, Status, Modal, Choice, Relation } = window.ResourceControls;
+  const { Button, ErrorBox, Issues, Status, Modal, Choice, Relation, Field, focusFirstInvalid } = window.ResourceControls;
   const icons = { material: 'box', op_type: 'wrench', machine: 'machine', operator: 'users', supplier: 'truck' };
-  function Feedback({ command }) {
+  function Feedback({ command, excludePaths = [] }) {
     if (!command) return null;
     const phase = command.phase;
     return <>
@@ -13,7 +13,7 @@
         <Button icon="history" onClick={command.check}>查询原请求回执</Button>
       </div>}
       {phase === 'done' && <p role="status">{command.result.result === 'partial' ? '部分操作完成，请核对逐项结果。' : command.result.result === 'unchanged' ? '服务器确认内容未变化。' : '服务器已确认提交。'}</p>}
-      <ErrorBox error={command.error} /><Issues issues={command.result && command.result.warnings || []} />
+      <ErrorBox error={command.error} excludePaths={excludePaths} /><Issues issues={command.result && command.result.warnings || []} />
       {phase === 'done' && command.result.result === 'partial' && (Array.isArray(command.result.data.items) ? <ul>
         {command.result.data.items.map((item, index) => <li key={index}>{item.business_code || item.label || '第 ' + (index + 1) + ' 项'}：
           {({ committed: '已提交', unchanged: '未变化', failed: '失败', skipped: '未执行' })[item.result] || '结果待核实'}
@@ -29,45 +29,6 @@
         Number.isSafeInteger(entity.relationships.machine_authorization_count) ? <span className="fhint">已登记 {entity.relationships.machine_authorization_count} 项设备授权；授权明细未提供。</span> :
           C.own(entity.relationships, 'machine_refs') ? <Relation entity={entity} field="machine_refs" /> : <span className="fhint">既有设备授权尚未读取，不能据技能推断。</span>}
       <span className="fhint">技能登记不改变既有设备授权。</span></div>;
-  }
-  function Field({ label, path, error, required, full, children }) {
-    const id = React.useId(), errors = C.fieldErrors(error).filter(row => row.path === path || row.path === 'input.' + path);
-    return <div className={'field' + (full ? ' full' : '') + (errors.length ? ' err' : '')} style={{ minWidth: 0 }}>
-      <label htmlFor={id}>{label}{required && <span className="req" aria-hidden="true">*</span>}</label>
-      {React.cloneElement(children, { id, 'aria-required': required || undefined, 'aria-invalid': errors.length ? true : undefined, 'aria-describedby': errors.length ? id + '-error' : undefined })}
-      {errors.length > 0 && <span id={id + '-error'} style={{ color: 'var(--ui-danger-text)' }}>{errors.map(row => row.message).join(' ')}</span>}</div>;
-  }
-  function DetailStyles() {
-    return <style>{`
-      .plana .wb-resource-detail { color: var(--ui-text); padding: 20px; }
-      .plana .wb-resource-identity { display: flex; align-items: flex-start; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--ui-border); }
-      .plana .wb-resource-identity > div { flex: 1; min-width: 0; }
-      .plana .wb-resource-identity .pill { flex: none; max-width: 42%; margin-top: 4px; }
-      .plana .wb-resource-code { color: var(--ui-info-muted); font-size: 12px; overflow-wrap: anywhere; }
-      .plana .wb-resource-identity h3 { margin: 4px 0 0; color: var(--ui-text); font-size: 17px; line-height: 1.5; font-weight: 600; overflow-wrap: anywhere; }
-      .plana .wb-resource-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; margin: 0; padding: 16px 0; }
-      .plana .wb-resource-fact { min-width: 0; }
-      .plana .wb-resource-fact dt, .plana .wb-resource-remark dt { margin: 0 0 5px; color: var(--ui-info-muted); font-size: 12px; font-weight: 400; }
-      .plana .wb-resource-fact dd, .plana .wb-resource-remark dd { margin: 0; color: var(--ui-text); font-size: 14px; text-align: left; overflow-wrap: anywhere; white-space: pre-wrap; font-variant-numeric: tabular-nums; }
-      .plana .wb-resource-stock { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
-      .plana .wb-resource-stock strong { min-width: 0; max-width: 100%; font-size: 22px; line-height: 1.3; font-weight: 600; overflow-wrap: anywhere; }
-      .plana .wb-resource-stock span { min-width: 0; color: var(--ui-info-muted); font-size: 13px; }
-      .plana .wb-resource-remark { margin: 0; padding: 16px 0; border-top: 1px solid var(--ui-border); }
-      .plana .wb-resource-links { padding: 16px 0; border-top: 1px solid var(--ui-border); }
-      .plana .wb-resource-identity + .wb-resource-links { border-top: 0; }
-      .plana .wb-resource-links .field > label { color: var(--ui-info-muted); font-size: 12px; font-weight: 400; }
-      .plana .wb-resource-detail > .match-note { margin: 0 0 16px; }
-      .plana .wb-resource-read-time { margin: 0; padding-top: 12px; border-top: 1px solid var(--ui-border); color: var(--ui-info-muted); font-size: 12px; overflow-wrap: anywhere; }
-      .plana form.modal-b.form > .fgrid { margin-bottom: 16px; }
-      .plana .wb-resource-review { margin-top: 16px; padding: 14px; border: 1px solid var(--ui-border); background: var(--ui-surface-muted); }
-      .plana .wb-resource-review > p { margin: 0 0 12px; }
-      .plana .wb-resource-review-identity { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
-      .plana .wb-resource-review-identity > strong { min-width: 0; flex: 1; overflow-wrap: anywhere; font-weight: 600; }
-      .plana .wb-resource-review-identity > .pill { flex: none; max-width: 42%; }
-      .plana .wb-resource-review .wb-resource-facts { padding-top: 0; }
-      .plana .wb-resource-review .wb-resource-stock strong { font-size: 18px; }
-      @media (max-width: 560px) { .plana .wb-resource-facts { grid-template-columns: minmax(0, 1fr); } }
-    `}</style>;
   }
   function Remark({ kind, entity }) {
     return C.own(entity.fields, 'remark') ? <dl className="wb-resource-remark"><dt>{C.fieldLabels(kind, entity.fields.category).remark}</dt>
@@ -91,10 +52,12 @@
     onClose, onReloadContext, refreshState = {}, onRefresh, contextError, contextReview, onAcceptContext, contextBusy, stockOnly = false }) {
     const [entity, setEntity] = React.useState(initialEntity);
     const [draft, setDraft] = React.useState(() => C.draft(kind, initialEntity, category));
+    const baseline = React.useRef(JSON.stringify(C.draft(kind, initialEntity, category))), form = React.useRef(null);
     const [error, setError] = React.useState(null), [catalogBusy, setCatalogBusy] = React.useState(false);
     React.useLayoutEffect(() => {
       if (!acceptedEntity || acceptedEntity === entity) return;
       if (!entity || acceptedEntity.ref !== entity.ref) { setError(C.failure('最新资料与当前编辑的记录不一致，已填写的内容未被替换。')); return; }
+      baseline.current = JSON.stringify(C.draft(kind, acceptedEntity, category));
       setDraft(value => C.rebaseDraft(kind, value, entity, acceptedEntity, category)); setEntity(acceptedEntity);
     }, [acceptedEntity, kind, category]);
     const formId = React.useId();
@@ -103,6 +66,21 @@
     const done = command.phase === 'done', disabled = command.locked || done || catalogBusy || contextBusy;
     const reason = typeof adapter.command !== 'function' ? '保存接口尚未接入。' : C.blocked(writeContext, kind, action, source);
     const currentError = error || command.error;
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({ dirty: action !== 'delete' && !done && JSON.stringify(draft) !== baseline.current,
+      // Only a pending command locks the draft guard; catalog or context busy states are UI state, not an unverified request.
+      message: '资源资料中有尚未保存的填写内容。', locked: command.locked });
+    React.useEffect(() => { if (currentError) focusFirstInvalid(form.current); }, [currentError]);
+    const fieldPaths = action === 'delete' ? [] : adjustingStock ? ['fields.stock_qty'] : ['business_code', 'label',
+      ...(kind === 'material' ? ['fields.spec', 'fields.unit', 'fields.stock_qty', 'fields.remark'] : []),
+      ...(kind === 'op_type' ? ['fields.remark', ...(!['internal', 'external'].includes(entity ? entity.fields.category : category) ? ['fields.category'] : []),
+        ...(opCategory === 'external' ? ['fields.default_merge_mode'] : [])] : []),
+      ...(kind === 'supplier' ? ['fields.default_days'] : []), ...(C.statuses[kind] ? ['fields.status'] : []),
+      ...(C.relations[kind] || []).flatMap(field => [field.key, 'relationships.' + field.key])];
+    async function close(detail) {
+      if (command.locked || catalogBusy || contextBusy) return;
+      if (!(detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner) && !await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) return;
+      onClose();
+    }
     function change(section, key, value) {
       setDraft(current => section ? { ...current, [section]: { ...current[section], [key]: value } } : { ...current, [key]: value }); setError(null);
     }
@@ -143,11 +121,11 @@
     const stateField = () => <Field label="状态" path="fields.status" error={currentError} required><select name="status" value={draft.fields.status} disabled={disabled} onChange={event => change('fields', 'status', event.target.value)}>
       <option value="" disabled>请选择状态</option>{C.statuses[kind].filter(row => row[0] !== 'unknown').map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       {!C.statuses[kind].some(row => row[0] === draft.fields.status && row[0] !== 'unknown') && draft.fields.status && <option value={draft.fields.status}>旧状态 / 原因未知（保持原值）</option>}</select></Field>;
-    return <Modal title={adjustingStock ? '调整库存' : (action === 'create' ? '新增' : action === 'delete' ? '删除' : '编辑') + C.resourceName(kind, opCategory)} icon={icons[kind]} onClose={onClose} locked={command.locked || catalogBusy || contextBusy} suspended={catalogBusy}
-      footer={<><Button onClick={onClose} reason={command.locked ? '结果未核实，暂不能关闭。' : contextBusy ? '正在读取最新资料。' : ''} disabled={catalogBusy}>{done ? '关闭' : '取消'}</Button>
+    return <Modal title={adjustingStock ? '调整库存' : (action === 'create' ? '新增' : action === 'delete' ? '删除' : '编辑') + C.resourceName(kind, opCategory)} icon={icons[kind]} onClose={close} guardOwner={guardOwner} locked={command.locked || catalogBusy || contextBusy} suspended={catalogBusy}
+      footer={<><Button onClick={close} reason={command.locked ? '结果未核实，暂不能关闭。' : contextBusy ? '正在读取最新资料。' : ''} disabled={catalogBusy}>{done ? '关闭' : '取消'}</Button>
         {!done && <Button form={formId} type="submit" icon={action === 'delete' ? 'minus' : 'check'} className={'btn primary wb-action wb-primary'} reason={reason} busy={disabled}>
           {action === 'delete' ? '确认删除' : '保存'}</Button>}</>}>
-      <form id={formId} className="modal-b form scroll" onSubmit={submit} noValidate><DetailStyles />
+      <form id={formId} ref={form} className="modal-b form scroll" onSubmit={submit} noValidate>
         {action === 'delete' ? <p>确认删除 <b>{entity.business_code} · {entity.label}</b>？服务端会重新核对引用和删除条件。</p> : adjustingStock ? <div className="fgrid" style={{ marginBottom: 12 }}>
           <StockFacts entity={entity} />{text('stock_qty', '调整后库存' + (entity.fields.unit ? '（' + entity.fields.unit + '）' : '（单位未填写）'), { number: true, full: true })}
         </div> : <div className="fgrid">
@@ -162,7 +140,7 @@
               <option value="">未设置</option><option value="separate">分别设置</option><option value="merged">合并设置</option>
               {!['', 'separate', 'merged'].includes(draft.fields.default_merge_mode) && <option value={draft.fields.default_merge_mode}>原周期策略未识别（保持原值）</option>}</select></Field>}</>}
           {(C.relations[kind] || []).map(field => <Choice key={field.key} adapter={adapter} field={field} value={draft.relationships[field.key]} original={entity}
-            disabled={disabled} onChange={value => change('relationships', field.key, value)} onCatalog={catalog} catalogBusy={catalogBusy} />)}
+            disabled={disabled} error={currentError} onChange={value => change('relationships', field.key, value)} onCatalog={catalog} catalogBusy={catalogBusy} />)}
           {kind === 'supplier' && text('default_days', '默认周期（天）', { number: true, required: true })}
           {C.statuses[kind] && stateField()}
           {entity && entity.fields.inactive_reason === 'unknown' && <div className="field full"><span className="fhint">当前停用原因未知，未认定为请假或待复核。</span></div>}
@@ -171,7 +149,7 @@
           {kind === 'operator' && <LegacyFacts entity={entity} />}
         </div>}
         <Issues issues={entity && entity.issues || []} />
-        <ErrorBox error={error} /><Feedback command={command} /><ErrorBox error={contextError} />
+        <ErrorBox error={error} excludePaths={fieldPaths} /><Feedback command={command} excludePaths={error ? [] : fieldPaths} /><ErrorBox error={contextError} />
         {reason && <p role="status">{reason}</p>}
         {!done && !command.locked && onReloadContext && <Button icon="refresh-cw" busy={contextBusy} disabled={catalogBusy} onClick={onReloadContext}>重新读取最新资料</Button>}
         {contextReview && !done && <div className="wb-resource-review" role="status">
@@ -191,7 +169,7 @@
       {entity && <><Button icon="minus" reason={C.blocked(entity.write_context, kind, 'delete', result.meta.source)} onClick={onDelete}>删除</Button>
         {kind === 'material' && <Button icon="square-pen" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onAdjustStock !== 'function' ? '库存调整入口尚未接入。' : '')} onClick={onAdjustStock}>调整库存</Button>}
         <Button icon="square-pen" className="btn primary" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)} onClick={onEdit}>编辑</Button></>}</>}>
-      <div className="modal-b scroll wb-resource-detail"><DetailStyles />{busy && <p role="status">正在读取详情…</p>}<ErrorBox error={error} />{error && <Button onClick={onRetry}>重新读取</Button>}
+      <div className="modal-b scroll wb-resource-detail">{busy && <p role="status">正在读取详情…</p>}<ErrorBox error={error} />{error && <Button onClick={onRetry}>重新读取</Button>}
         {entity && <><div className="wb-resource-identity"><div><div className="wb-resource-code">{entity.business_code}</div><h3>{entity.label}</h3></div>{kind !== 'op_type' && <Status kind={kind} entity={entity} />}</div>
           <CurrentFields kind={kind} entity={entity} includeRemark={false} />{(kind === 'op_type' || (C.relations[kind] || []).length > 0) && <div className="wb-resource-links fgrid">
             {kind === 'op_type' && <div className="field"><label>排产口径</label><span>{entity.fields.category === 'internal' ? '工时（换型＋单件）' : entity.fields.category === 'external' ? '周期（天）' : '未明确'}</span></div>}
@@ -199,7 +177,7 @@
               onOpen={!field.catalog && onRelated ? ref => onRelated(field.kind, ref, field.category) : undefined} /></div>)}
             {kind === 'operator' && <LegacyFacts entity={entity} />}</div>}<Remark kind={kind} entity={entity} /><Issues issues={entity.issues} />
           {kind === 'op_type' && ['internal', 'external'].includes(entity.fields.category) && <window.ResourceDetailRelations key={entity.ref + ':' + result.meta.snapshot_ref} adapter={adapter} entity={entity} onOpen={onRelated} />}
-          <Issues issues={result.warnings} /><p className="wb-resource-read-time">读取时间：<time dateTime={result.meta.as_of}>{result.meta.as_of.replace('T', ' ')}</time></p></>}</div></Modal>;
+          <Issues issues={result.warnings} /><p className="wb-resource-read-time">读取时间：<time dateTime={result.meta.as_of}>{window.WorkbenchFormat.dateTime(result.meta.as_of)}</time></p></>}</div></Modal>;
   }
   ResourceForms.Detail = Detail;
   ResourceForms.Feedback = Feedback;

@@ -91,31 +91,53 @@
     };
   }
   function input(value, original) {
+    const errors = inputErrors(value, original);
+    if (errors.length) throw C.failure('请检查标记的批次字段。', errors);
     const patch = {};
     for (const key of fields) {
       if (original && String(original.fields[key] == null ? '' : original.fields[key]) === value[key]) continue;
       let next = value[key];
       if (key === 'quantity') {
-        if (!/^[0-9]+$/.test(next) || !Number.isSafeInteger(Number(next)) || Number(next) <= 0) throw C.failure('数量必须是正整数。', [{
-          path: 'fields.quantity',
-          message: '数量必须是正整数。'
-        }]);
         next = Number(next);
       } else if (key.endsWith('_date')) {
         next = next === '' ? null : next;
-        if (next !== null && !/^\d{4}-\d{2}-\d{2}$/.test(next)) throw C.failure('日期格式应为 YYYY-MM-DD。');
       } else if (key === 'remark') next = next.trim() || null;
       patch[key] = next;
     }
     if (original) return {
       fields: patch
     };
-    if (!value.business_code.trim() || !ref(value.part_ref)) throw C.failure('请填写批次号并选择真实图号。');
     return {
       business_code: value.business_code.trim(),
       part_ref: value.part_ref,
       fields: patch
     };
+  }
+  function inputErrors(value, original) {
+    const errors = [];
+    if (!original) {
+      if (!value.business_code.trim()) errors.push({
+        path: 'business_code',
+        message: '请填写批次号。'
+      });
+      if (!ref(value.part_ref)) errors.push({
+        path: 'part_ref',
+        message: '请选择图号。'
+      });
+    }
+    for (const key of fields) {
+      if (original && String(original.fields[key] == null ? '' : original.fields[key]) === value[key]) continue;
+      const next = value[key];
+      if (key === 'quantity' && (!/^[0-9]+$/.test(next) || !Number.isSafeInteger(Number(next)) || Number(next) <= 0)) errors.push({
+        path: 'fields.quantity',
+        message: '数量必须是正整数。'
+      });
+      if (key.endsWith('_date') && next !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(next)) errors.push({
+        path: 'fields.' + key,
+        message: '日期格式应为 YYYY-MM-DD。'
+      });
+    }
+    return errors;
   }
   window.APSBatchContract = {
     ref,
@@ -130,6 +152,7 @@
     label,
     draft,
     input,
+    inputErrors,
     fields,
     fieldNames,
     actions,

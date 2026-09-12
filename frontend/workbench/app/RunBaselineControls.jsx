@@ -34,16 +34,16 @@
           style={{ top: (first + i) * 76 }} aria-selected={!!chosen && chosen.row_ref === s.row_ref}>
           <div>{M.timeLabel(s.start)} 至 {M.timeLabel(s.end)}{!s.interval_comparable && ' · 起止不可比较'}</div>
           <div>设备 {s.machine && s.machine.label || '未记录'} · 人员 {s.operator && s.operator.label || '未记录'} · 起止跨度 {M.number(s.elapsed_hours)} h</div>
-          <small>初始计划行引用 {s.row_ref}{s.data_gaps.map(g => ' · ' + g.message).join('')}</small></div>)}
+          <small>{s.data_gaps.map(g => g.message).join(' · ')}</small><window.WorkbenchReference value={s.row_ref} /></div>)}
       </div>{!row.baseline_segments.length && <div>初始计划没有该工序安排。</div>}</div>;
   }
   function Detail({ row, segment, workspace }) {
     const c = row.candidate, delta = row.delta;
     return <div className="rb-detail" role="region" aria-label="初始计划工序对照">
       <strong>{row.batch_label || '批次未记录'} · {M.number(row.sequence)} {row.process_label || '工序未记录'} · {B.statusLabels[row.status]}</strong>
-      <div className="rb-reference">工序引用 {row.operation_ref}</div>
+      <window.WorkbenchReference entries={{ '工序编号': row.operation_ref }} />
       {c ? <><div>候选安排：{M.timeLabel(c.start)} 至 {M.timeLabel(c.end)} · 设备 {c.machine && c.machine.label || '未记录'} · 人员 {c.operator && c.operator.label || '未记录'}</div>
-        <div className="rb-reference">候选行引用 {c.row_ref}</div>
+        <window.WorkbenchReference entries={{ '候选安排编号': c.row_ref }} />
         {!workspace.tasks.some(t => t.row_ref === c.row_ref) && <div>该候选安排不在当前候选预览范围；此处保留完整对照。</div>}</> : <div>候选没有安排此工序；未排不代表改善。</div>}
       <Segments key={row.operation_ref} row={row} chosen={segment} />
       {row.comparison_available && <div>安排变动（候选减初始计划）：开始 {M.number(delta.start_hours)} h · 结束 {M.number(delta.end_hours)} h · 起止跨度 {M.number(delta.elapsed_hours)} h
@@ -64,18 +64,13 @@
           aria-selected={!!chosen && chosen.comparison.operation_ref === r.operation_ref}>
           <span title={r.batch_label || '未记录'}>{r.batch_label || '未记录'}</span><span title={r.process_label || '未记录'}>{M.number(r.sequence)} {r.process_label || '未记录'}</span>
           <span>{B.statusLabels[r.status]}</span><span>{r.baseline_segments.length} 段{r.execution_affected && ' · 执行影响'}</span>
-          <Button icon="search" className="mini" aria-label={'初始计划对照 ' + r.operation_ref} onClick={() => onChoose({ comparison: r, segment: null })} /></div>)}</div>
+          <Button icon="search" className="mini" aria-label={'初始计划对照 ' + (r.batch_label || '批次未记录') + ' ' + M.number(r.sequence) + ' ' + (r.process_label || '工序未记录')} onClick={() => onChoose({ comparison: r, segment: null })} /></div>)}</div>
       {!rows.length && <div className="rc-empty">当前范围没有匹配对照。</div>}</div>;
   }
   function Panel({ state, rows, chosen, onChoose, workspace }) {
     const [open, setOpen] = React.useState(false), d = state.result && state.result.data;
     React.useEffect(() => { if (chosen) setOpen(true); }, [chosen]);
-    return <><style>{`
-      .rc-gantt .rb-toggle{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:12px;margin:0}.rc-gantt .rb-toggle input{width:14px;height:14px;min-height:14px;padding:0;margin:0;accent-color:var(--ui-primary)}
-      .rc-gantt .rb-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--ui-info-muted);padding:4px 0}.rb-legend span{display:inline-flex;align-items:center;gap:5px}.rb-legend i{display:inline-block;width:22px;height:9px;background:var(--wb-gantt-primary-fill);border:1px solid var(--wb-gantt-primary-edge)}.rb-legend .rb-before{height:5px;background:transparent;border:1px dashed var(--ui-text)}.rb-legend .rb-selected{border:2px solid var(--wb-gantt-gold)}
-      .rc-gantt .rb-panel{border-bottom:1px solid var(--ui-border);font-size:12px;min-width:0}.rb-panel summary{cursor:pointer;padding:6px 0}.rb-panel small{display:block}.rc-gantt .rb-list{max-height:240px;overflow:auto;position:relative;border-block:1px solid var(--ui-border)}.rc-gantt .rb-row{position:absolute;left:0;right:0;height:40px;display:grid;grid-template-columns:minmax(80px,1fr) minmax(120px,1.5fr) 108px 120px 36px;align-items:center;gap:8px;padding:0 5px;border-bottom:1px solid var(--ui-border)}.rb-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rb-row[aria-selected=true]{outline:1px solid var(--wb-gantt-gold);outline-offset:-1px}
-      .rc-gantt .rb-detail{padding:8px 0;line-height:1.7;overflow-wrap:anywhere}.rc-gantt .rb-reference{font-size:10px;color:var(--ui-info-muted)}.rc-gantt .rb-segments{max-height:180px;overflow:auto;border-block:1px solid var(--ui-border);margin:6px 0}.rc-gantt .rb-segment{position:absolute;left:0;right:0;height:76px;border-bottom:1px solid var(--ui-border);padding:4px 6px;overflow:auto}.rb-segment[aria-selected=true]{border-left:2px solid var(--wb-gantt-gold)}
-    `}</style>{state.enabled && <>
+    return <>{state.enabled && <>
       {state.busy && <div className="rc-muted" role="status">正在读取受理时初始计划。</div>}
       {state.error && <div role="alert">{state.error.message}<Button icon="refresh-cw" aria-label="重读初始计划" onClick={state.retry} /></div>}
       {d && <><div className="rb-legend"><span><i />候选安排</span><span><i className="rb-before" />初始计划</span><span><i className="rb-selected" />已选工序</span></div>

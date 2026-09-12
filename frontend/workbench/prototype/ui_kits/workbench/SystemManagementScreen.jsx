@@ -57,10 +57,11 @@ function SMOverview({ report, source, onTab }) {
         <span className="sm-work-arrow" aria-hidden="true"><SMIcon name="chevron-right" /></span>
       </button>)}
     </section>
-    <section className="sm-section sm-environment">
-      <div className="sm-section-head"><div><h3>页面环境自检</h3><p className="sm-meta">{report ? '检查时间 ' + new Date(report.checkedAt).toLocaleString('zh-CN', { hour12: false }) : '尚未检查'} · 不代表数据库或备份健康</p></div></div>
+    <details className="sm-section sm-environment">
+      <summary>页面环境自检</summary>
+      <p className="sm-meta">{report ? '检查时间 ' + new Date(report.checkedAt).toLocaleString('zh-CN', { hour12: false }) : '尚未检查'} · 不代表数据库或备份健康</p>
       <DataTable className="sm-table sm-check-table" columns={columns} rows={report ? report.checks : []} rowKey="id" />
-    </section>
+    </details>
   </div>;
 }
 function SMFilters({ kind, filters, onChange, disabled }) {

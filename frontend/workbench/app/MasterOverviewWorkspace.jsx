@@ -43,10 +43,11 @@
     const [detail, setDetail] = useState(null), [detailLoading, setDetailLoading] = useState(false), [detailError, setDetailError] = useState(null);
     const [search, setSearch] = useState(initial.scope.query), [column, setColumn] = useState(null), [columnText, setColumnText] = useState('');
     const [message, setMessage] = useState(''), [actionError, setActionError] = useState(null), [exporting, setExporting] = useState(false);
-    const panelRef = useRef(null), opener = useRef(null), listRef = useRef(null), exportController = useRef(null), alive = useRef(true);
+    const opener = useRef(null), listRef = useRef(null), exportController = useRef(null), alive = useRef(true);
+    const detailFocus = useRef(!!(initial.initial || initial.selected));
     const data = result && result.data, scope = data ? data.scope : request.scope;
     const currentScope = useRef(scope); currentScope.current = scope;
-    const refresh = () => { setActionError(null); setMessage(''); setRequest({ scope: currentScope.current, page: 1 }); };
+    const refresh = () => { detailFocus.current = false; setActionError(null); setMessage(''); setRequest({ scope: currentScope.current, page: 1 }); };
     useEffect(() => { alive.current = true; return () => { alive.current = false; if (exportController.current) exportController.current.abort(); }; }, []);
     useEffect(() => {
       const changed = () => setRequest({ scope: currentScope.current, page: 1 });
@@ -56,6 +57,7 @@
     useEffect(() => {
       if (contextSeen.current === contextKey) return;
       contextSeen.current = contextKey;
+      detailFocus.current = !!(initial.initial || initial.selected); opener.current = null;
       setRequest({ scope: initial.scope, page: initial.page, initial: initial.initial, restore: initial }); setSearch(initial.scope.query); setColumn(null);
     }, [contextKey, initial]);
     useEffect(() => {
@@ -95,9 +97,11 @@
       selected: selected ? { domain: selected.domain, entity_ref: selected.entity_ref, ...(selected.issue_ref ? { issue_ref: selected.issue_ref } : {}) } : null,
       section, detail_page: detailPage } }, !!data && !loading && !error && !initial.error && !detailLoading && !detailError && (!selected || !!detail));
     function selection(row) { return { ...row, entity_ref: row.entity_ref || row.ref }; }
-    function filter(patch) { setRequest({ scope: C.scope({ ...scope, ...patch }), page: 1 }); setColumn(null); }
-    function select(row, button) { opener.current = button; setSelected(selection(row)); setSection('issues'); setDetailPage(1); if (panelRef.current) panelRef.current.focus(); }
-    function locate(target) { if (result) { setSearch(''); setColumn(null); setRequest({ scope: data.scope, token: result.meta.snapshot_ref, locate: target, page: 1 }); } }
+    function filter(patch) { detailFocus.current = false; setRequest({ scope: C.scope({ ...scope, ...patch }), page: 1 }); setColumn(null); }
+    function select(row, button) { detailFocus.current = true; opener.current = button; setSelected(selection(row)); setSection('issues'); setDetailPage(1); }
+    function clearFilters() { setSearch(''); filter({ domain: 'all', status: 'all', query: '', column_filters: {} }); }
+    function closeDetail() { detailFocus.current = false; setSelected(null); const target = opener.current && opener.current.isConnected ? opener.current : listRef.current; opener.current = target; if (target) target.focus(); }
+    function locate(target) { if (result) { detailFocus.current = true; setSearch(''); setColumn(null); setRequest({ scope: data.scope, token: result.meta.snapshot_ref, locate: target, page: 1 }); } }
     async function navigate(target) {
       try { C.target(target); if (target.unavailable_reason) C.fail(target.unavailable_reason); if (typeof onNavigate !== 'function') C.fail('维护导航尚未接入。'); await onNavigate(target.view, target.context); }
       catch (failure) { setActionError(failure); }
@@ -113,11 +117,11 @@
     }
     const overview = data && data.overview, metrics = overview && overview.stats;
     const empty = { scope, rows: [], page: { number: 1, size: scope.size, total: 0, pages: 1 } };
-    return <section className="master-overview" aria-label="主数据总览"><window.MasterOverviewStyles />
-      <header className="mo-heading"><div><h2>主数据总览</h2><p>{result ? '基础资料 · 本机记录 · ' + result.meta.as_of.replace('T', ' ') : '基础资料 · 待读取'}</p></div>
-        <div className="mo-actions"><Button className="btn mo-icon" icon="refresh-cw" aria-label="刷新主数据" onClick={refresh} />
-          <Button transfer="export" disabled={!data || !data.page.total || loading || exporting} onClick={exportRows}>导出筛选结果</Button>
-          <Button className="btn primary" reason={typeof onNavigate !== 'function' ? '维护导航尚未接入。' : ''} onClick={async () => { try { await onNavigate('process', { source: 'production' }); } catch (failure) { setActionError(failure); } }}>维护基础资料</Button></div></header>
+    return <section className="plana master-overview" aria-label="主数据总览"><window.MasterOverviewStyles />
+      <header className="mo-heading"><div><h2 className="wb-page-title">主数据总览</h2><p className="wb-page-context">{result ? '基础资料 · 本机记录 · ' + window.WorkbenchFormat.dateTime(result.meta.as_of) : '基础资料 · 待读取'}</p></div>
+        <div className="mo-actions"><Button reasonDisplay="inline" className="btn mo-icon" icon="refresh-cw" aria-label="刷新主数据" onClick={refresh} />
+          <Button reasonDisplay="inline" transfer="export" disabled={!data || !data.page.total || loading || exporting} onClick={exportRows}>导出筛选结果</Button>
+          <Button reasonDisplay="inline" className="btn primary" reason={typeof onNavigate !== 'function' ? '维护导航尚未接入。' : ''} onClick={async () => { try { await onNavigate('process', { source: 'production' }); } catch (failure) { setActionError(failure); } }}>维护基础资料</Button></div></header>
       <div className="wb-metrics mo-metrics" aria-label="总览状态">{[['entities', overview && !overview.complete ? '已读取实体' : '实体条目'], ['issues', '待维护项'], ['affected', '涉及实体'], ['relations', '已关联条目对']].map(([key, label]) => <div className="wb-metric" key={key} data-tone={key === 'issues' ? 'warn' : undefined}>
         <span className="wb-metric-label">{label}</span><strong className="wb-metric-value">{metrics ? C.value(metrics[key]) : '未加载'}</strong></div>)}</div>
       <div className="wb-metrics mo-domains" aria-label="主数据域数量">{C.domains.map(([id, label], index) => { const domain = overview && overview.domains[index]; return <button type="button" className="wb-metric mo-domain" key={id} aria-pressed={scope.domain === id} aria-label={'查看数据域 ' + label}
@@ -130,20 +134,20 @@
         <label>数据域<select aria-label="筛选数据域" value={scope.domain} onChange={event => filter({ domain: event.target.value })}><option value="all">全部数据域</option>{C.domains.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
         <label>状态<select aria-label="筛选检查状态" value={scope.status} onChange={event => filter({ status: event.target.value })}><option value="all">全部状态</option>{Object.entries(C.statuses).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
         <label className="mo-search"><input type="search" aria-label="搜索主数据" placeholder="编号、名称或待维护项" value={search} maxLength={1000} onChange={event => setSearch(event.target.value)} /></label>
-        <Button type="submit" icon="search" className="btn mo-icon" aria-label="执行主数据搜索" />
+        <Button reasonDisplay="inline" type="submit" icon="search" className="btn mo-icon" aria-label="执行主数据搜索" />
         <label>排序<select aria-label="主数据排序" value={scope.sort} onChange={event => filter({ sort: event.target.value, direction: ['label', 'business_code'].includes(event.target.value) ? 'asc' : 'desc' })}>
           <option value="issue_count">待维护项</option><option value="business_code">编号</option><option value="label">名称</option><option value="relation_count">关联项</option></select></label>
-        <Button icon="chevron-down" className={'btn mo-icon' + (scope.direction === 'asc' ? ' mo-sort-asc' : '')} aria-label={scope.direction === 'asc' ? '切换为降序' : '切换为升序'} onClick={() => filter({ direction: scope.direction === 'asc' ? 'desc' : 'asc' })} />
-        <Button className="btn mo-icon" icon="x" aria-label="清除主数据筛选" onClick={() => { setSearch(''); filter({ domain: 'all', status: 'all', query: '', column_filters: {} }); }} /></form>
+        <Button reasonDisplay="inline" icon="chevron-down" className={'btn mo-icon' + (scope.direction === 'asc' ? ' mo-sort-asc' : '')} aria-label={scope.direction === 'asc' ? '切换为降序' : '切换为升序'} onClick={() => filter({ direction: scope.direction === 'asc' ? 'desc' : 'asc' })} />
+        <Button reasonDisplay="inline" className="btn mo-icon" icon="x" aria-label="清除主数据筛选" onClick={clearFilters} /></form>
       {column && <form className="mo-filter-band" onSubmit={event => { event.preventDefault(); const filters = { ...scope.column_filters }; if (columnText) filters[column] = columnText; else delete filters[column]; filter({ column_filters: filters }); }}>
         <label>{C.columns[scope.view].find(row => row[0] === column)[1]}<input aria-label="列包含文字" autoFocus value={columnText} maxLength={1000} onChange={event => setColumnText(event.target.value)} /></label>
-        <Button type="submit" icon="search">应用列筛选</Button><Button icon="x" aria-label="关闭列筛选" onClick={() => setColumn(null)} /></form>}
+        <Button reasonDisplay="inline" type="submit" icon="search">应用列筛选</Button><Button reasonDisplay="inline" icon="x" aria-label="关闭列筛选" onClick={() => setColumn(null)} /></form>}
       {Object.keys(scope.column_filters).length > 0 && <p className="mo-muted">已启用 {Object.keys(scope.column_filters).length} 项列筛选</p>}
-      <div className="mo-workspace"><div className="mo-list" ref={listRef} tabIndex={-1}><Table data={data || empty} selected={selected} onSelect={select} onMaintain={navigate} navigation={typeof onNavigate === 'function'} loading={loading} error={error}
+      <div className={selected ? 'mo-workspace wb-detail-layout' : 'mo-workspace'}><div className="mo-list" ref={listRef} tabIndex={-1}><Table data={data || empty} selected={selected} onSelect={select} onMaintain={navigate} onClear={clearFilters} onRetry={refresh} navigation={typeof onNavigate === 'function'} loading={loading} error={error}
         onFilter={key => { setColumn(key); setColumnText(scope.column_filters[key] || ''); }} />
         {data && <Pager page={data.page} disabled={loading} onSize={size => filter({ size })} onPage={page => setRequest({ scope: data.scope, page, token: result.meta.snapshot_ref })} />}</div>
         <window.MasterOverviewDetail result={detail} selected={selected} section={section} onSection={value => { setSection(value); setDetailPage(1); }} onPage={setDetailPage} onLocate={locate} onMaintain={navigate}
-          onBack={() => { const target = opener.current && opener.current.isConnected ? opener.current : listRef.current; if (target) target.focus(); }} navigation={typeof onNavigate === 'function'} loading={detailLoading} error={detailError} panelRef={panelRef} /></div>
+          onBack={closeDetail} navigation={typeof onNavigate === 'function'} loading={detailLoading} error={detailError} triggerRef={opener} autoFocus={detailFocus.current} /></div>
     </section>;
   }
   window.MasterOverviewWorkspace = MasterOverviewWorkspace;

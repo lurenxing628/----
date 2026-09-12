@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const M = window.ActualGanttModel, C = window.ActualGanttContract;
+  const M = window.ActualGanttModel, C = window.ActualGanttContract, W = window.ActualGanttWindow;
   const { Button, ErrorBox, Modal } = window.ResourceControls;
   const { Styles, Toolbar, Range, Chain, describe } = window.ActualGanttControls;
   const sessions = new Map();
@@ -16,6 +16,9 @@
       || !['onlySelected', 'details', 'chain'].every(key => typeof v[key] === 'boolean')
       || !object(v.collapsed) || !Object.values(v.collapsed).every(item => typeof item === 'boolean')
       || v.chainLines !== undefined && typeof v.chainLines !== 'boolean'
+      || value.position.viewport !== undefined && (!Number.isFinite(value.position.viewport) || value.position.viewport < 80)
+      || (value.position.centerAt !== undefined || value.position.windowSpan !== undefined)
+        && (!Number.isFinite(value.position.centerAt) || !Number.isFinite(value.position.windowSpan) || value.position.windowSpan <= 0)
       || !['left', 'top'].every(key => Number.isFinite(value.position[key]) && value.position[key] >= 0))
       throw new Error('实际甘特查看状态无效，未改选其他对象。');
     return value;
@@ -51,7 +54,11 @@
     const [chainTarget, setChainTarget] = React.useState(null);
     const [relatedChain, setRelatedChain] = React.useState(null);
     const [exportError, setExportError] = React.useState(null), [restore, setRestore] = React.useState(saved ? saved.position : seed.persisted ? seed.persisted.position : null);
-    const board = React.useRef(null), frame = React.useRef(null), pending = React.useRef(seed.report && seed.selected ? { task: seed.selected } : null), downloadController = React.useRef(null);
+    const board = React.useRef(null), frame = React.useRef(null), pending = React.useRef(!saved && !seed.persisted && seed.report && seed.selected ? { task: seed.selected } : null), downloadController = React.useRef(null);
+    const defaultWindowApplied = React.useRef(!!saved || !!seed.persisted);
+    const measuredWidth = React.useRef(null), zoomRef = React.useRef(zoom), restoreRef = React.useRef(restore);
+    zoomRef.current = zoom; restoreRef.current = restore;
+    const { labelWidth, viewport } = W.dimensions(position.width);
     const patch = change => setView(previous => ({ ...previous, ...change }));
     React.useEffect(() => {
       const controller = new AbortController(); let active = true;
@@ -84,29 +91,50 @@
     React.useEffect(() => () => { if (downloadController.current) downloadController.current.abort(); cancelAnimationFrame(frame.current); }, []);
     const data = result && result.data;
     const captionPlan = !loading && !error && data && data.plan;
-    const captionStatus = captionPlan && ({ official: captionPlan.is_current_official ? '当前正式采用' : '历史正式方案', candidate: '候选方案', scenario: '试调场景' })[captionPlan.kind];
+    const captionStatus = captionPlan && ({ official: captionPlan.is_current_official ? '当前正式采用' : '历史正式方案', candidate: window.WorkbenchTerms.candidate, scenario: '试调场景' })[captionPlan.kind];
     window.WorkbenchCaption.useCaption(captionStatus ? {
       reference: captionPlan.plan_ref, label: '对照计划', name: captionPlan.display_name, status: captionStatus,
       version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? '正式 v' + captionPlan.version : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
+    const model = React.useMemo(() => data ? M.layout(data, view, result.meta.as_of) : null, [data, view, result]);
+    const snapshotPosition = model ? W.capture(position, viewport, model, zoom) : null;
     window.WorkbenchPageContext.useSnapshot(data ? {
       plan_ref: data.plan.plan_ref, scope: data.scope, task_ref: view.selected,
-      actual_view: { view, zoom, position: { left: position.left, top: position.top } }, return_to: initialContext.return_to
-    } : null, !!data && !loading && !error && !seed.issue);
-    const model = React.useMemo(() => data ? M.layout(data, view, result.meta.as_of) : null, [data, view, result]);
-    const measure = () => { const node = board.current; if (node) setPosition({ left: node.scrollLeft, top: node.scrollTop, width: node.clientWidth, height: node.clientHeight }); };
+      actual_view: { view, zoom, position: snapshotPosition }, return_to: initialContext.return_to
+    } : null, !!data && !loading && !error && !seed.issue && !restore);
+    const measure = () => {
+      const node = board.current; if (!node) return;
+      const previousWidth = measuredWidth.current;
+      if (previousWidth !== null && previousWidth !== node.clientWidth && defaultWindowApplied.current && !restoreRef.current && !pending.current) {
+        const previousViewport = W.dimensions(previousWidth).viewport;
+        pending.current = { center: (node.scrollLeft + previousViewport / 2) / (previousViewport * zoomRef.current) };
+      }
+      measuredWidth.current = node.clientWidth;
+      setPosition({ left: node.scrollLeft, top: node.scrollTop, width: node.clientWidth, height: node.clientHeight });
+    };
     React.useLayoutEffect(() => {
       if (!board.current) return;
       measure(); const resize = new ResizeObserver(measure); resize.observe(board.current);
       return () => resize.disconnect();
     }, [data]);
-    const labelWidth = position.width < 550 ? 160 : 292, viewport = Math.max(80, position.width - labelWidth), width = viewport * zoom;
+    const width = viewport * zoom;
     React.useLayoutEffect(() => {
       const node = board.current; if (!node || !model) return;
+      if (!defaultWindowApplied.current) {
+        defaultWindowApplied.current = true;
+        const next = W.initial(data, model);
+        if (!pending.current) pending.current = { center: next.center };
+        setZoom(next.zoom);
+        if (next.zoom !== zoom) return;
+      }
       // Restore only after the measured width is rendered; the initial width can clamp scrollLeft.
       if (restore && position.width !== node.clientWidth) { measure(); return; }
-      if (restore) { node.scrollLeft = restore.left; node.scrollTop = restore.top; setRestore(null); }
+      if (restore) {
+        const nextZoom = W.restoreZoom(restore, model, zoom);
+        if (nextZoom !== zoom) { setZoom(nextZoom); return; }
+        node.scrollLeft = W.restoreLeft(restore, viewport, model, zoom); node.scrollTop = restore.top; setRestore(null);
+      }
       if (pending.current) {
         if (pending.current.task) {
           const reportRow = model.reportLocations.get(view.report);
@@ -118,9 +146,9 @@
       }
       measure();
     }, [width, model, restore, position.width]);
-    React.useEffect(() => { sessions.set(key, { scope, view, zoom, position }); }, [key, scope, view, zoom, position]);
+    React.useEffect(() => { if (snapshotPosition && !restore) sessions.set(key, { scope, view, zoom, position: snapshotPosition }); }, [key, scope, view, zoom, position, model, restore]);
     React.useEffect(() => { setHover(null); setChainTarget(null); }, [view, position.top, position.left]);
-    function zoomTo(next) { pending.current = { center: (position.left + viewport / 2) / width }; setZoom(Math.max(1, Math.min(1024, next))); }
+    function zoomTo(next) { pending.current = { center: W.anchor(data, model, view.selected, view.report) }; setZoom(Math.max(1, Math.min(1024, next))); }
     function pan(left) { if (board.current) { board.current.scrollLeft = Math.max(0, left); measure(); } }
     function locate(taskRef = view.selected) {
       if (!model || !model.items.some(item => item.task.task_ref === taskRef)) return;
@@ -128,7 +156,18 @@
       model.groups.filter(g => g.members.has(taskRef)).forEach(g => delete collapsed[g.id]);
       pending.current = { task: taskRef }; patch({ selected: taskRef, collapsed });
     }
-    function apply(next) { try { C.scope(next); setScope(next); patch({ collapsed: {} }); setError(null); } catch (failure) { setError(failure); } }
+    function apply(next) {
+      try {
+        C.scope(next); defaultWindowApplied.current = false; pending.current = null; setRestore(null);
+        setResult(null); setLoading(true); setScope(next); patch({ collapsed: {} }); setError(null);
+      } catch (failure) { setError(failure); }
+    }
+    function reload() {
+      if (snapshotPosition) setRestore(snapshotPosition);
+      pending.current = null;
+      const next = { ...scope }; delete next.snapshot_ref;
+      setResult(null); setLoading(true); setScope(next); setRefresh(n => n + 1);
+    }
     function select(item, report) { patch({ selected: item.task.task_ref, report: report ? report.report_ref : null }); }
     const selected = data && data.items.find(item => item.task.task_ref === view.selected);
     const stats = data && M.metrics(data);
@@ -174,24 +213,25 @@
       // Actual uses [] for all batches; Field represents that scope by omission.
       if (viewName === 'field' && Array.isArray(destinationScope.batch_ids) && destinationScope.batch_ids.length === 0)
         delete destinationScope.batch_ids;
-      sessions.set(JSON.stringify(returnContext), { scope, view, zoom, position });
+      if (snapshotPosition) sessions.set(JSON.stringify(returnContext), { scope, view, zoom, position: snapshotPosition });
       if (typeof onNavigate === 'function') onNavigate(viewName, { plan_ref: scope.plan_ref, task_ref: view.selected,
         operation_ref: selected ? selected.task.operation_ref : undefined,
         scope: destinationScope, return_to: { view: 'fieldgantt', context: returnContext } });
     }
     return <div className="plana fg-page fg-live" data-actual-gantt><Styles />
-      <div className="fg-heading"><div><h2>现场实际甘特</h2><span className="fg-muted">{data ? data.plan.display_name + ' · 数据截至 ' + M.time(result.meta.as_of) : loading ? '正在读取计划与执行事实' : '计划与执行事实'}</span></div>
-        <div className="wb-actions"><Button icon="refresh-cw" aria-label="刷新实际甘特" busy={loading} onClick={() => { const next = { ...scope }; delete next.snapshot_ref; setScope(next); setRefresh(n => n + 1); }} />
+      <div className="fg-heading"><div><h2 className="wb-page-title">现场实际甘特</h2><span className="fg-muted wb-page-context">{data ? data.plan.display_name + ' · 数据截至 ' + M.time(result.meta.as_of) : loading ? '正在读取计划与执行事实' : '计划与执行事实'}</span></div>
+        <div className="wb-actions"><Button icon="refresh-cw" aria-label="刷新实际甘特" busy={loading} onClick={reload} />
           {onNavigate && <><Button icon="chart-gantt" onClick={() => navigate('gantt')}>计划甘特</Button><Button icon="arrow-right" onClick={() => navigate('field')}>现场报工</Button></>}
           {onNavigate && initialContext.return_to && <Button icon="chevron-left" onClick={() => { const target = initialContext.return_to; if (['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(target.view)) onNavigate(target.view, target.context || {}); }}>回来源</Button>}</div></div>
       <ErrorBox error={error} />
+      {!data && <window.WorkbenchControls.EmptyState kind={loading ? 'loading' : 'empty'} title={loading ? '正在读取计划与执行事实…' : error ? '实际甘特未读取成功' : '暂无实际甘特数据'} />}
       {!data && !loading && onNavigate && <Button icon="chart-gantt" onClick={() => onNavigate('analysis', {})}>选择计划</Button>}
       {data && <><Range scope={scope} resources={data.resources} onApply={apply} busy={loading} />
         {data.availability.state !== 'available' && <div role="status" className="fg-note">{data.availability.reason}</div>}
-        <dl className="fg-metrics"><div><dt>整道已完工</dt><dd>{stats.complete === null ? '不可用' : stats.complete}</dd></div>
+        <dl className="fg-metrics" aria-label="当前范围概况"><div><dt>整道已完工</dt><dd>{stats.complete === null ? '不可用' : stats.complete}</dd></div>
           <div><dt>已报工 · 未整道完工</dt><dd>{stats.reported === null ? '不可用' : stats.reported}</dd></div>
           <div><dt>待报工</dt><dd>{stats.pending === null ? '不可用' : stats.pending}</dd></div>
-          <div title="仅统计有确认完工时间的已完工工序"><dt>平均整道完工偏差</dt><dd>{stats.average === null ? '未核实' : (stats.average > 0 ? '+' : '') + Math.round(stats.average) + 'm'}</dd></div></dl>
+          <div title="仅统计有确认完工时间的已完工工序"><dt>平均整道完工偏差</dt><dd>{stats.average === null ? '未核实' : (stats.average > 0 ? '+' : '') + window.WorkbenchFormat.number(Math.round(stats.average) + 0, { digits: 0 }) + 'm'}</dd></div></dl>
         <section className="gb-workspace fg-workspace" aria-label="现场实际甘特工作区"><Toolbar {...{ view, patch, model, data, zoom, width }} onZoom={zoomTo}
           onFit={() => { pending.current = { center: .5 }; setZoom(1); pan(0); }} onLocate={() => locate()} onExport={() => { setExportError(null); setExporting(true); }} busy={exportBusy} />
           {data.critical_chain.state === 'unavailable' && <div className="fg-note" role="status">关键链不可用：{data.critical_chain.reason}</div>}
@@ -210,11 +250,12 @@
               {report && <span>登记：{M.time(report.recorded_at)} · 历史版本 {report.correction_history.length} 条</span>}</>}</> : <span>未选中工序</span>}</div>}
           <div className="fg-board" ref={board} data-actual-scroll tabIndex={0} aria-label="分次报工甘特" style={{ '--fg-label': labelWidth + 'px' }} onScroll={() => { cancelAnimationFrame(frame.current); frame.current = requestAnimationFrame(measure); }}>
             <div className="fg-board-inner" style={{ width: labelWidth + width, height: model.height + 52 }}><div className="fg-axis"><div className="fg-corner">{M.views[view.mode]} / 工序<small className="fg-muted" style={{ display: 'block' }}>工厂本地时间 · 连续跨夜</small></div>
-              <div className="fg-ticks" style={{ width }}>{M.ticks(model, width, position.left, viewport).map(tick => <div className="fg-tick" key={tick.at} title={M.time(tick.label)} style={{ left: tick.x, width: Math.min(134, width - tick.x) }}>{tick.x + 110 <= width && <>{tick.label.slice(0, 10)}<small>{tick.label.slice(11, 19)}</small></>}</div>)}
+              <div className="fg-ticks" style={{ width }}>{M.ticks(model, width, position.left, viewport).map(tick => <div className="fg-tick" key={tick.at} title={M.time(tick.label)} style={{ left: tick.x, width: Math.min(134, width - tick.x) }}>{tick.x + 110 <= width && <>{M.time(tick.label).slice(0, 10)}<small>{M.time(tick.label).slice(11, 19)}</small></>}</div>)}
                 <i className="fg-clock" style={{ left: (model.asOf - model.start) / (model.end - model.start) * width }} title={'数据时点 ' + M.time(result.meta.as_of)} aria-hidden="true" /></div></div>
               <window.ActualGanttRows {...{ model, view, width, viewport, labelWidth, patch }} left={position.left} top={position.top} height={position.height} dense={data.task_count >= 1000}
                 onSelect={select} onHover={hoverMark} onChainTarget={setChainTarget} chain={visibleChain} />
-              {!model.items.length && <div className="fg-empty" role="status">当前范围没有匹配的工序。</div>}</div></div>
+              {!model.items.length && <window.WorkbenchControls.EmptyState kind={view.query || view.late !== 'all' || view.onlySelected ? 'filtered' : 'empty'} title="当前范围没有匹配的工序。"
+                action={view.query || view.late !== 'all' || view.onlySelected ? <Button onClick={() => patch({ query: '', late: 'all', onlySelected: false })}>清除筛选</Button> : undefined} />}</div></div>
           <div className="fg-foot"><span>{M.time(M.wire(model.start))}</span><input type="range" aria-label="时间轴水平位置" min={0} max={Math.max(0, width - viewport)} value={Math.min(position.left, width - viewport)} step="any" onChange={e => pan(Number(e.target.value))} disabled={zoom === 1} /><span>{M.time(M.wire(model.end))}</span></div>
         </section></>}
       {hover && model && <div className="fg-tip" role="tooltip" style={{ left: Math.max(8, Math.min(hover.x + 12, window.innerWidth - 368)), top: Math.max(8, Math.min(hover.y + 12, window.innerHeight - 360)) }}>{hover.title || describe(hover.item, model.labels, hover.report).join('\n')}</div>}

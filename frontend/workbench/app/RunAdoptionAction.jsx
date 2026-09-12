@@ -103,10 +103,10 @@
       catch (e) { setStorageError(e.message); }
     }
     const pending = intent && intent.phase === 'pending';
-    const label = result ? '查看采用回执' : pending ? '核实采用结果' : intent ? '重新核对采用' : '正式采用';
+    const label = result ? '查看采用回执' : pending ? '核实采用结果' : intent ? '重新核对采用' : '采用方案';
     const display = preview && preview.validation.can_adopt ? preview : intent ? intent.preview : { candidate_ref: candidateRef || '未指定' };
     return <span className="plana run-adoption-action" data-run-adoption-action="true"><U.Styles />
-      <U.Button icon={pending ? 'refresh-cw' : 'check'} disabled={!intent && (!A.ref(candidateRef) || !!storageError)} onClick={() => {
+      <U.Button icon={pending ? 'refresh-cw' : 'check'} className="btn primary" disabled={!intent && (!A.ref(candidateRef) || !!storageError)} onClick={() => {
         if (intent) { setOpen(true); if (pending && !result) refresh(); }
         else inspect();
       }} aria-expanded={open} busy={busy && !intent}> {label.trim()} </U.Button>

@@ -5,9 +5,11 @@
   // UTC is only a numeric coordinate system here, never the wire time zone.
   const instant = value => value ? Date.parse(value + 'Z') : NaN;
   const wire = value => new Date(value).toISOString().slice(0, 19);
-  const time = value => value ? value.replace('T', ' ') : '未记录';
-  const number = value => value == null ? '未知' : value.toLocaleString('zh-CN', {
-    maximumFractionDigits: 2
+  const time = value => window.WorkbenchFormat.dateTime(value, {
+    seconds: true
+  });
+  const number = value => window.WorkbenchFormat.number(value, {
+    digits: 2
   });
   const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
   const taskLabel = task => task.batch_id + ' · ' + task.sequence + ' ' + task.process_label + ' · ' + pieceLabel(task);

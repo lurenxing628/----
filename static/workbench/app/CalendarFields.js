@@ -3,8 +3,10 @@
 
   const {
     Button,
-    ErrorBox
+    ErrorBox,
+    Field
   } = window.ResourceControls;
+  const fieldPaths = ['fields.hours', 'fields.eff', 'fields.note'];
   function Segment({
     label,
     value,
@@ -36,7 +38,8 @@
     onChange,
     disabled,
     error,
-    noteEnabled = true
+    noteEnabled = true,
+    showSummary = true
   }) {
     const work = value.type === 'work';
     const change = (key, next) => onChange({
@@ -55,11 +58,12 @@
       style: work ? undefined : {
         opacity: .55
       }
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "field"
-    }, /*#__PURE__*/React.createElement("label", {
-      htmlFor: id + '-hours'
-    }, "\u53EF\u6392\u5DE5\u65F6\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement(Field, {
+      label: "\u53EF\u6392\u5DE5\u65F6\uFF08\u5C0F\u65F6\uFF09",
+      path: "fields.hours",
+      error: error,
+      required: work
+    }, /*#__PURE__*/React.createElement("input", {
       id: id + '-hours',
       name: "hours",
       className: "cal-hours",
@@ -71,11 +75,12 @@
       value: value.hours,
       disabled: disabled || !work,
       onChange: event => change('hours', event.target.value)
-    })), /*#__PURE__*/React.createElement("div", {
-      className: "field"
-    }, /*#__PURE__*/React.createElement("label", {
-      htmlFor: id + '-eff'
-    }, "\u6548\u7387\uFF08%\uFF09"), /*#__PURE__*/React.createElement("input", {
+    })), /*#__PURE__*/React.createElement(Field, {
+      label: "\u6548\u7387\uFF08%\uFF09",
+      path: "fields.eff",
+      error: error,
+      required: work
+    }, /*#__PURE__*/React.createElement("input", {
       id: id + '-eff',
       name: "eff",
       className: "cal-eff",
@@ -96,18 +101,20 @@
       options: [["yes", "是"], ["no", "否"]],
       onChange: next => change(key, next),
       disabled: disabled || !work
-    })))), /*#__PURE__*/React.createElement("div", {
-      className: "field full"
-    }, /*#__PURE__*/React.createElement("label", {
-      htmlFor: id + '-note'
-    }, "\u5907\u6CE8"), /*#__PURE__*/React.createElement("input", {
+    })))), /*#__PURE__*/React.createElement(Field, {
+      label: "\u5907\u6CE8",
+      path: "fields.note",
+      error: error,
+      full: true
+    }, /*#__PURE__*/React.createElement("input", {
       id: id + '-note',
       className: "cal-note",
       value: value.note,
       disabled: disabled || !noteEnabled,
       onChange: event => change('note', event.target.value)
-    })), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: error
+    })), showSummary && /*#__PURE__*/React.createElement(ErrorBox, {
+      error: error,
+      excludePaths: fieldPaths
     }));
   }
   function Policy({
@@ -128,7 +135,7 @@
       }
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("b", null, value.explicit ? '单独配置' : '默认规则'), " \xB7 ", value.effective.is_working ? '可排产' : '不排产'), /*#__PURE__*/React.createElement("div", null, number(fields.hours), " \u5C0F\u65F6 \xB7 \u6548\u7387 ", number(fields.eff), "% \xB7 \u666E\u901A\u4EF6", fields.allowNormal === 'yes' ? '可排' : '不可排', " \xB7 \u6025\u4EF6", fields.allowUrgent === 'yes' ? '可排' : '不可排'), /*#__PURE__*/React.createElement("div", {
       className: "muted"
-    }, "\u6709\u6548\u65F6\u6BB5\uFF1A", value.effective.window_start.replace('T', ' '), " \u81F3 ", value.effective.window_end.replace('T', ' ')), raw && stored && /*#__PURE__*/React.createElement("div", {
+    }, "\u6709\u6548\u65F6\u6BB5\uFF1A", window.WorkbenchFormat.dateTime(value.effective.window_start), " \u81F3 ", window.WorkbenchFormat.dateTime(value.effective.window_end)), raw && stored && /*#__PURE__*/React.createElement("div", {
       className: "muted"
     }, "\u539F\u59CB\u914D\u7F6E\uFF08\u53EA\u8BFB\uFF09\uFF1A", {
       workday: '工作日',
@@ -154,6 +161,7 @@
     Fields: CalendarFields,
     Segment,
     Policy,
-    RefreshResult
+    RefreshResult,
+    fieldPaths
   };
 })();

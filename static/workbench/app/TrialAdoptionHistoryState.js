@@ -52,7 +52,7 @@
       }
     }, '', url.pathname + url.search);
     window.dispatchEvent(new PopStateEvent('popstate'));
-    window.scrollTo(0, 0);
+    // The shell restores scrolling only after its history guard accepts the new entry.
   }
   window.TrialAdoptionHistoryState = {
     restore,

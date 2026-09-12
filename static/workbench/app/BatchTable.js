@@ -71,6 +71,9 @@
     onDelete,
     onSort,
     onFilter,
+    onClear,
+    onRetry,
+    error,
     loading,
     disabled
   }) {
@@ -87,17 +90,27 @@
     React.useEffect(() => {
       if (checkbox.current) checkbox.current.indeterminate = !all && rows.some(row => selected.includes(row.ref));
     }, [rows, selected, all]);
+    const filtered = !!(scope.query || scope.status || scope.ready_status || scope.focus || scope.batch_ids || Object.keys(scope.column_filters || {}).length);
     return /*#__PURE__*/React.createElement("div", {
-      className: "wb-table-frame card-scroll"
+      className: "wb-table-frame batch-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true,
+      style: {
+        '--wb-table-min': '1180px',
+        '--wb-table-max-height': 'calc(100vh - 320px)'
+      }
     }, /*#__PURE__*/React.createElement("table", {
       className: "tbl wb-table",
       style: {
-        width: Object.values(widths).reduce((sum, width) => sum + width, 204),
+        width: Object.values(widths).reduce((sum, width) => sum + width, 234),
         minWidth: '100%'
       },
       "aria-label": "\u6279\u6B21\u5217\u8868",
       "aria-busy": loading
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u6279\u6B21\u5217\u8868\uFF1B\u6279\u6B21\u53F7\u4E0E\u64CD\u4F5C\u5217\u56FA\u5B9A\uFF0C\u53EF\u5728\u8868\u5185\u6A2A\u5411\u548C\u7EB5\u5411\u6EDA\u52A8\u3002"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 44
       }
@@ -110,9 +123,10 @@
       onChange: event => setSelected(event.target.checked ? Array.from(new Set(selected.concat(rows.map(row => row.ref)))) : selected.filter(ref => !rows.some(row => row.ref === ref)))
     })), B.columns.map(([key, name]) => /*#__PURE__*/React.createElement("th", {
       key: key,
+      scope: "col",
+      className: key === 'business_code' ? 'wb-col-key' : undefined,
       style: {
-        width: widths[key],
-        position: 'relative'
+        width: widths[key]
       },
       "aria-sort": scope.sort === key ? scope.direction === 'asc' ? 'ascending' : 'descending' : 'none'
     }, key === 'progress' ? name : /*#__PURE__*/React.createElement("div", {
@@ -123,9 +137,10 @@
       onClick: () => onSort(key),
       title: '排序' + name
     }, name), /*#__PURE__*/React.createElement(Button, {
-      className: "linkbtn",
+      className: 'linkbtn wb-column-filter' + (Object.prototype.hasOwnProperty.call(scope.column_filters || {}, key) ? ' is-active' : ''),
       icon: "filter",
       "aria-label": '筛选' + name,
+      "aria-pressed": Object.prototype.hasOwnProperty.call(scope.column_filters || {}, key),
       onClick: () => onFilter(key),
       disabled: disabled
     })), /*#__PURE__*/React.createElement("span", {
@@ -163,8 +178,10 @@
         drag.current = null;
       }
     }))), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-actions",
       style: {
-        width: 160
+        width: 190
       }
     }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.ref
@@ -174,15 +191,20 @@
       checked: selected.includes(row.ref),
       disabled: disabled,
       onChange: event => setSelected(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+    })), /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-key"
+    }, /*#__PURE__*/React.createElement(Button, {
       className: "linkbtn",
       onClick: () => onOpen(row.ref),
       disabled: disabled
     }, row.business_code)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, row.relationships.part_no), /*#__PURE__*/React.createElement("div", {
       className: "muted"
-    }, row.label)), /*#__PURE__*/React.createElement("td", null, B.label('', row.fields.quantity)), /*#__PURE__*/React.createElement("td", null, B.label('', row.fields.due_date)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
+    }, row.label)), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.number(row.fields.quantity, {
+      digits: 0
+    })), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.date(row.fields.due_date)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
       className: "batch-progress"
     }, /*#__PURE__*/React.createElement("progress", {
+      "aria-label": row.business_code + '已完成工序',
       value: row.relationships.completed_count,
       max: row.relationships.operation_count || 1
     }), /*#__PURE__*/React.createElement("span", null, row.relationships.completed_count, " / ", row.relationships.operation_count)), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u5DE5\u5E8F\u6982\u51B5", row.relationships.gap_count ? ' · 待补 ' + row.relationships.gap_count : ''), row.operations.length ? row.operations.map(op => /*#__PURE__*/React.createElement("div", {
@@ -191,7 +213,9 @@
       key: key
     }, /*#__PURE__*/React.createElement("span", {
       className: 'pill ' + (key === 'ready_status' ? row.fields[key] === 'yes' ? 'ok' : 'warn' : key === 'priority' ? row.fields[key] === 'normal' ? 'off' : 'warn' : row.status === 'completed' ? 'ok' : row.status === 'processing' ? 'warn' : 'off')
-    }, B.label(key, key === 'status' ? row.status : row.fields[key])))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
+    }, B.label(key, key === 'status' ? row.status : row.fields[key])))), /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-actions"
+    }, /*#__PURE__*/React.createElement("div", {
       className: "batch-head"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "square-pen",
@@ -199,17 +223,24 @@
       disabled: disabled
     }, "\u67E5\u770B/\u7F16\u8F91"), /*#__PURE__*/React.createElement(Button, {
       icon: "x",
+      className: "btn danger",
       "aria-label": '删除批次 ' + row.business_code,
       onClick: () => onDelete(row),
       disabled: disabled,
+      reasonDisplay: "tooltip",
       reason: B.reason(row.write_context, 'delete', 'production')
     }))))), !rows.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
-      colSpan: 10,
-      style: {
-        padding: 24,
-        textAlign: 'center'
-      }
-    }, loading ? '正在读取批次…' : '当前条件下暂无批次')))));
+      colSpan: 10
+    }, /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
+      kind: loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty',
+      error: error,
+      title: loading ? '正在读取批次…' : error || filtered ? undefined : '暂无批次',
+      action: error ? /*#__PURE__*/React.createElement(Button, {
+        onClick: onRetry
+      }, "\u91CD\u65B0\u8BFB\u53D6") : filtered ? /*#__PURE__*/React.createElement(Button, {
+        onClick: onClear
+      }, "\u6E05\u9664\u7B5B\u9009") : undefined
+    }))))));
   }
   BatchTable.ColumnFilter = ColumnFilter;
   window.BatchTable = BatchTable;

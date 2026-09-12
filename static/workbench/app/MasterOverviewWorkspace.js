@@ -97,16 +97,17 @@
     const [message, setMessage] = useState(''),
       [actionError, setActionError] = useState(null),
       [exporting, setExporting] = useState(false);
-    const panelRef = useRef(null),
-      opener = useRef(null),
+    const opener = useRef(null),
       listRef = useRef(null),
       exportController = useRef(null),
       alive = useRef(true);
+    const detailFocus = useRef(!!(initial.initial || initial.selected));
     const data = result && result.data,
       scope = data ? data.scope : request.scope;
     const currentScope = useRef(scope);
     currentScope.current = scope;
     const refresh = () => {
+      detailFocus.current = false;
       setActionError(null);
       setMessage('');
       setRequest({
@@ -136,6 +137,8 @@
     useEffect(() => {
       if (contextSeen.current === contextKey) return;
       contextSeen.current = contextKey;
+      detailFocus.current = !!(initial.initial || initial.selected);
+      opener.current = null;
       setRequest({
         scope: initial.scope,
         page: initial.page,
@@ -231,6 +234,7 @@
       };
     }
     function filter(patch) {
+      detailFocus.current = false;
       setRequest({
         scope: C.scope({
           ...scope,
@@ -241,14 +245,31 @@
       setColumn(null);
     }
     function select(row, button) {
+      detailFocus.current = true;
       opener.current = button;
       setSelected(selection(row));
       setSection('issues');
       setDetailPage(1);
-      if (panelRef.current) panelRef.current.focus();
+    }
+    function clearFilters() {
+      setSearch('');
+      filter({
+        domain: 'all',
+        status: 'all',
+        query: '',
+        column_filters: {}
+      });
+    }
+    function closeDetail() {
+      detailFocus.current = false;
+      setSelected(null);
+      const target = opener.current && opener.current.isConnected ? opener.current : listRef.current;
+      opener.current = target;
+      if (target) target.focus();
     }
     function locate(target) {
       if (result) {
+        detailFocus.current = true;
         setSearch('');
         setColumn(null);
         setRequest({
@@ -301,22 +322,29 @@
       }
     };
     return /*#__PURE__*/React.createElement("section", {
-      className: "master-overview",
+      className: "plana master-overview",
       "aria-label": "\u4E3B\u6570\u636E\u603B\u89C8"
     }, /*#__PURE__*/React.createElement(window.MasterOverviewStyles, null), /*#__PURE__*/React.createElement("header", {
       className: "mo-heading"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", null, "\u4E3B\u6570\u636E\u603B\u89C8"), /*#__PURE__*/React.createElement("p", null, result ? '基础资料 · 本机记录 · ' + result.meta.as_of.replace('T', ' ') : '基础资料 · 待读取')), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+      className: "wb-page-title"
+    }, "\u4E3B\u6570\u636E\u603B\u89C8"), /*#__PURE__*/React.createElement("p", {
+      className: "wb-page-context"
+    }, result ? '基础资料 · 本机记录 · ' + window.WorkbenchFormat.dateTime(result.meta.as_of) : '基础资料 · 待读取')), /*#__PURE__*/React.createElement("div", {
       className: "mo-actions"
     }, /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       className: "btn mo-icon",
       icon: "refresh-cw",
       "aria-label": "\u5237\u65B0\u4E3B\u6570\u636E",
       onClick: refresh
     }), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       transfer: "export",
       disabled: !data || !data.page.total || loading || exporting,
       onClick: exportRows
     }, "\u5BFC\u51FA\u7B5B\u9009\u7ED3\u679C"), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       className: "btn primary",
       reason: typeof onNavigate !== 'function' ? '维护导航尚未接入。' : '',
       onClick: async () => {
@@ -422,6 +450,7 @@
       maxLength: 1000,
       onChange: event => setSearch(event.target.value)
     })), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       type: "submit",
       icon: "search",
       className: "btn mo-icon",
@@ -442,6 +471,7 @@
     }, "\u540D\u79F0"), /*#__PURE__*/React.createElement("option", {
       value: "relation_count"
     }, "\u5173\u8054\u9879"))), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       icon: "chevron-down",
       className: 'btn mo-icon' + (scope.direction === 'asc' ? ' mo-sort-asc' : ''),
       "aria-label": scope.direction === 'asc' ? '切换为降序' : '切换为升序',
@@ -449,18 +479,11 @@
         direction: scope.direction === 'asc' ? 'desc' : 'asc'
       })
     }), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       className: "btn mo-icon",
       icon: "x",
       "aria-label": "\u6E05\u9664\u4E3B\u6570\u636E\u7B5B\u9009",
-      onClick: () => {
-        setSearch('');
-        filter({
-          domain: 'all',
-          status: 'all',
-          query: '',
-          column_filters: {}
-        });
-      }
+      onClick: clearFilters
     })), column && /*#__PURE__*/React.createElement("form", {
       className: "mo-filter-band",
       onSubmit: event => {
@@ -480,16 +503,18 @@
       maxLength: 1000,
       onChange: event => setColumnText(event.target.value)
     })), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       type: "submit",
       icon: "search"
     }, "\u5E94\u7528\u5217\u7B5B\u9009"), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       icon: "x",
       "aria-label": "\u5173\u95ED\u5217\u7B5B\u9009",
       onClick: () => setColumn(null)
     })), Object.keys(scope.column_filters).length > 0 && /*#__PURE__*/React.createElement("p", {
       className: "mo-muted"
     }, "\u5DF2\u542F\u7528 ", Object.keys(scope.column_filters).length, " \u9879\u5217\u7B5B\u9009"), /*#__PURE__*/React.createElement("div", {
-      className: "mo-workspace"
+      className: selected ? 'mo-workspace wb-detail-layout' : 'mo-workspace'
     }, /*#__PURE__*/React.createElement("div", {
       className: "mo-list",
       ref: listRef,
@@ -499,6 +524,8 @@
       selected: selected,
       onSelect: select,
       onMaintain: navigate,
+      onClear: clearFilters,
+      onRetry: refresh,
       navigation: typeof onNavigate === 'function',
       loading: loading,
       error: error,
@@ -528,14 +555,12 @@
       onPage: setDetailPage,
       onLocate: locate,
       onMaintain: navigate,
-      onBack: () => {
-        const target = opener.current && opener.current.isConnected ? opener.current : listRef.current;
-        if (target) target.focus();
-      },
+      onBack: closeDetail,
       navigation: typeof onNavigate === 'function',
       loading: detailLoading,
       error: detailError,
-      panelRef: panelRef
+      triggerRef: opener,
+      autoFocus: detailFocus.current
     })));
   }
   window.MasterOverviewWorkspace = MasterOverviewWorkspace;

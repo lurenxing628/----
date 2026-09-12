@@ -4,8 +4,8 @@
   const C = window.RunCandidateControls,
     M = window.RunCandidateModel;
   const labels = {
-    overdue_count: '预计晚交批数',
-    total_tardiness_hours: '总拖期 h',
+    overdue_count: window.WorkbenchTerms.overdue_count,
+    total_tardiness_hours: window.WorkbenchTerms.total_tardiness_hours + ' h',
     changed_operation_count: '调整工序',
     machine_change_count: '换设备数'
   };
@@ -63,10 +63,16 @@
     }, /*#__PURE__*/React.createElement("h3", null, "\u6279\u6B21\u4EA4\u4ED8\u5BF9\u7167"), /*#__PURE__*/React.createElement("span", {
       className: "rc-muted"
     }, "\u5B8C\u6574\u53D7\u7406\u6279\u6B21 \xB7 \u5019\u9009\u51CF\u53D7\u7406\u57FA\u7EBF")), /*#__PURE__*/React.createElement("div", {
-      className: "rc-table"
+      className: "rc-table wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
+      className: "wb-table",
       "aria-label": "\u5019\u9009\u6279\u6B21\u4EA4\u4ED8\u5BF9\u7167"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['批次 / 零件', '交付截至日', '基准完工', '预览完工', '拖期变化 h', '甘特定位'].map(label => /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u5019\u9009\u6279\u6B21\u4EA4\u4ED8\u5BF9\u7167"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['批次 / 零件', '交付截至日', '基准完工', '预览完工', '拖期变化 h', '甘特定位'].map(label => /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       key: label
     }, label)))), /*#__PURE__*/React.createElement("tbody", null, data.batches.slice((current - 1) * 20, current * 20).map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.batch_ref,
@@ -106,15 +112,24 @@
       className: "rc-muted",
       role: "status"
     }, "\u6B64\u5019\u9009\u5C1A\u65E0\u5DF2\u6301\u4E45\u4FDD\u5B58\u7684\u91C7\u7528\u8BB0\u5F55\u3002") : /*#__PURE__*/React.createElement("div", {
-      className: "rc-table"
+      className: "rc-table wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
+      className: "wb-table",
       "aria-label": "\u5019\u9009\u91C7\u7528\u8BB0\u5F55"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['原正式计划', '采用时间', '声明人 / 本机账号', '原因', '原回执', '操作'].map(label => /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u5019\u9009\u91C7\u7528\u8BB0\u5F55"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['原正式计划', '采用时间', '声明人 / 本机账号', '原因', '原回执', '操作'].map(label => /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       key: label
     }, label)))), /*#__PURE__*/React.createElement("tbody", null, data.items.slice((current - 1) * 20, current * 20).map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.receipt_ref,
       "data-adoption-receipt": row.receipt_ref
-    }, /*#__PURE__*/React.createElement("td", null, row.official_plan.label, /*#__PURE__*/React.createElement("small", null, row.row_count, " \u9053\u5B89\u6392")), /*#__PURE__*/React.createElement("td", null, row.adoption ? M.timeLabel(row.adoption.adopted_at) : '本地时间未核实', /*#__PURE__*/React.createElement("small", null, row.committed_at_utc)), /*#__PURE__*/React.createElement("td", null, row.adoption ? /*#__PURE__*/React.createElement(React.Fragment, null, row.adoption.declared_operator, /*#__PURE__*/React.createElement("small", null, row.adoption.application_operator)) : '未核实'), /*#__PURE__*/React.createElement("td", null, row.adoption ? row.adoption.reason : '未核实'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u56DE\u6267\u7F16\u53F7"), /*#__PURE__*/React.createElement("code", null, row.receipt_ref)), /*#__PURE__*/React.createElement(C.Reasons, {
+    }, /*#__PURE__*/React.createElement("td", null, row.official_plan.label, /*#__PURE__*/React.createElement("small", null, row.row_count, " \u9053\u5B89\u6392")), /*#__PURE__*/React.createElement("td", null, row.adoption ? M.timeLabel(row.adoption.adopted_at) : '本地时间未核实', /*#__PURE__*/React.createElement("small", null, "\u56DE\u6267\u4FDD\u5B58\uFF1A", window.WorkbenchFormat.instant(row.committed_at_utc))), /*#__PURE__*/React.createElement("td", null, row.adoption ? /*#__PURE__*/React.createElement(React.Fragment, null, row.adoption.declared_operator, /*#__PURE__*/React.createElement("small", null, row.adoption.application_operator)) : '未核实'), /*#__PURE__*/React.createElement("td", null, row.adoption ? row.adoption.reason : '未核实'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      value: row.receipt_ref,
+      label: "\u56DE\u6267\u7F16\u53F7"
+    }), /*#__PURE__*/React.createElement(C.Reasons, {
       rows: row.evidence_gaps
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",

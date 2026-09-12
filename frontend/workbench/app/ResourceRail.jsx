@@ -5,7 +5,7 @@
   const labels = { known: '已核实', recorded: '已登记', zero: '0 条记录', unknown: '未知', not_configured: '未配置', unavailable: '无法核实' };
   const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
   const number = value => Number.isFinite(value) && value >= 0;
-  const amount = value => number(value) ? String(Number(value.toFixed(3))) : '未知';
+  const amount = value => window.WorkbenchFormat.number(value, { digits: 1 });
   const countLabels = { active: '启用', inactive: '停用', maintain: '检修', leave: '请假', pending_review: '待复核', unknown: '未知' };
   function processText(item, total, loading) {
     const unavailable = { lead: loading ? '工艺阶段待读取' : '工艺阶段无法核实', lines: [] };
@@ -38,7 +38,7 @@
     const origin = day.explicit ? '显式配置' : '服务默认（未配置）';
     if (!day.effective) return day.date + ' · ' + origin + ' · 无法核实：' + day.issues.map(issue => issue.message).join('；');
     const value = day.effective;
-    return day.date + ' · ' + origin + '\n' + value.window_start + ' 至 ' + value.window_end +
+    return day.date + ' · ' + origin + '\n' + window.WorkbenchFormat.dateTime(value.window_start, { seconds: true }) + ' 至 ' + window.WorkbenchFormat.dateTime(value.window_end, { seconds: true }) +
       (value.crosses_midnight ? '（跨夜，归班次起始日）' : '') + '\n班次 ' + amount(value.hours) + ' h × 效率 ' + amount(value.efficiency * 100) +
       '%；有效 ' + amount(value.effective_hours) + ' h\n普通件 ' + (value.allow_normal ? '允许' : '不允许') +
       ' / 急件及特急件 ' + (value.allow_urgent ? '允许' : '不允许') +

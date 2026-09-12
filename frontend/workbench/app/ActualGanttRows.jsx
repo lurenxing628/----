@@ -16,13 +16,19 @@
     return execution.legacy_facts.length ? '旧执行事实保留，非逐次报工' : '暂无实际报工';
   }
   function Bar({ mark, row, model, width, selected, onSelect, onHover, canvasPainted = false }) {
-    const x = (mark.start - model.start) / (model.end - model.start) * width, size = (mark.end - mark.start) / (model.end - model.start) * width;
+    const box = window.ActualGanttWindow.markBox(mark, model, width), { x, size } = box;
     const kind = { actual: 'act', plan: 'plan', remaining: 'remaining' }[mark.kind];
     const title = M.markTitle(mark, row.item, model.labels);
+    function atPointer(event) {
+      const track = event.currentTarget.closest('.fg-track').getBoundingClientRect();
+      return window.ActualGanttWindow.hitMark(M.marks(row), model, width, 0, event.clientX - track.left, event.clientY - track.top);
+    }
     function hover(event) {
       if (!event) { onHover(null); return; }
+      const target = event.type === 'focus' ? mark : atPointer(event);
+      if (!target) { onHover(null); return; }
       const rect = event.currentTarget.getBoundingClientRect();
-      onHover({ item: row.item, report: mark.report, title, x: rect.right, y: rect.top });
+      onHover({ item: row.item, report: target.report, title: M.markTitle(target, row.item, model.labels), x: rect.right, y: rect.top });
     }
     if (mark.kind === 'plan-point' || mark.kind === 'point') return <window.PointGantt.Marker
       task={mark.report ? { task_ref: mark.report.report_ref, start: mark.report.actual_start } : row.item.task}
@@ -30,11 +36,13 @@
       data-actual-mark={mark.kind} data-report-ref={mark.report && mark.report.report_ref} data-task-ref={row.item.task.task_ref}
       onSelect={() => onSelect(row.item, mark.report)} onHover={hover} onFocus={hover} onBlur={() => onHover(null)} />;
     return <button className={'fg-mark fg-' + kind} data-actual-mark={mark.kind} data-report-ref={mark.report && mark.report.report_ref} data-task-ref={row.item.task.task_ref}
-      style={{ left: x, width: size, top: mark.y, height: mark.height }}
-      title={title} aria-label={title} aria-pressed={selected === row.item.task.task_ref} onClick={() => onSelect(row.item, mark.report)}
-      onMouseEnter={hover} onMouseLeave={() => onHover(null)} onFocus={hover} onBlur={() => onHover(null)}>
-      {size >= 55 && mark.kind !== 'plan' && <><span>{mark.report ? mark.report.report_no : '剩余 ' + M.number(row.item.execution.remaining_quantity) + ' 件'}</span>
-        {size >= 150 && <span>{mark.report ? M.number(mark.report.completed_quantity) + ' 件 · ' + M.number(mark.report.effective_processing_hours) + 'h' : M.time(row.item.execution.remaining_plan.start)}</span>}</>}
+      data-duration-ms={mark.end - mark.start} data-duration-width={size}
+      style={{ left: box.hitLeft, width: box.hitWidth, top: mark.y, height: mark.height }}
+      title={title} aria-label={title} aria-pressed={selected === row.item.task.task_ref} onClick={event => {
+        const target = event.detail === 0 ? mark : atPointer(event); if (target) onSelect(row.item, target.report);
+      }} onMouseEnter={hover} onMouseMove={hover} onMouseLeave={() => onHover(null)} onFocus={hover} onBlur={() => onHover(null)}>
+      <span className="fg-mark-face" style={{ left: box.faceLeft, width: size }}>{size >= 55 && mark.kind !== 'plan' && <><span>{mark.report ? mark.report.report_no : '剩余 ' + M.number(row.item.execution.remaining_quantity) + ' 件'}</span>
+        {size >= 150 && <span>{mark.report ? M.number(mark.report.completed_quantity) + ' 件 · ' + M.number(mark.report.effective_processing_hours) + 'h' : M.time(row.item.execution.remaining_plan.start)}</span>}</>}</span>
     </button>;
   }
   function ChainLines({ chain, model, width, labelWidth, top, height }) {

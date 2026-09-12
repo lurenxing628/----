@@ -4,7 +4,7 @@
     ['personnel', '人员'], ['material', '物料'], ['supplier', '供应商'], ['calendar', '日历配置']];
   const statuses = { attention: '待维护', checked: '已检查', inactive: '停用', unknown: '无法核实' };
   const defaults = { view: 'issues', domain: 'all', status: 'all', query: '', sort: 'issue_count', direction: 'desc', size: 20, column_filters: {} };
-  const common = [['business_code', '编号', 148], ['label', '名称', 178], ['domain', '数据域', 84]];
+  const common = [['business_code', '编号', 148], ['label', '名称', 178], ['domain', '数据域', 96]];
   const columns = {
     entities: common.concat([['status', '检查状态', 92], ['filled_fields', '已填字段', 80], ['checked_fields', '检查字段', 80],
       ['relation_count', '关联项', 76], ['issue_count', '待维护项', 82], ['summary', '检查结果', 214]]),

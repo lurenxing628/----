@@ -43,10 +43,11 @@
     const uncertain = !op || !op.terminal || !host || host.state === 'recovery_required'
       || stopped && host.request_key !== op.request_key;
     return {
-      title: !stopped ? op && op.terminal ? '原维护结果已核实' : '维护结果尚未核实' : uncertain ? '系统已暂停，维护结果待核实' : '维护已结束，请重启整个软件',
+      title: !host ? '无法读取维护状态' : !stopped ? op && op.terminal ? '原维护结果已核实' : '维护结果尚未核实' : uncertain ? '系统已暂停，维护结果待核实' : '维护已结束，请重启整个软件',
       state: op ? labels[op.state] : '尚未查到可确认的维护结果',
       origin: op ? origins[op.database_origin] : origins.unconfirmed,
-      guidance: !stopped ? op && op.terminal ? '当前软件服务可用。确认这条原结果后，重新读取本机资料；旧页面引用不能沿用。' : '原维护请求尚未核实。请等待结果或查询原请求，不要重新提交。'
+      guidance: !host ? '尚不能确认软件维护状态，当前页面已暂停业务读写。请重试核实原请求，保留已有记录，不要重复恢复。'
+        : !stopped ? op && op.terminal ? '当前软件服务可用。确认这条原结果后，重新读取本机资料；旧页面引用不能沿用。' : '原维护请求尚未核实。请等待结果或查询原请求，不要重新提交。'
         : uncertain ? '请保留原请求标识、备份和保护副本，交给维护人员核查。未核实记录会继续阻止启动；不要重复恢复，也不要自行改维护标记。'
           : '请先关闭整个 APS 软件，再重新启动。只刷新或关闭浏览器不算重启；重新启动后再读取本机资料。',
       uncertain

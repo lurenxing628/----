@@ -1,0 +1,12 @@
+/* Shared workspace boundaries. Workspace-specific layouts live in owner files. */
+body.aps-workbench .page-content :is(.plana,.resource-live,.rc-workspace,.dashboard-workbench,.mo-workbench,.report-workbench,.re-workbench,.sm-workbench) {
+  min-width: 0; max-width: 100%;
+}
+body.aps-workbench .page-content :is(.toolbar,.rc-toolbar,.table-tools,.sm-filters) { min-width: 0; flex-wrap: wrap; }
+body.aps-workbench .page-content :is(.wb-metric,.wb-metric-heading,.wb-metric-line) { min-width: 0; }
+body.aps-workbench .page-content :is(.wb-ref,.wb-ref pre) { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; }
+/* The shell header is the single visible page title; workspace headings stay in the DOM for structure and assistive tech. */
+body.aps-workbench .page-content .wb-page-title { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+/* The context line under the header reads at body size; the muted colour keeps it secondary. */
+body.aps-workbench .page-content .wb-page-context { color: var(--ui-info-muted); font-size: var(--font-size-2); line-height: 20px; min-width: 0; overflow-wrap: anywhere; }
+

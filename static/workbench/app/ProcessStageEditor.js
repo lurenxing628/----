@@ -13,10 +13,11 @@
   const value = item => item === null || item === undefined ? '未填写' : String(item);
   function confirmationTime(text) {
     if (!text) return '未填写';
-    const date = new Date(text),
-      pad = number => String(number).padStart(2, '0');
-    if (!Number.isFinite(date.getTime())) return '时间格式待核对';
-    return [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join('-') + ' ' + [pad(date.getHours()), pad(date.getMinutes()), pad(date.getSeconds())].join(':');
+    return /(?:Z|[+-]\d\d:\d\d)$/.test(text) ? window.WorkbenchFormat.instant(text, {
+      seconds: true
+    }) : window.WorkbenchFormat.dateTime(text, {
+      seconds: true
+    });
   }
   function Confirmation({
     record
@@ -157,17 +158,28 @@
         minWidth: 850,
         tableLayout: 'fixed'
       }
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u5DE5\u5E8F\u8303\u56F4"), /*#__PURE__*/React.createElement("th", null, "\u5468\u671F\u7B56\u7565"), /*#__PURE__*/React.createElement("th", null, "\u603B\u5468\u671F\uFF08\u5929\uFF09"), /*#__PURE__*/React.createElement("th", null, "\u4F9B\u5E94\u5546"), /*#__PURE__*/React.createElement("th", null, "\u5907\u6CE8 / \u95EE\u9898"), onDiscard && /*#__PURE__*/React.createElement("th", null, "\u89E3\u9664\u539F\u7EC4"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map(row => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, title), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5DE5\u5E8F\u8303\u56F4"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5468\u671F\u7B56\u7565"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u603B\u5468\u671F\uFF08\u5929\uFF09"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u4F9B\u5E94\u5546"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5907\u6CE8 / \u95EE\u9898"), onDiscard && /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u89E3\u9664\u539F\u7EC4"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.ref,
       "data-process-location": row.ref,
       tabIndex: row.ref === focusRef ? -1 : undefined,
       "aria-current": row.ref === focusRef ? 'true' : undefined
-    }, /*#__PURE__*/React.createElement("td", null, row.start_sequence, " \u81F3 ", row.end_sequence, row.ref === focusRef && /*#__PURE__*/React.createElement("div", {
-      className: "muted",
-      style: {
-        overflowWrap: 'anywhere'
-      }
-    }, row.ref)), /*#__PURE__*/React.createElement("td", null, {
+    }, /*#__PURE__*/React.createElement("td", null, row.start_sequence, " \u81F3 ", row.end_sequence, row.ref === focusRef && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      value: row.ref
+    })), /*#__PURE__*/React.createElement("td", null, {
       merged: '合并设置',
       separate: '分别设置'
     }[row.merge_mode] || value(row.merge_mode)), /*#__PURE__*/React.createElement("td", null, onTotal && row.merge_mode === 'merged' && C.own(totals, row.ref) ? /*#__PURE__*/React.createElement("input", {
@@ -322,7 +334,15 @@
         tableLayout: 'fixed',
         width: '100%'
       }
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u9879\u76EE"), /*#__PURE__*/React.createElement("th", null, "\u7F16\u8F91\u524D\u8D44\u6599"), /*#__PURE__*/React.createElement("th", null, "\u6700\u65B0\u8D44\u6599"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map((row, index) => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "最新资料差异"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u9879\u76EE"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u7F16\u8F91\u524D\u8D44\u6599"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u6700\u65B0\u8D44\u6599"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map((row, index) => /*#__PURE__*/React.createElement("tr", {
       key: index
     }, /*#__PURE__*/React.createElement("td", null, row.label), /*#__PURE__*/React.createElement("td", {
       style: {
@@ -352,10 +372,11 @@
   }) {
     const [base, setBase] = React.useState(result),
       [draft, setDraft] = React.useState(() => build(result.data));
-    const [dirty, setDirty] = React.useState(false),
-      [review, setReview] = React.useState(null),
+    const [review, setReview] = React.useState(null),
       [error, setError] = React.useState(null),
       [busy, setBusy] = React.useState(false);
+    const baseline = React.useMemo(() => build(base.data), [base.data]);
+    const dirty = React.useMemo(() => !same(draft, baseline), [draft, baseline]);
     const seenSaved = React.useRef(saved),
       request = React.useRef(null);
     React.useEffect(() => () => {
@@ -369,7 +390,6 @@
       if (seenSaved.current !== saved || !dirty) {
         setBase(result);
         setDraft(build(result.data));
-        setDirty(false);
         setReview(null);
         setError(null);
       } else setReview(result);
@@ -377,7 +397,6 @@
     }, [result, saved]);
     function edit(next) {
       setDraft(next);
-      setDirty(true);
       setError(null);
     }
     async function reload() {
@@ -400,7 +419,6 @@
       setDraft(reconcile(draft, base.data, review.data));
       setBase(review);
       setReview(null);
-      setDirty(true);
       setError(null);
     }
     return {

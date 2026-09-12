@@ -198,27 +198,36 @@
         minWidth: 1000,
         tableLayout: 'fixed'
       }
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "工时定额明细"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 180
       }
     }, "\u5DE5\u5E8F / \u5DE5\u79CD"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 85
       }
     }, "\u5F52\u5C5E"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 140
       }
     }, "\u6362\u578B\u5DE5\u65F6\uFF08h\uFF09"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 140
       }
     }, "\u5355\u4EF6\u5DE5\u65F6\uFF08h\uFF09"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 140
       }
-    }, "\u5916\u534F\u5468\u671F\uFF08\u5929\uFF09"), /*#__PURE__*/React.createElement("th", null, "\u6838\u5BF9 / \u786E\u8BA4\u8BB0\u5F55"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map(row => {
+    }, "\u5916\u534F\u5468\u671F\uFF08\u5929\uFF09"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u6838\u5BF9 / \u786E\u8BA4\u8BB0\u5F55"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map(row => {
       const current = draft.operations[row.ref],
         inactive = !current,
         cycle = P.groupCycle(row, entity.external_groups);

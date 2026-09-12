@@ -9,41 +9,7 @@
   const focuses = [['all', '全部工序'], ['unreported', '暂无现场反馈'], ['unclosed', '到期未确认完成'], ['late_open', '超时未确认完成'],
     ['finish_late', '已确认晚完'], ['complete', '已确认整道完工'], ['data_gaps', '数据待补']];
   function Styles() {
-    return <style>{`
-      .rw-workbench {background:transparent;box-shadow:none;}
-      .rw-workbench .rw-metrics {background:transparent!important;margin-top:12px;}
-      .rw-workbench .wb-metric {background:transparent!important;}
-      .rw-workbench .aw-scope-main {gap:10px 12px;}
-      .rw-workbench .aw-scope-filters {gap:10px 12px;}
-      .rw-workbench .rw-filters {gap:10px 16px;align-items:flex-end;}
-      .rw-workbench .rw-filters label {gap:6px;white-space:nowrap;}
-      .rw-workbench .rw-table-heading {border-top:1px solid var(--ui-border);padding:12px 0 8px;}
-      .rw-workbench .rw-primary-table {max-height:max(240px,calc(100vh - 490px));overscroll-behavior:contain;}
-      .rw-workbench .rw-primary-table th {position:sticky;top:0;z-index:1;background:var(--ui-surface-muted)!important;}
-      .rw-workbench .rw-primary-table:focus-visible {outline:2px solid var(--ui-info-text);outline-offset:2px;}
-      .rw-workbench .rw-cell-text {min-width:0;max-width:100%;}
-      .rw-workbench .rw-cell-text > summary {cursor:pointer;display:flex;align-items:flex-start;gap:4px;color:inherit;}
-      .rw-workbench .rw-cell-text > summary::-webkit-details-marker {display:none;}
-      .rw-workbench .rw-cell-text > summary svg {width:14px;height:18px;flex:none;color:var(--ui-info-text);}
-      .rw-workbench .rw-cell-text[open] > summary svg {transform:rotate(180deg);}
-      .rw-workbench .rw-cell-preview {display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;}
-      .rw-workbench .rw-cell-text[open] .rw-cell-preview {-webkit-line-clamp:unset;display:block;}
-      .rw-workbench .rw-catalog .rw-filters {justify-content:flex-start;}
-      .rw-workbench .rw-catalog .rw-filters label {flex-direction:column;align-items:stretch;}
-      .rw-workbench .rw-catalog .rw-filters input {width:168px;}
-      .rw-workbench .rw-catalog .rw-filters select {max-width:240px;}
-      @media(max-width:1450px) {
-        .rw-workbench .aw-scope-main {grid-template-columns:140px repeat(2,minmax(150px,1fr)) minmax(150px,1fr) minmax(180px,1.2fr) auto;}
-        .rw-workbench .rw-table {min-width:1100px;}
-      }
-      @media(max-width:1200px) {
-        .rw-workbench .aw-scope-main {grid-template-columns:repeat(3,minmax(140px,1fr));}
-        .rw-workbench .rw-primary-table {max-height:460px;}
-      }
-      @media(max-width:700px) {
-        .rw-workbench .aw-scope-main {grid-template-columns:repeat(2,minmax(0,1fr));}
-      }
-    `}</style>;
+    return null;
   }
   function Scope({ value, onChange, choices = {}, busy }) {
     const [draft, setDraft] = React.useState(value), [more, setMore] = React.useState(false);
@@ -80,16 +46,15 @@
     const labels = ['工序完成情况', '报工记录', '设备工时', '人员工时', '数据完整性'];
     return <div className="rw-tabs" role="tablist" aria-label="报表专题">{window.ReportAPI.topics.map((key, index) => <button key={key} id={'report-tab-' + key} type="button" role="tab"
       aria-selected={topic === key} aria-controls="report-topic-panel" tabIndex={topic === key ? 0 : -1} onClick={() => onChange(key)} onKeyDown={event => {
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault(); const next = event.key === 'Home' ? 0 : event.key === 'End' ? 4 : (index + (event.key === 'ArrowRight' ? 1 : -1) + 5) % 5;
         onChange(window.ReportAPI.topics[next]); document.getElementById('report-tab-' + window.ReportAPI.topics[next]).focus();
       }}>{labels[index]}</button>)}</div>;
   }
   function Page({ page, onChange, busy }) {
-    return <div className="rw-pagination"><span aria-live="polite">共 {page.total} 项 · 第 {page.number} / {page.pages} 页</span>
-      <label>每页<select aria-label="每页数量" value={page.size} disabled={busy} onChange={event => onChange({ page: 1, size: Number(event.target.value) })}>{[10, 20, 50].map(size => <option key={size} value={size}>{size}</option>)}</select></label>
-      <div className="rw-actions" style={{ marginLeft: 0 }}><Button icon="chevron-left" aria-label="上一页" disabled={busy || page.number <= 1} onClick={() => onChange({ page: page.number - 1 })} />
-      <Button icon="chevron-right" aria-label="下一页" disabled={busy || page.number >= page.pages} onClick={() => onChange({ page: page.number + 1 })} /></div></div>;
+    return <window.WorkbenchListControls.Pager page={page.number} pages={page.pages} total={page.total} size={page.size}
+      sizes={[10, 20, 50]} label="" busy={busy} onPage={number => onChange({ page: number })} onSize={size => onChange({ page: 1, size })} />;
   }
   function Sort({ topic, state, onChange }) {
     return <><label>排序<select aria-label="排序字段" value={state.sort} onChange={event => onChange({ sort: event.target.value, page: 1 })}>{window.ReportAPI.sorts[topic].map(key => <option value={key} key={key}>{names[key]}</option>)}</select></label>

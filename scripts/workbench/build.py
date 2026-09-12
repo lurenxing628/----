@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -76,6 +77,23 @@ def live_inputs(root, order):
     if missing or extra:
         raise ValueError("Live sources not ready; missing=" + ",".join(missing) + "; unlisted=" + ",".join(extra))
     return [{"path": "app/" + name, "code": local_path(app, app, name).read_text(encoding="utf-8")}
+            for name in required]
+
+
+def live_style_inputs(root, order):
+    """Keep stylesheet publication and cascade order explicit and reproducible."""
+    styles = root / "frontend/workbench/app/styles"
+    required = order.get("styles")
+    if (not isinstance(required, list) or any(type(name) is not str
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.css", name) for name in required)
+            or len(required) != len(set(required))):
+        raise ValueError("Live styles must be explicit unique CSS filenames")
+    found = {file.relative_to(styles).as_posix() for file in styles.rglob("*")
+             if file.is_file() and file.suffix.lower() == ".css"}
+    missing, extra = sorted(set(required) - found), sorted(found - set(required))
+    if missing or extra:
+        raise ValueError("Live styles not ready; missing=" + ",".join(missing) + "; unlisted=" + ",".join(extra))
+    return [{"path": "app/styles/" + name, "data": local_path(styles, styles, name).read_bytes()}
             for name in required]
 
 
@@ -181,8 +199,10 @@ def asset_records(root, payload, scripts, theme_script, foundation_path, order, 
 
 
 def build(root, output, node):
+    order_bytes = (TOOLS / "build-order.json").read_bytes()
     prototype, snapshot, paths, order = read_inputs(root)
     live = live_inputs(root, order)
+    live_styles = live_style_inputs(root, order)
     forbidden = set(order["never_live"])
     sources = [{"path": "foundation-bootstrap.js", "code": order["bootstrap"]}]
     for item in order["foundation"]:
@@ -193,6 +213,10 @@ def build(root, output, node):
     foundation = "\n;\n".join(item["code"] for item in compiled[:len(sources)]).encode("utf-8")
     foundation_path = "workbench/assets/foundation-" + digest(foundation)[:16] + ".js"
     payload, styles = style_assets(prototype, snapshot)
+    for item in live_styles:
+        public = "workbench/" + item["path"]
+        payload[public] = item["data"]
+        styles.append(public)
     vendor = root / "frontend/workbench/vendor"
     vendor_manifest = load_json(vendor / "vendor-manifest.json")
     verify_snapshot(vendor, vendor_manifest)
@@ -216,6 +240,8 @@ def build(root, output, node):
     input_records = [{"path": item["target"], "sha256": item["sha256"]} for item in snapshot["files"]]
     input_records += [{"path": "frontend/workbench/" + item["path"],
                        "sha256": digest(item["code"].encode("utf-8"))} for item in live]
+    input_records += [{"path": "frontend/workbench/" + item["path"],
+                       "sha256": digest(item["data"])} for item in live_styles]
     input_records += [{"path": "frontend/workbench/vendor/" + item["path"],
                        "sha256": item["sha256"]} for item in vendor_manifest["files"]]
     input_records += [{"path": "scripts/workbench/" + name, "sha256": digest((TOOLS / name).read_bytes())}
@@ -226,6 +252,7 @@ def build(root, output, node):
                 "files": files, "inputs": input_records, "babel_version": "7.29.0",
                 "react_version": "18.3.1", "foundation_sources": order["foundation"],
                 "live_source_order": [order["theme"]] + order["live"],
+                "live_style_order": order["styles"],
                 "asset_metadata": {
                     "dependency_scope": "Direct local CSS references and classic-script global providers. Browser built-ins and guarded module exports are not assets; scripts/theme_script remain the execution order contract.",
                     "script_analysis": "Local Babel AST free bindings/global members; root/w denote the imported window-host model contracts. Pinned ReactDOM UMD requires the separately loaded React UMD, not npm build-time dependencies.",
@@ -234,6 +261,10 @@ def build(root, output, node):
     manifest["build_id"] = digest(json.dumps(manifest, sort_keys=True, ensure_ascii=False).encode("utf-8"))
     if live_inputs(root, order) != live:
         raise ValueError("Live sources changed during compilation; retry the build")
+    if live_style_inputs(root, order) != live_styles:
+        raise ValueError("Live styles changed during compilation; retry the build")
+    if (TOOLS / "build-order.json").read_bytes() != order_bytes:
+        raise ValueError("Build order changed during compilation; retry the build")
     # Compile and validate every input before touching the published payload; commit marker is last.
     for name, data in payload.items():
         target = output / name[len("workbench/"):]

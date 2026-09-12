@@ -66,8 +66,8 @@
     result
   }) {
     return /*#__PURE__*/React.createElement("details", {
-      className: "ta-records"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u539F\u8EAB\u4EFD\u4E0E\u56DE\u6267\u8BB0\u5F55"), /*#__PURE__*/React.createElement("div", null, "\u539F\u573A\u666F\u7F16\u53F7\uFF1A", value.scenario_ref), value.draft_ref && /*#__PURE__*/React.createElement("div", null, "\u539F\u8349\u7A3F\u7F16\u53F7\uFF1A", value.draft_ref), value.baseline && value.baseline.plan_ref && /*#__PURE__*/React.createElement("div", null, "\u539F\u6B63\u5F0F\u57FA\u7EBF\u7F16\u53F7\uFF1A", value.baseline.plan_ref), saved && /*#__PURE__*/React.createElement("div", null, "\u539F\u8BF7\u6C42\u7F16\u53F7\uFF1A", saved.request_key), result && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u56DE\u6267\u7F16\u53F7\uFF1A", result.receipt_ref), /*#__PURE__*/React.createElement("div", null, "\u65B0\u6B63\u5F0F\u65B9\u6848\u7F16\u53F7\uFF1A", result.data.official_plan.plan_ref)));
+      className: "ta-records wb-ref"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u7F16\u53F7\u4E0E\u4FDD\u5B58\u8BB0\u5F55"), /*#__PURE__*/React.createElement("div", null, "\u539F\u573A\u666F\u7F16\u53F7\uFF1A", value.scenario_ref), value.draft_ref && /*#__PURE__*/React.createElement("div", null, "\u539F\u8349\u7A3F\u7F16\u53F7\uFF1A", value.draft_ref), value.baseline && value.baseline.plan_ref && /*#__PURE__*/React.createElement("div", null, "\u539F\u6B63\u5F0F\u57FA\u7EBF\u7F16\u53F7\uFF1A", value.baseline.plan_ref), saved && /*#__PURE__*/React.createElement("div", null, "\u539F\u8BF7\u6C42\u7F16\u53F7\uFF1A", saved.request_key), result && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u56DE\u6267\u7F16\u53F7\uFF1A", result.receipt_ref), /*#__PURE__*/React.createElement("div", null, "\u65B0\u6B63\u5F0F\u65B9\u6848\u7F16\u53F7\uFF1A", result.data.official_plan.plan_ref)));
   }
   function Dialog({
     session: s,
@@ -167,25 +167,7 @@
     })));
   }
   function Styles() {
-    return /*#__PURE__*/React.createElement("style", null, `
-      .plana.trial-adoption-action{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:100%;width:auto;padding:0;min-width:0;color:var(--ui-text);letter-spacing:0}
-      .trial-adoption-action *{box-sizing:border-box;letter-spacing:0}.trial-adoption-action .modal-bg{z-index:1100}
-      .trial-adoption-action .modal.lg{width:760px;max-width:calc(100vw - 48px);max-height:calc(100vh - 48px);display:flex;flex-direction:column;min-width:0;color:var(--ui-text);background:var(--ui-card-bg)}
-      .trial-adoption-action .modal-head,.trial-adoption-action .modal-f{flex-shrink:0}.trial-adoption-action .modal-f{gap:8px;padding:14px 20px}
-      .trial-adoption-action .ta-body{padding:16px 22px;overflow:auto;min-height:0;max-height:65vh;font-size:13px;line-height:1.7;color:var(--ui-text)}
-      .trial-adoption-action .ta-scope{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;padding:12px 0;margin:0;border-bottom:1px solid var(--ui-border)}
-      .trial-adoption-action dt,.trial-adoption-action small,.trial-adoption-action .ta-note{color:var(--ui-info-muted);font-size:12px}
-      .trial-adoption-action dd{margin:3px 0 0;overflow-wrap:anywhere;color:var(--ui-text)}.trial-adoption-action .ta-fields{display:grid;gap:12px;padding:12px 0}
-      .trial-adoption-action .field{min-width:0;margin:0;display:grid;gap:5px}.trial-adoption-action .field label{color:var(--ui-text)}
-      .trial-adoption-action .field input,.trial-adoption-action textarea{width:100%;min-width:0;color:var(--ui-text);background:var(--ui-card-bg);font:inherit;border:1px solid var(--ui-border);border-radius:4px;padding:8px 10px}
-      .trial-adoption-action textarea{resize:vertical;min-height:84px;max-height:220px}.trial-adoption-action .ta-consent{display:flex;gap:9px;align-items:flex-start;color:var(--ui-text);line-height:1.7}
-      .trial-adoption-action .ta-consent input{flex:none;width:16px;height:16px;margin-top:4px;accent-color:var(--ui-info-text)}
-      .trial-adoption-action .ta-notice{padding:10px 12px;margin:8px 0;border-left:3px solid var(--ui-warning);background:var(--ui-surface-muted);overflow-wrap:anywhere}
-      .trial-adoption-action .ta-records{padding-top:10px;color:var(--ui-info-muted);font-size:12px;overflow-wrap:anywhere}.trial-adoption-action .ta-result{color:var(--ui-success-text);padding:10px 0}
-      .trial-adoption-action .ta-result p{color:var(--ui-info-muted);font-size:12px;margin:4px 0}.trial-adoption-action button{white-space:normal;max-width:100%}
-      .trial-adoption-action .ta-inline{font-size:12px;color:var(--ui-info-muted);max-width:460px;overflow-wrap:anywhere}
-      @media(max-width:600px){.trial-adoption-action .ta-body{padding:12px}.trial-adoption-action .ta-scope{grid-template-columns:1fr}.trial-adoption-action .modal-f{padding:12px}}
-    `);
+    return null;
   }
   window.TrialAdoptionControls = {
     Button,

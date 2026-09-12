@@ -93,10 +93,11 @@
         padding: !item.baseline && size >= 28 ? 2 : 0,
         borderWidth: size < 4 ? 0 : 1
       }
-    }, !item.baseline && size >= 28 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, M.pieceLabel(task)), size >= 75 && /*#__PURE__*/React.createElement("small", null, task.batch_id, " \xB7 ", task.sequence, " ", task.process_label))));
+    }, !item.baseline && size >= 28 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, task.batch_id), size >= 75 && /*#__PURE__*/React.createElement("small", null, task.sequence, " ", task.process_label, " \xB7 ", M.pieceLabel(task)))));
   }
   function PlanGantt({
     data,
+    asOf,
     selected,
     onSelect,
     query,
@@ -129,6 +130,9 @@
     const before = data.projections.baseline,
       showBaseline = before.state === 'available';
     const ticks = M.ticks(model.start, model.end, width, position.left, viewport);
+    const today = M.instant(asOf.slice(0, 10) + 'T00:00:00'),
+      now = M.instant(asOf);
+    const timeX = at => (at - model.start) / (model.end - model.start) * width;
     const visibleRows = M.visibleRows(model.rows, Math.max(0, position.top - 90), position.top + position.height + 90);
     const rangeStart = model.start + position.left / width * (model.end - model.start);
     const rangeEnd = model.start + (position.left + viewport) / width * (model.end - model.start);
@@ -399,7 +403,7 @@
       style: {
         left: tick.x
       }
-    }, tick.label.slice(0, 10), /*#__PURE__*/React.createElement("small", null, tick.label.slice(11)))))), visibleRows.map(row => {
+    }, M.timeLabel(tick.label).slice(0, 10), /*#__PURE__*/React.createElement("small", null, M.timeLabel(tick.label).slice(11)))))), visibleRows.map(row => {
       const items = row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd);
       return /*#__PURE__*/React.createElement("div", {
         key: row.key,
@@ -443,14 +447,34 @@
         onSelect: select,
         onHover: setHover
       }))));
-    }), !model.rows.length && /*#__PURE__*/React.createElement("div", {
-      className: "plan-empty",
+    }), [['today', today, '今日零点（按数据日期）'], ['as-of', now, '数据时点']].filter(([, at]) => at >= model.start && at <= model.end).map(([kind, at, label]) => /*#__PURE__*/React.createElement("i", {
+      key: kind,
+      className: 'plan-time-line ' + kind,
+      "data-plan-time-line": kind,
+      "data-time-value": M.wire(at),
+      "aria-label": label + ' ' + M.timeLabel(M.wire(at)),
+      title: label + ' ' + M.timeLabel(M.wire(at)),
+      style: {
+        left: labelWidth + timeX(at),
+        top: 52,
+        height: model.height
+      }
+    })), !model.rows.length && /*#__PURE__*/React.createElement("div", {
       style: {
         position: 'sticky',
         left: 0,
         width: position.width
       }
-    }, changedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划跨度保持不变。' : '该读取范围没有安排。'))), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
+      kind: query || changedOnly ? 'filtered' : 'empty',
+      title: changedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划跨度保持不变。' : '该读取范围没有安排。',
+      action: query || changedOnly ? /*#__PURE__*/React.createElement(Button, {
+        onClick: () => {
+          onQuery('');
+          setChangedOnly(false);
+        }
+      }, "\u6E05\u9664\u7B5B\u9009") : undefined
+    })))), /*#__PURE__*/React.createElement("div", {
       className: "plan-footer"
     }, /*#__PURE__*/React.createElement("span", {
       "data-plan-search-count": true
@@ -461,12 +485,28 @@
     }), "\u5B89\u6392"), /*#__PURE__*/React.createElement("span", {
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
+      className: "plan-swatch success"
+    }), "\u5DF2\u6838\u5B9E\u51C6\u65F6"), /*#__PURE__*/React.createElement("span", {
+      className: "plan-legend"
+    }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch critical"
-    }), "\u8D85\u671F / \u8D44\u6E90\u91CD\u53E0"), baseline && /*#__PURE__*/React.createElement("span", {
+    }), "\u9884\u8BA1\u8D85\u671F"), /*#__PURE__*/React.createElement("span", {
+      className: "plan-legend"
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "plan-swatch conflict"
+    }), "\u8D44\u6E90\u91CD\u53E0"), /*#__PURE__*/React.createElement("span", {
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch before"
     }), "\u521D\u59CB\u57FA\u7EBF"), /*#__PURE__*/React.createElement("span", {
+      className: "plan-legend"
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "plan-swatch point"
+    }), "\u96F6\u65F6\u957F\u70B9"), /*#__PURE__*/React.createElement("span", {
+      className: "plan-legend"
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "plan-swatch today"
+    }), "\u4ECA\u65E5 / \u6570\u636E\u65F6\u70B9"), /*#__PURE__*/React.createElement("span", {
       className: "plan-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       className: "btn plan-icon",

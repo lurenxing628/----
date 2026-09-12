@@ -4,7 +4,7 @@
   const labels = { all: '全部采用', current: '当前正式', historical: '历史正式', unavailable: '身份不可用' };
   const text = value => value === null ? '证据缺失' : value;
   function Evidence({ item, source }) {
-    return <details><summary>来源与永久引用</summary><dl className="tah-refs">
+    return <details className="wb-ref"><summary>来源与编号</summary><dl className="tah-refs">
       <dt>原来源</dt><dd>{U.sourceLabel(source.base_identity)}<br />{Object.values(source.base)[0]}</dd>
       <dt>原正式基线</dt><dd>{source.baseline.plan_ref ? 'v' + source.baseline.version + ' · ' + source.baseline.plan_ref : '当时无正式基线'}</dd>
       <dt>原场景</dt><dd>{source.scenario_ref}</dd><dt>原草稿</dt><dd>{source.draft_ref}</dd>

@@ -46,27 +46,36 @@
         minWidth: 900,
         tableLayout: 'fixed'
       }
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "路线预检工序"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 90
       }
     }, "\u5DE5\u5E8F\u53F7"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 160
       }
     }, "\u5DE5\u79CD"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 110
       }
     }, "\u5EFA\u8BAE\u5F52\u5C5E"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 150
       }
     }, "\u4F9B\u5E94\u5546"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 130
       }
-    }, "\u5468\u671F\uFF08\u5929\uFF09"), /*#__PURE__*/React.createElement("th", null, "\u4F9D\u636E / \u95EE\u9898"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map((row, index) => /*#__PURE__*/React.createElement("tr", {
+    }, "\u5468\u671F\uFF08\u5929\uFF09"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u4F9D\u636E / \u95EE\u9898"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map((row, index) => /*#__PURE__*/React.createElement("tr", {
       key: index
     }, /*#__PURE__*/React.createElement("td", null, row.sequence), /*#__PURE__*/React.createElement("td", null, row.op_type_name, /*#__PURE__*/React.createElement("div", {
       className: "muted"
@@ -105,6 +114,14 @@
         op_type_name: ''
       }];
     });
+    const draftText = JSON.stringify({
+        routeRaw,
+        rows
+      }),
+      baselineDraft = React.useRef(draftText);
+    React.useLayoutEffect(() => {
+      if (onDirty) onDirty('route', draftText !== baselineDraft.current);
+    }, [draftText, onDirty]);
     const [state, setState] = React.useState({
       busy: false,
       result: null,
@@ -137,7 +154,6 @@
     }
     function edited() {
       invalidate();
-      if (onDirty) onDirty('route', true);
     }
     function close() {
       abort();
@@ -300,15 +316,22 @@
         minWidth: 580,
         tableLayout: 'fixed'
       }
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "逐行路线录入"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 125
       }
-    }, "\u5DE5\u5E8F\u53F7"), /*#__PURE__*/React.createElement("th", null, "\u5DE5\u79CD"), /*#__PURE__*/React.createElement("th", {
+    }, "\u5DE5\u5E8F\u53F7"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5DE5\u79CD"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 140
       }
     }, "\u5F52\u5C5E"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: 70
       }

@@ -53,7 +53,7 @@
     const disabled = request.busy || downloading || stale;
     const viewError = selected && data && data.capabilities.view !== true ? A.failure('查看权限尚未确认，暂不能读取样本来源。') : null;
     return <section className="calib-workbench calibration-live" aria-label="工时定额校准" data-ready={!!data} data-source="production" data-stale={stale}>
-      <C.Styles /><header className="ca-heading"><div><h2>工时定额校准</h2><p className="ca-muted">模板定额与实际加工记录{result ? ' · 数据截至 ' + result.meta.as_of.replace('T', ' ') : ''}</p></div>
+      <C.Styles /><header className="ca-heading"><div><h2 className="wb-page-title">工时定额校准</h2><p className="ca-muted wb-page-context">模板定额与实际加工记录{result ? ' · 数据截至 ' + window.WorkbenchFormat.dateTime(result.meta.as_of) : ''}</p></div>
         <div className="ca-actions"><Button icon="refresh-cw" aria-label="刷新校准数据" busy={request.busy} disabled={downloading} onClick={reload} />
           {window.CalibrationAdoptionAction && <window.CalibrationAdoptionAction detail={detail.result && detail.result.data} stale={stale || detail.busy} onRefresh={reload} />}
           {typeof onNavigate === 'function' && <Button icon="arrow-right" disabled={!data || disabled} onClick={() => onNavigate('review', { returnTo: { view: 'calib', context: {
@@ -64,7 +64,8 @@
       <ErrorBox error={request.error || error} />
       {stale && <p className="ca-note" role="alert">前后快照不一致，请明确刷新。已选记录和样本来源保留，不会自动跳到最新记录。</p>}
       {(stale || request.error) && <Button icon="refresh-cw" disabled={downloading} onClick={reload}>明确刷新</Button>}
-      {request.busy && <p role="status">正在读取校准记录...</p>}{notice && <p role="status">{notice}</p>}
+      {request.busy && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取校准记录" />}{notice && <p role="status">{notice}</p>}
+      <div className={selected ? 'wb-detail-layout' : ''}><div className="ca-list-pane">
       {data && <><div className="ca-metrics">{[['模板工序', 'total'], ['偏差 > 20%', 'over_20_percent'], ['已有建议', 'suggested'], ['数据不足', 'insufficient_data']].map(([label, key]) =>
         <div className="ca-metric" key={key}><span>{label}</span><strong>{data.summary[key]}</strong></div>)}</div>
         {data.source_constraints.map(item => <p className="ca-note" key={item.code}>{item.message}</p>)}
@@ -72,17 +73,16 @@
           {Object.entries(A.sorts).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>顺序<select aria-label="排序方向" disabled={disabled} value={input.direction} onChange={event => change({ direction: event.target.value })}><option value="asc">升序</option><option value="desc">降序</option></select></label>
           <div className="ca-actions" style={{ marginLeft: 'auto' }}><label>格式<select aria-label="导出格式" value={format} disabled={disabled} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></select></label>
-            <Button transfer="export" busy={downloading} disabled={disabled} reason={A.exportReason(data, format)} onClick={download}>导出全部筛选</Button></div></div>
+            <Button transfer="export" busy={downloading} disabled={disabled} reasonDisplay="tooltip" reason={A.exportReason(data, format)} onClick={download}>导出全部筛选</Button></div></div>
         <C.Table rows={data.items} selected={selected} disabled={disabled} canView={data.capabilities.view === true} onPart={setPart} onSelect={value => { setSelected(value); setSample(null); }}
           scope={bound} adapter={api} widths={widths} total={data.summary.total} onResize={(key, value) => setWidths(old => ({ ...old, [key]: value }))}
           onSort={(sort, direction) => change({ sort: direction ? sort : 'part_no', direction: direction || 'asc' })}
           onFilter={(key, rule) => { const filters = { ...input.column_filters }; if (rule === null) delete filters[key]; else filters[key] = rule; change({ column_filters: filters }); }} />
         <C.Page page={data.page} onChange={page} disabled={disabled} />
-        {data.capabilities.export !== true && <p className="ca-note">导出权限尚未确认，暂不能导出。</p>}
         <p className="ca-muted">{C.writeReason}</p>
       </>}
-      {selected && <window.CalibrationDetail result={detail.result} busy={detail.busy} error={detail.error || viewError} stale={stale} selected={selected} sampleRef={sampleRef} onSample={setSample}
-        onClose={() => { setSelected(null); setSample(null); }} onRefresh={reload} />}
+      </div>{selected && <window.CalibrationDetail result={detail.result} busy={detail.busy} error={detail.error || viewError} stale={stale} selected={selected} sampleRef={sampleRef} onSample={setSample}
+        onClose={() => { setSelected(null); setSample(null); }} onRefresh={reload} />}</div>
       {part && <window.ProcessDetail adapter={partAdapter} partRef={part.part_ref} initialStage="hours" templateOperationRef={part.template_operation_ref}
         navigationReadOnly disabled onClose={() => setPart(null)} />}
     </section>;
@@ -90,7 +90,7 @@
   function CalibrationWorkspace(props) {
     window.WorkbenchCaption.useCaption(null);
     try { window.CalibrationAPI.initial(props.initialContext || {}); }
-    catch (error) { return <section className="calibration-live"><window.CalibrationControls.Styles /><h2>工时定额校准</h2><window.ResourceControls.ErrorBox error={error} /></section>; }
+    catch (error) { return <section className="calibration-live"><window.CalibrationControls.Styles /><h2 className="wb-page-title">工时定额校准</h2><window.ResourceControls.ErrorBox error={error} /></section>; }
     return <Workspace key={JSON.stringify(props.initialContext || {})} {...props} />;
   }
   window.CalibrationWorkspace = CalibrationWorkspace;

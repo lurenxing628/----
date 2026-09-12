@@ -18,15 +18,26 @@
       setConfirm(false);
     }, [data]);
     const save = kind === 'save';
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({
+      dirty: save && !!name,
+      locked: commands.busy || !!commands.key,
+      message: save ? '试调场景名称或保存确认尚未提交。' : '放弃草稿的确认尚未提交。'
+    });
+    async function close(detail) {
+      if (detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner || (await window.WorkbenchGuards.confirmLeave({
+        owner: guardOwner
+      }))) onClose();
+    }
     return /*#__PURE__*/React.createElement(U.Modal, {
       title: save ? '保存试调场景' : '确认放弃草稿',
       icon: save ? 'check' : 'x',
-      locked: commands.busy,
-      onClose: onClose,
+      locked: commands.busy || !!commands.key,
+      guardOwner: guardOwner,
+      onClose: close,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(U.Button, {
         icon: "x",
-        disabled: commands.busy,
-        onClick: onClose
+        disabled: commands.busy || !!commands.key,
+        onClick: close
       }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement(U.Button, {
         icon: "refresh-cw",
         disabled: commands.busy || !!commands.key,
@@ -77,6 +88,8 @@
     renderAdoption,
     onTargetChange
   }) {
+    const guardOwner = React.useId(),
+      [editorRevision, resetEditor] = React.useReducer(value => value + 1, 0);
     React.useEffect(() => {
       let original,
         printing = false;
@@ -199,19 +212,28 @@
       ...commands,
       blocked: commands.blocked || !!key && (!read.result || !!read.error || read.busy || !!origin && !originalTask.task)
     };
-    function guard() {
-      if (!editing) {
-        setError(null);
-        return true;
+    window.WorkbenchGuards.useDirtyGuard({
+      owner: guardOwner,
+      dirty: false,
+      locked: commands.busy || !!commands.key,
+      message: '试调原请求尚未核实，请保留当前页面。'
+    });
+    async function guard() {
+      if (!(await window.WorkbenchGuards.confirmLeave({
+        owner: guardOwner
+      }))) return false;
+      setError(null);
+      if (editing) {
+        setEditing(false);
+        resetEditor();
       }
-      setError(new Error('请先保存调整或取消当前工序编辑。'));
-      return false;
+      return true;
     }
-    function select(ref) {
-      if (ref === selected || guard()) setSelected(ref);
+    async function select(ref) {
+      if (ref === selected || (await guard())) setSelected(ref);
     }
-    function open(next) {
-      if (!guard()) return;
+    async function open(next) {
+      if (!(await guard())) return;
       try {
         C.check(!origin || !!next.draft_ref, '原任务定位只能打开草稿，不能把已存场景当作草稿。');
         C.target(next);
@@ -244,15 +266,15 @@
       "data-open-kind": isScenario ? 'scenario' : 'draft'
     }, /*#__PURE__*/React.createElement(window.TrialStyles, null), /*#__PURE__*/React.createElement("header", {
       className: "tt-heading"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", null, "\u6392\u4EA7\u65B9\u6848\u8BD5\u8C03"), /*#__PURE__*/React.createElement("span", {
-      className: "tt-muted"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+      className: "wb-page-title"
+    }, "\u6392\u4EA7\u65B9\u6848\u8BD5\u8C03"), /*#__PURE__*/React.createElement("span", {
+      className: "tt-muted wb-page-context"
     }, title, data && ' · ' + U.statusLabel(data.status))), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools"
     }, onNavigate && /*#__PURE__*/React.createElement(U.Button, {
       icon: "chevron-left",
-      onClick: () => {
-        if (guard()) onNavigate('analysis', base || {});
-      }
+      onClick: () => onNavigate('analysis', base || {})
     }, "\u8FD4\u56DE\u65B9\u6848"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "folder-open",
       onClick: () => setDirectory(!directory),
@@ -260,8 +282,8 @@
     }, "\u8349\u7A3F / \u573A\u666F\u76EE\u5F55"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "plus",
       disabled: commands.blocked,
-      onClick: () => {
-        if (guard()) setModal('create');
+      onClick: async () => {
+        if (await guard()) setModal('create');
       }
     }, "\u65B0\u5EFA\u8BD5\u8C03"))), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: error
@@ -284,9 +306,9 @@
       icon: "refresh-cw",
       onClick: commands.lookup,
       busy: commands.busy
-    }, "\u67E5\u8BE2\u539F\u8BF7\u6C42"), /*#__PURE__*/React.createElement("span", {
-      className: "tt-ref"
-    }, commands.key))), notice && /*#__PURE__*/React.createElement("p", {
+    }, "\u67E5\u8BE2\u539F\u8BF7\u6C42"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      value: commands.key
+    }))), notice && /*#__PURE__*/React.createElement("p", {
       role: "status",
       className: "tt-notice"
     }, notice), directory && /*#__PURE__*/React.createElement(window.TrialCatalog.Directory, {
@@ -336,7 +358,9 @@
       commands: actions,
       onSelect: select,
       onEditing: setEditing,
-      onRecheck: reload
+      onRecheck: reload,
+      guardOwner: guardOwner,
+      editorRevision: editorRevision
     })), /*#__PURE__*/React.createElement("footer", {
       className: "tt-footer"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "\u6574\u4F53\u7EA6\u675F\uFF1A", U.statusLabel(data.validation.constraints_status)), /*#__PURE__*/React.createElement("div", {
@@ -346,15 +370,15 @@
     }, /*#__PURE__*/React.createElement(U.Button, {
       icon: "x",
       disabled: data.status !== 'editing' || actions.blocked || !data.write_context || data.write_context.capabilities['trial.discard'] !== true,
-      onClick: () => {
-        if (guard()) setModal('discard');
+      onClick: async () => {
+        if (await guard()) setModal('discard');
       }
     }, "\u653E\u5F03\u8349\u7A3F"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "check",
       className: "btn primary",
       disabled: data.status !== 'editing' || actions.blocked || !data.write_context || data.write_context.capabilities['trial.save'] !== true,
-      onClick: () => {
-        if (guard()) setModal('save');
+      onClick: async () => {
+        if (await guard()) setModal('save');
       }
     }, "\u4FDD\u5B58\u573A\u666F"), data.scenario_ref && typeof renderAdoption === 'function' ? renderAdoption({
       scenarioRef: data.scenario_ref,
@@ -369,8 +393,8 @@
       icon: "check",
       reason: data.scenario_ref ? '完整场景正式采用尚未接入，未改变正式计划。' : '须先保存场景，再核对独立场景采用入口。'
     }, "\u6B63\u5F0F\u91C7\u7528"))), /*#__PURE__*/React.createElement("details", {
-      className: "tt-refs"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u8BD5\u8C03\u8EAB\u4EFD\u4E0E\u8BFB\u53D6\u8303\u56F4"), /*#__PURE__*/React.createElement("div", null, "\u8349\u7A3F\uFF1A", /*#__PURE__*/React.createElement("span", {
+      className: "tt-refs wb-ref"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u7F16\u53F7\u4E0E\u8BFB\u53D6\u8303\u56F4"), /*#__PURE__*/React.createElement("div", null, "\u8349\u7A3F\uFF1A", /*#__PURE__*/React.createElement("span", {
       className: "tt-ref"
     }, data.draft_ref)), data.scenario_ref && /*#__PURE__*/React.createElement("div", null, "\u573A\u666F\uFF1A", /*#__PURE__*/React.createElement("span", {
       className: "tt-ref"

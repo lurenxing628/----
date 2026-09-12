@@ -101,14 +101,17 @@
       "aria-label": '刷新' + title,
       busy: read.loading,
       onClick: refresh
-    })), read.loading && /*#__PURE__*/React.createElement("p", {
-      role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6", title, "\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: read.error
-    }), read.error && /*#__PURE__*/React.createElement(Button, {
-      icon: "refresh-cw",
-      onClick: refresh
-    }, "\u91CD\u65B0\u8BFB\u53D6", title), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    })), read.loading && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
+      kind: "loading",
+      title: '正在读取' + title + '…'
+    }), read.error && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
+      kind: "error",
+      error: read.error,
+      action: /*#__PURE__*/React.createElement(Button, {
+        icon: "refresh-cw",
+        onClick: refresh
+      }, "\u91CD\u65B0\u8BFB\u53D6", title)
+    }), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "muted wb-resource-association-basis"
     }, data.basis.message), /*#__PURE__*/React.createElement("div", {
       className: "wb-resource-association-list"
@@ -135,23 +138,27 @@
       name: "chevron-right"
     })), /*#__PURE__*/React.createElement(Issues, {
       issues: item.issues
-    })))), !data.entities.length && /*#__PURE__*/React.createElement("p", {
-      className: "muted"
-    }, scope.query ? '没有符合条件的关联资料。' : '尚无此类关联记录。'), data.page.pages > 1 && /*#__PURE__*/React.createElement("div", {
-      className: "wb-resource-association-pager"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "muted"
-    }, "\u7B2C ", data.page.number, " / ", data.page.pages, " \u9875 \xB7 \u6BCF\u9875 ", data.page.size, " \u6761"), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": title + '上一页',
-      disabled: read.loading || data.page.number <= 1,
-      onClick: () => next(data.page.number - 1)
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": title + '下一页',
-      disabled: read.loading || data.page.number >= data.page.pages,
-      onClick: () => next(data.page.number + 1)
-    })), /*#__PURE__*/React.createElement(Issues, {
+    })))), !data.entities.length && !read.loading && !read.error && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
+      kind: scope.query ? 'filtered' : 'empty',
+      action: scope.query ? /*#__PURE__*/React.createElement(Button, {
+        onClick: () => {
+          setSearch('');
+          setScope({
+            relation,
+            query: '',
+            page: 1,
+            size: 5
+          });
+        }
+      }, "\u6E05\u9664\u7B5B\u9009") : undefined
+    }), data.page.pages > 1 && /*#__PURE__*/React.createElement(window.WorkbenchControls.Pager, {
+      page: data.page,
+      sizes: [5],
+      unit: "\u9879",
+      label: title,
+      disabled: read.loading,
+      onPage: next
+    }), /*#__PURE__*/React.createElement(Issues, {
       issues: read.result.warnings
     })));
   }
@@ -163,19 +170,7 @@
     const relations = entity.fields.category === 'internal' ? ['machines', 'operators'] : ['suppliers'];
     return /*#__PURE__*/React.createElement("div", {
       className: "wb-resource-relations"
-    }, /*#__PURE__*/React.createElement("style", null, `
-        .wb-resource-association { margin-top: 20px; border-top: 1px solid var(--ui-border); padding-top: 16px; }
-        .wb-resource-association-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-        .wb-resource-association-head h4 { flex: 1 1 auto; margin: 0; font-size: 14px; }
-        .wb-resource-association-head .search { flex: 0 1 180px; min-width: 100px; }
-        .wb-resource-association-basis { margin: 8px 0 10px; font-size: 12px; }
-        body.aps-workbench .wb-resource-relation { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; border-bottom: 1px solid var(--ui-border); border-radius: 0; padding: 10px 4px; text-align: left; color: var(--ui-text); background: transparent; font: inherit; }
-        body.aps-workbench .wb-resource-relation:hover:not(:disabled) { background: var(--ui-surface-muted); }
-        .wb-resource-relation-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
-        .wb-resource-relation-content .muted { font-size: 12px; }
-        .wb-resource-relation > svg { flex: none; }
-        .wb-resource-association-pager { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding-top: 8px; }
-      `), entity.fields.category === 'internal' && /*#__PURE__*/React.createElement("p", {
+    }, null, entity.fields.category === 'internal' && /*#__PURE__*/React.createElement("p", {
       className: "muted"
     }, "\u9759\u6001\u53EF\u7528\u6570\u91CF\uFF1A\u8BBE\u5907 ", C.availability(entity.availability) ? entity.availability.machines : '未知', " \u53F0 \xB7 \u4EBA\u5458 ", C.availability(entity.availability) ? entity.availability.operators : '未知', " \u4EBA\u3002\u5173\u8054\u8BB0\u5F55\u5305\u62EC\u505C\u7528\u6216\u8D44\u683C\u5F85\u6838\u5BF9\u8D44\u6E90\uFF0C\u4E0D\u4EE3\u8868\u5F53\u524D\u65F6\u6BB5\u53EF\u6392\u3002"), relations.map(relation => /*#__PURE__*/React.createElement(Association, {
       key: relation,

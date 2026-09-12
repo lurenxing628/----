@@ -1,6 +1,6 @@
 /* Approved workbench Gantt palette. Does not replace global UI status colors. */
 :root {
-  --wb-gantt-radius-control:6px;
+  --wb-gantt-radius-control:var(--wb-radius-control);
   --wb-gantt-radius-group:8px;
   --wb-gantt-radius-bar:4px;
   /* Plan baselines are independent from normal-priority task colors. */

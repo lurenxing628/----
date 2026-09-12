@@ -4,8 +4,8 @@
   const labels = { all: '全部状态', queued: '等待计算', running: '正在计算', complete: '计算完成', partial: '部分完成', failed: '计算失败', interrupted: '已中断' };
   const fields = { start_date: '排产起日', end_date: '排产止日', ready_check: '齐套检查', missing_resource_policy: '缺资源策略', completed_policy: '执行策略', batch_count: '所选批次' };
   function Button({ className = '', ...props }) { return <window.ResourceControls.Button {...props} className={'btn wb-action ' + className} />; }
-  const timeLabel = v => v === null ? '未记录' : v.replace('T', ' ');
-  const number = v => v.toLocaleString('zh-CN');
+  const timeLabel = v => window.WorkbenchFormat.dateTime(v);
+  const number = v => window.WorkbenchFormat.number(v, { digits: 0 });
   function ErrorBox({ error }) {
     return error ? <div className="rh-notice rh-error" role="alert">{error.code === 'snapshot_stale' && <strong>历史来源已变化或快照已失效。 </strong>}
       {error.message || '排产历史读取失败，未显示替代结果。'}</div> : null;
@@ -50,51 +50,24 @@
         {value.data_gaps.map(g => <small key={g.field}>{fields[g.field]}：{g.message}</small>)}</details>}</div>;
   }
   function Table({ runs, onOpen, canNavigate }) {
-    return <div className="rh-table" tabIndex={0} aria-label="排产历史表格滚动区域"><table aria-label="排产历史">
+    return <div className="rh-table wb-table-frame" data-sticky-head data-sticky-actions tabIndex={0} aria-label="排产历史表格滚动区域"><table className="wb-table" aria-label="排产历史"><caption className="wb-visually-hidden">排产历史</caption>
       <colgroup>{[19, 18, 25, 19, 6, 6, 7].map((width, i) => <col key={i} style={{ width: width + '%' }} />)}</colgroup>
-      <thead><tr><th>受理时间</th><th>运行状态</th><th>排产范围</th><th>开始 / 结束时间</th><th className="rh-num">候选数</th><th className="rh-num">安排数</th><th>操作</th></tr></thead>
+      <thead><tr><th scope="col" className="wb-col-key">受理时间</th><th scope="col">运行状态</th><th scope="col">排产范围</th><th scope="col">开始 / 结束时间</th><th scope="col" className="rh-num">候选数</th><th scope="col" className="rh-num">安排数</th><th scope="col" className="wb-col-actions">操作</th></tr></thead>
       <tbody>{runs.map(run => <tr key={run.run_ref} data-run-ref={run.run_ref} data-run-state={run.state}>
-        <td><time>{timeLabel(run.accepted_at)}</time><details className="rh-id"><summary aria-label={'运行记录编号 ' + run.run_ref}>记录编号</summary><code>{run.run_ref}</code></details></td><td><Status run={run} /></td>
+        <td className="wb-col-key"><time>{timeLabel(run.accepted_at)}</time><window.WorkbenchReference value={run.run_ref} label="记录编号" /></td><td><Status run={run} /></td>
         <td><ScopeSummary value={run.scope_summary} /></td><td><time>{run.started_at === null ? '尚未开始' : timeLabel(run.started_at)}</time>
           <small>{run.finished_at === null ? '尚未结束' : timeLabel(run.finished_at)}</small></td>
         <td className={'rh-num' + (run.counts_final && run.candidate_count > 0 ? ' rh-accent' : '')}>{number(run.candidate_count)}{!run.counts_final && <small>非最终</small>}</td>
         <td className="rh-num">{number(run.task_count)}{!run.counts_final && <small>非最终</small>}</td>
-        <td><Button icon="arrow-right" aria-label={'查看运行 ' + run.run_ref} disabled={!canNavigate} onClick={() => onOpen(run)} /></td>
+        <td className="wb-col-actions"><Button icon="arrow-right" aria-label={'查看 ' + timeLabel(run.accepted_at) + ' 受理的排产运行'} disabled={!canNavigate} onClick={() => onOpen(run)} /></td>
       </tr>)}</tbody></table></div>;
   }
   function Pager({ page, busy, onChange }) {
-    const pages = Math.max(1, Math.ceil(page.total / page.size)), sizes = Array.from(new Set([10, 20, 50, page.size])).sort((a, b) => a - b);
-    return <div className="rh-pagination"><span>筛选命中 {number(page.total)} 次 · 第 {page.number} / {pages} 页</span><div className="rh-tools">
-      <label>每页<select aria-label="历史每页数量" value={page.size} disabled={busy} onChange={e => onChange({ page: 1, size: Number(e.target.value) }, false)}>
-        {sizes.map(size => <option key={size} value={size}>{size}</option>)}</select></label>
-      <Button icon="chevron-left" aria-label="历史上一页" disabled={busy || page.number <= 1} onClick={() => onChange({ page: page.number - 1 }, true)} />
-      <Button icon="chevron-right" aria-label="历史下一页" disabled={busy || !page.has_more} onClick={() => onChange({ page: page.number + 1 }, true)} /></div></div>;
+    return <div className="rh-pagination"><window.WorkbenchListControls.Pager page={page} sizes={[10, 20, 50]} unit="次" label="历史" sizeLabel="历史每页数量" busy={busy}
+      onSize={size => onChange({ page: 1, size }, false)} onPage={number => onChange({ page: number }, true)} /></div>;
   }
   function Styles() {
-    return <style>{`
-      .plana.run-history-workspace{width:100%;min-width:0;max-width:none;padding:0;color:var(--ui-text);font-size:13px;letter-spacing:0}
-      .run-history-workspace *{box-sizing:border-box;letter-spacing:0}.run-history-workspace h2{font-size:17px;line-height:1.6;margin:0}
-      .run-history-workspace .rh-heading,.run-history-workspace .rh-tools,.run-history-workspace .rh-pagination{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
-      .run-history-workspace .rh-heading,.run-history-workspace .rh-pagination{justify-content:space-between;padding:12px 0}.run-history-workspace .rh-heading{border-bottom:1px solid var(--ui-border)}
-      .run-history-workspace .rh-muted,.run-history-workspace small{color:var(--ui-info-muted);font-size:12px;line-height:1.7}.run-history-workspace small{display:block;overflow-wrap:anywhere}
-      .run-history-workspace .rh-filters{padding:14px 0;border-bottom:1px solid var(--ui-border)}.run-history-workspace .rh-filter-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
-      .run-history-workspace label{display:grid;gap:6px;font-size:12px;color:var(--ui-info-muted)}.run-history-workspace .rh-filter-row select{width:126px}.run-history-workspace input[type=date]{width:156px}
-      .run-history-workspace select,.run-history-workspace input{font:inherit;color:var(--ui-text);background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:4px;min-height:32px;max-width:100%;padding:5px 8px}
-      .run-history-workspace button{max-width:100%;white-space:nowrap}.run-history-workspace .rh-pagination label{display:flex;align-items:center;gap:8px}.run-history-workspace .rh-pagination select{width:74px}
-      .run-history-workspace .rh-source{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 0;line-height:1.8;color:var(--ui-info-muted);font-size:12px}
-      .run-history-workspace .rh-notice{padding:10px 12px;margin:10px 0;background:var(--ui-surface-muted);border-left:3px solid var(--ui-warning);line-height:1.7;overflow-wrap:anywhere}
-      .run-history-workspace .rh-error,.run-history-workspace .rh-danger{color:var(--ui-danger-text)}.run-history-workspace .rh-error{border-color:var(--ui-danger)}
-      .run-history-workspace .rh-warning{color:var(--ui-warning-text)}.run-history-workspace .rh-success{color:var(--ui-success-text)}.run-history-workspace .rh-accent{color:var(--ui-primary);font-weight:600}
-      .run-history-workspace .rh-state{font-size:13px;font-weight:600}.run-history-workspace .rh-table{width:100%;overflow:auto;max-height:calc(100vh - 400px);min-height:130px;border-top:1px solid var(--ui-border);border-bottom:1px solid var(--ui-border)}
-      .run-history-workspace .rh-table .btn{width:32px;height:32px;min-width:32px;padding:0;flex:none}
-      .run-history-workspace table{border-collapse:separate;border-spacing:0;table-layout:fixed;width:100%;min-width:960px}.run-history-workspace th,.run-history-workspace td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--ui-border);vertical-align:middle;white-space:normal!important;overflow-wrap:anywhere;line-height:1.7}
-      .run-history-workspace th{position:sticky;top:0;z-index:1;background:var(--ui-surface-muted);font-size:12px;color:var(--ui-info-muted);font-weight:500}.run-history-workspace tbody tr:last-child td{border-bottom:0}
-      .run-history-workspace tbody tr:hover{background:var(--ui-surface-muted)}.run-history-workspace code{display:block;overflow-wrap:anywhere;font-size:12px;line-height:1.7;color:var(--ui-text);margin-top:4px;font-family:ui-monospace,monospace}.run-history-workspace .rh-id{color:var(--ui-info-muted)}
-      .run-history-workspace time,.run-history-workspace .rh-num{font-variant-numeric:tabular-nums}.run-history-workspace .rh-num{text-align:right}.run-history-workspace td.rh-num{font-size:15px}
-      .run-history-workspace summary{cursor:pointer;font-size:12px}.run-history-workspace .rh-empty{padding:48px 12px;text-align:center;border-block:1px solid var(--ui-border);line-height:1.8;color:var(--ui-info-muted)}
-      .run-history-workspace .rh-empty strong{display:block;font-size:14px;color:var(--ui-text);margin-bottom:6px}.run-history-workspace .rh-pagination{font-size:12px;color:var(--ui-info-muted)}
-      @media(max-width:760px){.run-history-workspace .rh-filter-row{gap:10px}.run-history-workspace .rh-table{max-height:500px}.run-history-workspace input[type=date]{width:148px}}
-    `}</style>;
+    return null;
   }
   window.RunHistoryControls = { Button, ErrorBox, Filters, Table, Pager, Styles, timeLabel };
 })();

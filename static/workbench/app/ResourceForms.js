@@ -9,7 +9,9 @@
     Status,
     Modal,
     Choice,
-    Relation
+    Relation,
+    Field,
+    focusFirstInvalid
   } = window.ResourceControls;
   const icons = {
     material: 'box',
@@ -19,7 +21,8 @@
     supplier: 'truck'
   };
   function Feedback({
-    command
+    command,
+    excludePaths = []
   }) {
     if (!command) return null;
     const phase = command.phase;
@@ -37,7 +40,8 @@
     }, "\u67E5\u8BE2\u539F\u8BF7\u6C42\u56DE\u6267")), phase === 'done' && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, command.result.result === 'partial' ? '部分操作完成，请核对逐项结果。' : command.result.result === 'unchanged' ? '服务器确认内容未变化。' : '服务器已确认提交。'), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: command.error
+      error: command.error,
+      excludePaths: excludePaths
     }), /*#__PURE__*/React.createElement(Issues, {
       issues: command.result && command.result.warnings || []
     }), phase === 'done' && command.result.result === 'partial' && (Array.isArray(command.result.data.items) ? /*#__PURE__*/React.createElement("ul", null, command.result.data.items.map((item, index) => /*#__PURE__*/React.createElement("li", {
@@ -82,70 +86,6 @@
     }, "\u65E2\u6709\u8BBE\u5907\u6388\u6743\u5C1A\u672A\u8BFB\u53D6\uFF0C\u4E0D\u80FD\u636E\u6280\u80FD\u63A8\u65AD\u3002"), /*#__PURE__*/React.createElement("span", {
       className: "fhint"
     }, "\u6280\u80FD\u767B\u8BB0\u4E0D\u6539\u53D8\u65E2\u6709\u8BBE\u5907\u6388\u6743\u3002"));
-  }
-  function Field({
-    label,
-    path,
-    error,
-    required,
-    full,
-    children
-  }) {
-    const id = React.useId(),
-      errors = C.fieldErrors(error).filter(row => row.path === path || row.path === 'input.' + path);
-    return /*#__PURE__*/React.createElement("div", {
-      className: 'field' + (full ? ' full' : '') + (errors.length ? ' err' : ''),
-      style: {
-        minWidth: 0
-      }
-    }, /*#__PURE__*/React.createElement("label", {
-      htmlFor: id
-    }, label, required && /*#__PURE__*/React.createElement("span", {
-      className: "req",
-      "aria-hidden": "true"
-    }, "*")), React.cloneElement(children, {
-      id,
-      'aria-required': required || undefined,
-      'aria-invalid': errors.length ? true : undefined,
-      'aria-describedby': errors.length ? id + '-error' : undefined
-    }), errors.length > 0 && /*#__PURE__*/React.createElement("span", {
-      id: id + '-error',
-      style: {
-        color: 'var(--ui-danger-text)'
-      }
-    }, errors.map(row => row.message).join(' ')));
-  }
-  function DetailStyles() {
-    return /*#__PURE__*/React.createElement("style", null, `
-      .plana .wb-resource-detail { color: var(--ui-text); padding: 20px; }
-      .plana .wb-resource-identity { display: flex; align-items: flex-start; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--ui-border); }
-      .plana .wb-resource-identity > div { flex: 1; min-width: 0; }
-      .plana .wb-resource-identity .pill { flex: none; max-width: 42%; margin-top: 4px; }
-      .plana .wb-resource-code { color: var(--ui-info-muted); font-size: 12px; overflow-wrap: anywhere; }
-      .plana .wb-resource-identity h3 { margin: 4px 0 0; color: var(--ui-text); font-size: 17px; line-height: 1.5; font-weight: 600; overflow-wrap: anywhere; }
-      .plana .wb-resource-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; margin: 0; padding: 16px 0; }
-      .plana .wb-resource-fact { min-width: 0; }
-      .plana .wb-resource-fact dt, .plana .wb-resource-remark dt { margin: 0 0 5px; color: var(--ui-info-muted); font-size: 12px; font-weight: 400; }
-      .plana .wb-resource-fact dd, .plana .wb-resource-remark dd { margin: 0; color: var(--ui-text); font-size: 14px; text-align: left; overflow-wrap: anywhere; white-space: pre-wrap; font-variant-numeric: tabular-nums; }
-      .plana .wb-resource-stock { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
-      .plana .wb-resource-stock strong { min-width: 0; max-width: 100%; font-size: 22px; line-height: 1.3; font-weight: 600; overflow-wrap: anywhere; }
-      .plana .wb-resource-stock span { min-width: 0; color: var(--ui-info-muted); font-size: 13px; }
-      .plana .wb-resource-remark { margin: 0; padding: 16px 0; border-top: 1px solid var(--ui-border); }
-      .plana .wb-resource-links { padding: 16px 0; border-top: 1px solid var(--ui-border); }
-      .plana .wb-resource-identity + .wb-resource-links { border-top: 0; }
-      .plana .wb-resource-links .field > label { color: var(--ui-info-muted); font-size: 12px; font-weight: 400; }
-      .plana .wb-resource-detail > .match-note { margin: 0 0 16px; }
-      .plana .wb-resource-read-time { margin: 0; padding-top: 12px; border-top: 1px solid var(--ui-border); color: var(--ui-info-muted); font-size: 12px; overflow-wrap: anywhere; }
-      .plana form.modal-b.form > .fgrid { margin-bottom: 16px; }
-      .plana .wb-resource-review { margin-top: 16px; padding: 14px; border: 1px solid var(--ui-border); background: var(--ui-surface-muted); }
-      .plana .wb-resource-review > p { margin: 0 0 12px; }
-      .plana .wb-resource-review-identity { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
-      .plana .wb-resource-review-identity > strong { min-width: 0; flex: 1; overflow-wrap: anywhere; font-weight: 600; }
-      .plana .wb-resource-review-identity > .pill { flex: none; max-width: 42%; }
-      .plana .wb-resource-review .wb-resource-facts { padding-top: 0; }
-      .plana .wb-resource-review .wb-resource-stock strong { font-size: 18px; }
-      @media (max-width: 560px) { .plana .wb-resource-facts { grid-template-columns: minmax(0, 1fr); } }
-    `);
   }
   function Remark({
     kind,
@@ -213,6 +153,8 @@
   }) {
     const [entity, setEntity] = React.useState(initialEntity);
     const [draft, setDraft] = React.useState(() => C.draft(kind, initialEntity, category));
+    const baseline = React.useRef(JSON.stringify(C.draft(kind, initialEntity, category))),
+      form = React.useRef(null);
     const [error, setError] = React.useState(null),
       [catalogBusy, setCatalogBusy] = React.useState(false);
     React.useLayoutEffect(() => {
@@ -221,6 +163,7 @@
         setError(C.failure('最新资料与当前编辑的记录不一致，已填写的内容未被替换。'));
         return;
       }
+      baseline.current = JSON.stringify(C.draft(kind, acceptedEntity, category));
       setDraft(value => C.rebaseDraft(kind, value, entity, acceptedEntity, category));
       setEntity(acceptedEntity);
     }, [acceptedEntity, kind, category]);
@@ -231,6 +174,23 @@
       disabled = command.locked || done || catalogBusy || contextBusy;
     const reason = typeof adapter.command !== 'function' ? '保存接口尚未接入。' : C.blocked(writeContext, kind, action, source);
     const currentError = error || command.error;
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({
+      dirty: action !== 'delete' && !done && JSON.stringify(draft) !== baseline.current,
+      // Only a pending command locks the draft guard; catalog or context busy states are UI state, not an unverified request.
+      message: '资源资料中有尚未保存的填写内容。',
+      locked: command.locked
+    });
+    React.useEffect(() => {
+      if (currentError) focusFirstInvalid(form.current);
+    }, [currentError]);
+    const fieldPaths = action === 'delete' ? [] : adjustingStock ? ['fields.stock_qty'] : ['business_code', 'label', ...(kind === 'material' ? ['fields.spec', 'fields.unit', 'fields.stock_qty', 'fields.remark'] : []), ...(kind === 'op_type' ? ['fields.remark', ...(!['internal', 'external'].includes(entity ? entity.fields.category : category) ? ['fields.category'] : []), ...(opCategory === 'external' ? ['fields.default_merge_mode'] : [])] : []), ...(kind === 'supplier' ? ['fields.default_days'] : []), ...(C.statuses[kind] ? ['fields.status'] : []), ...(C.relations[kind] || []).flatMap(field => [field.key, 'relationships.' + field.key])];
+    async function close(detail) {
+      if (command.locked || catalogBusy || contextBusy) return;
+      if (!(detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner) && !(await window.WorkbenchGuards.confirmLeave({
+        owner: guardOwner
+      }))) return;
+      onClose();
+    }
     function change(section, key, value) {
       setDraft(current => section ? {
         ...current,
@@ -346,11 +306,12 @@
     return /*#__PURE__*/React.createElement(Modal, {
       title: adjustingStock ? '调整库存' : (action === 'create' ? '新增' : action === 'delete' ? '删除' : '编辑') + C.resourceName(kind, opCategory),
       icon: icons[kind],
-      onClose: onClose,
+      onClose: close,
+      guardOwner: guardOwner,
       locked: command.locked || catalogBusy || contextBusy,
       suspended: catalogBusy,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
-        onClick: onClose,
+        onClick: close,
         reason: command.locked ? '结果未核实，暂不能关闭。' : contextBusy ? '正在读取最新资料。' : '',
         disabled: catalogBusy
       }, done ? '关闭' : '取消'), !done && /*#__PURE__*/React.createElement(Button, {
@@ -363,10 +324,11 @@
       }, action === 'delete' ? '确认删除' : '保存'))
     }, /*#__PURE__*/React.createElement("form", {
       id: formId,
+      ref: form,
       className: "modal-b form scroll",
       onSubmit: submit,
       noValidate: true
-    }, /*#__PURE__*/React.createElement(DetailStyles, null), action === 'delete' ? /*#__PURE__*/React.createElement("p", null, "\u786E\u8BA4\u5220\u9664 ", /*#__PURE__*/React.createElement("b", null, entity.business_code, " \xB7 ", entity.label), "\uFF1F\u670D\u52A1\u7AEF\u4F1A\u91CD\u65B0\u6838\u5BF9\u5F15\u7528\u548C\u5220\u9664\u6761\u4EF6\u3002") : adjustingStock ? /*#__PURE__*/React.createElement("div", {
+    }, action === 'delete' ? /*#__PURE__*/React.createElement("p", null, "\u786E\u8BA4\u5220\u9664 ", /*#__PURE__*/React.createElement("b", null, entity.business_code, " \xB7 ", entity.label), "\uFF1F\u670D\u52A1\u7AEF\u4F1A\u91CD\u65B0\u6838\u5BF9\u5F15\u7528\u548C\u5220\u9664\u6761\u4EF6\u3002") : adjustingStock ? /*#__PURE__*/React.createElement("div", {
       className: "fgrid",
       style: {
         marginBottom: 12
@@ -430,6 +392,7 @@
       value: draft.relationships[field.key],
       original: entity,
       disabled: disabled,
+      error: currentError,
       onChange: value => change('relationships', field.key, value),
       onCatalog: catalog,
       catalogBusy: catalogBusy
@@ -452,9 +415,11 @@
     })), /*#__PURE__*/React.createElement(Issues, {
       issues: entity && entity.issues || []
     }), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: error
+      error: error,
+      excludePaths: fieldPaths
     }), /*#__PURE__*/React.createElement(Feedback, {
-      command: command
+      command: command,
+      excludePaths: error ? [] : fieldPaths
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: contextError
     }), reason && /*#__PURE__*/React.createElement("p", {
@@ -534,7 +499,7 @@
       }, "\u7F16\u8F91")))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b scroll wb-resource-detail"
-    }, /*#__PURE__*/React.createElement(DetailStyles, null), busy && /*#__PURE__*/React.createElement("p", {
+    }, busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u8BE6\u60C5\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
@@ -580,7 +545,7 @@
       className: "wb-resource-read-time"
     }, "\u8BFB\u53D6\u65F6\u95F4\uFF1A", /*#__PURE__*/React.createElement("time", {
       dateTime: result.meta.as_of
-    }, result.meta.as_of.replace('T', ' '))))));
+    }, window.WorkbenchFormat.dateTime(result.meta.as_of))))));
   }
   ResourceForms.Detail = Detail;
   ResourceForms.Feedback = Feedback;

@@ -19,28 +19,31 @@
       </div>
     </Modal>;
   }
-  function BatchTable({ rows, scope, selected, setSelected, onOpen, onDelete, onSort, onFilter, loading, disabled }) {
+  function BatchTable({ rows, scope, selected, setSelected, onOpen, onDelete, onSort, onFilter, onClear, onRetry, error, loading, disabled }) {
     const checkbox = React.useRef(null), all = rows.length > 0 && rows.every(row => selected.includes(row.ref));
     const [widths, setWidths] = React.useState(Object.fromEntries(B.columns.map(([key, , width]) => [key, width]))), drag = React.useRef(null);
     function resize(key, value) { setWidths(current => ({ ...current, [key]: Math.max(80, Math.min(600, value)) })); }
     React.useEffect(() => { if (checkbox.current) checkbox.current.indeterminate = !all && rows.some(row => selected.includes(row.ref)); }, [rows, selected, all]);
-    return <div className="wb-table-frame card-scroll"><table className="tbl wb-table" style={{ width: Object.values(widths).reduce((sum, width) => sum + width, 204), minWidth: '100%' }} aria-label="批次列表" aria-busy={loading}>
-      <thead><tr><th style={{ width: 44 }}><input ref={checkbox} type="checkbox" aria-label="全选当前页" checked={all} disabled={disabled || !rows.length} onChange={event => setSelected(event.target.checked ? Array.from(new Set(selected.concat(rows.map(row => row.ref)))) : selected.filter(ref => !rows.some(row => row.ref === ref)))} /></th>
-        {B.columns.map(([key, name]) => <th key={key} style={{ width: widths[key], position: 'relative' }} aria-sort={scope.sort === key ? scope.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
+    const filtered = !!(scope.query || scope.status || scope.ready_status || scope.focus || scope.batch_ids || Object.keys(scope.column_filters || {}).length);
+    return <div className="wb-table-frame batch-table-frame" data-sticky-head data-sticky-actions style={{ '--wb-table-min': '1180px', '--wb-table-max-height': 'calc(100vh - 320px)' }}><table className="tbl wb-table" style={{ width: Object.values(widths).reduce((sum, width) => sum + width, 234), minWidth: '100%' }} aria-label="批次列表" aria-busy={loading}>
+      <caption className="wb-visually-hidden">批次列表；批次号与操作列固定，可在表内横向和纵向滚动。</caption>
+      <thead><tr><th scope="col" style={{ width: 44 }}><input ref={checkbox} type="checkbox" aria-label="全选当前页" checked={all} disabled={disabled || !rows.length} onChange={event => setSelected(event.target.checked ? Array.from(new Set(selected.concat(rows.map(row => row.ref)))) : selected.filter(ref => !rows.some(row => row.ref === ref)))} /></th>
+        {B.columns.map(([key, name]) => <th key={key} scope="col" className={key === 'business_code' ? 'wb-col-key' : undefined} style={{ width: widths[key] }} aria-sort={scope.sort === key ? scope.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
           {key === 'progress' ? name : <div className="batch-head"><Button className="linkbtn" disabled={disabled} onClick={() => onSort(key)} title={'排序' + name}>{name}</Button>
-            <Button className="linkbtn" icon="filter" aria-label={'筛选' + name} onClick={() => onFilter(key)} disabled={disabled} /></div>}
+            <Button className={'linkbtn wb-column-filter' + (Object.prototype.hasOwnProperty.call(scope.column_filters || {}, key) ? ' is-active' : '')} icon="filter" aria-label={'筛选' + name} aria-pressed={Object.prototype.hasOwnProperty.call(scope.column_filters || {}, key)} onClick={() => onFilter(key)} disabled={disabled} /></div>}
           <span role="separator" tabIndex={disabled ? -1 : 0} aria-label={'调整' + name + '列宽'} aria-orientation="vertical" aria-valuenow={widths[key]} aria-valuemin={80} aria-valuemax={600}
             className="batch-column-resizer" onKeyDown={event => { if (!disabled && ['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); resize(key, widths[key] + (event.key === 'ArrowLeft' ? -12 : 12)); } }}
             onPointerDown={event => { if (disabled || event.button !== 0) return; drag.current = { key, x: event.clientX, width: widths[key] }; event.currentTarget.setPointerCapture(event.pointerId); event.preventDefault(); }}
             onPointerMove={event => { if (drag.current && drag.current.key === key) resize(key, drag.current.width + event.clientX - drag.current.x); }} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} />
-        </th>)}<th style={{ width: 160 }}>操作</th></tr></thead>
+        </th>)}<th scope="col" className="wb-col-actions" style={{ width: 190 }}>操作</th></tr></thead>
       <tbody>{rows.map(row => <tr key={row.ref}><td><input type="checkbox" aria-label={'选择 ' + row.business_code} checked={selected.includes(row.ref)} disabled={disabled} onChange={event => setSelected(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))} /></td>
-        <td><Button className="linkbtn" onClick={() => onOpen(row.ref)} disabled={disabled}>{row.business_code}</Button></td><td><strong>{row.relationships.part_no}</strong><div className="muted">{row.label}</div></td>
-        <td>{B.label('', row.fields.quantity)}</td><td>{B.label('', row.fields.due_date)}</td><td><div className="batch-progress"><progress value={row.relationships.completed_count} max={row.relationships.operation_count || 1} /><span>{row.relationships.completed_count} / {row.relationships.operation_count}</span></div>
+        <td className="wb-col-key"><Button className="linkbtn" onClick={() => onOpen(row.ref)} disabled={disabled}>{row.business_code}</Button></td><td><strong>{row.relationships.part_no}</strong><div className="muted">{row.label}</div></td>
+        <td>{window.WorkbenchFormat.number(row.fields.quantity, { digits: 0 })}</td><td>{window.WorkbenchFormat.date(row.fields.due_date)}</td><td><div className="batch-progress"><progress aria-label={row.business_code + '已完成工序'} value={row.relationships.completed_count} max={row.relationships.operation_count || 1} /><span>{row.relationships.completed_count} / {row.relationships.operation_count}</span></div>
           <details><summary>工序概况{row.relationships.gap_count ? ' · 待补 ' + row.relationships.gap_count : ''}</summary>{row.operations.length ? row.operations.map(op => <div key={op.ref}>{op.sequence} · {op.label}{op.issues.length ? ' · 待补齐' : ''}</div>) : '尚未生成工序'}</details></td>
         {['priority', 'ready_status', 'status'].map(key => <td key={key}><span className={'pill ' + (key === 'ready_status' ? row.fields[key] === 'yes' ? 'ok' : 'warn' : key === 'priority' ? row.fields[key] === 'normal' ? 'off' : 'warn' : row.status === 'completed' ? 'ok' : row.status === 'processing' ? 'warn' : 'off')}>{B.label(key, key === 'status' ? row.status : row.fields[key])}</span></td>)}
-        <td><div className="batch-head"><Button icon="square-pen" onClick={() => onOpen(row.ref)} disabled={disabled}>查看/编辑</Button><Button icon="x" aria-label={'删除批次 ' + row.business_code} onClick={() => onDelete(row)} disabled={disabled} reason={B.reason(row.write_context, 'delete', 'production')} /></div></td>
-      </tr>)}{!rows.length && <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center' }}>{loading ? '正在读取批次…' : '当前条件下暂无批次'}</td></tr>}</tbody>
+        <td className="wb-col-actions"><div className="batch-head"><Button icon="square-pen" onClick={() => onOpen(row.ref)} disabled={disabled}>查看/编辑</Button><Button icon="x" className="btn danger" aria-label={'删除批次 ' + row.business_code} onClick={() => onDelete(row)} disabled={disabled} reasonDisplay="tooltip" reason={B.reason(row.write_context, 'delete', 'production')} /></div></td>
+      </tr>)}{!rows.length && <tr><td colSpan={10}><window.WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty'} error={error}
+        title={loading ? '正在读取批次…' : error || filtered ? undefined : '暂无批次'} action={error ? <Button onClick={onRetry}>重新读取</Button> : filtered ? <Button onClick={onClear}>清除筛选</Button> : undefined} /></td></tr>}</tbody>
     </table></div>;
   }
   BatchTable.ColumnFilter = ColumnFilter;

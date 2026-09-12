@@ -99,7 +99,7 @@
   height: 30px; padding: 0 10px; margin: 0; min-width: 0;
   border: 1px solid transparent; border-radius: var(--wb-radius-control);
   background: transparent;
-  font: inherit; font-size: 14px; font-weight: 600;
+  font: inherit; font-size: var(--font-size-3); font-weight: 600;
   color: var(--ui-text); cursor: pointer;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -130,7 +130,7 @@
 }
 .apsdp-wd {
   text-align: center;
-  font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  font-size: var(--font-size-1); font-weight: 600; letter-spacing: .02em;
   color: var(--ui-muted);
   padding: 4px 0 6px;
 }
@@ -144,7 +144,7 @@
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; border-radius: var(--wb-radius-control);
   background: transparent;
-  font: inherit; font-size: 13px; font-weight: 500; line-height: 1;
+  font: inherit; font-size: var(--font-size-2); font-weight: 500; line-height: 1;
   color: var(--ui-text);
   cursor: pointer;
   font-variant-numeric: tabular-nums;
@@ -161,10 +161,10 @@
 }
 .apsdp-day.is-selected,
 .apsdp-day.is-selected:hover {
-  background: var(--ui-primary); color: #fff; font-weight: 700;
+  background: var(--ui-primary); color: var(--ui-text-inverse); font-weight: 700;
   box-shadow: 0 2px 6px -1px rgb(37 99 235 / .5);
 }
-.apsdp-day.is-selected.is-weekend { color: #fff; }
+.apsdp-day.is-selected.is-weekend { color: var(--ui-text-inverse); }
 .apsdp-day.is-selected.is-marked::after { background: #fff; }
 .apsdp-day:disabled,
 .apsdp-day.is-disabled { opacity: .3; cursor: not-allowed; background: transparent; box-shadow: none; }
@@ -179,12 +179,12 @@
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control);
   background: var(--ui-card-bg);
-  font: inherit; font-size: 13px; font-weight: 500;
+  font: inherit; font-size: var(--font-size-2); font-weight: 500;
   color: var(--ui-text); cursor: pointer;
   transition: background-color .12s, border-color .12s, color .12s;
 }
 .apsdp-month:hover { background: var(--ui-surface-soft); border-color: #cbd5e1; }
-.apsdp-month.is-current { background: var(--ui-primary); border-color: var(--ui-primary); color: #fff; font-weight: 700; }
+.apsdp-month.is-current { background: var(--ui-primary); border-color: var(--ui-primary); color: var(--ui-text-inverse); font-weight: 700; }
 
 /* ---- 底部：清除 / 今天 ---- */
 .apsdp-foot {
@@ -195,7 +195,7 @@
 .apsdp-link {
   margin: 0; padding: 4px 8px; min-width: 0;
   border: 0; border-radius: var(--wb-radius-control); background: transparent;
-  font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+  font: inherit; font-size: var(--font-size-2); font-weight: 500; cursor: pointer;
   transition: background-color .12s, color .12s;
 }
 .apsdp-link.clear { color: var(--ui-muted); }

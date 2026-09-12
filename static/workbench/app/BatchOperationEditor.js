@@ -32,6 +32,23 @@
     const form = React.useId(),
       done = command.phase === 'done',
       locked = disabled || command.locked || done;
+    const formElement = React.useRef(null),
+      paths = keys.map(key => 'fields.' + key),
+      currentError = error || command.error;
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({
+      dirty: !done && keys.some(key => draft[key] !== original[key]),
+      locked: command.locked,
+      message: '批次工序补充资料尚未保存，离开会丢失本次填写。'
+    });
+    React.useEffect(() => {
+      if (currentError) window.ResourceControls.focusFirstInvalid(formElement.current);
+    }, [currentError]);
+    async function close(detail) {
+      if (command.locked) return;
+      if (detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner || (await window.WorkbenchGuards.confirmLeave({
+        owner: guardOwner
+      }))) onClose();
+    }
     const choices = S.useQuery(signal => adapter.choices(signal), [adapter]);
     const catalogs = choices.result && choices.result.data;
     const names = {
@@ -64,7 +81,10 @@
           if (draft[key] === original[key]) continue;
           let value = draft[key] === '' ? null : draft[key];
           if (!key.endsWith('_ref') && value !== null) {
-            if (!/^\d+(?:\.\d+)?$/.test(value) || !Number.isFinite(Number(value)) || Number(value) > Number.MAX_SAFE_INTEGER || key === 'external_days' && Number(value) <= 0) throw C.failure(names[key] + '必须为有效数字。');
+            if (!/^\d+(?:\.\d+)?$/.test(value) || !Number.isFinite(Number(value)) || Number(value) > Number.MAX_SAFE_INTEGER || key === 'external_days' && Number(value) <= 0) throw C.failure('请检查标记的工序字段。', [{
+              path: 'fields.' + key,
+              message: names[key] + '必须为有效数字。'
+            }]);
             value = Number(value);
           }
           fields[key] = value;
@@ -82,10 +102,11 @@
     return /*#__PURE__*/React.createElement(Modal, {
       title: '工序 ' + operation.sequence + ' · ' + operation.label,
       icon: "wrench",
+      guardOwner: guardOwner,
       locked: command.locked,
-      onClose: onClose,
+      onClose: close,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
-        onClick: onClose,
+        onClick: close,
         disabled: command.locked
       }, done ? '关闭' : '取消'), !done && /*#__PURE__*/React.createElement(Button, {
         form: form,
@@ -97,6 +118,7 @@
       }, "\u4FDD\u5B58\u5DE5\u5E8F"))
     }, /*#__PURE__*/React.createElement("form", {
       id: form,
+      ref: formElement,
       className: "modal-b form",
       onSubmit: submit,
       noValidate: true
@@ -104,7 +126,9 @@
       className: "fgrid batch-fields"
     }, keys.map(key => /*#__PURE__*/React.createElement(Field, {
       key: key,
-      label: names[key]
+      label: names[key],
+      path: 'fields.' + key,
+      error: currentError
     }, key.endsWith('_ref') ? /*#__PURE__*/React.createElement("select", {
       value: draft[key],
       disabled: locked || !catalogs,
@@ -127,14 +151,18 @@
         ...draft,
         [key]: event.target.value
       })
-    })))), merged && /*#__PURE__*/React.createElement("p", null, "\u5408\u5E76\u5916\u534F\u7EC4 ", operation.external_group.business_code, " \xB7 \u6574\u7EC4\u5468\u671F ", B.label('', operation.external_group.total_days), " \u5929\uFF08\u53EA\u8BFB\uFF09"), allowed && /*#__PURE__*/React.createElement("p", {
+    })))), merged && /*#__PURE__*/React.createElement("p", null, "\u5408\u5E76\u5916\u534F\u7EC4 ", operation.external_group.business_code, " \xB7 \u6574\u7EC4\u5468\u671F ", window.WorkbenchFormat.number(operation.external_group.total_days), " \u5929\uFF08\u53EA\u8BFB\uFF09"), allowed && /*#__PURE__*/React.createElement("p", {
       style: mismatch ? {
         color: 'var(--ui-danger-text)'
       } : undefined
     }, mismatch ? '所选人员未获设备操作授权。' : '设备授权人员：', catalogs.operators.filter(row => allowed.includes(row.ref)).map(row => row.label).join('、') || '无'), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: error || choices.error
+      error: error,
+      excludePaths: paths
+    }), /*#__PURE__*/React.createElement(ErrorBox, {
+      error: choices.error
     }), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
-      command: command
+      command: command,
+      excludePaths: error ? [] : paths
     })));
   }
   window.BatchOperationEditor = BatchOperationEditor;

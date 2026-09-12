@@ -28,41 +28,7 @@
   };
   const focuses = [['all', '全部工序'], ['unreported', '暂无现场反馈'], ['unclosed', '到期未确认完成'], ['late_open', '超时未确认完成'], ['finish_late', '已确认晚完'], ['complete', '已确认整道完工'], ['data_gaps', '数据待补']];
   function Styles() {
-    return /*#__PURE__*/React.createElement("style", null, `
-      .rw-workbench {background:transparent;box-shadow:none;}
-      .rw-workbench .rw-metrics {background:transparent!important;margin-top:12px;}
-      .rw-workbench .wb-metric {background:transparent!important;}
-      .rw-workbench .aw-scope-main {gap:10px 12px;}
-      .rw-workbench .aw-scope-filters {gap:10px 12px;}
-      .rw-workbench .rw-filters {gap:10px 16px;align-items:flex-end;}
-      .rw-workbench .rw-filters label {gap:6px;white-space:nowrap;}
-      .rw-workbench .rw-table-heading {border-top:1px solid var(--ui-border);padding:12px 0 8px;}
-      .rw-workbench .rw-primary-table {max-height:max(240px,calc(100vh - 490px));overscroll-behavior:contain;}
-      .rw-workbench .rw-primary-table th {position:sticky;top:0;z-index:1;background:var(--ui-surface-muted)!important;}
-      .rw-workbench .rw-primary-table:focus-visible {outline:2px solid var(--ui-info-text);outline-offset:2px;}
-      .rw-workbench .rw-cell-text {min-width:0;max-width:100%;}
-      .rw-workbench .rw-cell-text > summary {cursor:pointer;display:flex;align-items:flex-start;gap:4px;color:inherit;}
-      .rw-workbench .rw-cell-text > summary::-webkit-details-marker {display:none;}
-      .rw-workbench .rw-cell-text > summary svg {width:14px;height:18px;flex:none;color:var(--ui-info-text);}
-      .rw-workbench .rw-cell-text[open] > summary svg {transform:rotate(180deg);}
-      .rw-workbench .rw-cell-preview {display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;}
-      .rw-workbench .rw-cell-text[open] .rw-cell-preview {-webkit-line-clamp:unset;display:block;}
-      .rw-workbench .rw-catalog .rw-filters {justify-content:flex-start;}
-      .rw-workbench .rw-catalog .rw-filters label {flex-direction:column;align-items:stretch;}
-      .rw-workbench .rw-catalog .rw-filters input {width:168px;}
-      .rw-workbench .rw-catalog .rw-filters select {max-width:240px;}
-      @media(max-width:1450px) {
-        .rw-workbench .aw-scope-main {grid-template-columns:140px repeat(2,minmax(150px,1fr)) minmax(150px,1fr) minmax(180px,1.2fr) auto;}
-        .rw-workbench .rw-table {min-width:1100px;}
-      }
-      @media(max-width:1200px) {
-        .rw-workbench .aw-scope-main {grid-template-columns:repeat(3,minmax(140px,1fr));}
-        .rw-workbench .rw-primary-table {max-height:460px;}
-      }
-      @media(max-width:700px) {
-        .rw-workbench .aw-scope-main {grid-template-columns:repeat(2,minmax(0,1fr));}
-      }
-    `);
+    return null;
   }
   function Scope({
     value,
@@ -233,6 +199,7 @@
       tabIndex: topic === key ? 0 : -1,
       onClick: () => onChange(key),
       onKeyDown: event => {
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();
         const next = event.key === 'Home' ? 0 : event.key === 'End' ? 4 : (index + (event.key === 'ArrowRight' ? 1 : -1) + 5) % 5;
@@ -246,41 +213,22 @@
     onChange,
     busy
   }) {
-    return /*#__PURE__*/React.createElement("div", {
-      className: "rw-pagination"
-    }, /*#__PURE__*/React.createElement("span", {
-      "aria-live": "polite"
-    }, "\u5171 ", page.total, " \u9879 \xB7 \u7B2C ", page.number, " / ", page.pages, " \u9875"), /*#__PURE__*/React.createElement("label", null, "\u6BCF\u9875", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u6BCF\u9875\u6570\u91CF",
-      value: page.size,
-      disabled: busy,
-      onChange: event => onChange({
+    return /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: page.number,
+      pages: page.pages,
+      total: page.total,
+      size: page.size,
+      sizes: [10, 20, 50],
+      label: "",
+      busy: busy,
+      onPage: number => onChange({
+        page: number
+      }),
+      onSize: size => onChange({
         page: 1,
-        size: Number(event.target.value)
+        size
       })
-    }, [10, 20, 50].map(size => /*#__PURE__*/React.createElement("option", {
-      key: size,
-      value: size
-    }, size)))), /*#__PURE__*/React.createElement("div", {
-      className: "rw-actions",
-      style: {
-        marginLeft: 0
-      }
-    }, /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": "\u4E0A\u4E00\u9875",
-      disabled: busy || page.number <= 1,
-      onClick: () => onChange({
-        page: page.number - 1
-      })
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": "\u4E0B\u4E00\u9875",
-      disabled: busy || page.number >= page.pages,
-      onClick: () => onChange({
-        page: page.number + 1
-      })
-    })));
+    });
   }
   function Sort({
     topic,

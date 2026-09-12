@@ -94,8 +94,10 @@
       "aria-busy": read.busy
     }, /*#__PURE__*/React.createElement(C.Styles, null), /*#__PURE__*/React.createElement("header", {
       className: "rh-heading"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", null, "\u6392\u4EA7\u5386\u53F2"), /*#__PURE__*/React.createElement("span", {
-      className: "rh-muted"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+      className: "wb-page-title"
+    }, "\u6392\u4EA7\u5386\u53F2"), /*#__PURE__*/React.createElement("span", {
+      className: "rh-muted wb-page-context"
     }, "\u8FD0\u884C\u8BB0\u5F55 \xB7 \u53EA\u8BFB")), /*#__PURE__*/React.createElement("div", {
       className: "rh-tools"
     }, typeof onNavigate === 'function' && /*#__PURE__*/React.createElement(C.Button, {
@@ -116,12 +118,15 @@
     }), read.error && /*#__PURE__*/React.createElement(C.Button, {
       icon: "refresh-cw",
       onClick: reload
-    }, stale ? '明确重读历史' : '重新读取历史'), read.busy && /*#__PURE__*/React.createElement("div", {
-      className: "rh-empty",
-      role: "status"
-    }, /*#__PURE__*/React.createElement("strong", null, "\u6B63\u5728\u8BFB\u53D6\u6392\u4EA7\u5386\u53F2"), "\u5F53\u524D\u7B5B\u9009\u7ED3\u679C\u5C1A\u672A\u8FD4\u56DE"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, stale ? '明确重读历史' : '重新读取历史'), read.busy && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "loading",
+      title: "\u6B63\u5728\u8BFB\u53D6\u6392\u4EA7\u5386\u53F2",
+      hint: "\u5F53\u524D\u7B5B\u9009\u7ED3\u679C\u5C1A\u672A\u8FD4\u56DE"
+    }), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "rh-source"
-    }, /*#__PURE__*/React.createElement("span", null, "\u76EE\u5F55\u5171 ", data.run_count.toLocaleString('zh-CN'), " \u6B21 \xB7 \u53D7\u7406\u65E5\u671F\u6309\u5DE5\u5382\u672C\u5730\u65F6\u95F4\uFF0C\u542B\u8D77\u6B62\u65E5"), /*#__PURE__*/React.createElement("span", null, "\u8BFB\u53D6\u4E8E ", C.timeLabel(result.meta.as_of))), result.warnings.map((w, i) => /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("span", null, "\u76EE\u5F55\u5171 ", window.WorkbenchFormat.number(data.run_count, {
+      digits: 0
+    }), " \u6B21 \xB7 \u53D7\u7406\u65E5\u671F\u6309\u5DE5\u5382\u672C\u5730\u65F6\u95F4\uFF0C\u542B\u8D77\u6B62\u65E5"), /*#__PURE__*/React.createElement("span", null, "\u8BFB\u53D6\u4E8E ", C.timeLabel(result.meta.as_of))), result.warnings.map((w, i) => /*#__PURE__*/React.createElement("div", {
       key: i,
       className: "rh-notice",
       role: "status"
@@ -129,15 +134,19 @@
       runs: data.runs,
       canNavigate: typeof onNavigate === 'function',
       onOpen: open
-    }) : /*#__PURE__*/React.createElement("div", {
-      className: "rh-empty",
-      role: "status"
-    }, /*#__PURE__*/React.createElement("strong", null, data.run_count === 0 ? '尚无排产运行记录' : data.page.total === 0 ? '当前筛选没有匹配的运行记录' : '当前页没有运行记录'), data.run_count === 0 ? '排产运行受理后会保留在此目录。' : data.page.total === 0 ? '其他运行未包含在当前筛选中。' : '当前页超出结果范围。', data.page.total > 0 && /*#__PURE__*/React.createElement(C.Button, {
-      icon: "chevron-left",
-      onClick: () => change({
-        page: 1
-      }, true)
-    }, "\u8FD4\u56DE\u7B2C\u4E00\u9875")), /*#__PURE__*/React.createElement(C.Pager, {
+    }) : /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: data.run_count === 0 ? 'empty' : 'filtered',
+      title: data.run_count === 0 ? '尚无排产运行记录' : data.page.total === 0 ? '当前筛选没有匹配的运行记录' : '当前页没有运行记录',
+      hint: data.run_count === 0 ? '排产运行受理后会保留在此目录。' : data.page.total === 0 ? '其他运行未包含在当前筛选中。' : '当前页超出结果范围。',
+      action: data.run_count > 0 && /*#__PURE__*/React.createElement(C.Button, {
+        icon: "chevron-left",
+        onClick: () => data.page.total > 0 ? change({
+          page: 1
+        }, true) : apply(A.scope({
+          size: query.size
+        }))
+      }, data.page.total > 0 ? '返回第一页' : '清除历史筛选')
+    }), /*#__PURE__*/React.createElement(C.Pager, {
       page: data.page,
       busy: read.busy,
       onChange: change
@@ -160,7 +169,9 @@
       return /*#__PURE__*/React.createElement("div", {
         className: "plana run-history-workspace",
         "data-run-history-workspace": true
-      }, /*#__PURE__*/React.createElement(C.Styles, null), /*#__PURE__*/React.createElement("h2", null, "\u6392\u4EA7\u5386\u53F2"), /*#__PURE__*/React.createElement(C.ErrorBox, {
+      }, /*#__PURE__*/React.createElement(C.Styles, null), /*#__PURE__*/React.createElement("h2", {
+        className: "wb-page-title"
+      }, "\u6392\u4EA7\u5386\u53F2"), /*#__PURE__*/React.createElement(C.ErrorBox, {
         error: error
       }));
     }

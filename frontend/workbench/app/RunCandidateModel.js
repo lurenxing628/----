@@ -1,16 +1,20 @@
 (function () {
   'use strict';
   const geometry = window.PlanGanttModel;
-  const { instant, timeLabel, wire, visibleItems, visibleRows, ticks } = geometry;
-  const number = value => value === null || value === undefined ? '未知' : typeof value === 'string' ? value : value.toLocaleString('zh-CN', { maximumFractionDigits: 3 });
+  const { instant, wire, visibleItems, visibleRows, ticks } = geometry;
+  const timeLabel = value => window.WorkbenchFormat.dateTime(value);
+  // The candidate DTO preserves integers above MAX_SAFE_INTEGER as exact decimal text.
+  // Comparison metrics keep up to three decimals; a one-decimal summary would make distinct candidates look identical.
+  const number = value => typeof value === 'string' ? window.WorkbenchFormat.integerText(value) : window.WorkbenchFormat.number(value, { digits: 3, trim: true });
+  const percent = value => typeof value === 'string' ? window.WorkbenchFormat.integerText(value + '00') + '%' : window.WorkbenchFormat.percent(value);
   const signedChange = value => value === 0 ? '不变' : (value > 0 ? '增加 ' : '减少 ') + number(Math.abs(value));
   const kindLabels = { machine: '设备', operator: '人员', batch: '批次' };
-  const metricLabels = { overdue_count: '超期批次', total_tardiness_hours: '总拖期 h', makespan_hours: '安排跨度 h', changeover_count: '换型次数',
+  const metricLabels = { overdue_count: window.WorkbenchTerms.overdue_count, total_tardiness_hours: window.WorkbenchTerms.total_tardiness_hours + ' h', makespan_hours: '安排跨度 h', changeover_count: '换型次数',
     weighted_tardiness_hours: '加权拖期 h', machine_used_count: '已用设备', operator_used_count: '已用人员', machine_busy_hours_total: '设备占用 h',
     operator_busy_hours_total: '人员占用 h', machine_util_avg: '设备利用率', operator_util_avg: '人员利用率', elapsed_seconds: '计算耗时 s' };
   const executionLabels = { target_quantity: '目标数量', known_completed_quantity: '已知完成数量', remaining_quantity: '剩余数量', execution_state: '执行状态', data_quality: '数据质量', target_basis: '数量口径' };
   const executionValue = v => ({ complete: '完成', paused: '暂停', exception: '异常', partial: '部分完成', started: '已开工', unreported: '未报工', invalid: '无效',
-    legacy_incomplete: '历史资料不完整', incomplete: '不完整', piece: '件', batch: '批' }[v] || number(v));
+    legacy_incomplete: '历史资料不完整', incomplete: '不完整', piece: '件', batch: '批' }[v] || (typeof v === 'string' ? v : number(v)));
   const pieceLabel = t => t.piece_id === null ? (t.data_gaps || []).some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : '分件 ' + t.piece_id;
   const searchText = t => [t.row_ref, t.operation_ref, t.batch_ref, t.batch_label, t.part_label, t.sequence, t.process_label, pieceLabel(t),
     t.machine && t.machine.label, t.operator && t.operator.label, t.reason && t.reason.message].filter(v => v != null).join(' ').toLocaleLowerCase();
@@ -20,7 +24,7 @@
     return [t.batch_label || '批次未记录', number(t.sequence) + ' · ' + (t.process_label || '工序未记录'), pieceLabel(t),
       '本工序目标量：' + number(t.quantity) + ' · 生成时整批量：' + number(t.batch_quantity), timeLabel(t.start) + ' 至 ' + timeLabel(t.end),
       window.PointContract.isPoint(t) ? '时间点 · 0 h · 不占用资源' : null,
-      '设备：' + (t.machine && t.machine.label || '未记录'), '人员：' + (t.operator && t.operator.label || '未记录'), '行引用：' + t.row_ref].filter(Boolean).join('\n');
+      '设备：' + (t.machine && t.machine.label || '未记录'), '人员：' + (t.operator && t.operator.label || '未记录')].filter(Boolean).join('\n');
   }
   function push(heap, item) {
     let i = heap.length; heap.push(item);
@@ -69,5 +73,5 @@
     return { rows, height: top, locations, tasks, groupCount: groups.size,
       start: bounds.start, end: bounds.end };
   }
-  window.RunCandidateModel = { instant, wire, timeLabel, number, signedChange, visibleItems, visibleRows, ticks, matching, layout, title, pieceLabel, kindLabels, metricLabels, executionLabels, executionValue };
+  window.RunCandidateModel = { instant, wire, timeLabel, number, percent, signedChange, visibleItems, visibleRows, ticks, matching, layout, title, pieceLabel, kindLabels, metricLabels, executionLabels, executionValue };
 })();

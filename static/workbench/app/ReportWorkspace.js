@@ -1,6 +1,7 @@
 (function () {
   'use strict';
 
+  let pendingViewFocus = null;
   function Workspace({
     adapter,
     mode = 'reports',
@@ -178,6 +179,14 @@
       }
     }
     const title = mode === 'review' ? '执行复盘' : '报表中心';
+    React.useLayoutEffect(() => {
+      if (pendingViewFocus !== mode) return;
+      const tab = document.getElementById('analytics-view-' + mode);
+      if (tab && !tab.disabled) {
+        tab.focus();
+        pendingViewFocus = null;
+      }
+    }, [mode, !!data]);
     function currentContext() {
       const table = root.current.querySelector('.rw-primary-table'),
         main = root.current.closest('.main-content');
@@ -199,8 +208,8 @@
         }
       };
     }
-    const go = target => {
-      if (initialContext.returnTo && initialContext.returnTo.view === target) return onNav(target, initialContext.returnTo.context);
+    const go = (target, resume = false) => {
+      if (!resume && initialContext.returnTo && initialContext.returnTo.view === target) return onNav(target, initialContext.returnTo.context);
       const context = {
         scope: window.ReportAPI.scope(data.scope),
         topic: state.topic
@@ -211,7 +220,7 @@
           view: mode,
           context: currentContext()
         }
-      });
+      }, resume);
     };
     function drill(topic, patch) {
       onNav('reports', {
@@ -257,9 +266,13 @@
       "data-ready": !!data
     }, /*#__PURE__*/React.createElement(Styles, null), /*#__PURE__*/React.createElement("header", {
       className: "rw-header"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", null, title), /*#__PURE__*/React.createElement("p", null, data ? data.plan.display_name + ' · 当前正式计划与执行台账' : '当前正式计划', response && /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+      className: "wb-page-title"
+    }, title), /*#__PURE__*/React.createElement("p", {
+      className: "wb-page-context"
+    }, data ? data.plan.display_name + ' · 当前正式计划与执行台账' : '当前正式计划', response && /*#__PURE__*/React.createElement("span", {
       className: "rw-asof"
-    }, "\u6570\u636E\u622A\u81F3 ", response.meta.as_of.replace('T', ' ')))), /*#__PURE__*/React.createElement("div", {
+    }, "\u6570\u636E\u622A\u81F3 ", window.WorkbenchFormat.dateTime(response.meta.as_of)))), /*#__PURE__*/React.createElement("div", {
       className: "rw-actions"
     }, initialContext.returnTo && initialContext.returnTo.view === 'calib' && /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-left",
@@ -274,12 +287,39 @@
       "aria-label": "\u5237\u65B0\u62A5\u8868",
       busy: request.busy,
       onClick: reload
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "arrow-right",
-      disabled: !data,
-      reason: typeof onNav !== 'function' ? '工作区导航尚未接合。' : '',
-      onClick: () => go(mode === 'review' ? 'reports' : 'review')
-    }, mode === 'review' ? '报表中心' : '执行复盘'))), /*#__PURE__*/React.createElement(Scope, {
+    }))), /*#__PURE__*/React.createElement("div", {
+      className: "wb-view-tabs",
+      role: "tablist",
+      "aria-label": "\u7EDF\u8BA1\u5206\u6790\u89C6\u56FE"
+    }, [['reports', '报表中心'], ['review', '执行复盘']].map(([target, label], index) => /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      key: target,
+      role: "tab",
+      id: 'analytics-view-' + target,
+      "aria-selected": mode === target,
+      "aria-controls": "analytics-view-panel",
+      tabIndex: mode === target ? 0 : -1,
+      disabled: !data || typeof onNav !== 'function',
+      onClick: () => target !== mode && go(target, true),
+      onKeyDown: event => {
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === 'Home' ? 'reports' : event.key === 'End' ? 'review' : index === 0 ? 'review' : 'reports';
+        const button = document.getElementById('analytics-view-' + next);
+        if (button && !button.disabled) {
+          button.focus();
+          if (next !== mode) {
+            pendingViewFocus = next;
+            go(next, true);
+          }
+        }
+      }
+    }, label))), /*#__PURE__*/React.createElement("div", {
+      id: "analytics-view-panel",
+      role: "tabpanel",
+      "aria-labelledby": 'analytics-view-' + mode
+    }, /*#__PURE__*/React.createElement(Scope, {
       value: scope,
       onChange: changeScope,
       choices: lastChoices,
@@ -295,15 +335,18 @@
     }, notice), mode !== 'review' && /*#__PURE__*/React.createElement(Tabs, {
       topic: state.topic,
       onChange: changeTopic
-    }), request.busy && /*#__PURE__*/React.createElement("p", {
-      role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u771F\u5B9E\u8303\u56F4..."), data && /*#__PURE__*/React.createElement("div", {
+    }), request.busy && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "loading",
+      title: "\u6B63\u5728\u8BFB\u53D6\u771F\u5B9E\u8303\u56F4"
+    }), data && /*#__PURE__*/React.createElement("div", {
       id: "report-topic-panel",
       role: mode === 'review' ? undefined : 'tabpanel',
       "aria-labelledby": mode === 'review' ? undefined : 'report-tab-' + state.topic
     }, /*#__PURE__*/React.createElement(Metrics, {
       summary: data.summary,
       topic: state.topic
+    }), /*#__PURE__*/React.createElement(window.ReportEvidence.NoFeedback, {
+      summary: data.summary
     }), /*#__PURE__*/React.createElement("p", {
       className: "rw-basis"
     }, "\u8BA1\u5212\u5B8C\u5DE5\u65E5\u9009\u5DE5\u5E8F \xB7 \u5EF6\u540E\u8D85\u8FC7 10 \u5206\u949F\u624D\u8BA1\u665A\u5B8C \xB7 \u672A\u786E\u8BA4\u5B8C\u6210\u4E0D\u7B49\u4E8E\u672A\u751F\u4EA7\u3002"), /*#__PURE__*/React.createElement("div", {
@@ -328,9 +371,14 @@
       transfer: "export",
       busy: downloading,
       disabled: request.busy,
+      reasonDisplay: "inline",
       reason: !data.page.total ? '当前范围没有可导出的结果。' : '',
       onClick: download
-    }, "\u5BFC\u51FA\u8303\u56F4"))), /*#__PURE__*/React.createElement(Table, {
+    }, "\u5BFC\u51FA\u8303\u56F4"))), /*#__PURE__*/React.createElement("div", {
+      className: selected ? 'wb-detail-layout' : ''
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "rw-list-pane"
+    }, /*#__PURE__*/React.createElement(Table, {
       data: data,
       onDetail: ref => {
         setSelected(ref);
@@ -345,7 +393,7 @@
       page: data.page,
       onChange: changePage,
       busy: request.busy
-    }), selected && /*#__PURE__*/React.createElement(window.ReportDetail, {
+    })), selected && /*#__PURE__*/React.createElement(window.ReportDetail, {
       api: api,
       operationRef: selected,
       input: {
@@ -357,7 +405,7 @@
       initialView: detailView,
       onView: setDetailView,
       onOpenOperation: onOpenOperation || (typeof onNav === 'function' ? navigateOperation : undefined)
-    }), /*#__PURE__*/React.createElement(window.ReviewCharts, {
+    })), /*#__PURE__*/React.createElement(window.ReviewCharts, {
       data: data,
       open: chartsOpen,
       onChange: setChartsOpen,
@@ -376,7 +424,7 @@
       api: api,
       scope: data.scope,
       snapshot: response.meta.snapshot_ref
-    }))));
+    })))));
   }
   function GuardedWorkspace(props) {
     try {
@@ -393,7 +441,9 @@
     } catch (error) {
       return /*#__PURE__*/React.createElement("section", {
         className: "rw-workbench"
-      }, /*#__PURE__*/React.createElement("h2", null, props.mode === 'review' ? '执行复盘' : '报表中心'), /*#__PURE__*/React.createElement(window.ResourceControls.ErrorBox, {
+      }, /*#__PURE__*/React.createElement("h2", {
+        className: "wb-page-title"
+      }, props.mode === 'review' ? '执行复盘' : '报表中心'), /*#__PURE__*/React.createElement(window.ResourceControls.ErrorBox, {
         error: error
       }));
     }

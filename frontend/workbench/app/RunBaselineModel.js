@@ -12,7 +12,7 @@
     const r = item.comparison, s = item.segment;
     return ['初始计划 · ' + (r.batch_label || '批次未记录') + ' · ' + M.number(r.sequence) + ' ' + (r.process_label || '工序未记录'),
       M.timeLabel(s.start) + ' 至 ' + M.timeLabel(s.end), '设备：' + (s.machine && s.machine.label || '未记录'),
-      '人员：' + (s.operator && s.operator.label || '未记录'), statusLabels[r.status], '初始计划行引用：' + s.row_ref].join('\n');
+      '人员：' + (s.operator && s.operator.label || '未记录'), statusLabels[r.status]].join('\n');
   }
   function push(heap, value) {
     let i = heap.length; heap.push(value);

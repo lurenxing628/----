@@ -13,7 +13,8 @@
   }) {
     const board = React.useRef(null),
       [zoom, setZoom] = React.useState(1),
-      [hover, setHover] = React.useState(null);
+      [hover, setHover] = React.useState(null),
+      [focusTask, setFocusTask] = React.useState('');
     const [position, setPosition] = React.useState({
       left: 0,
       top: 0,
@@ -43,13 +44,13 @@
       setHover(null);
     }, [position.left, position.top, mode]);
     React.useEffect(() => {
-      const task = model.tasks.find(row => row.batch_ref === selectedBatch),
+      const task = model.tasks.find(row => row.task_ref === focusTask && row.batch_ref === selectedBatch) || model.tasks.find(row => row.batch_ref === selectedBatch),
         location = task && model.locations.get(task.task_ref);
       if (!location || !board.current) return;
       board.current.scrollTop = Math.max(0, location.top - 60);
       const left = (location.item.start - model.start) / (model.end - model.start) * width;
       if (left < position.left || left > position.left + viewport) board.current.scrollLeft = Math.max(0, left - viewport / 3);
-    }, [selectedBatch, model]);
+    }, [selectedBatch, focusTask, model]);
     const ticks = M.ticks(model.start, model.end, width, position.left, viewport);
     const rows = M.visibleRows(model.rows, Math.max(0, position.top - 60), position.top + position.height + 60);
     const rangeStart = model.start + position.left / width * (model.end - model.start),
@@ -87,7 +88,22 @@
         setZoom(1);
         board.current.scrollLeft = 0;
       }
-    }))), /*#__PURE__*/React.createElement("div", {
+    }))), /*#__PURE__*/React.createElement("label", {
+      className: "dy-run-picker"
+    }, "\u5B9A\u4F4D\u5DE5\u5E8F", /*#__PURE__*/React.createElement("select", {
+      "aria-label": "\u5B9A\u4F4D\u5206\u6790\u65F6\u95F4\u8F74\u4E2D\u7684\u5DE5\u5E8F",
+      value: model.tasks.some(row => row.task_ref === focusTask && row.batch_ref === selectedBatch) ? focusTask : '',
+      onChange: event => {
+        const task = model.tasks.find(row => row.task_ref === event.target.value);
+        setFocusTask(event.target.value);
+        if (task) onSelect(task.batch_ref);
+      }
+    }, /*#__PURE__*/React.createElement("option", {
+      value: ""
+    }, "\u9009\u62E9\u9700\u8981\u67E5\u770B\u7684\u5DE5\u5E8F"), model.tasks.map(task => /*#__PURE__*/React.createElement("option", {
+      key: task.task_ref,
+      value: task.task_ref
+    }, task.batch_id, " \xB7 ", task.sequence, " ", task.process_label, " \xB7 ", M.timeLabel(task.start))))), /*#__PURE__*/React.createElement("div", {
       className: "dy-timeline-board",
       ref: board,
       onScroll: measure,
@@ -116,7 +132,11 @@
       style: {
         left: tick.x
       }
-    }, tick.label.slice(0, 10), /*#__PURE__*/React.createElement("small", null, tick.label.slice(11)))))), rows.map(row => {
+    }, window.WorkbenchFormat.dateTime(tick.label, {
+      seconds: true
+    }).slice(0, 10), /*#__PURE__*/React.createElement("small", null, window.WorkbenchFormat.dateTime(tick.label, {
+      seconds: true
+    }).slice(11)))))), rows.map(row => {
       const items = row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd);
       return /*#__PURE__*/React.createElement("div", {
         key: row.key,
@@ -188,9 +208,10 @@
           }
         }, pixels >= 65 && /*#__PURE__*/React.createElement("span", null, task.batch_id, " \xB7 ", task.process_label));
       })));
-    }), !model.rows.length && /*#__PURE__*/React.createElement("p", {
-      className: "dy-empty"
-    }, "\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u6CA1\u6709\u53EF\u663E\u793A\u7684\u8BBE\u5907\u5B89\u6392\u3002"))), /*#__PURE__*/React.createElement("div", {
+    }), !model.rows.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "empty",
+      title: "\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u6CA1\u6709\u53EF\u663E\u793A\u7684\u8BBE\u5907\u5B89\u6392\u3002"
+    }))), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
     }, /*#__PURE__*/React.createElement("span", null, M.timeLabel(M.wire(model.start)), " \u81F3 ", M.timeLabel(M.wire(model.end)), " \xB7 \u5DE5\u5382\u672C\u5730"), /*#__PURE__*/React.createElement("span", null, mode === 'downtime' ? '检修窗口 / 原计划工序' : '原计划工序', " \xB7 ", model.tasks.length, " \u9053")), hover && /*#__PURE__*/React.createElement("div", {
       role: "tooltip",

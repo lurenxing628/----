@@ -12,11 +12,11 @@
     const paging = E.usePage(entity.operations, focusRef), groups = new Map(entity.external_groups.map(row => [row.ref, row])), root = React.useRef(null);
     E.useFocus(root, focusRef, paging.page.number);
     return <div ref={root}><div className="toolbar"><E.Search paging={paging} /><span>全部记录 {entity.operations.length} · 有效工序 {entity.relationships.operation_count}</span></div>
-      <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table className="tbl wb-table" aria-label={hours ? '已就绪工序汇总' : '路线工序明细'} style={{ minWidth: hours ? 1000 : 850, tableLayout: 'fixed' }}>
+      <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table className="tbl wb-table" aria-label={hours ? '已就绪工序汇总' : '路线工序明细'} style={{ minWidth: hours ? 1000 : 850, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{hours ? '已就绪工序汇总' : '路线工序明细'}</caption>
         {hours && <colgroup>{[14, 10, 8, 18, 10, 10, 10, 20].map((width, index) => <col key={index} style={{ width: width + '%' }} />)}</colgroup>}
-        <thead><tr><th>工序</th><th>工种</th><th>现有归属</th><th>供应商 / 外协组</th>{hours && <><th>换型工时（h）</th><th>单件工时（h）</th><th>外协周期（天）</th></>}<th>确认记录 / 问题</th></tr></thead>
+        <thead><tr><th scope="col">工序</th><th scope="col">工种</th><th scope="col">现有归属</th><th scope="col">供应商 / 外协组</th>{hours && <><th scope="col">换型工时（h）</th><th scope="col">单件工时（h）</th><th scope="col">外协周期（天）</th></>}<th scope="col">确认记录 / 问题</th></tr></thead>
         <tbody>{paging.rows.map(row => { const group = groups.get(row.external_group_ref); return <tr key={row.ref} data-process-location={row.ref} tabIndex={row.ref === focusRef ? -1 : undefined} aria-current={row.ref === focusRef ? 'true' : undefined}>
-          <td><b>{row.sequence}</b> {row.label}{row.ref === focusRef && <div className="muted" style={{ overflowWrap: 'anywhere' }}>{row.ref}</div>}</td><td>{row.op_type_label || '未绑定工种'}</td><td>{P.sourceLabel(row.source)}</td>
+          <td><b>{row.sequence}</b> {row.label}{row.ref === focusRef && <window.WorkbenchReference value={row.ref} />}</td><td>{row.op_type_label || '未绑定工种'}</td><td>{P.sourceLabel(row.source)}</td>
           <td>{row.source === 'internal' ? '不适用' : row.supplier_label || '未绑定供应商'}{group && <div>外协组 {group.start_sequence} 至 {group.end_sequence}</div>}</td>
           {hours && <><td>{row.source === 'internal' ? E.value(row.setup_hours) : '不适用'}</td><td>{row.source === 'internal' ? E.value(row.unit_hours) : '不适用'}</td><td data-process-cycle-group={row.external_days_source === 'group' ? row.external_group_ref : undefined}>{row.source === 'external' ? P.groupCycle(row, entity.external_groups) || E.value(row.external_days) : '不适用'}</td></>}
           <td>{row.status === 'active' ? '有效' : '已停用工序'}<div className="muted"><E.Confirmation record={row.confirmation[hours ? 'hours' : 'source']} /></div><Issues issues={row.issues} /></td></tr>; })}
@@ -60,11 +60,8 @@
     const visibleCommand = fileKind ? { ...command, phase: 'idle', result: null, error: null, locked: true } :
       needsReceiptCheck ? { ...command, phase: 'pending', locked: true, error: C.failure('回执未完整确认当前零件和本次步骤，请查询原请求回执。') } : command;
     const hasDraft = Object.values(dirty).some(Boolean);
-    React.useEffect(() => {
-      if (!hasDraft && !needsReceiptCheck) return undefined;
-      const warn = event => { event.preventDefault(); event.returnValue = ''; };
-      window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
-    }, [hasDraft, needsReceiptCheck]);
+    window.WorkbenchGuards.useDirtyGuard({ dirty: hasDraft, locked: (fileKind ? command.locked : visibleCommand.locked) || needsReceiptCheck,
+      message: '零件工艺的路线、归属或工时输入尚未保存。' });
     const locked = (fileKind ? command.locked : visibleCommand.locked) || refresh.loading || overlay || !!fileAction;
     const editingBlocked = disabled || locked || command.phase === 'done' || !!fileReceipt && !refresh.done;
     const editorDisabled = disabled || refresh.loading || !!fileAction || !!fileReceipt && !refresh.done;
@@ -151,28 +148,6 @@
       return () => cancelAnimationFrame(frame);
     }, [browsing, entity, selected, target]);
     return <div className="plana process-detail" ref={root}>
-      <style>{`
-        .process-detail .modal.lg { width:min(1120px,100%); max-height:calc(100vh - 48px); display:flex; flex-direction:column; }
-        .process-detail .modal-head,.process-detail .modal-f { flex:none; }
-        .process-detail .modal-f { width:100%; margin-left:0; align-self:stretch; }
-        .process-detail .modal-b.scroll { min-height:0; max-height:none; overflow:auto; }
-        .process-detail .stepper > span { flex:1; min-width:0; }
-        .process-detail .stp { border:0; border-radius:0; background:var(--ui-card-bg); font:inherit; text-align:left; white-space:normal; width:100%; }
-        .process-detail .seg > span,.process-detail .segm > span { display:contents !important; }
-        .process-detail .stepper > span + span { border-left:1px solid var(--ui-border); }
-        .process-detail .wb-table td,.process-detail .stp-s { white-space:normal; overflow-wrap:anywhere; }
-        .process-detail .process-fields dd { margin:0 0 14px; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--ui-text); }
-        .process-detail .process-fields dt { font-weight:600; }
-        .process-detail h3 { font-size:15px; }
-        .process-detail [hidden] { display:none !important; }
-        .process-detail .pd-foot,.process-detail .toolbar { flex-wrap:wrap; gap:8px; }
-        .process-detail .search { min-width:140px; max-width:320px; }
-        .process-detail input[type=checkbox] { width:16px; height:16px; flex:none; vertical-align:middle; }
-        .process-detail label > input[type=checkbox] { margin-right:6px; }
-        .process-detail tr[aria-current=true] { outline:2px solid var(--ui-primary); outline-offset:-2px; }
-        .process-detail .process-confirmation time { display:block; font-size:12px; line-height:1.5; white-space:normal; }
-        @media(max-width:700px) { .process-detail .modal-bg { padding:8px; } .process-detail .modal.lg { max-height:calc(100vh - 16px); } .process-detail .stp { padding:10px 6px; gap:6px; } }
-      `}</style>
       <Modal title={entity ? entity.business_code + ' · ' + entity.label : '零件工艺详情'} icon="chart-gantt" onClose={close} locked={locked} suspended={entry || overlay || !!discard || !!fileAction}
         footer={<><span className="muted" style={{ marginRight: 'auto' }}>{entity ? '关联批次 ' + entity.relationships.batch_count + ' · 本次不反写已有批次' : ''}</span><Button disabled={locked} onClick={close}>关闭详情</Button></>}>
         <div className="modal-b scroll pd-modal-b">

@@ -12,8 +12,8 @@
     task
   }) {
     return /*#__PURE__*/React.createElement("details", {
-      className: "tt-refs"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u6C38\u4E45\u5F15\u7528\u4E0E\u539F\u59CB\u4F9D\u636E"), /*#__PURE__*/React.createElement("dl", null, [['任务', task.task_ref], ['行', task.row_ref], ['原任务', task.source_task_ref], ['原行', task.source_row_ref], ['工序', task.operation_ref], ['批次', task.batch_ref]].map(([label, ref]) => /*#__PURE__*/React.createElement(React.Fragment, {
+      className: "tt-refs wb-ref"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u7F16\u53F7\u4E0E\u539F\u59CB\u4F9D\u636E"), /*#__PURE__*/React.createElement("dl", null, [['任务', task.task_ref], ['行', task.row_ref], ['原任务', task.source_task_ref], ['原行', task.source_row_ref], ['工序', task.operation_ref], ['批次', task.batch_ref]].map(([label, ref]) => /*#__PURE__*/React.createElement(React.Fragment, {
       key: label
     }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, ref || '无（候选来源无正式任务引用）')))), /*#__PURE__*/React.createElement("div", null, "\u524D\u5E8F\u5DE5\u5E8F\u5F15\u7528\uFF1A", task.predecessor_operation_refs.join('、') || '无'), /*#__PURE__*/React.createElement("div", null, "\u539F\u5DE5\u65F6\u4F9D\u636E\uFF1A", /*#__PURE__*/React.createElement("code", null, task.hours.basis || '未记录')));
   }
@@ -33,24 +33,40 @@
     task,
     commands,
     onEditing,
-    onRecheck
+    onRecheck,
+    guardOwner,
+    editorRevision
   }) {
     const [editing, setEditing] = React.useState(false),
       [form, setForm] = React.useState(null),
       [error, setError] = React.useState(null),
       [reviewed, setReviewed] = React.useState(false);
     const external = task.source === 'external';
+    const initial = React.useRef(null);
+    const dirty = editing && JSON.stringify(form) !== JSON.stringify(initial.current);
+    window.WorkbenchGuards.useDirtyGuard({
+      owner: guardOwner,
+      dirty,
+      message: '试调工序的设备、人员或开工调整尚未保存。'
+    });
     function close() {
       setEditing(false);
       onEditing(false);
       setError(null);
     }
+    async function cancel() {
+      if (!commands.busy && !commands.key && (await window.WorkbenchGuards.confirmLeave({
+        owner: guardOwner
+      }))) close();
+    }
     function open() {
-      setForm({
+      const value = {
         machine_ref: external ? null : task.machine_ref,
         operator_ref: external ? null : task.operator_ref,
         start: task.start
-      });
+      };
+      initial.current = value;
+      setForm(value);
       setEditing(true);
       onEditing(true);
       setReviewed(true);
@@ -59,6 +75,9 @@
       if (editing) setReviewed(false);
     }, [data]);
     React.useEffect(() => () => onEditing(false), []);
+    React.useEffect(() => {
+      close();
+    }, [editorRevision]);
     const editable = data.status === 'editing' && task.edit_context.can_change && data.write_context.capabilities['trial.change'] === true;
     async function submit(e) {
       e.preventDefault();
@@ -144,8 +163,8 @@
       disabled: !editable || !reviewed || commands.blocked
     }, "\u4FDD\u5B58\u8C03\u6574"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "x",
-      disabled: commands.busy,
-      onClick: close
+      disabled: commands.busy || !!commands.key,
+      onClick: cancel
     }, "\u53D6\u6D88\u7F16\u8F91"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "refresh-cw",
       disabled: commands.busy || !!commands.key,
@@ -158,7 +177,9 @@
     commands,
     onSelect,
     onEditing,
-    onRecheck
+    onRecheck,
+    guardOwner,
+    editorRevision
   }) {
     const task = data.tasks.find(t => t.task_ref === selected),
       name = window.TrialGantt.resourceNames(data);
@@ -182,7 +203,9 @@
       task,
       commands,
       onEditing,
-      onRecheck
+      onRecheck,
+      guardOwner,
+      editorRevision
     }), /*#__PURE__*/React.createElement("dl", {
       className: "tt-facts"
     }, [['分件', task.piece_id || '整批'], ['原目标量', U.number(task.quantity)], ['批次数量', U.number(task.batch_quantity)], ...(window.PointContract.isPoint(task) ? [['安排类型', '时间点'], ['本工序占用', '0 h · 不占用资源']] : []), ['优先级', {

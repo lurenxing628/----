@@ -39,9 +39,9 @@ html[data-theme="dark"] .plana {
 
 .plana .nav-group + .nav-group { margin-top: 12px; }
 
-.plana .nav-group-title { padding: 6px 10px 4px; font-size: 11px; font-weight: 600; color: var(--sidebar-muted); letter-spacing: 0.02em; }
+.plana .nav-group-title { padding: 6px 10px 4px; font-size: var(--font-size-1); font-weight: 600; color: var(--sidebar-muted); letter-spacing: 0.02em; }
 
-.plana .nav-item { position: relative; display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px; border: 1px solid transparent; border-radius: var(--wb-radius-control); color: var(--sidebar-text); text-decoration: none; font-weight: 500; font-size: 13.5px; cursor: pointer; transition: background-color .2s, color .2s; }
+.plana .nav-item { position: relative; display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px; border: 1px solid transparent; border-radius: var(--wb-radius-control); color: var(--sidebar-text); text-decoration: none; font-weight: 500; font-size: var(--font-size-3); cursor: pointer; transition: background-color .2s, color .2s; }
 
 .plana .nav-ico { flex: none; opacity: 0.8; }
 
@@ -59,21 +59,21 @@ html[data-theme="dark"] .plana {
 
 .plana .ph { display: flex; align-items: flex-start; gap: 18px; margin-bottom: 20px; }
 
-.plana .ph-eyebrow { font-size: 11.5px; font-weight: 700; letter-spacing: .07em; color: var(--ui-muted); text-transform: uppercase; }
+.plana .ph-eyebrow { font-size: var(--font-size-1); font-weight: 700; letter-spacing: .07em; color: var(--ui-muted); text-transform: uppercase; }
 
-.plana .ph h1 { margin: 6px 0 0; font-size: 25px; font-weight: 700; letter-spacing: -0.012em; }
+.plana .ph h1 { margin: 6px 0 0; font-size: var(--font-size-kpi); font-weight: 700; letter-spacing: -0.012em; }
 
-.plana .ph .ph-lead { margin: 8px 0 0; font-size: 13.5px; color: var(--ui-muted); line-height: 1.65; max-width: 560px; }
+.plana .ph .ph-lead { margin: 8px 0 0; font-size: var(--font-size-3); color: var(--ui-muted); line-height: 1.65; max-width: 560px; }
 
 .plana .ph .ph-lead b { color: var(--ui-text); font-weight: 600; }
 
 .plana .ph-spacer { flex: 1; }
 
-.plana .ph-help { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; color: var(--ui-muted); border: 1px solid var(--ui-border); background: var(--ui-card-bg); border-radius: var(--wb-radius-control); padding: 7px 14px; white-space: nowrap; cursor: pointer; transition: .15s; }
+.plana .ph-help { display: inline-flex; align-items: center; gap: 8px; font-size: var(--font-size-2); font-weight: 500; color: var(--ui-muted); border: 1px solid var(--ui-border); background: var(--ui-card-bg); border-radius: var(--wb-radius-control); padding: 7px 14px; white-space: nowrap; cursor: pointer; transition: .15s; }
 
 .plana .ph-help:hover { border-color: var(--kit-border-strong); color: var(--ui-text); }
 
-.plana .ph-help .q { width: 17px; height: 17px; border-radius: 50%; background: var(--ui-primary-soft); color: var(--ui-primary); display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+.plana .ph-help .q { width: 17px; height: 17px; border-radius: 50%; background: var(--ui-primary-soft); color: var(--ui-primary); display: grid; place-items: center; font-size: var(--font-size-1); font-weight: 700; }
 
 /* Approved mainline-only exception: original rail/rail-pill and hb-* visuals
    from workbench-before-radius-2026-09-07-193332. Content below stays flat. */
@@ -81,14 +81,14 @@ html[data-theme="dark"] .plana {
 
 .plana .rail-bar { display: flex; align-items: baseline; gap: 10px; margin-bottom: 18px; }
 
-.plana .rail-cap { font-size: 14px; font-weight: 700; letter-spacing: -.01em; color: var(--ui-text); }
-.plana .rail-hint { font-size: 12px; color: var(--ui-muted); }
+.plana .rail-cap { font-size: var(--font-size-3); font-weight: 700; letter-spacing: -.01em; color: var(--ui-text); }
+.plana .rail-hint { font-size: var(--font-size-1); color: var(--ui-muted); }
 .plana .rail-status { margin-left: auto; }
-.plana .rail-pill { font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.plana .rail-pill { font-size: var(--font-size-1); font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
 .plana .rail-pill.warn { background: var(--ui-warning-bg); color: var(--ui-warning-text); }
 .plana .rail-pill.ok { background: var(--ui-success-bg); color: var(--ui-success-text); }
 
-.plana .rail-legend { margin-left: auto; display: flex; gap: 14px; font-size: 11.5px; color: var(--ui-muted); }
+.plana .rail-legend { margin-left: auto; display: flex; gap: 14px; font-size: var(--font-size-1); color: var(--ui-muted); }
 
 .plana .rail-legend i { display: inline-flex; align-items: center; gap: 6px; font-style: normal; }
 
@@ -102,7 +102,7 @@ html[data-theme="dark"] .plana {
 .plana .flow { display: flex; align-items: stretch; gap: 0; }
 
 .plana .stage { position: relative; display: flex; flex-direction: column; gap: 12px; }
-.plana .stage-cap { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--ui-muted); }
+.plana .stage-cap { font-size: var(--font-size-1); font-weight: 700; letter-spacing: .04em; color: var(--ui-muted); }
 .plana .stage-body { flex: 1; display: flex; }
 /* 左侧数据输入：与右侧虚线框内的环节顶部对齐（padding-top 同 .chains） */
 .plana .stage-in { flex: 0 0 160px; padding-top: 18px; }
@@ -118,15 +118,15 @@ html[data-theme="dark"] .plana {
 
 /* 工序分流：两条链统一收进一个虚线框，整体成组 */
 .plana .chains { position: relative; display: flex; flex-direction: column; gap: 0; padding: 16px; border: 1.5px dashed var(--kit-border-strong); border-radius: var(--wb-radius-surface); background: var(--ui-surface-soft); }
-.plana .chains-tag { position: absolute; top: -8px; left: 14px; padding: 0 8px; background: var(--ui-card-bg); font-size: 11px; font-weight: 700; letter-spacing: .03em; color: var(--ui-muted); white-space: nowrap; }
+.plana .chains-tag { position: absolute; top: -8px; left: 14px; padding: 0 8px; background: var(--ui-card-bg); font-size: var(--font-size-1); font-weight: 700; letter-spacing: .03em; color: var(--ui-muted); white-space: nowrap; }
 
 /* ---- 工作日历：主线右上角的全局入口 ---- */
 .plana .gnode { display: flex; align-items: center; gap: 12px; padding: 13px 14px; border-radius: var(--wb-radius-control); border: 1px solid var(--ui-border); background: var(--ui-surface-muted); color: var(--ui-text); cursor: pointer; text-align: left; font-family: inherit; transition: border-color .15s, background-color .15s, transform .15s, box-shadow .15s; }
 .plana .gnode:hover { transform: none; box-shadow: none; border-color: var(--kit-border-strong); }
 .plana .gnode .gnode-ico { width: 36px; height: 36px; border-radius: var(--wb-radius-control); background: var(--kit-tile-bg); color: var(--ui-text); display: grid; place-items: center; flex: none; transition: .15s; }
 .plana .gnode .gnode-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.plana .gnode .gnode-name { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
-.plana .gnode .gnode-meta { font-size: 11.5px; color: var(--ui-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plana .gnode .gnode-name { font-size: var(--font-size-3); font-weight: 700; letter-spacing: -0.01em; }
+.plana .gnode .gnode-meta { font-size: var(--font-size-1); color: var(--ui-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plana .gnode.on { border-color: var(--ui-primary); background: var(--ui-primary-soft); }
 .plana .gnode.on .gnode-ico { background: var(--ui-card-bg); color: var(--ui-primary); }
 .plana .gnode.on .gnode-name { color: var(--ui-info-text); }
@@ -135,20 +135,20 @@ html[data-theme="dark"] .plana {
 .plana .rail-cal { flex: 0 0 300px; align-self: flex-start; margin-left: 0; padding: 18px 18px; gap: 14px; }
 .plana .rail-cal .gnode-ico { width: 46px; height: 46px; border-radius: var(--wb-radius-control); }
 .plana .rail-cal .gnode-ico svg { width: 24px; height: 24px; }
-.plana .rail-cal .gnode-name { font-size: 16px; }
-.plana .rail-cal .gnode-meta { font-size: 12.5px; }
+.plana .rail-cal .gnode-name { font-size: var(--font-size-4); }
+.plana .rail-cal .gnode-meta { font-size: var(--font-size-2); }
 .plana .conn-cal { align-self: flex-start; margin-top: 40px; margin-left: 8px; }
 
 /* ---- 页脚：产能就绪度（铺满整行）---- */
 .plana .rail-foot { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--kit-divider); }
 .plana .ready { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding: 14px 18px; border-radius: var(--wb-radius-surface); border: 0; background: var(--ui-card-bg); }
-.plana .ready-label { font-size: 13px; font-weight: 700; color: var(--ui-text); flex: none; }
-.plana .ready-val { font-size: 12px; font-weight: 700; color: var(--ui-muted); font-variant-numeric: tabular-nums; flex: none; margin-left: -8px; }
+.plana .ready-label { font-size: var(--font-size-2); font-weight: 700; color: var(--ui-text); flex: none; }
+.plana .ready-val { font-size: var(--font-size-1); font-weight: 700; color: var(--ui-muted); font-variant-numeric: tabular-nums; flex: none; margin-left: -8px; }
 .plana .ready-meter { flex: 1 1 200px; min-width: 160px; height: 8px; border-radius: var(--wb-radius-control); background: var(--ui-surface-muted); overflow: hidden; }
 .plana .ready-meter i { display: block; height: 100%; border-radius: var(--wb-radius-control); background: var(--ui-success); }
-.plana .ready-note { font-size: 12px; color: var(--ui-muted); flex: none; }
+.plana .ready-note { font-size: var(--font-size-1);  flex: none; }
 .plana .ready-warn { color: var(--ui-warning-text); font-weight: 700; }
-.plana .ready-next { flex: none; margin-left: auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 0 16px; border: 1px solid var(--ui-primary); border-radius: var(--wb-radius-control); background: var(--ui-primary); color: #fff; font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; transition: background-color .15s, border-color .15s; }
+.plana .ready-next { flex: none; margin-left: auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 0 16px; border: 1px solid var(--ui-primary); border-radius: var(--wb-radius-control); background: var(--ui-primary); color: var(--ui-text-inverse); font-family: inherit; font-size: var(--font-size-2); font-weight: 700; cursor: pointer; transition: background-color .15s, border-color .15s; }
 .plana .ready-next:hover { background: var(--ui-primary-hover); border-color: var(--ui-primary-hover); }
 
 .plana .node { position: relative; display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: 13px 15px 14px; border-radius: var(--wb-radius-control); border: 1px solid var(--ui-border); background: var(--ui-card-bg); color: var(--ui-text); cursor: pointer; transition: border-color .15s, background-color .15s, transform .15s, box-shadow .15s; text-align: left; box-shadow: none; }
@@ -160,9 +160,9 @@ html[data-theme="dark"] .plana {
 
 .plana .node .nicon { width: 30px; height: 30px; border-radius: var(--wb-radius-control); background: var(--ui-primary-soft); color: var(--ui-primary); display: grid; place-items: center; flex: none; transition: .15s; }
 
-.plana .node .nname { font-size: 15px; font-weight: 700; margin-top: 11px; letter-spacing: -0.01em; }
+.plana .node .nname { font-size: var(--font-size-3); font-weight: 700; margin-top: 11px; letter-spacing: -0.01em; }
 
-.plana .node .nmeta { font-size: 11.5px; color: var(--ui-muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.plana .node .nmeta { font-size: var(--font-size-1); color: var(--ui-muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
 
 .plana .node.on { border-color: var(--ui-primary); background: var(--ui-primary-soft); box-shadow: 0 0 0 3px rgb(37 99 235 / .12); }
 
@@ -186,9 +186,9 @@ html[data-theme="dark"] .plana {
 .plana .lane.int .lane-dot { background: var(--ui-primary); }
 .plana .lane.ext .lane-dot { background: var(--ui-warning); }
 
-.plana .lane-name { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
+.plana .lane-name { font-size: var(--font-size-2); font-weight: 700; letter-spacing: -0.01em; }
 
-.plana .lane-meas { font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: var(--wb-radius-control); white-space: nowrap; }
+.plana .lane-meas { font-size: var(--font-size-1); font-weight: 700; padding: 2px 9px; border-radius: var(--wb-radius-control); white-space: nowrap; }
 
 .plana .lane.int .lane-meas { background: var(--kit-int-fill); color: var(--ui-info-text); }
 
@@ -208,9 +208,9 @@ html[data-theme="dark"] .plana {
 
 .plana .snode .sbody { display: flex; flex-direction: column; gap: 3px; min-width: 0; margin-top: 11px; }
 
-.plana .snode .sname { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plana .snode .sname { font-size: var(--font-size-3); font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.plana .snode .scount { font-size: 11.5px; color: var(--ui-muted); font-variant-numeric: tabular-nums; }
+.plana .snode .scount { font-size: var(--font-size-1); color: var(--ui-muted); font-variant-numeric: tabular-nums; }
 
 .plana .snode.int.on { border-color: var(--ui-primary); background: var(--ui-primary-soft); box-shadow: 0 0 0 3px rgb(37 99 235 / .12); }
 
@@ -226,14 +226,14 @@ html[data-theme="dark"] .plana {
 
 .plana .content { margin-top: 26px; border-radius: var(--wb-radius-surface); box-shadow: none; }
 
-.plana .crumb { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 600; color: var(--ui-muted); margin-bottom: 9px; }
+.plana .crumb { display: flex; align-items: center; gap: 8px; font-size: var(--font-size-1); font-weight: 600; color: var(--ui-muted); margin-bottom: 9px; }
 
 .plana .crumb .sep { color: var(--ui-muted); }
 
 .plana .crumb .cur { color: var(--ui-text); }
 
 .plana .crumb .tag-int,
-.plana .crumb .tag-ext { padding: 1px 7px; border-radius: var(--wb-radius-control); font-size: 10.5px; }
+.plana .crumb .tag-ext { padding: 1px 7px; border-radius: var(--wb-radius-control); font-size: var(--font-size-1); }
 
 .plana .crumb .tag-int { background: var(--ui-primary-soft); color: var(--ui-info-text); }
 
@@ -241,9 +241,9 @@ html[data-theme="dark"] .plana {
 
 .plana .chead { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
 
-.plana .chead.wb-page-heading h2 { margin: 0; font-size: 17px !important; line-height: 24px !important; font-weight: 600; letter-spacing: 0; }
+.plana .chead.wb-page-heading h2 { margin: 0; font-size: var(--font-size-4) !important; line-height: 24px !important; font-weight: 600; letter-spacing: 0; }
 
-.plana .chead .cdesc { margin: 6px 0 0; font-size: 13px; color: var(--ui-muted); line-height: 1.6; max-width: 760px; }
+.plana .chead .cdesc { margin: 6px 0 0; font-size: var(--font-size-2); color: var(--ui-muted); line-height: 1.6; max-width: 760px; }
 
 .plana .chead .cdesc b { font-weight: 600; }
 
@@ -255,7 +255,7 @@ html[data-theme="dark"] .plana {
 
 .plana .subtabs { display: inline-flex; gap: 3px; padding: 4px; border-radius: var(--wb-radius-control); background: var(--ui-surface-soft); border: 1px solid var(--ui-border); margin: 0 0 16px; }
 
-.plana .subtab { height: 34px; padding: 0 15px; border: 0; background: transparent; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ui-muted); cursor: pointer; border-radius: var(--wb-radius-control); display: inline-flex; align-items: center; gap: 7px; }
+.plana .subtab { height: 34px; padding: 0 15px; border: 0; background: transparent; font-family: inherit; font-size: var(--font-size-2); font-weight: 600; color: var(--ui-muted); cursor: pointer; border-radius: var(--wb-radius-control); display: inline-flex; align-items: center; gap: 7px; }
 
 .plana .subtab b { font-variant-numeric: tabular-nums; font-weight: 700; }
 
@@ -271,7 +271,7 @@ html[data-theme="dark"] .plana {
 
 .plana .search { position: relative; flex: 1 1 280px; max-width: 360px; }
 
-.plana .search input { width: 100%; height: 32px; padding: 0 12px 0 36px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); font-family: inherit; font-size: 13px; color: var(--ui-text); transition: .15s; }
+.plana .search input { width: 100%; height: 32px; padding: 0 12px 0 36px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); font-family: inherit; font-size: var(--font-size-2); color: var(--ui-text); transition: .15s; }
 
 .plana .search input:focus-visible { outline: none; border-color: var(--ui-primary); box-shadow: var(--ui-focus-ring); }
 
@@ -279,7 +279,7 @@ html[data-theme="dark"] .plana {
 
 .plana .tb-spacer { flex: 1; }
 
-.plana .btn { height: 32px; padding: 0 12px; border-radius: var(--wb-radius-control); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--ui-border); background: var(--ui-card-bg); color: var(--ui-text); box-shadow: none; transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s, transform .12s; white-space: nowrap; }
+.plana .btn { height: 32px; padding: 0 12px; border-radius: var(--wb-radius-control); font-family: inherit; font-size: var(--font-size-2); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--ui-border); background: var(--ui-card-bg); color: var(--ui-text); box-shadow: none; transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s, transform .12s; white-space: nowrap; }
 
 .plana .btn:hover:not(:disabled) { border-color: var(--kit-border-strong); background: var(--ui-surface-muted); box-shadow: none; }
 
@@ -287,7 +287,7 @@ html[data-theme="dark"] .plana {
 
 .plana .btn svg { width: 16px; height: 16px; flex: none; }
 
-.plana .btn.primary { background: var(--ui-primary); border-color: var(--ui-primary); color: #fff; }
+.plana .btn.primary { background: var(--ui-primary); border-color: var(--ui-primary); color: var(--ui-text-inverse); }
 
 .plana .btn.primary:hover:not(:disabled) { background: var(--ui-primary-hover); border-color: var(--ui-primary-hover); }
 
@@ -297,9 +297,9 @@ html[data-theme="dark"] .plana {
 
 .plana .stat + .stat { border-left: 1px solid var(--kit-border-strong); }
 
-.plana .stat .sv { font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; letter-spacing: -0.01em; }
+.plana .stat .sv { font-size: var(--font-size-5); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; letter-spacing: -0.01em; }
 
-.plana .stat .sl { font-size: 13px; color: var(--ui-muted); white-space: nowrap; }
+.plana .stat .sl { font-size: var(--font-size-2); color: var(--ui-muted); white-space: nowrap; }
 
 .plana .stat.anchor .sv { color: var(--ui-primary); }
 
@@ -313,7 +313,7 @@ html[data-theme="dark"] .plana {
 
 .plana .card-scroll { overflow-x: auto; border-radius: var(--wb-radius-surface); box-shadow: none; }
 
-.plana table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 860px; table-layout: fixed; }
+.plana table.tbl { width: 100%; border-collapse: collapse; font-size: var(--font-size-3); min-width: 860px; table-layout: fixed; }
 
 .plana .tbl th,
 .plana .tbl td { overflow: hidden; }
@@ -325,7 +325,7 @@ html[data-theme="dark"] .plana {
 
 .plana .tbl input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--ui-primary); cursor: pointer; margin: 0; vertical-align: middle; }
 
-.plana table.tbl th { text-align: left; font-size: 12px; font-weight: 600; color: var(--ui-muted); background: var(--ui-surface-muted); padding: 11px 16px; border-bottom: 1px solid var(--ui-border); white-space: nowrap; }
+.plana table.tbl th { text-align: left; font-size: var(--font-size-1); font-weight: 600; color: var(--ui-muted); background: var(--ui-surface-muted); padding: 11px 16px; border-bottom: 1px solid var(--ui-border); white-space: nowrap; }
 
 .plana table.tbl th.r,
 .plana table.tbl td.r { text-align: right; font-variant-numeric: tabular-nums; }
@@ -342,11 +342,11 @@ html[data-theme="dark"] .plana {
 
 .plana .lnk:hover { text-decoration: underline; }
 
-.plana .route { color: var(--ui-muted); font-size: 12.5px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.plana .route { color: var(--ui-muted); font-size: var(--font-size-2); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 
 .plana .muted { color: var(--ui-muted); }
 
-.plana .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: var(--wb-radius-control); font-size: 11.5px; font-weight: 700; }
+.plana .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: var(--wb-radius-control); font-size: var(--font-size-1); font-weight: 700; }
 
 .plana .pill .dot { width: 6px; height: 6px; border-radius: 50%; }
 
@@ -368,7 +368,7 @@ html[data-theme="dark"] .plana {
 
 .plana .chipline { display: inline-flex; gap: 5px; flex-wrap: wrap; }
 
-.plana .chip { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--wb-radius-control); background: var(--ui-surface-muted); border: 1px solid var(--ui-border); color: var(--ui-text); white-space: nowrap; }
+.plana .chip { font-size: var(--font-size-1); font-weight: 600; padding: 2px 8px; border-radius: var(--wb-radius-control); background: var(--ui-surface-muted); border: 1px solid var(--ui-border); color: var(--ui-text); white-space: nowrap; }
 
 .plana .chip.b { background: var(--ui-primary-soft); border-color: var(--ui-info-border); color: var(--ui-info-text); }
 
@@ -376,7 +376,7 @@ html[data-theme="dark"] .plana {
 
 .plana .rowact { display: flex; gap: 8px; }
 
-.plana .mini { height: 30px; padding: 0 11px; border-radius: var(--wb-radius-control); border: 1px solid var(--ui-border); background: var(--ui-card-bg); font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ui-text); cursor: pointer; transition: .12s; white-space: nowrap; }
+.plana .mini { height: 30px; padding: 0 11px; border-radius: var(--wb-radius-control); border: 1px solid var(--ui-border); background: var(--ui-card-bg); font-family: inherit; font-size: var(--font-size-2); font-weight: 600; color: var(--ui-text); cursor: pointer; transition: .12s; white-space: nowrap; }
 
 .plana .mini:hover { border-color: var(--kit-border-strong); background: var(--ui-surface-muted); }
 
@@ -384,7 +384,7 @@ html[data-theme="dark"] .plana {
 
 .plana .mini.danger:hover { background: var(--ui-danger-bg); border-color: var(--ui-danger-border); }
 
-.plana .pager { display: flex; align-items: center; gap: 14px; margin-top: 14px; font-size: 12.5px; color: var(--ui-muted); }
+.plana .pager { display: flex; align-items: center; gap: 14px; margin-top: 14px; font-size: var(--font-size-2); color: var(--ui-muted); }
 
 .plana .pager .pg { width: 32px; height: 32px; border-radius: var(--wb-radius-control); border: 1px solid var(--ui-border); background: var(--ui-card-bg); cursor: pointer; display: grid; place-items: center; color: var(--ui-text); }
 
@@ -392,7 +392,7 @@ html[data-theme="dark"] .plana {
 
 .plana .pager .grow { flex: 1; }
 
-.plana .selcount { font-size: 13px; color: var(--ui-muted); white-space: nowrap; }
+.plana .selcount { font-size: var(--font-size-2); color: var(--ui-muted); white-space: nowrap; }
 
 .plana .selcount b { color: var(--ui-text); font-variant-numeric: tabular-nums; }
 
@@ -401,15 +401,13 @@ html[data-theme="dark"] .plana {
 
 .plana .tb-div { width: 1px; height: 24px; background: var(--ui-border); margin: 0 2px; }
 
-.plana .linkbtn { background: none; border: 0; color: var(--ui-muted); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; padding: 0 2px; }
-
-.plana .linkbtn:hover { color: var(--ui-text); text-decoration: underline; }
+.plana .linkbtn:hover { color: var(--ui-text);  }
 
 .plana .btn.danger { color: var(--ui-danger-text); }
 
 .plana .btn.danger:hover:not(:disabled) { background: var(--ui-danger-bg); border-color: var(--ui-danger-border); color: var(--ui-danger-text); }
 
-.plana .btn.dangerfill { background: var(--ui-danger); border-color: var(--ui-danger); color: #fff; }
+.plana .btn.dangerfill { background: var(--ui-danger); border-color: var(--ui-danger); color: var(--ui-text-inverse); }
 
 .plana .btn.dangerfill:hover:not(:disabled) { filter: brightness(0.94); }
 
@@ -434,9 +432,9 @@ html[data-theme="dark"] .plana {
 .plana .modal-b.pd-modal-b .stepper { margin-top: 0; }
 .plana .modal-b.pd-modal-b .pd-foot.sticky { bottom: -18px; }
 
-.plana .modal-h { padding: 18px 20px 0; font-size: 17px; font-weight: 600; }
+.plana .modal-h { padding: 18px 20px 0; font-size: var(--font-size-4); font-weight: 600; }
 
-.plana .modal-b { padding: 10px 20px 18px; font-size: 13.5px; color: var(--ui-muted); line-height: 1.7; }
+.plana .modal-b { padding: 10px 20px 18px; font-size: var(--font-size-3); color: var(--ui-muted); line-height: 1.7; }
 
 .plana .modal-b b { color: var(--ui-text); font-weight: 600; }
 
@@ -448,11 +446,11 @@ html[data-theme="dark"] .plana {
 
 .plana .modal-ico { width: 38px; height: 38px; border-radius: var(--wb-radius-control); background: var(--ui-primary-soft); color: var(--ui-primary); display: grid; place-items: center; flex: none; }
 
-.plana .modal-h2 { font-size: 17px; font-weight: 600; letter-spacing: 0; }
+.plana .modal-h2 { font-size: var(--font-size-4); font-weight: 600; letter-spacing: 0; }
 
-.plana .modal-hs { font-size: 12.5px; color: var(--ui-muted); margin-top: 3px; line-height: 1.5; }
+.plana .modal-hs { font-size: var(--font-size-2); color: var(--ui-muted); margin-top: 3px; line-height: 1.5; }
 
-.plana .modal-x { margin-left: auto; width: 30px; height: 30px; border-radius: var(--wb-radius-control); border: 1px solid transparent; background: transparent; color: var(--ui-muted); font-size: 17px; line-height: 1; cursor: pointer; flex: none; }
+.plana .modal-x { margin-left: auto; width: 30px; height: 30px; border-radius: var(--wb-radius-control); border: 1px solid transparent; background: transparent; color: var(--ui-muted); font-size: var(--font-size-4); line-height: 1; cursor: pointer; flex: none; }
 
 .plana .modal-x:hover { background: var(--ui-surface-muted); color: var(--ui-text); }
 
@@ -469,13 +467,13 @@ html[data-theme="dark"] .plana {
 
 .plana .field.full { grid-column: 1 / -1; }
 
-.plana .field > label { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--ui-text); }
+.plana .field > label { font-size: var(--font-size-2); line-height: 18px; font-weight: 600; color: var(--ui-text); }
 
 .plana .field > label .req { color: var(--ui-danger); margin-left: 2px; }
 
 .plana .field input,
 .plana .field select,
-.plana .field textarea { width: 100%; height: 36px; padding: 0 12px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); font-family: inherit; font-size: 13px; color: var(--ui-text); transition: .15s; }
+.plana .field textarea { width: 100%; height: 36px; padding: 0 12px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); font-family: inherit; font-size: var(--font-size-2); color: var(--ui-text); transition: .15s; }
 
 .plana .field select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; cursor: pointer; }
 
@@ -485,14 +483,14 @@ html[data-theme="dark"] .plana {
 .plana .field select:focus-visible,
 .plana .field textarea:focus-visible { outline: none; border-color: var(--ui-primary); box-shadow: var(--ui-focus-ring); }
 
-.plana .field .fhint { font-size: 12px; color: var(--ui-info-muted); line-height: 18px; }
+.plana .field .fhint { font-size: var(--font-size-1); color: var(--ui-info-muted); line-height: 18px; }
 
 .plana .field.err input,
 .plana .field.err textarea { border-color: var(--ui-danger); }
 
 .plana .selbox { position: relative; }
 
-.plana .selbox .selbtn { width: 100%; height: 36px; padding: 0 34px 0 12px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); font-family: inherit; font-size: 13px; color: var(--ui-text); text-align: left; cursor: pointer; transition: .15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plana .selbox .selbtn { width: 100%; height: 36px; padding: 0 34px 0 12px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); font-family: inherit; font-size: var(--font-size-2); color: var(--ui-text); text-align: left; cursor: pointer; transition: .15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .plana .selbox .selbtn:hover { border-color: var(--kit-border-strong); }
 
@@ -506,7 +504,7 @@ html[data-theme="dark"] .plana {
 
 .plana .selbox.open .selpop { display: block; }
 
-.plana .selopt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--wb-radius-control); font-size: 13.5px; color: var(--ui-text); cursor: pointer; transition: .1s; }
+.plana .selopt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--wb-radius-control); font-size: var(--font-size-3); color: var(--ui-text); cursor: pointer; transition: .1s; }
 
 .plana .selopt:hover { background: var(--ui-surface-muted); }
 
@@ -518,7 +516,7 @@ html[data-theme="dark"] .plana {
 
 .plana .fchips { display: flex; flex-wrap: wrap; gap: 7px; }
 
-.plana .fchip { font-size: 12px; font-weight: 600; padding: 7px 12px; border-radius: var(--wb-radius-control); border: 1px solid var(--ui-border); background: var(--ui-card-bg); color: var(--ui-text); cursor: pointer; transition: .12s; user-select: none; }
+.plana .fchip { font-size: var(--font-size-1); font-weight: 600; padding: 7px 12px; border-radius: var(--wb-radius-control); border: 1px solid var(--ui-border); background: var(--ui-card-bg); color: var(--ui-text); cursor: pointer; transition: .12s; user-select: none; }
 
 .plana .fchip:hover { border-color: var(--kit-border-strong); }
 
@@ -526,7 +524,7 @@ html[data-theme="dark"] .plana {
 
 .plana .iotabs { display: inline-flex; gap: 3px; padding: 4px; border-radius: var(--wb-radius-control); background: var(--ui-surface-soft); border: 1px solid var(--ui-border); margin-bottom: 16px; }
 
-.plana .iotab { height: 32px; padding: 0 18px; border: 0; background: transparent; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ui-muted); cursor: pointer; border-radius: var(--wb-radius-control); }
+.plana .iotab { height: 32px; padding: 0 18px; border: 0; background: transparent; font-family: inherit; font-size: var(--font-size-2); font-weight: 600; color: var(--ui-muted); cursor: pointer; border-radius: var(--wb-radius-control); }
 
 .plana .iotab.on { background: var(--ui-card-bg); color: var(--ui-text); box-shadow: none; }
 
@@ -538,9 +536,9 @@ html[data-theme="dark"] .plana {
 
 .plana .tmpl-row .tmpl-ico { width: 32px; height: 32px; border-radius: var(--wb-radius-control); background: var(--ui-card-bg); border: 1px solid var(--ui-border); display: grid; place-items: center; color: var(--ui-success); flex: none; }
 
-.plana .tmpl-row .tmpl-t { font-size: 13px; font-weight: 600; color: var(--ui-text); }
+.plana .tmpl-row .tmpl-t { font-size: var(--font-size-2); font-weight: 600; color: var(--ui-text); }
 
-.plana .tmpl-row .tmpl-s { font-size: 11.5px; color: var(--ui-muted); margin-top: 2px; }
+.plana .tmpl-row .tmpl-s { font-size: var(--font-size-1); color: var(--ui-muted); margin-top: 2px; }
 
 .plana .tmpl-row .mini { margin-left: auto; }
 
@@ -552,13 +550,13 @@ html[data-theme="dark"] .plana {
 
 .plana .drop .di { width: 42px; height: 42px; margin: 0 auto 11px; border-radius: var(--wb-radius-control); background: var(--ui-card-bg); border: 1px solid var(--ui-border); display: grid; place-items: center; color: var(--ui-primary); }
 
-.plana .drop .dt { font-size: 13.5px; font-weight: 600; color: var(--ui-text); }
+.plana .drop .dt { font-size: var(--font-size-3); font-weight: 600; color: var(--ui-text); }
 
 .plana .drop .dt b { color: var(--ui-primary); }
 
-.plana .drop .ds { font-size: 12px; color: var(--ui-muted); margin-top: 5px; }
+.plana .drop .ds { font-size: var(--font-size-1); color: var(--ui-muted); margin-top: 5px; }
 
-.plana .iohint { font-size: 12px; color: var(--ui-muted); line-height: 1.6; margin: 13px 2px 2px; }
+.plana .iohint { font-size: var(--font-size-1); color: var(--ui-muted); line-height: 1.6; margin: 13px 2px 2px; }
 
 .plana .iohint b { color: var(--ui-text); font-weight: 600; }
 
@@ -574,23 +572,23 @@ html[data-theme="dark"] .plana {
 
 .plana .iorow.on .radio::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--ui-primary); }
 
-.plana .iorow .iotitle { font-size: 13.5px; font-weight: 600; color: var(--ui-text); }
+.plana .iorow .iotitle { font-size: var(--font-size-3); font-weight: 600; color: var(--ui-text); }
 
-.plana .iorow .iosub { font-size: 12px; color: var(--ui-muted); margin-top: 2px; }
+.plana .iorow .iosub { font-size: var(--font-size-1); color: var(--ui-muted); margin-top: 2px; }
 
-.plana .iorow .iotag { margin-left: auto; font-size: 11.5px; font-weight: 700; color: var(--ui-muted); font-variant-numeric: tabular-nums; }
+.plana .iorow .iotag { margin-left: auto; font-size: var(--font-size-1); font-weight: 700; color: var(--ui-muted); font-variant-numeric: tabular-nums; }
 
 .plana .seg { display: flex; gap: 8px; margin: 6px 0 2px; }
 
-.plana .seg button { flex: 1; height: 36px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ui-text); cursor: pointer; transition: .12s; }
+.plana .seg button { flex: 1; height: 36px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); font-family: inherit; font-size: var(--font-size-2); font-weight: 600; color: var(--ui-text); cursor: pointer; transition: .12s; }
 
 .plana .seg button:hover { border-color: var(--kit-border-strong); }
 
 .plana .seg button.on { border-color: var(--ui-primary); background: var(--ui-primary-soft); color: var(--ui-info-text); }
 
-.plana .seclabel { font-size: 12px; font-weight: 700; color: var(--ui-muted); letter-spacing: .02em; margin: 4px 2px 9px; }
+.plana .seclabel { font-size: var(--font-size-1); font-weight: 700; color: var(--ui-muted); letter-spacing: .02em; margin: 4px 2px 9px; }
 
-.plana .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(12px); display: flex; align-items: center; gap: 9px; padding: 11px 18px; border-radius: var(--wb-radius-overlay); background: var(--ui-success-bg); border: 1px solid var(--ui-success-border); color: var(--ui-success-text); font-size: 13px; font-weight: 600; box-shadow: var(--ui-shadow-md); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 200; }
+.plana .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(12px); display: flex; align-items: center; gap: 9px; padding: 11px 18px; border-radius: var(--wb-radius-overlay); background: var(--ui-success-bg); border: 1px solid var(--ui-success-border); color: var(--ui-success-text); font-size: var(--font-size-2); font-weight: 600; box-shadow: var(--ui-shadow-md); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 200; }
 
 .plana .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
 
@@ -602,7 +600,7 @@ html[data-theme="dark"] .plana {
 
 .plana .cal-top { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 
-.plana .cal-title { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.plana .cal-title { font-size: var(--font-size-4); font-weight: 700; font-variant-numeric: tabular-nums; }
 
 .plana .cal-nav { width: 38px; height: 38px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); cursor: pointer; color: var(--ui-text); flex: none; }
 
@@ -612,7 +610,7 @@ html[data-theme="dark"] .plana {
 
 .plana .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 
-.plana .cal-wd { text-align: center; font-size: 11.5px; font-weight: 700; color: var(--ui-muted); padding: 4px 0 8px; }
+.plana .cal-wd { text-align: center; font-size: var(--font-size-1); font-weight: 700; color: var(--ui-muted); padding: 4px 0 8px; }
 
 .plana .cal-cell { aspect-ratio: 1.15 / 1; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); display: flex; flex-direction: column; padding: 7px 9px; cursor: pointer; transition: .12s; }
 
@@ -620,9 +618,9 @@ html[data-theme="dark"] .plana {
 
 .plana .cal-cell.empty { border: 0; background: transparent; cursor: default; }
 
-.plana .cal-cell .d { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.plana .cal-cell .d { font-size: var(--font-size-2); font-weight: 600; font-variant-numeric: tabular-nums; }
 
-.plana .cal-cell .tag { margin-top: auto; font-size: 10px; font-weight: 700; }
+.plana .cal-cell .tag { margin-top: auto; font-size: var(--font-size-1); font-weight: 700; }
 
 .plana .cal-cell.we .d { color: var(--ui-danger); }
 
@@ -640,13 +638,13 @@ html[data-theme="dark"] .plana {
 
 .plana .cal-cell.today { outline: 2px solid var(--ui-primary); outline-offset: -2px; }
 
-.plana .cal-side h3 { margin: 0 0 4px; font-size: 14px; font-weight: 700; }
+.plana .cal-side h3 { margin: 0 0 4px; font-size: var(--font-size-3); font-weight: 700; }
 
-.plana .cal-side p { margin: 0 0 14px; font-size: 12.5px; color: var(--ui-muted); line-height: 1.65; }
+.plana .cal-side p { margin: 0 0 14px; font-size: var(--font-size-2); color: var(--ui-muted); line-height: 1.65; }
 
 .plana .cal-leg { display: flex; flex-direction: column; gap: 9px; margin-bottom: 16px; }
 
-.plana .cal-leg div { display: flex; align-items: center; gap: 9px; font-size: 12.5px; }
+.plana .cal-leg div { display: flex; align-items: center; gap: 9px; font-size: var(--font-size-2); }
 
 .plana .cal-leg .sw { width: 16px; height: 16px; border-radius: var(--wb-radius-control); border: 1px solid var(--ui-border); flex: none; }
 
@@ -657,7 +655,7 @@ html[data-theme="dark"] .plana {
 .plana .cal-leg .sw.we { background: var(--ui-danger-bg); border-color: var(--ui-danger-border); }
 
 /* \u4e3b\u7ebf\u653e\u4e0d\u4e0b\u65f6\uff1a\u7ad6\u5411\u5806\u53e0\uff0c\u6536\u8d77\u7bad\u5934\uff08\u8f93\u5165\u8282\u70b9\u8f6c\u4e3a\u4e00\u884c\uff09 */
-@media (max-width: 1000px) {
+@media (max-width: 1280px) {
 .plana .flow { flex-wrap: wrap; }
 .plana .rail-cal { flex: 1 1 100%; margin-left: 0; margin-top: 14px; align-self: stretch; }
 .plana .conn-cal { display: none; }
@@ -676,10 +674,10 @@ html[data-theme="dark"] .plana {
 }
 
 /* ---- 工艺 · 工时录入（工序清单 · 换型 / 单件两列） ---- */
-.plana .linkbtn { border: 0; background: transparent; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--kit-link); cursor: pointer; padding: 0; }
+.plana .linkbtn { border: 0; background: transparent; font-family: inherit; font-size: var(--font-size-2); font-weight: 600; color: var(--kit-link); cursor: pointer; padding: 0; }
 .plana .linkbtn:hover { text-decoration: underline; }
 .plana .num { font-variant-numeric: tabular-nums; }
-.plana .wt-in { width: 78px; height: 32px; padding: 0 9px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); font-family: inherit; font-size: 13px; color: var(--ui-text); text-align: right; font-variant-numeric: tabular-nums; transition: border-color .15s, box-shadow .15s; }
+.plana .wt-in { width: 78px; height: 32px; padding: 0 9px; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); font-family: inherit; font-size: var(--font-size-2); color: var(--ui-text); text-align: right; font-variant-numeric: tabular-nums; transition: border-color .15s, box-shadow .15s; }
 .plana .wt-in:focus-visible { outline: none; border-color: var(--ui-primary); box-shadow: var(--ui-focus-ring); }
 .plana .wt-in.empty { border-color: var(--ui-warning-border); box-shadow: inset 0 0 0 1px var(--ui-warning-border); }
 .plana .wt-in.bad { border-color: var(--ui-danger); box-shadow: 0 0 0 3px rgb(220 38 38 / .14); }
@@ -687,7 +685,7 @@ html[data-theme="dark"] .plana {
 .plana .tbl th.wt-col, .plana .tbl td.wt-col { text-align: right; }
 .plana .tbl thead th.wt-col { background: var(--ui-primary-soft); color: var(--ui-info-text); }
 .plana .tbl th.wt-col, .plana .tbl td.wt-col { border-left: 1px solid var(--ui-info-border); }
-.plana .tbl th small, .plana .tbl td small { display: inline-block; font-weight: 500; font-size: 10px; letter-spacing: .01em; color: var(--ui-muted); margin-left: 6px; }
+.plana .tbl th small, .plana .tbl td small { display: inline-block; font-weight: 500; font-size: var(--font-size-1); letter-spacing: .01em; color: var(--ui-muted); margin-left: 6px; }
 .plana .tbl thead th.wt-col small { color: var(--ui-info-muted); }
 .plana .tbl td.wt-col .wt-cell { justify-content: flex-end; }
 /* ---- compact density for the operation tables ---- */
@@ -695,26 +693,26 @@ html[data-theme="dark"] .plana {
 .plana .tbl.op-tbl td { padding-top: 6px; padding-bottom: 6px; }
 .plana .tbl.op-tbl .wt-in { height: 36px; }
 .plana .wt-cell { display: flex; align-items: center; gap: 8px; }
-.plana .prov { flex: none; font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: var(--wb-radius-control); cursor: default; }
+.plana .prov { flex: none; font-size: var(--font-size-1); font-weight: 600; padding: 2px 8px; border-radius: var(--wb-radius-control); cursor: default; }
 .plana .chip.cal { background: var(--ui-success-bg); border-color: var(--ui-success-border); color: var(--ui-success-text); }
 .plana .prov.bad-note { color: var(--ui-danger-text); background: transparent; padding: 0; }
 .plana .pill.danger { background: var(--ui-danger-bg); color: var(--ui-danger-text); }
 .plana .pill.danger .dot { background: var(--ui-danger); }
-.plana .match-note { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--ui-warning-border); border-radius: var(--wb-radius-surface); background: var(--ui-warning-bg); font-size: 12.5px; color: var(--ui-warning-text); font-variant-numeric: tabular-nums; }
+.plana .match-note { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--ui-warning-border); border-radius: var(--wb-radius-surface); background: var(--ui-warning-bg); font-size: var(--font-size-2); color: var(--ui-warning-text); font-variant-numeric: tabular-nums; }
 .plana .match-note b { font-weight: 700; }
 .plana .pd-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 14px; }
 .plana .pd-foot.sticky { position: sticky; bottom: 0; z-index: 8; margin-top: 16px; padding: 12px 16px; background: var(--ui-card-bg); border: 0; border-top: 1px solid var(--ui-border); border-radius: var(--wb-radius-surface); box-shadow: none; }
-.plana .pd-foot .muted { font-size: 12.5px; line-height: 1.6; flex: 1 1 320px; }
+.plana .pd-foot .muted { font-size: var(--font-size-2); line-height: 1.6; flex: 1 1 320px; }
 .plana .wt-sum { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 .plana .wt-sum-top { display: flex; align-items: center; gap: 8px; }
-.plana .wt-sum-top .wt-go { font-size: 11.5px; }
-.plana .wt-sum-h { font-size: 11.5px; color: var(--ui-muted); font-variant-numeric: tabular-nums; }
+.plana .wt-sum-top .wt-go { font-size: var(--font-size-1); }
+.plana .wt-sum-h { font-size: var(--font-size-1); color: var(--ui-muted); font-variant-numeric: tabular-nums; }
 .plana .wt-sum-h b { font-weight: 700; color: var(--ui-text); }
 
 /* ===== 工艺三步流程：列表管线 + 详情 stepper + 归属分拣 + 已就绪 ===== */
 .plana .pl-name { font-weight: 600; }
 .plana .pipe { display: inline-flex; align-items: center; }
-.plana .pp { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: var(--wb-radius-control); font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.plana .pp { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: var(--wb-radius-control); font-size: var(--font-size-1); font-weight: 700; white-space: nowrap; }
 .plana .pp svg { width: 13px; height: 13px; flex: none; }
 .plana .pp.done { background: var(--ui-success-bg); color: var(--ui-success-text); }
 .plana .pp.warn { background: var(--ui-warning-bg); color: var(--ui-warning-text); }
@@ -726,54 +724,54 @@ html[data-theme="dark"] .plana {
 .plana .stepper { display: flex; margin: 0 0 22px; border: 0; border-radius: var(--wb-radius-surface); overflow: hidden; background: var(--ui-card-bg); box-shadow: none; }
 .plana .stp { flex: 1; display: flex; align-items: center; gap: 12px; padding: 15px 18px; min-width: 0; }
 .plana .stp + .stp { border-left: 1px solid var(--ui-border); }
-.plana .stp-n { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; flex: none; border: 1.5px solid var(--ui-border); color: var(--ui-muted); background: var(--ui-surface-muted); }
+.plana .stp-n { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: var(--font-size-2); font-weight: 700; flex: none; border: 1.5px solid var(--ui-border); color: var(--ui-muted); background: var(--ui-surface-muted); }
 .plana .stp-n svg { width: 15px; height: 15px; }
 .plana .stp-b { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.plana .stp-t { font-size: 13.5px; font-weight: 700; }
-.plana .stp-s { font-size: 11.5px; color: var(--ui-muted); }
+.plana .stp-t { font-size: var(--font-size-3); font-weight: 700; }
+.plana .stp-s { font-size: var(--font-size-1); color: var(--ui-muted); }
 .plana .stp.done .stp-n { background: var(--ui-success-bg); border-color: var(--ui-success-border); color: var(--ui-success-text); }
 .plana .stp.active { background: var(--ui-primary-soft); }
-.plana .stp.active .stp-n { background: var(--ui-primary); border-color: var(--ui-primary); color: #fff; }
+.plana .stp.active .stp-n { background: var(--ui-primary); border-color: var(--ui-primary); color: var(--ui-text-inverse); }
 .plana .stp.active .stp-t { color: var(--ui-info-text); }
 .plana .stp.lock { background: var(--ui-surface-muted); }
 .plana .stp.lock .stp-t, .plana .stp.lock .stp-s { color: var(--ui-muted); }
-.plana .stp-edit { margin-left: 8px; font-size: 11px; font-weight: 600; color: var(--kit-link); cursor: pointer; white-space: nowrap; }
+.plana .stp-edit { margin-left: 8px; font-size: var(--font-size-1); font-weight: 600; color: var(--kit-link); cursor: pointer; white-space: nowrap; }
 .plana .stp-edit:hover { text-decoration: underline; }
 
 .plana .segm { display: inline-flex; padding: 2px; border-radius: var(--wb-radius-control); background: var(--ui-surface-soft); border: 1px solid var(--ui-border); gap: 2px; }
-.plana .segm button { height: 28px; padding: 0 13px; border: 0; background: transparent; border-radius: var(--wb-radius-control); font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--ui-muted); cursor: pointer; white-space: nowrap; transition: .12s; }
+.plana .segm button { height: 28px; padding: 0 13px; border: 0; background: transparent; border-radius: var(--wb-radius-control); font-family: inherit; font-size: var(--font-size-2); font-weight: 700; color: var(--ui-muted); cursor: pointer; white-space: nowrap; transition: .12s; }
 .plana .segm button:hover { color: var(--ui-text); }
-.plana .segm button.on.int { background: var(--ui-primary); color: #fff; }
-.plana .segm button.on.ext { background: var(--ui-warning); color: #fff; }
+.plana .segm button.on.int { background: var(--ui-primary); color: var(--ui-text-inverse); }
+.plana .segm button.on.ext { background: var(--ui-warning); color: var(--ui-text-inverse); }
 .plana .attr-cell { display: flex; align-items: center; gap: 9px; }
-.plana .sug { font-size: 10px; font-weight: 700; letter-spacing: .03em; color: var(--ui-muted); white-space: nowrap; }
-.plana .basis { font-size: 12px; color: var(--ui-muted); line-height: 1.5; }
+.plana .sug { font-size: var(--font-size-1); font-weight: 700; letter-spacing: .03em; color: var(--ui-muted); white-space: nowrap; }
+.plana .basis { font-size: var(--font-size-1); color: var(--ui-muted); line-height: 1.5; }
 .plana .basis b { color: var(--ui-text); font-weight: 600; }
-.plana .conf { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.plana .conf { display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-size-1); font-weight: 700; white-space: nowrap; }
 .plana .conf::before { content: ""; width: 7px; height: 7px; border-radius: 50%; flex: none; }
-.plana .conf.hi { color: var(--ui-success); } .plana .conf.hi::before { background: var(--ui-success); }
-.plana .conf.lo { color: var(--ui-warning); } .plana .conf.lo::before { background: var(--ui-warning); }
-.plana .conf.none { color: var(--ui-danger); } .plana .conf.none::before { background: var(--ui-danger); }
+.plana .conf.hi {  } .plana .conf.hi::before { background: var(--ui-success); }
+.plana .conf.lo {  } .plana .conf.lo::before { background: var(--ui-warning); }
+.plana .conf.none {  } .plana .conf.none::before { background: var(--ui-danger); }
 .plana .tbl tr.attn td:first-child { box-shadow: inset 3px 0 0 var(--ui-warning); }
 .plana .tbl tr.attn-bad td:first-child { box-shadow: inset 3px 0 0 var(--ui-danger); }
 
-.plana .gate-note { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--ui-info-border); border-radius: var(--wb-radius-surface); background: var(--ui-info-bg); font-size: 12.5px; color: var(--ui-info-text); }
+.plana .gate-note { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--ui-info-border); border-radius: var(--wb-radius-surface); background: var(--ui-info-bg); font-size: var(--font-size-2); color: var(--ui-info-text); }
 .plana .gate-note svg { width: 16px; height: 16px; flex: none; }
 .plana .gate-note b { font-weight: 700; }
-.plana .grp-row td { background: var(--ui-surface-muted); padding: 8px 16px; font-size: 11.5px; font-weight: 700; color: var(--ui-muted); letter-spacing: .02em; }
+.plana .grp-row td { background: var(--ui-surface-muted); padding: 8px 16px; font-size: var(--font-size-1); font-weight: 700; color: var(--ui-muted); letter-spacing: .02em; }
 
 .plana .ready-note { display: flex; align-items: center; gap: 11px; margin: 0 0 16px; padding: 13px 16px; border: 1px solid var(--ui-success-border); border-radius: var(--wb-radius-surface); background: var(--ui-success-bg); color: var(--ui-success-text); }
 .plana .ready-note .rn-ico { width: 32px; height: 32px; border-radius: var(--wb-radius-control); background: var(--ui-card-bg); border: 1px solid var(--ui-success-border); color: var(--ui-success); display: grid; place-items: center; flex: none; }
 .plana .ready-note .rn-ico svg { width: 17px; height: 17px; }
-.plana .ready-note .rn-t { font-size: 14px; font-weight: 700; }
-.plana .ready-note .rn-s { font-size: 12px; margin-top: 2px; opacity: .85; }
+.plana .ready-note .rn-t { font-size: var(--font-size-3); font-weight: 700; }
+.plana .ready-note .rn-s { font-size: var(--font-size-1); margin-top: 2px; opacity: .85; }
 .plana .ready-note .rn-act { margin-left: auto; }
-.plana .wt-val { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13.5px; }
+.plana .wt-val { font-variant-numeric: tabular-nums; font-weight: 600; font-size: var(--font-size-3); }
 
 /* ---- 路线录入：下拉菜单 / 手工抽屉 / 待归类卡片 ---- */
 .plana button.lnk { background: none; border: 0; padding: 0; font-family: inherit; font-size: inherit; cursor: pointer; }
 .plana .pl-menu { position: fixed; z-index: 140; min-width: 188px; padding: 6px; background: var(--ui-card-bg); border: 1px solid var(--ui-border); border-radius: var(--wb-radius-overlay); box-shadow: var(--ui-shadow-md); animation: fade .1s ease; }
-.plana .pl-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: var(--wb-radius-control); background: none; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ui-text); cursor: pointer; text-align: left; }
+.plana .pl-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: var(--wb-radius-control); background: none; font-family: inherit; font-size: var(--font-size-2); font-weight: 600; color: var(--ui-text); cursor: pointer; text-align: left; }
 .plana .pl-menu-item:hover { background: var(--ui-primary-soft); color: var(--ui-info-text); }
 .plana .pl-menu-ic { display: inline-flex; color: var(--ui-muted); }
 .plana .pl-menu-item:hover .pl-menu-ic { color: var(--ui-primary); }
@@ -787,12 +785,12 @@ html[data-theme="dark"] .plana {
 .plana .seg.re-mode button { flex: 1; height: 36px; border: 0; background: transparent; border-radius: var(--wb-radius-control); color: var(--ui-muted); font-weight: 600; transition: background .12s, color .12s; }
 .plana .seg.re-mode button:hover { border-color: transparent; color: var(--ui-text); background: var(--ui-card-bg); }
 .plana .seg.re-mode button.on,
-.plana .seg.re-mode button.on:hover { background: var(--ui-primary); color: #fff; border: 0; box-shadow: none; }
+.plana .seg.re-mode button.on:hover { background: var(--ui-primary); color: var(--ui-text-inverse); border: 0; box-shadow: none; }
 
 /* 解析预览：保留底色区分，不增加浮卡层级。 */
 .plana .re-prev .card { background: var(--ui-surface-soft); }
 
-.plana .re-ok { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--ui-success-border); border-radius: var(--wb-radius-surface); background: var(--ui-success-bg); color: var(--ui-success-text); font-size: 12.5px; font-weight: 600; }
+.plana .re-ok { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--ui-success-border); border-radius: var(--wb-radius-surface); background: var(--ui-success-bg); color: var(--ui-success-text); font-size: var(--font-size-2); font-weight: 600; }
 
 .plana .pend-card { margin-bottom: 18px; }
 .plana .pend-head { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; margin-bottom: 9px; }
@@ -802,7 +800,7 @@ html[data-theme="dark"] .plana {
 .plana .modal-hs, .plana .tmpl-row .tmpl-s, .plana .crumb,
 .plana .stp-s, .plana .pp, .plana .pill, .plana .prov,
 .plana .conf, .plana .chip, .plana .tbl th small, .plana .tbl td small,
-.plana .wt-sum-h, .plana .grp-row td { font-size: 12px; line-height: 18px; letter-spacing: 0; }
+.plana .wt-sum-h, .plana .grp-row td { font-size: var(--font-size-1); line-height: 18px; letter-spacing: 0; }
 .plana .conf.hi { color: var(--ui-success-text); }
 .plana .conf.lo { color: var(--ui-warning-text); }
 .plana .conf.none { color: var(--ui-danger-text); }
@@ -810,9 +808,9 @@ html[data-theme="dark"] .plana {
 .plana .wb-metric[data-tone="primary"],
 .plana .wb-metric[data-tone="notice"] { --wb-metric-color: var(--ui-text); }
 .plana .statline.wb-metrics { margin-bottom: 12px; }
-.plana .mini, .plana .linkbtn, .plana .selopt { font-size: 13px; }
-.plana .cal-title, .plana .cal-side h3 { font-size: 17px; font-weight: 600; }
-.plana .cal-wd, .plana .cal-cell .tag { font-size: 12px; }
+.plana .mini, .plana .linkbtn, .plana .selopt { font-size: var(--font-size-2); }
+.plana .cal-title, .plana .cal-side h3 { font-size: var(--font-size-4); font-weight: 600; }
+.plana .cal-wd, .plana .cal-cell .tag { font-size: var(--font-size-1); }
 
 /* ============================================================
    产能链主线 · 中心枢纽（方案 3 / hb-）— 替换原 flow/stage/chains 串联视图
@@ -831,9 +829,9 @@ html[data-theme="dark"] .plana {
 .plana .hb-bdot.io { background: var(--ui-muted); }
 .plana .hb-bdot.fk { background: var(--ui-primary); }
 .plana .hb-bdot.cal { background: var(--ui-success); }
-.plana .hb-bname { font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
-.plana .hb-bmeas { font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--ui-surface-muted); color: var(--ui-muted); white-space: nowrap; flex: none; }
-.plana .hb-bnum { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--ui-muted); font-variant-numeric: tabular-nums; flex: none; white-space: nowrap; }
+.plana .hb-bname { font-size: var(--font-size-3); font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+.plana .hb-bmeas { font-size: var(--font-size-1); font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--ui-surface-muted); color: var(--ui-muted); white-space: nowrap; flex: none; }
+.plana .hb-bnum { margin-left: auto; font-size: var(--font-size-1); font-weight: 700; color: var(--ui-muted); font-variant-numeric: tabular-nums; flex: none; white-space: nowrap; }
 .plana .hb-bbody { display: flex; flex-direction: column; gap: 12px; flex: 1; }
 
 .plana .hb-tile { position: relative; display: flex; align-items: center; gap: 12px; padding: 13px 15px; min-height: 64px; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-card-bg); color: var(--ui-text); cursor: pointer; text-align: left; box-shadow: var(--ui-shadow-sm); transition: border-color .15s, transform .15s, box-shadow .15s, background-color .15s; font-family: inherit; flex: 1; }
@@ -844,8 +842,8 @@ html[data-theme="dark"] .plana {
 .plana .hb-tile.int .hb-tico { background: var(--kit-int-fill); color: var(--ui-primary); }
 .plana .hb-tile.ext .hb-tico { background: var(--kit-ext-fill); color: var(--ui-warning-text); }
 .plana .hb-tbody { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.plana .hb-tname { font-size: 14.5px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
-.plana .hb-tmeta { font-size: 12px; color: var(--ui-muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plana .hb-tname { font-size: var(--font-size-3); font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+.plana .hb-tmeta { font-size: var(--font-size-1); color: var(--ui-muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plana .hb-nstat { position: absolute; top: 11px; right: 11px; width: 8px; height: 8px; border-radius: 50%; }
 .plana .hb-nstat.warn { background: var(--ui-warning); box-shadow: 0 0 0 3px var(--ui-warning-bg); }
 .plana .hb-tile.io.on { border-color: var(--ui-primary); background: var(--ui-primary-soft); box-shadow: 0 0 0 3px rgb(37 99 235 / .12); }
@@ -861,11 +859,11 @@ html[data-theme="dark"] .plana {
 .plana .hb-lane-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .plana .hb-lane.intl .hb-lane-dot { background: var(--ui-primary); }
 .plana .hb-lane.extl .hb-lane-dot { background: var(--ui-warning); }
-.plana .hb-lane-name { font-size: 12.5px; font-weight: 700; letter-spacing: -.01em; }
-.plana .hb-lane-meas { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.plana .hb-lane-name { font-size: var(--font-size-2); font-weight: 700; letter-spacing: -.01em; }
+.plana .hb-lane-meas { font-size: var(--font-size-1); font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
 .plana .hb-lane.intl .hb-lane-meas { background: var(--kit-int-fill); color: var(--ui-info-text); }
 .plana .hb-lane.extl .hb-lane-meas { background: var(--kit-ext-fill); color: var(--ui-warning-text); }
-.plana .hb-lane-count { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--ui-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.plana .hb-lane-count { margin-left: auto; font-size: var(--font-size-1); font-weight: 700; color: var(--ui-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .plana .hb-lane-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; }
 .plana .hb-lane + .hb-lane { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--ui-border); }
 
@@ -876,26 +874,26 @@ html[data-theme="dark"] .plana {
 .plana .hb-ops .hb-lane-row .hb-tile { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px; padding: 12px; min-width: 0; height: 100%; min-height: 72px; }
 .plana .hb-ops .hb-tico { width: 28px; height: 28px; border-radius: 8px; }
 .plana .hb-ops .hb-tico svg { width: 16px; height: 16px; }
-.plana .hb-ops .hb-tile .hb-tname { font-size: 13px; line-height: 1.45; letter-spacing: 0; white-space: normal; overflow-wrap: anywhere; }
+.plana .hb-ops .hb-tile .hb-tname { font-size: var(--font-size-2); line-height: 1.45; letter-spacing: 0; white-space: normal; overflow-wrap: anywhere; }
 .plana .hb-ops .hb-tmeta { white-space: normal; overflow-wrap: anywhere; }
 
 .plana .hb-cal-top { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 .plana .hb-cal-ico { width: 44px; height: 44px; border-radius: 12px; background: var(--ui-primary-soft); color: var(--ui-primary); display: grid; place-items: center; flex: none; }
 .plana .hb-cal-lead { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.plana .hb-cl1 { font-size: 14px; font-weight: 700; letter-spacing: -.01em; }
-.plana .hb-cl2 { font-size: 11.5px; color: var(--ui-muted); line-height: 1.45; }
+.plana .hb-cl1 { font-size: var(--font-size-3); font-weight: 700; letter-spacing: -.01em; }
+.plana .hb-cl2 { font-size: var(--font-size-1); color: var(--ui-muted); line-height: 1.45; }
 .plana .hb-cal-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 13px; }
 .plana .hb-cs { display: flex; flex-direction: column; gap: 3px; padding: 10px 11px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-card-bg); }
-.plana .hb-csv { font-size: 15px; font-weight: 800; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.plana .hb-csl { font-size: 10.5px; color: var(--ui-muted); line-height: 1.3; }
-.plana .hb-cal-strip-cap { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 11px; font-weight: 700; color: var(--ui-muted); }
+.plana .hb-csv { font-size: var(--font-size-3); font-weight: 800; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.plana .hb-csl { font-size: var(--font-size-1); color: var(--ui-muted); line-height: 1.3; }
+.plana .hb-cal-strip-cap { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: var(--font-size-1); font-weight: 700; color: var(--ui-muted); }
 .plana .hb-csc-key { display: inline-flex; align-items: center; gap: 5px; }
 .plana .hb-csc-dot { width: 8px; height: 8px; border-radius: 3px; }
 .plana .hb-csc-dot.work { background: var(--ui-success); }
 .plana .hb-csc-dot.rest { background: var(--ui-warning); }
 .plana .hb-cal-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-bottom: 14px; }
 .plana .hb-seg { display: flex; flex-direction: column; align-items: center; gap: 5px; }
-.plana .hb-sl { font-size: 10px; font-weight: 700; color: var(--ui-muted); }
+.plana .hb-sl { font-size: var(--font-size-1); font-weight: 700; color: var(--ui-muted); }
 .plana .hb-sb { width: 100%; height: 9px; border-radius: 999px; background: var(--ui-success); }
 .plana .hb-seg.rest .hb-sb { background: var(--ui-warning); }
 .plana .hb-seg.rest .hb-sl { color: var(--ui-warning-text); }
@@ -907,21 +905,21 @@ html[data-theme="dark"] .plana {
 .plana .hb-ready { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--ui-border); border-radius: 13px; background: var(--ui-card-bg); box-shadow: var(--ui-shadow-sm); }
 .plana .hb-r-top { display: flex; align-items: center; gap: 14px; padding: 15px 18px; }
 .plana .hb-r-ico { width: 42px; height: 42px; border-radius: 11px; background: var(--ui-success-bg); color: var(--ui-success); display: grid; place-items: center; flex: none; }
-.plana .hb-rl1 { font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; flex: none; }
-.plana .hb-rl2 { font-size: 12px; font-weight: 700; color: var(--ui-muted); font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }
-.plana .hb-r-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; line-height: 1; padding: 5px 9px; border-radius: 999px; background: var(--ui-warning-bg); border: 1px solid var(--ui-warning-border); color: var(--ui-warning-text); font-weight: 700; white-space: nowrap; flex: none; }
+.plana .hb-rl1 { font-size: var(--font-size-3); font-weight: 700; letter-spacing: -.01em; flex: none; }
+.plana .hb-rl2 { font-size: var(--font-size-1); font-weight: 700; color: var(--ui-muted); font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }
+.plana .hb-r-tag { display: inline-flex; align-items: center; gap: 6px; font-size: var(--font-size-1); line-height: 1; padding: 5px 9px; border-radius: 999px; background: var(--ui-warning-bg); border: 1px solid var(--ui-warning-border); color: var(--ui-warning-text); font-weight: 700; white-space: nowrap; flex: none; }
 .plana .hb-r-tag::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ui-warning); flex: none; }
 .plana .hb-r-spacer { flex: 1 1 auto; }
 .plana .hb-r-floor { height: 6px; background: var(--ui-surface-muted); }
 .plana .hb-r-floor i { display: block; height: 100%; background: var(--ui-success); }
-.plana .hb-r-next { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 0 18px; border: 1px solid var(--ui-primary); border-radius: 10px; background: var(--ui-primary); color: #fff; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: .15s; white-space: nowrap; }
+.plana .hb-r-next { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 0 18px; border: 1px solid var(--ui-primary); border-radius: 10px; background: var(--ui-primary); color: var(--ui-text-inverse); font-family: inherit; font-size: var(--font-size-2); font-weight: 700; cursor: pointer; transition: .15s; white-space: nowrap; }
 .plana .hb-r-next:hover { background: var(--ui-primary-hover); border-color: var(--ui-primary-hover); }
 
 /* Keep the approved navigation geometry; its helper text uses the same readable role. */
 .plana .rail .rail-pill, .plana .rail .hb-bmeas, .plana .rail .hb-bnum,
 .plana .rail .hb-lane-meas, .plana .rail .hb-lane-count, .plana .rail .hb-cl2,
 .plana .rail .hb-csl, .plana .rail .hb-cal-strip-cap, .plana .rail .hb-sl,
-.plana .rail .hb-r-tag { font-size: 12px; line-height: 18px; }
+.plana .rail .hb-r-tag { font-size: var(--font-size-1); line-height: 18px; }
 .plana .rail * { letter-spacing: 0; }
 
 @media (max-width: 1280px) {

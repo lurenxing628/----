@@ -22,26 +22,31 @@
     navigation,
     loading,
     error,
-    panelRef
+    triggerRef,
+    autoFocus = true
   }) {
     const data = result && result.data,
       entity = data && data.entity;
-    return /*#__PURE__*/React.createElement("aside", {
-      className: "mo-detail",
-      "aria-label": "\u4E3B\u6570\u636E\u5B9E\u4F53\u8BE6\u60C5",
-      tabIndex: -1,
-      ref: panelRef
+    if (!selected) return null;
+    return /*#__PURE__*/React.createElement(window.WorkbenchDetailPanel, {
+      title: "\u4E3B\u6570\u636E\u5B9E\u4F53\u8BE6\u60C5",
+      subtitle: entity ? entity.business_code + ' · ' + (entity.label || '名称未填') : '正在核对所选记录',
+      detailKey: selected.key || selected.entity_ref,
+      onClose: onBack,
+      triggerRef: triggerRef,
+      autoFocus: autoFocus
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "mo-detail"
     }, /*#__PURE__*/React.createElement(Button, {
       className: "mo-link",
       icon: "chevron-left",
-      onClick: onBack,
-      disabled: !selected
+      onClick: onBack
     }, "\u8FD4\u56DE\u6E05\u5355"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
-    }), loading && /*#__PURE__*/React.createElement("p", {
-      role: "status",
-      className: "mo-muted"
-    }, "\u6B63\u5728\u6838\u5BF9\u5B9E\u4F53\u8BE6\u60C5\u2026"), entity ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }), loading && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "loading",
+      title: "\u6B63\u5728\u6838\u5BF9\u5B9E\u4F53\u8BE6\u60C5\u2026"
+    }), entity ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "mo-detail-head"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
       className: "mo-muted"
@@ -91,11 +96,14 @@
       disabled: item.domain === 'batch' && !navigation
     }, /*#__PURE__*/React.createElement("strong", null, item.business_code, " \xB7 ", item.label)), /*#__PURE__*/React.createElement("p", {
       className: "mo-source"
-    }, item.source)) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, item.title), /*#__PURE__*/React.createElement("p", null, item.evidence), /*#__PURE__*/React.createElement("p", {
-      className: "mo-source"
-    }, item.rule), /*#__PURE__*/React.createElement(Button, {
+    }, item.source)) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, item.title), /*#__PURE__*/React.createElement("p", null, item.evidence), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '检查规则': item.rule
+      }
+    }), /*#__PURE__*/React.createElement(Button, {
       className: "mo-link",
       icon: "arrow-right",
+      reasonDisplay: "inline",
       reason: item.target.unavailable_reason || (!navigation ? '维护导航尚未接入。' : ''),
       onClick: () => onMaintain(item.target)
     }, item.action)))))), /*#__PURE__*/React.createElement(Pager, {
@@ -105,7 +113,7 @@
       onPage: onPage
     })) : !loading && !error && /*#__PURE__*/React.createElement("p", {
       className: "mo-muted"
-    }, "\u6682\u65E0\u53EF\u67E5\u770B\u7684\u5B9E\u4F53\u3002"));
+    }, "\u6682\u65E0\u53EF\u67E5\u770B\u7684\u5B9E\u4F53\u3002")));
   }
   window.MasterOverviewDetail = MasterOverviewDetail;
 })();

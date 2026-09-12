@@ -35,27 +35,23 @@
     return <section className="plana run-job-panel" aria-label="指定运行"><U.Styles />
       <div className="rj-heading"><h2>排产运行</h2><U.Button icon="refresh-cw" aria-label="刷新指定运行" busy={checking} disabled={!A.ref(runRef)} onClick={refresh} /></div>
       {!A.ref(runRef) ? <p role="alert">运行来源无效，未切换到其他运行。</p> : <>
-        <p className="rj-identity">指定运行：{runRef}</p>{error && <div className="rj-notice" role="alert">{error}</div>}
+        <window.WorkbenchReference entries={{ '指定运行': runRef }} />{error && <div className="rj-notice" role="alert">{error}</div>}
         {record && <U.Record run={record} intent={null} paused={paused} checking={checking} verified={verified} api={api} />}
         {!record && <p role="status" className="rj-muted">{checking ? '正在读取指定运行。' : paused ? '返回页面后继续读取指定运行。' : '尚未核实指定运行，未显示其他运行结果。'}</p>}
       </>}
     </section>;
   }
   function Navigation({ children }) {
-    return <div className="scheduling-navigation">{children}<style>{`
-      .scheduling-navigation{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 10px;margin-bottom:16px;background:var(--ui-surface-muted);border-bottom:1px solid var(--ui-border);min-width:0;color:var(--ui-text)}
-      .scheduling-navigation .btn[aria-pressed="true"]{color:var(--ui-primary-text,var(--ui-text));background:var(--ui-surface-selected,var(--ui-surface));border-color:var(--ui-border-strong,var(--ui-border))}
-      .scheduling-navigation .scheduling-source{font-size:12px;color:var(--ui-info-muted);margin-left:auto}
-    `}</style></div>;
+    return <div className="scheduling-navigation">{children}</div>;
   }
   function RunWorkspace({ onNavigate, initialContext }) {
     const api = useRunAdapter(onNavigate), specified = initialContext && Object.prototype.hasOwnProperty.call(initialContext, 'run_ref');
-    return <><Navigation><U.Button icon="history" onClick={() => onNavigate('analysis', { source: 'run_history' })}>排产记录</U.Button>
-      {specified && <U.Button icon="plus" onClick={() => onNavigate('run', {})}>新建排产范围</U.Button>}</Navigation>
-      {specified ? <ReadRun key={initialContext.run_ref} runRef={initialContext.run_ref} api={api} /> :
-        <window.PreflightWorkspace initialContext={initialContext} onNavigate={onNavigate}
-          renderRunPanel={data => <window.RunJobPanel preflight={data} adapter={api} />} />}
-    </>;
+    const history = <U.Button icon="history" onClick={() => onNavigate('analysis', { source: 'run_history' })}>排产记录</U.Button>;
+    // The preflight page carries 排产记录 in its own heading; only the specified-run view keeps the navigation strip.
+    return specified ? <><Navigation>{history}<U.Button icon="plus" onClick={() => onNavigate('run', {})}>新建排产范围</U.Button></Navigation>
+      <ReadRun key={initialContext.run_ref} runRef={initialContext.run_ref} api={api} /></> :
+      <window.PreflightWorkspace initialContext={initialContext} onNavigate={onNavigate} actions={history}
+        renderRunPanel={data => <window.RunJobPanel preflight={data} adapter={api} />} />;
   }
   function PlanCenterWorkspace({ view, onNavigate, initialContext }) {
     const context = initialContext || {}, candidate = Object.prototype.hasOwnProperty.call(context, 'run_ref') || Object.prototype.hasOwnProperty.call(context, 'candidate_ref');

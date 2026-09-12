@@ -1,0 +1,64 @@
+/* Shell dimensions are explicit so 1280 x 720 retains the complete navigation. */
+body.aps-workbench {
+  --header-height: var(--wb-header-height);
+  --ui-muted: var(--wb-secondary-copy);
+}
+body.aps-workbench .app-container { min-width: 0; max-width: 100%; }
+body.aps-workbench .sidebar { flex: 0 0 var(--sidebar-width); min-width: 0; height: 100vh; }
+body.aps-workbench .sidebar-header { height: var(--wb-header-height); min-height: var(--wb-header-height); }
+body.aps-workbench .sidebar-nav { min-height: 0; padding: var(--space-2) 10px var(--space-3); gap: 2px; }
+body.aps-workbench .nav-group { flex: none; gap: 0; }
+body.aps-workbench .nav-group + .nav-group { margin-top: var(--space-1); }
+body.aps-workbench .nav-group-title {
+  display: flex; align-items: center; height: var(--wb-sidebar-group-h);
+  padding: 0 10px; font-size: var(--font-size-1); line-height: 18px;
+}
+body.aps-workbench .sidebar-nav .nav-item {
+  height: var(--wb-sidebar-item-h); min-height: var(--wb-sidebar-item-h);
+  padding: 0 10px; font-size: var(--font-size-2); line-height: 20px;
+}
+body.aps-workbench .nav-item:active { background: var(--ui-info-bg); }
+body.aps-workbench .main-content { min-width: 0; max-width: calc(100% - var(--sidebar-width)); }
+body.aps-workbench .top-header {
+  height: var(--wb-header-height); min-height: var(--wb-header-height); flex: none;
+  gap: var(--space-3); padding: 0 var(--wb-content-padding); z-index: var(--wb-z-sticky);
+}
+body.aps-workbench .top-title { font-size: var(--font-size-4); line-height: 24px; }
+body.aps-workbench .top-header .header-controls { display: flex; gap: var(--space-2); align-items: center; flex: none; }
+body.aps-workbench .page-content { min-width: 0; padding: 20px var(--wb-content-padding); }
+body.aps-workbench .page-content > * { min-width: 0; }
+body.aps-workbench .brand-word { font-size: var(--font-size-3); }
+body.aps-workbench .operations-shell .top-title { flex: 0 1 auto; min-width: 0; }
+body.aps-workbench .operations-shell .cap-rich { flex: 1 1 260px; min-width: 0; }
+body.aps-workbench .operations-shell .wb-current-plan {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 2px var(--space-2);
+  font-size: var(--font-size-1); line-height: 18px; max-height: 54px;
+}
+body.aps-workbench .operations-shell .wb-current-plan strong { font-size: var(--font-size-1); }
+body.aps-workbench .operations-shell :is(.wb-current-name,.wb-current-range) {
+  min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+body.aps-workbench .operations-shell .header-controls { flex: 0 0 auto; margin-left: auto; }
+body.aps-workbench .operations-shell .wb-render-failure { padding: var(--space-5) 0; }
+@media (max-width: 1366px) {
+  body.aps-workbench .top-header { gap: var(--space-2); }
+  body.aps-workbench .top-header .header-controls { gap: var(--space-2); }
+}
+@media (max-width: 1280px) {
+  body.aps-workbench .cap-rich { white-space: normal; font-size: var(--font-size-1); line-height: 18px; }
+}
+@media (max-width: 900px) {
+  body.aps-workbench .operations-shell { --sidebar-width: 56px; }
+  body.aps-workbench .operations-shell .nav-group-title { display: none; }
+  body.aps-workbench .operations-shell .sidebar-nav { padding: 10px 5px; }
+  body.aps-workbench .operations-shell .sidebar-nav .nav-item { height: 40px; min-height: 40px; padding: 0; }
+  body.aps-workbench .operations-shell .page-content { padding: 18px; }
+  body.aps-workbench .operations-shell .top-header { height: auto; flex-wrap: wrap; padding: 10px 18px; gap: var(--space-2); }
+  body.aps-workbench .operations-shell .top-title { flex: 1 1 auto; line-height: 1.4; }
+  body.aps-workbench .operations-shell .header-controls { flex: 0 1 auto; flex-wrap: wrap; min-width: 0; max-width: 100%; justify-content: flex-end; }
+}
+@media (max-width: 600px) {
+  body.aps-workbench .operations-shell .page-content { padding: 14px 10px; }
+  body.aps-workbench .operations-shell .top-header { padding: 10px; }
+  body.aps-workbench .operations-shell .top-title { font-size: var(--font-size-3); }
+}

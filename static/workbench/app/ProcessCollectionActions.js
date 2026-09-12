@@ -68,15 +68,11 @@
     React.useEffect(() => () => {
       if (controller.current) controller.current.abort();
     }, []);
-    React.useEffect(() => {
-      if (!dirty && !receiptError) return undefined;
-      const warn = event => {
-        event.preventDefault();
-        event.returnValue = '';
-      };
-      window.addEventListener('beforeunload', warn);
-      return () => window.removeEventListener('beforeunload', warn);
-    }, [dirty, !!receiptError]);
+    window.WorkbenchGuards.useDirtyGuard({
+      dirty,
+      locked: visible.locked,
+      message: create ? '新增零件的图号、名称或路线填写尚未保存。' : '零件原请求尚未核实。'
+    });
     React.useEffect(() => {
       if (!done || notified.current === command.result.receipt_ref) return;
       notified.current = command.result.receipt_ref;

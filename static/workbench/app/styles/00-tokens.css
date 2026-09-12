@@ -1,0 +1,49 @@
+:root {
+  --wb-z-sticky: 10;
+  --wb-z-dropdown: 1000;
+  --wb-z-modal: 10000;
+  --wb-z-popup: 12000;
+  --wb-z-toast: 13000;
+  --wb-header-height: 60px;
+  --wb-sticky-top: 0px;
+  --wb-sidebar-item-h: 32px;
+  --wb-sidebar-group-h: 22px;
+  --wb-detail-w: 320px;
+  --wb-content-padding: 24px;
+  --wb-table-cell-py: 9px;
+  --wb-table-cell-px: 8px;
+  --wb-table-max-height: calc(100vh - 280px);
+  --wb-control-radius: var(--wb-radius-control);
+  --wb-line-tight: 1.3;
+  --wb-line-body: 1.5;
+  --wb-line-relaxed: 1.7;
+  --wb-gantt-radius-control: var(--wb-radius-control);
+  --wb-sev-ok: var(--ui-success);
+  --wb-sev-notice: var(--ui-primary);
+  --wb-sev-warning: var(--ui-warning);
+  --wb-sev-danger: var(--ui-danger);
+  --wb-sev-ok-text: var(--ui-success-text);
+  --wb-sev-notice-text: var(--ui-info-text);
+  --wb-sev-warning-text: var(--ui-warning-text);
+  --wb-sev-danger-text: var(--ui-danger-text);
+  --wb-sev-ok-bg: var(--ui-success-bg);
+  --wb-sev-notice-bg: var(--ui-info-bg);
+  --wb-sev-warning-bg: var(--ui-warning-bg);
+  --wb-sev-danger-bg: var(--ui-danger-bg);
+  --wb-secondary-copy: var(--ui-info-muted);
+  --wb-scroll-shadow: var(--ui-info-muted);
+}
+
+html[data-theme="dark"] {
+  --wb-sev-ok: var(--ui-success);
+  --wb-sev-notice: var(--ui-primary);
+  --wb-sev-warning: var(--ui-warning);
+  --wb-sev-danger: var(--ui-danger);
+  --wb-secondary-copy: var(--ui-muted);
+  --wb-scroll-shadow: var(--ui-bg);
+}
+
+html[data-density="compact"] {
+  --wb-table-cell-py: 5px;
+  --wb-table-cell-px: 6px;
+}

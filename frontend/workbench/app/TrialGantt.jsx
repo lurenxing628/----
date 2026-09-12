@@ -1,5 +1,6 @@
 (function () {
   'use strict';
+  // Axis numbers encode factory-local wall-clock fields; UTC extraction must not shift them to the browser timezone.
   const U = window.TrialControls, wall = value => Date.parse(value + 'Z');
   const pieceLabel = t => t.piece_id === null ? '共同工序' : '分件 ' + t.piece_id;
   const taskLabel = t => t.batch_id + ' · ' + t.sequence + ' ' + t.process_label + ' · ' + pieceLabel(t);
@@ -68,7 +69,7 @@
       <U.Button icon="plus" aria-label="放大甘特" disabled={zoom >= 8} onClick={() => setZoom(z => z * 2)} />
       <U.Button icon="chart-gantt" aria-label={expanded ? '收起甘特' : '展开甘特'} onClick={() => setExpanded(!expanded)} /></div>
       <div className="tt-board" ref={board} onScroll={() => setHover(null)}><div className="tt-timeline" style={{ width: zoom === 1 ? '100%' : zoom * 100 + '%' }}>
-        <div className="tt-axis"><div className="tt-corner">工序 / 资源</div><div className="tt-ticks">{[0, 1, 2, 3].map(i => <span key={i}>{new Date(bounds.start + (bounds.end - bounds.start) * i / 3).toISOString().slice(5, 16).replace('T', ' ')}</span>)}</div></div>
+        <div className="tt-axis"><div className="tt-corner">工序 / 资源</div><div className="tt-ticks">{[0, 1, 2, 3].map(i => <span key={i}>{U.timeLabel(new Date(bounds.start + (bounds.end - bounds.start) * i / 3).toISOString().slice(0, 19)).slice(5, 16)}</span>)}</div></div>
         {visible.map((r, i) => <React.Fragment key={r.t.task_ref + ':' + r.ghost}>{(i === 0 || visible[i - 1].group !== r.group) && <div className="tt-group">{view === 'batch' ? r.t.batch_id + ' · ' + (r.t.part_name || '零件名称未记录') : name(r.group)}</div>}
           <div className={'tt-gantt-row' + (selected === r.t.task_ref ? ' selected' : '')} data-trial-task={r.t.task_ref}>
             <button type="button" className="tt-task-label" onClick={() => onSelect(r.t.task_ref)} aria-pressed={selected === r.t.task_ref}

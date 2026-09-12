@@ -350,7 +350,9 @@
       className: "dt"
     }, file ? file.name : '选择 CSV / XLSX 文件'), /*#__PURE__*/React.createElement("div", {
       className: "ds"
-    }, file ? file.size.toLocaleString() + ' 字节 · 单次导入最多 2,000 行' : '单次导入最多 2,000 行'), /*#__PURE__*/React.createElement("input", {
+    }, file ? window.WorkbenchFormat.number(file.size, {
+      digits: 0
+    }) + ' 字节 · 单次导入最多 2,000 行' : '单次导入最多 2,000 行'), /*#__PURE__*/React.createElement("input", {
       type: "file",
       "aria-label": '选择' + label + '导入文件',
       accept: ".csv,.xlsx",
@@ -423,9 +425,11 @@
       role: "status"
     }, "\u5DF2\u4EA4\u7ED9\u6D4F\u89C8\u5668\u4E0B\u8F7D\uFF1A", /*#__PURE__*/React.createElement("b", null, download.name)), !isExport && /*#__PURE__*/React.createElement(Feedback, {
       command: command
-    }), command.intent && /*#__PURE__*/React.createElement("p", {
-      className: "rm-request"
-    }, "\u8BF7\u6C42\u7F16\u53F7\uFF1A", command.intent.request_key), done && /*#__PURE__*/React.createElement("p", {
+    }), command.intent && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '请求编号': command.intent.request_key
+      }
+    }), done && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, Number.isSafeInteger(command.result.data.deleted_count) ? '已删除 ' + command.result.data.deleted_count + ' 条。' : command.result.data.summary ? '导入结果已由服务器回执确认。' : '已取得原请求的完成回执。'))));
   }

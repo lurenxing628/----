@@ -14,6 +14,34 @@
     const keys = Object.keys(left);
     return keys.length === Object.keys(right).length && keys.every(key => own(right, key) && same(left[key], right[key]));
   }
+  function validateBoot(boot) {
+    const icons = ['box', 'database', 'play', 'home', 'gantt', 'chart', 'users', 'clipboard', 'file', 'grid', 'settings', 'scale'];
+    check(object(boot.titles) && Array.isArray(boot.enabled_views) && boot.enabled_views.length > 0 && new Set(boot.enabled_views).size === boot.enabled_views.length && boot.enabled_views.every(id => typeof id === 'string' && typeof boot.titles[id] === 'string') && Object.keys(boot.titles).every(id => boot.enabled_views.includes(id)));
+    check(Array.isArray(boot.nav_groups) && boot.nav_groups.length > 0 && object(boot.view_aliases));
+    const seen = new Set(),
+      groups = new Set();
+    boot.nav_groups.forEach(group => {
+      check(object(group) && typeof group.title === 'string' && group.title.trim() && !groups.has(group.title) && Array.isArray(group.items) && group.items.length > 0);
+      groups.add(group.title);
+      const groupIcons = new Set();
+      group.items.forEach(item => {
+        check(object(item) && boot.enabled_views.includes(item.id) && !seen.has(item.id) && item.label === boot.titles[item.id] && icons.includes(item.icon) && !groupIcons.has(item.icon));
+        seen.add(item.id);
+        groupIcons.add(item.icon);
+      });
+    });
+    Object.keys(boot.view_aliases).forEach(id => check(boot.enabled_views.includes(id) && !seen.has(id) && seen.has(boot.view_aliases[id])));
+    check(boot.enabled_views.every(id => seen.has(id) || own(boot.view_aliases, id)));
+    check(typeof boot.help_url === 'string' && boot.help_url.startsWith('/') && !boot.help_url.startsWith('//') && new URL(boot.help_url, location.origin).origin === location.origin);
+  }
+  function historyView(page) {
+    const context = page.context || {};
+    return ['analysis', 'gantt', 'delay'].includes(page.view) && context.source === 'run_history' && !own(context, 'run_ref') && !own(context, 'candidate_ref');
+  }
+  function title(boot, page) {
+    if (historyView(page)) return '排产历史';
+    return boot.titles[page.view] || '工作区不存在';
+  }
   function view(boot) {
     const values = new URL(location.href).searchParams.getAll('view');
     check(values.length <= 1);
@@ -66,6 +94,12 @@
     url.searchParams.set('view', target);
     return url.pathname + url.search;
   }
+  function helpUrl(boot, page) {
+    // The manual page renders its "返回" link from src; without it help exits the shell with no way back.
+    const url = new URL(boot.help_url, location.origin);
+    url.searchParams.set('src', href(boot, page.view));
+    return url.pathname + url.search;
+  }
   function auxiliary(state) {
     const result = {};
     Object.keys(state || {}).forEach(key => {
@@ -103,20 +137,24 @@
     }, '', location.href);
     return nextPages;
   }
-  function navigate(boot, page, target, supplied) {
-    check(own(boot.titles, target) && (supplied === undefined || object(supplied)));
+  function navigate(boot, page, target, supplied, preferSaved = false) {
+    check(own(boot.titles, target) && (supplied === undefined || object(supplied)) && typeof preferSaved === 'boolean');
     const pages = remember(boot, page),
       saved = pages[target];
     if (saved !== undefined) check(object(saved) && saved.view === target && object(saved.context));
-    const context = supplied === undefined && saved ? saved.context : supplied || {};
-    const scroll = object(context.scroll) ? context.scroll : supplied === undefined && saved ? saved.scroll : {};
+    const resume = saved && (supplied === undefined || preferSaved);
+    // Resuming restores the target's own view state wholesale (scope, topic, table, selection, scroll):
+    // every tab keeps its own range and the supplied context only seeds a first visit. Mixing the
+    // current tab's scope / topic into the target's saved table produced unreadable combinations.
+    const context = resume ? saved.context : supplied || {};
+    const scroll = object(context.scroll) ? context.scroll : resume ? saved.scroll : {};
     const next = {
       view: target,
       context,
       key: page.key + 1,
       scroll
     };
-    const extra = supplied === undefined && saved && object(saved.auxiliary) ? saved.auxiliary : {};
+    const extra = resume && object(saved.auxiliary) ? saved.auxiliary : {};
     history.pushState({
       ...extra,
       workbench: next,
@@ -169,12 +207,105 @@
     });
     return cancel;
   }
+  function guardHistory(boot, {
+    hasDirty,
+    confirmLeave,
+    onRestore,
+    onError
+  }) {
+    let accepted,
+      pending = null,
+      disposed = false;
+    function capture() {
+      return {
+        page: read(boot),
+        state: history.state,
+        url: location.href
+      };
+    }
+    function sync() {
+      if (!pending) accepted = capture();
+    }
+    sync();
+    function recover(error) {
+      pending = null;
+      history.replaceState(accepted.state, '', accepted.url);
+      onError(error);
+    }
+    function accept() {
+      pending = null;
+      accepted = capture();
+      onRestore();
+    }
+    function confirm(entry) {
+      entry.phase = 'confirm';
+      Promise.resolve().then(confirmLeave).then(allowed => {
+        if (disposed || pending !== entry) return;
+        if (!allowed) {
+          pending = null;
+          return;
+        }
+        entry.phase = 'replay';
+        history.go(entry.delta);
+      }).catch(error => {
+        if (!disposed && pending === entry) recover(error);
+      });
+    }
+    function pop() {
+      if (disposed) return;
+      try {
+        const target = read(boot),
+          delta = target.key - accepted.page.key;
+        if (pending) {
+          if (pending.phase === 'replay' && target.key === pending.target.key && location.href === pending.url) {
+            accept();
+            return;
+          }
+          if (target.key === accepted.page.key && location.href === accepted.url) {
+            if (pending.phase === 'return') confirm(pending);
+            return;
+          }
+          check(delta !== 0);
+          history.go(-delta);
+          return;
+        }
+        if (!hasDirty()) {
+          accept();
+          return;
+        }
+        check(delta !== 0);
+        pending = {
+          phase: 'return',
+          delta,
+          target,
+          url: location.href
+        };
+        history.go(-delta);
+      } catch (error) {
+        recover(error);
+      }
+    }
+    window.addEventListener('popstate', pop);
+    return {
+      sync,
+      busy: () => !!pending,
+      dispose: () => {
+        disposed = true;
+        window.removeEventListener('popstate', pop);
+      }
+    };
+  }
   window.WorkbenchNavigation = {
     read,
     href,
+    helpUrl,
     remember,
     navigate,
     replaceContext,
-    restore
+    restore,
+    validateBoot,
+    title,
+    historyView,
+    guardHistory
   };
 })();

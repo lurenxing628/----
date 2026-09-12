@@ -126,7 +126,7 @@
       }
       close(true);
     }
-    return ReactDOM.createPortal(<div ref={popup} className="wb-control-popup" style={{ position: 'fixed', zIndex: 10020, ...position }}
+    return ReactDOM.createPortal(<div ref={popup} className="wb-control-popup" style={{ position: 'fixed', zIndex: 'var(--wb-z-popup)', ...position }}
       role={opened.type === 'select' ? undefined : 'dialog'} aria-modal={opened.type === 'select' ? undefined : true}
       id={opened.type === 'select' ? undefined : id} aria-label={opened.type === 'select' ? undefined : '选择' + B.label(owner)} tabIndex={-1}>
       {opened.type === 'select' ? <window.WorkbenchSelectMenu owner={owner} id={id} menuRef={menu} onCommit={commit} /> :

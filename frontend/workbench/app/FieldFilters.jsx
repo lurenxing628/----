@@ -14,9 +14,9 @@
     </form>{(scope.range_start || scope.batch_ids || scope.resource_ref) && <div className="field-filters field-note">
       {scope.range_start && <span>计划重叠范围：{window.FieldContract.date(scope.range_start)} 至 {window.FieldContract.date(scope.range_end)}</span>}
       {scope.batch_ids && <span>指定批次：{scope.batch_ids.length} 个</span>}{scope.resource_ref && <span>已限定{scope.resource_type === 'machine' ? '设备' : '人员'}关联工序</span>}</div>}
-      {summary && <div className="field-metrics">{[['unreported', '待报工'], ['started', '已登记开工'], ['partial', '部分完成'], ['complete', '已完工']].map(([key, label]) => <span key={key}>{label}<b>{counts ? counts[key] : '未读取'}</b></span>)}
-        <span>累计实报工时<b>{summary.effective_processing_hours === null || summary.effective_processing_hours === undefined ? '未知' : Math.round(summary.effective_processing_hours * 1000) / 1000 + ' h'}</b>
-          {summary.unknown_hour_reports > 0 && <small>已知小计 {summary.known_effective_processing_hours} h · {summary.unknown_hour_reports} 条待补</small>}</span></div>}</>;
+      {summary && <div className="field-metrics">
+        <span>累计实报工时<b>{window.WorkbenchFormat.hours(summary.effective_processing_hours, { digits: 3, trim: true })}</b>
+          {summary.unknown_hour_reports > 0 && <small>已知小计 {window.WorkbenchFormat.hours(summary.known_effective_processing_hours, { digits: 3, trim: true })} · {summary.unknown_hour_reports} 条待补</small>}</span></div>}</>;
   }
   window.FieldFilters = FieldFilters;
 })();

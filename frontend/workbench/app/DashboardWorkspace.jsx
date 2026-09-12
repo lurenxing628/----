@@ -78,13 +78,13 @@
     window.WorkbenchCaption.useCaption(caption);
     if (outsourcing) return <div className="plana dashboard-live" data-dashboard-outsourcing data-return-item={outsourcing.return_to.context.item_ref}><window.DashboardStyles />
       <header className="dy-heading"><h2>外协物流登记</h2><Button icon="arrow-left" onClick={() => setOutsourcing(null)}>返回原值班台条目</Button></header>
-      <div className="dy-note">{outsourcing.outsourcing_ref ? '原登记引用 ' + outsourcing.outsourcing_ref : '外协物流登记概览'} · 物流登记不替代风险处置。</div>
+      <div className="dy-note">外协物流登记概览 · 物流登记不替代风险处置。</div><window.WorkbenchReference entries={{ '原登记编号': outsourcing.outsourcing_ref }} />
       {typeof window.OutsourcingWorkspace === 'function' ? <window.OutsourcingWorkspace outsourcingRef={outsourcing.outsourcing_ref} onUpdated={() => setRegistrationChanged(true)} /> : <div className="dy-note warning" role="status">外协登记模块尚未加载。</div>}
     </div>;
     return <div className="plana dashboard-live" data-dashboard-workspace data-ready={!!data} data-analysis-ready={!!analysisData && !analysisRead.loading && !analysisRead.error} aria-busy={list.loading}><window.DashboardStyles />
-      <header className="dy-heading"><h2>计划员值班台</h2><div className="dy-tools"><Button icon="refresh-cw" aria-label="明确刷新值班台" busy={list.loading} disabled={command.busy} onClick={reload} />
+      <header className="dy-heading"><div><h2 className="wb-page-title">计划员值班台</h2><div className="dy-context wb-page-context"><span>{comparing ? comparisonState.caption ? comparisonState.caption.name + ' · ' + comparisonState.caption.status : '尚未核实所选候选方案' : data ? data.plan ? data.plan.display_name + ' · 当前正式' : data.categories.delivery.state === 'no_official_plan' ? '当前无正式计划' : '正式计划未能读取' : '正式计划未加载'}</span><span>{data ? '数据截至 ' + window.WorkbenchFormat.dateTime(data.as_of) + ' · 工厂本地时间' : '数据尚未读取'}</span></div></div><div className="dy-tools"><Button icon="refresh-cw" aria-label="明确刷新值班台" busy={list.loading} disabled={command.busy} onClick={reload} />
         {command.saved && <Button icon="history" onClick={() => setDialog(true)}>{command.saved.phase === 'confirmed' ? '查看已确认回执' : '核实原处置请求'}</Button>}</div></header>
-      <div className="dy-context"><span>{comparing ? comparisonState.caption ? comparisonState.caption.name + ' · ' + comparisonState.caption.status : '尚未核实所选持久候选' : data ? data.plan ? data.plan.display_name + ' · 当前正式' : data.categories.delivery.state === 'no_official_plan' ? '当前无正式计划' : '正式计划未能读取' : '正式计划未加载'}</span><span>{data ? '数据截至 ' + data.as_of.replace('T', ' ') + ' · 工厂本地时间' : '数据尚未读取'}</span></div>
+      
       <ErrorBox error={command.storageError} />{command.storageError && <Button icon="refresh-cw" onClick={command.sync}>重读原请求记录</Button>}
       {registrationChanged && <div className="dy-note warning" role="status">原物流登记已更新；当前保留离开时的筛选、条目与历史页，请明确刷新风险与处置。</div>}
       {!dialog && command.saved && <div className={'dy-note ' + (command.saved.phase === 'confirmed' ? 'success' : 'warning')}>{command.saved.phase === 'confirmed' ? '原处置回执已确认，完成核实后刷新风险与处置。' : '存在原处置请求；结果未核实前不可新建处置。'}</div>}
@@ -95,17 +95,17 @@
             {Object.entries(C.categories).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
           </select></label></div>
         <div className="dy-tabs" role="tablist" aria-label="问题详情视图">{Object.entries(activeTabs).map(([key, label], index) => <button type="button" key={key} id={'dy-tab-' + key} role="tab" className="dy-tab" aria-controls="dy-content" aria-selected={activeTab === key} tabIndex={activeTab === key ? 0 : -1}
-          onClick={() => setTab(key)} onKeyDown={e => { let next; if (e.key === 'ArrowRight') next = (index + 1) % tabKeys.length; if (e.key === 'ArrowLeft') next = (index + tabKeys.length - 1) % tabKeys.length;
+          onClick={() => setTab(key)} onKeyDown={e => { if (e.altKey || e.ctrlKey || e.metaKey) return; let next; if (e.key === 'ArrowRight') next = (index + 1) % tabKeys.length; if (e.key === 'ArrowLeft') next = (index + tabKeys.length - 1) % tabKeys.length;
             if (e.key === 'Home') next = 0; if (e.key === 'End') next = tabKeys.length - 1; if (next !== undefined) { e.preventDefault(); setTab(tabKeys[next]); document.getElementById('dy-tab-' + tabKeys[next]).focus(); } }}>{label}</button>)}</div>
         <div className="dy-panel" role="tabpanel" id="dy-content" aria-labelledby={'dy-tab-' + activeTab}>
-          <ErrorBox error={list.error || navError} />{list.error && <Button icon="refresh-cw" onClick={reload}>明确重读当前筛选</Button>}{list.loading && <div className="dy-empty" role="status">正在读取真实风险、资源与候选目录</div>}
+          <ErrorBox error={list.error || navError} />{list.error && <Button icon="refresh-cw" onClick={reload}>明确重读当前筛选</Button>}{list.loading && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取真实风险、资源与候选目录" />}
           {external && <P.ExternalRegistration summary={currentSummary} onUpdated={reload} />}
           {data && <><P.Gaps categories={data.categories} selected={q.category} />
             {external && <P.ExternalHandlingState summary={currentSummary} />}
-            {handlingAvailable && activeTab === 'items' && <><P.Filters query={q} busy={list.loading} onChange={change} /><P.List data={data} selected={selected} onSelect={choose} />
+            {handlingAvailable && activeTab === 'items' && <div className={item ? 'wb-detail-layout dy-detail-layout' : ''}><div><P.Filters query={q} busy={list.loading} onChange={change} /><P.List data={data} selected={selected} onSelect={choose} query={q} onClear={() => change({ query: '', status: 'all' })} />
               <P.Pager page={data.page} busy={list.loading} onPage={page => change({ page }, true)} onSize={size => change({ size })} />
-              <ErrorBox error={detail.error} />{detail.loading && <div role="status" className="dy-empty">正在读取原条目详情</div>}
-              {item && <P.Detail item={item} onHandle={() => setDialog(true)} onHistory={() => setTab('records')} navigate={navigate} canNavigate={typeof onNavigate === 'function'} />}</>}
+              <ErrorBox error={detail.error} />{detail.loading && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取原条目详情" />}
+              </div>{item && <P.Detail item={item} onClose={() => choose(null)} onHandle={() => setDialog(true)} onHistory={() => setTab('records')} navigate={navigate} canNavigate={typeof onNavigate === 'function'} />}</div>}
             {!external && tab === 'analysis' && <>
               {analysisRead.loading && <p role="status">正在读取同一正式计划的分析依据。</p>}
               {analysisRead.error && <Button icon="refresh-cw" onClick={reload}>明确重读分析</Button>}
@@ -139,7 +139,7 @@
       start = { ...S.context(base), analysisBatch: analysis_batch_ref || null,
         comparison: window.DashboardCandidateComparisonAPI.context(comparison === undefined ? {} : comparison) };
       start.q = durableScope(start.q);
-    } catch (error) { return <div className="plana dashboard-live"><window.DashboardStyles /><h2>计划员值班台</h2><ErrorBox error={error} /></div>; }
+    } catch (error) { return <div className="plana dashboard-live"><window.DashboardStyles /><h2 className="wb-page-title">计划员值班台</h2><ErrorBox error={error} /></div>; }
     return <Content key={JSON.stringify(start)} start={start} onNavigate={onNavigate} />;
   }
   window.WorkbenchDashboardWorkspace = WorkbenchDashboardWorkspace;

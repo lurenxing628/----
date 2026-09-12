@@ -8,7 +8,7 @@
   }
   function TrendChart({ points, label }) {
     const id = React.useId();
-    if (!points.length) return <p className="aw-empty">当前范围无可比较趋势。</p>;
+    if (!points.length) return <window.WorkbenchListControls.EmptyState kind="empty" title="当前范围无可比较趋势" />;
     const max = Math.max(1, ...points.flatMap(row => [row.planned, row.actual || 0]));
     const start = points[0].time, span = points[points.length - 1].time - start || 1;
     const x = row => 10 + (row.time - start) / span * 580, y = value => 190 - value / max * 180;
@@ -23,7 +23,7 @@
             {known.map(row => <circle key={row.time} cx={x(row)} cy={y(row[key])} r={3} vectorEffect="non-scaling-stroke"><title>{row.label} · {title} {row[key]} 道</title></circle>)}</g>; })}
         </svg></div></div>
       <div className="aw-x-axis"><span>{points[0].label}</span><span>{points[points.length - 1].label}</span></div>
-      <details className="aw-data"><summary>图表数据</summary><div className="aw-data-scroll"><table><thead><tr><th>日期</th><th>计划累计完工</th><th>已确认整道完工</th></tr></thead><tbody>{points.map(row => <tr key={row.time}><th>{row.label}</th><td>{row.planned}</td><td>{row.actual == null ? '未知' : row.actual}</td></tr>)}</tbody></table></div></details>
+      <details className="aw-data"><summary>图表数据</summary><div className="aw-data-scroll wb-table-frame" tabIndex={0} role="region" aria-label="累计完工趋势数据"><table><caption className="wb-visually-hidden">{label}</caption><thead><tr><th scope="col">日期</th><th scope="col">计划累计完工</th><th scope="col">已确认整道完工</th></tr></thead><tbody>{points.map(row => <tr key={row.time}><th scope="row">{window.WorkbenchFormat.date(row.label)}</th><td>{row.planned}</td><td>{row.actual == null ? '未知' : row.actual}</td></tr>)}</tbody></table></div></details>
     </figure>;
   }
   const resourceColumns = [['resource_label', '实际资源'], ['operations', '涉及工序'], ['events', '旧现场事件数'],

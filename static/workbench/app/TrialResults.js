@@ -8,7 +8,7 @@
     const c = data.comparison;
     return /*#__PURE__*/React.createElement("div", {
       className: "tt-summary"
-    }, [[c.late_count, '预计晚交批次'], [c.total_delay_hours, '总拖期 h'], [c.changed_operations, '调整工序'], [c.moved_operations, '换设备工序']].map(([value, label]) => /*#__PURE__*/React.createElement("div", {
+    }, [[c.late_count, window.WorkbenchTerms.overdue_count], [c.total_delay_hours, window.WorkbenchTerms.total_tardiness_hours + ' h'], [c.changed_operations, '调整工序'], [c.moved_operations, '换设备工序']].map(([value, label]) => /*#__PURE__*/React.createElement("div", {
       key: label
     }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, U.number(value)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "\u6362\u578B\u6B21\u6570"), /*#__PURE__*/React.createElement("strong", null, c.changeovers === null ? '未评估' : U.number(c.changeovers))));
   }

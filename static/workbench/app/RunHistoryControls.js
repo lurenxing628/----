@@ -28,8 +28,10 @@
       className: 'btn wb-action ' + className
     });
   }
-  const timeLabel = v => v === null ? '未记录' : v.replace('T', ' ');
-  const number = v => v.toLocaleString('zh-CN');
+  const timeLabel = v => window.WorkbenchFormat.dateTime(v);
+  const number = v => window.WorkbenchFormat.number(v, {
+    digits: 0
+  });
   function ErrorBox({
     error
   }) {
@@ -186,29 +188,49 @@
     canNavigate
   }) {
     return /*#__PURE__*/React.createElement("div", {
-      className: "rh-table",
+      className: "rh-table wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true,
       tabIndex: 0,
       "aria-label": "\u6392\u4EA7\u5386\u53F2\u8868\u683C\u6EDA\u52A8\u533A\u57DF"
     }, /*#__PURE__*/React.createElement("table", {
+      className: "wb-table",
       "aria-label": "\u6392\u4EA7\u5386\u53F2"
-    }, /*#__PURE__*/React.createElement("colgroup", null, [19, 18, 25, 19, 6, 6, 7].map((width, i) => /*#__PURE__*/React.createElement("col", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u6392\u4EA7\u5386\u53F2"), /*#__PURE__*/React.createElement("colgroup", null, [19, 18, 25, 19, 6, 6, 7].map((width, i) => /*#__PURE__*/React.createElement("col", {
       key: i,
       style: {
         width: width + '%'
       }
-    }))), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u53D7\u7406\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", null, "\u8FD0\u884C\u72B6\u6001"), /*#__PURE__*/React.createElement("th", null, "\u6392\u4EA7\u8303\u56F4"), /*#__PURE__*/React.createElement("th", null, "\u5F00\u59CB / \u7ED3\u675F\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", {
+    }))), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-key"
+    }, "\u53D7\u7406\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u8FD0\u884C\u72B6\u6001"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u6392\u4EA7\u8303\u56F4"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5F00\u59CB / \u7ED3\u675F\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       className: "rh-num"
     }, "\u5019\u9009\u6570"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       className: "rh-num"
-    }, "\u5B89\u6392\u6570"), /*#__PURE__*/React.createElement("th", null, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, runs.map(run => /*#__PURE__*/React.createElement("tr", {
+    }, "\u5B89\u6392\u6570"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-actions"
+    }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, runs.map(run => /*#__PURE__*/React.createElement("tr", {
       key: run.run_ref,
       "data-run-ref": run.run_ref,
       "data-run-state": run.state
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("time", null, timeLabel(run.accepted_at)), /*#__PURE__*/React.createElement("details", {
-      className: "rh-id"
-    }, /*#__PURE__*/React.createElement("summary", {
-      "aria-label": '运行记录编号 ' + run.run_ref
-    }, "\u8BB0\u5F55\u7F16\u53F7"), /*#__PURE__*/React.createElement("code", null, run.run_ref))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Status, {
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-key"
+    }, /*#__PURE__*/React.createElement("time", null, timeLabel(run.accepted_at)), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      value: run.run_ref,
+      label: "\u8BB0\u5F55\u7F16\u53F7"
+    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Status, {
       run: run
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(ScopeSummary, {
       value: run.scope_summary
@@ -216,9 +238,11 @@
       className: 'rh-num' + (run.counts_final && run.candidate_count > 0 ? ' rh-accent' : '')
     }, number(run.candidate_count), !run.counts_final && /*#__PURE__*/React.createElement("small", null, "\u975E\u6700\u7EC8")), /*#__PURE__*/React.createElement("td", {
       className: "rh-num"
-    }, number(run.task_count), !run.counts_final && /*#__PURE__*/React.createElement("small", null, "\u975E\u6700\u7EC8")), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+    }, number(run.task_count), !run.counts_final && /*#__PURE__*/React.createElement("small", null, "\u975E\u6700\u7EC8")), /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-actions"
+    }, /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
-      "aria-label": '查看运行 ' + run.run_ref,
+      "aria-label": '查看 ' + timeLabel(run.accepted_at) + ' 受理的排产运行',
       disabled: !canNavigate,
       onClick: () => onOpen(run)
     })))))));
@@ -228,64 +252,26 @@
     busy,
     onChange
   }) {
-    const pages = Math.max(1, Math.ceil(page.total / page.size)),
-      sizes = Array.from(new Set([10, 20, 50, page.size])).sort((a, b) => a - b);
     return /*#__PURE__*/React.createElement("div", {
       className: "rh-pagination"
-    }, /*#__PURE__*/React.createElement("span", null, "\u7B5B\u9009\u547D\u4E2D ", number(page.total), " \u6B21 \xB7 \u7B2C ", page.number, " / ", pages, " \u9875"), /*#__PURE__*/React.createElement("div", {
-      className: "rh-tools"
-    }, /*#__PURE__*/React.createElement("label", null, "\u6BCF\u9875", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u5386\u53F2\u6BCF\u9875\u6570\u91CF",
-      value: page.size,
-      disabled: busy,
-      onChange: e => onChange({
+    }, /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: page,
+      sizes: [10, 20, 50],
+      unit: "\u6B21",
+      label: "\u5386\u53F2",
+      sizeLabel: "\u5386\u53F2\u6BCF\u9875\u6570\u91CF",
+      busy: busy,
+      onSize: size => onChange({
         page: 1,
-        size: Number(e.target.value)
-      }, false)
-    }, sizes.map(size => /*#__PURE__*/React.createElement("option", {
-      key: size,
-      value: size
-    }, size)))), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": "\u5386\u53F2\u4E0A\u4E00\u9875",
-      disabled: busy || page.number <= 1,
-      onClick: () => onChange({
-        page: page.number - 1
+        size
+      }, false),
+      onPage: number => onChange({
+        page: number
       }, true)
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": "\u5386\u53F2\u4E0B\u4E00\u9875",
-      disabled: busy || !page.has_more,
-      onClick: () => onChange({
-        page: page.number + 1
-      }, true)
-    })));
+    }));
   }
   function Styles() {
-    return /*#__PURE__*/React.createElement("style", null, `
-      .plana.run-history-workspace{width:100%;min-width:0;max-width:none;padding:0;color:var(--ui-text);font-size:13px;letter-spacing:0}
-      .run-history-workspace *{box-sizing:border-box;letter-spacing:0}.run-history-workspace h2{font-size:17px;line-height:1.6;margin:0}
-      .run-history-workspace .rh-heading,.run-history-workspace .rh-tools,.run-history-workspace .rh-pagination{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
-      .run-history-workspace .rh-heading,.run-history-workspace .rh-pagination{justify-content:space-between;padding:12px 0}.run-history-workspace .rh-heading{border-bottom:1px solid var(--ui-border)}
-      .run-history-workspace .rh-muted,.run-history-workspace small{color:var(--ui-info-muted);font-size:12px;line-height:1.7}.run-history-workspace small{display:block;overflow-wrap:anywhere}
-      .run-history-workspace .rh-filters{padding:14px 0;border-bottom:1px solid var(--ui-border)}.run-history-workspace .rh-filter-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
-      .run-history-workspace label{display:grid;gap:6px;font-size:12px;color:var(--ui-info-muted)}.run-history-workspace .rh-filter-row select{width:126px}.run-history-workspace input[type=date]{width:156px}
-      .run-history-workspace select,.run-history-workspace input{font:inherit;color:var(--ui-text);background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:4px;min-height:32px;max-width:100%;padding:5px 8px}
-      .run-history-workspace button{max-width:100%;white-space:nowrap}.run-history-workspace .rh-pagination label{display:flex;align-items:center;gap:8px}.run-history-workspace .rh-pagination select{width:74px}
-      .run-history-workspace .rh-source{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 0;line-height:1.8;color:var(--ui-info-muted);font-size:12px}
-      .run-history-workspace .rh-notice{padding:10px 12px;margin:10px 0;background:var(--ui-surface-muted);border-left:3px solid var(--ui-warning);line-height:1.7;overflow-wrap:anywhere}
-      .run-history-workspace .rh-error,.run-history-workspace .rh-danger{color:var(--ui-danger-text)}.run-history-workspace .rh-error{border-color:var(--ui-danger)}
-      .run-history-workspace .rh-warning{color:var(--ui-warning-text)}.run-history-workspace .rh-success{color:var(--ui-success-text)}.run-history-workspace .rh-accent{color:var(--ui-primary);font-weight:600}
-      .run-history-workspace .rh-state{font-size:13px;font-weight:600}.run-history-workspace .rh-table{width:100%;overflow:auto;max-height:calc(100vh - 400px);min-height:130px;border-top:1px solid var(--ui-border);border-bottom:1px solid var(--ui-border)}
-      .run-history-workspace .rh-table .btn{width:32px;height:32px;min-width:32px;padding:0;flex:none}
-      .run-history-workspace table{border-collapse:separate;border-spacing:0;table-layout:fixed;width:100%;min-width:960px}.run-history-workspace th,.run-history-workspace td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--ui-border);vertical-align:middle;white-space:normal!important;overflow-wrap:anywhere;line-height:1.7}
-      .run-history-workspace th{position:sticky;top:0;z-index:1;background:var(--ui-surface-muted);font-size:12px;color:var(--ui-info-muted);font-weight:500}.run-history-workspace tbody tr:last-child td{border-bottom:0}
-      .run-history-workspace tbody tr:hover{background:var(--ui-surface-muted)}.run-history-workspace code{display:block;overflow-wrap:anywhere;font-size:12px;line-height:1.7;color:var(--ui-text);margin-top:4px;font-family:ui-monospace,monospace}.run-history-workspace .rh-id{color:var(--ui-info-muted)}
-      .run-history-workspace time,.run-history-workspace .rh-num{font-variant-numeric:tabular-nums}.run-history-workspace .rh-num{text-align:right}.run-history-workspace td.rh-num{font-size:15px}
-      .run-history-workspace summary{cursor:pointer;font-size:12px}.run-history-workspace .rh-empty{padding:48px 12px;text-align:center;border-block:1px solid var(--ui-border);line-height:1.8;color:var(--ui-info-muted)}
-      .run-history-workspace .rh-empty strong{display:block;font-size:14px;color:var(--ui-text);margin-bottom:6px}.run-history-workspace .rh-pagination{font-size:12px;color:var(--ui-info-muted)}
-      @media(max-width:760px){.run-history-workspace .rh-filter-row{gap:10px}.run-history-workspace .rh-table{max-height:500px}.run-history-workspace input[type=date]{width:148px}}
-    `);
+    return null;
   }
   window.RunHistoryControls = {
     Button,

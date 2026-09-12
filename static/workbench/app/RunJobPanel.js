@@ -251,6 +251,7 @@
       }
     }
     const reason = storageError || (!inputRef ? '请先完成排产检查，再确认本次计算。' : intent && (!A.terminal(run) || !verified) ? '原请求尚未结束或结果未知，请先核实原运行。' : unavailable);
+    const selected = preflight && preflight.normalized_input && preflight.normalized_input.batch_refs;
     return /*#__PURE__*/React.createElement("section", {
       className: "plana run-job-panel",
       "data-run-job-panel": "true",
@@ -261,8 +262,9 @@
       className: "rj-tools"
     }, /*#__PURE__*/React.createElement(U.Button, {
       icon: "play",
-      className: "btn primary",
+      className: inputRef && selected && selected.length ? 'btn primary' : 'btn',
       reason: reason,
+      reasonDisplay: "inline",
       busy: busy,
       onClick: inspect
     }, "\u6838\u5BF9\u5E76\u5F00\u59CB\u6392\u4EA7"), unavailable && /*#__PURE__*/React.createElement(U.Button, {
@@ -281,9 +283,7 @@
     }), typeof onNavigate === 'function' && /*#__PURE__*/React.createElement(U.Button, {
       icon: "arrow-left",
       onClick: () => onNavigate('run')
-    }, "\u8FD4\u56DE\u6392\u4EA7\u68C0\u67E5"))), reason && /*#__PURE__*/React.createElement("p", {
-      className: "rj-muted"
-    }, reason), storageError && /*#__PURE__*/React.createElement("div", {
+    }, "\u8FD4\u56DE\u6392\u4EA7\u68C0\u67E5"))), storageError && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
       role: "alert"
     }, storageError, /*#__PURE__*/React.createElement("div", {

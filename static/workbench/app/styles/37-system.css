@@ -1,0 +1,37 @@
+/* System maintenance presentation. The recovery state machine stays in SystemMaintenanceWorkspace. */
+body.aps-workbench .sm-maintenance-workspace :is(.sm-field,.sm-meta,.sm-note) { font-size: var(--font-size-2); }
+body.aps-workbench .sm-maintenance-workspace .sm-record-table tbody tr:hover { background: var(--ui-surface-muted); }
+body.aps-workbench .sm-maintenance-workspace .sm-record-table tbody tr:focus-visible { outline: 2px solid var(--ui-info-text); outline-offset: -2px; }
+body.aps-workbench .sm-maintenance-workspace .sm-record-table th { text-align: left; }
+body.aps-workbench .sm-maintenance-workspace .sm-record-table th:last-child { text-align: center; }
+body.aps-workbench .sm-maintenance-workspace .sm-filters { grid-template-columns: repeat(4,minmax(0,1fr)); }
+body.aps-workbench .sm-workbench .sm-environment { align-self: start; }
+body.aps-workbench .sm-workbench .sm-environment summary { cursor: pointer; font-weight: 600; padding: var(--space-1) 0; }
+body.aps-workbench .sm-workbench .sm-environment summary .sm-meta { margin-left: var(--space-3); font-weight: 400; }
+body.aps-workbench .sm-workbench .sm-pager > .wb-pager { flex: 1; width: 100%; }
+body.aps-workbench .sm-workbench .sm-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+body.aps-workbench .sm-workbench .sm-record-table { --wb-table-min: 780px; }
+/* Full-screen maintenance must cover the inert workbench even while global shell CSS is active. */
+body.aps-workbench .sm-restore-screen { position: fixed; inset: 0; z-index: var(--wb-z-modal); overflow: auto; background: var(--ui-card-bg); color: var(--ui-text); padding: 0; max-width: none; margin: 0; border-radius: 0; }
+body.aps-workbench .sm-restore-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--ui-border); background: var(--ui-surface-muted); }
+body.aps-workbench .sm-restore-content { max-width: 1160px; margin: 0 auto; padding: var(--space-5); min-width: 0; }
+body.aps-workbench .sm-restore-content h1 { font-size: var(--font-size-5); line-height: 30px; margin: 0 0 var(--space-2); letter-spacing: 0; }
+body.aps-workbench .sm-restore-content h2 { font-size: var(--font-size-4); line-height: 24px; margin: 0; }
+body.aps-workbench .sm-restore-content section { padding: var(--space-4) 0; border-bottom: 1px solid var(--ui-border); border-radius: 0; box-shadow: none; }
+body.aps-workbench .sm-restore-facts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--space-4) 28px; margin: var(--space-4) 0; }
+body.aps-workbench .sm-restore-facts div { min-width: 0; }
+body.aps-workbench .sm-restore-facts dt { font-size: var(--font-size-1); color: var(--ui-info-muted); }
+body.aps-workbench .sm-restore-facts dd { margin: var(--space-1) 0 0; font-size: var(--font-size-3); overflow-wrap: anywhere; }
+body.aps-workbench .sm-restore-query { display: flex; align-items: end; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-3); }
+body.aps-workbench .sm-restore-query .sm-field { flex: 1 1 420px; }
+body.aps-workbench .sm-restore-query input { width: 100%; }
+body.aps-workbench .sm-restore-content code { font-size: var(--font-size-1); overflow-wrap: anywhere; white-space: normal; }
+body.aps-workbench .sm-restore-content .sm-actions { align-items: center; }
+@media (max-width: 800px) {
+  body.aps-workbench .sm-maintenance-workspace .sm-filters { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 700px) {
+  body.aps-workbench .sm-restore-content { padding: var(--space-4); }
+  body.aps-workbench .sm-restore-facts { grid-template-columns: minmax(0,1fr); }
+  body.aps-workbench .sm-restore-bar { padding: var(--space-3) var(--space-4); }
+}

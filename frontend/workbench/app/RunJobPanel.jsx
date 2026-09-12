@@ -116,14 +116,14 @@
       catch (e) { setStorageError(e.message); }
     }
     const reason = storageError || (!inputRef ? '请先完成排产检查，再确认本次计算。' : intent && (!A.terminal(run) || !verified) ? '原请求尚未结束或结果未知，请先核实原运行。' : unavailable);
+    const selected = preflight && preflight.normalized_input && preflight.normalized_input.batch_refs;
     return <section className="plana run-job-panel" data-run-job-panel="true" aria-label="候选排产"><U.Styles />
       <div className="rj-heading"><h2>候选排产</h2><div className="rj-tools">
-        <U.Button icon="play" className="btn primary" reason={reason} busy={busy} onClick={inspect}>核对并开始排产</U.Button>
+        <U.Button icon="play" className={inputRef && selected && selected.length ? 'btn primary' : 'btn'} reason={reason} reasonDisplay="inline" busy={busy} onClick={inspect}>核对并开始排产</U.Button>
         {unavailable && <U.Button icon="refresh-cw" aria-label="重新核对排产能力" busy={busy} onClick={inspect} />}
         {intent && <U.Button icon="refresh-cw" aria-label="查询原运行" busy={checking || busy} onClick={() => { setNotice(''); refresh(); }} />}
         {typeof onNavigate === 'function' && <U.Button icon="arrow-left" onClick={() => onNavigate('run')}>返回排产检查</U.Button>}
       </div></div>
-      {reason && <p className="rj-muted">{reason}</p>}
       {storageError && <div className="rj-notice" role="alert">{storageError}<div className="rj-tools"><U.Button icon="refresh-cw" disabled={busy} onClick={rereadStorage}>重新读取恢复记录</U.Button></div></div>}
       {error && <div className="rj-notice" role="alert">{error}</div>}{notice && <div className="rj-notice" role="status">{notice}</div>}
       {preview && !confirming && <><U.Scope preview={preview} /><U.Reasons rows={preview.write_context.blocked_reasons} /></>}

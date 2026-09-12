@@ -11,7 +11,9 @@
   }) {
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("dl", {
       className: "ra-scope"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, saved ? '原请求核对的正式版本' : '当前正式版本（本次预览）'), /*#__PURE__*/React.createElement("dd", null, value.baseline.version === null ? '尚无正式计划' : 'v' + value.baseline.version)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u76EE\u6807\u5019\u9009"), /*#__PURE__*/React.createElement("dd", null, "\u5019\u9009 \xB7 ", value.candidate_ref.slice(-8))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u91C7\u7528\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("dd", null, value.task_count, " \u9053")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u91C7\u7528\u8303\u56F4"), /*#__PURE__*/React.createElement("dd", null, "\u5B8C\u6574\u5019\u9009\u53CA\u5168\u90E8\u5F53\u524D\u6B63\u5F0F\u5B89\u6392"))), /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, saved ? '原请求核对的正式版本' : '当前正式版本（本次预览）'), /*#__PURE__*/React.createElement("dd", null, value.baseline.version === null ? '尚无正式计划' : 'v' + value.baseline.version)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u76EE\u6807\u5019\u9009"), /*#__PURE__*/React.createElement("dd", null, "\u5F53\u524D\u6838\u5BF9\u7684\u5B8C\u6574\u5019\u9009", /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      value: value.candidate_ref
+    }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u91C7\u7528\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("dd", null, value.task_count, " \u9053")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u91C7\u7528\u8303\u56F4"), /*#__PURE__*/React.createElement("dd", null, "\u5B8C\u6574\u5019\u9009\u53CA\u5168\u90E8\u5F53\u524D\u6B63\u5F0F\u5B89\u6392"))), /*#__PURE__*/React.createElement("p", {
       className: "ra-note"
     }, "\u91C7\u7528\u4F1A\u65B0\u589E\u6B63\u5F0F\u7248\u672C\uFF0C\u4FDD\u7559\u65E7\u7248\u672C\u548C\u5DF2\u6709\u6267\u884C\u8BB0\u5F55\uFF1B\u4E0D\u662F\u53EA\u91C7\u7528\u5F53\u524D\u7B5B\u9009\u51FA\u7684\u5DE5\u5E8F\u3002"));
   }
@@ -21,7 +23,7 @@
     result
   }) {
     return /*#__PURE__*/React.createElement("details", {
-      className: "ra-records"
+      className: "ra-records wb-ref"
     }, /*#__PURE__*/React.createElement("summary", null, "\u8BB0\u5F55\u4FE1\u606F"), /*#__PURE__*/React.createElement("div", null, "\u5019\u9009\u7F16\u53F7\uFF1A", value.candidate_ref), value.run_ref && /*#__PURE__*/React.createElement("div", null, "\u8FD0\u884C\u7F16\u53F7\uFF1A", value.run_ref), value.baseline && value.baseline.plan_ref && /*#__PURE__*/React.createElement("div", null, "\u539F\u6B63\u5F0F\u65B9\u6848\u7F16\u53F7\uFF1A", value.baseline.plan_ref), intent && /*#__PURE__*/React.createElement("div", null, "\u8BF7\u6C42\u7F16\u53F7\uFF1A", intent.request_key), result && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u56DE\u6267\u7F16\u53F7\uFF1A", result.receipt_ref), /*#__PURE__*/React.createElement("div", null, "\u65B0\u6B63\u5F0F\u65B9\u6848\u7F16\u53F7\uFF1A", result.data.official_plan.plan_ref)));
   }
   function Fields({
@@ -172,30 +174,7 @@
     })));
   }
   function Styles() {
-    return /*#__PURE__*/React.createElement("style", null, `
-      .plana.run-adoption-action{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:100%;width:auto;padding:0;min-width:0;color:var(--ui-text);letter-spacing:0}
-      .run-adoption-action .modal-bg{z-index:1100}
-      .run-adoption-action .modal.lg{width:760px;max-width:calc(100vw - 48px);max-height:calc(100vh - 48px);display:flex;flex-direction:column;min-width:0;color:var(--ui-text);background:var(--ui-card-bg)}
-      .run-adoption-action .modal-head,.run-adoption-action .modal-f{flex-shrink:0}
-      .run-adoption-action .modal-f{gap:8px;padding:14px 20px}
-      .run-adoption-action .ra-body{padding:16px 22px;overflow:auto;min-height:0;max-height:65vh;font-size:13px;line-height:1.7;color:var(--ui-text)}
-      .run-adoption-action *{box-sizing:border-box;letter-spacing:0}
-      .run-adoption-action .ra-scope{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;padding:12px 0;margin:0;border-bottom:1px solid var(--ui-border)}
-      .run-adoption-action dt,.run-adoption-action small,.run-adoption-action .ra-note{color:var(--ui-info-muted);font-size:12px}
-      .run-adoption-action dd{margin:3px 0 0;overflow-wrap:anywhere;color:var(--ui-text)}
-      .run-adoption-action .ra-fields{display:grid;gap:12px;padding:12px 0}
-      .run-adoption-action .field{min-width:0;margin:0;display:grid;gap:5px}
-      .run-adoption-action .field label{color:var(--ui-text)}
-      .run-adoption-action .field input,.run-adoption-action textarea{width:100%;min-width:0;color:var(--ui-text);background:var(--ui-card-bg);font:inherit;border:1px solid var(--ui-border);border-radius:4px;padding:8px 10px}
-      .run-adoption-action textarea{resize:vertical;min-height:84px;max-height:220px}
-      .run-adoption-action .ra-consent{display:flex;gap:9px;align-items:flex-start;color:var(--ui-text);line-height:1.7}
-      .run-adoption-action .ra-consent input{flex:none;width:16px;height:16px;margin-top:4px;accent-color:var(--ui-info-text)}
-      .run-adoption-action .ra-notice{padding:10px 12px;margin:8px 0;border-left:3px solid var(--ui-warning);background:var(--ui-surface-muted);overflow-wrap:anywhere}
-      .run-adoption-action .ra-records{padding-top:10px;color:var(--ui-info-muted);font-size:12px;overflow-wrap:anywhere}
-      .run-adoption-action .ra-result{color:var(--ui-success-text);padding:10px 0}.run-adoption-action .ra-result p{color:var(--ui-info-muted);font-size:12px;margin:4px 0}
-      .run-adoption-action button{white-space:normal;max-width:100%}.run-adoption-action .ra-inline{font-size:12px;color:var(--ui-info-muted);max-width:480px;overflow-wrap:anywhere}
-      @media(max-width:600px){.run-adoption-action .ra-body{padding:12px}.run-adoption-action .ra-scope{grid-template-columns:1fr}.run-adoption-action .modal-f{padding:12px}}
-    `);
+    return null;
   }
   window.RunAdoptionControls = {
     Button,

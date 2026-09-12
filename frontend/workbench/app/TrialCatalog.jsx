@@ -17,7 +17,7 @@
         {filterBase && <label className="tt-check"><input type="checkbox" checked={!!fixedBase || onlyBase} disabled={!!fixedBase} onChange={e => { setOnlyBase(e.target.checked); reset(); }} />仅此原来源</label>}
         <U.Button icon="refresh-cw" aria-label="重新读取试调目录" busy={read.busy} onClick={() => reset()} /></div></div>
       <U.ErrorBox error={read.error} />{read.busy && <p role="status">正在读取目录…</p>}
-      {read.result && <><div className="tt-directory-scroll"><table className="tt-table" aria-label="试调目录"><thead><tr><th>名称</th><th>原来源</th><th>状态</th><th>安排</th><th>更新时间</th><th>本机操作者</th><th>操作</th></tr></thead>
+      {read.result && <><div className="tt-directory-scroll"><table className="tt-table" aria-label="试调目录"><caption className="wb-visually-hidden">{"试调目录"}</caption><thead><tr><th scope="col">名称</th><th scope="col">原来源</th><th scope="col">状态</th><th scope="col">安排</th><th scope="col">更新时间</th><th scope="col">本机操作者</th><th scope="col">操作</th></tr></thead>
         <tbody>{read.result.data.items.map(r => <tr key={r.detail_target} data-trial-ref={r.open_target.draft_ref || r.open_target.scenario_ref}><td>{r.display_name}</td><td>{r.base_display_name}</td><td>{U.statusLabel(r.status)}</td>
           <td>{r.task_count}</td><td>{U.timeLabel(r.updated_at)}</td><td>{r.local_operator}</td><td><U.Button icon="arrow-right" onClick={() => onOpen(r.open_target)}>打开</U.Button></td></tr>)}</tbody></table>
         {!read.result.data.items.length && <div className="tt-empty">此范围暂无{collection === 'drafts' ? '草稿' : '场景'}</div>}</div>
@@ -66,12 +66,18 @@
     const [base, setBase] = React.useState(initialBase || null), [label, setLabel] = React.useState(initialBase ? '指定原来源' : ''), [epoch, refresh] = React.useReducer(n => n + 1, 0);
     const [inspect, setInspect] = React.useState(false), [agreed, setAgreed] = React.useState(false);
     const input = { base, scope: initialScope };
+    const baseline = React.useRef(initialBase || null);
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({ dirty: JSON.stringify(base) !== JSON.stringify(baseline.current),
+      locked: commands.busy || !!commands.key, message: '新建试调的来源选择或确认尚未提交。' });
+    async function close(detail) {
+      if (detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner || await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose();
+    }
     const read = S.useRead(signal => A.preview(input, signal), [JSON.stringify(input), epoch], inspect && !!base);
     function select(value, title) { setBase(value); setLabel(title); setInspect(false); setAgreed(false); }
     const d = read.result && read.result.data;
-    return <U.Modal title="从原来源创建试调" icon="square-pen" onClose={onClose} locked={commands.busy}
-      footer={<><U.Button icon="x" disabled={commands.busy} onClick={onClose}>取消</U.Button>
-        {onExisting && <U.Button icon="folder-open" disabled={commands.busy} onClick={onExisting}>打开已有草稿</U.Button>}
+    return <U.Modal title="从原来源创建试调" icon="square-pen" onClose={close} guardOwner={guardOwner} locked={commands.busy || !!commands.key}
+      footer={<><U.Button icon="x" disabled={commands.busy || !!commands.key} onClick={close}>取消</U.Button>
+        {onExisting && <U.Button icon="folder-open" disabled={commands.busy || !!commands.key} onClick={async () => { if (await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onExisting(); }}>打开已有草稿</U.Button>}
         <U.Button icon="refresh-cw" disabled={!base || commands.busy} onClick={() => { commands.restore(); setInspect(true); setAgreed(false); refresh(); }}>核对原来源</U.Button>
         <U.Button icon="plus" className="btn primary" disabled={!d || !agreed || commands.blocked} onClick={() => commands.execute({ action: 'create', input }, d.write_context.write_token)}>确认创建草稿</U.Button></>}>
       <div className="trial-modal-body">{!fixedBase && <SourceCatalog selected={base} onSelect={select} />}

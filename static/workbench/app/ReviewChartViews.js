@@ -36,9 +36,10 @@
     label
   }) {
     const id = React.useId();
-    if (!points.length) return /*#__PURE__*/React.createElement("p", {
-      className: "aw-empty"
-    }, "\u5F53\u524D\u8303\u56F4\u65E0\u53EF\u6BD4\u8F83\u8D8B\u52BF\u3002");
+    if (!points.length) return /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "empty",
+      title: "\u5F53\u524D\u8303\u56F4\u65E0\u53EF\u6BD4\u8F83\u8D8B\u52BF"
+    });
     const max = Math.max(1, ...points.flatMap(row => [row.planned, row.actual || 0]));
     const start = points[0].time,
       span = points[points.length - 1].time - start || 1;
@@ -105,10 +106,23 @@
     }, /*#__PURE__*/React.createElement("span", null, points[0].label), /*#__PURE__*/React.createElement("span", null, points[points.length - 1].label)), /*#__PURE__*/React.createElement("details", {
       className: "aw-data"
     }, /*#__PURE__*/React.createElement("summary", null, "\u56FE\u8868\u6570\u636E"), /*#__PURE__*/React.createElement("div", {
-      className: "aw-data-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u65E5\u671F"), /*#__PURE__*/React.createElement("th", null, "\u8BA1\u5212\u7D2F\u8BA1\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("th", null, "\u5DF2\u786E\u8BA4\u6574\u9053\u5B8C\u5DE5"))), /*#__PURE__*/React.createElement("tbody", null, points.map(row => /*#__PURE__*/React.createElement("tr", {
+      className: "aw-data-scroll wb-table-frame",
+      tabIndex: 0,
+      role: "region",
+      "aria-label": "\u7D2F\u8BA1\u5B8C\u5DE5\u8D8B\u52BF\u6570\u636E"
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, label), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u65E5\u671F"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u8BA1\u5212\u7D2F\u8BA1\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5DF2\u786E\u8BA4\u6574\u9053\u5B8C\u5DE5"))), /*#__PURE__*/React.createElement("tbody", null, points.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.time
-    }, /*#__PURE__*/React.createElement("th", null, row.label), /*#__PURE__*/React.createElement("td", null, row.planned), /*#__PURE__*/React.createElement("td", null, row.actual == null ? '未知' : row.actual))))))));
+    }, /*#__PURE__*/React.createElement("th", {
+      scope: "row"
+    }, window.WorkbenchFormat.date(row.label)), /*#__PURE__*/React.createElement("td", null, row.planned), /*#__PURE__*/React.createElement("td", null, row.actual == null ? '未知' : row.actual))))))));
   }
   const resourceColumns = [['resource_label', '实际资源'], ['operations', '涉及工序'], ['events', '旧现场事件数'], ['production_reports', '逐次报工数'], ['records', '全部记录数'], ['effective_processing_hours', '有效加工工时(h)'], ['known_effective_processing_hours', '已知工时小计(h)'], ['unknown_hour_events', '工时未知记录数']].map(([key, label]) => ({
     key,

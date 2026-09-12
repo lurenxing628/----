@@ -35,6 +35,8 @@
     const [draft, setDraft] = React.useState(initial.saved ? initial.saved.input : { reason: '', declared_operator: '' });
     const [open, setOpen] = React.useState(false), [preview, setPreview] = React.useState(null), [consent, setConsent] = React.useState(false);
     const [busy, setBusy] = React.useState(false), [checking, setChecking] = React.useState(false), [error, setError] = React.useState(''), [notice, setNotice] = React.useState('');
+    window.WorkbenchGuards.useDirtyGuard({ dirty: !saved && (!!draft.reason || !!draft.declared_operator),
+      message: '场景正式采用的原因或声明人尚未提交。' });
     const [revision, refresh] = React.useReducer(v => v + 1, 0);
     const mounted = React.useRef(false), lock = React.useRef(false), request = React.useRef(null), active = React.useRef(saved), current = React.useRef(null);
     const callback = React.useRef(onAdopted), notified = React.useRef(null); callback.current = onAdopted; active.current = saved;

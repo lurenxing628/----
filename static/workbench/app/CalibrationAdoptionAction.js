@@ -20,6 +20,7 @@
     }, /*#__PURE__*/React.createElement(U.Styles, null), /*#__PURE__*/React.createElement(U.Button, {
       icon: s.saved ? 'refresh-cw' : 'check',
       "aria-label": label,
+      reasonDisplay: "tooltip",
       reason: !s.saved && (!detail || stale) ? '请先读取有效的所选模板和样本。' : '',
       onClick: () => s.setOpen(true),
       "aria-expanded": s.open

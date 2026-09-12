@@ -5,8 +5,13 @@
     const [name, setName] = React.useState(''), [confirm, setConfirm] = React.useState(false);
     React.useEffect(() => { setConfirm(false); }, [data]);
     const save = kind === 'save';
-    return <U.Modal title={save ? '保存试调场景' : '确认放弃草稿'} icon={save ? 'check' : 'x'} locked={commands.busy} onClose={onClose}
-      footer={<><U.Button icon="x" disabled={commands.busy} onClick={onClose}>取消</U.Button>
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({ dirty: save && !!name, locked: commands.busy || !!commands.key,
+      message: save ? '试调场景名称或保存确认尚未提交。' : '放弃草稿的确认尚未提交。' });
+    async function close(detail) {
+      if (detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner || await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose();
+    }
+    return <U.Modal title={save ? '保存试调场景' : '确认放弃草稿'} icon={save ? 'check' : 'x'} locked={commands.busy || !!commands.key} guardOwner={guardOwner} onClose={close}
+      footer={<><U.Button icon="x" disabled={commands.busy || !!commands.key} onClick={close}>取消</U.Button>
         <U.Button icon="refresh-cw" disabled={commands.busy || !!commands.key} onClick={() => { setConfirm(false); onRecheck(); }}>重读草稿</U.Button><U.Button className="btn primary" icon={save ? 'check' : 'x'}
         disabled={!confirm || save && !name.trim() || commands.blocked || !data.write_context || data.write_context.capabilities['trial.' + kind] !== true}
         onClick={() => commands.execute({ action: kind, draft_ref: data.draft_ref, input: save ? { name } : { confirm: true } }, data.write_context.write_token)}>
@@ -19,6 +24,7 @@
       </div></U.Modal>;
   }
   function Session({ initialTarget, onNavigate, renderAdoption, onTargetChange }) {
+    const guardOwner = React.useId(), [editorRevision, resetEditor] = React.useReducer(value => value + 1, 0);
     React.useEffect(() => {
       let original, printing = false;
       function beforePrint() {
@@ -73,10 +79,15 @@
       notifyTarget(next);
     });
     const actions = { ...commands, blocked: commands.blocked || !!key && (!read.result || !!read.error || read.busy || !!origin && !originalTask.task) };
-    function guard() { if (!editing) { setError(null); return true; } setError(new Error('请先保存调整或取消当前工序编辑。')); return false; }
-    function select(ref) { if (ref === selected || guard()) setSelected(ref); }
-    function open(next) {
-      if (!guard()) return;
+    window.WorkbenchGuards.useDirtyGuard({ owner: guardOwner, dirty: false, locked: commands.busy || !!commands.key,
+      message: '试调原请求尚未核实，请保留当前页面。' });
+    async function guard() {
+      if (!await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) return false;
+      setError(null); if (editing) { setEditing(false); resetEditor(); } return true;
+    }
+    async function select(ref) { if (ref === selected || await guard()) setSelected(ref); }
+    async function open(next) {
+      if (!await guard()) return;
       try {
         C.check(!origin || !!next.draft_ref, '原任务定位只能打开草稿，不能把已存场景当作草稿。');
         C.target(next); const canonical = next.scenario_ref ? { scenario_ref: next.scenario_ref } : { draft_ref: next.draft_ref };
@@ -87,16 +98,16 @@
     function reload() { commands.restore(); refresh(); }
     const title = data ? data.name || U.sourceLabel(data.base_identity) : '尚未选择草稿或场景';
     return <div className="plana trial-workspace" data-trial-workspace data-open-ref={key} data-open-kind={isScenario ? 'scenario' : 'draft'}><window.TrialStyles />
-      <header className="tt-heading"><div><h2>排产方案试调</h2><span className="tt-muted">{title}{data && ' · ' + U.statusLabel(data.status)}</span></div><div className="tt-tools">
-        {onNavigate && <U.Button icon="chevron-left" onClick={() => { if (guard()) onNavigate('analysis', base || {}); }}>返回方案</U.Button>}
+      <header className="tt-heading"><div><h2 className="wb-page-title">排产方案试调</h2><span className="tt-muted wb-page-context">{title}{data && ' · ' + U.statusLabel(data.status)}</span></div><div className="tt-tools">
+        {onNavigate && <U.Button icon="chevron-left" onClick={() => onNavigate('analysis', base || {})}>返回方案</U.Button>}
         <U.Button icon="folder-open" onClick={() => setDirectory(!directory)} aria-expanded={directory}>草稿 / 场景目录</U.Button>
-        <U.Button icon="plus" disabled={commands.blocked} onClick={() => { if (guard()) setModal('create'); }}>新建试调</U.Button>
+        <U.Button icon="plus" disabled={commands.blocked} onClick={async () => { if (await guard()) setModal('create'); }}>新建试调</U.Button>
       </div></header>
       <U.ErrorBox error={error} /><U.ErrorBox error={commands.error} /><U.ErrorBox error={originalTask.error} />
       {!commands.key && commands.note && <p role="status">{commands.note}</p>}
       {commands.error && !commands.key && <U.Button icon="refresh-cw" onClick={reload} disabled={commands.busy}>重读恢复记录与当前内容</U.Button>}
       {commands.key && <section className="tt-notice" aria-label="待核实试调请求"><strong>原试调请求待核实</strong><p>{commands.note || '恢复记录只包含原请求编号，尚未读取结果。'}</p>
-        <div className="tt-tools"><U.Button icon="refresh-cw" onClick={commands.lookup} busy={commands.busy}>查询原请求</U.Button><span className="tt-ref">{commands.key}</span></div></section>}
+        <div className="tt-tools"><U.Button icon="refresh-cw" onClick={commands.lookup} busy={commands.busy}>查询原请求</U.Button><window.WorkbenchReference value={commands.key} /></div></section>}
       {notice && <p role="status" className="tt-notice">{notice}</p>}
       {directory && <window.TrialCatalog.Directory revision={revision} onOpen={open} filterBase={base}
         fixedBase={origin ? { plan_ref: origin.plan_ref } : null} />}
@@ -107,14 +118,14 @@
         <U.Download data={data} /></div><div className="tt-muted">创建时正式基线：{data.baseline.plan_ref ? 'v' + data.baseline.version : '无正式基线'} · 对比始终使用原试调基础</div>
         <window.TrialResults.Summary data={data} /><div className="tt-main"><div><window.TrialGantt key={key} data={data} selected={selected} onSelect={select} />
           <window.TrialResults.Results key={key} data={data} onSelect={select} /></div>
-          <window.TrialDetails data={data} selected={selected} commands={actions} onSelect={select} onEditing={setEditing} onRecheck={reload} /></div>
+          <window.TrialDetails data={data} selected={selected} commands={actions} onSelect={select} onEditing={setEditing} onRecheck={reload} guardOwner={guardOwner} editorRevision={editorRevision} /></div>
         <footer className="tt-footer"><div><strong>整体约束：{U.statusLabel(data.validation.constraints_status)}</strong><div className="tt-muted">{typeof renderAdoption === 'function' ? '保存试调不代表正式采用' : '完整场景正式采用尚未接入，正式计划未改变'}</div></div>
-          <div className="tt-tools"><U.Button icon="x" disabled={data.status !== 'editing' || actions.blocked || !data.write_context || data.write_context.capabilities['trial.discard'] !== true} onClick={() => { if (guard()) setModal('discard'); }}>放弃草稿</U.Button>
-            <U.Button icon="check" className="btn primary" disabled={data.status !== 'editing' || actions.blocked || !data.write_context || data.write_context.capabilities['trial.save'] !== true} onClick={() => { if (guard()) setModal('save'); }}>保存场景</U.Button>
+          <div className="tt-tools"><U.Button icon="x" disabled={data.status !== 'editing' || actions.blocked || !data.write_context || data.write_context.capabilities['trial.discard'] !== true} onClick={async () => { if (await guard()) setModal('discard'); }}>放弃草稿</U.Button>
+            <U.Button icon="check" className="btn primary" disabled={data.status !== 'editing' || actions.blocked || !data.write_context || data.write_context.capabilities['trial.save'] !== true} onClick={async () => { if (await guard()) setModal('save'); }}>保存场景</U.Button>
             {data.scenario_ref && typeof renderAdoption === 'function' ? renderAdoption({ scenarioRef: data.scenario_ref, data, onNavigate, disabled: actions.blocked,
               onAdopted: () => { setNotice('采用结果由独立场景采用回执核实；当前仍为原场景快照。'); refresh(); } }) :
               <U.Button icon="check" reason={data.scenario_ref ? '完整场景正式采用尚未接入，未改变正式计划。' : '须先保存场景，再核对独立场景采用入口。'}>正式采用</U.Button>}</div></footer>
-        <details className="tt-refs"><summary>试调身份与读取范围</summary><div>草稿：<span className="tt-ref">{data.draft_ref}</span></div>
+        <details className="tt-refs wb-ref"><summary>编号与读取范围</summary><div>草稿：<span className="tt-ref">{data.draft_ref}</span></div>
           {data.scenario_ref && <div>场景：<span className="tt-ref">{data.scenario_ref}</span></div>}<div>原来源：<span className="tt-ref">{Object.values(data.base)[0]}</span></div>
           <div>完整时间：{U.timeLabel(data.time_scope.start)} 至 {U.timeLabel(data.time_scope.end)}</div></details></>}
       {modal === 'create' && <window.TrialCatalog.Create initialBase={origin ? { plan_ref: origin.plan_ref } : base} initialScope={initialTarget.base ? initialTarget.scope || {} : {}}

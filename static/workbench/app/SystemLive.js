@@ -17,8 +17,11 @@ function SystemLive({
   const [source, setSource] = React.useState(start.source),
     [tab, setTab] = React.useState(start.tab);
   const [notice, setNotice] = React.useState(''),
-    [pageSize, setPageSize] = React.useState(start.page_size),
-    [compact, setCompact] = React.useState(true);
+    [pageSize, setPageSize] = React.useState(start.page_size);
+  const [density, setDensity] = React.useState(() => window.WorkbenchDensity.get());
+  React.useEffect(() => window.WorkbenchDensity.subscribe(setDensity), []);
+  const compact = density.density === 'compact',
+    setCompact = value => window.WorkbenchDensity.set(value ? 'compact' : 'comfortable');
   const [recordContexts, setRecordContexts] = React.useState(start.records);
   const recordContext = React.useCallback((kind, value) => setRecordContexts(previous => JSON.stringify(previous[kind]) === JSON.stringify(value) ? previous : {
     ...previous,
@@ -91,7 +94,7 @@ function SystemLive({
         page_check: local,
         system: payload
       });
-      setNotice('已生成本次诊断 JSON 并交给浏览器下载。');
+      setNotice('已生成本次诊断文件并交给浏览器下载。');
     } catch (problem) {
       setNotice('诊断导出失败：' + problem.message);
     }
@@ -120,7 +123,11 @@ function SystemLive({
     "data-live": "true"
   }, /*#__PURE__*/React.createElement("header", {
     className: "sm-header"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", null, "\u7CFB\u7EDF\u7BA1\u7406"), /*#__PURE__*/React.createElement("p", null, "\u672C\u673A\u5907\u4EFD\u6062\u590D\u3001\u65E5\u5FD7\u4E0E\u81EA\u52A8\u7EF4\u62A4")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+    className: "wb-page-title"
+  }, "\u7CFB\u7EDF\u7BA1\u7406"), /*#__PURE__*/React.createElement("p", {
+    className: "wb-page-context"
+  }, "\u672C\u673A\u5907\u4EFD\u6062\u590D\u3001\u65E5\u5FD7\u4E0E\u81EA\u52A8\u7EF4\u62A4")), /*#__PURE__*/React.createElement("div", {
     className: "sm-actions"
   }, /*#__PURE__*/React.createElement(ControlButton, {
     className: "sm-button sm-icon-button",
@@ -137,7 +144,7 @@ function SystemLive({
   })), /*#__PURE__*/React.createElement(SMExport, {
     disabled: !payload || loading || !current || readSuspended,
     onClick: exportDiagnostic
-  }, "\u5BFC\u51FA\u5F53\u524D\u8BCA\u65AD JSON"))), /*#__PURE__*/React.createElement("div", {
+  }, "\u5BFC\u51FA\u8BCA\u65AD\u6587\u4EF6"))), /*#__PURE__*/React.createElement("div", {
     className: "sm-source-bar"
   }, /*#__PURE__*/React.createElement("fieldset", {
     className: "sm-choice"
@@ -154,7 +161,7 @@ function SystemLive({
     }
   }), label))), /*#__PURE__*/React.createElement("span", {
     className: "sm-source-note"
-  }, current ? boot.instance_label + (payload ? ' · 数据截至 ' + payload.meta.as_of.replace('T', ' ') : ' · 尚未完成读取') : '独立管理样例 · 不写入本机数据')), /*#__PURE__*/React.createElement(MetricStrip, {
+  }, current ? boot.instance_label + (payload ? ' · 数据截至 ' + window.WorkbenchFormat.dateTime(payload.meta.as_of) : ' · 尚未完成读取') : '独立管理样例 · 不写入本机数据')), /*#__PURE__*/React.createElement(MetricStrip, {
     columns: 4,
     className: "sm-metrics"
   }, /*#__PURE__*/React.createElement(Metric, {
@@ -264,9 +271,6 @@ function SystemLiveOverview({
   report,
   onTab
 }) {
-  const {
-    DataTable
-  } = window.APSWorkbenchUI;
   const backup = data.backups,
     logs = data.logs,
     config = data.config;
@@ -289,23 +293,6 @@ function SystemLiveOverview({
     status: config.values ? '自动备份' + (config.values.auto_backup_enabled === 'yes' ? '已启用' : '已关闭') : '配置读取失败',
     description: config.message
   }];
-  const columns = [{
-    key: 'label',
-    title: '检查项'
-  }, {
-    key: 'status',
-    title: '结果',
-    render: row => /*#__PURE__*/React.createElement(SMStatus, {
-      state: row.status
-    })
-  }, {
-    key: 'detail',
-    title: '检查范围'
-  }].map(column => ({
-    ...column,
-    sortable: false,
-    filterable: false
-  }));
   return /*#__PURE__*/React.createElement("div", {
     className: "sm-overview-layout"
   }, /*#__PURE__*/React.createElement("section", {
@@ -351,7 +338,7 @@ function SystemLiveOverview({
     auto_backup: '自动备份',
     auto_backup_cleanup: '备份清理',
     auto_log_cleanup: '操作日志清理'
-  }[job.kind], "\uFF1A", job.last_run_time ? job.last_run_time.replace('T', ' ') : '暂无可确认的执行时间', " \xB7 ", job.result ? {
+  }[job.kind], "\uFF1A", job.last_run_time ? window.WorkbenchFormat.dateTime(job.last_run_time) : '暂无可确认的执行时间', " \xB7 ", job.result ? {
     completed: '已记录完成',
     failed: '失败',
     partial: '部分异常',
@@ -359,20 +346,32 @@ function SystemLiveOverview({
     invalid: '结果异常',
     unknown: '结果待核对',
     not_recorded: '未留存结果'
-  }[job.result.status] : '未读取结果')))), /*#__PURE__*/React.createElement("section", {
+  }[job.result.status] : '未读取结果')))), /*#__PURE__*/React.createElement("details", {
     className: "sm-section sm-environment"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "sm-section-head"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", null, "\u9875\u9762\u73AF\u5883\u81EA\u68C0"), /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("summary", null, "\u9875\u9762\u73AF\u5883\u81EA\u68C0", /*#__PURE__*/React.createElement("span", {
     className: "sm-meta"
-  }, "\u68C0\u67E5\u65F6\u95F4 ", new Date(report.checkedAt).toLocaleString('zh-CN', {
-    hour12: false
-  }), " \xB7 \u4E0D\u4EE3\u8868\u6570\u636E\u5E93\u6216\u5907\u4EFD\u5065\u5EB7"))), /*#__PURE__*/React.createElement(DataTable, {
-    className: "sm-table sm-check-table",
-    columns: columns,
-    rows: report.checks,
-    rowKey: "id"
-  })));
+  }, report.checks.filter(item => item.status === 'available').length, " / ", report.checks.length, " \u9879\u53EF\u7528")), /*#__PURE__*/React.createElement("p", {
+    className: "sm-meta"
+  }, "\u68C0\u67E5\u65F6\u95F4 ", window.WorkbenchFormat.instant(report.checkedAt), " \xB7 \u4E0D\u4EE3\u8868\u6570\u636E\u5E93\u6216\u5907\u4EFD\u5065\u5EB7"), /*#__PURE__*/React.createElement("div", {
+    className: "wb-table-shell wb-table-frame",
+    "data-sticky-head": true
+  }, /*#__PURE__*/React.createElement("table", {
+    className: "wb-table sm-table sm-check-table"
+  }, /*#__PURE__*/React.createElement("caption", {
+    className: "wb-visually-hidden"
+  }, "\u5F53\u524D\u9875\u9762\u73AF\u5883\u81EA\u68C0\uFF0C\u4E0D\u4EE3\u8868\u6570\u636E\u5E93\u6216\u5907\u4EFD\u5065\u5EB7"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    scope: "col"
+  }, "\u68C0\u67E5\u9879"), /*#__PURE__*/React.createElement("th", {
+    scope: "col"
+  }, "\u7ED3\u679C"), /*#__PURE__*/React.createElement("th", {
+    scope: "col"
+  }, "\u68C0\u67E5\u8303\u56F4"))), /*#__PURE__*/React.createElement("tbody", null, report.checks.map(item => /*#__PURE__*/React.createElement("tr", {
+    key: item.id
+  }, /*#__PURE__*/React.createElement("th", {
+    scope: "row"
+  }, item.label), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(SMStatus, {
+    state: item.status
+  })), /*#__PURE__*/React.createElement("td", null, item.detail))))))));
 }
 function SystemLiveFiles({
   kind,
@@ -404,7 +403,7 @@ function SystemLiveFiles({
     title: '文件修改时间',
     width: 176,
     nowrap: true,
-    render: row => row.modified_at.replace('T', ' ')
+    render: row => window.WorkbenchFormat.dateTime(row.modified_at)
   }, {
     key: 'filename',
     title: kind === 'backups' ? '备份文件' : '日志文件',
@@ -422,7 +421,9 @@ function SystemLiveFiles({
     width: 120,
     align: 'right',
     nowrap: true,
-    render: row => (row.size_bytes / 1024).toFixed(1) + ' KB'
+    render: row => window.WorkbenchFormat.number(row.size_bytes / 1024, {
+      digits: 1
+    }) + ' KB'
   }, {
     key: 'detail',
     title: '详情',
@@ -483,45 +484,31 @@ function SystemLiveFiles({
     columns: columns,
     rows: rows,
     rowKey: "filename"
-  }) : /*#__PURE__*/React.createElement(SMUnavailable, {
-    title: data.state === 'empty' ? '暂无文件' : '文件信息不可用'
-  }, data.message), /*#__PURE__*/React.createElement("div", {
+  }) : /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+    kind: data.state === 'empty' ? 'empty' : 'error',
+    title: data.state === 'empty' ? '暂无文件' : '文件信息不可用',
+    hint: data.message,
+    action: data.state !== 'empty' ? /*#__PURE__*/React.createElement("a", {
+      href: "/workbench?view=system"
+    }, "\u91CD\u65B0\u8FDB\u5165\u7CFB\u7EDF\u7BA1\u7406") : undefined
+  }), /*#__PURE__*/React.createElement("div", {
     className: "sm-pager"
   }, /*#__PURE__*/React.createElement("span", {
     className: "sm-meta"
-  }, "\u5DF2\u8BFB\u53D6 ", entries.length, " \u4E2A\u6587\u4EF6", data.count != null ? ' · 目录共 ' + data.count + ' 个' : ' · 总数尚不能确认'), /*#__PURE__*/React.createElement("div", {
-    className: "sm-actions"
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "sm-inline-label"
-  }, "\u6BCF\u9875", /*#__PURE__*/React.createElement("select", {
-    name: "sm-page-size",
-    value: pageSize,
-    onChange: event => {
-      onPageSize(Number(event.target.value));
+  }, "\u5DF2\u8BFB\u53D6 ", entries.length, " \u4E2A\u6587\u4EF6", data.count != null ? ' · 目录共 ' + data.count + ' 个' : ' · 总数尚不能确认'), /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+    page: current,
+    pages: pages,
+    total: entries.length,
+    size: pageSize,
+    sizes: [10, 25, 50],
+    unit: "\u6761",
+    label: "",
+    onPage: setPage,
+    onSize: size => {
+      onPageSize(size);
       setPage(1);
     }
-  }, [10, 25, 50].map(size => /*#__PURE__*/React.createElement("option", {
-    key: size,
-    value: size
-  }, size, " \u6761")))), /*#__PURE__*/React.createElement(ControlButton, {
-    className: "sm-button sm-icon-button",
-    size: "sm",
-    "aria-label": "\u4E0A\u4E00\u9875",
-    disabled: current <= 1,
-    onClick: () => setPage(current - 1)
-  }, /*#__PURE__*/React.createElement(SMIcon, {
-    name: "chevron-left"
-  })), /*#__PURE__*/React.createElement("span", {
-    className: "sm-page-number"
-  }, current, " / ", pages), /*#__PURE__*/React.createElement(ControlButton, {
-    className: "sm-button sm-icon-button",
-    size: "sm",
-    "aria-label": "\u4E0B\u4E00\u9875",
-    disabled: current >= pages,
-    onClick: () => setPage(current + 1)
-  }, /*#__PURE__*/React.createElement(SMIcon, {
-    name: "chevron-right"
-  })))), selected && /*#__PURE__*/React.createElement("section", {
+  })), selected && /*#__PURE__*/React.createElement("section", {
     className: "sm-detail",
     id: "system-live-file-detail",
     ref: detail,
@@ -543,7 +530,7 @@ function SystemLiveFiles({
     onClick: close
   }, /*#__PURE__*/React.createElement(SMIcon, {
     name: "x"
-  }))), /*#__PURE__*/React.createElement("p", null, "\u4FEE\u6539\u65F6\u95F4 ", selected.modified_at.replace('T', ' '), " \xB7 ", selected.size_bytes, " \u5B57\u8282"), /*#__PURE__*/React.createElement("p", null, "\u4EC5\u67E5\u770B\u6587\u4EF6\u4FE1\u606F\uFF0C\u5C1A\u672A\u8BFB\u53D6\u6216\u6821\u9A8C\u6587\u4EF6\u5185\u5BB9\u3002")));
+  }))), /*#__PURE__*/React.createElement("p", null, "\u4FEE\u6539\u65F6\u95F4 ", window.WorkbenchFormat.dateTime(selected.modified_at), " \xB7 ", selected.size_bytes, " \u5B57\u8282"), /*#__PURE__*/React.createElement("p", null, "\u4EC5\u67E5\u770B\u6587\u4EF6\u4FE1\u606F\uFF0C\u5C1A\u672A\u8BFB\u53D6\u6216\u6821\u9A8C\u6587\u4EF6\u5185\u5BB9\u3002")));
 }
 function SystemLiveConfig({
   data

@@ -2,7 +2,8 @@
   'use strict';
 
   const M = window.ActualGanttModel,
-    C = window.ActualGanttContract;
+    C = window.ActualGanttContract,
+    W = window.ActualGanttWindow;
   const {
     Button,
     ErrorBox,
@@ -23,7 +24,7 @@
     const valid = object(value) && object(value.view) && object(value.position) && Number.isFinite(value.zoom) && value.zoom >= 1 && value.zoom <= 1024;
     if (!valid) throw new Error('实际甘特查看状态无效，未改选其他对象。');
     const v = value.view;
-    if (!Object.prototype.hasOwnProperty.call(M.views, v.mode) || !Object.prototype.hasOwnProperty.call(M.lateLabels, v.late) || typeof v.query !== 'string' || v.query.length > 200 || !reference(v.selected) || !reference(v.report) || !['onlySelected', 'details', 'chain'].every(key => typeof v[key] === 'boolean') || !object(v.collapsed) || !Object.values(v.collapsed).every(item => typeof item === 'boolean') || v.chainLines !== undefined && typeof v.chainLines !== 'boolean' || !['left', 'top'].every(key => Number.isFinite(value.position[key]) && value.position[key] >= 0)) throw new Error('实际甘特查看状态无效，未改选其他对象。');
+    if (!Object.prototype.hasOwnProperty.call(M.views, v.mode) || !Object.prototype.hasOwnProperty.call(M.lateLabels, v.late) || typeof v.query !== 'string' || v.query.length > 200 || !reference(v.selected) || !reference(v.report) || !['onlySelected', 'details', 'chain'].every(key => typeof v[key] === 'boolean') || !object(v.collapsed) || !Object.values(v.collapsed).every(item => typeof item === 'boolean') || v.chainLines !== undefined && typeof v.chainLines !== 'boolean' || value.position.viewport !== undefined && (!Number.isFinite(value.position.viewport) || value.position.viewport < 80) || (value.position.centerAt !== undefined || value.position.windowSpan !== undefined) && (!Number.isFinite(value.position.centerAt) || !Number.isFinite(value.position.windowSpan) || value.position.windowSpan <= 0) || !['left', 'top'].every(key => Number.isFinite(value.position[key]) && value.position[key] >= 0)) throw new Error('实际甘特查看状态无效，未改选其他对象。');
     return value;
   }
   function initial(context) {
@@ -97,10 +98,20 @@
       [restore, setRestore] = React.useState(saved ? saved.position : seed.persisted ? seed.persisted.position : null);
     const board = React.useRef(null),
       frame = React.useRef(null),
-      pending = React.useRef(seed.report && seed.selected ? {
+      pending = React.useRef(!saved && !seed.persisted && seed.report && seed.selected ? {
         task: seed.selected
       } : null),
       downloadController = React.useRef(null);
+    const defaultWindowApplied = React.useRef(!!saved || !!seed.persisted);
+    const measuredWidth = React.useRef(null),
+      zoomRef = React.useRef(zoom),
+      restoreRef = React.useRef(restore);
+    zoomRef.current = zoom;
+    restoreRef.current = restore;
+    const {
+      labelWidth,
+      viewport
+    } = W.dimensions(position.width);
     const patch = change => setView(previous => ({
       ...previous,
       ...change
@@ -155,7 +166,7 @@
     const captionPlan = !loading && !error && data && data.plan;
     const captionStatus = captionPlan && {
       official: captionPlan.is_current_official ? '当前正式采用' : '历史正式方案',
-      candidate: '候选方案',
+      candidate: window.WorkbenchTerms.candidate,
       scenario: '试调场景'
     }[captionPlan.kind];
     window.WorkbenchCaption.useCaption(captionStatus ? {
@@ -166,6 +177,8 @@
       version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? '正式 v' + captionPlan.version : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
+    const model = React.useMemo(() => data ? M.layout(data, view, result.meta.as_of) : null, [data, view, result]);
+    const snapshotPosition = model ? W.capture(position, viewport, model, zoom) : null;
     window.WorkbenchPageContext.useSnapshot(data ? {
       plan_ref: data.plan.plan_ref,
       scope: data.scope,
@@ -173,17 +186,22 @@
       actual_view: {
         view,
         zoom,
-        position: {
-          left: position.left,
-          top: position.top
-        }
+        position: snapshotPosition
       },
       return_to: initialContext.return_to
-    } : null, !!data && !loading && !error && !seed.issue);
-    const model = React.useMemo(() => data ? M.layout(data, view, result.meta.as_of) : null, [data, view, result]);
+    } : null, !!data && !loading && !error && !seed.issue && !restore);
     const measure = () => {
       const node = board.current;
-      if (node) setPosition({
+      if (!node) return;
+      const previousWidth = measuredWidth.current;
+      if (previousWidth !== null && previousWidth !== node.clientWidth && defaultWindowApplied.current && !restoreRef.current && !pending.current) {
+        const previousViewport = W.dimensions(previousWidth).viewport;
+        pending.current = {
+          center: (node.scrollLeft + previousViewport / 2) / (previousViewport * zoomRef.current)
+        };
+      }
+      measuredWidth.current = node.clientWidth;
+      setPosition({
         left: node.scrollLeft,
         top: node.scrollTop,
         width: node.clientWidth,
@@ -197,19 +215,31 @@
       resize.observe(board.current);
       return () => resize.disconnect();
     }, [data]);
-    const labelWidth = position.width < 550 ? 160 : 292,
-      viewport = Math.max(80, position.width - labelWidth),
-      width = viewport * zoom;
+    const width = viewport * zoom;
     React.useLayoutEffect(() => {
       const node = board.current;
       if (!node || !model) return;
+      if (!defaultWindowApplied.current) {
+        defaultWindowApplied.current = true;
+        const next = W.initial(data, model);
+        if (!pending.current) pending.current = {
+          center: next.center
+        };
+        setZoom(next.zoom);
+        if (next.zoom !== zoom) return;
+      }
       // Restore only after the measured width is rendered; the initial width can clamp scrollLeft.
       if (restore && position.width !== node.clientWidth) {
         measure();
         return;
       }
       if (restore) {
-        node.scrollLeft = restore.left;
+        const nextZoom = W.restoreZoom(restore, model, zoom);
+        if (nextZoom !== zoom) {
+          setZoom(nextZoom);
+          return;
+        }
+        node.scrollLeft = W.restoreLeft(restore, viewport, model, zoom);
         node.scrollTop = restore.top;
         setRestore(null);
       }
@@ -229,20 +259,20 @@
       measure();
     }, [width, model, restore, position.width]);
     React.useEffect(() => {
-      sessions.set(key, {
+      if (snapshotPosition && !restore) sessions.set(key, {
         scope,
         view,
         zoom,
-        position
+        position: snapshotPosition
       });
-    }, [key, scope, view, zoom, position]);
+    }, [key, scope, view, zoom, position, model, restore]);
     React.useEffect(() => {
       setHover(null);
       setChainTarget(null);
     }, [view, position.top, position.left]);
     function zoomTo(next) {
       pending.current = {
-        center: (position.left + viewport / 2) / width
+        center: W.anchor(data, model, view.selected, view.report)
       };
       setZoom(Math.max(1, Math.min(1024, next)));
     }
@@ -269,6 +299,11 @@
     function apply(next) {
       try {
         C.scope(next);
+        defaultWindowApplied.current = false;
+        pending.current = null;
+        setRestore(null);
+        setResult(null);
+        setLoading(true);
         setScope(next);
         patch({
           collapsed: {}
@@ -277,6 +312,18 @@
       } catch (failure) {
         setError(failure);
       }
+    }
+    function reload() {
+      if (snapshotPosition) setRestore(snapshotPosition);
+      pending.current = null;
+      const next = {
+        ...scope
+      };
+      delete next.snapshot_ref;
+      setResult(null);
+      setLoading(true);
+      setScope(next);
+      setRefresh(n => n + 1);
     }
     function select(item, report) {
       patch({
@@ -382,11 +429,11 @@
       };
       // Actual uses [] for all batches; Field represents that scope by omission.
       if (viewName === 'field' && Array.isArray(destinationScope.batch_ids) && destinationScope.batch_ids.length === 0) delete destinationScope.batch_ids;
-      sessions.set(JSON.stringify(returnContext), {
+      if (snapshotPosition) sessions.set(JSON.stringify(returnContext), {
         scope,
         view,
         zoom,
-        position
+        position: snapshotPosition
       });
       if (typeof onNavigate === 'function') onNavigate(viewName, {
         plan_ref: scope.plan_ref,
@@ -404,22 +451,17 @@
       "data-actual-gantt": true
     }, /*#__PURE__*/React.createElement(Styles, null), /*#__PURE__*/React.createElement("div", {
       className: "fg-heading"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", null, "\u73B0\u573A\u5B9E\u9645\u7518\u7279"), /*#__PURE__*/React.createElement("span", {
-      className: "fg-muted"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+      className: "wb-page-title"
+    }, "\u73B0\u573A\u5B9E\u9645\u7518\u7279"), /*#__PURE__*/React.createElement("span", {
+      className: "fg-muted wb-page-context"
     }, data ? data.plan.display_name + ' · 数据截至 ' + M.time(result.meta.as_of) : loading ? '正在读取计划与执行事实' : '计划与执行事实')), /*#__PURE__*/React.createElement("div", {
       className: "wb-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       "aria-label": "\u5237\u65B0\u5B9E\u9645\u7518\u7279",
       busy: loading,
-      onClick: () => {
-        const next = {
-          ...scope
-        };
-        delete next.snapshot_ref;
-        setScope(next);
-        setRefresh(n => n + 1);
-      }
+      onClick: reload
     }), onNavigate && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
       icon: "chart-gantt",
       onClick: () => navigate('gantt')
@@ -434,6 +476,9 @@
       }
     }, "\u56DE\u6765\u6E90"))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
+    }), !data && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
+      kind: loading ? 'loading' : 'empty',
+      title: loading ? '正在读取计划与执行事实…' : error ? '实际甘特未读取成功' : '暂无实际甘特数据'
     }), !data && !loading && onNavigate && /*#__PURE__*/React.createElement(Button, {
       icon: "chart-gantt",
       onClick: () => onNavigate('analysis', {})
@@ -446,10 +491,13 @@
       role: "status",
       className: "fg-note"
     }, data.availability.reason), /*#__PURE__*/React.createElement("dl", {
-      className: "fg-metrics"
+      className: "fg-metrics",
+      "aria-label": "\u5F53\u524D\u8303\u56F4\u6982\u51B5"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6574\u9053\u5DF2\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.complete === null ? '不可用' : stats.complete)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u62A5\u5DE5 \xB7 \u672A\u6574\u9053\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.reported === null ? '不可用' : stats.reported)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5F85\u62A5\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.pending === null ? '不可用' : stats.pending)), /*#__PURE__*/React.createElement("div", {
       title: "\u4EC5\u7EDF\u8BA1\u6709\u786E\u8BA4\u5B8C\u5DE5\u65F6\u95F4\u7684\u5DF2\u5B8C\u5DE5\u5DE5\u5E8F"
-    }, /*#__PURE__*/React.createElement("dt", null, "\u5E73\u5747\u6574\u9053\u5B8C\u5DE5\u504F\u5DEE"), /*#__PURE__*/React.createElement("dd", null, stats.average === null ? '未核实' : (stats.average > 0 ? '+' : '') + Math.round(stats.average) + 'm'))), /*#__PURE__*/React.createElement("section", {
+    }, /*#__PURE__*/React.createElement("dt", null, "\u5E73\u5747\u6574\u9053\u5B8C\u5DE5\u504F\u5DEE"), /*#__PURE__*/React.createElement("dd", null, stats.average === null ? '未核实' : (stats.average > 0 ? '+' : '') + window.WorkbenchFormat.number(Math.round(stats.average) + 0, {
+      digits: 0
+    }) + 'm'))), /*#__PURE__*/React.createElement("section", {
       className: "gb-workspace fg-workspace",
       "aria-label": "\u73B0\u573A\u5B9E\u9645\u7518\u7279\u5DE5\u4F5C\u533A"
     }, /*#__PURE__*/React.createElement(Toolbar, {
@@ -560,7 +608,7 @@
         left: tick.x,
         width: Math.min(134, width - tick.x)
       }
-    }, tick.x + 110 <= width && /*#__PURE__*/React.createElement(React.Fragment, null, tick.label.slice(0, 10), /*#__PURE__*/React.createElement("small", null, tick.label.slice(11, 19))))), /*#__PURE__*/React.createElement("i", {
+    }, tick.x + 110 <= width && /*#__PURE__*/React.createElement(React.Fragment, null, M.time(tick.label).slice(0, 10), /*#__PURE__*/React.createElement("small", null, M.time(tick.label).slice(11, 19))))), /*#__PURE__*/React.createElement("i", {
       className: "fg-clock",
       style: {
         left: (model.asOf - model.start) / (model.end - model.start) * width
@@ -582,10 +630,17 @@
       onHover: hoverMark,
       onChainTarget: setChainTarget,
       chain: visibleChain
-    }), !model.items.length && /*#__PURE__*/React.createElement("div", {
-      className: "fg-empty",
-      role: "status"
-    }, "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u5339\u914D\u7684\u5DE5\u5E8F\u3002"))), /*#__PURE__*/React.createElement("div", {
+    }), !model.items.length && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
+      kind: view.query || view.late !== 'all' || view.onlySelected ? 'filtered' : 'empty',
+      title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u5339\u914D\u7684\u5DE5\u5E8F\u3002",
+      action: view.query || view.late !== 'all' || view.onlySelected ? /*#__PURE__*/React.createElement(Button, {
+        onClick: () => patch({
+          query: '',
+          late: 'all',
+          onlySelected: false
+        })
+      }, "\u6E05\u9664\u7B5B\u9009") : undefined
+    }))), /*#__PURE__*/React.createElement("div", {
       className: "fg-foot"
     }, /*#__PURE__*/React.createElement("span", null, M.time(M.wire(model.start))), /*#__PURE__*/React.createElement("input", {
       type: "range",

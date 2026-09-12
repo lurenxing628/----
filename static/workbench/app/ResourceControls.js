@@ -56,20 +56,27 @@
       name: name
     }) : null;
   }
+  // reasonDisplay: 'inline' shows the reason next to the control; 'tooltip' keeps it in the title and a hidden description (table cells, toolbars).
   function Button({
     icon,
     transfer,
     children,
     reason,
+    reasonDisplay = 'inline',
     busy,
     className = 'btn',
     ...props
   }) {
+    if (reasonDisplay !== 'inline' && reasonDisplay !== 'tooltip') throw new TypeError('Unknown reasonDisplay: ' + reasonDisplay);
+    const reasonId = React.useId(),
+      inlineReason = reason && reasonDisplay === 'inline',
+      hiddenReason = reason && reasonDisplay === 'tooltip';
     const title = reason || props.title || (typeof children === 'string' ? children : props['aria-label']);
     if (className.split(/\s+/).includes('primary')) className = Array.from(new Set(className.split(/\s+/).concat(['wb-action', 'wb-primary']))).join(' ');
     return /*#__PURE__*/React.createElement("span", {
       title: title,
-      style: {
+      className: inlineReason ? 'wb-button-reason' : undefined,
+      style: inlineReason ? undefined : {
         display: 'inline-flex',
         maxWidth: '100%'
       }
@@ -78,6 +85,7 @@
       type: props.type || 'button',
       className: className + (transfer ? ' wb-action wb-transfer' : ''),
       "data-wb-transfer": transfer,
+      "data-wb-disabled-reason": reason || undefined,
       disabled: !!reason || busy || props.disabled,
       style: className.startsWith('mini') ? {
         display: 'inline-flex',
@@ -87,43 +95,133 @@
         ...props.style
       } : props.style,
       title: title,
-      "aria-label": props['aria-label'] || (reason && typeof children === 'string' ? children + '：' + reason : undefined),
-      "aria-busy": busy || undefined
+      "aria-label": props['aria-label'] || (reason && !inlineReason && typeof children === 'string' ? children + '：' + reason : undefined),
+      "aria-busy": busy || undefined,
+      "aria-describedby": [props['aria-describedby'], (inlineReason || hiddenReason) && reasonId].filter(Boolean).join(' ') || undefined
     }, transfer ? /*#__PURE__*/React.createElement(window.APSWorkbenchUI.TransferIcon, {
       kind: transfer
     }) : icon && /*#__PURE__*/React.createElement(Icon, {
       name: icon
-    }), children));
+    }), children), inlineReason && /*#__PURE__*/React.createElement("span", {
+      id: reasonId,
+      className: "wb-reason",
+      role: "status"
+    }, reason), hiddenReason && /*#__PURE__*/React.createElement("span", {
+      id: reasonId,
+      className: "wb-visually-hidden"
+    }, reason));
+  }
+  const fieldPath = path => String(path || '').replace(/^input\./, '');
+  function uniqueFieldErrors(error, errors) {
+    const seen = new Set();
+    return (errors || C.fieldErrors(error)).filter(row => {
+      if (!row || typeof row.path !== 'string' || typeof row.message !== 'string') return false;
+      const key = fieldPath(row.path) + '\n' + row.message;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
   function ErrorBox({
-    error
+    error,
+    excludePaths = []
   }) {
     if (!error) return null;
+    const excluded = new Set(excludePaths.map(fieldPath));
+    const all = uniqueFieldErrors(error),
+      fields = all.filter(row => !excluded.has(fieldPath(row.path)));
+    const message = C.message(error),
+      hideMessage = all.some(row => excluded.has(fieldPath(row.path)) && row.message === message);
+    return /*#__PURE__*/React.createElement(window.WorkbenchError, {
+      error: error.error ? {
+        ...error,
+        ...error.error
+      } : error,
+      fields: fields,
+      hideMessage: hideMessage
+    });
+  }
+  function Field({
+    label,
+    path,
+    error,
+    errors,
+    required,
+    full,
+    hint,
+    children
+  }) {
+    const generated = React.useId(),
+      child = React.Children.only(children),
+      id = child.props.id || generated;
+    const messages = Array.from(new Set(uniqueFieldErrors(error, errors).filter(row => fieldPath(row.path) === fieldPath(path)).map(row => row.message)));
+    const describedBy = [child.props['aria-describedby'], hint && id + '-hint', messages.length && id + '-error'].filter(Boolean).join(' ');
     return /*#__PURE__*/React.createElement("div", {
-      role: "alert",
-      className: "match-note",
-      style: {
-        display: 'block',
-        color: 'var(--ui-danger-text)',
-        overflowWrap: 'anywhere'
+      className: 'field wb-field' + (full ? ' full' : '') + (messages.length ? ' err' : ''),
+      "data-field-path": path
+    }, /*#__PURE__*/React.createElement("label", {
+      htmlFor: id
+    }, label, required && /*#__PURE__*/React.createElement("span", {
+      className: "req",
+      "aria-hidden": "true"
+    }, "*")), React.cloneElement(child, {
+      id,
+      'aria-required': required || child.props['aria-required'] || undefined,
+      'aria-label': child.props['aria-label'] || (typeof label === 'string' ? label : undefined),
+      'aria-invalid': messages.length ? true : child.props['aria-invalid'],
+      'aria-describedby': describedBy || undefined
+    }), hint && /*#__PURE__*/React.createElement("span", {
+      id: id + '-hint',
+      className: "fhint"
+    }, hint), messages.length > 0 && /*#__PURE__*/React.createElement("span", {
+      id: id + '-error',
+      className: "wb-field-error"
+    }, messages.join(' ')));
+  }
+  function focusFirstInvalid(form) {
+    if (!form || typeof form.querySelectorAll !== 'function') return false;
+    const element = Array.from(form.querySelectorAll('[aria-invalid="true"]')).find(node => {
+      if (node.disabled || typeof node.focus !== 'function' || node.closest('[hidden],[inert],[aria-hidden="true"]')) return false;
+      for (let parent = node.parentElement; parent && form.contains(parent); parent = parent.parentElement) {
+        if (parent.tagName === 'DETAILS') parent.open = true;
       }
-    }, /*#__PURE__*/React.createElement("div", null, C.message(error)), C.fieldErrors(error).map((row, index) => /*#__PURE__*/React.createElement("div", {
-      key: index
-    }, row.message)));
+      return node.getClientRects().length && !['hidden', 'collapse'].includes(getComputedStyle(node).visibility);
+    });
+    if (!element) return false;
+    element.scrollIntoView({
+      block: 'center',
+      inline: 'nearest'
+    });
+    element.focus({
+      preventScroll: true
+    });
+    return true;
   }
   function Issues({
     issues = []
   }) {
-    return issues.length ? /*#__PURE__*/React.createElement("div", {
+    // The same message from several records reads once, with the record count; the records themselves are untouched.
+    const rows = [];
+    for (const issue of issues) {
+      const text = typeof issue === 'string' ? issue : issue.message || '该记录存在待核对问题。';
+      const row = rows.find(item => item.text === text);
+      if (row) row.count += 1;else rows.push({
+        text,
+        count: 1
+      });
+    }
+    return rows.length ? /*#__PURE__*/React.createElement("div", {
       className: "match-note",
       role: "status",
       style: {
         display: 'block',
         overflowWrap: 'anywhere'
       }
-    }, issues.map((issue, index) => /*#__PURE__*/React.createElement("div", {
-      key: index
-    }, typeof issue === 'string' ? issue : issue.message || '该记录存在待核对问题。'))) : null;
+    }, rows.map(row => /*#__PURE__*/React.createElement("div", {
+      key: row.text
+    }, row.text, row.count > 1 && /*#__PURE__*/React.createElement("span", {
+      className: "wb-issue-count"
+    }, "\uFF08", row.count, " \u6761\uFF09")))) : null;
   }
   function Status({
     kind,
@@ -263,7 +361,9 @@
     onClose,
     locked,
     labelId,
-    suspended
+    suspended,
+    guardOwner,
+    guardBypass = false
   }) {
     // Capture before this commit disables the launcher and moves focus back to the body.
     const ref = React.useRef(null),
@@ -273,10 +373,29 @@
       parent = React.useContext(ModalFocusParent);
     const backdropStart = React.useRef(false),
       id = React.useId();
+    const closing = React.useRef(false);
+    async function requestClose() {
+      if (closing.current || entry.current.locked || topModal() !== entry.current) return;
+      closing.current = true;
+      try {
+        if (guardOwner && !guardBypass) {
+          if (!window.WorkbenchGuards) throw new Error('WorkbenchGuards is required for guarded dialogs');
+          if (!(await window.WorkbenchGuards.confirmLeave({
+            owner: guardOwner
+          }))) return;
+        }
+        if (!entry.current.locked) onClose({
+          guardConfirmed: true,
+          guardOwner
+        });
+      } finally {
+        closing.current = false;
+      }
+    }
     React.useLayoutEffect(() => {
       Object.assign(entry.current, {
         root: ref.current,
-        close: onClose,
+        close: requestClose,
         locked,
         suspended
       });
@@ -426,7 +545,8 @@
     onChange,
     disabled,
     onCatalog,
-    catalogBusy
+    catalogBusy,
+    error
   }) {
     const [search, setSearch] = React.useState(''),
       [query, setQuery] = React.useState('');
@@ -435,6 +555,9 @@
       [snapshot, setSnapshot] = React.useState(undefined);
     const [known, setKnown] = React.useState({});
     const id = React.useId();
+    const errors = uniqueFieldErrors(error).filter(row => ['relationships.' + field.key, field.key].includes(fieldPath(row.path)));
+    const invalid = errors.length > 0,
+      describedBy = invalid ? id + '-error' : undefined;
     const S = window.APSResourceSession;
     const request = S.useQuery(async signal => {
       if (typeof adapter.choices !== 'function') throw C.failure('暂时无法读取可选资料，请稍后重试。');
@@ -487,10 +610,11 @@
     };
     const options = Array.from(available.values());
     return /*#__PURE__*/React.createElement("div", {
-      className: 'field' + (field.multiple ? ' full' : ''),
+      className: 'field wb-field' + (field.multiple ? ' full' : '') + (invalid ? ' err' : ''),
       style: {
         minWidth: 0
-      }
+      },
+      "data-field-path": 'relationships.' + field.key
     }, /*#__PURE__*/React.createElement("label", {
       htmlFor: id
     }, field.label), searching && /*#__PURE__*/React.createElement("div", {
@@ -534,6 +658,9 @@
       id: id,
       role: "group",
       "aria-label": field.label,
+      "aria-invalid": invalid || undefined,
+      "aria-describedby": describedBy,
+      tabIndex: invalid ? -1 : undefined,
       className: "fchips",
       style: {
         maxHeight: 160,
@@ -564,6 +691,8 @@
       id: id,
       value: value,
       disabled: disabled,
+      "aria-invalid": invalid || undefined,
+      "aria-describedby": describedBy,
       onChange: event => choose(event.target.value)
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
@@ -571,7 +700,10 @@
       key: item.ref,
       value: item.ref,
       disabled: !selectable(item) && item.ref !== value
-    }, item.label, !selectable(item) ? '（停用 / 未核实）' : ''))), request.loading && /*#__PURE__*/React.createElement("span", {
+    }, item.label, !selectable(item) ? '（停用 / 未核实）' : ''))), invalid && /*#__PURE__*/React.createElement("span", {
+      id: describedBy,
+      className: "wb-field-error"
+    }, Array.from(new Set(errors.map(row => row.message))).join(' ')), request.loading && /*#__PURE__*/React.createElement("span", {
       role: "status",
       className: "fhint"
     }, "\u6B63\u5728\u8BFB\u53D6\u9009\u9879\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
@@ -624,6 +756,8 @@
     Modal,
     Relation,
     relationLabels,
-    Choice
+    Choice,
+    Field,
+    focusFirstInvalid
   };
 })();

@@ -3,8 +3,8 @@
   // Factory-local wall-clock coordinates, deliberately independent of browser DST.
   const instant = value => Date.parse(value + 'Z');
   const wire = value => new Date(value).toISOString().slice(0, 19);
-  const timeLabel = value => value ? value.replace('T', ' ') : '未记录';
-  const number = value => typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) : '无法核实';
+  const timeLabel = value => window.WorkbenchFormat.dateTime(value, { seconds: true });
+  const number = value => window.WorkbenchFormat.number(value, { digits: 2 });
   const quantityLabel = value => value === null ? '未知' : typeof value === 'string' ? value : number(value);
   const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
   const quantityReasons = { plan_target_not_recorded: '该计划未记录可核实的原目标量，未使用当前批次数量。',

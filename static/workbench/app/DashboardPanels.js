@@ -21,9 +21,7 @@
     return navigationLabels[n.view];
   }
   const value = v => v === null || v === undefined || v === '' ? '未填写' : typeof v === 'boolean' ? v ? '是' : '否' : String(v);
-  const hours = v => v === null || v === undefined ? '未知' : v.toLocaleString('zh-CN', {
-    maximumFractionDigits: 2
-  }) + ' h';
+  const hours = v => window.WorkbenchFormat.hours(v, 2);
   function Risk({
     risk
   }) {
@@ -143,6 +141,7 @@
       key: k,
       value: k
     }, label)))), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       icon: "chevron-down",
       className: 'btn dy-sort-' + query.direction,
       "aria-label": query.direction === 'asc' ? '改为降序' : '改为升序',
@@ -150,11 +149,13 @@
         direction: query.direction === 'asc' ? 'desc' : 'asc'
       })
     }), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       type: "submit",
       icon: "search",
       "aria-label": "\u6267\u884C\u6761\u76EE\u641C\u7D22",
       busy: busy
     }), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       icon: "x",
       "aria-label": "\u6E05\u9664\u6761\u76EE\u7B5B\u9009",
       onClick: () => {
@@ -173,45 +174,63 @@
     onSize,
     label = '清单'
   }) {
-    return /*#__PURE__*/React.createElement("div", {
-      className: "dy-pager"
-    }, /*#__PURE__*/React.createElement("span", null, page.total, " \u9879 \xB7 \u7B2C ", page.number, " / ", page.pages, " \u9875"), onSize && /*#__PURE__*/React.createElement("label", null, "\u6BCF\u9875 ", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u6BCF\u9875\u6761\u76EE\u6570",
-      value: page.size,
-      onChange: e => onSize(Number(e.target.value))
-    }, [10, 20, 50, 100].concat([page.size]).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b).map(n => /*#__PURE__*/React.createElement("option", {
-      key: n
-    }, n)))), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": label + '上一页',
-      disabled: busy || page.number <= 1,
-      onClick: () => onPage(page.number - 1)
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": label + '下一页',
-      disabled: busy || page.number >= page.pages,
-      onClick: () => onPage(page.number + 1)
-    }));
+    return /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: page,
+      sizes: [10, 20, 50, 100].concat([page.size]).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b),
+      busy: busy,
+      onPage: onPage,
+      onSize: onSize,
+      label: label,
+      sizeLabel: "\u6BCF\u9875\u6761\u76EE\u6570",
+      unit: "\u9879"
+    });
   }
   function List({
     data,
     selected,
-    onSelect
+    onSelect,
+    query,
+    onClear
   }) {
-    if (!data.items.length) return /*#__PURE__*/React.createElement("div", {
-      className: "dy-empty",
-      role: "status"
-    }, data.page.total === 0 ? '当前筛选没有条目。' : '当前页没有条目。', data.categories.external.state === 'not_connected' && ' 外协风险投影尚未接入，不代表零风险。');
+    const filtered = !!query && (query.query !== '' || query.status !== 'all');
+    if (!data.items.length) return /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: filtered ? 'filtered' : 'empty',
+      title: data.page.total === 0 ? '当前筛选没有条目。' : '当前页没有条目。',
+      hint: data.categories.external.state === 'not_connected' ? '外协风险投影尚未接入，不代表零风险。' : '仅表示当前读取范围；未读取或无法评估的来源仍单独列示。',
+      action: filtered ? /*#__PURE__*/React.createElement(Button, {
+        reasonDisplay: "inline",
+        icon: "x",
+        onClick: onClear
+      }, "\u6E05\u9664\u7B5B\u9009\u5E76\u67E5\u770B\u5904\u7F6E\u6E05\u5355") : null
+    });
     return /*#__PURE__*/React.createElement("div", {
-      className: "dy-scroll"
+      className: "wb-table-frame dy-scroll",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
-      className: "dy-table"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u5BF9\u8C61 / \u7C7B\u522B"), /*#__PURE__*/React.createElement("th", null, "\u98CE\u9669\u4E8B\u5B9E"), /*#__PURE__*/React.createElement("th", null, "\u5904\u7F6E\u72B6\u6001"), /*#__PURE__*/React.createElement("th", null, "\u8D23\u4EFB\u4EBA / \u671F\u9650"), /*#__PURE__*/React.createElement("th", null, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, data.items.map(row => /*#__PURE__*/React.createElement("tr", {
+      className: "wb-table dy-table"
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-sr-only"
+    }, "\u503C\u73ED\u53F0\u98CE\u9669\u4E0E\u5904\u7F6E\u6E05\u5355"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-key"
+    }, "\u5BF9\u8C61 / \u7C7B\u522B"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u98CE\u9669\u4E8B\u5B9E"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5904\u7F6E\u72B6\u6001"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u8D23\u4EFB\u4EBA / \u671F\u9650"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-actions"
+    }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, data.items.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.item_ref,
       "data-item-ref": row.item_ref,
       "data-category": row.category,
       "data-selected": selected === row.item_ref
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, row.subject), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-key"
+    }, /*#__PURE__*/React.createElement("b", null, row.subject), /*#__PURE__*/React.createElement("div", {
       className: "dy-muted"
     }, C.categories[row.category])), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Risk, {
       risk: row.risk
@@ -221,7 +240,10 @@
       className: "dy-muted"
     }, "\u5386\u53F2 ", row.handling.history_count, " \u6761")), /*#__PURE__*/React.createElement("td", null, value(row.handling.owner), /*#__PURE__*/React.createElement("div", {
       className: row.handling.deadline_overdue ? 'dy-danger' : 'dy-muted'
-    }, value(row.handling.deadline), row.handling.deadline_overdue ? ' · 处置逾期' : '')), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+    }, value(row.handling.deadline), row.handling.deadline_overdue ? ' · 处置逾期' : '')), /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-actions"
+    }, /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       className: "mini",
       icon: "search",
       "aria-label": '查看 ' + row.subject + ' ' + C.categories[row.category],
@@ -232,105 +254,71 @@
     categories,
     selected
   }) {
-    return /*#__PURE__*/React.createElement(React.Fragment, null, Object.entries(categories).filter(([key]) => selected === 'all' || key === selected).map(([key, s]) => /*#__PURE__*/React.createElement(React.Fragment, {
-      key: key
-    }, /*#__PURE__*/React.createElement(Issues, {
-      issues: s.issues
-    }), s.evaluation_gaps.length > 0 && /*#__PURE__*/React.createElement("details", {
+    const rows = Object.entries(categories).filter(([key]) => selected === 'all' || key === selected),
+      seen = new Set(),
+      issues = [];
+    let count = 0;
+    rows.forEach(([, summary]) => summary.issues.forEach(issue => {
+      count += 1;
+      const key = JSON.stringify(issue);
+      if (!seen.has(key)) {
+        seen.add(key);
+        issues.push(issue);
+      }
+    }));
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Issues, {
+      issues: issues
+    }), count > issues.length && /*#__PURE__*/React.createElement("details", {
       className: "dy-evidence"
-    }, /*#__PURE__*/React.createElement("summary", null, C.categories[key], " \xB7 \u65E0\u6CD5\u8BC4\u4F30 ", s.unknown_count, " \u9879"), s.evaluation_gaps.map(g => /*#__PURE__*/React.createElement("p", {
-      key: g.source_ref
-    }, g.subject, "\uFF1A", g.message))))));
+    }, /*#__PURE__*/React.createElement("summary", null, "\u67E5\u770B\u5404\u6765\u6E90\u8BFB\u53D6\u72B6\u6001"), /*#__PURE__*/React.createElement("dl", {
+      className: "dy-facts"
+    }, rows.filter(([, summary]) => summary.issues.length).map(([key, summary]) => /*#__PURE__*/React.createElement("div", {
+      key: key
+    }, /*#__PURE__*/React.createElement("dt", null, C.categories[key]), /*#__PURE__*/React.createElement("dd", null, /*#__PURE__*/React.createElement(CategoryState, {
+      summary: summary
+    })))))), rows.map(([key, summary]) => summary.evaluation_gaps.length > 0 && /*#__PURE__*/React.createElement("details", {
+      key: key,
+      className: "dy-evidence"
+    }, /*#__PURE__*/React.createElement("summary", null, C.categories[key], " \xB7 \u65E0\u6CD5\u8BC4\u4F30 ", summary.unknown_count, " \u9879"), summary.evaluation_gaps.map(gap => /*#__PURE__*/React.createElement("p", {
+      key: gap.source_ref
+    }, gap.subject, "\uFF1A", gap.message)))));
   }
   function Facts({
     handling
   }) {
-    return /*#__PURE__*/React.createElement("dl", {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("dl", {
       className: "dy-facts"
-    }, ['status', ...C.fields].map(k => /*#__PURE__*/React.createElement("div", {
+    }, ['status', ...C.fields.filter(k => k !== 'evidence_ref')].map(k => /*#__PURE__*/React.createElement("div", {
       key: k
-    }, /*#__PURE__*/React.createElement("dt", null, C.labels[k]), /*#__PURE__*/React.createElement("dd", null, k === 'status' ? C.statuses[handling.status] : k === 'evidence_ref' && !handling[k] ? '未关联已核验附件' : value(handling[k])))));
-  }
-  function SourceFacts({
-    source
-  }) {
-    const labels = {
-      planned_start: '正式安排开始',
-      planned_end: '正式安排结束',
-      first_actual_start: '首次实际开始',
-      confirmed_finish: '确认完工时间',
-      finish_deviation_minutes: '完工偏差（分钟）',
-      overlap_hours: '停机重叠（小时）',
-      delay_after_reschedule_hours: '重排后延期（小时）'
-    };
-    const execution = {
-      unreported: '尚未报工',
-      started: '已开始',
-      partial: '部分完成',
-      complete: '已完工',
-      paused: '已暂停',
-      exception: '异常'
-    };
-    const quality = {
-      incomplete: '事实尚不完整',
-      complete: '事实完整',
-      invalid: '事实待核对',
-      legacy: '旧事实需核对'
-    };
-    return /*#__PURE__*/React.createElement(React.Fragment, null, source.execution_state && /*#__PURE__*/React.createElement("div", {
-      className: "dy-note"
-    }, "\u6267\u884C\u72B6\u6001\uFF1A", execution[source.execution_state] || source.execution_state, " \xB7 ", quality[source.data_quality] || '完整性待核对'), /*#__PURE__*/React.createElement("dl", {
-      className: "dy-facts"
-    }, Object.entries(labels).filter(([k]) => Object.prototype.hasOwnProperty.call(source, k)).map(([k, label]) => /*#__PURE__*/React.createElement("div", {
-      key: k
-    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, source[k] === null ? '未知' : value(source[k]).replace('T', ' '))))), source.hours && /*#__PURE__*/React.createElement("dl", {
-      className: "dy-facts"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6709\u6548\u52A0\u5DE5\u5C0F\u65F6"), /*#__PURE__*/React.createElement("dd", null, hours(source.hours.effective_processing_hours))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5B9A\u989D\u52A0\u5DE5\u5C0F\u65F6"), /*#__PURE__*/React.createElement("dd", null, hours(source.hours.quota_processing_hours))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6709\u6548\u5DE5\u65F6\u8D85\u8017"), /*#__PURE__*/React.createElement("dd", null, source.hours.overrun === null ? '无法评估' : source.hours.overrun ? '已确认超耗' : '未超耗'))), source.downtimes && /*#__PURE__*/React.createElement("div", {
-      className: "dy-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u505C\u673A\u539F\u56E0"), /*#__PURE__*/React.createElement("th", null, "\u6709\u6548\u505C\u673A\u7A97\u53E3"), /*#__PURE__*/React.createElement("th", null, "\u4E0E\u6B63\u5F0F\u5B89\u6392\u91CD\u53E0"))), /*#__PURE__*/React.createElement("tbody", null, source.downtimes.map(d => /*#__PURE__*/React.createElement("tr", {
-      key: d.downtime_ref
-    }, /*#__PURE__*/React.createElement("td", null, d.reason || '原因未填写'), /*#__PURE__*/React.createElement("td", null, d.start.replace('T', ' '), " \u81F3 ", d.end.replace('T', ' ')), /*#__PURE__*/React.createElement("td", null, d.overlap_start.replace('T', ' '), " \u81F3 ", d.overlap_end.replace('T', ' '))))))), source.data_gaps && /*#__PURE__*/React.createElement(Issues, {
-      issues: source.data_gaps
-    }));
+    }, /*#__PURE__*/React.createElement("dt", null, C.labels[k]), /*#__PURE__*/React.createElement("dd", null, k === 'status' ? C.statuses[handling.status] : k === 'completed_at' ? window.WorkbenchFormat.dateTime(handling[k]) : value(handling[k]))))), handling.evidence_ref ? /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '已核验附件编号': handling.evidence_ref
+      }
+    }) : /*#__PURE__*/React.createElement("p", {
+      className: "dy-muted"
+    }, "\u672A\u5173\u8054\u5DF2\u6838\u9A8C\u9644\u4EF6"));
   }
   function Evidence({
     source
   }) {
-    const e = source.evaluation;
-    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-      className: "dy-context"
-    }, source.plan_ref && /*#__PURE__*/React.createElement("span", null, "\u6B63\u5F0F\u8BA1\u5212\u5F15\u7528 ", source.plan_ref), source.batch_ref && /*#__PURE__*/React.createElement("span", null, "\u6279\u6B21\u5F15\u7528 ", source.batch_ref)), source.kind === 'outsourcing_receipt' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "\u539F\u7269\u6D41\u767B\u8BB0\u4E8B\u5B9E"), source.receipt && window.OutsourcingControls ? /*#__PURE__*/React.createElement("div", {
-      className: "outsourcing-live"
-    }, /*#__PURE__*/React.createElement(window.OutsourcingStyles, null), /*#__PURE__*/React.createElement(window.OutsourcingControls.Facts, {
-      facts: source.receipt
-    })) : /*#__PURE__*/React.createElement("div", {
-      className: "dy-note warning"
-    }, "\u539F\u767B\u8BB0\u5F53\u524D\u65E0\u6CD5\u6838\u5BF9\uFF0C\u672A\u63A8\u5B9A\u53D1\u51FA\u6216\u56DE\u5382\u3002")), source.requirements && /*#__PURE__*/React.createElement("div", {
-      className: "dy-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u7269\u6599"), /*#__PURE__*/React.createElement("th", null, "\u9700\u6C42\u91CF"), /*#__PURE__*/React.createElement("th", null, "\u53EF\u7528\u91CF"), /*#__PURE__*/React.createElement("th", null, "\u9F50\u5957"))), /*#__PURE__*/React.createElement("tbody", null, source.requirements.map((r, i) => /*#__PURE__*/React.createElement("tr", {
-      key: i
-    }, /*#__PURE__*/React.createElement("td", null, r.label || r.business_code || '名称未知'), /*#__PURE__*/React.createElement("td", null, r.required_quantity === null ? '未知' : r.required_quantity, " ", r.unit), /*#__PURE__*/React.createElement("td", null, r.available_quantity === null ? '未知' : r.available_quantity, " ", r.unit), /*#__PURE__*/React.createElement("td", null, {
-      yes: '已齐套',
-      no: '未齐套',
-      partial: '部分齐套'
-    }[r.ready_status] || '未知')))))), e && /*#__PURE__*/React.createElement("dl", {
-      className: "dy-facts"
-    }, [['due_date', '交期'], ['planned_finish', '计划完成'], ['delay_days', '预计晚交天数']].filter(([k]) => Object.prototype.hasOwnProperty.call(e, k)).map(([k, label]) => /*#__PURE__*/React.createElement("div", {
-      key: k
-    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, e[k] === null ? '未知' : value(e[k]))))), /*#__PURE__*/React.createElement(SourceFacts, {
+    return /*#__PURE__*/React.createElement(window.DashboardEvidence.Evidence, {
       source: source
-    }), /*#__PURE__*/React.createElement("details", {
-      className: "dy-evidence"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u5B8C\u6574\u6765\u6E90\u4F9D\u636E"), /*#__PURE__*/React.createElement("pre", null, JSON.stringify(source, null, 2))));
+    });
   }
   function Detail({
     item,
     onHandle,
     onHistory,
     navigate,
-    canNavigate
+    canNavigate,
+    onClose
   }) {
-    return /*#__PURE__*/React.createElement("section", {
+    return /*#__PURE__*/React.createElement(window.WorkbenchDetailPanel, {
+      title: "\u98CE\u9669\u6761\u76EE\u8BE6\u60C5",
+      subtitle: item.subject + ' · ' + C.categories[item.category],
+      detailKey: item.item_ref,
+      onClose: onClose
+    }, /*#__PURE__*/React.createElement("section", {
       className: "dy-detail",
       "aria-label": "\u6761\u76EE\u8BE6\u60C5",
       "data-detail-ref": item.item_ref
@@ -349,16 +337,20 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: "dy-tools"
     }, /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       icon: item.handling.status === 'closed' ? 'refresh-cw' : 'square-pen',
       onClick: onHandle
     }, item.handling.status === 'closed' ? '独立重开' : '登记处置'), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       icon: "history",
       onClick: onHistory
     }, "\u67E5\u770B\u5904\u7F6E\u5386\u53F2"), item.navigation.map((n, i) => /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       key: i,
       icon: "arrow-right",
       onClick: () => navigate(n, item)
     }, n.view === 'outsourcing' ? '原外协物流登记' : navigationLabels[n.view] || '未知导航目标')), item.category === 'actual' && item.navigation.some(n => n.enabled && n.command_context === 'read_execution_write_context') && /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       icon: "arrow-right",
       reason: !canNavigate ? '现场报工入口尚未接入' : '',
       onClick: () => navigate({
@@ -369,7 +361,7 @@
       className: "dy-note"
     }, "\u5173\u95ED\u98CE\u9669\u5904\u7F6E\u4E0D\u4EE3\u8868\u5DF2\u56DE\u5382\uFF0C\u4E5F\u4E0D\u4EE3\u8868\u5DE5\u5E8F\u5B8C\u5DE5\u3002\u7269\u6D41\u4E8B\u5B9E\u4E0E\u5904\u7F6E\u5386\u53F2\u5206\u522B\u4FDD\u7559\u3002"), item.handling.status === 'closed' && /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
-    }, "\u5904\u7F6E\u5DF2\u5173\u95ED\uFF0C\u98CE\u9669\u6309\u5F53\u524D\u771F\u5B9E\u6765\u6E90\u7EE7\u7EED\u8BC4\u4F30\u3002"));
+    }, "\u5904\u7F6E\u5DF2\u5173\u95ED\uFF0C\u98CE\u9669\u6309\u5F53\u524D\u771F\u5B9E\u6765\u6E90\u7EE7\u7EED\u8BC4\u4F30\u3002")));
   }
   function NavigationConfirmation({
     entry,
@@ -391,9 +383,11 @@
       icon: "circle-alert",
       onClose: onClose,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
+        reasonDisplay: "inline",
         icon: "x",
         onClick: onClose
       }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement(Button, {
+        reasonDisplay: "inline",
         icon: "arrow-right",
         onClick: onConfirm
       }, "\u6253\u5F00", label, "\u6982\u89C8"))
@@ -406,7 +400,11 @@
       role: "status"
     }, navigation.reason), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, "\u539F\u6761\u76EE\u5F15\u7528 ", item.item_ref, " \xB7 ", item.source_state === 'current' ? '当前来源' : '原来源当前未评估'), /*#__PURE__*/React.createElement(Evidence, {
+    }, item.source_state === 'current' ? '当前来源' : '原来源当前未评估'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '原条目编号': item.item_ref
+      }
+    }), /*#__PURE__*/React.createElement(Evidence, {
       source: item.source
     }), /*#__PURE__*/React.createElement("p", null, "\u539F\u6761\u76EE\u4E0E\u5904\u7F6E\u72B6\u6001\u4FDD\u6301\u4E0D\u53D8\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
@@ -424,6 +422,7 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-heading"
     }, /*#__PURE__*/React.createElement("h3", null, "\u6B63\u5F0F\u8BA1\u5212\u8D44\u6E90\u538B\u529B"), data.plan && /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       icon: "arrow-right",
       reason: !canNavigate ? '对象导航尚未接入' : '',
       onClick: () => navigate({
@@ -435,26 +434,43 @@
       })
     }, "\u8BA1\u5212\u7518\u7279")), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, data.plan ? data.plan.display_name : data.categories.delivery.state === 'no_official_plan' ? '无正式计划' : '正式计划未能读取', " \xB7 ", p.time_scope ? p.time_scope.range_start.replace('T', ' ') + ' 至 ' + p.time_scope.range_end.replace('T', ' ') + ' · 工厂本地 · 左闭右开' : '时间范围未读取'), /*#__PURE__*/React.createElement(Issues, {
+    }, data.plan ? data.plan.display_name : data.categories.delivery.state === 'no_official_plan' ? '无正式计划' : '正式计划未能读取', " \xB7 ", p.time_scope ? window.WorkbenchFormat.dateTime(p.time_scope.range_start) + ' 至 ' + window.WorkbenchFormat.dateTime(p.time_scope.range_end) + ' · 工厂本地 · 左闭右开' : '时间范围未读取'), /*#__PURE__*/React.createElement(Issues, {
       issues: p.issues
     }), /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
-    }, "\u5360\u7528\u5C0F\u65F6\u4E0D\u662F\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6\uFF1B\u53EF\u7528\u4EA7\u80FD\u672A\u77E5\u65F6\u5229\u7528\u7387\u4FDD\u6301\u672A\u77E5\u3002\u505C\u673A\u548C\u65E5\u5386\u6309\u540C\u4E00\u6B63\u5F0F\u8BA1\u5212\u6838\u5BF9\u3002"), !rows || !rows.length ? /*#__PURE__*/React.createElement("div", {
-      className: "dy-empty"
-    }, !rows ? '资源压力无法评估，未显示零负荷。' : '当前正式计划没有资源占用数据。') : /*#__PURE__*/React.createElement("div", {
+    }, "\u5360\u7528\u5C0F\u65F6\u4E0D\u662F\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6\uFF1B\u53EF\u7528\u4EA7\u80FD\u672A\u77E5\u65F6\u5229\u7528\u7387\u4FDD\u6301\u672A\u77E5\u3002\u505C\u673A\u548C\u65E5\u5386\u6309\u540C\u4E00\u6B63\u5F0F\u8BA1\u5212\u6838\u5BF9\u3002"), !rows || !rows.length ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "empty",
+      title: !rows ? '资源压力无法评估，未显示零负荷。' : '当前正式计划没有资源占用数据。'
+    }) : /*#__PURE__*/React.createElement("div", {
       className: "dy-scroll"
     }, /*#__PURE__*/React.createElement("table", {
       className: "dy-resource"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u8D44\u6E90"), /*#__PURE__*/React.createElement("th", null, "\u5360\u7528 / \u5B89\u6392"), /*#__PURE__*/React.createElement("th", null, "\u53EF\u7528"), /*#__PURE__*/React.createElement("th", null, "\u5229\u7528\u7387"), /*#__PURE__*/React.createElement("th", null, "\u91CD\u53E0\u5360\u7528"), /*#__PURE__*/React.createElement("th", null, "\u65E5\u5386\u5916\u5360\u7528"), /*#__PURE__*/React.createElement("th", null, "\u5BB9\u91CF\u7F3A\u53E3"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(r => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-sr-only"
+    }, "\u6B63\u5F0F\u8BA1\u5212\u8D44\u6E90\u538B\u529B"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u8D44\u6E90"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5360\u7528 / \u5B89\u6392"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u53EF\u7528"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, window.WorkbenchTerms.utilization), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u91CD\u53E0\u5360\u7528"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u65E5\u5386\u5916\u5360\u7528"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5BB9\u91CF\u7F3A\u53E3"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(r => /*#__PURE__*/React.createElement("tr", {
       key: r.kind + r.resource_ref,
       "data-resource-ref": r.resource_ref
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, r.label || '名称未提供'), /*#__PURE__*/React.createElement("div", {
       className: "dy-muted"
-    }, r.kind === 'machine' ? '设备' : '人员', " \xB7 ", r.operation_count, " \u9053\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("td", null, hours(r.occupied_hours), " / ", hours(r.arranged_hours)), /*#__PURE__*/React.createElement("td", null, hours(r.available_hours)), /*#__PURE__*/React.createElement("td", null, r.utilization === null ? '未知' : (r.utilization * 100).toFixed(1) + '%', r.utilization !== null && /*#__PURE__*/React.createElement("div", {
+    }, r.kind === 'machine' ? '设备' : '人员', " \xB7 ", r.operation_count, " \u9053\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("td", null, hours(r.occupied_hours), " / ", hours(r.arranged_hours)), /*#__PURE__*/React.createElement("td", null, hours(r.available_hours)), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.percent(r.utilization), r.utilization !== null && /*#__PURE__*/React.createElement("div", {
       className: 'dy-meter' + (r.capacity_insufficient || r.has_overlap ? ' hot' : '')
     }, /*#__PURE__*/React.createElement("i", {
       style: {
-        width: r.utilization * 100 + '%'
+        width: Math.min(100, Math.max(0, r.utilization * 100)) + '%'
       }
     }))), /*#__PURE__*/React.createElement("td", {
       className: r.has_overlap ? 'dy-danger' : ''
@@ -483,6 +499,7 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-heading"
     }, /*#__PURE__*/React.createElement("h3", null, "\u5019\u9009\u65B9\u6848\u76EE\u5F55"), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       icon: "history",
       reason: !canNavigate ? '候选导航尚未接入' : '',
       onClick: () => navigate({
@@ -496,16 +513,32 @@
       className: "dy-note"
     }, "\u5DF2\u4FDD\u5B58\u8FD0\u884C\u76EE\u5F55 \xB7 \u975E\u5F53\u524D\u6B63\u5F0F\u8BA1\u5212"), /*#__PURE__*/React.createElement(Issues, {
       issues: c.issues
-    }), c.state === 'unavailable' ? /*#__PURE__*/React.createElement("div", {
-      className: "dy-empty"
-    }, "\u5019\u9009\u76EE\u5F55\u672A\u80FD\u8BFB\u53D6\u3002") : !c.runs.length ? /*#__PURE__*/React.createElement("div", {
-      className: "dy-empty"
-    }, "\u5C1A\u65E0\u6392\u4EA7\u8FD0\u884C\u8BB0\u5F55\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }), c.state === 'unavailable' ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "empty",
+      title: "\u5019\u9009\u76EE\u5F55\u672A\u80FD\u8BFB\u53D6\u3002",
+      hint: "\u8BF7\u4F7F\u7528\u9875\u9762\u5237\u65B0\u91CD\u8BD5\uFF0C\u5F53\u524D\u4E0D\u80FD\u5224\u65AD\u5019\u9009\u6570\u91CF\u3002"
+    }) : !c.runs.length ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "empty",
+      title: "\u5C1A\u65E0\u6392\u4EA7\u8FD0\u884C\u8BB0\u5F55\u3002"
+    }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "dy-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u8FD0\u884C\u53D7\u7406\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", null, "\u8BA1\u7B97\u72B6\u6001"), /*#__PURE__*/React.createElement("th", null, "\u5019\u9009\u6570\u91CF"), /*#__PURE__*/React.createElement("th", null, "\u8303\u56F4"), /*#__PURE__*/React.createElement("th", null, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, c.runs.map(r => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-sr-only"
+    }, "\u5019\u9009\u65B9\u6848\u8FD0\u884C\u76EE\u5F55"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u8FD0\u884C\u53D7\u7406\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u8BA1\u7B97\u72B6\u6001"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5019\u9009\u6570\u91CF"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u8303\u56F4"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, c.runs.map(r => /*#__PURE__*/React.createElement("tr", {
       key: r.run_ref,
       "data-run-ref": r.run_ref
-    }, /*#__PURE__*/React.createElement("td", null, r.accepted_at.replace('T', ' ')), /*#__PURE__*/React.createElement("td", null, runStates[r.state] || '状态未知'), /*#__PURE__*/React.createElement("td", null, r.candidate_count), /*#__PURE__*/React.createElement("td", null, r.scope_summary ? value(r.scope_summary.batch_count) + ' 个批次' : '范围未知'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.dateTime(r.accepted_at)), /*#__PURE__*/React.createElement("td", null, runStates[r.state] || '状态未知'), /*#__PURE__*/React.createElement("td", null, r.candidate_count), /*#__PURE__*/React.createElement("td", null, r.scope_summary ? value(r.scope_summary.batch_count) + ' 个批次' : '范围未知'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
       icon: "arrow-right",
       reason: !canNavigate ? '候选导航尚未接入' : '',
       onClick: () => navigate({

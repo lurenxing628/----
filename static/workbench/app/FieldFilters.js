@@ -78,9 +78,13 @@
       className: "field-filters field-note"
     }, scope.range_start && /*#__PURE__*/React.createElement("span", null, "\u8BA1\u5212\u91CD\u53E0\u8303\u56F4\uFF1A", window.FieldContract.date(scope.range_start), " \u81F3 ", window.FieldContract.date(scope.range_end)), scope.batch_ids && /*#__PURE__*/React.createElement("span", null, "\u6307\u5B9A\u6279\u6B21\uFF1A", scope.batch_ids.length, " \u4E2A"), scope.resource_ref && /*#__PURE__*/React.createElement("span", null, "\u5DF2\u9650\u5B9A", scope.resource_type === 'machine' ? '设备' : '人员', "\u5173\u8054\u5DE5\u5E8F")), summary && /*#__PURE__*/React.createElement("div", {
       className: "field-metrics"
-    }, [['unreported', '待报工'], ['started', '已登记开工'], ['partial', '部分完成'], ['complete', '已完工']].map(([key, label]) => /*#__PURE__*/React.createElement("span", {
-      key: key
-    }, label, /*#__PURE__*/React.createElement("b", null, counts ? counts[key] : '未读取'))), /*#__PURE__*/React.createElement("span", null, "\u7D2F\u8BA1\u5B9E\u62A5\u5DE5\u65F6", /*#__PURE__*/React.createElement("b", null, summary.effective_processing_hours === null || summary.effective_processing_hours === undefined ? '未知' : Math.round(summary.effective_processing_hours * 1000) / 1000 + ' h'), summary.unknown_hour_reports > 0 && /*#__PURE__*/React.createElement("small", null, "\u5DF2\u77E5\u5C0F\u8BA1 ", summary.known_effective_processing_hours, " h \xB7 ", summary.unknown_hour_reports, " \u6761\u5F85\u8865"))));
+    }, /*#__PURE__*/React.createElement("span", null, "\u7D2F\u8BA1\u5B9E\u62A5\u5DE5\u65F6", /*#__PURE__*/React.createElement("b", null, window.WorkbenchFormat.hours(summary.effective_processing_hours, {
+      digits: 3,
+      trim: true
+    })), summary.unknown_hour_reports > 0 && /*#__PURE__*/React.createElement("small", null, "\u5DF2\u77E5\u5C0F\u8BA1 ", window.WorkbenchFormat.hours(summary.known_effective_processing_hours, {
+      digits: 3,
+      trim: true
+    }), " \xB7 ", summary.unknown_hour_reports, " \u6761\u5F85\u8865"))));
   }
   window.FieldFilters = FieldFilters;
 })();

@@ -1,0 +1,75 @@
+.operations-shell .wb-instance-label {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ui-muted);
+  font-size: var(--font-size-1);
+}
+.operations-shell .header-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.operations-shell .wb-help-link {
+  text-decoration: none;
+  color: var(--ui-text);
+}
+.operations-shell .hdr-pill { display: inline-flex; align-items: center; gap: var(--space-1); }
+.wb-view-tabs {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--ui-border);
+  margin-bottom: var(--space-3);
+}
+.wb-view-tabs > [role="tab"] {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-2) var(--space-3);
+  color: var(--ui-muted);
+  background: transparent;
+  font: inherit;
+  font-size: var(--font-size-2);
+  cursor: pointer;
+}
+.wb-view-tabs > [role="tab"][aria-selected="true"] {
+  color: var(--ui-primary);
+  border-bottom-color: var(--ui-primary);
+  font-weight: 600;
+}
+.wb-view-tabs > [role="tab"]:focus-visible,
+.operations-shell .hdr-pill:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
+.wb-navigation-error { color: var(--wb-sev-danger); }
+.wb-server-messages { display: grid; gap: var(--space-2); margin-bottom: var(--space-4); }
+.wb-server-message {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 10px var(--space-3);
+  border: 1px solid var(--ui-border);
+  border-left: 3px solid var(--wb-sev-notice);
+  border-radius: var(--wb-radius-control);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+}
+.wb-server-message[data-kind="error"], .wb-server-message[data-kind="danger"] { border-left-color: var(--wb-sev-danger); }
+.wb-server-message[data-kind="warning"] { border-left-color: var(--wb-sev-warning); }
+.wb-server-message[data-kind="success"] { border-left-color: var(--wb-sev-ok); }
+.wb-server-message p { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.wb-server-badge { flex: 0 0 auto; font-size: var(--font-size-1); font-weight: 600; }
+.wb-server-message button {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: var(--wb-radius-control);
+  cursor: pointer;
+}
+.wb-server-message button:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }

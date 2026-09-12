@@ -119,6 +119,11 @@
         due_date: '',
         remark: ''
       });
+    const bulkGuard = window.WorkbenchGuards.useDirtyGuard({
+      dirty: !!dialog && dialog.type === 'bulk' && Object.values(bulk).some(Boolean),
+      locked: !!dialog && dialog.type === 'bulk' && busy,
+      message: '批量修改条件尚未确认，离开会放弃本次修改。'
+    });
     React.useEffect(() => {
       alive.current = true;
       return () => {
@@ -151,10 +156,27 @@
         snapshot_ref: undefined
       }));
     }
+    function clearFilters() {
+      setQuery('');
+      filter({
+        query: '',
+        status: undefined,
+        ready_status: undefined,
+        column_filters: {},
+        focus: undefined,
+        batch_ids: undefined
+      });
+    }
     function close() {
       if (command.locked || !command.reset()) return;
       setDialog(null);
       setError(null);
+    }
+    async function closeBulk(detail) {
+      if (busy) return;
+      if (detail && detail.guardConfirmed === true && detail.guardOwner === bulkGuard || (await window.WorkbenchGuards.confirmLeave({
+        owner: bulkGuard
+      }))) close();
     }
     function committed(receipt) {
       const deleted = receipt.data.deleted_refs || [];
@@ -287,7 +309,9 @@
           query
         });
       }
-    }, /*#__PURE__*/React.createElement("h2", null, "\u6279\u6B21\u5217\u8868"), /*#__PURE__*/React.createElement("label", {
+    }, /*#__PURE__*/React.createElement("h2", {
+      className: "wb-page-title"
+    }, "\u6279\u6B21\u5217\u8868"), /*#__PURE__*/React.createElement("label", {
       className: "search"
     }, /*#__PURE__*/React.createElement("input", {
       type: "search",
@@ -353,24 +377,14 @@
     }, B.label(key, scope[key]))), Object.keys(scope.column_filters).length > 0 && /*#__PURE__*/React.createElement("span", null, "\u5217\u7B5B\u9009 ", Object.keys(scope.column_filters).length, " \u9879"), (scope.focus || scope.batch_ids) && /*#__PURE__*/React.createElement("span", null, "\u5DF2\u5B9A\u4F4D", scope.focus === 'gaps' ? '工序缺项' : scope.focus === 'unready' ? '未齐套' : '指定批次'), /*#__PURE__*/React.createElement(Button, {
       icon: "x",
       disabled: blocked,
-      onClick: () => filter({
-        status: undefined,
-        ready_status: undefined,
-        column_filters: {},
-        focus: undefined,
-        batch_ids: undefined
-      })
+      onClick: clearFilters
     }, "\u6E05\u9664\u5168\u90E8\u7B5B\u9009"), onNav && /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-left",
       disabled: blocked,
       onClick: () => typeof returnTarget === 'string' ? onNav(returnTarget) : onNav(returnTarget.view, returnTarget.context)
-    }, returnView === 'dashboard' ? '返回值班台' : '返回排产')), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, returnView === 'dashboard' ? '返回值班台' : '返回排产')), data && data.entities.length > 0 && /*#__PURE__*/React.createElement(ErrorBox, {
       error: list.error
-    }), list.error && /*#__PURE__*/React.createElement(Button, {
-      icon: "refresh-cw",
-      disabled: blocked,
-      onClick: () => filter({})
-    }, "\u91CD\u8BD5\u8BFB\u53D6\u6279\u6B21"), /*#__PURE__*/React.createElement(window.BatchTable, {
+    }), /*#__PURE__*/React.createElement(window.BatchTable, {
       rows: data ? data.entities : [],
       scope: scope,
       selected: selected,
@@ -386,10 +400,18 @@
           snapshot_ref: snapshot
         }
       }),
+      onClear: clearFilters,
+      onRetry: () => filter({}),
+      error: list.error,
       loading: list.loading,
       disabled: blocked || list.loading
-    }), data && /*#__PURE__*/React.createElement(window.ResourceTables.Pager, {
+    }), data && /*#__PURE__*/React.createElement(window.WorkbenchControls.Pager, {
       page: data.page,
+      sizes: Array.from(new Set([20, 50, 100, data.page.size])).sort((a, b) => a - b),
+      unit: "\u4E2A\u6279\u6B21",
+      label: "",
+      sizeLabel: "\u6BCF\u9875\u6761\u6570",
+      showPageJump: true,
       disabled: blocked || list.loading,
       onSize: size => filter({
         size
@@ -504,10 +526,11 @@
     }, label))))))), dialog && dialog.type === 'bulk' && /*#__PURE__*/React.createElement(Modal, {
       title: "\u6279\u91CF\u4FEE\u6539\u6279\u6B21",
       icon: "square-pen",
+      guardOwner: bulkGuard,
       locked: busy,
-      onClose: close,
+      onClose: closeBulk,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
-        onClick: close,
+        onClick: closeBulk,
         disabled: busy
       }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement(Button, {
         icon: "check",

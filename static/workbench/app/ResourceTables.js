@@ -9,7 +9,9 @@
   } = window.ResourceControls;
   const cell = (entity, key) => entity.fields[key] == null ? /*#__PURE__*/React.createElement("span", {
     className: "muted"
-  }, "\u672A\u77E5") : String(entity.fields[key]);
+  }, "\u672A\u77E5") : typeof entity.fields[key] === 'number' ? window.WorkbenchFormat.number(entity.fields[key], {
+    digits: 1
+  }) : String(entity.fields[key]);
   const columns = {
     material: [{
       key: 'spec',
@@ -133,6 +135,8 @@
     headerDisabled = disabled,
     loading = false,
     error,
+    onRetry,
+    onClear,
     adapter,
     scope,
     matchingCount,
@@ -194,10 +198,16 @@
         [key]: Math.max(56, width)
       });
     }
+    const filtered = !!(scope && (scope.query || scope.status || Object.keys(scope.column_filters || {}).length));
     return /*#__PURE__*/React.createElement("div", {
-      className: "card wb-table-frame"
+      className: "card"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "card-scroll wb-table-shell"
+      className: "wb-table-frame wb-table-shell",
+      "data-sticky-head": true,
+      "data-sticky-actions": true,
+      style: {
+        '--wb-table-min': '850px'
+      }
     }, /*#__PURE__*/React.createElement("table", {
       ref: table,
       className: "tbl wb-table",
@@ -207,7 +217,10 @@
         minWidth: 0
       } : undefined,
       "aria-busy": loading
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, C.resourceName(kind, opCategory), "\u5217\u8868\uFF0C\u7F16\u53F7\u4E0E\u64CD\u4F5C\u5217\u56FA\u5B9A\u3002"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       className: "cbx",
       "data-column": "__selection",
       style: widths ? {
@@ -225,8 +238,9 @@
       }
     })), cols.map(col => /*#__PURE__*/React.createElement("th", {
       key: col.key,
+      scope: "col",
       "data-column": col.key,
-      className: col.numeric ? 'r' : '',
+      className: col.key === 'business_code' ? 'wb-col-key' : col.numeric ? 'r' : '',
       style: {
         width: widths ? widths[col.key] : col.width
       },
@@ -247,7 +261,8 @@
       onResize: width => resize(col.key, width),
       disabled: headerDisabled
     }))), /*#__PURE__*/React.createElement("th", {
-      className: "actcol",
+      scope: "col",
+      className: "actcol wb-col-actions",
       "data-column": "__actions",
       style: {
         width: widths ? widths.__actions : 216
@@ -264,7 +279,7 @@
       onChange: event => onSelect(event.target.checked ? selected.concat(entity.ref) : selected.filter(ref => ref !== entity.ref))
     })), cols.map(col => /*#__PURE__*/React.createElement("td", {
       key: col.key,
-      className: col.numeric ? 'r' : '',
+      className: col.key === 'business_code' ? 'wb-col-key' : col.numeric ? 'r' : '',
       style: {
         overflowWrap: 'anywhere',
         whiteSpace: 'normal'
@@ -276,12 +291,9 @@
         fontSize: 12
       }
     }, "\u5F85\u6838\u5BF9 ", entity.issues.filter(issue => issue.scope !== 'collection').length, " \u9879"))), /*#__PURE__*/React.createElement("td", {
-      className: "actcol"
+      className: "actcol wb-col-actions"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "rowact",
-      style: {
-        minWidth: 192
-      }
+      className: "rowact"
     }, /*#__PURE__*/React.createElement(Button, {
       className: "mini",
       icon: "search",
@@ -290,16 +302,20 @@
     }, kind === 'op_type' ? entity.fields.category === 'internal' ? '查看绑定' : entity.fields.category === 'external' ? '查看供应商' : '查看/编辑' : '查看/编辑'), /*#__PURE__*/React.createElement(Button, {
       className: "mini danger",
       icon: "minus",
+      reasonDisplay: "inline",
       reason: disabled ? '正在处理，请稍候。' : C.blocked(entity.write_context, kind, 'delete', source),
       onClick: () => onDelete(entity.ref)
     }, "\u5220\u9664"))))), !entities.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
-      colSpan: cols.length + 2,
-      className: "muted",
-      style: {
-        textAlign: 'center',
-        padding: 28
-      }
-    }, loading ? '正在读取资料…' : error ? '列表读取失败，请重新读取。' : '当前条件下没有资料。'))))));
+      colSpan: cols.length + 2
+    }, /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
+      kind: loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty',
+      error: error,
+      action: error ? /*#__PURE__*/React.createElement(Button, {
+        onClick: onRetry
+      }, "\u91CD\u65B0\u8BFB\u53D6") : filtered ? /*#__PURE__*/React.createElement(Button, {
+        onClick: onClear
+      }, "\u6E05\u9664\u7B5B\u9009") : undefined
+    })))))));
   }
   function Pager({
     page,
@@ -307,65 +323,17 @@
     onSize,
     disabled
   }) {
-    const [jump, setJump] = React.useState(String(page.number));
-    React.useEffect(() => setJump(String(page.number)), [page.number]);
-    const totalPages = Math.max(1, page.pages);
-    return /*#__PURE__*/React.createElement("form", {
-      className: "pager",
-      style: {
-        flexWrap: 'wrap'
-      },
-      onSubmit: event => {
-        event.preventDefault();
-        const next = Number(jump);
-        if (!disabled && Number.isInteger(next) && next >= 1 && next <= totalPages) onPage(next);
-      }
-    }, /*#__PURE__*/React.createElement("span", null, "\u5171 ", page.total, " \u6761"), /*#__PURE__*/React.createElement("label", {
-      className: "field"
-    }, /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u6BCF\u9875\u6761\u6570",
-      value: page.size,
-      disabled: disabled,
-      onChange: event => onSize(Number(event.target.value))
-    }, Array.from(new Set([20, 50, 100, page.size])).sort((a, b) => a - b).map(size => /*#__PURE__*/React.createElement("option", {
-      key: size,
-      value: size
-    }, size, " \u6761 / \u9875")))), /*#__PURE__*/React.createElement("span", {
-      className: "grow"
-    }), /*#__PURE__*/React.createElement(Button, {
-      className: "pg",
-      icon: "chevron-left",
-      "aria-label": "\u4E0A\u4E00\u9875",
-      reason: page.number <= 1 ? '已经是第一页。' : '',
-      disabled: disabled,
-      onClick: () => onPage(page.number - 1)
-    }), /*#__PURE__*/React.createElement("span", null, "\u7B2C ", page.number, " / ", totalPages, " \u9875"), /*#__PURE__*/React.createElement(Button, {
-      className: "pg",
-      icon: "chevron-right",
-      "aria-label": "\u4E0B\u4E00\u9875",
-      reason: page.number >= totalPages ? '已经是最后一页。' : '',
-      disabled: disabled,
-      onClick: () => onPage(page.number + 1)
-    }), /*#__PURE__*/React.createElement("label", {
-      className: "field"
-    }, /*#__PURE__*/React.createElement("input", {
-      "aria-label": "\u8DF3\u8F6C\u9875\u7801",
-      type: "number",
-      min: "1",
-      max: totalPages,
-      step: "1",
-      value: jump,
-      disabled: disabled,
-      onChange: event => setJump(event.target.value),
-      style: {
-        width: 74,
-        textAlign: 'right'
-      }
-    })), /*#__PURE__*/React.createElement(Button, {
-      type: "submit",
-      disabled: disabled,
-      reason: !Number.isInteger(Number(jump)) || Number(jump) < 1 || Number(jump) > totalPages ? '请输入有效页码。' : ''
-    }, "\u8DF3\u8F6C"));
+    return /*#__PURE__*/React.createElement(window.WorkbenchControls.Pager, {
+      page: page,
+      sizes: Array.from(new Set([20, 50, 100, page.size])).sort((a, b) => a - b),
+      unit: "\u9879",
+      label: "",
+      sizeLabel: "\u6BCF\u9875\u6761\u6570",
+      showPageJump: true,
+      onPage: onPage,
+      onSize: onSize,
+      disabled: disabled
+    });
   }
   ResourceTables.Pager = Pager;
   window.ResourceTables = ResourceTables;

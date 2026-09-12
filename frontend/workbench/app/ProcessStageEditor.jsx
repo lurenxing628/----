@@ -7,10 +7,8 @@
   const value = item => item === null || item === undefined ? '未填写' : String(item);
   function confirmationTime(text) {
     if (!text) return '未填写';
-    const date = new Date(text), pad = number => String(number).padStart(2, '0');
-    if (!Number.isFinite(date.getTime())) return '时间格式待核对';
-    return [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join('-') + ' ' +
-      [pad(date.getHours()), pad(date.getMinutes()), pad(date.getSeconds())].join(':');
+    return /(?:Z|[+-]\d\d:\d\d)$/.test(text) ? window.WorkbenchFormat.instant(text, { seconds: true })
+      : window.WorkbenchFormat.dateTime(text, { seconds: true });
   }
   function Confirmation({ record }) {
     return <span className="process-confirmation">{record && record.state === 'confirmed' ? <>已确认{record.confirmed_at && <time dateTime={record.confirmed_at} title={record.confirmed_at}>{confirmationTime(record.confirmed_at)}</time>}{record.confirmed_by && <> · {record.confirmed_by}</>}</> : '未人工确认'}</span>;
@@ -62,10 +60,10 @@
     const paging = usePage(rows, focusRef), root = React.useRef(null);
     useFocus(root, focusRef, paging.page.number);
     return <section ref={root}><h3>{title}</h3>{!rows.length ? <p className="muted">{empty}</p> : <>
-      <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table className="tbl wb-table" aria-label={title} style={{ minWidth: 850, tableLayout: 'fixed' }}>
-        <thead><tr><th>工序范围</th><th>周期策略</th><th>总周期（天）</th><th>供应商</th><th>备注 / 问题</th>{onDiscard && <th>解除原组</th>}</tr></thead>
+      <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table className="tbl wb-table" aria-label={title} style={{ minWidth: 850, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{title}</caption>
+        <thead><tr><th scope="col">工序范围</th><th scope="col">周期策略</th><th scope="col">总周期（天）</th><th scope="col">供应商</th><th scope="col">备注 / 问题</th>{onDiscard && <th scope="col">解除原组</th>}</tr></thead>
         <tbody>{paging.rows.map(row => <tr key={row.ref} data-process-location={row.ref} tabIndex={row.ref === focusRef ? -1 : undefined} aria-current={row.ref === focusRef ? 'true' : undefined}>
-          <td>{row.start_sequence} 至 {row.end_sequence}{row.ref === focusRef && <div className="muted" style={{ overflowWrap: 'anywhere' }}>{row.ref}</div>}</td><td>{({ merged: '合并设置', separate: '分别设置' })[row.merge_mode] || value(row.merge_mode)}</td>
+          <td>{row.start_sequence} 至 {row.end_sequence}{row.ref === focusRef && <window.WorkbenchReference value={row.ref} />}</td><td>{({ merged: '合并设置', separate: '分别设置' })[row.merge_mode] || value(row.merge_mode)}</td>
           <td>{onTotal && row.merge_mode === 'merged' && C.own(totals, row.ref) ? <input className="wt-in" type="number" step="any" min="0" aria-label={'外协组 ' + row.start_sequence + ' 至 ' + row.end_sequence + ' 总周期'} value={totals[row.ref]} disabled={disabled} onChange={event => onTotal(row.ref, event.target.value)} style={{ width: '100%' }} /> : P.valueText(row.total_days)}</td>
           <td>{value(row.supplier_label)}</td><td style={{ whiteSpace: 'pre-wrap' }}>{value(row.remark)}<Issues issues={row.issues || []} /></td>
           {onDiscard && <td>{changed.has(row.ref) ? <label><input type="checkbox" aria-label={'解除外协组 ' + row.start_sequence + ' 至 ' + row.end_sequence} checked={selected.has(row.ref)} disabled={disabled}
@@ -128,24 +126,26 @@
     const rows = React.useMemo(() => changes(before, after), [before, after]), paging = usePage(rows);
     return <section className="match-note" style={{ display: 'block' }} role="status">
       <p>最新资料已读取，草稿未被替换。差异 {rows.length} 项；请核对下表与当前草稿。继续编辑时，保留您改过的字段，其余采用最新值；变化工序需重新确认，已移除工序不再提交。</p>
-      {!!rows.length && <><div className="card-scroll"><table className="tbl wb-table" aria-label="最新资料差异" style={{ tableLayout: 'fixed', width: '100%' }}><thead><tr><th>项目</th><th>编辑前资料</th><th>最新资料</th></tr></thead>
+      {!!rows.length && <><div className="card-scroll"><table className="tbl wb-table" aria-label="最新资料差异" style={{ tableLayout: 'fixed', width: '100%' }}><caption className="wb-visually-hidden">{"最新资料差异"}</caption><thead><tr><th scope="col">项目</th><th scope="col">编辑前资料</th><th scope="col">最新资料</th></tr></thead>
         <tbody>{paging.rows.map((row, index) => <tr key={index}><td>{row.label}</td><td style={{ overflowWrap: 'anywhere' }}>{row.previous}</td><td style={{ overflowWrap: 'anywhere' }}>{row.current}</td></tr>)}</tbody></table></div><Pager paging={paging} disabled={disabled} /></>}
       <Button icon="check" disabled={disabled} onClick={onAccept}>已核对，采用最新范围并保留可匹配草稿</Button>
     </section>;
   }
   function useDraft({ result, adapter, stage, build, reconcile, saved, onDirty }) {
     const [base, setBase] = React.useState(result), [draft, setDraft] = React.useState(() => build(result.data));
-    const [dirty, setDirty] = React.useState(false), [review, setReview] = React.useState(null), [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false);
+    const [review, setReview] = React.useState(null), [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false);
+    const baseline = React.useMemo(() => build(base.data), [base.data]);
+    const dirty = React.useMemo(() => !same(draft, baseline), [draft, baseline]);
     const seenSaved = React.useRef(saved), request = React.useRef(null);
     React.useEffect(() => () => { if (request.current) request.current.abort(); }, []);
     React.useEffect(() => { if (onDirty) onDirty(stage, dirty); }, [dirty, stage, onDirty]);
     React.useLayoutEffect(() => {
       if (base === result) return;
-      if (seenSaved.current !== saved || !dirty) { setBase(result); setDraft(build(result.data)); setDirty(false); setReview(null); setError(null); }
+      if (seenSaved.current !== saved || !dirty) { setBase(result); setDraft(build(result.data)); setReview(null); setError(null); }
       else setReview(result);
       seenSaved.current = saved;
     }, [result, saved]);
-    function edit(next) { setDraft(next); setDirty(true); setError(null); }
+    function edit(next) { setDraft(next); setError(null); }
     async function reload() {
       if (busy) return;
       const controller = new AbortController(); request.current = controller; setBusy(true); setError(null);
@@ -154,7 +154,7 @@
       finally { if (!controller.signal.aborted) setBusy(false); if (request.current === controller) request.current = null; }
     }
     function accept() {
-      setDraft(reconcile(draft, base.data, review.data)); setBase(review); setReview(null); setDirty(true); setError(null);
+      setDraft(reconcile(draft, base.data, review.data)); setBase(review); setReview(null); setError(null);
     }
     return { base, draft, edit, dirty, review, error, setError, busy, reload, accept };
   }

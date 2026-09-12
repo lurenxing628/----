@@ -131,7 +131,7 @@
             <Format value={format} onChange={chooseFormat} disabled={controlsDisabled} />
             <div className="tmpl-row"><span className="tmpl-ico"><Icon name="file-input" /></span><div><div className="tmpl-t">{label}导入模板.{format}</div><div className="tmpl-s">{M.templateHint || '空白表头模板，不含示例物料'}</div></div><Button className="mini" transfer="template" disabled={controlsDisabled} onClick={() => downloadFile(true)}>下载模板</Button></div>
             <div className={'drop rm-upload' + (file ? ' has' : '')} aria-disabled={controlsDisabled} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); chooseFile(event.dataTransfer.files); }}>
-              <div className="di"><Icon name="file-input" /></div><div className="dt">{file ? file.name : '选择 CSV / XLSX 文件'}</div><div className="ds">{file ? file.size.toLocaleString() + ' 字节 · 单次导入最多 2,000 行' : '单次导入最多 2,000 行'}</div>
+              <div className="di"><Icon name="file-input" /></div><div className="dt">{file ? file.name : '选择 CSV / XLSX 文件'}</div><div className="ds">{file ? window.WorkbenchFormat.number(file.size, { digits: 0 }) + ' 字节 · 单次导入最多 2,000 行' : '单次导入最多 2,000 行'}</div>
               <input type="file" aria-label={'选择' + label + '导入文件'} accept=".csv,.xlsx" disabled={controlsDisabled} onChange={event => { chooseFile(event.target.files); event.target.value = ''; }} /></div>
             <p className="iohint">{M.importHint || <>按编号增量更新：已有编号更新，不存在则新增；不删除文件以外的物料。空白单元格保持原值；<code>{'\\N'}</code> 仅清空规格、单位或备注。</>}</p>
           </div>}
@@ -148,7 +148,7 @@
           {data && isExport && <p role="status">已核对导出范围：<b>{data.row_count}</b> 条 · {format.toUpperCase()}{expired ? ' · 预览已过期' : ''}</p>}
           {download.busy && <p role="status">正在读取下载文件…</p>}{download.name && <p role="status">已交给浏览器下载：<b>{download.name}</b></p>}
           {!isExport && <Feedback command={command} />}
-          {command.intent && <p className="rm-request">请求编号：{command.intent.request_key}</p>}
+          {command.intent && <window.WorkbenchReference entries={{ '请求编号': command.intent.request_key }} />}
           {done && <p role="status">{Number.isSafeInteger(command.result.data.deleted_count) ? '已删除 ' + command.result.data.deleted_count + ' 条。' : command.result.data.summary ? '导入结果已由服务器回执确认。' : '已取得原请求的完成回执。'}</p>}
         </div></Modal></div>;
   }

@@ -107,7 +107,10 @@
         ...sizing,
         tableLayout: 'fixed'
       }
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "零件工艺列表"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       "data-column": "__selection",
       style: {
         width: widths ? widths.__selection : 44
@@ -122,6 +125,7 @@
     })), P.columns.map(column => {
       const sorted = ordering.find(row => row.field === column.key);
       return /*#__PURE__*/React.createElement("th", {
+        scope: "col",
         key: column.key,
         "data-column": column.key,
         style: {
@@ -147,6 +151,7 @@
         pageSize: 50
       }));
     }), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       "data-column": "__actions",
       style: {
         width: widths ? widths.__actions : 190
@@ -195,6 +200,7 @@
       className: "mini",
       icon: "minus",
       disabled: disabled || loading,
+      reasonDisplay: "tooltip",
       reason: deleteReason,
       "aria-label": '删除 ' + row.business_code,
       onClick: () => onDelete([row.ref])
@@ -246,6 +252,11 @@
     const [selected, setSelected] = React.useState(() => restored ? restored.selected_refs : []),
       [dialog, setDialog] = React.useState(() => !deferred && target.context ? navigationDialog() : null);
     const previousAdapter = React.useRef(adapter);
+    window.WorkbenchGuards.useDirtyGuard({
+      dirty: false,
+      locked: !dialog && command.locked,
+      message: '工艺原请求尚未核实，请保留当前页面。'
+    });
     React.useEffect(() => {
       if (previousAdapter.current === adapter) return;
       previousAdapter.current = adapter;
@@ -364,15 +375,7 @@
     return /*#__PURE__*/React.createElement("div", {
       className: "process-workspace",
       "data-process-workspace": true
-    }, /*#__PURE__*/React.createElement("style", null, `
-        .process-workspace { min-width:0; }
-        .process-workspace .wb-table td { white-space:normal; overflow-wrap:anywhere; }
-        .process-workspace .pipe { flex-wrap:wrap; gap:4px 0; }
-        .process-workspace .subtabs { flex-wrap:wrap; height:auto; }
-        .process-workspace .subtabs > span { display:contents !important; }
-        .process-workspace .lnk { border:0; background:transparent; padding:0; font:inherit; }
-        .process-workspace .toolbar .search { flex:1 1 240px; max-width:440px; min-width:180px; }
-      `), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, /*#__PURE__*/React.createElement(ErrorBox, {
       error: navigationError
     }), deferred && /*#__PURE__*/React.createElement("div", {
       role: "status"
@@ -471,6 +474,7 @@
       icon: "minus",
       className: "btn danger",
       disabled: blocked || list.loading || !selected.length,
+      reasonDisplay: "tooltip",
       reason: deleteReason,
       onClick: () => action('bulk')
     }, "\u6279\u91CF\u5220\u9664")), /*#__PURE__*/React.createElement(ErrorBox, {

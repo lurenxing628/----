@@ -28,7 +28,6 @@
   function WorkspaceSession({
     adapter,
     view,
-    onNavigate,
     planRef,
     initialContext = {},
     disabled = false,
@@ -53,6 +52,7 @@
     const [query, setQuery] = React.useState(typeof initialContext.query === 'string' ? initialContext.query : ''),
       [selected, setSelected] = React.useState(null);
     const [relatedRef, setRelatedRef] = React.useState(null);
+    const initialTaskRef = React.useRef(typeof initialContext.selected_task_ref === 'string' ? initialContext.selected_task_ref : null);
     const read = S.useQuery(async signal => {
       if (typeof adapter.workspace !== 'function') throw C.failure('暂时无法读取计划，请稍后重试。');
       P.workspaceScope(selection.plan_ref, scope);
@@ -62,25 +62,22 @@
       data = result && result.data;
     const chosen = selected && selected.result === result ? selected : null;
     React.useEffect(() => {
-      if (!relatedRef || !data || read.loading || read.error) return;
-      const task = data.tasks.find(row => row.task_ref === relatedRef);
+      if (!data || read.loading || read.error) return;
+      const target = relatedRef || initialTaskRef.current;
+      // The saved task belongs to this session's first successful read only.
+      initialTaskRef.current = null;
+      if (!target) return;
+      const task = data.tasks.find(row => row.task_ref === target);
       if (task) setSelected({
         task,
         before: false,
         result,
-        locate: true
-      });else setRangeError(C.failure('同一完整计划中未找到该关系任务，未定位到替代任务。'));
-      setRelatedRef(null);
+        ...(relatedRef ? {
+          locate: true
+        } : {})
+      });else setRangeError(C.failure(relatedRef ? '同一完整计划中未找到该关系任务，未定位到替代任务。' : '指定恢复任务不在当前计划读取范围内，未选择替代任务。'));
+      if (relatedRef) setRelatedRef(null);
     }, [relatedRef, result, read.loading, read.error]);
-    React.useEffect(() => {
-      if (!data || selected || typeof initialContext.selected_task_ref !== 'string') return;
-      const task = data.tasks.find(row => row.task_ref === initialContext.selected_task_ref);
-      if (task) setSelected({
-        task,
-        before: false,
-        result
-      });
-    }, [result, selected]);
     const remembered = {
       ...initialContext,
       ...(selection ? {
@@ -94,6 +91,7 @@
     } : {});
     window.WorkbenchPageContext.useSnapshot(remembered, !!data && !read.loading && !read.error && !paused);
     function choose(plan) {
+      initialTaskRef.current = null;
       setSelection(plan);
       setScope({});
       setRange({
@@ -118,6 +116,7 @@
       read.reload();
     }
     function selectTask(task, before = false) {
+      initialTaskRef.current = null;
       setSelected({
         task,
         before,
@@ -125,6 +124,7 @@
       });
     }
     function selectRelated(ref) {
+      initialTaskRef.current = null;
       const task = data.tasks.find(row => row.task_ref === ref);
       setQuery('');
       setRangeError(null);
@@ -154,6 +154,7 @@
           range_start: seconds(range.start),
           range_end: seconds(range.end)
         });
+        initialTaskRef.current = null;
         setScope(next);
         setRangeError(null);
         setPaused(false);
@@ -188,27 +189,13 @@
       "data-plan-workspace": true
     }, /*#__PURE__*/React.createElement(window.PlanLayout, null), /*#__PURE__*/React.createElement("div", {
       className: "plan-heading"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", null, view === 'gantt' ? '设备 / 人员 / 批次甘特' : view === 'delay' ? '交付风险' : '选择排产方案'), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, !data && /*#__PURE__*/React.createElement("h2", null, view === 'gantt' ? '设备 / 人员 / 批次甘特' : view === 'delay' ? '交付风险' : '选择排产方案'), /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
     }, data ? data.plan.display_name : selection ? selection.display_name : '尚未选择计划', data && /*#__PURE__*/React.createElement(React.Fragment, null, " \xB7 ", /*#__PURE__*/React.createElement(Identity, {
       plan: data.plan
     })))), /*#__PURE__*/React.createElement("div", {
       className: "plan-actions"
-    }, onNavigate && /*#__PURE__*/React.createElement(Button, {
-      icon: "arrow-right",
-      disabled: !selection,
-      onClick: () => onNavigate(view === 'gantt' ? 'analysis' : 'gantt', {
-        plan_ref: selection.plan_ref,
-        ...scope,
-        ...(result ? {
-          snapshot_ref: result.meta.snapshot_ref
-        } : {})
-      })
-    }, view === 'gantt' ? '选择方案' : '查看甘特'), onNavigate && /*#__PURE__*/React.createElement(Button, {
-      icon: "circle-alert",
-      disabled: !selection,
-      onClick: () => onNavigate(view === 'delay' ? 'analysis' : 'delay', remembered)
-    }, view === 'delay' ? '返回方案' : '交付风险'), typeof renderTrial === 'function' && renderTrial({
+    }, typeof renderTrial === 'function' && renderTrial({
       planRef: selection && selection.plan_ref,
       scope,
       query,
@@ -224,10 +211,11 @@
       adapter: adapter,
       selectedRef: selection && selection.plan_ref,
       onSelect: choose,
+      autoSelect: !planRef && Object.keys(initialContext).length === 0,
       disabled: disabled
     }), /*#__PURE__*/React.createElement("div", {
-      className: "plan-heading"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", null, "\u8BA1\u5212\u5DE5\u4F5C\u533A"), data && /*#__PURE__*/React.createElement("div", {
+      className: "plan-heading plan-read-heading"
+    }, /*#__PURE__*/React.createElement("div", null, data && /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
     }, "\u8BFB\u53D6\u4E8E ", M.timeLabel(result.meta.as_of), " \xB7 \u5DE5\u5382\u672C\u5730\u65F6\u95F4")), /*#__PURE__*/React.createElement("div", {
       className: "plan-actions"
@@ -280,6 +268,7 @@
       icon: "chart-gantt",
       disabled: disabled || read.loading,
       onClick: () => {
+        initialTaskRef.current = null;
         setScope({});
         setRange({
           start: '',
@@ -295,17 +284,17 @@
       error: read.error
     }), result && /*#__PURE__*/React.createElement(Issues, {
       issues: result.warnings
-    }), !data && /*#__PURE__*/React.createElement("div", {
-      className: "plan-empty",
-      role: "status"
-    }, read.loading ? '正在读取所选计划、工序安排和分析结果…' : paused ? '计划读取已取消，未显示上次读取的内容。' : read.error ? '所选计划未读取成功，没有替换成其他计划。' : '从目录中选择一个可查看的计划。'), (read.error || paused) && /*#__PURE__*/React.createElement(Button, {
+    }), !data && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
+      kind: read.loading ? 'loading' : 'empty',
+      title: read.loading ? '正在读取所选计划、工序安排和分析结果…' : paused ? '计划读取已取消，未显示上次读取的内容。' : read.error ? '所选计划未读取成功，没有替换成其他计划。' : '从目录中选择一个可查看的计划。'
+    }), (read.error || paused) && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: refresh
     }, "\u91CD\u65B0\u8BFB\u53D6\u6240\u9009\u8BA1\u5212"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "statline wb-metrics",
       style: {
         '--wb-columns': 4,
-        marginBottom: 12
+        marginBottom: 8
       }
     }, [[data.task_count, '范围内安排', 'primary'], [risks.length, '关联批次', 'primary'], [risks.filter(row => row.risk === 'overdue').length, '已核实预计超期', 'warn'], [risks.filter(row => row.risk === 'unknown').length, '交付风险待核实', 'warn']].map(([value, label, tone]) => /*#__PURE__*/React.createElement("div", {
       className: "stat wb-metric",
@@ -322,8 +311,17 @@
       }
     }, scopeCaption, data.scope.range_start !== null && /*#__PURE__*/React.createElement("span", null, " \xB7 \u53EA\u5217\u51FA\u4E0E\u6B64\u65F6\u95F4\u6BB5\u6709\u91CD\u53E0\u7684\u5DE5\u5E8F\u5B89\u6392\uFF0C\u6BCF\u9053\u5B89\u6392\u7684\u8D77\u6B62\u65F6\u95F4\u5B8C\u6574\u4FDD\u7559\uFF0C\u4E0D\u4EE3\u8868\u6574\u4EFD\u8BA1\u5212"), query.trim() && /*#__PURE__*/React.createElement("span", null, " \xB7 \u641C\u7D22\u627E\u5230 ", matches.length, " / ", data.task_count, " \u9053\u5DE5\u5E8F\u5B89\u6392\uFF0C\u53EA\u5F71\u54CD\u7518\u7279\u56FE\u663E\u793A\uFF1B\u5206\u6790\u8868\u548C\u5BFC\u51FA\u4ECD\u5305\u542B\u6B64\u65F6\u95F4\u8303\u56F4\u5185\u7684\u5168\u90E8 ", data.task_count, " \u9053\u5B89\u6392")), /*#__PURE__*/React.createElement("div", {
       className: "plan-main"
-    }, /*#__PURE__*/React.createElement("div", null, view === 'delay' && /*#__PURE__*/React.createElement(ProjectionTables, {
-      key: 'risk-first:' + result.meta.snapshot_ref,
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(window.PlanGantt, {
+      key: 'gantt:' + result.meta.snapshot_ref,
+      data: data,
+      asOf: result.meta.as_of,
+      selected: chosen,
+      onSelect: selectTask,
+      query: query,
+      onQuery: setQuery,
+      disabled: disabled
+    }), /*#__PURE__*/React.createElement(ProjectionTables, {
+      key: 'risk:' + result.meta.snapshot_ref,
       data: data,
       onResource: setQuery,
       onBatch: batch => {
@@ -334,23 +332,6 @@
     }), view === 'delay' && /*#__PURE__*/React.createElement(Conflicts, {
       key: 'conflicts:' + result.meta.snapshot_ref,
       data: data
-    }), /*#__PURE__*/React.createElement(window.PlanGantt, {
-      key: 'gantt:' + result.meta.snapshot_ref,
-      data: data,
-      selected: chosen,
-      onSelect: selectTask,
-      query: query,
-      onQuery: setQuery,
-      disabled: disabled
-    }), view !== 'delay' && /*#__PURE__*/React.createElement(ProjectionTables, {
-      key: 'risk-last:' + result.meta.snapshot_ref,
-      data: data,
-      onResource: setQuery,
-      onBatch: batch => {
-        setQuery(batch);
-        const task = data.tasks.find(row => row.batch_id === batch);
-        if (task) selectTask(task);
-      }
     })), /*#__PURE__*/React.createElement(TaskDetail, {
       data: data,
       selected: chosen,

@@ -13,6 +13,7 @@
     disabled
   }) {
     function key(event, index) {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
       const next = event.key === 'Home' ? 0 : event.key === 'End' ? values.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + values.length) % values.length;
@@ -41,29 +42,15 @@
     disabled,
     detail = false
   }) {
-    return /*#__PURE__*/React.createElement("div", {
-      className: "mo-pager"
-    }, /*#__PURE__*/React.createElement("span", null, page.total, " \u6761 \xB7 \u7B2C ", page.number, " / ", page.pages, " \u9875"), onSize && /*#__PURE__*/React.createElement("label", null, "\u6BCF\u9875", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u4E3B\u6570\u636E\u6BCF\u9875\u6761\u6570",
-      value: page.size,
+    return /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: page,
+      sizes: detail ? [10] : [20, 50, 100],
+      onPage: onPage,
+      onSize: onSize,
       disabled: disabled,
-      onChange: event => onSize(Number(event.target.value))
-    }, [20, 50, 100].map(size => /*#__PURE__*/React.createElement("option", {
-      key: size,
-      value: size
-    }, size)))), /*#__PURE__*/React.createElement(Button, {
-      className: "btn mo-icon",
-      icon: "chevron-left",
-      "aria-label": detail ? '详情上一页' : '主数据上一页',
-      disabled: disabled || page.number <= 1,
-      onClick: () => onPage(page.number - 1)
-    }), /*#__PURE__*/React.createElement(Button, {
-      className: "btn mo-icon",
-      icon: "chevron-right",
-      "aria-label": detail ? '详情下一页' : '主数据下一页',
-      disabled: disabled || page.number >= page.pages,
-      onClick: () => onPage(page.number + 1)
-    }));
+      unit: "\u6761",
+      label: detail ? '详情' : '主数据'
+    });
   }
   function Table({
     data,
@@ -71,50 +58,61 @@
     onSelect,
     onMaintain,
     onFilter,
+    onClear,
+    onRetry,
     loading,
     error,
     navigation
   }) {
     const columns = C.columns[data.scope.view],
       rows = data.rows;
+    const filtered = data.scope.query !== '' || data.scope.domain !== 'all' || data.scope.status !== 'all' || Object.keys(data.scope.column_filters).length > 0;
     return /*#__PURE__*/React.createElement("div", {
-      className: "wb-table-frame"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "wb-table-shell"
+      className: "wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
       className: "wb-table mo-table",
       "aria-label": "\u4E3B\u6570\u636E\u6E05\u5355",
       "aria-busy": loading,
       style: {
-        minWidth: columns.reduce((sum, item) => sum + item[2], 48)
+        minWidth: columns.reduce((sum, item) => sum + item[2], 64)
       }
-    }, /*#__PURE__*/React.createElement("colgroup", null, columns.map(([key,, width]) => /*#__PURE__*/React.createElement("col", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-sr-only"
+    }, "\u4E3B\u6570\u636E\u6E05\u5355"), /*#__PURE__*/React.createElement("colgroup", null, columns.map(([key,, width]) => /*#__PURE__*/React.createElement("col", {
       key: key,
       style: {
         width
       }
     })), /*#__PURE__*/React.createElement("col", {
       style: {
-        width: 48
+        width: 64
       }
     })), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, columns.map(([key, title]) => /*#__PURE__*/React.createElement("th", {
-      key: key
+      scope: "col",
+      key: key,
+      className: key === 'business_code' ? 'wb-col-key' : ''
     }, /*#__PURE__*/React.createElement("div", {
       className: "mo-column"
     }, /*#__PURE__*/React.createElement("span", null, title), /*#__PURE__*/React.createElement(Button, {
-      className: "btn mo-icon",
+      className: "btn mo-icon wb-column-filter",
       icon: "search",
       "aria-label": '筛选列 ' + title,
       title: '筛选列 ' + title,
       "aria-pressed": !!data.scope.column_filters[key],
       onClick: () => onFilter(key),
       disabled: loading
-    })))), /*#__PURE__*/React.createElement("th", null, "\u7EF4\u62A4"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(item => /*#__PURE__*/React.createElement("tr", {
+    })))), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-actions"
+    }, "\u7EF4\u62A4"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(item => /*#__PURE__*/React.createElement("tr", {
       key: item.key,
       "aria-selected": !!selected && selected.key === item.key,
       "data-master-ref": item.entity_ref || item.ref
     }, columns.map(([key]) => /*#__PURE__*/React.createElement("td", {
-      key: key
+      key: key,
+      className: key === 'business_code' ? 'wb-col-key' : ''
     }, key === 'business_code' ? /*#__PURE__*/React.createElement("button", {
       type: "button",
       className: "mo-link",
@@ -124,16 +122,25 @@
     }, item.business_code) : key === 'status' ? /*#__PURE__*/React.createElement("span", {
       className: "mo-status",
       "data-status": item.status
-    }, C.cell(item, key)) : C.cell(item, key))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+    }, C.cell(item, key)) : C.cell(item, key))), /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-actions"
+    }, /*#__PURE__*/React.createElement(Button, {
       className: "btn mo-icon",
       icon: "arrow-right",
       "aria-label": '维护 ' + item.business_code,
+      reasonDisplay: "inline",
       reason: item.target.unavailable_reason || (!navigation ? '维护导航尚未接入。' : ''),
       disabled: loading,
       onClick: () => onMaintain(item.target)
-    }))))))), !rows.length && /*#__PURE__*/React.createElement("div", {
-      className: "mo-empty"
-    }, /*#__PURE__*/React.createElement("strong", null, loading ? '正在读取主数据' : error ? '主数据读取失败' : '当前范围没有记录')));
+    })))))), !rows.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty',
+      title: loading ? '正在读取主数据' : error ? '主数据读取失败' : '当前范围没有记录',
+      action: error ? /*#__PURE__*/React.createElement(Button, {
+        onClick: onRetry
+      }, "\u91CD\u8BD5\u8BFB\u53D6\u4E3B\u6570\u636E") : filtered ? /*#__PURE__*/React.createElement(Button, {
+        onClick: onClear
+      }, "\u6E05\u9664\u7B5B\u9009\u5E76\u67E5\u770B\u6E05\u5355") : null
+    }));
   }
   window.MasterOverviewTable = {
     Tabs,

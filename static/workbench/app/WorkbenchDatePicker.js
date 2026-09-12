@@ -436,11 +436,7 @@
           confirm();
         }
       }
-    }, /*#__PURE__*/React.createElement("style", null, `
-        .wb-date-picker[data-picker-view="months"]:not([data-picker-type="month"]) .wb-picker-grid { height: 250px; grid-template-rows: repeat(4,minmax(0,1fr)); }
-        .wb-date-picker[data-picker-view="months"]:not([data-picker-type="month"]) .wb-picker-day { height: 100%; min-height: 0; max-height: none; }
-        .wb-date-picker[data-picker-view="months"] .wb-picker-day[data-view-month="true"]:not([aria-selected="true"]) { border-color: var(--ui-border); }
-      `), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "wb-popup-header"
     }, /*#__PURE__*/React.createElement("strong", {
       id: id,

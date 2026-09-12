@@ -26,14 +26,7 @@
     return /*#__PURE__*/React.createElement("section", {
       className: "er-section er-resource-hours",
       "aria-label": "\u5B9E\u9645\u8D44\u6E90\u5DE5\u65F6"
-    }, /*#__PURE__*/React.createElement("style", null, `
-        .er-resource-hours .er-resource-row { display:grid; grid-template-columns:minmax(120px,1fr) minmax(100px,2fr) minmax(160px,1fr); align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--ui-border); }
-        .er-resource-hours .er-resource-name { white-space:normal; overflow-wrap:anywhere; text-align:left; }
-        .er-resource-hours .er-resource-bar { width:100%; height:26px; position:relative; background:var(--ui-surface-muted); border:0; padding:0; border-radius:0; }
-        .er-resource-hours .er-resource-bar i { position:absolute; top:0; bottom:0; left:0; background:var(--ui-info-text); }
-        .er-resource-hours .er-resource-value { font-size:12px; overflow-wrap:anywhere; }
-        @media(max-width:700px) { .er-resource-hours .er-resource-row { grid-template-columns:minmax(100px,1fr) minmax(90px,1fr); }.er-resource-hours .er-resource-value { grid-column:1/-1; } }
-      `), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "rw-section-heading"
     }, /*#__PURE__*/React.createElement("h3", null, "\u5B9E\u9645\u8D44\u6E90\u5DE5\u65F6"), /*#__PURE__*/React.createElement("div", {
       className: "seg",
@@ -72,27 +65,21 @@
       }
     })), /*#__PURE__*/React.createElement("span", {
       className: "er-resource-value"
-    }, row.effective_processing_hours === null ? '总工时未知' : row.effective_processing_hours + ' h', " \xB7 \u5DF2\u77E5 ", window.ReportTable.text(row.known_effective_processing_hours), " h \xB7 \u5F85\u8865 ", row.unknown_hour_events, " \u6761"))), !rows.length && /*#__PURE__*/React.createElement("p", {
-      role: "status"
-    }, "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u8D44\u6E90\u5DE5\u65F6\u8BB0\u5F55\u3002")), /*#__PURE__*/React.createElement("div", {
-      className: "rw-pagination"
-    }, /*#__PURE__*/React.createElement("span", null, "\u5171 ", rows.length, " \u7EC4 \xB7 ", current, " / ", pages), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": "\u8D44\u6E90\u5DE5\u65F6\u4E0A\u4E00\u9875",
-      disabled: current <= 1,
-      onClick: () => onChange({
+    }, row.effective_processing_hours === null ? '总工时未知' : row.effective_processing_hours + ' h', " \xB7 \u5DF2\u77E5 ", window.ReportTable.text(row.known_effective_processing_hours), " h \xB7 \u5F85\u8865 ", row.unknown_hour_events, " \u6761"))), !rows.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "empty",
+      title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u8D44\u6E90\u5DE5\u65F6\u8BB0\u5F55"
+    })), /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: current,
+      pages: pages,
+      total: rows.length,
+      size: 6,
+      unit: "\u7EC4",
+      label: "\u8D44\u6E90\u5DE5\u65F6",
+      onPage: number => onChange({
         kind,
-        page: current - 1
+        page: number
       })
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": "\u8D44\u6E90\u5DE5\u65F6\u4E0B\u4E00\u9875",
-      disabled: current >= pages,
-      onClick: () => onChange({
-        kind,
-        page: current + 1
-      })
-    })), /*#__PURE__*/React.createElement("p", {
+    }), /*#__PURE__*/React.createElement("p", {
       className: "er-method"
     }, "\u5B9E\u9645\u52A0\u5DE5\u5DE5\u65F6\uFF0C\u4E0D\u4EE3\u8868\u5229\u7528\u7387\uFF1B\u4E0B\u94BB\u4FDD\u7559\u5173\u8054\u5DE5\u5E8F\u7684\u5168\u90E8\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement(window.ReportTable.Table, {
       data: {
@@ -139,7 +126,7 @@
       label: "\u8303\u56F4\u5185\u5DE5\u5E8F\u7D2F\u8BA1\u5B8C\u5DE5"
     })), /*#__PURE__*/React.createElement("section", {
       className: "er-section er-insights"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u4E8B\u5B9E\u91CD\u70B9"), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u786E\u8BA4\u665A\u5B8C ", data.summary.finish_late, " \u9053\uFF1B\u5230\u671F\u672A\u786E\u8BA4 ", data.summary.unclosed_due, " \u9053\u3002"), /*#__PURE__*/React.createElement("p", null, "\u65E7\u73B0\u573A\u4E8B\u4EF6 ", data.summary.events, " \u6761\uFF1B\u9010\u6B21\u62A5\u5DE5 ", data.summary.production_reports, " \u6761\uFF1B\u5168\u90E8\u8BB0\u5F55 ", data.summary.records, " \u6761\u3002"), /*#__PURE__*/React.createElement("p", null, "\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6 ", window.ReportTable.text(data.summary.effective_processing_hours), " \u5C0F\u65F6\uFF1B\u5DF2\u77E5\u5C0F\u8BA1 ", window.ReportTable.text(data.summary.known_effective_processing_hours), " \u5C0F\u65F6\uFF1B\u5DE5\u65F6\u672A\u77E5 ", data.summary.unknown_hour_events, " \u6761\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u4E8B\u5B9E\u91CD\u70B9"), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u786E\u8BA4\u665A\u5B8C ", data.summary.finish_late, " \u9053\uFF1B\u5230\u671F\u672A\u786E\u8BA4 ", data.summary.unclosed_due, " \u9053\u3002"), /*#__PURE__*/React.createElement("p", null, "\u65E7\u73B0\u573A\u4E8B\u4EF6 ", data.summary.events, " \u6761\uFF1B\u9010\u6B21\u62A5\u5DE5 ", data.summary.production_reports, " \u6761\uFF1B\u5168\u90E8\u8BB0\u5F55 ", data.summary.records, " \u6761\u3002"), !window.ReportEvidence.noFeedback(data.summary) && /*#__PURE__*/React.createElement("p", null, "\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6 ", window.ReportTable.text(data.summary.effective_processing_hours), " \u5C0F\u65F6\uFF1B\u5DF2\u77E5\u5C0F\u8BA1 ", window.ReportTable.text(data.summary.known_effective_processing_hours), " \u5C0F\u65F6\uFF1B\u5DE5\u65F6\u672A\u77E5 ", data.summary.unknown_hour_events, " \u6761\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "rw-actions"
     }, [['finish_late', '晚完明细'], ['unclosed', '未确认明细'], [data.scope.focus, '工序明细']].map(([focus, label]) => /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
       key: label,

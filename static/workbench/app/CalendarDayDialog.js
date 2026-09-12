@@ -6,7 +6,8 @@
   const {
     Button,
     ErrorBox,
-    Modal
+    Modal,
+    focusFirstInvalid
   } = window.ResourceControls;
   const {
     Fields,
@@ -33,6 +34,7 @@
     const original = React.useRef(day),
       mounted = React.useRef(true),
       controller = React.useRef(null),
+      formRef = React.useRef(null),
       formId = React.useId();
     React.useEffect(() => {
       mounted.current = true;
@@ -43,6 +45,20 @@
     }, []);
     const done = command.phase === 'done',
       disabled = command.locked || done || reading;
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({
+      owner: 'calendar-day-' + formId,
+      dirty: !done && JSON.stringify(value) !== JSON.stringify(K.draft(original.current)),
+      locked: command.locked,
+      message: '工作日历有尚未保存的修改。'
+    });
+    async function close() {
+      if (!command.locked && !reading && (await window.WorkbenchGuards.confirmLeave({
+        owner: guardOwner
+      }))) onClose();
+    }
+    React.useEffect(() => {
+      if (error || command.error) focusFirstInvalid(formRef.current);
+    }, [error, command.error]);
     const reason = K.stale(command) ? '资料已变化，请重新读取并核对。' : review ? '请先核对最新资料。' : C.blocked(base.write_context, 'calendar', clearing ? 'delete' : 'upsert', source);
     async function reloadContext() {
       if (disabled) return;
@@ -101,10 +117,11 @@
       title: base.date + ' · 工作日历',
       icon: "calendar-days",
       onClose: onClose,
+      guardOwner: guardOwner,
       locked: command.locked || reading,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         disabled: command.locked || reading,
-        onClick: onClose
+        onClick: close
       }, done ? '关闭' : '取消'), !done && !clearing && base.explicit && /*#__PURE__*/React.createElement(Button, {
         icon: "minus",
         disabled: disabled || !!review,
@@ -122,6 +139,7 @@
       }, clearing ? '确认清除，恢复默认' : '保存配置'))
     }, /*#__PURE__*/React.createElement("form", {
       id: formId,
+      ref: formRef,
       className: "modal-b form scroll",
       onSubmit: save,
       noValidate: true
@@ -135,15 +153,19 @@
       value: base
     })), clearing ? /*#__PURE__*/React.createElement("p", null, "\u5C06\u6E05\u9664 ", /*#__PURE__*/React.createElement("b", null, base.date), " \u7684\u5168\u5C40\u65E5\u5386\u914D\u7F6E\uFF0C\u6539\u7528\u8BE5\u65E5\u671F\u7684\u9ED8\u8BA4\u89C4\u5219\u3002\u4EBA\u5458\u4E13\u5C5E\u65E5\u5386\u548C\u73ED\u6B21\u4E0D\u53D8\u3002") : /*#__PURE__*/React.createElement(Fields, {
       value: value,
+      error: error || command.error,
+      showSummary: false,
       disabled: disabled,
       onChange: next => {
         setValue(next);
         setError(null);
       }
     }), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: error
+      error: error,
+      excludePaths: clearing ? [] : window.CalendarFields.fieldPaths
     }), /*#__PURE__*/React.createElement(Feedback, {
-      command: command
+      command: command,
+      excludePaths: clearing ? [] : window.CalendarFields.fieldPaths
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: readError
     }), !done && /*#__PURE__*/React.createElement(Button, {

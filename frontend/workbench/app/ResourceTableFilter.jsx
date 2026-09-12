@@ -129,7 +129,7 @@
       else if (keyResult) commitChange(() => M.toggleKeys(filter, keyResult.data.keys, enabled));
     }
     return ReactDOM.createPortal(<section ref={panel} className="wb-resource-table-filter wb-control-popup" data-wb-table-filter="true"
-      role="dialog" aria-modal="true" aria-labelledby={id} style={{ position: 'fixed', zIndex: 10040, padding: 8, display: 'flex', flexDirection: 'column', gap: 6, boxSizing: 'border-box', overflow: 'auto', ...position }}>
+      role="dialog" aria-modal="true" aria-labelledby={id} style={{ position: 'fixed', zIndex: 'var(--wb-z-popup)', padding: 8, display: 'flex', flexDirection: 'column', gap: 6, boxSizing: 'border-box', overflow: 'auto', ...position }}>
       <div className="wb-popup-header" style={{ margin: 0, padding: '0 0 6px' }}><strong id={id} style={{ overflowWrap: 'anywhere' }}>筛选 · {column.title}</strong>
         <Button className="mini" icon="x" aria-label="关闭列筛选" onClick={() => close.current(true)} /></div>
       <div style={{ display: 'flex', gap: 6, flex: 'none', minWidth: 0 }}>

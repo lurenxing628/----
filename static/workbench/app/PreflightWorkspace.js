@@ -38,10 +38,15 @@
     return /*#__PURE__*/React.createElement("details", {
       className: "pf-detail"
     }, /*#__PURE__*/React.createElement("summary", null, "\u9010\u5DE5\u5E8F\u68C0\u67E5 \xB7 ", data.tasks.length, " \u9053"), /*#__PURE__*/React.createElement("div", {
-      className: "pf-results"
+      className: "pf-results wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
+      className: "wb-table",
       "aria-label": "\u6392\u4EA7\u524D\u68C0\u67E5\u660E\u7EC6"
-    }, /*#__PURE__*/React.createElement("colgroup", null, /*#__PURE__*/React.createElement("col", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u6392\u4EA7\u524D\u68C0\u67E5\u660E\u7EC6"), /*#__PURE__*/React.createElement("colgroup", null, /*#__PURE__*/React.createElement("col", {
       style: {
         width: '18%'
       }
@@ -53,23 +58,27 @@
       style: {
         width: '15%'
       }
-    }), /*#__PURE__*/React.createElement("col", null)), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u6279\u6B21"), /*#__PURE__*/React.createElement("th", null, "\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("th", null, "\u68C0\u67E5\u7ED3\u679C"), /*#__PURE__*/React.createElement("th", null, "\u539F\u56E0"))), /*#__PURE__*/React.createElement("tbody", null, data.tasks.slice((page - 1) * 100, page * 100).map(row => /*#__PURE__*/React.createElement("tr", {
+    }), /*#__PURE__*/React.createElement("col", null)), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u6279\u6B21"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u68C0\u67E5\u7ED3\u679C"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u539F\u56E0"))), /*#__PURE__*/React.createElement("tbody", null, data.tasks.slice((page - 1) * 100, page * 100).map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.operation_ref
     }, /*#__PURE__*/React.createElement("td", null, row.batch_id), /*#__PURE__*/React.createElement("td", null, row.sequence, " \xB7 ", row.label, row.piece_id ? ' · ' + row.piece_id : ''), /*#__PURE__*/React.createElement("td", null, labels[row.status]), /*#__PURE__*/React.createElement("td", null, row.issues.map((item, index) => /*#__PURE__*/React.createElement("p", {
       key: index
-    }, item.message, item.predecessor_sequence ? ' 前序：' + item.predecessor_sequence : '')), row.execution.first_actual_start && /*#__PURE__*/React.createElement("p", null, "\u5B9E\u9645\u5F00\u5DE5\uFF1A", row.execution.first_actual_start.replace('T', ' ')), row.execution.confirmed_finish && /*#__PURE__*/React.createElement("p", null, "\u786E\u8BA4\u5B8C\u5DE5\uFF1A", row.execution.confirmed_finish.replace('T', ' ')), row.status === 'protected' && /*#__PURE__*/React.createElement("p", null, "\u5269\u4F59\u6570\u91CF\uFF1A", row.execution.remaining_quantity === null ? '未知' : row.execution.remaining_quantity))))))), pages > 1 && /*#__PURE__*/React.createElement("div", {
-      className: "pf-tools"
-    }, /*#__PURE__*/React.createElement("span", null, "\u7B2C ", page, " / ", pages, " \u9875 \xB7 \u6BCF\u9875100\u9053"), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": "\u68C0\u67E5\u660E\u7EC6\u4E0A\u4E00\u9875",
-      disabled: page <= 1,
-      onClick: () => setPage(old => old - 1)
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": "\u68C0\u67E5\u660E\u7EC6\u4E0B\u4E00\u9875",
-      disabled: page >= pages,
-      onClick: () => setPage(old => old + 1)
-    })));
+    }, item.message, item.predecessor_sequence ? ' 前序：' + item.predecessor_sequence : '')), row.execution.first_actual_start && /*#__PURE__*/React.createElement("p", null, "\u5B9E\u9645\u5F00\u5DE5\uFF1A", window.WorkbenchFormat.dateTime(row.execution.first_actual_start)), row.execution.confirmed_finish && /*#__PURE__*/React.createElement("p", null, "\u786E\u8BA4\u5B8C\u5DE5\uFF1A", window.WorkbenchFormat.dateTime(row.execution.confirmed_finish)), row.status === 'protected' && /*#__PURE__*/React.createElement("p", null, "\u5269\u4F59\u6570\u91CF\uFF1A", row.execution.remaining_quantity === null ? '未知' : row.execution.remaining_quantity))))))), pages > 1 && /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: page,
+      pages: pages,
+      total: data.tasks.length,
+      size: 100,
+      unit: "\u9053",
+      label: "\u68C0\u67E5\u660E\u7EC6",
+      onPage: setPage
+    }));
   }
   function NoRoutes({
     rows
@@ -79,27 +88,26 @@
     return /*#__PURE__*/React.createElement("details", {
       className: "pf-detail"
     }, /*#__PURE__*/React.createElement("summary", null, "\u672A\u751F\u6210\u5DE5\u827A \xB7 ", rows.length, " \u6279"), /*#__PURE__*/React.createElement("div", {
-      className: "pf-results"
+      className: "pf-results wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, rows.slice((page - 1) * 100, page * 100).map(row => /*#__PURE__*/React.createElement("p", {
       key: row.batch_ref
-    }, row.batch_id, " \xB7 \u5C1A\u672A\u751F\u6210\u5DE5\u827A"))), pages > 1 && /*#__PURE__*/React.createElement("div", {
-      className: "pf-tools"
-    }, /*#__PURE__*/React.createElement("span", null, "\u7B2C ", page, " / ", pages, " \u9875 \xB7 \u6BCF\u9875100\u6279"), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": "\u672A\u751F\u6210\u5DE5\u827A\u4E0A\u4E00\u9875",
-      disabled: page <= 1,
-      onClick: () => setPage(old => old - 1)
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": "\u672A\u751F\u6210\u5DE5\u827A\u4E0B\u4E00\u9875",
-      disabled: page >= pages,
-      onClick: () => setPage(old => old + 1)
-    })));
+    }, row.batch_id, " \xB7 \u5C1A\u672A\u751F\u6210\u5DE5\u827A"))), pages > 1 && /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: page,
+      pages: pages,
+      total: rows.length,
+      size: 100,
+      unit: "\u6279",
+      label: "\u672A\u751F\u6210\u5DE5\u827A",
+      onPage: setPage
+    }));
   }
   function PreflightWorkspace({
     onNavigate,
     initialContext,
-    renderRunPanel
+    renderRunPanel,
+    actions
   }) {
     const adapter = React.useMemo(() => window.PreflightAPI.create(), []);
     const [initial, setInitial] = React.useState(() => contextState(initialContext));
@@ -108,6 +116,7 @@
       [result, setResult] = React.useState(null);
     const [busy, setBusy] = React.useState(false),
       [expanded, setExpanded] = React.useState(false);
+    const [needsRecheck, setNeedsRecheck] = React.useState(false);
     const serial = React.useRef(0),
       active = React.useRef(null),
       context = React.useRef(initialContext);
@@ -127,6 +136,7 @@
       setBusy(false);
     }
     function change(patch) {
+      if (result || busy) setNeedsRecheck(true);
       invalidate();
       setValue(old => ({
         ...old,
@@ -157,7 +167,10 @@
         const input = C.input(value),
           response = await adapter.preflight(input, controller.signal);
         C.result(response, input);
-        if (serial.current === id) setResult(response);
+        if (serial.current === id) {
+          setResult(response);
+          setNeedsRecheck(false);
+        }
       } catch (problem) {
         if (serial.current === id) setError(problem);
       } finally {
@@ -165,7 +178,8 @@
       }
     }
     const data = result && result.data,
-      counts = data && data.counts;
+      counts = data && data.counts,
+      currentStep = window.RunPresentation.step(remembered, data);
     const runBlocked = !data || data.write_context.capabilities['scheduling.run'] !== true || typeof adapter.run !== 'function';
     const runReason = data && data.run_blocked_reasons[0].message || '候选排产运行服务尚未接入，不能开始排产。';
     function navigate(kind) {
@@ -185,9 +199,22 @@
       "data-preflight-workspace": true
     }, /*#__PURE__*/React.createElement(Styles, null), /*#__PURE__*/React.createElement("div", {
       className: "pf-heading"
-    }, /*#__PURE__*/React.createElement("h2", null, "\u6392\u4EA7\u524D\u68C0\u67E5"), /*#__PURE__*/React.createElement("span", {
-      className: "pf-muted"
-    }, "\u5F53\u524D\u751F\u4EA7\u8D44\u6599 \xB7 \u5355\u6B21\u6392\u4EA7\u8303\u56F4")), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, /*#__PURE__*/React.createElement("h2", {
+      className: "wb-page-title"
+    }, "\u6267\u884C\u6392\u4EA7"), /*#__PURE__*/React.createElement("span", {
+      className: "pf-muted wb-page-context"
+    }, "\u5F53\u524D\u751F\u4EA7\u8D44\u6599 \xB7 \u5355\u6B21\u6392\u4EA7\u8303\u56F4"), actions && /*#__PURE__*/React.createElement("div", {
+      className: "pf-tools"
+    }, actions)), /*#__PURE__*/React.createElement("ol", {
+      className: "pf-stepper",
+      "aria-label": "\u6267\u884C\u6392\u4EA7\u6B65\u9AA4"
+    }, ['选批次与窗口', '检查', '计算'].map((label, index) => /*#__PURE__*/React.createElement("li", {
+      key: label,
+      "aria-current": currentStep === index + 1 ? 'step' : undefined,
+      "data-step-state": currentStep > index + 1 ? 'complete' : currentStep === index + 1 ? 'current' : 'upcoming'
+    }, /*#__PURE__*/React.createElement("span", {
+      "aria-hidden": "true"
+    }, index + 1), label))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: initial.error
     }), initial.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
@@ -221,6 +248,7 @@
       })
     })), /*#__PURE__*/React.createElement("span", null, "\u5DF2\u9009 ", value.batch_refs.length, " \u6279"), /*#__PURE__*/React.createElement(Button, {
       icon: expanded ? 'chevron-up' : 'chevron-down',
+      className: currentStep === 1 ? 'btn primary' : 'btn',
       disabled: !!initial.error,
       "aria-expanded": expanded,
       onClick: () => setExpanded(old => !old)
@@ -253,12 +281,15 @@
       onClick: () => navigate(kind)
     }, action)))))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
-    }), busy && /*#__PURE__*/React.createElement("p", {
+    }), needsRecheck && /*#__PURE__*/React.createElement("p", {
+      className: "pf-recheck",
+      role: "status"
+    }, "\u6392\u4EA7\u53C2\u6570\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u68C0\u67E5\u540E\u518D\u5F00\u59CB\u8BA1\u7B97\u3002"), busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u6279\u6B21\u3001\u8D44\u6E90\u53CA\u6267\u884C\u4E8B\u5B9E\uFF1B\u672A\u521B\u5EFA\u8FD0\u884C\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "pf-muted",
       role: "status"
-    }, "\u68C0\u67E5\u65F6\u95F4\uFF1A", result.meta.as_of.replace('T', ' '), " \xB7 \u8F93\u5165\u6709\u6548\u81F3 ", data.input_expires_at.replace('T', ' '), " \xB7 \u65E5\u5386\u672A\u9A8C\u8BC1"), /*#__PURE__*/React.createElement(Details, {
+    }, "\u68C0\u67E5\u65F6\u95F4\uFF1A", window.WorkbenchFormat.dateTime(result.meta.as_of), " \xB7 \u8F93\u5165\u6709\u6548\u81F3 ", window.WorkbenchFormat.dateTime(data.input_expires_at), " \xB7 \u65E5\u5386\u672A\u9A8C\u8BC1"), /*#__PURE__*/React.createElement(Details, {
       key: data.input_ref,
       data: data
     }), !!data.no_route_batches.length && /*#__PURE__*/React.createElement(NoRoutes, {
@@ -274,12 +305,13 @@
       className: "pf-tools"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "search",
+      className: currentStep === 2 ? 'btn primary' : 'btn',
       busy: busy,
       disabled: !!initial.error,
       onClick: check
     }, data ? '重新检查' : '开始排产检查'), !renderRunPanel && /*#__PURE__*/React.createElement(Button, {
       icon: "play",
-      className: "btn primary",
+      className: currentStep === 3 ? 'btn primary' : 'btn',
       disabled: runBlocked,
       reason: runReason
     }, "\u5F00\u59CB\u6392\u4EA7"))), renderRunPanel && renderRunPanel(data));

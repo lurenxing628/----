@@ -34,7 +34,12 @@
       className: "rc-reasons"
     }, /*#__PURE__*/React.createElement("summary", null, "\u539F\u56E0\u4E0E\u6570\u636E\u7F3A\u9879 \xB7 ", rows.length, " \u9879"), values.slice((current - 1) * 20, current * 20).map((r, i) => /*#__PURE__*/React.createElement("div", {
       key: i
-    }, r.field && /*#__PURE__*/React.createElement("code", null, r.field, " \xB7 "), r.message, r.count > 1 && '（' + r.count + ' 项）')), pages > 1 && /*#__PURE__*/React.createElement(Pager, {
+    }, r.message, r.count > 1 && '（' + r.count + ' 项）', r.field && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '字段': r.field,
+        '原因码': r.code
+      }
+    }))), pages > 1 && /*#__PURE__*/React.createElement(Pager, {
       page: current,
       pages: pages,
       onPage: setPage,
@@ -48,29 +53,24 @@
     disabled,
     label
   }) {
-    return /*#__PURE__*/React.createElement("div", {
-      className: "rc-tools"
-    }, /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": label + '上一页',
-      disabled: disabled || page <= 1,
-      onClick: () => onPage(page - 1)
-    }), /*#__PURE__*/React.createElement("span", null, page, " / ", pages), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": label + '下一页',
-      disabled: disabled || page >= pages,
-      onClick: () => onPage(page + 1)
-    }));
+    return /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: page,
+      pages: pages,
+      onPage: onPage,
+      disabled: disabled,
+      label: label
+    });
   }
   function Metric({
     metric,
-    suffix = ''
+    suffix = '',
+    kind
   }) {
     return metric.value === null ? /*#__PURE__*/React.createElement("details", {
       className: "rc-metric rc-muted"
     }, /*#__PURE__*/React.createElement("summary", {
       title: metric.reason.message
-    }, "\u672A\u77E5"), /*#__PURE__*/React.createElement("small", null, metric.reason.message)) : /*#__PURE__*/React.createElement("span", null, window.RunCandidateModel.number(metric.value), suffix);
+    }, "\u672A\u77E5"), /*#__PURE__*/React.createElement("small", null, metric.reason.message)) : /*#__PURE__*/React.createElement("span", null, ['machine_util_avg', 'operator_util_avg'].includes(kind) ? window.RunCandidateModel.percent(metric.value) : window.RunCandidateModel.number(metric.value), suffix);
   }
   function Status({
     candidate
@@ -96,7 +96,20 @@
     onSelect
   }) {
     const d = result && result.data;
-    return /*#__PURE__*/React.createElement("section", {
+    const [open, setOpen] = React.useState(!selectedRef),
+      panel = React.useRef(null);
+    React.useEffect(() => {
+      if (selectedRef && panel.current && panel.current.contains(document.activeElement)) panel.current.querySelector(':scope > summary').focus({
+        preventScroll: true
+      });
+      setOpen(!selectedRef);
+    }, [selectedRef]);
+    return /*#__PURE__*/React.createElement("details", {
+      className: "rc-catalog",
+      ref: panel,
+      open: open,
+      onToggle: e => setOpen(e.currentTarget.open)
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5019\u9009\u6BD4\u8F83", d && ' · ' + d.candidate_count + ' 项', selectedRef && !open ? ' · 展开查看其他候选' : ''), /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u5019\u9009\u6BD4\u8F83"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rc-heading"
@@ -126,29 +139,52 @@
     }, "\u540D\u79F0"), /*#__PURE__*/React.createElement("option", {
       value: "task_count"
     }, "\u5B89\u6392\u6570"))))), d && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-      className: "rc-table"
+      className: "rc-table wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
+      className: "wb-table",
       "aria-label": "\u5019\u9009\u6BD4\u8F83"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u5019\u9009\u65B9\u6848"), /*#__PURE__*/React.createElement("th", null, "\u72B6\u6001"), /*#__PURE__*/React.createElement("th", null, "\u5B89\u6392"), /*#__PURE__*/React.createElement("th", null, "\u8D85\u671F\u6279\u6B21"), /*#__PURE__*/React.createElement("th", null, "\u603B\u62D6\u671F h"), /*#__PURE__*/React.createElement("th", null, "\u8DE8\u5EA6 h"), /*#__PURE__*/React.createElement("th", null, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, d.candidates.map(c => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u5019\u9009\u6BD4\u8F83"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-key"
+    }, window.WorkbenchTerms.candidate), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u72B6\u6001"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5B89\u6392"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, window.WorkbenchTerms.overdue_count), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, window.WorkbenchTerms.total_tardiness_hours, " h"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u8DE8\u5EA6 h"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      className: "wb-col-actions"
+    }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, d.candidates.map((c, index) => /*#__PURE__*/React.createElement("tr", {
       key: c.candidate_ref,
       "data-candidate-ref": c.candidate_ref,
       "aria-selected": c.candidate_ref === selectedRef
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-key"
+    }, /*#__PURE__*/React.createElement("div", {
       className: "rc-name"
-    }, /*#__PURE__*/React.createElement("span", null, c.label || '生成时名称未记录'), /*#__PURE__*/React.createElement("details", {
-      className: "rc-id"
-    }, /*#__PURE__*/React.createElement("summary", {
-      "aria-label": '候选记录编号 ' + c.candidate_ref
-    }, "\u7F16\u53F7"), /*#__PURE__*/React.createElement("code", null, c.candidate_ref)))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Status, {
+    }, /*#__PURE__*/React.createElement("span", null, c.label || '生成时名称未记录'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      value: c.candidate_ref
+    }))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Status, {
       candidate: c
     })), /*#__PURE__*/React.createElement("td", null, c.task_count), ['overdue_count', 'total_tardiness_hours', 'makespan_hours'].map(k => /*#__PURE__*/React.createElement("td", {
       key: k
     }, /*#__PURE__*/React.createElement(Metric, {
       metric: c.metrics[k]
-    }))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+    }))), /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-actions"
+    }, /*#__PURE__*/React.createElement(Button, {
       icon: "search",
       className: "mini",
-      "aria-label": '查看候选 ' + c.candidate_ref,
+      "aria-label": '查看候选 ' + (c.label || '第 ' + ((d.page.number - 1) * d.page.size + index + 1) + ' 项'),
       disabled: busy || d.capabilities.view !== true || c.capabilities.view !== true,
       onClick: () => onSelect(c)
     }, "\u67E5\u770B"))))))), !d.candidates.length && /*#__PURE__*/React.createElement("p", {
@@ -167,7 +203,7 @@
       onPage: page => onQuery({
         page
       }, true)
-    }))));
+    })))));
   }
   function Generation({
     data,
@@ -189,7 +225,7 @@
     }, "\u751F\u6210\u65F6\u672A\u5206\u914D\u6B63\u5F0F\u7248\u672C")), /*#__PURE__*/React.createElement("span", null, "\u751F\u6210\u7A97\u53E3\uFF1A", input.start_date || '未记录', " \u81F3 ", input.end_date || '未记录')), /*#__PURE__*/React.createElement("div", {
       className: "rc-source-summary"
     }, /*#__PURE__*/React.createElement("details", {
-      className: "rc-reasons rc-generation"
+      className: "rc-reasons rc-generation wb-ref"
     }, /*#__PURE__*/React.createElement("summary", null, "\u751F\u6210\u8D44\u6599\u4E0E\u8BB0\u5F55\u7F16\u53F7"), /*#__PURE__*/React.createElement("dl", {
       className: "rc-meta"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u751F\u6210\u53D7\u7406 / \u7ED3\u675F"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(g.accepted_at), /*#__PURE__*/React.createElement("small", null, M.timeLabel(g.finished_at)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5 / \u7F3A\u8D44\u6E90"), /*#__PURE__*/React.createElement("dd", null, input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭', " / ", {
@@ -204,7 +240,8 @@
     }, window.RunCandidateAPI.metricKeys.map(k => /*#__PURE__*/React.createElement("div", {
       key: k
     }, /*#__PURE__*/React.createElement("dt", null, M.metricLabels[k]), /*#__PURE__*/React.createElement("dd", null, /*#__PURE__*/React.createElement(Metric, {
-      metric: data.candidate.metrics[k]
+      metric: data.candidate.metrics[k],
+      kind: k
     })))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5B9E\u9645\u5DE5\u65F6 / \u6210\u672C"), /*#__PURE__*/React.createElement("dd", null, "\u672A\u77E5", /*#__PURE__*/React.createElement("small", null, "\u5F53\u524D\u5019\u9009\u63A5\u53E3\u672A\u63D0\u4F9B\u5B9E\u9645\u5DE5\u65F6\u4E0E\u6210\u672C\u4E8B\u5B9E\u3002"))))), /*#__PURE__*/React.createElement("span", {
       className: "rc-muted"
     }, analysis ? '完整受理范围 ' + analysis.batch_refs.length + ' 批' : '完整受理范围待核对'), /*#__PURE__*/React.createElement(Reasons, {
@@ -227,9 +264,15 @@
       onClick: onClose
     })), !task ? /*#__PURE__*/React.createElement("p", {
       className: "rc-muted"
-    }, "\u5C1A\u672A\u9009\u62E9\u5DE5\u5E8F") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, task.batch_label || '批次名称未记录', " \xB7 ", task.process_label || '工序名称未记录'), /*#__PURE__*/React.createElement("dl", null, [['零件', task.part_label], ['工序顺序', M.number(task.sequence)], ['分件', task.piece_id === null ? task.data_gaps.some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : task.piece_id], ['本工序目标量', M.number(task.quantity)], ['生成时整批量', M.number(task.batch_quantity)], ['交期', task.due_date], ['开始', task.start && M.timeLabel(task.start)], ['结束', task.end && M.timeLabel(task.end)], ['设备', task.machine && task.machine.label], ['人员', task.operator && task.operator.label], ['外协商', task.supplier && task.supplier.label], ['来源', task.source === 'internal' ? '内部' : task.source === 'external' ? '外协' : null], ['生成时锁定', typeof task.locked === 'boolean' ? task.locked ? '是' : '否' : null], ['安排状态', task.reason ? task.reason.message : '已保存候选安排'], ['安排记录编号', task.row_ref], ['工序编号', task.operation_ref], ['批次编号', task.batch_ref]].map(([k, v]) => /*#__PURE__*/React.createElement("div", {
+    }, "\u5C1A\u672A\u9009\u62E9\u5DE5\u5E8F") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, task.batch_label || '批次名称未记录', " \xB7 ", task.process_label || '工序名称未记录'), /*#__PURE__*/React.createElement("dl", null, [['零件', task.part_label], ['工序顺序', M.number(task.sequence)], ['分件', task.piece_id === null ? task.data_gaps.some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : task.piece_id], ['本工序目标量', M.number(task.quantity)], ['生成时整批量', M.number(task.batch_quantity)], ['交期', task.due_date], ['开始', task.start && M.timeLabel(task.start)], ['结束', task.end && M.timeLabel(task.end)], ['设备', task.machine && task.machine.label], ['人员', task.operator && task.operator.label], ['外协商', task.supplier && task.supplier.label], ['来源', task.source === 'internal' ? '内部' : task.source === 'external' ? '外协' : null], ['生成时锁定', typeof task.locked === 'boolean' ? task.locked ? '是' : '否' : null], ['安排状态', task.reason ? task.reason.message : '已保存候选安排']].map(([k, v]) => /*#__PURE__*/React.createElement("div", {
       key: k
-    }, /*#__PURE__*/React.createElement("dt", null, k), /*#__PURE__*/React.createElement("dd", null, v == null ? '未记录' : v)))), /*#__PURE__*/React.createElement("h4", null, "\u751F\u6210\u65F6\u7684\u5F00\u5DE5\u548C\u5B8C\u5DE5\u8BB0\u5F55"), task.execution_at_generation ? /*#__PURE__*/React.createElement("dl", null, Object.entries(task.execution_at_generation).map(([k, v]) => /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("dt", null, k), /*#__PURE__*/React.createElement("dd", null, v == null ? '未记录' : v)))), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '安排编号': task.row_ref,
+        '工序编号': task.operation_ref,
+        '批次编号': task.batch_ref
+      }
+    }), /*#__PURE__*/React.createElement("h4", null, "\u751F\u6210\u65F6\u7684\u5F00\u5DE5\u548C\u5B8C\u5DE5\u8BB0\u5F55"), task.execution_at_generation ? /*#__PURE__*/React.createElement("dl", null, Object.entries(task.execution_at_generation).map(([k, v]) => /*#__PURE__*/React.createElement("div", {
       key: k
     }, /*#__PURE__*/React.createElement("dt", null, M.executionLabels[k]), /*#__PURE__*/React.createElement("dd", null, v === null ? '未知' : M.executionValue(v))))) : /*#__PURE__*/React.createElement("p", {
       className: "rc-muted"
@@ -240,24 +283,7 @@
     })));
   }
   function Styles() {
-    return /*#__PURE__*/React.createElement("style", null, `
-      .plana.run-candidate-workspace{padding:0;max-width:none;width:100%;min-width:0;color:var(--ui-text);font-size:13px;letter-spacing:0}
-      .run-candidate-workspace *{box-sizing:border-box;letter-spacing:0}.run-candidate-workspace h2{font-size:17px;margin:0;line-height:1.6}.run-candidate-workspace h3{font-size:14px;margin:0;line-height:1.6}.run-candidate-workspace h4{font-size:13px}
-      .run-candidate-workspace section{border-bottom:1px solid var(--ui-border);padding:6px 0}.run-candidate-workspace .rc-heading,.run-candidate-workspace .rc-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}.run-candidate-workspace .rc-heading{justify-content:space-between;padding:6px 0}
-      .run-candidate-workspace .rc-muted,.run-candidate-workspace dt{color:var(--ui-info-muted);font-size:12px;line-height:1.7}.run-candidate-workspace small{display:block;color:var(--ui-info-muted);font-size:11px;line-height:1.6;overflow-wrap:anywhere}.run-candidate-workspace code{overflow-wrap:anywhere;font-size:11px}
-      .run-candidate-workspace .rc-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:12px;margin:8px 0}.run-candidate-workspace dd{margin:4px 0 10px;overflow-wrap:anywhere}.run-candidate-workspace .rc-pending{color:var(--ui-warning-text);font-size:12px}
-      .run-candidate-workspace .rc-notice{background:var(--ui-surface-muted);border-left:3px solid var(--ui-warning);padding:10px 12px;line-height:1.7;margin:8px 0;overflow-wrap:anywhere}.run-candidate-workspace .rc-error{color:var(--ui-danger-text);border-color:var(--ui-danger)}
-      .run-candidate-workspace .rc-reasons{font-size:12px;line-height:1.8;margin:8px 0;overflow-wrap:anywhere}.run-candidate-workspace summary{cursor:pointer;font-weight:600}
-      .run-candidate-workspace .rc-name,.run-candidate-workspace .rc-source-summary{display:flex;align-items:baseline;gap:8px 16px;flex-wrap:wrap;min-width:0}.run-candidate-workspace .rc-name>span{min-width:0}.run-candidate-workspace .rc-id{font-size:12px;color:var(--ui-info-muted);min-width:0}.run-candidate-workspace .rc-id[open]{flex-basis:100%}.run-candidate-workspace .rc-id code{display:block;font-size:12px;color:var(--ui-text)}
-      .run-candidate-workspace .rc-source-summary .rc-reasons{margin:4px 0}.run-candidate-workspace .rc-source-summary .rc-reasons[open]{flex-basis:100%}.run-candidate-workspace .rc-metric summary{font-weight:400}.run-candidate-workspace .rc-scope{display:flex;align-items:baseline;gap:6px 16px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--ui-border);line-height:1.7;overflow-wrap:anywhere}.run-candidate-workspace .rc-scope details{font-size:12px;color:var(--ui-info-muted)}.run-candidate-workspace .rc-scope details[open]{flex-basis:100%}
-      .run-candidate-workspace .pill.ok{color:var(--ui-success-text);background:var(--ui-success-bg)}.run-candidate-workspace .pill.warn{color:var(--ui-warning-text);background:var(--ui-warning-bg)}
-      .run-candidate-workspace .rc-table{width:100%;overflow:auto}.run-candidate-workspace table{width:100%;table-layout:fixed;border-collapse:collapse;min-width:760px}.run-candidate-workspace th,.run-candidate-workspace td{padding:8px;border-bottom:1px solid var(--ui-border);text-align:left;white-space:normal!important;overflow-wrap:anywhere;vertical-align:middle}.run-candidate-workspace th{color:var(--ui-info-muted);font-size:12px}.run-candidate-workspace th:first-child{width:27%}.run-candidate-workspace tr[aria-selected=true]{background:var(--ui-primary-soft)}
-      .run-candidate-workspace .rc-main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px}.run-candidate-workspace .rc-main>div{min-width:0}.run-candidate-workspace .rc-detail{min-width:0;border-left:1px solid var(--ui-border);padding-left:16px}.run-candidate-workspace .rc-detail dl>div{padding:4px 0;border-bottom:1px solid var(--ui-border)}
-      .run-candidate-workspace input,.run-candidate-workspace select{font:inherit;max-width:100%;color:var(--ui-text);background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:4px;min-height:32px;padding:5px 8px}.run-candidate-workspace input[type=range]{padding:0;min-height:20px}.run-candidate-workspace input[type=search]{width:240px}.run-candidate-workspace button{max-width:100%;white-space:normal}.run-candidate-workspace .rc-range{padding:10px 0;display:flex;align-items:end;gap:10px;flex-wrap:wrap}.run-candidate-workspace .rc-range label{display:grid;gap:5px;font-size:12px}
-      .run-candidate-workspace .rc-tabs{display:flex;gap:3px;flex-wrap:wrap}.run-candidate-workspace .rc-tabs button[aria-pressed=true],.run-candidate-workspace .rc-tabs button[aria-selected=true]{background:var(--ui-primary-soft);color:var(--ui-primary);border-color:var(--ui-primary)}
-      .run-candidate-workspace .rc-empty{padding:24px 0;color:var(--ui-info-muted)}.run-candidate-workspace .rc-list{height:320px;overflow:auto;position:relative;border-top:1px solid var(--ui-border)}.run-candidate-workspace .rc-list-row{height:44px;display:grid;grid-template-columns:1.2fr 1fr 1.5fr 1.5fr 80px;align-items:center;gap:10px;padding:0 8px;border-bottom:1px solid var(--ui-border);font-size:12px;min-width:720px}.run-candidate-workspace .rc-list-row>span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.run-candidate-workspace .rc-list-row[aria-selected=true]{background:var(--ui-primary-soft)}
-      @media(max-width:1050px){.run-candidate-workspace .rc-main{grid-template-columns:minmax(0,1fr)}.run-candidate-workspace .rc-detail{border-left:0;border-top:1px solid var(--ui-border);padding:0}.run-candidate-workspace .rc-detail dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}}
-    `);
+    return null;
   }
   function Delivery({
     data,
@@ -290,10 +316,16 @@
       className: "rc-notice",
       key: index
     }, issue.message)), /*#__PURE__*/React.createElement("div", {
-      className: "rc-table"
+      className: "rc-table wb-table-frame",
+      "data-sticky-head": true,
+      "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
+      className: "wb-table",
       "aria-label": "\u5019\u9009\u4EA4\u4ED8\u98CE\u9669\u5217\u8868"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['批次 / 零件', '批量 / 工序覆盖', '交付截至日', '全批计划完工', '预计交付', '末端工序 / 依据'].map(label => /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u5019\u9009\u4EA4\u4ED8\u98CE\u9669\u5217\u8868"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['批次 / 零件', '批量 / 工序覆盖', '交付截至日', '全批计划完工', '预计交付', '末端工序 / 依据'].map(label => /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       key: label
     }, label)))), /*#__PURE__*/React.createElement("tbody", null, data.items.slice((current - 1) * 20, current * 20).map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.batch_ref

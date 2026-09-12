@@ -93,23 +93,30 @@
     }, /*#__PURE__*/React.createElement("table", {
       className: "rm-table",
       "aria-label": receipt ? '工时导入结果明细' : '工时导入预检明细'
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, receipt ? '工时导入结果明细' : '工时导入预检明细'), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: '8%'
       }
     }, "\u884C\u53F7"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: receipt ? '28%' : '24%'
       }
     }, "\u96F6\u4EF6 / \u5DE5\u5E8F"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: receipt ? '64%' : '24%'
       }
     }, "\u5904\u7406\u7ED3\u679C"), !receipt && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: '22%'
       }
     }, "\u539F\u8BB0\u5F55"), /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: '22%'
       }
@@ -187,11 +194,26 @@
     }, /*#__PURE__*/React.createElement("table", {
       className: "rm-table",
       "aria-label": "\u539F\u5916\u534F\u7EC4\u89C4\u5219"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "原外协组规则"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
       style: {
         width: '8%'
       }
-    }, "\u89E3\u9664"), /*#__PURE__*/React.createElement("th", null, "\u96F6\u4EF6"), /*#__PURE__*/React.createElement("th", null, "\u5DE5\u5E8F\u8303\u56F4"), /*#__PURE__*/React.createElement("th", null, "\u5468\u671F\u65B9\u5F0F"), /*#__PURE__*/React.createElement("th", null, "\u539F\u5468\u671F"), /*#__PURE__*/React.createElement("th", null, "\u4F9B\u5E94\u5546"), /*#__PURE__*/React.createElement("th", null, "\u539F\u5907\u6CE8"))), /*#__PURE__*/React.createElement("tbody", null, rows.slice((current - 1) * 50, current * 50).map(row => /*#__PURE__*/React.createElement("tr", {
+    }, "\u89E3\u9664"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u96F6\u4EF6"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5DE5\u5E8F\u8303\u56F4"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5468\u671F\u65B9\u5F0F"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u539F\u5468\u671F"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u4F9B\u5E94\u5546"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u539F\u5907\u6CE8"))), /*#__PURE__*/React.createElement("tbody", null, rows.slice((current - 1) * 50, current * 50).map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.ref
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",

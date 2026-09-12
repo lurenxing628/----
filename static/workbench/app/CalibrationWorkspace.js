@@ -123,9 +123,11 @@
       "data-stale": stale
     }, /*#__PURE__*/React.createElement(C.Styles, null), /*#__PURE__*/React.createElement("header", {
       className: "ca-heading"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", null, "\u5DE5\u65F6\u5B9A\u989D\u6821\u51C6"), /*#__PURE__*/React.createElement("p", {
-      className: "ca-muted"
-    }, "\u6A21\u677F\u5B9A\u989D\u4E0E\u5B9E\u9645\u52A0\u5DE5\u8BB0\u5F55", result ? ' · 数据截至 ' + result.meta.as_of.replace('T', ' ') : '')), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+      className: "wb-page-title"
+    }, "\u5DE5\u65F6\u5B9A\u989D\u6821\u51C6"), /*#__PURE__*/React.createElement("p", {
+      className: "ca-muted wb-page-context"
+    }, "\u6A21\u677F\u5B9A\u989D\u4E0E\u5B9E\u9645\u52A0\u5DE5\u8BB0\u5F55", result ? ' · 数据截至 ' + window.WorkbenchFormat.dateTime(result.meta.as_of) : '')), /*#__PURE__*/React.createElement("div", {
       className: "ca-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
@@ -179,11 +181,16 @@
       icon: "refresh-cw",
       disabled: downloading,
       onClick: reload
-    }, "\u660E\u786E\u5237\u65B0"), request.busy && /*#__PURE__*/React.createElement("p", {
+    }, "\u660E\u786E\u5237\u65B0"), request.busy && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "loading",
+      title: "\u6B63\u5728\u8BFB\u53D6\u6821\u51C6\u8BB0\u5F55"
+    }), notice && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u6821\u51C6\u8BB0\u5F55..."), notice && /*#__PURE__*/React.createElement("p", {
-      role: "status"
-    }, notice), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, notice), /*#__PURE__*/React.createElement("div", {
+      className: selected ? 'wb-detail-layout' : ''
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "ca-list-pane"
+    }, data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "ca-metrics"
     }, [['模板工序', 'total'], ['偏差 > 20%', 'over_20_percent'], ['已有建议', 'suggested'], ['数据不足', 'insufficient_data']].map(([label, key]) => /*#__PURE__*/React.createElement("div", {
       className: "ca-metric",
@@ -232,6 +239,7 @@
       transfer: "export",
       busy: downloading,
       disabled: disabled,
+      reasonDisplay: "tooltip",
       reason: A.exportReason(data, format),
       onClick: download
     }, "\u5BFC\u51FA\u5168\u90E8\u7B5B\u9009"))), /*#__PURE__*/React.createElement(C.Table, {
@@ -269,11 +277,9 @@
       page: data.page,
       onChange: page,
       disabled: disabled
-    }), data.capabilities.export !== true && /*#__PURE__*/React.createElement("p", {
-      className: "ca-note"
-    }, "\u5BFC\u51FA\u6743\u9650\u5C1A\u672A\u786E\u8BA4\uFF0C\u6682\u4E0D\u80FD\u5BFC\u51FA\u3002"), /*#__PURE__*/React.createElement("p", {
+    }), /*#__PURE__*/React.createElement("p", {
       className: "ca-muted"
-    }, C.writeReason)), selected && /*#__PURE__*/React.createElement(window.CalibrationDetail, {
+    }, C.writeReason))), selected && /*#__PURE__*/React.createElement(window.CalibrationDetail, {
       result: detail.result,
       busy: detail.busy,
       error: detail.error || viewError,
@@ -286,7 +292,7 @@
         setSample(null);
       },
       onRefresh: reload
-    }), part && /*#__PURE__*/React.createElement(window.ProcessDetail, {
+    })), part && /*#__PURE__*/React.createElement(window.ProcessDetail, {
       adapter: partAdapter,
       partRef: part.part_ref,
       initialStage: "hours",
@@ -303,7 +309,9 @@
     } catch (error) {
       return /*#__PURE__*/React.createElement("section", {
         className: "calibration-live"
-      }, /*#__PURE__*/React.createElement(window.CalibrationControls.Styles, null), /*#__PURE__*/React.createElement("h2", null, "\u5DE5\u65F6\u5B9A\u989D\u6821\u51C6"), /*#__PURE__*/React.createElement(window.ResourceControls.ErrorBox, {
+      }, /*#__PURE__*/React.createElement(window.CalibrationControls.Styles, null), /*#__PURE__*/React.createElement("h2", {
+        className: "wb-page-title"
+      }, "\u5DE5\u65F6\u5B9A\u989D\u6821\u51C6"), /*#__PURE__*/React.createElement(window.ResourceControls.ErrorBox, {
         error: error
       }));
     }
