@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tools.test_registry_algorithm_efficiency import ALGORITHM_EFFICIENCY_REQUIRED_TESTS
+
 SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
     {
         "group_id": "quality_gate",
@@ -22,6 +24,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/gate_meta/test_check_full_test_debt.py",
             "tests/gate_meta/test_full_test_debt_registry_contract.py",
             "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py",
+            "tests/gate_meta/test_quality_gate_output_normalization.py",
             "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
             "tests/app_runtime/test_fast_static_precheck.py",
             "tests/gate_meta/test_git_hook_checks.py",
@@ -173,6 +176,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
         "group_id": "scheduler_run_core",
         "label": "Scheduler run core contracts",
         "target_paths": (
+            *ALGORITHM_EFFICIENCY_REQUIRED_TESTS,
             "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
             "tests/schedule/route_view/test_scheduler_route_registration_contract.py",
             "tests/web_pages/test_history_summary_parser.py",

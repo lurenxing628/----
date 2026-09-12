@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 
+from tools.test_registry_algorithm_efficiency import ALGORITHM_EFFICIENCY_REQUIRED_TESTS
 from tools.test_registry_groups_workbench import WORKBENCH_REQUIRED_TESTS
+from tools.test_registry_workbench_ui import WORKBENCH_UI_REQUIRED_TESTS
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -29,6 +31,7 @@ QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
 )
 
 QUALITY_GATE_GUARD_TESTS = (
+    *ALGORITHM_EFFICIENCY_REQUIRED_TESTS,
     "tests/gate_meta/test_no_residual_main_style_regression.py",
     "tests/gate_meta/test_sp05_path_topology_contract.py",
     "tests/gate_meta/test_win7_networkx_package_contract.py",
@@ -121,6 +124,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/resource_dispatch/test_resource_dispatch_result_status_label_contract.py",
     "tests/web_pages/test_workbench_nav_entry_contract.py",
     "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py",
+    "tests/gate_meta/test_quality_gate_output_normalization.py",
     "tests/candidate/test_week_plan_filename_uses_normalized_version.py",
     "tests/gantt/test_gantt_degradation_surface.py",
     "tests/schedule/route_view/test_scheduler_result_navigation_contract.py",
@@ -320,7 +324,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/gate_meta/test_scheduler_lazy_exports_final.py",
 )
 
-QUALITY_GATE_GUARD_TESTS = (*QUALITY_GATE_GUARD_TESTS, *WORKBENCH_REQUIRED_TESTS)
+QUALITY_GATE_GUARD_TESTS = (*QUALITY_GATE_GUARD_TESTS, *WORKBENCH_REQUIRED_TESTS, *WORKBENCH_UI_REQUIRED_TESTS)
 QUALITY_GATE_REQUIRED_TESTS = (QUALITY_GATE_SELFTEST_PATH, *QUALITY_GATE_GUARD_TESTS)
 
 TEST_ONLY_HELPER_IMPACT = {
@@ -359,7 +363,9 @@ REQUIRED_REGRESSION_COMMON_SCOPES = {
         "tools/test_registry_data.py",
         "tools/test_registry_groups_misc.py",
         "tools/test_registry_groups_scheduler.py",
+        "tools/test_registry_algorithm_efficiency.py",
         "tools/test_registry_groups_workbench.py",
+        "tools/test_registry_workbench_ui.py",
         "tools/quality_gate_shared.py",
         "tools/quality_gate_support.py",
         "scripts/run_quality_gate.py",
@@ -382,7 +388,9 @@ REQUIRED_REGRESSION_COMMON_SCOPES = {
         "tools/test_registry_data.py",
         "tools/test_registry_groups_misc.py",
         "tools/test_registry_groups_scheduler.py",
+        "tools/test_registry_algorithm_efficiency.py",
         "tools/test_registry_groups_workbench.py",
+        "tools/test_registry_workbench_ui.py",
         "tools/quality_gate_shared.py",
         "tools/quality_gate_support.py",
         # scope 空洞审计(2026-06-23)补登：tools/scripts 下服务门禁运行/测试地基的工具脚本——

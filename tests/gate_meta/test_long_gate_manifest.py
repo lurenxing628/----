@@ -9,7 +9,11 @@ import sys
 
 import pytest
 
-from tests.gate_meta.workbench_round1_registry_support import POST_ROUND1_TARGETS
+from tests.gate_meta.workbench_round1_registry_support import (
+    POST_ROUND1_TARGETS,
+    UI_REQUIRED_TARGETS,
+    assert_reviewed_algorithm_registration,
+)
 from tools import long_gate_fingerprint as fingerprint_mod
 from tools import long_gate_manifest as manifest_mod
 from tools import quality_gate_shared
@@ -25,6 +29,7 @@ from tools.test_registry import (
     iter_startup_regressions,
     validate_required_regression_group_coverage,
 )
+from tools.test_registry_algorithm_efficiency import ALGORITHM_EFFICIENCY_REQUIRED_TESTS
 from tools.test_registry_groups_workbench import WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS
 
 
@@ -138,6 +143,7 @@ def test_full_test_debt_manifest_tracks_runtime_and_shard_inputs():
 
 
 def test_required_groups_cover_required_registry():
+    assert_reviewed_algorithm_registration()
     required = iter_required_tests()
     groups = iter_required_regression_groups()
     coverage = validate_required_regression_group_coverage(required)
@@ -147,24 +153,41 @@ def test_required_groups_cover_required_registry():
     assert coverage["unknown"] == []
     assert coverage["required_target_count"] == len(required)
     assert coverage["group_target_count"] == len(required)
-    # Historical 582 plus reviewed final registrations; this is not execution proof.
-    assert coverage["group_count"] == 33
+    # Preserve the historical 582 and explicitly account for reviewed additions.
+    # Registration coverage is not execution proof.
+    assert coverage["group_count"] == 34
     final_required = (
         ("tests/gate_meta/test_scheduler_lazy_exports_final.py", "scheduler_run_core"),
         ("tests/workbench/test_final_planning_analysis.py", "workbench_run_jobs"),
         ("tests/workbench/test_final_planning_analysis_history.py", "workbench_run_jobs"),
         ("tests/workbench/test_final_planning_analysis_contract.py", "workbench_run_jobs"),
     )
-    assert [path for path in required if path in POST_ROUND1_TARGETS] == [path for path, _owner in final_required]
-    assert len([path for path in required if path not in POST_ROUND1_TARGETS]) == 582
-    assert coverage["required_target_count"] == 582 + len(final_required)
-    for path, owner in final_required:
+    ui_required = tuple((path, "workbench_ui_refinement") for path in UI_REQUIRED_TARGETS)
+    reviewed_post_round1 = (
+        ("tests/gate_meta/test_quality_gate_output_normalization.py", "quality_gate"),
+        *final_required, *ui_required,
+    )
+    algorithm_required = dict.fromkeys(ALGORITHM_EFFICIENCY_REQUIRED_TESTS, "scheduler_run_core")
+    algorithm_required.update({
+        "tests/workbench/test_run_snapshot_reuse.py": "workbench_run_compute",
+        "tests/gate_meta/test_quality_gate_output_normalization.py": "quality_gate",
+    })
+    assert [path for path in required if path in POST_ROUND1_TARGETS] == [path for path, _owner in reviewed_post_round1]
+    assert set(algorithm_required).issubset(required)
+    assert len([path for path in required if path not in POST_ROUND1_TARGETS and path not in algorithm_required]) == 582
+    assert coverage["required_target_count"] == 582 + len(final_required) + len(algorithm_required) + len(ui_required)
+    for path, owner in (*final_required, *algorithm_required.items(), *ui_required):
         assert [group["group_id"] for group in groups if path in group["target_paths"]] == [owner]
-    assert [group["group_id"] for group in groups][-9:] == [
+    domain_ledger = "tests/workbench/test_final_master_domain_ledger.py"
+    assert domain_ledger not in required
+    assert [group["group_id"] for group in WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS
+            for path in group["target_paths"] if path == domain_ledger] == ["workbench_browser"]
+    assert [group["group_id"] for group in groups][-10:-1] == [
         "workbench_trial", "workbench_template_lineage", "workbench_request_lifecycle",
         "workbench_calibration_adoption", "workbench_trial_adoption", "workbench_dashboard",
         "workbench_outsourcing", "workbench_zero_duration", "workbench_piece_adoption",
     ]
+    assert groups[-1]["group_id"] == "workbench_ui_refinement"
     assert coverage["required_registry_hash"]
     assert coverage["group_registry_hash"]
 

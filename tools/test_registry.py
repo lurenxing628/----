@@ -17,12 +17,25 @@ from tools.test_registry_data import (
 )
 from tools.test_registry_groups_misc import MISC_REQUIRED_REGRESSION_GROUPS
 from tools.test_registry_groups_scheduler import SCHEDULER_REQUIRED_REGRESSION_GROUPS
-from tools.test_registry_groups_workbench import WORKBENCH_REQUIRED_REGRESSION_GROUPS
+from tools.test_registry_groups_workbench import (
+    WORKBENCH_REQUIRED_REGRESSION_GROUPS,
+    WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS,
+)
+from tools.test_registry_workbench_ui import (
+    WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS,
+    WORKBENCH_UI_SUPPLEMENTAL_REGRESSION_GROUPS,
+)
 
 REQUIRED_REGRESSION_GROUPS = (
     *SCHEDULER_REQUIRED_REGRESSION_GROUPS,
     *MISC_REQUIRED_REGRESSION_GROUPS,
     *WORKBENCH_REQUIRED_REGRESSION_GROUPS,
+    *WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS,
+)
+
+SUPPLEMENTAL_REGRESSION_GROUPS = (
+    *WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS,
+    *WORKBENCH_UI_SUPPLEMENTAL_REGRESSION_GROUPS,
 )
 
 def _normalize_registry_path(path: str) -> str:
@@ -311,6 +324,7 @@ __all__ = [
     "QUALITY_GATE_STARTUP_REGRESSION_ARGS",
     "REQUIRED_REGRESSION_COMMON_SCOPES",
     "REQUIRED_REGRESSION_GROUPS",
+    "SUPPLEMENTAL_REGRESSION_GROUPS",
     "TEST_ONLY_HELPER_IMPACT",
     "build_test_path_status",
     "hash_required_regression_groups",

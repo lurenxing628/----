@@ -183,6 +183,7 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/test_registry_groups_misc.py",
     "tools/test_registry_groups_scheduler.py",
     "tools/test_registry_groups_workbench.py",
+    "tools/test_registry_workbench_ui.py",
     "tests/conftest.py",
     ".codestable/tools/validate-yaml.py",
     "tests/config/test_config_manual_markdown.py",
@@ -642,7 +643,8 @@ def _normalize_command_output_for_policy(text: str, *, policy: str) -> str:
         return output
     output = output.replace("\r\n", "\n").replace("\r", "\n")
     output = re.sub(r"in [0-9]+(?:\.[0-9]+)?s", "in <seconds>s", output)
-    output = re.sub(r"[0-9]+(?:\.[0-9]+)? seconds", "<seconds> seconds", output)
+    # Try a digit run only at its start; huge numeric pytest IDs otherwise cost O(n²).
+    output = re.sub(r"(?<![0-9])[0-9]+(?:\.[0-9]+)? seconds", "<seconds> seconds", output)
     output = re.sub(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})", "<iso-timestamp>", output)
     output = re.sub(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", "<log-timestamp>", output)
     output = re.sub(r"aps_quickref_check_[A-Za-z0-9_]+", "aps_quickref_check_<tmp>", output)

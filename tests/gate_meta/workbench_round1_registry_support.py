@@ -1,5 +1,85 @@
 """Reviewed R1 target expectations, independent of the production registry."""
 
+# Keep this review record independent of the production tuple: future additions
+# must not silently disappear from the historical owner/order assertions.
+REVIEWED_ALGORITHM_REQUIRED_TESTS = (
+    "tests/algorithm/test_busy_union_closure.py",
+    "tests/algorithm/test_gap_resource_quality.py",
+    "tests/algorithm/test_graph_repair_deadline.py",
+    "tests/algorithm/test_graph_repair_decisions.py",
+    "tests/algorithm/test_graph_repair_multiround.py",
+    "tests/algorithm/test_graph_repair_operation_neighbors.py",
+    "tests/algorithm/test_graph_repair_real_decode.py",
+    "tests/algorithm/test_native_snapshot_callback_boundaries.py",
+    "tests/algorithm/test_optimizer_benchmark_timing_contract.py",
+    "tests/algorithm/test_optimizer_budget_public_projection.py",
+    "tests/algorithm/test_optimizer_comparison_baseline_lifecycle.py",
+    "tests/algorithm/test_optimizer_deadline_boundary.py",
+    "tests/algorithm/test_optimizer_end_to_end_matrix_contract.py",
+    "tests/algorithm/test_optimizer_end_to_end_snapshot_contract.py",
+    "tests/algorithm/test_optimizer_exact_oracle.py",
+    "tests/algorithm/test_optimizer_multi_start_budget_integration.py",
+    "tests/algorithm/test_optimizer_multi_start_decision_dedup.py",
+    "tests/algorithm/test_optimizer_objective_aware_graph_features.py",
+    "tests/algorithm/test_optimizer_quality_matrix_quality_contract.py",
+    "tests/algorithm/test_optimizer_shared_budget.py",
+    "tests/algorithm/test_owned_sgs_timeline.py",
+    "tests/algorithm/test_resource_demand_contract.py",
+    "tests/algorithm/test_resource_demand_neutral_comparison.py",
+    "tests/algorithm/test_resource_demand_total_blocking.py",
+    "tests/algorithm/test_sgs_native_score_reuse.py",
+    "tests/algorithm/test_sgs_plain_auto_timelines.py",
+    "tests/scheduler_graph/test_graph_preparation_efficiency.py",
+    "tests/scheduler_graph/test_metrics_impact_components.py",
+)
+REVIEWED_ALGORITHM_TARGET_OWNERS = {
+    **{path: "scheduler_run_core" for path in REVIEWED_ALGORITHM_REQUIRED_TESTS},
+    "tests/workbench/test_run_snapshot_reuse.py": "workbench_run_compute",
+    "tests/gate_meta/test_quality_gate_output_normalization.py": "quality_gate",
+}
+
+
+def assert_reviewed_algorithm_registration():
+    from tools import test_registry
+    from tools.test_registry_algorithm_efficiency import ALGORITHM_EFFICIENCY_REQUIRED_TESTS
+    from tools.test_registry_groups_workbench import WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS
+
+    assert ALGORITHM_EFFICIENCY_REQUIRED_TESTS == REVIEWED_ALGORITHM_REQUIRED_TESTS
+    groups = test_registry.REQUIRED_REGRESSION_GROUPS
+    for path, owner in REVIEWED_ALGORITHM_TARGET_OWNERS.items():
+        assert [group["group_id"] for group in groups for target in group["target_paths"]
+                if target == path] == [owner]
+        assert test_registry.QUALITY_GATE_REQUIRED_TESTS.count(path) == 1
+        assert all(path not in group["target_paths"] for group in WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS)
+    for owner in dict.fromkeys(REVIEWED_ALGORITHM_TARGET_OWNERS.values()):
+        expected = [path for path, group_id in REVIEWED_ALGORITHM_TARGET_OWNERS.items() if group_id == owner]
+        group = next(group for group in groups if group["group_id"] == owner)
+        assert [path for path in group["target_paths"] if path in REVIEWED_ALGORITHM_TARGET_OWNERS] == expected
+
+
+# Expected additions are literal review records, never derived from registry implementation.
+UI_REQUIRED_TARGETS = (
+    "tests/workbench/test_style_build_sources.py",
+    "tests/workbench/test_ui_refinement_style_gate.py",
+    "tests/workbench/test_ui_refinement_node_contracts.py",
+    "tests/workbench/test_ui_refinement_evidence_contract.py",
+    "tests/workbench/test_ui_refinement_browser_dependencies.py",
+    "tests/gate_meta/test_daily_ui_refinement_opt_in.py",
+    "tests/gate_meta/test_workbench_ui_registry.py",
+)
+UI_SUPPLEMENTAL_TARGETS = (
+    "tests/workbench/test_ui_refinement_geometry.py",
+    "tests/workbench/test_ui_navigation_guard.py",
+    "tests/workbench/test_shared_controls_widgets.py",
+    "tests/workbench/test_dashboard_ui_refinement.py",
+    "tests/workbench/test_dirty_guard_widgets.py",
+    "tests/workbench/test_ui_refinement_reports_review.py",
+    "tests/workbench/test_wbui_actual_keyboard.py",
+    "tests/workbench/test_wbui_plan_first_screen.py",
+    "tests/workbench/test_wbui_plan_gantt_models.py",
+)
+UI_GROUP_IDS = ("workbench_ui_refinement", "workbench_ui_refinement_browser")
+
 # Only explicitly reviewed additions are outside the historical 582/85 snapshot.
 FINAL_INTEGRATION_SUPPLEMENTAL_FILES = {
     "workbench_browser": (
@@ -55,6 +135,7 @@ FINAL_INTEGRATION_SUPPLEMENTAL_FILES = {
         "test_final_master_typed_lineage.py",
         "test_final_operations_context_contract.py",
         "test_final_planning_candidate_source.py",
+        "test_final_master_domain_ledger.py",
     ),
     "workbench_run_compute_capacity": (
         "test_final_capacity_contract.py",
@@ -92,6 +173,9 @@ FINAL_CANDIDATE_READONLY_INPUTS = (
 
 
 POST_ROUND1_TARGETS = frozenset((
+    *UI_REQUIRED_TARGETS,
+    *UI_SUPPLEMENTAL_TARGETS,
+    "tests/gate_meta/test_quality_gate_output_normalization.py",
     "tests/gate_meta/test_scheduler_lazy_exports_final.py",
     "tests/workbench/test_final_capacity_cli_loading.py",
     "tests/workbench/test_final_foundation_navigation.py",
@@ -105,7 +189,8 @@ POST_ROUND1_TARGETS = frozenset((
 
 
 def round1_targets(group):
-    return [path for path in group["target_paths"] if path not in POST_ROUND1_TARGETS]
+    return [path for path in group["target_paths"]
+            if path not in POST_ROUND1_TARGETS and path not in REVIEWED_ALGORITHM_TARGET_OWNERS]
 
 
 ROUND1_REQUIRED_FILES = {

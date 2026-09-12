@@ -493,7 +493,9 @@ def daily_gate_scope_payload(scope: DailyGateScope) -> Dict[str, object]:
     return payload
 
 
-def _commands(required_targets: Sequence[str], ruff_plan: RuffPlan) -> List[Tuple[str, List[str], bool]]:
+def _commands(
+    required_targets: Sequence[str], ruff_plan: RuffPlan, *, workbench_ui_evidence: Optional[str] = None,
+) -> List[Tuple[str, List[str], bool]]:
     # 三元组 (label, command, allow_no_tests)：allow_no_tests=True 的步骤对 pytest「未收集到用例」
     # 退出码（_PYTEST_NO_TESTS_EXITCODE）视为通过（合法空集），其余步骤一律按非零失败处理。
     commands: List[Tuple[str, List[str], bool]] = [
@@ -548,6 +550,14 @@ def _commands(required_targets: Sequence[str], ruff_plan: RuffPlan) -> List[Tupl
             False,
         )
     )
+    if workbench_ui_evidence is not None:
+        commands.append(
+            (
+                "workbench UI refinement evidence",
+                [sys.executable, "-B", "tests/workbench/ui_refinement_gate.py", "--evidence-dir", workbench_ui_evidence],
+                False,
+            )
+        )
     return commands
 
 
@@ -702,7 +712,14 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser.add_argument("--pre-push-remote-ref", default="")
     parser.add_argument("--pre-push-changed-path", action="append", default=[], help=argparse.SUPPRESS)
     parser.add_argument("--pre-push-scope-reason", default="", help=argparse.SUPPRESS)
-    return parser.parse_args(list(argv) if argv is not None else None)
+    parser.add_argument(
+        "--workbench-ui-evidence", metavar="DIR", default=None,
+        help="Also run the independent workbench UI evidence gate; omitted by default.",
+    )
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    if args.workbench_ui_evidence is not None and not args.workbench_ui_evidence.strip():
+        parser.error("--workbench-ui-evidence must name a non-empty evidence directory")
+    return args
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -764,7 +781,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         _announce_failure_log()
         return collect_returncode
 
-    commands = _commands(impact_plan.target_paths, ruff_plan)
+    commands = _commands(impact_plan.target_paths, ruff_plan, workbench_ui_evidence=args.workbench_ui_evidence)
     impact_no_test_labels = set()
     impact_allowed_labels = {"impact pytest (parallel)", "impact pytest (serial)"}
     for index, (label, command, allow_no_tests) in enumerate(commands, start=1):

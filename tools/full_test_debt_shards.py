@@ -28,6 +28,14 @@ SERIAL_FILE_PATTERNS: Tuple[str, ...] = (
     # 打空（is_dag 误判、networkx 不可用模拟失效等，只命中分片里第一个）。按收集顺序连续跑（本地
     # `pytest tests/scheduler_graph/` 恒过）即无此问题，故整目录 serial。
     "tests/scheduler_graph/test_*.py",
+    # These module-scoped benchmark fixtures must run once, without competing workers.
+    "tests/algorithm/test_optimizer_quality_matrix*.py",
+    "tests/algorithm/test_optimizer_end_to_end*.py",
+    "tests/algorithm/test_optimizer_compare_algorithms_contract.py",
+    "tests/algorithm/test_optimizer_smtwt_compare_algorithms_contract.py",
+    "tests/algorithm/test_optimizer_graph_ready_v2_long_run_contract.py",
+    "tests/algorithm/test_optimizer_benchmark_timing_contract.py",
+    "tests/algorithm/test_optimizer_benchmark_ratchet_gate.py",
 )
 
 SERIAL_EXACT_PATHS = frozenset(iter_startup_regressions())

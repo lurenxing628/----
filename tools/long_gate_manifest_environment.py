@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import List, Optional, Sequence
 
-from tools import test_registry, test_registry_groups_workbench
+from tools import test_registry
 from tools.long_gate_fingerprint import RUNTIME_FINGERPRINT_KEYS
 
 
 def registry_test_environment_keys(targets: Optional[Sequence[str]] = None) -> List[str]:
     groups = test_registry.iter_required_regression_groups()
     groups.extend(test_registry.iter_required_regression_groups(
-        test_registry_groups_workbench.WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS
+        test_registry.SUPPLEMENTAL_REGRESSION_GROUPS
     ))
     selected = None if targets is None else set(test_registry.normalize_test_paths(targets))
     # Collection observes environment-dependent marks/parameters, not runtime probes.

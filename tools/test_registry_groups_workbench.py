@@ -514,6 +514,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
     )),
     # These are isolated component contracts, not a claim of global run integration.
     _group("workbench_run_compute", "Unreleased candidate-compute component contracts", (
+        "test_run_snapshot_reuse.py",
         "test_run_compute.py",
         "test_run_compute_contracts.py",
         "test_run_compute_execution.py",
@@ -987,6 +988,7 @@ WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS = (
         "test_final_master_typed_lineage.py",
         "test_final_operations_context_contract.py",
         "test_final_planning_candidate_source.py",
+        "test_final_master_domain_ledger.py",
     ), (*_BROWSER_SCOPES, *_DASHBOARD_EXTERNAL_BROWSER_SCOPES, *_SYSTEM_RESTORE_BROWSER_SCOPES,
         *_DELIVERED_POINT_BROWSER_SCOPES, *_DELIVERED_PIECE_BROWSER_SCOPES,
         *_DELIVERED_PLAN_BROWSER_SCOPES,
