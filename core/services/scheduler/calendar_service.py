@@ -3,6 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
+from core.algorithm_runtime.native_snapshot import make_class_guard
+from core.algorithm_runtime.sgs_estimate_reuse import (
+    register_multi_start_calendar_certificate,
+    register_sgs_calendar_certificate,
+)
 from core.models import OperatorCalendar, WorkCalendar
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
@@ -10,7 +15,9 @@ from core.services.common.normalize import to_str_or_blank
 
 from .calendar_admin import CalendarAdmin
 from .calendar_engine import CalendarEngine, DayPolicy
+from .calendar_multi_start_certificate import multi_start_calendar_snapshot
 from .calendar_native_timing import make_native_method_guard
+from .calendar_sgs_certificate import policy_snapshot
 
 
 class CalendarService:
@@ -264,6 +271,14 @@ class CalendarService:
                 return None
         return start, end
 
+    def certified_sgs_policy_snapshot(self, operator_id):
+        """Exact native policy contents used to invalidate one SGS candidate."""
+        return policy_snapshot(self, operator_id, _SGS_SERVICE_GUARD)
+
+    def certified_multi_start_snapshot(self):
+        """Independent complete native evidence for one multi-start read transaction."""
+        return multi_start_calendar_snapshot(self, _SGS_SERVICE_GUARD)
+
 
 _NATIVE_SERVICE_TIMING = {name: getattr(CalendarService, name) for name in
                           ("get_efficiency", "adjust_to_working_time", "add_working_hours")}
@@ -271,3 +286,6 @@ _NATIVE_ENGINE_TIMING = {name: getattr(CalendarEngine, name) for name in
                          ("get_efficiency", "adjust_to_working_time", "add_working_hours",
                           "policy_for_datetime", "_policy_for_datetime", "_policy_for_date")}
 _NATIVE_METHODS_UNCHANGED = make_native_method_guard(CalendarService)
+_SGS_SERVICE_GUARD = make_class_guard(CalendarService)
+register_sgs_calendar_certificate(CalendarService, CalendarService.certified_sgs_policy_snapshot)
+register_multi_start_calendar_certificate(CalendarService, CalendarService.certified_multi_start_snapshot)

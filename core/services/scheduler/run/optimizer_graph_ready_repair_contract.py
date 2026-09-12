@@ -6,7 +6,8 @@ from typing import Any, Dict, Optional
 from core.infrastructure.errors import ValidationError
 
 REPAIR_PHASE = "graph_ready_v2_elite_repair"
-REPAIR_GENERATORS = ("adjacent_swap", "single_insert", "tardy_boundary_move")
+REPAIR_GENERATORS = ("adjacent_swap", "single_insert", "tardy_boundary_move", "critical_block_swap",
+                     "operation_time_insert", "resource_alternative")
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class EliteRepairLimits:
     max_neighbors_per_elite: int = 8
     time_budget_ms: Optional[int] = None
     max_candidates: int = 60
+    max_rounds: int = 3
 
 
 def resolve_elite_repair_limits(construction: Optional[Dict[str, Any]], *, enabled: bool) -> EliteRepairLimits:
@@ -25,7 +27,7 @@ def resolve_elite_repair_limits(construction: Optional[Dict[str, Any]], *, enabl
     raw = optimization.get("elite_repair", {})
     if not isinstance(raw, dict):
         _invalid("elite_repair")
-    allowed = {"enabled", "top_k", "max_neighbors_per_elite", "time_budget_ms"}
+    allowed = {"enabled", "top_k", "max_neighbors_per_elite", "time_budget_ms", "max_rounds"}
     if set(raw).difference(allowed):
         _invalid("elite_repair")
     active = raw.get("enabled", enabled)
@@ -38,6 +40,7 @@ def resolve_elite_repair_limits(construction: Optional[Dict[str, Any]], *, enabl
         max_neighbors_per_elite=min(_positive_int(raw.get("max_neighbors_per_elite", 8), "max_neighbors_per_elite"), 32),
         time_budget_ms=None if time_budget is None else _positive_int(time_budget, "time_budget_ms"),
         max_candidates=_positive_int(optimization.get("max_candidate_profiles", 60), "max_candidate_profiles"),
+        max_rounds=min(_positive_int(raw.get("max_rounds", 3), "max_rounds"), 8),
     )
 
 
@@ -60,6 +63,9 @@ def new_repair_report(limits: EliteRepairLimits, *, objective_name: str) -> Dict
     }
     return {
         "repair_enabled": limits.enabled, "repair_top_k": limits.top_k,
+        "repair_max_rounds": limits.max_rounds, "repair_rounds_completed": 0,
+        "repair_stop_reason": None, "repair_round_improvements": [],
+        "repair_round_policy": "improvement_first", "repair_deferred_by_improvement": 0,
         "repair_max_neighbors_per_elite": limits.max_neighbors_per_elite,
         "repair_time_budget_ms": 0, "repair_candidate_budget": 0,
         "repair_candidate_space_total": 0, "repair_candidate_space_total_status": "exact",

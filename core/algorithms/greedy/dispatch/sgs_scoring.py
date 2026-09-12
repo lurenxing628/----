@@ -17,6 +17,7 @@ from core.algorithm_runtime.internal_slot import (
 )
 from core.algorithm_runtime.piece_input import external_group_key
 from core.algorithm_runtime.run_state import ScheduleRunState
+from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_reuse, remember_sgs_estimate
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 from core.infrastructure.errors import ValidationError
 from core.shared.strict_parse import is_blank_input, parse_optional_date, parse_required_float, parse_required_int
@@ -36,11 +37,33 @@ class _ScoringResources(NamedTuple):
     auto_assign_reason: str
 
 
+_NATIVE_PARSE_DATE = parse_date
+_NATIVE_PARSE_OPTIONAL_DATE = parse_optional_date
+_DUE_TEXT_CACHE: Dict[Tuple[bool, str], Optional[date]] = {}
+
+
+def _parse_native_due_text(value: str, *, strict_mode: bool) -> Optional[date]:
+    key = strict_mode, value
+    if key in _DUE_TEXT_CACHE:
+        return _DUE_TEXT_CACHE[key]
+    result = parse_optional_date(value, field="due_date") if strict_mode else parse_date(value)
+    # Invalid non-strict dates also return None: retain their original parse path.
+    if result is not None or not value.strip():
+        if len(_DUE_TEXT_CACHE) >= 4096:
+            _DUE_TEXT_CACHE.pop(next(iter(_DUE_TEXT_CACHE)))
+        _DUE_TEXT_CACHE[key] = result
+    return result
+
+
 def _parse_due_date(value: Any, *, strict_mode: bool = False) -> Optional[date]:
     if strict_mode:
         if value is None or type(value) is date:
             return value
+        if type(value) is str and parse_optional_date is _NATIVE_PARSE_OPTIONAL_DATE:
+            return _parse_native_due_text(value, strict_mode=True)
         return parse_optional_date(value, field="due_date")
+    if type(value) is str and parse_date is _NATIVE_PARSE_DATE:
+        return _parse_native_due_text(value, strict_mode=False)
     return parse_date(value)
 
 
@@ -411,4 +434,25 @@ def _estimate_scoring_slot(
     )
     if estimate.abort_after_hit:
         raise RuntimeError("SGS 评分不应命中 abort_after 早停")
+    reuse = current_sgs_reuse()
+    if reuse is not None and reuse.scoring_op is op:
+        remember_sgs_estimate(
+            estimate, calendar=ctx.calendar, op=op, batch=batch,
+            machine_id=machine_id, operator_id=operator_id, base_time=state.base_time, prev_end=meta["prev_end"],
+            machine_timeline=state.machine_timeline.get(machine_id) or [],
+            operator_timeline=state.operator_timeline.get(operator_id) or [],
+            machine_downtimes=(machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else [],
+            end_dt_exclusive=end_dt_exclusive, last_op_type_by_machine=state.last_op_type_by_machine,
+            total_hours_base=total_hours,
+        )
     return estimate
+
+
+_NATIVE_SCORING_HELPERS = {name: globals()[name] for name in (
+    "_candidate_meta", "_scoring_total_hours", "_scoring_resources", "_estimate_scoring_slot", "_dispatch_key",
+    "_parse_due_date", "parse_optional_date", "parse_date", "_score_internal_candidate", "_score_external_candidate",
+)}
+
+
+def native_scoring_unchanged():
+    return all(globals()[name] is original for name, original in _NATIVE_SCORING_HELPERS.items())

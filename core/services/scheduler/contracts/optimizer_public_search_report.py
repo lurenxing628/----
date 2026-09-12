@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
+from .optimizer_budget_projection import project_optimizer_budget
 from .optimizer_public_safety import (
     project_attempt_score,
     safe_attempt_text,
@@ -58,6 +59,7 @@ _PROFILE_PUBLIC_INT_KEYS = (
     "seed",
     "configured_time_budget_seconds",
     "effective_time_budget_seconds",
+    "assigned_time_budget_ms",
     "configured_max_iterations",
     "effective_max_iterations",
 )
@@ -316,6 +318,9 @@ def _project_profile_diagnostics(value: Dict[str, Any]) -> Dict[str, Any]:
     candidate_construction = _safe_candidate_construction(value.get("candidate_construction"))
     if candidate_construction:
         diagnostics["candidate_construction"] = candidate_construction
+    optimizer_budget = project_optimizer_budget(value.get("optimizer_budget"))
+    if optimizer_budget:
+        diagnostics["optimizer_budget"] = optimizer_budget
     return diagnostics
 
 

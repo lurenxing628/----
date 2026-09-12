@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 from core.algorithms import ScheduleResult
 
 from .optimizer_acceptance import AcceptanceDecision, decide_acceptance
-from .optimizer_attempt_records import append_rejected_reason_attempt, evaluate_optional_local_candidate
+from .optimizer_attempt_records import append_rejected_reason_attempt
+from .optimizer_deadline_guard import evaluate_optional_local_with_budget
 from .optimizer_local_search_candidate_eval import evaluate_local_search_candidate
 from .optimizer_local_search_fingerprints import (
     LocalSearchFingerprintTracker,
@@ -240,7 +241,7 @@ def run_local_search_candidate_round(
     candidate_resource_pool = move.resource_pool if move.resource_pool is not None else (local_state.current_resource_pool or resource_pool)
     candidate_mode = str(move.dispatch_mode or cur_dispatch_mode)
     candidate_rule = str(move.dispatch_rule or cur_dispatch_rule)
-    candidate = evaluate_optional_local_candidate(
+    candidate = evaluate_optional_local_with_budget(
         evaluate=partial(
             evaluate_local_search_candidate,
             scheduler=scheduler,

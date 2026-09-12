@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from itertools import zip_longest
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
+from core.models.objective import normalize_objective_name
+
+from .optimizer_graph_ready_feature_basis import BATCH_WORKLOAD_BASIS, SUCCESSOR_WORKLOAD_BASIS
 
 GRAPH_READY_PHASE = "graph_ready_candidate_search"
 GRAPH_READY_BASE_ORIGIN = "graph_ready_base"
@@ -54,6 +58,8 @@ class GraphReadyWeightProfile:
     formula_slug: str = "v1_weighted_graph"
     formula_version: str = "graph_ready_v1"
     jitter_seed: int = 0
+    objective_name: str = "min_overdue"
+    feature_basis: str = SUCCESSOR_WORKLOAD_BASIS
 
 
 def graph_ready_weight_profile_summary(max_weight_profiles: int = 9) -> Dict[str, Any]:
@@ -72,19 +78,22 @@ def graph_ready_weight_profile_summary(max_weight_profiles: int = 9) -> Dict[str
     }
 
 
-def graph_ready_v2_profile_summary(max_candidate_profiles: int = 60, *, seed: int = 0) -> Dict[str, Any]:
-    profiles, truncated, reason = graph_ready_v2_profiles(max_candidate_profiles=max_candidate_profiles, seed=seed)
+def graph_ready_v2_profile_summary(max_candidate_profiles: int = 60, *, seed: int = 0, objective_name: str = "min_overdue") -> Dict[str, Any]:
+    profiles, truncated, reason = graph_ready_v2_profiles(max_candidate_profiles=max_candidate_profiles, seed=seed, objective_name=objective_name)
     return {
         "schema_version": 1,
         "phase": GRAPH_READY_PHASE,
         "candidate_policy": "objective_aware_portfolio",
         "max_candidate_profiles": int(max_candidate_profiles),
-        "configured_candidate_profile_count": len(_graph_ready_v2_profile_specs()),
+        "configured_candidate_profile_count": len(_graph_ready_v2_profile_specs(objective_name=objective_name)),
+        "objective_name": normalize_objective_name(objective_name),
+        "objective_candidate_version": "baseline_and_successor_portfolio_v1",
         "effective_candidate_profile_count": len(profiles),
         "weight_profile_slugs": [profile.slug for profile in profiles],
         "formula_versions": sorted({profile.formula_version for profile in profiles}),
         "normalization_version": "rank_percentile_v1",
-        "ordering_policy": "v1_v2_round_robin",
+        "ordering_policy": "baseline_micro_edd_then_feature_round_robin",
+        "feature_bases": sorted({profile.feature_basis for profile in profiles if profile.formula_version.startswith("graph_ready_v2")}),
         "truncated": bool(truncated),
         "truncation_reason": reason,
         "selection_tiebreaker": list(GRAPH_READY_SELECTION_TIEBREAKER),
@@ -98,9 +107,9 @@ def default_weight_profiles(*, max_weight_profiles: int) -> Tuple[List[GraphRead
     return profiles, truncated, ("max_weight_profiles" if truncated else None)
 
 
-def graph_ready_v2_profiles(*, max_candidate_profiles: int, seed: int = 0) -> Tuple[List[GraphReadyWeightProfile], bool, Optional[str]]:
+def graph_ready_v2_profiles(*, max_candidate_profiles: int, seed: int = 0, objective_name: str = "min_overdue") -> Tuple[List[GraphReadyWeightProfile], bool, Optional[str]]:
     limit = _positive_limit(max_candidate_profiles)
-    specs = _graph_ready_v2_profile_specs(seed=seed)
+    specs = _graph_ready_v2_profile_specs(seed=seed, objective_name=objective_name)
     profiles = [_build_profile(index, raw) for index, raw in enumerate(specs[:limit])]
     truncated = len(specs) > len(profiles)
     return profiles, truncated, ("max_candidate_profiles" if truncated else None)
@@ -119,6 +128,8 @@ def profile_payload(profile: GraphReadyWeightProfile, *, version: Optional[int])
         "candidate_policy": profile.candidate_policy,
         "formula_slug": profile.formula_slug,
         "formula_version": profile.formula_version,
+        "objective_name": profile.objective_name,
+        "feature_basis": profile.feature_basis,
         "max_weight_profiles": len(GRAPH_READY_DEFAULT_WEIGHT_PROFILES),
         "profile_order": int(profile.profile_order),
         "selection_tiebreaker": list(GRAPH_READY_SELECTION_TIEBREAKER),
@@ -155,6 +166,8 @@ def _build_profile(index: int, raw: Dict[str, Any]) -> GraphReadyWeightProfile:
         formula_slug=str(raw.get("formula_slug") or "v1_weighted_graph"),
         formula_version=str(raw.get("formula_version") or "graph_ready_v1"),
         jitter_seed=int(raw.get("jitter_seed") or 0),
+        objective_name=normalize_objective_name(raw.get("objective_name")),
+        feature_basis=str(raw.get("feature_basis") or SUCCESSOR_WORKLOAD_BASIS),
     )
 
 
@@ -178,9 +191,21 @@ def _weight_fields() -> Tuple[str, str, str, str]:
     return ("critical_path", "successor_count", "downstream_work_hours", "bottleneck_machine")
 
 
-def _graph_ready_v2_profile_specs(*, seed: int = 0) -> Tuple[Dict[str, Any], ...]:
+def _graph_ready_v2_profile_specs(*, seed: int = 0, objective_name: str = "min_overdue") -> Tuple[Dict[str, Any], ...]:
     v1 = tuple(dict(item) for item in GRAPH_READY_DEFAULT_WEIGHT_PROFILES)
-    v2_specs = (
+    baseline = tuple(dict(item, feature_basis=BATCH_WORKLOAD_BASIS) for item in _v2_ordering_specs(seed))
+    objective_name = normalize_objective_name(objective_name)
+    successor = _successor_profile_specs(seed, objective_name)
+    # Preserve two established, distinct baseline parents before adding features.
+    # Remaining baseline and enhanced candidates compete within the same limits.
+    portfolio = [v1[0], baseline[0], baseline[1]]
+    for group in zip_longest(successor, v1[1:], baseline[2:]):
+        portfolio.extend(item for item in group if item is not None)
+    return tuple(dict(item, objective_name=objective_name) for item in portfolio)
+
+
+def _v2_ordering_specs(seed: int) -> Tuple[Dict[str, Any], ...]:
+    return (
         _v2_spec("v2_seeded_micro_perturbation", "micro_perturbation", jitter_seed=int(seed)),
         _v2_spec("v2_edd", "edd"),
         _v2_spec("v2_spt", "spt"),
@@ -192,14 +217,22 @@ def _graph_ready_v2_profile_specs(*, seed: int = 0) -> Tuple[Dict[str, Any], ...
         _v2_spec("v2_graph_due_hybrid", "graph_due_hybrid", critical_path=1.0, successor_count=0.5, downstream_work_hours=0.5),
         _v2_spec("v2_bottleneck_due_gated", "bottleneck_due_gated", bottleneck_machine=1.0),
     )
-    # Interleave before truncation so a short portfolio can reach v2 as well as v1.
-    portfolio = []
-    for index in range(max(len(v1), len(v2_specs))):
-        if index < len(v1):
-            portfolio.append(v1[index])
-        if index < len(v2_specs):
-            portfolio.append(v2_specs[index])
-    return tuple(portfolio)
+
+
+def _successor_profile_specs(seed: int, objective_name: str) -> Tuple[Dict[str, Any], ...]:
+    v2_specs = _v2_ordering_specs(seed)
+    if objective_name == "min_tardiness":
+        preferred = ("spt", "min_slack", "edd", "atc_like")
+        v2_specs = tuple(item for name in preferred for item in v2_specs if item["formula_slug"] == name) + tuple(
+            item for item in v2_specs if item["formula_slug"] not in preferred
+        )
+    elif objective_name == "min_weighted_tardiness":
+        v2_specs = (_v2_spec("v2_weighted_spt", "weighted_spt"), _v2_spec("v2_weighted_atc", "weighted_atc")) + v2_specs
+    elif objective_name == "min_changeover":
+        v2_specs = (_v2_spec("v2_type_group", "type_group"), _v2_spec("v2_type_group_reverse", "type_group_reverse")) + v2_specs
+    return tuple(dict(item, slug="v2_successor_" + item["slug"][3:],
+                      formula_version="graph_ready_v2_operation_successor_v1", feature_basis=SUCCESSOR_WORKLOAD_BASIS)
+                 for item in v2_specs)
 
 
 def _v2_spec(

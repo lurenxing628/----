@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from .impact_counts import compute_impact_counts_by_node as _compute_impact_counts_by_node
 from .nx_runtime import import_networkx
 
 _SOURCE_NODE_ID = "__GRAPH_METRICS_SOURCE__"
@@ -104,29 +105,6 @@ def get_downstream_operations(graph: Any, node_id: str) -> Set[str]:
 
 def get_impact_count(graph: Any, node_id: str) -> int:
     return len(get_downstream_operations(graph, node_id))
-
-
-def _popcount(mask: int) -> int:
-    return bin(mask).count("1")
-
-
-def _compute_impact_counts_by_node(graph: Any, topological_order: List[str]) -> Dict[str, int]:
-    node_to_index = {
-        node_id: index
-        for index, node_id in enumerate(topological_order)
-    }
-    downstream_bits_by_node: Dict[str, int] = {}
-    result: Dict[str, int] = {}
-
-    for node_id in reversed(topological_order):
-        mask = 0
-        for successor_id in graph.successors(node_id):
-            mask |= 1 << node_to_index[successor_id]
-            mask |= downstream_bits_by_node[successor_id]
-        downstream_bits_by_node[node_id] = mask
-        result[node_id] = _popcount(mask)
-
-    return result
 
 
 def _build_downstream_critical_minutes_by_node(

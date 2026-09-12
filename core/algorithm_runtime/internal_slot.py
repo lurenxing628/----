@@ -11,6 +11,7 @@ from core.shared.field_labels import display_field_label
 
 from .busy_block_skip import advance_busy_block
 from .downtime import SegmentOverlapIndex
+from .resource_quality import slot_changeover_penalty
 from .slot_overlap_reuse import SlotOverlapReuse
 
 _MISSING = object()
@@ -344,7 +345,10 @@ def estimate_internal_slot(
                 machine_id=machine_id,
                 operator_id=operator_id,
                 attempt=attempt,
-                changeover_penalty=changeover_penalty,
+                changeover_penalty=slot_changeover_penalty(
+                    last_op_type_by_machine, op=op, machine_id=machine_id,
+                    start=attempt.start_time, end=attempt.end_time, legacy_penalty=changeover_penalty,
+                ),
                 end_dt_exclusive=end_dt_exclusive,
                 efficiency_fallback_used=efficiency_fallback_used,
             )

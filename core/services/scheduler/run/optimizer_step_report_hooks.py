@@ -157,11 +157,18 @@ def _record_ortools_candidate(
     return candidate
 
 
-def _multi_start_deadline_reached(*, now: Callable[[], float], deadline: float, search_report_state: Optional[OptimizationSearchReportState]) -> bool:
-    if now() <= deadline:
-        return False
-    _mark_report_deadline(search_report_state)
-    return True
+def _multi_start_deadline_reached(
+    *, now: Callable[[], float], deadline: float, search_report_state: Optional[OptimizationSearchReportState],
+    phase_deadline: Optional[float] = None, has_baseline: bool = True,
+) -> bool:
+    current = now()
+    if current >= deadline:
+        _mark_report_deadline(search_report_state)
+        return True
+    if has_baseline and phase_deadline is not None and current >= phase_deadline:
+        _mark_report_phase_skipped(search_report_state, "multi_start", "reserved_for_later_phases")
+        return True
+    return False
 
 
 def _append_multi_start_attempt(

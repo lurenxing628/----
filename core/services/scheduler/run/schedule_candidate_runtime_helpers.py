@@ -87,7 +87,7 @@ def _resolve_total_budget(run_time_budget_seconds: Optional[float], *, cfg: Any)
         budget = float(run_time_budget_seconds)
     except Exception as exc:
         raise ValidationError("这次找更好排法先试多久必须是数字。", field="run_time_budget_seconds") from exc
-    if budget <= 0:
+    if math.isnan(budget) or budget <= 0:
         raise ValidationError("这次找更好排法先试多久必须大于 0 秒。", field="run_time_budget_seconds")
     return budget
 

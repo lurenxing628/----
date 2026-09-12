@@ -60,7 +60,9 @@ class GraphReadyProfileSearch:
         }
 
     def can_start(self) -> bool:
-        return self.budget.available(has_elite=bool(self.pool.elites))
+        family_count = (self.pool.elites[0]["neighborhood"].batch_family_representative_count
+                        if self.pool.elites else 0)
+        return self.budget.available(has_elite=bool(self.pool.elites), repair_family_count=family_count)
 
     def evaluate(self, *, profile: GraphReadyWeightProfile, order: List[str]) -> Optional[Dict[str, Any]]:
         self.report["considered_profiles"] += 1
@@ -79,6 +81,7 @@ class GraphReadyProfileSearch:
             self.budget.profile_decodes += 1
             started = True
 
+        evaluation_started = self.budget.clock()
         try:
             candidate = self._evaluate(profile=profile, order=order, inspect_decision=inspect)
         except _EquivalentDecision as exc:
@@ -98,6 +101,7 @@ class GraphReadyProfileSearch:
             if not started:
                 self.report["construction_rejected_profiles"] += 1
             raise
+        self.budget.record_profile_cost(self.budget.clock() - evaluation_started)
         self._decoded[decision[0]] = candidate
         return candidate
 

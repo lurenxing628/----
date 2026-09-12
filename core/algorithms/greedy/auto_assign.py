@@ -18,6 +18,7 @@ from core.algorithm_runtime.auto_assign_contract import (
     auto_assign_attempt_from_result,
 )
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours
+from core.algorithm_runtime.resource_quality import prefer_resource_pair
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 from core.infrastructure.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
@@ -305,7 +306,7 @@ def _choose_best_pair(
                 abort_after=best[0] if best is not None else None,
             )
             if probe.score is not None:
-                if best is None or probe.score < best:
+                if best is None or prefer_resource_pair(last_op_type_by_machine, op, probe.score, best):
                     best = probe.score
                     best_pair = (machine_id, operator_id)
             elif probe.window_blocked:

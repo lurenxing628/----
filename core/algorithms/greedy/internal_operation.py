@@ -15,7 +15,12 @@ from core.algorithm_runtime.auto_assign_contract import (
     auto_assign_attempt_from_result,
 )
 from core.algorithm_runtime.downtime import occupy_resource
-from core.algorithm_runtime.internal_slot import estimate_internal_slot, raise_strict_internal_hours_validation
+from core.algorithm_runtime.internal_slot import (
+    estimate_internal_slot,
+    raise_strict_internal_hours_validation,
+    validate_internal_hours,
+)
+from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_reuse, selected_sgs_estimate
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 
 
@@ -54,7 +59,7 @@ def schedule_internal_operation(
         machine_downtimes=machine_downtimes,
         auto_assign_enabled=auto_assign_enabled,
         resource_pool=resource_pool,
-        last_op_type_by_machine=last_op_type_by_machine or {},
+        last_op_type_by_machine=last_op_type_by_machine if last_op_type_by_machine is not None else {},
         machine_busy_hours=machine_busy_hours or {},
         operator_busy_hours=operator_busy_hours or {},
         errors=errors,
@@ -183,7 +188,7 @@ def _estimate_internal(
     strict_mode: bool,
 ):
     try:
-        estimate = estimate_internal_slot(
+        inputs = dict(
             calendar=calendar,
             op=op,
             batch=batch,
@@ -196,9 +201,15 @@ def _estimate_internal(
             end_dt_exclusive=end_dt_exclusive,
             machine_downtimes=(machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else [],
             last_op_type_by_machine=last_op_type_by_machine,
-            abort_after=None,
-            overlap_reuse=overlap_reuse_for(machine_timeline),
         )
+        estimate = None
+        if current_sgs_reuse() is not None and estimate_internal_slot is _NATIVE_ESTIMATE_SLOT:
+            reused = selected_sgs_estimate(**inputs)
+            # Formal placement keeps its own validation, failure accounting and occupancy writes.
+            if reused is not None and validate_internal_hours(op, batch) == reused[1]:
+                estimate = reused[0]
+        if estimate is None:
+            estimate = estimate_internal_slot(**inputs, abort_after=None, overlap_reuse=overlap_reuse_for(machine_timeline))
     except ValueError as exc:
         if strict_mode:
             raise_strict_internal_hours_validation(op, batch, exc)
@@ -230,3 +241,6 @@ def _build_internal_result(*, op: Any, batch_id: str, machine_id: str, operator_
         source=INTERNAL,
         op_type_name=str(getattr(op, "op_type_name", None) or "") or None,
     )
+
+
+_NATIVE_ESTIMATE_SLOT = estimate_internal_slot

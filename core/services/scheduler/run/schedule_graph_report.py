@@ -6,17 +6,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
 
+from .schedule_graph_cached_projection import build_graph_dispatch_projections
 from .schedule_graph_dispatch_context import (
     GRAPH_CYCLE_DISABLED_REASON as _GRAPH_CYCLE_DISABLED_REASON,
-)
-from .schedule_graph_dispatch_context import (
-    build_graph_health_context as _build_graph_health_context,
-)
-from .schedule_graph_dispatch_context import (
-    build_graph_ready_context as _build_graph_ready_context,
-)
-from .schedule_graph_dispatch_context import (
-    build_graph_resource_matching_projection as _build_graph_resource_matching_projection,
 )
 from .schedule_graph_dispatch_context import (
     effective_graph_analysis_mode as _effective_graph_analysis_mode,
@@ -35,9 +27,6 @@ from .schedule_graph_projection_helpers import (
 )
 from .schedule_graph_projection_helpers import (
     project_graph_warning as _project_graph_warning,
-)
-from .schedule_graph_score_projection import (
-    build_graph_score_projection as _build_graph_score_projection,
 )
 from .schedule_graph_score_projection import (
     graph_score_requested as _graph_score_requested,
@@ -95,9 +84,9 @@ def maybe_analyze_schedule_graph(
 def make_cached_graph_preparation_fn() -> Callable[[Any], ScheduleGraphDispatchPreparation]:
     """返回带 per-comparison 核心缓存的 prepare_graph 闭包。
 
-    候选对比逐候选调用它构建图分析准备时，多个 graph-on 候选会复用同一份权重无关图核心
-    (nodes/edges/payload)，消除每候选重建全图。缓存仅在返回闭包的生命周期内有效（随本次对比销毁），
-    不跨对比泄漏；单次排产路径不经此闭包，行为与历史一致。
+    多个 graph-on 候选复用权重无关图核心 (nodes/edges/payload)，以及健康、ready、
+    首波资源匹配的私有模板；每个候选获得独立可变容器并重新计算评分。
+    缓存随本次对比闭包销毁，不跨对比泄漏；调用方只替换 cfg，其他输入保持不变。
     """
     core_cache: Dict[str, Any] = {}
 
@@ -114,8 +103,8 @@ def prepare_schedule_graph_for_dispatch(
 ) -> ScheduleGraphDispatchPreparation:
     """构建排产图增强的派工准备。
 
-    core_cache：候选对比时由调用方传入的可变缓存，用于在多个 graph-on 候选间复用权重无关的图核心
-    (nodes/edges/payload)，消除每候选重建全图。单次排产路径不传(默认 None)，行为与历史逐字一致。
+    core_cache：仅供同一次候选对比复用权重无关图核心与投影模板，调用方只替换 cfg。
+    单次排产不传缓存；错误仍按原合同显式报告，候选评分始终重新校验。
     """
     mode = _graph_analysis_mode(schedule_input.cfg)
     if mode == "off":
@@ -190,37 +179,16 @@ def _build_schedule_graph_analysis_projection(
             payload = graph_summary_to_dict(summary)
             if core_cache is not None:
                 core_cache[metrics_mode] = (nodes, edges, payload)
-        health_context = _build_graph_health_context(
-            nodes=nodes,
-            payload=payload,
-            schedule_input=schedule_input,
-        )
-        score_context, score_public, score_diagnostics = _build_graph_score_projection(
+        projections = build_graph_dispatch_projections(
+            schedule_input,
             mode=mode,
-            is_dag=bool(payload["is_dag"]),
+            metrics_mode=metrics_mode,
             score_requested=score_requested,
             score_weights=score_weights,
             nodes=nodes,
-            node_metrics=dict(payload["node_metrics"]),
-            topological_order=list(payload["topological_order"]),
-            schedule_input=schedule_input,
-        )
-        graph_ready_context = _build_graph_ready_context(
-            schedule_input,
-            nodes=nodes,
             edges=edges,
-            enabled=(mode == "on" and bool(payload["is_dag"])),
-            score_context=score_context,
-        )
-        resource_matching_public, resource_matching_diagnostics = _build_graph_resource_matching_projection(
-            mode=mode,
-            is_dag=bool(payload["is_dag"]),
-            graph_enhancement_allowed=bool(mode != "on" or graph_ready_context is not None),
-            graph_enhancement_disabled_reason=None,
-            schedule_input=schedule_input,
-            nodes=nodes,
-            edges=edges,
-            graph_ready_context=graph_ready_context,
+            payload=payload,
+            core_cache=core_cache,
         )
     except NetworkXUnavailable as exc:
         public, diagnostics = _graph_unavailable_projection(mode=mode, exc=exc, elapsed_ms=_elapsed_ms(started), scope=scope)
@@ -252,12 +220,12 @@ def _build_schedule_graph_analysis_projection(
         payload=payload,
         elapsed_ms=_elapsed_ms(started),
         scope=scope,
-        score_public=score_public,
-        score_diagnostics=score_diagnostics,
-        resource_matching_public=resource_matching_public,
-        resource_matching_diagnostics=resource_matching_diagnostics,
+        score_public=projections.score_public,
+        score_diagnostics=projections.score_diagnostics,
+        resource_matching_public=projections.resource_matching_public,
+        resource_matching_diagnostics=projections.resource_matching_diagnostics,
     )
-    return public, diagnostics, graph_ready_context, _graph_dispatch_mode_override(public), health_context
+    return public, diagnostics, projections.ready_context, _graph_dispatch_mode_override(public), projections.health_context
 
 
 def _format_cycle_error_message(diagnostics: Optional[Dict[str, Any]]) -> str:

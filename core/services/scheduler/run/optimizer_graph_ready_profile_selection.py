@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult
 from core.infrastructure.errors import ValidationError
+from core.models.objective import normalize_objective_name
 
+from .optimizer_graph_ready_feature_basis import BATCH_WORKLOAD_BASIS
 from .optimizer_graph_ready_profiles import (
     GraphReadyWeightProfile,
     default_weight_profiles,
@@ -32,6 +35,9 @@ def resolve_graph_ready_profiles_and_metrics(
     seed_sr_list: List[ScheduleResult],
     resource_pool: Optional[Dict[str, Any]],
     strict_mode: bool,
+    objective_name: str = "min_overdue",
+    graph_ready_context: Optional[Dict[str, Any]] = None,
+    before_metrics: Optional[Callable[[], None]] = None,
 ) -> Tuple[List[GraphReadyWeightProfile], Dict[str, Any], Dict[int, Dict[str, Any]]]:
     profiles, profile_summary = _resolve_profiles(
         max_weight_profiles=max_weight_profiles,
@@ -39,10 +45,16 @@ def resolve_graph_ready_profiles_and_metrics(
         profile_summary_override=profile_summary_override,
         candidate_construction=candidate_construction,
         version=version,
+        objective_name=objective_name,
     )
+    objective_name = normalize_objective_name(objective_name)
+    profiles = [replace(profile, objective_name=objective_name) for profile in profiles]
+    profile_summary = dict(profile_summary, objective_name=objective_name)
     # 空交期由 v2 特征层做 per-op 占位降级；非空坏交期始终 fail-loud，不能伪装成无交期。
     # 其它坏特征一律 fail-loud，不存在"v2 整池跳过"中间态。
     # _metrics_for_profiles 抛出的 ValidationError 直接上抛,由 run_graph_ready_candidates 主链按 strict/feature-error 统一处理。
+    if before_metrics is not None:
+        before_metrics()
     metrics = _metrics_for_profiles(
         metrics_by_op_id,
         profiles=profiles,
@@ -54,6 +66,8 @@ def resolve_graph_ready_profiles_and_metrics(
         seed_sr_list=seed_sr_list,
         resource_pool=resource_pool,
         strict_mode=bool(strict_mode),
+        objective_name=objective_name,
+        graph_ready_context=graph_ready_context,
     )
     return profiles, profile_summary, metrics
 
@@ -65,6 +79,7 @@ def _resolve_profiles(
     profile_summary_override: Optional[Dict[str, Any]],
     candidate_construction: Optional[Dict[str, Any]],
     version: int,
+    objective_name: str = "min_overdue",
 ) -> Tuple[List[GraphReadyWeightProfile], Dict[str, Any]]:
     if profiles_override is not None:
         profiles = list(profiles_override)
@@ -72,6 +87,7 @@ def _resolve_profiles(
             profiles,
             max_weight_profiles=max_weight_profiles,
             version=version,
+            objective_name=objective_name,
         )
         return profiles, summary
 
@@ -88,10 +104,12 @@ def _resolve_profiles(
         profiles, _truncated, _reason = graph_ready_v2_profiles(
             max_candidate_profiles=max_candidate_profiles,
             seed=int(version),
+            objective_name=objective_name,
         )
         return profiles, graph_ready_v2_profile_summary(
             max_candidate_profiles=max_candidate_profiles,
             seed=int(version),
+            objective_name=objective_name,
         )
     raise ValidationError(
         f"GraphReady 候选策略不支持：{policy}",
@@ -144,9 +162,10 @@ def _profile_summary_for_profiles(
     *,
     max_weight_profiles: int,
     version: int,
+    objective_name: str = "min_overdue",
 ) -> Dict[str, Any]:
     if any(_uses_v2_profile(profile) for profile in profiles):
-        return graph_ready_v2_profile_summary(max_candidate_profiles=max(len(profiles), 1), seed=int(version))
+        return graph_ready_v2_profile_summary(max_candidate_profiles=max(len(profiles), 1), seed=int(version), objective_name=objective_name)
     return graph_ready_weight_profile_summary(max_weight_profiles=max_weight_profiles)
 
 
@@ -162,6 +181,8 @@ def _metrics_for_profiles(
     seed_sr_list: List[ScheduleResult],
     resource_pool: Optional[Dict[str, Any]],
     strict_mode: bool,
+    objective_name: str = "min_overdue",
+    graph_ready_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[int, Dict[str, Any]]:
     if not any(_uses_v2_profile(profile) for profile in profiles):
         return metrics_by_op_id
@@ -175,6 +196,9 @@ def _metrics_for_profiles(
         seed_results=seed_sr_list,
         resource_pool=resource_pool,
         strict_mode=bool(strict_mode),
+        objective_name=objective_name,
+        graph_ready_context=graph_ready_context,
+        include_baseline_ordering=any(profile.feature_basis == BATCH_WORKLOAD_BASIS for profile in profiles),
     )
 
 

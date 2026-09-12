@@ -6,14 +6,19 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.date_parsers import parse_date
+from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
+from core.algorithm_runtime.piece_input import operation_batch
 from core.algorithms.value_domains import EXTERNAL, MERGED
 from core.infrastructure.errors import ValidationError
+from core.models.objective import normalize_objective_name
 
+from .optimizer_graph_ready_feature_basis import BASELINE_ORDERING_FIELD, BATCH_WORKLOAD_BASIS, SUCCESSOR_WORKLOAD_BASIS
 from .optimizer_graph_ready_v2_capacity import (
     bottleneck_on,
     residual_capacity_for_operation,
     seed_results_by_resource_id,
 )
+from .optimizer_graph_ready_workload import batch_ordering_workload_signals, operation_workload_signals
 
 _NO_DUE_DEADLINE_HOURS = 1_000_000_000.0
 _NO_DUE_CRITICAL_RATIO = 1_000_000_000.0
@@ -47,7 +52,24 @@ def enrich_graph_ready_v2_metrics(
     seed_results: Optional[List[Any]] = None,
     resource_pool: Optional[Dict[str, Any]] = None,
     strict_mode: bool = False,
+    objective_name: str = "min_overdue",
+    graph_ready_context: Optional[Dict[str, Any]] = None,
+    include_baseline_ordering: bool = True,
 ) -> Dict[int, Dict[str, Any]]:
+    inputs = dict(operations=operations, batches=batches, start_dt=start_dt, calendar_service=calendar_service,
+                  downtime_map=downtime_map, seed_results=seed_results, resource_pool=resource_pool,
+                  strict_mode=strict_mode, objective_name=objective_name, graph_ready_context=graph_ready_context)
+    out = _enrich_feature_basis(metrics_by_op_id, feature_basis=SUCCESSOR_WORKLOAD_BASIS, **inputs)
+    if include_baseline_ordering:
+        baseline = _enrich_feature_basis(metrics_by_op_id, feature_basis=BATCH_WORKLOAD_BASIS, **inputs)
+        for op_id, row in out.items():
+            row[BASELINE_ORDERING_FIELD] = baseline[op_id]
+    return out
+
+
+def _enrich_feature_basis(metrics_by_op_id, *, operations, batches, start_dt, calendar_service,
+                          downtime_map, seed_results, resource_pool, strict_mode, objective_name,
+                          graph_ready_context, feature_basis):
     op_by_id = {_positive_int(getattr(op, "id", None), field="operation.id"): op for op in list(operations or [])}
     metrics_by_op_id = _normalize_metrics_by_op_id(metrics_by_op_id)
     metric_op_ids = set(metrics_by_op_id)
@@ -56,24 +78,19 @@ def enrich_graph_ready_v2_metrics(
         raise ValidationError("GraphReady v2 特征缺少对应工序。", field="graph_ready_v2_features")
     out: Dict[int, Dict[str, Any]] = {}
     duration_by_op_id = _duration_by_op_id_with_zero_total_trace(op_by_id, batches=batches)
-    batch_id_by_op_id = {op_id: _batch_id_for_operation(op) for op_id, op in op_by_id.items()}
     schedulable_duration_by_op_id = {op_id: duration_by_op_id[op_id] for op_id in metric_op_ids}
-    remaining_hours_by_batch_id = _remaining_hours_by_batch(
-        operations_by_op_id=op_by_id,
-        batch_id_by_op_id=batch_id_by_op_id,
-        duration_by_op_id=schedulable_duration_by_op_id,
-    )
-    ready_offset_hours_by_op_id = _ready_offset_hours_by_op_id(
-        operations_by_op_id=op_by_id,
-        batch_id_by_op_id=batch_id_by_op_id,
-        duration_by_op_id=schedulable_duration_by_op_id,
-    )
+    remaining_by_op_id, ready_offset_hours_by_op_id = _workload_signals(
+        feature_basis, op_by_id, schedulable_duration_by_op_id, batches=batches, start_dt=start_dt,
+        graph_ready_context=graph_ready_context, seed_results=list(seed_results or []), calendar_service=calendar_service)
+    family_names = sorted({str(getattr(op_by_id[key], "op_type_name", "") or "").strip() for key in metric_op_ids})
+    family_ranks = {name: index for index, name in enumerate(family_names)}
     processing_ranks = _processing_time_ranks(schedulable_duration_by_op_id)
     seed_results_by_resource = seed_results_by_resource_id(seed_results or [])
     for op_id, metric in metrics_by_op_id.items():
         op = op_by_id[op_id]
         batch = _batch_for_operation(op, batches=batches)
-        remaining_hours = remaining_hours_by_batch_id[batch_id_by_op_id[op_id]]
+        remaining_hours = remaining_by_op_id[op_id]
+        priority_weight = PRIORITY_WEIGHT[normalize_priority(getattr(batch, "priority", None))]
         bottleneck_score = _required_non_negative(metric, field="bottleneck_machine_score")
         capacity_start_dt = start_dt + timedelta(hours=float(ready_offset_hours_by_op_id[op_id]))
         parsed_due_exclusive, due_date_state = _due_exclusive_datetime(batch, strict_mode=bool(strict_mode))
@@ -105,7 +122,7 @@ def enrich_graph_ready_v2_metrics(
             due_budget_hours = _deadline_budget_hours(
                 op,
                 calendar_service=calendar_service,
-                due_wall_hours=due_hours,
+                due_wall_hours=_ordering_deadline_hours(feature_basis, start_dt, capacity_start_dt, parsed_due_exclusive),
                 capacity=capacity,
             )
             slack_hours = float(due_budget_hours - remaining_hours)
@@ -137,6 +154,10 @@ def enrich_graph_ready_v2_metrics(
                 "slack_hours": float(slack_hours),
                 "remaining_work_hours": float(remaining_hours),
                 "remaining_due_burden_hours": float(remaining_hours),
+                "graph_ready_objective_name": normalize_objective_name(objective_name),
+                "weighted_processing_hours": float(schedulable_duration_by_op_id[op_id] / priority_weight),
+                "weighted_due_pressure": float(due_pressure * priority_weight),
+                "changeover_family_rank": family_ranks[str(getattr(op, "op_type_name", "") or "").strip()],
                 "saveability": float(saveability),
                 "processing_time_rank": float(processing_ranks[op_id]),
                 "sacrifice_penalty": float(sacrifice_penalty),
@@ -157,8 +178,30 @@ def enrich_graph_ready_v2_metrics(
                 "graph_ready_v2_feature_version": "graph_ready_v2_objective_features_v2",
             }
         )
+        row.update(_basis_metadata(feature_basis))
         out[int(op_id)] = row
     return out
+
+
+def _basis_metadata(basis):
+    return {
+        "remaining_due_burden_basis": "whole_batch_ordering_work" if basis == BATCH_WORKLOAD_BASIS else "unique_current_and_successor_work",
+        "graph_ready_workload_version": basis,
+        "ready_offset_basis": "batch_sequence_work_sum" if basis == BATCH_WORKLOAD_BASIS else "gross_precedence_calendar_estimate",
+    }
+
+
+def _ordering_deadline_hours(basis, start_dt, capacity_start_dt, due_exclusive):
+    return _deadline_hours(start_dt=start_dt if basis == BATCH_WORKLOAD_BASIS else capacity_start_dt,
+                           due_exclusive=due_exclusive)
+
+
+def _workload_signals(basis, operations, durations, **kwargs):
+    if basis == BATCH_WORKLOAD_BASIS:
+        return batch_ordering_workload_signals(operations, durations)
+    if basis != SUCCESSOR_WORKLOAD_BASIS:
+        raise ValidationError("GraphReady 候选特征语义不支持。", field="graph_ready_v2_features")
+    return operation_workload_signals(operations, durations, **kwargs)
 
 
 def _duration_by_op_id_with_zero_total_trace(
@@ -169,7 +212,7 @@ def _duration_by_op_id_with_zero_total_trace(
     duration_by_op_id: Dict[int, float] = {}
     zero_total_op_ids: List[int] = []
     for op_id, op in op_by_id.items():
-        total = _operation_hours(op, batches=batches)
+        total = _non_negative_float(_operation_hours(op, batches=batches), field="operation.total_hours")
         if total <= 0.0:
             # 真零工时工序：按文档化 epsilon 计入并留痕，取舍与除零安全论证见
             # _ZERO_TOTAL_DURATION_EPSILON_HOURS 常量注释。
@@ -188,7 +231,7 @@ def _duration_by_op_id_with_zero_total_trace(
 
 
 def _operation_hours(op: Any, *, batches: Dict[str, Any]) -> float:
-    batch = _batch_for_operation(op, batches=batches)
+    batch = operation_batch(op, _batch_for_operation(op, batches=batches))
     if _operation_source(op) == EXTERNAL:
         total = _external_operation_hours(op)
         # 与内部分支不对称是有意的：ext_days/ext_group_total_days 的录入与输入构建全链要求 >0，
@@ -242,66 +285,6 @@ def _required_attr(obj: Any, name: str, *, field: str) -> Any:
     if not hasattr(obj, name):
         raise ValidationError(f"GraphReady v2 特征缺少 {field}。", field="graph_ready_v2_features")
     return getattr(obj, name)
-
-
-def _remaining_hours_by_batch(
-    *,
-    operations_by_op_id: Dict[int, Any],
-    batch_id_by_op_id: Dict[int, str],
-    duration_by_op_id: Dict[int, float],
-) -> Dict[str, float]:
-    out: Dict[str, float] = {}
-    counted_duration_keys: set = set()
-    for op_id in sorted(duration_by_op_id):
-        batch_id = batch_id_by_op_id[op_id]
-        duration_key = _duration_bucket_key(operations_by_op_id[op_id], batch_id=batch_id, op_id=op_id)
-        if duration_key in counted_duration_keys:
-            continue
-        counted_duration_keys.add(duration_key)
-        out[batch_id] = out.get(batch_id, 0.0) + float(duration_by_op_id[op_id])
-    return out
-
-
-def _ready_offset_hours_by_op_id(
-    *,
-    operations_by_op_id: Dict[int, Any],
-    batch_id_by_op_id: Dict[int, str],
-    duration_by_op_id: Dict[int, float],
-) -> Dict[int, float]:
-    by_batch: Dict[str, List[int]] = {}
-    for op_id in duration_by_op_id:
-        by_batch.setdefault(batch_id_by_op_id[op_id], []).append(op_id)
-    out: Dict[int, float] = {}
-    for op_ids in by_batch.values():
-        elapsed = 0.0
-        offset_by_duration_key: Dict[Tuple[str, str, str], float] = {}
-        for op_id in sorted(op_ids, key=lambda item: _operation_sequence_key(operations_by_op_id[item], op_id=item)):
-            duration_key = _duration_bucket_key(operations_by_op_id[op_id], batch_id=batch_id_by_op_id[op_id], op_id=op_id)
-            if duration_key in offset_by_duration_key:
-                out[op_id] = offset_by_duration_key[duration_key]
-                continue
-            offset_by_duration_key[duration_key] = float(elapsed)
-            out[op_id] = float(elapsed)
-            elapsed += float(duration_by_op_id[op_id])
-    return out
-
-
-def _duration_bucket_key(op: Any, *, batch_id: str, op_id: int) -> Tuple[str, str, str]:
-    if _is_merged_external(op):
-        return "merged_external", str(batch_id), str(getattr(op, "ext_group_id", "") or "").strip()
-    return "operation", str(batch_id), str(int(op_id))
-
-
-def _operation_sequence_key(op: Any, *, op_id: int) -> Tuple[int, int]:
-    raw_seq = getattr(op, "seq", None)
-    if raw_seq is None:
-        seq = int(op_id)
-    else:
-        try:
-            seq = int(raw_seq)
-        except (TypeError, ValueError):
-            seq = int(op_id)
-    return int(seq), int(op_id)
 
 
 def _due_exclusive_datetime(batch: Any, *, strict_mode: bool) -> Tuple[Optional[datetime], str]:

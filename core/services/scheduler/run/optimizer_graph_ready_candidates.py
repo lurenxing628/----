@@ -4,15 +4,21 @@ from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
-from core.algorithms.evaluation import compute_metrics, objective_score
-from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
+from core.algorithms.evaluation import compute_metrics
 from core.infrastructure.errors import ValidationError
 
+from .optimizer_graph_ready_candidate_payload import build_graph_ready_candidate_payload
 from .optimizer_graph_ready_context import (
     bool_metric,
     non_negative_number,
     optional_non_negative_number,
     required_non_negative_number,
+)
+from .optimizer_graph_ready_feature_basis import (
+    BASELINE_ORDERING_FIELD,
+    BASELINE_RANK_PREFIX,
+    BATCH_WORKLOAD_BASIS,
+    select_profile_metrics,
 )
 from .optimizer_graph_ready_profiles import (
     GRAPH_READY_V2_REPAIRED_ORIGIN,
@@ -21,7 +27,6 @@ from .optimizer_graph_ready_profiles import (
     profile_payload,
 )
 from .optimizer_graph_ready_repair_neighbors import repair_priority_context
-from .optimizer_graph_ready_reporting import public_params
 
 GRAPH_READY_V2_NORMALIZATION_VERSION = "rank_percentile_v1"
 _V2_COMMON_RANK_FIELDS = (
@@ -65,6 +70,7 @@ def evaluate_graph_ready_candidate(
     clock: Callable[[], float],
     v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]] = None,
     repair_order: Optional[List[str]] = None,
+    repair_decision: Optional[Any] = None,
     before_decode: Optional[Callable[[], None]] = None,
     inspect_decision: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
@@ -73,6 +79,11 @@ def evaluate_graph_ready_candidate(
     # 必须在这里 per-candidate 计时,不能由调用方传"自优化开始的累计流逝时间"——
     # 累计值随 profile 评估序号单调递增,会把"偏好更快"悄悄变成"偏好更早评估的 profile"。
     t_candidate_begin = clock()
+    if repair_decision is not None:
+        decision_order = list(repair_decision.batch_order)
+        if repair_order is not None and repair_order != decision_order:
+            raise ValidationError("GraphReady 修补批序决策不一致。", field="graph_ready_elite_repair")
+        repair_order = decision_order
     _validate_repair_decision(profile, order=order, repair_order=repair_order)
     candidate_context = context_for_profile(
         graph_ready_context=graph_ready_context,
@@ -80,7 +91,14 @@ def evaluate_graph_ready_candidate(
         profile=profile,
         v2_common_rank_cache=v2_common_rank_cache,
     )
-    if repair_order is not None:
+    candidate_operations = algo_ops_to_schedule
+    if repair_decision is not None:
+        from .optimizer_graph_ready_repair_decisions import apply_repair_decision
+
+        candidate_context, candidate_operations = apply_repair_decision(
+            candidate_context, algo_ops_to_schedule, repair_decision, resource_pool,
+        )
+    elif repair_order is not None:
         candidate_context = repair_priority_context(candidate_context, operations=algo_ops_to_schedule, order=repair_order)
     if inspect_decision is not None:
         inspect_decision(candidate_context)
@@ -89,7 +107,7 @@ def evaluate_graph_ready_candidate(
     res, summ, used_strat, used_params = schedule_fn(
         scheduler,
         strict_mode=bool(strict_mode),
-        operations=algo_ops_to_schedule,
+        operations=candidate_operations,
         batches=batches,
         strategy=strategy,
         strategy_params=_candidate_params(params, profile=profile, version=version),
@@ -108,7 +126,7 @@ def evaluate_graph_ready_candidate(
         res, batches, expected_operations=algo_ops_to_schedule, seed_results=seed_sr_list,
         failure_details=getattr(summ, "failure_details", ()),
     )
-    return _candidate_payload(
+    return build_graph_ready_candidate_payload(
         res=res,
         summ=summ,
         used_strat=used_strat,
@@ -124,6 +142,7 @@ def evaluate_graph_ready_candidate(
         seed_sr_list=seed_sr_list,
         version=version,
         runtime_ms=max(int((clock() - t_candidate_begin) * 1000), 0),
+        repair_decision=repair_decision,
     )
 
 
@@ -203,8 +222,16 @@ def _metrics_for_profile(
 ) -> Dict[int, Dict[str, Any]]:
     if not _uses_v2_formula(profile):
         return {int(op_id): dict(metric) for op_id, metric in metrics_by_op_id.items()}
+    selected = select_profile_metrics(metrics_by_op_id, profile=profile)
+    if v2_common_rank_cache is not None:
+        is_baseline = profile.feature_basis == BATCH_WORKLOAD_BASIS
+        v2_common_rank_cache = {
+            field[len(BASELINE_RANK_PREFIX):] if is_baseline else field: ranks
+            for field, ranks in v2_common_rank_cache.items()
+            if field.startswith(BASELINE_RANK_PREFIX) == is_baseline
+        }
     return _normalized_v2_metrics_by_op_id(
-        metrics_by_op_id,
+        selected,
         profile=profile,
         v2_common_rank_cache=v2_common_rank_cache,
     )
@@ -227,6 +254,14 @@ def _normalized_v2_metrics_by_op_id(
     else:
         _attach_common_rank_cache(out, v2_common_rank_cache)
     _attach_rank01(out, field="graph_bonus", value_getter=lambda metric: _v2_metric_bonus(metric, weights=profile.effective_weights))
+    extra_fields = {
+        "weighted_spt": ("weighted_processing_hours",),
+        "weighted_atc": ("weighted_processing_hours", "weighted_due_pressure"),
+        "type_group": ("changeover_family_rank",),
+        "type_group_reverse": ("changeover_family_rank",),
+    }.get(profile.formula_slug, ())
+    for field in extra_fields:
+        _attach_rank01(out, field=field, value_getter=lambda metric, field=field: _required_non_negative_metric(metric, field))
     for op_id, metric in out.items():
         metric["graph_ready_v2_jitter"] = _seeded_jitter(op_id=op_id, seed=int(profile.jitter_seed))
         metric["graph_ready_v2_normalization_version"] = GRAPH_READY_V2_NORMALIZATION_VERSION
@@ -239,6 +274,9 @@ def build_v2_common_rank_cache(metrics_by_op_id: Dict[int, Dict[str, Any]]) -> D
     for field, value_getter in _V2_COMMON_RANK_FIELDS:
         values = {op_id: float(value_getter(metric)) for op_id, metric in metrics.items()}
         cache[field + "_rank01"] = _rank01_by_op_id(values)
+    if metrics and all(BASELINE_ORDERING_FIELD in row for row in metrics.values()):
+        baseline = {op_id: row[BASELINE_ORDERING_FIELD] for op_id, row in metrics.items()}
+        cache.update({BASELINE_RANK_PREFIX + field: ranks for field, ranks in build_v2_common_rank_cache(baseline).items()})
     return cache
 
 
@@ -314,6 +352,9 @@ def _v2_priority_key_for_metric(metric: Dict[str, Any], *, profile: GraphReadyWe
     graph_bonus = _required_non_negative_metric(metric, "graph_bonus_rank01")
     jitter = _stable_jitter(metric)
 
+    objective_key = _objective_priority_key(metric, formula, due_deadline, slack_hours, processing_rank, jitter)
+    if objective_key is not None:
+        return objective_key
     if formula == "edd":
         return (due_deadline, sacrifice_penalty, processing_rank, jitter)
     if formula == "spt":
@@ -341,6 +382,18 @@ def _v2_priority_key_for_metric(metric: Dict[str, Any], *, profile: GraphReadyWe
         field="graph_ready_v2_formula",
         details={"reason": "graph_ready_bad_v2_formula"},
     )
+
+
+def _objective_priority_key(metric, formula, due_deadline, slack_hours, processing_rank, jitter):
+    if formula == "weighted_spt":
+        return (_required_non_negative_metric(metric, "weighted_processing_hours_rank01"), due_deadline, slack_hours, jitter)
+    if formula == "weighted_atc":
+        return (-_required_non_negative_metric(metric, "weighted_due_pressure_rank01"),
+                _required_non_negative_metric(metric, "weighted_processing_hours_rank01"), slack_hours, jitter)
+    if formula in {"type_group", "type_group_reverse"}:
+        family = _required_non_negative_metric(metric, "changeover_family_rank_rank01")
+        return (family if formula == "type_group" else -family, due_deadline, processing_rank, jitter)
+    return None
 
 
 def _required_finite_metric(metric: Dict[str, Any], field: str) -> float:
@@ -407,73 +460,3 @@ def _candidate_params(params: Dict[str, Any], *, profile: GraphReadyWeightProfil
     candidate_params = dict(params or {})
     candidate_params["graph_ready_profile"] = profile_payload(profile, version=version)
     return candidate_params
-
-
-def _candidate_payload(**kwargs: Any) -> Dict[str, Any]:
-    profile = kwargs["profile"]
-    metrics = kwargs["metrics"]
-    decision_order = list(kwargs["order"])
-    decoded_batch_order = _decoded_batch_order(kwargs["res"])
-    result_order = _result_batch_order(decoded_batch_order, decision_order=decision_order)
-    return {
-        "results": kwargs["res"],
-        "summary": kwargs["summ"],
-        "strategy": kwargs["used_strat"],
-        "params": public_params(kwargs["used_params"]),
-        "dispatch_mode": "sgs",
-        "dispatch_rule": str(kwargs["dispatch_rule"] or ""),
-        "order": result_order,
-        "decision_batch_order": decision_order,
-        "decoded_batch_order": decoded_batch_order,
-        "metrics": metrics,
-        "score": (float(kwargs["summ"].failed_ops),) + objective_score(kwargs["objective_name"], metrics),
-        "algo_stats": merge_algo_stats(kwargs["optimizer_algo_stats"], snapshot_algo_stats(kwargs["scheduler"])),
-        "resource_pool": kwargs["resource_pool"] or {},
-        "seed_result_count": len(kwargs["seed_sr_list"] or []),
-        "locked_seed_range": [getattr(item, "op_id", None) for item in list(kwargs["seed_sr_list"] or [])],
-        "mutable_scope": _mutable_scope(profile, version=int(kwargs["version"])),
-        "candidate_origin": profile.candidate_origin,
-        "runtime_ms": int(kwargs["runtime_ms"]),
-        "graph_ready_profile": profile_payload(profile, version=int(kwargs["version"])),
-    }
-
-
-def _decoded_batch_order(results: List[ScheduleResult]) -> List[str]:
-    order: List[str] = []
-    seen = set()
-    for result in sorted(
-        list(results or []),
-        key=lambda item: (
-            getattr(item, "start_time", None) or datetime.max,
-            getattr(item, "end_time", None) or datetime.max,
-            int(getattr(item, "seq", 0) or 0),
-            int(getattr(item, "op_id", 0) or 0),
-        ),
-    ):
-        batch_id = str(getattr(result, "batch_id", "") or "").strip()
-        if not batch_id or batch_id in seen:
-            continue
-        seen.add(batch_id)
-        order.append(batch_id)
-    return order
-
-
-def _result_batch_order(decoded_batch_order: List[str], *, decision_order: List[str]) -> List[str]:
-    out = list(decoded_batch_order or [])
-    seen = set(out)
-    for batch_id in list(decision_order or []):
-        text = str(batch_id or "").strip()
-        if text and text not in seen:
-            seen.add(text)
-            out.append(text)
-    return out
-
-
-def _mutable_scope(profile: GraphReadyWeightProfile, *, version: int) -> Dict[str, Any]:
-    return {
-        "scope": "graph_ready_elite_repair" if profile.candidate_origin == GRAPH_READY_V2_REPAIRED_ORIGIN else "graph_ready_priority",
-        "weight_profile_slug": profile.slug,
-        "raw_weights": dict(profile.raw_weights),
-        "candidate_policy": profile.candidate_policy,
-        "seed": int(version),
-    }

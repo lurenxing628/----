@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, ca
 from core.algorithms import ScheduleResult
 
 from .optimizer_acceptance import ACCEPTANCE_IMPROVE_ONLY
-from .optimizer_attempt_records import evaluate_optional_local_candidate
 from .optimizer_candidate_profile import derive_iteration_limits
+from .optimizer_deadline_guard import evaluate_optional_local_with_budget, guard_decoder
 from .optimizer_local_search_candidate_eval import evaluate_local_search_candidate
 from .optimizer_local_search_fingerprints import LocalSearchFingerprintTracker
 from .optimizer_local_search_round import run_local_search_candidate_round
@@ -67,7 +67,7 @@ def _mark_local_search_skipped(search_report_state: Optional[OptimizationSearchR
 
 
 def _local_search_stop_reason(*, now_value: float, deadline: float, iteration: int, iteration_limit: int) -> Optional[str]:
-    if now_value > deadline:
+    if now_value >= deadline:
         return "time_budget"
     if iteration >= iteration_limit:
         return "iteration_limit"
@@ -186,7 +186,7 @@ def _evaluate_restart_candidate(
     candidate_resource_pool = (
         dict(best_resource_pool) if isinstance(best_resource_pool, dict) else {}
     ) or resource_pool
-    return evaluate_optional_local_candidate(
+    return evaluate_optional_local_with_budget(
         evaluate=partial(
             evaluate_local_search_candidate,
             scheduler=scheduler,
@@ -319,6 +319,7 @@ def run_local_search(
     no_improve = 0
     seen_hashes = init_seen_hashes(local_state.current_order, best)
 
+    schedule_fn = guard_decoder(schedule_fn, clock=clock, deadline=deadline, search_report_state=search_report_state)
     while True:
         now_value = clock()
         stop_reason = _local_search_stop_reason(

@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import random
 import time
-from dataclasses import dataclass, field
+from dataclasses import replace
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from core.algorithm_contracts.ordering import build_batch_sort_inputs, build_normalized_batches_map
 from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy, StrategyFactory
-from core.algorithms.evaluation import compute_metrics, objective_score
-from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
+from core.algorithms.greedy.algo_stats import merge_algo_stats
 from core.infrastructure.errors import ValidationError
 
 from .optimizer_candidate_phases import run_heuristic_candidate_phases
@@ -18,7 +17,16 @@ from .optimizer_config import ensure_optimizer_config_snapshot, is_ortools_enabl
 from .optimizer_graph_ready import run_graph_ready_candidates as _run_graph_ready_candidates_impl
 from .optimizer_grasp_ig_candidates import run_grasp_ig_candidates as _run_grasp_ig_candidates_impl
 from .optimizer_local_search import run_local_search as _run_local_search_impl
+from .optimizer_outcome import OptimizationOutcome, _baseline_outcome, _record_decoder_invocations, _runtime_ms
+from .optimizer_outcome import _baseline_candidate as _baseline_candidate
 from .optimizer_runtime import OptimizerRuntime
+from .optimizer_search_budget import (
+    OptimizerPhaseBudget,
+    ReservedPhaseReport,
+    SearchBudget,
+    SearchBudgetExhausted,
+    publish_search_budget,
+)
 from .optimizer_search_report import OptimizationSearchReportState
 from .optimizer_search_state import (
     OptimizerSearchState,
@@ -35,24 +43,6 @@ from .schedule_optimizer_steps import (
     _schedule_with_optional_strict_mode,
 )
 from .schedule_seed_contracts import coerce_seed_results as _coerce_seed_results
-
-
-@dataclass
-class OptimizationOutcome:
-    results: List[ScheduleResult]
-    summary: Any  # ScheduleSummary（来自算法模块；保持与现有代码兼容）
-    used_strategy: SortStrategy
-    used_params: Dict[str, Any]
-    metrics: Any  # ScheduleMetrics
-    best_score: Tuple[float, ...]
-    best_order: List[str]
-    attempts: List[Dict[str, Any]]
-    improvement_trace: List[Dict[str, Any]]
-    algo_mode: str
-    objective_name: str
-    time_budget_seconds: int
-    algo_stats: Dict[str, Any] = field(default_factory=dict)
-    search_report: Dict[str, Any] = field(default_factory=dict)
 
 
 def _run_local_search(**kwargs):
@@ -76,7 +66,7 @@ def _run_graph_ready_candidates(**kwargs):
 def _default_runtime() -> OptimizerRuntime:
     return OptimizerRuntime(
         scheduler_factory=lambda **kwargs: GreedyScheduler(**kwargs),
-        clock=time.time,
+        clock=time.monotonic,
         rng_factory=random.Random,
         run_ortools_warmstart=_run_ortools_warmstart,
         run_multi_start=_run_multi_start,
@@ -85,130 +75,6 @@ def _default_runtime() -> OptimizerRuntime:
         run_local_search=_run_local_search,
     )
 
-
-def _runtime_ms(runtime: OptimizerRuntime, *, t_begin: float) -> int:
-    elapsed = float(runtime.clock() - t_begin)
-    return max(int(elapsed * 1000), 0)
-
-
-def _baseline_candidate(
-    *,
-    results: List[ScheduleResult],
-    summary: Any,
-    used_strategy: SortStrategy,
-    used_params: Dict[str, Any],
-    dispatch_mode: str,
-    dispatch_rule: str,
-    best_order: List[str],
-    best_metrics: Any,
-    best_score: Tuple[float, ...],
-    algo_stats: Dict[str, Any],
-    resource_pool: Optional[Dict[str, Any]],
-    seed_sr_list: List[ScheduleResult],
-) -> Dict[str, Any]:
-    return {
-        "results": results,
-        "summary": summary,
-        "strategy": used_strategy,
-        "params": dict(used_params or {}),
-        "dispatch_mode": dispatch_mode,
-        "dispatch_rule": dispatch_rule,
-        "order": list(best_order or []),
-        "metrics": best_metrics,
-        "score": tuple(best_score or ()),
-        "algo_stats": algo_stats,
-        "resource_pool": resource_pool or {},
-        "seed_result_count": len(seed_sr_list or []),
-        "locked_seed_range": [getattr(item, "op_id", None) for item in list(seed_sr_list or [])],
-        "mutable_scope": {"scope": "batch_order", "batch_count": len(best_order or [])},
-    }
-
-
-def _baseline_outcome(
-    *,
-    runtime: OptimizerRuntime,
-    optimizer_cfg: Any,
-    optimizer_algo_stats: Dict[str, Any],
-    state: OptimizerSearchState,
-    search_report_state: OptimizationSearchReportState,
-    scheduler: Any,
-    algo_ops_to_schedule: List[Any],
-    batches: Dict[str, Any],
-    start_dt: datetime,
-    end_date: Optional[date],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    seed_sr_list: List[ScheduleResult],
-    dispatch_mode_cfg: str,
-    resource_pool: Optional[Dict[str, Any]],
-    readiness_gate_enabled: bool,
-    strict_mode: bool,
-    graph_ready_context: Optional[Any],
-    build_order: Any,
-    t_begin: float,
-) -> OptimizationOutcome:
-    results, summary, used_strategy, used_params = _schedule_with_optional_strict_mode(
-        scheduler,
-        strict_mode=bool(strict_mode),
-        operations=algo_ops_to_schedule,
-        batches=batches,
-        strategy=optimizer_cfg.strategy_enum,
-        strategy_params=optimizer_cfg.strategy_params,
-        start_dt=start_dt,
-        end_date=end_date,
-        machine_downtimes=downtime_map,
-        seed_results=seed_sr_list,
-        dispatch_mode=dispatch_mode_cfg,
-        resource_pool=resource_pool,
-        readiness_gate_enabled=bool(readiness_gate_enabled),
-        graph_ready_context=graph_ready_context,
-    )
-    best_metrics = compute_metrics(
-        results, batches, expected_operations=algo_ops_to_schedule,
-        seed_results=seed_sr_list, failure_details=getattr(summary, "failure_details", ()),
-    )
-    best_score = (float(summary.failed_ops),) + objective_score(optimizer_cfg.objective_name, best_metrics)
-    best_order = build_order(optimizer_cfg.strategy_enum or SortStrategy.PRIORITY_FIRST, used_params or {})
-    algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
-    baseline = _baseline_candidate(
-        results=results,
-        summary=summary,
-        used_strategy=used_strategy,
-        used_params=used_params,
-        dispatch_mode=dispatch_mode_cfg,
-        dispatch_rule=optimizer_cfg.dispatch_rule,
-        best_order=best_order,
-        best_metrics=best_metrics,
-        best_score=best_score,
-        algo_stats=algo_stats,
-        resource_pool=resource_pool,
-        seed_sr_list=seed_sr_list,
-    )
-    search_report_state.mark_candidate_evaluated(baseline, origin="baseline")
-    search_report_state.mark_candidate_accepted(baseline, origin="baseline")
-    compacted_attempts = state.compact_attempts(limit=12)
-    compacted_trace = state.compact_trace(limit=200)
-    search_report = search_report_state.finalize(
-        runtime_ms=_runtime_ms(runtime, t_begin=t_begin),
-        attempts=compacted_attempts,
-        improvement_trace=compacted_trace,
-        stop_reason="baseline_scheduled",
-    )
-    return OptimizationOutcome(
-        results=results,
-        summary=summary,
-        used_strategy=used_strategy,
-        used_params=used_params,
-        metrics=best_metrics,
-        best_score=best_score,
-        best_order=best_order,
-        attempts=compacted_attempts,
-        improvement_trace=compacted_trace,
-        algo_mode=optimizer_cfg.algo_mode,
-        objective_name=optimizer_cfg.objective_name,
-        time_budget_seconds=optimizer_cfg.time_budget_seconds,
-        algo_stats=algo_stats,
-        search_report=search_report,
-    )
 
 
 def optimize_schedule(
@@ -229,6 +95,7 @@ def optimize_schedule(
     strict_mode: bool = False,
     graph_ready_context: Optional[Any] = None,
     graph_dispatch_mode_override: Optional[str] = None,
+    search_budget: Optional[SearchBudget] = None,
     _runtime: Optional[OptimizerRuntime] = None,
 ) -> OptimizationOutcome:
     """
@@ -237,6 +104,8 @@ def optimize_schedule(
     说明：本入口仍是服务主链到算法核心的合同保护层；配置、seed 与搜索执行已拆到窄职责模块。
     """
     runtime = _runtime or _default_runtime()
+    if search_budget is not None:
+        runtime = replace(runtime, clock=search_budget.clock)
     optimizer_algo_stats: Dict[str, Any] = {"fallback_counts": {}, "param_fallbacks": {}}
     cfg = ensure_optimizer_config_snapshot(cfg, strict_mode=bool(strict_mode))
     if graph_dispatch_mode_override not in (None, "sgs"):
@@ -280,6 +149,15 @@ def optimize_schedule(
     state = OptimizerSearchState()
     t_begin = runtime.clock()
     deadline = (t_begin + float(optimizer_cfg.time_budget_seconds)) if optimizer_cfg.algo_mode == "improve" else float("inf")
+    if search_budget is not None:
+        deadline = search_budget.optimizer_deadline(
+            started_at=t_begin, configured_seconds=optimizer_cfg.time_budget_seconds,
+            improve=optimizer_cfg.algo_mode == "improve",
+        )
+    phases = OptimizerPhaseBudget.create(
+        started_at=t_begin, deadline=deadline, improve=optimizer_cfg.algo_mode == "improve",
+        graph_ready=graph_ready_context is not None,
+    )
     search_report_state = OptimizationSearchReportState(
         algorithm_profile=candidate_profile.profile,
         seed=int(version),
@@ -289,35 +167,12 @@ def optimize_schedule(
         strict_mode=bool(strict_mode),
         candidate_profile=candidate_profile.to_report_dict(),
     )
-
-    state.best = runtime.run_ortools_warmstart(
-        algo_mode=optimizer_cfg.algo_mode,
-        cfg=cfg,
-        strategy_enum=optimizer_cfg.strategy_enum,
-        objective_name=optimizer_cfg.objective_name,
-        deadline=deadline,
-        scheduler=scheduler,
-        algo_ops_to_schedule=algo_ops_to_schedule,
-        batches=batches,
-        start_dt=start_dt,
-        end_date=end_date,
-        downtime_map=downtime_map,
-        seed_sr_list=seed_sr_list,
-        dispatch_mode_cfg=dispatch_mode_cfg,
-        dispatch_rule_cfg=optimizer_cfg.dispatch_rule,
-        resource_pool=resource_pool,
-        attempts=state.attempts,
-        improvement_trace=state.improvement_trace,
-        best=state.best,
-        optimizer_algo_stats=optimizer_algo_stats,
-        t_begin=t_begin,
-        logger=logger,
-        readiness_gate_enabled=bool(readiness_gate_enabled),
-        strict_mode=bool(strict_mode),
-        graph_ready_context=graph_ready_context,
-        clock=runtime.clock,
-        search_report_state=search_report_state,
+    publish_search_budget(
+        report_state=search_report_state, attempts=state.attempts, budget=search_budget,
+        phases=phases, started_at=t_begin,
     )
+    if runtime.clock() >= deadline:
+        raise SearchBudgetExhausted("candidate_time_budget_reached")
 
     state.best = runtime.run_multi_start(
         keys=optimizer_cfg.strategy_keys(),
@@ -335,6 +190,7 @@ def optimize_schedule(
         resource_pool=resource_pool,
         objective_name=optimizer_cfg.objective_name,
         deadline=deadline,
+        phase_deadline=phases.multi_start_deadline,
         attempts=state.attempts,
         improvement_trace=state.improvement_trace,
         best=state.best,
@@ -346,6 +202,21 @@ def optimize_schedule(
         graph_ready_context=graph_ready_context,
         clock=runtime.clock,
         search_report_state=search_report_state,
+    )
+
+    state.best = runtime.run_ortools_warmstart(
+        algo_mode=optimizer_cfg.algo_mode, cfg=cfg, strategy_enum=optimizer_cfg.strategy_enum,
+        objective_name=optimizer_cfg.objective_name, deadline=phases.warmstart_deadline,
+        scheduler=scheduler, algo_ops_to_schedule=algo_ops_to_schedule, batches=batches,
+        start_dt=start_dt, end_date=end_date, downtime_map=downtime_map, seed_sr_list=seed_sr_list,
+        dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=optimizer_cfg.dispatch_rule,
+        resource_pool=resource_pool, attempts=state.attempts, improvement_trace=state.improvement_trace,
+        best=state.best, optimizer_algo_stats=optimizer_algo_stats, t_begin=t_begin, logger=logger,
+        readiness_gate_enabled=bool(readiness_gate_enabled), strict_mode=bool(strict_mode),
+        graph_ready_context=graph_ready_context, clock=runtime.clock,
+        search_report_state=ReservedPhaseReport(
+            search_report_state, clock=runtime.clock, deadline=deadline, phase="ortools_warmstart",
+        ),
     )
 
     state.best = run_heuristic_candidate_phases(
@@ -363,13 +234,15 @@ def optimize_schedule(
         build_order=_build_order,
         dispatch_modes=dispatch_modes,
         resource_pool=resource_pool,
-        deadline=deadline,
+        deadline=phases.heuristic_deadline,
         optimizer_algo_stats=optimizer_algo_stats,
         t_begin=t_begin,
         readiness_gate_enabled=bool(readiness_gate_enabled),
         strict_mode=bool(strict_mode),
         graph_ready_context=graph_ready_context,
-        search_report_state=search_report_state,
+        search_report_state=cast(Any, ReservedPhaseReport(
+            search_report_state, clock=runtime.clock, deadline=deadline, phase="heuristic_candidate_search",
+        )),
         schedule_fn=_schedule_with_optional_strict_mode,
     )
 
@@ -407,6 +280,8 @@ def optimize_schedule(
     )
 
     if state.best is None:
+        if runtime.clock() >= deadline:
+            raise SearchBudgetExhausted("candidate_time_budget_reached")
         return _baseline_outcome(
             runtime=runtime,
             optimizer_cfg=optimizer_cfg,
@@ -427,6 +302,9 @@ def optimize_schedule(
             graph_ready_context=graph_ready_context,
             build_order=_build_order,
             t_begin=t_begin,
+            search_budget=search_budget,
+            phases=phases,
+            schedule_fn=_schedule_with_optional_strict_mode,
         )
 
     best = state.best
@@ -439,6 +317,10 @@ def optimize_schedule(
     best_order = best["order"]
     best_algo_stats = best.get("algo_stats") if isinstance(best, dict) else None
     algo_stats = merge_algo_stats(best_algo_stats) if isinstance(best_algo_stats, dict) else merge_algo_stats(optimizer_algo_stats)
+    publish_search_budget(
+        report_state=search_report_state, attempts=state.attempts, budget=search_budget,
+        phases=phases, started_at=t_begin, finished_at=runtime.clock(),
+    )
     compacted_attempts = state.compact_attempts(limit=12)
     compacted_trace = state.compact_trace(limit=200)
     search_report = search_report_state.finalize(
@@ -446,6 +328,7 @@ def optimize_schedule(
         attempts=compacted_attempts,
         improvement_trace=compacted_trace,
     )
+    _record_decoder_invocations(search_report, scheduler)
 
     return OptimizationOutcome(
         results=results,

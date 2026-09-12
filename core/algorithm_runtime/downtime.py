@@ -43,7 +43,7 @@ class SegmentOverlapIndex:
     - len() 返回原始段数（含无效段），与旧 _max_shift_count 的口径一致。
     """
 
-    __slots__ = ("_segments", "_starts", "_prefix_max_ends", "_scanned_once", "_covered_starts", "_covered_ends", "_append_native")
+    __slots__ = ("_segments", "_starts", "_prefix_max_ends", "_scanned_once", "_covered_starts", "_covered_ends", "_append_native", "_coverage_native")
 
     def __init__(self, segments: Optional[Sequence[Tuple[datetime, datetime]]]) -> None:
         self._segments = segments or ()
@@ -53,6 +53,7 @@ class SegmentOverlapIndex:
         self._covered_starts: Optional[Sequence[datetime]] = None
         self._covered_ends: Sequence[datetime] = ()
         self._append_native: Optional[bool] = None if type(segments) is tuple else False
+        self._coverage_native: Optional[bool] = None
 
     def __len__(self) -> int:
         return len(self._segments)
@@ -106,6 +107,7 @@ class SegmentOverlapIndex:
         derived._covered_starts = self._covered_starts
         derived._covered_ends = self._covered_ends
         derived._append_native = True
+        derived._coverage_native = True
         if end > start:
             derived._starts = tuple(self._starts or ()) + (start,)
             previous_end = self._prefix_max_ends[-1] if self._prefix_max_ends else end
@@ -161,6 +163,19 @@ class SegmentOverlapIndex:
         if index >= 0 and instant < self._covered_ends[index]:
             return self._covered_ends[index]
         return None
+
+    def has_native_coverage(self) -> bool:
+        """Certify callback-free coverage under this index's immutable-input contract.
+
+        Only called after the ordinary first coverage query. Custom containers or
+        datetime subclasses retain the original one-step behavior. Reused SGS
+        indexes own tuple snapshots; changed timelines create a different index.
+        """
+        if self._coverage_native is None:
+            self._coverage_native = type(self._segments) in (tuple, list) and all(
+                _plain_segment(segment) for segment in self._segments
+            )
+        return self._coverage_native
 
 
 def _plain_segment(segment: Tuple[datetime, datetime]) -> bool:

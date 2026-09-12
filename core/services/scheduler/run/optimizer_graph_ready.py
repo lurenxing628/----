@@ -43,6 +43,17 @@ if TYPE_CHECKING:
     from .optimizer_search_report import OptimizationSearchReportState
 
 
+class _GraphReadyDeadlineExhausted(RuntimeError):
+    pass
+
+
+def _before_graph_metrics(*, construction: Optional[Dict[str, Any]], deadline: float, clock: Callable[[], float]) -> None:
+    # Configuration errors retain fail-loud behavior even with no search time.
+    resolve_elite_repair_limits(construction, enabled=False)
+    if clock() >= deadline:
+        raise _GraphReadyDeadlineExhausted()
+
+
 def run_graph_ready_candidates(
     *,
     algo_mode: str,
@@ -111,9 +122,17 @@ def run_graph_ready_candidates(
             seed_sr_list=seed_sr_list,
             resource_pool=resource_pool,
             strict_mode=bool(strict_mode),
+            objective_name=objective_name,
+            graph_ready_context=graph_ready_context,
+            before_metrics=partial(_before_graph_metrics, construction=candidate_construction, deadline=deadline, clock=clock),
         )
+    except _GraphReadyDeadlineExhausted:
+        mark_phase_skipped(search_report_state, "time_budget")
+        if search_report_state is not None:
+            search_report_state.mark_deadline_reached()
+        return best
     except ValidationError as exc:
-        if strict_mode or is_graph_ready_v2_contract_error(exc):
+        if strict_mode or is_graph_ready_v2_contract_error(exc) or exc.field == "graph_ready_elite_repair":
             raise
         _record_invalid_context(
             exc,
@@ -279,7 +298,8 @@ def _run_weight_profiles(
     )
     pool = EliteRepairPool(limits=repair_limits, objective_name=objective_name, operations=algo_ops_to_schedule,
                            metrics_by_op_id=metrics_by_op_id, start_dt=start_dt, seed=version,
-                           best=best, report_state=search_report_state)
+                           best=best, report_state=search_report_state, graph_context=graph_ready_context,
+                           resource_pool=resource_pool, clock=clock, deadline=deadline)
     search = GraphReadyProfileSearch(evaluate=evaluate, pool=pool, budget=budget, profile_count=len(profiles))
     for profile in profiles:
         if not search.can_start():

@@ -11,8 +11,7 @@ from core.services.scheduler import schedule_service
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository, prepare_run_result
 
-from .run_compute import compute_prepared_candidate_run
-from .run_input import prepare_candidate_run_input
+from .run_compute import compute_candidate_run
 from .run_input_projection_codec import restore_execution_projections
 from .run_input_readonly import candidate_read_snapshot
 from .run_jobs_facts import capture_run_facts
@@ -65,8 +64,7 @@ class WorkbenchRunWorker:
         with computation_database(self.conn) as snapshot, candidate_read_snapshot(snapshot):
             self._check_facts(row, snapshot)
             projections = restore_execution_projections(json.loads(row["execution_json"]))
-            prepared = prepare_candidate_run_input(snapshot, json.loads(row["normalized_input_json"]), projections)
-            computation = compute_prepared_candidate_run(snapshot, prepared)
+            computation = compute_candidate_run(snapshot, json.loads(row["normalized_input_json"]), projections)
             identities = {int(item[0]): item[1] for item in snapshot.execute(
                 "SELECT source_key,ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND active=1")}
             return prepare_run_result(computation, identities)

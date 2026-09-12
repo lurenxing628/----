@@ -32,11 +32,17 @@ from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithm_runtime.algo_stats import ensure_algo_stats, increment_counter, make_algo_stats
 from core.algorithm_runtime.downtime import occupy_resource
+from core.algorithm_runtime.native_snapshot import make_class_guard
+from core.algorithm_runtime.resource_quality import initialize_resource_quality
 from core.algorithm_runtime.run_state import ScheduleRunState
+from core.algorithm_runtime.sgs_estimate_reuse import sgs_reuse_scope
+from core.algorithm_runtime.slot_overlap_reuse import SlotReuseTimeline
 from core.infrastructure.errors import ValidationError
 
 from .auto_assign import auto_assign_internal_resources, auto_assign_internal_resources_attempt
 from .dispatch import dispatch_batch_order, dispatch_sgs
+from .dispatch.route import dispatch_run
+from .dispatch.sgs_reuse import can_skip_native_sgs_reuse, create_native_sgs_reuse
 from .external_groups import rebuild_external_group_cache_from_seeds, schedule_external
 from .internal_operation import schedule_internal_operation
 from .run_context import ScheduleRunContext
@@ -66,6 +72,8 @@ class GreedyScheduler:
         self.config = config_service
         self.logger = logger or logging.getLogger(__name__)
         self._last_algo_stats = make_algo_stats()
+        self._decode_invocations = 0
+        self._last_sgs_reuse_stats = {"hits": 0, "misses": 0}
 
     def schedule(
         self,
@@ -85,6 +93,8 @@ class GreedyScheduler:
         strict_mode: bool = False,
         graph_ready_context: Optional[Any] = None,
     ) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
+        self._decode_invocations += 1
+        self._last_sgs_reuse_stats = {"hits": 0, "misses": 0}
         t0 = datetime.now()
         algo_stats = self._reset_algo_stats()
         warnings: List[str] = []
@@ -111,6 +121,7 @@ class GreedyScheduler:
         )
         seed_results, seed_op_ids = _normalize_seed_inputs(seed_results, operations, warnings=warnings, algo_stats=algo_stats)
         sorted_ops = _sorted_unseeded_operations(operations, seed_op_ids=seed_op_ids, batch_order=batch_order, warnings=warnings, algo_stats=algo_stats)
+        skip_score_reuse = params.dispatch_mode_key == "sgs" and can_skip_native_sgs_reuse(sorted_ops)
         state = _prepare_run_state(
             self.calendar,
             batches=batches,
@@ -121,23 +132,31 @@ class GreedyScheduler:
             algo_stats=algo_stats,
             readiness_gate_enabled=bool(readiness_gate_enabled),
             strict_mode=bool(strict_mode),
+            owned_timelines=not skip_score_reuse,
         )
         ctx = ScheduleRunContext.from_legacy_scheduler(self)
         ctx.algo_stats = algo_stats
+        initialize_resource_quality(state, sorted_ops, resource_pool)
 
         self._log_start(batches=batches, sorted_ops=sorted_ops, params=params)
-        _run_dispatch(
-            ctx,
-            state=state,
-            sorted_ops=sorted_ops,
-            batches=batches,
-            batch_order=batch_order,
-            params=params,
-            machine_downtimes=machine_downtimes,
-            resource_pool=resource_pool,
-            graph_ready_context=graph_ready_context,
-            strict_mode=bool(strict_mode),
-        )
+        reuse = (create_native_sgs_reuse(self, ctx, state, sorted_ops, batches,
+                                        _NATIVE_SGS_SCHEDULER_GUARD, _NATIVE_SGS_CONTEXT_GUARD)
+                 if params.dispatch_mode_key == "sgs" and not skip_score_reuse else None)
+        with sgs_reuse_scope(reuse):
+            _run_dispatch(
+                ctx,
+                state=state,
+                sorted_ops=sorted_ops,
+                batches=batches,
+                batch_order=batch_order,
+                params=params,
+                machine_downtimes=machine_downtimes,
+                resource_pool=resource_pool,
+                graph_ready_context=graph_ready_context,
+                strict_mode=bool(strict_mode),
+            )
+        if reuse is not None:
+            self._last_sgs_reuse_stats = {"hits": reuse.hits, "misses": reuse.misses}
         summary = _build_summary(state=state, warnings=warnings, sorted_ops=sorted_ops, duration=(datetime.now() - t0).total_seconds())
         self.logger.info(f"排产结束：成功={summary.scheduled_ops}/{summary.total_ops} 失败={summary.failed_ops} 耗时={summary.duration_seconds:.2f}s")
         return state.results, summary, params.strategy, params.used_params
@@ -374,8 +393,10 @@ def _prepare_run_state(
     algo_stats: Dict[str, Any],
     readiness_gate_enabled: bool,
     strict_mode: bool,
+    owned_timelines: bool = True,
 ) -> ScheduleRunState:
-    state = ScheduleRunState(base_time=params.base_time)
+    state = (ScheduleRunState(base_time=params.base_time) if owned_timelines else
+             ScheduleRunState(base_time=params.base_time, machine_timeline=SlotReuseTimeline(), operator_timeline={}))
     if bool(readiness_gate_enabled):
         _initialize_ready_progress(calendar, state=state, batches=batches, strict_mode=strict_mode)
     if seed_results:
@@ -443,36 +464,11 @@ def _freeze_seed_resources(state: ScheduleRunState, result: ScheduleResult) -> N
 
 
 def _run_dispatch(ctx: ScheduleRunContext, *, state: ScheduleRunState, sorted_ops: List[Any], batches: Dict[str, Any], batch_order: Dict[str, int], params: Any, machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]], resource_pool: Optional[Dict[str, Any]], graph_ready_context: Optional[Any], strict_mode: bool) -> None:
-    if graph_ready_context is not None and params.dispatch_mode_key != "sgs":
-        raise ValidationError("图 ready 队列只能在 SGS 派工模式下启用。", field="graph_ready_context")
-    if params.dispatch_mode_key != "sgs":
-        dispatch_batch_order(
-            ctx,
-            sorted_ops=sorted_ops,
-            batches=batches,
-            base_time=params.base_time,
-            end_dt_exclusive=params.end_dt_exclusive,
-            machine_downtimes=machine_downtimes,
-            state=state,
-            auto_assign_enabled=params.auto_assign_enabled,
-            resource_pool=resource_pool,
-            strict_mode=strict_mode,
-        )
-        return
-    dispatch_sgs(
-        ctx,
-        sorted_ops=sorted_ops,
-        batches=batches,
-        batch_order=batch_order,
-        dispatch_rule=params.dispatch_rule_enum,
-        base_time=params.base_time,
-        end_dt_exclusive=params.end_dt_exclusive,
-        machine_downtimes=machine_downtimes,
-        state=state,
-        auto_assign_enabled=params.auto_assign_enabled,
-        resource_pool=resource_pool,
-        graph_ready_context=graph_ready_context,
-        strict_mode=strict_mode,
+    dispatch_run(
+        ctx, state=state, sorted_ops=sorted_ops, batches=batches, batch_order=batch_order,
+        params=params, machine_downtimes=machine_downtimes, resource_pool=resource_pool,
+        graph_ready_context=graph_ready_context, strict_mode=strict_mode,
+        batch_dispatch=dispatch_batch_order, sgs_dispatch=dispatch_sgs,
     )
 
 
@@ -488,3 +484,9 @@ def _build_summary(*, state: ScheduleRunState, warnings: List[str], sorted_ops: 
         duration_seconds=duration,
         failure_details=list(state.failure_details),
     )
+
+
+_NATIVE_SGS_SCHEDULER_GUARD = make_class_guard(GreedyScheduler)
+# Freeze the imported context's original methods during module initialization;
+# the dispatch child never imports its parent or certifies a caller-supplied type.
+_NATIVE_SGS_CONTEXT_GUARD = make_class_guard(ScheduleRunContext)

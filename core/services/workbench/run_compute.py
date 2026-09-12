@@ -22,8 +22,15 @@ from .zero_duration import PointEventError, candidate_point_validator
 def compute_candidate_run(conn, normalized_input, execution_projections, *, version_override=None) -> CandidateRunComputation:
     """Compute actual candidate rows under one read snapshot; worker owns run lock."""
     with candidate_read_snapshot(conn):
-        prepared = prepare_candidate_run_input(conn, normalized_input, execution_projections)
-        return compute_prepared_candidate_run(conn, prepared, version_override=version_override)
+        return _prepare_and_compute_in_snapshot(conn, normalized_input, execution_projections, version_override)
+
+
+def _prepare_and_compute_in_snapshot(conn, normalized_input, execution_projections, version_override):
+    # No prepared-input handoff or caller callback occurs here. Preparation's
+    # complete fingerprint and computation share the enclosing read transaction.
+    prepared = prepare_candidate_run_input(conn, normalized_input, execution_projections)
+    version = _prepared_version(conn, prepared, version_override)
+    return _compute_in_read_snapshot(conn, prepared, version)
 
 
 def _prepared_version(conn, schedule_input, version_override):
@@ -70,25 +77,32 @@ def compute_prepared_candidate_run(conn, schedule_input: CandidateRunInput, *, v
     with candidate_read_snapshot(conn):
         if full_facts_fingerprint(conn) != schedule_input.facts_fingerprint:
             fail("candidate_input_stale", "Facts changed after preparation. Prepare a new input.")
-        svc = ScheduleService(conn)
-        compare = run_candidate_comparison
-        if any(op.piece_id is not None for op in schedule_input.operations):
-            compare = partial(compare, prepare_graph_fn=piece_graph_preparer(schedule_input))
-        orchestration = orchestrate_schedule_run(
-            svc, schedule_input=schedule_input, simulate=True, strict_mode=True,
-            optimize_schedule_fn=partial(_optimize_representable_candidate, schedule_input),
-            build_result_summary_fn=build_result_summary,
-            allocate_version=False, version_override=version, persist_schedule_fn=None,
-            point_validator=candidate_point_validator(schedule_input),
-            candidate_comparison_fn=compare,
-        )
-        comparison = orchestration.candidate_comparison
-        if comparison is None:
-            fail("candidate_comparison_missing", "The candidate engine did not return a real comparison.")
-        payloads = _candidate_payloads(conn, schedule_input, comparison)
-        state = _computation_state(schedule_input, comparison, payloads)
-        return CandidateRunComputation(schedule_input, orchestration, payloads,
-                                       schedule_input.dispositions, state)
+        return _compute_in_read_snapshot(conn, schedule_input, version)
+
+
+def _compute_in_read_snapshot(conn, schedule_input, version):
+    """Private continuation after preparation or full freshness validation."""
+    if not conn.in_transaction or conn.execute("PRAGMA query_only").fetchone()[0] != 1:
+        fail("candidate_read_snapshot_lost", "Candidate computation requires its active read-only snapshot.")
+    svc = ScheduleService(conn)
+    compare = run_candidate_comparison
+    if any(op.piece_id is not None for op in schedule_input.operations):
+        compare = partial(compare, prepare_graph_fn=piece_graph_preparer(schedule_input))
+    orchestration = orchestrate_schedule_run(
+        svc, schedule_input=schedule_input, simulate=True, strict_mode=True,
+        optimize_schedule_fn=partial(_optimize_representable_candidate, schedule_input),
+        build_result_summary_fn=build_result_summary,
+        allocate_version=False, version_override=version, persist_schedule_fn=None,
+        point_validator=candidate_point_validator(schedule_input),
+        candidate_comparison_fn=compare,
+    )
+    comparison = orchestration.candidate_comparison
+    if comparison is None:
+        fail("candidate_comparison_missing", "The candidate engine did not return a real comparison.")
+    payloads = _candidate_payloads(conn, schedule_input, comparison)
+    state = _computation_state(schedule_input, comparison, payloads)
+    return CandidateRunComputation(schedule_input, orchestration, payloads,
+                                   schedule_input.dispositions, state)
 
 
 def _optimize_representable_candidate(schedule_input, **kwargs):

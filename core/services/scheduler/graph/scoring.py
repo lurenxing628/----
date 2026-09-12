@@ -65,6 +65,28 @@ def _normalized_metric(metric: Dict[str, Any]) -> Tuple[bool, Optional[int], int
     return is_on_critical_path, critical_path_rank, impact_count, downstream_critical_minutes
 
 
+def _graph_score_values(
+    node_metric: Dict[str, Any],
+    *,
+    critical_weight: int,
+    impact_weight: int,
+    downstream_minutes_weight: int = 1,
+) -> Tuple[int, Optional[int]]:
+    is_on_critical_path, rank, impact_count, downstream_critical_minutes = _normalized_metric(node_metric)
+    critical_weight = _require_weight(critical_weight, field="critical_weight")
+    impact_weight = _require_weight(impact_weight, field="impact_weight")
+    downstream_minutes_weight = _require_weight(
+        downstream_minutes_weight,
+        field="downstream_minutes_weight",
+    )
+    bonus = int(
+        (critical_weight if is_on_critical_path else 0)
+        + impact_count * impact_weight
+        + downstream_critical_minutes * downstream_minutes_weight
+    )
+    return bonus, rank
+
+
 def graph_score_bonus(
     node_metric: Dict[str, Any],
     *,
@@ -72,18 +94,33 @@ def graph_score_bonus(
     impact_weight: int,
     downstream_minutes_weight: int = 1,
 ) -> int:
-    """Return a positive bonus where larger means the operation should run earlier."""
-    is_on_critical_path, _rank, impact_count, downstream_critical_minutes = _normalized_metric(node_metric)
-    critical_weight = _require_weight(critical_weight, field="critical_weight")
-    impact_weight = _require_weight(impact_weight, field="impact_weight")
-    downstream_minutes_weight = _require_weight(
-        downstream_minutes_weight,
-        field="downstream_minutes_weight",
+    """Return a positive bonus without converting its exact integer to float."""
+    bonus, _rank = _graph_score_values(
+        node_metric,
+        critical_weight=critical_weight,
+        impact_weight=impact_weight,
+        downstream_minutes_weight=downstream_minutes_weight,
     )
-    return int(
-        (critical_weight if is_on_critical_path else 0)
-        + impact_count * impact_weight
-        + downstream_critical_minutes * downstream_minutes_weight
+    return bonus
+
+
+def graph_score_components(
+    node_metric: Dict[str, Any],
+    *,
+    critical_weight: int,
+    impact_weight: int,
+    downstream_minutes_weight: int = 1,
+) -> Tuple[int, Tuple[float, ...]]:
+    """Validate once and return the exact bonus together with its dispatch key."""
+    bonus, rank = _graph_score_values(
+        node_metric,
+        critical_weight=critical_weight,
+        impact_weight=impact_weight,
+        downstream_minutes_weight=downstream_minutes_weight,
+    )
+    return bonus, (
+        float(-bonus),
+        float(rank if rank is not None else _NON_CRITICAL_PATH_RANK),
     )
 
 
@@ -95,21 +132,18 @@ def graph_priority_key_component(
     downstream_minutes_weight: int = 1,
 ) -> Tuple[float, ...]:
     """Return a sortable key component for SGS, where smaller means earlier."""
-    _is_on_critical_path, rank, _impact_count, _downstream_minutes = _normalized_metric(node_metric)
-    bonus = graph_score_bonus(
+    _bonus, key = graph_score_components(
         node_metric,
         critical_weight=critical_weight,
         impact_weight=impact_weight,
         downstream_minutes_weight=downstream_minutes_weight,
     )
-    return (
-        float(-bonus),
-        float(rank if rank is not None else _NON_CRITICAL_PATH_RANK),
-    )
+    return key
 
 
 __all__ = [
     "GraphScoringContractError",
     "graph_priority_key_component",
     "graph_score_bonus",
+    "graph_score_components",
 ]

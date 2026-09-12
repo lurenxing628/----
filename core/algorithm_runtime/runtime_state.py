@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Dict, Optional
 
+from .resource_quality import MachineTypeState
+
 
 def accumulate_busy_hours(
     *,
@@ -31,6 +33,8 @@ def update_machine_last_state(
     end_time: datetime,
     op_type_name: Optional[str],
     seed_mode: bool,
+    start_time: Optional[datetime] = None,
+    op_id: Optional[int] = None,
 ) -> None:
     if not machine_id:
         return
@@ -38,6 +42,8 @@ def update_machine_last_state(
         raise TypeError("end_time 必须是 datetime")
 
     op_type = str(op_type_name or "").strip()
+    if isinstance(last_op_type_by_machine, MachineTypeState):
+        last_op_type_by_machine.record(machine_id, start_time, end_time, op_id, op_type)
     prev_end = last_end_by_machine.get(machine_id)
 
     if seed_mode:

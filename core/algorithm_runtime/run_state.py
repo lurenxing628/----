@@ -8,8 +8,9 @@ from core.algorithm_contracts.ordering import normalize_text_id
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 
+from .owned_timeline import OwnedTimeline
+from .resource_quality import MachineTypeState
 from .runtime_state import accumulate_busy_hours, update_machine_last_state
-from .slot_overlap_reuse import SlotReuseTimeline
 
 
 @dataclass
@@ -17,11 +18,11 @@ class ScheduleRunState:
     base_time: datetime
     batch_progress: Dict[str, datetime] = field(default_factory=dict)
     external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]] = field(default_factory=dict)
-    machine_timeline: Dict[str, List[Tuple[datetime, datetime]]] = field(default_factory=SlotReuseTimeline)
-    operator_timeline: Dict[str, List[Tuple[datetime, datetime]]] = field(default_factory=dict)
+    machine_timeline: Dict[str, List[Tuple[datetime, datetime]]] = field(default_factory=OwnedTimeline)
+    operator_timeline: Dict[str, List[Tuple[datetime, datetime]]] = field(default_factory=OwnedTimeline)
     machine_busy_hours: Dict[str, float] = field(default_factory=dict)
     operator_busy_hours: Dict[str, float] = field(default_factory=dict)
-    last_op_type_by_machine: Dict[str, str] = field(default_factory=dict)
+    last_op_type_by_machine: Dict[str, str] = field(default_factory=MachineTypeState)
     last_end_by_machine: Dict[str, datetime] = field(default_factory=dict)
     results: List[ScheduleResult] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
@@ -97,6 +98,8 @@ class ScheduleRunState:
         self.results.append(result)
         self.advance_batch(normalize_text_id(result.batch_id), result.end_time)
         self._record_internal_usage(result, seed_mode=False)
+        if isinstance(self.last_op_type_by_machine, MachineTypeState):
+            self.last_op_type_by_machine.complete(result.op_id)
 
     def record_dispatch_failure(
         self,
@@ -111,6 +114,7 @@ class ScheduleRunState:
         if failed_op is not None:
             detail = self._failure_detail("dispatch_operation_failed", failed_op, batch_id=batch_id)
             self.failure_details.append(detail)
+            self._retire_resource_demand(detail["op_id"])
             if batch_id:
                 self.batch_failure_sources[batch_id] = detail
         for skipped_op in list(skipped_ops or []):
@@ -124,25 +128,27 @@ class ScheduleRunState:
             )
         if block and batch_id:
             self.blocked_batches.add(batch_id)
+            if isinstance(self.last_op_type_by_machine, MachineTypeState):
+                self.last_op_type_by_machine.block_batch(batch_id)
 
     def record_missing_batch(self, op: Any, batch_id: str) -> None:
         self.failed_count += 1
         # 失败的用户可见文案统一由结构化 failure_details + _structured_failure_message 单点渲染。
         # 不再往 state.errors 塞原始中文串：它不匹配任何 legacy 反解模式，会回落成
         # generic_scheduler_error（“请联系管理员”），与具体文案并列形成双发并虚增 error_count。
-        self.failure_details.append(self._failure_detail("missing_batch", op, batch_id=batch_id))
+        detail = self._failure_detail("missing_batch", op, batch_id=batch_id)
+        self.failure_details.append(detail)
+        self._retire_resource_demand(detail["op_id"], blocked_batch=batch_id)
 
     def record_skipped_after_batch_failure(self, op: Any, batch_id: str, *, count_failure: bool = True) -> None:
         if count_failure:
             self.failed_count += 1
-        self.failure_details.append(
-            self._failure_detail(
-                "skipped_after_batch_failure",
-                op,
-                batch_id=batch_id,
-                failed_source=self.batch_failure_sources.get(batch_id),
-            )
+        detail = self._failure_detail(
+            "skipped_after_batch_failure", op, batch_id=batch_id,
+            failed_source=self.batch_failure_sources.get(batch_id),
         )
+        self.failure_details.append(detail)
+        self._retire_resource_demand(detail["op_id"])
 
     def record_graph_fixed_order_conflict(self, op: Any, batch_id: str, *, fixed_successor_op_ids: List[int]) -> None:
         # 审计 A02：后道工序已报工（PROCESSING/PAUSED 进固定集）但前道排产失败，
@@ -158,14 +164,12 @@ class ScheduleRunState:
         )
 
     def record_graph_blocked_after_failure(self, op: Any, batch_id: str, *, failed_op: Any) -> None:
-        self.failure_details.append(
-            self._failure_detail(
-                "graph_blocked_after_failure",
-                op,
-                batch_id=batch_id,
-                failed_source=self._op_identity(failed_op),
-            )
+        detail = self._failure_detail(
+            "graph_blocked_after_failure", op, batch_id=batch_id,
+            failed_source=self._op_identity(failed_op),
         )
+        self.failure_details.append(detail)
+        self._retire_resource_demand(detail["op_id"])
 
     def record_dispatch_exception(self, op: Any, batch_id: str, *, dispatch_mode: str) -> None:
         self.failed_count += 1
@@ -177,9 +181,16 @@ class ScheduleRunState:
             extra={"dispatch_mode": str(dispatch_mode or "").strip()},
         )
         self.failure_details.append(detail)
+        self._retire_resource_demand(detail["op_id"], blocked_batch=batch_id)
         if batch_id:
             self.batch_failure_sources[batch_id] = detail
             self.blocked_batches.add(batch_id)
+
+    def _retire_resource_demand(self, op_id: int, *, blocked_batch: str = "") -> None:
+        if isinstance(self.last_op_type_by_machine, MachineTypeState):
+            self.last_op_type_by_machine.complete(op_id)
+            if blocked_batch:
+                self.last_op_type_by_machine.block_batch(blocked_batch)
 
     def seed_resource_warnings(self) -> List[str]:
         warnings: List[str] = []
@@ -219,6 +230,8 @@ class ScheduleRunState:
             end_time=result.end_time,
             op_type_name=result.op_type_name,
             seed_mode=bool(seed_mode),
+            start_time=result.start_time,
+            op_id=result.op_id,
         )
 
     def _record_missing_seed_resources(self, result: ScheduleResult) -> None:

@@ -26,7 +26,7 @@ class RepairNeighborhood:
 
 def build_repair_neighborhood(
     candidate: Dict[str, Any], *, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]],
-    start_dt: datetime, seed: int,
+    start_dt: datetime, seed: int, objective_name: str = "min_overdue",
 ) -> RepairNeighborhood:
     mutable_batches = {str(op.batch_id) for op in operations}
     order = tuple(batch for batch in candidate["decoded_batch_order"] if batch in mutable_batches)
@@ -36,7 +36,7 @@ def build_repair_neighborhood(
             details={"reason": "graph_ready_repair_scope_mismatch"},
         )
     signals = _batch_signals(candidate, operations=operations, metrics_by_op_id=metrics_by_op_id, start_dt=start_dt)
-    risky = _risky_batch_indices(order, signals)
+    risky = _risky_batch_indices(order, signals, objective_name=objective_name)
     swaps = _adjacent_swap_moves(len(order), risky, seed=seed)
     inserts = _single_insert_moves(len(order), risky)
     boundary = _boundary_moves(order, signals)
@@ -44,7 +44,14 @@ def build_repair_neighborhood(
     return RepairNeighborhood(order=order, moves=moves)
 
 
-def _risky_batch_indices(order: Tuple[str, ...], signals: Dict[str, Dict[str, float]]) -> List[int]:
+def _risky_batch_indices(order: Tuple[str, ...], signals: Dict[str, Dict[str, float]],
+                        *, objective_name: str = "min_overdue") -> List[int]:
+    if objective_name == "min_weighted_tardiness":
+        return sorted(range(len(order)), key=lambda i: (-signals[order[i]]["weighted_due_pressure"],
+                                                        -signals[order[i]]["tardy"], i))[:3]
+    if objective_name == "min_changeover":
+        return sorted(range(len(order)), key=lambda i: (-signals[order[i]]["changeovers"],
+                                                        -signals[order[i]]["tardy"], i))[:3]
     risky = sorted(range(len(order)), key=lambda i: (
         -signals[order[i]]["tardy"], -signals[order[i]]["due_pressure"],
         -signals[order[i]]["critical"], i,
@@ -89,12 +96,31 @@ def _batch_signals(
     for op in operations:
         batch = str(op.batch_id)
         metric = metrics_by_op_id[int(op.id)]
-        row = signals.setdefault(batch, {key: 0.0 for key in ("tardy", "due_pressure", "critical", "saveability", "sacrifice")})
+        row = signals.setdefault(batch, {key: 0.0 for key in (
+            "tardy", "due_pressure", "critical", "saveability", "sacrifice", "weighted_due_pressure", "changeovers")})
         row["tardy"] = max(row["tardy"], ends.get(batch, 0.0) - float(metric["due_deadline_hours"]))
         for target, source in (("due_pressure", "due_pressure"), ("saveability", "saveability"), ("sacrifice", "sacrifice_penalty")):
             row[target] = max(row[target], float(metric[source]))
         row["critical"] = max(row["critical"], float(metric["is_on_critical_path"]))
+        row["weighted_due_pressure"] = max(row["weighted_due_pressure"],
+                                            float(metric.get("weighted_due_pressure", metric["due_pressure"])))
+    _add_changeover_signals(candidate["results"], signals)
     return signals
+
+
+def _add_changeover_signals(results: List[Any], signals: Dict[str, Dict[str, float]]) -> None:
+    by_machine: Dict[str, List[Any]] = {}
+    for row in results:
+        machine = str(getattr(row, "machine_id", "") or "")
+        if machine and str(getattr(row, "op_type_name", "") or "").strip():
+            by_machine.setdefault(machine, []).append(row)
+    for rows in by_machine.values():
+        rows.sort(key=lambda row: (row.start_time, row.end_time, row.op_id))
+        for left, right in zip(rows, rows[1:]):
+            if str(left.op_type_name).strip() != str(right.op_type_name).strip():
+                for row in (left, right):
+                    if str(row.batch_id) in signals:
+                        signals[str(row.batch_id)]["changeovers"] += 1.0
 
 
 def _boundary_moves(order: Tuple[str, ...], signals: Dict[str, Dict[str, float]]) -> List[Tuple[str, int, int]]:

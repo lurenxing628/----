@@ -10,6 +10,7 @@ from core.algorithm_runtime.dispatch_context import DispatchContextContractError
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours_for_mode
 from core.algorithm_runtime.piece_input import operation_batch, operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
+from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_reuse
 from core.algorithm_runtime.slot_overlap_reuse import sgs_overlap_reuse
 from core.infrastructure.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
@@ -26,6 +27,7 @@ from .sgs_graph import (
 from .sgs_scoring import (
     _positive_op_id,
     _score_external_candidate,
+    native_scoring_unchanged,
     with_graph_priority_key,
 )
 from .sgs_scoring import (
@@ -268,9 +270,15 @@ def _score_candidates(
     total_hours_by_op_id: Dict[int, float],
     graph_state: Optional[Dict[str, Any]],
 ) -> List[Tuple[Tuple[float, ...], str, Any]]:
-    return [
-        (
-            _score_candidate(
+    reuse = current_sgs_reuse()
+    if reuse is not None and (reuse.state is not state or not _native_score_functions_unchanged()):
+        reuse = None
+    if reuse is not None and not reuse.begin_round(candidates):
+        reuse = None
+    scored = []
+    for batch_id, op in candidates:
+        def score(batch_id=batch_id, op=op):
+            return _score_candidate(
                 ctx,
                 state,
                 op,
@@ -286,12 +294,18 @@ def _score_candidates(
                 avg_proc_hours,
                 total_hours_by_op_id,
                 graph_state,
-            ),
-            batch_id,
-            op,
-        )
-        for batch_id, op in candidates
-    ]
+            )
+        if reuse is None:
+            key = score()
+        else:
+            key = reuse.score(score, dict(
+                op=op, batch=batches[batch_id], batch_id=batch_id, batch_order=batch_order,
+                graph_state=graph_state, end_dt_exclusive=end_dt_exclusive,
+                machine_downtimes=machine_downtimes, dispatch_rule=dispatch_rule,
+                strict_mode=strict_mode, avg_proc_hours=avg_proc_hours, total_hours_by_op_id=total_hours_by_op_id,
+            ))
+        scored.append((key, batch_id, op))
+    return scored
 
 
 def _score_candidate(
@@ -438,3 +452,13 @@ def _remaining_ops_after(batch_id: str, next_idx: Dict[str, int], ops_by_batch: 
     operations = list(ops_by_batch.get(batch_id) or [])
     idx0 = int(next_idx.get(batch_id, 0) or 0)
     return operations[idx0 + 1 :]
+
+
+_NATIVE_SCORE_FUNCTIONS = {name: globals()[name] for name in (
+    "_score_candidate", "_score_internal_candidate", "_score_internal_candidate_impl", "_score_external_candidate",
+    "estimate_internal_slot", "build_dispatch_key", "operation_batch", "operation_dispatch_state",
+)}
+
+
+def _native_score_functions_unchanged():
+    return native_scoring_unchanged() and all(globals()[name] is original for name, original in _NATIVE_SCORE_FUNCTIONS.items())

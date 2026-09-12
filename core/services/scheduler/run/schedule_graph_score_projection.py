@@ -151,8 +151,7 @@ def build_available_graph_score_projection(
     from core.services.scheduler.graph.input_adapter import GraphInputContractError
     from core.services.scheduler.graph.scoring import (
         GraphScoringContractError,
-        graph_priority_key_component,
-        graph_score_bonus,
+        graph_score_components,
     )
 
     schedulable_op_ids, allowed_op_ids = graph_score_op_id_sets(schedule_input)
@@ -168,17 +167,11 @@ def build_available_graph_score_projection(
         schedulable_op_ids=schedulable_op_ids,
     )
     try:
-        graph_priority_key_by_op_id = build_graph_priority_key_by_op_id(
+        graph_priority_key_by_op_id, score_bonus_by_op_id = build_graph_scores_by_op_id(
             metrics_by_op_id=metrics_by_op_id,
             schedulable_op_ids=schedulable_op_ids,
             score_weights=score_weights,
-            key_component_fn=graph_priority_key_component,
-        )
-        score_bonus_by_op_id = build_score_bonus_by_op_id(
-            metrics_by_op_id=metrics_by_op_id,
-            schedulable_op_ids=schedulable_op_ids,
-            score_weights=score_weights,
-            bonus_fn=graph_score_bonus,
+            score_components_fn=graph_score_components,
         )
     except GraphScoringContractError as exc:
         raise GraphInputContractError(f"图评分指标合同错误：{exc}") from exc
@@ -254,30 +247,20 @@ def ordered_schedulable_op_ids(
     return ordered_op_ids or sorted(schedulable_op_ids)
 
 
-def build_graph_priority_key_by_op_id(
+def build_graph_scores_by_op_id(
     *,
     metrics_by_op_id: Dict[int, Dict[str, Any]],
     schedulable_op_ids: Set[int],
     score_weights: Dict[str, int],
-    key_component_fn: Any,
-) -> Dict[int, Any]:
-    return {
-        op_id: key_component_fn(metrics_by_op_id[op_id], **score_weights)
-        for op_id in sorted(schedulable_op_ids)
-    }
-
-
-def build_score_bonus_by_op_id(
-    *,
-    metrics_by_op_id: Dict[int, Dict[str, Any]],
-    schedulable_op_ids: Set[int],
-    score_weights: Dict[str, int],
-    bonus_fn: Any,
-) -> Dict[int, Any]:
-    return {
-        op_id: bonus_fn(metrics_by_op_id[op_id], **score_weights)
-        for op_id in sorted(schedulable_op_ids)
-    }
+    score_components_fn: Any,
+) -> Tuple[Dict[int, Tuple[float, ...]], Dict[int, int]]:
+    keys: Dict[int, Tuple[float, ...]] = {}
+    bonuses: Dict[int, int] = {}
+    for op_id in sorted(schedulable_op_ids):
+        bonus, key = score_components_fn(metrics_by_op_id[op_id], **score_weights)
+        keys[op_id] = key
+        bonuses[op_id] = bonus
+    return keys, bonuses
 
 
 def graph_score_sample(

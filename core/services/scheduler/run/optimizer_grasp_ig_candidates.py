@@ -11,7 +11,9 @@ from core.infrastructure.errors import ValidationError
 from .optimizer_attempt_records import validation_error_origin
 from .optimizer_candidate_comparison import candidate_is_preferred
 from .optimizer_candidate_fingerprint import stable_fingerprint
+from .optimizer_deadline_guard import guard_decoder
 from .optimizer_grasp_ig_specs import GRASP_ORIGIN, IG_ORIGIN, build_grasp_ig_candidate_specs
+from .optimizer_search_budget import SearchBudgetExhausted
 from .optimizer_search_state import append_unique_rejected_attempt
 
 if TYPE_CHECKING:
@@ -236,7 +238,7 @@ def _mark_phase_skipped(
 
 
 def _deadline_reached(now: Callable[[], float], deadline: float, search_report_state: Optional[OptimizationSearchReportState]) -> bool:
-    if now() <= deadline:
+    if now() < deadline:
         return False
     if search_report_state is not None:
         search_report_state.mark_deadline_reached()
@@ -365,6 +367,8 @@ def _run_candidate_spec(
             graph_ready_context=graph_ready_context,
             construction=dict(spec["construction"]),
         )
+    except SearchBudgetExhausted:
+        return best
     except ValidationError as exc:
         if bool(strict_mode):
             raise
@@ -447,6 +451,7 @@ def run_grasp_ig_candidates(
     if specs is None:
         return best
 
+    schedule_fn = guard_decoder(schedule_fn, clock=clock, deadline=deadline, search_report_state=search_report_state)
     for spec in specs:
         if _deadline_reached(clock, deadline, search_report_state):
             break
