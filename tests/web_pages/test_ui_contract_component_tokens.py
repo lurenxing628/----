@@ -52,6 +52,22 @@ def test_ui_contract_declares_semantic_tokens_and_components() -> None:
     assert _read("frontend/workbench/prototype/tokens/colors.css") == tokens
 
 
+def test_maintained_css_layer_is_ordered_local_and_matches_current_sources() -> None:
+    manifest = json.loads(_read("static/workbench/asset-manifest.json"))
+    styles = manifest["styles"]
+    maintained = [name for name in styles if name.startswith("workbench/app/styles/")]
+    foundation = ["workbench/app/styles/" + name for name in (
+        "00-tokens.css", "10-shell.css", "20-controls.css", "30-workspaces.css")]
+    assert maintained and maintained[0] == foundation[0]
+    positions = [maintained.index(name) for name in foundation]
+    assert positions == sorted(positions)
+    assert styles[-len(maintained):] == maintained
+    assert all(name.startswith("workbench/prototype/") for name in styles[:-len(maintained)])
+    for name in maintained:
+        source = "frontend/" + name
+        assert _read("static/" + name) == _read(source), source
+
+
 def test_ui_macros_expose_shared_contract_components() -> None:
     result = _components("""
 const UI = window.APSWorkbenchUI, C = window.ResourceControls;

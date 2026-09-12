@@ -5,19 +5,22 @@ const { chromium } = require('playwright'), { compile } = require('../../scripts
 const config = JSON.parse(fs.readFileSync(0, 'utf8')), output = process.argv[2], root = path.resolve(__dirname, '../..');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
-const names = ['WorkbenchPageContext.jsx', 'WorkbenchCaption.jsx', 'ResourceControls.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchControlBridge.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
-  'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx', 'OutsourcingContract.js', 'OutsourcingSession.js', 'OutsourcingControls.jsx', 'OutsourcingStyles.jsx', 'OutsourcingWorkspace.jsx',
+const names = ['WorkbenchPageContext.jsx', 'WorkbenchCaption.jsx', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchControlBridge.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
+  'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchFormat.js', 'WorkbenchReferences.jsx', 'WorkbenchNumberControls.jsx', 'OutsourcingContract.js', 'OutsourcingSession.js', 'OutsourcingControls.jsx', 'OutsourcingStyles.jsx', 'OutsourcingWorkspace.jsx',
   'DashboardContract.js', 'DashboardAnalysisAPI.js', 'DashboardCandidateComparisonAPI.js', 'DashboardTimelineModel.js', 'DashboardTimeline.jsx',
   'DashboardAnalysisPanels.jsx', 'DashboardCandidatePanels.jsx', 'DashboardCandidates.jsx', 'DashboardSession.js', 'DashboardStyles.jsx',
   'DashboardPanels.jsx', 'DashboardHistory.jsx', 'DashboardHandling.jsx', 'DashboardWorkspace.jsx'];
 const sources = names.map(name => ({ path: 'app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
+const styleSources = ['00-tokens.css', '21-table-frame.css', '22-shared-controls.css', '32-calendar-outsourcing.css'].map(name =>
+  ({ path: 'app/styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true }).outputs;
 const scripts = new Map(compiled.map(r => ['/probe/' + r.path, r.code]));
 const assets = new Map(manifest.files.map(r => ['/static/' + r.path, { ...r, content: fs.readFileSync(path.join(root, 'static', r.path)) }]));
-const report = { ...config, compile_global_build: false, sources: sources.map(s => ({ path: 'frontend/workbench/' + s.path, sha256: hash(s.code) })),
+const report = { ...config, compile_global_build: false, sources: sources.concat(styleSources).map(s => ({ path: 'frontend/workbench/' + s.path, sha256: hash(s.code) })),
   cases: [], boundaries: {}, screenshots: [], errors: [], external: [], responses: [], requests: [], restarts: 0, contract_rejections: 0 };
 const boot = `ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(React.Fragment,null,
 React.createElement(window.WorkbenchControlStyles),React.createElement(window.WorkbenchControls),React.createElement(window.WorkbenchNumberControls),
+React.createElement(window.WorkbenchGuardHost),
 React.createElement(AppShell,{active:'dashboard',title:'计划员值班台',theme:document.documentElement.dataset.theme,showCapsule:false,onNav:()=>{}},
 React.createElement('div',{className:'plana'},location.search.includes('dashboard')?
 React.createElement(window.WorkbenchDashboardWorkspace,{initialContext:{scope:{category:'external'}}}):React.createElement(window.OutsourcingWorkspace)))));`;
@@ -28,7 +31,7 @@ const scriptTags = manifest.scripts.filter(f => !f.endsWith('/main.js')).map(f =
   return '<script src="/static/' + f + '"></script>';
 }).join('') + compiled.filter(r => !loaded.has(r.path)).map(r => '<script src="/probe/' + r.path + '"></script>').join('');
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-  '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(f => '<link rel="stylesheet" href="/static/' + f + '">').join('') +
+  '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(f => '<link rel="stylesheet" href="/static/' + f + '">').join('') + '<style>' + styleSources.map(item => item.code).join('\n') + '</style>' +
   '</head><body class="aps-workbench"><div id="root"></div>' + scriptTags + '<script>' + boot + '</script></body></html>';
 let fault = '', blockReceipts = false;
 const base = '/api/workbench/v1/outsourcing', isCommand = (p, method) => p === base + '/receipts' && method === 'POST';
@@ -191,14 +194,14 @@ async function happy(viewport, theme) {
   await page.getByRole('button', { name: '查看已确认外协回执', exact: true }).click(); await confirmed(page);
   assert.equal((await page.evaluate(() => window.OutsourcingSession.read())).request_key, pending.request_key); await finish(page);
   await start(page, false, ['DN-O04']); await dates(page); await commit(page, '第三份登记用于分页核对');
-  let list = await action(page, '/receipts', () => select(page, '外协登记每页数量', '2'));
+  let list = await action(page, '/receipts', () => select(page, '外协登记每页数量', '2 项'));
   const second = await action(page, '/receipts', () => page.getByRole('button', { name: '外协登记下一页', exact: true }).click()); assert.equal(second.meta.snapshot_ref, list.meta.snapshot_ref);
   list = await action(page, '/receipts', () => page.getByRole('button', { name: '外协登记上一页', exact: true }).click());
-  await action(page, '/receipts', () => select(page, '外协登记每页数量', '10'));
+  await action(page, '/receipts', () => select(page, '外协登记每页数量', '10 项'));
   await action(page, '/receipts/' + ref + '/history', () => page.locator('[data-outsourcing-ref="' + ref + '"]').getByRole('button').click());
-  const h = await action(page, '/receipts/' + ref + '/history', () => select(page, '外协历史每页数量', '2'));
+  const h = await action(page, '/receipts/' + ref + '/history', () => select(page, '外协历史每页数量', '2 项'));
   const h2 = await action(page, '/receipts/' + ref + '/history', () => page.getByRole('button', { name: '外协历史下一页', exact: true }).click()); assert.equal(h.meta.snapshot_ref, h2.meta.snapshot_ref); assert.equal(h2.data.history.page.number, 2);
-  await page.locator('[data-fact-ref]').first().locator('summary').click(); await geometry(page, viewport); await shot(page, name + '-history');
+  await page.locator('[data-fact-ref]').first().locator(':scope > summary').click(); await geometry(page, viewport); await shot(page, name + '-history');
   if (!report.contract_rejections) report.contract_rejections = await contracts(page, mergedPreview, merged, intent, list);
   const returned = await action(page, '/receipts', () => select(page, '外协登记筛选', '已回厂')); assert.equal(returned.data.page.total, 1);
   await action(page, '/receipts', () => select(page, '外协登记筛选', '全部登记')); const g = await geometry(page, viewport); await shot(page, name + '-registered');
@@ -215,7 +218,7 @@ async function boundaries() {
   await dates(page); await operator(page, '真实服务未来回厂拒绝'); await dialog(page).getByLabel('实际回厂', { exact: true }).fill('2026-09-11T10:00'); await select(page, '外协确认状态', '已回厂'); await preview(page, 422);
   await dialog(page).getByRole('button', { name: '清空实际回厂', exact: true }).click(); await select(page, '外协确认状态', '在途'); await preview(page); const created = await send(page); await confirmed(page); await finish(page);
   const ref = created.data.outsourcing_ref; await edit(page, ref); await commit(page, '为翻页建立第二次核实'); await edit(page, ref); await commit(page, '为翻页建立第三次核实');
-  const old = await action(page, '/receipts/' + ref + '/history', () => select(page, '外协历史每页数量', '2'));
+  const old = await action(page, '/receipts/' + ref + '/history', () => select(page, '外协历史每页数量', '2 项'));
   const input = { outsourcing_ref: ref, declared_operator: '另一个核实人', reason: '并发增加核实，旧快照应失效' };
   const p = await context.request.post(origin + base + '/receipts/preview', { data: { input } }); assert.equal(p.status(), 200); const d = (await p.json()).data;
   const update = await context.request.post(origin + base + '/receipts', { data: { input, write_token: d.write_context.write_token, request_key: 'dn-other-page-history-command' } }); assert.equal(update.status(), 200);

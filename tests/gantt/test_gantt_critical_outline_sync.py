@@ -987,7 +987,7 @@ for(const task of data.tasks) {
  const result=h.gantt(data,{states:{PlanGantt:{6:{task,before:false,x:100,y:100}}}}),tip=result.nodes.find(n=>n.props.role==='tooltip');
  assert(tip);assert(h.text(tip).includes(task.process_label));assert(h.text(tip).includes(M.timeLabel(task.start)));
  for(const raw of ['repo_exception','控制前驱','关键链前驱'])assert(!h.text(tip).includes(raw));
- assert(h.text(result.tree).includes('超期 / 资源重叠'));assert(!h.text(result.tree).includes('关键工序关系线'));
+ assert(h.text(result.tree).includes('预计超期'));assert(h.text(result.tree).includes('资源重叠'));assert(!h.text(result.tree).includes('关键工序关系线'));
 }
 h.equal(data,before);
 """, payload)
@@ -1029,7 +1029,7 @@ def test_gantt_templates_use_contract_rendered_help_list() -> None:
 const data=h.fixture(),result=h.gantt(data);
 assert(h.text(result.tree).includes(data.projections.baseline.reason));
 const baseline=result.nodes.find(n=>n.props['aria-label']==='显示初始基线'),changes=result.nodes.find(n=>n.props['aria-label']==='仅变更');assert(baseline.props.disabled&&changes.props.disabled);
-assert(h.text(result.tree).includes('工厂本地时间'));assert(h.text(result.tree).includes('超期 / 资源重叠'));
+assert(h.text(result.tree).includes('工厂本地时间'));assert(h.text(result.tree).includes('预计超期'));assert(h.text(result.tree).includes('资源重叠'));
 assert(!result.nodes.some(n=>n.props.id==='ganttHelpList'));assert(!h.text(result.tree).includes('当前版本关键链'));
 """)
 

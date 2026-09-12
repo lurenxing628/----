@@ -9,11 +9,15 @@ function createServer() {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json'))), assets = new Map();
   evidence.shared_style_build_id = manifest.build_id;
   manifest.files.forEach(item => { const bytes = fs.readFileSync(path.join(root, 'static', item.path)); assert.equal(hash(bytes), item.sha256); assets.set('/static/' + item.path, { bytes, mime: item.mime }); });
-  const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'ReportAPI.js', 'ReportControls.jsx',
+  const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx', 'ReportEvidence.jsx', 'ReportAPI.js', 'ReportControls.jsx',
     'ReportTable.jsx', 'ReportDetail.jsx', 'ReviewChartViews.jsx', 'ReviewCharts.jsx', 'ReportCatalog.jsx', 'ReportWorkspace.jsx', 'ReviewWorkspace.jsx',
-    'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx'];
+    'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchNumberControls.jsx'];
   const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
   evidence.sources = sources.map(row => ({ path: row.path, sha256: hash(row.code) }));
+  const styleNames = ['00-tokens.css', '10-shell.css', '11-navigation.css', '20-controls.css', '21-table-frame.css', '22-shared-controls.css', '37-reports.css'];
+  const sourceStyles = styleNames.map(name => ({ path: 'frontend/workbench/app/styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
+  evidence.sources.push(...sourceStyles.map(row => ({ path: row.path, sha256: hash(row.code) })));
+  const styleMarkup = sourceStyles.map(row => '<style>' + row.code + '</style>').join('');
   const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
   built.outputs.forEach((row, index) => assets.set('/fixture/' + files[index], { bytes: row.code, mime: 'application/javascript' }));
   const boot = `function Harness(){const[view,setView]=React.useState('reports'),[context,setContext]=React.useState({}),[revision,setRevision]=React.useState(0);
@@ -27,7 +31,7 @@ function createServer() {
     .map(file => '/static/' + file).concat(files.map(file => '/fixture/' + file));
   const html = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
     + '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('')
-    + '</head><body class="aps-workbench"><div id="root"></div>' + scripts.map(file => '<script src="' + file + '"></script>').join('') + '<script>' + boot + '</script></body></html>';
+    + styleMarkup + '</head><body class="aps-workbench"><div id="root"></div>' + scripts.map(file => '<script src="' + file + '"></script>').join('') + '<script>' + boot + '</script></body></html>';
   return http.createServer((req, res) => {
     if (req.url.startsWith('/api/workbench/')) {
       const forwarded = http.request(new URL(req.url, ready.origin), { method: req.method, headers: { accept: req.headers.accept || 'application/json' } }, remote => { res.writeHead(remote.statusCode, remote.headers); remote.pipe(res); });
@@ -53,7 +57,7 @@ async function select(page, label, value) {
   await field.click(); await page.locator('.wb-control-popup').getByRole('option', { name: text, exact: true }).click();
 }
 async function compare(page, dto, label) {
-  const data = dto.data, rows = page.locator('#report-topic-panel > .rw-table-scroll tbody tr');
+  const data = dto.data, rows = page.locator('#report-topic-panel .rw-primary-table tbody tr');
   assert.equal(await rows.count(), data.rows.length, label + ': visible rows');
   const actual = await rows.allTextContents();
   data.rows.forEach((row, index) => {
@@ -101,7 +105,7 @@ async function geometry(page) {
   const result = await page.evaluate(() => {
     const rgb = text => (text.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
     const luminance = color => rgb(color).map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
-    const text = Array.from(document.querySelectorAll('.rw-workbench h2,.rw-workbench p,.rw-stack span,.wb-metric-label,.wb-metric-helper,.rw-pagination > span'))
+    const text = Array.from(document.querySelectorAll('.rw-workbench h2,.rw-workbench p,.rw-stack span,.wb-metric-label,.wb-metric-helper,.rw-list-pane > .wb-pager > span'))
       .filter(node => node.getClientRects().length && node.textContent.trim()).map(node => {
         let parent = node, background = 'rgba(0, 0, 0, 0)';
         while (parent && background === 'rgba(0, 0, 0, 0)') { background = getComputedStyle(parent).backgroundColor; parent = parent.parentElement; }
@@ -124,20 +128,20 @@ async function main() {
   const browser = await chromium.launch({ executablePath: process.env.WORKBENCH_BROWSER, headless: true, args: ['--disable-background-networking'] });
   evidence.browser = browser.version(); assert(evidence.browser.startsWith('109.'));
   try {
-    for (const width of [1920, 1392]) for (const theme of ['light', 'dark']) {
+    for (const width of [1920, Number(process.env.WORKBENCH_UI_NARROW_WIDTH || 1392)]) for (const theme of ['light', 'dark']) {
       const prefix = width + '-' + theme, context = await browser.newContext({ viewport: { width, height: width === 1920 ? 1080 : 924 }, acceptDownloads: true, timezoneId: 'America/New_York' });
       await context.addInitScript(theme => { localStorage.setItem('aps_theme', theme); localStorage.setItem('aps_kit_theme', theme); }, theme);
       const page = await context.newPage();
-      page.on('pageerror', error => evidence.errors.push(error.message));
+      page.on('pageerror', error => evidence.errors.push(error.stack || error.message));
       page.on('console', message => { if (message.type() === 'error' && !message.text().includes('409')) evidence.errors.push(message.text()); });
       await page.route('**/*', route => { if (!route.request().url().startsWith(origin + '/')) { evidence.external.push(route.request().url()); return route.abort(); } return route.continue(); });
       let dto = await change(page, () => page.goto(origin)); await compare(page, dto, prefix + '-delivery'); await shot(page, prefix + '-reports');
       const layout = await geometry(page);
-      dto = await change(page, () => select(page, '每页数量', '10')); assert.equal(dto.data.page.pages, 3);
+      dto = await change(page, () => select(page, '每页条数', '10')); assert.equal(dto.data.page.pages, 3);
       dto = await change(page, () => page.getByRole('button', { name: '下一页', exact: true }).click()); assert.equal(dto.data.page.number, 2); await compare(page, dto, prefix + '-page2');
       await download(page, dto, 'csv', prefix + '-all23'); await download(page, dto, 'xlsx', prefix + '-all23');
       dto = await change(page, () => page.getByRole('tab', { name: '报工记录', exact: true }).click());
-      dto = await change(page, () => select(page, '每页数量', '50')); await compare(page, dto, prefix + '-records'); await shot(page, prefix + '-records');
+      dto = await change(page, () => select(page, '每页条数', '50')); await compare(page, dto, prefix + '-records'); await shot(page, prefix + '-records');
       dto = await change(page, () => select(page, '排序字段', 'quantity_done'));
       dto = await change(page, () => select(page, '排序方向', 'desc')); await compare(page, dto, prefix + '-quantity-desc');
       assert.equal(dto.data.rows[0].quantity_done, 10);
@@ -152,7 +156,7 @@ async function main() {
       const item = dto.data.rows.find(row => row.record_kind === 'production_report' && row.operation_ref === ready.expected.operation);
       const detailRead = page.waitForResponse(response => response.url().includes('/analytics/operations/' + item.operation_ref));
       await page.getByRole('button', { name: '查看工序 ' + item.operation_label, exact: true }).first().click();
-      const detailDTO = await (await detailRead).json(), detail = page.getByRole('region', { name: '工序报表详情' });
+      const detailDTO = await (await detailRead).json(), detail = page.locator('.rw-detail');
       await detail.getByText('整道完成', { exact: true }).waitFor(); assert.equal(detailDTO.data.detail.operation.record_count, 12);
       await detail.locator('.rw-limitations > summary').first().click();
       const history = detail.locator('.rw-limitations').first(); await history.getByText('逐次报工修订历史（3 次登记）', { exact: true }).waitFor();
@@ -160,8 +164,8 @@ async function main() {
       assert((await history.innerText()).includes('首次登记，无前值')); assert((await history.innerText()).includes('BC corrected quantity and hours'));
       await history.scrollIntoViewIfNeeded(); await shot(page, prefix + '-revisions');
       await detail.getByRole('button', { name: '下一页', exact: true }).click();
-      assert.equal(await detail.locator(':scope > .rw-table-scroll tbody tr').count(), 2);
-      await detail.getByRole('button', { name: '关闭工序详情', exact: true }).click();
+      assert.equal(await detail.locator('.wb-detail-body > .rw-table-scroll tbody tr').count(), 2);
+      await detail.getByRole('button', { name: /^关闭/ }).click();
       const old = dto.data.rows.find(row => row.record_kind === 'legacy_event');
       const oldRead = page.waitForResponse(response => response.url().includes('/analytics/operations/' + old.operation_ref));
       await page.getByRole('button', { name: '查看工序 ' + old.operation_label, exact: true }).first().click();
@@ -169,11 +173,13 @@ async function main() {
       await detail.getByText('整道完成', { exact: true }).waitFor();
       await detail.locator('.rw-limitations > summary').first().click();
       assert((await detail.innerText()).includes('旧原始事实'));
-      const raw = JSON.parse(await detail.locator('.rw-limitations[open] pre').innerText());
-      assert.deepEqual(raw, oldDTO.data.detail.records[0].legacy_evidence);
+      const evidenceText = await detail.locator('.rw-limitations[open] .rw-evidence-facts').first().textContent();
+      const leaves = value => value && typeof value === 'object' ? Object.values(value).flatMap(leaves) :
+        [value === null ? '未知' : typeof value === 'boolean' ? value ? '是' : '否' : String(value)];
+      for (const value of leaves(oldDTO.data.detail.records[0].legacy_evidence)) assert(evidenceText.includes(value), value);
       assert((await detail.innerText()).includes('旧系统原存储时间，未转换'));
       await detail.scrollIntoViewIfNeeded(); await shot(page, prefix + '-legacy');
-      await detail.getByRole('button', { name: '关闭工序详情', exact: true }).click();
+      await detail.getByRole('button', { name: /^关闭/ }).click();
       await download(page, dto, 'csv', prefix + '-records15'); await download(page, dto, 'xlsx', prefix + '-records15');
       for (const [topic, label] of [['quality', '数据完整性'], ['machines', '设备工时'], ['people', '人员工时']]) {
         dto = await change(page, () => page.getByRole('tab', { name: label, exact: true }).click()); await compare(page, dto, prefix + '-' + topic); await shot(page, prefix + '-' + topic);
@@ -187,7 +193,7 @@ async function main() {
       assert.equal(dto.data.summary.operations, 1); assert.equal(dto.data.summary.production_reports, 12); assert.equal(dto.data.summary.events, 0);
       assert.equal(dto.data.summary.effective_processing_hours, 3); assert.equal(dto.data.resources.machines.length, 2);
       await compare(page, dto, prefix + '-combined-cohort'); await download(page, dto, 'csv', prefix + '-filtered');
-      dto = await change(page, () => page.getByRole('button', { name: '执行复盘', exact: true }).click());
+      dto = await change(page, () => page.getByRole('tab', { name: '执行复盘', exact: true }).click());
       await page.locator('.er-chart-disclosure > summary').click();
       const insights = page.locator('.er-insights'); assert((await insights.innerText()).includes('逐次报工 12 条'));
       assert((await insights.innerText()).includes('有效加工工时 3 小时')); assert(!(await insights.innerText()).includes('不能生成实际工时排名'));
@@ -204,7 +210,7 @@ async function main() {
       const trend = await page.locator('.aw-data tbody tr').evaluateAll(nodes => nodes.map(node => Array.from(node.cells).map(cell => cell.textContent)));
       assert.deepEqual(trend, dto.data.charts.trend.map(row => [row.date, String(row.planned), row.actual === null ? '未知' : String(row.actual)]));
       await shot(page, prefix + '-chart-data');
-      dto = await change(page, () => page.getByRole('button', { name: '报表中心', exact: true }).click()); assert.equal(dto.data.scope.resource_ref, ready.expected.machine2);
+      dto = await change(page, () => page.getByRole('tab', { name: '报表中心', exact: true }).click()); assert.equal(dto.data.scope.resource_ref, ready.expected.machine2);
       dto = await change(page, () => page.getByRole('button', { name: '清除筛选', exact: true }).click()); assert.equal(dto.data.summary.operations, 23);
       await page.getByRole('searchbox', { name: '搜索批次或工序' }).fill('no-such-operation');
       dto = await change(page, () => page.getByRole('button', { name: '查询范围', exact: true }).click()); assert.equal(dto.data.page.total, 0);

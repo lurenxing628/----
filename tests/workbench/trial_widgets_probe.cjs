@@ -9,6 +9,10 @@ const files = JSON.parse(process.argv[4]);
 assert(Array.isArray(files) && files.length === new Set(files).size);
 assert(files.includes('TrialContract.js') && files.indexOf('TrialContract.js') < files.indexOf('TrialExport.js'));
 assert(files.indexOf('TrialExport.js') < files.indexOf('TrialControls.jsx'));
+const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {
+  const file = 'frontend/workbench/app/styles/' + name; return { path: file, code: fs.readFileSync(path.join(root, file), 'utf8') };
+});
+const workspaceCSS = styleSources.map(row => row.code).join('\n');
 const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((row, i) => ['/source/' + files[i], row.code]));
@@ -20,7 +24,7 @@ const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
   '<style>body{margin:0}#fixture-root{margin-left:208px;padding:16px 24px;min-height:100vh}.fixture-rail{position:fixed;inset:0 auto 0 0;width:208px;padding:24px;background:var(--sidebar-bg);border-right:1px solid var(--ui-border);color:var(--sidebar-text-strong)}</style>' +
   '</head><body class="aps-workbench"><aside class="fixture-rail">APS 智能排产<br>方案试调</aside><div id="fixture-root"></div>' +
   foundation.map(file => '<script src="/static/' + file + '"></script>').join('') + [...scripts.keys()].map(file => '<script src="' + file + '"></script>').join('') +
-  '<script>window.nav=[];window.targetChanges=[];window.historySync=location.search.includes("history=1");let root;window.mountTrial=(initialTarget={})=>{if(root)root.unmount();root=ReactDOM.createRoot(document.getElementById("fixture-root"));root.render(React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchTrialWorkspace,{initialTarget,onNavigate:(...v)=>nav.push(v),onTargetChange:next=>{targetChanges.push(next);if(window.failTargetChange)throw Error("Fixture target callback failure");if(historySync)history.replaceState({trialTarget:next},"",location.href);}})));};mountTrial(historySync&&history.state?history.state.trialTarget:{});</script></body></html>';
+  '<script>window.nav=[];window.targetChanges=[];window.historySync=location.search.includes("history=1");let root;window.mountTrial=(initialTarget={})=>{if(root)root.unmount();root=ReactDOM.createRoot(document.getElementById("fixture-root"));root.render(React.createElement(React.Fragment,null,React.createElement(WorkbenchGuardHost),React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchTrialWorkspace,{initialTarget,onNavigate:(...v)=>nav.push(v),onTargetChange:next=>{targetChanges.push(next);if(window.failTargetChange)throw Error("Fixture target callback failure");if(historySync)history.replaceState({trialTarget:next},"",location.href);}})));};mountTrial(historySync&&history.state?history.state.trialTarget:{});</script></body></html>';
 let dropReply = false;
 const server = http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://fixture').pathname;
@@ -34,13 +38,13 @@ const server = http.createServer((req, res) => {
     });
     upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end('CN isolated fixture unavailable'); }); req.pipe(upstream); return;
   }
-  if (pathname === '/') { res.setHeader('Content-Type', 'text/html;charset=utf-8'); res.end(html); return; }
+  if (pathname === '/') { res.setHeader('Content-Type', 'text/html;charset=utf-8'); res.end(html.replace('</head>', '<style>' + workspaceCSS + '</style></head>')); return; }
   if (pathname === '/favicon.ico') { res.writeHead(204); res.end(); return; }
   if (scripts.has(pathname)) { res.setHeader('Content-Type', 'application/javascript'); res.end(scripts.get(pathname)); return; }
   const asset = assets.get(pathname); if (!asset) { res.writeHead(404); res.end(); return; } res.setHeader('Content-Type', asset.mime); res.end(asset.bytes);
 });
 const report = { browser: null, variants: [], checks: [], downloads: [], screenshots: [], errors: [], external: [], dialogs: [], layout: [], shortTasks: [],
-  sources: sources.map(s => ({ path: s.path, sha256: crypto.createHash('sha256').update(s.code).digest('hex') })) };
+  sources: sources.concat(styleSources).map(s => ({ path: s.path, sha256: crypto.createHash('sha256').update(s.code).digest('hex') })) };
 let page, origin, variant, refs;
 const button = name => page.getByRole('button', { name, exact: true });
 const done = name => report.checks.push({ variant, name, passed: true });
@@ -229,7 +233,8 @@ async function basic() {
   await button('确认保存场景').click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready();
   const scenario = await active(); assert(scenario.scenario_ref); assert.equal(scenario.draft_ref, draft.draft_ref); assert.equal(scenario.status, 'saved');
   assert(scenario.tasks.every(t => !t.edit_context.can_change)); assert(scenario.tasks.every(t => !draft.tasks.some(old => old.task_ref === t.task_ref)));
-  assert(await button('保存场景').isDisabled()); assert(await page.getByRole('button', { name: /^正式采用：/ }).isDisabled());
+  assert(await button('保存场景').isDisabled()); assert(await button('正式采用').isDisabled());
+  assert((await button('正式采用').getAttribute('data-wb-disabled-reason')).includes('尚未接入'));
   await exportsFor(scenario, 'saved');
   e = await evidence(); assert(e.scenarios.some(s => s.scenario_ref === scenario.scenario_ref && s.name === scenario.name)); done('named-scenario-saved-readonly-and-adoption-blocked');
   await page.reload(); await page.getByRole('tab', { name: '已存场景', exact: true }).click();
@@ -278,7 +283,8 @@ async function staleAndScope() {
   await page.evaluate(() => { window.originalSetItem = Storage.prototype.setItem; Storage.prototype.setItem = function(k, v) { if (k === TrialAPI.PENDING_KEY) throw Error('fixture storage full'); return originalSetItem.call(this, k, v); }; });
   const count = (await evidence()).receipts.length; await button('保存调整').click(); await page.getByText('无法保存试调请求恢复记录，本次未发送。', { exact: true }).first().waitFor();
   assert.equal((await evidence()).receipts.length, count); await page.evaluate(() => { Storage.prototype.setItem = originalSetItem; });
-  await button('取消编辑').click(); await button('重读恢复记录与当前内容').click(); await ready(); done('storage-unavailable-fails-before-write');
+  await button('取消编辑').click(); await page.getByRole('dialog', { name: '离开前确认', exact: true }).waitFor();
+  await button('放弃未保存内容并继续').click(); await button('重读恢复记录与当前内容').click(); await ready(); done('storage-unavailable-fails-before-write');
   await control('drift'); await button('重读当前试调').click(); await ready(); assert((await active()).validation.issues.some(i => i.code === 'trial_facts_changed'));
   await page.getByRole('tab', { name: '约束问题', exact: true }).click(); await page.getByText('创建后生产事实已变化；原任务和基线保持不变，不能据旧快照正式采用。', { exact: true }).first().waitFor(); done('live-facts-drift-keeps-original-base-and-reports-blocker');
   await page.evaluate(() => mountTrial({ draft_ref: 'invalid' })); await page.getByRole('alert').waitFor(); assert.equal(await page.locator('.tt-bar').count(), 0); done('invalid-initial-identity-does-not-fallback');
@@ -343,7 +349,10 @@ async function targetHistory() {
       const context = await browser.newContext({ viewport: { width, height: row.height }, timezoneId: 'America/New_York', acceptDownloads: true });
       await context.addInitScript(theme => { localStorage.setItem('aps_theme', theme); localStorage.setItem('aps_kit_theme', theme); }, theme);
       page = await context.newPage(); page.setDefaultTimeout(15000);
-      page.on('pageerror', error => report.errors.push(error.message)); page.on('dialog', dialog => { report.dialogs.push(dialog.type()); dialog.dismiss(); });
+      page.on('pageerror', error => report.errors.push(error.message)); page.on('dialog', dialog => {
+        if (dialog.type() === 'beforeunload') { report.nativeLeaveConfirmations = (report.nativeLeaveConfirmations || 0) + 1; dialog.accept(); }
+        else { report.dialogs.push(dialog.type()); dialog.dismiss(); }
+      });
       await page.route('**/*', route => { if (!route.request().url().startsWith(origin + '/')) { report.external.push(route.request().url()); return route.abort(); } return route.continue(); });
       try {
         if (exportOnly) { await exportRoundTrip(); if (width === 1392 && theme === 'dark') await large(); }

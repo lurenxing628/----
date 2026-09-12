@@ -8,10 +8,12 @@ const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 if (!output) throw new Error('Pass an artifact directory');
 fs.mkdirSync(output, { recursive: true });
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
-const files = ['resource-contract.js', 'ResourceControls.jsx', 'WorkbenchControlStyles.jsx', 'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx'];
+const files = ['resource-contract.js', 'WorkbenchGuards.js', 'WorkbenchReferences.jsx', 'ResourceControls.jsx', 'WorkbenchControlStyles.jsx', 'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx'];
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((item, index) => ['/fixture/' + files[index] + '.js', item.code]));
+const styleSources = ['00-tokens.css', '20-controls.css', '21-table-frame.css', '22-shared-controls.css', '31-batches-resources.css']
+  .map(name => ({ path: 'frontend/workbench/app/styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
 const assets = new Map(manifest.files.map(item => [item.path, { ...item, bytes: fs.readFileSync(path.join(root, 'static', item.path)) }]));
 const fixtureCode = `
 const key = n => n.toString(16).padStart(64,'0');
@@ -36,7 +38,9 @@ function Harness({spec}) {
     const snapshot=query.snapshot_ref || 'facet:'+query.query;
     let rows=values.filter(row=>!query.query || (query.query==='slow'?row.label.includes('000'):query.query==='fast'?row.label.includes('199'):row.label.includes(query.query)));
     if(behavior.empty)rows=[];
-    await new Promise(resolve=>setTimeout(resolve,delay));fixture.settled.push(call.id);
+    await new Promise(resolve=>setTimeout(resolve,delay));
+    if(behavior.holdSelection && method==='selections')await new Promise(resolve=>{fixture.releaseSelection=resolve;});
+    fixture.settled.push(call.id);
     if(behavior.failFacets&&method==='facets'||behavior.failSelection&&method==='selections'||behavior.failPage&&query.page===2)
       throw {ok:false,error:{message:method==='selections'?'完整匹配值读取失败，未改变筛选。':'列值读取失败，请回到首页重新读取。'}};
     if(behavior.capacity&&method==='selections')throw {ok:false,error:{message:'匹配值超过 50000 个，容量拒绝，未截断。'}};
@@ -59,7 +63,7 @@ function Harness({spec}) {
 `;
 const staticScripts = manifest.scripts.filter(file => file.startsWith('workbench/vendor/') || file.startsWith('workbench/assets/foundation-'));
 const html = '<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="/static/' + manifest.icon + '">' +
-  manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
+  manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + '<style>' + styleSources.map(source => source.code).join('\n') + '</style>' +
   '</head><body class="aps-workbench"><main class="plana" style="padding:24px"><button id="outside" type="button" class="btn">弹层外部</button><div id="fixture-root"></div></main>' +
   staticScripts.map(file => '<script src="/static/' + file + '"></script>').join('') +
   Array.from(scripts.keys(), file => '<script src="' + file + '"></script>').join('') + '<script>' + fixtureCode + '</script></body></html>';
@@ -73,7 +77,7 @@ const server = http.createServer((req, res) => {
 });
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const result = { scope: 'isolated-component-fixtures', data_source: 'demo', production_persistence_tested: false,
-  sources: sources.map(item => ({ path: item.path, sha256: hash(item.code) })),
+  sources: sources.concat(styleSources).map(item => ({ path: item.path, sha256: hash(item.code) })),
   probes: [__filename, path.join(__dirname, 'test_resource_table_header_widgets.py')].map(file => ({ path: path.relative(root, file), sha256: hash(fs.readFileSync(file)) })),
   assets: [...new Set([...manifest.styles, ...staticScripts])].map(file => ({ path: 'static/' + file, sha256: hash(assets.get(file).bytes) })),
   cases: [], screenshots: [], errors: [], external: [] };
@@ -93,11 +97,14 @@ async function shot(name) {
     const el = document.querySelector('[data-wb-table-filter]'), r = el.getBoundingClientRect();
     return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, viewport: [innerWidth, innerHeight], scrollWidth: el.scrollWidth, width: el.clientWidth,
       clipped: Array.from(el.querySelectorAll('button')).filter(node => node.scrollWidth > node.clientWidth + 1).map(node => node.textContent),
-      background: getComputedStyle(el).backgroundColor, icons: document.querySelectorAll('.wb-resource-th svg').length,
+      background: getComputedStyle(el).backgroundColor, filterIcons: document.querySelectorAll('.wb-th-filter svg').length,
+      sortIcons: document.querySelectorAll('.wb-th-sort-glyph svg').length,
       parentModal: el.parentElement.closest('[role="dialog"]') && (() => { const parent = el.parentElement.closest('[role="dialog"]'), rect = parent.getBoundingClientRect(); return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, backdrop: getComputedStyle(parent.parentElement).position }; })() };
   });
   assert(geometry.left >= 8 && geometry.top >= 8 && geometry.right <= geometry.viewport[0] - 7 && geometry.bottom <= geometry.viewport[1] - 7, 'popup viewport clamp');
-  assert(geometry.scrollWidth <= geometry.width + 1, 'popup horizontal overflow'); assert.deepEqual(geometry.clipped, []); assert(geometry.icons >= 6, 'bundled icons render');
+  assert(geometry.scrollWidth <= geometry.width + 1, 'popup horizontal overflow'); assert.deepEqual(geometry.clipped, []);
+  assert.equal(geometry.filterIcons, 2, 'both filter controls retain bundled icons');
+  assert(geometry.sortIcons <= 1, 'only the active sort direction has a glyph');
   if (geometry.parentModal) { assert.equal(geometry.parentModal.backdrop, 'fixed'); assert(geometry.parentModal.left >= 0 && geometry.parentModal.right <= geometry.viewport[0] && geometry.parentModal.top >= 0 && geometry.parentModal.bottom <= geometry.viewport[1], 'real styled parent modal framing'); }
   const file = variant + '-' + name + '.png'; await page.screenshot({ path: path.join(output, file) }); result.screenshots.push({ variant, name, file, geometry });
 }
@@ -154,8 +161,10 @@ async function cases() {
     assert(await all().isChecked(), 'excluded missing value is not a mixed existing universe');
   });
   await run('async-group-cancel-stale-and-failure-preserves-filter', async () => {
-    await mount({ selectionDelay: 140 }); await open(); await ready(); await popup().getByRole('textbox').fill('设备值 1');
+    await mount({ selectionDelay: 140, holdSelection: true }); await open(); await ready(); await popup().getByRole('textbox').fill('设备值 1');
+    await page.waitForFunction(() => typeof fixture.releaseSelection === 'function');
     await popup().getByText('正在读取全部匹配值…').waitFor(); assert(await all().isDisabled()); assert.equal(await filterValue(), null);
+    await page.evaluate(() => { fixture.spec.holdSelection = false; fixture.releaseSelection(); fixture.releaseSelection = null; });
     await ready(); await page.evaluate(() => fixture.spec.failSelection = true); await search('设备值 2');
     assert.equal(await popup().getByRole('alert').count(), 1); assert(await all().isDisabled()); assert.equal(await filterValue(), null);
     await page.evaluate(() => fixture.spec.failSelection = false); await button('回到首页重新读取').click(); await ready(); assert(!(await all().isDisabled()));

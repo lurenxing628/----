@@ -4,12 +4,12 @@ const fs = require('node:fs'), path = require('node:path');
 async function restart(h) {
   const { page, request, assert, config, report, shot } = h;
   await h.dashboard();
-  if (config.theme === 'dark') await page.locator('.header-controls').getByRole('button').click();
+  if (config.theme === 'dark') await page.getByRole('button', { name: '切换深色', exact: true }).click();
   await h.category('齐套缺口');
   await request('/dashboard', () => h.select('处置状态', '未关闭'));
   await page.getByLabel('搜索条目、责任人、行动或备注', { exact: true }).fill('F-R2');
   await request('/dashboard', () => page.getByRole('button', { name: '执行条目搜索', exact: true }).click());
-  await request('/dashboard', () => h.select('每页条目数', '10'));
+  await request('/dashboard', () => h.select('每页条目数', '10 项'));
   await request('/dashboard', () => page.getByRole('button', { name: '改为降序', exact: true }).click());
   const second = await request('/dashboard', () => page.getByRole('button', { name: '清单下一页', exact: true }).click());
   assert.equal(second.data.page.number, 2); assert.equal(second.data.page.total, 25);
@@ -57,7 +57,7 @@ async function restart(h) {
   await page.getByRole('tab', { name: '处置清单', exact: true }).click();
   await page.locator('[data-detail-ref="' + config.item_ref + '"]').waitFor();
   assert.equal(await page.locator('tr[data-selected=true]').getAttribute('data-item-ref'), config.item_ref);
-  await page.getByText('25 项 · 第 2 / 3 页', { exact: true }).waitFor();
+  await page.getByText('共 25 项 · 第 2 / 3 页', { exact: true }).waitFor();
   await shot('dashboard-same-scope-page-two-selection-after-new-process');
   assert.equal(report.responses.filter(row => row.method !== 'GET').length, 0);
 }
@@ -65,7 +65,7 @@ async function restart(h) {
 async function unlocatable(h) {
   const { page, request, assert, config, report, shot, mark } = h;
   await h.dashboard();
-  if (config.theme === 'dark') await page.locator('.header-controls').getByRole('button').click();
+  if (config.theme === 'dark') await page.getByRole('button', { name: '切换深色', exact: true }).click();
   const material = await h.detail('material', '齐套缺口');
   assert.equal(material.navigation[0].enabled, true);
   await page.locator('[data-detail-ref]').getByRole('button', { name: '批次资料', exact: true }).click();
@@ -98,6 +98,7 @@ async function unlocatable(h) {
       await open();
       await dialog.getByText(item.navigation[0].reason, { exact: true }).waitFor();
       assert((await dialog.innerText()).includes(item.subject));
+      await h.revealReference(dialog, item.source.plan_ref);
       assert((await dialog.innerText()).includes(item.source.plan_ref));
       assert.equal(page.url(), originalURL);
       const box = await dialog.boundingBox();

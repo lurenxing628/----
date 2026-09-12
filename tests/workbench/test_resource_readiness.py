@@ -204,5 +204,5 @@ def test_rail_chromium109_two_sizes_two_themes(metrics_conn, tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     print(result.stdout)
     report = json.loads((output / "component-result.json").read_text(encoding="utf-8"))
-    assert report["browser"].startswith("109.") and len(report["cases"]) == 4
+    assert report["browser"].startswith("109.") and len(report["cases"]) == 8
     assert not report["errors"] and not report["external"]

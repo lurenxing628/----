@@ -122,7 +122,7 @@ async function main() {
     for (const [width, height] of [[1920, 1080], [1392, 924]]) for (const theme of ['light', 'dark']) {
       const context = await browser.newContext({viewport: {width, height}, timezoneId: 'Asia/Shanghai'});
       page = await context.newPage(); p.attach(page, width + 'x' + height + '-' + theme);
-      await open('process'); if (theme === 'dark') await p.click(b(page, '深色：关'));
+      await open('process'); if (theme === 'dark') await p.click(b(page, '切换深色'));
       for (const [name, actions, check] of [
         ['master-exact-eight-domains-four-metrics', ids('MD-001', [4, 5]), masterCounts],
         ['process-original-prerequisite-locks', ids('PROC-007', [2, 3]), prerequisiteLocks],

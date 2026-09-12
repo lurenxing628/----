@@ -5,11 +5,13 @@ const {chromium}=require('playwright'),{compile}=require('../../scripts/workbenc
 const root=path.resolve(__dirname,'../..'),output=process.argv[2];
 if(!output)throw new Error('Pass an output directory');fs.mkdirSync(output,{recursive:true});
 const manifest=JSON.parse(fs.readFileSync(path.join(root,'static/workbench/asset-manifest.json')));
-const names=['resource-contract.js','resource-session.js','CalendarContract.js','ResourceControls.jsx','ResourceDetailRelations.jsx','ResourceForms.jsx',
-  'WorkbenchControlBridge.js','WorkbenchControlStyles.jsx','WorkbenchDatePickerModel.js','WorkbenchDatePicker.jsx','WorkbenchSelectMenu.jsx','WorkbenchControls.jsx','WorkbenchNumberControls.jsx'];
+const names=['resource-contract.js','resource-session.js','CalendarContract.js','WorkbenchFormat.js','WorkbenchTerms.js','WorkbenchReferences.jsx','WorkbenchGuards.js','ResourceControls.jsx', 'WorkbenchGuardHost.jsx','WorkbenchControlBridge.js', 'WorkbenchControls.jsx','WorkbenchListControls.jsx','ResourceDetailRelations.jsx','ResourceForms.jsx',
+  'WorkbenchControlStyles.jsx','WorkbenchDatePickerModel.js','WorkbenchDatePicker.jsx','WorkbenchSelectMenu.jsx','WorkbenchNumberControls.jsx'];
 const sources=names.map(name=>({path:'frontend/workbench/app/'+name,code:fs.readFileSync(path.join(root,'frontend/workbench/app',name),'utf8')}));
 const compiled=compile({babel_path:path.join(root,'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),sources,check_combined:true}).outputs.map(row=>row.code).join('\n;\n');
 const assets=new Map(manifest.files.map(item=>[item.path,item]));
+const sharedStyles=fs.readdirSync(path.join(root,'frontend/workbench/app/styles')).filter(name=>/^(00|20|21|22)-/.test(name))
+  .map(name=>({path:'frontend/workbench/app/styles/'+name,code:fs.readFileSync(path.join(root,'frontend/workbench/app/styles',name),'utf8')}));
 const fixture=`
 const h=React.createElement;let fixtureRoot;
 window.stockFixture={calls:[],closed:0,adjusted:0,serial:0};
@@ -64,10 +66,10 @@ window.mountFixture=spec=>{
   fixtureRoot=ReactDOM.createRoot(document.getElementById('fixture-root'));
   fixtureRoot.render(h(spec.overlay?OverlayHarness:FormHarness,{spec,key:++stockFixture.serial}));
 };
-ReactDOM.createRoot(document.getElementById('controls-root')).render(h(React.Fragment,null,h(WorkbenchControlStyles),h(WorkbenchControls),h(WorkbenchNumberControls)));
+ReactDOM.createRoot(document.getElementById('controls-root')).render(h(React.Fragment,null,h(WorkbenchGuardHost),h(WorkbenchControlStyles),h(WorkbenchControls),h(WorkbenchNumberControls)));
 `;
 const html='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
-  '<link rel="icon" href="/static/'+manifest.icon+'"><script src="/static/'+manifest.theme_script+'"></script>'+manifest.styles.map(p=>'<link rel="stylesheet" href="/static/'+p+'">').join('')+
+  '<link rel="icon" href="/static/'+manifest.icon+'"><script src="/static/'+manifest.theme_script+'"></script>'+manifest.styles.map(p=>'<link rel="stylesheet" href="/static/'+p+'">').join('')+'<style>'+sharedStyles.map(item=>item.code).join('\n')+'</style>'+
   '<style>body.aps-workbench{margin:0;background:var(--ui-bg);color:var(--ui-text)}main{padding:24px}main>h1{font-size:20px}.modal-b>label{display:block;margin-bottom:12px}.modal-b>label>input,.modal-b>label>select{display:block;max-width:320px;margin-top:4px}</style></head>'+ 
   '<body class="aps-workbench"><main class="plana"><h1>库存与弹窗组件验证</h1><div id="controls-root"></div><div id="fixture-root"></div></main>'+ 
   manifest.scripts.filter(p=>p.startsWith('workbench/vendor/')||p.startsWith('workbench/assets/foundation-')).map(p=>'<script src="/static/'+p+'"></script>').join('')+
@@ -78,7 +80,7 @@ const server=http.createServer((req,res)=>{const name=new URL(req.url,'http://fi
   const asset=assets.get(name.slice('/static/'.length));if(!name.startsWith('/static/')||!asset){res.writeHead(404);res.end();return;}
   res.setHeader('Content-Type',asset.mime);res.end(fs.readFileSync(path.join(root,'static',asset.path)));});
 const result={scope:'isolated-current-source-stock-modal-components',production_persistence_tested:false,win7_hardware_tested:false,
-  sources:sources.map(s=>({path:s.path,sha256:crypto.createHash('sha256').update(s.code).digest('hex')})),cases:[],errors:[],external:[]};
+  sources:sources.concat(sharedStyles).map(s=>({path:s.path,sha256:crypto.createHash('sha256').update(s.code).digest('hex')})),cases:[],errors:[],external:[]};
 let page,variant;
 const panel=()=>page.getByRole('dialog').filter({has:page.locator('.modal-head')});
 const stock=()=>panel().locator('input[name="stock_qty"]');
@@ -109,12 +111,14 @@ async function cases(){
     await stock().fill('-1');await save();assert.equal(await page.evaluate(()=>stockFixture.calls.length),0);
     await stock().fill('');await stock().type('1e');await save();assert.equal(await page.evaluate(()=>stockFixture.calls.length),0);});
   await run('cancel-keeps-values-and-restores-focus',async()=>{await mount();await stock().fill('45.125');await panel().locator('.modal-f').getByRole('button',{name:'取消',exact:true}).click();
+    await page.getByRole('dialog',{name:'离开前确认',exact:true}).getByRole('button',{name:'留在当前页面',exact:true}).click();assert.equal(await stock().inputValue(),'45.125');
+    await panel().locator('.modal-f').getByRole('button',{name:'取消',exact:true}).click();await page.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();
     assert.equal(await page.locator('.modal-bg').count(),0);assert.equal(await page.evaluate(()=>stockFixture.calls.length),0);assert.equal(await page.evaluate(()=>stockFixture.original.fields.stock_qty),8.375);
     assert(await page.locator('#fixture-trigger').evaluate(el=>document.activeElement===el));});
-  await run('capability-blocked-and-unwired-entry',async()=>{await mount({detail:true,allowed:false});assert(await panel().getByRole('button',{name:/^调整库存：/}).isDisabled());
-    await mount({detail:true,noAdjust:true});assert(await panel().getByRole('button',{name:/^调整库存：/}).isDisabled());
-    await mount({allowed:false});assert(await panel().getByRole('button',{name:/^保存：/}).isDisabled());await panel().locator('form').evaluate(form=>form.requestSubmit());assert.equal(await page.evaluate(()=>stockFixture.calls.length),0);
-    await mount({detail:true,source:'demo'});assert(await panel().getByRole('button',{name:/^调整库存：/}).isDisabled());});
+  await run('capability-blocked-and-unwired-entry',async()=>{await mount({detail:true,allowed:false});assert(await panel().getByRole('button',{name:'调整库存',exact:true}).isDisabled());
+    await mount({detail:true,noAdjust:true});assert(await panel().getByRole('button',{name:'调整库存',exact:true}).isDisabled());
+    await mount({allowed:false});assert(await panel().getByRole('button',{name:'保存',exact:true}).isDisabled());await panel().locator('form').evaluate(form=>form.requestSubmit());assert.equal(await page.evaluate(()=>stockFixture.calls.length),0);
+    await mount({detail:true,source:'demo'});assert(await panel().getByRole('button',{name:'调整库存',exact:true}).isDisabled());});
   await run('stale-context-keeps-stock-draft',async()=>{await mount({behavior:'stale'});await stock().fill('17.875');await save();await panel().getByRole('alert').getByText('资料已变化，请重新读取并核对。',{exact:true}).waitFor();
     assert.equal(await stock().inputValue(),'17.875');await panel().getByRole('button',{name:'重新读取最新资料',exact:true}).click();
     await panel().getByText('服务端新名称',{exact:false}).waitFor();assert.equal(await stock().inputValue(),'17.875');await shot('stale-draft');
@@ -131,7 +135,7 @@ async function cases(){
     await mount({kind:'op_type',detail:true,fields:{category}});assert(await panel().getByText(basis,{exact:true}).isVisible());assert.equal(await panel().getByRole('button',{name:'调整库存',exact:true}).count(),0);}
     await shot('unknown-op-type');});
   await run('backdrop-cancel-and-content-click',async()=>{await mount();await stock().fill('13.75');await panel().getByText('当前库存',{exact:true}).click();assert.equal(await page.evaluate(()=>stockFixture.closed),0);
-    await backdrop();assert.equal(await page.locator('.modal-bg').count(),0);assert.equal(await page.evaluate(()=>stockFixture.calls.length),0);assert(await page.locator('#fixture-trigger').evaluate(el=>document.activeElement===el));});
+    await backdrop();await page.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();assert.equal(await page.locator('.modal-bg').count(),0);assert.equal(await page.evaluate(()=>stockFixture.calls.length),0);assert(await page.locator('#fixture-trigger').evaluate(el=>document.activeElement===el));});
   await run('locked-submit-blocks-backdrop',async()=>{await mount({behavior:'pending'});await stock().fill('9.875');await save();await page.waitForFunction(()=>typeof stockFixture.resolve==='function');
     await backdrop();await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>stockFixture.closed),0);assert.equal(await page.locator('.modal-bg').count(),1);
     await page.evaluate(()=>stockFixture.resolve());await panel().getByText('服务器已确认提交。',{exact:true}).waitFor();await backdrop();assert.equal(await page.locator('.modal-bg').count(),0);});

@@ -107,15 +107,18 @@ async function planActions(page, report, h, flush) {
     await button('交付风险', group).click();
   });
   await action(['WBP-PLAN-005.gantt-navigation', 'WBP-PLAN-004.reload'], async () => {
-    await button('交付风险', page.locator('.plan-heading').first()).click();
-    await page.locator('[data-plan-workspace]').getByRole('heading', { name: '交付风险', exact: true }).waitFor();
+    const views = page.getByRole('tablist', { name: '计划中心视图', exact: true });
+    await views.getByRole('tab', { name: '交付风险', exact: true }).click();
+    await views.getByRole('tab', { name: '交付风险', exact: true, selected: true }).waitFor();
     await page.getByRole('table', { name: '交付风险列表', exact: true }).waitFor();
     await flush(); await h.caption(report.first_official.plan.plan_ref, '当前正式');
     await shot('formal-delay');
-    await button('返回方案', page.locator('.plan-heading').first()).click();
+    await views.getByRole('tab', { name: '选择排产方案', exact: true }).click();
+    await views.getByRole('tab', { name: '选择排产方案', exact: true, selected: true }).waitFor();
     await page.locator('[data-plan-workspace] .plan-main').waitFor();
-    await button('查看甘特', page.locator('.plan-heading').first()).click();
-    await page.locator('[data-plan-workspace]').getByRole('heading', { name: '设备 / 人员 / 批次甘特', exact: true }).waitFor();
+    await views.getByRole('tab', { name: '设备 / 人员 / 批次甘特', exact: true }).click();
+    await views.getByRole('tab', { name: '设备 / 人员 / 批次甘特', exact: true, selected: true }).waitFor();
+    await page.locator('[data-plan-workspace] .plan-main').waitFor();
     await flush(); assert.equal(last(data => data.plan && data.tasks).plan.plan_ref, report.first_official.plan.plan_ref);
     await page.reload(); await page.locator('[data-plan-workspace] .plan-main').waitFor();
     await flush(); assert.deepEqual(last(data => data.plan && data.tasks).tasks, report.first_official.tasks);

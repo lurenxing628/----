@@ -75,15 +75,15 @@ def intent(client, case, key="runtime-request-00000001"):
 def paused_compute(monkeypatch):
     entered, release = threading.Event(), threading.Event()
     calls = []
-    original = run_worker.compute_prepared_candidate_run
+    original = run_worker.compute_candidate_run
 
-    def compute(conn, prepared):
+    def compute(conn, settings, projections):
         calls.append(threading.get_ident())
         entered.set()
         assert release.wait(timeout=20), "test did not release compute"
-        return original(conn, prepared)
+        return original(conn, settings, projections)
 
-    monkeypatch.setattr(run_worker, "compute_prepared_candidate_run", compute)
+    monkeypatch.setattr(run_worker, "compute_candidate_run", compute)
     try:
         yield entered, release, calls
     finally:

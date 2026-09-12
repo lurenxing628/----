@@ -22,9 +22,13 @@ async function restart(page, h, flush) {
   const { action, last, button, shot } = h;
   await action(['WBP-PLAN-004.new-process', 'WBP-PLAN-002.stable-identities'], async () => {
     await page.goto(ready.url + '/workbench?view=analysis');
+    await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
+    await h.caption(original.second_official.plan.plan_ref, '当前正式');
+    await button('展开计划目录').click();
     const row = page.getByRole('table', { name: '可选排产方案', exact: true }).getByRole('row')
       .filter({ has: page.getByRole('cell', { name: String(original.second_official.plan.version), exact: true }) });
-    await row.getByRole('radio', { name: '选择 ' + original.second_official.plan.display_name, exact: true }).check();
+    assert.equal(await row.count(), 1);
+    assert(await row.getByRole('radio', { name: '选择 ' + original.second_official.plan.display_name, exact: true }).isChecked());
     await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
     const data = last(value => value.plan && value.tasks);
     assert.equal(data.plan.plan_ref, original.second_official.plan.plan_ref);
@@ -35,12 +39,14 @@ async function restart(page, h, flush) {
     await h.caption(original.second_official.plan.plan_ref, '当前正式');
     const table = page.getByRole('table', { name: '可选排产方案', exact: true });
     const historical = table.getByRole('row').filter({ has: page.getByRole('cell', { name: '5', exact: true }) });
-    await historical.getByRole('radio', { name: '选择 ' + original.first_official.plan.display_name, exact: true }).check();
+    await historical.getByRole('radio', { name: '选择 ' + original.first_official.plan.display_name, exact: true }).click();
     await flush();
+    assert.equal(await page.locator('.plan-catalog').getAttribute('data-collapsed'), 'true');
     const data = last(value => value.plan && value.tasks);
     assert.equal(data.plan.plan_ref, original.first_official.plan.plan_ref);
     assert.deepEqual(data.tasks, original.first_official.tasks);
     await h.caption(data.plan.plan_ref, '历史正式'); await shot('new-process-historical');
+    await button('展开计划目录').click();
     await button('已存场景', page.locator('.plan-catalog')).click(); await flush();
     const legacy = table.getByRole('row').filter({ hasText: 'piece-main-old-scene name' });
     await legacy.waitFor();
@@ -50,7 +56,8 @@ async function restart(page, h, flush) {
     const choice = legacy.getByRole('radio');
     assert.equal(await choice.isDisabled(), !plan.capabilities.view);
     if (plan.capabilities.view) {
-      await choice.check(); await flush();
+      await choice.click(); await flush();
+      assert.equal(await page.locator('.plan-catalog').getAttribute('data-collapsed'), 'true');
       assert.equal(last(value => value.plan && value.tasks).plan.plan_ref, plan.plan_ref);
       await h.caption(plan.plan_ref, '场景预览');
     } else {
@@ -137,8 +144,8 @@ async function main() {
     else if (mode === 'required-readonly') await requiredReadonly(page, ready, report, h, flush);
     else if (mode === 'required-stale') await requiredStale(page, ready, report, h, flush);
     else if (mode === 'preflight') {
-      await page.goto(ready.run_url); await page.getByRole('heading', { name: '排产前检查', exact: true }).waitFor();
-      if (await page.locator('html').getAttribute('data-theme') !== report.theme) await page.getByRole('button', { name: /^深色：/ }).click();
+      await page.goto(ready.run_url); await page.locator('[data-preflight-workspace]').getByRole('heading', { name: '执行排产', exact: true }).waitFor();
+      if (await page.locator('html').getAttribute('data-theme') !== report.theme) await page.getByRole('button', { name: /^切换(?:深色|浅色)$/ }).click();
       assert.equal(await page.locator('html').getAttribute('data-theme'), report.theme);
       await h.button('选择批次').click(); await flush();
       await page.getByRole('checkbox', { name: '选择 B1', exact: true }).check();

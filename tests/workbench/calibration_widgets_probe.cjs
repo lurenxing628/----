@@ -6,7 +6,10 @@ const { compile } = require('../../scripts/workbench/compile.cjs');
 const config = JSON.parse(fs.readFileSync(0, 'utf8')), output = process.argv[2], root = path.resolve(__dirname, '../..');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
-const names = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'ResourceControls.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchControlBridge.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchControls.jsx',
+const styleNames = ['00-tokens.css', '10-shell.css', '11-navigation.css', '20-controls.css', '21-table-frame.css', '22-shared-controls.css', '37-reports.css'];
+const sourceStyles = styleNames.map(name => ({ path: 'frontend/workbench/app/styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
+const styleMarkup = sourceStyles.map(row => '<style>' + row.code + '</style>').join('');
+const names = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'ResourceControls.jsx', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx', 'ReportEvidence.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchControls.jsx',
   'CalibrationAPI.js', 'CalibrationControls.jsx', 'CalibrationDetail.jsx', 'CalibrationWorkspace.jsx'];
 const sources = names.map(name => ({ path: 'app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true }).outputs;
@@ -24,8 +27,9 @@ function CalibrationProbe(){
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(CalibrationProbe));`;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
-  '</head><body class="aps-workbench"><div id="root"></div>' + manifest.scripts.filter(file => !file.endsWith('/main.js') && !/\/Calibration[^/]*\.js$/.test(file)).map(file => '<script src="/static/' + file + '"></script>').join('') +
+  styleMarkup + '</head><body class="aps-workbench"><div id="root"></div>' + manifest.scripts.filter(file => !file.endsWith('/main.js') && !/\/Calibration[^/]*\.js$/.test(file)).map(file => '<script src="/static/' + file + '"></script>').join('') +
   compiled.map(row => '<script src="/probe/' + row.path + '"></script>').join('') + '<script>' + boot + '</script></body></html>';
+record.sources.push(...sourceStyles.map(row => ({ path: row.path, sha256: hash(row.code) })));
 const assets = new Map(manifest.files.map(row => ['/static/' + row.path, row]));
 const server = http.createServer((request, response) => {
   const url = new URL(request.url, 'http://localhost');
@@ -63,7 +67,7 @@ async function listAfter(page, action) {
   await action(); const response = await pending, payload = await response.json();
   assert.equal(response.status(), 200, JSON.stringify(payload));
   await page.locator('.calibration-live[data-ready="true"]').waitFor();
-  await page.waitForFunction(total => document.querySelector('.calibration-live > .ca-page')?.textContent.includes('共 ' + total + ' 项'), payload.data.page.total);
+  await page.waitForFunction(total => document.querySelector('.calibration-live .ca-list-pane > .wb-pager')?.textContent.includes('共 ' + total + ' 项'), payload.data.page.total);
   return payload;
 }
 async function readAll(payload) {
@@ -95,7 +99,7 @@ async function verifyCells(page, payload) {
   try {
     browser = await chromium.launch({ executablePath: process.env.WORKBENCH_BROWSER, headless: true, args: ['--disable-background-networking'] });
     record.browser = browser.version(); assert(record.browser.startsWith('109.'));
-    for (const viewport of [{ width: 1920, height: 1080 }, { width: 1392, height: 924 }]) for (const theme of ['light', 'dark']) {
+    for (const viewport of [{ width: 1920, height: 1080 }, { width: Number(process.env.WORKBENCH_UI_NARROW_WIDTH || 1392), height: 924 }]) for (const theme of ['light', 'dark']) {
       const context = await browser.newContext({ viewport, acceptDownloads: true });
       await context.addInitScript(value => { localStorage.setItem('aps_theme', value); localStorage.setItem('aps_kit_theme', value); }, theme);
       const page = await context.newPage(); page.on('pageerror', error => record.errors.push(error.message));
@@ -126,14 +130,14 @@ async function verifyCells(page, payload) {
       payload = await listAfter(page, () => work.getByRole('searchbox', { name: '搜索校准明细' }).press('Enter'));
       assert.equal(payload.data.page.total, 1); assert.equal(payload.data.items[0].old_unit_hours, null); await verifyCells(page, payload);
       payload = await listAfter(page, () => work.getByRole('checkbox', { name: '仅看偏差 > 20%' }).check());
-      assert.equal(payload.data.page.total, 0); await work.getByText('当前筛选没有记录。', { exact: true }).waitFor();
+      assert.equal(payload.data.page.total, 0); await work.getByText('当前筛选没有记录', { exact: true }).waitFor();
       assert(await work.getByRole('button', { name: /^导出全部筛选/ }).isDisabled()); await capture(page, prefix + '-filtered-empty');
       payload = await listAfter(page, () => work.getByRole('button', { name: '清除筛选', exact: true }).click());
       payload = await listAfter(page, () => select(page, '工序来源', '自制')); assert.equal(payload.data.page.total, 22);
       payload = await listAfter(page, () => select(page, '建议状态', '数据不足')); assert.equal(payload.data.page.total, 22);
       payload = await listAfter(page, () => select(page, '排序字段', '原单件定额'));
       payload = await listAfter(page, () => select(page, '排序方向', '降序'));
-      payload = await listAfter(page, () => select(page, '每页数量', '10'));
+      payload = await listAfter(page, () => select(page, '每页条数', '10 项'));
       payload = await listAfter(page, () => work.getByRole('button', { name: '下一页', exact: true }).click());
       assert.equal(payload.data.page.number, 2); await verifyCells(page, payload);
       const allRows = await readAll(payload); assert.equal(allRows.length, 22); assert.equal(allRows.at(-1).old_unit_hours, null);
@@ -156,7 +160,10 @@ async function verifyCells(page, payload) {
       assert.equal(detailPayload.data.candidate_scope_basis, 'template_ref_and_same_part_unbound');
       assert(detailPayload.data.samples.every(sample => sample.template_operation_ref === null && !sample.eligible && !sample.selected));
       const selected = detailPayload.data.samples.find(sample => sample.reports.some(report => report.report_ref === config.report_ref)); assert(selected);
-      const detail = work.getByRole('region', { name: '校准详情', exact: true });
+      const detail = work.locator('.ca-detail');
+      const detailLayout = await detail.evaluate(node => ({ display: getComputedStyle(node.parentElement).display,
+        width: node.getBoundingClientRect().width, focused: node.contains(document.activeElement) }));
+      assert.equal(detailLayout.display, 'grid'); assert(detailLayout.width <= 360 && detailLayout.width >= 280); assert(detailLayout.focused);
       const sample = detail.locator('.ca-sample[data-sample-ref="' + selected.sample_ref + '"]'); await sample.locator(':scope > summary').click();
       await sample.getByText(config.long_code, { exact: true }).waitFor();
       await sample.locator('details > summary').filter({ hasText: /^报工 ·/ }).first().click();
@@ -165,7 +172,10 @@ async function verifyCells(page, payload) {
       assert(await detail.getByRole('button', { name: /^采用/ }).isDisabled()); assert(await detail.getByRole('button', { name: /^锁定/ }).isDisabled());
       assert.equal(selected.legacy_facts.length, 3);
       await sample.locator('details > summary').filter({ hasText: /^旧现场记录 1$/ }).click();
-      assert.deepEqual(JSON.parse(await sample.locator('pre').first().textContent()), selected.legacy_facts[0]);
+      const evidenceText = await sample.locator('.rw-evidence-facts').first().textContent();
+      const leaves = value => value && typeof value === 'object' ? Object.values(value).flatMap(leaves) :
+        [value === null ? '未知' : typeof value === 'boolean' ? value ? '是' : '否' : String(value)];
+      for (const value of leaves(selected.legacy_facts[0])) assert(evidenceText.includes(value), value);
       const sourceGeometry = await sample.evaluate(node => ({ scroll: document.documentElement.scrollWidth, width: innerWidth,
         clipped: Array.from(node.querySelectorAll('dd,td')).filter(item => item.scrollWidth > item.clientWidth + 1).map(item => item.textContent) }));
       assert(sourceGeometry.scroll <= sourceGeometry.width); assert.deepEqual(sourceGeometry.clipped, []);

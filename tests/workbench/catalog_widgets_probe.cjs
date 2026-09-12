@@ -11,9 +11,12 @@ const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 if (!output) throw new Error('Pass an artifact directory');
 fs.mkdirSync(output, { recursive: true });
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
-const files = ['resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceForms.jsx',
+const files = ['resource-contract.js', 'resource-api.js', 'resource-session.js', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'ResourceForms.jsx',
+  'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchFormat.js', 'WorkbenchReferences.jsx',
   'ResourceCatalogModel.js', 'ResourceCatalogEditor.jsx', 'ResourceCatalog.jsx'];
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
+const styleSources = ['00-tokens.css', '21-table-frame.css', '22-shared-controls.css', '32-calendar-outsourcing.css'].map(name =>
+  ({ path: 'frontend/workbench/app/styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((item, index) => ['/fixture/' + files[index] + '.js', item.code]));
 const assets = new Map(manifest.files.map(item => [item.path, item]));
@@ -43,7 +46,7 @@ function Harness({spec}) {
    return terminal(fixture.calls.length);};
   api.lookup=async(key)=>{fixture.lookups.push(key);return fixture.confirm?terminal('recovered'):{ok:true,state:'not_recorded',receipt:null,may_be_in_flight:true};};return api;
  },[]);
- return React.createElement(ResourceCatalog,{kind:spec.kind,adapter,onClose:()=>fixture.events.push({name:'close'}),onCommitted:receipt=>fixture.events.push({name:'commit',receipt})});
+ return React.createElement(React.Fragment,null,React.createElement(ResourceCatalog,{kind:spec.kind,adapter,onClose:()=>fixture.events.push({name:'close'}),onCommitted:receipt=>fixture.events.push({name:'commit',receipt})}),React.createElement(WorkbenchGuardHost));
 }
 window.mountFixture=(spec,restore=false)=>{
  if(renderRoot)renderRoot.unmount();if(!restore)sessionStorage.removeItem('aps_workbench_resource_pending_v1_catalog');
@@ -56,7 +59,7 @@ if(sessionStorage.getItem('catalog_fixture_spec'))mountFixture(JSON.parse(sessio
 `;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<link rel="icon" href="/static/' + manifest.icon + '"><script src="/static/' + manifest.theme_script + '"></script>' +
-  manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
+  manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + '<style>' + styleSources.map(item => item.code).join('\n') + '</style>' +
   '</head><body class="aps-workbench"><main style="padding:24px"><p>组件夹具 · 无生产数据写入</p><div id="fixture-root"></div></main>' +
   manifest.scripts.filter(file => file.startsWith('workbench/vendor/') || file.startsWith('workbench/assets/foundation-')).map(file => '<script src="/static/' + file + '"></script>').join('') +
   Array.from(scripts.keys(), file => '<script src="' + file + '"></script>').join('') + '<script>' + fixtureCode + '</script></body></html>';
@@ -69,7 +72,7 @@ const server = http.createServer((req,res) => {
   res.setHeader('Content-Type',asset.mime);res.end(fs.readFileSync(path.join(root,'static',asset.path)));
 });
 const result = {scope:'isolated-catalog-component-fixtures',simulates_production_envelopes:true,production_persistence_tested:false,
-  sources:sources.map(item=>({path:item.path,sha256:crypto.createHash('sha256').update(item.code).digest('hex')})),cases:[],errors:[],external:[]};
+  sources:sources.concat(styleSources).map(item=>({path:item.path,sha256:crypto.createHash('sha256').update(item.code).digest('hex')})),cases:[],errors:[],external:[]};
 let page, variant;
 async function mount(spec) {
   await page.evaluate(spec=>mountFixture(spec),spec);
@@ -134,8 +137,8 @@ async function cases() {
   await run('cancel-no-write-and-group-create',async()=>{
     await mount({kind:'machine_group'});await open('machine_group','create');await save();assert.equal(await page.evaluate(()=>fixture.calls.length),0);
     await page.getByLabel('编号',{exact:true}).fill('GROUP-NEW');await page.getByLabel('名称',{exact:true}).fill('独立设备组');await page.getByLabel('状态',{exact:true}).selectOption('active');
-    await page.getByRole('button',{name:'返回目录',exact:true}).click();assert(await page.getByRole('button',{name:'放弃修改',exact:true}).isVisible());
-    await page.getByRole('button',{name:'继续编辑',exact:true}).click();assert.equal(await page.getByLabel('名称',{exact:true}).inputValue(),'独立设备组');
+    await page.getByRole('button',{name:'返回目录',exact:true}).click();assert(await page.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).isVisible());
+    await page.getByRole('button',{name:'留在当前页面',exact:true}).click();assert.equal(await page.getByLabel('名称',{exact:true}).inputValue(),'独立设备组');
     await page.getByLabel('备注',{exact:true}).fill('真实独立目录');result.cases.push({variant,name:'group-form-visual',...await screenshot('group')});
     await save();assert.deepEqual(await lastInput(),{business_code:'GROUP-NEW',label:'独立设备组',fields:{status:'active',remark:'真实独立目录'}});
     assert.equal(await page.evaluate(()=>fixture.events.length),0);await page.getByRole('button',{name:'完成并返回',exact:true}).click();
@@ -145,7 +148,7 @@ async function cases() {
   await run('discard-is-read-only',async()=>{
     await mount({kind:'machine_group'});await open('machine_group');await page.getByLabel('名称',{exact:true}).fill('未保存草稿');
     for(let i=0;i<12;i++){await page.keyboard.press('Tab');assert(await page.evaluate(()=>document.querySelector('[role="dialog"]').contains(document.activeElement)));}
-    await page.keyboard.press('Escape');await page.getByRole('button',{name:'放弃修改',exact:true}).click();
+    await page.keyboard.press('Escape');await page.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();
     assert.equal(await page.evaluate(()=>fixture.calls.length),0);assert.deepEqual(await page.evaluate(()=>fixture.events),[{name:'close'}]);
   });
   await run('group-update-preserves-hidden-and-delete',async()=>{

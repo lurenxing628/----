@@ -29,7 +29,7 @@ async function ganttPixels(page, scope, label, report) {
 }
 
 async function candidateDetail(page, report, screenshot) {
-  const list = page.getByRole('region', { name: '候选任务安排', exact: true });
+  const list = page.getByRole('table', { name: '候选任务安排', exact: true });
   const common = list.locator('.rc-list-row').filter({ has: page.getByText(/^40\s+Turning(?:\s|$)/) });
   await common.getByRole('button').click();
   let facts = await visibleFacts(page, '.rc-detail');
@@ -60,7 +60,7 @@ async function formalDetails(page, report, screenshot) {
     assert.equal(await bar.count(), 1, 'Formal Gantt piece selection must use visible/accessibility business identity');
     await bar.click();
     const facts = await visibleFacts(page, '[data-plan-inspector]');
-    assert(facts['分件'].includes(piece)); assert.equal(facts['本工序目标量'], '1'); assert.equal(facts['计划来源整批量'], '3');
+    assert(facts['分件'].includes(piece)); assert.equal(facts['本工序目标量'], '1.00'); assert.equal(facts['计划来源整批量'], '3.00');
     await screenshot(page, 'formal-detail-identity-' + (index + 1));
   }
   report.formal_detail_pieces_verified = 3;

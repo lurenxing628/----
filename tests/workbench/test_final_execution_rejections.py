@@ -89,6 +89,10 @@ def test_full_main_failed_write_draft_pending_request_and_restart(final_executio
         browser.result(timeout=120)
     initial = json.loads((host.root / "final-rejections-initial.json").read_text(encoding="utf-8"))
     assert all(action["passed"] for action in initial["actions"]) and initial["gaps"] == []
+    assert initial["post_cases"] == ["future", "overreport", "sql-abort"]
+    assert [row["case"] for row in initial["client_rejections"]] == ["reversed", "hours-exceed-span"]
+    assert all(row["no_post"] for row in initial["client_rejections"])
+    assert len([row for row in initial["requests"] if row["method"] == "POST"]) == 3
     assert all(request["method"] == "GET" for request in initial["after_restart_requests"])
     assert host.state() == restarted
     write_json(host.root / "rejection-browser-proof.json", {"full_main": True, "initial": initial,

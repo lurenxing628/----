@@ -23,13 +23,51 @@ async function main() {
       await page.setViewportSize({ width, height: width === 1920 ? 1080 : 900 });
       await page.goto(input.base + '/?view=fieldgantt');
       await page.locator('[data-actual-scroll]').waitFor();
-      if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: /^深色：/ }).click();
+      if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: /^切换(?:深色|浅色)$/ }).click();
       const point = page.locator('[data-actual-mark="plan-point"]');
-      await point.waitFor();
+      try { await point.waitFor(); } catch (error) {
+        evidence.failed_mount = await page.evaluate(() => {
+          const board = document.querySelector('[data-actual-scroll]');
+          return { context: history.state && history.state.workbench && history.state.workbench.context,
+            board: board && { width: board.clientWidth, scrollWidth: board.scrollWidth, left: board.scrollLeft, top: board.scrollTop },
+            rows: Array.from(document.querySelectorAll('.fg-virtual-row')).map(node => ({ kind: node.getAttribute('data-kind'), top: node.style.top, text: node.innerText.slice(0, 160) })),
+            text: document.querySelector('[data-actual-gantt]')?.innerText.slice(0, 1500) };
+        });
+        await shot(page, width + '-' + theme + '-failed-mount'); throw error;
+      }
       assert.equal(await point.count(), 1);
       assert.equal(await point.getAttribute('data-point-ref'), input.identity.task.task_ref);
       assert.equal(await point.getAttribute('data-point-at'), input.identity.task.start);
       const box = await point.boundingBox(); assert.equal(box.width, 24); assert.equal(box.height, 24);
+      if (width === 1920 && theme === 'light') {
+        await page.waitForFunction(() => Number.isFinite(history.state?.workbench?.context?.actual_view?.position?.centerAt));
+        const before = await page.evaluate(() => history.state.workbench.context.actual_view.position);
+        await page.setViewportSize({ width: 1392, height: 900 });
+        await page.waitForFunction(old => history.state.workbench.context.actual_view.position.viewport !== old, before.viewport);
+        await page.reload(); await point.waitFor();
+        let releaseRead, reachedRead;
+        const heldRead = new Promise(resolve => { reachedRead = resolve; });
+        await page.route('**/api/workbench/v1/actual-gantt?*', async route => {
+          await new Promise(resolve => { releaseRead = resolve; reachedRead(); });
+          await route.continue();
+        }, { times: 1 });
+        const response = page.waitForResponse(value => new URL(value.url()).pathname === '/api/workbench/v1/actual-gantt');
+        await page.getByRole('button', { name: '刷新实际甘特', exact: true }).click();
+        await heldRead;
+        await page.setViewportSize({ width, height: 1080 });
+        releaseRead();
+        const refreshRead = await response;
+        assert.equal(refreshRead.status(), 200); await point.waitFor();
+        await page.waitForFunction(() => document.querySelector('[data-actual-scroll]') && Number.isFinite(history.state?.workbench?.context?.actual_view?.position?.centerAt));
+        const after = await page.evaluate(() => history.state.workbench.context.actual_view.position);
+        assert(Math.abs(after.centerAt - before.centerAt) < before.windowSpan * .003, 'Resize, reload and fresh API read preserve the visible time center');
+        assert(Math.abs(after.windowSpan - before.windowSpan) < before.windowSpan * .003, 'Fresh API read preserves visible duration');
+        evidence.window_restore = { before, after, fresh_read_status: refreshRead.status() };
+        await page.setViewportSize({ width, height: 1080 });
+        await point.waitFor();
+      }
+      // The default plan window can exclude later reports; inspect the entire axis for all-report assertions.
+      await page.getByRole('button', { name: '适应全部', exact: true }).click();
       await point.hover();
       assert.ok((await page.getByRole('tooltip').innerText()).includes('原计划点基线'));
       await point.click();
@@ -55,6 +93,7 @@ async function main() {
       } else assert.ok((await page.getByLabel('工序详情').innerText()).includes('待报工'));
       await page.getByLabel('搜索现场甘特').fill('B1');
       assert.ok((await page.locator('[data-actual-count]').innerText()).includes('1 / 1'));
+      await page.getByRole('button', { name: '适应全部', exact: true }).click();
       await page.getByRole('button', { name: '放大时间轴', exact: true }).click();
       await page.getByRole('button', { name: '定位选中工序', exact: true }).click();
       await page.getByRole('button', { name: '适应全部', exact: true }).click();
@@ -83,7 +122,8 @@ async function main() {
       await fieldPoint.focus(); await page.keyboard.press('Space');
       assert.equal(await fieldPoint.getAttribute('aria-pressed'), 'true');
       assert.equal(await page.locator('[data-field-point=report]').count(), input.reports ? 2 : 0);
-      if (input.reports) assert.ok((await page.locator('.field-timeline-axis').innerText()).includes('2026-09-09 09:50:00'));
+      // Report times are second-precision facts; the axis shows the exact latest report instant.
+      if (input.reports) assert.equal(await page.locator('.field-timeline-axis > span').last().innerText(), '2026-09-09 09:50:00');
       await fit(page); await shot(page, width + '-' + theme + '-field');
       await page.getByRole('button', { name: '实际甘特', exact: true }).click(); await page.locator('[data-actual-scroll]').waitFor();
     }

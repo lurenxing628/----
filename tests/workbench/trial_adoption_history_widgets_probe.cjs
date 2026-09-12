@@ -16,6 +16,12 @@ for (const file of manifest.scripts.filter(name => name.startsWith('workbench/ap
   if (![...additions, ...pointDependencies].some(n => name.endsWith('/' + n))) sourceNames.push(name);
 }
 assert(sourceNames.includes('frontend/workbench/app/main.jsx'));
+assert.equal(new Set(sourceNames).size, sourceNames.length, 'Each current application source must load once');
+assert.equal(sourceNames.filter(name => name.endsWith('/main.jsx')).length, 1, 'The history fixture must execute one current main');
+const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {
+  const file = 'frontend/workbench/app/styles/' + name; return { path: file, code: fs.readFileSync(path.join(root, file), 'utf8') };
+});
+const workspaceCSS = styleSources.map(row => row.code).join('\n');
 const sources = sourceNames.map(name => ({ path: name, code: fs.readFileSync(path.join(root, name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((row, i) => ['/source/' + i + '.js', row.code]));
@@ -32,19 +38,25 @@ const server = http.createServer((req, res) => {
     const upstream = http.request(backend + req.url, { method: req.method, headers: req.headers }, response => { res.writeHead(response.statusCode, response.headers); response.pipe(res); });
     upstream.on('error', error => { if (!res.headersSent) res.writeHead(502); res.end(error.message); }); req.pipe(upstream); return;
   }
-  if (pathname === '/' || pathname === '/trial') { res.setHeader('Content-Type', 'text/html;charset=utf-8'); res.end(html); return; }
+  if (pathname === '/' || pathname === '/trial') { res.setHeader('Content-Type', 'text/html;charset=utf-8'); res.end(html.replace('</head>', '<style>' + workspaceCSS + '</style></head>')); return; }
   if (pathname === '/favicon.ico') { res.writeHead(204); res.end(); return; }
   if (scripts.has(pathname)) { res.setHeader('Content-Type', 'application/javascript'); res.end(scripts.get(pathname)); return; }
   const asset = assets.get(pathname); if (!asset) { res.writeHead(404); res.end(); return; } res.setHeader('Content-Type', asset.mime); res.end(asset.bytes);
 });
 const report = { browser: null, variants: [], checks: [], screenshots: [], errors: [], external: [], geometry: [], boot,
-  sources: sources.map(s => ({ path: s.path, sha256: crypto.createHash('sha256').update(s.code).digest('hex') })) };
+  sources: sources.concat(styleSources).map(s => ({ path: s.path, sha256: crypto.createHash('sha256').update(s.code).digest('hex') })) };
 let page, origin, refs, variant;
 const button = name => page.getByRole('button', { name, exact: true });
 const tab = name => page.getByRole('tab', { name, exact: true });
 const done = name => report.checks.push({ variant, name });
 const evidence = async () => (await page.request.get(origin + '/fixture/evidence')).json();
-async function ready() { await page.locator('[data-trial-workspace]').waitFor(); await page.waitForFunction(() => !document.querySelector('[aria-label="重读当前试调"]')?.disabled); }
+async function ready() {
+  await page.locator('[data-trial-workspace][data-open-kind="scenario"][data-open-ref="' + refs.scenario_ref + '"] .tt-main').waitFor();
+  await page.waitForFunction(() => {
+    const reload = document.querySelector('[data-trial-workspace] [aria-label="重读当前试调"]');
+    return reload && !reload.disabled;
+  });
+}
 async function historyReady() { await page.locator('.trial-adoption-history .tah-meta').filter({ hasText: '本场景共' }).waitFor(); }
 async function shot(name) { const file = path.join(output, variant + '-' + name + '.png'); await page.screenshot({ path: file, fullPage: false }); report.screenshots.push(file); }
 async function layout() {
@@ -114,7 +126,15 @@ async function basic() {
       await page.goto(origin + '/trial'); await basic(); report.variants.push({ variant, passed: true }); await context.close();
     }
     assert.deepEqual(report.errors, []); assert.deepEqual(report.external, []);
-  } catch (error) { report.failure = error.stack; if (page && !page.isClosed()) await shot('failure'); throw error; }
+  } catch (error) {
+    report.failure = error.stack;
+    if (page && !page.isClosed()) {
+      fs.writeFileSync(path.join(output, variant + '-failure.txt'), await page.locator('body').innerText());
+      fs.writeFileSync(path.join(output, variant + '-failure.html'), await page.locator('body').innerHTML());
+      await shot('failure');
+    }
+    throw error;
+  }
   finally { fs.writeFileSync(path.join(output, 'history-widgets.json'), JSON.stringify(report, null, 2)); await browser.close(); await new Promise(resolve => server.close(resolve)); }
   console.log(JSON.stringify({ variants: report.variants.length, checks: report.checks.length, output }));
 })().catch(error => { console.error(error); process.exitCode = 1; });

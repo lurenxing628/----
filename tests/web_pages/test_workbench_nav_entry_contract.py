@@ -23,12 +23,14 @@ from web.routes.workbench.pages import VIEW_TITLES
 
 NAV_INPUTS = ("static/workbench/app/WorkbenchNavigation.js",)
 DESTINATIONS = [
-    ("process", "基础资料"), ("batches", "批次管理"), ("run", "执行排产"),
-    ("analysis", "选择排产方案"), ("trial", "方案试调"), ("gantt", "设备 / 人员 / 批次甘特"),
-    ("field", "现场记录"), ("fieldgantt", "现场实际甘特"), ("review", "执行复盘"),
-    ("reports", "报表中心"), ("calib", "工时定额校准"), ("dashboard", "值班台"),
-    ("basedata", "主数据总览"), ("system", "系统管理"),
+    ("dashboard", "值班台"), ("process", "基础资料"), ("basedata", "主数据总览"),
+    ("batches", "批次管理"), ("run", "执行排产"), ("analysis", "选择排产方案"),
+    ("trial", "方案试调"), ("field", "现场记录"), ("fieldgantt", "现场实际甘特"),
+    ("reports", "报表中心"), ("calib", "工时定额校准"), ("system", "系统管理"),
 ]
+SUPPORTED_VIEWS = {"dashboard", "process", "batches", "run", "analysis", "gantt", "delay", "field",
+                   "fieldgantt", "review", "reports", "calib", "basedata", "system", "trial"}
+ALIASES = {"gantt": "analysis", "delay": "analysis", "review": "reports"}
 
 
 class _WorkbenchMenuParser(HTMLParser):
@@ -71,10 +73,12 @@ def _read(name):
 def test_base_header_mounts_plan_workbench_menu() -> None:
     source = _read("frontend/workbench/app/main.jsx")
     assert '<nav className="sidebar-nav">' in source
-    assert "NAV_GROUPS.map" in source and "group.items.map" in source
+    assert "boot.nav_groups.map" in source and "group.items.map" in source
     assert "{item.label}" in source and "href={href(item.id)}" in source
     assert source.count("<window.WorkbenchCaption.Caption />") == 1
     assert "const NAV_GROUPS" not in source
+    # The plan-center tab strip hides inside 排产历史 and help carries the current view back to the manual.
+    assert "WorkbenchNavigation.historyView(page)" in source and "WorkbenchNavigation.helpUrl(boot, page)" in source
     assert not (REPO_ROOT / "templates/base.html").exists()
 
 
@@ -86,15 +90,131 @@ def test_default_ui_serves_plan_workbench_menu(app_client) -> None:
     assert any(text == "值班台" and href == "/workbench?view=dashboard" for href, text in parser.links)
 
 
-def test_workbench_menu_renders_six_core_destinations(db_env) -> None:
+def test_workbench_menu_renders_approved_groups_without_losing_hidden_views(db_env) -> None:
     app = importlib.import_module("app").create_app()
+    boot = boot_payload(app.test_client().get("/workbench"))
     parser = _WorkbenchMenuParser()
     parser.feed(_menu(app))
-    expected = [("/workbench/trial" if key == "trial" else "/workbench?view=" + key, label)
-                for key, label in DESTINATIONS]
+    items = [item for group in boot["nav_groups"] for item in group["items"]]
+    expected = [("/workbench/trial" if item["id"] == "trial" else "/workbench?view=" + item["id"], item["label"])
+                for item in items]
     assert parser.links == expected
-    assert len(parser.links) == 14
-    assert {"dashboard", "reports", "analysis", "gantt", "field", "review"} <= {key for key, _ in DESTINATIONS}
+    assert len(parser.links) == 12
+    assert [(item["id"], item["label"]) for item in items] == DESTINATIONS
+    assert set(boot["enabled_views"]) == set(boot["titles"]) == SUPPORTED_VIEWS
+    assert boot["view_aliases"] == ALIASES
+
+
+def test_navigation_metadata_preserves_supported_view_contract_and_help(app_client) -> None:
+    from web.routes.workbench.navigation_boot import SUPPORTED_VIEWS as ROUTE_VIEWS
+
+    boot = boot_payload(app_client.get("/workbench"))
+    assert set(boot["enabled_views"]) == set(VIEW_TITLES) == set(ROUTE_VIEWS) == SUPPORTED_VIEWS
+    assert [group["title"] for group in boot["nav_groups"]] == ["值班台", "数据准备", "执行排产", "现场", "统计分析", "系统"]
+    assert [(item["id"], item["label"]) for group in boot["nav_groups"] for item in group["items"]] == DESTINATIONS
+    assert boot["view_aliases"] == ALIASES
+    for group in boot["nav_groups"]:
+        assert len({item["icon"] for item in group["items"]}) == len(group["items"])
+    assert boot["help_url"] == "/scheduler/config/manual"
+    manual = app_client.get(boot["help_url"])
+    assert manual.status_code == 200 and 'aria-label="说明书正文"' in manual.get_data(as_text=True)
+    # The shell appends the current view as src so the manual renders a way back into the workbench.
+    manual = app_client.get(boot["help_url"], query_string={"src": "/workbench?view=analysis"})
+    assert manual.status_code == 200 and 'href="/workbench?view=analysis">返回刚才页面</a>' in manual.get_data(as_text=True)
+
+
+@pytest.mark.parametrize("view", sorted(SUPPORTED_VIEWS))
+def test_each_supported_view_stays_directly_reachable(app_client, view) -> None:
+    path = "/workbench/trial" if view == "trial" else "/workbench?view=" + view
+    boot = boot_payload(app_client.get(path))
+    assert boot["view"] == view
+    assert boot["view_aliases"] == ALIASES
+
+
+@pytest.mark.parametrize("view", sorted(ALIASES))
+def test_hidden_view_urls_keep_explicit_identity_and_context(app_client, view) -> None:
+    context = {"scope": {"plan_ref": "a" * 48}} if view == "review" else {"plan_ref": "a" * 48}
+    navigation = {"version": 1, "view": view, "context": context}
+    query = {"view": view, "nav": json.dumps(navigation)}
+    for _ in range(2):
+        boot = boot_payload(app_client.get("/workbench", query_string=query))
+        assert boot["view"] == view and boot["navigation"] == navigation
+
+
+def test_workbench_header_controls_show_instance_help_and_preference_actions(app_client) -> None:
+    app_client.application.config["WORKBENCH_INSTANCE_LABEL"] = "导航合同测试副本"
+    result = browser_contract("""
+const controls = document.querySelector('.header-controls');
+expect(controls.querySelector('.wb-instance-label').textContent === '导航合同测试副本');
+expect(/^\\/scheduler\\/config\\/manual\\?src=%2Fworkbench%3Fview%3D[a-z]+$/.test(controls.querySelector('a.wb-help-link').getAttribute('href')),
+  'help link must carry the current view as src');
+const theme = Array.from(controls.querySelectorAll('button')).find(button => /切换[深浅]色/.test(button.textContent));
+const density = Array.from(controls.querySelectorAll('button')).find(button => button.textContent === '紧凑表格');
+expect(theme && density, 'Missing preference action');
+const before = document.documentElement.dataset.theme;
+theme.click(); await new Promise(resolve => setTimeout(resolve, 30));
+expect(document.documentElement.dataset.theme !== before, 'Theme action did not change theme');
+expect(theme.textContent.includes(document.documentElement.dataset.theme === 'dark' ? '切换浅色' : '切换深色'));
+const denseBefore = density.getAttribute('aria-pressed');
+density.click(); await new Promise(resolve => setTimeout(resolve, 30));
+expect(density.getAttribute('aria-pressed') !== denseBefore, 'Density action did not change preference');
+expect(document.documentElement.dataset.density === (density.getAttribute('aria-pressed') === 'true' ? 'compact' : 'comfortable'));
+return {theme: document.documentElement.dataset.theme, density: document.documentElement.dataset.density};
+""", app=app_client.application)
+    assert result["theme"] in ("dark", "light") and result["density"] in ("compact", "comfortable")
+
+
+def test_shell_plan_tabs_preserve_explicit_context_and_alias_highlight(app_client) -> None:
+    context = {"plan_ref": "a" * 48, "range_start": "2026-05-06T00:00:00", "range_end": "2026-05-08T00:00:00"}
+    navigation = {"version": 1, "view": "gantt", "context": context}
+    path = "/workbench?" + urlencode({"view": "gantt", "nav": json.dumps(navigation)})
+    result = browser_contract("""
+const initial = JSON.parse(document.getElementById('workbench-boot').textContent), N = window.WorkbenchNavigation;
+expect(document.querySelector('.sidebar-nav [aria-current="page"]').getAttribute('href') === '/workbench?view=analysis');
+expect(document.querySelector('#wb-view-tab-gantt').getAttribute('aria-selected') === 'true');
+const currentTab = document.querySelector('#wb-view-tab-gantt'); currentTab.focus();
+const backShortcut = new KeyboardEvent('keydown', {key: 'ArrowLeft', altKey: true, bubbles: true, cancelable: true});
+expect(currentTab.dispatchEvent(backShortcut), 'Tabs swallowed the browser back shortcut');
+expect(!currentTab.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowLeft', bubbles: true, cancelable: true})));
+expect(document.activeElement.id === 'wb-view-tab-analysis', 'Plain arrow did not move tab focus');
+expect(N.read(initial).view === 'gantt', 'Moving tab focus changed the current scope');
+const tab = document.querySelector('#wb-view-tab-delay'); tab.click();
+for (let i = 0; i < 100 && new URL(location.href).searchParams.get('view') !== 'delay'; i++) await new Promise(resolve => setTimeout(resolve, 10));
+const page = N.read(initial);
+expect(page.view === 'delay' && page.context.plan_ref === initial.navigation.context.plan_ref);
+expect(page.context.range_start === initial.navigation.context.range_start && page.context.range_end === initial.navigation.context.range_end);
+expect(document.querySelector('#wb-view-tab-delay').getAttribute('aria-selected') === 'true');
+return {view: page.view, context: page.context};
+""", app=app_client.application, path=path)
+    assert result["view"] == "delay"
+    assert all(result["context"][key] == value for key, value in context.items())
+
+
+def test_shell_history_guard_retains_real_batch_draft_until_leave_is_confirmed(app_client) -> None:
+    result = browser_contract("""
+const wait = async predicate => { for (let i = 0; i < 300; i++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 10)); } throw new Error('Real batch draft transition timed out'); };
+const button = name => Array.from(document.querySelectorAll('button')).find(node => node.textContent.trim() === name);
+document.querySelector('.sidebar-nav a[href="/workbench?view=batches"]').click();
+await wait(() => button('新增批次') && !button('新增批次').disabled);
+button('新增批次').click();
+await wait(() => document.querySelector('input[aria-label="批次号"]'));
+const field = document.querySelector('input[aria-label="批次号"]');
+Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, '保留批次草稿');
+field.dispatchEvent(new Event('input', {bubbles: true}));
+await wait(() => window.WorkbenchGuards.hasDirty());
+const url = location.href;
+history.back(); await wait(() => button('留在当前页面') && location.href === url);
+expect(field.isConnected && field.value === '保留批次草稿', 'Editor was discarded before approval');
+button('留在当前页面').click(); await wait(() => !button('留在当前页面'));
+expect(location.href === url && field.isConnected && field.value === '保留批次草稿');
+history.back(); await wait(() => button('放弃未保存内容并继续') && location.href === url);
+button('放弃未保存内容并继续').click();
+await wait(() => !field.isConnected && !window.WorkbenchGuards.hasDirty());
+expect(new URL(location.href).searchParams.get('view') !== 'batches', 'Approved history navigation did not finish');
+expect(document.querySelector('.sidebar-nav [aria-current="page"]').getAttribute('href') === '/workbench?view=dashboard');
+return {draftPreservedUntilApproval: true, finalView: 'dashboard'};
+""", app=app_client.application)
+    assert result == {"draftPreservedUntilApproval": True, "finalView": "dashboard"}
 
 
 def test_workbench_menu_preserves_report_workbench_context(db_env) -> None:

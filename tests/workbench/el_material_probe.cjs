@@ -62,7 +62,7 @@ async function main() {
       await page.goto(ready.url + '/workbench'); await page.locator('.sidebar').waitFor();
       await p.click(page.locator('.sidebar').getByText('基础资料', {exact: true}));
       await A.area(page).locator('.hb-tile').first().waitFor();
-      if (theme === 'dark') await p.click(A.button(page, '深色：关'));
+      if (theme === 'dark') await p.click(A.button(page, '切换深色'));
       const stateBefore = p.oracle();
       await A.configure(p, page, data.material_prefix, 2, 25);
       const cases = [

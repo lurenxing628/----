@@ -22,7 +22,10 @@ from web.routes.workbench.trial import register_trial_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
 TRIAL_WIDGET_SOURCES = (
-    "resource-contract.js", "ResourceControls.jsx", "WorkbenchControlStyles.jsx",
+    "WorkbenchFormat.js", "WorkbenchTerms.js", "WorkbenchReferences.jsx", "WorkbenchGuards.js",
+    "resource-contract.js", "ResourceControls.jsx", "WorkbenchGuardHost.jsx", "WorkbenchControlStyles.jsx",
+    "WorkbenchControlBridge.js", "WorkbenchSelectMenu.jsx", "WorkbenchDatePickerModel.js", "WorkbenchDatePicker.jsx",
+    "WorkbenchControls.jsx", "WorkbenchListControls.jsx", "WorkbenchNumberControls.jsx",
     "PointContract.js", "PointGantt.jsx",
     "WorkbenchCaption.jsx", "WorkbenchPageContext.jsx", "TrialContract.js", "TrialAPI.js", "TrialSession.js", "TrialExport.js",
     "TrialControls.jsx", "TrialViewState.js", "TrialCatalog.jsx", "TrialGantt.jsx", "TrialDetails.jsx",

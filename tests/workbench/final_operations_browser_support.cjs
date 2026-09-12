@@ -9,9 +9,12 @@ function support(page, config, report) {
     for (const action_id of Array.isArray(ids) ? ids : [ids]) report.actions.push({ action_id, kind: 'K', response_start: before, response_end: report.responses.length });
     return value;
   }
-  async function request(suffix, run, status = 200, method = 'GET') {
+  async function request(suffix, run, status = 200, method = 'GET', expectedQuery = null) {
     // An older in-flight refresh can respond after this action has cancelled it.
-    const response = page.waitForRequest(r => new URL(r.url()).pathname === base + suffix && r.method() === method).then(r => r.response());
+    const response = page.waitForRequest(r => {
+      const url = new URL(r.url());
+      return url.pathname === base + suffix && r.method() === method && (!expectedQuery || Object.entries(expectedQuery).every(([key, value]) => (url.searchParams.get(key) || '') === String(value)));
+    }).then(r => r.response());
     const [result] = await Promise.all([response, run()]);
     assert(result, 'The action request ended without a response');
     assert.equal(result.status(), status, await result.text());
@@ -42,7 +45,19 @@ function support(page, config, report) {
     await page.locator('[data-dashboard-workspace][data-ready=true]').waitFor();
   }
   async function category(label) {
-    return request('/dashboard', () => page.locator('.dy-rail').getByRole('button', { name: new RegExp('^' + label) }).click());
+    const rail = page.locator('.dy-rail');
+    if (await rail.isVisible()) return request('/dashboard', () => rail.getByRole('button', { name: new RegExp('^' + label) }).click());
+    const picker = page.getByLabel('异常类别', { exact: true });
+    const value = await picker.locator('option').filter({ hasText: new RegExp('^' + label + '$') }).getAttribute('value');
+    // Native selects do not dispatch change for the current option; explicitly leave and return.
+    if (await picker.inputValue() === value) await request('/dashboard', () => select('异常类别', label === '全部风险' ? '交期风险' : '全部风险'));
+    return request('/dashboard', () => select('异常类别', label));
+  }
+  async function revealReference(scope, value) {
+    const detail = scope.locator('details.wb-ref:visible').filter({ hasText: value });
+    assert.equal(await detail.count(), 1, 'Expected one diagnostic disclosure for the original reference');
+    if (await detail.getAttribute('open') === null) await detail.locator('summary').click();
+    await detail.getByText(value, { exact: true }).waitFor();
   }
   async function detail(kind, label) {
     await category(label);
@@ -52,6 +67,6 @@ function support(page, config, report) {
     await page.locator('[data-detail-ref="' + ref + '"]').waitFor();
     return result.data.item;
   }
-  return { page, config, report, mark, request, select, shot, download, dashboard, category, detail, assert };
+  return { page, config, report, mark, request, select, shot, download, dashboard, category, detail, revealReference, assert };
 }
 module.exports = { support };

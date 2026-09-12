@@ -41,7 +41,7 @@ async function calendar(page,state,helpers){
     const conflict=await post(page,'/calendar/upsert',()=>page.getByRole('dialog').getByRole('button',{name:'保存配置',exact:true}).click(),409);
     assert.equal(conflict.committed,false);assert.equal(conflict.error.code,'constraint_conflict');assert(conflict.error.message.includes('班次起止'));
     recordExpected({path:'/api/workbench/v1/calendar/upsert',status:409,code:conflict.error.code,kind:'retained-shift-window-protected'});
-    await close(page);await page.getByRole('button',{name:/^2026-09-10 单独配置/}).click();
+    await close(page,{discard:true});await page.getByRole('button',{name:/^2026-09-10 单独配置/}).click();
     assert.equal(await page.getByRole('dialog').getByLabel('可排工时（小时）',{exact:true}).inputValue(),'8.4');
     await page.getByRole('button',{name:'清除配置',exact:true}).click();await receipt(page,'/calendar/delete','确认清除，恢复默认');await close(page);
     await page.getByRole('button',{name:/^2026-09-10 默认规则/}).click();await page.getByRole('dialog').getByRole('button',{name:'休息日',exact:true}).click();
@@ -103,7 +103,7 @@ async function catalog(page,state,helpers){
   }
 }
 async function files(page,state,helpers,root,report){
-  const {run,close,type,rail,search,shot}=helpers;
+  const {run,close,type,rail,search,shot,empty}=helpers;
   const code='UI-FILE-'+state;
   await rail(page,'物料');await search(page,'');await page.getByRole('button',{name:'MAT-001',exact:true}).waitFor();
   await run(page,state,'material-import-preview-and-confirm',async()=>{
@@ -129,7 +129,7 @@ async function files(page,state,helpers,root,report){
     await page.getByRole('checkbox',{name:'已核对完整删除范围及明细，确认删除这些物料。',exact:true}).check();
     const saved=await receipt(page,'/entities/material/bulk-confirm','确认删除');assert.equal(saved.data.deleted_count,1);
     await page.getByRole('dialog').getByRole('button',{name:'完成',exact:true}).click();await page.getByRole('dialog').waitFor({state:'detached'});
-    await page.getByText('当前条件下没有资料。',{exact:true}).waitFor();
+    await empty(page);
   });
 }
 module.exports={calendar,catalog,files};

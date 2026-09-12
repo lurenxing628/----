@@ -131,12 +131,20 @@ class FoundationDependencyScopeTest(unittest.TestCase):
         self.assertEqual(self.records[self.react_dom]['dependency_symbols'], [{'path': self.react, 'symbols': ['React']}])
         resource = self.records['workbench/app/ResourceControls.js']['dependency_symbols']
         self.assertEqual(resource, sorted([
+            {'path': 'workbench/app/WorkbenchGuards.js', 'symbols': ['WorkbenchGuards']},
+            {'path': 'workbench/app/WorkbenchReferences.js', 'symbols': ['WorkbenchError']},
             {'path': 'workbench/app/resource-contract.js', 'symbols': ['APSResourceContract']},
             {'path': 'workbench/app/resource-session.js', 'symbols': ['APSResourceSession']},
             {'path': self.foundation, 'symbols': ['APSFieldReports', 'APSWorkbenchUI', 'Ico', 'SMIcon']},
             {'path': self.react, 'symbols': ['React']},
         ], key=lambda row: row['path']))
-        for name in ('main', 'ResourceTableFilter', 'WorkbenchControls', 'WorkbenchNumberControls', 'ProcessSourceEditor'):
+        # The guard core precedes ResourceControls; only its separate dialog host consumes controls.
+        self.assertEqual(self.records['workbench/app/WorkbenchGuards.js']['dependency_symbols'],
+                         [{'path': self.react, 'symbols': ['React']}])
+        self.assertIn({'path': 'workbench/app/ResourceControls.js', 'symbols': ['ResourceControls']},
+                      self.records['workbench/app/WorkbenchGuardHost.js']['dependency_symbols'])
+        for name in ('main', 'ResourceTableFilter', 'WorkbenchControls', 'WorkbenchNumberControls',
+                     'ProcessSourceEditor', 'WorkbenchGuardHost'):
             with self.subTest(consumer=name):
                 symbols = self.records['workbench/app/' + name + '.js']['dependency_symbols']
                 self.assertIn({'path': self.react_dom, 'symbols': ['ReactDOM']}, symbols)

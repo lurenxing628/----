@@ -62,7 +62,7 @@ def test_fg_plan_workspace_readonly_actions(trial_case, fg_assets, tmp_path, sou
                 "cases": cases, "output": str(tmp_path)})
     report = json.loads((tmp_path / "fg-plan-actions-result.json").read_text(encoding="utf-8"))
     assert report["browser"].startswith("109.")
-    assert len(report["cases"]) == 16
+    assert len(report["cases"]) == 32
     assert report["writes"] == report["errors"] == report["external"] == []
     assert report["global_build"] is False
     assert report["source_sha256"] == hashlib.sha256(

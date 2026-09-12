@@ -5,11 +5,15 @@ const { chromium } = require('playwright'), { compile } = require('../../scripts
 const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 if (!output) throw new Error('Pass a temporary artifact directory');
 fs.mkdirSync(output, { recursive: true });
-const files = ['resource-api.js', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceTableFilterModel.js', 'ResourceTables.jsx',
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'resource-api.js', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'ResourceTableFilterModel.js', 'ResourceTables.jsx',
   'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceMaterialContract.js', 'ResourceMaterialPreview.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx',
+  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',
   'ProcessContract.js', 'ProcessActionContract.js', 'ProcessActionPreview.jsx', 'ProcessFileContract.js', 'ProcessFilePreview.jsx', 'ProcessFileActions.jsx', 'ProcessControls.jsx',
   'ProcessStageEditor.jsx', 'ProcessSourceEditor.jsx', 'ProcessHoursEditor.jsx', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx'];
+const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {
+  const file = 'frontend/workbench/app/styles/' + name; return { path: file, code: fs.readFileSync(path.join(root, file), 'utf8') };
+});
+const workspaceCSS = styleSources.map(row => row.code).join('\n');
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((item, index) => ['/fixture/' + files[index] + '.js', item.code]));
@@ -60,7 +64,7 @@ function adapter(){const base=APSResourceAPI.create('process');return {...base,
   lookup:async key=>{f.lookups.push(key);return f.allowLookup?copy(f.receipt):{ok:true,state:'not_recorded',receipt:null,may_be_in_flight:true};}
 };}
 function Harness(){const [ref,setRef]=React.useState(R(1)),[opened,setOpen]=React.useState(true);window.switchPart=setRef;
-  return React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),
+  return React.createElement(React.Fragment,null,React.createElement(WorkbenchGuardHost),React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),
     opened?React.createElement(ProcessDetail,{adapter:f.adapter,partRef:ref,onClose:()=>{f.closed++;setOpen(false);},onCommitted:r=>f.committed.push(r)}):React.createElement('p',null,'详情已关闭'));}
 window.mountFixture=(spec={},restore=false)=>{if(viewRoot)viewRoot.unmount();if(!restore){sessionStorage.removeItem('aps_workbench_resource_pending_v1_process');sessionStorage.removeItem('pd-server');}
   const stored=restore&&JSON.parse(sessionStorage.getItem('pd-server')||'null');f=window.fixture={spec:stored?stored.spec:spec,part:stored?stored.part:part(spec.stage||'ready'),revision:stored?stored.revision:1,receipt:stored?stored.receipt:null,commands:stored?stored.commands:[],reads:[],lookups:[],committed:[],closed:0};
@@ -71,7 +75,7 @@ const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + '</head><body class="aps-workbench"><div id="fixture-root"></div>' +
   staticScripts.map(file => '<script src="/static/' + file + '"></script>').join('') + [...scripts.keys()].map(file => '<script src="' + file + '"></script>').join('') + '<script>' + fixture + '</script></body></html>';
 const server = http.createServer((req, res) => {const name = new URL(req.url, 'http://fixture').pathname;
-  if(name === '/') {res.setHeader('Content-Type','text/html;charset=utf-8');res.end(html);}
+  if(name === '/') {res.setHeader('Content-Type','text/html;charset=utf-8');res.end(html.replace('</head>', '<style>' + workspaceCSS + '</style></head>'));}
   else if(scripts.has(name)) {res.setHeader('Content-Type','application/javascript');res.end(scripts.get(name));}
   else if(assets.has(name)) {const asset=assets.get(name);res.setHeader('Content-Type',asset.mime);res.end(asset.bytes);}
   else {res.writeHead(404);res.end();}});

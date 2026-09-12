@@ -57,7 +57,7 @@ async function main() {
       const context = await browser.newContext({viewport: {width, height}, timezoneId: 'Asia/Shanghai', acceptDownloads: true});
       page = await context.newPage(); p.attach(page, width + 'x' + height + '-' + theme);
       const first = await open();
-      if (theme === 'dark') await p.click(b(page, '深色：关'));
+      if (theme === 'dark') await p.click(b(page, '切换深色'));
       assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), theme);
       if (phase === 'inspect') {
         fs.writeFileSync(ready.root + '/inspect-' + width + '-' + theme + '.txt', await page.locator('body').innerText());

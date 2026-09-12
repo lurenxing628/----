@@ -48,7 +48,9 @@ async function outsourcing(h) {
   await request('/outsourcing/receipts', () => select('外协登记筛选', '全部登记'));
   async function edit() {
     const region = page.locator('[data-outsourcing-detail="' + ref + '"]');
-    if (!await region.count()) await request('/outsourcing/receipts/' + ref + '/history', () => page.locator('[data-outsourcing-ref="' + ref + '"]').getByRole('button').click());
+    const row = page.locator('[data-outsourcing-ref="' + ref + '"]'); await row.waitFor();
+    if (await row.getAttribute('data-selected') !== 'true') await request('/outsourcing/receipts/' + ref + '/history', () => row.getByRole('button').click());
+    await region.waitFor();
     await region.getByRole('button', { name: '核实 / 更正登记', exact: true }).click();
     await dialog().getByLabel('外协声明人', { exact: true }).fill('F receiving clerk');
   }
@@ -61,7 +63,7 @@ async function outsourcing(h) {
   await shot('outsourcing-returned');
   await page.reload(); await category('外协回厂');
   await request('/outsourcing/receipts/' + ref + '/history', () => page.locator('[data-outsourcing-ref="' + ref + '"]').getByRole('button').click());
-  assert.equal(await page.locator('[data-fact-ref]').count(), 3); await page.locator('[data-fact-ref]').first().locator('summary').click();
+  assert.equal(await page.locator('[data-fact-ref]').count(), 3); await page.locator('[data-fact-ref]').first().locator(':scope > summary').click();
   await mark('WBP-DASH-009.tracking-basis', async () => { await page.locator('[data-outsourcing-detail]').waitFor(); });
   await shot('outsourcing-history');
   report.outsourcing_ref = ref;

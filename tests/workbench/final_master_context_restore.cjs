@@ -159,7 +159,7 @@ async function main() {
     for (const [width, height] of [[1920, 1080], [1392, 924]]) for (const theme of ['light', 'dark']) {
       const context = await browser.newContext({viewport: {width, height}, timezoneId: 'Asia/Shanghai'});
       page = await context.newPage(); p.attach(page, width + 'x' + height + '-' + theme); await open('batches');
-      if (theme === 'dark') await p.click(b(page, '深色：关'));
+      if (theme === 'dark') await p.click(b(page, '切换深色'));
       const scenarios = [['resource', resource], ['process', processFlow], ['batch', batches], ['calendar', calendar], ['master-overview', overview]];
       const selected = process.env.FINAL_MASTER_CONTEXT_CASES ? process.env.FINAL_MASTER_CONTEXT_CASES.split(',') : scenarios.map(row => row[0]);
       assert(selected.length && new Set(selected).size === selected.length && selected.every(name => scenarios.some(row => row[0] === name)));

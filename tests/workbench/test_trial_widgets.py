@@ -119,7 +119,8 @@ def test_trial_widgets_real_browser(probe_scope):
             assert item["task_count"] == (1000 if item["entry"] == "1000-tasks-last-page" else 5)
         assert len(fields) == 9 and all(item["columns"] == 22 and item["every_cell_matches_dto"] for item in fields)
         (output / "csv-field-proof.json").write_text(json.dumps(fields, ensure_ascii=False, indent=2), encoding="utf-8")
-    assert [Path(item["path"]).name for item in report["sources"]] == list(TRIAL_WIDGET_SOURCES)
+    style_names = json.loads((root / "scripts/workbench/build-order.json").read_text(encoding="utf-8"))["styles"]
+    assert [Path(item["path"]).name for item in report["sources"]] == list(TRIAL_WIDGET_SOURCES) + style_names
     assert TRIAL_WIDGET_SOURCES.index("TrialContract.js") < TRIAL_WIDGET_SOURCES.index("TrialExport.js") < TRIAL_WIDGET_SOURCES.index("TrialControls.jsx")
     for item in report["sources"]:
         assert hashlib.sha256((root / item["path"]).read_bytes()).hexdigest() == item["sha256"]

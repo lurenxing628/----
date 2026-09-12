@@ -1,14 +1,14 @@
 (function () {
   'use strict';
   let mounted;
-  function Host({ spec, data }) {
+  function Host({ spec, data, asOf }) {
     const [selected, setSelected] = React.useState(null), [query, setQuery] = React.useState('');
     React.useLayoutEffect(() => { document.documentElement.dataset.theme = spec.theme; }, []);
-    window.pieceHost = { data, selected, query, kind: spec.kind };
+    window.pieceHost = { data, selected, query, kind: spec.kind, asOf };
     const selectPlan = (task, before) => setSelected({ task, before });
     let body;
     if (spec.kind === 'plan' || spec.kind === 'old') body = <div className="plana plan-workspace"><window.PlanLayout /><div className="plan-main"><div>
-      <window.PlanGantt data={data} selected={selected} onSelect={selectPlan} query={query} onQuery={setQuery} /></div>
+      <window.PlanGantt data={data} asOf={asOf} selected={selected} onSelect={selectPlan} query={query} onQuery={setQuery} /></div>
       <window.PlanDetailsUI.TaskDetail data={data} selected={selected} onSelect={selectPlan} /></div></div>;
     if (spec.kind === 'candidate') body = <div className="plana run-candidate-workspace"><window.RunCandidateControls.Styles />
       <div className="rc-heading"><h2>候选排产结果</h2><input type="search" aria-label="搜索候选工序" value={query} onChange={e => setQuery(e.target.value)} /></div>
@@ -29,7 +29,7 @@
     if (spec.kind === 'candidate') window.RunCandidateAPI.workspace(payload, payload.data.candidate.candidate_ref);
     if (mounted) mounted.unmount();
     mounted = ReactDOM.createRoot(document.getElementById('piece-root'));
-    mounted.render(<Host spec={spec} data={payload.data} />);
+    mounted.render(<Host spec={spec} data={payload.data} asOf={payload.meta.as_of} />);
     return payload;
   };
 })();

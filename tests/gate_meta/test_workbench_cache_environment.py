@@ -16,18 +16,18 @@ from tests.gate_meta.workbench_cache_environment_support import (
     stub_execution_probes,
 )
 from tools import long_gate_fingerprint as fingerprint_mod
-from tools import long_gate_manifest, test_registry, test_registry_groups_workbench
+from tools import long_gate_manifest, test_registry
 from tools.long_gate_cache import decide_failure_reuse, decide_reuse, write_failure
 from tools.long_gate_fingerprint import RUNTIME_FINGERPRINT_KEYS, fingerprint_entry, fingerprint_environment
 
 ALL_ENTRY_IDS = ("pytest_collect_all", "full_test_debt", "startup_runtime_regressions", "required_regressions")
 ALL_GROUPS = (
     *test_registry.iter_required_regression_groups(),
-    *test_registry.iter_required_regression_groups(test_registry_groups_workbench.WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS),
+    *test_registry.iter_required_regression_groups(test_registry.SUPPLEMENTAL_REGRESSION_GROUPS),
 )
 REGISTERED_ENV_KEYS = sorted({key for group in ALL_GROUPS for key in group["env_keys"]} - RUNTIME_FINGERPRINT_KEYS)
 BROWSER_ONLY_KEYS = sorted(
-    {key for group in test_registry_groups_workbench.WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS for key in group["env_keys"]}
+    {key for group in test_registry.SUPPLEMENTAL_REGRESSION_GROUPS for key in group["env_keys"]}
     - {key for group in test_registry.iter_required_regression_groups() for key in group["env_keys"]}
 )
 
@@ -87,13 +87,15 @@ def test_unrelated_values_are_not_serialized_or_hashed(tmp_path, monkeypatch, en
 @pytest.mark.parametrize("entry_id", ("startup_runtime_regressions", "required_regressions"))
 def test_browser_only_inputs_do_not_promote_required_or_startup(tmp_path, monkeypatch, entry_id):
     entry = real_entries(tmp_path)[entry_id]
-    assert BROWSER_ONLY_KEYS
-    assert not set(BROWSER_ONLY_KEYS).intersection(entry["env_keys"])
+    # Startup already observes this process guard independently of browser metadata.
+    browser_only = set(BROWSER_ONLY_KEYS) - ({"WERKZEUG_RUN_MAIN"} if entry_id == "startup_runtime_regressions" else set())
+    assert browser_only
+    assert not browser_only.intersection(entry["env_keys"])
     before = fingerprint_entry(entry, str(tmp_path))
-    for key in BROWSER_ONLY_KEYS:
+    for key in browser_only:
         monkeypatch.setenv(key, "1")
     assert fingerprint_entry(entry, str(tmp_path))["hash"] == before["hash"]
-    supplemental_targets = {path for group in test_registry_groups_workbench.WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS
+    supplemental_targets = {path for group in test_registry.SUPPLEMENTAL_REGRESSION_GROUPS
                             for path in group["target_paths"]}
     assert not supplemental_targets.intersection(entry["args"])
     if entry_id == "required_regressions":
@@ -113,8 +115,8 @@ def test_registry_metadata_is_the_only_new_environment_source(tmp_path, monkeypa
     before = real_entries(tmp_path)
     extra = {"group_id": "future_supplemental", "target_paths": ["tests/workbench/test_future.py"],
              "env_keys": ["FUTURE_BROWSER_MODE"]}
-    monkeypatch.setattr(test_registry_groups_workbench, "WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS", (
-        *test_registry_groups_workbench.WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS, extra,
+    monkeypatch.setattr(test_registry, "SUPPLEMENTAL_REGRESSION_GROUPS", (
+        *test_registry.SUPPLEMENTAL_REGRESSION_GROUPS, extra,
     ))
     after = real_entries(tmp_path)
     for entry_id in ALL_ENTRY_IDS:
@@ -127,12 +129,29 @@ def test_registry_metadata_is_the_only_new_environment_source(tmp_path, monkeypa
 def test_startup_environment_uses_only_matching_registry_targets(tmp_path, monkeypatch):
     extra = {"group_id": "startup_environment", "target_paths": test_registry.iter_startup_regressions()[:1],
              "env_keys": ["STARTUP_TEST_MODE"]}
-    monkeypatch.setattr(test_registry_groups_workbench, "WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS", (extra,))
+    unmatched = {"group_id": "unmatched_environment", "target_paths": ["tests/workbench/test_future.py"],
+                 "env_keys": ["UNMATCHED_BROWSER_MODE"]}
+    monkeypatch.setattr(test_registry, "SUPPLEMENTAL_REGRESSION_GROUPS", (extra, unmatched))
     entry = real_entries(tmp_path)["startup_runtime_regressions"]
     assert "STARTUP_TEST_MODE" in entry["env_keys"]
+    assert "UNMATCHED_BROWSER_MODE" not in entry["env_keys"]
     before = fingerprint_entry(entry, str(tmp_path))
+    monkeypatch.setenv("UNMATCHED_BROWSER_MODE", "changed")
+    assert fingerprint_entry(entry, str(tmp_path))["hash"] == before["hash"]
     monkeypatch.setenv("STARTUP_TEST_MODE", "changed")
     assert fingerprint_entry(entry, str(tmp_path))["hash"] != before["hash"]
+
+
+def test_startup_process_guard_remains_a_shared_environment_input(tmp_path, monkeypatch):
+    entries = real_entries(tmp_path)
+    for entry_id in ("startup_runtime_regressions", "required_regressions"):
+        entry = entries[entry_id]
+        observes_guard = entry_id == "startup_runtime_regressions"
+        assert ("WERKZEUG_RUN_MAIN" in entry["env_keys"]) == observes_guard
+        monkeypatch.setenv("WERKZEUG_RUN_MAIN", "before")
+        before = fingerprint_entry(entry, str(tmp_path))
+        monkeypatch.setenv("WERKZEUG_RUN_MAIN", "after")
+        assert (fingerprint_entry(entry, str(tmp_path))["hash"] != before["hash"]) == observes_guard
 
 
 def test_collect_does_not_run_execution_probes(tmp_path, monkeypatch):
@@ -222,7 +241,10 @@ def test_legacy_full_debt_fingerprints_only_unoverridden_shard_inputs(tmp_path, 
 
 
 @pytest.mark.parametrize("entry_id", ("pytest_collect_all", "full_test_debt", "startup_runtime_regressions"))
-@pytest.mark.parametrize("path", ("tools/long_gate_manifest_environment.py", "tools/test_registry_groups_workbench.py"))
+@pytest.mark.parametrize("path", (
+    "tools/long_gate_manifest_environment.py", "tools/test_registry_groups_workbench.py",
+    "tools/test_registry.py", "tools/test_registry_workbench_ui.py",
+))
 def test_environment_policy_source_changes_invalidate_fingerprint(tmp_path, entry_id, path):
     entry = real_entries(tmp_path)[entry_id]
     source = tmp_path / path

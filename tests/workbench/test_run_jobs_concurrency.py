@@ -65,14 +65,14 @@ def test_two_workers_and_legacy_run_share_one_lock(job_case, monkeypatch):
     ref = case.accept()["run_ref"]
     entered, release = threading.Event(), threading.Event()
     calls = []
-    real_compute = run_worker.compute_prepared_candidate_run
+    real_compute = run_worker.compute_candidate_run
 
-    def delayed(conn, prepared):
+    def delayed(conn, settings, projections):
         calls.append(ref)
         assert conn.execute("PRAGMA query_only").fetchone()[0] == 1
         entered.set()
         assert release.wait(timeout=15)
-        return real_compute(conn, prepared)
+        return real_compute(conn, settings, projections)
 
     def execute():
         conn = connection(case.path)
@@ -81,7 +81,7 @@ def test_two_workers_and_legacy_run_share_one_lock(job_case, monkeypatch):
         finally:
             conn.close()
 
-    monkeypatch.setattr(run_worker, "compute_prepared_candidate_run", delayed)
+    monkeypatch.setattr(run_worker, "compute_candidate_run", delayed)
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(execute)
         try:
@@ -106,19 +106,19 @@ def test_calculation_allows_other_writer_and_rejects_late_fact_drift(job_case, m
     case = job_case
     case.conn.execute("PRAGMA journal_mode=" + journal_mode)
     ref = case.accept()["run_ref"]
-    compute = run_worker.compute_prepared_candidate_run
+    compute = run_worker.compute_candidate_run
     changes = []
 
-    def concurrent_write(conn, prepared):
+    def concurrent_write(conn, settings, projections):
         assert conn is not case.conn and not case.conn.in_transaction
         # Even a rollback-journal writer commits: the original DB has no pinned reader.
         with connection(case.path) as writer:
             writer.execute("UPDATE Machines SET name='changed during actual computation'")
             writer.commit()
         changes.append(True)
-        return compute(conn, prepared)
+        return compute(conn, settings, projections)
 
-    monkeypatch.setattr(run_worker, "compute_prepared_candidate_run", concurrent_write)
+    monkeypatch.setattr(run_worker, "compute_candidate_run", concurrent_write)
     with pytest.raises(WorkbenchCommandRejected) as error:
         run_worker.WorkbenchRunWorker(case.conn).execute(ref)
     assert error.value.code == "snapshot_stale" and changes == [True]
@@ -131,10 +131,10 @@ def test_actual_maintenance_backup_and_reads_respond_during_computation(job_case
     case = job_case
     case.conn.execute("PRAGMA journal_mode=DELETE")
     ref = case.accept()["run_ref"]
-    compute = run_worker.compute_prepared_candidate_run
+    compute = run_worker.compute_candidate_run
     backup_paths = []
 
-    def maintenance_while_computing(snapshot, prepared):
+    def maintenance_while_computing(snapshot, settings, projections):
         assert snapshot is not case.conn and not case.conn.in_transaction
         path = BackupManager(str(case.path), str(tmp_path / "maintenance-backups")).backup("running")
         backup_paths.append(path)
@@ -142,9 +142,9 @@ def test_actual_maintenance_backup_and_reads_respond_during_computation(job_case
             assert service(backup).get(ref)["state"] == "running"
             assert backup.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert service(case.conn).get(ref)["state"] == "running"
-        return compute(snapshot, prepared)
+        return compute(snapshot, settings, projections)
 
-    monkeypatch.setattr(run_worker, "compute_prepared_candidate_run", maintenance_while_computing)
+    monkeypatch.setattr(run_worker, "compute_candidate_run", maintenance_while_computing)
     result = run_worker.WorkbenchRunWorker(case.conn).execute(ref)
     assert result["state"] == "complete" and len(backup_paths) == 1
 

@@ -6,14 +6,18 @@ const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 if (!output) throw new Error('Pass a temporary artifact directory');
 fs.mkdirSync(output, { recursive: true });
-const files = ['WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceTableFilterModel.js',
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'ResourceTableFilterModel.js',
   'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx', 'ResourceDetailRelations.jsx', 'ResourceTables.jsx', 'ResourceForms.jsx',
   'ResourceMaterialContract.js', 'ResourceMaterialPreview.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
-  'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx',
+  'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',
   'ProcessContract.js', 'ProcessReadView.js', 'ProcessActionContract.js', 'ProcessActionPreview.jsx', 'ProcessCollectionActions.jsx',
   'ProcessFileContract.js', 'ProcessFilePreview.jsx', 'ProcessFileActions.jsx', 'ProcessControls.jsx',
   'ProcessStageEditor.jsx', 'ProcessSourceEditor.jsx', 'ProcessHoursEditor.jsx', 'ProcessOpTypeCreate.jsx', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx', 'ProcessWorkspace.jsx'];
+const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {
+  const file = 'frontend/workbench/app/styles/' + name; return { path: file, code: fs.readFileSync(path.join(root, file), 'utf8') };
+});
+const workspaceCSS = styleSources.map(row => row.code).join('\n');
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((item, index) => ['/fixture/' + files[index] + '.js', item.code]));
@@ -79,16 +83,16 @@ function resourceAdapter(){const f=fixtureState;return {list:async(kind,scope)=>
   command:async(kind,action,id,body)=>{f.resourceCommands.push({kind,action,ref:id,body:copy(body)});assertFixture(kind==='op_type'&&action==='create'&&body.write_token==='RESOURCE-CREATE','independent real create_context required');const row=resource(500+f.created.length,body.input.label,body.input.fields.category);f.created.push(row);f.revision++;return {ok:true,result:'committed',receipt_ref:'resource-receipt-'+f.created.length,data:{entity_ref:row.ref},warnings:[]};},
   readPending:()=>null,savePending:()=>{},clearPending:()=>{},lookup:async()=>({state:'not_recorded'})};}
 let renderRoot;
-function Harness(){const adapter=React.useMemo(()=>{const a=makeAdapter();a.resourceAdapter=resourceAdapter();return a;},[]);return React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),React.createElement('section',{className:'plana',style:{padding:16}},React.createElement(ProcessWorkspace,{adapter,onCommitted:r=>fixtureState.committed.push(r)})));}
+function Harness(){const adapter=React.useMemo(()=>{const a=makeAdapter();a.resourceAdapter=resourceAdapter();return a;},[]);return React.createElement(React.Fragment,null,React.createElement(WorkbenchGuardHost),React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),React.createElement('section',{className:'plana',style:{padding:16}},React.createElement(ProcessWorkspace,{adapter,onCommitted:r=>fixtureState.committed.push(r)})));}
 window.mountFixture=(spec={},restore=false)=>{if(renderRoot)renderRoot.unmount();if(!restore){sessionStorage.removeItem('stage-pending');sessionStorage.removeItem('stage-server');}const stored=restore&&JSON.parse(sessionStorage.getItem('stage-server')||'null');window.fixtureState={spec,revision:stored?stored.revision:1,part:stored?stored.part:record(spec),receipts:stored?stored.receipts:{},tokens:{},commands:[],resourceCommands:[],reads:[],lookups:[],committed:[],created:[]};if(spec.recoverReadRace)sessionStorage.setItem('stage-pending',JSON.stringify({kind:'process',action:'source_confirm',ref:ref(1),request_key:'resource-'+ref(999),input:{}}));renderRoot=ReactDOM.createRoot(document.getElementById('fixture-root'));renderRoot.render(React.createElement(Harness));};
 if(sessionStorage.getItem('stage-pending'))mountFixture({pending:true},true);
 `;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<link rel="icon" href="/static/' + manifest.icon + '"><script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
   '</head><body class="aps-workbench"><div id="fixture-root"></div>' + staticScripts.map(file => '<script src="/static/' + file + '"></script>').join('') + Array.from(scripts.keys(), file => '<script src="' + file + '"></script>').join('') + '<script>' + fixture + '</script></body></html>';
-const server = http.createServer((req, res) => {const name = new URL(req.url, 'http://fixture').pathname;if (name === '/') {res.setHeader('Content-Type', 'text/html;charset=utf-8');res.end(html);return;}if (scripts.has(name)) {res.setHeader('Content-Type', 'application/javascript');res.end(scripts.get(name));return;}const asset = assets.get(name.slice('/static/'.length));if (!name.startsWith('/static/') || !asset) {res.writeHead(404);res.end();return;}res.setHeader('Content-Type', asset.mime);res.end(asset.bytes);});
+const server = http.createServer((req, res) => {const name = new URL(req.url, 'http://fixture').pathname;if (name === '/') {res.setHeader('Content-Type', 'text/html;charset=utf-8');res.end(html.replace('</head>', '<style>' + workspaceCSS + '</style></head>'));return;}if (scripts.has(name)) {res.setHeader('Content-Type', 'application/javascript');res.end(scripts.get(name));return;}const asset = assets.get(name.slice('/static/'.length));if (!name.startsWith('/static/') || !asset) {res.writeHead(404);res.end();return;}res.setHeader('Content-Type', asset.mime);res.end(asset.bytes);});
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');
-const report = { scope: 'process-stage-component-mock', production_persistence_tested: false, compile: { target: compiled.target, global_build: false }, sources: sources.map(row => ({ path: row.path, sha256: sha(row.code) })),
+const report = { scope: 'process-stage-component-mock', production_persistence_tested: false, compile: { target: compiled.target, global_build: false }, sources: sources.concat(styleSources).map(row => ({ path: row.path, sha256: sha(row.code) })),
   probes: [__filename, path.join(__dirname, 'test_process_stage_widgets.py')].map(file => ({ path: path.relative(root, file), sha256: sha(fs.readFileSync(file)) })),
   cases: [], screenshots: [], errors: [], external: [] };
 let page, variant;
@@ -140,8 +144,9 @@ async function cases() {
     await button('关闭详情').click();await button('继续编辑').click();assert.equal(await unit.inputValue(),'8.5');await button('关闭详情').click();await button('放弃草稿并关闭').click();assert.equal(await page.getByRole('dialog').count(),0);
   });
   await caseOf('hours-blank-zero-positive-and-merged-total', async () => {
-    const times=await page.evaluate(()=>[null,'invalid-time','2026-09-09T13:21:16.397888Z','2026-09-09T15:00:00'].map(window.ProcessStageEditor.confirmationTime));
-    assert.deepEqual(times,['未填写','时间格式待核对','2026-09-09 21:21:16','2026-09-09 15:00:00']);
+    const times=await page.evaluate(()=>[null,'2026-09-09T13:21:16.397888Z','2026-09-09T15:00:00'].map(window.ProcessStageEditor.confirmationTime));
+    assert.deepEqual(times,['未填写','2026-09-09 21:21:16','2026-09-09 15:00:00']);
+    assert(await page.evaluate(() => { try { ProcessStageEditor.confirmationTime('invalid-time'); return false; } catch(error) { return error instanceof TypeError; } }));
     await mount({stage:'hours',blank:true,zero:true});await open();await check('确认本页已核对工时').check();await button('保存工时').click();await page.getByText(/空值不能按 0 保存/).waitFor();assert.equal(await page.evaluate(()=>fixtureState.commands.length),0);
     await page.getByRole('spinbutton',{name:'工序 5 换型工时',exact:true}).fill('0');await check('确认本页已核对工时').check();await button('保存工时').click();await page.getByText('单件工时为 0，需要明确勾选复核。',{exact:true}).waitFor();
     await page.getByRole('spinbutton',{name:'工序 10 外协周期',exact:true}).fill('0');await check('确认本页已核对工时').check();await check('已复核单件工时为0').check();await button('保存工时').click();await page.getByText('工序 10 外协周期必须填写大于 0 的有限数。',{exact:true}).waitFor();

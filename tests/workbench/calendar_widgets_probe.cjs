@@ -11,12 +11,16 @@ if (!output) throw new Error('Pass a fresh artifact directory');
 fs.mkdirSync(output, { recursive: true });
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
 const records = new Map(manifest.files.map(item => [item.path, { ...item, content: fs.readFileSync(path.join(root, 'static', item.path)) }]));
-const files = ['resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceForms.jsx',
+const files = ['resource-contract.js', 'resource-session.js', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'ResourceForms.jsx',
+  'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchFormat.js', 'WorkbenchReferences.jsx',
   'CalendarContract.js', 'CalendarFields.jsx', 'CalendarDayDialog.jsx', 'CalendarRangeDialog.jsx', 'ResourceCalendar.jsx'];
+const styleSources = ['00-tokens.css', '21-table-frame.css', '22-shared-controls.css', '31-batches-resources.css', '32-calendar-outsourcing.css'].map(name =>
+  ({ name: 'styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
   check_combined: true, sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') })) });
 fs.writeFileSync(path.join(output, 'source-hashes.json'), JSON.stringify(files.map(name => ({ name,
-  sha256: require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(root, 'frontend/workbench/app', name))).digest('hex') })), null, 2));
+  sha256: require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(root, 'frontend/workbench/app', name))).digest('hex') })).concat(styleSources.map(item =>
+  ({ name: item.name, sha256: require('node:crypto').createHash('sha256').update(item.code).digest('hex') }))), null, 2));
 const python = String.raw`
 import importlib, json, os, signal, sys, tempfile, threading
 from pathlib import Path
@@ -96,10 +100,10 @@ const adapter={
   clearPending:()=>localStorage.removeItem(storageKey)
 };
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(AppShell,{active:'process',title:'Calendar fixture',theme:document.documentElement.dataset.theme,showCapsule:false,onNav:()=>{}},
-  React.createElement('div',{className:'plana'},React.createElement(ResourceCalendar,{adapter,onCommitted:result=>calendarProbe.committed.push(result)}))));
+  React.createElement('div',{className:'plana'},React.createElement(ResourceCalendar,{adapter,onCommitted:result=>calendarProbe.committed.push(result)}),React.createElement(WorkbenchGuardHost))));
 `;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-  '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(item => '<link rel="stylesheet" href="/static/' + item + '">').join('') +
+  '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(item => '<link rel="stylesheet" href="/static/' + item + '">').join('') + '<style>' + styleSources.map(item => item.code).join('\n') + '</style>' +
   '</head><body class="aps-workbench"><div id="root"></div>' + manifest.scripts.filter(item => !item.endsWith('/main.js')).map(item => '<script src="/static/' + item + '"></script>').join('') +
   '<script src="/probe-components.js"></script><script>' + fixture + '</script></body></html>';
 let backend;
@@ -206,10 +210,10 @@ async function geometry(page,viewport) {
       await openDay(page,'2026-09-10');await page.getByLabel('可排工时（小时）').fill('7');
       await page.getByRole('button',{name:'保存配置',exact:true}).click();await page.getByText(/保留的班次起止推导为 9 小时/).waitFor();
       assert.equal(await page.getByLabel('可排工时（小时）').inputValue(),'7');assert.equal((await monthJSON(page)).days[9].fields.hours,9);
-      await page.getByRole('button',{name:'取消',exact:true}).click();
+      await page.getByRole('button',{name:'取消',exact:true}).click();await page.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();
       await openDay(page,'2026-09-10');await page.getByLabel('效率（%）').fill('0');const before=await page.evaluate(()=>calendarProbe.commands.length);
       await page.getByRole('button',{name:'保存配置',exact:true}).click();await page.getByRole('alert').filter({hasText:'效率须大于'}).waitFor();
-      assert.equal(await page.evaluate(()=>calendarProbe.commands.length),before);await page.getByRole('button',{name:'取消',exact:true}).click();
+      assert.equal(await page.evaluate(()=>calendarProbe.commands.length),before);await page.getByRole('button',{name:'取消',exact:true}).click();await page.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();
       await openDay(page,'2026-09-11');await page.getByRole('group',{name:'这一天是否排产',exact:true}).getByRole('button',{name:'休息日',exact:true}).click();
       assert(await page.getByLabel('可排工时（小时）').isDisabled());await page.getByRole('button',{name:'保存配置',exact:true}).click();await done(page);await closeDialog(page);
       state=await monthJSON(page);assert.equal(state.days[10].fields.type,'rest');assert.equal(state.days[10].fields.hours,0);assert.equal(state.days[10].fields.allowUrgent,'no');

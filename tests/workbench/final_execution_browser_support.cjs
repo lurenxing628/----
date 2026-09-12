@@ -24,7 +24,11 @@ class Probe {
     if (status === 200) assert.equal(data.ok, true);
     return data;
   }
-  async choose(label, value, owner = this.page) { await controls.select(owner.getByLabel(label, { exact: true }), value); }
+  async choose(label, value, owner = this.page) {
+    const field = owner.getByLabel(label, { exact: true });
+    await field.waitFor({ state: 'visible' });
+    await controls.select(field, value);
+  }
   async shot(name) {
     const file = path.join(this.ready.root, 'screenshots', this.state + '-' + name + '.png');
     await this.page.screenshot({ path: file, animations: 'disabled' });
@@ -52,7 +56,7 @@ class Probe {
   }
   async theme(theme) {
     const current = await this.page.locator('html').getAttribute('data-theme');
-    if (current !== theme) await this.page.getByRole('button', { name: /^深色：/ }).click();
+    if (current !== theme) await this.page.getByRole('button', { name: /^切换(?:深色|浅色)$/ }).click();
     await this.page.waitForFunction(value => document.documentElement.dataset.theme === value, theme);
   }
   gap(id, action, evidence, status = 'missing') { this.report.gaps.push({ id, action, state: this.state, status, evidence }); }

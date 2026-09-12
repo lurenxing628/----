@@ -31,9 +31,15 @@ async function trialActions(page, ready, report, h, flush) {
     await selectTrial(50, 'item-B'); await button('调整此工序').click();
     await page.getByLabel('调整开工', { exact: true }).fill('2026-09-09T13:00');
     await button('返回方案').click();
-    await page.getByText('请先保存调整或取消当前工序编辑。', { exact: true }).waitFor();
+    const discard = page.getByRole('dialog', { name: '离开前确认', exact: true });
+    await discard.getByText('试调工序的设备、人员或开工调整尚未保存。', { exact: true }).waitFor();
+    await button('留在当前页面', discard).click(); await discard.waitFor({ state: 'hidden' });
+    assert.equal(await page.getByLabel('调整开工', { exact: true }).inputValue(), '2026-09-09T13:00');
     assert.equal(await page.locator('[data-trial-workspace]').getAttribute('data-open-ref'), report.draft_ref);
     await button('取消编辑').click();
+    await button('放弃未保存内容并继续', discard).click(); await discard.waitFor({ state: 'hidden' });
+    assert.equal(await page.getByLabel('调整开工', { exact: true }).count(), 0);
+    assert.equal(await page.locator('[data-trial-workspace]').getAttribute('data-open-ref'), report.draft_ref);
     assert(!report.requests.slice(before).some(row => /\/change$/.test(row.url)));
   });
   await action(['WBP-TRIAL-005.resources', 'WBP-TRIAL-005.date', 'WBP-TRIAL-005.save',

@@ -1,13 +1,14 @@
 /* BP source-only bundle. No build, static writes, production DB or parent preview. */
 'use strict';
+const UI = require('./run_ui_source.cjs');
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
-const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx',
+const files = UI.dependencies(['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx',
   'resource-contract.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PlanGanttModel.js', 'RunCandidateAPI.js', 'RunCandidateAnalysisAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx', 'RunCandidateAnalysis.jsx',
   'RunBaselineAPI.js', 'RunBaselineModel.js', 'RunBaselineControls.jsx',
   'RunCandidateGantt.jsx', 'RunCandidateWorkspace.jsx', 'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx',
-  'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx'];
+  'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx']);
 const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 for (const source of sources) { const target = path.join(output, 'sources', source.path); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, source.code); }
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
@@ -16,13 +17,14 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/as
 const assets = new Map(manifest.files.map(row => ['/static/' + row.path, { ...row, bytes: fs.readFileSync(path.join(root, 'static', row.path)) }]));
 const staticScripts = manifest.scripts.filter(file => file.startsWith('workbench/vendor/') || file.startsWith('workbench/assets/foundation-'));
 const report = { browser: null, variants: [], cases: [], screenshots: [], errors: [], external: [], dialogs: [], requests: [], downloads: [], capacity: [],
+  catalog_checks: [],
   compile: { global_build: false, target: 'chrome109' }, sources: sources.map(row => ({ path: row.path, sha256: crypto.createHash('sha256').update(row.code).digest('hex') })) };
 const boot = `let fixtureRoot;window.mountCandidate=(initialContext={},adapter)=>{if(fixtureRoot)fixtureRoot.unmount();fixtureRoot=ReactDOM.createRoot(document.getElementById('fixture-root'));
 fixtureRoot.render(React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),
 React.createElement(RunCandidateWorkspace,{initialContext,adapter,onNavigate:(...args)=>{window.navigation=args;}})));};window.mountCandidate();`;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
-  '<style>body{margin:0}#fixture-root{margin:20px 28px 20px 264px;min-width:0}@media(max-width:760px){#fixture-root{margin:12px}}</style></head><body class="aps-workbench"><div id="fixture-root"></div>' +
+  UI.styles(report, output) + '<style>body{margin:0}#fixture-root{margin:20px 28px 20px 264px;min-width:0}@media(max-width:760px){#fixture-root{margin:12px}}</style></head><body class="aps-workbench"><button id="fixture-focus-anchor" style="position:fixed;left:8px;top:8px">保持当前焦点</button><div id="fixture-root"></div>' +
   staticScripts.map(file => '<script src="/static/' + file + '"></script>').join('') + Array.from(scripts.keys(), file => '<script src="' + file + '"></script>').join('') + '<script>' + boot + '</script></body></html>';
 const server = http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://fixture').pathname;
@@ -36,8 +38,19 @@ const server = http.createServer((req, res) => {
   const asset = assets.get(pathname); if (!asset) { res.writeHead(404); res.end(); return; } res.setHeader('Content-Type', asset.mime); res.end(asset.bytes);
 });
 let page, origin, variant, fixtures;
-const button = name => page.getByRole('button', { name, exact: true });
+const button = name => UI.button(page, name);
 const done = name => report.cases.push({ variant, name, passed: true });
+async function catalogState(open) {
+  const catalog = page.locator('details.rc-catalog'); await catalog.waitFor();
+  await page.waitForFunction(open => document.querySelector('details.rc-catalog').open === open, open);
+  assert.equal(await catalog.evaluate(node => node.open), open);
+  return catalog;
+}
+async function openCatalog() {
+  const catalog = page.locator('details.rc-catalog'); await catalog.waitFor();
+  if (!await catalog.evaluate(node => node.open)) await catalog.locator(':scope > summary').click();
+  await catalogState(true); return catalog;
+}
 async function shot(name) { const file = path.join(output, variant + '-' + name + '.png'); await page.screenshot({ path: file, fullPage: true, animations: 'disabled' }); report.screenshots.push(file); }
 async function mount(which, extra = {}) {
   const value = which ? { ...fixtures[which], ...extra } : extra; delete value.refs;
@@ -113,15 +126,38 @@ async function contracts() {
 async function baseline() {
   assert.equal(report.requests.filter(r => r.variant === variant).length, 0); await page.getByText(/尚未指定运行或候选来源/).waitFor(); done('no-source-no-latest-no-request');
   await mount(null, { candidate_ref: 'latest' }); await page.getByRole('alert').waitFor(); assert.equal(report.requests.filter(r => r.variant === variant).length, 0); done('invalid-ref-no-request');
-  await mount(null, { run_ref: fixtures.complete.run_ref }); await page.locator('[data-candidate-ref]').first().waitFor();
+  await mount(null, { run_ref: fixtures.complete.run_ref }); await catalogState(true); await page.locator('[data-candidate-ref]').first().waitFor();
+  report.catalog_checks.push({ variant, name: 'no-selection-opens-catalog', passed: true });
   assert.equal(await page.getByRole('heading', { name: '候选工作区', exact: true }).count(), 0); await button('查看候选 ' + fixtures.complete.candidate_ref).click();
-  await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor(); done('explicit-run-manual-candidate-selection');
+  await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor(); await catalogState(false);
+  report.catalog_checks.push({ variant, name: 'selection-closes-catalog', passed: true });
+  const catalog = await openCatalog(), originalRefs = await catalog.locator('[data-candidate-ref]').evaluateAll(rows => rows.map(row => row.dataset.candidateRef));
+  assert.equal(originalRefs.length, 4); assert(originalRefs.includes(fixtures.complete.candidate_ref));
+  await catalog.locator(':scope > summary').click(); await catalogState(false); await openCatalog();
+  assert.deepEqual(await catalog.locator('[data-candidate-ref]').evaluateAll(rows => rows.map(row => row.dataset.candidateRef)), originalRefs);
+  assert.equal(await catalog.locator('[data-candidate-ref="' + fixtures.complete.candidate_ref + '"]').getAttribute('aria-selected'), 'true');
+  report.catalog_checks.push({ variant, name: 'summary-reopens-same-catalog-and-selection', passed: true });
+  const otherRef = originalRefs.find(ref => ref !== fixtures.complete.candidate_ref); await button('查看候选 ' + otherRef).click(); await catalogState(false);
+  assert(await catalog.locator(':scope > summary').evaluate(node => document.activeElement === node), 'Collapsing the selected candidate must return focus to its visible catalog summary');
+  await page.waitForFunction(ref => document.querySelector('[data-candidate-ref="' + ref + '"]').getAttribute('aria-selected') === 'true', otherRef);
+  await openCatalog(); assert.deepEqual(await catalog.locator('[data-candidate-ref]').evaluateAll(rows => rows.map(row => row.dataset.candidateRef)), originalRefs);
+  report.catalog_checks.push({ variant, name: 'different-candidate-closes-without-changing-directory', focus_returned_to_summary: true, passed: true });
+  done('explicit-run-manual-candidate-selection');
+  await page.locator('#fixture-focus-anchor').click();
   await mount('complete', { return_run_context: { run_ref: fixtures.complete.run_ref, snapshot_ref: 'private' }, return_plan_context: { plan_ref: 'f'.repeat(48), snapshot_ref: 'private' } });
+  await catalogState(false); assert(await page.locator('#fixture-focus-anchor').evaluate(node => document.activeElement === node), 'Opening an explicit candidate must preserve focus outside the catalog');
+  report.catalog_checks.push({ variant, name: 'explicit-candidate-defaults-to-collapsed', external_focus_preserved: true, passed: true });
   assert.equal(await page.locator('[data-candidate-ref]').count(), 4);
   assert(await page.getByRole('button', { name: /^采用方案/ }).isDisabled()); assert(await page.getByRole('button', { name: /^试调/ }).isDisabled());
   assert.equal(await page.getByRole('button', { name: /报工/ }).count(), 0); await layout(); await shot('complete');
   await contracts();
   const full = await workspace(fixtures.complete.candidate_ref); assert.equal(full.data.task_count, 3);
+  const virtual = page.getByRole('table', { name: '候选任务安排', exact: true });
+  assert.equal(await virtual.getByRole('columnheader').count(), 5);
+  assert.equal(await virtual.getAttribute('aria-rowcount'), '4');
+  assert.equal(await virtual.getAttribute('aria-colcount'), '5');
+  assert(!(await page.getByRole('button').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label') || '').join('\n'))).match(/[0-9a-f]{48}/));
+  done('virtual-table-header-and-business-accessible-names');
   assert(full.data.tasks.every(t => t.machine.label === 'Original lathe')); assert(!JSON.stringify(full).includes('CURRENT RENAMED')); done('captured-generation-labels-after-current-rename');
   for (const name of ['人员', '批次', '设备']) { await button(name).click(); await page.locator('[data-candidate-lane]').first().waitFor(); assert(await button(name).getAttribute('aria-pressed') === 'true'); }
   const canvas = page.locator('[data-candidate-lane]').first();
@@ -131,13 +167,14 @@ async function baseline() {
   const instant = v => Date.parse(v + 'Z'), span = instant(full.data.task_span.end) - instant(full.data.task_span.start);
   full.data.tasks.forEach((t, i) => assert(Math.abs(bars.rects[i][2] - (instant(t.end) - instant(t.start)) / span * bars.width) < 0.001));
   assert(bars.rects[1][2] < 1); done('real-paint-time-proportions-no-short-bar-inflation');
-  await canvas.focus(); await page.keyboard.press('Home'); await page.getByRole('complementary', { name: '候选工序详情' }).getByText(full.data.tasks[0].row_ref, { exact: true }).waitFor();
-  await page.keyboard.press('ArrowRight'); await page.getByRole('complementary').getByText(full.data.tasks[1].row_ref, { exact: true }).waitFor(); done('short-task-keyboard-row-ref-selection');
+  await canvas.focus(); await page.keyboard.press('End'); await UI.reference(page.getByRole('complementary', { name: '候选工序详情' }), full.data.tasks[2].row_ref);
+  await canvas.focus(); await page.keyboard.press('Home'); await UI.reference(page.getByRole('complementary', { name: '候选工序详情' }), full.data.tasks[0].row_ref);
+  await page.keyboard.press('ArrowRight'); await UI.reference(page.getByRole('complementary'), full.data.tasks[1].row_ref); done('short-task-keyboard-row-ref-selection');
   const box = await canvas.boundingBox(), model = await page.evaluate(data => {
     const m = RunCandidateModel.layout(data, 'machine', ''); return { start: m.start, end: m.end, start0: m.rows[0].items[0].start, end0: m.rows[0].items[0].end };
   }, full.data);
   await page.mouse.move(box.x + ((model.start0 + model.end0) / 2 - model.start) / (model.end - model.start) * box.width, box.y + 20);
-  await page.getByRole('tooltip').waitFor(); assert((await page.getByRole('tooltip').innerText()).includes(full.data.tasks[0].row_ref)); done('real-canvas-hit-tooltip');
+  await page.getByRole('tooltip').waitFor(); assert((await page.getByRole('tooltip').innerText()).includes(full.data.tasks[0].batch_label)); done('real-canvas-hit-tooltip');
   await button('放大候选时间轴').click(); assert.equal(await page.getByLabel('候选时间轴缩放', { exact: true }).inputValue(), '2');
   await button('适配完整候选时间轴').click(); done('zoom-and-fit');
   await page.getByLabel('搜索候选工序').fill(full.data.tasks[0].row_ref); assert.equal(await page.locator('[data-candidate-task-list] [data-row-ref]').count(), 1);
@@ -166,7 +203,7 @@ async function baseline() {
     await generation.getByText(fixtures[status].candidate_ref, { exact: true }).waitFor();
     assert((await page.locator('[aria-label="生成时范围"]').innerText()).includes('未知')); await shot(status); done('persisted-' + status + '-not-fabricated-plan');
   }
-  await mount('complete'); await page.getByLabel('候选状态', { exact: true }).click(); await page.getByRole('listbox').waitFor();
+  await mount('complete'); await openCatalog(); await page.getByLabel('候选状态', { exact: true }).click(); await page.getByRole('listbox').waitFor();
   await page.getByRole('listbox').getByRole('option', { name: '失败', exact: true }).click(); await page.getByText('此运行在当前筛选下没有候选记录。', { exact: true }).waitFor(); done('workbench-dropdown-empty-filter-not-latest');
   await mount('complete'); const pattern = '**/scheduling/candidates/' + fixtures.complete.candidate_ref + '/workspace?*';
   await page.route(pattern, route => route.fulfill({ status: 500, contentType: 'text/html', body: 'Unavailable' })); await button('刷新指定候选来源').click();
@@ -202,11 +239,11 @@ async function capacity() {
   const list = page.locator('[data-candidate-task-list]'); await list.evaluate(n => { n.scrollTop = n.scrollHeight; });
   await page.locator('[data-candidate-task-list] [data-row-ref="' + full.data.tasks[4999].row_ref + '"]').waitFor();
   assert(await page.locator('[data-candidate-task-list] [data-row-ref]').count() <= 16);
-  await button('工序详情 ' + full.data.tasks[4999].row_ref).click(); await page.getByRole('complementary').getByText(full.data.tasks[4999].row_ref, { exact: true }).waitFor();
+  await button('工序详情 ' + full.data.tasks[4999].row_ref).click(); await UI.reference(page.getByRole('complementary'), full.data.tasks[4999].row_ref);
   await layout(); await shot('5000'); await page.getByLabel('搜索候选工序').fill('CAP-099');
   await download('csv', full); await download('xlsx', full); done('5000-source-tasks-bounded-dom-and-complete-download');
   await page.reload(); await page.getByText(/尚未指定运行或候选来源/).waitFor();
-  await mount(null, { candidate_ref: fixtures.capacity.candidate_ref }); await page.locator('[data-candidate-ref]').first().waitFor();
+  await mount(null, { candidate_ref: fixtures.capacity.candidate_ref }); await catalogState(false); await openCatalog(); await page.locator('[data-candidate-ref]').first().waitFor();
   assert.equal(await page.locator('[data-candidate-ref]').count(), 4); done('fresh-page-explicit-old-candidate-recovers-run');
 }
 (async () => {
@@ -236,6 +273,7 @@ async function capacity() {
     }
     assert.deepEqual(report.errors, []); assert.deepEqual(report.external, []); assert.deepEqual(report.dialogs, []);
     assert.deepEqual(report.requests.filter(r => r.path.endsWith('/baseline')), []);
+    assert.equal(report.catalog_checks.length, 20); assert(report.catalog_checks.every(row => row.passed));
     console.log(JSON.stringify({ browser: report.browser, checks: report.cases.length, variants: report.variants.length, downloads: report.downloads.length, output }));
   } finally {
     if (browser) await browser.close(); server.close();

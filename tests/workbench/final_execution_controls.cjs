@@ -2,18 +2,30 @@
 const assert = require('node:assert/strict');
 const { run, controls } = require('./final_execution_browser_support.cjs');
 
+async function assertSuggestedTimes(page, start, end, since) {
+  const actualStart = await start.inputValue(), actualEnd = await end.inputValue();
+  assert.equal(actualStart, actualEnd, 'A task without previous reports suggests the same current time');
+  const time = await page.evaluate(value => ({ suggested: Date.parse(value), now: Date.now() }), actualStart);
+  assert(time.suggested >= Math.floor(since / 1000) * 1000 && time.suggested <= time.now,
+    'New report times must be current suggestions, not retained manual draft values');
+  assert(await page.getByText('以下时间为建议值，保存后将登记为实际记录。请核对；不确定时清空，保持未知。', { exact: true }).isVisible());
+}
+
 async function exercise(p) {
   const { page, ready } = p, ref = ready.expected.final_e.task_refs['1'];
   await page.goto(ready.workbench_url); await page.locator('.sidebar').waitFor();
   await p.read(() => page.locator('.sidebar a[href$="?view=field"]').click(), '/execution/tasks');
   await p.read(() => p.choose('现场每页数量', '50'), '/execution/tasks');
   await p.read(() => page.locator('[data-field-task="' + ref + '"] button[aria-expanded]').click(), '/execution/tasks/' + ref);
+  const openedAt = await page.evaluate(() => Date.now());
   await page.getByRole('button', { name: '新增本次报工', exact: true }).click();
   const quantity = page.getByRole('spinbutton', { name: '本次完成数量', exact: true });
   const start = page.getByLabel('实际开工', { exact: true }), end = page.getByLabel('本次实际完工', { exact: true });
   const hours = page.getByRole('spinbutton', { name: '有效工时 (h)', exact: true });
   await p.step(['WBP-FIELD-007.A001', 'WBP-FIELD-013.A004'], 'typed-quantity-and-initial-focus', async () => {
     assert(await quantity.evaluate(node => document.activeElement === node));
+    await assertSuggestedTimes(page, start, end, openedAt);
+    assert.equal(await hours.inputValue(), '');
     await quantity.type('3'); assert.equal(await quantity.inputValue(), '3');
     assert.equal(await page.getByLabel('已知累计预览', { exact: true }).innerText(), '3');
   });
@@ -36,7 +48,7 @@ async function exercise(p) {
     await start.fill('2026-08-31T08:00'); await end.fill('2026-08-31T10:00');
     assert.equal(await hours.inputValue(), '');
     assert.equal(await page.getByLabel('作业跨度', { exact: true }).innerText(), '2 h');
-    assert.equal(await page.getByLabel('工时差额', { exact: true }).innerText(), '未核对');
+    assert.equal(await page.getByLabel('工时差额', { exact: true }).innerText(), '未知');
   });
   let popup;
   await p.step(['WBP-FIELD-008.A003'], 'open-real-datetime-popup', async () => {
@@ -102,17 +114,21 @@ async function exercise(p) {
   await p.step(['WBP-FIELD-008.A009'], 'external-real-page-scroll-closes-with-owner-value-and-focus', async () => {
     popup = await controls.openPicker(start);
     const before = await page.evaluate(() => scrollY);
-    await page.mouse.move(320, 300); await page.mouse.wheel(0, 150);
+    const maximum = await page.evaluate(() => document.documentElement.scrollHeight - innerHeight);
+    const delta = before >= 150 ? -150 : 150;
+    assert(delta < 0 || maximum - before >= 150, 'The page needs room for a real 150px external scroll');
+    await page.locator('.field-editor h3').hover(); await page.mouse.wheel(0, delta);
     await page.waitForFunction(top => scrollY !== top, before);
     await popup.waitFor({ state: 'detached' });
     assert.equal(await start.inputValue(), '2026-08-31T08:00');
     assert(await start.evaluate(node => document.activeElement === node));
-    await page.waitForFunction(top => scrollY >= top + 149, before);
+    await page.waitForFunction(({ top, amount }) => amount < 0 ? scrollY <= top - 149 : scrollY >= top + 149,
+      { top: before, amount: delta });
     const after = await page.evaluate(() => scrollY);
     await p.shot('datetime-external-scroll-closed');
-    await page.mouse.wheel(0, -150);
+    await page.locator('.field-editor h3').hover(); await page.mouse.wheel(0, -delta);
     await page.waitForFunction(top => Math.abs(scrollY - top) < 1, before);
-    return { before, after, reset: await page.evaluate(() => scrollY) };
+    return { before, after, delta, maximum, reset: await page.evaluate(() => scrollY) };
   });
   await p.step(['WBP-FIELD-008.A009'], 'window-resize-closes-with-owner-value-and-focus', async () => {
     popup = await controls.openPicker(start);
@@ -138,8 +154,23 @@ async function exercise(p) {
   });
   await p.step(['WBP-FIELD-013.A003', 'WBP-FIELD-013.A005'], 'cancel-discards-draft-without-history-command', async () => {
     await page.getByRole('button', { name: '取消', exact: true }).click();
+    const confirm = page.getByRole('dialog', { name: '离开前确认', exact: true });
+    await confirm.waitFor();
+    await confirm.getByRole('button', { name: '留在当前页面', exact: true }).click();
+    await confirm.waitFor({ state: 'detached' });
+    assert.equal(await start.inputValue(), '2026-08-31T08:00'); assert.equal(await hours.inputValue(), '0.5');
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await confirm.getByRole('button', { name: '放弃未保存内容并继续', exact: true }).click();
+    await confirm.waitFor({ state: 'detached' }); await page.locator('.field-editor').waitFor({ state: 'detached' });
+    const reopenedAt = await page.evaluate(() => Date.now());
     await page.getByRole('button', { name: '新增本次报工', exact: true }).click();
-    assert.equal(await quantity.inputValue(), ''); assert.equal(await start.inputValue(), ''); assert.equal(await hours.inputValue(), '');
+    assert.equal(await quantity.inputValue(), ''); assert.equal(await hours.inputValue(), '');
+    await assertSuggestedTimes(page, start, end, reopenedAt);
+    await page.getByRole('button', { name: '清空实际开工', exact: true }).click();
+    await page.getByRole('button', { name: '清空本次实际完工', exact: true }).click();
+    assert.equal(await start.inputValue(), ''); assert.equal(await end.inputValue(), '');
+    assert.equal(await page.getByLabel('作业跨度', { exact: true }).innerText(), '未知');
+    assert.equal(await page.getByLabel('工时差额', { exact: true }).innerText(), '未知');
     const entry = await page.evaluate(() => history.state.workbench.context);
     assert.equal(entry.draft, undefined); assert.equal(entry.editor, undefined);
   });

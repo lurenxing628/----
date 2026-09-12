@@ -59,7 +59,7 @@ async function main() {
       await page.goto(ready.url + '/workbench'); await page.locator('.sidebar').waitFor();
       await p.click(page.locator('.sidebar').getByText('基础资料', {exact: true}));
       await page.locator('[data-resource-workspace] .hb-tile').first().waitFor();
-      if (theme === 'dark') await p.click(b(page, '深色：关'));
+      if (theme === 'dark') await p.click(b(page, '切换深色'));
       if (process.env.ED_SCOPE === 'filters') {
         await p.run('process-filter-paging', 'read', () => pagination(p, page, data));
         await p.run('process-filter-empty', 'read', () => noMatches(p, page, data));

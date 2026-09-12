@@ -1,7 +1,9 @@
 """Run current shipped Gantt modules in Node; inputs are JS assertions and DTOs.
 
 The paired CJS harness uses shipped React.createElement, not an HTML serializer.
-It observes actual component props and text children, not browser layout pixels.
+It observes actual component props and visible text children, not browser layout
+pixels. Closed diagnostic details retain their nodes but contribute only their
+summary to text(); styles() reads the shipped manifest-declared Gantt CSS.
 """
 
 import json

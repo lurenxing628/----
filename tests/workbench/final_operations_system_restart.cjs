@@ -6,7 +6,7 @@ async function systemRestart(h) {
   const writes = [];
   page.on('request', value => { if (!['GET', 'HEAD'].includes(value.method())) writes.push({ url: value.url(), method: value.method(), input: value.postDataJSON() }); });
   await h.dashboard();
-  if (config.theme === 'dark') await page.locator('.header-controls').getByRole('button').click();
+  if (config.theme === 'dark') await page.getByRole('button', { name: '切换深色', exact: true }).click();
   await page.locator('.sidebar-nav').getByRole('link', { name: '系统管理', exact: true }).click();
   await page.getByRole('button', { name: '查看备份与恢复', exact: true }).waitFor();
   const backupRows = page.getByRole('region', { name: '备份与恢复记录', exact: true });
@@ -91,7 +91,7 @@ async function systemRestart(h) {
     assert.equal(await page.getByRole('region', { name: '备份详情', exact: true }).count(), 0);
     assert.equal(await page.getByRole('dialog').count(), 0);
     assert.equal(await backupRows.locator('tbody tr[aria-expanded=true]').count(), 0);
-    await backupRows.locator('.sm-page-number').getByText('2 / 2', { exact: true }).waitFor();
+    await backupRows.getByRole('navigation', { name: '分页', exact: true }).getByText('共 15 条 · 第 2 / 2 页', { exact: true }).waitFor();
     page.off('response', capture);
     report.after_restart = { url: page.url(), context: await page.evaluate(() => history.state.workbench.context), reads: [] };
     for (const response of collected) report.after_restart.reads.push({ url: response.url(), status: response.status(), payload: await response.json() });

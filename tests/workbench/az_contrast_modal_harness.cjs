@@ -57,6 +57,18 @@ async function setup(kind) {
   report.compiled = built.outputs.map(row => ({ path: row.path, sha256: sha(row.code) }));
   const assets = new Map(manifest.files.map(row => [row.path, { ...row, bytes: freeze('static/' + row.path) }]));
   report.assets = [...assets.values()].map(row => ({ path: 'static/' + row.path, sha256: sha(row.bytes), manifest_sha256: row.sha256 }));
+  const orderPath = 'scripts/workbench/build-order.json', orderBytes = freeze(orderPath), styleOrder = JSON.parse(orderBytes).styles;
+  assert(Array.isArray(styleOrder) && styleOrder.includes('00-tokens.css') && styleOrder.includes('10-shell.css'),
+    'Current source harness requires the explicit maintained CSS layer');
+  report.style_order = { path: orderPath, sha256: sha(orderBytes), styles: styleOrder };
+  report.styles = styleOrder.map(name => {
+    const source = 'frontend/workbench/app/styles/' + name, publicPath = 'workbench/app/styles/' + name;
+    const bytes = freeze(source), formal = assets.get(publicPath);
+    assets.set(publicPath, { path: publicPath, bytes, mime: 'text/css' });
+    return { path: source, sha256: sha(bytes), public_path: publicPath, formal_sha256: formal ? sha(formal.bytes) : null };
+  });
+  const loadedStyles = manifest.styles.filter(name => !name.startsWith('workbench/app/styles/'))
+    .concat(report.styles.map(row => row.public_path));
   const watch = ['schema.sql', 'frontend/workbench/app/main.jsx', 'scripts/workbench/build.py',
     'frontend/workbench/prototype/ui_kits/workbench/plana.css', 'frontend/workbench/app/ProcessDetail.jsx',
     'frontend/workbench/app/ProcessWorkspace.jsx', 'frontend/workbench/app/ProcessRouteEntry.jsx',
@@ -65,7 +77,7 @@ async function setup(kind) {
   const shared = manifest.scripts.filter(file => file.startsWith('workbench/vendor/') || file.startsWith('workbench/assets/foundation-'));
   const html = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<link rel="icon" href="/static/' + manifest.icon + '">' +
-    manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
+    loadedStyles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
     '</head><body class="aps-workbench"><div id="root"></div>' +
     shared.map(file => '<script src="/static/' + file + '"></script>').join('') +
     [...scripts.keys()].map(file => '<script src="' + file + '"></script>').join('') + '</body></html>';
@@ -104,7 +116,8 @@ async function setup(kind) {
     async close() {
       await browser.close(); await new Promise(resolve => server.close(resolve));
       report.shared.forEach(row => { row.after = sha(fs.readFileSync(path.join(root, row.path))); row.changed = row.before !== row.after; });
-      report.source_drift = report.sources.filter(row => sha(fs.readFileSync(path.join(root, row.path))) !== row.sha256);
+      report.source_drift = report.sources.concat(report.styles, [report.style_order])
+        .filter(row => sha(fs.readFileSync(path.join(root, row.path))) !== row.sha256);
       report.stopped = true;
       fs.writeFileSync(path.join(output, kind + '-result.json'), JSON.stringify(report, null, 2));
       console.log(JSON.stringify({ output, browser: report.browser, cases: report.cases.length, errors: report.errors.length }));

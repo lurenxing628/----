@@ -8,6 +8,9 @@ const NAV = [
   ['review', '执行复盘'], ['reports', '报表中心'], ['calib', '工时定额校准'], ['dashboard', '值班台'],
   ['basedata', '主数据总览'], ['system', '系统管理'],
 ];
+const SIDEBAR = ['dashboard', 'process', 'basedata', 'batches', 'run', 'analysis', 'trial', 'field', 'fieldgantt', 'reports', 'calib', 'system']
+  .map(view => NAV.find(row => row[0] === view));
+const PARENT = {gantt: 'analysis', delay: 'analysis', review: 'reports'};
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 function write(file, value) { fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n'); }
 
@@ -165,29 +168,43 @@ async function settle(page, record) {
 }
 async function shell(page, view, record) {
   const expected = NAV.find(row => row[0] === view);
-  const title = view === 'delay' ? '交付风险' : expected[1], active = view === 'delay' ? 'analysis' : view;
+  const title = view === 'delay' ? '交付风险' : expected[1], active = PARENT[view] || view;
   record.equal(await page.locator('.top-title').innerText(), title, 'Real main title');
   record.equal(await page.title(), title + ' · APS 智能排产', 'Browser document title follows actual route');
   const links = await page.locator('.sidebar-nav a.nav-item').evaluateAll(nodes => nodes.map(node => ({
     text: node.innerText.trim(), title: node.title, href: node.href, active: node.classList.contains('active'), current: node.getAttribute('aria-current')})));
-  record.equal(links.map(row => row.text), NAV.map(row => row[1]), 'All 14 sidebar entries in approved order');
-  record.equal(links.map(row => row.title), NAV.map(row => row[1]), 'All sidebar tooltips retain full titles');
+  record.equal(links.map(row => row.text), SIDEBAR.map(row => row[1]), 'All 12 consolidated sidebar entries in approved order');
+  record.equal(links.map(row => row.title), SIDEBAR.map(row => row[1]), 'All sidebar tooltips retain full titles');
   record.equal(links.filter(row => row.active).map(row => row.text), [NAV.find(row => row[0] === active)[1]]);
   record.equal(links.filter(row => row.current === 'page').map(row => row.text), [NAV.find(row => row[0] === active)[1]]);
   for (let index = 0; index < links.length; index++) {
     const url = new URL(links[index].href);
     record.equal(url.origin, record.ready.url);
-    record.equal(url.pathname, NAV[index][0] === 'trial' ? '/workbench/trial' : '/workbench');
-    if (NAV[index][0] !== 'trial') record.equal(url.searchParams.get('view'), NAV[index][0]);
+    record.equal(url.pathname, SIDEBAR[index][0] === 'trial' ? '/workbench/trial' : '/workbench');
+    if (SIDEBAR[index][0] !== 'trial') record.equal(url.searchParams.get('view'), SIDEBAR[index][0]);
+  }
+  if (['analysis', 'gantt', 'delay', 'reports', 'review'].includes(view)) {
+    const tablist = page.getByRole('tablist', {name: active === 'analysis' ? '计划中心视图' : '统计分析视图', exact: true});
+    record.equal(await tablist.getByRole('tab', {selected: true}).innerText(), title, 'The actual child route selects its corresponding tab');
   }
   record.equal(await page.locator('.wb-render-failure').count(), 0, 'Normal workspace must not be a render fallback');
   return {title, links};
 }
 async function navigate(page, view, record) {
-  const label = NAV.find(row => row[0] === view)[1];
+  const parent = PARENT[view] || view, label = NAV.find(row => row[0] === parent)[1];
   await record.flush(page);
+  let responseStart = record.data.api_responses.length;
   await page.locator('.sidebar-nav').getByRole('link', {name: label, exact: true}).click();
-  await settle(page, record); return shell(page, view, record);
+  await settle(page, record);
+  if (parent !== view) {
+    await page.locator(parent === 'analysis' ? '[data-plan-gantt]' : '.rw-workbench[data-ready="true"]').waitFor();
+    await record.flush(page); responseStart = record.data.api_responses.length;
+    const tabs = page.getByRole('tablist', {name: parent === 'analysis' ? '计划中心视图' : '统计分析视图', exact: true});
+    await tabs.getByRole('tab', {name: view === 'delay' ? '交付风险' : NAV.find(row => row[0] === view)[1], exact: true}).click();
+    await settle(page, record);
+  }
+  return {...await shell(page, view, record), mechanism: parent === view ? 'actual sidebar link click' : 'actual parent sidebar link and child tab clicks',
+    sidebar_parent: parent, current_view_read_start: responseStart};
 }
 async function geometry(page, record) {
   const result = await page.evaluate(() => {
@@ -211,4 +228,4 @@ async function geometry(page, record) {
   record.ok(result.textLength > 12, 'Workspace has meaningful visible content');
   return result;
 }
-module.exports = {NAV, Record, hash, write, settle, shell, navigate, geometry};
+module.exports = {NAV, SIDEBAR, Record, hash, write, settle, shell, navigate, geometry};

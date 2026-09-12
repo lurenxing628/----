@@ -1,10 +1,11 @@
 /* BZ pending source hook. No main build, registry, frozen preview or production DB. */
 'use strict';
+const UI = require('./run_ui_source.cjs');
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
-const files = ['resource-contract.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'RunCandidateAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx',
-  'RunBaselineAPI.js', 'RunBaselineModel.js', 'RunBaselineControls.jsx', 'RunCandidateGantt.jsx'];
+const files = UI.dependencies(['resource-contract.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'RunCandidateAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx',
+  'RunBaselineAPI.js', 'RunBaselineModel.js', 'RunBaselineControls.jsx', 'RunCandidateGantt.jsx']);
 const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((row, i) => ['/source/' + files[i], row.code]));
@@ -22,7 +23,7 @@ if(fixtureRoot)fixtureRoot.unmount();fixtureRoot=ReactDOM.createRoot(document.ge
 window.swapBaseline=async(ref,scope={})=>{const result=await RunCandidateAPI.create().workspace(ref,scope);window.workspaceEnvelope=result;window.setBaselineData(result.data);};`;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
-  '<style>body{margin:0}#fixture-root{margin:20px 28px 20px 264px;min-width:0}@media(max-width:760px){#fixture-root{margin:12px}}</style></head><body class="aps-workbench"><div id="fixture-root"></div>' +
+  UI.styles(report, output) + '<style>body{margin:0}#fixture-root{margin:20px 28px 20px 264px;min-width:0}@media(max-width:760px){#fixture-root{margin:12px}}</style></head><body class="aps-workbench"><div id="fixture-root"></div>' +
   staticScripts.map(file => '<script src="/static/' + file + '"></script>').join('') + [...scripts.keys()].map(file => '<script src="' + file + '"></script>').join('') + '<script>' + boot + '</script></body></html>';
 const server = http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://fixture').pathname;
@@ -36,7 +37,7 @@ const server = http.createServer((req, res) => {
   const asset = assets.get(pathname); if (!asset) { res.writeHead(404); res.end(); return; } res.setHeader('Content-Type', asset.mime); res.end(asset.bytes);
 });
 let page, origin, variant, fixtures;
-const button = name => page.getByRole('button', { name, exact: true });
+const button = name => UI.button(page, name);
 const toggle = () => page.getByRole('checkbox', { name: '初始计划', exact: true });
 const done = name => report.checks.push({ variant, name, passed: true });
 const paintedFrame = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -126,7 +127,7 @@ async function small() {
   assert(await page.locator('[data-baseline-track]').count() > 0); assert((await proportions()).short > 0); await shot('overlay'); done('shared-full-time-axis-and-short-bars');
   assert.equal(await page.locator('.rb-panel').getAttribute('open'), null); done('explanations-collapsed-by-default');
   const candidateLane = page.locator('[data-candidate-lane]').first(); await candidateLane.focus(); await page.keyboard.press('Home'); await page.keyboard.press('ArrowRight');
-  const shortRef = await page.evaluate(() => fixtureData.tasks[1].row_ref); await page.getByRole('complementary').getByText(shortRef, { exact: true }).waitFor(); done('short-candidate-keyboard-detail');
+  const shortRef = await page.evaluate(() => fixtureData.tasks[1].row_ref); await UI.reference(page.getByRole('complementary'), shortRef); done('short-candidate-keyboard-detail');
   const baselineLane = page.locator('[data-baseline-lane]').first(); await baselineLane.focus(); await page.keyboard.press('End');
   await page.getByRole('region', { name: '初始计划工序对照', exact: true }).waitFor(); done('baseline-keyboard-own-detail');
   const gold = await baselineLane.evaluate(n => n.__strokes.some(s => s.color === getComputedStyle(n).getPropertyValue('--wb-gantt-gold').trim() && s.lineWidth === 2)); assert(gold); done('selected-baseline-gold-border');
@@ -212,12 +213,12 @@ async function capacity() {
   }
   await page.locator('.rb-panel summary').click(); await page.locator('[data-baseline-list]').evaluate(n => { n.scrollTop = n.scrollHeight; });
   const lastRef = await page.evaluate(() => baselineEnvelope.data.comparisons[4999].operation_ref);
-  await button('初始计划对照 ' + lastRef).click(); await page.getByRole('region', { name: '初始计划工序对照', exact: true }).getByText('工序引用 ' + lastRef, { exact: true }).waitFor();
+  await button('初始计划对照 ' + lastRef).click(); await UI.reference(page.getByRole('region', { name: '初始计划工序对照', exact: true }), lastRef);
   assert(await page.locator('[data-baseline-operation]').count() <= 12); await layout(); await shot('5000-last-track-and-detail'); done('5000-virtual-rows-last-track-and-detail');
   await toggle().uncheck(); await page.locator('.rc-scroll').evaluate(n => { n.scrollTop = n.scrollHeight; });
   const lastCandidate = await page.evaluate(() => { const row = RunCandidateModel.layout(fixtureData, 'batch', '').rows.slice(-1)[0]; return { key: row.key, ref: row.items.slice(-1)[0].task.row_ref }; });
   const lastLane = page.locator('[data-candidate-track="' + lastCandidate.key + '"] canvas'); await lastLane.waitFor(); await lastLane.focus(); await page.keyboard.press('End');
-  await page.getByRole('complementary').getByText(lastCandidate.ref, { exact: true }).waitFor(); done('5000-close-restores-last-candidate-keyboard');
+  await UI.reference(page.getByRole('complementary'), lastCandidate.ref); done('5000-close-restores-last-candidate-keyboard');
 }
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); let browser;

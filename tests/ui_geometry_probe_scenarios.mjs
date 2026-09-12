@@ -79,9 +79,15 @@ async function prepareCurrentScenario(expected) {
     await tableReady('table[aria-label="排产前检查明细"]');
   }
   async function plan() {
-    await tableReady('table[aria-label="可选排产方案"]');
+    await planCatalog();
     await until(() => visible(document.querySelector('.plan-projections table'))
       && document.querySelector('[data-plan-workspace]').textContent.includes(expected.identity.batch_id), 'bound plan data');
+  }
+  async function planCatalog() {
+    await present('.plan-catalog');
+    if (document.querySelector('.plan-catalog button[aria-label="展开计划目录"]'))
+      await button('展开计划目录', '.plan-catalog');
+    await tableReady('table[aria-label="可选排产方案"]');
   }
   async function gantt() {
     await plan();
@@ -117,7 +123,7 @@ async function prepareCurrentScenario(expected) {
       throw new Error('Plugin/log detail leaked a private value or was truncated');
   }
   async function invalidHistory() {
-    await tableReady('table[aria-label="可选排产方案"]');
+    await planCatalog();
     const rows = [...document.querySelectorAll('table[aria-label="可选排产方案"] tbody tr')]
       .filter(row => row.querySelector('td:nth-child(2)')?.textContent.trim() === '2');
     if (rows.length !== 1 || !rows[0].querySelector('input[type="radio"]')?.disabled
@@ -160,13 +166,15 @@ async function prepareCurrentScenario(expected) {
   }
   await until(() => document.querySelector('#root')?.dataset.workbenchBoot === 'ready', 'React boot ready');
   if (document.documentElement.dataset.theme !== 'dark') {
-    const toggle = [...document.querySelectorAll('.top-header button')].find(node => node.textContent.startsWith('深色：'));
-    if (!toggle) throw new Error('Missing current workbench theme control');
-    toggle.click();
+    // This probe targets the current main shell; archived AppShell fixtures keep their own status-label contract.
+    const toggles = [...document.querySelectorAll('#root[data-workbench-boot="ready"] .top-header button')]
+      .filter(node => visible(node) && !node.disabled && node.textContent.replace(/^[☀☾]/, '').trim() === '切换深色');
+    if (toggles.length !== 1) throw new Error('Missing unique current workbench theme control');
+    toggles[0].click();
   }
   await until(() => document.documentElement.dataset.theme === 'dark', 'real workbench dark theme');
   const actions = { preflight, plan, gantt, 'system-logs': logs, 'invalid-history': invalidHistory,
-    history: () => tableReady('table[aria-label="可选排产方案"]'), 'batch-import': batchImport,
+    history: planCatalog, 'batch-import': batchImport,
     'batch-material': () => openDetails('物料齐套原记录'), 'system-config': () => click('#sm-tab-config'),
     'process-create': processCreate, 'report-catalog': catalog, field };
   if (expected.action) {

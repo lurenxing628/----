@@ -4,7 +4,7 @@ const { navigation, snapshot, theme } = require('./final_planning_required_actio
 
 async function competingCandidate(other, ready, report, flush) {
   const page = other.page, h = other.h;
-  await page.getByRole('heading', { name: '排产前检查', exact: true }).waitFor();
+  await page.locator('[data-preflight-workspace]').getByRole('heading', { name: '执行排产', exact: true }).waitFor();
   await h.button('选择批次').click();
   await page.getByRole('checkbox', { name: '选择 B1', exact: true }).check();
   await page.getByRole('checkbox', { name: '选择 B2', exact: true }).check();
@@ -20,7 +20,7 @@ async function competingCandidate(other, ready, report, flush) {
   const run = h.last(data => data.run_ref && data.state === 'complete' && Array.isArray(data.candidates));
   assert.notEqual(run.run_ref, ready.expected.required.run_ref);
   await table.getByRole('button', { name: '详情', exact: true }).first().click();
-  await page.getByRole('region', { name: '候选任务安排', exact: true }).waitFor(); await flush();
+  await page.getByRole('table', { name: '候选任务安排', exact: true }).waitFor(); await flush();
   const candidate = h.last(data => data.candidate && data.tasks);
   assert.equal(candidate.candidate.run_ref, run.run_ref);
   const official = await h.confirmAdopt('candidate', false);

@@ -128,7 +128,7 @@ def test_unknown_ratio_cell_shows_question_mark_not_zero():
 const data=h.fixture();data.projections.occupancy={state:'partial',issues:[],resources:[{resource_ref:h.reference(200),kind:'machine',label:'MC1',arranged_hours:2,occupied_hours:2,available_hours:null,overlap_hours:0,has_overlap:false,utilization:null,issues:[{code:'calendar_unavailable',message:'日历资料无法核实。'}]}]};
 const before=h.clone(data), tree=h.render(h.runtime.PlanDetailsUI.ProjectionTables,{data},{ProjectionTables:{0:'load'}}), text=h.text(tree);
 assert(text.includes('无法核实'));assert(!text.includes('0%'));assert(!h.walk(tree).some(n=>n.props.className==='plan-meter'));
-const cells=h.walk(tree).filter(n=>n.type==='tbody').flatMap(n=>h.walk(n).filter(row=>row.type==='td'));assert.strictEqual(h.text(cells[3]),'无法核实');assert(h.text(cells[5]).includes('无法核实'));
+const cells=h.walk(tree).filter(n=>n.type==='tbody').flatMap(n=>h.walk(n).filter(row=>row.type==='td'));assert.strictEqual(h.text(cells[3]),'未知');assert(h.text(cells[5]).includes('未知'));assert(h.text(cells[5]).includes('无法核实'));
 h.equal(data,before);
 """)
 

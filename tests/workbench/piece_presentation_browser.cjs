@@ -40,6 +40,9 @@ async function candidateHit(page, piece) {
       for (const kind of ['candidate', 'plan', 'trial', 'old']) {
         const payload = await page.evaluate(spec => openPiece(spec), { kind, theme, path: input.paths[kind] });
         await page.waitForFunction(kind => window.pieceHost?.kind === kind, kind); await settled(page);
+        if (kind === 'plan' || kind === 'old') {
+          assert.equal(await page.evaluate(() => pieceHost.asOf), payload.meta.as_of, 'Plan time markers must use the real HTTP data timestamp');
+        }
         const original = JSON.stringify(payload.data.tasks);
         if (kind === 'old') {
           await page.locator('[data-plan-task]').first().click();

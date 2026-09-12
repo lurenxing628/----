@@ -85,7 +85,9 @@ def test_static_anchors_exist_in_repo_and_are_referenced_by_base_template() -> N
     with app.test_request_context("/workbench?view=system"):
         references.feed(render_template("workbench/index.html", assets=manifest,
                                         boot={"view": "system", "titles": {"system": "System"}}))
-    for rel in mod._STATIC_BUNDLE_ANCHORS:
+    maintained = [name for name in manifest["styles"] if name.startswith("workbench/app/styles/")]
+    assert maintained, "应用自有 CSS 层必须进入离线资源清单"
+    for rel in tuple(mod._STATIC_BUNDLE_ANCHORS) + tuple("static/" + name for name in maintained):
         assert rel.startswith("static/"), f"锚点必须位于 static/ 下：{rel}"
         source = REPO_ROOT.joinpath(*rel.split("/"))
         assert source.is_file(), f"仓库内缺少 static 锚点：{rel}"

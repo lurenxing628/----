@@ -15,13 +15,21 @@ for (const item of built.outputs) {
 }
 const raw = fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')), manifest = JSON.parse(raw);
 const shared = manifest.scripts.filter(name => name.startsWith('workbench/vendor/') || name.startsWith('workbench/assets/foundation-'));
-for (const item of manifest.files.filter(item => !item.path.startsWith('workbench/app/'))) {
+const stylePaths = new Set(manifest.styles);
+for (const item of manifest.files.filter(item => !item.path.startsWith('workbench/app/') || stylePaths.has(item.path))) {
   const bytes = fs.readFileSync(path.join(root, 'static', item.path)); assert.equal(hash(bytes), item.sha256);
   const target = path.join(output, item.path); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, bytes);
 }
+const styleEvidence = manifest.styles.map(name => {
+  const entries = manifest.files.filter(item => item.path === name);
+  assert.equal(entries.length, 1, 'Every stylesheet must have exactly one manifest file entry: ' + name);
+  const bytes = fs.readFileSync(path.join(output, name));
+  assert.equal(hash(bytes), entries[0].sha256, 'Copied stylesheet must match the manifest: ' + name);
+  return { path: name, sha256: entries[0].sha256 };
+});
 const styles = manifest.styles.map(name => '<link rel="stylesheet" href="/assets/' + name + '">').join('');
 const scripts = shared.map(name => '/assets/' + name).concat(urls).map(url => '<script src="' + url + '"></script>').join('');
 fs.writeFileSync(path.join(output, 'index.html'), '<!doctype html><html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' + styles + '</head><body class="aps-workbench"><div id="piece-root"></div>' + scripts + '</body></html>');
 assert.deepEqual(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')), raw);
 fs.writeFileSync(path.join(output, 'build-evidence.json'), JSON.stringify({ target: built.target, global_build: false, main_page: false,
-  shared_manifest_sha256: hash(raw), sources: sources.map(row => ({ path: row.path, sha256: hash(row.code) })) }, null, 2));
+  shared_manifest_sha256: hash(raw), sources: sources.map(row => ({ path: row.path, sha256: hash(row.code) })), styles: styleEvidence }, null, 2));

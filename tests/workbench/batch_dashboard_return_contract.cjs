@@ -25,6 +25,7 @@ function freeze(value) {
 let renderState;
 const Button = Symbol('Button'), ErrorBox = Symbol('ErrorBox');
 const window = {ResourceControls: {Button, ErrorBox}, BatchControls: {Styles: Symbol('Styles')}, BatchTable: Symbol('BatchTable'),
+  WorkbenchGuards: {useDirtyGuard: () => 'batch-contract-test'},
   APSResourceSession: {
     useCommand: () => ({phase: 'idle', locked: false}),
     useQuery: (_load, _dependencies, enabled) => {

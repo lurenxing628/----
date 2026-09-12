@@ -7,9 +7,10 @@ const { execFileSync } = require('node:child_process');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..');
 function fixture() {
-  const names = ['resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceForms.jsx',
+  const names = ['WorkbenchGuards.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchControlBridge.js',
+    'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx', 'WorkbenchGuardHost.jsx', 'ResourceForms.jsx',
     'ResourceMaterialContract.js', 'ResourceFileContract.js', 'ResourceMaterialPreview.jsx', 'ResourceMaterialActions.jsx', 'ResourceFileActions.jsx',
-    'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchControls.jsx'];
+    'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx'];
   const sources = names.map(name => ({path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8')}));
   const compiled = compile({babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true});
   const scripts = new Map(compiled.outputs.map((item, index) => ['/fixture/' + names[index] + '.js', item.code]));

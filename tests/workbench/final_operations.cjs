@@ -31,7 +31,7 @@ let browser, context, page;
     const h = support(page, config, report);
     if (config.mode === 'normal') {
       await h.dashboard();
-      if (config.theme === 'dark') await page.locator('.header-controls').getByRole('button').click();
+      if (config.theme === 'dark') await page.getByRole('button', { name: '切换深色', exact: true }).click();
       assert.equal(await page.locator('html').getAttribute('data-theme'), config.theme);
       await dashboard(h); await outsourcing(h); await system(h);
     } else if (['read-controls', 'config-readback'].includes(config.mode)) await readControls(h);

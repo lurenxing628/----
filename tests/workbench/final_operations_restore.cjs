@@ -27,7 +27,7 @@ async function restore(h) {
     return;
   }
   await page.getByRole('button', { name: '查看备份与恢复', exact: true }).waitFor();
-  if (config.theme === 'dark') await page.locator('.header-controls').getByRole('button').click();
+  if (config.theme === 'dark') await page.getByRole('button', { name: '切换深色', exact: true }).click();
   await page.getByRole('tab', { name: '备份恢复', exact: true }).click();
   const row = page.locator('.sm-backups-table tbody tr').filter({ hasText: '_F_selected_source.db' });
   await mark('WBP-SYS-009.select', () => row.click());
@@ -55,7 +55,7 @@ async function restore(h) {
   });
   await mark('WBP-SYS-019.blocked', async () => { await page.getByText('业务操作已停用，须重启整个软件', { exact: true }).waitFor(); });
   await page.getByText('维护阶段与核对信息', { exact: true }).click();
-  const stages = page.locator('.sm-restore-content details');
+  const stages = page.locator('.sm-restore-content details.sm-rules');
   await mark('WBP-SYS-009.protection-backup', async () => {
     await page.getByText(report.operation.protection_filename, { exact: true }).waitFor();
     assert((await stages.innerText()).includes(report.operation.protection_sha256));

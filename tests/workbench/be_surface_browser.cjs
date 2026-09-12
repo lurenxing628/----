@@ -3,11 +3,12 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], packet = JSON.parse(fs.readFileSync(path.join(output, 'dto.json')));
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
-const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'CalendarContract.js',
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js',
+  'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'CalendarContract.js',
   'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js',
-  'ActualGanttModel.js', 'ActualGanttContract.js', 'ActualGanttAPI.js', 'ActualGanttControls.jsx', 'ActualGanttCanvas.jsx', 'ActualGanttRows.jsx', 'ActualGanttWorkspace.jsx',
-  'PreflightContract.js', 'PreflightAPI.js', 'PreflightControls.jsx', 'PreflightBatchPicker.jsx', 'PreflightWorkspace.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx'];
+  'ActualGanttModel.js', 'ActualGanttWindow.js', 'ActualGanttContract.js', 'ActualGanttAPI.js', 'ActualGanttControls.jsx', 'ActualGanttCanvas.jsx', 'ActualGanttRows.jsx', 'ActualGanttWorkspace.jsx',
+  'RunPresentation.js', 'PreflightContract.js', 'PreflightAPI.js', 'PreflightControls.jsx', 'PreflightBatchPicker.jsx', 'PreflightWorkspace.jsx',
+  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx'];
 const report = { errors: [], external: [], variants: [], screenshots: [], target: 'chrome109', static_build: false,
   data_source: 'private Flask API DTO replay; browser adapters do not access any DB', baseline_method: 'same DTO with previous 1320px root cap' };
 const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
@@ -62,6 +63,10 @@ async function shot(page, name) {
 }
 async function ready(page) {
   await page.locator('[data-actual-scroll]').waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('.fg-virtual-row').length > 0);
+}
+async function fullAxisReady(page) {
+  await ready(page);
   await page.waitForFunction(() => {
     const board = document.querySelector('[data-actual-scroll]'), row = document.querySelector('.fg-axis');
     return row && Math.abs(row.getBoundingClientRect().width - board.clientWidth) < 1;
@@ -88,10 +93,14 @@ async function preflight(page, variant) {
   await page.locator('[data-reason-group=operation_blocked]').waitFor();
   assert.equal(await page.locator('[data-reason-group=operation_blocked]').innerText(), '19道工序缺必填资料');
   assert.equal(await page.locator('[data-reason-group=execution_review_required]').innerText(), '2道工序已有执行记录待核对');
-  assert.equal(await page.getByRole('button', { name: /^开始排产：/ }).isDisabled(), true);
+  const runButton = page.getByRole('button', { name: '开始排产', exact: true });
+  assert.equal(await runButton.isDisabled(), true);
+  assert.equal(await runButton.evaluate(button => document.getElementById(button.getAttribute('aria-describedby')).textContent),
+    packet.preflight.data.run_blocked_reasons[0].message);
   assert.deepEqual(await page.evaluate(() => preflightCalls[preflightCalls.length - 1]), packet.preflight_input);
   const rect = await bounds(page, '[data-preflight-workspace]');
-  assert.equal(rect.overflow, false); assert.equal(rect.maxWidth, 'none'); assert.ok(Math.abs(rect.width - rect.mainAvailable) < 1);
+  // The maintained workspace layer caps at its parent, not the retired fixed 1320px width.
+  assert.equal(rect.overflow, false); assert.equal(rect.maxWidth, '100%'); assert.ok(Math.abs(rect.width - rect.mainAvailable) < 1);
   const compact = await page.locator('.pf-alert').boundingBox(), footer = await page.locator('.pf-footer').boundingBox();
   assert.ok(compact.height < 190); assert.ok(footer.y >= compact.y + compact.height);
   variant.preflight = { ...rect, alertHeight: compact.height, footerBottom: footer.y + footer.height };
@@ -99,7 +108,7 @@ async function preflight(page, variant) {
   await page.locator('.pf-detail > summary').first().click();
   assert.equal(await page.getByRole('table', { name: '排产前检查明细' }).locator('tbody tr').count(), 23);
   await page.locator('.pf-reasons > summary').click();
-  const rows = await page.locator('.pf-reason-list p').evaluateAll(nodes => nodes.map(node => ({ code: node.dataset.reasonCode,
+  const rows = await page.locator('.pf-reason-list [data-reason-code]').evaluateAll(nodes => nodes.map(node => ({ code: node.dataset.reasonCode,
     operation_ref: node.dataset.operationRef, batch_ref: node.dataset.batchRef, text: node.textContent })));
   const reasons = packet.preflight.data.run_blocked_reasons.concat(packet.preflight.data.warnings);
   assert.equal(rows.length, reasons.length);
@@ -109,11 +118,13 @@ async function preflight(page, variant) {
 }
 async function actual(page, variant) {
   await page.evaluate(spec => mountActual(spec), variant); await ready(page);
-  await page.locator('[data-actual-gantt]').evaluate(node => { node.style.maxWidth = '1320px'; }); await ready(page);
+  // Initial focus now follows the plan; this geometry comparison explicitly requests the whole axis.
+  await page.getByRole('button', { name: '适应全部', exact: true }).click(); await fullAxisReady(page);
+  await page.locator('[data-actual-gantt]').evaluate(node => { node.style.maxWidth = '1320px'; }); await fullAxisReady(page);
   const before = await bounds(page, '[data-actual-gantt]'), oldBar = await geometry(page);
-  await page.locator('[data-actual-gantt]').evaluate(node => { node.style.maxWidth = ''; }); await ready(page);
+  await page.locator('[data-actual-gantt]').evaluate(node => { node.style.maxWidth = ''; }); await fullAxisReady(page);
   const after = await bounds(page, '[data-actual-gantt]'), bar = await geometry(page);
-  assert.equal(after.maxWidth, 'none'); assert.equal(after.overflow, false); assert.ok(Math.abs(after.width - after.mainAvailable) < 1);
+  assert.equal(after.maxWidth, '100%'); assert.equal(after.overflow, false); assert.ok(Math.abs(after.width - after.mainAvailable) < 1);
   if (variant.width === 1920) { assert.equal(before.width, 1320); assert.ok(after.width - before.width > 300); }
   assert.ok(Math.abs(bar.ratio - oldBar.ratio) < .0001); assert.equal(bar.title, oldBar.title);
   const data = packet.actual.data, execution = data.items[0].execution, reportRow = execution.reports[0];

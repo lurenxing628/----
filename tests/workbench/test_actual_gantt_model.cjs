@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const root = path.resolve(__dirname, '../..'), host = { window: {}, Date, Map, Set, Number, JSON, Object, Array, Infinity, Math };
 vm.createContext(host);
-for (const name of ['PointContract.js', 'PointGanttModel.js', 'ActualGanttModel.js']) vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8'), host);
+for (const name of ['WorkbenchFormat.js', 'PointContract.js', 'PointGanttModel.js', 'ActualGanttModel.js']) vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8'), host);
 const M = host.window.ActualGanttModel, ref = n => n.toString(16).padStart(48, '0');
 const r = (n, start, end, machine = ref(2)) => ({ report_ref: ref(n), report_no: 'report ' + n, actual_start: start, actual_end: end,
   actual_machine_ref: machine, actual_operator_ref: ref(3), completed_quantity: null, effective_processing_hours: null, remark: '' });
@@ -54,7 +54,7 @@ for (const row of model.rows.filter(row => row.item)) {
 }
 assert.equal(M.filter(data, { ...view, query: '改换设备' }, '2026-03-08T06:00:00').length, 1);
 assert.equal(M.filter(data, { ...view, late: 'unclosed' }, '2026-03-08T06:00:00').length, 1);
-assert.equal(M.number(null), '未知'); assert.equal(M.number(0), '0');
+assert.equal(M.number(null), '未知'); assert.equal(M.number(0), '0.00');
 assert.equal(M.visibleRows(model.rows, 100000, 100010).length, 0);
 assert.equal(Object.prototype.hasOwnProperty.call(model, 'conflicts'), false, 'Visual report overlap is not plan conflict evidence');
 const legacy = { ...item, execution: { ...item.execution, execution_state: 'complete', completion_basis: 'legacy_finish_event', confirmed_finish: task.end, reports: [], legacy_facts: [{}] } };

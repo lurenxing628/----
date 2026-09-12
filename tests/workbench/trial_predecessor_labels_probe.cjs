@@ -5,7 +5,7 @@ const root = path.resolve(__dirname, '../..'), input = JSON.parse(fs.readFileSyn
 const vendor = path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor');
 const context = vm.createContext({ console }); context.window = context; context.self = context;
 vm.runInContext(fs.readFileSync(path.join(vendor, 'react-18.3.1.js'), 'utf8'), context);
-const names = ['PointContract.js', 'ResourceControls.jsx', 'TrialControls.jsx', 'TrialGantt.jsx', 'TrialDetails.jsx'];
+const names = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'PointContract.js', 'ResourceControls.jsx', 'TrialControls.jsx', 'TrialGantt.jsx', 'TrialDetails.jsx'];
 const sources = names.map(name => ({ path: 'frontend/workbench/app/' + name,
   code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(vendor, 'babel-7.29.0.min.js'), sources, check_combined: true });
@@ -41,14 +41,10 @@ assert.equal(rendered.length, original.length);
 let wrapContracts = 0;
 rendered.forEach((element, index) => {
   assert.equal(element.key, original[index], 'Keep original ref order and key');
-  const wrapper = Button(element.props), buttons = nodes(wrapper, node => node.type === 'button');
-  assert.equal(buttons.length, 1);
-  const button = buttons[0], label = input.labels[index];
+  // Verify this component's shared-Button contract; rendering hooks belongs to the browser probes.
+  const button = element, label = input.labels[index];
   assert.equal(button.props.title, label); assert.equal(button.props['aria-label'], label);
-  assert.equal(wrapper.props.title, label); assert.equal(text(button), label);
-  assert.equal(button.props.className, 'btn'); assert.equal(button.props.type, 'button');
-  const icons = nodes(button, node => node.type === context.ResourceControls.Icon);
-  assert.equal(icons.length, 1); assert.equal(icons[0].props.name, 'chevron-left');
+  assert.equal(text(button), label); assert.equal(button.props.icon, 'chevron-left');
   const style = button.props.style;
   assert.equal(style.minWidth, 0); assert.equal(style.maxWidth, '100%');
   assert.equal(style.height, 'auto'); assert.equal(style.whiteSpace, 'normal'); assert.equal(style.textAlign, 'left');

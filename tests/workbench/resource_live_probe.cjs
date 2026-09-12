@@ -32,13 +32,29 @@ async function rail(page,label){
   await page.getByRole('button',{name:'新增'+label,exact:true}).isEnabled();
 }
 function row(page,code){return page.locator('.wb-table tbody tr').filter({has:page.getByRole('button',{name:code,exact:true})});}
+async function empty(page){
+  const state=page.locator('.wb-table tbody .wb-empty-filtered');await state.waitFor();
+  await state.getByText('当前筛选没有匹配项',{exact:true}).waitFor();
+  assert(await state.getByRole('button',{name:'清除筛选',exact:true}).isEnabled());
+  equal(await page.locator('.wb-table tbody input[type="checkbox"]').count(),0);
+}
 async function openEdit(page,code){
   await row(page,code).getByRole('button',{name:/^(查看\/编辑|查看绑定|查看供应商)$/}).click();
   await page.getByRole('dialog').getByRole('button',{name:'编辑',exact:true}).click();
   await page.getByRole('dialog').locator('input[name="label"]').waitFor();
 }
 async function editor(page){const dialog=page.getByRole('dialog');await dialog.waitFor();return dialog;}
-async function close(page){await page.getByRole('dialog').locator('.modal-f').getByRole('button',{name:/^(关闭|取消)$/,exact:true}).click();await page.getByRole('dialog').waitFor({state:'detached'});}
+async function close(page,{discard=false}={}){
+  const dialogs=page.getByRole('dialog');assert.equal(await dialogs.count(),1,'Close must start from one active resource dialog');
+  const dialog=page.getByRole('dialog',{name:await dialogs.locator('.modal-h2').innerText(),exact:true});
+  await dialog.locator('.modal-f').getByRole('button',{name:/^(关闭|取消)$/,exact:true}).click();
+  if(discard){
+    const confirmation=page.getByRole('dialog',{name:'离开前确认',exact:true});await confirmation.waitFor();
+    await confirmation.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();
+    await confirmation.waitFor({state:'detached'});
+  }
+  await dialog.waitFor({state:'detached'});assert.equal(await page.getByRole('dialog').count(),0);
+}
 async function save(page,kind,action,status=200){
   const wait=page.waitForResponse(res=>new URL(res.url()).pathname.endsWith('/'+action)&&res.request().method()==='POST'&&res.url().includes('/entities/'+kind+'/'));
   await page.getByRole('dialog').locator('.modal-f').getByRole('button',{name:action==='delete'?'确认删除':'保存',exact:true}).click();
@@ -73,14 +89,19 @@ async function createEntity(page,label,kind,code,fields){
 async function editAndDelete(page,context,label,kind,code,ref){
   const original=await readEntity(context,kind,ref);
   await openEdit(page,code);const cancelled=await editor(page);
-  await type(cancelled.locator('input[name="label"]'),'Cancelled name');await close(page);
+  await type(cancelled.locator('input[name="label"]'),'Cancelled name');
+  await cancelled.locator('.modal-f').getByRole('button',{name:'取消',exact:true}).click();
+  const confirmation=page.getByRole('dialog',{name:'离开前确认',exact:true});await confirmation.waitFor();
+  await confirmation.getByRole('button',{name:'留在当前页面',exact:true}).click();await confirmation.waitFor({state:'detached'});
+  equal(await page.getByRole('dialog').locator('input[name="label"]').inputValue(),'Cancelled name');
+  await close(page,{discard:true});
   equal((await readEntity(context,kind,ref)).label,original.label);
   await openEdit(page,code);const dialog=await editor(page);
   assert(!(await dialog.locator('input[name="business_code"]').isEditable()));await type(dialog.locator('input[name="label"]'),'Changed '+code);
   await save(page,kind,'update');await close(page);const changed=await readEntity(context,kind,ref);equal(changed.label,'Changed '+code);
   equal(changed.fields,original.fields);equal(changed.relationships,original.relationships);
   await row(page,code).getByRole('button',{name:'删除',exact:true}).click();await editor(page);await save(page,kind,'delete');await close(page);
-  await page.getByText('当前条件下没有资料。',{exact:true}).waitFor();
+  await empty(page);
 }
 async function scenario(browser,viewport,theme){
   const state=viewport.width+'-'+theme,context=await browser.newContext({viewport,acceptDownloads:true});
@@ -130,7 +151,7 @@ async function scenario(browser,viewport,theme){
       await search(page,'');await page.getByRole('button',{name:'MAT-001',exact:true}).waitFor();
       equal(await page.locator('html').getAttribute('data-theme'),theme);await layout(page);
     });
-    const helpers={run,close,type,rail,search,shot,layout,recordExpected:row=>report.expected_failures.push({state,...row})};
+    const helpers={run,close,type,rail,search,shot,layout,empty,recordExpected:row=>report.expected_failures.push({state,...row})};
     await resourceTableControls(page,state,{...helpers,row,save,createEntity,openEdit},root,report);
     await resourceDetails(page,state,{...helpers,row,save});
     await auxiliary.catalog(page,state,helpers);

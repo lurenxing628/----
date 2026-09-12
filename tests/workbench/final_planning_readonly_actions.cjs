@@ -4,11 +4,15 @@ const assert = require('node:assert/strict');
 async function readonlyActions(page, ready, report, h, flush) {
   const { action, button, last, shot } = h;
   await page.goto(ready.url + '/workbench?view=analysis');
-  await page.getByRole('table', { name: '可选排产方案', exact: true }).waitFor();
-  if (await page.locator('html').getAttribute('data-theme') !== report.theme) await page.getByRole('button', { name: /^深色：/ }).click();
+  await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
+  assert.equal(await page.getByRole('combobox', { name: '切换所选计划', exact: true }).inputValue(), ready.expected.original_plan_ref);
+  assert.equal(last(value => value.plan && value.tasks).plan.version, 4);
+  assert.equal(await page.locator('.plan-catalog').getAttribute('data-collapsed'), 'true');
+  if (await page.locator('html').getAttribute('data-theme') !== report.theme) await page.getByRole('button', { name: /^切换(?:深色|浅色)$/ }).click();
   assert.equal(await page.locator('html').getAttribute('data-theme'), report.theme);
   const navigation = { version: 1, view: 'analysis', context: { plan_ref: 'not-a-valid-plan' } };
   await action(['WBP-PLAN-004.invalid-reference'], async () => {
+    const reads = report.requests.length;
     const response = await page.goto(ready.url + '/workbench?view=analysis&nav=' + encodeURIComponent(JSON.stringify(navigation)));
     assert.equal(response.status(), 400);
     report.expected_rejected_documents = [{ url: response.url(), status: response.status() }];
@@ -22,15 +26,22 @@ async function readonlyActions(page, ready, report, h, flush) {
     report.expected_rejected_documents.push({ url: again.url(), status: again.status() });
     await page.getByRole('heading', { name: '工作台暂不可用', exact: true }).waitFor();
     await flush(); assert.equal(await page.locator('[data-plan-gantt]').count(), 0);
+    assert.equal(await page.locator('.wb-current-plan[data-plan-ref]').count(), 0);
+    assert.equal(report.requests.length, reads, 'Rejected navigation and reload cannot read a fallback plan');
     await shot('invalid-plan-retained-no-fallback');
   });
   await action(['WBP-DELAY-001.unknown'], async () => {
     await page.getByRole('link', { name: '打开工作台', exact: true }).click();
     await page.locator('.sidebar-nav').getByRole('link', { name: '选择排产方案', exact: true }).click();
-    if (await page.locator('html').getAttribute('data-theme') !== report.theme) await page.getByRole('button', { name: /^深色：/ }).click();
+    await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
+    if (await page.locator('html').getAttribute('data-theme') !== report.theme) await page.getByRole('button', { name: /^切换(?:深色|浅色)$/ }).click();
+    await button('展开计划目录', page.locator('.plan-catalog')).click();
     const row = page.getByRole('table', { name: '可选排产方案', exact: true }).getByRole('row')
       .filter({ has: page.getByRole('cell', { name: String(ready.expected.official_version), exact: true }) });
-    await row.getByRole('radio').check(); await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
+    assert.equal(await row.count(), 1); assert(await row.getByRole('radio').isChecked());
+    assert((await row.innerText()).includes('当前正式'));
+    await button('收起计划目录', page.locator('.plan-catalog')).click();
+    assert.equal(await page.getByRole('combobox', { name: '切换所选计划', exact: true }).inputValue(), ready.expected.original_plan_ref);
     const data = last(value => value.plan && value.tasks);
     assert.equal(data.plan.plan_ref, ready.expected.original_plan_ref);
     assert.equal(data.plan.version, 4);
@@ -42,7 +53,11 @@ async function readonlyActions(page, ready, report, h, flush) {
     assert.equal(risk.risk, 'unknown'); assert.equal(risk.planned_finish, null); assert.equal(risk.delay_hours, null);
     assert.equal(risk.unscheduled_operation_count, 11);
     assert.equal(risk.partial_planned_finish, '2026-09-09T08:45:00');
-    await button('交付风险', page.locator('.plan-heading').first()).click(); await flush();
+    const riskTab = page.getByRole('tablist', { name: '计划中心视图', exact: true }).getByRole('tab', { name: '交付风险', exact: true });
+    await riskTab.click(); await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
+    assert.equal(await riskTab.getAttribute('aria-selected'), 'true');
+    assert.equal(last(value => value.plan && value.tasks).plan.plan_ref, ready.expected.original_plan_ref);
+    assert.equal(last(value => value.plan && value.tasks).plan.version, 4);
     const batch = page.getByRole('table', { name: '交付风险列表', exact: true }).getByRole('row').filter({ has: button('B1') });
     assert((await batch.innerText()).includes('无法核实'));
     assert(!(await batch.innerText()).includes('预计按期'));

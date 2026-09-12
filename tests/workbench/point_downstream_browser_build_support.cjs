@@ -24,10 +24,19 @@ for (const item of manifest.files) {
   assert.equal(hash(bytes), item.sha256, 'Shared asset changed during isolated build');
   const target = path.join(output, item.path); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, bytes);
 }
-const titles = JSON.parse(execFileSync(path.join(root, '.venv/bin/python'), ['-B', '-c',
-  'import json; from web.routes.workbench.pages import VIEW_TITLES; print(json.dumps(VIEW_TITLES))'], { cwd: root, env: process.env, encoding: 'utf8' }));
-const boot = { schema_version: 1, entry_url: '/', trial_url: '/trial', view: 'fieldgantt', titles };
-const styles = manifest.styles.map(name => '<link rel="stylesheet" href="/assets/' + name + '">').join('');
+const navigation = JSON.parse(execFileSync(path.join(root, '.venv/bin/python'), ['-B', '-c',
+  'import json; from web.routes.workbench.navigation_metadata import VIEW_TITLES, VIEW_ALIASES, navigation_groups; print(json.dumps(dict(titles=VIEW_TITLES, nav_groups=navigation_groups(), view_aliases=VIEW_ALIASES)))'], { cwd: root, env: process.env, encoding: 'utf8' }));
+const supportedViews = ['dashboard', 'process', 'batches', 'run', 'analysis', 'gantt', 'delay', 'field', 'fieldgantt', 'review', 'reports', 'calib', 'basedata', 'system', 'trial'];
+assert.deepEqual(Object.keys(navigation.titles).sort(), supportedViews.slice().sort(), 'Independent 15-view support contract');
+const boot = { schema_version: 1, entry_url: '/', trial_url: '/trial', view: 'fieldgantt', enabled_views: supportedViews,
+  ...navigation, help_url: '/scheduler/config/manual', instance_label: '独立点工序测试数据' };
+const appStyles = order.styles.map(name => {
+  const source = path.join(root, 'frontend/workbench/app/styles', name), bytes = fs.readFileSync(source), file = 'current-' + name;
+  fs.writeFileSync(path.join(output, file), bytes);
+  sources.push({ path: 'app/styles/' + name, code: bytes.toString('utf8') });
+  return '<link rel="stylesheet" href="/assets/' + file + '">';
+}).join('');
+const styles = manifest.styles.filter(name => !name.startsWith('workbench/app/')).map(name => '<link rel="stylesheet" href="/assets/' + name + '">').join('') + appStyles;
 const scripts = shared.map(name => '/assets/' + name).concat(urls).map(url => '<script src="' + url + '"></script>').join('');
 fs.writeFileSync(path.join(output, 'index.html'), '<!doctype html><html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' + styles + '</head><body class="aps-workbench"><div id="root"></div><script id="workbench-boot" type="application/json">' + JSON.stringify(boot) + '</script>' + scripts + '</body></html>');
 fs.writeFileSync(path.join(output, 'build-evidence.json'), JSON.stringify({ target: built.target, global_build: false, main_source: 'frontend/workbench/app/main.jsx',

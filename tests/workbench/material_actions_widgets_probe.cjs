@@ -13,7 +13,8 @@ const output = process.argv[2];
 if (!output) throw new Error('Pass an artifact directory');
 fs.mkdirSync(output, { recursive: true });
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
-const names = ['resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceForms.jsx',
+const names = ['WorkbenchGuards.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchControlBridge.js',
+  'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx', 'WorkbenchGuardHost.jsx', 'ResourceForms.jsx',
   'ResourceMaterialContract.js', 'ResourceMaterialPreview.jsx', 'ResourceMaterialActions.jsx'];
 const sources = names.map(name => ({path:'frontend/workbench/app/' + name,code:fs.readFileSync(path.join(root,'frontend/workbench/app',name),'utf8')}));
 const compiled = compile({babel_path:path.join(root,'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),sources,check_combined:true});

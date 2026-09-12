@@ -3,9 +3,13 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
-const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'ResourceControls.jsx', 'WorkbenchControlStyles.jsx', 'PointContract.js', 'PointGantt.jsx', 'TrialContract.js', 'TrialAPI.js', 'TrialSession.js',
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchControlBridge.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',  'PointContract.js', 'PointGantt.jsx', 'TrialContract.js', 'TrialAPI.js', 'TrialSession.js',
   ...(fs.existsSync(path.join(root, 'frontend/workbench/app/TrialExport.js')) ? ['TrialExport.js'] : []),
   'TrialControls.jsx', 'TrialViewState.js', 'TrialCatalog.jsx', 'TrialGantt.jsx', 'TrialDetails.jsx', 'TrialResults.jsx', 'TrialStyles.jsx', 'TrialWorkspace.jsx'];
+const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {
+  const file = 'frontend/workbench/app/styles/' + name; return { path: file, code: fs.readFileSync(path.join(root, file), 'utf8') };
+});
+const workspaceCSS = styleSources.map(row => row.code).join('\n');
 const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((row, i) => ['/source/' + files[i], row.code]));
@@ -17,7 +21,7 @@ const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
   '<style>body{margin:0}#fixture-root{margin-left:208px;padding:16px 24px;min-height:100vh}</style>' +
   '</head><body class="aps-workbench"><div id="fixture-root"></div>' + foundation.map(file => '<script src="/static/' + file + '"></script>').join('') +
   [...scripts.keys()].map(file => '<script src="' + file + '"></script>').join('') +
-  '<script>let root;window.mountTrial=target=>{if(root)root.unmount();root=ReactDOM.createRoot(document.getElementById("fixture-root"));root.render(React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchTrialWorkspace,{initialTarget:target})));};window.mountExport=data=>{root.render(React.createElement(TrialControls.Download,{data}));};</script></body></html>';
+  '<script>let root;window.mountTrial=target=>{if(root)root.unmount();root=ReactDOM.createRoot(document.getElementById("fixture-root"));root.render(React.createElement(React.Fragment,null,React.createElement(WorkbenchGuardHost),React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchTrialWorkspace,{initialTarget:target})));};window.mountExport=data=>{root.render(React.createElement(TrialControls.Download,{data}));};</script></body></html>';
 const server = http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://fixture').pathname;
   if (pathname.startsWith('/api/') || pathname.startsWith('/fixture/')) {
@@ -25,13 +29,13 @@ const server = http.createServer((req, res) => {
     const upstream = http.request(backend + req.url, { method: req.method, headers: req.headers }, response => { res.writeHead(response.statusCode, response.headers); response.pipe(res); });
     upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end('CZ isolated fixture unavailable'); }); req.pipe(upstream); return;
   }
-  if (pathname === '/') { res.setHeader('Content-Type', 'text/html;charset=utf-8'); res.end(html); return; }
+  if (pathname === '/') { res.setHeader('Content-Type', 'text/html;charset=utf-8'); res.end(html.replace('</head>', '<style>' + workspaceCSS + '</style></head>')); return; }
   if (pathname === '/favicon.ico') { res.writeHead(204); res.end(); return; }
   if (scripts.has(pathname)) { res.setHeader('Content-Type', 'application/javascript'); res.end(scripts.get(pathname)); return; }
   const asset = assets.get(pathname); if (!asset) { res.writeHead(404); res.end(); return; } res.setHeader('Content-Type', asset.mime); res.end(asset.bytes);
 });
 const report = { browser: null, variants: [], downloads: [], boundary_checks: [], errors: [], external: [], screenshots: [],
-  sources: sources.map(s => ({ path: s.path, sha256: crypto.createHash('sha256').update(s.code).digest('hex') })) };
+  sources: sources.concat(styleSources).map(s => ({ path: s.path, sha256: crypto.createHash('sha256').update(s.code).digest('hex') })) };
 let page, origin, variant;
 const button = name => page.getByRole('button', { name, exact: true });
 const proof = async () => (await page.request.get(origin + '/fixture/export-proof')).json();

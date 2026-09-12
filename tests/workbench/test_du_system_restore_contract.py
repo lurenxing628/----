@@ -43,6 +43,10 @@ assert(R.describe(stopped,op).guidance.includes('只刷新或关闭浏览器不�
 assert(R.describe({...stopped,state:'recovery_required'},op).uncertain);
 assert(R.describe({...stopped,request_key:'different-request-key'},op).uncertain);
 assert(!R.describe(host,null).title.includes('已核实'));
+assert.equal(R.describe(null,null).title,'无法读取维护状态');
+assert(R.describe(null,null).guidance.includes('当前页面已暂停业务读写'));
+assert(R.describe(stopped,null).title.includes('系统已暂停'));
+assert(R.describe(null,op).uncertain);
 (async()=>{assert.deepEqual(await api.host(),host);assert.equal(requests.length,1);
 assert(requests[0].url.endsWith('/restore-host'));assert.equal(requests[0].options.cache,'no-store');
 console.log('DU restore API binding, load order, references, metadata and restart contracts passed');

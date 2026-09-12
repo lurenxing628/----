@@ -2,9 +2,9 @@
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto'), http = require('node:http'), assert = require('node:assert/strict');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
-const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'PointGanttModel.js', 'PointGantt.jsx',
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanSelectionModel.js',
   'PlanGanttModel.js', 'PlanLayout.jsx', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanCatalogUI.jsx', 'PlanDetailsUI.jsx', 'PlanExportUI.jsx', 'PlanWorkspace.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx'];
+  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx', 'WorkbenchListControls.jsx'];
 const fixtureScript = `
 const F = window.PlanUIFixtures;
 let mounted;
@@ -32,6 +32,7 @@ function Harness({spec}) {
       workspace:async(reference,scope,signal)=>{
         await call('workspace',reference,scope,signal);
         const value=F.workspace(reference,scope,fixture.spec);
+        if(fixture.spec.asOf)value.meta.as_of=fixture.spec.asOf;
         if(fixture.spec.badWorkspace)delete value.data.projections.calendar;
         if(fixture.spec.wrongPlan)value.data.plan.plan_ref=F.ref(777);
         return value;
@@ -80,7 +81,12 @@ function server(report) {
   assets.set('/fixture/data.js', { bytes: fixtureBytes, mime: 'application/javascript' });
   assets.set('/fixture/harness.js', { bytes: fixtureScript, mime: 'application/javascript' });
   const sharedScripts = manifest.scripts.filter(file => file.startsWith('workbench/vendor/') || file.startsWith('workbench/assets/foundation-'));
-  const css = manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('');
+  const currentStyles = fs.readdirSync(path.join(root, 'frontend/workbench/app/styles')).filter(name => name.endsWith('.css')).sort().map(name => {
+    const stylePath = 'frontend/workbench/app/styles/' + name, styleBytes = fs.readFileSync(path.join(root, stylePath)), url = '/fixture/' + name;
+    report.sources.push({ path: stylePath, sha256: hash(styleBytes) }); assets.set(url, { bytes: styleBytes, mime: 'text/css' });
+    return '<link rel="stylesheet" href="' + url + '">';
+  }).join('');
+  const css = manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + currentStyles;
   const scripts = sharedScripts.map(file => '/static/' + file).concat(compiled, ['/fixture/data.js', '/fixture/harness.js']).map(url => '<script src="' + url + '"></script>').join('');
   const html = '<!doctype html><html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' + css + '</head><body class="aps-workbench"><div id="fixture-root"></div>' + scripts + '</body></html>';
   return http.createServer((request, response) => {

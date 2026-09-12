@@ -3,10 +3,14 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
-const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchControlStyles.jsx', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx',
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchControlBridge.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',  'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx',
   'TrialContract.js', 'TrialAPI.js', 'TrialSession.js', 'TrialControls.jsx', 'TrialViewState.js', 'TrialCatalog.jsx', 'TrialGantt.jsx', 'TrialDetails.jsx', 'TrialResults.jsx', 'TrialStyles.jsx', 'TrialWorkspace.jsx',
   'TrialAdoptionAPI.js', 'TrialAdoptionState.js', 'TrialAdoptionControls.jsx', 'TrialAdoptionAction.jsx',
-  'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js', 'PlanLayout.jsx', 'PlanCatalogUI.jsx', 'PlanGanttModel.js', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanDetailsUI.jsx', 'PlanExportUI.jsx', 'PlanWorkspace.jsx'];
+  'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js', 'PlanLayout.jsx', 'PlanSelectionModel.js', 'PlanCatalogUI.jsx', 'PlanGanttModel.js', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanDetailsUI.jsx', 'PlanExportUI.jsx', 'PlanWorkspace.jsx'];
+const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {
+  const file = 'frontend/workbench/app/styles/' + name; return { path: file, code: fs.readFileSync(path.join(root, file), 'utf8') };
+});
+const workspaceCSS = styleSources.map(row => row.code).join('\n');
 const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((row, i) => ['/source/' + files[i], row.code]));
@@ -17,7 +21,7 @@ const boot = `window.nav=[];window.events=[];window.hookSnapshots={};let fixture
 function Fixture(){const [target,setTarget]=React.useState(sessionStorage.getItem('cx_scenario')),[plan,setPlan]=React.useState(null),[disabled,setDisabled]=React.useState(false);
 window.mountTrial=ref=>{sessionStorage.setItem('cx_scenario',ref);setPlan(null);setTarget(ref);};window.disableAdoption=setDisabled;
 const navigate=(view,context)=>{nav.push([view,context]);setPlan(context.plan_ref);};
-return React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),plan?
+return React.createElement(React.Fragment,null,React.createElement(WorkbenchGuardHost),React.createElement(WorkbenchControlStyles),plan?
 React.createElement(React.Fragment,null,React.createElement(ResourceControls.Button,{onClick:()=>setPlan(null)},'返回原场景'),React.createElement(PlanWorkspace,{view:'analysis',initialContext:{plan_ref:plan}})):
 target&&React.createElement(WorkbenchTrialWorkspace,{initialTarget:{scenario_ref:target},onNavigate:navigate,
 renderAdoption:props=>{hookSnapshots[props.scenarioRef]=JSON.stringify(props.data);return React.createElement(TrialAdoptionAction,{...props,disabled:props.disabled||disabled,
@@ -41,13 +45,13 @@ const server = http.createServer((req, res) => {
     });
     upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end('CX isolated fixture unavailable'); }); req.pipe(upstream); return;
   }
-  if (pathname === '/') { res.setHeader('Content-Type', 'text/html;charset=utf-8'); res.end(html); return; }
+  if (pathname === '/') { res.setHeader('Content-Type', 'text/html;charset=utf-8'); res.end(html.replace('</head>', '<style>' + workspaceCSS + '</style></head>')); return; }
   if (pathname === '/favicon.ico') { res.writeHead(204); res.end(); return; }
   if (scripts.has(pathname)) { res.setHeader('Content-Type', 'application/javascript'); res.end(scripts.get(pathname)); return; }
   const asset = assets.get(pathname); if (!asset) { res.writeHead(404); res.end(); return; } res.setHeader('Content-Type', asset.mime); res.end(asset.bytes);
 });
 const report = { browser: null, variants: [], checks: [], screenshots: [], errors: [], external: [], dialogs: [], layout: [],
-  sources: sources.map(s => ({ path: s.path, sha256: crypto.createHash('sha256').update(s.code).digest('hex') })) };
+  sources: sources.concat(styleSources).map(s => ({ path: s.path, sha256: crypto.createHash('sha256').update(s.code).digest('hex') })) };
 let page, origin, variant, refs;
 const button = name => page.getByRole('button', { name, exact: true });
 const done = name => report.checks.push({ variant, name, passed: true });
@@ -74,6 +78,16 @@ async function fill() {
 async function success(version = 41) {
   await page.getByRole('dialog', { name: '场景正式采用回执', exact: true }).waitFor();
   await page.getByText('已核实：本次生成正式版本 v' + version + '，共 2 道工序。', { exact: false }).waitFor();
+}
+async function selectedOfficial(planRef, version, identity) {
+  const catalog = page.getByRole('region', { name: '排产方案目录', exact: true });
+  assert.equal(await catalog.getByRole('combobox', { name: '切换所选计划', exact: true }).inputValue(), planRef);
+  await catalog.getByRole('button', { name: '展开计划目录', exact: true }).click();
+  const selected = catalog.getByRole('table', { name: '可选排产方案', exact: true }).locator('tbody tr[aria-selected=true]');
+  await selected.waitFor(); assert.equal(await selected.count(), 1); assert(await selected.getByRole('radio').isChecked());
+  assert.equal(await selected.getByRole('cell').nth(1).innerText(), String(version));
+  assert.equal(await selected.locator('.plan-state').innerText(), identity);
+  assert((await page.locator('.plan-heading').first().innerText()).includes(identity));
 }
 async function geometry(name) {
   const row = await page.evaluate(() => {
@@ -114,8 +128,7 @@ async function basic() {
   await button('进入正式方案').click(); await page.locator('[data-plan-workspace] .plan-bar').first().waitFor();
   const navigation = await page.evaluate(() => nav[nav.length - 1]); assert.deepEqual(navigation, ['analysis', { plan_ref: intent.receipt.data.official_plan.plan_ref }]);
   assert.notEqual(navigation[1].plan_ref, refs.scenario_ref); assert.notEqual(navigation[1].plan_ref, refs.baseline_ref);
-  assert((await page.locator('.plan-catalog tr[aria-selected=true]').innerText()).includes('41'));
-  assert((await page.locator('.plan-heading').first().innerText()).includes('当前正式')); await shot('official-navigation'); done('real-commit-new-official-identity-main-plan-navigation');
+  await selectedOfficial(navigation[1].plan_ref, 41, '当前正式'); await shot('official-navigation'); done('real-commit-new-official-identity-main-plan-navigation');
   await button('返回原场景').click(); await ready(); await button('查看场景采用回执').click(); await success();
   const advanced = await control('advance'); assert.equal(advanced.data.official_plan.version, 42);
   const writes = (await evidence()).journal.filter(r => r.request_key === intent.request_key && r.path.endsWith('/adopt')).length;
@@ -127,7 +140,7 @@ async function basic() {
   const replayed = await replay.json(); assert.equal(replayed.receipt_ref, intent.receipt.receipt_ref); assert(replayed.replayed); assert.equal(replayed.data.official_plan.version, 41);
   assert.equal((await evidence()).receipts.length, 2); assert.deepEqual(await savedScenario(), before); await shot('old-receipt-after-new-official');
   await button('进入正式方案').click(); await page.locator('[data-plan-workspace] .plan-bar').first().waitFor();
-  assert((await page.locator('.plan-heading').first().innerText()).includes('历史正式')); done('original-key-replay-after-newer-official-is-historical-not-current');
+  await selectedOfficial(intent.receipt.data.official_plan.plan_ref, 41, '历史正式'); done('original-key-replay-after-newer-official-is-historical-not-current');
   await button('返回原场景').click(); await ready(); await button('查看场景采用回执').click(); await success(); await button('完成核实').click(); assert.equal(await state(), null);
 }
 async function rejectedCases() {
@@ -211,7 +224,7 @@ async function storageAndBoundaries() {
   const corrupt = await evidence(); assert(!corrupt.journal.some(r => r.database === corrupt.lifecycle.database_path && r.path.endsWith('/adopt')));
   await shot('corrupt-storage'); done('corrupt-persistent-record-blocks-new-adoption');
   await reset(); await inspect(); await fill(); await page.evaluate(() => disableAdoption(true));
-  await page.getByText('原场景正在读取或有待核实操作，新的采用已暂停。', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled());
+  await page.getByRole('dialog', { name: '确认场景正式采用', exact: true }).getByText('原场景正在读取或有待核实操作，新的采用已暂停。', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled());
   await page.evaluate(() => disableAdoption(false)); assert(await button('确认正式采用').isDisabled()); await button('重新预览').click();
   await page.getByText('完整场景，共 2 道工序', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled()); done('host-disabled-invalidates-preview-and-consent');
   await fill(); await control('drain'); await button('确认正式采用').click();

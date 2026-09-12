@@ -29,7 +29,7 @@ async function releaseNativeStorage(page, quota) {
 async function candidateStorageFailure(page, report, h, flush) {
   await h.action(['WBP-PLAN-004.storage-failure'], async () => {
     const before = report.requests.length;
-    await h.button('正式采用', page.locator('[data-run-adoption-action]')).click();
+    await h.button('采用方案', page.locator('[data-run-adoption-action]')).click();
     const dialog = page.getByRole('dialog', { name: '确认正式采用', exact: true });
     await dialog.getByLabel('采用原因', { exact: true }).fill('Private native storage failure');
     await dialog.getByLabel('声明人', { exact: true }).fill('D acceptance');
@@ -66,6 +66,15 @@ async function trialStorageFailure(page, report, h, flush) {
       await h.shot('trial-native-storage-refused');
     } finally { await releaseNativeStorage(page, quota); }
     await h.button('取消编辑', detail).click();
+    const discard = page.getByRole('dialog', { name: '离开前确认', exact: true });
+    await discard.getByText('试调工序的设备、人员或开工调整尚未保存。', { exact: true }).waitFor();
+    await h.button('留在当前页面', discard).click(); await discard.waitFor({ state: 'hidden' });
+    assert.equal(await page.getByLabel('调整开工', { exact: true }).inputValue(), '2026-09-09T13:15');
+    assert.equal(await page.locator('[data-trial-workspace]').getAttribute('data-open-ref'), report.draft_ref);
+    await h.shot('trial-native-storage-leave-refused');
+    await h.button('取消编辑', detail).click();
+    await h.button('放弃未保存内容并继续', discard).click(); await discard.waitFor({ state: 'hidden' });
+    assert.equal(await page.getByLabel('调整开工', { exact: true }).count(), 0);
     await h.button('重读恢复记录与当前内容').click(); await flush();
     assert(report.requests.slice(before).every(row => row.method === 'GET'));
     const latest = h.last(row => row.draft_ref === report.draft_ref && row.tasks);

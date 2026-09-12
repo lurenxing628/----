@@ -64,8 +64,16 @@ async function main() {
         await page.getByLabel('实际开工', { exact: true }).fill(task.start.slice(0, 16));
         await page.getByLabel('本次实际完工', { exact: true }).fill(task.end.slice(0, 16));
         await page.getByLabel('有效工时 (h)', { exact: true }).fill('0');
+        const submitted = page.waitForResponse(response => response.request().method() === 'POST'
+          && new URL(response.url()).pathname.endsWith('/execution/tasks/' + task.task_ref + '/reports'));
+        const reread = page.waitForResponse(response => response.request().method() === 'GET'
+          && new URL(response.url()).pathname.endsWith('/execution/tasks/' + task.task_ref));
         await page.getByRole('button', { name: '保存报工', exact: true }).click();
-        await page.getByRole('button', { name: '重读已确认结果', exact: true }).click();
+        const receipt = await submitted, refreshed = await reread;
+        assert.equal(receipt.status(), 200); assert.equal(refreshed.status(), 200);
+        assert.equal((await refreshed.json()).data.task.task_ref, task.task_ref);
+        await page.getByText('已保存并重读最新报工。', { exact: true }).waitFor();
+        report.automatic_reread = { write_url: receipt.url(), read_url: refreshed.url(), task_ref: task.task_ref };
         await detail.getByRole('button', { name: /^录入信息 / }).waitFor(); await flush();
         assert(!(await detail.locator('.field-detail-heading').innerText()).includes('已完工'));
         const saved = latest(item => item.url.includes('/execution/tasks/') && item.body.data && item.body.data.task).data.task;
@@ -81,7 +89,7 @@ async function main() {
       const item = actual.items.find(item => item.task.task_ref === task.task_ref);
       assert.deepEqual(item.task, task); assert.notEqual(item.execution.execution_state, 'complete');
       const description = await page.getByLabel('工序详情', { exact: true }).innerText();
-      assert(description.includes(piece) && description.includes('计划应做：1 件 · 批次：3 件'));
+      assert(description.includes(piece) && description.includes('计划应做：1.00 件 · 批次：3.00 件'));
       await page.getByLabel('搜索现场甘特', { exact: true }).fill(piece);
       await page.getByRole('button', { name: '批次', exact: true }).click();
       assert((await page.locator('[data-actual-count]').innerText()).includes('2 / 9'));
@@ -89,7 +97,7 @@ async function main() {
       await select.waitFor(); assert((await select.innerText()).includes(piece)); await select.focus(); await page.keyboard.press('Enter');
       const mark = page.locator('[data-task-ref="' + task.task_ref + '"][data-actual-mark="plan"]');
       await mark.hover(); assert((await page.getByRole('tooltip').innerText()).includes(piece));
-      assert((await page.getByRole('tooltip').innerText()).includes('计划应做：1 件 · 批次：3 件'));
+      assert((await page.getByRole('tooltip').innerText()).includes('计划应做：1.00 件 · 批次：3.00 件'));
       await shot(page, 'actual-' + index);
       await page.getByRole('button', { name: '导出 CSV', exact: true }).click();
       const download = page.waitForEvent('download'); await page.getByRole('button', { name: '下载 CSV', exact: true }).click();

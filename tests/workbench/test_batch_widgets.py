@@ -20,7 +20,7 @@ def test_batch_components_chrome109():
     report = json.loads((output / "batch-result.json").read_text(encoding="utf-8"))
     assert report["browser"].startswith("109.") and report["compile"]["global_build"] is False
     assert report["errors"] == [] and report["external"] == []
-    assert len(report["cases"]) == 32 and all(row["passed"] for row in report["cases"])
+    assert len(report["cases"]) == 40 and all(row["passed"] for row in report["cases"])
     assert len(report["screenshots"]) == 40
     for source in report["sources"]:
         assert hashlib.sha256((root / source["path"]).read_bytes()).hexdigest() == source["sha256"]

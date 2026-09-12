@@ -57,6 +57,7 @@ class WorkbenchAssetsBuildTest(unittest.TestCase):
                 cls.source[name] = (ROOT / "frontend/workbench/app" / name).read_text(encoding="utf-8")
         for name, text in cls.source.items():
             (cls.app / name).write_text(text, encoding="utf-8")
+        shutil.copytree(str(ROOT / "frontend/workbench/app/styles"), str(cls.app / "styles"))
         cls.output = cls.root / "static/workbench"
         cls.result = build(cls.root, cls.output, cls.node)
         cls.manifest = load_json(cls.output / "asset-manifest.json")
@@ -108,7 +109,7 @@ class WorkbenchAssetsBuildTest(unittest.TestCase):
             self.assertTrue(all(isinstance(name, str) and name.startswith("workbench/")
                                 and ".." not in name.split("/") and "\\" not in name for name in self.manifest[key]))
         records = {row["path"]: row for row in self.manifest["files"]}
-        self.assertEqual(len(records), 34 + len(expected_live))
+        self.assertEqual(len(records), 34 + len(expected_live) + len(self.manifest["live_style_order"]))
         order = {name: index for index, name in enumerate([self.manifest["theme_script"]] + self.manifest["scripts"])}
         for name in order:
             for dependency in records[name]["dependencies"]:
@@ -193,6 +194,23 @@ class WorkbenchAssetsBuildTest(unittest.TestCase):
         self.assertEqual(self.manifest["styles"][:len(expected)], expected)
         inline = self.asset("workbench/prototype/ui_kits/workbench/index.inline.css").read_text(encoding="utf-8")
         self.assertEqual(inline, "\n".join(item["text"] for item in entry["inline_styles"]))
+
+    def test_live_css_follows_prototype_and_binds_source_bytes(self):
+        order = load_json(TOOLS / "build-order.json")["styles"]
+        expected = ["workbench/app/styles/" + name for name in order]
+        self.assertTrue(expected, "The maintained CSS layer must be explicitly published")
+        self.assertEqual(self.manifest["styles"][-len(expected):], expected)
+        self.assertTrue(all(name.startswith("workbench/prototype/")
+                            for name in self.manifest["styles"][:-len(expected)]))
+        self.assertEqual(self.manifest["live_style_order"], order)
+        inputs = {row["path"]: row["sha256"] for row in self.manifest["inputs"]}
+        records = {row["path"]: row for row in self.manifest["files"]}
+        for name, public in zip(order, expected):
+            source = "frontend/workbench/app/styles/" + name
+            content = (self.root / source).read_bytes()
+            self.assertEqual(self.asset(public).read_bytes(), content)
+            self.assertEqual(inputs[source], digest(content))
+            self.assertEqual(records[public]["source_files"], [{"path": source, "sha256": digest(content)}])
 
     def test_nested_css_font_and_icon_resources_are_local(self):
         files = {row["path"] for row in self.manifest["files"]}

@@ -2,7 +2,7 @@
 async function readControls(h) {
   const { page, mark, request, select, assert, report, shot } = h;
   await h.dashboard();
-  if (h.config.theme === 'dark') await page.locator('.header-controls').getByRole('button').click();
+  if (h.config.theme === 'dark') await page.getByRole('button', { name: '切换深色', exact: true }).click();
   await page.locator('.sidebar-nav').getByRole('link', { name: '系统管理', exact: true }).click();
   await page.getByRole('button', { name: '查看备份与恢复', exact: true }).waitFor();
   if (h.config.expected_config_fields) {
@@ -29,7 +29,7 @@ async function readControls(h) {
     assert(event && event.record_kind === 'restore_event' && event.status === 'succeeded');
     await region.getByRole('button', { name: '查看详情 ' + event.summary, exact: true }).click();
     const detail = page.getByRole('region', { name: '维护事件详情', exact: true });
-    await detail.waitFor(); assert((await detail.innerText()).includes(event.event_ref));
+    await detail.waitFor(); await h.revealReference(detail, event.event_ref); assert((await detail.innerText()).includes(event.event_ref));
     assert.equal(await detail.getByRole('button', { name: /下载备份|恢复备份|删除备份/ }).count(), 0);
     await shot('real-restore-event-after-process-restart');
     await mark('WBP-SYS-009.restart', async () => { assert.equal(await page.locator('[data-restore-maintenance]').count(), 0); });
@@ -38,7 +38,7 @@ async function readControls(h) {
   assert(all.data.page.total > 10);
   await mark('WBP-SYS-007.next', () => request('/system/backups', () => region.getByRole('button', { name: '下一页', exact: true }).click()));
   await mark('WBP-SYS-007.previous', () => request('/system/backups', () => region.getByRole('button', { name: '上一页', exact: true }).click()));
-  for (const size of [25, 50, 10]) await mark('WBP-SYS-007.size-' + size, () => request('/system/backups', () => select('每页数量', size + ' 条', region)));
+  for (const size of [25, 50, 10]) await mark('WBP-SYS-007.size-' + size, () => request('/system/backups', () => select('每页数量', size + ' 条', region), 200, 'GET', { page: 1, page_size: size, snapshot_ref: '' }));
   for (const [type, label] of [['manual', '手动备份'], ['auto', '自动备份'], ['before_restore', '恢复前保护副本'], ['cleanup', '清理']]) {
     await select('记录类型', label, region);
     const value = await mark('WBP-SYS-006.type-' + type.replace('_', '-'), query);
@@ -52,7 +52,7 @@ async function readControls(h) {
       await shot('real-cleanup-event-without-file-capabilities');
       report.cleanup_event = event;
       await page.reload(); await detail.waitFor();
-      assert((await detail.innerText()).includes(event.event_ref));
+      await h.revealReference(detail, event.event_ref); assert((await detail.innerText()).includes(event.event_ref));
       assert.equal(await detail.getByRole('button', { name: /下载备份|恢复备份|删除备份/ }).count(), 0);
       report.cleanup_read_context = await page.evaluate(() => history.state.workbench.context);
       assert.equal(report.cleanup_read_context.records.backups.filters.type, 'cleanup');
@@ -74,7 +74,11 @@ async function readControls(h) {
   const row = region.locator('tbody tr').first();
   await mark(['time', 'type', 'status', 'filename', 'size', 'unread-state'].map(id => 'WBP-SYS-005.' + id).concat('WBP-SYS-019.unverified'), async () => {
     assert.equal(await row.locator('td').count(), 6); assert((await row.innerText()).includes(file.filename));
-    assert((await row.innerText()).includes('未校验')); assert((await row.innerText()).includes((file.size_bytes / 1024).toFixed(1) + ' KB'));
+    const [whole, fraction] = (file.size_bytes / 1024).toFixed(1).split('.');
+    const expectedSize = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + fraction + ' KB';
+    const actualSize = await row.locator('td').nth(4).innerText();
+    assert((await row.innerText()).includes('未校验')); assert.equal(actualSize, expectedSize);
+    report.backup_size_display = { size_bytes: file.size_bytes, expected: expectedSize, actual: actualSize };
   });
   await row.click();
   const detail = page.getByRole('region', { name: '备份详情', exact: true });

@@ -57,8 +57,8 @@ async function main() {
   const flush = async () => { await page.waitForLoadState('networkidle'); await page.waitForFunction(() => window.__pieceMainPending === 0); await Promise.all(pending); };
   try {
     await page.goto(ready.run_url);
-    await page.getByRole('heading', { name: '排产前检查', exact: true }).waitFor();
-    if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: /^深色：/ }).click();
+    await page.locator('[data-preflight-workspace]').getByRole('heading', { name: '执行排产', exact: true }).waitFor();
+    if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: /^切换(?:深色|浅色)$/ }).click();
     assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
     await screenshot(page, '01-main'); record('main_available', { url: page.url(), runtime: ready.runtime });
     await page.getByRole('button', { name: '选择批次', exact: true }).click();
@@ -74,7 +74,7 @@ async function main() {
       page.getByText('候选排产未完成，请查看运行记录并重新检查。', { exact: true }).waitFor({ timeout: 120000 }).then(() => { throw new Error('Real worker rejected the run; inspect server log'); })]);
     await screenshot(page, '03-worker-complete'); record('real_worker_complete');
     await page.getByRole('table', { name: '已保存候选', exact: true }).getByRole('button', { name: '详情', exact: true }).first().click();
-    await page.getByRole('region', { name: '候选任务安排', exact: true }).waitFor();
+    await page.getByRole('table', { name: '候选任务安排', exact: true }).waitFor();
     await screenshot(page, '04-candidate');
     await ganttPixels(page, '.rc-gantt', 'candidate', report);
     await candidateDetail(page, report, screenshot);

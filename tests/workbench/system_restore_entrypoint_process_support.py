@@ -117,7 +117,7 @@ def install_fault(root, mode):
         BackupManager._copy_db_file = copy_failure
     if mode == "pause-worker":
         from core.services.workbench import run_worker
-        compute = run_worker.compute_prepared_candidate_run
+        compute = run_worker.compute_candidate_run
         def paused(*args, **kwargs):
             (root / "worker-entered").touch()
             deadline = time.monotonic() + 25
@@ -128,7 +128,7 @@ def install_fault(root, mode):
             result = compute(*args, **kwargs)
             (root / "worker-computed").touch()
             return result
-        run_worker.compute_prepared_candidate_run = paused
+        run_worker.compute_candidate_run = paused
 
 
 def start_worker(root, app, runtime):

@@ -54,12 +54,12 @@ async function scenario(browser,viewport,theme) {
     });
     await record.run(page,state,'theme-survives-reload',async()=>{
       const other=theme==='dark'?'light':'dark';
-      await page.locator('.hdr-pill').click();
+      await page.getByRole('button',{name:other==='dark'?'切换深色':'切换浅色',exact:true}).click();
       await page.waitForFunction(other=>document.documentElement.dataset.theme===other,other);
       record.equal(await page.evaluate(()=>localStorage.getItem('aps_kit_theme')),other);
       last=await realRead(page,()=>page.reload(),record,ready.expected);
       record.equal(await page.locator('html').getAttribute('data-theme'),other);
-      await page.locator('.hdr-pill').click();
+      await page.getByRole('button',{name:theme==='dark'?'切换深色':'切换浅色',exact:true}).click();
       await page.waitForFunction(theme=>document.documentElement.dataset.theme===theme,theme);
       record.equal(await page.evaluate(()=>localStorage.getItem('aps_kit_theme')),theme);
     });
@@ -145,7 +145,7 @@ async function scenario(browser,viewport,theme) {
         record.ok((await alert.innerText()).includes('本机系统信息不完整'),'Reject malformed fields after accepting legitimate meta');
         record.equal(await page.locator('.top-title').innerText(),'系统管理');
         record.equal(await page.locator('.sm-workbench').getAttribute('data-source'),'current');
-        record.ok(await page.getByRole('button',{name:'导出当前诊断 JSON',exact:true}).isDisabled());
+        record.ok(await page.getByRole('button',{name:'导出诊断文件',exact:true}).isDisabled());
         last=await realRead(page,()=>alert.getByRole('button',{name:'重试',exact:true}).click(),record,ready.expected);
         record.equal(await alert.count(),0);
       } finally {await page.unroute(matcher,handler);}
@@ -156,7 +156,7 @@ async function scenario(browser,viewport,theme) {
       try {
         await page.locator('input[name="sm-source"][value="sample"]').check();
         await page.waitForFunction(()=>document.querySelector('.sm-workbench')?.dataset.source==='sample');
-        record.ok(await page.getByRole('button',{name:'导出当前诊断 JSON',exact:true}).isDisabled());
+        record.ok(await page.getByRole('button',{name:'导出诊断文件',exact:true}).isDisabled());
         for(const id of ['overview','backups','logs','config']){await tab(page,id,record);await layout(page,record);}
         const input=page.locator('#sm-auto_backup_interval_minutes');await input.fill('123');
         await page.getByRole('button',{name:'检查参数',exact:true}).click();
@@ -174,14 +174,20 @@ async function scenario(browser,viewport,theme) {
         analysis:'[data-plan-workspace]',trial:'.trial-workspace',gantt:'[data-plan-workspace]',field:'[data-field-workspace]',
         fieldgantt:'[data-actual-gantt]',review:'.er-workbench',reports:'.rw-workbench',calib:'.calibration-live',dashboard:'[data-dashboard-workspace]',basedata:'.master-overview'};
       for(const [id,label] of nav){
+        const parent=id==='gantt'?'选择排产方案':id==='review'?'报表中心':null;
+        if(parent){
+          await page.locator('.sidebar-nav').getByRole('link',{name:parent,exact:true}).click();
+          await settleReads(page);
+        }
         const pending=page.waitForResponse(response=>new URL(response.url()).pathname.startsWith('/api/workbench/v1/')
           && (response.request().method()==='GET'||response.request().method()==='POST'&&new URL(response.url()).pathname==='/api/workbench/v1/entities/batch/query'));
-        await page.locator('.sidebar-nav').getByRole('link',{name:label,exact:true}).click();
+        if(parent)await page.getByRole('tab',{name:label,exact:true}).click();
+        else await page.locator('.sidebar-nav').getByRole('link',{name:label,exact:true}).click();
         if(id==='run') await page.getByRole('button',{name:'选择批次',exact:true}).click();
         const response=await pending;record.equal(response.status(),200);const payload=await response.json();record.equal(payload.ok,true);record.equal(payload.meta.source,'production');
         await page.locator('main '+markers[id]).waitFor({state:'visible'});
         if(id==='process'){
-          await page.getByText('当前条件下没有资料。',{exact:true}).waitFor();
+          await page.locator('[data-resource-workspace="true"] .wb-empty-empty').getByText('暂无记录',{exact:true}).waitFor();
           record.ok(await page.getByRole('button',{name:'新增物料',exact:true}).isEnabled(),'Resources have real create context');
         } else {
           record.equal(await page.locator('main [role="status"]').filter({hasText:'尚未接入真实数据'}).count(),0,'Current workspace must not regress to a legacy unavailable placeholder: '+id);

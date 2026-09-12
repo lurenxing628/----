@@ -28,9 +28,15 @@ async function edges(h) {
     fs.chmodSync(h.config.backup_dir, 0o555);
     const failed = await mark('WBP-SYS-008.failure', () => request('/system/backups/create', () => page.getByRole('dialog').getByRole('button', { name: '确认创建', exact: true }).click(), 200, 'POST'));
     assert.equal(failed.data.operation.state, 'recovery_required'); assert.equal(failed.data.operation.code, 'storage_failure');
-    const status = page.getByRole('region', { name: '维护原请求结果', exact: true });
-    await status.getByText('需人工恢复核查', { exact: true }).waitFor();
-    await mark(['WBP-SYS-019.failure', 'WBP-SYS-019.pending'], async () => { assert.equal(await status.getByRole('button', { name: '确认结果', exact: true }).count(), 0); });
+    // The in-page outcome section only shows "需人工恢复核查" for the few milliseconds before the host re-check
+    // lands; the maintenance screen then takes over the page. Assert that durable state instead of racing it.
+    const screen = page.locator('[data-restore-maintenance]');
+    await screen.getByRole('region', { name: '维护结果', exact: true }).getByRole('heading', { name: '结果未知，需人工核查', exact: true }).waitFor();
+    await screen.getByText(failed.data.operation.message, { exact: true }).waitFor();
+    await mark(['WBP-SYS-019.failure', 'WBP-SYS-019.pending'], async () => {
+      assert.equal(await page.getByRole('button', { name: '确认结果', exact: true }).count(), 0);
+      assert.equal(await screen.getByRole('button', { name: '核实原请求', exact: true }).count(), 1);
+    });
     report.failed_create = failed;
     await shot('real-backup-storage-failure-retains-original-request');
   } finally { fs.chmodSync(h.config.backup_dir, originalMode); }

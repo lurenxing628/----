@@ -8,11 +8,36 @@ import tempfile
 import time
 import unittest
 from collections import Counter
+from contextlib import contextmanager
 from pathlib import Path
+from unittest import mock
 
+from tests.workbench import secondary_copy_assets as candidates
 from tests.workbench.live_environment import REPO, create_root, environment, write_json
-from tests.workbench.secondary_copy_assets import PATCH, SOURCE
+from tests.workbench.secondary_copy_assets import PATCH, SOURCE, TOKEN_SOURCE
 from tests.workbench.test_live_browser import runtime_tools
+
+
+@contextmanager
+def css_fixture():
+    """Exercise candidate binding without the shared published build or a database."""
+    with tempfile.TemporaryDirectory(prefix="secondary-copy-binding-") as directory:
+        root = Path(directory)
+        repository, frozen, run = root / "repo", root / "frozen", root / "run"
+        run.mkdir()
+        contents = {SOURCE: "body.aps-workbench {\n" + PATCH + "}\n",
+                    TOKEN_SOURCE: ":root { --wb-secondary-copy: #475569; }\n"}
+        for name, content in contents.items():
+            for target in (repository / name, frozen / "static" / name[len("frontend/"):]):
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
+        manifest = frozen / "static/workbench/asset-manifest.json"
+        manifest.write_text(json.dumps({"styles": [name[len("frontend/"):] for name in contents]}), encoding="utf-8")
+        assets = {"root": str(frozen), "static": str(frozen / "static"), "frozen_manifest": str(manifest)}
+        with mock.patch.object(candidates, "REPO", repository), \
+                mock.patch.object(candidates, "freeze_built_assets", lambda *args: dict(assets)), \
+                mock.patch.dict(os.environ, {"SECONDARY_COPY_BASELINE": ""}):
+            yield run, repository, frozen, contents
 
 
 def run_live():
@@ -58,11 +83,49 @@ def run_live():
 
 
 class SecondaryCopySourceTest(unittest.TestCase):
-    def test_single_semantic_light_rule(self):
+    def test_single_scoped_semantic_rule_and_theme_aliases(self):
         source = (REPO / SOURCE).read_text(encoding="utf-8")
         self.assertEqual(source.count(PATCH), 1)
         self.assertEqual(source.count("--ui-muted:"), 1)
-        self.assertIn("<window.WorkbenchControlStyles />", (REPO / "frontend/workbench/app/main.jsx").read_text())
+        self.assertRegex(source, r"body\.aps-workbench\s*\{[^}]*--ui-muted:\s*var\(--wb-secondary-copy\)")
+        tokens = (REPO / TOKEN_SOURCE).read_text(encoding="utf-8")
+        self.assertRegex(tokens, r":root\s*\{[^}]*--wb-secondary-copy:\s*var\(--ui-info-muted\)")
+        self.assertRegex(tokens, r'html\[data-theme="dark"\]\s*\{[^}]*--wb-secondary-copy:\s*var\(--ui-muted\)')
+        order = json.loads((REPO / "scripts/workbench/build-order.json").read_text(encoding="utf-8"))["styles"]
+        self.assertLess(order.index("00-tokens.css"), order.index("10-shell.css"))
+
+    def test_private_css_candidates_are_exact_and_label_the_synthetic_before(self):
+        with css_fixture() as (run, repository, frozen, contents):
+            manifest = frozen / "static/workbench/asset-manifest.json"
+            original_manifest = manifest.read_bytes()
+            result = candidates.freeze(run, "fixture")["secondary_copy"]
+            self.assertEqual(result["baseline_kind"], "synthetic_single_rule_removal")
+            self.assertFalse(result["historical_baseline_claimed"])
+            self.assertFalse(result["baseline_bound_to_provided_file"])
+            self.assertIsNone(result["baseline_file"])
+            for item in result["candidates"]:
+                expected = contents[SOURCE].replace(PATCH, "") if item["phase"] == "before" else contents[SOURCE]
+                self.assertEqual(Path(item["path"]).read_text(encoding="utf-8"), expected)
+                self.assertEqual(item["source_sha256"], candidates.sha256(expected.encode("utf-8")))
+                self.assertEqual(item["sha256"], item["source_sha256"])
+            self.assertEqual((repository / SOURCE).read_text(encoding="utf-8"), contents[SOURCE])
+            self.assertEqual(manifest.read_bytes(), original_manifest)
+
+    def test_private_css_candidates_reject_stale_published_tokens(self):
+        with css_fixture() as (run, repository, frozen, contents):
+            (frozen / "static/workbench/app/styles/00-tokens.css").write_text("stale", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Published CSS differs"):
+                candidates.freeze(run, "fixture")
+            self.assertFalse((frozen / "secondary-copy-sources").exists())
+
+    def test_private_css_candidates_reject_an_unbound_baseline_file(self):
+        with css_fixture() as (run, repository, frozen, contents):
+            baseline = run / "provided.css"
+            baseline.write_text("unrelated", encoding="utf-8")
+            with mock.patch.dict(os.environ, {"SECONDARY_COPY_BASELINE": str(baseline)}), \
+                    self.assertRaisesRegex(ValueError, "Provided CSS baseline differs"):
+                candidates.freeze(run, "fixture")
+            self.assertFalse((frozen / "secondary-copy-sources").exists())
 
 
 @unittest.skipUnless(os.environ.get("SECONDARY_COPY_RUN_BROWSER") == "1", "Opt-in isolated Chromium109 tests")
@@ -116,6 +179,7 @@ class SecondaryCopyBrowserTest(unittest.TestCase):
             self.assertEqual(before[table], after[table], "Read-only database changed: " + table)
         self.assertFalse(ready["assets"]["secondary_copy"]["global_build"])
         self.assertEqual(ready["assets"]["secondary_copy"]["target"], {"chrome": "109"})
+        self.assertFalse(ready["assets"]["secondary_copy"]["historical_baseline_claimed"])
         print("SECONDARY_COPY_LIVE_VERIFIED " + str(root), flush=True)
 
 

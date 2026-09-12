@@ -20,6 +20,8 @@ const selectors = M.surfaces.map(name => '[data-secondary-copy="' + name + '"]')
         row.states.push({ theme, samples, tokens: token }); M.readable(samples, selectors);
         samples.forEach(sample => assert.equal(sample.color, theme === 'dark' ? M.dark : M.light));
         assert.equal(token.root['--ui-muted'], theme === 'dark' ? '#94a3b8' : '#64748b');
+        assert.equal(token.root['--wb-secondary-copy'], theme === 'dark' ? '#94a3b8' : '#475569');
+        assert.equal(token.body['--ui-muted'], token.root['--wb-secondary-copy']);
       }
       await h.shot(page, variant.name + '-default-light');
       await page.evaluate(() => document.documentElement.dataset.theme = 'dark'); await H.settle(page);

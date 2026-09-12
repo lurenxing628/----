@@ -54,7 +54,8 @@ def test_report_widgets(output=None):
     assert len(report["cases"]) == 4 and len(report["screenshots"]) == 24
     assert len(report["downloads"]) == 8 and report["errors"] == report["external"] == []
     assert {(row["viewport"]["width"], row["theme"]) for row in report["cases"]} == {
-        (1920, "light"), (1920, "dark"), (1392, "light"), (1392, "dark")}
+        (1920, "light"), (1920, "dark"), (int(os.environ.get("WORKBENCH_UI_NARROW_WIDTH", "1392")), "light"),
+        (int(os.environ.get("WORKBENCH_UI_NARROW_WIDTH", "1392")), "dark")}
     for row in report["sources"]:
         assert hashlib.sha256((ROOT / row["path"]).read_bytes()).hexdigest() == row["sha256"]
     assert hashlib.sha256((HERE / "report_widgets_probe.cjs").read_bytes()).hexdigest() == report["probe_sha256"]

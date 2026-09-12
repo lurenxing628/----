@@ -15,11 +15,15 @@ async function settle(page) {
   await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
 }
 async function mount(page, spec = {}) {
-  await page.evaluate(spec => mountPlan(spec), { theme: state.theme, ...spec });
+  await page.evaluate(spec => mountPlan(spec), { theme: state.theme, context: { query: '' }, ...spec });
   await page.getByRole('table', { name: '可选排产方案' }).waitFor(); await settle(page);
 }
 const ready = page => page.locator('[data-plan-gantt]').waitFor();
-async function choose(page, name = '正式排产计划 1') { await page.getByRole('radio', { name: '选择 ' + name, exact: true }).check(); await ready(page); await settle(page); }
+async function choose(page, name = '正式排产计划 1') {
+  if (await page.getByRole('button', { name: '展开计划目录', exact: true }).count()) await page.getByRole('button', { name: '展开计划目录', exact: true }).click();
+  await page.getByRole('radio', { name: '选择 ' + name, exact: true }).click(); await ready(page); await settle(page);
+  if (await page.getByRole('button', { name: '展开计划目录', exact: true }).count()) await page.getByRole('button', { name: '展开计划目录', exact: true }).click();
+}
 async function shot(page, name) {
   await settle(page); const filename = path.join(output, state.id + '-' + name + '.png'); await page.screenshot({ path: filename }); report.screenshots.push(filename);
 }
@@ -59,11 +63,12 @@ async function run(page, name, action) {
   try { await action(); equal(await page.evaluate(() => fixture.writes), 0, 'No mock write command attempted'); row.passed = true; }
   catch (error) { row.error = error.stack; await shot(page, 'FAILED-' + name); }
   row.assertions = report.assertions - before; console.log(state.id + ' / ' + name + ': ' + (row.passed ? 'passed' : 'FAILED'));
+  fs.writeFileSync(path.join(output, 'progress.json'), JSON.stringify(report, null, 2));
 }
 async function interactive(page) {
   await run(page, 'catalog-select-and-real-views', async () => {
     await mount(page); await page.getByRole('radio', { name: '选择 正式排产计划 1', exact: true }).waitFor();
-    equal(await page.evaluate(() => fixture.calls.filter(row => row.type === 'workspace').length), 0, 'No automatic latest selection');
+    equal(await page.evaluate(() => fixture.calls.filter(row => row.type === 'workspace').length), 0, 'Restored query context prevents automatic current-plan selection');
     ok(await page.getByRole('radio', { name: '选择 损坏记录仍保留' }).isDisabled(), 'Unavailable identity remains listed and disabled');
     await choose(page); equal(await page.locator('[data-plan-search-count]').textContent(), '36 / 36 道安排');
     ok(await page.getByRole('checkbox', { name: '显示初始基线' }).isDisabled(), 'Ordinary plans must not synthesize a baseline');
@@ -77,23 +82,27 @@ async function interactive(page) {
     await page.getByRole('button', { name: '收起计划目录', exact: true }).click();
     await page.locator('[data-plan-task]').first().click();
     ok((await page.locator('[data-plan-inspector]').textContent()).includes('时间跨度'));
-    ok(await page.getByRole('button', { name: /^调整此工序：/ }).isDisabled());
+    ok(await page.getByRole('button', { name: /^调整此工序(?:：|$)/ }).isDisabled());
     ok(await page.getByRole('button', { name: /^保存：/ }).count() === 0, 'Read-only plan details cannot expose a save placeholder');
     await page.getByRole('button', { name: '资源负荷', exact: true }).click();
     await page.getByRole('table', { name: '资源负荷列表' }).waitFor(); await shot(page, 'selected-task-load');
     await page.getByRole('button', { name: '资源日历', exact: true }).click();
     await page.getByRole('table', { name: '资源日历列表' }).getByRole('button', { name: '1 段', exact: true }).first().click();
     ok((await page.getByRole('table', { name: '资源日历列表' }).textContent()).includes('普通允许'));
-    await page.getByRole('button', { name: '查看甘特', exact: true }).click(); await ready(page);
-    equal(await page.evaluate(() => fixture.navigations.at(-1).next), 'gantt');
-    ok((await page.evaluate(() => fixture.navigations.at(-1).context.snapshot_ref)).startsWith('workspace-ui:'), 'Navigate with workspace snapshot');
+    // Shell tabs own navigation. This component fixture only verifies explicit plan/scope rendering.
+    await page.evaluate(() => {
+      const call = fixture.calls.filter(row => row.type === 'workspace').at(-1), response = PlanUIFixtures.workspace(call.ref, call.scope, fixture.spec);
+      mountPlan({ view: 'gantt', theme: document.documentElement.dataset.theme, context: { plan_ref: call.ref, ...call.scope, snapshot_ref: response.meta.snapshot_ref } });
+    }); await ready(page);
+    equal(await page.evaluate(() => fixture.calls.filter(row => row.type === 'workspace').at(-1).ref), F.ref(1));
+    ok((await page.evaluate(() => fixture.calls.filter(row => row.type === 'workspace').at(-1).scope.snapshot_ref)).startsWith('workspace-ui:'), 'Explicit view receives the same plan and snapshot');
     await layout(page); await shot(page, 'gantt-page');
   });
   await run(page, 'catalog-cursor-does-not-reselect', async () => {
     await mount(page); await choose(page);
-    await page.getByRole('button', { name: '计划目录下一段', exact: true }).click(); await page.getByRole('radio', { name: '选择 正式排产计划 40', exact: true }).waitFor();
+    await page.getByRole('button', { name: '计划目录下一页', exact: true }).click(); await page.getByRole('radio', { name: '选择 正式排产计划 40', exact: true }).waitFor();
     const call = await page.evaluate(() => fixture.calls.filter(row => row.type === 'catalog').at(-1)); equal(call.scope, { collection: 'history', size: 20, cursor: 'next:history', snapshot_ref: 'catalog-ui-snapshot' });
-    await page.getByRole('button', { name: '计划目录上一段', exact: true }).click(); await page.getByRole('radio', { name: '选择 正式排产计划 1', exact: true }).waitFor();
+    await page.getByRole('button', { name: '计划目录上一页', exact: true }).click(); await page.getByRole('radio', { name: '选择 正式排产计划 1', exact: true }).waitFor();
     await page.getByRole('button', { name: '刷新计划目录', exact: true }).click();
     await page.getByRole('button', { name: '已存场景', exact: true }).click(); await page.getByRole('radio', { name: '选择 夜班调整场景 3', exact: true }).waitFor();
     equal(await page.evaluate(() => fixture.calls.filter(row => row.type === 'workspace').length), 1, 'Collection, page and refresh retain selected plan');
@@ -212,15 +221,15 @@ async function rangesAndLifecycle(page) {
 async function failures(page) {
   for (const [name, spec, error] of [['bad-dto', { badWorkspace: true }, '协议不完整'], ['wrong-plan', { wrongPlan: true }, '串源'], ['api-failure', { workspaceFailure: '计划已失效' }, '计划已失效']]) {
     await run(page, name, async () => {
-      await mount(page, spec); await page.getByRole('radio', { name: '选择 正式排产计划 1', exact: true }).check(); await page.getByRole('alert').waitFor();
+      await mount(page, spec); await page.getByRole('radio', { name: '选择 正式排产计划 1', exact: true }).click(); await page.getByRole('alert').waitFor();
       ok((await page.getByRole('alert').textContent()).includes(error)); equal(await page.locator('[data-plan-gantt]').count(), 0);
-      ok(await page.getByRole('button', { name: /^导出：/ }).isDisabled());
+      ok(await page.getByRole('button', { name: /^导出(?:：|$)/ }).isDisabled());
       await page.evaluate(() => { fixture.spec.badWorkspace = fixture.spec.wrongPlan = false; fixture.spec.workspaceFailure = null; });
       await page.getByRole('button', { name: '重新读取所选计划' }).click(); await ready(page);
     });
   }
   await run(page, 'stale-request-and-explicit-cancel', async () => {
-    await mount(page, { holdRef: F.ref(1) }); await page.getByRole('radio', { name: '选择 正式排产计划 1', exact: true }).check();
+    await mount(page, { holdRef: F.ref(1) }); await page.getByRole('radio', { name: '选择 正式排产计划 1', exact: true }).click();
     await page.getByRole('button', { name: '取消计划读取', exact: true }).waitFor();
     await choose(page, '候选排产方案 2');
     await page.evaluate(() => { fixture.held.splice(0).forEach(resolve => resolve()); }); await settle(page);

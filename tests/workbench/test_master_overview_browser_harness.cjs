@@ -31,18 +31,20 @@ function pageResult(fixture, scope, page, spec) {
     page: { number: page, size: scope.size, total: spec.badCount ? total + 999 : total, pages: Math.max(1, Math.ceil(total / scope.size)) } };
 }
 function setup(report, output) {
-  const fixture = JSON.parse(fs.readFileSync(path.join(output, 'fixture.json'))), files = ['WorkbenchPageContext.jsx', 'resource-contract.js', 'ResourceControls.jsx', 'transport.js'].concat(names);
+  const fixture = JSON.parse(fs.readFileSync(path.join(output, 'fixture.json'))), files = ['WorkbenchPageContext.jsx', 'resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'ResourceControls.jsx', 'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx', 'transport.js'].concat(names);
   const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
   const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
   report.target = built.target; report.global_build = false;
   report.sources = sources.map(row => ({ path: row.path, sha256: hash(row.code) }));
+  const sourceStyles = ['00-tokens.css', '10-shell.css', '20-controls.css', '21-table-frame.css', '22-shared-controls.css', '36-analysis.css'].map(name => ({ path: 'frontend/workbench/app/styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
+  report.sources.push(...sourceStyles.map(row => ({ path: row.path, sha256: hash(row.code) })));
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json'))), assets = new Map();
   report.style_build_id = manifest.build_id;
   for (const item of manifest.files) { const bytes = fs.readFileSync(path.join(root, 'static', item.path)); assert.equal(hash(bytes), item.sha256, 'Concurrent shared build; retry after it settles'); assets.set('/static/' + item.path, { bytes, mime: item.mime }); }
   const compiled = built.outputs.map((item, index) => { const url = '/fixture/' + files[index] + '.js'; assets.set(url, { bytes: item.code, mime: 'application/javascript' }); return url; });
   const shared = manifest.scripts.filter(file => file.startsWith('workbench/vendor/') || file.startsWith('workbench/assets/foundation-'));
   const scripts = shared.map(file => '/static/' + file).concat(compiled).map(url => '<script src="' + url + '"></script>').join('');
-  const css = manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('');
+  const css = manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + sourceStyles.map(row => '<style>' + row.code + '</style>').join('');
   const harness = `let mounted; window.mountOverview = function(spec) { if(mounted)mounted.unmount(); window.fixtureState={navigations:[],spec}; document.documentElement.dataset.theme=spec.theme || 'light';
     mounted=ReactDOM.createRoot(document.getElementById('root')); const onNavigate=spec.noNavigation ? undefined : (view,context)=>{fixtureState.navigations.push({view,context});if(spec.navigationFailure)throw new Error('目标实体已不存在，未按同号替代。');};
     mounted.render(React.createElement(AppShell,{active:'basedata',theme:spec.theme||'light',operations:true,showCapsule:false,title:'主数据总览',onNav:()=>{}},React.createElement(MasterOverviewWorkspace,{onNavigate,initialContext:spec.initialContext})));};`;

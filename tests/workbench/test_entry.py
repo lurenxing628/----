@@ -31,6 +31,26 @@ def test_asset_manifest_requires_local_complete_files(tmp_path):
         read_asset_manifest(str(tmp_path))
 
 
+def test_entry_loads_maintained_css_after_prototype_before_scripts(app_client, tmp_path, monkeypatch):
+    static = tmp_path / "static"
+    manifest = _manifest(static)
+    maintained = "workbench/app/styles/00-tokens.css"
+    target = static / maintained
+    target.parent.mkdir(parents=True)
+    target.write_text(":root { --wb-fixture: 1; }", encoding="utf-8")
+    manifest["styles"].append(maintained)
+    (static / "workbench/asset-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(app_client.application, "static_folder", str(static))
+    response = app_client.get("/workbench?view=system")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert html.index("/static/workbench/style.css") < html.index("/static/" + maintained)
+    assert html.index("/static/" + maintained) < html.index("/static/workbench/entry.js")
+    assert app_client.get("/static/" + maintained).get_data() == target.read_bytes()
+    target.unlink()
+    assert app_client.get("/workbench?view=system").status_code == 503
+
+
 @pytest.mark.parametrize("value", ["https://example.invalid/a.js", "../a.js", "workbench/../a.js",
                                     "workbench/./entry.js", "workbench//entry.js", "workbench/entry.js?x=1", None])
 def test_asset_manifest_rejects_invalid_paths(tmp_path, value):

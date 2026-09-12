@@ -107,7 +107,7 @@ def _css() -> str:
     if _CSS is None:
         from tests._support.gantt_current_js import run_current_js
 
-        _CSS = run_current_js("return h.text(h.render(h.runtime.PlanLayout, {}));")["result"]
+        _CSS = run_current_js("return h.styles();")["result"]
     return _CSS
 
 

@@ -21,7 +21,7 @@ async function settle(page) {
 }
 async function navigate(page, planRef, view = 'analysis') {
   await page.evaluate(({ planRef, view, entry }) => {
-    const context = planRef ? { plan_ref: planRef } : {};
+    const context = planRef ? { plan_ref: planRef } : { query: '' };
     history.pushState({ workbench: { view, context, key: Date.now() } }, '', entry + '?view=' + view);
     dispatchEvent(new PopStateEvent('popstate'));
   }, { planRef, view, entry });
@@ -37,19 +37,33 @@ async function check(page, fixture, variant) {
   assert.equal(await workspace.locator('[title*="暂不支持采用方案"]').count(), 0);
   assert(!(await workspace.innerText()).includes('暂不支持采用方案'));
   const ready = !!fixture.plan_ref;
+  if (ready && [1280, 1366].includes(page.viewportSize().width)) {
+    for (const [id, name] of [['gantt', '设备 / 人员 / 批次甘特'], ['delay', '交付风险'], ['analysis', '选择排产方案']]) {
+      await page.getByRole('tab', { name, exact: true }).click(); await workspace.locator('[data-plan-gantt]').waitFor();
+      await page.evaluate(() => window.scrollTo(0, 0)); await settle(page);
+      const row = await workspace.locator('.plan-lane').first().evaluate(node => {
+        const box = node.getBoundingClientRect(), mark = node.querySelector('[data-plan-task]'), face = mark && mark.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom, markTop: face && face.top, markBottom: face && face.bottom, viewport: innerHeight };
+      });
+      assert(row.top >= 0 && row.bottom <= row.viewport && row.markTop >= 0 && row.markBottom <= row.viewport, 'Entire first row and mark visible in real shell: ' + JSON.stringify({ id, ...row }));
+      if (!report.first_rows) report.first_rows=[]; report.first_rows.push({variant,fixture:fixture.name,view:id,...row});
+    }
+  }
   const trial = heading.getByRole('button', { name: '试调', exact: true });
   const download = heading.getByRole('button', { name: /^导出/ });
   assert.equal(await trial.isEnabled(), ready);
   assert.equal(await download.isEnabled(), ready);
-  assert.equal(await heading.getByRole('button', { name: '查看甘特', exact: true }).isEnabled(), !!fixture.plan_ref);
+  assert.equal(await heading.getByRole('button', { name: '查看甘特', exact: true }).count(), 0, 'The shell owns plan view tabs');
+  assert.equal(await page.getByRole('tab', { name: '设备 / 人员 / 批次甘特', exact: true }).isEnabled(), true);
   if (ready) {
     assert.equal(await heading.locator('.plan-state').innerText(), fixture.identity);
     await download.click(); await page.getByRole('dialog').waitFor();
     await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
-    await heading.getByRole('button', { name: '查看甘特', exact: true }).click();
-    await heading.getByRole('button', { name: '选择方案', exact: true }).waitFor();
-    await heading.getByRole('button', { name: '选择方案', exact: true }).click();
-    await heading.getByRole('button', { name: '查看甘特', exact: true }).waitFor();
+    await page.getByRole('tab', { name: '设备 / 人员 / 批次甘特', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('#wb-view-tab-gantt').getAttribute('aria-selected') === 'true');
+    assert.equal(await page.evaluate(() => history.state.workbench.context.plan_ref), fixture.plan_ref);
+    await page.getByRole('tab', { name: '选择排产方案', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('#wb-view-tab-analysis').getAttribute('aria-selected') === 'true');
     await workspace.locator('[data-plan-gantt]').waitFor();
     const payload = await page.evaluate(async ref => (await fetch('/api/workbench/v1/plans/' + ref + '/workspace')).json(), fixture.plan_ref);
     if (fixture.payload) assert.deepEqual(payload.data, fixture.payload.data, 'UI must not change plan data');
@@ -81,8 +95,8 @@ async function main() {
   const browser = await chromium.launch({ executablePath: process.env.WORKBENCH_BROWSER, headless: true, args: ['--disable-background-networking'] });
   report.browser = browser.version(); assert.match(report.browser, /^109\./);
   try {
-    for (const width of [1920, 1392]) for (const theme of ['light', 'dark']) {
-      const context = await browser.newContext({ viewport: { width, height: width === 1920 ? 1080 : 924 } });
+    for (const width of [1920, 1392, 1366, 1280]) for (const theme of ['light', 'dark']) {
+      const context = await browser.newContext({ viewport: { width, height: width === 1920 ? 1080 : width === 1392 ? 924 : width === 1366 ? 768 : 720 } });
       try {
         const page = await context.newPage(); page.setDefaultTimeout(10000);
         page.on('pageerror', error => report.errors.push(error.message));
@@ -115,7 +129,7 @@ async function main() {
       } finally { await context.close(); }
     }
     assert.deepEqual(report.writes, []); assert.deepEqual(report.external, []); assert.deepEqual(report.errors, []);
-    if (!input.cases) assert.equal(report.source_overrides, 4);
+    if (!input.cases) assert.equal(report.source_overrides, 8);
   } finally { await browser.close(); }
 }
 main().catch(error => { report.failure = error.stack; process.exitCode = 1; console.error(error.stack); }).finally(() => {

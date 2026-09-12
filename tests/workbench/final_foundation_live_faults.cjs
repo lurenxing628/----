@@ -1,5 +1,5 @@
 'use strict';
-const {settle, navigate, shell, hash} = require('./final_foundation_live_probe.cjs');
+const {SIDEBAR, settle, navigate, shell, hash} = require('./final_foundation_live_probe.cjs');
 const {chooseOfficial, caption, remembered} = require('./final_foundation_live_actions.cjs');
 const {bootCases, injectBoot} = require('./final_foundation_live_boot_cases.cjs');
 
@@ -21,7 +21,7 @@ async function bootFault(browser, state, record, fault) {
   const {page, context} = entry;
   await record.run(page, state, focused ? 'boot_contract_fault' : 'fault', fault, async () => {
     await page.goto(record.ready.workbench_url); await settle(page, record);
-    if (await page.locator('html').getAttribute('data-theme') !== state.theme) await page.getByRole('button', {name: /^深色：/}).click();
+    if (await page.locator('html').getAttribute('data-theme') !== state.theme) await page.getByRole('button', {name: /^切换(?:深色|浅色)$/}).click();
     record.equal(await page.locator('html').getAttribute('data-theme'), state.theme);
     let target;
     if (fault === 'missing-main') target = sourceAsset(record, 'frontend/workbench/app/main.jsx');
@@ -58,7 +58,7 @@ async function bootFault(browser, state, record, fault) {
     await settle(page, record); await shell(page, 'dashboard', record); await navigate(page, 'basedata', record);
     return {injected: true, injection_hits: hits, business_success_evidence: false, target, error, nav_during_fault: navDuringFault,
       boot_navigation_not_applicable: 'Main protocol: boot failure requires readable error and real reload, not an unstarted synthetic navigation shell',
-      fault_screenshot: faultShot.file, nav_after_real_retry: 14};
+      fault_screenshot: faultShot.file, nav_after_real_retry: SIDEBAR.length};
   });
   await record.flush(page); await context.close();
 }
@@ -67,7 +67,7 @@ async function renderFault(browser, state, record) {
   const {page, context} = entry;
   await record.run(page, state, 'fault', 'workspace-render-throw', async () => {
     await page.goto(record.ready.workbench_url); await settle(page, record);
-    if (await page.locator('html').getAttribute('data-theme') !== state.theme) await page.getByRole('button', {name: /^深色：/}).click();
+    if (await page.locator('html').getAttribute('data-theme') !== state.theme) await page.getByRole('button', {name: /^切换(?:深色|浅色)$/}).click();
     const selected = await chooseOfficial(entry, record), before = await remembered(page);
     const target = await loadedScript(page, sourceAsset(record, 'frontend/workbench/app/PlanWorkspace.jsx'), record);
     let hits = 0;
@@ -82,7 +82,7 @@ async function renderFault(browser, state, record) {
     await page.route(target, handler); await record.flush(page); await page.reload();
     record.equal(hits, 1, 'Workspace render injection must hit the real versioned response');
     await page.getByRole('region', {name: '工作区读取失败', exact: true}).waitFor();
-    record.equal(await page.locator('.sidebar-nav a.nav-item').count(), 14);
+    record.equal(await page.locator('.sidebar-nav a.nav-item').count(), SIDEBAR.length);
     record.ok((await page.getByRole('alert').innerText()).includes('未替换当前对象'));
     record.equal((await remembered(page)).route.context.plan_ref, selected.reference);
     const faultShot = await record.shot(page, state, 'workspace-render-throw-injected', 'fault');
@@ -96,7 +96,7 @@ async function renderFault(browser, state, record) {
     const after = await caption(page, state, selected.reference, record);
     record.equal((await remembered(page)).route.context.plan_ref, before.route.context.plan_ref);
     await page.unroute(target, handler);
-    return {injected: true, injection_hits: hits, business_success_evidence: false, target, nav_during_fault: 14, before,
+    return {injected: true, injection_hits: hits, business_success_evidence: false, target, nav_during_fault: SIDEBAR.length, before,
       fault_screenshot: faultShot.file, recovered_plan: after.plan, same_object_retry: true};
   });
   await record.flush(page); await context.close();

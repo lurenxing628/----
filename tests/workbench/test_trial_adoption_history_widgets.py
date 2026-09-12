@@ -13,6 +13,7 @@ from werkzeug.serving import make_server
 from tests.workbench.test_live_browser import runtime_tools
 from tests.workbench.trial_adoption_history_widgets_support import TrialAdoptionHistoryWidgetServer
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
+from web.routes.workbench.navigation_metadata import VIEW_ALIASES, navigation_groups
 from web.routes.workbench.pages import VIEW_TITLES
 
 
@@ -24,6 +25,9 @@ def test_trial_adoption_history_real_main_browser(trial_case):
     (output / "boot-fixture.json").write_text(json.dumps({
         "schema_version": 1, "view": "trial", "entry_url": "/",
         "trial_url": "/trial", "titles": VIEW_TITLES,
+        "enabled_views": list(VIEW_TITLES), "nav_groups": navigation_groups(),
+        "view_aliases": dict(VIEW_ALIASES), "help_url": "/scheduler/config/manual",
+        "instance_label": "采用历史验证夹具",
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     backend = TrialAdoptionHistoryWidgetServer(trial_case, output)
     server = make_server("127.0.0.1", 0, backend.app, threaded=True)

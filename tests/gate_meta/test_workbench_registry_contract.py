@@ -22,6 +22,8 @@ from tests.gate_meta.workbench_round1_registry_support import (
     ROUND1_REQUIRED_FILES,
     ROUND1_SERIAL_FILES,
     ROUND1_SUPPLEMENTAL_FILES,
+    UI_REQUIRED_TARGETS,
+    assert_reviewed_algorithm_registration,
     round1_targets,
 )
 from tools import quality_gate_shared, test_registry
@@ -35,6 +37,7 @@ from tools.test_registry_groups_workbench import (
     WORKBENCH_REQUIRED_TESTS,
     WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS,
 )
+from tools.test_registry_workbench_ui import WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFIX = "tests/workbench/"
@@ -424,18 +427,23 @@ def _has_test_definition(path):
 
 def test_existing_groups_remain_an_unchanged_prefix_and_all_targets_stay_required():
     legacy = (*SCHEDULER_REQUIRED_REGRESSION_GROUPS, *MISC_REQUIRED_REGRESSION_GROUPS)
-    assert test_registry.REQUIRED_REGRESSION_GROUPS == (*legacy, *WORKBENCH_REQUIRED_REGRESSION_GROUPS)
+    previous = (*legacy, *WORKBENCH_REQUIRED_REGRESSION_GROUPS)
+    assert test_registry.REQUIRED_REGRESSION_GROUPS[:-1] == previous
+    ui = test_registry.REQUIRED_REGRESSION_GROUPS[-1]
+    assert ui["group_id"] == "workbench_ui_refinement"
+    assert tuple(ui["target_paths"]) == UI_REQUIRED_TARGETS
     required = test_registry.iter_required_tests()
     assert required == quality_gate_shared.iter_quality_gate_required_tests()
     assert required == list(test_registry.QUALITY_GATE_REQUIRED_TESTS)
-    assert required[-len(WORKBENCH_REQUIRED_TESTS):] == list(WORKBENCH_REQUIRED_TESTS)
-    assert set(required[:-len(WORKBENCH_REQUIRED_TESTS)]) == set(_targets(legacy))
+    appended = (*WORKBENCH_REQUIRED_TESTS, *UI_REQUIRED_TARGETS)
+    assert required[-len(appended):] == list(appended)
+    assert set(required[:-len(appended)]) == set(_targets(legacy))
     assert required[0] == test_registry.QUALITY_GATE_SELFTEST_PATH
     assert set(required).isdisjoint(test_registry.iter_startup_regressions())
 
 
 def test_raw_targets_and_group_ids_are_unique_before_normalization():
-    groups = (*test_registry.REQUIRED_REGRESSION_GROUPS, *WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS)
+    groups = (*test_registry.REQUIRED_REGRESSION_GROUPS, *test_registry.SUPPLEMENTAL_REGRESSION_GROUPS)
     assert len(groups) == len({group["group_id"] for group in groups})
     assert all(count == 1 for count in Counter(_targets(groups)).values())
     assert len(test_registry.QUALITY_GATE_REQUIRED_TESTS) == len(set(test_registry.QUALITY_GATE_REQUIRED_TESTS))
@@ -447,7 +455,8 @@ def test_raw_targets_and_group_ids_are_unique_before_normalization():
 
 
 def test_every_workbench_target_is_an_explicit_existing_test_not_support_or_server():
-    groups = (*WORKBENCH_REQUIRED_REGRESSION_GROUPS, *WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS)
+    groups = (*WORKBENCH_REQUIRED_REGRESSION_GROUPS, *WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS,
+              *test_registry.SUPPLEMENTAL_REGRESSION_GROUPS)
     for target in _targets(groups):
         path = ROOT / target
         assert not any(char in target for char in "*?[]:"), target
@@ -457,7 +466,8 @@ def test_every_workbench_target_is_an_explicit_existing_test_not_support_or_serv
 
 
 def test_discovery_reports_unregistered_real_tests_without_expanding_targets():
-    groups = (*WORKBENCH_REQUIRED_REGRESSION_GROUPS, *WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS)
+    groups = (*WORKBENCH_REQUIRED_REGRESSION_GROUPS, *WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS,
+              *test_registry.SUPPLEMENTAL_REGRESSION_GROUPS)
     # Discovery is an audit only, never a source for the fixed target registry.
     discovered = {str(path.relative_to(ROOT)) for path in (ROOT / "tests/workbench").glob("test_*.py")
                   if _has_test_definition(path) and not path.name.endswith("_support.py")}
@@ -917,6 +927,7 @@ def test_heavy_browser_opt_in_platform_and_build_targets_are_not_must_pass_by_re
 
 
 def test_completed_dx_browser_keeps_exact_inputs_and_inventory_counts():
+    assert_reviewed_algorithm_registration()
     groups = {group["group_id"]: group for group in WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS}
     browser = groups["workbench_browser"]
     assert tuple(round1_targets(browser)[-15:]) == tuple(PREFIX + name for name in (
@@ -932,8 +943,8 @@ def test_completed_dx_browser_keeps_exact_inputs_and_inventory_counts():
         *ROUND1_SUPPLEMENTAL_FILES["workbench_browser"],
     ))
     assert set(DASHBOARD_EXTERNAL_BROWSER_INPUTS) <= set(browser["input_file_scopes"])
-    assert len([path for path in test_registry.iter_required_tests() if path not in POST_ROUND1_TARGETS]) == 582
-    assert len([path for path in _targets(WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS)
+    assert len(round1_targets({"target_paths": test_registry.iter_required_tests()})) == 582
+    assert len([path for path in _targets(test_registry.SUPPLEMENTAL_REGRESSION_GROUPS)
                 if path not in POST_ROUND1_TARGETS]) == 85
     targets = set(_targets((*WORKBENCH_REQUIRED_REGRESSION_GROUPS, *WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS)))
     assert all(source not in targets for source in DASHBOARD_EXTERNAL_BROWSER_INPUTS

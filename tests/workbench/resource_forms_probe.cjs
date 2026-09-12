@@ -12,12 +12,14 @@ const output = process.argv[2];
 if (!output) throw new Error('Pass an artifact directory');
 fs.mkdirSync(output, { recursive: true });
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
-const files = ['resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceTableFilterModel.js',
+const files = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'ResourceTableFilterModel.js',
   'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx', 'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceTables.jsx'];
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((item, index) => ['/fixture/' + files[index] + '.js', item.code]));
 const assets = new Map(manifest.files.map(item => [item.path, item]));
+const sharedStyles = fs.readdirSync(path.join(root,'frontend/workbench/app/styles')).filter(name=>/^(00|20|21|22)-/.test(name))
+  .map(name=>({path:'frontend/workbench/app/styles/'+name,code:fs.readFileSync(path.join(root,'frontend/workbench/app/styles',name),'utf8')}));
 const fixtureCode = `
 window.fixture = {calls:[],choices:[],serial:0};
 function ref(n) { return n.toString(16).padStart(48,'0'); }
@@ -58,12 +60,12 @@ function Harness({spec}) {
 window.mountFixture = spec => {
   fixture.calls=[];fixture.choices=[];fixture.confirmReceipt=false;fixture.choiceRetried=false;
   if(renderRoot)renderRoot.unmount();renderRoot=ReactDOM.createRoot(document.getElementById('fixture-root'));
-  renderRoot.render(React.createElement(Harness,{spec,key:++fixture.serial}));
+  renderRoot.render(React.createElement(React.Fragment,null,React.createElement(WorkbenchGuardHost),React.createElement(Harness,{spec,key:++fixture.serial})));
 };
 `;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<link rel="icon" href="/static/' + manifest.icon + '"><script src="/static/' + manifest.theme_script + '"></script>' +
-  manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
+  manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + '<style>' + sharedStyles.map(item=>item.code).join('\n') + '</style>' +
   '</head><body class="aps-workbench"><main class="plana" style="padding:24px"><p>组件测试数据 · 无生产写入</p><div id="fixture-root"></div></main>' +
   manifest.scripts.filter(file => file.startsWith('workbench/vendor/') || file.startsWith('workbench/assets/foundation-')).map(file => '<script src="/static/' + file + '"></script>').join('') +
   Array.from(scripts.keys(), file => '<script src="' + file + '"></script>').join('') + '<script>' + fixtureCode + '</script></body></html>';
@@ -76,7 +78,7 @@ const server = http.createServer((req,res) => {
   res.setHeader('Content-Type',asset.mime);res.end(fs.readFileSync(path.join(root,'static',asset.path)));
 });
 const result={scope:'isolated-component-fixtures',data_source:'demo',simulates_production_envelopes:true,production_persistence_tested:false,
-  compiled_sources:sources.map(item=>({path:item.path,sha256:crypto.createHash('sha256').update(item.code).digest('hex')})),cases:[],errors:[],external:[]};
+  compiled_sources:sources.concat(sharedStyles).map(item=>({path:item.path,sha256:crypto.createHash('sha256').update(item.code).digest('hex')})),cases:[],errors:[],external:[]};
 let page, variant;
 const ref = n => n.toString(16).padStart(48,'0');
 async function mount(spec) {
@@ -168,7 +170,7 @@ async function cases() {
   await run('material-current-unknown-and-clear',async()=>{
     await mount({kind:'material'});
     assert.equal(await page.getByLabel('库存数量',{exact:true}).inputValue(),'');
-    assert.equal(await page.getByLabel('备注',{exact:true}).count(),0);
+    assert.equal(await page.getByLabel('备注',{exact:true}).inputValue(),'旧备注保留');
     await page.getByLabel('名称',{exact:false}).fill('材料新名称');
     await page.getByLabel('规格',{exact:true}).fill('');await page.getByLabel('单位',{exact:true}).fill('');
     result.cases.push({variant,name:'material-visual',...await shot('material-form')});
@@ -290,7 +292,8 @@ async function cases() {
   });
   await run('demo-cannot-save',async()=>{
     await mount({kind:'material',source:'demo'});
-    assert(await page.getByRole('button',{name:'保存：当前不是生产数据，不能保存。',exact:true}).isDisabled());
+    assert(await page.getByRole('button',{name:'保存',exact:true}).isDisabled());
+    assert(await page.locator('.wb-reason').getByText('当前不是生产数据，不能保存。',{exact:true}).isVisible());
     assert.equal(await page.evaluate(()=>fixture.calls.length),0);
   });
   await run('detail-literal-values-and-policy-scope',async()=>{

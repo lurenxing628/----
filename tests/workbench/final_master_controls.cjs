@@ -198,7 +198,7 @@ async function main() {
       if (!selectedVariants.includes(width + 'x' + height + '-' + theme)) continue;
       const context = await browser.newContext({viewport: {width, height}, locale: 'en-US', timezoneId: 'Asia/Shanghai'});
       page = await context.newPage(); p.attach(page, width + 'x' + height + '-' + theme); await open();
-      if (theme === 'dark') await p.click(b(page, '深色：关'));
+      if (theme === 'dark') await p.click(b(page, '切换深色'));
       const modals = modalControls.checks(page, p, rail);
       const scenarios = [
         ['resource-headers', 'process', ids('006', [10, 11, 12]), () => headers('material', false)],

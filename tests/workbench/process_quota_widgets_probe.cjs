@@ -3,23 +3,27 @@
 const fs = require('node:fs'), path = require('node:path'), http = require('node:http'), crypto = require('node:crypto'), assert = require('node:assert/strict');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const config = JSON.parse(fs.readFileSync(0, 'utf8')), output = process.argv[2], root = path.resolve(__dirname, '../..');
-const names = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-api.js', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx', 'ResourceTables.jsx',
+const names = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-api.js', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx', 'ResourceTables.jsx',
   'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceMaterialContract.js', 'ResourceMaterialPreview.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx',
+  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',
   'ProcessContract.js', 'ProcessAPI.js', 'ProcessActionContract.js', 'ProcessActionPreview.jsx', 'ProcessFileContract.js', 'ProcessFilePreview.jsx', 'ProcessFileActions.jsx', 'ProcessControls.jsx',
   'ProcessStageEditor.jsx', 'ProcessSourceEditor.jsx', 'ProcessHoursEditor.jsx', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx',
-  'CalibrationAPI.js', 'CalibrationControls.jsx', 'CalibrationAdoptionAPI.js', 'CalibrationAdoptionState.js', 'CalibrationAdoptionControls.jsx', 'CalibrationAdoptionAction.jsx', 'CalibrationDetail.jsx', 'CalibrationWorkspace.jsx'];
+  'WorkbenchDetailPanel.jsx', 'ReportEvidence.jsx', 'CalibrationAPI.js', 'CalibrationControls.jsx', 'CalibrationAdoptionAPI.js', 'CalibrationAdoptionState.js', 'CalibrationAdoptionControls.jsx', 'CalibrationAdoptionAction.jsx', 'CalibrationDetail.jsx', 'CalibrationWorkspace.jsx'];
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
+const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {
+  const file = 'frontend/workbench/app/styles/' + name; return { path: file, code: fs.readFileSync(path.join(root, file), 'utf8') };
+});
+const workspaceCSS = styleSources.map(row => row.code).join('\n');
 const sources = names.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true }).outputs;
 const scripts = new Map(compiled.map(row => ['/source/' + row.path, row.code]));
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
 const assets = new Map(manifest.files.map(row => ['/static/' + row.path, { ...row, bytes: fs.readFileSync(path.join(root, 'static', row.path)) }]));
-const record = { global_build: false, cases: [], screenshots: [], errors: [], external: [], responses: [], refreshes: 0, contract_rejections: 0,
-  sources: sources.map(row => ({ path: row.path, sha256: hash(row.code) })) };
+const record = { global_build: false, cases: [], screenshots: [], calibration_samples: [], errors: [], external: [], responses: [], refreshes: 0, contract_rejections: 0,
+  sources: sources.concat(styleSources).map(row => ({ path: row.path, sha256: hash(row.code) })) };
 const boot = `const dgAdapter=APSProcessAPI.create();window.dgCompleted=[];
 function Harness(){const [opened,setOpened]=React.useState(true);const mode=location.pathname;
-return React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),
+return React.createElement(React.Fragment,null,React.createElement(WorkbenchGuardHost),React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),
   mode==='/calibration'?React.createElement(CalibrationWorkspace):opened?(mode==='/process'?React.createElement(ProcessDetail,{adapter:dgAdapter,partRef:${JSON.stringify(config.part_ref)},onClose:()=>setOpened(false),onCommitted:value=>dgCompleted.push(value)}):
   React.createElement(ProcessFileActions,{adapter:dgAdapter,kind:'hours',mode:'import',request:{source:'production',scope:{},recovery:!!dgAdapter.readPending()},onClose:()=>setOpened(false),onCommitted:value=>dgCompleted.push(value)})):
   React.createElement('button',{onClick:()=>setOpened(true)},'打开工时导入'));}
@@ -31,7 +35,7 @@ const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
 let fault = false, blockReceipts = false, origin, browser;
 const server = http.createServer((request, response) => {
   const url = new URL(request.url, 'http://localhost');
-  if (['/calibration', '/process', '/import'].includes(url.pathname)) { response.setHeader('Content-Type', 'text/html;charset=utf-8'); return response.end(html); }
+  if (['/calibration', '/process', '/import'].includes(url.pathname)) { response.setHeader('Content-Type', 'text/html;charset=utf-8'); return response.end(html.replace('</head>', '<style>' + workspaceCSS + '</style></head>')); }
   if (url.pathname === '/favicon.ico') { response.writeHead(204); return response.end(); }
   if (scripts.has(url.pathname)) { response.setHeader('Content-Type', 'text/javascript'); return response.end(scripts.get(url.pathname)); }
   if (assets.has(url.pathname)) { const asset = assets.get(url.pathname); response.setHeader('Content-Type', asset.mime); return response.end(asset.bytes); }
@@ -81,7 +85,24 @@ async function contextFor(name, viewport, theme) {
 async function adopt(page, reason) {
   await page.goto(origin + '/calibration'); await page.locator('.calibration-live[data-ready=true]').waitFor();
   await page.locator('.ca-table tr[data-ref="' + config.template_ref + '"]').getByRole('button', { name: '查看 P1 1 Turning', exact: true }).click();
-  await page.locator('[data-sample-group=selected]').waitFor(); await button(page, '预览采用').click();
+  await page.locator('[data-sample-group=selected]').waitFor();
+  const detail = record.responses.filter(row => row.payload.data?.suggestion && row.payload.data?.samples).at(-1).payload.data;
+  const groups = await page.locator('[data-sample-group]').evaluateAll(nodes => nodes.map(node => ({
+    kind: node.dataset.sampleGroup, visible: !!node.getClientRects().length,
+    samples: Array.from(node.querySelectorAll('[data-sample-ref]')).map(sample => sample.dataset.sampleRef),
+  })));
+  assert.deepEqual(groups, [
+    { kind: 'selected', visible: true, samples: detail.suggestion.sample_refs },
+    { kind: 'excluded', visible: true, samples: detail.samples.filter(row => row.template_operation_ref !== null && !row.selected).map(row => row.sample_ref) },
+    { kind: 'unbound', visible: true, samples: detail.samples.filter(row => row.template_operation_ref === null).map(row => row.sample_ref) },
+  ]);
+  if (!record.calibration_samples.length) {
+    await page.screenshot({ path: path.join(output, 'calibration-detail.png'), fullPage: true });
+    fs.writeFileSync(path.join(output, 'calibration-detail.html'), await page.locator('body').innerHTML());
+    fs.writeFileSync(path.join(output, 'calibration-detail.txt'), await page.locator('body').innerText());
+  }
+  record.calibration_samples.push({ reason, template_ref: detail.suggestion.template_operation_ref, groups });
+  await button(page, '预览采用').click();
   const dialog = page.getByRole('dialog'); await dialog.getByLabel('采用原因', { exact: true }).fill(reason);
   await dialog.getByLabel('声明人', { exact: true }).fill('DG工时复核员'); await button(page, '读取真实预览').click();
   await dialog.getByText('当前预览可采用：来源、旧定额和合格样本已核对。', { exact: true }).waitFor();
@@ -175,7 +196,9 @@ async function boundaries() {
   assert.equal(old.data.skipped_count, 0); const other = await context.newPage(); await adopt(other, '预检之后真实采纳，旧预检必须拒绝'); await other.close();
   const wait = page.waitForResponse(response => response.url().endsWith('/hours/confirm')); await button(page, '确认导入').click();
   const failed = await wait; assert.equal(failed.status(), 409); assert.equal((await failed.json()).committed, false);
-  await page.getByText('本次未导入，请重新预检后再确认。', { exact: true }).waitFor(); assert(await page.getByRole('button', { name: /^确认导入：/ }).isDisabled());
+  await page.locator('.rm-body').getByText('本次未导入，请重新预检后再确认。', { exact: true }).waitFor();
+  assert(await button(page, '确认导入').isDisabled());
+  assert.equal(await button(page, '确认导入').getAttribute('data-wb-disabled-reason'), '本次未导入，请重新预检后再确认。');
   const fresh = page.waitForResponse(response => response.url().endsWith('/hours/preview')); await button(page, '重新预检').click();
   assert.equal((await (await fresh).json()).data.skipped_count, 1); await rowChecks(page, 1, 1, 0);
   await button(page, '确认导入').click(); await rowChecks(page, 1, 1, 0, true); await shot(page, 'drift-repreview-receipt', viewport); record.drift = true; await context.close();

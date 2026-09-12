@@ -7,6 +7,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -60,7 +61,7 @@ def test_real_entrypoint_enables_http_worker_then_joins_before_unlock(job_case, 
 
 def test_server_return_waits_for_active_computation_and_keeps_lock(job_case, tmp_path, monkeypatch):
     started, proceed = threading.Event(), threading.Event()
-    original = run_worker.compute_prepared_candidate_run
+    original = run_worker.compute_candidate_run
     monitors, failures = [], []
 
     def compute(*args, **kwargs):
@@ -68,7 +69,7 @@ def test_server_return_waits_for_active_computation_and_keeps_lock(job_case, tmp
         assert proceed.wait(10)
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(run_worker, "compute_prepared_candidate_run", compute)
+    monkeypatch.setattr(run_worker, "compute_candidate_run", compute)
 
     def serve(app, _host, _port):
         runtime = app.extensions["workbench_run_runtime"]
@@ -146,8 +147,8 @@ def test_unconfirmed_shutdown_blocks_exit_backup_and_lock_release(tmp_path, monk
     monkeypatch.setitem(workbench_run_runtime._RUNTIMES, path, runtime)
     touched = []
     monkeypatch.setattr(factory, "_is_exit_backup_enabled", lambda *_: touched.append("config-read") or True)
-    manager = SimpleNamespace(db_path=path, logger=logging.getLogger("entrypoint-guard"),
-                              backup=lambda **_kwargs: touched.append("backup"))
+    manager: Any = SimpleNamespace(db_path=path, logger=logging.getLogger("entrypoint-guard"),
+                                   backup=lambda **_kwargs: touched.append("backup"))
     assert factory._run_exit_backup(manager) is False
     assert touched == []
     assert "退出自动备份已跳过" in caplog.text

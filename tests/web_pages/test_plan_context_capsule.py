@@ -11,8 +11,11 @@ from __future__ import annotations
 from contextlib import closing
 from unittest.mock import patch
 
+import pytest
+
 from core.infrastructure.database import get_connection
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
+from core.services.system.maintenance import MaintenanceThrottle
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests._support.gantt_retirement import _business_state
 from tests._support.paths import REPO_ROOT
@@ -20,6 +23,14 @@ from tests._support.workbench_browser_contract import browser_contract
 from tests._support.workbench_web_contract import canonical_boot, retired_response
 from web.viewmodels.plan_context_capsule import build_plan_context_capsule, history_row_capsule_fields
 from web.viewmodels.scheduler_workbench_links import build_workbench_plan_context
+
+
+@pytest.fixture(autouse=True)
+def _isolate_maintenance_throttle(monkeypatch):
+    # Each fresh database must initialize defaults before its read-only snapshot.
+    monkeypatch.setattr(MaintenanceThrottle, "_last_check_ts", MaintenanceThrottle._last_check_ts)
+    MaintenanceThrottle.reset()
+
 
 # ---------- 合同四类边界（design 验收场景 1） ----------
 

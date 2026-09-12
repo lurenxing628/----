@@ -35,7 +35,7 @@ function support(page, ready, report, save, flush) {
     const scope = page.locator(kind === 'candidate' ? '[data-run-adoption-action]' : '.trial-adoption-action');
     async function openPreview() {
       const response = page.waitForResponse(row => row.url().endsWith('/adopt-preview') && row.request().method() === 'POST');
-      await button('正式采用', scope).click();
+      await button(kind === 'candidate' ? '采用方案' : '正式采用', scope).click();
       const preview = await (await response).json();
       assert.equal(preview.data.validation.can_adopt, true, JSON.stringify(preview));
       await flush();

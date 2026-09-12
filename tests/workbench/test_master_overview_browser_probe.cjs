@@ -35,6 +35,26 @@ async function geometry() {
   assert.deepEqual(value.overlaps, []); report.geometry.push({ state: state.id, ...value });
 }
 async function mainCases() {
+  await run('detail-focus-close-and-sticky-actions', async () => {
+    await mount(); await ready(); await root().getByRole('heading', { name: '主数据实体详情', exact: true }).waitFor();
+    const initialPreview = await page.evaluate(() => ({ scroll: window.scrollY, headingTop: document.querySelector('.mo-heading h2').getBoundingClientRect().top,
+      focused: document.activeElement === document.querySelector('.wb-detail-heading h2') }));
+    assert.equal(initialPreview.scroll, 0, '自动首条预览保留主数据总览首屏'); assert(initialPreview.headingTop >= 0); assert.equal(initialPreview.focused, false);
+    await root().getByRole('button', { name: '关闭主数据实体详情', exact: true }).click();
+    const opener = root().locator('.mo-table tbody tr').first().getByRole('button', { name: /^查看 / });
+    await opener.click();
+    await page.waitForFunction(() => document.activeElement && document.activeElement.textContent === '主数据实体详情');
+    const visible = await page.evaluate(() => {
+      const heading = document.querySelector('.wb-detail-heading h2').getBoundingClientRect(), frame = document.querySelector('.mo-list .wb-table-frame');
+      const action = frame.querySelector('tbody .wb-col-actions').getBoundingClientRect(), bounds = frame.getBoundingClientRect();
+      return { top: heading.top, bottom: heading.bottom, height: innerHeight, action: action.right, right: bounds.right,
+        sticky: getComputedStyle(frame.querySelector('tbody .wb-col-actions')).position, caption: frame.querySelector('caption').textContent,
+        scopes: Array.from(frame.querySelectorAll('thead th')).every(th => th.scope === 'col') };
+    });
+    assert(visible.top >= 0 && visible.bottom <= visible.height); assert(visible.action <= visible.right + 1); assert.equal(visible.sticky, 'sticky'); assert(visible.scopes); assert.equal(visible.caption, '主数据清单');
+    await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('.master-overview .wb-detail'));
+    assert(await opener.evaluate(node => node === document.activeElement));
+  });
   await run('first-render-and-eight-domains', async () => {
     await mount(); await ready(); await root().getByRole('tab', { name: /^相关项/ }).waitFor();
     assert.equal(await root().locator('.mo-domains .mo-domain').count(), 8);
@@ -140,7 +160,7 @@ async function failureCases() {
     await new Promise(resolve => harness.server.listen(0, '127.0.0.1', resolve));
     const origin = 'http://127.0.0.1:' + harness.server.address().port;
     browser = await chromium.launch({ headless: true, executablePath: process.env.WORKBENCH_BROWSER }); report.browser = browser.version(); assert(report.browser.startsWith('109.'));
-    for (const [width, height] of [[1920, 1080], [1392, 924]]) for (const theme of ['light', 'dark']) {
+    for (const [width, height] of [[1920, 1080], [1392, 924], [1366, 768], [1280, 720]]) for (const theme of ['light', 'dark']) {
       state = { id: width + 'x' + height + '-' + theme, theme };
       const context = await browser.newContext({ viewport: { width, height }, acceptDownloads: true }); page = await context.newPage(); page.setDefaultTimeout(10000);
       page.on('pageerror', error => report.errors.push(error.stack));

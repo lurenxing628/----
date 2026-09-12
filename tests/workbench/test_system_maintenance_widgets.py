@@ -16,7 +16,7 @@ from tests.workbench.test_live_browser import runtime_tools
 
 HERE = Path(__file__).resolve().parent
 NAMES = ["SystemRestoreStatus.js", "SystemMaintenanceAPI.js", "SystemMaintenanceControls.jsx", "SystemRestorePanel.jsx", "SystemMaintenanceRecords.jsx",
-         "SystemMaintenanceConfig.jsx", "SystemMaintenanceWorkspace.jsx"]
+         "SystemMaintenanceConfig.jsx", "SystemMaintenanceWorkspace.jsx", "SystemLive.jsx"]
 
 
 @pytest.fixture(name="system_api")
@@ -82,6 +82,22 @@ def capture(api, restore_host):
     api.app.config.pop("WORKBENCH_SYSTEM_JOURNAL_DIR")
     dto["disabled"] = api.read("/backups", page_size="50")
     api.app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"] = str(api.journal_dir)
+    # Separate metadata-only files and a real cleanup audit keep the existing DTOs unchanged.
+    format_root = api.root / "format-size-consumers"
+    format_root.mkdir()
+    format_api = SystemTestAPI(format_root)
+    for index, size in enumerate((0, 1024, 1536, 1264256)):
+        with (format_api.backups / f"aps_backup_format_{index:02d}_manual.db").open("wb") as stream:
+            stream.truncate(size)
+    conn = format_api.connect()
+    try:
+        conn.execute("INSERT INTO OperationLogs(log_level,module,action,detail) VALUES ('INFO','system','cleanup',?)",
+                     (json.dumps({"removed_count": 0}),))
+        conn.commit()
+    finally:
+        conn.close()
+    dto["format_backups"] = format_api.read("/backups", page_size="10")
+    assert dto["format_backups"]["data"]["page"]["total"] == 5
     return dto
 
 
@@ -108,6 +124,8 @@ def test_system_maintenance_widgets(restore_host, system_api):
     assert len(report["variants"]) == 4
     assert len(report["cases"]) >= 40
     assert all(item["passed"] for item in report["cases"])
+    assert {"system-live-backups-size-format", "system-live-logs-size-format",
+            "maintenance-backup-size-format-preserves-event-and-dto"} <= {item["name"] for item in report["cases"]}
     assert hashes == {name: hashlib.sha256((source / name).read_bytes()).hexdigest() for name in NAMES}
     report["source_sha256"] = hashes
     report["asset_manifest_sha256_at_start"] = before_manifest

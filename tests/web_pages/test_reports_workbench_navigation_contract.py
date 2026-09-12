@@ -219,7 +219,8 @@ def test_scheduler_nav_template_uses_python_link_builder() -> None:
     source = (REPO_ROOT / "frontend/workbench/app/WorkbenchNavigation.js").read_text(encoding="utf-8")
     main = (REPO_ROOT / "frontend/workbench/app/main.jsx").read_text(encoding="utf-8")
     assert "window.WorkbenchNavigation.href(boot, view)" in main
-    assert "window.WorkbenchNavigation.navigate(boot, page, target, nextContext)" in main
+    assert "const navigate = async (target, nextContext, preferSaved = false) =>" in main
+    assert "window.WorkbenchNavigation.navigate(boot, page, target, nextContext, preferSaved)" in main
     assert "check(same(value, boot.navigation))" in source
     assert "url.searchParams.set('view', target)" in source
     assert "request.args.get" not in source and "url_for(" not in source

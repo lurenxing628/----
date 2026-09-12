@@ -3,7 +3,7 @@
 const fs = require('node:fs'), path = require('node:path'), http = require('node:http'), assert = require('node:assert/strict'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const options = JSON.parse(fs.readFileSync(0, 'utf8')), root = path.resolve(__dirname, '../..');
-const names = ['WorkbenchPageContext.jsx', 'SystemMaintenanceAPI.js', 'SystemRestoreStatus.js', 'SystemMaintenanceControls.jsx', 'SystemRestorePanel.jsx',
+const names = ['WorkbenchDensity.js', 'WorkbenchFormat.js', 'WorkbenchReferences.jsx', 'ResourceControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchPageContext.jsx', 'SystemMaintenanceAPI.js', 'SystemRestoreStatus.js', 'SystemMaintenanceControls.jsx', 'SystemRestorePanel.jsx',
   'SystemMaintenanceRecords.jsx', 'SystemMaintenanceConfig.jsx', 'SystemMaintenanceWorkspace.jsx', 'SystemLive.jsx'];
 const order = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json')));
 const sources = names.map(name => ({ path: name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
@@ -39,9 +39,10 @@ const server = http.createServer(async (request, response) => {
       }
       if (options.overlay !== false && incoming.statusCode === 200 && String(headers['content-type']).startsWith('text/html') && url.pathname === '/workbench') {
         let html = payload.toString('utf8');
-        html = html.replace(/<script src="([^"]+)"><\/script>/g, (tag, src) => names.some(name => src.split('?')[0].endsWith('/' + name.replace(/jsx$/, 'js'))) ? '' : tag);
+        // Keep the valid static dependency graph, then overlay current system components before mount.
         html = html.replace(/(<script src="[^"]*\/main\.js[^"]*"><\/script>)/,
           compiled.map(file => '<script src="/__du/' + file.path + '"></script>').join('') + '$1');
+        html = html.replace('</head>', '<style>' + ['00-tokens.css', '21-table-frame.css', '22-shared-controls.css', '37-system.css'].map(name => fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8')).join('\n') + '</style></head>');
         payload = Buffer.from(html);
       }
       delete headers['content-length']; response.writeHead(incoming.statusCode, headers); response.end(payload);

@@ -30,7 +30,7 @@ async function exercise(p, view) {
   const rowSelector = field ? '[data-field-task="' + expectedRef + '"]' : '.ca-table [data-ref="' + expectedRef + '"]';
   const selectedRow = () => page.locator(rowSelector);
   const detailSelector = field ? '.field-detail' : '.ca-detail';
-  const paging = field ? '.field-footer' : '.calibration-live > .ca-page';
+  const paging = field ? '.field-workspace > .wb-pager' : '.calibration-live .ca-list-pane > .wb-pager';
   const refreshLabel = field ? '刷新现场记录' : '刷新校准数据';
   const listReads = start => events.slice(start).filter(event => new URL(event.url).pathname.endsWith(endpoint));
   const context = () => page.evaluate(() => history.state.workbench.context);
@@ -52,7 +52,7 @@ async function exercise(p, view) {
     await p.read(() => page.getByRole('button', { name: '搜索', exact: true }).click(), endpoint);
     await p.read(() => p.choose('工序来源', 'internal'), endpoint);
     await p.read(() => p.choose('排序字段', 'sample_count'), endpoint);
-    await p.read(() => p.choose('每页数量', '10'), endpoint);
+    await p.read(() => p.choose('每页条数', '10'), endpoint);
     for (let number = 1; number < expectedPage; number++) result = await p.read(() => page.getByRole('button', { name: '下一页', exact: true }).click(), endpoint);
   }
   assert.equal(result.data.page.number, expectedPage); assert(result.data.page.total > 10);

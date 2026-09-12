@@ -1,15 +1,17 @@
 /* Component-only in-memory Babel; no project build or normal backend is started. */
 'use strict';
-const fs = require('node:fs'), path = require('node:path'), http = require('node:http'), assert = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path'), http = require('node:http'), assert = require('node:assert/strict'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], fixture = JSON.parse(fs.readFileSync(0, 'utf8'));
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
 const order = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json')));
-const names = ['SystemRestoreStatus.js', 'SystemMaintenanceAPI.js', 'SystemMaintenanceControls.jsx', 'SystemRestorePanel.jsx', 'SystemMaintenanceRecords.jsx', 'SystemMaintenanceConfig.jsx', 'SystemMaintenanceWorkspace.jsx'];
+const names = ['WorkbenchFormat.js', 'WorkbenchReferences.jsx', 'ResourceControls.jsx', 'WorkbenchListControls.jsx', 'SystemRestoreStatus.js', 'SystemMaintenanceAPI.js', 'SystemMaintenanceControls.jsx', 'SystemRestorePanel.jsx', 'SystemMaintenanceRecords.jsx', 'SystemMaintenanceConfig.jsx', 'SystemMaintenanceWorkspace.jsx', 'SystemLive.jsx'];
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype', order.babel.path), check_combined: true,
   sources: names.map(name => ({ path: 'app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') })) }).outputs;
 const scripts = new Map(compiled.map(row => ['/probe/' + row.path, row.code]));
 const report = { data_source: 'mock-with-temporary-backend-dto', production_persistence_tested: false, cases: [], variants: [], screenshots: [], requests: [], errors: [], external: [], dialogs: [] };
+report.compiled_source_sha256 = Object.fromEntries(names.map(name => [name, crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'frontend/workbench/app', name))).digest('hex')]));
+report.style_source_sha256 = Object.fromEntries(['00-tokens.css', '21-table-frame.css', '22-shared-controls.css', '37-system.css'].map(name => [name, crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name))).digest('hex')]));
 const clone = value => JSON.parse(JSON.stringify(value));
 let mode, resultMode, downloadMode, receipts, config, failRead, host;
 function reset() { mode = 'default'; resultMode = 'normal'; downloadMode = 'normal'; receipts = new Map(); config = clone(fixture.config); failRead = false;
@@ -29,7 +31,7 @@ React.createElement(window.WorkbenchControlStyles),React.createElement(window.Wo
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(ProbeApp));`;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
-  '</head><body class="aps-workbench"><div id="root"></div>' + manifest.scripts.filter(file => !file.endsWith('/main.js') && !names.some(name => file.endsWith('/' + name.replace(/jsx$/, 'js')))).map(file => '<script src="/static/' + file + '"></script>').join('') +
+  '<style>' + ['00-tokens.css', '21-table-frame.css', '22-shared-controls.css', '37-system.css'].map(name => fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8')).join('\n') + '</style></head><body class="aps-workbench"><div id="root"></div>' + manifest.scripts.filter(file => !file.endsWith('/main.js')).map(file => '<script src="/static/' + file + '"></script>').join('') +
   compiled.map(row => '<script src="/probe/' + row.path + '"></script>').join('') + '<script>' + boot + '</script></body></html>';
 const assets = new Map(manifest.files.map(row => ['/static/' + row.path, row]));
 function readCollection(kind, query) {
@@ -106,7 +108,7 @@ async function shot(page, name) { const file = path.join(output, name + '.png');
 async function acknowledge(page) { await page.getByRole('button', { name: '确认结果', exact: true }).click(); await page.getByRole('region', { name: '维护原请求结果' }).waitFor({ state: 'detached' }); }
 async function createBackup(page) { await page.getByRole('button', { name: '创建备份', exact: true }).click(); await page.getByRole('dialog').getByRole('button', { name: '确认创建', exact: true }).click(); }
 async function newPage(browser, viewport, theme, intent) {
-  const context = await browser.newContext({ viewport, acceptDownloads: true });
+  const context = await browser.newContext({ viewport, acceptDownloads: true, timezoneId: 'Asia/Shanghai' });
   await context.addInitScript(({ theme, intent }) => { localStorage.setItem('aps_theme', theme); localStorage.setItem('aps_kit_theme', theme); if (intent && !sessionStorage.getItem('seeded')) { localStorage.setItem('aps_workbench_system_pending_v1', JSON.stringify(intent)); sessionStorage.setItem('seeded', 'yes'); } }, { theme, intent });
   const page = await context.newPage(), origin = 'http://127.0.0.1:' + server.address().port;
   page.on('pageerror', error => report.errors.push(error.message)); page.on('dialog', async dialog => { report.dialogs.push(dialog.message()); await dialog.dismiss(); });
@@ -296,6 +298,74 @@ async function newPage(browser, viewport, theme, intent) {
     await test.page.getByRole('alert').waitFor(); assert.equal(await test.page.evaluate(() => window.systemReadSuspended), true);
     assert(report.requests.slice(corruptStart).every(row=>row.path.endsWith('/restore-host'))); assert.equal(await test.page.getByRole('button', { name: /^创建备份/ }).count(), 0);
     passed('corrupt-pending-ui-blocks-reads-and-writes', 'recovery'); await test.context.close();
+    reset(); test = await newPage(browser, { width: 1280, height: 720 }, 'dark');
+    await test.page.evaluate(() => {
+      const target = document.createElement('div'); target.id = 'system-overview-polish-probe'; document.body.appendChild(target);
+      ReactDOM.createRoot(target).render(React.createElement('div', {className:'sm-workbench'}, React.createElement(SystemLiveOverview, {
+        data: {backups:{count:3,message:'存在备份文件',state:'available'},logs:{operation_record_count:12,message:'读取完成',state:'available'},config:{values:{auto_backup_enabled:'yes'},message:'读取完成',state:'available'},maintenance:{jobs:[]}},
+        report: {checkedAt:'2026-09-12T00:30:00.000Z',checks:[{id:'runtime',label:'页面运行环境',status:'available',detail:'检查范围'}]}, onTab:()=>{}
+      })));
+    });
+    const overview = test.page.locator('#system-overview-polish-probe');
+    await overview.locator('details.sm-environment > summary').waitFor();
+    assert.equal(await overview.locator('details.sm-environment').getAttribute('open'), null);
+    assert.equal(await overview.locator('.sm-check-table').isVisible(), false);
+    await overview.locator('details.sm-environment > summary').click();
+    await overview.getByText('检查时间 2026-09-12 08:30 · 不代表数据库或备份健康', {exact:true}).waitFor();
+    assert(await overview.locator('.sm-check-table').isVisible());
+    assert.equal(await overview.locator('.sm-check-table caption').count(), 1);
+    assert.equal(await overview.locator('.sm-check-table thead th[scope="col"]').count(), 3);
+    assert.equal(await overview.locator('.sm-check-table tbody th[scope="row"]').count(), 1);
+    passed('environment-details-collapsed-and-utc-instant-localized', 'polish'); await test.context.close();
+    reset(); test = await newPage(browser, { width: 1280, height: 720 }, 'light');
+    await test.page.route('**/api/workbench/v1/system/restore-host', route => route.abort('failed'));
+    await test.page.reload(); await test.page.getByRole('heading', {name:'无法读取维护状态',exact:true}).waitFor();
+    assert.equal(await test.page.getByRole('heading', {name:'系统已暂停，维护结果待核实',exact:true}).count(), 0);
+    assert.equal(await test.page.evaluate(() => window.systemReadSuspended), true);
+    assert.equal(await test.page.getByRole('link', {name:'返回工作台',exact:true}).getAttribute('href'), '/workbench?view=system');
+    assert.equal(await test.page.getByRole('button', {name:/^创建备份/}).count(), 0);
+    passed('failed-host-read-is-unknown-not-confirmed-stop-and-keeps-read-lock', 'polish'); await test.context.close();
+    reset(); test = await newPage(browser, { width: 1392, height: 924 }, 'light');
+    const sizeInput = JSON.stringify(fixture.format_backups), expectedSizes = ['0.0 KB', '1.0 KB', '1.5 KB', '1,234.6 KB'];
+    await test.page.evaluate(dto => {
+      const freeze = value => { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
+      const payload = freeze(dto), records = payload.data.rows.filter(row => row.record_kind === 'backup_file').sort((a, b) => a.filename.localeCompare(b.filename));
+      window.SystemMaintenanceAPI.collection(payload, 'backups');
+      const files = freeze(Object.fromEntries(['backups', 'logs'].map(kind => [kind, { state: 'available', count: records.length,
+        files_truncated: false, message: '文件大小显示验证，不检查备份内容。', files: records.map((row, index) => ({
+          filename: kind === 'backups' ? row.filename : 'format-' + index + '.log', modified_at: row.time, size_bytes: row.size_bytes })) }])));
+      window.systemSizeFixture = { payload, files, before: JSON.stringify({ payload, files }) };
+      const target = document.createElement('div'); target.id = 'system-size-format-probe'; document.body.appendChild(target);
+      ReactDOM.createRoot(target).render(React.createElement('div', { className: 'sm-workbench' },
+        ...['backups', 'logs'].map(kind => React.createElement('div', { key: kind, id: 'system-size-live-' + kind },
+          React.createElement(SystemLiveFiles, { kind, data: files[kind], pageSize: 10, onPageSize: () => {} }))),
+        React.createElement('div', { id: 'system-size-maintenance' }, React.createElement(window.SystemMaintenanceRecords, {
+          api: { read: async () => window.SystemMaintenanceAPI.collection(payload, 'backups') }, kind: 'backups', pageSize: 10,
+          onPageSize: () => {}, revision: 0, command: { locked: false } }))));
+    }, fixture.format_backups);
+    const sizes = {};
+    for (const kind of ['backups', 'logs']) {
+      const area = test.page.locator('#system-size-live-' + kind); await area.locator('tbody tr').nth(3).waitFor();
+      sizes[kind] = await area.locator('tbody tr').evaluateAll(rows => rows.map(row => row.cells[3].textContent));
+      assert.deepEqual(sizes[kind], expectedSizes); await area.scrollIntoViewIfNeeded(); await shot(test.page, 'size-format-live-' + kind);
+      passed('system-live-' + kind + '-size-format', 'format-consumer');
+    }
+    const records = test.page.locator('#system-size-maintenance'); await records.locator('tbody tr').nth(4).waitFor();
+    const values = await records.locator('tbody tr[data-record-kind="backup_file"]').evaluateAll(rows => rows.map(row => ({ filename: row.cells[3].textContent, size: row.cells[4].textContent })).sort((a, b) => a.filename.localeCompare(b.filename)));
+    assert.deepEqual(values.map(row => row.size), expectedSizes);
+    const event = records.locator('tbody tr[data-record-kind="cleanup_event"]'); assert.equal(await event.count(), 1);
+    assert.equal(await event.locator('td').nth(4).innerText(), '事件记录'); await event.getByRole('button').click();
+    await records.getByRole('region', { name: '维护事件详情', exact: true }).waitFor();
+    const originalSizes = await test.page.evaluate(() => {
+      const { payload, files, before } = window.systemSizeFixture;
+      if (JSON.stringify({ payload, files }) !== before) throw new Error('Formatting changed the original file metadata');
+      return files.backups.files.map(row => row.size_bytes);
+    });
+    assert.deepEqual(originalSizes, [0, 1024, 1536, 1264256]); assert.equal(JSON.stringify(fixture.format_backups), sizeInput);
+    report.file_size_format = { source: 'real-WorkbenchFormat.js', input_bytes: originalSizes, live: sizes,
+      maintenance: values.map(row => row.size), event_size: '事件记录', dto_unchanged: true };
+    await records.scrollIntoViewIfNeeded(); await shot(test.page, 'size-format-maintenance-event');
+    passed('maintenance-backup-size-format-preserves-event-and-dto', 'format-consumer'); await test.context.close();
     assert.deepEqual(report.errors, []); assert.deepEqual(report.external, []); assert.deepEqual(report.dialogs, []);
   } finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); fs.writeFileSync(path.join(output, 'system-maintenance-ui-result.json'), JSON.stringify(report, null, 2)); }
   console.log(JSON.stringify({ output, cases: report.cases.length, variants: report.variants.length, screenshots: report.screenshots.length }));

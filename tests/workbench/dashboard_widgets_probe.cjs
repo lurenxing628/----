@@ -6,15 +6,17 @@ const config = JSON.parse(fs.readFileSync(0, 'utf8')), output = process.argv[2],
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 assert.equal(hash(fs.readFileSync(path.join(__dirname, 'fixtures/schema-v28.sql'))), '2520295cebbe708270f93ed0aa5a6b18ea9b93ad3a1c77dd6c7a857fea44ad52');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
-const names = ['WorkbenchPageContext.jsx', 'WorkbenchCaption.jsx', 'DashboardContract.js', 'DashboardAnalysisAPI.js', 'DashboardCandidateComparisonAPI.js',
+const sourceStyles = ['00-tokens.css', '10-shell.css', '20-controls.css', '21-table-frame.css', '22-shared-controls.css', '36-analysis.css'].map(name => ({ path: 'frontend/workbench/app/styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
+const names = ['WorkbenchPageContext.jsx', 'WorkbenchCaption.jsx', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx', 'DashboardContract.js', 'DashboardAnalysisAPI.js', 'DashboardCandidateComparisonAPI.js',
   'DashboardTimelineModel.js', 'DashboardTimeline.jsx', 'DashboardAnalysisPanels.jsx', 'DashboardCandidatePanels.jsx', 'DashboardCandidates.jsx',
-  'DashboardSession.js', 'DashboardStyles.jsx', 'DashboardPanels.jsx', 'DashboardHistory.jsx', 'DashboardHandling.jsx', 'DashboardWorkspace.jsx'];
+  'DashboardSession.js', 'DashboardStyles.jsx', 'DashboardEvidence.jsx', 'DashboardPanels.jsx', 'DashboardHistory.jsx', 'DashboardHandling.jsx', 'DashboardWorkspace.jsx'];
 const sources = names.map(name => ({ path: 'app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true }).outputs;
 const scripts = new Map(compiled.map(row => ['/probe/' + row.path, row.code]));
 const assets = new Map(manifest.files.map(row => ['/static/' + row.path, { ...row, content: fs.readFileSync(path.join(root, 'static', row.path)) }]));
 const report = { compile_global_build: false, sources: sources.map(s => ({ path: 'frontend/workbench/' + s.path, sha256: hash(s.code) })),
   cases: [], boundaries: {}, screenshots: [], errors: [], external: [], responses: [], navigation: [], restarts: 0, contract_rejections: 0 };
+report.sources.push(...sourceStyles.map(row => ({ path: row.path, sha256: hash(row.code) })));
 const boot = `function CYApp(){
   const [target,setTarget]=React.useState({view:'dashboard',context:{scope:{size:2}}});
   const navigate=(view,context)=>{window.cyNavigation={view,context};setTarget({view,context});};
@@ -30,7 +32,7 @@ const boot = `function CYApp(){
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(CYApp));`;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(f => '<link rel="stylesheet" href="/static/' + f + '">').join('') +
-  '</head><body class="aps-workbench"><div id="root"></div>' + manifest.scripts.filter(f => !f.endsWith('/main.js') && !f.endsWith('/WorkbenchCaption.js') && !/\/Dashboard[^/]*\.js$/.test(f)).map(f => '<script src="/static/' + f + '"></script>').join('') +
+  sourceStyles.map(row => '<style>' + row.code + '</style>').join('') + '</head><body class="aps-workbench"><div id="root"></div>' + manifest.scripts.filter(f => !f.endsWith('/main.js') && !f.endsWith('/WorkbenchCaption.js') && !/\/Dashboard[^/]*\.js$/.test(f)).map(f => '<script src="/static/' + f + '"></script>').join('') +
   compiled.map(r => '<script src="/probe/' + r.path + '"></script>').join('') + '<script>' + boot + '</script></body></html>';
 let fault = '', blockReceipts = false;
 const commandPath = p => /\/items\/[a-f0-9]{48}\/(transition|reopen)$/.test(p);
@@ -62,7 +64,7 @@ let browser, origin, activePage;
 async function launch() { return chromium.launch({ executablePath: process.env.WORKBENCH_BROWSER, headless: true, args: ['--disable-background-networking'] }); }
 async function shot(page, name) { const file = path.join(output, name + '.png'); await page.screenshot({ path: file, animations: 'disabled' }); report.screenshots.push(file); }
 async function listAction(page, action, ok = true) {
-  const wait = page.waitForResponse(r => new URL(r.url()).pathname === '/api/workbench/v1/dashboard'); await action(); const r = await wait;
+  const [r] = await Promise.all([page.waitForResponse(r => new URL(r.url()).pathname === '/api/workbench/v1/dashboard'), action()]);
   if (ok) { assert.equal(r.status(), 200, await r.text()); await page.locator('[data-dashboard-workspace][data-ready=true]').waitFor(); }
   return r.json();
 }
@@ -75,7 +77,11 @@ async function fresh(name, viewport = { width: 1392, height: 924 }, theme = 'lig
   const data = await listAction(page, () => page.goto(origin), name !== 'missing'); return { context, page, data };
 }
 async function select(page, label, option) { await page.getByLabel(label, { exact: true }).click(); await page.locator('.wb-control-popup').getByRole('option', { name: option, exact: true }).click(); }
-async function category(page, name) { return listAction(page, () => page.locator('.dy-rail').getByRole('button', { name: new RegExp('^' + name) }).click()); }
+async function category(page, name) { return listAction(page, async () => {
+  const rail = page.locator('.dy-rail');
+  if (await rail.isVisible()) await rail.getByRole('button', { name: new RegExp('^' + name) }).click();
+  else await select(page, '异常类别', name);
+}); }
 async function detail(page, kind = 'delivery') {
   const labels = { delivery: '交期风险', actual: '执行偏差', material: '齐套缺口', downtime: '停机影响' };
   await category(page, labels[kind]); const row = page.locator('tr[data-category="' + kind + '"]').first();
@@ -130,13 +136,15 @@ async function navigateAndReturn(page, button, target, expectedPath) {
   await button.click(); const response = await wait; assert.equal(response.status(), 200, await response.text());
   const nav = await page.evaluate(() => window.cyNavigation); assert.equal(nav.view, target); assert.equal(nav.context.return_to.view, 'dashboard');
   report.navigation.push(nav); await listAction(page, () => page.locator('[data-fixture-return]').click());
+  const restored = nav.context.return_to.context.item_ref;
+  if (restored) await page.locator('[data-detail-ref="' + restored + '"]').waitFor();
 }
 async function filtersAndTabs(page) {
   let data = await listAction(page, () => select(page, '处置状态', '已关闭')); assert.equal(data.data.page.total, 0);
   data = await listAction(page, () => select(page, '处置状态', '未关闭')); assert.equal(data.data.page.total, 29);
   await listAction(page, () => select(page, '排序', '责任期限'));
   data = await listAction(page, () => page.getByRole('button', { name: '改为降序', exact: true }).click()); assert.equal(data.data.scope.direction, 'desc');
-  data = await listAction(page, () => select(page, '每页条目数', '10')); assert.equal(data.data.items.length, 10);
+  data = await listAction(page, () => select(page, '每页条目数', '10 项')); assert.equal(data.data.items.length, 10);
   await listAction(page, () => select(page, '排序', '对象')); await listAction(page, () => page.getByRole('button', { name: '改为升序', exact: true }).click());
   await listAction(page, () => page.getByRole('button', { name: '清除条目筛选', exact: true }).click());
   data = await category(page, '外协回厂');
@@ -166,7 +174,7 @@ async function happy(viewport, theme) {
   assert.equal(await page.locator('[data-run-ref]').getAttribute('data-run-ref'), config.run_ref); await shot(page, name + '-candidates');
   await navigateAndReturn(page, page.getByRole('button', { name: '查看候选', exact: true }), 'analysis', '/api/workbench/v1/scheduling/runs/' + config.run_ref + '/candidates');
   await navigateAndReturn(page, page.getByRole('button', { name: '完整运行目录', exact: true }), 'analysis', '/api/workbench/v1/scheduling/runs');
-  const material = await detail(page, 'material'); await page.locator('[data-detail-ref]').getByText('圆钢', { exact: true }).waitFor();
+  const material = await detail(page, 'material'); await page.locator('[data-detail-ref] span:visible').filter({ hasText: /^圆钢$/ }).waitFor();
   await navigateAndReturn(page, page.locator('[data-detail-ref]').getByRole('button', { name: '批次资料', exact: true }), 'batches', '/api/workbench/v1/entities/batch/' + material.source.batch_ref);
   const actual = await detail(page, 'actual'); await navigateAndReturn(page, page.locator('[data-detail-ref]').getByRole('button', { name: '现场报工', exact: true }), 'field', '/api/workbench/v1/execution/tasks');
   assert.equal(report.navigation[report.navigation.length - 1].context.task_ref, actual.source.task_ref);
@@ -192,9 +200,9 @@ async function happy(viewport, theme) {
   await page.getByRole('button', { name: '查看已确认回执', exact: true }).waitFor(); await page.getByRole('button', { name: '查看已确认回执', exact: true }).click(); await confirmed(page);
   assert.equal((await page.evaluate(() => window.DashboardSession.read())).request_key, pending.request_key); await finish(page);
   const closed = await detail(page); assert.equal(closed.handling.status, 'closed'); assert.equal(closed.risk.active, true); assert.deepEqual(closed.allowed_transitions, []);
-  await historyTab(page); await page.locator('[data-history-sequence="4"] summary').click(); await page.getByText(complete.evidence, { exact: true }).waitFor(); await shot(page, name + '-closed-history');
+  await historyTab(page); await page.locator('[data-history-sequence="4"]').getByText('变更前后及完成凭据', { exact: true }).click(); await page.getByText(complete.evidence, { exact: true }).waitFor(); await shot(page, name + '-closed-history');
   const oldPage = page.waitForResponse(r => new URL(r.url()).searchParams.get('history_page') === '2'); await page.getByRole('button', { name: '历史下一页', exact: true }).click(); assert.equal((await oldPage).status(), 200);
-  await page.locator('[data-history-sequence="1"]').waitFor(); await page.getByRole('button', { name: '查看第 1 次原始依据', exact: true }).click(); await page.getByText(/永久历史快照/).waitFor();
+  await page.locator('[data-history-sequence="1"]').waitFor(); await page.getByRole('button', { name: '查看第 1 次原始依据', exact: true }).click(); await page.getByText(/当时来源 ·/).waitFor();
   await page.getByRole('button', { name: '独立重开', exact: true }).click(); const reason = '复查仍有交期风险，新增跟进 ' + name;
   await page.getByRole('dialog').getByLabel('重开原因', { exact: true }).fill(reason); const r = await send(page, true); assert.equal(r.status(), 200); await confirmed(page); await finish(page);
   await page.locator('[data-history-sequence="5"]').waitFor(); await shot(page, name + '-reopened');
@@ -232,12 +240,34 @@ async function boundaries() {
     await shot(page, name); fault = ''; blockReceipts = false; await context.close();
   }
 }
+async function detailLayout(viewport, theme) {
+  const { context, page } = await fresh(theme + '-1392', viewport, theme);
+  const row = await detail(page, 'material');
+  await page.waitForFunction(() => document.activeElement && document.activeElement.textContent === '风险条目详情');
+  const bounds = await page.evaluate(() => {
+    const heading = document.querySelector('.wb-detail-heading h2').getBoundingClientRect(), frame = document.querySelector('.dy-table').parentElement;
+    const action = frame.querySelector('tbody .wb-col-actions').getBoundingClientRect(), rect = frame.getBoundingClientRect();
+    return { top: heading.top, bottom: heading.bottom, height: innerHeight, documentWidth: document.documentElement.scrollWidth, width: innerWidth,
+      right: rect.right, action: action.right, sticky: getComputedStyle(frame.querySelector('tbody .wb-col-actions')).position,
+      sourcePre: document.querySelectorAll('[data-detail-ref] pre').length };
+  });
+  assert(bounds.top >= 0 && bounds.bottom <= bounds.height); assert(bounds.documentWidth <= bounds.width); assert(bounds.action <= bounds.right + 1); assert.equal(bounds.sticky, 'sticky'); assert.equal(bounds.sourcePre, 0);
+  await shot(page, 'detail-' + viewport.width + '-' + theme);
+  await page.keyboard.press('Escape'); await page.locator('[data-detail-ref]').waitFor({ state: 'hidden' });
+  assert(await page.locator('[data-item-ref="' + row.item_ref + '"] button').evaluate(button => document.activeElement === button));
+  report.ui_refinement = (report.ui_refinement || []).concat([{ viewport, theme, bounds, focus_returned: true }]);
+  await context.close();
+}
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); origin = 'http://127.0.0.1:' + server.address().port;
   try {
     browser = await launch(); report.browser = browser.version(); assert(report.browser.startsWith('109.'));
-    for (const viewport of [{ width: 1920, height: 1080 }, { width: 1392, height: 924 }]) for (const theme of ['light', 'dark']) await happy(viewport, theme);
-    await boundaries(); assert.deepEqual(report.errors, []); assert.deepEqual(report.external, []);
+    if (process.env.WORKBENCH_DASHBOARD_DETAIL_ONLY !== '1') {
+      for (const viewport of [{ width: 1920, height: 1080 }, { width: 1392, height: 924 }]) for (const theme of ['light', 'dark']) await happy(viewport, theme);
+      await boundaries();
+    }
+    for (const viewport of [{ width: 1366, height: 768 }, { width: 1280, height: 720 }]) for (const theme of ['light', 'dark']) await detailLayout(viewport, theme);
+    assert.deepEqual(report.errors, []); assert.deepEqual(report.external, []);
   } catch (error) { if (activePage && !activePage.isClosed()) { await shot(activePage, 'failure'); report.failure_text = await activePage.locator('body').innerText(); } throw error; }
   finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); fs.writeFileSync(path.join(output, 'dashboard-ui.json'), JSON.stringify(report, null, 2)); }
   console.log(JSON.stringify({ browser: report.browser, cases: report.cases.length, screenshots: report.screenshots.length, boundaries: report.boundaries }));

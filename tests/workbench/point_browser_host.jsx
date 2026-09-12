@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   let mounted;
-  function Host({ spec, initial }) {
+  function Host({ spec, initial, asOf }) {
     const [data, setData] = React.useState(initial), [theme, setTheme] = React.useState(spec.theme);
     const [selected, setSelected] = React.useState(null), [query, setQuery] = React.useState('');
     const [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null);
@@ -18,7 +18,7 @@
     const selectPlan = (task, before) => setSelected({task, before});
     let body;
     if (spec.kind === 'plan') body = <div className="plana plan-workspace"><window.PlanLayout /><div className="plan-main"><div>
-      <window.PlanGantt data={data} selected={selected} onSelect={selectPlan} query={query} onQuery={setQuery} />
+      <window.PlanGantt data={data} asOf={asOf} selected={selected} onSelect={selectPlan} query={query} onQuery={setQuery} />
       <window.PlanDetailsUI.ProjectionTables data={data} onBatch={setQuery} onResource={setQuery} /></div>
       <window.PlanDetailsUI.TaskDetail data={data} selected={selected} onSelect={selectPlan} /></div></div>;
     if (spec.kind === 'candidate') body = <div className="plana run-candidate-workspace"><window.RunCandidateControls.Styles />
@@ -29,7 +29,7 @@
     if (spec.kind === 'trial') body = <div className="plana trial-workspace"><window.TrialStyles /><div className="tt-main"><div>
       <window.TrialGantt data={data} selected={selected} onSelect={setSelected} /></div>
       <window.TrialDetails data={data} selected={selected} onSelect={setSelected} commands={commands} onEditing={() => {}} onRecheck={() => {}} /></div></div>;
-    return <><window.WorkbenchControlStyles /><window.WorkbenchControls /><window.WorkbenchNumberControls />
+    return <><window.WorkbenchControlStyles /><window.WorkbenchControls /><window.WorkbenchNumberControls /><window.WorkbenchGuardHost />
       <AppShell active="gantt" onNav={() => {}} theme={theme} onToggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
         operations showCapsule={false} title={spec.kind === 'trial' ? '计划试调' : spec.kind === 'candidate' ? '候选排产结果' : '设备 / 人员 / 批次甘特'}>{body}</AppShell></>;
   }
@@ -40,7 +40,7 @@
     if (spec.kind === 'trial') window.TrialContract.workspace(window.TrialContract.envelope(payload));
     if (mounted) mounted.unmount();
     mounted = ReactDOM.createRoot(document.getElementById('point-root'));
-    mounted.render(<Host spec={spec} initial={payload.data} />);
+    mounted.render(<Host spec={spec} initial={payload.data} asOf={payload.meta.as_of} />);
     return payload;
   };
 })();

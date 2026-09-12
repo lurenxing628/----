@@ -10,15 +10,16 @@ function snapshot(ready, label) {
     ['-B', path.join(__dirname, 'final_planning_database_probe.py'), ready.root, label], { encoding: 'utf8', env: process.env }));
 }
 async function theme(page, report) {
-  if (await page.locator('html').getAttribute('data-theme') !== report.theme) await page.getByRole('button', { name: /^深色：/ }).click();
+  if (await page.locator('html').getAttribute('data-theme') !== report.theme) await page.getByRole('button', { name: /^切换(?:深色|浅色)$/ }).click();
   assert.equal(await page.locator('html').getAttribute('data-theme'), report.theme);
 }
 
 async function delayConflictDetails(page, ready, report, h, flush) {
   const start = report.requests.length;
-  await h.button('交付风险', page.locator('.plan-heading').first()).click();
+  const views = page.getByRole('tablist', { name: '计划中心视图', exact: true });
+  await views.getByRole('tab', { name: '交付风险', exact: true }).click();
   const workspace = page.locator('[data-plan-workspace]');
-  await workspace.getByRole('heading', { name: '交付风险', exact: true }).waitFor();
+  await views.getByRole('tab', { name: '交付风险', exact: true, selected: true }).waitFor();
   const table = workspace.getByRole('table', { name: '资源重叠明细', exact: true });
   await table.waitFor(); await flush();
   const data = h.last(value => value.plan && value.tasks), occupancy = data.projections.occupancy;

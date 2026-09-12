@@ -40,7 +40,7 @@ assert(h.text(empty).includes('尚未选中任务'));
 const view=h.gantt(data), bar=view.nodes.find(node=>node.type==='button' && node.props['data-plan-task']);
 bar.props.onClick(); assert.strictEqual(view.selections[0].task,task);
 const detail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected:{task,before:false},onSelect:()=>{}}), text=h.text(detail);
-for (const label of ['任务详情','B1','10','车削','设备','一号设备','人员','张三','计划开始','2026-05-01 08:00:00','计划结束','2026-05-01 09:00:00','1 h']) assert(text.includes(label),label);
+for (const label of ['任务详情','B1','10','车削','设备','一号设备','人员','张三','计划开始','2026-05-01 08:00:00','计划结束','2026-05-01 09:00:00','1.00 h']) assert(text.includes(label),label);
 for (const value of ['op_123','op_id','schedule_id','source_table','scenario_id','OP-SECRET','SCH-SECRET','SC-SECRET']) assert(!text.includes(value),value);
 assert.strictEqual(JSON.stringify(data),original);
 return true;

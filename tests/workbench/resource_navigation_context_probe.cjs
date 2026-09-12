@@ -5,19 +5,21 @@ const { chromium } = require('playwright'), { compile } = require('../../scripts
 const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 if (!output) throw new Error('Pass a temporary artifact directory');
 fs.mkdirSync(output, { recursive: true });
-const files = ['WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx',
+const files = ['WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchControlBridge.js', 'WorkbenchControls.jsx','WorkbenchListControls.jsx',
   'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx', 'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceTables.jsx', 'ResourceMetrics.jsx', 'ResourceRail.jsx',
   'CalendarContract.js', 'ResourceWorkspace.jsx', 'CalendarFields.jsx', 'CalendarDayDialog.jsx', 'CalendarRangeDialog.jsx', 'ResourceCalendar.jsx',
   'ResourceMaterialContract.js', 'ResourceFileContract.js', 'ResourceMaterialPreview.jsx', 'ResourceMaterialActions.jsx', 'ResourceFileActions.jsx', 'ResourceCatalogModel.js', 'ResourceCatalogEditor.jsx', 'ResourceCatalog.jsx',
   'ProcessAPI.js', 'ProcessContract.js', 'ProcessReadView.js', 'ProcessActionContract.js', 'ProcessActionPreview.jsx', 'ProcessCollectionActions.jsx', 'ProcessFileContract.js', 'ProcessFilePreview.jsx', 'ProcessFileActions.jsx', 'ProcessControls.jsx',
   'ProcessStageEditor.jsx', 'ProcessOpTypeCreate.jsx', 'ProcessSourceEditor.jsx', 'ProcessHoursEditor.jsx', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx', 'ProcessWorkspace.jsx', 'ResourceLive.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx'];
+   'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx',  'WorkbenchNumberControls.jsx'];
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((item, i) => ['/fixture/' + files[i] + '.js', item.code]));
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
 const assets = new Map(manifest.files.map(item => ['/static/' + item.path, { ...item, bytes: fs.readFileSync(path.join(root, 'static', item.path)) }]));
 const foundation = manifest.scripts.filter(file => file.startsWith('workbench/vendor/') || file.startsWith('workbench/assets/foundation-'));
+const sharedStyles = fs.readdirSync(path.join(root,'frontend/workbench/app/styles')).filter(name=>/^(00|20|21|22)-/.test(name))
+  .map(name=>({path:'frontend/workbench/app/styles/'+name,code:fs.readFileSync(path.join(root,'frontend/workbench/app/styles',name),'utf8')}));
 const fixture = `
 const h=React.createElement,R=n=>n.toString(16).padStart(48,'0'),copy=x=>JSON.parse(JSON.stringify(x));
 const stamp=state=>({state,confirmed_at:state==='confirmed'?'2026-09-09T12:00:00':null,confirmed_by:null});
@@ -62,7 +64,7 @@ function pending(namespace){const intent={kind:namespace==='process'?'process':n
   originalCreate(namespace).savePending(intent);f.originalPending[namespace]=copy(intent);
   f.receipts[namespace]={ok:true,result:'committed',receipt_ref:'receipt-'+namespace,replayed:true,warnings:[],data:namespace==='process'?{entity_ref:R(5),stage:'hours'}:namespace==='calendar'?{date:'2026-09-09'}:{entity_ref:R(1)}};}
 function Harness(){const [navigation,setNavigation]=React.useState({context:f.spec.context,key:++key});window.navigateFixture=context=>setNavigation({context,key:++key});
-  return h(React.Fragment,null,h(WorkbenchControlStyles),h(WorkbenchControls),h(WorkbenchNumberControls),h(AppShell,{active:'process',theme:document.documentElement.dataset.theme,title:'基础资料导航',showCapsule:false,onNav:()=>{}},
+  return h(React.Fragment,null,h(WorkbenchGuardHost),h(WorkbenchControlStyles),h(WorkbenchControls),h(WorkbenchNumberControls),h(AppShell,{active:'process',theme:document.documentElement.dataset.theme,title:'基础资料导航',showCapsule:false,onNav:()=>{}},
     h(ResourceLive,{key:navigation.key,initialContext:navigation.context,onNavigate:()=>{}})));}
 window.mountFixture=(spec={})=>{if(viewRoot)viewRoot.unmount();sessionStorage.clear();f=window.fixture={spec,reads:[],lookups:[],writes:0,adapters:{},resolved:false,receipts:{},originalPending:{}};
   f.records=[record('material',1),record('material',12),record('machine',2),record('operator',3),record('supplier',4),record('op_type',10,'internal'),record('op_type',11,'external')];
@@ -70,7 +72,7 @@ window.mountFixture=(spec={})=>{if(viewRoot)viewRoot.unmount();sessionStorage.cl
   (spec.pending||[]).forEach(pending);viewRoot=ReactDOM.createRoot(document.getElementById('root'));viewRoot.render(h(Harness));};
 `;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="/static/' + manifest.icon + '">' +
-  '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
+  '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + '<style>' + sharedStyles.map(item=>item.code).join('\n') + '</style>' +
   '</head><body class="aps-workbench"><div id="root"></div>' + foundation.map(file => '<script src="/static/' + file + '"></script>').join('') +
   [...scripts.keys()].map(file => '<script src="' + file + '"></script>').join('') + '<script>' + fixture + '</script></body></html>';
 const server = http.createServer((req, res) => {
@@ -82,7 +84,7 @@ const server = http.createServer((req, res) => {
 });
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');
 const report = { scope: 'resource-navigation-current-source-component-mock', production_persistence_tested: false, compile: { target: compiled.target, global_build: false },
-  sources: sources.map(row => ({ path: row.path, sha256: sha(row.code) })), cases: [], screenshots: [], errors: [], external: [] };
+  sources: sources.concat(sharedStyles).map(row => ({ path: row.path, sha256: sha(row.code) })), cases: [], screenshots: [], errors: [], external: [] };
 const ref = n => n.toString(16).padStart(48, '0'), ctx = (kind, n, patch = {}) => ({ source: 'production', kind, entity_ref: ref(n), ...patch });
 let page, variant;
 const button = name => page.getByRole('button', { name, exact: true });

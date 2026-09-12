@@ -1,5 +1,6 @@
 /* BY-only in-memory asset compilation and read-only proxy. No build/static writes. */
 'use strict';
+const UI = require('./run_ui_source.cjs');
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..');
@@ -28,7 +29,7 @@ function serve(backend, report, output) {
   report.boot = boot;
   const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<link rel="icon" href="/static/' + manifest.icon + '"><script src="/static/' + manifest.theme_script + '"></script>' +
-    manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + '</head><body class="aps-workbench"><div id="root"></div>' +
+    manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + UI.styles(report, output) + '</head><body class="aps-workbench"><div id="root"></div>' +
     '<script id="workbench-boot" type="application/json">' + JSON.stringify(boot) + '</script>' +
     manifest.scripts.filter(file => !file.startsWith('workbench/app/')).concat(live.map(name => 'workbench/app/' + name.replace(/\.jsx$/, '.js')))
       .map(file => '<script src="/static/' + file + '"></script>').join('') + '</body></html>';

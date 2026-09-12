@@ -61,17 +61,17 @@ async function readAllOperations(name,expected){
   const dialog=page.getByRole('dialog'),grid=dialog.getByRole('table',{name,exact:true});
   const rows=grid.locator('tbody tr'),numbers=grid.locator('tbody tr td:first-child b');
   const size=dialog.getByRole('combobox',{name:'每页条数',exact:true});
-  const pager=size.locator('xpath=ancestor::form');
+  const pager=size.locator('xpath=ancestor::nav');
   assert.equal(await size.inputValue(),'50');
   assert.deepEqual(await size.locator('option').evaluateAll(nodes=>nodes.map(node=>node.value)),['20','50','100']);
   for(const value of ['20','100','50']){
     await controls.select(size,value);assert.equal(await rows.count(),Number(value));
     assert.deepEqual(await numbers.allTextContents(),expected.slice(0,Number(value)));
-    assert(await pager.getByText('第 1 / '+Math.ceil(expected.length/Number(value))+' 页',{exact:true}).isVisible());
+    assert(await pager.getByText('共 '+expected.length+' 项 · 第 1 / '+Math.ceil(expected.length/Number(value))+' 页',{exact:true}).isVisible());
   }
   const sequences=[],pages=[],next=dialog.getByRole('button',{name:'下一页',exact:true}),count=Math.ceil(expected.length/50);
   for(let number=1;number<=count;number++){
-    assert(await pager.getByText('第 '+number+' / '+count+' 页',{exact:true}).isVisible());
+    assert(await pager.getByText('共 '+expected.length+' 项 · 第 '+number+' / '+count+' 页',{exact:true}).isVisible());
     const values=await numbers.allTextContents(),wanted=expected.slice((number-1)*50,number*50);
     assert.equal(await rows.count(),wanted.length);assert(values.length>0&&values.length<=50);
     assert.deepEqual(values,wanted,name+' page '+number);

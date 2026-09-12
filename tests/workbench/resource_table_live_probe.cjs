@@ -80,7 +80,11 @@ async function resourceTableControls(page,state,helpers,root,report){
     async function stockDialog(code='MAT-011'){await row(page,code).getByRole('button',{name:'查看/编辑',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'调整库存',exact:true}).click();return page.getByRole('dialog',{name:'调整库存',exact:true});}
     let dialog=await stockDialog();assert.equal(await dialog.locator('input[name="spec"]').count(),0);assert.equal(await dialog.locator('input[name="unit"]').count(),0);
     const commands=report.commands.length;await type(dialog.locator('input[name="stock_qty"]'),'12.75');
-    await page.locator('.modal-bg').click({position:{x:5,y:5}});await page.getByRole('dialog').waitFor({state:'detached'});assert.equal(report.commands.length,commands);
+    await page.locator('.modal-bg').click({position:{x:5,y:5}});
+    const confirmation=page.getByRole('dialog',{name:'离开前确认',exact:true});await confirmation.waitFor();
+    assert.equal(await dialog.locator('input[name="stock_qty"]').inputValue(),'12.75');assert.equal(report.commands.length,commands);
+    await confirmation.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();
+    await confirmation.waitFor({state:'detached'});await dialog.waitFor({state:'detached'});assert.equal(report.commands.length,commands);
     dialog=await stockDialog();assert.equal(await dialog.locator('input[name="stock_qty"]').inputValue(),'');
     const unchanged=await save(page,'material','update');assert.equal(unchanged.result,'unchanged');await close(page);
     await search(page,'MAT-001');dialog=await stockDialog('MAT-001');assert.equal(await dialog.locator('input[name="stock_qty"]').inputValue(),'1.25');
@@ -107,7 +111,7 @@ async function resourceTableControls(page,state,helpers,root,report){
     await save(page,'op_type','update',409);
     await page.getByRole('button',{name:'重新读取最新资料',exact:true}).click();await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).click();
     await page.getByRole('dialog',{name:'编辑外协工种',exact:true}).waitFor();assert.equal(await page.getByRole('dialog').locator('textarea[name="remark"]').inputValue(),'Reviewed category remark');
-    await save(page,'op_type','update');await close(page);await page.getByText('当前条件下没有资料。',{exact:true}).waitFor();
+    await save(page,'op_type','update');await close(page);await helpers.empty(page);
     await rail(page,'外协工种');await search(page,code);await row(page,code).getByRole('button',{name:'删除',exact:true}).click();await save(page,'op_type','delete');await close(page);
   });
 }

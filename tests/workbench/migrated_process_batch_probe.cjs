@@ -233,7 +233,7 @@ async function main() {
       const context = await browser.newContext({viewport: {width, height: width === 1920 ? 1080 : 924}, timezoneId: 'Asia/Shanghai'});
       page = await context.newPage(); p.attach(page, state); await processPage();
       p.recover = processPage;
-      if (theme === 'dark') await p.click(button(page, '深色：关'));
+      if (theme === 'dark') await p.click(button(page, '切换深色'));
       const scope = process.env.AN_SCOPE || 'all';
       if (scope === 'unknown') {
         await p.run('unknown-op-type-create-bind', 'write', () => unknownWorkflow({p, page, processArea, openProcess, closeProcess, saved}));

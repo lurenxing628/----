@@ -1,14 +1,20 @@
 /* Real pointer interactions and real JSON/downloads from the isolated BP fixture. */
 'use strict';
+const UI = require('./run_ui_source.cjs');
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
 const { chromium } = require('playwright');
 const { serve, layout, contrast } = require('./run_presentation_support.cjs');
 const output = process.argv[2], backend = process.argv[3];
 const report = { browser: null, variants: [], screenshots: [], errors: [], external: [], dialogs: [], requests: [], downloads: [], checks: [], layouts: [], contrasts: [] };
-report.console = []; report.responses = []; report.failedRequests = []; report.hostEntrypoints = [];
+report.console = []; report.responses = []; report.failedRequests = []; report.hostEntrypoints = []; report.targetViewports = [];
 const server = serve(backend, report, output);
 let page, origin, variant, fixtures;
-const button = name => page.getByRole('button', { name, exact: true });
+const button = name => UI.button(page, name);
+async function catalog(open = true) {
+  const panel = page.locator('details.rc-catalog');
+  if (await panel.evaluate(node => node.open) !== open) await panel.locator(':scope > summary').click();
+  await page.waitForFunction(open => document.querySelector('details.rc-catalog').open === open, open);
+}
 const done = name => report.checks.push({ variant, name });
 async function shot(name) {
   const filename = path.join(output, variant + '-' + name + '.png');
@@ -23,7 +29,7 @@ async function restore(value, view = 'analysis') {
     dispatchEvent(new PopStateEvent('popstate')); window.scrollTo(0, 0);
   }, { context, view });
   if (context.candidate_ref) await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor();
-  await page.locator('[data-candidate-ref], [data-run-ref]').first().waitFor();
+  await page.locator('[data-candidate-ref], [data-run-ref]').first().waitFor({ state: 'attached' });
 }
 async function realWorkspace(ref) {
   const response = await page.request.get(origin + '/api/workbench/v1/scheduling/candidates/' + ref + '/workspace');
@@ -42,7 +48,7 @@ async function checkLayout(name, gantt = true) {
     assert.equal(value.scrollY, 0); assert(value.canvas && value.painted > 300);
     assert(value.canvas.bottom <= value.viewport.height, JSON.stringify(value));
     assert(value.preview.y < value.viewport.height); assert.equal(value.scope.borderLeft, '0px');
-    assert(value.rowHeights.length === 4 && value.rowHeights.every(h => h <= 52), JSON.stringify(value));
+    assert.equal(await page.locator('details.rc-catalog').evaluate(node => node.open), false, 'Selected candidate keeps the comparison list collapsed on first screen');
   }
   const colors = await contrast(page); assert(colors.length > 30);
   const failures = colors.filter(r => r.ratio < 4.5); report.contrasts.push({ variant, name, minimum: Math.min(...colors.map(r => r.ratio)), failures });
@@ -62,9 +68,22 @@ async function candidates() {
   const initial = (await realWorkspace(fixtures.complete.candidate_ref)).data;
   assert.equal(initial.task_count, 3); assert(initial.tasks.every(t => t.machine.label === 'Original lathe'));
   await checkLayout('candidate-first-screen');
-  const catalog = await (await page.request.get(origin + '/api/workbench/v1/scheduling/runs/' + fixtures.complete.run_ref + '/candidates')).json();
-  assert.deepEqual(await page.locator('[data-candidate-ref]').evaluateAll(rows => rows.map(row => row.dataset.candidateRef)), catalog.data.candidates.map(c => c.candidate_ref));
-  for (const c of catalog.data.candidates) {
+  const originalViewport = page.viewportSize();
+  if (originalViewport.width === 1920) {
+    for (const size of [{ width: 1366, height: 768 }, { width: 1280, height: 720 }]) {
+      await page.setViewportSize(size);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await checkLayout('candidate-target-' + size.width);
+      report.targetViewports.push({ ...size, theme: await page.locator('html').getAttribute('data-theme'), passed: true });
+    }
+    await page.setViewportSize(originalViewport);
+  }
+  await catalog();
+  const directory = await (await page.request.get(origin + '/api/workbench/v1/scheduling/runs/' + fixtures.complete.run_ref + '/candidates')).json();
+  const expanded = await layout(page);
+  assert(expanded.rowHeights.length === 4 && expanded.rowHeights.every(h => h > 0 && h <= 52), JSON.stringify(expanded));
+  assert.deepEqual(await page.locator('[data-candidate-ref]').evaluateAll(rows => rows.map(row => row.dataset.candidateRef)), directory.data.candidates.map(c => c.candidate_ref));
+  for (const c of directory.data.candidates) {
     const cells = page.locator('[data-candidate-ref="' + c.candidate_ref + '"] td');
     assert.equal(await cells.nth(2).innerText(), String(c.task_count));
     for (const [i, key] of ['overdue_count', 'total_tardiness_hours', 'makespan_hours'].entries()) {
@@ -92,6 +111,7 @@ async function candidates() {
   await page.getByLabel('候选状态', { exact: true }).click(); await page.getByRole('listbox').waitFor(); await shot('shared-select');
   await page.getByRole('listbox').getByRole('option', { name: '全部', exact: true }).click();
   for (const ref of fixtures.complete.refs) {
+    await catalog();
     await button('查看候选 ' + ref).click();
     await page.waitForFunction(ref => document.querySelector('[data-candidate-ref="' + ref + '"]')?.getAttribute('aria-selected') === 'true', ref);
     await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor();
@@ -107,9 +127,9 @@ async function candidates() {
     return { start: m.start, end: m.end, item: m.rows[0].items[0] };
   }, selected);
   await page.mouse.click(box.x + ((model.item.start + model.item.end) / 2 - model.start) / (model.end - model.start) * box.width, box.y + 20);
-  await page.getByRole('complementary').getByText(model.item.task.row_ref, { exact: true }).waitFor(); await shot('canvas-click-detail');
+  await UI.reference(page.getByRole('complementary'), model.item.task.row_ref); await shot('canvas-click-detail');
   await button('关闭工序详情').click(); await button('工序详情 ' + selected.tasks[2].row_ref).click();
-  await page.getByRole('complementary').getByText(selected.tasks[2].operation_ref, { exact: true }).waitFor(); done('canvas-and-row-detail-pointer-clicks');
+  await UI.reference(page.getByRole('complementary'), selected.tasks[2].operation_ref); done('canvas-and-row-detail-pointer-clicks');
   await button('关闭工序详情').click(); await page.getByLabel('搜索候选工序').fill(selected.tasks[0].row_ref);
   await download('csv', selected, 'search-full-scope'); await download('xlsx', selected, 'search-full-scope');
   await page.getByLabel('搜索候选工序').fill('');
@@ -118,7 +138,7 @@ async function candidates() {
   assert(await button('正式采用').isEnabled()); assert(await button('试调').isEnabled());
   assert.equal(await page.getByRole('button', { name: /^采用方案：/ }).count(), 0);
   assert.equal(selected.capabilities.adopt, false); assert.equal(selected.capabilities.edit_draft, false);
-  report.hostEntrypoints.push({ variant, host: 'full-current-shell', adoption: '正式采用', trial: '试调', enabled: true, writes_exercised: false });
+  report.hostEntrypoints.push({ variant, host: 'full-current-shell', adoption: '采用方案', trial: '试调', enabled: true, writes_exercised: false });
   done('full-shell-injected-host-entrypoints');
   assert((await page.locator('[aria-label="生成时范围"]').innerText()).includes('生成时未分配正式版本'));
   await restore(fixtures.partial); const partial = (await realWorkspace(fixtures.partial.candidate_ref)).data;
@@ -138,14 +158,14 @@ async function capacity() {
   const data = (await realWorkspace(fixtures.capacity.candidate_ref)).data; assert.equal(data.task_count, 5000);
   await checkLayout('5000-first-screen');
   const list = page.locator('[data-candidate-task-list]'); await list.evaluate(n => { n.scrollTop = n.scrollHeight; });
-  await button('工序详情 ' + data.tasks[4999].row_ref).click(); await page.getByRole('complementary').getByText(data.tasks[4999].row_ref, { exact: true }).waitFor();
+  await button('工序详情 ' + data.tasks[4999].row_ref).click(); await UI.reference(page.getByRole('complementary'), data.tasks[4999].row_ref);
   assert(await page.locator('[data-candidate-task-list] [data-row-ref]').count() <= 16);
   await page.getByLabel('搜索候选工序').fill('CAP-099'); await download('csv', data, '5000'); await download('xlsx', data, '5000');
   done('5000-last-row-reachable-virtualization-and-full-export');
 }
 async function historyAndRun() {
   await button('返回运行页').click(); await page.getByRole('table', { name: '已保存候选' }).waitFor();
-  const identity = page.locator('.rj-record .rj-identity'); assert(!(await identity.innerText()).includes(fixtures.capacity.run_ref));
+  const identity = page.locator('.rj-record > .wb-ref'); assert(!(await identity.innerText()).includes(fixtures.capacity.run_ref));
   await identity.locator('summary').click(); assert((await identity.innerText()).includes(fixtures.capacity.run_ref)); await identity.locator('summary').click();
   const rows = page.getByRole('table', { name: '已保存候选' }).locator('tbody tr'); assert.equal(await rows.count(), 4);
   await rows.first().locator('summary').click(); assert((await rows.first().innerText()).includes(fixtures.capacity.candidate_ref));
@@ -161,7 +181,7 @@ async function historyAndRun() {
     assert.equal((await r.locator('td').nth(5).innerText()).trim(), run.task_count.toLocaleString('zh-CN'));
   }
   await checkLayout('history-first-screen', false);
-  const row = page.locator('[data-run-ref="' + fixtures.complete.run_ref + '"]'); await row.locator('.rh-id summary').click();
+  const row = page.locator('[data-run-ref="' + fixtures.complete.run_ref + '"]'); await row.locator('td').first().locator('.wb-ref > summary').click();
   assert((await row.innerText()).includes(fixtures.complete.run_ref)); await row.getByText('排产设置', { exact: true }).click();
   assert((await row.innerText()).includes('保留开工和完工记录')); await shot('history-details');
   await button('查看运行 ' + fixtures.complete.run_ref).click(); await page.locator('[data-candidate-ref]').first().waitFor();
@@ -201,6 +221,8 @@ async function historyAndRun() {
     assert.deepEqual(report.responses.filter(row => row.status >= 400), []);
     assert(report.requests.every(row => row.method === 'GET'));
     assert.deepEqual(report.requests.filter(row => row.path.endsWith('/baseline')), []);
+    assert.deepEqual(report.targetViewports.map(row => [row.width, row.height, row.theme, row.passed]),
+      [[1366, 768, 'light', true], [1280, 720, 'light', true], [1366, 768, 'dark', true], [1280, 720, 'dark', true]]);
     console.log(JSON.stringify({ browser: report.browser, checks: report.checks.length, variants: report.variants.length, downloads: report.downloads.length, output }));
   } finally {
     if (browser) await browser.close(); await new Promise(resolve => server.close(resolve));

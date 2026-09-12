@@ -38,7 +38,9 @@ async function roundtrips(p, view, suffix, verify, keys, away = 'reports', awayS
     const current = await page.evaluate(() => history.state.workbench.context);
     noWriteFields(current); p.report.restored.push(current);
   };
-  const sidebar = target => page.locator('.sidebar a[href$="?view=' + target + '"]').click();
+  const sidebar = target => target === 'review'
+    ? page.getByRole('tablist', { name: '统计分析视图', exact: true }).getByRole('tab', { name: '执行复盘', exact: true }).click()
+    : page.locator('.sidebar a[href$="?view=' + target + '"]').click();
   const steps = [
     ['F5', async () => { await p.read(() => page.reload(), suffix); }],
     ['sidebar-return', async () => { await p.read(() => sidebar(away), awaySuffix); await p.read(() => sidebar(view), suffix); }],
@@ -66,7 +68,7 @@ async function field(p) {
     await page.getByRole('table', { name: '逐次报工记录', exact: true }).waitFor();
     assert.equal(await page.getByRole('searchbox', { name: '搜索批次或工序', exact: true }).inputValue(), 'B1');
     assert.equal(await page.getByLabel('现场每页数量', { exact: true }).inputValue(), '10');
-    assert((await page.locator('.field-footer').innerText()).includes('第 2 / 4 页'));
+    assert((await page.getByRole('navigation', { name: '现场分页', exact: true }).innerText()).includes('第 2 / 4 页'));
     await caption(page, data.data.plan, '现场计划');
   };
   await roundtrips(p, 'field', suffix, verify, ['scope', 'table', 'task_ref', 'operation_ref', 'snapshot_ref']);
@@ -99,21 +101,24 @@ async function actual(p) {
 
 async function reports(p) {
   const { page } = p, suffix = '/analytics';
+  // The shared frame may fit ten rows at 1080px; use the supported baseline height to exercise a real scroll range.
+  await page.setViewportSize({ width: 1366, height: 768 }); p.state = '1366-light-' + p.report.phase;
   await p.read(() => page.locator('.sidebar a[href$="?view=reports"]').click(), suffix);
   await page.getByLabel('搜索批次或工序', { exact: true }).fill('B1');
   await p.read(() => page.getByRole('button', { name: '查询范围', exact: true }).click(), suffix);
   await p.read(() => page.getByRole('tab', { name: '报工记录', exact: true }).click(), suffix);
   await p.read(() => p.choose('排序字段', 'effective_processing_hours'), suffix);
   await p.read(() => p.choose('排序方向', 'desc'), suffix);
-  await p.read(() => p.choose('每页数量', '10'), suffix);
-  const data = await p.read(() => page.locator('#report-topic-panel > .rw-pagination').getByRole('button', { name: '下一页', exact: true }).click(), suffix);
+  await p.read(() => p.choose('每页条数', '10'), suffix);
+  const paging = () => page.locator('#report-topic-panel .rw-list-pane > .wb-pager');
+  const data = await p.read(() => paging().getByRole('button', { name: '下一页', exact: true }).click(), suffix);
   const row = page.locator('.rw-primary-table tbody tr').first();
   const detailResponse = page.waitForResponse(response => new URL(response.url()).pathname.includes('/analytics/operations/'));
   await row.getByRole('button', { name: /^查看工序/ }).click();
   const detail = await (await detailResponse).json();
   const ref = detail.data.detail.operation.operation_ref;
   p.report.selected_operation = ref;
-  await page.getByRole('region', { name: '工序报表详情', exact: true }).waitFor();
+  await page.locator('.rw-detail[role="region"]').waitFor();
   await page.locator('.er-chart-disclosure > summary').click();
   await p.read(() => page.locator('.rw-catalog > summary').click(), '/reports/overdue');
   const table = page.getByRole('region', { name: '报表结果表格', exact: true });
@@ -125,12 +130,12 @@ async function reports(p) {
   const top = await table.evaluate(node => node.scrollTop);
   p.report.expected_scroll = { top };
   const verify = async () => {
-    await page.getByRole('region', { name: '工序报表详情', exact: true }).waitFor();
+    await page.locator('.rw-detail[role="region"]').waitFor();
     assert.equal(await page.getByLabel('搜索批次或工序', { exact: true }).inputValue(), 'B1');
     assert.equal(await page.getByRole('tab', { name: '报工记录', exact: true }).getAttribute('aria-selected'), 'true');
     assert.equal(await page.getByLabel('排序字段', { exact: true }).inputValue(), 'effective_processing_hours');
     assert.equal(await page.getByLabel('排序方向', { exact: true }).inputValue(), 'desc');
-    assert((await page.locator('#report-topic-panel > .rw-pagination').innerText()).includes('第 2 / 4 页'));
+    assert((await paging().innerText()).includes('第 2 / 4 页'));
     await page.locator('.er-chart-disclosure[open]').waitFor(); await page.locator('.rw-catalog[open]').waitFor();
     await page.waitForFunction(({ ref, top }) => history.state.workbench.context.selected === ref
       && Math.abs(document.querySelector('.rw-primary-table').scrollTop - top) < 2, { ref, top });
@@ -145,7 +150,7 @@ async function calibration(p) {
   await page.getByRole('searchbox', { name: '搜索校准明细', exact: true }).fill('P1');
   await p.read(() => page.getByRole('button', { name: '搜索', exact: true }).click(), suffix);
   await p.read(() => p.choose('排序方向', 'desc'), suffix);
-  await p.read(() => p.choose('每页数量', '10'), suffix);
+  await p.read(() => p.choose('每页条数', '10'), suffix);
   const detail = await p.read(() => page.locator('.ca-table tr[data-ref="' + ref + '"]').getByRole('button', { name: /^查看 P1/ }).click(), suffix + '/' + ref);
   const sample = detail.data.suggestion.sample_refs[0];
   await page.locator('.ca-sample[data-sample-ref="' + sample + '"] > summary').click();
@@ -154,7 +159,7 @@ async function calibration(p) {
     await page.locator('.ca-sample[data-sample-ref="' + sample + '"][open]').waitFor();
     assert.equal(await page.getByRole('searchbox', { name: '搜索校准明细', exact: true }).inputValue(), 'P1');
     assert.equal(await page.getByLabel('排序方向', { exact: true }).inputValue(), 'desc');
-    assert.equal(await page.getByLabel('每页数量', { exact: true }).inputValue(), '10');
+    assert.equal(await page.getByLabel('每页条数', { exact: true }).inputValue(), '10');
     await caption(page, null);
   };
   await roundtrips(p, 'calib', suffix, verify, ['scope', 'table', 'selected', 'sample_ref', 'snapshot_ref']);

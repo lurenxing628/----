@@ -87,7 +87,7 @@ window.mountLayout = spec => {
   fixtureRoot.render(spec.create?h(CreateReview,{kind:spec.kind}):h(ResourceForms.Detail,{adapter,kind:spec.entity.kind,
     result:envelope(spec.entity),onClose:()=>{},onEdit:rejectWrite,onDelete:rejectWrite,onAdjustStock:rejectWrite,onRelated:()=>{}}));
 };
-ReactDOM.createRoot(document.getElementById('controls-root')).render(h(React.Fragment,null,h(WorkbenchControlStyles),h(WorkbenchControls),h(WorkbenchNumberControls)));
+ReactDOM.createRoot(document.getElementById('controls-root')).render(h(React.Fragment,null,h(WorkbenchGuardHost),h(WorkbenchControlStyles),h(WorkbenchControls),h(WorkbenchNumberControls)));
 `;
 
 function prepareAssets() {
@@ -97,7 +97,7 @@ function prepareAssets() {
   report.build_id = manifest.build_id;
   if (process.env.WORKBENCH_EXPECT_BUILD) assert.equal(manifest.build_id, process.env.WORKBENCH_EXPECT_BUILD, 'Unexpected build ID');
   report.manifest_sha256 = hash(manifestBytes);
-  const required = ['resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceForms.jsx', 'ResourceDetailRelations.jsx'];
+  const required = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchListControls.jsx', 'ResourceForms.jsx', 'ResourceDetailRelations.jsx'];
   for (const name of required) {
     const input = manifest.inputs.find(item => item.path === 'frontend/workbench/app/' + name);
     assert(input, 'Missing source provenance: ' + name);

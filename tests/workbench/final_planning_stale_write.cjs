@@ -38,7 +38,17 @@ async function trialStaleWrite(page, ready, report, h, flush) {
       assert.equal(await page.getByLabel('调整开工', { exact: true }).inputValue(), '2026-09-09T13:30');
       assert(!await page.getByRole('checkbox', { name: '已核对当前工序与保留输入', exact: true }).isChecked());
       assert(await h.button('保存调整').isDisabled());
-      await h.button('取消编辑').click(); await h.selectTrial(20, 'item-B'); await h.button('调整此工序').click();
+      await h.button('取消编辑').click();
+      const discard = page.getByRole('dialog', { name: '离开前确认', exact: true });
+      await discard.getByText('试调工序的设备、人员或开工调整尚未保存。', { exact: true }).waitFor();
+      await h.button('留在当前页面', discard).click(); await discard.waitFor({ state: 'hidden' });
+      assert.equal(await page.getByLabel('调整开工', { exact: true }).inputValue(), '2026-09-09T13:30');
+      assert.equal(await page.locator('[data-trial-workspace]').getAttribute('data-open-ref'), report.draft_ref);
+      assert.equal(snapshot('stale-write-leave-refused').sha256, after.sha256);
+      await h.button('取消编辑').click(); await h.button('放弃未保存内容并继续', discard).click();
+      await discard.waitFor({ state: 'hidden' });
+      assert.equal(snapshot('stale-write-edit-discarded').sha256, after.sha256);
+      await h.selectTrial(20, 'item-B'); await h.button('调整此工序').click();
       await page.getByLabel('调整开工', { exact: true }).fill(original.start.slice(0, 16));
       const restoring = page.waitForResponse(value => value.request().method() === 'POST' && value.url().endsWith('/change'));
       await h.button('保存调整').click(); assert.equal((await restoring).status(), 200);

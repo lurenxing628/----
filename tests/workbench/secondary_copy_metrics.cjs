@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const surfaces = ['bg', 'card-bg', 'surface-soft', 'surface-muted'];
-const light = 'rgb(96, 112, 135)', dark = 'rgb(148, 163, 184)', original = 'rgb(100, 116, 139)';
+const light = 'rgb(71, 85, 105)', dark = 'rgb(148, 163, 184)', original = 'rgb(100, 116, 139)';
 
 async function measure(page, selectors) {
   return page.evaluate(selectors => {
@@ -35,7 +35,7 @@ async function tokens(page) {
   return page.evaluate(() => {
     const names = new Set();
     const visit = rules => [...rules].forEach(rule => {
-      if (rule.style) [...rule.style].filter(k => /^--(?:ui-|badge-|sidebar-|gantt-)/.test(k)).forEach(k => names.add(k));
+      if (rule.style) [...rule.style].filter(k => /^--(?:ui-|badge-|sidebar-|gantt-|wb-secondary-copy$)/.test(k)).forEach(k => names.add(k));
       if (rule.styleSheet) visit(rule.styleSheet.cssRules);
       if (rule.cssRules) visit(rule.cssRules);
     });
@@ -62,7 +62,8 @@ function compare(before, after, theme) {
   const stableTokens = value => Object.fromEntries(Object.entries(value).filter(([k]) => k !== '--ui-muted'));
   assert.deepEqual(stableTokens(before.tokens.body), stableTokens(after.tokens.body), 'Semantic/surface tokens changed');
   if (theme === 'dark') assert.deepEqual(before.tokens, after.tokens, 'Dark tokens changed');
-  assert.equal(after.tokens.body['--ui-muted'], theme === 'dark' ? '#94a3b8' : '#607087');
+  assert.equal(after.tokens.body['--ui-muted'], theme === 'dark' ? '#94a3b8' : '#475569');
+  assert.equal(after.tokens.root['--wb-secondary-copy'], after.tokens.body['--ui-muted']);
   const expectedControls = before.controls.map(row => ({ ...row,
     color: theme !== 'dark' && row.color === original ? light : row.color }));
   assert.deepEqual(expectedControls, after.controls, 'Non-secondary button colors/backgrounds/typography changed');
@@ -78,7 +79,12 @@ function compare(before, after, theme) {
 async function controls(page) {
   return page.locator('button').evaluateAll(nodes => nodes.filter(n => n.getClientRects().length).map(n => {
     const s = getComputedStyle(n);
-    return { className: n.className, color: s.color, background: s.backgroundColor, border: s.borderColor,
+    // Unpainted border colors still inherit currentColor; they are not visible control changes.
+    const border = ['Top', 'Right', 'Bottom', 'Left'].map(side => {
+      const width = s['border' + side + 'Width'], style = s['border' + side + 'Style'];
+      return { width, style, color: parseFloat(width) > 0 && !['none', 'hidden'].includes(style) ? s['border' + side + 'Color'] : null };
+    });
+    return { className: n.className, color: s.color, background: s.backgroundColor, border,
       fontSize: s.fontSize, lineHeight: s.lineHeight, fontFamily: s.fontFamily };
   }));
 }

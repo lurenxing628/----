@@ -9,15 +9,19 @@ const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 if (!output) throw new Error('Pass a temporary artifact directory');
 fs.mkdirSync(output, { recursive: true });
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
-const files = ['WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceTableFilterModel.js',
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'ResourceTableFilterModel.js',
   'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx', 'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceTables.jsx',
   'ResourceMaterialContract.js', 'ResourceMaterialPreview.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
-  'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx',
+  'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',
   'ProcessContract.js', 'ProcessReadView.js', 'ProcessActionContract.js', 'ProcessActionPreview.jsx', 'ProcessCollectionActions.jsx',
   'ProcessFileContract.js', 'ProcessFilePreview.jsx', 'ProcessFileActions.jsx',
   'ProcessControls.jsx', 'ProcessStageEditor.jsx', 'ProcessOpTypeCreate.jsx', 'ProcessSourceEditor.jsx',
   'ProcessHoursEditor.jsx', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx', 'ProcessWorkspace.jsx'];
+const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {
+  const file = 'frontend/workbench/app/styles/' + name; return { path: file, code: fs.readFileSync(path.join(root, file), 'utf8') };
+});
+const workspaceCSS = styleSources.map(row => row.code).join('\n');
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((item, index) => ['/fixture/' + files[index] + '.js', item.code]));
@@ -125,7 +129,7 @@ function Harness({spec}) {
     if(spec.disconnected)delete a.command;
     f.adapter=a;return a;
   },[]);
-  return React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),
+  return React.createElement(React.Fragment,null,React.createElement(WorkbenchGuardHost),React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),
     React.createElement('section',{className:'plana',style:{padding:24,minWidth:0}},React.createElement('h2',null,'零件工艺'),React.createElement(ProcessWorkspace,{adapter,disabled,onCommitted:receipt=>f.committed.push(receipt)})));
 }
 window.mountFixture=spec=>{
@@ -143,7 +147,7 @@ const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
   Array.from(scripts.keys(), file => '<script src="' + file + '"></script>').join('') + '<script>' + fixtureCode + '</script></body></html>';
 const server = http.createServer((req, res) => {
   const name = new URL(req.url, 'http://fixture').pathname;
-  if (name === '/') { res.setHeader('Content-Type', 'text/html;charset=utf-8'); res.end(html); return; }
+  if (name === '/') { res.setHeader('Content-Type', 'text/html;charset=utf-8'); res.end(html.replace('</head>', '<style>' + workspaceCSS + '</style></head>')); return; }
   if (scripts.has(name)) { res.setHeader('Content-Type', 'application/javascript'); res.end(scripts.get(name)); return; }
   const asset = assets.get(name.slice('/static/'.length));
   if (!name.startsWith('/static/') || !asset) { res.writeHead(404); res.end(); return; }
@@ -152,7 +156,7 @@ const server = http.createServer((req, res) => {
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const report = { scope: 'process-read-preview-component-mock', production_persistence_tested: false, data_source: 'mock', detail_meta_source: 'production',
   compile: { babel: compiled.babel_version, target: compiled.target, global_build: false },
-  sources: sources.map(item => ({ path: item.path, sha256: hash(item.code) })),
+  sources: sources.concat(styleSources).map(item => ({ path: item.path, sha256: hash(item.code) })),
   probes: [__filename, path.join(__dirname, 'test_process_widgets.py'), path.join(__dirname, 'custom_control_actions.cjs')].map(file => ({ path: path.relative(root, file), sha256: hash(fs.readFileSync(file)) })),
   assets: [...new Set([...manifest.styles, ...staticScripts, manifest.theme_script])].map(file => ({ path: 'static/' + file, sha256: hash(assets.get(file).bytes) })),
   cases: [], screenshots: [], pagination: [], errors: [], external: [] };
@@ -179,19 +183,19 @@ async function readAllOperations(name, expected) {
   const dialog = page.getByRole('dialog'), grid = dialog.getByRole('table', { name, exact: true });
   const rows = grid.locator('tbody tr'), numbers = grid.locator('tbody tr td:first-child b');
   const size = dialog.getByRole('combobox', { name: '每页条数', exact: true });
-  const pager = size.locator('xpath=ancestor::form');
+  const pager = size.locator('xpath=ancestor::nav');
   assert.equal(await size.inputValue(), '50');
   assert.deepEqual(await size.locator('option').evaluateAll(nodes => nodes.map(node => node.value)), ['20', '50', '100']);
   for (const value of ['20', '100', '50']) {
     await controls.select(size, value);
     assert.equal(await rows.count(), Number(value));
     assert.deepEqual(await numbers.allTextContents(), expected.slice(0, Number(value)));
-    assert(await pager.getByText('第 1 / ' + Math.ceil(expected.length / Number(value)) + ' 页', { exact: true }).isVisible());
+    assert(await pager.getByText('共 ' + expected.length + ' 项 · 第 1 / ' + Math.ceil(expected.length / Number(value)) + ' 页', { exact: true }).isVisible());
   }
   const sequences = [], pages = [], next = dialog.getByRole('button', { name: '下一页', exact: true });
   const count = Math.ceil(expected.length / 50);
   for (let number = 1; number <= count; number++) {
-    assert(await pager.getByText('第 ' + number + ' / ' + count + ' 页', { exact: true }).isVisible());
+    assert(await pager.getByText('共 ' + expected.length + ' 项 · 第 ' + number + ' / ' + count + ' 页', { exact: true }).isVisible());
     const values = await numbers.allTextContents(), wanted = expected.slice((number - 1) * 50, number * 50);
     assert.equal(await rows.count(), wanted.length); assert(values.length > 0 && values.length <= 50);
     assert.deepEqual(values, wanted, name + ' page ' + number);
@@ -244,7 +248,7 @@ async function cases() {
     const query = await page.evaluate(() => fixture.reads.filter(x => x.type === 'list').at(-1).scope); assert.equal(query.page, 1); assert.equal(query.snapshot_ref, undefined);
     await search(''); await settled();
     const sizes = page.getByRole('combobox', { name: '每页条数' }); await sizes.click(); await page.getByRole('listbox').waitFor();
-    await page.getByRole('listbox').getByRole('option', { name: '50 条 / 页', exact: true }).click(); await settled(); assert.equal(await table().locator('tbody tr').count(), 45);
+    await page.getByRole('listbox').getByRole('option', { name: '50 项', exact: true }).click(); await settled(); assert.equal(await table().locator('tbody tr').count(), 45);
     assert.equal(await sizes.inputValue(), '50');
     const defaultRefs = Array.from({ length: 45 }, (_, index) => (index + 1).toString(16).padStart(48, '0'));
     for (const [key, label] of [['business_code', '图号'], ['label', '零件名称'], ['operation_count', '工序数量'], ['stage', '进度']]) {
@@ -419,7 +423,9 @@ async function cases() {
       return { checks, value: body.rows[0].seq };
     });
     assert(check.checks.every(Boolean)); assert.equal(check.value, Number.MAX_SAFE_INTEGER);
-    await shot('int64-rows-rejected'); await button('取消').click(); await closeDetail(true);
+    await shot('int64-rows-rejected'); await button('取消').click();
+    assert.equal(await page.evaluate(() => WorkbenchGuards.hasDirty()), false, 'Changing display mode without editing facts is not a dirty draft');
+    await closeDetail();
   });
   await run('refresh-stale-detail-keeps-draft-and-rebinds-snapshot', async () => {
     await mount({ failPreview: true }); await entry(2); const input = page.getByRole('textbox', { name: '路线文字', exact: true });

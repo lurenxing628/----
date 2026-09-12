@@ -34,6 +34,8 @@ def test_true_cold_readonly_page_and_diagnostic_never_open_database(tmp_path, da
             page = body.decode("utf-8")
             assert 'data-restore-maintenance="cold"' in page and "系统已暂停" in page
             assert 'src="/static/' not in page and "nonce" not in page
+            assert '<a href="/workbench?view=system">返回工作台</a>' in page
+            assert '返回入口会重新核实维护状态' in page
         query = "/workbench?" + urlencode({"kind": "request", "reference": KEY})
         status, page = host.request(query)
         assert status == 503 and KEY in page.decode("utf-8")
@@ -71,6 +73,10 @@ def test_warm_page_and_original_receipt_are_readonly_even_when_all_db_connects_f
         assert response.status_code == 503 and response.mimetype == "text/html"
         assert "重启整个软件" in response.get_data(as_text=True)
         assert operation["protection_filename"] in response.get_data(as_text=True)
+        page = response.get_data(as_text=True)
+        details = page.split('<summary>维护阶段与核对信息</summary>', 1)[1].split('</details>', 1)[0]
+        assert operation["code"] in details and operation["request_key"] in details
+        assert '<th scope="col">维护状态</th>' in page
     for suffix in ("/results/" + operation["request_key"], "/jobs/" + operation["job_ref"]):
         value = case.client.get(BASE + suffix, buffered=True).json
         assert value["data"]["operation"]["job_ref"] == operation["job_ref"]

@@ -14,6 +14,7 @@ from tests.workbench.test_live_browser import runtime_tools
 
 ROOT = Path(os.environ.get("WORKBENCH_EV_SOURCE_ROOT", Path(__file__).resolve().parents[2]))
 SOURCES = ["frontend/workbench/app/" + name for name in (
+    "WorkbenchFormat.js", "WorkbenchTerms.js",
     "resource-contract.js", "PointContract.js", "PlanProcessOrder.js", "PlanContract.js", "PointGanttModel.js",
     "PlanGanttModel.js", "RunCandidateAPI.js", "RunCandidateModel.js", "RunBaselineAPI.js", "RunBaselineModel.js",
 )] + ["tests/workbench/plan_ui_fixtures.cjs"]

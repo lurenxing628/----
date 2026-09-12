@@ -86,7 +86,7 @@ async function inspect(page, viewport) {
     browser=await chromium.launch({executablePath:process.env.WORKBENCH_BROWSER,headless:true,args:['--disable-background-networking']});
     assert(browser.version().startsWith('109.'),'Actual Chromium 109 required');result.browser=browser.version();
     const origin='http://127.0.0.1:'+server.address().port;
-    for(const viewport of [{width:1920,height:1080},{width:1392,height:924}]) for(const theme of ['light','dark']) {
+    for(const viewport of [{width:1920,height:1080},{width:1392,height:924},{width:1366,height:768},{width:1280,height:720}]) for(const theme of ['light','dark']) {
       const context=await browser.newContext({viewport,timezoneId:'America/Los_Angeles'});
       await context.addInitScript(theme=>{localStorage.setItem('aps_theme',theme);localStorage.setItem('aps_kit_theme',theme);},theme);
       const page=await context.newPage();
@@ -107,8 +107,8 @@ async function inspect(page, viewport) {
       assert((await page.locator('[data-rail-node="op_int"]').innerText()).includes('未绑设备 1'));
       assert((await page.locator('[data-rail-node="op_ext"]').innerText()).includes('策略未设 1'));
       const night=page.locator('[data-calendar-date="2026-09-09"]');
-      assert((await night.innerText()).includes('7h'));assert((await night.getAttribute('title')).includes('普通件 不允许'));
-      assert((await night.getAttribute('title')).includes('2026-09-10T06:30:00'));
+      assert((await night.innerText()).includes('7.0h'));assert((await night.getAttribute('title')).includes('普通件 不允许'));
+      assert((await night.getAttribute('title')).includes('2026-09-10 06:30:00'));
       assert.equal(await night.getAttribute('data-calendar-source'),'explicit');
       assert.equal(await page.locator('[data-calendar-date="2026-09-07"]').getAttribute('data-calendar-source'),'service_default');
       assert((await page.locator('.hb-cal-stats').innerText()).includes('未配置'));
@@ -122,12 +122,12 @@ async function inspect(page, viewport) {
       await page.locator('.hb-cal-block').click();
       await page.locator('#fixture-calendar-commit').click();
       await page.waitForFunction(()=>document.querySelector('[data-rail-node="machine"]').textContent.includes('停用 2'));
-      assert((await page.locator('[data-calendar-date="2026-09-12"]').innerText()).includes('3h'),'Calendar commit refreshes summary');
+      assert((await page.locator('[data-calendar-date="2026-09-12"]').innerText()).includes('3.0h'),'Calendar commit refreshes summary');
       await page.locator('.hb-r-next').click();assert.deepEqual(await page.evaluate(()=>railFixture.navigations),['batches']);
       await mode(page,'broken');
       assert.equal(await night.getAttribute('data-calendar-status'),'unavailable');
       assert((await page.locator('[data-calendar-week-hours]').innerText()).includes('本周有效 无法核实'));
-      assert((await page.locator('[data-calendar-date="2026-09-12"]').innerText()).includes('3h'));
+      assert((await page.locator('[data-calendar-date="2026-09-12"]').innerText()).includes('3.0h'));
       await mode(page,'legacy');assert((await page.locator('.hb-cal-block').innerText()).includes('无法核实'));
       assert((await page.locator('[data-rail-node="machine"]').innerText()).includes('6 台'),'Backward compatible count envelope');
       await mode(page,'malformed');assert((await page.locator('.hb-cal-block').innerText()).includes('协议不完整'));

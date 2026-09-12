@@ -43,6 +43,7 @@ def _field_fallbacks():
     return _run_node_json(r"""
 const fs = require("fs");
 global.window = { APSResourceContract: {} };
+eval(fs.readFileSync("frontend/workbench/app/WorkbenchFormat.js", "utf8"));
 eval(fs.readFileSync("frontend/workbench/app/FieldContract.js", "utf8"));
 const C = window.FieldContract;
 process.stdout.write(JSON.stringify({
@@ -98,7 +99,7 @@ def test_execution_cards_render_dom_fallbacks_for_missing_part_and_operation() -
     assert card["actual_delta_summary"] == "暂未记录现场实际"
     assert card["task_key"] == "" and card["state_key"] == ""
     values = _field_fallbacks()
-    assert values["absent"] == values["empty"] == values["start"] == values["end"] == "待补"
+    assert values["absent"] == values["empty"] == values["start"] == values["end"] == "未知"
     assert values["zero"] == "0"
     assert values["readonly"] == "当前上下文不可写，请刷新并核对正式计划。"
 

@@ -24,12 +24,13 @@ from tests.gate_meta.workbench_round1_registry_support import (
     ROUND1_SUPPLEMENTAL_FILES,
     SNAPSHOT_REQUIRED_GROUPS,
     SNAPSHOT_SUPPLEMENTAL_GROUPS,
+    UI_GROUP_IDS,
+    assert_reviewed_algorithm_registration,
 )
 from tests.gate_meta.workbench_round1_registry_support import round1_targets as _round1_targets
 from tools import long_gate_manifest, quality_gate_shared, test_registry
 from tools.full_test_debt_shards import classify_nodeid, is_perf_nodeid
 from tools.long_gate_fingerprint import fingerprint_entry, fingerprint_files
-from tools.test_registry_groups_workbench import WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFIX = "tests/workbench/"
@@ -37,7 +38,7 @@ PREFIX = "tests/workbench/"
 
 def _inventory(required):
     return (test_registry.iter_required_regression_groups() if required
-            else WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS)
+            else test_registry.SUPPLEMENTAL_REGRESSION_GROUPS)
 
 
 def _extension_targets(required):
@@ -56,7 +57,10 @@ def _matches(group, source):
     (False, "ba009b4f3366b108382ba4057de05cb9b05fd2b8826776442b55266c309a9e6e", 85),
 ))
 def test_round1_preserves_every_old_owner_and_target_order(required, old_hash, new_count):
-    groups = _inventory(required)
+    if required:
+        assert_reviewed_algorithm_registration()
+    # Explicit UI groups are separately locked; every historical owner stays in this hash.
+    groups = [group for group in _inventory(required) if group["group_id"] not in UI_GROUP_IDS]
     additions = _extension_targets(required)
     retained = [(group["group_id"], [path for path in _round1_targets(group) if path not in additions])
                 for group in groups]

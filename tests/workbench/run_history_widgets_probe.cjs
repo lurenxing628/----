@@ -1,11 +1,12 @@
 /* BT source-only harness. No main/build/shared/static writes or production database. */
 'use strict';
+const UI = require('./run_ui_source.cjs');
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
-const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'RunHistoryAPI.js', 'RunHistoryControls.jsx', 'RunHistoryWorkspace.jsx',
+const files = UI.dependencies(['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'RunHistoryAPI.js', 'RunHistoryControls.jsx', 'RunHistoryWorkspace.jsx',
   'RunCandidateAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx', 'RunCandidateAnalysisAPI.js', 'RunCandidateAnalysis.jsx', 'RunBaselineAPI.js', 'RunBaselineModel.js', 'RunBaselineControls.jsx', 'RunCandidateGantt.jsx', 'RunCandidateWorkspace.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx'];
+  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx']);
 const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 for (const source of sources) { const target = path.join(output, 'sources', source.path); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, source.code); }
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
@@ -24,7 +25,7 @@ window.rerenderHistory=(initialContext,adapter)=>fixtureRoot.render(React.create
 window.mountHistory();`;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
-  '<style>body{margin:0}#fixture-root{margin:92px 28px 20px 264px;min-width:0}@media(max-width:760px){#fixture-root{margin:12px}}</style></head><body class="aps-workbench"><div id="fixture-root"></div>' +
+  UI.styles(report, output) + '<style>body{margin:0}#fixture-root{margin:92px 28px 20px 264px;min-width:0}@media(max-width:760px){#fixture-root{margin:12px}}</style></head><body class="aps-workbench"><div id="fixture-root"></div>' +
   staticScripts.map(file => '<script src="/static/' + file + '"></script>').join('') + Array.from(scripts.keys(), file => '<script src="' + file + '"></script>').join('') + '<script>' + boot + '</script></body></html>';
 const server = http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://fixture').pathname;
@@ -38,7 +39,7 @@ const server = http.createServer((req, res) => {
   const asset = assets.get(pathname); if (!asset) { res.writeHead(404); res.end(); return; } res.setHeader('Content-Type', asset.mime); res.end(asset.bytes);
 });
 let page, origin, variant, fixtures, phase;
-const button = name => page.getByRole('button', { name, exact: true });
+const button = name => name === '清除历史筛选' ? page.locator('.rh-filters').getByRole('button', { name, exact: true }) : UI.button(page, name);
 const done = name => report.checks.push({ variant, name, passed: true });
 const rows = () => page.locator('[data-run-ref]');
 async function shot(name) {
@@ -50,7 +51,7 @@ async function shot(name) {
 async function loaded() { await page.waitForFunction(() => { const root = document.querySelector('[data-run-history-workspace]'); return root && root.getAttribute('aria-busy') !== 'true'; }); }
 async function mount(context = {}) { await page.evaluate(context => mountHistory(context), context); await loaded(); }
 async function control(action) { const response = await page.request.post(origin + '/fixture/control', { data: { action } }); assert(response.ok()); }
-async function select(label, name) { await page.getByLabel(label, { exact: true }).click(); await page.getByRole('listbox').getByRole('option', { name, exact: true }).click(); }
+async function select(label, name) { await page.getByLabel(label, { exact: true }).click(); await page.getByRole('listbox').getByRole('option', { name: label === '历史每页数量' ? name + ' 次' : name, exact: true }).click(); }
 async function query() { await button('查询排产历史').click(); await loaded(); }
 async function layout() {
   const evidence = await page.evaluate(() => {
@@ -59,7 +60,7 @@ async function layout() {
       tableOverflow: table.scrollWidth > table.clientWidth + 1, footerBottom: shell.querySelector('.rh-pagination').getBoundingClientRect().bottom,
       clipped: [...shell.querySelectorAll('button,th')].filter(n => n.scrollWidth > n.clientWidth + 1).map(n => n.textContent),
       iconsMissing: [...shell.querySelectorAll('button')].filter(n => !n.querySelector('svg')).map(n => n.getAttribute('aria-label')),
-      shadows: [...shell.querySelectorAll('*')].filter(n => getComputedStyle(n).boxShadow !== 'none').map(n => n.className),
+      shadows: [...shell.querySelectorAll('*')].filter(n => getComputedStyle(n).boxShadow !== 'none' && !n.matches('.wb-col-key,.wb-col-actions')).map(n => n.className),
       tableWidth: table.getBoundingClientRect().width, parentWidth: shell.getBoundingClientRect().width,
       actionBoxes: [...shell.querySelectorAll('tbody button')].map(n => { const b = n.getBoundingClientRect(); return { width: b.width, height: b.height, text: n.textContent }; }),
       contentBottom: shell.getBoundingClientRect().bottom,
@@ -116,7 +117,8 @@ async function directCandidate() {
   assert.deepEqual(await page.locator('[data-candidate-task-list] [data-row-ref]').evaluateAll(nodes => nodes.map(n => n.dataset.rowRef)), data.tasks.map(t => t.row_ref));
   const before = report.requests.length, navigation = await page.evaluate(() => window.navigation), blocked = [];
   for (const [name, reason] of [['采用方案', '正式采用入口未接入，请先核对完整候选方案。'], ['试调', '试调入口未接入，请先核对完整候选方案。']]) {
-    const target = button(name + '：' + reason); assert(await target.isDisabled()); assert.equal(await target.getAttribute('title'), reason);
+    const target = button(name); assert(await target.isDisabled()); assert.equal(await target.getAttribute('title'), reason);
+    assert.equal(await target.getAttribute('data-wb-disabled-reason'), reason); await page.getByText(reason, { exact: true }).waitFor();
     const box = await target.boundingBox(); assert(box); await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     blocked.push({ name, reason, disabled: true });
   }
@@ -135,7 +137,7 @@ async function directCandidate() {
   await page.locator('.rb-panel').waitFor(); await shot('direct-candidate-baseline'); await baseline.uncheck();
   await page.locator('.rb-panel').waitFor({ state: 'hidden' });
   await button('工序详情 ' + data.tasks[0].row_ref).click();
-  await page.getByRole('complementary').getByText(data.tasks[0].operation_ref, { exact: true }).waitFor(); await button('关闭工序详情').click();
+  await UI.reference(page.getByRole('complementary'), data.tasks[0].operation_ref); await button('关闭工序详情').click();
   done('baseline-dependencies-real-route-and-candidate-identity');
 }
 async function browse() {

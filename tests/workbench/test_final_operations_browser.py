@@ -28,12 +28,13 @@ class Page extends EventEmitter {
   waitForResponse(predicate) { return this.wait('response', predicate); }
 }
 (async () => {
-  const cases = ['get', 'post', 'wrong-status', 'missing-response', 'body-error'];
+  const cases = ['get', 'post', 'wrong-status', 'missing-response', 'body-error', 'query-scope'];
   for (const mode of cases) {
     const page = new Page(), reads = [], method = mode === 'post' ? 'POST' : 'GET';
     const expected = mode === 'post' ? 422 : 200, bodyError = new Error('Current response body failed');
     function response(name, verb = method, suffix = '/dashboard') {
-      const request = { url: () => 'http://127.0.0.1/api/workbench/v1' + suffix, method: () => verb,
+      const query = mode === 'query-scope' ? name === 'current' ? '?page_size=25' : '?page_size=10' : '';
+      const request = { url: () => 'http://127.0.0.1/api/workbench/v1' + suffix + query, method: () => verb,
         response: async () => mode === 'missing-response' && name === 'current' ? null : value };
       const value = { url: request.url, request: () => request,
         status: () => mode === 'wrong-status' && name === 'current' ? 503 : expected,
@@ -45,6 +46,7 @@ class Page extends EventEmitter {
     }
     const old = response('old'), current = response('current');
     const decoys = [response('wrong-method', method === 'GET' ? 'POST' : 'GET'), response('wrong-path', method, '/unrelated')];
+    if (mode === 'query-scope') decoys.push(response('wrong-query'));
     page.emit('request', old.request());
     const h = support(page, {}, {});
     let actions = 0;
@@ -53,7 +55,7 @@ class Page extends EventEmitter {
       for (const value of decoys) { page.emit('request', value.request()); page.emit('response', value); }
       page.emit('response', old);
       page.emit('request', current.request()); page.emit('response', current);
-    }, expected, method);
+    }, expected, method, mode === 'query-scope' ? { page_size: 25 } : null);
     if (mode === 'wrong-status') await assert.rejects(result, error => error.code === 'ERR_ASSERTION' && error.actual === 503 && error.expected === 200);
     else if (mode === 'missing-response') await assert.rejects(result, /action request ended without a response/);
     else if (mode === 'body-error') await assert.rejects(result, error => error === bodyError);
@@ -73,7 +75,7 @@ def test_final_operations_main_controls_and_persistence(tmp_path, width, theme):
                              text=True, capture_output=True, timeout=20)
     (tmp_path / "request-binding-proof.json").write_text(binding.stdout, encoding="utf-8")
     assert binding.returncode == 0, binding.stderr
-    assert len(json.loads(binding.stdout)["cases"]) == 5
+    assert len(json.loads(binding.stdout)["cases"]) == 6
     host = OperationsHost(tmp_path / f"operations-{width}-{theme}")
     seed(host.root, include_candidate_baseline=True)
     try:

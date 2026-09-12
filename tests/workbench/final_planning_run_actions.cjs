@@ -9,8 +9,8 @@ const { candidateAnalysis, candidateHistory } = require('./final_planning_analys
 async function runActions(page, ready, report, h, flush) {
   const { button, action, shot, last } = h;
   await page.goto(ready.run_url);
-  await page.getByRole('heading', { name: '排产前检查', exact: true }).waitFor();
-  if (await page.locator('html').getAttribute('data-theme') !== report.theme) await page.getByRole('button', { name: /^深色：/ }).click();
+  await page.locator('[data-preflight-workspace]').getByRole('heading', { name: '执行排产', exact: true }).waitFor();
+  if (await page.locator('html').getAttribute('data-theme') !== report.theme) await page.getByRole('button', { name: /^切换(?:深色|浅色)$/ }).click();
   await action(['WBP-RUN-001.open-picker', 'WBP-RUN-002.empty-guard'], async () => {
     await button('开始排产检查').click();
     await page.locator('[data-reason-group="no_eligible_tasks"]').waitFor();
@@ -93,14 +93,18 @@ async function runActions(page, ready, report, h, flush) {
   });
   await action(['WBP-RUN-007.real-candidate', 'WBP-ANA-002.select-four'], async () => {
     await page.getByRole('table', { name: '已保存候选', exact: true }).getByRole('button', { name: '详情', exact: true }).first().click();
-    await page.getByRole('region', { name: '候选任务安排', exact: true }).waitFor();
+    await page.getByRole('table', { name: '候选任务安排', exact: true }).waitFor();
     const table = page.getByRole('table', { name: '候选比较', exact: true });
     for (const index of [1, 2, 3, 0]) {
-      const control = table.getByRole('button').nth(index);
-      const ref = (await control.getAttribute('aria-label')).replace('查看候选 ', '');
+      await page.locator('.rc-catalog > summary').click(); await table.waitFor();
+      const row = table.locator('tbody tr').nth(index), ref = await row.getAttribute('data-candidate-ref');
+      const candidate = last(data => data.candidates && data.run_ref).candidates[index];
+      assert.equal(ref, candidate.candidate_ref);
+      const control = row.getByRole('button', { name: '查看候选 ' + candidate.label, exact: true });
       const response = page.waitForResponse(row => row.url().includes('/candidates/' + ref + '/workspace'));
       await control.click(); report.candidate = (await (await response).json()).data; await flush();
       assert.equal(report.candidate.candidate.candidate_ref, ref);
+      assert.equal(await page.locator('.rc-catalog').getAttribute('open'), null);
     }
     assert.equal(report.candidate.task_count, ready.expected.task_count);
     const points = report.candidate.tasks.filter(task => task.start === task.end);
@@ -117,7 +121,7 @@ async function runActions(page, ready, report, h, flush) {
     'WBP-DELAY-003.last-operation', 'WBP-DELAY-003.compare', 'WBP-DELAY-002.due-date', 'WBP-DELAY-004.no-root-cause-claim'], async () => {
     const original = report.candidate;
     await h.caption(original.candidate.candidate_ref, '候选预览');
-    await button('交付风险', page.locator('[data-run-candidate-workspace] > .rc-heading').first()).click();
+    await page.getByRole('tablist', { name: '计划中心视图', exact: true }).getByRole('tab', { name: '交付风险', exact: true }).click();
     await page.locator('[data-run-candidate-workspace]').getByRole('heading', { name: '候选交付风险', exact: true }).waitFor();
     const table = page.getByRole('table', { name: '候选交付风险列表', exact: true }); await table.waitFor();
     await button('定位末端工序 B1 60', table).click();
@@ -127,8 +131,8 @@ async function runActions(page, ready, report, h, flush) {
     assert.equal(batch.due_date, '2026-09-25');
     assert.equal(batch.planned_finish, original.tasks.filter(row => row.batch_label === 'B1').map(row => row.end).sort().at(-1));
     assert.equal(risk.basis.root_causes, 'not_evaluated');
-    await button('返回比较', page.locator('[data-run-candidate-workspace] > .rc-heading').first()).click();
-    await page.getByRole('region', { name: '候选任务安排', exact: true }).waitFor();
+    await page.getByRole('tablist', { name: '计划中心视图', exact: true }).getByRole('tab', { name: '选择排产方案', exact: true }).click();
+    await page.getByRole('table', { name: '候选任务安排', exact: true }).waitFor();
     await button('读取范围').click();
     const first = original.tasks.find(row => row.batch_label === 'B1' && row.sequence === 10);
     await page.getByLabel('候选读取开始', { exact: true }).fill(first.start.slice(0, 16));

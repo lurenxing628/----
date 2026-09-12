@@ -140,7 +140,7 @@ async function main() {
     for (const [width, height] of [[1920, 1080], [1392, 924]]) for (const theme of ['light', 'dark']) {
       const context = await browser.newContext({viewport: {width, height}, timezoneId: 'Asia/Shanghai'});
       page = await context.newPage(); p.attach(page, width + 'x' + height + '-' + theme);
-      await open('process'); if (theme === 'dark') await p.click(b(page, '深色：关'));
+      await open('process'); if (theme === 'dark') await p.click(b(page, '切换深色'));
       const scenarios = [
         ['process-tab-focus-return', [shared('009', 11)], processFocus],
         ['process-route-nested-close', [shared('009', 12)], nestedRoute],

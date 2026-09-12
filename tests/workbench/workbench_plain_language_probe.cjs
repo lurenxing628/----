@@ -10,7 +10,7 @@ fs.mkdirSync(output, { recursive: true });
 const report = { scope: 'plain-language-current-source-mock-api', production_persistence_tested: false,
   win7_hardware_tested: false, pending_storage_tested: false, cases: [], screenshots: [], errors: [], external: [], unexpected_requests: [] };
 const server = H.server(report), original = server.listeners('request')[0];
-const extraFiles = ['resource-api.js', 'ResourceForms.jsx'];
+const extraFiles = ['WorkbenchGuards.js', 'WorkbenchGuardHost.jsx', 'resource-api.js', 'ResourceForms.jsx'];
 const sources = extraFiles.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(H.root, 'frontend/workbench/app', name), 'utf8') }));
 const extra = compile({ babel_path: path.join(H.root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 report.sources.push(...sources.map(item => ({ path: item.path, sha256: H.hash(item.code) })));
@@ -34,13 +34,14 @@ function ResourceHarness() {
     {adapter,kind:'material',action:'update',entity,writeContext:context,source:'production',command,
       refreshState:refresh,onRefresh:()=>setRefresh({done:true}),onClose:close});
 }
-ReactDOM.createRoot(document.getElementById('resource-root')).render(React.createElement(ResourceHarness));
+ReactDOM.createRoot(document.getElementById('resource-root')).render(React.createElement(React.Fragment,null,
+  React.createElement(WorkbenchGuardHost),React.createElement(ResourceHarness)));
 `;
 const shared = manifest.scripts.filter(name => name.startsWith('workbench/vendor/') || name.startsWith('workbench/assets/foundation-'));
 const html = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   manifest.styles.map(name => '<link rel="stylesheet" href="/static/' + name + '">').join('') + '</head><body class="aps-workbench"><main class="plana"><div id="resource-root"></div></main>' +
   shared.map(name => '<script src="/static/' + name + '"></script>').join('') +
-  ['resource-contract.js', 'resource-session.js', 'ResourceControls.jsx'].map(name => '<script src="/fixture/' + name + '.js"></script>').join('') +
+  ['WorkbenchReferences.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx'].map(name => '<script src="/fixture/' + name + '.js"></script>').join('') +
   extraFiles.map(name => '<script src="/plain/' + name + '"></script>').join('') + '<script>' + resourceHarness + '</script></body></html>';
 server.removeListener('request', original);
 server.on('request', (req, res) => {
@@ -75,6 +76,31 @@ async function shot(page, name) {
 }
 async function mountPlan(page, spec = {}) {
   await page.evaluate(spec => mountPlan(spec), { theme: state.theme, context: { plan_ref: F.ref(1) }, ...spec });
+}
+async function selectFirstPlanTask(page) {
+  const reference = await page.locator('[data-plan-task]').first().getAttribute('data-plan-task');
+  const target = page.locator('[data-plan-task="' + reference + '"]').first();
+  const context = await page.evaluate(() => ({ context: fixture.spec.context,
+    reads: fixture.calls.filter(row => row.type === 'workspace').map(row => ({ ref: row.ref, scope: row.scope })) }));
+  const evidence = { state: state.id, task_ref: reference, context, method: 'pointer' };
+  if (state.width === 390) {
+    await target.scrollIntoViewIfNeeded();
+    evidence.geometry = await target.evaluate(node => {
+      const rect = element => { const r = element.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; };
+      const task = rect(node), board = rect(node.closest('[data-plan-scroll]')), frozen = rect(node.closest('.plan-lane').querySelector('.plan-resource'));
+      const center = { x: (task.left + task.right) / 2, y: (task.top + task.bottom) / 2 }, hit = document.elementFromPoint(center.x, center.y);
+      const left = Math.max(0, board.left, frozen.right), right = Math.min(innerWidth, board.right);
+      return { viewport: { width: innerWidth, height: innerHeight }, task, board, frozen, center,
+        center_hits_task: !!hit && node.contains(hit), center_hits_frozen: !!(hit && hit.closest('.plan-resource')),
+        center_hit: hit && { tag: hit.tagName, className: hit.className, text: hit.textContent },
+        visible_time_width: Math.max(0, right - left), visible_task_width: Math.max(0, Math.min(task.right, right) - Math.max(task.left, left)) };
+    });
+  }
+  await target.click();
+  await page.waitForFunction(ref => Array.from(document.querySelectorAll('[data-plan-task][aria-pressed="true"]')).some(node => node.dataset.planTask === ref), reference);
+  assert.deepEqual(await page.evaluate(() => ({ context: fixture.spec.context,
+    reads: fixture.calls.filter(row => row.type === 'workspace').map(row => ({ ref: row.ref, scope: row.scope })) })), context);
+  (report.plan_selections || (report.plan_selections = [])).push(evidence);
 }
 async function plans(page) {
   await page.goto(origin);
@@ -124,7 +150,7 @@ async function plans(page) {
     await mountPlan(page, { unknown: true }); await page.locator('[data-plan-gantt]').waitFor();
     const table = page.getByRole('table', { name: '交付风险列表' });
     assert((await table.innerText()).includes('无法核实')); assert((await table.innerText()).includes('已安排部分结束于'));
-    await page.locator('[data-plan-task]').first().click();
+    await selectFirstPlanTask(page);
     assert((await page.locator('[data-plan-inspector]').innerText()).includes('不代表批次完工'));
     await page.getByRole('button', { name: '资源负荷', exact: true }).click();
     assert((await page.getByRole('region', { name: '计划分析', exact: true }).innerText()).includes('设备有空闲时间不代表人员已就绪'));
@@ -133,7 +159,7 @@ async function plans(page) {
   });
   await check('plan-initial-comparison-keeps-unverified-boundaries', async () => {
     await mountPlan(page, { context: { plan_ref: F.ref(3) } }); await page.locator('[data-plan-gantt]').waitFor();
-    await page.locator('[data-plan-task]').first().click();
+    await selectFirstPlanTask(page);
     await page.getByRole('button', { name: '查看初始安排', exact: true }).click();
     const detail = page.locator('[data-plan-inspector]');
     assert((await detail.innerText()).includes('初始计划安排'));

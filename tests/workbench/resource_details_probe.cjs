@@ -69,7 +69,11 @@ async function run(page,state,name,fn){let passed=false;try{await fn();await sho
       const view=page.getByRole('button',{name:'查看绑定',exact:true});await view.click();
       assert.equal((await view.boundingBox()).height,30,'Resource row action must use the compact 30px control height');
       await page.getByRole('button',{name:/^查看设备 EQ-00 /}).waitFor();
-      assert(await page.getByRole('dialog').getByRole('button',{name:/^编辑：/}).isDisabled());
+      const edit=page.getByRole('dialog').getByRole('button',{name:'编辑',exact:true});
+      assert(await edit.isDisabled());
+      const reason=await edit.getAttribute('aria-describedby');assert(reason,'Read-only edit must identify its visible reason');
+      const description=page.locator('[id="'+reason+'"]');
+      assert(await description.isVisible());assert.equal(await description.innerText(),'尚未读取可用于保存的资料，请重新读取最新资料。');
       assert.equal(await page.getByRole('dialog').locator('input[name="label"]').count(),0);
       assert.equal(await page.locator('.wb-resource-association[aria-label="关联设备"] .wb-resource-relation').count(),5);
     });

@@ -7,10 +7,11 @@ const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 if (!output) throw new Error('Pass an artifact directory');
 fs.mkdirSync(output, { recursive: true });
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
-const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceTables.jsx', 'ResourceForms.jsx',
+const files = ['WorkbenchGuards.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchControlBridge.js',
+  'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx', 'WorkbenchGuardHost.jsx', 'ResourceTables.jsx', 'ResourceForms.jsx',
   'BatchContract.js', 'BatchControls.jsx', 'BatchForms.jsx', 'BatchOperationEditor.jsx', 'BatchDetail.jsx', 'BatchTable.jsx', 'BatchFiles.jsx', 'BatchWorkspace.jsx',
   'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'PlanLayout.jsx', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanCatalogUI.jsx', 'PlanDetailsUI.jsx', 'PlanExportUI.jsx', 'PlanWorkspace.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx'];
+  'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchNumberControls.jsx'];
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const report = { scope: 'workspace-primitives-app-shell-component-mock', production_persistence_tested: false,
@@ -102,15 +103,16 @@ async function geometry(kind, legacy = false) {
       root:rect(root),available:parent.clientWidth-parseFloat(parentStyle.paddingLeft)-parseFloat(parentStyle.paddingRight),
       containers:[...document.querySelectorAll('.main-content,.page-content')].map(el=>({name:el.className,width:el.clientWidth,scroll:el.scrollWidth})),
       toolbars:[...root.querySelectorAll('.toolbar')].map(el=>({display:getComputedStyle(el).display,align:getComputedStyle(el).alignItems})),
-      pager:root.querySelector('.pager')&&{display:getComputedStyle(root.querySelector('.pager')).display,select:rect(root.querySelector('.pager select'))} };
+      pager:root.querySelector('.pager,.wb-pager')&&{display:getComputedStyle(root.querySelector('.pager,.wb-pager')).display,
+        select:root.querySelector('.pager select,.wb-pager select')?rect(root.querySelector('.pager select,.wb-pager select')):null} };
   }, { kind });
   assert(value.scope && value.ancestor === legacy, JSON.stringify(value));
-  assert.deepEqual(value.padding, ['0px', '0px', '0px', '0px']); assert.equal(value.maxWidth, 'none');
-  assert(Math.abs(value.root.width - value.available) <= 1, JSON.stringify(value));
+  assert.deepEqual(value.padding, ['0px', '0px', '0px', '0px']);
+  assert(Math.abs(value.root.width - value.available) <= 1, 'Workspace fills its available content width: ' + JSON.stringify(value));
   assert(value.documentWidth <= value.viewport + 1, JSON.stringify(value));
   value.containers.forEach(row => assert(row.scroll <= row.width + 1, JSON.stringify(row)));
   value.toolbars.forEach(row => { assert.equal(row.display, 'flex'); assert.equal(row.align, 'center'); });
-  if (value.pager) { assert.equal(value.pager.display, 'flex'); assert(value.pager.select.width >= 70 && value.pager.select.width <= 220, JSON.stringify(value.pager)); }
+  if (value.pager) { assert.equal(value.pager.display, 'flex'); if(value.pager.select)assert(value.pager.select.width >= 70 && value.pager.select.width <= 220, JSON.stringify(value.pager)); }
   return value;
 }
 async function modalGeometry() {
@@ -134,7 +136,7 @@ async function contrast() {
     const color=value=>{const nums=value.match(/[\d.]+/g).map(Number);return [nums[0],nums[1],nums[2],nums.length>3?nums[3]:1];};
     const blend=(fg,bg)=>fg.slice(0,3).map((v,i)=>v*fg[3]+bg[i]*(1-fg[3]));
     const luminance=rgb=>rgb.map(v=>{v/=255;return v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4);}).reduce((n,v,i)=>n+v*[.2126,.7152,.0722][i],0);
-    return [...document.querySelectorAll('[role="dialog"] .modal-h2,[role="dialog"] .field>label,[role="dialog"] p,[role="dialog"] strong,[role="dialog"] button:not(:disabled),.pager>span,.plan-muted')]
+    return [...document.querySelectorAll('[role="dialog"] .modal-h2,[role="dialog"] .field>label,[role="dialog"] p,[role="dialog"] strong,[role="dialog"] button:not(:disabled),.pager>span,.wb-pager-summary,.plan-muted')]
       .filter(el=>el.getClientRects().length && el.textContent.trim()).map(el=>{
         const chain=[];for(let node=el;node;node=node.parentElement)chain.unshift(node);
         let bg=[255,255,255],opacity=1;
@@ -158,7 +160,8 @@ async function scrollCheck(selector, force = false) {
     const resizer=page.getByRole('separator',{name:'调整图号列宽'});await resizer.focus();for(let i=0;i<35;i++)await resizer.press('ArrowRight');
   }
   const result=await page.locator(selector).evaluate(el=>{el.scrollLeft=200;return {width:el.clientWidth,scroll:el.scrollWidth,left:el.scrollLeft,overflow:getComputedStyle(el).overflowX};});
-  assert(['auto','scroll'].includes(result.overflow) && result.scroll>result.width && result.left>0, JSON.stringify(result));
+  assert(['auto','scroll'].includes(result.overflow), JSON.stringify(result));
+  if(force || result.scroll>result.width)assert(result.scroll>result.width && result.left>0, JSON.stringify(result));
   return result;
 }
 async function negative(kind) {

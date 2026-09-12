@@ -19,6 +19,35 @@ REQUIRED_INPUTS = (
     "static/workbench/vendor/react-dom-18.3.1.production.min.js",
 )
 
+COMPONENT_DEPENDENCIES = {
+    "ResourceControls.js": ("WorkbenchGuards.js", "WorkbenchReferences.js"),
+    "ResourceForms.js": ("ResourceControls.js", "WorkbenchGuards.js"),
+    "WorkbenchListControls.js": ("ResourceControls.js", "WorkbenchControls.js"),
+    "WorkbenchControls.js": ("WorkbenchControlBridge.js",),
+    "WorkbenchDetailPanel.js": ("ResourceControls.js",),
+    "WorkbenchGuardHost.js": ("WorkbenchGuards.js", "ResourceControls.js"),
+    "SystemMaintenanceControls.js": ("WorkbenchFormat.js", "WorkbenchReferences.js", "ResourceControls.js"),
+}
+
+
+def component_inputs(scripts):
+    """Keep the real common control dependencies in partial browser fixtures."""
+    inputs, seen = [], set()
+
+    def include(name):
+        if name in seen:
+            return
+        seen.add(name)
+        prefix = "static/workbench/app/"
+        if name.startswith(prefix):
+            for dependency in COMPONENT_DEPENDENCIES.get(name[len(prefix):], ()):
+                include(prefix + dependency)
+        inputs.append(name)
+
+    for name in scripts:
+        include(name)
+    return tuple(inputs)
+
 
 def browser_contract(body, *, scripts=(), data=None, app=None, path="/workbench"):
     """Execute declared test assertions in real React, without builds or installs."""
@@ -26,7 +55,7 @@ def browser_contract(body, *, scripts=(), data=None, app=None, path="/workbench"
     node = os.environ.get("WORKBENCH_NODE") or (str(bundled / "bin/node") if (bundled / "bin/node").is_file() else shutil.which("node"))
     browser = os.environ.get("WORKBENCH_BROWSER") or "/tmp/aps-chromium109-assessment/runtime/chrome-mac/Chromium.app/Contents/MacOS/Chromium"
     assert node and Path(browser).is_file(), "Existing Node and Chromium 109 are required; never install/skip."
-    inputs = REQUIRED_INPUTS + tuple(scripts)
+    inputs = REQUIRED_INPUTS + component_inputs(scripts)
     if app is not None:
         manifest = json.loads((REPO_ROOT / "static/workbench/asset-manifest.json").read_text(encoding="utf-8"))
         inputs += ("static/workbench/asset-manifest.json",) + tuple(

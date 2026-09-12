@@ -149,11 +149,26 @@ function inspectCurrentPage(httpStatus) {
         && rect.left >= box.left - 1 && rect.right <= box.right + 1
         && rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1);
       const fixedHeader = fixedLogHeaders && headers.includes(cell);
-      const multiline = fixedHeader ? texts.length > 0 && textWithinCell : wrapOk;
+      const fixedAction = fixedLogHeaders && cell.cellIndex === logHeaders.length - 1
+        && cell.classList.contains('wb-col-actions') && style.position === 'sticky' && parseFloat(style.right) === 0;
+      const actions = [...cell.querySelectorAll('button')];
+      const actionGeometry = fixedAction && textWithinCell && box.left >= -1 && box.right <= innerWidth + 1
+        && box.top >= -1 && box.bottom <= innerHeight + 1
+        && (fixedHeader ? texts.length > 0 : actions.length === 1 && actions.every(action => {
+          const rect = action.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return visible(action) && !action.disabled && !!action.getAttribute('aria-label') && action.contains(hit)
+            && rect.left >= box.left - 1 && rect.right <= box.right + 1
+            && rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1
+            && action.scrollWidth <= action.clientWidth + 1 && action.scrollHeight <= action.clientHeight + 1;
+        }));
+      // The fixed detail action has no multiline record text; inspect its real bounds instead of requiring wrapping.
+      const multiline = fixedAction ? actionGeometry : fixedHeader ? texts.length > 0 && textWithinCell : wrapOk;
+      const whiteSpaceOk = style.whiteSpace === 'normal' || fixedAction && actionGeometry && style.whiteSpace === 'nowrap';
       return { tag: cell.tagName, text: cell.textContent, whiteSpace: style.whiteSpace, textOverflow: style.textOverflow,
         overflow: style.overflow, overflowWrap: style.overflowWrap, wordBreak: style.wordBreak,
-        textWithinCell, fixedHeaderGeometry: fixedHeader,
-        ok: style.whiteSpace === 'normal' && style.textOverflow !== 'ellipsis' && style.overflow !== 'hidden' && multiline };
+        textWithinCell, fixedHeaderGeometry: fixedHeader, fixedActionGeometry: fixedAction ? actionGeometry : null,
+        ok: whiteSpaceOk && style.textOverflow !== 'ellipsis' && style.overflow !== 'hidden' && multiline };
     });
     multilineTableDetails.push({ selector, fixedLogHeaders, headerTexts: headers.map(cell => cell.textContent.trim()), cells: inspected });
     return (selector !== '.sm-logs-table' || fixedLogHeaders) && inspected.every(cell => cell.ok);
@@ -191,7 +206,8 @@ function inspectCurrentPage(httpStatus) {
   const maxScrollWidth = Math.max(scrollMetrics.bodyScrollWidth, scrollMetrics.documentScrollWidth);
   const hasAppShell = document.querySelector('#root')?.dataset.workbenchBoot === 'ready'
     && !!document.querySelector('.operations-shell .sidebar-nav') && !!document.querySelector('.operations-shell .top-header')
-    && [...document.querySelectorAll('.top-header button')].some(node => node.textContent.startsWith('深色：'));
+    && [...document.querySelectorAll('#root[data-workbench-boot="ready"] .top-header button')]
+      .filter(node => visible(node) && /^切换(?:深色|浅色)$/.test(node.textContent.replace(/^[☀☾]/, '').trim())).length === 1;
   const bodyText = document.body.innerText, title = document.title || '';
   const includesKeyword = (value, keyword) => value.toLowerCase().includes(keyword.toLowerCase());
   const keywords = window.__APS_ERROR_PAGE_KEYWORDS__;

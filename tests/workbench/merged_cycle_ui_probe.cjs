@@ -54,7 +54,7 @@ async function main() {
       const context = await browser.newContext({viewport: {width, height: width === 1920 ? 1080 : 924}, timezoneId: 'Asia/Shanghai'});
       const page = await context.newPage(); p.attach(page, state);
       await page.goto(ready.url + '/workbench'); await page.locator('.sidebar').waitFor();
-      if (theme === 'dark') await p.click(page.getByRole('button', {name: '深色：关', exact: true}));
+      if (theme === 'dark') await p.click(page.getByRole('button', {name: '切换深色', exact: true}));
       assert(await p.run('merged-cycle-save', 'write', () => cycleSave(p, page, data)));
       for (const kind of Object.keys(data.damaged)) assert(await p.run('real-' + kind, 'read', () => damaged(p, page, data, kind)));
       assert(await p.run('protocol-fail-closed', 'read', () => protocolFailures(p, page, data)));

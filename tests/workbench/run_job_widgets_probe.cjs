@@ -1,9 +1,10 @@
 /* Current source only, in-memory compilation; real HTTP is proxied to disposable Flask/SQLite. */
 'use strict';
+const UI = require('./run_ui_source.cjs');
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
-const files = ['resource-contract.js', 'ResourceControls.jsx', 'RunJobAPI.js', 'RunJobControls.jsx', 'RunJobPanel.jsx'];
+const files = UI.dependencies(['resource-contract.js', 'ResourceControls.jsx', 'RunJobAPI.js', 'RunJobControls.jsx', 'RunJobPanel.jsx']);
 const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((row, index) => ['/fixture/script/' + files[index], row.code]));
@@ -17,7 +18,7 @@ fixtureRoot.render(React.createElement(RunJobPanel,{preflight,adapter,onNavigate
 window.unmountRun=()=>{if(fixtureRoot){fixtureRoot.unmount();fixtureRoot=null;}};window.mountRun(null);`;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
-  '<style>body{margin:0}#fixture-root{margin:24px 32px 24px 264px;min-width:0}@media(max-width:760px){#fixture-root{margin:12px}}</style></head><body class="aps-workbench"><div id="fixture-root"></div>' +
+  UI.styles(report, output) + '<style>body{margin:0}#fixture-root{margin:24px 32px 24px 264px;min-width:0}@media(max-width:760px){#fixture-root{margin:12px}}</style></head><body class="aps-workbench"><div id="fixture-root"></div>' +
   staticScripts.map(file => '<script src="/static/' + file + '"></script>').join('') + Array.from(scripts.keys(), file => '<script src="' + file + '"></script>').join('') + '<script>' + boot + '</script></body></html>';
 const server = http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://fixture').pathname;
@@ -33,7 +34,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('Content-Type', asset.mime); res.end(asset.bytes);
 });
 let page, origin, variant;
-const button = name => page.getByRole('button', { name, exact: true });
+const button = name => UI.button(page, name);
 const startButton = () => page.getByRole('button', { name: /^核对并开始排产/ });
 const state = (value, stage) => page.locator('[data-run-state="' + value + '"]' + (stage ? '[data-run-stage="' + stage + '"]' : ''));
 const local = () => page.evaluate(() => RunJobAPI.pending().read());
@@ -54,7 +55,7 @@ async function confirm() {
   const preview = await (await response).json();
   await page.evaluate(v => { window.fixturePreview = v; }, preview);
   assert.equal(await page.locator('.modal-bg').evaluate(n => getComputedStyle(n).position), 'fixed');
-  await page.getByText('批次编号 · ' + preview.data.normalized_input.batch_refs.length + ' 批', { exact: true }).click();
+  await page.getByText('批次内部编号 · ' + preview.data.normalized_input.batch_refs.length + ' 批', { exact: true }).click();
   assert((await page.locator('.rj-refs li').count()) > 0);
   assert.deepEqual(await page.locator('.rj-refs li').allTextContents(), preview.data.normalized_input.batch_refs.slice(0, 20));
   await shot('confirm');
@@ -65,6 +66,7 @@ async function accepted() {
     page.waitForResponse(r => r.url().endsWith('/scheduling/runs') && r.status() === 202), confirm()
   ]);
   await state('queued').waitFor(); const intent = await local(); assert(intent.run_ref);
+  const progress = await page.locator('[data-run-progress]').innerText(); assert(progress.includes('等待计算') && progress.includes('已耗时'));
   await page.evaluate(v => { window.fixtureAcceptance = v; }, await response.json());
   assert.deepEqual(Object.keys(intent).sort(), ['input_ref', 'request_key', 'run_ref']); return intent;
 }

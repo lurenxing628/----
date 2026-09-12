@@ -21,7 +21,7 @@ async function pickerActions(page, ready, report, h, flush) {
   await action(['WBP-RUN-001.search', 'WBP-RUN-001.range-selection', 'WBP-RUN-002.filtered', 'WBP-RUN-002.ready-filter'], async () => {
     const picker = page.locator('.pf-picker'), query = page.getByLabel('搜索排产批次', { exact: true });
     await query.fill('D-no-such-batch'); await button('搜索', picker).click();
-    await page.getByText('当前筛选没有待排批次。', { exact: true }).waitFor();
+    await page.getByText('当前筛选没有待排批次', { exact: true }).waitFor();
     await query.fill('Z-D-'); await button('搜索', picker).click(); await flush();
     await button('全选当前筛选').click(); await flush();
     await page.getByText('已选 21 批 · 含非当前页 1 批', { exact: true }).waitFor();
@@ -33,7 +33,7 @@ async function pickerActions(page, ready, report, h, flush) {
     await page.getByLabel('批次齐套筛选', { exact: true }).selectOption('no'); await flush();
     assert.equal(await page.locator('.pf-picker-list input[type=checkbox]').count(), 14);
     await page.getByLabel('批次齐套筛选', { exact: true }).selectOption('yes');
-    await page.getByText('当前筛选没有待排批次。', { exact: true }).waitFor();
+    await page.getByText('当前筛选没有待排批次', { exact: true }).waitFor();
     await query.fill(''); await button('搜索', picker).click(); await flush();
     assert.equal(await page.locator('.pf-picker-list input[type=checkbox]').count(), 2);
     await button('仅已齐套').click(); await flush();

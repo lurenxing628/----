@@ -4,7 +4,8 @@ const { run } = require('./final_execution_browser_support.cjs');
 
 async function exercise(p, phase) {
   const { page, ready } = p;
-  const initial = await p.read(() => page.locator('.sidebar a[href$="?view=review"]').click(), '/analytics');
+  await p.read(() => page.locator('.sidebar a[href$="?view=reports"]').click(), '/analytics');
+  const initial = await p.read(() => page.getByRole('tablist', { name: '统计分析视图', exact: true }).getByRole('tab', { name: '执行复盘', exact: true }).click(), '/analytics');
   const data = initial.data;
   assert.equal(data.plan.plan_ref, ready.expected.final_e.plan_ref); assert.equal(data.summary.records, 33);
   assert.equal(data.resources.machines.length, 9); assert.equal(data.resources.people.length, 9);

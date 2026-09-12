@@ -24,7 +24,7 @@ async function exercise(p, phase) {
     await search.fill('NO-CALIBRATION');
     const empty = await p.read(() => page.getByRole('button', { name: '搜索', exact: true }).click(), list);
     assert.equal(empty.data.summary.total, 0);
-    await page.getByText('当前筛选没有记录。', { exact: true }).waitFor();
+    await page.getByRole('status').getByText('当前筛选没有记录', { exact: true }).waitFor();
     const restored = await p.read(() => page.getByRole('button', { name: '清除筛选', exact: true }).click(), list);
     assert.equal(restored.data.summary.total, 2); assert.equal(restored.data.summary.suggested, 1);
     await p.read(() => page.getByRole('checkbox', { name: '仅看偏差 > 20%', exact: true }).check(), list);
@@ -35,7 +35,7 @@ async function exercise(p, phase) {
     const sorts = await page.getByLabel('排序字段', { exact: true }).locator('option').evaluateAll(nodes => nodes.map(n => n.value));
     for (const sort of sorts) if (sort !== await page.getByLabel('排序字段', { exact: true }).inputValue()) await p.read(() => p.choose('排序字段', sort), list);
     await p.read(() => p.choose('排序方向', 'desc'), list);
-    await p.read(() => p.choose('每页数量', '10'), list);
+    await p.read(() => p.choose('每页条数', '10'), list);
     const sorted = await p.read(() => table.getByRole('button', { name: '图号 / 零件排序', exact: true }).click(), list);
     assert.equal(sorted.data.scope.sort, 'part_no'); assert.equal(sorted.data.scope.direction, 'asc');
     const facets = await p.read(() => table.getByRole('button', { name: '筛选原定额 h/件', exact: true }).click(), '/calibration/facets/old_unit_hours');
@@ -85,8 +85,15 @@ async function exercise(p, phase) {
     p.report.detail_before = detail;
     await page.getByText('定额记录与计算依据', { exact: true }).click();
     await page.getByText('取最近 20 个来源与修订已确认的整道完工实例，至少 5 个才生成中位数建议。原定额为 0 和未提供时均不计算相对偏差。', { exact: true }).waitFor();
+    const basis = page.locator('.ca-detail > .wb-detail-body > .ca-evidence');
+    await basis.locator('.wb-ref > summary').click();
+    assert((await basis.innerText()).includes(seed.template_ref));
     await page.locator('[data-sample-group="selected"] > details').first().locator('> summary').click();
-    await page.locator('[data-sample-group="selected"] .ca-sample[open] > details').first().locator('> summary').click();
+    const sample = page.locator('[data-sample-group="selected"] .ca-sample[open]');
+    await sample.locator(':scope > .wb-ref > summary').click();
+    const report = sample.locator(':scope > details').filter({ has: page.locator(':scope > summary', { hasText: /^报工 ·/ }) }).first();
+    await report.locator(':scope > summary').click();
+    assert((await report.innerText()).includes('登记与更正记录'));
     await p.shot('calibration-real-source-and-records');
   });
   await p.step(['WBP-CALIB-005'], 'download-all-filtered-calibration-csv-and-xlsx', async () => {
@@ -123,7 +130,9 @@ async function exercise(p, phase) {
     assert.equal(p.report.requests.slice(activeRequests).filter(row => new URL(row.url).pathname.endsWith(list)).length, 0);
     await page.getByText('前后快照不一致，请明确刷新。已选记录和样本来源保留，不会自动跳到最新记录。', { exact: true }).waitFor();
     await p.shot('adopted-active-old-snapshot-rejected');
-    await p.nav('执行复盘', '/analytics');
+    await p.nav('报表中心', '/analytics');
+    await p.read(() => page.getByRole('tablist', { name: '统计分析视图', exact: true })
+      .getByRole('tab', { name: '执行复盘', exact: true }).click(), '/analytics');
     const refreshedDetail = page.waitForResponse(response => new URL(response.url()).pathname.endsWith(part));
     const refreshed = await p.read(() => page.locator('.sidebar a[href$="?view=calib"]').click(), list);
     assert.equal(new URL(p.report.responses[p.report.responses.length - 1].url).searchParams.has('snapshot_ref'), false);

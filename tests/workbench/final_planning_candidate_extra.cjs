@@ -2,20 +2,20 @@
 const assert = require('node:assert/strict');
 
 async function candidateNavigation(page, ready, report, h, flush) {
-  const { action, button, last, shot } = h, original = report.candidate;
-  const heading = () => page.locator('[data-run-candidate-workspace] > .rc-heading').first();
+  const { action, last, shot } = h, original = report.candidate;
+  const views = page.getByRole('tablist', { name: '计划中心视图', exact: true });
   await action(['WBP-ANA-004.gantt'], async () => {
     const before = report.requests.length;
-    await button('查看甘特', heading()).click();
+    await views.getByRole('tab', { name: '设备 / 人员 / 批次甘特', exact: true }).click();
     await page.getByRole('heading', { name: '候选甘特', exact: true }).waitFor(); await flush();
     const current = last(value => value.candidate && value.tasks);
     assert.equal(current.candidate.candidate_ref, original.candidate.candidate_ref);
     assert.equal(current.candidate.run_ref, original.candidate.run_ref);
     assert.deepEqual(current.tasks, original.tasks);
     await h.caption(original.candidate.candidate_ref, '候选预览'); await shot('candidate-gantt-exact-source');
-    await button('交付风险', heading()).click();
+    await views.getByRole('tab', { name: '交付风险', exact: true }).click();
     await page.getByRole('heading', { name: '候选交付风险', exact: true }).waitFor();
-    await button('返回比较', heading()).click();
+    await views.getByRole('tab', { name: '选择排产方案', exact: true }).click();
     await page.getByRole('heading', { name: '候选排产结果', exact: true }).waitFor(); await flush();
     assert.equal(last(value => value.candidate && value.tasks).candidate.candidate_ref, original.candidate.candidate_ref);
     assert(report.requests.slice(before).every(row => row.method === 'GET'));
@@ -50,7 +50,7 @@ async function candidateTrialSource(page, ready, report, h, flush) {
   await action(['WBP-PLAN-003.stale-conflict'], async () => {
     const before = report.requests.length;
     const pending = page.waitForResponse(row => row.url().endsWith('/adopt-preview') && row.request().method() === 'POST');
-    await button('正式采用', page.locator('[data-run-adoption-action]')).click();
+    await button('采用方案', page.locator('[data-run-adoption-action]')).click();
     const response = await pending, value = await response.json();
     assert.equal(response.status(), 409); assert.equal(value.ok, false); assert.equal(value.committed, false);
     assert.equal(value.error.code, 'snapshot_stale');

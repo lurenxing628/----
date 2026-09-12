@@ -19,7 +19,7 @@ async function recover(page, report, screenshot, record, flush, original) {
   await page.getByRole('button', { name: '查询原运行', exact: true }).click();
   await page.getByRole('table', { name: '已保存候选', exact: true }).waitFor();
   await page.getByRole('table', { name: '已保存候选', exact: true }).getByRole('button', { name: '详情', exact: true }).first().click();
-  await page.getByRole('region', { name: '候选任务安排', exact: true }).waitFor();
+  await page.getByRole('table', { name: '候选任务安排', exact: true }).waitFor();
   await page.locator('[data-run-adoption-action]').getByRole('button').first().click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: '进入正式方案', exact: true }).waitFor();

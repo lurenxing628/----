@@ -15,10 +15,21 @@ async function exercise(p, phase) {
       await p.read(() => row.locator('button[aria-expanded]').click(), detail);
     await page.getByRole('table', { name: '逐次报工记录', exact: true }).waitFor();
   };
-  const done = async () => {
-    const response = await p.read(() => page.getByRole('button', { name: '重读已确认结果', exact: true }).click(), list);
+  const saveAndRead = async (label, endpoint) => {
+    const [response, saved] = await Promise.all([
+      p.read(async () => {}, list),
+      p.read(() => page.getByRole('button', { name: label, exact: true }).click(), endpoint)
+    ]);
+    await page.getByText('已保存并重读最新报工。', { exact: true }).waitFor();
     await page.getByRole('table', { name: '逐次报工记录', exact: true }).waitFor();
-    return response;
+    return { after: response, saved };
+  };
+  const cancelDraft = async () => {
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    const prompt = page.getByRole('dialog', { name: '离开前确认', exact: true });
+    await prompt.waitFor();
+    await prompt.getByRole('button', { name: '放弃未保存内容并继续', exact: true }).click();
+    await prompt.waitFor({ state: 'hidden' });
   };
   if (phase === 'restart') {
     await readField(); await open();
@@ -38,7 +49,9 @@ async function exercise(p, phase) {
   await p.step(['WBP-FIELD-001', 'WBP-FIELD-002', 'WBP-FIELD-003'], 'real-status-filters-search-page-size-and-counts', async () => {
     assert.equal(initial.data.summary.tasks, 33); assert.equal(initial.data.summary.reports, 7);
     const metrics = await page.locator('.field-metrics').innerText();
-    assert.equal(await page.locator('.field-metrics > span').count(), 5);
+    assert.equal(await page.locator('.field-metrics > span').count(), 1);
+    assert.equal(await page.locator('[data-field-state-count]').count(), 7);
+    for (const label of ['待报工', '已登记开工', '部分完成', '已完工']) assert(!metrics.includes(label));
     assert(metrics.includes('累计实报工时') && metrics.includes('未知') && metrics.includes('已知小计 3 h'));
     assert.deepEqual(initial.data.summary.state_counts, { complete: 1, exception: 0, partial: 1, paused: 1, started: 1, unreported: 29 });
     for (const [state, label] of [['unreported', '待报工'], ['started', '已登记开工'], ['partial', '部分完成'],
@@ -72,8 +85,8 @@ async function exercise(p, phase) {
   await p.step(['WBP-FIELD-006', 'WBP-FIELD-008', 'WBP-FIELD-010'], 'keyboard-create-start-only-unknown-not-zero', async () => {
     await page.getByRole('button', { name: '新增本次报工', exact: true }).click();
     await page.getByLabel('实际开工', { exact: true }).fill('2026-09-02T08:00');
-    const saved = await p.read(() => page.getByRole('button', { name: '保存报工', exact: true }).click(), detail + '/reports');
-    const after = await done();
+    await page.getByRole('button', { name: '清空本次实际完工', exact: true }).click();
+    const { saved, after } = await saveAndRead('保存报工', detail + '/reports');
     const report = after.data.tasks.find(row => row.task_ref === taskRef).execution.reports.find(row => row.report_ref === saved.data.rows[0].report_ref);
     p.report.created = report; p.report.receipts = [saved];
     assert.equal(report.completed_quantity, null); assert.equal(report.effective_processing_hours, null);
@@ -92,8 +105,8 @@ async function exercise(p, phase) {
     await page.getByLabel('作业备注', { exact: true }).fill('三件首批真实报工');
     await page.getByLabel('补齐或更正原因', { exact: true }).fill('根据原始报工单补齐');
     await p.shot('supplement-input');
-    const saved = await p.read(() => page.getByRole('button', { name: '保存报工', exact: true }).click(), '/reports/' + p.report.created.report_ref + '/supplement');
-    p.report.receipts.push(saved); await done();
+    const { saved } = await saveAndRead('保存报工', '/reports/' + p.report.created.report_ref + '/supplement');
+    p.report.receipts.push(saved);
   });
   await p.step(['WBP-FIELD-005', 'WBP-FIELD-012'], 'correction-required-reason-and-three-original-revisions', async () => {
     await page.getByRole('button', { name: '更正 ' + p.report.created.report_no, exact: true }).click();
@@ -102,9 +115,8 @@ async function exercise(p, phase) {
     await page.getByRole('spinbutton', { name: '本次完成数量', exact: true }).fill('2');
     await page.getByRole('spinbutton', { name: '有效工时 (h)', exact: true }).fill('0.5');
     await reason.fill('逐项复核有效工时');
-    const saved = await p.read(() => page.getByRole('button', { name: '保存更正', exact: true }).click(), '/reports/' + p.report.created.report_ref + '/correct');
+    const { saved, after } = await saveAndRead('保存更正', '/reports/' + p.report.created.report_ref + '/correct');
     p.report.receipts.push(saved);
-    const after = await done();
     assert.equal(after.data.tasks.find(row => row.task_ref === taskRef).execution.reports[0].correction_history.length, 3);
     await page.getByRole('button', { name: '录入信息 ' + p.report.created.report_no, exact: true }).click();
     await page.getByText('逐项复核有效工时', { exact: false }).waitFor(); await p.shot('original-three-revisions');
@@ -127,14 +139,25 @@ async function exercise(p, phase) {
     await page.getByLabel('本次完成数量', { exact: true }).fill('1');
     await open(); assert.equal(await page.getByLabel('本次完成数量', { exact: true }).inputValue(), '4');
     assert(await page.getByLabel('本次完成数量', { exact: true }).evaluate(node => document.activeElement === node));
-    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await cancelDraft();
     await p.read(() => page.locator('[data-field-task="' + other + '"] button[aria-expanded]').click(), list + '/' + other);
     assert.equal(await page.getByLabel('本次完成数量', { exact: true }).inputValue(), '1');
-    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await cancelDraft();
     await open(); await page.getByRole('button', { name: '新增本次报工', exact: true }).click();
     assert.equal(await page.getByLabel('本次完成数量', { exact: true }).inputValue(), '');
     await page.getByLabel('本次完成数量', { exact: true }).fill('4');
-    await p.nav('报表中心', '/analytics'); await readField(); await open();
+    await p.read(async () => {
+      const currentURL = page.url();
+      await page.locator('.sidebar').getByText('报表中心', { exact: true }).click();
+      const prompt = page.getByRole('dialog', { name: '离开前确认', exact: true });
+      await prompt.waitFor(); assert.equal(page.url(), currentURL);
+      await prompt.getByRole('button', { name: '留在当前页面', exact: true }).click();
+      await prompt.waitFor({ state: 'hidden' });
+      assert.equal(await page.getByLabel('本次完成数量', { exact: true }).inputValue(), '4');
+      await page.locator('.sidebar').getByText('报表中心', { exact: true }).click();
+      await prompt.getByRole('button', { name: '放弃未保存内容并继续', exact: true }).click();
+    }, '/analytics');
+    await readField(); await open();
     await page.getByRole('button', { name: '新增本次报工', exact: true }).click();
     const restored = await page.getByRole('spinbutton', { name: '本次完成数量', exact: true }).inputValue();
     assert.equal(restored, '', 'The read-only history contract must not restore a write form');
@@ -150,9 +173,9 @@ async function exercise(p, phase) {
     await page.getByRole('spinbutton', { name: '有效工时 (h)', exact: true }).fill('1.5');
     await page.locator('.field-editor details > summary').click();
     await p.choose('实际设备', seed.machine_ref); await p.choose('实际人员', seed.operator_ref);
-    const saved = await p.read(() => page.getByRole('button', { name: '剩余全部完工', exact: true }).click(), detail + '/reports');
+    const { saved, after } = await saveAndRead('剩余全部完工', detail + '/reports');
     p.report.receipts.push(saved);
-    const after = await done(), current = after.data.tasks.find(row => row.task_ref === taskRef);
+    const current = after.data.tasks.find(row => row.task_ref === taskRef);
     assert.equal(current.execution.reports.find(row => row.report_ref === saved.data.rows[0].report_ref).completed_quantity, 8);
     assert.equal(current.quantity, null); assert.equal(current.quantity_reason, 'plan_target_not_recorded');
     assert.equal(current.execution.target_quantity, 10); assert.equal(current.execution.known_completed_quantity, 10);

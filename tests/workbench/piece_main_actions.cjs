@@ -7,7 +7,7 @@ const { predecessorLinks } = require('./piece_main_dependencies.cjs');
 async function adoption(page, kind, screenshot, record, report, flush) {
   const action = page.locator(kind === 'candidate' ? '[data-run-adoption-action]' : '.trial-adoption-action');
   const response = page.waitForResponse(row => row.url().endsWith('/adopt-preview') && row.request().method() === 'POST');
-  await action.getByRole('button', { name: '正式采用', exact: true }).click();
+  await action.getByRole('button', { name: kind === 'candidate' ? '采用方案' : '正式采用', exact: true }).click();
   const preview = await (await response).json();
   const dialog = page.getByRole('dialog');
   if (!preview.data.validation.can_adopt) {

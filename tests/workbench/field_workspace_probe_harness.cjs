@@ -2,9 +2,9 @@
 const fs = require('node:fs'), path = require('node:path'), http = require('node:http'), crypto = require('node:crypto');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..');
-const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx',
-  'FieldContract.js', 'FieldAPI.js', 'FieldControls.jsx', 'FieldFilters.jsx', 'FieldEditor.jsx', 'FieldDetail.jsx', 'FieldTable.jsx', 'FieldFiles.jsx', 'FieldWorkspace.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx'];
+const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx',
+  'FieldContract.js', 'FieldDraftModel.js', 'FieldAPI.js', 'FieldControls.jsx', 'FieldFilters.jsx', 'FieldEditorFields.jsx', 'FieldEditor.jsx', 'FieldDetail.jsx', 'FieldTable.jsx', 'FieldFiles.jsx', 'FieldWorkspace.jsx',
+  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx'];
 const script = `
 let mounted;
 window.probe = {calls:[],writes:[],lookups:[],nav:[]};
@@ -22,7 +22,7 @@ async function mountField(spec={}) {
     const [view,setView]=React.useState('field'),[context,setContext]=React.useState({return_to:'analysis'}),[theme,setTheme]=React.useState(spec.theme||'light');
     React.useLayoutEffect(()=>{document.documentElement.dataset.theme=theme;},[theme]);
     function navigate(view,context){probe.nav.push({view,context});setContext(context||{});setView(view);}
-    return React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),
+    return React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),React.createElement(WorkbenchGuardHost),
       React.createElement(AppShell,{active:'field',onNav:navigate,theme,onToggleTheme:()=>setTheme(value=>value==='light'?'dark':'light'),operations:true,showCapsule:false,title:'现场记录'},
         view==='field'?React.createElement(FieldWorkspace,{adapter:api,onNavigate:navigate,initialContext:context}):React.createElement('button',{id:'probe-return',onClick:()=>navigate('field',context)},'返回现场记录')));
   }
@@ -45,9 +45,12 @@ function createServer(upstream, report) {
   const assets = new Map();
   manifest.files.forEach(item=>assets.set('/static/'+item.path,{mime:item.mime,bytes:fs.readFileSync(path.join(root,'static',item.path))}));
   built.outputs.forEach((item,index)=>assets.set('/probe/'+files[index]+'.js',{mime:'application/javascript',bytes:item.code}));
+  const styles=fs.readdirSync(path.join(root,'frontend/workbench/app/styles')).filter(file=>file.endsWith('.css')).sort();
+  styles.forEach(file=>{const bytes=fs.readFileSync(path.join(root,'frontend/workbench/app/styles',file));assets.set('/probe/'+file,{mime:'text/css',bytes});report.sources.push({path:'frontend/workbench/app/styles/'+file,sha256:crypto.createHash('sha256').update(bytes).digest('hex')});});
+  report.static_foundation_build_id=manifest.build_id;
   assets.set('/probe/harness.js',{mime:'application/javascript',bytes:script});
   const shared=manifest.scripts.filter(file=>file.startsWith('workbench/vendor/')||file.startsWith('workbench/assets/foundation-'));
-  const html='<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+manifest.styles.map(file=>'<link rel="stylesheet" href="/static/'+file+'">').join('')+'</head><body class="aps-workbench"><div id="root"></div>'+shared.map(file=>'/static/'+file).concat(files.map(file=>'/probe/'+file+'.js'),['/probe/harness.js']).map(file=>'<script src="'+file+'"></script>').join('')+'</body></html>';
+  const html='<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+manifest.styles.map(file=>'<link rel="stylesheet" href="/static/'+file+'">').concat(styles.map(file=>'<link rel="stylesheet" href="/probe/'+file+'">')).join('')+'</head><body class="aps-workbench"><div id="root"></div>'+shared.map(file=>'/static/'+file).concat(files.map(file=>'/probe/'+file+'.js'),['/probe/harness.js']).map(file=>'<script src="'+file+'"></script>').join('')+'</body></html>';
   return http.createServer((req,res)=>{
     if(req.url.startsWith('/api/')) {
       const proxied=http.request(upstream+req.url,{method:req.method,headers:{...req.headers,host:new URL(upstream).host}},reply=>{res.writeHead(reply.statusCode,reply.headers);reply.pipe(res);});

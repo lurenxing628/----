@@ -6,7 +6,10 @@ const { compile } = require('../../scripts/workbench/compile.cjs');
 const config = JSON.parse(fs.readFileSync(0, 'utf8')), output = process.argv[2], root = path.resolve(__dirname, '../..');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
-const names = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'ResourceControls.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchControlBridge.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchControls.jsx',
+const styleNames = ['00-tokens.css', '10-shell.css', '11-navigation.css', '20-controls.css', '21-table-frame.css', '22-shared-controls.css', '37-reports.css'];
+const sourceStyles = styleNames.map(name => ({ path: 'frontend/workbench/app/styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
+const styleMarkup = sourceStyles.map(row => '<style>' + row.code + '</style>').join('');
+const names = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'ResourceControls.jsx', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx', 'ReportEvidence.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchControls.jsx',
   'CalibrationAPI.js', 'CalibrationControls.jsx', 'CalibrationDetail.jsx', 'CalibrationWorkspace.jsx'];
 const sources = names.map(name => ({ path: 'app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true }).outputs;
@@ -19,8 +22,9 @@ const boot = `ReactDOM.createRoot(document.getElementById('root')).render(React.
     React.createElement(window.CalibrationWorkspace))));`;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
-  '</head><body class="aps-workbench"><div id="root"></div>' + manifest.scripts.filter(file => !file.endsWith('/main.js') && !/\/Calibration[^/]*\.js$/.test(file)).map(file => '<script src="/static/' + file + '"></script>').join('') +
+  styleMarkup + '</head><body class="aps-workbench"><div id="root"></div>' + manifest.scripts.filter(file => !file.endsWith('/main.js') && !/\/Calibration[^/]*\.js$/.test(file)).map(file => '<script src="/static/' + file + '"></script>').join('') +
   compiled.map(row => '<script src="/probe/' + row.path + '"></script>').join('') + '<script>' + boot + '</script></body></html>';
+record.sources.push(...sourceStyles.map(row => ({ path: row.path, sha256: hash(row.code) })));
 const assets = new Map(manifest.files.map(row => ['/static/' + row.path, row]));
 const server = http.createServer((request, response) => {
   const url = new URL(request.url, 'http://localhost');
@@ -57,7 +61,7 @@ async function listAfter(page, action) {
   await action(); const response = await pending, payload = await response.json();
   assert.equal(response.status(), 200, JSON.stringify(payload));
   await page.locator('.calibration-live[data-ready="true"]').waitFor();
-  await page.waitForFunction(total => document.querySelector('.calibration-live > .ca-page')?.textContent.includes('共 ' + total + ' 项'), payload.data.summary.total);
+  await page.waitForFunction(total => document.querySelector('.calibration-live .ca-list-pane > .wb-pager')?.textContent.includes('共 ' + total + ' 项'), payload.data.summary.total);
   return payload;
 }
 async function search(page, text) {
@@ -133,7 +137,7 @@ async function rejectInvalidDetails(page, payload) {
   try {
     browser = await chromium.launch({ executablePath: process.env.WORKBENCH_BROWSER, headless: true, args: ['--disable-background-networking'] });
     record.browser = browser.version(); assert(record.browser.startsWith('109.'));
-    for (const viewport of [{ width: 1920, height: 1080 }, { width: 1392, height: 924 }]) for (const theme of ['light', 'dark']) {
+    for (const viewport of [{ width: 1920, height: 1080 }, { width: Number(process.env.WORKBENCH_UI_NARROW_WIDTH || 1392), height: 924 }]) for (const theme of ['light', 'dark']) {
       const context = await browser.newContext({ viewport, acceptDownloads: true });
       await context.addInitScript(value => { localStorage.setItem('aps_theme', value); localStorage.setItem('aps_kit_theme', value); }, theme);
       const page = await context.newPage(); page.on('pageerror', error => record.errors.push(error.message));
@@ -147,7 +151,7 @@ async function rejectInvalidDetails(page, payload) {
       assert.equal(data.candidate_scope_basis, 'template_ref_and_same_part_unbound'); assert.equal(data.samples.length, 14);
       assert.deepEqual(new Set(data.suggestion.sample_refs), new Set(config.selected_refs));
       assert(!data.samples.some(sample => config.other_refs.includes(sample.sample_ref) || config.recent_refs.includes(sample.sample_ref)));
-      const detail = page.getByRole('region', { name: '校准详情', exact: true });
+      const detail = page.locator('.ca-detail');
       for (const [kind, count] of [['selected', 5], ['excluded', 7], ['unbound', 2]]) {
         const group = detail.locator('[data-sample-group="' + kind + '"]');
         assert.equal(await group.locator('.ca-sample').count(), count); assert((await group.locator('h4').first().textContent()).includes('（' + count + '）'));
@@ -155,9 +159,9 @@ async function rejectInvalidDetails(page, payload) {
       assert(await detail.getByRole('button', { name: /^采用/ }).isDisabled()); assert(await detail.getByRole('button', { name: /^锁定/ }).isDisabled());
       await detail.scrollIntoViewIfNeeded(); await capture(page, prefix + '-groups');
       const sample = detail.locator('.ca-sample[data-sample-ref="' + config.correction_sample_ref + '"]');
-      await sample.locator(':scope > summary').click(); await sample.getByText(config.template_ref, { exact: true }).waitFor();
+      await sample.locator(':scope > summary').click(); await sample.locator(':scope > .wb-ref > summary').click(); await sample.getByText(config.template_ref, { exact: true }).waitFor();
       await sample.locator('details > summary').filter({ hasText: /^报工 ·/ }).first().click();
-      await sample.getByText(config.report_ref, { exact: true }).waitFor();
+      await sample.locator('details:not([open]).wb-ref > summary').first().click(); await sample.getByText(config.report_ref, { exact: true }).waitFor();
       await sample.getByText('登记与更正记录（2 条）', { exact: true }).waitFor();
       await sample.locator('details > summary').filter({ hasText: /^更正 ·/ }).click();
       const correction = await sample.getByRole('table', { name: '更正前后值' }).locator('tr').filter({ hasText: '有效加工小时' }).textContent();
@@ -191,7 +195,7 @@ async function rejectInvalidDetails(page, payload) {
       payload = await listAfter(page, () => select(page, '工序来源', '自制'));
       payload = await listAfter(page, () => select(page, '排序字段', '建议单件定额'));
       payload = await listAfter(page, () => select(page, '排序方向', '降序'));
-      payload = await listAfter(page, () => select(page, '每页数量', '10'));
+      payload = await listAfter(page, () => select(page, '每页条数', '10 项'));
       payload = await listAfter(page, () => page.getByRole('button', { name: '下一页', exact: true }).click());
       assert.equal(payload.data.page.number, 2); await verifyCells(page, payload);
       const allRows = await readAll(payload); assert.equal(allRows.length, 22); assert.equal(allRows.filter(row => row.suggested_unit_hours !== null).length, 3);
@@ -218,7 +222,7 @@ async function rejectInvalidDetails(page, payload) {
     payload = await listAfter(page, () => page.getByRole('button', { name: '明确刷新', exact: true }).click());
     assert.equal((await missing).status(), 404); assert.notEqual(payload.data.items[0].suggestion_ref, config.template_ref);
     assert.equal(payload.data.items[0].sample_count, 0); assert.equal(payload.data.items[0].suggested_unit_hours, null);
-    await page.getByRole('region', { name: '校准详情', exact: true }).getByText(config.template_ref, { exact: true }).waitFor();
+    await page.locator('.ca-detail .wb-ref > summary').first().click(); await page.locator('.ca-detail').getByText(config.template_ref, { exact: true }).waitFor();
     record.recreated_ref_not_retargeted = true; await capture(page, 'deleted-recreated-ref'); await page.close();
     assert.deepEqual(record.errors, []); assert.deepEqual(record.external, []);
   } catch (error) {

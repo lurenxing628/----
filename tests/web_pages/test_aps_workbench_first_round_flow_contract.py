@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import tempfile
+from contextlib import closing
 from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
@@ -150,12 +151,18 @@ def _insert_first_round_data(db_path: str) -> int:
 
 
 def _collector_for_home(monkeypatch):
-    """Read the first real dashboard response after normal legacy initialization."""
+    """Finish fixture configuration before measuring the real read-only flow."""
+    from core.services.system.system_config_service import SystemConfigService
+
     tmpdir = tempfile.mkdtemp(prefix="aps_workbench_first_round_")
     db_path = _prepare_env(tmpdir, monkeypatch)
     ensure_schema(db_path, logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
     version = _insert_first_round_data(db_path)
     app = _load_app(monkeypatch)
+    # The process-wide maintenance throttle may skip the initial legacy GET.
+    # Complete this fixture's configuration explicitly, before taking the baseline.
+    with closing(get_connection(db_path)) as conn:
+        SystemConfigService(conn).ensure_defaults(backup_keep_days_default=app.config["BACKUP_KEEP_DAYS"])
     client = app.test_client()
     canonical_boot(client, "/", "dashboard", {})
     before = _business_state(client)
@@ -229,4 +236,30 @@ return document.body.innerText;
         assert summary["algo"]["candidate_comparison"]["completed_candidate_count"] == 2
     finally:
         conn.close()
+    assert _business_state(client) == before
+
+
+def test_first_round_fixture_initializes_system_config_even_when_maintenance_is_throttled(monkeypatch) -> None:
+    from core.services.system.maintenance.throttle import MaintenanceThrottle
+
+    # Another app in this process may have used the shared maintenance window.
+    monkeypatch.setattr(MaintenanceThrottle, "allow_run", classmethod(lambda cls, seconds: False))
+    client, _data, before = _collector_for_home(monkeypatch)
+    with closing(get_connection(client.application.config["DATABASE_PATH"])) as conn:
+        defaults = dict(conn.execute("SELECT config_key, config_value FROM SystemConfig"))
+    assert defaults == {
+        "auto_backup_enabled": "no",
+        "auto_backup_interval_minutes": "60",
+        "auto_backup_cleanup_enabled": "no",
+        "auto_backup_keep_days": str(client.application.config["BACKUP_KEEP_DAYS"]),
+        "auto_backup_cleanup_interval_minutes": "1440",
+        "auto_log_cleanup_enabled": "no",
+        "auto_log_cleanup_keep_days": "30",
+        "auto_log_cleanup_interval_minutes": "60",
+    }
+
+    # Once the window expires, this existing legacy GET still runs maintenance.
+    monkeypatch.setattr(MaintenanceThrottle, "allow_run", classmethod(lambda cls, seconds: True))
+    response = client.get("/scheduler/analysis?version=12&plan_role=adopted")
+    assert response.status_code == 302
     assert _business_state(client) == before

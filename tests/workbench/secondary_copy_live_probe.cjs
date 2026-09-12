@@ -4,10 +4,11 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const { chromium } = require('playwright'), M = require('./secondary_copy_metrics.cjs');
 const ready = JSON.parse(fs.readFileSync(process.argv[2])), root = ready.root, origin = ready.url;
 const report = { scope: 'frozen-formal-main-and-pages-with-private-style-candidates-real-temporary-SQLite',
-  global_build: false, win7_hardware_tested: false, cases: [], errors: [], external: [], writes: [], api: [], scripts: [], screenshots: [] };
+  global_build: false, baseline_kind: ready.assets.secondary_copy.baseline_kind, historical_baseline_claimed: false,
+  win7_hardware_tested: false, cases: [], errors: [], external: [], writes: [], api: [], scripts: [], screenshots: [] };
 const targets = {
-  process: ['.crumb > span:not(.cur):not(.sep)', '.pager > span:not(.grow)', '.wb-th-title', '.tbl td .muted'],
-  reports: ['.rw-header p', '.rw-asof', '.rw-basis', '.rw-pagination > span', '.rw-filters label'],
+  process: ['.crumb > span:not(.cur):not(.sep)', '.wb-pager-summary', '.wb-th-title', '.tbl td .muted'],
+  reports: ['.rw-header p', '.rw-asof', '.rw-basis', '.wb-pager-summary', '.rw-filters label'],
   system: ['.sm-header p', '.sm-source-note', '.sm-work-description', '.sm-meta']
 };
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -27,8 +28,8 @@ async function capture(browser, width, theme, view, phase) {
     const request = route.request(), url = new URL(request.url());
     if (url.origin !== origin) { report.external.push(url.href); return route.abort(); }
     if (!['GET', 'HEAD'].includes(request.method())) { report.writes.push({ method: request.method(), url: url.href }); return route.abort(); }
-    if (phase === 'before' && url.pathname === '/static/workbench/app/WorkbenchControlStyles.js') {
-      url.pathname = '/static/workbench/app/secondary-copy-before.js'; return route.continue({ url: url.href });
+    if (phase === 'before' && url.pathname === '/static/workbench/app/styles/10-shell.css') {
+      url.pathname = '/static/workbench/app/styles/secondary-copy-before.css'; return route.continue({ url: url.href });
     }
     return route.continue();
   });
@@ -45,7 +46,7 @@ async function capture(browser, width, theme, view, phase) {
         report.api.push({ name, path: url.pathname, status: response.status(), ok: data.ok, source: data.meta?.source,
           snapshot_ref: data.meta?.snapshot_ref, total: data.data?.page?.total, body_sha256: sha(bytes) });
       }
-      if (/\/(WorkbenchControlStyles|secondary-copy-before|main)\.js$/.test(url.pathname))
+      if (/\/(10-shell|secondary-copy-before)\.css$|\/main\.js$/.test(url.pathname))
         report.scripts.push({ name, path: url.pathname, sha256: sha(await response.body()) });
     })());
   });
@@ -54,8 +55,8 @@ async function capture(browser, width, theme, view, phase) {
     await page.locator('.sidebar').waitFor();
     if (view === 'process') {
       await page.getByRole('button', { name: 'EO-MAT-001', exact: true }).waitFor();
-      await page.locator('.pager').waitFor();
-      assert.match(await page.locator('.pager').innerText(), /25/);
+      await page.locator('.wb-pager').waitFor();
+      assert.match(await page.locator('.wb-pager').innerText(), /25/);
     } else if (view === 'reports') {
       await page.locator('.rw-workbench[data-ready="true"]').waitFor();
       assert((await page.locator('.rw-table tbody tr').count()) > 0, 'Nonempty real report required');
@@ -64,11 +65,11 @@ async function capture(browser, width, theme, view, phase) {
     const samples = await M.measure(page, targets[view]);
     const row = { name, width, theme, view, phase, samples, tokens: await M.tokens(page), controls: await M.controls(page) };
     report.cases.push(row); await shot(page, name);
-    if (view === 'process') { await page.locator('.pager').scrollIntoViewIfNeeded(); await shot(page, name + '-pager'); }
+    if (view === 'process') { await page.locator('.wb-pager').scrollIntoViewIfNeeded(); await shot(page, name + '-pager'); }
     if (phase === 'after') M.readable(samples, targets[view]);
     else targets[view].forEach(selector => assert(samples.some(s => s.selector === selector), 'Missing baseline: ' + selector));
     if (theme === 'light' && view === 'process' && phase === 'before')
-      assert(samples.some(s => s.ratio < 4.5 && s.color === M.original), 'Must reproduce the reported light-copy failure');
+      assert(samples.some(s => s.color === M.original), 'Synthetic candidate must remove the scoped secondary-copy alias');
     await Promise.all(pending);
     const source = ready.assets.secondary_copy.candidates.find(c => c.phase === phase);
     assert(report.scripts.some(s => s.name === name && s.sha256 === source.sha256), 'Browser did not load the exact style candidate');

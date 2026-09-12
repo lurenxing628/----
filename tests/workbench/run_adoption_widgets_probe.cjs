@@ -1,9 +1,10 @@
 /* CB source-only UI probe. Adoption always reaches the real isolated Flask service. */
 'use strict';
+const UI = require('./run_ui_source.cjs');
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { expect } = require('playwright/test'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
-const files = ['resource-contract.js', 'ResourceControls.jsx', 'WorkbenchControlStyles.jsx', 'RunAdoptionAPI.js', 'RunAdoptionControls.jsx', 'RunAdoptionAction.jsx'];
+const files = UI.dependencies(['resource-contract.js', 'ResourceControls.jsx', 'WorkbenchControlStyles.jsx', 'RunAdoptionAPI.js', 'RunAdoptionControls.jsx', 'RunAdoptionAction.jsx']);
 const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((row, i) => ['/source/' + files[i], row.code]));
@@ -17,9 +18,11 @@ React.createElement(RunAdoptionAction,{candidateRef,onNavigate:(...v)=>{window.n
 outer&&React.createElement(ResourceControls.Modal,{title:'外层候选',onClose:()=>setOuter(false)},React.createElement(RunAdoptionAction,{candidateRef})));}
 window.mountAdoption=(ref)=>{sessionStorage.setItem('cb_fixture_candidate',ref);if(appRoot)appRoot.unmount();appRoot=ReactDOM.createRoot(document.getElementById('fixture-root'));appRoot.render(React.createElement(Fixture,{candidateRef:ref}));};
 if(sessionStorage.getItem('cb_fixture_candidate'))mountAdoption(sessionStorage.getItem('cb_fixture_candidate'));`;
+const report = { browser: null, variants: [], checks: [], screenshots: [], errors: [], external: [], dialogs: [], layout: [], wait_contracts: [],
+  sources: sources.map(s => ({ path: s.path, sha256: crypto.createHash('sha256').update(s.code).digest('hex') })) };
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
-  '<style>body{margin:0}#fixture-root{padding:32px;display:flex;gap:16px;align-items:flex-start}</style></head><body class="aps-workbench"><div id="fixture-root"></div>' +
+  UI.styles(report, output) + '<style>body{margin:0}#fixture-root{padding:32px;display:flex;gap:16px;align-items:flex-start}</style></head><body class="aps-workbench"><div id="fixture-root"></div>' +
   staticScripts.map(file => '<script src="/static/' + file + '"></script>').join('') + [...scripts.keys()].map(file => '<script src="' + file + '"></script>').join('') + '<script>' + boot + '</script></body></html>';
 let dropReply = false;
 const server = http.createServer((req, res) => {
@@ -39,10 +42,8 @@ const server = http.createServer((req, res) => {
   if (scripts.has(pathname)) { res.setHeader('Content-Type', 'application/javascript'); res.end(scripts.get(pathname)); return; }
   const asset = assets.get(pathname); if (!asset) { res.writeHead(404); res.end(); return; } res.setHeader('Content-Type', asset.mime); res.end(asset.bytes);
 });
-const report = { browser: null, variants: [], checks: [], screenshots: [], errors: [], external: [], dialogs: [], layout: [], wait_contracts: [],
-  sources: sources.map(s => ({ path: s.path, sha256: crypto.createHash('sha256').update(s.code).digest('hex') })) };
 let page, origin, variant, fixture;
-const button = name => page.getByRole('button', { name, exact: true });
+const button = name => UI.button(page, name);
 const done = name => report.checks.push({ variant, name, passed: true });
 const state = () => page.evaluate(() => RunAdoptionAPI.pending().read());
 const evidence = async () => (await page.request.get(origin + '/fixture/evidence')).json();
@@ -169,7 +170,7 @@ async function uncertain() {
 }
 async function focusAndStorage() {
   await reset(); await button('外层操作').click();
-  await page.getByRole('dialog', { name: '外层候选' }).getByRole('button', { name: '正式采用', exact: true }).click();
+  await page.getByRole('dialog', { name: '外层候选' }).getByRole('button', { name: '采用方案', exact: true }).click();
   await page.getByText('v7', { exact: true }).waitFor(); await layout(); await shot('nested-focus');
   await page.keyboard.press('Escape'); assert.equal(await page.getByRole('dialog').count(), 1);
   assert(await page.getByRole('dialog').evaluate(n => n.contains(document.activeElement))); await page.keyboard.press('Escape');
@@ -197,7 +198,7 @@ async function focusAndStorage() {
       await context.addInitScript(theme => { localStorage.setItem('aps_theme', theme); localStorage.setItem('aps_kit_theme', theme);
         localStorage.setItem('aps_workbench_run_pending_v1', 'unrelated-run'); localStorage.setItem('aps_workbench_batch_pending_v1', 'unrelated-batch'); }, theme);
       page = await context.newPage(); page.setDefaultTimeout(15000);
-      page.on('pageerror', error => report.errors.push(error.message)); page.on('dialog', dialog => { report.dialogs.push(dialog.type()); dialog.dismiss(); });
+      page.on('pageerror', error => report.errors.push(error.stack || error.message)); page.on('dialog', dialog => { report.dialogs.push(dialog.type()); dialog.dismiss(); });
       await page.route('**/*', route => { if (!route.request().url().startsWith(origin + '/')) { report.external.push(route.request().url()); return route.abort(); } return route.continue(); });
       try { await page.goto(origin); await checkAsyncObservationWait(); await basic(); await rejections(); await uncertain(); await focusAndStorage(); row.passed = true; }
       catch (error) { row.error = error.stack; await shot('FAILED'); throw error; }

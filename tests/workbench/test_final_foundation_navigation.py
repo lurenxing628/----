@@ -16,5 +16,5 @@ def test_navigation_scope_and_scroll_contract():
     )
     assert result.returncode == 0, result.stdout + result.stderr
     report = json.loads(result.stdout)
-    assert report["checks"] == report["passed"] == 25
+    assert report["checks"] == report["passed"] == 26
     assert report["browser"] is False and report["production"] is False

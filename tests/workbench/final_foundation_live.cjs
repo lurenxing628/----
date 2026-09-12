@@ -94,6 +94,7 @@ async function main() {
     }
     if (execution.restart_pages) await waitRestart(entries, browser);
     record.equal(record.data.external_requests, []); record.equal(record.data.normal_errors, []);
+    if (execution.groups.includes('legacy')) record.ok(record.data.scroll_actions.some(row => !row.skipped), 'At least one supported viewport must exercise real main-content scrolling');
     for (const [kind, count] of Object.entries(execution.case_kinds)) record.equal(record.data.cases.filter(row => row.kind === kind).length, count);
     record.equal(record.data.cases.length, execution.total_cases);
     record.equal(new Set(record.data.cases.map(row => [row.state, row.kind, row.name].join(':'))).size, execution.total_cases);

@@ -191,6 +191,20 @@ for(const data of [null,[],{},'RAW_SECRET /tmp/private.db']) {
     assert _business_state(app_client) == before
 
 
+def test_current_error_disclosure_retains_diagnostics_outside_visible_message() -> None:
+    """Fixture text follows closed native details without deleting diagnostic data."""
+    from tests._support.gantt_current_js import run_current_js
+
+    run_current_js(r"""
+const secret='RuntimeError RAW_SECRET /tmp/private.db';
+const tree=h.render(h.runtime.ResourceControls.ErrorBox,{error:new Error(secret)}), visible=h.text(tree);
+assert(visible.length>0);assert(!visible.includes('RAW_SECRET'));assert(!visible.includes('/tmp/private.db'));
+const disclosure=h.walk(tree).find(node=>node.type==='details'&&node.props.className==='wb-ref');assert(disclosure);
+assert(h.text({...disclosure,props:{...disclosure.props,open:true}}).includes(secret));
+assert(h.walk(disclosure).some(node=>node.type==='code'&&h.text(node)===secret));
+""")
+
+
 def test_boot_rejects_non_array_tasks_instead_of_showing_no_schedule(app_client) -> None:
     """A non-array task container is rejected with a visible public error."""
     from tests._support.gantt_current import plan_fixture

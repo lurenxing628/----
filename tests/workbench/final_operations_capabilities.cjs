@@ -23,7 +23,7 @@ async function capabilities(h) {
   await ready(); const pending = page.getByRole('region', { name: '待排批次与齐套日期', exact: true });
   await mark(['batch', 'quantity', 'due-date', 'ready-status', 'ready-date', 'constraints'].map(s => 'WBP-DASH-012.' + s), async () => {
     const row = pending.locator('tbody tr').filter({ has: page.getByText('B1', { exact: true }) }), cells = row.locator('td');
-    assert.equal(await cells.nth(1).innerText(), '2'); assert.equal(await cells.nth(2).innerText(), '2026-09-08');
+    assert.equal(await cells.nth(1).innerText(), '2.0'); assert.equal(await cells.nth(2).innerText(), '2026-09-08');
     assert.equal(await cells.nth(3).innerText(), '未齐套'); assert.equal(await cells.nth(4).innerText(), '未知');
     await pending.getByText('当前未选定', { exact: true }).waitFor();
   });
@@ -53,7 +53,7 @@ async function capabilities(h) {
     comparisons.push(value);
   }
   const current = comparisons[comparisons.length - 1].data, selected = current.candidate.candidate_ref;
-  const number = value => value === null ? '未知' : value.toLocaleString('zh-CN', { maximumFractionDigits: 3 });
+  const number = value => value === null ? '未知' : value.toLocaleString('zh-CN', { minimumFractionDigits: Number.isInteger(value) ? 0 : 2, maximumFractionDigits: Number.isInteger(value) ? 0 : 2 });
   await mark('WBP-DASH-013.benefits-costs', async () => {
     const rows = page.getByRole('region', { name: '整体收益与代价', exact: true }).locator('tbody tr');
     assert.equal(await rows.count(), 3 + current.resources.length);
@@ -72,7 +72,7 @@ async function capabilities(h) {
   await shot('three-real-candidates-and-comparison');
   await mark('WBP-DASH-013.summary-dialog', async () => {
     await page.getByRole('button', { name: '查看方案摘要', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: '候选方案摘要', exact: true }); await dialog.getByText(selected, { exact: true }).waitFor();
+    const dialog = page.getByRole('dialog', { name: '候选方案摘要', exact: true }); await h.revealReference(dialog, selected);
     await shot('candidate-summary-dialog'); await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'hidden' });
   });
   await page.reload(); await page.locator('[data-comparison-ready=true]').waitFor();

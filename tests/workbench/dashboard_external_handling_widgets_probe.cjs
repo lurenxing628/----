@@ -5,17 +5,20 @@ const { chromium } = require('playwright'), { compile } = require('../../scripts
 const config = JSON.parse(fs.readFileSync(0, 'utf8')), output = process.argv[2], root = path.resolve(__dirname, '../..');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
+const sourceStyles = ['00-tokens.css', '10-shell.css', '20-controls.css', '21-table-frame.css', '22-shared-controls.css', '36-analysis.css'].map(name => ({ path: 'frontend/workbench/app/styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
 const names = ['WorkbenchPageContext.jsx', 'WorkbenchCaption.jsx', 'ResourceControls.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchControlBridge.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
   'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx', 'OutsourcingContract.js', 'OutsourcingSession.js', 'OutsourcingControls.jsx', 'OutsourcingStyles.jsx', 'OutsourcingWorkspace.jsx',
   'DashboardContract.js', 'DashboardAnalysisAPI.js', 'DashboardCandidateComparisonAPI.js', 'DashboardTimelineModel.js', 'DashboardTimeline.jsx',
   'DashboardAnalysisPanels.jsx', 'DashboardCandidatePanels.jsx', 'DashboardCandidates.jsx', 'DashboardSession.js', 'DashboardStyles.jsx',
-  'DashboardPanels.jsx', 'DashboardHistory.jsx', 'DashboardHandling.jsx', 'DashboardWorkspace.jsx'];
+  'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx',
+  'DashboardEvidence.jsx', 'DashboardPanels.jsx', 'DashboardHistory.jsx', 'DashboardHandling.jsx', 'DashboardWorkspace.jsx'];
 const sources = names.map(name => ({ path: 'app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true }).outputs;
 const scripts = new Map(compiled.map(r => ['/probe/' + r.path, r.code]));
 const assets = new Map(manifest.files.map(r => ['/static/' + r.path, { ...r, content: fs.readFileSync(path.join(root, 'static', r.path)) }]));
 const report = { ...config, compile_global_build: false, sources: sources.map(s => ({ path: 'frontend/workbench/' + s.path, sha256: hash(s.code) })),
   cases: [], boundaries: {}, screenshots: [], errors: [], external: [], responses: [], restarts: 0, contract_rejections: 0 };
+report.sources.push(...sourceStyles.map(row => ({ path: row.path, sha256: hash(row.code) })));
 const replacements = new Map(compiled.map(r => [path.basename(r.path), r])), loaded = new Set();
 const scriptTags = manifest.scripts.filter(f => !f.endsWith('/main.js')).map(f => {
   const current = replacements.get(path.basename(f));
@@ -28,7 +31,7 @@ React.createElement(AppShell,{active:'dashboard',title:'计划员值班台',them
 React.createElement(window.WorkbenchDashboardWorkspace,{initialContext:{scope:{category:'external',size:2}},onNavigate:()=>{throw new Error('DX must not invent a main view');}}))));`;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(f => '<link rel="stylesheet" href="/static/' + f + '">').join('') +
-  '</head><body class="aps-workbench"><div id="root"></div>' + scriptTags + '<script>' + boot + '</script></body></html>';
+  sourceStyles.map(row => '<style>' + row.code + '</style>').join('') + '</head><body class="aps-workbench"><div id="root"></div>' + scriptTags + '<script>' + boot + '</script></body></html>';
 const base = '/api/workbench/v1/dashboard', logistics = '/api/workbench/v1/outsourcing/receipts';
 const commandPath = p => /^\/api\/workbench\/v1\/dashboard\/items\/[a-f0-9]{48}\/(transition|reopen)$/.test(p);
 let fault = '', blockReceipts = false;
@@ -202,8 +205,8 @@ async function happy(viewport, theme) {
   const returned = await choose(page, ref); assert.equal(returned.risk.active, false); assert.equal(returned.handling.history_count, 3); assert.equal(returned.handling.status, 'closed');
   assert.equal(returned.handling.completion_evidence, complete.result);
   await detail(page).scrollIntoViewIfNeeded(); await shot(page, name + '-returned-risk-resolved'); await history(page, ref);
-  await page.locator('[data-history-sequence="3"] summary').click(); await page.getByText(complete.evidence, { exact:true }).waitFor();
-  await page.getByRole('button', { name:'查看第 3 次原始依据', exact:true }).click(); await page.getByText(/永久历史快照/).waitFor();
+  await page.locator('[data-history-sequence="3"]').getByText('变更前后及完成凭据', { exact: true }).click(); await page.getByText(complete.evidence, { exact:true }).waitFor();
+  await page.getByRole('button', { name:'查看第 3 次原始依据', exact:true }).click(); await page.getByText(/当时来源 ·/).waitFor();
   await page.locator('[data-history-sequence="3"]').scrollIntoViewIfNeeded(); await geometry(page); await shot(page, name + '-returned-history-preserved');
   await page.getByRole('tab', { name:'处置清单', exact:true }).click(); await action(page, base, () => select(page, '处置状态', '全部状态')); await choose(page, ref);
   await open(page, true); const reason = '继续跟进回厂检验，旧完成证据独立保留 ' + name;
@@ -238,7 +241,10 @@ async function boundaries() {
       assert.equal(await navigation.isEnabled(), true); await navigation.click();
       const confirmation = page.getByRole('dialog', { name:'原对象暂不可定位', exact:true });
       await confirmation.getByText(unknown.navigation.find(n => n.view === 'outsourcing').reason, { exact:true }).waitFor();
-      assert((await confirmation.innerText()).includes(ref));
+      assert(!(await confirmation.innerText()).includes(ref), '内部编号默认收起');
+      const originalReference = confirmation.locator('details.wb-ref').filter({ hasText: ref });
+      assert.equal(await originalReference.count(), 1); await originalReference.locator('summary').click();
+      assert((await confirmation.innerText()).includes(ref), '展开后完整原对象编号仍可核对');
       assert.equal(await confirmation.getByRole('button', { name:'打开外协物流登记概览', exact:true }).isEnabled(), true);
       await confirmation.getByRole('button', { name:'取消', exact:true }).click(); await confirmation.waitFor({ state:'hidden' });
       assert.equal(await detail(page).getAttribute('data-detail-ref'), ref);

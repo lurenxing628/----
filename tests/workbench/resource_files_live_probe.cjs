@@ -64,7 +64,7 @@ async function exportSelection(page,config,selection,format,expected,root,state,
   const rows=fileRows(file,format);assert.equal(rows.length,expected+1);await finish(page);return {file,rows};
 }
 async function resourceFiles(page,state,helpers,root,report){
-  const {run,rail,search,shot}=helpers;
+  const {run,rail,search,shot,empty}=helpers;
   for(let index=0;index<configurations.length;index++){
     const config=configurations[index],prefix='IO-'+state+'-'+index+'-',label='IO '+state+' '+index+' ',rows=Array.from({length:22},(_,i)=>({business_code:prefix+String(i+1).padStart(3,'0'),label:label+(i+1),...config.values}));
     await rail(page,config.node);await search(page,'');
@@ -104,7 +104,7 @@ async function resourceFiles(page,state,helpers,root,report){
       await search(page,prefix);await page.getByRole('button',{name:rows[1].business_code,exact:true}).waitFor();
       await page.getByRole('checkbox',{name:'全选当前页',exact:true}).check();
       const rest=await deleteSelection(page,config);assert.equal(rest.length,20);
-      await page.getByText('当前条件下没有资料。',{exact:true}).waitFor();
+      await empty(page);
     });
   }
 }

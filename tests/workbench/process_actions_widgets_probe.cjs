@@ -5,11 +5,15 @@ const { chromium } = require('playwright'), { compile } = require('../../scripts
 const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 fs.mkdirSync(output, { recursive: true });
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
-const files = ['WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx',
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx',
   'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceTables.jsx', 'ResourceMaterialContract.js', 'ResourceMaterialPreview.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx',
+  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',
   'ProcessContract.js', 'ProcessReadView.js', 'ProcessActionContract.js', 'ProcessActionPreview.jsx', 'ProcessCollectionActions.jsx', 'ProcessFileContract.js', 'ProcessFilePreview.jsx', 'ProcessFileActions.jsx', 'ProcessControls.jsx', 'ProcessStageEditor.jsx', 'ProcessOpTypeCreate.jsx',
   'ProcessSourceEditor.jsx', 'ProcessHoursEditor.jsx', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx', 'ProcessWorkspace.jsx'];
+const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {
+  const file = 'frontend/workbench/app/styles/' + name; return { path: file, code: fs.readFileSync(path.join(root, file), 'utf8') };
+});
+const workspaceCSS = styleSources.map(row => row.code).join('\n');
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((item, index) => ['/fixture/' + files[index] + '.js', item.code]));
@@ -51,7 +55,7 @@ function adapter() { return {
   lookup:async key=>{f.lookups.push(key);if(f.spec.notRecorded)return {ok:true,state:'not_recorded',receipt:null,may_be_in_flight:true};return f.receipt;},
   readPending:()=>f.pending,savePending:intent=>{f.pending={kind:intent.kind,action:intent.action,ref:intent.ref,request_key:intent.request_key};},clearPending:()=>{f.pending=null;}
 };}
-function render(){if(viewRoot)viewRoot.unmount();viewRoot=ReactDOM.createRoot(document.getElementById('fixture-root'));viewRoot.render(React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),React.createElement('section',{className:'plana',style:{padding:20}},React.createElement(ProcessWorkspace,{key:++mountNumber,adapter:f.adapter,onCommitted:r=>f.committed.push(r)}))));}
+function render(){if(viewRoot)viewRoot.unmount();viewRoot=ReactDOM.createRoot(document.getElementById('fixture-root'));viewRoot.render(React.createElement(React.Fragment,null,React.createElement(WorkbenchGuardHost),React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),React.createElement('section',{className:'plana',style:{padding:20}},React.createElement(ProcessWorkspace,{key:++mountNumber,adapter:f.adapter,onCommitted:r=>f.committed.push(r)}))));}
 window.mountFixture=spec=>{f=window.fixture={spec,rows:Array.from({length:65},(_,i)=>part(i+1)),reads:[],commands:[],lookups:[],committed:[],pending:spec.restore||null,receipt:spec.receipt||null};f.adapter=adapter();render();};
 window.remountFixture=()=>{f.adapter=adapter();render();};
 `;
@@ -60,12 +64,12 @@ const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
   staticScripts.map(file => '<script src="/static/' + file + '"></script>').join('') + [...scripts.keys()].map(file => '<script src="' + file + '"></script>').join('') + '<script>' + fixture + '</script></body></html>';
 const server = http.createServer((req, res) => {
   const name = new URL(req.url, 'http://fixture').pathname;
-  if (name === '/') { res.setHeader('Content-Type', 'text/html;charset=utf-8'); res.end(html); }
+  if (name === '/') { res.setHeader('Content-Type', 'text/html;charset=utf-8'); res.end(html.replace('</head>', '<style>' + workspaceCSS + '</style></head>')); }
   else if (scripts.has(name)) { res.setHeader('Content-Type', 'application/javascript'); res.end(scripts.get(name)); }
   else if (assets.has(name)) { const item = assets.get(name); res.setHeader('Content-Type', item.mime); res.end(item.bytes); }
   else { res.writeHead(404); res.end(); }
 });
-const report = { scope: 'isolated-process-actions-mock', global_build: false, production_persistence_tested: false, cases: [], screenshots: [], errors: [], external: [], sources: sources.map(source => ({ path: source.path, sha256: crypto.createHash('sha256').update(source.code).digest('hex') })) };
+const report = { scope: 'isolated-process-actions-mock', global_build: false, production_persistence_tested: false, cases: [], screenshots: [], errors: [], external: [], sources: sources.concat(styleSources).map(source => ({ path: source.path, sha256: crypto.createHash('sha256').update(source.code).digest('hex') })) };
 let page, variant;
 const button = name => page.getByRole('button', { name, exact: true });
 const table = () => page.getByRole('table', { name: '零件工艺列表', exact: true });

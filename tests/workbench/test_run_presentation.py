@@ -18,6 +18,7 @@ from tests.workbench.run_candidate_support import candidate_case as _candidate_c
 from tests.workbench.run_candidate_widgets_support import CandidateWidgetServer
 from tests.workbench.test_live_browser import runtime_tools
 from tests.workbench.test_run_candidate_exports import decode
+from web.routes.workbench.navigation_metadata import VIEW_ALIASES, navigation_groups
 from web.routes.workbench.pages import VIEW_TITLES
 from web.routes.workbench.scheduling_jobs import register_scheduling_job_routes
 
@@ -29,6 +30,8 @@ def test_run_presentation_chrome109_real_fixture(candidate_case, monkeypatch):
     (output / "boot-fixture.json").write_text(json.dumps({
         "schema_version": 1, "view": "analysis", "entry_url": "/workbench",
         "trial_url": "/workbench/trial", "titles": VIEW_TITLES,
+        "enabled_views": list(VIEW_TITLES), "nav_groups": navigation_groups(),
+        "view_aliases": VIEW_ALIASES, "help_url": "/scheduler/config/manual",
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     node, browser, modules = runtime_tools()
     original, connections = sqlite3.connect, []
@@ -77,7 +80,7 @@ def test_run_presentation_chrome109_real_fixture(candidate_case, monkeypatch):
     assert not [row for row in report["responses"] if row["status"] >= 400]
     assert len(report["hostEntrypoints"]) == 4
     assert all(row["host"] == "full-current-shell" and row["enabled"] and not row["writes_exercised"]
-               and row["adoption"] == "正式采用" and row["trial"] == "试调" for row in report["hostEntrypoints"])
+               and row["adoption"] == "采用方案" and row["trial"] == "试调" for row in report["hostEntrypoints"])
     assert proof["source_data_retained"] and proof["read_only_http"] and proof["all_connections_isolated"]
     assert proof["schema_version"] == CURRENT_SCHEMA_VERSION
     assert proof["schema_contract_issues"] == []

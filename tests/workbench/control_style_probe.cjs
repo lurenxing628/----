@@ -14,6 +14,8 @@ fs.mkdirSync(output, { recursive: true });
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
 const sourcePath = 'frontend/workbench/app/WorkbenchControlStyles.jsx';
 const source = fs.readFileSync(path.join(root, sourcePath), 'utf8');
+const candidateStyles = new Map(['00-tokens.css', '10-shell.css', '20-controls.css', '21-table-frame.css', '30-workspaces.css']
+  .map(name => [name, fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name))]));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
   sources: [{ path: sourcePath, code: source }], check_combined: true }).outputs[0].code;
 const assets = new Map(manifest.files.map(item => [item.path, item]));
@@ -87,7 +89,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(
 `;
 new (require('node:vm').Script)(fixture, { filename: 'control-style-fixture.js' });
 const html = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-  '<link rel="icon" href="/static/' + manifest.icon + '">' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
+  '<link rel="icon" href="/static/' + manifest.icon + '">' + manifest.styles.filter(file => file.startsWith('workbench/prototype/')).map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
+  [...candidateStyles.keys()].map(name => '<link rel="stylesheet" href="/candidate/' + name + '">').join('') +
   '<style>.probe-layout{display:grid;grid-template-columns:minmax(0,1fr) 304px;gap:28px;margin:24px;color:var(--ui-text)}.probe-main{min-width:0}.probe-main h2{font-size:20px;margin:0 0 20px}.probe-row{display:flex;align-items:center;gap:24px;flex-wrap:wrap;margin:18px 0}.probe-row label{display:inline-flex;align-items:center;gap:8px}.probe-edit{padding:18px 0}.probe-popups{display:flex;flex-direction:column;gap:20px}.probe-system{margin:24px 0}.probe-preserved{display:flex;align-items:center;flex-wrap:wrap;gap:12px}.probe-preserved #nav-row{width:100%}.probe-preserved #rail{flex:none;width:210px}.probe-main .toolbar{flex-wrap:wrap}.probe-main .probe-system .sm-actions{margin-top:12px}</style>' +
   '</head><body class="aps-workbench"><div id="root"></div>' +
   manifest.scripts.filter(file => file.startsWith('workbench/vendor/') || file.startsWith('workbench/assets/foundation-')).map(file => '<script src="/static/' + file + '"></script>').join('') +
@@ -96,12 +99,17 @@ const server = http.createServer((request,response) => {
   const name = new URL(request.url,'http://fixture').pathname;
   if (name === '/') { response.setHeader('Content-Type','text/html;charset=utf-8'); response.end(html); return; }
   if (name === '/styles-fixture.js') { response.setHeader('Content-Type','application/javascript'); response.end(compiled); return; }
+  if (name.startsWith('/candidate/') && candidateStyles.has(name.slice('/candidate/'.length))) {
+    response.setHeader('Content-Type', 'text/css'); response.end(candidateStyles.get(name.slice('/candidate/'.length))); return;
+  }
   const asset = assets.get(name.slice('/static/'.length));
   if (!name.startsWith('/static/') || !asset) { response.writeHead(404); response.end(); return; }
   response.setHeader('Content-Type',asset.mime); response.end(fs.readFileSync(path.join(root,'static',asset.path)));
 });
 const result = { scope:'isolated-global-styles-and-components',production_persistence_tested:false,win7_hardware_tested:false,
-  source:{path:sourcePath,sha256:crypto.createHash('sha256').update(source).digest('hex')},cases:[],errors:[],external:[],screenshots:[] };
+  source:{path:sourcePath,sha256:crypto.createHash('sha256').update(source).digest('hex')},
+  styles:[...candidateStyles].map(([name, bytes])=>({path:'frontend/workbench/app/styles/'+name,sha256:crypto.createHash('sha256').update(bytes).digest('hex')})),
+  cases:[],errors:[],external:[],screenshots:[] };
 let browser;
 async function measure(page, selector, pseudo) {
   return page.locator(selector).evaluate((element,pseudo) => {
@@ -126,7 +134,7 @@ async function main() {
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>resolve(Promise.all(document.getAnimations().map(animation=>animation.finished))))));
     const before={};
     for(const id of ['nav-row','rail','cell','tab','bar'])before[id]=await measure(page,'#'+id);
-    await page.evaluate(()=>window.applyStyles(true)); await page.locator('[data-workbench-control-styles]').waitFor({state:'attached'});
+    await page.evaluate(()=>window.applyStyles(true)); await page.waitForFunction(()=>document.body.dataset.workbenchControlIcons==='ready');
     async function check(name,fn) {try {await fn();result.cases.push({variant,name,passed:true});}catch(error){result.cases.push({variant,name,passed:false,message:error.message});await page.screenshot({path:path.join(output,variant+'-'+name+'-failure.png'),fullPage:true});throw error;}}
     await check('protected-semantic-controls',async()=>{for(const [id,old] of Object.entries(before)){const current=await measure(page,'#'+id);for(const key of ['height','width','padding','bg','border','radius'])assert.equal(current[key],old[key],id+' '+key);}});
     await check('command-sizing-and-no-native-appearance',async()=>{for(const id of ['plain-button','primary-button','danger-button','disabled-button','ds-button','toolbar-select','search-input','jump']){const value=await measure(page,'#'+id);assert.equal(value.appearance,'none',id);assert.equal(value.height,32,id);assert.equal(value.radius,'4px',id);}assert.equal((await measure(page,'#mini-button')).height,30);});
@@ -137,7 +145,7 @@ async function main() {
     await check('focus-and-hover-no-white-inset',async()=>{await page.locator('#edit-text').focus();assert.equal((await measure(page,'#edit-text')).outline,'solid');await page.locator('#edit-text').hover();const field=await measure(page,'#edit-text');assert.equal(field.border,field.outlineColor);assert.equal(field.shadow,'none');await page.locator('#primary-button').hover();const hover=await measure(page,'#primary-button');assert.equal(hover.shadow,'none');await page.mouse.down();const active=await measure(page,'#primary-button');assert.equal(active.bg,hover.bg);assert.notEqual(active.color,active.bg);await page.mouse.up();});
     await check('details-file-and-readonly',async()=>{await page.locator('#details summary').click();assert(await page.locator('#details').getAttribute('open')!==null);
       // Chromium 109 returns host styles for this pseudo; check parsed rules plus rendered height instead.
-      const fileRule=await page.evaluate(()=>{const sheet=document.querySelector('[data-workbench-control-styles]').sheet;const rule=Array.from(sheet.cssRules).find(rule=>rule.selectorText==='body.aps-workbench input[type="file"]::file-selector-button');return {supported:CSS.supports('selector(input::file-selector-button)'),appearance:rule.style.appearance,radius:rule.style.borderRadius};});
+      const fileRule=await page.evaluate(()=>{const sheet=Array.from(document.styleSheets).find(sheet=>sheet.href&&sheet.href.endsWith('/candidate/20-controls.css'));const rule=Array.from(sheet.cssRules).find(rule=>rule.selectorText==='body.aps-workbench input[type="file"]::file-selector-button');return {supported:CSS.supports('selector(input::file-selector-button)'),appearance:rule.style.appearance,radius:rule.style.borderRadius};});
       assert(fileRule.supported);assert.equal(fileRule.appearance,'none');assert.equal(fileRule.radius,'var(--wb-control-radius)');assert.equal((await measure(page,'#file')).height,32);
       await page.locator('#file').setInputFiles({name:'material.csv',mimeType:'text/csv',buffer:Buffer.from('code,name\n001,test')});assert.equal(await page.locator('#file').evaluate(input=>input.files[0].name),'material.csv');await page.locator('#readonly').focus();await page.locator('#readonly').press('End');await page.keyboard.type('X');assert.equal(await page.locator('#readonly').inputValue(),'R-001');});
     await check('popup-theme-and-interaction',async()=>{await page.getByRole('option',{name:'外协检验与精密加工（较长名称完整显示）',exact:true}).click();assert.equal(await page.locator('#option-popup').getByRole('option',{selected:true}).textContent(),'外协检验与精密加工（较长名称完整显示）');await page.locator('.wb-picker-day').filter({hasText:/^15$/}).click();assert.equal(await page.locator('.wb-picker-day[aria-selected="true"]').textContent(),'15');const popup=await measure(page,'#option-popup');assert.equal(popup.bg,(await measure(page,'#edit-text')).bg);if(theme==='dark')assert.notEqual(popup.bg,'rgb(255, 255, 255)');});

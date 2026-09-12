@@ -7,15 +7,16 @@ async function exercise(page, ready, report, state) {
   const p = new Probe(page, ready, report, state), work = p.work;
   await page.goto(ready.workbench_url);
   await page.locator('.sidebar').waitFor();
-  if (state.endsWith('dark')) await page.getByRole('button', { name: '深色：关', exact: true }).click();
+  if (state.endsWith('dark')) await page.getByRole('button', { name: '切换深色', exact: true }).click();
   await p.step('main-navigation-review-and-report', async () => {
-    await p.read(() => page.locator('.sidebar').getByText('执行复盘', { exact: true }).click());
+    await p.read(() => page.locator('.sidebar').getByText('报表中心', { exact: true }).click());
+    await p.read(() => work.getByRole('tablist', { name: '统计分析视图', exact: true }).getByRole('tab', { name: '执行复盘', exact: true }).click());
     assert.equal(p.data.data.summary.operations, 66);
     assert.equal(p.data.data.summary.production_reports, 27);
     assert.equal(p.data.data.summary.events, 6);
     assert.equal(p.data.data.summary.records, 33);
     await p.geometry('review'); await p.shot('review');
-    await p.read(() => page.locator('.sidebar').getByText('报表中心', { exact: true }).click());
+    await p.read(() => work.getByRole('tablist', { name: '统计分析视图', exact: true }).getByRole('tab', { name: '报表中心', exact: true }).click());
     await p.geometry('reports'); await p.shot('reports');
   });
   await p.step('typed-search-empty-and-reset', async () => {
@@ -60,16 +61,16 @@ async function exercise(page, ready, report, state) {
         assert.equal(p.data.data.page.sort[0].direction, 'desc');
         await p.read(() => p.choose('排序方向', 'asc'));
       }
-      await p.read(() => p.choose('每页数量', '10'));
+      await p.read(() => p.choose('每页条数', '10'));
       if (p.data.data.page.pages > 1) {
-        await p.read(() => work.locator('#report-topic-panel > .rw-pagination').getByRole('button', { name: '下一页', exact: true }).click());
+        await p.read(() => work.locator('#report-topic-panel .rw-list-pane > .wb-pager').getByRole('button', { name: '下一页', exact: true }).click());
         assert.equal(p.data.data.page.number, 2);
         assert.equal(p.data.data.rows.length, 10);
       }
       await p.geometry(topic); await p.shot(topic + '-page');
       await p.choose('导出格式', 'csv'); await p.download('导出范围');
       await p.choose('导出格式', 'xlsx'); await p.download('导出范围');
-      await p.read(() => p.choose('每页数量', '50'));
+      await p.read(() => p.choose('每页条数', '50'));
       assert.equal(p.data.data.page.number, 1); assert.equal(p.data.data.page.size, 50);
       if (['delivery', 'records'].includes(topic)) {
         const scroll = work.getByRole('region', { name: '报表结果表格', exact: true });
@@ -81,7 +82,7 @@ async function exercise(page, ready, report, state) {
         assert(geometry.scrollWidth <= geometry.width + 1, 'All main columns fit both target viewports');
         await p.shot(topic + '-50-rows-keyboard-scroll');
       }
-      await p.read(() => p.choose('每页数量', '20'));
+      await p.read(() => p.choose('每页条数', '20'));
     });
   }
   await detailsAndCatalogs(p);

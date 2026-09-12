@@ -31,7 +31,7 @@ async function prepareTheme(entry, record) {
   try {
     await warm.page.goto(record.ready.workbench_url); await settle(warm.page, record);
     if (await warm.page.locator('html').getAttribute('data-theme') !== entry.state.theme) {
-      await warm.page.getByRole('button', {name: /^深色：/}).click();
+      await warm.page.getByRole('button', {name: /^切换(?:深色|浅色)$/}).click();
     }
     record.equal(await warm.page.locator('html').getAttribute('data-theme'), entry.state.theme);
   } finally { await record.flush(warm.page); await warm.page.close(); }

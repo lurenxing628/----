@@ -6,6 +6,26 @@ async function actual(p) {
   const work = page.locator('[data-actual-gantt]');
   await page.locator('[data-actual-scroll]').waitFor();
   await p.step(['WBP-FG-001', 'WBP-FG-003', 'WBP-FG-007', 'WBP-FG-009'], 'same-original-plan-live-reports-selection-and-detail', async () => {
+    const reading = p.report.responses.filter(row => new URL(row.url).pathname.endsWith('/actual-gantt')).slice(-1)[0].payload;
+    const instant = value => Date.parse(value.replace(' ', 'T') + 'Z');
+    const axisSpan = instant(reading.data.axis_span.end) - instant(reading.data.axis_span.start);
+    const planStart = instant(reading.data.plan_span.start), planEnd = instant(reading.data.plan_span.end), planSpan = planEnd - planStart;
+    const asOf = instant(reading.meta.as_of);
+    assert(instant(reading.data.axis_span.start) <= asOf && asOf <= instant(reading.data.axis_span.end));
+    await page.waitForFunction(() => history.state.workbench.context.actual_view?.position.windowSpan > 0);
+    const initialView = await page.evaluate(() => history.state.workbench.context.actual_view);
+    const { windowSpan: initialWindow, centerAt } = initialView.position;
+    const hasPoints = reading.data.items.some(item => item.task.start === item.task.end || item.execution?.reports.some(row => row.actual_start && (!row.actual_end || row.actual_start === row.actual_end)));
+    const renderedSpan = axisSpan + (hasPoints ? 2 * Math.max(60000, axisSpan * .04) : 0);
+    const largestUsefulWindow = Math.max(planSpan * 1.2, renderedSpan / 1024);
+    assert(initialWindow >= planSpan && initialWindow <= largestUsefulWindow + 1 && initialWindow < axisSpan,
+      'The default window must show the plan at a useful scale while the full axis retains historical reports and as_of');
+    assert(centerAt - initialWindow / 2 <= planStart && centerAt + initialWindow / 2 >= planEnd,
+      'The default visible window must contain the plan dates, not only have the right duration');
+    if (initialWindow > planSpan * 1.2) assert.equal(initialView.zoom, 1024, 'Only the renderer zoom cap may widen the plan window');
+    assert.equal(await page.getByLabel('时间轴缩放模式', { exact: true }).innerText(), '手动');
+    p.report.initial_actual_window = { axis_span: reading.data.axis_span, plan_span: reading.data.plan_span,
+      as_of: reading.meta.as_of, visible_duration_ms: initialWindow, center_at: centerAt, zoom: initialView.zoom };
     await page.getByRole('button', { name: '定位选中工序', exact: true }).click();
     const row = page.locator('[data-task-row="' + ref + '"]').first();
     await row.locator('.fg-task-select').click();
@@ -36,6 +56,7 @@ async function actual(p) {
     await page.getByRole('checkbox', { name: '只看选中', exact: true }).check();
     assert((await page.locator('[data-actual-count]').innerText()).includes('1 / 33'));
     await page.getByRole('checkbox', { name: '只看选中', exact: true }).uncheck();
+    await page.getByRole('button', { name: '适应全部', exact: true }).click();
     assert.equal(await page.getByLabel('时间轴缩放模式', { exact: true }).innerText(), '自动');
     const automaticStep = Number(await page.getByLabel('时间轴刻度', { exact: true }).getAttribute('data-tick-step'));
     await page.getByRole('button', { name: '放大时间轴', exact: true }).click();

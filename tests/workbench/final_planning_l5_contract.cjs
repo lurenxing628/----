@@ -16,7 +16,8 @@ context.localStorage = store; context.history = { state: null, replaceState(valu
 context.addEventListener = () => {}; context.removeEventListener = () => {}; context.dispatchEvent = () => {};
 context.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
 vm.runInContext(fs.readFileSync(path.join(vendor, 'react-18.3.1.js'), 'utf8'), context);
-const names = ['resource-contract.js', 'PointContract.js', 'PlanGanttModel.js', 'ResourceControls.jsx', 'TrialContract.js', 'TrialControls.jsx',
+const names = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'resource-contract.js', 'PointContract.js', 'PlanGanttModel.js', 'ResourceControls.jsx',
+  'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'TrialContract.js', 'TrialControls.jsx',
   'TrialViewState.js', 'TrialGantt.jsx', 'TrialAdoptionHistoryState.js', 'TrialResults.jsx', 'PlanDetailsUI.jsx', 'PlanWorkspace.jsx'];
 const sources = names.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const built = compile({ babel_path: path.join(vendor, 'babel-7.29.0.min.js'), sources, check_combined: true });
@@ -39,6 +40,8 @@ function nodes(value, predicate) {
 function text(value) {
   if (Array.isArray(value)) return value.map(text).join('');
   if (value === null || value === undefined || typeof value === 'boolean') return '';
+  // Read the shared component's rendered text, not its unrendered title prop.
+  if (value.type === context.WorkbenchControls.EmptyState) return text(render(value.type, value.props));
   return typeof value === 'object' ? text(value.props && value.props.children) : String(value);
 }
 check('No record preserves original scope/query without writing defaults', () => {

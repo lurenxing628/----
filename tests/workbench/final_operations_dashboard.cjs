@@ -46,7 +46,7 @@ async function lifecycle(h, kind = 'delivery', label = '交期风险') {
   assert.equal(history.data.history.items.length, 3); assert.deepEqual(history.data.history.items.map(row => row.sequence), [3, 2, 1]);
   assert.equal(history.data.history.items[0].before.completion_evidence, closed.data.handling.completion_evidence);
   await mark(['WBP-DASH-006.reverse-order', 'WBP-DASH-005.preserve-closed-history'], async () => { await page.locator('[data-history-sequence="3"]').waitFor(); });
-  await mark('WBP-DASH-006.expand-before-after', () => page.locator('[data-history-sequence="3"] summary').click());
+  await mark('WBP-DASH-006.expand-before-after', () => page.locator('[data-history-sequence="3"]').getByText('变更前后及完成凭据', { exact: true }).click());
   await mark('WBP-DASH-006.source-records', () => page.getByRole('button', { name: '查看第 3 次原始依据', exact: true }).click());
   await shot(kind + '-reopen-history');
   await page.reload(); await page.locator('[data-history-sequence="3"]').waitFor();
@@ -88,9 +88,9 @@ async function dashboard(h) {
     assert(result.data.page.total > 0);
     await request('/dashboard', () => page.getByRole('button', { name: '清除条目筛选', exact: true }).click());
   }
-  await detail('material', '齐套缺口'); await page.locator('[data-detail-ref]').getByText('F steel', { exact: true }).waitFor(); await shot('material-evidence');
+  await detail('material', '齐套缺口'); await page.locator('[data-detail-ref]').getByRole('listitem').getByText('F steel', { exact: true }).waitFor(); await shot('material-evidence');
   await detail('downtime', '停机影响');
-  await mark('WBP-DASH-011.overlap-table', async () => { await page.locator('[data-detail-ref]').getByText('F maintenance record', { exact: true }).waitFor(); });
+  await mark('WBP-DASH-011.overlap-table', async () => { await page.locator('[data-detail-ref]').getByRole('listitem').getByText('F maintenance record', { exact: true }).waitFor(); });
   await shot('downtime-evidence');
   await detail('actual', '执行偏差'); await shot('actual-evidence');
   await mark('WBP-DASH-008.actual-comparison-navigation', async () => {

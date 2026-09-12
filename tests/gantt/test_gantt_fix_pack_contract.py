@@ -153,7 +153,7 @@ def test_dark_cc_outline_override_locked():
     assert "--wb-gantt-critical-edge:#c38796" in dark
     assert "--wb-gantt-gold:#d7ba76" in dark
     run_current_js(r"""
-const css=h.text(h.render(h.runtime.PlanLayout,{}));
+const css=h.styles();
 assert(css.includes('var(--wb-gantt-critical-edge)'));assert(css.includes('var(--wb-gantt-gold)'));
 const data=h.fixture(), before=h.clone(data);data.projections.delivery_risks.items=[{batch_id:'B1',risk:'overdue'}];
 const selected=h.gantt(data,{selected:{task:data.tasks[0]}}).nodes.find(n=>n.props['data-plan-task']===data.tasks[0].task_ref);

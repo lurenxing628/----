@@ -171,7 +171,8 @@ def test_template_decode_bar_outside_details_and_steppers_present():
     run_current_js(r"""
 const result=h.gantt(h.fixture());
 const legends=result.nodes.filter(n=>n.props.className==='plan-footer');assert.strictEqual(legends.length,1);
-assert(h.text(legends[0]).includes('超期 / 资源重叠'));assert(!result.nodes.some(n=>n.type==='details'));
+assert(h.text(legends[0]).includes('预计超期'));assert(h.text(legends[0]).includes('资源重叠'));assert(!result.nodes.some(n=>n.type==='details'));
+for(const kind of ['critical','conflict','success','before','point','today']) assert(result.nodes.some(n=>n.props.className==='plan-swatch '+kind));
 for(const label of ['缩小时间轴','放大时间轴','适合完整跨度','定位选中任务','展开甘特']) assert.strictEqual(result.nodes.filter(n=>n.props['aria-label']===label).length,1);
 assert.strictEqual(result.nodes.filter(n=>n.type==='input'&&n.props.type==='search').length,1);
 assert(!h.text(result.tree).includes('关键链'));assert(!result.nodes.some(n=>n.type==='select'));

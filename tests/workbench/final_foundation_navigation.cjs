@@ -62,6 +62,13 @@ check('replacing trial context preserves auxiliary state', () => {
 });
 check('stale component may not overwrite a newer route', () => { const r = runtime(), first = r.api.read(boot); r.api.navigate(boot, first, 'reports', {}); assert.throws(() => r.api.replaceContext(boot, first, {})); });
 check('corrupt sidebar history is rejected before widening a scope', () => { const r = runtime({workbenchPages: []}); assert.throws(() => r.api.navigate(boot, r.api.read(boot), 'reports')); });
+check('installing history protection does not eagerly rewrite or consume invalid sidebar cache', () => {
+  const r = runtime({workbenchPages: []}), original = JSON.stringify(r.context.history.state);
+  const protection = r.api.guardHistory(boot, {hasDirty: () => false, confirmLeave: () => Promise.resolve(true), onRestore() {}, onError() {}});
+  assert.equal(JSON.stringify(r.context.history.state), original);
+  assert.throws(() => r.api.navigate(boot, r.api.read(boot), 'reports'));
+  protection.dispose();
+});
 check('return context preserves report-owned scroll', () => { const r = runtime(); const next = r.api.navigate(boot, r.api.read(boot), 'reports', {scroll: {windowTop: 140, mainTop: 200}}); r.api.restore(next, () => {}); r.flush(); assert.equal(r.main.scrollTop, 200); assert.equal(r.context.scrollY, 140); });
 check('user input cancels delayed restoration exactly once', () => { const r = runtime(); let done = 0; const cancel = r.api.restore({scroll: {mainTop: 200}}, () => done++); r.event('pointerdown'); r.flush(); cancel(); assert.equal(done, 1); assert.equal(r.main.scrollTop, 0); });
 function navURL(value) { return 'http://127.0.0.1:59991/workbench?view=reports&nav=' + encodeURIComponent(JSON.stringify(value)); }

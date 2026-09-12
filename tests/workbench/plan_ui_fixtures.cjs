@@ -31,7 +31,7 @@
     const start = instant('2026-09-09T22:30:00'), count = options.count || 36;
     return Array.from({ length: count }, (_, i) => {
       const offset = options.dense ? i * 60000 : options.concurrent ? 0 : Math.floor(i / 6) * 9 * 3600000 + i % 6 * 1800000;
-      const duration = options.dense ? 50000 : options.concurrent ? 3600000 : i === 1 ? 30 * 60000 : (i % 5 + 1) * 3600000;
+      const duration = options.dense ? 50000 : options.concurrent ? 3600000 : i === 1 || options.processOrder && i % 3 !== 2 ? 30 * 60000 : (i % 5 + 1) * 3600000;
       return { task_ref: ref(10000 + i + Number.parseInt(planRef.slice(-4), 16) * 20000), operation_ref: ref(2000000 + i), plan_ref: planRef,
         batch_id: options.dense || options.concurrent ? 'BATCH-' + String(i).padStart(5, '0') : 'D2609-' + String(Math.floor(i / 3) + 1).padStart(3, '0'),
         sequence: i + 1, process_label: ['粗车端面', '钻孔', '精车外圆', '磨削', '检验', '装配'][i % 6],
@@ -92,7 +92,9 @@
   }
   function workspace(planRef = ref(1), query = {}, options = {}) {
     const n = Number.parseInt(planRef, 16), header = plan(n, n % 3 === 0 ? 'scenario' : n === 2 ? 'candidate' : 'official');
-    const all = tasks(planRef, options), starts = all.map(row => row.start).sort(), ends = all.map(row => row.end).sort();
+    const original = tasks(planRef, options);
+    const all = options.omitFullTaskRef && !query.range_start ? original.filter(task => task.task_ref !== options.omitFullTaskRef) : original;
+    const starts = all.map(row => row.start).sort(), ends = all.map(row => row.end).sort();
     const span = { start: starts[0], end: ends[ends.length - 1] };
     const scope = { source: 'production', kind: 'plan_workspace', plan_ref: planRef, range_start: query.range_start || null, range_end: query.range_end || null };
     const time = { range_start: scope.range_start || span.start, range_end: scope.range_end || span.end, selection: 'overlap', boundary: 'half_open', time_basis: 'factory_local' };
@@ -126,9 +128,14 @@
         for (const key of ['available_hours', 'available_occupied_hours', 'outside_available_hours', 'capacity_shortfall_hours', 'utilization', 'capacity_insufficient']) row[key] = null; });
     }
     const selectedStarts = selected.map(row => row.start).sort(), selectedEnds = selected.map(row => row.end).sort();
+    const processOrder = options.processOrder ? { state: 'available', basis: 'run_admission', issues: [], items: all.map(task => {
+      const index = original.indexOf(task), previous = original[index - 1];
+      return { task_ref: task.task_ref, operation_ref: task.operation_ref,
+        predecessor_operation_refs: previous && previous.batch_id === task.batch_id ? [previous.operation_ref] : [] };
+    }) } : { state: 'unavailable', basis: null, items: [], issues: [{ code: 'process_order_not_recorded', message: 'Fixture has no captured process order.' }] };
     return envelope({ plan: header, scope, time_scope: time, plan_span: span, task_span: selected.length ? { start: selectedStarts[0], end: selectedEnds[selectedEnds.length - 1] } : null,
       tasks: selected, task_count: selected.length, tasks_complete: true, resources, projections: { baseline, calendar, occupancy, delivery_risks: delivery(scope, all, selected, options),
-        process_order: { state: 'unavailable', basis: null, items: [], issues: [{ code: 'process_order_not_recorded', message: 'Fixture has no captured process order.' }] } } },
+        process_order: processOrder } },
     options.snapshot || query.snapshot_ref || 'workspace-ui:' + planRef + ':' + (scope.range_start || 'full'));
   }
   const api = { ref, clone, instant, wire, plan, envelope, catalog, workspace };

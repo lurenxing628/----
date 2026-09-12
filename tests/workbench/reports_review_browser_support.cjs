@@ -35,9 +35,10 @@ class Probe {
     const pending = this.page.waitForResponse(response => {
       const url = new URL(response.url());
       return url.pathname === endpoint && (expectedPage === null || url.searchParams.get('page') === String(expectedPage));
-    });
+    }).then(response => ({ response }), error => ({ error }));
     await action();
-    const response = await pending;
+    const outcome = await pending; if (outcome.error) throw outcome.error;
+    const response = outcome.response;
     assert.equal(response.status(), expectedStatus, await response.text());
     const payload = await response.json();
     this.report.responses.push({ state: this.state, url: response.url(), status: response.status(), payload });
@@ -54,8 +55,8 @@ class Probe {
   }
   async checkRows() {
     const data = this.data.data;
-    if (!data.rows.length) { await this.work.locator('#report-topic-panel > .rw-empty').waitFor(); return; }
-    const table = this.work.locator('#report-topic-panel > .rw-table-scroll');
+    if (!data.rows.length) { await this.work.locator('#report-topic-panel .rw-list-pane > .wb-empty').waitFor(); return; }
+    const table = this.work.locator('#report-topic-panel .rw-primary-table');
     await table.locator('tbody tr').first().waitFor();
     assert.equal(await table.locator('tbody tr').count(), data.rows.length);
     const texts = await table.locator('tbody tr').allTextContents();
@@ -75,7 +76,7 @@ class Probe {
         const a = fields[i], b = fields[j];
         if (Math.min(a.right, b.right) - Math.max(a.x, b.x) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.y, b.y) > 1) collisions.push([a.label, b.label]);
       }
-      const table = root.querySelector('#report-topic-panel > .rw-table-scroll');
+      const table = root.querySelector('#report-topic-panel .rw-primary-table');
       return { theme: document.documentElement.dataset.theme, documentWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth,
         workspace: style(root), metrics: style(root.querySelector('.rw-metrics')), fields, collisions,
         table: table ? { ...style(table), scrollWidth: table.scrollWidth, clientWidth: table.clientWidth, scrollHeight: table.scrollHeight, clientHeight: table.clientHeight } : null,

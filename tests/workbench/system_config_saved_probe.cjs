@@ -5,7 +5,7 @@ const assert = require('node:assert/strict'), { chromium } = require('playwright
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], scenario = process.argv[3], backend = new URL(process.argv[4]);
 assert.equal(backend.hostname, '127.0.0.1'); assert.notEqual(backend.port, '60086');
-const names = ['ResourceControls.jsx', 'SystemRestoreStatus.js', 'SystemMaintenanceAPI.js', 'SystemMaintenanceControls.jsx', 'SystemRestorePanel.jsx',
+const names = ['WorkbenchFormat.js', 'WorkbenchReferences.jsx', 'ResourceControls.jsx', 'WorkbenchListControls.jsx', 'SystemRestoreStatus.js', 'SystemMaintenanceAPI.js', 'SystemMaintenanceControls.jsx', 'SystemRestorePanel.jsx',
   'SystemMaintenanceRecords.jsx', 'SystemMaintenanceConfig.jsx', 'SystemMaintenanceWorkspace.jsx'];
 const report = { data_source: 'real-temporary-flask-api', scenario, cases: [], errors: [], external: [], requests: [], source_sha256: {} };
 const order = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json')));
@@ -52,10 +52,7 @@ function ConfigSavedProbe() {
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(ConfigSavedProbe));`;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
-  '</head><body class="aps-workbench"><div id="root"></div>' + manifest.scripts.filter(file => !file.endsWith('/main.js')).map(file => {
-    const current = names.find(name => file.endsWith('/' + name.replace(/jsx$/, 'js')));
-    return '<script src="' + (current ? '/probe/' + current : '/static/' + file) + '"></script>';
-  }).join('') + '<script>' + boot + '</script></body></html>';
+  '<style>' + ['00-tokens.css', '21-table-frame.css', '22-shared-controls.css', '37-system.css'].map(name => fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8')).join('\n') + '</style></head><body class="aps-workbench"><div id="root"></div>' + manifest.scripts.filter(file => !file.endsWith('/main.js')).map(file => '<script src="/static/' + file + '"></script>').join('') + compiled.outputs.map(row => '<script src="/probe/' + row.path + '"></script>').join('') + '<script>' + boot + '</script></body></html>';
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, 'http://localhost');
   if (url.pathname === '/') { response.setHeader('Content-Type', 'text/html;charset=utf-8'); return response.end(html); }

@@ -17,14 +17,25 @@ async function exercise(p, view) {
     while (!fs.existsSync(resumed)) { assert(Date.now() < deadline, 'Owned server restart timed out'); await new Promise(resolve => setTimeout(resolve, 50)); }
     assert.equal(JSON.parse(fs.readFileSync(resumed, 'utf8')).url, p.ready.url);
   }
-  const tab = '.sidebar a[href$="?view=' + view + '"]';
-  await p.read(() => page.locator(tab).click(), '/analytics');
+  async function openView() {
+    const first = events.length;
+    await p.read(() => page.locator('.sidebar a[href$="?view=reports"]').click(), '/analytics');
+    if (view === 'reports') return first;
+    await page.locator('.rw-workbench[data-ready="true"]').waitFor();
+    const reviewTab = page.getByRole('tablist', { name: '统计分析视图', exact: true }).getByRole('tab', { name: '执行复盘', exact: true });
+    if (await reviewTab.getAttribute('aria-selected') === 'true') return first;
+    const targetStart = events.length;
+    await p.read(() => reviewTab.click(), '/analytics');
+    p.report.view_entries = (p.report.view_entries || []).concat({ view, transit: events.slice(first, targetStart) });
+    return targetStart;
+  }
+  await openView();
   if (view === 'reports') await p.read(() => page.getByRole('tab', { name: '报工记录', exact: true }).click(), '/analytics');
   const search = page.getByRole('searchbox', { name: '搜索批次或工序', exact: true });
   await search.fill('OP');
   for (const label of ['计划完工起日', '计划完工止日']) await page.getByLabel(label, { exact: true }).fill('2026-09-09');
   let result = await p.read(() => page.getByRole('button', { name: '查询范围', exact: true }).click(), '/analytics');
-  await p.read(() => p.choose('每页数量', '10'), '/analytics');
+  await p.read(() => p.choose('每页条数', '10'), '/analytics');
   result = await p.read(() => page.getByRole('button', { name: '下一页', exact: true }).click(), '/analytics');
   assert.equal(result.data.page.number, 2); assert(result.data.page.total > 10);
   const operationRef = result.data.rows[0].operation_ref;
@@ -66,7 +77,8 @@ async function exercise(p, view) {
     assert.equal(Object.prototype.hasOwnProperty.call(context.table, 'snapshot_ref'), false);
     assert.equal(context.table.page, 2); assert.equal(context.selected, operationRef);
     const text = await page.locator('.rw-asof').innerText();
-    assert(text.includes(final.payload.meta.as_of.replace('T', ' ')));
+    const displayedAsOf = await page.evaluate(value => window.WorkbenchFormat.dateTime(value), final.payload.meta.as_of);
+    assert.equal(text, '数据截至 ' + displayedAsOf);
     p.report.reentries = (p.report.reentries || []).concat({ label, reads, read_view: context });
     await p.shot(label);
     return final.payload;
@@ -74,8 +86,7 @@ async function exercise(p, view) {
 
   await p.step(['WBP-SCOPE-005', 'WBP-REPORT-010'], view + '-same-pid-sidebar-return-restores-page-two-original-detail', async () => {
     await p.read(() => page.locator('.sidebar a[href$="?view=field"]').click(), '/execution/tasks');
-    const start = events.length;
-    await page.locator(tab).click(); result = await assertRestored('same-pid-return', start);
+    const start = await openView(); result = await assertRestored('same-pid-return', start);
   });
   await p.step(['WBP-SCOPE-005'], view + '-legacy-history-F5-ignores-both-old-token-locations', async () => {
     const current = await page.evaluate(() => history.state.workbench.context);
@@ -105,12 +116,12 @@ async function exercise(p, view) {
     const downloadError = await p.read(() => page.getByRole('button', { name: '导出范围', exact: true }).click(), '/analytics/export', 409);
     assert.equal(downloadError.error.code, 'snapshot_stale');
     assert.equal(events.length, first, 'Export failure must not refresh the list automatically');
-    await page.getByRole('button', { name: '关闭工序详情', exact: true }).click();
+    await page.locator('.rw-detail').getByRole('button', { name: /^关闭/ }).click();
     const detailError = await p.read(() => page.locator('.rw-primary-table').getByRole('button', { name: /^查看工序 / }).first().click(), '/analytics/operations/' + operationRef, 409);
     assert.equal(detailError.error.code, 'snapshot_stale');
     await page.locator('.rw-detail').getByRole('alert').waitFor();
-    await page.getByRole('button', { name: '关闭工序详情', exact: true }).click();
-    const pageError = await p.read(() => page.locator('#report-topic-panel > .rw-pagination').getByRole('button', { name: '下一页', exact: true }).click(), '/analytics', 409);
+    await page.locator('.rw-detail').getByRole('button', { name: /^关闭/ }).click();
+    const pageError = await p.read(() => page.locator('#report-topic-panel .rw-list-pane > .wb-pager').getByRole('button', { name: '下一页', exact: true }).click(), '/analytics', 409);
     assert.equal(pageError.error.code, 'snapshot_stale'); await page.getByRole('button', { name: '重新读取', exact: true }).waitFor();
     const failed = events.slice(first);
     assert.equal(failed.length, 2); assert(failed.every(event => event.status === 409));
@@ -119,7 +130,7 @@ async function exercise(p, view) {
     p.report.live_stale = { export: downloadError, reads: failed };
     const recovery = events.length;
     await page.getByRole('button', { name: '重新读取', exact: true }).click();
-    await page.waitForFunction(() => { const node = document.querySelector('#report-topic-panel > .rw-pagination'); return node && node.textContent.includes('第 3 /'); });
+    await page.waitForFunction(() => { const node = document.querySelector('#report-topic-panel .rw-list-pane > .wb-pager'); return node && node.textContent.includes('第 3 /'); });
     const recovered = events.slice(recovery).filter(event => new URL(event.url).pathname.endsWith('/analytics'));
     assert.equal(recovered.length, 2); assert.equal(recovered[0].payload.data.page.number, 1); assert.equal(recovered[1].payload.data.page.number, 3);
     assert.equal(new URL(recovered[0].url).searchParams.has('snapshot_ref'), false);

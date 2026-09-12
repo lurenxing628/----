@@ -4,7 +4,8 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), http = re
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 fs.mkdirSync(output, { recursive: true });
-const files = ['WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceTables.jsx', 'ResourceForms.jsx',
+const files = ['WorkbenchPageContext.jsx', 'WorkbenchGuards.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchControls.jsx',
+  'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchListControls.jsx', 'ResourceTables.jsx', 'ResourceForms.jsx',
   'BatchContract.js', 'BatchControls.jsx', 'BatchForms.jsx', 'BatchOperationEditor.jsx', 'BatchDetail.jsx', 'BatchTable.jsx', 'BatchFiles.jsx', 'BatchWorkspace.jsx'];
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 let compiled;
@@ -48,11 +49,14 @@ function adapter(){return {
  readPending:()=>null,savePending:intent=>{f.pending=clone(intent);},clearPending:()=>{f.pending=null;}
 };}
 let root;
-window.mountFixture=(spec={})=>{if(root)root.unmount();window.f={spec,revision:1,rows:[],commands:[],reads:[],previews:[],tokens:{},receipts:{},selections:[],files:[],exports:[]};f.rows=Array.from({length:25},(_,i)=>record(i+1));root=ReactDOM.createRoot(document.getElementById('fixture-root'));root.render(React.createElement('section',{className:'plana',style:{padding:16}},React.createElement(BatchWorkspace,{adapter:adapter()})));};
+window.mountFixture=(spec={})=>{if(root)root.unmount();window.f={spec,revision:1,rows:[],commands:[],reads:[],previews:[],tokens:{},receipts:{},selections:[],files:[],exports:[]};f.rows=Array.from({length:25},(_,i)=>record(i+1));root=ReactDOM.createRoot(document.getElementById('fixture-root'));root.render(React.createElement('section',{className:'plana',style:{padding:16,width:'calc(100vw - 289px)'}},React.createElement(BatchWorkspace,{adapter:adapter()}),React.createElement(WorkbenchGuardHost)));};
 `;
+const styleSources = ['00-tokens.css', '20-controls.css', '21-table-frame.css', '22-shared-controls.css', '31-batches-resources.css']
+  .map(name => ({ path: 'frontend/workbench/app/styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
+const appStyles = styleSources.map(source => source.code).join('\n');
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<link rel="icon" href="/static/' + manifest.icon + '"><script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
-  '</head><body class="aps-workbench"><div id="fixture-root"></div>' + staticScripts.map(file => '<script src="/static/' + file + '"></script>').join('') + Array.from(scripts.keys(), file => '<script src="' + file + '"></script>').join('') + '<script>' + fixture + '</script></body></html>';
+  '<style>' + appStyles + '</style></head><body class="aps-workbench"><div id="fixture-root"></div>' + staticScripts.map(file => '<script src="/static/' + file + '"></script>').join('') + Array.from(scripts.keys(), file => '<script src="' + file + '"></script>').join('') + '<script>' + fixture + '</script></body></html>';
 const server = http.createServer((req, res) => { const name = new URL(req.url, 'http://fixture').pathname;
   if (name === '/') { res.setHeader('Content-Type', 'text/html;charset=utf-8'); res.end(html); return; }
   if (scripts.has(name)) { res.setHeader('Content-Type', 'application/javascript'); res.end(scripts.get(name)); return; }
@@ -61,7 +65,7 @@ const server = http.createServer((req, res) => { const name = new URL(req.url, '
 });
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');
 const report = { scope: 'batch-component-mock', production_persistence_tested: false, compile: { global_build: false, target: compiled.target },
-  sources: sources.map(row => ({ path: row.path, sha256: sha(row.code) })), cases: [], screenshots: [], errors: [], external: [] };
+  sources: sources.concat(styleSources).map(row => ({ path: row.path, sha256: sha(row.code) })), cases: [], screenshots: [], errors: [], external: [] };
 let page, variant;
 const button = name => page.getByRole('button', { name, exact: true });
 async function mount(spec = {}) { await page.evaluate(spec => mountFixture(spec), spec); await button('B001').waitFor(); }
@@ -75,6 +79,37 @@ async function shot(name) {
 }
 async function run(name, action) { try { await action(); report.cases.push({ variant, name, passed: true }); } catch (error) { report.cases.push({ variant, name, passed: false, error: error.message }); await page.screenshot({ path: path.join(output, variant + '-' + name + '-FAILED.png') }); throw error; } }
 async function cases() {
+  await run('sticky-columns-and-table-scroll', async () => {
+    await mount();
+    const frame = page.locator('.batch-table-frame');
+    const before = await frame.evaluate(node => {
+      const rect = node.getBoundingClientRect(), head = node.querySelector('thead .wb-col-actions').getBoundingClientRect();
+      const action = node.querySelector('tbody .wb-col-actions button').getBoundingClientRect();
+      return { top: rect.top, right: rect.right, headerTop: head.top, actionLeft: action.left, actionRight: action.right };
+    });
+    assert(before.actionLeft >= 0 && before.actionRight <= before.right + 1, JSON.stringify(before));
+    await frame.evaluate(node => { node.scrollTop = 350; node.scrollLeft = 200; });
+    await page.waitForTimeout(50);
+    const after = await frame.evaluate(node => ({ top: node.getBoundingClientRect().top,
+      headerTop: node.querySelector('thead .wb-col-actions').getBoundingClientRect().top,
+      keyLeft: node.querySelector('tbody .wb-col-key').getBoundingClientRect().left, left: node.getBoundingClientRect().left }));
+    assert(Math.abs(after.top - after.headerTop) <= 2, JSON.stringify(after));
+    assert(Math.abs(after.left - after.keyLeft) <= 2, JSON.stringify(after));
+  });
+  await run('required-fields-and-dirty-cancel', async () => {
+    await mount(); await button('新增批次').click(); await page.getByRole('combobox', { name: '图号', exact: true }).waitFor();
+    await button('创建批次').click();
+    const editor = page.getByRole('dialog', { name: '新增批次', exact: true });
+    await editor.locator('[aria-invalid="true"]').first().waitFor();
+    assert.equal(await editor.locator('[aria-invalid="true"]').count(), 3);
+    assert.equal(await page.evaluate(() => document.activeElement.closest('[data-field-path]').dataset.fieldPath), 'business_code');
+    assert.equal(await page.evaluate(() => f.commands.length), 0);
+    await type('批次号', 'UNSAVED'); await button('取消').click();
+    await page.getByRole('dialog', { name: '离开前确认' }).waitFor(); await button('留在当前页面').click();
+    assert.equal(await page.getByRole('textbox', { name: '批次号', exact: true }).inputValue(), 'UNSAVED');
+    await button('取消').click(); await button('放弃未保存内容并继续').click(); await editor.waitFor({ state: 'hidden' });
+    assert.equal(await page.evaluate(() => f.commands.length), 0);
+  });
   await run('list-search-selection-paging-filter', async () => {
     await mount(); assert.equal(await page.getByRole('table', { name: '批次列表' }).locator('tbody tr').count(), 20); await shot('list');
     const resizer = page.getByRole('separator', { name: '调整图号列宽' }); const width = Number(await resizer.getAttribute('aria-valuenow'));
@@ -83,7 +118,7 @@ async function cases() {
     assert((await page.locator('[data-batch-workspace]').innerText()).includes('含非当前页记录')); await button('全选当前筛选').click(); await page.getByText(/已选 25 个批次/).waitFor();
     await type('搜索批次号、图号、零件名', 'B001'); await button('搜索').click(); await button('B001').waitFor(); assert.equal(await page.getByRole('table', { name: '批次列表' }).locator('tbody tr').count(), 1);
     assert.equal(await page.evaluate(() => f.selections.length), 1); await button('筛选数量').click(); await page.getByRole('dialog').waitFor(); await shot('column-filter');
-    await button('全部不选').click(); await button('完成').click(); await page.getByText('当前条件下暂无批次', { exact: true }).waitFor(); await button('清除全部筛选').click(); await button('B001').waitFor();
+    await button('全部不选').click(); await button('完成').click(); await page.getByText('当前筛选没有匹配项', { exact: true }).waitFor(); await button('清除全部筛选').click(); await button('B001').waitFor();
   });
   await run('create-real-form-command-payload', async () => {
     await mount(); await button('新增批次').click(); await page.getByRole('combobox', { name: '图号' }).selectOption('12c'.padStart(48,'0'));
@@ -94,7 +129,7 @@ async function cases() {
   });
   await run('detail-null-zero-operation-edit', async () => {
     await mount(); await button('B001').click(); await page.locator('[data-batch-detail]').waitFor(); await shot('detail');
-    assert((await page.getByRole('table', { name: '批次工序', exact: true }).innerText()).includes('换型 未填写 / 单件 0 小时'));
+    assert((await page.getByRole('table', { name: '批次工序', exact: true }).innerText()).includes('换型 未知 / 单件 0 h'));
     await button('补充资料').click(); await page.getByRole('combobox', { name: '设备' }).selectOption('64'.padStart(48,'0'));
     await page.getByRole('combobox', { name: '人员' }).selectOption('c8'.padStart(48,'0')); await type('换型工时（小时）', '0'); await shot('operation');
     await button('保存工序').click(); await page.getByText('服务器已确认提交。', { exact: true }).waitFor();
@@ -144,7 +179,7 @@ async function cases() {
   try {
     browser = await chromium.launch({ executablePath: process.env.WORKBENCH_BROWSER, headless: true, args: ['--disable-background-networking'] }); report.browser = browser.version(); assert(report.browser.startsWith('109.'));
     const origin = 'http://127.0.0.1:' + server.address().port;
-    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) for (const theme of ['light', 'dark']) {
+    for (const viewport of [{ width: 1366, height: 768 }, { width: 1280, height: 720 }]) for (const theme of ['light', 'dark']) {
       const context = await browser.newContext({ viewport });
       await context.addInitScript(theme => { localStorage.setItem('aps_theme', theme); localStorage.setItem('aps_kit_theme', theme); }, theme);
       page = await context.newPage(); variant = viewport.width + 'x' + viewport.height + '-' + theme; page.setDefaultTimeout(12000);

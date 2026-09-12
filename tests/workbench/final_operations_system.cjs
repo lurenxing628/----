@@ -14,9 +14,14 @@ async function system(h) {
     assert((await page.locator('.sm-metrics').innerText()).includes('未校验')); assert.equal(await page.locator('.sm-check-table tbody tr').count(), 8);
   });
   await mark('WBP-SYS-003.rerun', () => request('/system/overview', () => page.getByRole('button', { name: '重新检查', exact: true }).click()));
-  const diagnostic = await mark('WBP-SYS-004.download-json', () => download('导出当前诊断 JSON', 'page-diagnostic.json'));
+  const diagnostic = await mark('WBP-SYS-004.download-json', () => download('导出诊断文件', 'page-diagnostic.json'));
   const dto = JSON.parse(fs.readFileSync(diagnostic)); assert.equal(dto.system.meta.source, 'production'); assert.equal(dto.page_check.checks.length, 8);
-  await mark(['WBP-SYS-004.verify-json-payload', 'WBP-SYS-003.timestamp', ...['runtime', 'scripts', 'ui', 'icons', 'styles', 'model', 'download', 'theme'].map(s => 'WBP-SYS-003.check-' + s)], async () => { assert(dto.page_check.checkedAt); assert(dto.page_check.checks.every(row => row.status === 'available')); });
+  await mark(['WBP-SYS-004.verify-json-payload', 'WBP-SYS-003.timestamp', ...['runtime', 'scripts', 'ui', 'icons', 'styles', 'model', 'download', 'theme'].map(s => 'WBP-SYS-003.check-' + s)], async () => {
+    assert(dto.page_check.checkedAt); assert(dto.page_check.checks.every(row => row.status === 'available'));
+    const checks = page.locator('.sm-environment'); assert.equal(await checks.getAttribute('open'), null);
+    await checks.locator('summary').click(); assert((await checks.innerText()).includes('检查时间'));
+    assert.equal(await checks.locator('tbody tr .sm-status[data-state=available]').count(), 8);
+  });
   await shot('system-overview');
   for (const [title, tab, name] of [['查看备份与恢复', 'backups', '备份恢复'], ['查看运行日志', 'logs', '运行日志'], ['查看自动维护策略', 'config', '配置']]) {
     await mark('WBP-SYS-002.row-' + tab, async () => { await page.getByRole('button', { name: title, exact: true }).click(); assert.equal(await page.getByRole('tab', { name, exact: true }).getAttribute('aria-selected'), 'true'); });

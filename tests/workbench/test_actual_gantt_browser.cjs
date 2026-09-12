@@ -2,9 +2,9 @@
 const fs = require('node:fs'), path = require('node:path'), http = require('node:http'), crypto = require('node:crypto'), assert = require('node:assert/strict');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], ready = JSON.parse(fs.readFileSync(path.join(output, 'ready.json')));
-const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js',
-  'ActualGanttModel.js', 'ActualGanttContract.js', 'ActualGanttAPI.js', 'ActualGanttControls.jsx', 'ActualGanttCanvas.jsx', 'ActualGanttRows.jsx', 'ActualGanttWorkspace.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx'];
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js',
+  'ActualGanttModel.js', 'ActualGanttWindow.js', 'ActualGanttContract.js', 'ActualGanttAPI.js', 'ActualGanttControls.jsx', 'ActualGanttCanvas.jsx', 'ActualGanttRows.jsx', 'ActualGanttWorkspace.jsx',
+  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx', 'WorkbenchListControls.jsx'];
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const report = { errors: [], external: [], screenshots: [], cases: [], real_api_reads: 0, compile_global_build: false,
   win7_hardware_tested: false, production_database_tested: false, dense_data_source: 'explicit_memory_fixture', sources: [] };
@@ -28,7 +28,7 @@ function server() {
       const response=await fetch('/api/workbench/v1/actual-gantt?plan_ref=${ready.plan_ref}');
       window.liveResponse=await response.json();
       let adapter;
-      if(spec.dense || spec.unavailable || spec.malformed || spec.remaining) {
+      if(spec.dense || spec.unavailable || spec.malformed || spec.remaining || spec.narrow) {
         const dto=JSON.parse(JSON.stringify(window.liveResponse));
         if(spec.dense) {
           const template=dto.data.items[0], fixed=n=>n.toString(16).padStart(48,'0');
@@ -42,10 +42,23 @@ function server() {
           dto.data.critical_chain={state:'unavailable',reason_code:'modified_component_fixture',reason:'合成密集组件数据没有真实引擎关键链凭据。',task_refs:[],edges:[]};
         }
         if(spec.remaining)dto.data.items[0].execution.remaining_plan={start:'2026-09-09T01:00:00',end:'2026-09-09T02:00:00',machine_ref:dto.data.items[0].task.machine_ref,operator_ref:dto.data.items[0].task.operator_ref};
+        if(spec.narrow){const report=dto.data.items[0].execution.reports[0]; report.actual_end=new Date(Date.parse(report.actual_start+'Z')+1000).toISOString().slice(0,19);}
         if(spec.unavailable){dto.data.availability={state:'unavailable',reason_code:'execution_ledger_unavailable',reason:'新报工执行投影尚未安装，实际与剩余状态不可核实。'};dto.data.report_count=null;dto.data.items.forEach(i=>i.execution=null);}
         if(spec.malformed)dto.data.items[0].execution.comparison_task_ref='f'.repeat(48);
         window.actualProbeData=dto.data;
         adapter={load:async()=>dto,export:async()=>{throw Error('Synthetic fixture cannot export production CSV');}};
+      }
+      if(spec.windowTransition) {
+        adapter={load:async scope=>{
+          await new Promise(resolve=>setTimeout(resolve,20));
+          const dto=JSON.parse(JSON.stringify(liveResponse)), shifted=!!scope.plan_finish_date_from;
+          const start=shifted?'2026-09-10T12:00:00':'2026-09-08T22:00:00',end=shifted?'2026-09-10T13:00:00':'2026-09-09T06:00:00';
+          dto.data.items[0].task.start=start;dto.data.items[0].task.end=end;
+          dto.data.plan_span={...dto.data.plan_span,start,end};
+          for(const key of Object.keys(dto.data.scope))if(key!=='kind')dto.data.scope[key]=key==='source'?'production':key==='batch_ids'?(scope[key]||[]):scope[key]==null?null:scope[key];
+          dto.data.critical_chain={state:'unavailable',reason_code:'modified_component_fixture',reason:'显示视窗切换夹具没有引擎链证据。',task_refs:[],edges:[]};
+          window.actualProbeData=dto.data;return dto;
+        }};
       }
       function Harness(){const[theme,setTheme]=React.useState(spec.theme||'light');React.useLayoutEffect(()=>{document.documentElement.dataset.theme=theme},[theme]);
         return React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),
@@ -54,8 +67,13 @@ function server() {
       mounted=ReactDOM.createRoot(document.getElementById('fixture-root'));mounted.render(React.createElement(Harness));
     };`;
   assets.set('/fixture/mount.js', { bytes: harness, mime: 'application/javascript' });
+  const currentStyles = fs.readdirSync(path.join(root, 'frontend/workbench/app/styles')).filter(name => name.endsWith('.css')).sort().map(name => {
+    const stylePath = 'frontend/workbench/app/styles/' + name, styleBytes = fs.readFileSync(path.join(root, stylePath)), url = '/fixture/' + name;
+    report.sources.push({ path: stylePath, sha256: hash(styleBytes) }); assets.set(url, { bytes: styleBytes, mime: 'text/css' });
+    return '<link rel="stylesheet" href="' + url + '">';
+  }).join('');
   const html = '<!doctype html><html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-    + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + '</head><body class="aps-workbench"><div id="fixture-root"></div>'
+    + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + currentStyles + '</head><body class="aps-workbench"><div id="fixture-root"></div>'
     + scripts.concat(['/fixture/mount.js']).map(url => '<script src="' + url + '"></script>').join('') + '</body></html>';
   return http.createServer((req, res) => {
     if (req.url.startsWith('/api/workbench/')) {
@@ -221,6 +239,42 @@ async function main() {
       await page.setViewportSize({ width: 390, height: 844 }); await page.evaluate(() => mountActual({ key: 'mobile' })); await wait(page);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
       await shot(page, '390-light'); await page.setViewportSize({ width: 1392, height: 900 });
+    });
+    await action('default-plan-window-and-four-pixel-hit', async () => {
+      await page.evaluate(() => mountActual({ narrow: true, key: 'narrow' })); await wait(page);
+      const windowGeometry = await page.evaluate(() => {
+        const board = document.querySelector('[data-actual-scroll]'), frame = board.getBoundingClientRect(), baseline = document.querySelector('[data-actual-mark=plan]').getBoundingClientRect();
+        const label = parseFloat(board.style.getPropertyValue('--fg-label'));
+        return { first: baseline.left, last: baseline.right, visibleStart: frame.left + label, visibleEnd: frame.right, scrollWidth: board.scrollWidth, viewportWidth: board.clientWidth };
+      });
+      assert(windowGeometry.first >= windowGeometry.visibleStart - 1 && windowGeometry.last <= windowGeometry.visibleEnd + 1, 'Default window fully contains the original plan');
+      assert(windowGeometry.scrollWidth > windowGeometry.viewportWidth, 'Default display zooms into plan instead of fitting distant as_of');
+      const mark = page.locator('[data-duration-ms="1000"]').first(); await mark.waitFor();
+      const geometry = await mark.evaluate(node => ({ hit: node.getBoundingClientRect().width, face: node.querySelector('.fg-mark-face').getBoundingClientRect().width, duration: Number(node.dataset.durationWidth) }));
+      assert.equal(geometry.hit, 4); assert(geometry.duration > 0 && geometry.duration < 1);
+      assert(Math.abs(geometry.face - geometry.duration) < .02, 'Painted duration never grows to the hitbox');
+      await mark.click({ position: { x: 3, y: 20 } });
+      assert.equal(await mark.getAttribute('aria-pressed'), 'true');
+      await page.getByRole('button', { name: '适应全部', exact: true }).click();
+      assert.equal(await page.locator('[data-actual-scroll]').evaluate(node => node.scrollLeft), 0);
+      assert.equal(await page.locator('[data-actual-scroll]').evaluate(node => Math.round(node.scrollWidth - node.clientWidth)), 0, 'Fit includes the complete model axis');
+      report.narrow_hit_geometry = geometry; report.default_window_geometry = windowGeometry;
+    });
+    await action('applied-scope-reinitializes-from-new-response', async () => {
+      await page.evaluate(() => mountActual({ windowTransition: true, key: 'scope-transition' })); await wait(page);
+      const originalWidth = await page.locator('.fg-ticks').evaluate(node => node.getBoundingClientRect().width);
+      await page.getByLabel('计划完工开始日', { exact: true }).fill('2026-09-10');
+      await page.getByLabel('计划完工结束日', { exact: true }).fill('2026-09-10');
+      await page.getByRole('button', { name: '应用范围', exact: true }).click();
+      await page.waitForFunction(() => window.actualProbeData.plan_span.start === '2026-09-10T12:00:00' && !!document.querySelector('[data-actual-mark=plan]'));
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const geometry = await page.evaluate(() => {
+        const board=document.querySelector('[data-actual-scroll]'),frame=board.getBoundingClientRect(),bar=document.querySelector('[data-actual-mark=plan]').getBoundingClientRect();
+        return {start:bar.left,end:bar.right,visibleStart:frame.left+parseFloat(board.style.getPropertyValue('--fg-label')),visibleEnd:frame.right,width:document.querySelector('.fg-ticks').getBoundingClientRect().width};
+      });
+      assert(geometry.width > originalWidth * 5, 'One-hour new scope gets its own zoom instead of retaining old eight-hour scope');
+      assert(geometry.start >= geometry.visibleStart - 1 && geometry.end <= geometry.visibleEnd + 1, 'The new plan range is fully visible');
+      report.scope_transition_geometry = {originalWidth,...geometry};
     });
     await action('10000-task-virtualization-canvas-and-user-scroll', async () => {
       await page.evaluate(() => mountActual({ dense: true, key: 'dense' })); await wait(page);

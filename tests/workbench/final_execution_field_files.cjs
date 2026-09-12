@@ -26,7 +26,11 @@ async function files(p) {
     const result = await p.read(() => page.getByRole('button', { name: '预检文件', exact: true }).click(), '/files/preview');
     assert.equal(result.data.can_confirm, false); assert.equal(result.data.summary.rejected, 10);
     assert.equal(result.data.summary.changed, 0);
-    assert(await page.getByRole('button', { name: /^确认导入：文件存在问题/ }).isDisabled());
+    const confirm = page.getByRole('button', { name: '确认导入', exact: true });
+    assert(await confirm.isDisabled());
+    const reason = await confirm.getAttribute('aria-describedby');
+    assert(reason);
+    assert.equal(await page.locator('[id="' + reason + '"]').innerText(), '文件存在问题，未写入任何报工。');
     const lines = await page.getByRole('table', { name: '文件逐行预检', exact: true }).locator('tbody tr td:first-child').allTextContents();
     assert.deepEqual(lines.map(Number), Array.from({ length: 10 }, (_, index) => index + 2));
     await p.download(() => page.getByRole('button', { name: '下载问题清单', exact: true }).click(), 'rejected-rows');
