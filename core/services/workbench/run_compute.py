@@ -1,6 +1,7 @@
 """In-memory candidate computation. No worker admission, version allocation or publish."""
 
 from functools import partial
+from typing import Callable, Optional
 
 from core.models.workbench_run_compute import CandidateRunComputation
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
@@ -20,7 +21,7 @@ from .zero_duration import PointEventError, candidate_point_validator
 
 
 def compute_candidate_run(conn, normalized_input, execution_projections, *, version_override=None,
-                          on_progress=None) -> CandidateRunComputation:
+                          on_progress: Optional[Callable[[int, int], None]] = None) -> CandidateRunComputation:
     """Compute actual candidate rows under one read snapshot; worker owns run lock.
 
     ``on_progress(done, total)`` is only a progress sink for the worker's status ledger; it never
@@ -30,7 +31,10 @@ def compute_candidate_run(conn, normalized_input, execution_projections, *, vers
         return _prepare_and_compute_in_snapshot(conn, normalized_input, execution_projections, version_override, on_progress)
 
 
-def _prepare_and_compute_in_snapshot(conn, normalized_input, execution_projections, version_override, on_progress=None):
+def _prepare_and_compute_in_snapshot(
+    conn, normalized_input, execution_projections, version_override,
+    on_progress: Optional[Callable[[int, int], None]] = None,
+):
     # No prepared-input handoff or caller callback occurs here. Preparation's
     # complete fingerprint and computation share the enclosing read transaction.
     prepared = prepare_candidate_run_input(conn, normalized_input, execution_projections)
@@ -85,7 +89,7 @@ def compute_prepared_candidate_run(conn, schedule_input: CandidateRunInput, *, v
         return _compute_in_read_snapshot(conn, schedule_input, version)
 
 
-def _compute_in_read_snapshot(conn, schedule_input, version, on_progress=None):
+def _compute_in_read_snapshot(conn, schedule_input, version, on_progress: Optional[Callable[[int, int], None]] = None):
     """Private continuation after preparation or full freshness validation."""
     if not conn.in_transaction or conn.execute("PRAGMA query_only").fetchone()[0] != 1:
         fail("candidate_read_snapshot_lost", "Candidate computation requires its active read-only snapshot.")

@@ -89,6 +89,23 @@ def test_tiers_whose_key_order_differs_each_run_their_own_search():
     ]
 
 
+def test_reuse_without_prepared_inputs_exposes_contract_error_without_searching_again(monkeypatch):
+    calls = []
+    original_prepared = runner.CandidateInputLedger.prepared
+
+    def missing_second_graph_inputs(ledger, spec):
+        return None if spec.sequence == 2 else original_prepared(ledger, spec)
+
+    monkeypatch.setattr(runner.CandidateInputLedger, "prepared", missing_second_graph_inputs)
+    with pytest.raises(RuntimeError, match="Candidate reuse requires prepared optimizer inputs"):
+        run_candidate_comparison(
+            schedule_input=_schedule_input(), prepare_graph_fn=_same_order_prepare,
+            optimize_schedule_fn=_counting_optimize(calls), weight_count=5, selection_policy="score_only",
+            clock=_StepClock([0] * 200),
+        )
+    assert calls == [0, 250]
+
+
 def test_a_failed_sibling_is_not_reused_and_the_next_identical_tier_searches():
     calls = []
     outcome = run_candidate_comparison(

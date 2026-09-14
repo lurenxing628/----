@@ -309,17 +309,20 @@ def _score_candidates(
                 graph_state,
                 attempt_sink=attempt_sink,
             )
-        def cached(batch_id=batch_id, op=op, score=score):
-            return cache.resolve(op, batches[batch_id], batch_id, graph_state, score)
+        fallback = None
+        if cache is not None:
+            def cached(batch_id=batch_id, op=op, score=score, active_cache=cache):
+                return active_cache.resolve(op, batches[batch_id], batch_id, graph_state, score)
+            fallback = cached
         if reuse is not None:
             key = reuse.score(score, dict(
                 op=op, batch=batches[batch_id], batch_id=batch_id, batch_order=batch_order,
                 graph_state=graph_state, end_dt_exclusive=end_dt_exclusive,
                 machine_downtimes=machine_downtimes, dispatch_rule=dispatch_rule,
                 strict_mode=strict_mode, avg_proc_hours=avg_proc_hours, total_hours_by_op_id=total_hours_by_op_id,
-            ), fallback=cached if cache is not None else None)
+            ), fallback=fallback)
         else:
-            key = cached() if cache is not None else score()
+            key = fallback() if fallback is not None else score()
         scored.append((key, batch_id, op))
     return scored
 

@@ -2,7 +2,7 @@
 
 import re
 from datetime import datetime
-from typing import TypedDict
+from typing import Dict, Optional, TypedDict, overload
 
 from core.models.workbench_command import WorkbenchCommandRejected
 
@@ -29,14 +29,26 @@ LOG_LEVEL_LABELS = {"INFO": "信息", "WARNING": "警告", "ERROR": "错误",
 _LOG_LEVEL_ALIASES = {"WARN": "WARNING"}
 
 
-def normalize_log_level(value):
+@overload
+def normalize_log_level(value: str) -> str: ...
+
+
+@overload
+def normalize_log_level(value: None) -> None: ...
+
+
+def normalize_log_level(value: Optional[str]) -> Optional[str]:
     """把同义的日志级别写法归一，供筛选匹配和返回值共用。"""
+    if value is None:
+        return None
     return _LOG_LEVEL_ALIASES.get(value, value)
 
 
-def log_level_label(value):
+def log_level_label(value: Optional[str]) -> str:
     """导出与展示用的中文级别名。"""
     level = normalize_log_level(value)
+    if level is None:
+        return "未读取"
     return LOG_LEVEL_LABELS.get(level, level or "未读取")
 
 
@@ -102,9 +114,12 @@ def _query_pagination(value):
 def query_input(value, kind) -> SystemQuery:
     allowed = {"query", "type", "status", "level", "file", "start", "end", "page", "page_size", "snapshot_ref"}
     object_fields(value, (), allowed)
-    result = {key: value.get(key, "") for key in allowed - {"page", "page_size", "snapshot_ref"}}
-    if any(not isinstance(item, str) or len(item) > 200 for item in result.values()):
-        raise WorkbenchCommandRejected("invalid_input", "筛选条件最多 200 个字。", 400)
+    result: Dict[str, str] = {}
+    for key in allowed - {"page", "page_size", "snapshot_ref"}:
+        item = value.get(key, "")
+        if not isinstance(item, str) or len(item) > 200:
+            raise WorkbenchCommandRejected("invalid_input", "筛选条件最多 200 个字。", 400)
+        result[key] = item
     _query_dates(result)
     result["level"] = normalize_log_level(result["level"])
     choices = {"type": ("", "runtime", "operation") if kind == "logs" else

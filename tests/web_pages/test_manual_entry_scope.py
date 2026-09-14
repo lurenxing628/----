@@ -211,6 +211,17 @@ def test_manual_entry_scope_contract(monkeypatch) -> None:
     main(monkeypatch)
 
 
+def test_manual_quote_rendering_stops_at_the_next_block_and_preserves_inline_text() -> None:
+    from web.routes.workbench.legacy_presentation import render_manual_markdown
+
+    rendered = render_manual_markdown("> **先检查**\n  > `参数` <原值>\n普通段落\n\n> 第二段引文")
+    assert rendered == (
+        "<blockquote><p><strong>先检查</strong><code>参数</code> &lt;原值&gt;</p></blockquote>"
+        "<p>普通段落</p><blockquote><p>第二段引文</p></blockquote>"
+    )
+    assert render_manual_markdown(">\n正文") == "<blockquote><p></p></blockquote><p>正文</p>"
+
+
 if __name__ == "__main__":
     import pytest
 

@@ -211,8 +211,11 @@ def _run_candidate_plans(
             ledger.prepare_graph_specs(specs[index:])
         twin = ledger.completed_twin(spec)
         if twin is not None:
+            prepared = ledger.prepared(spec)
+            if prepared is None:
+                raise RuntimeError("Candidate reuse requires prepared optimizer inputs.")
             plan = reused_candidate_plan(
-                spec, twin, prepared=ledger.prepared(spec), baseline_results=baseline_results,
+                spec, twin, prepared=prepared, baseline_results=baseline_results,
                 elapsed_seconds=now() - candidate_started,
             )
         else:

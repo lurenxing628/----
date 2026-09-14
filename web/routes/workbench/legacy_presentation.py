@@ -130,8 +130,11 @@ def _table_block(lines, index):
 
 def _quote_html(lines, index):
     quoted = []
-    while index < len(lines) and _QUOTE.match(lines[index]):
-        quoted.append(_QUOTE.match(lines[index]).group(1).strip())
+    while index < len(lines):
+        match = _QUOTE.match(lines[index])
+        if match is None:
+            break
+        quoted.append(match.group(1).strip())
         index += 1
     return "<blockquote><p>" + _inline("".join(quoted)) + "</p></blockquote>", index
 

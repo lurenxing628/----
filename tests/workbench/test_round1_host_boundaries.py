@@ -10,7 +10,7 @@ import pytest
 
 from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_system import query_input
+from core.models.workbench_system import log_level_label, normalize_log_level, query_input
 from core.services.system import backup_restore
 from tests.workbench.system_restore_host_support import BASE
 from tests.workbench.system_restore_host_support import restore_host as restore_host
@@ -94,10 +94,28 @@ def test_query_defaults_and_explicit_pagination_remain_exact(kind):
     assert query_input({}, kind)["page_size"] == 10
 
 
+@pytest.mark.parametrize("value,normalized,label", [
+    (None, None, "未读取"), ("", "", "未读取"), ("WARN", "WARNING", "警告"),
+    ("WARNING", "WARNING", "警告"), ("INFO", "INFO", "信息"),
+    ("UNKNOWN", "UNKNOWN", "未知"), ("TRACE", "TRACE", "TRACE"),
+])
+def test_log_level_normalization_preserves_missing_and_unknown_values(value, normalized, label):
+    assert normalize_log_level(value) == normalized
+    assert log_level_label(value) == label
+
+
+@pytest.mark.parametrize("kind", ["logs", "backups"])
+def test_query_log_level_alias_keeps_string_result(kind):
+    assert query_input({"level": "WARN"}, kind)["level"] == "WARNING"
+    assert query_input({"level": "WARNING"}, kind)["level"] == "WARNING"
+
+
 @pytest.mark.parametrize("value,status", [({"page": 1}, 400), ({"page": "0"}, 400),
     ({"page_size": "20"}, 400), ({"start": "2023-02-29"}, 422),
     ({"start": "2024-03-01", "end": "2024-02-29"}, 422),
     ({"query": None}, 400), ({"query": "x" * 201}, 400), ({"type": "invented"}, 400),
+    ({"level": None}, 400), ({"level": 1}, 400), ({"level": []}, 400),
+    ({"level": "TRACE"}, 400), ({"level": "warning"}, 400),
     ({"extra": "field"}, 400)])
 def test_query_rejections_keep_original_status(value, status):
     with pytest.raises(WorkbenchCommandRejected) as caught:
