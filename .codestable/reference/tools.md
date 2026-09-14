@@ -125,3 +125,25 @@ python .codestable/tools/validate-yaml.py --dir {目录} --require doc_type --re
 - `--strict` 成功时无输出；漂移或台账格式错误会向 stderr 打印 `ERROR:` 并以退出码 `2` 失败。
 - `--strict --json` 当前用于生成 `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_scan_json.log`。
 - 2026-05-22 静默回退收口证据统一放在 `evidence/QualityGate/silent_fallback_inventory_acceptance/`，索引见 `.codestable/compound/2026-05-20-explore-current-silent-fallback-inventory.md`。
+
+## 4. run_workbench_opt_in_browser.py
+
+工作台 opt-in 浏览器验收通道。注册表分组 `workbench_browser_opt_in`（`tools/test_registry_groups_workbench.py`）里的真机测试各自靠 `ED_RUN_BROWSER=1` 这类开关才会执行，日常门禁与全量门禁只收集后跳过，没人真跑就会随界面改动悄悄腐烂（2026-09-14 发现物料分页器文本、零件工艺裁切检查自 09-13 界面重做起一直失败）。
+
+```bash
+# 列出通道内的测试与各自的开关
+.venv/bin/python scripts/run_workbench_opt_in_browser.py --list
+
+# 只跑路径里含 material 的两项（约 7 分钟）
+.venv/bin/python scripts/run_workbench_opt_in_browser.py --only material
+
+# 跑整条通道，并把报告与日志写到指定目录（默认写到临时目录并打印路径）
+.venv/bin/python scripts/run_workbench_opt_in_browser.py --report-dir evidence/opt-in-browser
+```
+
+关键口径：
+
+- 脚本从目标测试文件里解析 `os.environ.get("X") == "1"` 形式的开关并全部置为 `1`，同时补齐 `WORKBENCH_NODE` / `WORKBENCH_BROWSER` / `NODE_PATH`，并去掉 `FORCE_COLOR`、`COLORTERM`。
+- 退出码：`0` 全部执行且通过；`1` 有失败；`3` 有测试仍被跳过或没有任何通过项，跳过不算通过。
+- 报告 `opt-in-browser-<时间戳>.json` 记录目标、打开的开关、运行时路径、pytest 计数、跳过原因和日志路径。
+- 这是定向通道，不是全量门禁；工作台界面改动后和每周至少跑一次。
