@@ -142,10 +142,12 @@ def _candidate_rows(candidates, calls, schedule_input, config):
     records, call_index = [], 0
     for plan in candidates:
         completed = plan.status == "completed"
+        reused_from = plan.reused_from_candidate_key
+        executed = completed and reused_from is None
         empty_count = 0 if config["decoder_count_mode"] == "native" else None
-        call = calls[call_index] if completed else {"decode_count": empty_count, "optimizer_runtime_ms": 0.0}
-        call_index += int(completed)
-        records.append({"candidate_key": plan.candidate_key, "status": plan.status,
+        call = calls[call_index] if executed else {"decode_count": empty_count, "optimizer_runtime_ms": 0.0}
+        call_index += int(executed)
+        records.append({"candidate_key": plan.candidate_key, "status": plan.status, "reused_from": reused_from,
                         "score": list(plan.score) if completed else None, "runtime_ms": plan.elapsed_seconds * 1000,
                         "quality_vectors": schedule_payload(plan, schedule_input)["quality_vectors"] if completed else None,
                         **call})

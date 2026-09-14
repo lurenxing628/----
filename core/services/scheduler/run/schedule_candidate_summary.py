@@ -135,6 +135,10 @@ def candidate_public_summary(candidate: Any, *, roles: Optional[List[str]] = Non
     failure_reason = _public_failure_reason(getattr(candidate, "failure_reason", ""))
     if failure_reason:
         summary["failure_reason"] = failure_reason
+    # Public views name the sibling by label only; candidate keys stay internal.
+    reused_from_label = str(getattr(candidate, "reused_from_label", "") or "")
+    if reused_from_label:
+        summary["reused_from_label"] = reused_from_label
     return summary
 
 
@@ -147,6 +151,7 @@ def candidate_comparison_public_summary(candidate_comparison: Any) -> Dict[str, 
         "completed_candidate_count": int(getattr(candidate_comparison, "completed_count", 0) or 0),
         "failed_candidate_count": int(getattr(candidate_comparison, "failed_count", 0) or 0),
         "skipped_candidate_count": int(getattr(candidate_comparison, "skipped_count", 0) or 0),
+        "reused_candidate_count": int(getattr(candidate_comparison, "reused_count", 0) or 0),
         "time_budget_reached": bool(getattr(candidate_comparison, "time_budget_reached", False)),
         "run_time_budget_seconds": getattr(candidate_comparison, "run_time_budget_seconds", None),
         "skipped_candidate_labels": list(getattr(candidate_comparison, "skipped_candidate_labels", []) or []),

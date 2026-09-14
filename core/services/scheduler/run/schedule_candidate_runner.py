@@ -13,6 +13,7 @@ from .optimizer_search_budget import (
     SearchBudgetExhausted,
     allocate_candidate_budget,
 )
+from .schedule_candidate_dedup import CandidateInputLedger, reused_candidate_plan
 from .schedule_candidate_health import CandidateHealth
 from .schedule_candidate_runtime_helpers import (
     _candidate_cfg,
@@ -77,6 +78,10 @@ class CandidatePlan:
     objective: str = ""
     failure_reason: Optional[str] = None
     elapsed_seconds: float = 0.0
+    # Set when this plan is a completed sibling's plan under this candidate's identity: the two
+    # candidates had identical optimizer inputs, so no search of its own was spent on it.
+    reused_from_candidate_key: Optional[str] = None
+    reused_from_label: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -92,6 +97,7 @@ class CandidateComparisonOutcome:
     run_time_budget_seconds: Optional[float]
     skipped_candidate_labels: List[str]
     baseline_missing_or_failed: bool
+    reused_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -127,6 +133,7 @@ def run_candidate_comparison(
     graph_tardiness_tolerance_ratio: float = 0.10,
     strict_mode: bool = False,
     logger: Any = None,
+    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> CandidateComparisonOutcome:
     now = clock or time.monotonic
     optimize = optimize_schedule_fn or optimize_schedule
@@ -151,6 +158,7 @@ def run_candidate_comparison(
         logger=logger,
         now=now,
         deadline=deadline,
+        on_progress=on_progress,
     )
 
     selection = select_candidate_plan(
@@ -180,34 +188,54 @@ def _run_candidate_plans(
     logger: Any,
     now: Callable[[], float],
     deadline: float,
+    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> Tuple[List[CandidatePlan], bool]:
     candidates: List[CandidatePlan] = []
     baseline_results: List[Any] = []
     feedback = CandidateBudgetFeedback(str(base_cfg.objective))
+    ledger = CandidateInputLedger(schedule_input=schedule_input, base_cfg=base_cfg, prepare_graph_fn=prepare_graph_fn)
     time_budget_reached = False
+    # Progress counts finished candidate plans (computed, reused or skipped) out of the planned total, in loop order.
+    report = on_progress if callable(on_progress) else (lambda done, total: None)
     for index, spec in enumerate(specs):
         candidate_started = now()
         if candidate_started >= deadline:
             time_budget_reached = True
             candidates.append(_skipped_plan(spec, failure_reason="candidate_time_budget_reached"))
+            report(len(candidates), len(specs))
             continue
-        plan = _run_candidate_with_failure_capture(
-            spec,
-            schedule_input=schedule_input,
-            base_cfg=base_cfg,
-            optimize_schedule_fn=optimize_schedule_fn,
-            prepare_graph_fn=prepare_graph_fn,
-            strict_mode=strict_mode,
-            logger=logger,
-            baseline_results=baseline_results,
-            now=now,
-            search_budget=allocate_candidate_budget(
-                clock=now, started_at=candidate_started, deadline=deadline,
-                remaining_candidates=len(specs) - index, feedback=feedback,
-            ),
-        )
+        if spec.graph_enabled:
+            # Prepare every remaining graph plan inside the first graph plan's slice: the weight-independent
+            # core is shared and each projection is cheap, and knowing which tiers have identical optimizer
+            # inputs lets duplicates reuse a sibling while the budget is split among plans needing a search.
+            ledger.prepare_graph_specs(specs[index:])
+        twin = ledger.completed_twin(spec)
+        if twin is not None:
+            plan = reused_candidate_plan(
+                spec, twin, prepared=ledger.prepared(spec), baseline_results=baseline_results,
+                elapsed_seconds=now() - candidate_started,
+            )
+        else:
+            plan = _run_candidate_with_failure_capture(
+                spec,
+                schedule_input=schedule_input,
+                base_cfg=base_cfg,
+                optimize_schedule_fn=optimize_schedule_fn,
+                prepare_graph_fn=prepare_graph_fn,
+                strict_mode=strict_mode,
+                logger=logger,
+                baseline_results=baseline_results,
+                now=now,
+                prepared=ledger.prepared(spec),
+                search_budget=allocate_candidate_budget(
+                    clock=now, started_at=candidate_started, deadline=deadline,
+                    remaining_candidates=ledger.distinct_remaining(specs[index:]), feedback=feedback,
+                ),
+            )
+            ledger.observe(spec, plan, completed=plan.status == CANDIDATE_STATUS_COMPLETED)
+            feedback.observe(plan)
         candidates.append(plan)
-        feedback.observe(plan)
+        report(len(candidates), len(specs))
         baseline_results = _next_baseline_results(baseline_results, plan)
     return candidates, time_budget_reached or now() >= deadline
 
@@ -224,6 +252,7 @@ def _run_candidate_with_failure_capture(
     baseline_results: List[Any],
     now: Callable[[], float],
     search_budget: SearchBudget,
+    prepared: Any = None,
 ) -> CandidatePlan:
     candidate_started = search_budget.started_at
     try:
@@ -237,6 +266,7 @@ def _run_candidate_with_failure_capture(
             logger=logger,
             baseline_results=baseline_results,
             search_budget=search_budget,
+            prepared=prepared,
         )
     # 仅显式候选失败和未启动解码的预算耗尽转换状态；其余 ValidationError/RuntimeError/TypeError 继续上抛。
     # 这是 b81f8b3f 收窄后的护栏:绝不能以"统一/简化"名义改回 except Exception,
@@ -278,6 +308,7 @@ def _comparison_outcome(
         run_time_budget_seconds=_public_budget(total_budget),
         skipped_candidate_labels=_skipped_candidate_labels(candidates),
         baseline_missing_or_failed=_baseline_missing_or_failed(candidates),
+        reused_count=sum(1 for candidate in candidates if candidate.reused_from_candidate_key),
     )
 
 
@@ -313,6 +344,7 @@ def _run_single_candidate(
     logger: Any,
     baseline_results: List[Any],
     search_budget: SearchBudget,
+    prepared: Any = None,
 ) -> CandidatePlan:
     artifacts = _run_candidate_optimization(
         spec,
@@ -323,6 +355,7 @@ def _run_single_candidate(
         strict_mode=strict_mode,
         logger=logger,
         search_budget=search_budget,
+        prepared=prepared,
     )
     health = _candidate_health(
         spec,
@@ -343,10 +376,13 @@ def _run_candidate_optimization(
     strict_mode: bool,
     logger: Any,
     search_budget: SearchBudget,
+    prepared: Any = None,
 ) -> _CandidateRunArtifacts:
-    candidate_cfg = _candidate_cfg(base_cfg, spec)
-    candidate_input = _replace_schedule_input_cfg(schedule_input, cfg=candidate_cfg)
-    graph_preparation = prepare_graph_fn(candidate_input)
+    if prepared is None:
+        candidate_cfg = _candidate_cfg(base_cfg, spec)
+        graph_preparation = prepare_graph_fn(_replace_schedule_input_cfg(schedule_input, cfg=candidate_cfg))
+    else:
+        candidate_cfg, graph_preparation = prepared
     search_budget.require_available()
     trial_cfg_svc = _CandidateTrialConfigService(schedule_input.cfg_svc, candidate_cfg)
     outcome = optimize_schedule_fn(

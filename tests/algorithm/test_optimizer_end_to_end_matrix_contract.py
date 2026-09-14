@@ -25,7 +25,9 @@ def tiny_rows():
 def test_full_entry_exercises_outer_plans_optimizer_and_four_objective_oracles(tiny_rows):
     for objective, row in tiny_rows.items():
         assert row["status"] == "passed", row["errors"]
-        assert row["optimizer_call_count"] == 4
+        # Tiers with identical optimizer inputs reuse a sibling's plan instead of spending an optimizer call.
+        reused = sum(1 for candidate in row["candidates"] if candidate["reused_from"])
+        assert row["optimizer_call_count"] == 4 - reused
         assert len(row["candidates"]) == 4
         assert row["decode_count"] >= row["optimizer_call_count"]
         assert sum(item["decode_count"] for item in row["candidates"]) == row["decode_count"]
@@ -166,7 +168,7 @@ def test_explicit_uncounted_mode_never_synthesizes_legacy_decode_numbers():
     row = run_case("tiny_chain", "min_overdue", dict(DEFAULT_RUN_CONFIG, decoder_count_mode="uncounted"))
     assert row["status"] == "passed"
     assert row["decode_count"] is None
-    assert row["optimizer_call_count"] == 4
+    assert row["optimizer_call_count"] == 4 - sum(1 for candidate in row["candidates"] if candidate["reused_from"])
     assert all(candidate["decode_count"] is None for candidate in row["candidates"])
 
 

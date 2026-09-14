@@ -26,6 +26,7 @@ ROW_KEYS = {
 }
 CANDIDATE_KEYS = {
     "candidate_key", "status", "score", "runtime_ms", "decode_count", "optimizer_runtime_ms", "quality_vectors",
+    "reused_from",
 }
 
 
@@ -111,7 +112,9 @@ def _validate_candidates(row, config):
     keys = []
     completed = {}
     for candidate in candidates:
-        exact_keys(candidate, CANDIDATE_KEYS, "candidate")
+        # Snapshots written before 2026-09-14 predate outer-candidate reuse and carry no reused_from column.
+        expected_keys = CANDIDATE_KEYS if "reused_from" in candidate else CANDIDATE_KEYS - {"reused_from"}
+        exact_keys(candidate, expected_keys, "candidate")
         _text(candidate["candidate_key"], "candidate_key")
         keys.append(candidate["candidate_key"])
         if candidate["status"] not in {"completed", "skipped", "failed"}:
@@ -121,8 +124,17 @@ def _validate_candidates(row, config):
         if candidate["optimizer_runtime_ms"] > candidate["runtime_ms"] + 0.000001:
             raise ValueError("candidate optimizer/runtime accounting mismatch")
         _validate_decode_count(candidate["decode_count"], config, "candidate decode_count")
+        reused_from = candidate.get("reused_from")
+        if reused_from is not None and (candidate["status"] != "completed" or reused_from not in completed):
+            raise ValueError("a reused candidate must be completed and follow the completed sibling it reuses")
         if candidate["status"] == "completed":
-            _validate_decode_count(candidate["decode_count"], config, "completed candidate decode_count", 1)
+            if reused_from is None:
+                _validate_decode_count(candidate["decode_count"], config, "completed candidate decode_count", 1)
+            else:
+                if (config["decoder_count_mode"] == "native" and candidate["decode_count"] != 0) or candidate["optimizer_runtime_ms"] != 0:
+                    raise ValueError("reused candidate cannot claim optimizer work")
+                if candidate["quality_vectors"] != completed[reused_from]["quality_vectors"]:
+                    raise ValueError("reused candidate disagrees with the sibling it reuses")
             _validate_vectors(candidate["quality_vectors"])
             if not isinstance(candidate["score"], list):
                 raise ValueError("candidate score must be a list")
@@ -142,7 +154,7 @@ def _validate_candidates(row, config):
     expected_keys = ["baseline"] + ["graph_w" + str(index) + "_of_" + str(count) for index in range(1, count + 1)]
     if keys != expected_keys:
         raise ValueError("missing, unknown or reordered candidate keys")
-    if row["optimizer_call_count"] != len(completed):
+    if row["optimizer_call_count"] != sum(1 for candidate in completed.values() if candidate.get("reused_from") is None):
         raise ValueError("optimizer call accounting mismatch")
     for role, candidate_key in (("baseline", "baseline"), ("selected", row["selected_candidate_key"])):
         if candidate_key not in completed or completed[candidate_key]["quality_vectors"] != row[role]["quality_vectors"]:

@@ -25,10 +25,14 @@ from tests._support.optimizer_graph_ready_benchmark import (
 from tests.candidate.test_scheduler_candidate_runner_contract import _outcome, _schedule_input
 
 
-def _no_graph(_schedule_input):
+def _no_graph(schedule_input):
+    # Give each graph tier its own fake context: identical optimizer inputs would otherwise reuse a
+    # sibling's plan instead of taking a slice, which is not what these budget cases measure.
+    cfg = schedule_input.cfg
+    context = None if cfg.graph_analysis_mode == "off" else {"tier": int(cfg.graph_critical_weight)}
     return SimpleNamespace(
         graph_analysis_public=None, graph_analysis_diagnostics=None,
-        graph_ready_context=None, graph_dispatch_mode_override=None,
+        graph_ready_context=context, graph_dispatch_mode_override=None,
     )
 
 
